@@ -15,10 +15,13 @@ import (
 // pagedOpenChanges is a fake GraphQL forge holding n open changes, newest first, served by the
 // cursor walk's own variables: `first` (or the pre-#3096 `limit`) and `after` (an offset). A
 // fault, when set, answers request i (1-based) instead of the page; returning "" serves the page.
+// It serves every pullRequests connection read (the OPEN-only documents and ListChanges'
+// states-scoped one), so one fixture drives the whole class (#6475).
 type pagedOpenChanges struct {
 	mu       sync.Mutex
 	n        int
 	onePage  bool // ignore first/after and answer every change in one page
+	body     int  // bytes of filler in each change body (a heavy page); 0 serves an empty body
 	fault    func(i int, first int) string
 	requests []string // "first/after" per request
 }
@@ -31,7 +34,7 @@ func (f *pagedOpenChanges) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Variables map[string]any `json:"variables"`
 	}
 	if r.Method != http.MethodPost || r.URL.Path != "/graphql" || json.NewDecoder(r.Body).Decode(&req) != nil ||
-		!strings.Contains(req.Query, "pullRequests(states:OPEN") {
+		!strings.Contains(req.Query, "pullRequests(states:") {
 		http.Error(w, `{"message":"not served"}`, http.StatusNotFound)
 		return
 	}
@@ -101,6 +104,7 @@ func (f *pagedOpenChanges) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		head := fmt.Sprintf("%040x", num)
 		nodes = append(nodes, map[string]any{
 			"number": num, "title": fmt.Sprintf("change %d", num), "state": "OPEN", "isDraft": num%2 == 0,
+			"body":       strings.Repeat("x", f.body),
 			"author":     map[string]any{"login": "ada", "__typename": "User"},
 			"headRefOid": head, "headRefName": fmt.Sprintf("b%d", num), "baseRefName": "main",
 			"labels":  map[string]any{"nodes": []any{map[string]any{"name": "l" + strconv.Itoa(num%3)}}},

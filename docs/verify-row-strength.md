@@ -118,8 +118,29 @@ head run. The second is the ordinary run at head. The default base is the merge-
 brief file, and nothing else: a branch commit, HEAD, an unknown object or a base older than the
 brief is refused. When the merge-base does not hold the brief at its current path (the brief was
 created, renamed or moved on the branch, or its path does not resolve under the root), no ancestor
-can be shown to hold it, so only the merge-base itself is accepted and the check fails closed. The witness table gains a `Base` column,
-appended to the right of `Runner` (readers of Date and Runner skip it):
+can be shown to hold it, so only the merge-base itself is accepted and the check fails closed.
+When the merge-base cannot be resolved (no `origin/main` in the clone), `--base` cannot be checked
+against it, so it is refused; fetch `origin/main` first.
+A cross-repository run, admitted on a version 2 receipt, is the one exception. Its rows run in
+the deliverable repository and its brief lives in the tracking repository, so no deliverable
+commit holds the brief. For that run the brief-held check cannot apply, so a tighter rule
+replaces it: the base must be the deliverable merge-base of HEAD and origin/main exactly. An
+ancestor of it is refused, because it may predate the change; a later commit is refused, because
+it carries part of the change. When that merge-base cannot be resolved the run is refused, with or
+without `--base`. When that merge-base is HEAD itself (a post-merge deliverable clone, or the
+container lane, whose imported history anchors origin/main to the admitted source), the run is
+refused too, with or without `--base`: the base rows would run on the changed tree, where a green
+says nothing and a red (for example from an ignored file only the home holds) would be false
+credit. Every one of these refusals is exit 2 and comes before any row runs. A discriminating
+cross-repository run needs a deliverable clone whose HEAD is the delivering change and whose
+origin/main does not yet hold it. The exception follows from the receipt and never from where the
+brief file sits: an unadmitted run with a brief outside the root takes the same-repository check.
+There the brief path does not resolve under the root, so only the merge-base itself is accepted;
+when that merge-base is HEAD itself the base is refused too (exit 2, before any row runs, with or
+without `--base`, for the same reason as above); and any `--base` is refused when the merge-base
+cannot be resolved.
+The witness table gains a `Base` column, appended to the right of `Runner` (readers of Date and
+Runner skip it):
 
     base=<sha> red rc=1 · head=<sha>
 
@@ -131,7 +152,7 @@ The base states are:
 - **`unproven`**: the row could not run at base.
 - **`not-selected`**: the row is not risk-bearing, or `--ci` skips it, and it was not run at base.
 
-**After the change has merged**, the merge-base of HEAD and `origin/main` is HEAD itself or a
+For a same-repository run, **after the change has merged**, the merge-base of HEAD and `origin/main` is HEAD itself or a
 commit that already contains the change, so every row is green. The verifier passes
 `--base <the parent of the delivering merge>`. Only the latest witness of a row counts, and it
 must carry the row's current command; a later plain run or an edited command drops the record.
@@ -140,7 +161,7 @@ runner, and Verify-shaped text it cannot place on a closure is a PROBLEM (see "V
 runner cannot place" below). A live, mutating or
 end-to-end row runs a second time at base, so check it is safe to run twice.
 
-The lint gate on a closure **this branch makes** treats each risk-bearing row as follows. A row is
+For a same-repository run, the lint gate on a closure **this branch makes** treats each risk-bearing row as follows. A row is
 a **PROBLEM** when it has no fail-first witness, its witness is `unproven`, its witness is
 non-discriminating, its witness is for an earlier command or has been superseded by a later plain
 run, or its witness names a base that is not the merge-base or an ancestor of it, or names a base
@@ -188,6 +209,63 @@ post-merge verify, the parent of the delivering merge) is the verifier's attesta
 Base cell is self-attested Evidence text, like every witness cell. Binding the base to the
 delivering change in code is a design decision tracked on the issue linked from the pull request
 that introduced the gate, not something the lint decides today.
+
+### Cross-repository runs
+
+When the latest PASS run binds a literal cross-repository (version 2) attestation, its Base cell
+names a commit of the DELIVERABLE repository, which the tracking clone never holds. The closure
+gate (lint, `brief --check-verified` and `verifyclosure`) then resolves the base in the deliverable
+checkout the operator configured for the attestation's `source-repo=` (`DESK_ROOTS`, or
+`--sibling-root <owner>/<repo>=<path>`), never in a path the tree supplies.
+
+The base must equal the deliverable merge-base exactly: the one merge-base of the attested
+`source=` commit and `origin/main` in that checkout. The attested `source=` must itself be a
+commit object there: `git merge-base` peels a tag to its commit, so a tag id would never equal the
+merge-base and would slip past the post-merge check below. An ancestor of the merge-base is refused,
+because it may predate the change. Any later commit is refused, because it may carry part of it.
+There is no ancestor fallback. When that merge-base is the source itself, because `origin/main`
+already holds the change, every base is refused, the source included: the only base the rule
+could accept is the changed tree, where a green says nothing and a red (for example from an
+ignored file only one clone holds) would be false credit. The runner-side refusal of the same case
+(a cross-repository run whose deliverable merge-base is HEAD) is proposed separately in #5550 and
+is not claimed here; this gate refuses the post-merge case on its own.
+
+The rule fails closed. Each of these is a PROBLEM on every risk-bearing row:
+
+- the deliverable repository has no configured checkout;
+- the repository has more than one configured checkout under names that differ only in letter
+  case;
+- the checkout has no `origin/main`, does not hold the source, or the source and `origin/main` have
+  more than one best merge-base;
+- the attested `source=` is not a commit object in the checkout (for example an annotated tag's
+  id);
+- the merge-base is the source itself (`origin/main` already holds the change);
+- the base is not a commit the checkout holds, or is not the merge-base;
+- the Evidence holds a cross-repository attestation that the selected PASS run does not bind
+  literally;
+- the bound attestation is not for this brief: its `repo=` is not the brief's own repository, or
+  its `brief=` is not the brief's repository-relative path (the same identity checks the
+  brief-version read applies).
+
+A refusal of the attestation itself asks for a run that records a binding attestation; a checkout
+or `--base` change cannot clear it. The post-merge refusal gives the same hint as the runner
+refusal proposed in #5550: no `--base` can fix it; run from a deliverable clone whose HEAD is the delivering change
+and whose `origin/main` does not yet hold it. Same-repository runs keep the merge-base rule above
+unchanged.
+
+What this rule does not cover:
+
+- **The brief-held rule is not applied.** No deliverable commit holds the tracking brief. The
+  closure gate never reads the verifier receipt or compares a brief digest. The brief's bytes are
+  checked against the receipt's `BriefSHA256` on `verifyrun`'s container lane and on the desk
+  tools' verifier and landing paths, not here.
+- **The merge-base is read at check time.** The checker's `origin/main` may have moved since the
+  run. Once the checkout's `origin/main` holds the source, the merge-base is the source itself, and
+  the gate refuses every risk-bearing row whatever base it records: a base recorded before the
+  merge, and the source itself, alike. With `source=` held to a commit object, no
+  cross-repository closure is credited after the merge. A
+  discriminating cross-repository closure after the merge needs the base bound to the delivering
+  change, which is a separate open change.
 
 ### Verify text the runner cannot place
 

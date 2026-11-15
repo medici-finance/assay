@@ -334,6 +334,9 @@ func stepEnv(t *testing.T, st wfStep, outputs map[string]string) []string {
 		"${{ github.token }}":                 readTokenSentinel,
 		appTokenExpr:                          writeTokenSentinel,
 		"${{ steps.compute.outputs.commit }}": outputs["commit"],
+		// The model-autoflip step's stuck-candidate switch: unset by default,
+		// which is how the rig runs it (exit 2 warns, never fails).
+		"${{ vars.ASSAY_AUTOFLIP_STUCK_FAILS }}": "",
 	}
 	for _, r := range rosterEnv {
 		known[r.expr] = r.fixture

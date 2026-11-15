@@ -220,6 +220,11 @@ func executeDispatch(o dispatchOpts, override string) error {
 }
 
 func dispatch(o dispatchOpts) error {
+	// A window holding a role-secret path never dispatches a review kit or an item with no
+	// forge item behind it; refused before any other check or child process (rolesecret.go).
+	if err := roleSecretPrecheck(o); err != nil {
+		return err
+	}
 	if err := storageAdmission(o.dryRun, o.root); err != nil {
 		return err
 	}
@@ -237,12 +242,22 @@ func dispatch(o dispatchOpts) error {
 	if err != nil {
 		return err
 	}
+	// The role-secret trust boundary: in a holding window, an untrusted item or a --pr item whose
+	// head commits are not all attributed to roster logins is refused here, before the claim
+	// (rolesecret.go).
+	admittedHead, err := roleSecretAdmission(o, plan.repo)
+	if err != nil {
+		return err
+	}
 	// CONTEXT PICKUP — before the claim and before any child process (pickup.go): a receipt
 	// that must be reconciled or cannot be confirmed holds here, never after a launch.
 	if plan.pickup, err = pickupAdmit(o); err != nil {
 		return err
 	}
 	if err := resolveResume(o, &plan); err != nil {
+		return err
+	}
+	if err := roleSecretPinHead(admittedHead, plan); err != nil {
 		return err
 	}
 	repo, branch, wtName := plan.repo, plan.branch, plan.wtName
@@ -355,7 +370,7 @@ func dispatch(o dispatchOpts) error {
 	// DECISION HOLD — before the claim (briefadmission.go). A fresh worker dispatch of a
 	// human-gated brief whose decision issue is open and unruled is held here, so no claim
 	// cycle or worker slot is spent discovering the open decision after pickup.
-	if err := briefDecisionHold(o, plan, repo); err != nil {
+	if err := briefDecisionHold(plan.gateOpts(o), plan, repo); err != nil {
 		return err
 	}
 
@@ -600,9 +615,12 @@ func dispatch(o dispatchOpts) error {
 	// pre-claim and is carried on the plan.
 	// The script child runs under the credential the claim step resolved (auth.scriptEnv), never
 	// the ambient login — issue 1146.
-	gate, gerr := stepDecision(o, plan.gateHuman, repo, plan.decisionTool, plan.ruling, auth)
+	gate, gerr := stepDecision(plan.gateOpts(o), plan.gateHuman, repo, plan.decisionTool, plan.ruling, auth)
 	if gerr != nil {
 		return held.settle(gerr)
+	}
+	if !plan.gateHuman && plan.keyBrief != "" {
+		gate += fmt.Sprintf(" (read %s, named by the item key: it does not gate on a human)", plan.keyBriefShown)
 	}
 	o.say("%s %s", stepDecisionGate, gate)
 
@@ -732,6 +750,10 @@ type dispatchPlan struct {
 	// and the prompt's human-gated line all read the SAME answer — keying the gate on
 	// --gate-human alone silently dropped the metadata half of the contract.
 	gateHuman bool
+	// keyBrief is the brief the ITEM KEY names, read for the human gate when no --brief was given
+	// (#6173, briefkey.go): absolute path, and its shown spelling. Empty when --brief was given or
+	// the key is not brief-shaped. Only the gate steps read it (gateOpts).
+	keyBrief, keyBriefShown string
 	// claimKey is the key the durable claim is taken (and later released) under —
 	// derived once from the item key by claimKeyFor, so the acquire call and the release
 	// hint in the prompt cannot drift onto two different keys.
@@ -791,12 +813,9 @@ type dispatchPlan struct {
 	// from — fields on the plan so a test can fix both.
 	now     func() time.Time
 	entropy io.Reader
-	// forgeKind is the resolved forge serving the target repo, set ONLY for a review
-	// dispatch — the one kind whose prompt is forge-shaped (the head-fetch refspec: GitHub
-	// refs/pull/<N>/head vs GitLab refs/merge-requests/<iid>/head, #773). A worker dispatch
-	// emits no forge-shaped ref, so this stays empty for one and the worker path is
-	// unchanged. Resolved pre-claim so a repo whose forge cannot be determined refuses the
-	// review dispatch before any durable state exists.
+	// forgeKind is resolved pre-claim for review and verifier prompts: reviews
+	// name forge-specific head refs, while verifier outcome recipes opt in to
+	// GitHub-only approval reads. Worker prompts keep their existing path.
 	forgeKind deskkit.ForgeKind
 	// claimStore is where the dispatch claim is kept, as deskkit.ResolveClaimStore decided it
 	// from the roster — never a flag. Resolved pre-claim, so a store that
@@ -1035,15 +1054,25 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", toolName, store.Notice)
 	}
 
+	// A contradictory local branch must be refused before any forge read.
+	if verifierKit(o.kit) || reviewKit(o.kit) {
+		if strings.TrimSpace(o.branch) != "" {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: --branch is not accepted with --kit %s — its worktree is cut DETACHED "+
+					"off origin/main and never touches a feature branch.", stepWorktreeCreate, o.kit))
+		}
+	}
+
 	// A REVIEW dispatch's prompt is forge-shaped: the reviewer fetches the change's HEAD from
 	// the forge-specific server-side ref namespace (GitHub refs/pull/<N>/head ↔ GitLab
 	// refs/merge-requests/<iid>/head). Resolve WHICH forge serves the target repo now, pre-claim,
 	// so a GitHub-shaped fetch is never emitted into a GitLab reviewer's prompt (#773) and so a
 	// repo whose forge cannot be determined refuses HERE, before any durable state exists, rather
 	// than handing a reviewer a coordinate it cannot check out. A worker dispatch emits no
-	// forge-shaped ref, so this is skipped for one and the worker path stays byte-for-byte
-	// unchanged — including its executed-process count.
-	if reviewKit(o.kit) {
+	// forge-shaped ref, so its path stays byte-for-byte unchanged. A verifier
+	// also resolves here so only GitHub outcome recipes request GitHub approval
+	// reads; other forges retain their ordinary landing path.
+	if reviewKit(o.kit) || verifierKit(o.kit) {
 		kind, ferr := o.resolveTargetForgeKind(repo)
 		if ferr != nil {
 			return plan, ferr
@@ -1054,11 +1083,6 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// Read-only kits allocate detached. A reviewer checks out the PR head
 	// afterward; no disposable feature branch or upstream is needed.
 	if verifierKit(o.kit) || reviewKit(o.kit) {
-		if strings.TrimSpace(o.branch) != "" {
-			return plan, deskkit.Refused(fmt.Sprintf(
-				"step %s: --branch is not accepted with --kit %s — its worktree is cut DETACHED "+
-					"off origin/main and never touches a feature branch.", stepWorktreeCreate, o.kit))
-		}
 		plan.detached = true
 	} else {
 		plan.branch = o.branch
@@ -1182,7 +1206,18 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 				"the item's own specification, never invented by the dispatcher.", stepDecisionGate))
 	}
 	plan.gateHuman = o.gateHuman
-	if !plan.gateHuman && strings.TrimSpace(o.brief) != "" && briefGatesHuman(o.root, o.brief) {
+	// No --brief: a brief-shaped item key still names a brief, and its `gate: human` binds the same
+	// way (#6173). It is resolved here, pre-claim, and a key whose brief cannot be read is REFUSED
+	// rather than reported as "not human-gated". It feeds the gate steps only (gateOpts).
+	if !plan.gateHuman && strings.TrimSpace(o.brief) == "" {
+		kb, shown, kerr := keyBriefFn(o)
+		if kerr != nil {
+			return plan, kerr
+		}
+		plan.keyBrief, plan.keyBriefShown = kb, shown
+	}
+	g := plan.gateOpts(o)
+	if !plan.gateHuman && strings.TrimSpace(g.brief) != "" && briefGatesHuman(g.root, g.brief) {
 		plan.gateHuman = true
 	}
 	if plan.gateHuman {
@@ -1208,7 +1243,7 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		}
 		// A recorded ruling is parsed and its corroborating tool probed HERE, before the claim, so a
 		// line this gate cannot accept costs nothing durable (#2079).
-		ruling, rerr := readRecordedRuling(o.root, o.brief, briefArg(o))
+		ruling, rerr := readRecordedRuling(g.root, g.brief, briefArg(g))
 		if rerr != nil {
 			return plan, rerr
 		}
@@ -1217,7 +1252,7 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 				return plan, deskkit.Unverifiable(fmt.Sprintf(
 					"step %s: %s records a ruling, but %s is not on PATH, so the ruling cannot be corroborated — "+
 						"this refuses rather than take the ruling on the brief's word. Nothing was claimed.",
-					stepDecisionGate, ruling.where(briefArg(o)), statusgenBinary), lerr)
+					stepDecisionGate, ruling.where(briefArg(g)), statusgenBinary), lerr)
 			}
 		}
 		plan.ruling = ruling
@@ -1556,7 +1591,7 @@ type claimAuth struct {
 // guessing.
 func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, isScript bool) (claimAuth, error) {
 	role := stampRoleForKit(o.kit)
-	// forgeKind is pre-resolved by planClaim for a review dispatch (its prompt is forge-shaped);
+	// forgeKind is pre-resolved by planClaim for review and verifier dispatches;
 	// a worker dispatch leaves it empty, so resolve it HERE, at execution time — after every
 	// caller-flag precondition has passed, so a flag-mistake refusal never pays for this git
 	// read (the "nothing durable before the flags are good" contract the zero-process tests pin).

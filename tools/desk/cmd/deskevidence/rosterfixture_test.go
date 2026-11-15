@@ -34,6 +34,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/medici-finance/assay/gitquiet/goquiet"
@@ -97,6 +98,7 @@ func installFixtureRoster() (cleanup func(), err error) {
 }
 
 func TestMain(m *testing.M) {
+	clearAmbientGitEnv()
 	if err := pinFixtureGoCaches(); err != nil {
 		panic(err)
 	}
@@ -107,6 +109,19 @@ func TestMain(m *testing.M) {
 	code := gitquiet.Run(m)
 	cleanup()
 	os.Exit(code)
+}
+
+// clearAmbientGitEnv removes every inherited GIT_* variable, so a caller's
+// GIT_EDITOR or GIT_DIR cannot select a different reader or repository and the
+// suite's result does not depend on who runs it. gitquiet.Run sets its own
+// GIT_TEMPLATE_DIR afterwards; a test that needs a variable sets it with t.Setenv.
+func clearAmbientGitEnv() {
+	for _, entry := range os.Environ() {
+		key, _, _ := strings.Cut(entry, "=")
+		if strings.HasPrefix(strings.ToUpper(key), "GIT_") {
+			_ = os.Unsetenv(key)
+		}
+	}
 }
 
 // Resolve Go's original defaults before the roster fixture replaces HOME.

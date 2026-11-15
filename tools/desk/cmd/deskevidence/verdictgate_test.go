@@ -199,7 +199,7 @@ func TestVerdictCheckOnlyAtTip(t *testing.T) {
 			}
 		}
 	}
-	want := "verdictgate.go:return evidenceVerdictCheckFn(root, briefPath, before, after, hasBefore, verdict)"
+	want := "verdictgate.go:return evidenceVerdictCheckFn(root, briefPath, before, after, hasBefore, verdict, options)"
 	if len(sites) != 1 || sites[0] != want {
 		t.Fatalf("evidenceVerdictCheckFn call sites = %q, want exactly [%q] (ask through evidenceVerdictAtTip)", sites, want)
 	}

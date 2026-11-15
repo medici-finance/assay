@@ -55,7 +55,8 @@ func (a *auditCtx) log(result, detail string) {
 		h := a.head
 		headp = &h
 	}
-	_ = deskkit.Log(deskkit.Entry{
+	// A reply is an outward comment post: success renews a fresh HEARTBEAT lease (#6510).
+	_ = deskkit.LogOutwardAct(deskkit.Entry{
 		Tool:       "deskreply",
 		Verb:       "reply",
 		Result:     result,

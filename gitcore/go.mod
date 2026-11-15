@@ -2,6 +2,8 @@ module github.com/medici-finance/assay/gitcore
 
 go 1.27.0
 
+toolchain go1.27.4
+
 require (
 	github.com/go-git/go-billy/v5 v5.9.2
 	github.com/go-git/go-git/v5 v5.19.3
