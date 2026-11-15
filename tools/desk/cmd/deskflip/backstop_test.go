@@ -389,3 +389,53 @@ func TestReflipUnreadableThread(t *testing.T) {
 		t.Fatalf("rc=%d flipped=%v, want %d and no flip\n%s", rc, s.flipped(), deskkit.ExitUnverifiable, out)
 	}
 }
+
+// withBaseRule adds base-branch rules to a mergeReqJSON answer: classic replaces the classic
+// protection rule when non-nil, and each rule is appended to the ruleset rule nodes.
+func withBaseRule(t *testing.T, raw string, classic map[string]any, rules ...any) string {
+	t.Helper()
+	var w map[string]any
+	if err := json.Unmarshal([]byte(raw), &w); err != nil {
+		t.Fatal(err)
+	}
+	base := w["data"].(map[string]any)["repository"].(map[string]any)["pullRequest"].(map[string]any)["baseRef"].(map[string]any)
+	if classic != nil {
+		base["branchProtectionRule"] = classic
+	}
+	rs := base["rules"].(map[string]any)
+	nodes := append(rs["nodes"].([]any), rules...)
+	rs["nodes"], rs["totalCount"] = nodes, len(nodes)
+	b, err := json.Marshal(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// unevaluatedCases are base-branch rules the requirement read sees but does not evaluate, one
+// from each source, keyed by the text the revert comment must carry.
+func unevaluatedCases(t *testing.T, met string) map[string]string {
+	return map[string]string{
+		"a ruleset rule of type MERGE_QUEUE": withBaseRule(t, met, nil,
+			map[string]any{"type": "MERGE_QUEUE", "parameters": map[string]any{}}),
+		"branch protection's conversation resolution": withBaseRule(t, met,
+			map[string]any{"requiredStatusCheckContexts": []string{}, "requiresConversationResolution": true}),
+	}
+}
+
+// A BLOCKED read whose base branch carries a rule the requirement read sees but does not
+// evaluate reverts, from a ruleset and from classic protection alike: such a rule can be what
+// blocks the change for every reader.
+//
+// regression: #6509
+func TestBackstopBlockedRuleUneval(t *testing.T) {
+	met := mergeReqJSON(t, headSHA, "MERGEABLE", "APPROVED", [2]string{"build-test", "SUCCESS"})
+	for want, raw := range unevaluatedCases(t, met) {
+		t.Run(want, func(t *testing.T) {
+			s := newStub()
+			s.mergeReqJSON = raw
+			rc, out := flipWith(t, s, "blocked")
+			assertBlockedReverted(t, s, rc, out, want)
+		})
+	}
+}

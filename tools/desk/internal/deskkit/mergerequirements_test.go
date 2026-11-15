@@ -14,7 +14,8 @@ func mrWire(t *testing.T, mergeable string, review any, classic, ruleset []strin
 	for _, c := range ruleset {
 		rsc = append(rsc, map[string]any{"context": c})
 	}
-	nodes := []any{map[string]any{"type": "PULL_REQUEST", "parameters": nil}}
+	nodes := []any{map[string]any{"type": "PULL_REQUEST",
+		"parameters": map[string]any{"__typename": "PullRequestParameters", "requiredReviewThreadResolution": false}}}
 	if len(ruleset) > 0 {
 		nodes = append(nodes, map[string]any{"type": "REQUIRED_STATUS_CHECKS",
 			"parameters": map[string]any{"requiredStatusChecks": rsc}})
@@ -125,5 +126,103 @@ func TestDecodeMergeReqsFailClosed(t *testing.T) {
 	}
 	if m.Complete || len(m.Unmet()) == 0 {
 		t.Errorf("a null base ref and a truncated rollup read Complete=%v unmet=%q, want incomplete and unmet", m.Complete, m.Unmet())
+	}
+}
+
+// mrBase replaces the base-branch rules of a mrWire response: classic is the classic
+// protection rule (nil for none), rules the ruleset rule nodes.
+func mrBase(t *testing.T, raw []byte, classic map[string]any, rules ...any) []byte {
+	t.Helper()
+	var w map[string]any
+	if err := json.Unmarshal(raw, &w); err != nil {
+		t.Fatal(err)
+	}
+	pr := w["data"].(map[string]any)["repository"].(map[string]any)["pullRequest"].(map[string]any)
+	if rules == nil {
+		rules = []any{}
+	}
+	var bpr any
+	if classic != nil {
+		bpr = classic
+	}
+	pr["baseRef"] = map[string]any{"branchProtectionRule": bpr,
+		"rules": map[string]any{"totalCount": len(rules), "nodes": rules}}
+	b, err := json.Marshal(w)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return b
+}
+
+// A base-branch rule the read sees but does not evaluate is unmet, from either source: a
+// ruleset rule of another type, an evaluated type's unevaluated setting, a rule returned without
+// its settings, or a classic-protection setting beyond the required checks.
+//
+// regression: #6509
+func TestDecodeMergeReqsUneval(t *testing.T) {
+	met := mrWire(t, "MERGEABLE", "APPROVED", nil, nil)
+	rule := func(typ string, params any) any { return map[string]any{"type": typ, "parameters": params} }
+	for want, raw := range map[string][]byte{
+		"type MERGE_QUEUE":             mrBase(t, met, nil, rule("MERGE_QUEUE", map[string]any{})),
+		"type REQUIRED_DEPLOYMENTS":    mrBase(t, met, nil, rule("REQUIRED_DEPLOYMENTS", nil)),
+		"type REQUIRED_SIGNATURES":     mrBase(t, met, nil, rule("REQUIRED_SIGNATURES", nil)),
+		"type CODE_SCANNING":           mrBase(t, met, nil, rule("CODE_SCANNING", map[string]any{})),
+		"type SOME_FUTURE_RULE":        mrBase(t, met, nil, rule("SOME_FUTURE_RULE", nil)),
+		"ruleset's conversation":       mrBase(t, met, nil, rule("PULL_REQUEST", map[string]any{"requiredReviewThreadResolution": true})),
+		"ruleset's up-to-date":         mrBase(t, met, nil, rule("REQUIRED_STATUS_CHECKS", map[string]any{"strictRequiredStatusChecksPolicy": true, "requiredStatusChecks": []any{}})),
+		"settings were not returned":   mrBase(t, met, nil, rule("PULL_REQUEST", nil)),
+		"protection's conversation":    mrBase(t, met, map[string]any{"requiresConversationResolution": true}),
+		"protection's signed commits":  mrBase(t, met, map[string]any{"requiresCommitSignatures": true}),
+		"protection's linear history":  mrBase(t, met, map[string]any{"requiresLinearHistory": true}),
+		"protection's required deploy": mrBase(t, met, map[string]any{"requiredDeploymentEnvironments": []string{"prod"}}),
+		"protection's branch lock":     mrBase(t, met, map[string]any{"lockBranch": true}),
+		"protection's up-to-date":      mrBase(t, met, map[string]any{"requiresStatusChecks": true, "requiresStrictStatusChecks": true}),
+	} {
+		t.Run(want, func(t *testing.T) {
+			m, err := DecodeMergeRequirements(raw)
+			if err != nil {
+				t.Fatal(err)
+			}
+			un := strings.Join(m.Unmet(), "\n")
+			if !strings.Contains(un, want) || !strings.Contains(un, "does not evaluate") {
+				t.Errorf("unmet = %q, want a line naming %q as not evaluated", un, want)
+			}
+		})
+	}
+}
+
+// The base-branch configuration this repo (medici-finance/assay main) carried when the S1
+// round-2 fix was made, as the worker App read it: classic protection restricting pushes with
+// a strict flag but no required checks, two PULL_REQUEST rules (one with last-push approval),
+// one REQUIRED_STATUS_CHECKS rule, and push-only rules. Every requirement met reads nothing
+// unmet, so the fail-closed rule does not bring back the #6508 revert loop here.
+//
+// regression: #6508
+func TestDecodeMergeReqsAssayMain(t *testing.T) {
+	met := mrWire(t, "MERGEABLE", "APPROVED", nil, nil,
+		checkRun("leak-sweep", "COMPLETED", "SUCCESS", "2026-01-01T00:00:00Z", true),
+		checkRun("build-test", "COMPLETED", "SUCCESS", "2026-01-01T00:00:00Z", true),
+		checkRun("changelog", "COMPLETED", "SKIPPED", "2026-01-01T00:00:00Z", true))
+	pr := func(count int, lastPush, stale bool) any {
+		return map[string]any{"type": "PULL_REQUEST", "parameters": map[string]any{"__typename": "PullRequestParameters",
+			"requiredApprovingReviewCount": count, "requireLastPushApproval": lastPush,
+			"dismissStaleReviewsOnPush": stale, "requiredReviewThreadResolution": false}}
+	}
+	push := func(typ string) any { return map[string]any{"type": typ, "parameters": nil} }
+	raw := mrBase(t, met, map[string]any{"requiredStatusCheckContexts": []string{}, "requiresStatusChecks": false,
+		"requiresStrictStatusChecks": true, "restrictsPushes": true, "requiresApprovingReviews": false,
+		"requiresConversationResolution": false, "requiresCommitSignatures": false, "requiresLinearHistory": false,
+		"requiresDeployments": false, "requiredDeploymentEnvironments": []string{}, "lockBranch": false},
+		pr(1, true, true), pr(0, false, false),
+		map[string]any{"type": "REQUIRED_STATUS_CHECKS", "parameters": map[string]any{"__typename": "RequiredStatusChecksParameters",
+			"strictRequiredStatusChecksPolicy": false, "requiredStatusChecks": []any{
+				map[string]any{"context": "leak-sweep"}, map[string]any{"context": "build-test"}, map[string]any{"context": "changelog"}}}},
+		push("NON_FAST_FORWARD"), push("DELETION"), push("NON_FAST_FORWARD"), push("DELETION"))
+	m, err := DecodeMergeRequirements(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if u := m.Unmet(); len(u) != 0 || len(m.Required) != 3 {
+		t.Errorf("unmet = %q required = %v, want nothing unmet and three required checks", u, m.Required)
 	}
 }

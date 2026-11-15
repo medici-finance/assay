@@ -67,7 +67,8 @@ type postBackend interface {
 	markReadyForReview(nodeID string) error
 	// convertToDraft and postComment serve ONE caller: `ready`'s post-flip backstop
 	// (deskkit.ReadyBackstop, #6242), which returns a just-flipped PR to draft when the forge
-	// reports it DIRTY and explains why in one comment. Neither is a verb.
+	// reports it DIRTY, or BLOCKED with a merge requirement unmet or unreadable (#6508), and
+	// explains why in one comment. Neither is a verb.
 	convertToDraft(nodeID string) error
 	postComment(pr int, body string) error
 	// mergeRequirements serves the same backstop: on a BLOCKED read it reads the requirements
