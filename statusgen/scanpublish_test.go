@@ -10,9 +10,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/deskcore/issueflow"
 )
@@ -546,5 +548,101 @@ func TestScanPublishPublicAllowlist(t *testing.T) {
 				t.Fatal("prose from a withheld field reached the tree")
 			}
 		})
+	}
+}
+
+// TestPublicAllowlistEveryString — every string field of a judgment, found by walking the record's
+// type rather than by a hand list, is refused under a public root when it carries prose, and the
+// refusal names that field. A string field added to the record later is walked here too, so it
+// turns this test red until publicFormRefusal checks it.
+//
+// regression: F-judged-allowlist-default — the allowlist checked only the fields it named, so a field added later was published whole.
+func TestPublicAllowlistEveryString(t *testing.T) {
+	const prose = "see the internal runbook at the staging bastion"
+	home := scanHomeRepo()
+	item := fmt.Sprintf("%s#77", home)
+	base := func() issueflow.IntakeHandoff {
+		h := pubRepair(item, pubOpenedA, 1, item)
+		h.Verification = &issueflow.Handoff{Schema: issueflow.HandoffSchema, Disposition: issueflow.Repair, DecidingRole: "intake-desk", Successor: item,
+			Source: issueflow.HandoffSource{Repo: home, Brief: "alpha/01", SourceVersion: "1", SourceRevision: "0123abcd", ReceiptID: "receipt-1", CaseID: "repair/existing", Rows: []int{1, 2}, BlockerRef: "#12"}}
+		return h
+	}
+	if got := publicFormRefusal(base()); got != "" {
+		t.Fatalf("the typed base record is refused: %s", got)
+	}
+	var paths []string
+	var walk func(v reflect.Value, prefix string, at []int)
+	walk = func(v reflect.Value, prefix string, at []int) {
+		for i := 0; i < v.NumField(); i++ {
+			f := v.Type().Field(i)
+			if !f.IsExported() {
+				continue
+			}
+			path := prefix + jsonFieldName(f)
+			idx := append(append([]int{}, at...), i)
+			ft := f.Type
+			if ft.Kind() == reflect.Pointer {
+				ft = ft.Elem()
+			}
+			switch {
+			case ft.Kind() == reflect.String:
+				paths = append(paths, path)
+				t.Run(path, func(t *testing.T) {
+					h := base()
+					fieldByIndex(reflect.ValueOf(&h).Elem(), idx).SetString(prose)
+					got := publicFormRefusal(h)
+					if got == "" || !strings.HasPrefix(got, path+" ") {
+						t.Fatalf("%s set to prose: refusal %q, want one naming %s", path, got, path)
+					}
+				})
+			case ft.Kind() == reflect.Struct && ft != reflect.TypeOf(time.Time{}):
+				fv := v.Field(i)
+				if fv.Kind() == reflect.Pointer {
+					fv = fv.Elem()
+				}
+				walk(fv, path+".", idx)
+			}
+		}
+	}
+	walk(reflect.ValueOf(base()), "", nil)
+	if len(paths) < 20 {
+		t.Fatalf("walked %d string fields, want every one of the record's (at least 20): %v", len(paths), paths)
+	}
+}
+
+// fieldByIndex follows idx through v, dereferencing a pointer on the way.
+func fieldByIndex(v reflect.Value, idx []int) reflect.Value {
+	for _, i := range idx {
+		if v.Kind() == reflect.Pointer {
+			v = v.Elem()
+		}
+		v = v.Field(i)
+	}
+	return v
+}
+
+// TestPublicUncoveredFields — the coverage walk finds a field the list does not name, at the top
+// level and inside a nested block, and finds none in the judgment record as it stands.
+//
+// regression: F-judged-allowlist-default — a field added to the record was never looked at.
+func TestPublicUncoveredFields(t *testing.T) {
+	type inner struct {
+		Repo  string    `json:"repo"`
+		Extra int       `json:"extra"`
+		At    time.Time `json:"at"`
+	}
+	type probe struct {
+		Schema string `json:"schema"`
+		Note   string `json:"note,omitempty"`
+		Block  *inner `json:"block"`
+		hidden string
+	}
+	covered := map[string]bool{"schema": true, "block.repo": true, "block.at": true}
+	got := strings.Join(uncoveredFields(reflect.TypeOf(probe{}), "", covered), ",")
+	if got != "note,block.extra" {
+		t.Fatalf("uncovered = %q, want note,block.extra", got)
+	}
+	if u := publicUncovered(); len(u) > 0 {
+		t.Fatalf("the judgment record has fields the public allowlist does not cover: %v", u)
 	}
 }

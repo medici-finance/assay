@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/medici-finance/assay/deskcore/issueflow"
@@ -31,11 +32,11 @@ import (
 //     reopened issue's reactivation already stripped (the companion stays behind; its presence is the
 //     mark that the judgment is spent). A judgment for an event the log has not yet seen is the
 //     writer's to record; the board then holds the placeholder until it is.
-//   - Text. A judgment carries three free-text fields (evidence, required_action, wake_condition).
-//     Copying them into a committed file publishes them wherever that file is committed. The scan
-//     therefore decides, through the one reader the package already has (onBehalfOfPublicForm), whether
-//     the repository the file is committed to is public, and under a public root publishes a judgment
-//     only when none of the three can carry prose. See scanRootPublic for how that repository is read.
+//   - Text. Copying a judgment into a committed file publishes every field of it wherever that file
+//     is committed. The scan therefore decides, through the one reader the package already has
+//     (onBehalfOfPublicForm), whether the repository the file is committed to is public, and under a
+//     public root publishes a judgment only when no field can carry prose (publicFormRefusal). See
+//     scanRootPublic for how that repository is read.
 
 // scanPublishOpts is what --scan-issues is told about publication. A zero value publishes nothing and
 // leaves the scan exactly as it was.
@@ -96,13 +97,75 @@ func pubEnum(v string, allowEmpty bool, vals ...string) bool {
 	return false
 }
 
+// publicCoveredFields lists, by JSON path, every field of the judgment record that publicFormRefusal
+// checks below, or admits because its type cannot carry text (a number, a bool, a time, a list of
+// numbers). The list is compared with the record's type, not with a judgment's values: a field the
+// record gains later is not on it, so every judgment is refused under a public root, naming that
+// field, until the field is listed here and checked below.
+var publicCoveredFields = map[string]bool{
+	"schema": true, "item": true, "opened": true, "revision": true, "deciding_role": true,
+	"disposition": true, "delivered": true, "route": true, "successor": true, "author_tier": true,
+	"external_role": true, "required_action": true, "wake_condition": true, "evidence": true,
+	"verification.schema": true, "verification.disposition": true, "verification.deciding_role": true,
+	"verification.successor": true, "verification.external_role": true, "verification.required_action": true,
+	"verification.observed_at": true, "verification.fresh_until": true,
+	"verification.source.repo": true, "verification.source.brief": true, "verification.source.source_version": true,
+	"verification.source.source_revision": true, "verification.source.receipt_id": true,
+	"verification.source.case_id": true, "verification.source.rows": true, "verification.source.blocker_ref": true,
+}
+
+// publicUncovered is the record's fields that publicCoveredFields does not list, read once.
+var publicUncovered = sync.OnceValue(func() []string {
+	return uncoveredFields(reflect.TypeOf(issueflow.IntakeHandoff{}), "", publicCoveredFields)
+})
+
+// uncoveredFields walks t's exported fields by JSON path, into nested structs and pointers to them
+// (a time is a leaf), and returns each leaf path covered does not list.
+func uncoveredFields(t reflect.Type, prefix string, covered map[string]bool) []string {
+	var out []string
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if !f.IsExported() {
+			continue
+		}
+		path := prefix + jsonFieldName(f)
+		ft := f.Type
+		if ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		if ft.Kind() == reflect.Struct && ft != reflect.TypeOf(time.Time{}) {
+			out = append(out, uncoveredFields(ft, path+".", covered)...)
+			continue
+		}
+		if !covered[path] {
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
+// jsonFieldName is the name encoding/json gives f.
+func jsonFieldName(f reflect.StructField) string {
+	if n, _, _ := strings.Cut(f.Tag.Get("json"), ","); n != "" {
+		return n
+	}
+	return f.Name
+}
+
 // publicFormRefusal names the first field that keeps a judgment out of a public repository, or "".
-// The check is an ALLOWLIST over every string field of the record: a public root takes a judgment
-// only when each string field is a closed enum value, a bounded typed reference or an opaque id,
-// and the free-text fields (required action, wake condition, in the verification block too) are
-// empty. A field added to the record later is refused by default until it is listed here.
+// The check is an ALLOWLIST over every field of the record: a public root takes a judgment only when
+// each string field is a closed enum value, a bounded typed reference, an opaque id or an RFC 3339
+// time, and the free-text fields (required action, wake condition, in the verification block too)
+// are empty. A field the record gains later is refused by default: until publicCoveredFields lists
+// it, every judgment is refused, naming it.
 func publicFormRefusal(h issueflow.IntakeHandoff) string {
 	closed := func(field string) string { return field + " is not a closed shape" }
+	if u := publicUncovered(); len(u) > 0 {
+		return u[0] + " is not covered by the public allowlist"
+	}
+	if _, err := time.Parse(time.RFC3339, h.Opened); err != nil {
+		return closed("opened")
+	}
 	switch {
 	case !isHandoffTypedRef(h.Evidence) || len(h.Evidence) > 96:
 		return "evidence is not a typed reference"
