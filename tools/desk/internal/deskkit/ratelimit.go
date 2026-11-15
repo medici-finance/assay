@@ -248,6 +248,8 @@ func UnnumberedCapFor(tool string) int {
 //     ResultRateLimited is precisely the livelock. (Counting ResultDisabled also made
 //     the sanctioned kill-switch drill — running the binaries under
 //     DESK_TOOLS_DISABLED=1 to prove Guard fires — spend outward-write budget.)
+//   - ResultContended does NOT charge (#6227): the audit-lock wait ran out before the
+//     invocation read or sent anything.
 //   - ResultDryRun does NOT charge (#214): the invocation stopped before the write by
 //     construction. Rehearsing an act is not performing it, and a rehearsal that spent
 //     the real act's budget would punish exactly the caution the flag exists to allow.
@@ -256,7 +258,7 @@ func UnnumberedCapFor(tool string) int {
 // classified deliberately here, and until it is, the safe default is to count it.
 func chargesBudget(result string) bool {
 	switch result {
-	case ResultLocal, ResultRefused, ResultNoop, ResultRateLimited, ResultDisabled, ResultDryRun, ResultUnwritten:
+	case ResultLocal, ResultRefused, ResultNoop, ResultRateLimited, ResultDisabled, ResultDryRun, ResultUnwritten, ResultContended:
 		return false
 	default:
 		return true // ResultOK, ResultUnverifiable, and anything unclassified
@@ -321,8 +323,17 @@ func nonProgress(result string) bool {
 // would let a spinning caller splice an idempotent no-op between its refusals to reset the
 // run and hold the loop stop disarmed. Ignored, it neither trips the breaker nor rescues a
 // caller from it.
+//
+// ResultContended is here for #6227, for the same fail-closed reason again. A lock-wait refusal
+// happens before the invocation reads or sends anything, so it says nothing about the caller's
+// input: it is a queue behind other desk writers, and a reviewer retrying its post per the
+// documented wait-and-retry rule tripped the breaker on contention alone and was locked out of a
+// good post for the cooldown. INVISIBLE is the whole requirement: counting it re-opens that
+// lockout; treating it as progress would let a looping caller contend for the lock between its
+// refusals to reset the run. Ignored, it neither trips the breaker nor rescues a caller from it.
+// Only the lock-wait refusal carries this class — every refusal AFTER the lock step still counts.
 func breakerIgnores(result string) bool {
-	return result == ResultLocal || result == ResultRateLimited || result == ResultDisabled || result == ResultDryRun || result == ResultNoop
+	return result == ResultLocal || result == ResultRateLimited || result == ResultDisabled || result == ResultDryRun || result == ResultNoop || result == ResultContended
 }
 
 // AllowWrite enforces the outward-write gate as of now. See AllowWriteAt.
