@@ -7,7 +7,7 @@
         "query": "query($owner:String!,$name:String!,$first:Int!,$after:String,$states:[PullRequestState!]){repository(owner:$owner,name:$name){pullRequests(states:$states,first:$first,after:$after,orderBy:{field:UPDATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number state headRefOid headRefName baseRefName title body mergedAt updatedAt isCrossRepository headRepository{nameWithOwner} author{login __typename ...on User{databaseId} ...on Bot{databaseId}}}}}}",
         "variables": {
           "after": null,
-          "first": 100,
+          "first": 25,
           "name": "assay",
           "owner": "medici-finance",
           "states": [
@@ -72,6 +72,6 @@
       }
     ],
     "Incomplete": false,
-    "PageCap": 5
+    "PageCap": 20
   }
 }

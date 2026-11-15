@@ -319,8 +319,10 @@ func TestContendedLockTimesOutUnverifiable(t *testing.T) {
 	if len(after)-before != 1 {
 		t.Fatalf("wrote %d audit lines, want exactly 1", len(after)-before)
 	}
-	if got := after[len(after)-1].Result; got != deskkit.ResultUnverifiable {
-		t.Fatalf("audit result = %q, want unverifiable", got)
+	// A lock-wait refusal is audited as contention, not as a write that may have landed (#6227):
+	// the wait is the first step, before anything is read or sent.
+	if got := after[len(after)-1].Result; got != deskkit.ResultContended {
+		t.Fatalf("audit result = %q, want contended", got)
 	}
 }
 
