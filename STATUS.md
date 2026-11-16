@@ -153,7 +153,7 @@ _Held by per-stream caps: 15 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: d65336b87 2026-11-16T01:54:04Z_
+_last regen: f6ecded47 2026-11-16T01:59:33Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -174,7 +174,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: d65336b87 2026-11-16T01:54:04Z_
+_last regen: f6ecded47 2026-11-16T01:59:33Z_
 
 **Progress:** 36/98 brief items done.
 
@@ -442,7 +442,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 27 [exec:strong] | verified | 1000 | 0 | 9h | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 8eb028b49bc5 (claude-opus-5-5) | — |
 | desk-tools | 15 | verified | 1000 | 0 | 9h | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 810a5edf064b (claude-opus-5-5) | — |
 | desk-tools | 23 [exec:strong] | verified | 1000 | 0 | 9h | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
-| desk-tools | 56 [exec:strong] | implemented | 1000 | 0 | 6h | verify runner | none | — | — |
+| desk-tools | 56 [exec:strong] | implemented | 1000 | 0 | 7h | verify runner | none | — | — |
 | desktools-go-git | 08 | verified | 1000 | 0 | 9h | CI auto-flip | none; stuck after one main run → file | 2026-11-06 assay-verifier-app[bot] @ 8592383261fb (forge-identity) | — |
 | desktools-v2 | 05 [exec:strong] | verified | 1000 | 0 | 9h | CI auto-flip | none; stuck after one main run → file | 2026-10-02 assay-verifier-app[bot] @ 454982f91a72 (claude-opus-5-5) | — |
 | desktools-v2 | 12 [exec:strong] | verified | 1000 | 0 | 9h | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ e4d474af8bca (claude-opus-5-5) | — |
@@ -454,7 +454,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| desk-tools | 42 [exec:strong] | implemented | 10500 | 19 | 4h | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 42 [exec:strong] | implemented | 10500 | 19 | 5h | verify-desk | triage, then re-bucket | — | — |
 | composability | 02 | implemented | 2500 | 3 | 9h | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2500 | 1 | 9h | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 06 | implemented | 2500 | 1 | 9h | verify-desk | dispatch one judge | — | — |
