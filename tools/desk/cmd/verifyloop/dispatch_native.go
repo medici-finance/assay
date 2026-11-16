@@ -162,12 +162,13 @@ func (v *VerifyLoop) runNativeDispatch(it loopengine.Item, dir, prompt string, r
 	v.auditNative("dispatch", deskkit.ResultOK, it, "native dispatch spawning runner ["+strings.Join(runnerCmd, " ")+"] runnerID="+runnerID+" cwd="+dir)
 
 	var stderr bytes.Buffer
-	// The runner is a verifier launch: its declared Git environment is appended after
-	// NativeEnv so no inherited or configured value overrides it (#4823).
-	env := append(append([]string(nil), v.NativeEnv...), deskkit.VerifierGitLaunchEnv()...)
+	// The runner is a verifier launch (#4823): the variables deskkit.VerifierGitUnset names
+	// are removed from what it inherits, and its declared Git environment is applied to
+	// NativeEnv and appended after it, so no inherited or configured value overrides it.
 	cl, err := acp.Spawn(runnerCmd, acp.Opts{
 		Dir:              dir,
-		Env:              env,
+		Env:              deskkit.VerifierGitEnv(v.NativeEnv),
+		Unset:            deskkit.VerifierGitUnset(),
 		Stderr:           &stderr,
 		FSRoot:           dir, // the fs fence: reads/writes are refused outside the worktree
 		PermissionPolicy: v.permissionPolicy(it, dir),
@@ -484,6 +485,7 @@ func gitDetachedWorktree(it loopengine.Item) (string, func(), error) {
 	}
 	cmd := exec.Command("git", "worktree", "add", "--detach", dir, it.TargetSHA)
 	cmd.Dir = sourceRoot
+	cmd.Env = deskkit.VerifierGitEnv(os.Environ())
 	if out, err := cmd.CombinedOutput(); err != nil {
 		_ = os.RemoveAll(base)
 		return "", nil, fmt.Errorf("git worktree add --detach %s %s: %v: %s", dir, it.TargetSHA, err, strings.TrimSpace(string(out)))
@@ -491,6 +493,7 @@ func gitDetachedWorktree(it loopengine.Item) (string, func(), error) {
 	cleanup := func() {
 		cmd := exec.Command("git", "worktree", "remove", "--force", dir)
 		cmd.Dir = sourceRoot
+		cmd.Env = deskkit.VerifierGitEnv(os.Environ())
 		_ = cmd.Run()
 		_ = os.RemoveAll(base)
 	}

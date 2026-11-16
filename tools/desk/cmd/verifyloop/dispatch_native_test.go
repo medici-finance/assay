@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -131,9 +132,10 @@ func fakeAgentTurn(mode string, modeDefault bool, sessionID string, nextID *int,
 			"| go test ./tools/desk/cmd/verifyloop/... | 0 | ok |\n"
 
 	case "gitenv":
-		// Report the Git environment this runner was launched with.
-		return "VERDICT: PASS\n| git-env | 0 | " + os.Getenv("GIT_CONFIG_GLOBAL") + ";" +
-			os.Getenv("GIT_CONFIG_NOSYSTEM") + ";" + os.Getenv("GIT_CONFIG_COUNT") + " |\n"
+		// Run real git in the runner's own cwd under the environment it was launched
+		// with, and report what the probe saw (see gitEnvProbe).
+		out, _ := exec.Command("sh", "-c", gitEnvProbe).CombinedOutput()
+		return "VERDICT: PASS\n| git-env | 0 | " + strings.TrimSpace(string(out)) + " |\n"
 
 	case "freetext":
 		// No VERDICT line anywhere — must land BLOCKED (parse-or-BLOCKED).
@@ -298,14 +300,14 @@ func TestNativeDispatchRoundTrip(t *testing.T) {
 
 // regression: #4823
 // TestNativeRunnerGitEnv: the runner is launched with the declared verifier Git
-// environment, whatever the operator's environment says.
+// environment, whatever the operator's environment says: real git in its cwd finds a
+// present key and writes --worktree config, and nothing the launch removes is inherited.
 func TestNativeRunnerGitEnv(t *testing.T) {
 	nativeTestHome(t)
-	operator := filepath.Join(t.TempDir(), "operator.gitconfig")
-	t.Setenv("GIT_CONFIG_GLOBAL", operator)
-	t.Setenv("GIT_CONFIG_NOSYSTEM", "")
-	t.Setenv("GIT_CONFIG_COUNT", "1")
+	repo, _ := gitEnvRepo(t)
+	inheritBadGitEnv(t)
 	v := nativeLoop(t, "gitenv")
+	v.MakeWorktree = func(loopengine.Item) (string, func(), error) { return repo, func() {}, nil }
 
 	h, err := v.Dispatch(fixtureItem(), loopengine.TierLocal)
 	if err != nil {
@@ -315,8 +317,8 @@ func TestNativeRunnerGitEnv(t *testing.T) {
 	if len(r.Rows) != 1 {
 		t.Fatalf("parsed %d rows, want 1: %+v", len(r.Rows), r.Rows)
 	}
-	if want := os.DevNull + ";1;0"; r.Rows[0].Output != want {
-		t.Fatalf("runner Git env = %q, want %q", r.Rows[0].Output, want)
+	if r.Rows[0].Output != gitEnvWant {
+		t.Fatalf("runner Git env = %q, want %q", r.Rows[0].Output, gitEnvWant)
 	}
 }
 

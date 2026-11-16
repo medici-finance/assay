@@ -539,12 +539,13 @@ func writeVerifierAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPl
 // carry, never reach a Verify row. It isolates the input of the origin-authority reader;
 // the reader stays strict, so an include that may affect authority is still refused.
 func writeVerifierGitEnv(b *strings.Builder) {
-	fmt.Fprintf(b, "## Git environment\n\nRun every Verify row in a shell started with the declared verifier Git environment:\n\n"+
-		"```sh\nexport %s\n```\n\n"+
+	fmt.Fprintf(b, "## Git environment\n\nRun every Verify row in a shell started with the declared verifier Git environment "+
+		"(the listed variables are removed, never set empty):\n\n"+
+		"```sh\n%s\n```\n\n"+
 		"Identity, credential helper and remote keys for this home live in the clone's own config "+
 		"(`git config --worktree`), never through an include.path file. If an authority read still "+
 		"reports could-not-check, report it as observed; never retry by stripping or rewriting Git "+
-		"configuration.\n\n", strings.Join(deskkit.VerifierGitLaunchEnv(), " "))
+		"configuration.\n\n", deskkit.VerifierGitShell())
 }
 
 // writeReleaseClaim emits the dispatch-claim release command. The release names the CLAIM key

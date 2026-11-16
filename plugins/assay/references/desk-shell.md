@@ -84,11 +84,15 @@ values — they resolve from the project's house-rules doc, not from here.
 ## Verifier Git environment
 
 **Mechanism.** A verifier run is launched with a declared Git environment:
-`GIT_CONFIG_GLOBAL` names a fixed, include-free file (the null device) and
-`GIT_CONFIG_NOSYSTEM=1`, with injected configuration cleared (`GIT_CONFIG_COUNT=0`,
-`GIT_CONFIG_PARAMETERS=`, `GIT_CONFIG=`). `verifyloop` sets it on the runner it spawns and on
-every Verify row it runs; `deskdispatch --kit verifier` prints the same `export` line in the
-verifier prompt. The operator's global and system configuration, and any `includeIf` rule
+`GIT_CONFIG_GLOBAL` names a fixed, include-free file (the null device),
+`GIT_CONFIG_NOSYSTEM=1`, injected configuration is off (`GIT_CONFIG_COUNT=0`) and
+`GIT_TERMINAL_PROMPT=0`. `GIT_CONFIG`, `GIT_CONFIG_PARAMETERS`, `GIT_DIR`, `GIT_WORK_TREE`,
+`GIT_COMMON_DIR`, `GIT_SSH_COMMAND`, `GIT_ASKPASS` and `SSH_ASKPASS` are removed from the
+inherited environment. They are removed, never set empty: an empty `GIT_CONFIG` makes
+`git config` report present keys as absent and refuse `--worktree` writes. `verifyloop` applies
+this environment to the runner it spawns, to every Verify row it runs and to its own Git calls;
+`deskdispatch --kit verifier` prints the same `unset` and `export` lines in the verifier
+prompt. The operator's global and system configuration, and any `includeIf` rule
 they carry, never reach a verifier run. The verifier home's identity, credential helper and
 remote keys are written into the clone's own config (`deskwt` role-init uses
 `git config --worktree`), never through an `include.path` file.
@@ -108,7 +112,8 @@ lint on a CI runner passes. An operator `includeIf` that matches the verifier cl
 row:
 
 ```
-export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=0 GIT_CONFIG_PARAMETERS= GIT_CONFIG=
+unset GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_SSH_COMMAND GIT_ASKPASS SSH_ASKPASS
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=0 GIT_TERMINAL_PROMPT=0
 ```
 
 Write the home's keys inline (`git -C <home> config --worktree <key> <value>`). If an
