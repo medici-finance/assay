@@ -405,11 +405,17 @@ const (
 	otherInclude = "PROBLEM: example-other/54: protected table: acceptance transition: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
 	otherForge   = "PROBLEM: example-other/54: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
 	thirdForge   = "PROBLEM: example-third/37: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	// The chained Acceptance-Transition form: statusgen returns it without the
+	// "protected table: " wrapper, numbered by link.
+	chainForge = "PROBLEM: example-other/54: acceptance transition: link 1: could-not-check human authority: --acceptance-forge is required"
+	chainRepo  = "PROBLEM: example-third/37: acceptance transition: link 2: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
+	chainHuman = "PROBLEM: example-third/37: acceptance transition: link 12: could-not-check human authority: example detail"
 )
 
 // An unchanged brief's could-not-check that only the after run printed is not this
 // landing's: it is reported on stderr and does not refuse. Both #6581 shapes: an Evidence
-// landing on another brief, and an outcome record for another brief.
+// landing on another brief, and an outcome record for another brief; and the chained
+// acceptance-transition form of the same reads.
 //
 // regression: #6581
 func TestUntouchedCouldNotCheck(t *testing.T) {
@@ -421,6 +427,7 @@ func TestUntouchedCouldNotCheck(t *testing.T) {
 		{"docs/streams/example-stream/brief-12-example.md", nil, []string{otherInclude}},
 		{"docs/streams/verify-outcomes/example-outcome/24-20261116T013825Z-bbe7ddc7f052.json",
 			[]string{otherInclude}, []string{otherForge, thirdForge}},
+		{"docs/streams/example-stream/brief-12-example.md", nil, []string{chainForge, chainRepo, chainHuman}},
 	} {
 		stubStatusgenLint(t, tc.before, tc.after)
 		notices := captureLintDiffNotices(t)
@@ -444,14 +451,20 @@ func TestUntouchedCouldNotCheck(t *testing.T) {
 // path names no brief or stream. A finding that is not a could-not-check refuses on a
 // brief the landing does not write too — on an outcome record as well, which the
 // closure gate's foreign split (splitClosureProblems) hands to this diff — and so does
-// one that only quotes the marker out of brief text.
+// one that only quotes the marker out of brief text. Only the known could-not-check
+// producers are excused; other protected-table findings refuse, including the numbered
+// protected-acceptance-row shape.
 //
 // regression: #6581
 func TestIntroducedStillRefused(t *testing.T) {
 	real := "PROBLEM: example-stream/12: Evidence row #3: backticked path \"../x\" does not exist"
 	own := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	ownChain := "PROBLEM: example-stream/12: acceptance transition: link 1: could-not-check human authority: --acceptance-forge is required"
 	foreignReal := "PROBLEM: example-other/54: Evidence row #3: backticked path \"../x\" does not exist"
 	quoted := "PROBLEM: example-other/54: Evidence row #2: cell reads \"x: could-not-check y\""
+	rowDrift := "PROBLEM: example-other/54: protected table: original row x: could-not-check y differs from its delivered definition; a changed original row needs an Acceptance-Transition record and its approval"
+	rowState := "PROBLEM: example-other/54: protected acceptance row x: could-not-check y: fail"
+	rowNumbered := "PROBLEM: example-other/54: protected acceptance row 2: could-not-check y: fail"
 	outcome := "docs/streams/verify-outcomes/example-outcome/24-20261116T013825Z-bbe7ddc7f052.json"
 	for _, tc := range []struct {
 		target string
@@ -464,6 +477,10 @@ func TestIntroducedStillRefused(t *testing.T) {
 		{"docs/streams/example-stream/brief-12-example.md", []string{otherInclude, foreignReal}, []string{foreignReal}},
 		{outcome, []string{otherForge, foreignReal}, []string{foreignReal}},
 		{"docs/streams/example-stream/brief-12-example.md", []string{quoted}, []string{quoted}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{ownChain}, []string{ownChain}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{rowDrift}, []string{rowDrift}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{rowState}, []string{rowState}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{rowNumbered}, []string{rowNumbered}},
 		{"docs/streams/example-stream/notes.md", []string{otherInclude}, []string{otherInclude}},
 		{"docs/README.md", []string{otherInclude}, []string{otherInclude}},
 	} {
@@ -474,7 +491,7 @@ func TestIntroducedStillRefused(t *testing.T) {
 			t.Fatalf("%s: lintDiffAt: %v", tc.target, err)
 		}
 		if strings.Join(introduced, "\n") != strings.Join(tc.want, "\n") {
-			t.Fatalf("%s: introduced = %v, want %v", tc.target, introduced, tc.want)
+			t.Errorf("%s: introduced = %v, want %v", tc.target, introduced, tc.want)
 		}
 	}
 }

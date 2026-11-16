@@ -141,10 +141,11 @@ var lintDiffStderr io.Writer = os.Stderr
 // briefs' "--acceptance-forge is required" in the after run of an outcome record for a
 // fourth. So every new-PROBLEM gate (the Evidence and outcome-record landings through
 // lintDiffAt, and the flip) attributes after-only lines by brief key, with the parser the
-// closure gate's splitClosureProblems uses (outcome.go): an after-only could-not-check on a
-// brief OUTSIDE what the write touches is reported, not refused. Everything else still
-// refuses — any line in scope (the write's own brief, or every brief of a stream whose
-// README it writes), any finding that is not a could-not-check wherever it lands, every
+// closure gate's splitClosureProblems uses (outcome.go): an after-only could-not-check from
+// a KNOWN producer (couldNotCheckRe) on a brief OUTSIDE what the write touches is reported,
+// not refused. Everything else still refuses — any line in scope (the write's own brief, or
+// every brief of a stream whose README it writes), any finding that is not a known
+// producer's could-not-check wherever it lands, every
 // line when the write names no brief or stream, and every line while either run reports a
 // stream whose frontmatter name differs from its directory (statusgen keys lines by the
 // frontmatter name, the scope by the directory, so they could not be matched).
@@ -210,11 +211,15 @@ func landingScopeOf(targetRepoPath string) landingScope {
 	return s
 }
 
-// couldNotCheckRe anchors the could-not-check marker: after the brief key, a chain of plain
-// lowercase label segments ("protected table: acceptance transition: ") and then the
-// marker. A finding that merely quotes ": could-not-check " out of brief text carries
-// quotes, digits or "#" ahead of it, and does not match.
-var couldNotCheckRe = regexp.MustCompile(`^(?:[a-z][a-z -]*: )*could-not-check `)
+// couldNotCheckRe is an allow-list of the KNOWN could-not-check producers, matched from
+// the start of the text after the brief key: statusgen's acceptance-transition authority
+// reads (statusgen/acceptancetransition.go acceptanceStep), in the legacy form the closure
+// lint wraps as "protected table: acceptance transition: " and the chained form it returns
+// unwrapped as "acceptance transition: link <n>: " (statusgen/protectedclosure.go). It is
+// not a lexical match on the marker: a line excuses only when it starts with one of these
+// exact producer prefixes. A producer not listed here, including a new one, is refused
+// until it is added to this list.
+var couldNotCheckRe = regexp.MustCompile(`^(?:protected table: acceptance transition|acceptance transition: link [1-9][0-9]*): could-not-check (?:repository|human) authority: `)
 
 // streamDirMismatch reports whether a lint run names a stream whose frontmatter name
 // differs from its directory (statusgen/checks.go).
