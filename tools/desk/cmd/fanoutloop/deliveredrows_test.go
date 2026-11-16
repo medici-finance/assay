@@ -79,7 +79,7 @@ func planFor(t *testing.T, root string) string {
 }
 
 // regression: #5853
-func TestPlanImplementedHumanGoesVerify(t *testing.T) {
+func TestPlanImplementedGoesVerify(t *testing.T) {
 	setupDeskHome(t)
 	root := deliveredFixture(t,
 		[]string{"| example-stream | 15 [exec:strong] | implemented | 100 | 1 | 1h | worker | fix, cite example-org/example-repo#1 | — | — |"},
@@ -112,10 +112,10 @@ func TestPlanVerifiedRowGoesVerify(t *testing.T) {
 	}
 }
 
-// TestSelectQueueRoutesInjectedDone pins the choke point for ANY board source: an injected fresh row
+// TestQueueRoutesInjectedDone pins the choke point for ANY board source: an injected fresh row
 // at `done` and a rework row at `implemented` are routed, while an `in-progress` row and a row whose
 // Status could not be read ("") stay dispatchable — could-not-check is never rounded to delivered.
-func TestSelectQueueRoutesInjectedDone(t *testing.T) {
+func TestQueueRoutesInjectedDone(t *testing.T) {
 	setupDeskHome(t)
 	row := func(num, status string) BoardRow {
 		r := briefRow("example-stream", num, "M", "", "model", false)
