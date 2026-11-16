@@ -88,6 +88,23 @@ var hotfixIneligiblePaths = []string{
 	"tools/desk/internal/deskkit/hotfixowner_windows.go",
 	"tools/desk/internal/deskkit/hotfixexec_unix.go",
 	"tools/desk/internal/deskkit/hotfixexec_windows.go",
+	// statusgen's own copy of the hotfix identity (its own module), its version gate and its
+	// schema migrations: a statusgen hotfix can never rewrite the rules it is checked against
+	"statusgen/migrate.go",
+	"statusgen/versiongate.go",
+	"statusgen/hotfixself.go",
+	"statusgen/hotfixseam_off.go",
+	"statusgen/hotfixseam_on.go",
+	"statusgen/hotfixowner_unix.go",
+	"statusgen/hotfixowner_windows.go",
+	"statusgen/hotfixexec_unix.go",
+	"statusgen/hotfixexec_windows.go",
+	// files outside the copy whose symbols the self-check depends on: the identity stamp it
+	// checks (buildstamp.go), the helper argv that picks its owner rule (netns.go) and the exit
+	// its refusal goes through (perfrecord.go's exitProcess)
+	"statusgen/buildstamp.go",
+	"statusgen/netns.go",
+	"statusgen/perfrecord.go",
 }
 
 // HotfixIneligiblePaths returns a copy of the compiled ineligible-path list.
