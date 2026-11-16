@@ -19,6 +19,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/statusgen/evaluation"
+	"golang.org/x/sys/unix"
 )
 
 // needRecorder skips (could-not-check, never a pass) when this host refuses
@@ -168,7 +169,7 @@ func buildProbe(t *testing.T, dst string) {
 	t.Helper()
 	src := t.TempDir()
 	putFile(t, filepath.Join(src, "go.mod"), "module probe\n\ngo 1.22\n")
-	putFile(t, filepath.Join(src, "main.go"), probeSource)
+	putFile(t, filepath.Join(src, "main.go"), probeMain())
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -178,6 +179,14 @@ func buildProbe(t *testing.T, dst string) {
 	if out, err := c.CombinedOutput(); err != nil {
 		t.Fatalf("build probe: %v\n%s", err, out)
 	}
+}
+
+// probeMain is the probe's source with this architecture's syscall numbers
+// filled in: the frozen syscall package names open_by_handle_at and
+// process_vm_readv on arm64 but not on amd64, so the probe takes them from
+// x/sys/unix at build time instead.
+func probeMain() string {
+	return probeSource + fmt.Sprintf("\nconst (\n\tsysOpenByHandleAt = %d\n\tsysProcessVMReadv = %d\n)\n", unix.SYS_OPEN_BY_HANDLE_AT, unix.SYS_PROCESS_VM_READV)
 }
 
 const probeSource = `package main
@@ -205,13 +214,13 @@ func main() {
 		n, _ := syscall.Read(fd, b)
 		fmt.Printf("%s", b[:n])
 	case "handle":
-		syscall.Syscall(syscall.SYS_OPEN_BY_HANDLE_AT, uintptr(0xffffff9c), 0, 0)
+		syscall.Syscall(sysOpenByHandleAt, uintptr(0xffffff9c), 0, 0)
 	case "vmread":
 		pid, _ := strconv.Atoi(os.Args[2])
 		var buf [8]byte
 		local := syscall.Iovec{Base: &buf[0], Len: 8}
 		remote := syscall.Iovec{Base: &buf[0], Len: 8}
-		syscall.Syscall6(syscall.SYS_PROCESS_VM_READV, uintptr(pid), uintptr(unsafe.Pointer(&local)), 1, uintptr(unsafe.Pointer(&remote)), 1, 0)
+		syscall.Syscall6(sysProcessVMReadv, uintptr(pid), uintptr(unsafe.Pointer(&local)), 1, uintptr(unsafe.Pointer(&remote)), 1, 0)
 	}
 }
 `

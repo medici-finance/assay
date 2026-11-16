@@ -9,7 +9,6 @@ statusgen/briefinfo.go | git-tree-read | flag name check-attribution matched the
 statusgen/decisiongatehold.go | git-tree-read | decision-gate hold reads brief files at a revision; unrelated to witnesses
 statusgen/idvalidate.go | git-tree-read | brief-id validation lists tree paths; unrelated to witnesses
 statusgen/mergecheck.go | git-tree-read | merge check lists files in a merge; unrelated to witnesses
-statusgen/readset_record.go | git-tree-read | read-set recorder lists the witness commit's tracked paths to classify traced accesses; reads no witness content
 statusgen/registers.go | git-tree-read | register discovery reads tree paths; unrelated to witnesses
 statusgen/verifyrows.go | git-tree-read | advisory text inside a lint message; no git read
 statusgen/verifyrun.go | runner-at-split | splits a git author email at the at-sign for a local-part identity; not a Runner cell

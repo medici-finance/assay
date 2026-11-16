@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
@@ -381,27 +382,30 @@ func (t *readSetTarget) finish(l traceLog) string {
 // HEAD and the tree's tool names. Any failure returns nil: the run then
 // records no read set.
 func newRecordEnv(root string, rowEnv []string, start time.Time) (*recordEnv, string, error) {
-	gitOut := func(args ...string) (string, error) {
-		c := exec.Command("git", append([]string{"-C", root}, args...)...)
-		c.Env = rowEnv
-		b, err := c.Output()
-		return strings.TrimSpace(string(b)), err
-	}
-	top, err := gitOut("rev-parse", "--show-toplevel")
+	// The repository reads go through the existing adapters (gitcore, the
+	// coverage repository and the scan guard's git-dir read), so the recorder
+	// adds no Git launch site of its own (statusgen/git-launches.json).
+	top, err := gitcore.Toplevel(root)
 	if err != nil {
 		return nil, "", err
 	}
 	if top, err = filepath.EvalSymlinks(top); err != nil {
 		return nil, "", err
 	}
-	commit, err := gitOut("rev-parse", "--verify", "HEAD^{commit}")
+	repo := newCoverageRepo(top)
+	commit, ok := repo.ResolveCommit("HEAD")
+	if !ok || commit == "" {
+		return nil, "", fmt.Errorf("read-set recorder: HEAD of %s does not resolve to a commit", top)
+	}
+	gitDir, err := scanGitDir(root, "absolute-git-dir")
 	if err != nil {
 		return nil, "", err
 	}
-	dirs, err := gitOut("rev-parse", "--absolute-git-dir", "--git-common-dir")
+	commonDir, err := scanGitDir(root, "git-common-dir")
 	if err != nil {
 		return nil, "", err
 	}
+	dirs := gitDir + "\n" + commonDir
 	e := &recordEnv{Top: top, Start: start, Files: map[string]bool{}, Dirs: map[string]bool{}, ToolNames: map[string]bool{},
 		ModTime: func(p string) (time.Time, bool) {
 			fi, err := os.Lstat(p)
@@ -452,22 +456,18 @@ func newRecordEnv(root string, rowEnv []string, start time.Time) (*recordEnv, st
 			}
 		}
 	}
-	ls := exec.Command("git", "-C", top, "ls-tree", "-r", "-z", "--full-tree", commit)
-	b, err := ls.Output()
-	if err != nil {
-		return nil, "", err
+	tree, ok := repo.TreeModes(commit)
+	if !ok {
+		return nil, "", fmt.Errorf("read-set recorder: the tree of %s could not be listed", commit)
 	}
 	mains := map[string]bool{}
-	for _, rec := range bytes.Split(b, []byte{0}) {
-		meta, name, ok := strings.Cut(string(rec), "\t")
-		if !ok {
-			continue
-		}
+	for _, entry := range tree {
+		meta, name := entry.Mode, entry.Path
 		e.Files[name] = true
 		for d := path.Dir(name); d != "."; d = path.Dir(d) {
 			e.Dirs[d] = true
 		}
-		if strings.HasPrefix(meta, "100755 ") {
+		if meta == "100755" {
 			e.ToolNames[path.Base(name)] = true
 		}
 		if strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go") && !mains[path.Dir(name)] && goPackageMain(filepath.Join(top, filepath.FromSlash(name))) {
