@@ -356,8 +356,10 @@ var UnresolvedArgv = []Allowance{
 			"Fixed argv after the binary, read-only, JSON on stdout; never a forge CLI and never a write.",
 	},
 	{
-		Key:    "cmd/verifyloop/durable.go::newGitDurable::<unresolved>",
-		Reason: "git-only durable-state helper; its callers pass git argvs.",
+		Key: "cmd/verifyloop/durable.go::landingCommand::<unresolved>",
+		Reason: "the Evidence landing's one process builder, under the verifier Git environment: newGitDurable's " +
+			"run passes git argvs (remote get-url, add, commit, pull --rebase, rev-parse), and the pre-push " +
+			"hook passes the checkout's own hooks/pre-push path. Never a forge CLI; the push is in-process.",
 	},
 	{
 		Key:    "internal/acp/client.go::Spawn::<unresolved>",
