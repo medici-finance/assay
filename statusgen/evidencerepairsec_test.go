@@ -37,6 +37,13 @@ func TestRepairDateCellIsDate(t *testing.T) {
 	if why := evidenceRepairEditorial(before, ok); why != "" {
 		t.Fatalf("a split at the date was refused: %s", why)
 	}
+	// An old cell with no leading date: its first token is an identity, and a
+	// split there must refuse (F-repair-scope-isolation).
+	undated := strings.ReplaceAll(before, "| 2026-10-16 verifier-app[bot] (model verifier) |", "| verifier-app[bot] (model verifier) |")
+	after := strings.ReplaceAll(repairSplitAt(before, "x", "y"), "| x | y |", "| verifier-app[bot] | (model verifier) |")
+	if why := evidenceRepairEditorial(undated, after); !strings.Contains(why, "Date / Runner text") {
+		t.Errorf("non-date: wanted a Date / Runner refusal, got %q", why)
+	}
 }
 
 // regression: #6616
@@ -94,6 +101,10 @@ func TestRepairApprovalScope(t *testing.T) {
 		{"other-human", rlOther, repairApprovalText, "is authored by"},
 		{"path-suffix", login, "For PR #77 only, I authorize separating Date and Runner in the other/vf/01 Evidence.", "does not name the brief"},
 		{"other-thread", login, "Noted: the vf/01 Evidence layout looks fine.", "does not authorize"},
+		// Each half of the thread rule alone (F-repair-scope-isolation).
+		{"wrong-thread", login, "For PR #78 only, I authorize separating Date and Runner in the vf/01 Evidence.", "does not authorize"},
+		{"no-thread", login, "I authorize separating Date and Runner in the vf/01 Evidence.", "does not authorize"},
+		{"no-authorize", login, "For PR #77: separating Date and Runner in the vf/01 Evidence looks fine.", "does not authorize"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f, repair := repairChain(t, repairSplit, repairMessage)

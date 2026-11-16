@@ -39,6 +39,10 @@ var evidenceRepairPrincipalRe = regexp.MustCompile(`^ \(on-behalf-of human:[0-9A
 
 var evidenceRepairBriefRe = regexp.MustCompile(`^brief-([0-9]+[a-z]?)-`)
 
+// evidenceRepairMarkers are the protected-record markers a repair may not add,
+// checked on the raw added lines and on the readers' normalized view.
+var evidenceRepairMarkers = []string{"Verification-Table:", "Acceptance-Transition:", "Evidence-Repair:", "Verification-Attestation:"}
+
 // evidenceRepairs validates the descriptor grammar before any history read.
 func evidenceRepairs(run string) ([]evidenceRepair, string) {
 	var repairs []evidenceRepair
@@ -278,7 +282,7 @@ func evidenceRepairEditorial(before, after string) string {
 		return "a repair removed or altered historical Evidence text"
 	}
 	for _, l := range added {
-		for _, m := range []string{"Verification-Table:", "Acceptance-Transition:", "Evidence-Repair:", "Verification-Attestation:"} {
+		for _, m := range evidenceRepairMarkers {
 			if strings.Contains(l, m) {
 				return "a repair cannot add a marker"
 			}
@@ -306,7 +310,7 @@ func evidenceRepairReaderView(before, after string, added []string) string {
 		return "a repair cannot split or join a table"
 	}
 	nb, na := normalizeProtectedEvidence(before), normalizeProtectedEvidence(after)
-	for _, m := range []string{"Verification-Table:", "Acceptance-Transition:", "Evidence-Repair:", "Verification-Attestation:"} {
+	for _, m := range evidenceRepairMarkers {
 		if len(protectedMarkersNamed(nb, m)) != len(protectedMarkersNamed(na, m)) {
 			return "a repair cannot add a marker"
 		}

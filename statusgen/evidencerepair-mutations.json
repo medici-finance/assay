@@ -80,16 +80,28 @@
       "new": "Names: nil}"
     },
     {
+      "name": "approval need not name its thread",
+      "file": "evidencerepair.go",
+      "old": "if !commentNamesRecord(body, thread) || !strings.Contains",
+      "new": "if !strings.Contains"
+    },
+    {
       "name": "approval need not authorize",
       "file": "evidencerepair.go",
-      "old": "if !commentNamesRecord(body, thread) || !strings.Contains(strings.ToLower(body), \"authoriz\") {",
-      "new": "if false {"
+      "old": " || !strings.Contains(strings.ToLower(body), \"authoriz\") {",
+      "new": " {"
     },
     {
       "name": "admit split inside date cell",
       "file": "evidencerepair.go",
       "old": "if !splitAtDate(o[at], n[at], n[at+1]) {",
       "new": "if !principalOnly(o[at], n[at]+\" \"+n[at+1]) {"
+    },
+    {
+      "name": "date cell need not be a date",
+      "file": "evidencerepair.go",
+      "old": "date != old[:i] || !flipDateRe.MatchString(date) {",
+      "new": "date != old[:i] {"
     },
     {
       "name": "admit added comment or fence",
