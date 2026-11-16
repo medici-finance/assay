@@ -5419,8 +5419,8 @@ decision-gate reads, the statusgen PROBLEM-diff) runs before it, so one landing'
 longer holds the lock every other desk writer waits on. The remote target stays protected by
 the write itself, which is conditional on the blob preparation read: a target changed after
 preparation refuses with no write (`TestEvidenceSnapshotConcurrentFileEditRefuses`,
-`cmd/deskevidence/snapshot_test.go:108`), and an unrelated commit on the branch is still
-accepted (`TestEvidenceSnapshotUnrelatedCommitDoesNotConflict`, `snapshot_test.go:124`).
+`cmd/deskevidence/snapshot_test.go:122`), and an unrelated commit on the branch is still
+accepted (`TestEvidenceSnapshotUnrelatedCommitDoesNotConflict`, `snapshot_test.go:138`).
 Capability preflight (`RefuseIfTreeV2BelowV1`) reads only the local tree and the tool version,
 so it runs under the preparation lock; its refusal row is appended under the audit lock.
 Preparation stages content
