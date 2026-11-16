@@ -12,6 +12,7 @@ risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 gate-why: "Relocates the audited process-launch site and its cache-custody guards. Human acceptance confirms every caller still crosses the same custody and process-containment boundary."
 decision-trigger: spec
 design: DR-process-extract
+decision-issue: 6583
 issues: [5492]
 schema: brief-v2
 version: 1
