@@ -116,7 +116,8 @@ func TestSchemaRejectsBrokenDocs(t *testing.T) {
 	}
 	for name, mutate := range map[string]func(m map[string]any){
 		"unsorted-looking cells": func(m map[string]any) { m["cells"] = []any{} },
-		"short confirm code":     func(m map[string]any) { m["confirm_code"] = "abc" },
+		"short confirm code":     func(m map[string]any) { m["confirm_code"] = "ab" },
+		"retired hex confirm":    func(m map[string]any) { m["confirm_code"] = "a6343e12" },
 		"approval member":        func(m map[string]any) { m["approval"] = map[string]any{} },
 		"null children":          func(m map[string]any) { m["children"] = nil },
 	} {
