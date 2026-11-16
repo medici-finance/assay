@@ -102,3 +102,32 @@ func TestWorkSourceUnknownExtension(t *testing.T) {
 		t.Fatalf("unsupported extension must be unverifiable, got exit %d", ExitCodeOf(err))
 	}
 }
+
+// The origin slug comes from the fetch URL alone: a pushurl beside one fetch url is not a
+// second origin (the reader used to count it and refuse), while two fetch urls stay refused.
+//
+// regression: #6606
+func TestWorkSourceOriginPushURL(t *testing.T) {
+	root, _, _ := workSourceFixture(t, false)
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("fixture git %v: %s %v", args, out, err)
+		}
+	}
+	git("config", "remote.origin.pushurl", "https://github.com/other/fork.git")
+	catalog, err := LocalWorkCatalog(root, "")
+	if err != nil {
+		t.Fatalf("one fetch url plus a pushurl must be accepted: %v", err)
+	}
+	selected, err := catalog.Select("stream:b-08@2")
+	if err != nil || selected.Subject.Repository != "owner/repo" {
+		t.Fatalf("slug must come from the fetch url: %+v %v", selected.Subject, err)
+	}
+	git("config", "--add", "remote.origin.url", "https://github.com/other/second.git")
+	if _, err := LocalWorkCatalog(root, ""); err == nil || !strings.Contains(err.Error(), "unambiguous work source origin unavailable") {
+		t.Fatalf("two fetch urls must stay refused, got %v", err)
+	}
+}
