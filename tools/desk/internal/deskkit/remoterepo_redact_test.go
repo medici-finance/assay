@@ -5,68 +5,52 @@ import (
 	"testing"
 )
 
-// plantedSecret is the credential half every userinfo fixture below carries. It is an
-// obviously synthetic placeholder; the assertions only need it to be a findable substring.
-const plantedSecret = "example-secret-value"
+// redactFixtures are remote strings that FAIL to parse and carry a userinfo credential, one
+// per remote shape the parser reads. The credential is the literal word "secret"; every
+// error ParseRemoteRepo returns for them must omit it while still naming the host and path.
+var redactFixtures = []struct{ name, in, keep string }{
+	{"https single segment", "https://user:secret@example.invalid/repo.git", "example.invalid/repo.git"},
+	{"https no path", "https://user:secret@example.invalid", "example.invalid"},
+	{"ssh url, credential as user", "ssh://secret@github.com:22/repo.git", "github.com:22/repo.git"},
+	{"scp-like", "user:secret@example.invalid:repo", "example.invalid:repo"},
+	{"bare userinfo", "user:secret@example.invalid/repo", "example.invalid/repo"},
+	{"hybrid owner slot", "https://example.invalid/user:secret@alias:repo.git", "alias:repo.git"},
+}
 
-// regression: #6696
-func TestRedactURLUserinfo(t *testing.T) {
-	cases := []struct{ name, in, want string }{
-		{"https user:pw", "https://example-user:" + plantedSecret + "@example.invalid/example-org/example-repo.git",
-			"https://***@example.invalid/example-org/example-repo.git"},
-		{"https bare secret as user", "https://" + plantedSecret + "@example.invalid/o/r",
-			"https://***@example.invalid/o/r"},
-		{"password holding an at sign", "https://u:" + plantedSecret + "@x@example.invalid/o/r",
-			"https://***@example.invalid/o/r"},
-		{"hybrid embedded pair", "https://example.invalid/u:" + plantedSecret + "@alias:o/r",
-			"https://example.invalid/***@alias:o/r"},
-		{"scp user:pw", "u:" + plantedSecret + "@example.invalid:o/r", "***@example.invalid:o/r"},
-		{"two URLs in one line", "a https://u:" + plantedSecret + "@h1/o/r, https://v:" + plantedSecret + "@h2/o/r",
-			"a https://***@h1/o/r, https://***@h2/o/r"},
-		// Kept: no credential to hide.
-		{"scp login kept", "git@github.com:example-org/example-repo.git", "git@github.com:example-org/example-repo.git"},
-		{"hybrid login kept", "https://github.com/git@github.com:o/r", "https://github.com/git@github.com:o/r"},
-		{"path at sign kept", "https://example.invalid/o/r@v1", "https://example.invalid/o/r@v1"},
-		{"no userinfo", "https://example.invalid/o/r", "https://example.invalid/o/r"},
-		{"empty", "", ""},
-	}
-	for _, c := range cases {
+// regression: #6621 (security review A2)
+func TestParseRemoteRepoRedacts(t *testing.T) {
+	for _, c := range redactFixtures {
 		t.Run(c.name, func(t *testing.T) {
-			if got := RedactURLUserinfo(c.in); got != c.want {
-				t.Fatalf("RedactURLUserinfo(%q) = %q; want %q", c.in, got, c.want)
+			_, _, err := ParseRemoteRepo(c.in)
+			if err == nil {
+				t.Fatalf("ParseRemoteRepo(%q) = nil error; want a refusal", c.in)
+			}
+			msg := err.Error()
+			if strings.Contains(msg, "secret") {
+				t.Fatalf("error echoes the userinfo credential: %s", msg)
+			}
+			if !strings.Contains(msg, "<redacted>@") || !strings.Contains(msg, c.keep) {
+				t.Fatalf("error lost the remote's shape (want <redacted>@ and %q): %s", c.keep, msg)
 			}
 		})
 	}
-}
-
-// regression: #6696
-// Every refusal ParseRemoteRepo returns quotes the URL; none may quote the userinfo secret.
-// Both refusal arms are covered: too few segments, and an unclean trailing pair (where the
-// ':' split leaves the password alone in the owner slot).
-func TestParseRemoteRedactsSecret(t *testing.T) {
-	for _, in := range []string{
-		"https://example-user:" + plantedSecret + "@example.invalid/only-one",
-		"https://example-user:" + plantedSecret + "@example.invalid",
-		"https://example.invalid/x/u:" + plantedSecret + "@alias:repo",
-		"u:" + plantedSecret + "@example.invalid:only-one",
-	} {
-		_, _, err := ParseRemoteRepo(in)
-		if err == nil {
-			t.Fatalf("ParseRemoteRepo(%q) = nil error; want a refusal", in)
-		}
-		if strings.Contains(err.Error(), plantedSecret) {
-			t.Errorf("ParseRemoteRepo(%q) refusal leaks the userinfo secret: %v", in, err)
-		}
-		if _, err := RemoteRepoSlug(in); err == nil || strings.Contains(err.Error(), plantedSecret) {
-			t.Errorf("RemoteRepoSlug(%q) refusal leaks the userinfo secret or did not refuse: %v", in, err)
-		}
+	if _, err := RemoteRepoSlug(redactFixtures[0].in); err == nil || strings.Contains(err.Error(), "secret") {
+		t.Fatalf("RemoteRepoSlug error echoes the credential: %v", err)
 	}
 }
 
-// regression: #6696
-func TestHostOfRemoteRedacts(t *testing.T) {
-	_, err := HostOfRemote("https://example-user:" + plantedSecret + "@/o/r")
-	if err == nil || strings.Contains(err.Error(), plantedSecret) {
-		t.Fatalf("HostOfRemote refusal leaks the userinfo secret or did not refuse: %v", err)
+// TestParseRemoteRepoCleanText is the control: a remote with no userinfo keeps its error
+// text unchanged (it passes on the unfixed parser too), so the redaction touches only the
+// credential-bearing span.
+func TestParseRemoteRepoCleanText(t *testing.T) {
+	_, _, err := ParseRemoteRepo("https://example.invalid/repo.git")
+	want := `cannot parse owner/repo from remote "https://example.invalid/repo.git": expected a trailing <owner>/<repo> (`
+	if err == nil || !strings.HasPrefix(err.Error(), want) || strings.Contains(err.Error(), "<redacted>") {
+		t.Fatalf("clean-remote error text changed:\n got: %v\nwant prefix: %s", err, want)
+	}
+	_, _, err = ParseRemoteRepo("https://example.invalid/bad!owner/repo")
+	want = `cannot parse owner/repo from remote "https://example.invalid/bad!owner/repo": the trailing pair "bad!owner"/"repo" is not a clean`
+	if err == nil || !strings.HasPrefix(err.Error(), want) {
+		t.Fatalf("clean-remote error text changed:\n got: %v\nwant prefix: %s", err, want)
 	}
 }

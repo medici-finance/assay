@@ -52,6 +52,7 @@ func validSlugSegment(seg string) bool {
 // parsed here, so a rewrite prefix cannot mangle the owner/repo it carries.
 func ParseRemoteRepo(raw string) (owner, repo string, err error) {
 	work := strings.TrimSpace(raw)
+	shown := RedactRemoteUserinfo(raw)
 	if work == "" {
 		return "", "", fmt.Errorf("empty remote URL")
 	}
@@ -77,10 +78,6 @@ func ParseRemoteRepo(raw string) (owner, repo string, err error) {
 	// segment (git@host:owner/repo) after a base URL was prepended — reducing it LENIENTLY to
 	// its trailing owner/repo. FieldsFunc omits empty fields, so trailing slashes drop away.
 	segs := strings.FieldsFunc(pathPart, func(r rune) bool { return r == '/' || r == ':' })
-	// Every refusal below quotes the URL, and a remote URL can carry a credential in its
-	// userinfo (`https://user:<secret>@host/...`). The quoted copy is always the REDACTED
-	// one: the raw string never reaches an error, so no caller printing it can leak it.
-	shown := RedactURLUserinfo(raw)
 	if len(segs) < 2 {
 		return "", "", fmt.Errorf(
 			"cannot parse owner/repo from remote %q: expected a trailing <owner>/<repo> "+
@@ -89,85 +86,33 @@ func ParseRemoteRepo(raw string) (owner, repo string, err error) {
 	owner = segs[len(segs)-2]
 	repo = strings.TrimSuffix(segs[len(segs)-1], ".git")
 	if !slugSegmentRe.MatchString(owner) || !slugSegmentRe.MatchString(repo) {
-		// The rejected pair is the very case where userinfo leaked into a segment. The ':'
-		// split above can leave a password alone in a segment (`pw@host`), so any segment
-		// holding an '@' is quoted with everything before its last '@' masked.
 		return "", "", fmt.Errorf(
 			"cannot parse owner/repo from remote %q: the trailing pair %q/%q is not a clean "+
-				"<owner>/<repo> (a host, userinfo, or rewrite prefix leaked into it)",
-			shown, maskSegmentUserinfo(owner), maskSegmentUserinfo(repo))
+				"<owner>/<repo> (a host, userinfo, or rewrite prefix leaked into it)", shown,
+			RedactRemoteUserinfo(owner), RedactRemoteUserinfo(repo))
 	}
 	return owner, repo, nil
 }
 
-// maskSegmentUserinfo masks everything before the last '@' of one parsed path segment.
-func maskSegmentUserinfo(seg string) string {
-	if at := strings.LastIndexByte(seg, '@'); at >= 0 {
-		return redactedUserinfo + seg[at:]
+// RedactRemoteUserinfo renders a remote string for an error or log line with every userinfo
+// span replaced by "<redacted>": in each '/'-delimited segment, everything up to and including
+// the last '@' becomes "<redacted>@". That covers the URL authority
+// (https://user:secret@host/...), the scp-like and bare forms (user:secret@host:path), and
+// the scp segment a hybrid rewrite embeds in a path. The scheme, host, port and path stay
+// visible, so the message still shows the remote's shape; a string with no '@' is returned
+// unchanged. Every error ParseRemoteRepo returns names the remote through it, so callers
+// surface the parser's error rather than re-echoing the raw string.
+func RedactRemoteUserinfo(raw string) string {
+	if !strings.Contains(raw, "@") {
+		return raw
 	}
-	return seg
-}
-
-// redactedUserinfo is what RedactURLUserinfo puts where a userinfo stood.
-const redactedUserinfo = "***"
-
-// RedactURLUserinfo returns s with the userinfo of every URL it contains replaced by "***",
-// so a remote URL can be quoted in a refusal or a log line without carrying the credential an
-// https remote may embed (`https://user:<secret>@host/owner/repo`). It is the ONE redaction
-// a message that echoes an origin or remote URL applies; host and path stay, so the message
-// still says which remote it means.
-//
-// A userinfo is the run of characters before an '@' back to the nearest '/' or whitespace.
-// It is redacted when it is the authority of a `scheme://` URL (the whole userinfo, user
-// included, because a bare secret is a valid username: `https://<secret>@host/...`), or
-// when it carries a ':' (a `user:password` pair anywhere, including one embedded in a
-// rewritten hybrid such as `https://host/user:pw@alias:owner/repo`). A run that directly
-// continues a redacted userinfo (a password holding a literal '@') is dropped with it. An
-// scp-like login with no password (`git@host:owner/repo`) is a login name, not a secret,
-// and is kept so the message still names the URL git resolved.
-//
-// It is string-level and total: it never fails on the malformed URLs it exists to quote, so
-// it does not go through net/url (which rejects many shapes git accepts). It is biased to
-// over-redact: a masked login costs a look-up, a printed credential is an incident.
-func RedactURLUserinfo(s string) string {
-	if !strings.Contains(s, "@") {
-		return s
+	segs := strings.Split(raw, "/")
+	for i, seg := range segs {
+		if at := strings.LastIndexByte(seg, '@'); at >= 0 {
+			segs[i] = "<redacted>" + seg[at:]
+		}
 	}
-	var b strings.Builder
-	b.Grow(len(s))
-	i, prevRedacted := 0, false
-	for {
-		rel := strings.IndexByte(s[i:], '@')
-		if rel < 0 {
-			b.WriteString(s[i:])
-			return b.String()
-		}
-		at := i + rel
-		start := i
-		if d := strings.LastIndexAny(s[i:at], "/ \t\r\n"); d >= 0 {
-			start = i + d + 1
-		}
-		tok := s[start:at]
-		afterScheme := start >= 3 && s[start-3:start] == "://"
-		continues := prevRedacted && start == i
-		switch {
-		case continues:
-			// Still inside the userinfo just masked: drop this run, keep nothing of it.
-		case tok != "" && (afterScheme || strings.Contains(tok, ":")):
-			b.WriteString(s[i:start])
-			b.WriteString(redactedUserinfo)
-			b.WriteByte('@')
-			prevRedacted = true
-			i = at + 1
-			continue
-		default:
-			b.WriteString(s[i : at+1])
-			prevRedacted = false
-			i = at + 1
-			continue
-		}
-		i = at + 1
-	}
+	return strings.Join(segs, "/")
 }
 
 // RemoteRepoSlug is ParseRemoteRepo returning the combined "owner/repo" slug — the form the

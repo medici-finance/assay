@@ -872,7 +872,7 @@ var schemeRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*://`)
 func parseRepo(raw string) (string, error) {
 	u := strings.TrimSpace(raw)
 	if remoteHelperRe.MatchString(u) {
-		return "", fmt.Errorf("remote-helper transport form is not allowed: %q", deskkit.RedactURLUserinfo(raw))
+		return "", fmt.Errorf("remote-helper transport form is not allowed: %q", deskkit.RedactRemoteUserinfo(raw))
 	}
 	// The path AS GIVEN, before `.git` stripping. A bare local remote's identity is its real
 	// filesystem location (matched below), and a bare repo legitimately lives at `<dir>.git`
@@ -902,7 +902,7 @@ func parseRepo(raw string) (string, error) {
 				}
 			}
 			return "", fmt.Errorf("file:// path %q is not a configured desk root "+
-				"(set DESK_ROOTS to your trusted local checkouts)", deskkit.RedactURLUserinfo(raw))
+				"(set DESK_ROOTS to your trusted local checkouts)", deskkit.RedactRemoteUserinfo(raw))
 		}
 		rest := u[loc[1]:]
 		// The authority ends at the first '/', '?' or '#', so userinfo can only occur
@@ -923,7 +923,7 @@ func parseRepo(raw string) (string, error) {
 		// was reported as the path and the gate passed it. authorityEnd already knew where
 		// the authority stopped; path extraction now agrees with it (security review).
 		if ae >= len(rest) || rest[ae] != '/' {
-			return "", fmt.Errorf("no path in url %q", deskkit.RedactURLUserinfo(raw))
+			return "", fmt.Errorf("no path in url %q", deskkit.RedactRemoteUserinfo(raw))
 		}
 		path := rest[ae+1:]
 		if j := strings.IndexAny(path, "?#"); j >= 0 {
@@ -955,7 +955,7 @@ func parseRepo(raw string) (string, error) {
 		return repo, nil
 	}
 	return "", fmt.Errorf("bare local path %q is not a configured desk root "+
-		"(set DESK_ROOTS to your trusted local checkouts)", raw)
+		"(set DESK_ROOTS to your trusted local checkouts)", deskkit.RedactRemoteUserinfo(raw))
 }
 
 // fileURLPath extracts the filesystem path from a file:// URL, discarding an empty or
@@ -1106,7 +1106,7 @@ func exactRepoPath(p string) (string, error) {
 	p = strings.Trim(p, "/")
 	parts := strings.Split(p, "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", fmt.Errorf("expected exactly owner/repo, got %q", p)
+		return "", fmt.Errorf("expected exactly owner/repo, got %q", deskkit.RedactRemoteUserinfo(p))
 	}
 	return parts[0] + "/" + parts[1], nil
 }

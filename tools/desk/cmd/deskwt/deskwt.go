@@ -963,7 +963,7 @@ func currentRepo(dir string) (string, error) {
 	}
 	repo, rerr := parseRepo(originURL)
 	if rerr != nil {
-		return "", deskkit.Unverifiable("cannot parse origin repo from "+deskkit.RedactURLUserinfo(originURL), rerr)
+		return "", deskkit.Unverifiable("cannot parse origin repo", rerr)
 	}
 	return repo, nil
 }

@@ -527,7 +527,7 @@ func (d *deliverable) checkRootOrigin(o dispatchOpts) error {
 	if actual == "" {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: alias %q resolves to %s, but --root's origin %q does not parse to an owner/name. "+
-				"Nothing was claimed.", stepClaimAcquire, d.alias, repo, deskkit.RedactURLUserinfo(origin.stdout)), nil)
+				"Nothing was claimed.", stepClaimAcquire, d.alias, repo, deskkit.RedactRemoteUserinfo(origin.stdout)), nil)
 	}
 	if !strings.EqualFold(actual, repo) {
 		// With no --repo the change's repo IS --root's origin, so the authoring-PR acceptance reads
