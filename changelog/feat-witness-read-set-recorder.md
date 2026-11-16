@@ -1,0 +1,2 @@
+### Added
+- `statusgen verifyrun` records, on Linux, the files each Verify row's processes read, stat, list or execute, and writes that set to `reads/<sha256>` beside the brief; a row whose behaviour the recorder cannot trace (a foreign exec, an out-of-tree read, a namespace change, a non-loopback or untraced-local connection, an untraced system call) records a `reads could-not-check:` token and no set, so its witness keeps full-tree judgement. The judgement switch `readSetRecorderShipped` stays off until the remaining prerequisites land.
