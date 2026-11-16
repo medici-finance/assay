@@ -52,6 +52,7 @@ func validSlugSegment(seg string) bool {
 // parsed here, so a rewrite prefix cannot mangle the owner/repo it carries.
 func ParseRemoteRepo(raw string) (owner, repo string, err error) {
 	work := strings.TrimSpace(raw)
+	shown := RedactRemoteUserinfo(raw)
 	if work == "" {
 		return "", "", fmt.Errorf("empty remote URL")
 	}
@@ -80,16 +81,38 @@ func ParseRemoteRepo(raw string) (owner, repo string, err error) {
 	if len(segs) < 2 {
 		return "", "", fmt.Errorf(
 			"cannot parse owner/repo from remote %q: expected a trailing <owner>/<repo> "+
-				"(git@host:owner/repo, ssh://host/owner/repo, https://host/owner/repo, or host:owner/repo)", raw)
+				"(git@host:owner/repo, ssh://host/owner/repo, https://host/owner/repo, or host:owner/repo)", shown)
 	}
 	owner = segs[len(segs)-2]
 	repo = strings.TrimSuffix(segs[len(segs)-1], ".git")
 	if !slugSegmentRe.MatchString(owner) || !slugSegmentRe.MatchString(repo) {
 		return "", "", fmt.Errorf(
 			"cannot parse owner/repo from remote %q: the trailing pair %q/%q is not a clean "+
-				"<owner>/<repo> (a host, userinfo, or rewrite prefix leaked into it)", raw, owner, repo)
+				"<owner>/<repo> (a host, userinfo, or rewrite prefix leaked into it)", shown,
+			RedactRemoteUserinfo(owner), RedactRemoteUserinfo(repo))
 	}
 	return owner, repo, nil
+}
+
+// RedactRemoteUserinfo renders a remote string for an error or log line with every userinfo
+// span replaced by "<redacted>": in each '/'-delimited segment, everything up to and including
+// the last '@' becomes "<redacted>@". That covers the URL authority
+// (https://user:secret@host/...), the scp-like and bare forms (user:secret@host:path), and
+// the scp segment a hybrid rewrite embeds in a path. The scheme, host, port and path stay
+// visible, so the message still shows the remote's shape; a string with no '@' is returned
+// unchanged. Every error ParseRemoteRepo returns names the remote through it, so callers
+// surface the parser's error rather than re-echoing the raw string.
+func RedactRemoteUserinfo(raw string) string {
+	if !strings.Contains(raw, "@") {
+		return raw
+	}
+	segs := strings.Split(raw, "/")
+	for i, seg := range segs {
+		if at := strings.LastIndexByte(seg, '@'); at >= 0 {
+			segs[i] = "<redacted>" + seg[at:]
+		}
+	}
+	return strings.Join(segs, "/")
 }
 
 // RemoteRepoSlug is ParseRemoteRepo returning the combined "owner/repo" slug — the form the
@@ -102,17 +125,48 @@ func RemoteRepoSlug(raw string) (string, error) {
 	return owner + "/" + repo, nil
 }
 
-// OriginRepoSlug reads dir's repository-local `origin` URL through gitcore.RemoteURL
-// and parses it to "owner/repo". Repository-local fetch insteadOf rules apply; push-only
-// rewrites and global/worktree config do not. err is non-nil when dir is not a git worktree, has no
-// origin, or the URL does not parse; callers that must fail closed surface it, and callers
-// that tolerate a miss (deriveRepoSlug) map it to "".
+// SlugRemoteURL returns the first repository-local fetch URL of the named remote for a
+// caller that decides a repository slug from it. It fails closed, wrapping
+// gitcore.ErrRemoteScopeUnmerged, when config that read does not merge could change the
+// URL git resolves (gitcore's PinnedRemoteURLs). The one worktree-scope URL it accepts is
+// a pin of a single repository-local URL to one URL naming the same owner/repo (the
+// shape a worktree transport repair writes), so the slug decided is the one git uses.
+// Messages name the kind of declaration only, never a configured value.
+func SlugRemoteURL(repo *gitcore.Repo, name string) (string, error) {
+	local, pinned, err := repo.PinnedRemoteURLs(name)
+	if err != nil {
+		return "", err
+	}
+	if len(local) == 0 {
+		return "", fmt.Errorf("remote %s: no fetch URL configured", name)
+	}
+	if pinned == "" {
+		return local[0], nil
+	}
+	refuse := func(why string) error {
+		return fmt.Errorf("remote %s: %w: worktree-scope remote.%s.url %s", name, gitcore.ErrRemoteScopeUnmerged, name, why)
+	}
+	if len(local) != 1 {
+		return "", refuse("pins a multi-valued repository-local list")
+	}
+	want, lerr := RemoteRepoSlug(local[0])
+	got, perr := RemoteRepoSlug(pinned)
+	if lerr != nil || perr != nil || got != want {
+		return "", refuse("does not name the repository-local origin's repository")
+	}
+	return local[0], nil
+}
+
+// OriginRepoSlug reads dir's `origin` URL through SlugRemoteURL and parses it to
+// "owner/repo". Repository-local fetch insteadOf rules apply; push-only rewrites and
+// global config do not. err is non-nil when dir is not a git worktree, has no origin, the
+// URL does not parse, or SlugRemoteURL refuses; callers that must fail closed surface it.
 func OriginRepoSlug(dir string) (string, error) {
 	repo, err := gitcore.Open(dir)
 	if err != nil {
 		return "", err
 	}
-	raw, err := repo.RemoteURL("origin")
+	raw, err := SlugRemoteURL(repo, "origin")
 	if err != nil {
 		return "", err
 	}

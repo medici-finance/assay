@@ -478,15 +478,26 @@ func nonLoopbackIPv4(t *testing.T) string {
 // nsCloneMask (readset_trace_linux.go) is the one other listed site: the
 // read-set tracer's deny mask, which reads a traced row's clone flags and
 // fails the row closed on any new namespace. It builds no sandbox.
-var netnsAllowedSites = map[string]bool{"netnsWrapperArgv": true, "nsCloneMask": true}
+//
+// A site is keyed on its file AND its function name, and only a plain
+// function (no receiver) matches: a second function in an allowed file, a
+// same-named function in another file, or a same-named method is flagged.
+var netnsAllowedSites = map[string]bool{
+	"netns.go:netnsWrapperArgv":          true,
+	"readset_trace_linux.go:nsCloneMask": true,
+}
 
 func netnsPrimitiveSites(fset *token.FileSet, f *ast.File) []string {
 	var sites []string
+	file := filepath.Base(fset.Position(f.Pos()).Filename)
 	for _, d := range f.Decls {
 		fn, ok := d.(*ast.FuncDecl)
-		name := "<package scope>"
+		name, key := "<package scope>", ""
 		if ok {
 			name = fn.Name.Name
+			if fn.Recv == nil {
+				key = file + ":" + name
+			}
 		}
 		ast.Inspect(d, func(n ast.Node) bool {
 			hit := false
@@ -499,7 +510,7 @@ func netnsPrimitiveSites(fset *token.FileSet, f *ast.File) []string {
 			case *ast.Ident:
 				hit = x.Name == "CLONE_NEWNET"
 			}
-			if hit && !netnsAllowedSites[name] {
+			if hit && !netnsAllowedSites[key] {
 				sites = append(sites, fset.Position(n.Pos()).String()+" in "+name)
 			}
 			return true
@@ -523,6 +534,7 @@ func plantedSandbox() *exec.Cmd { return exec.Command("unshare", "--net", "--map
 	if got := netnsPrimitiveSites(fset, pf); len(got) != 1 || !strings.Contains(got[0], "plantedSandbox") {
 		t.Fatalf("POSITIVE CONTROL: guard flagged %q on the planted instance, want exactly plantedSandbox", got)
 	}
+	netnsAllowListKeyed(t)
 
 	files, _ := filepath.Glob("*.go")
 	var bad []string
@@ -546,5 +558,51 @@ func plantedSandbox() *exec.Cmd { return exec.Command("unshare", "--net", "--map
 	sort.Strings(bad)
 	if len(bad) > 0 {
 		t.Fatalf("network-namespace sandbox assembled outside netnsWrapperArgv (it would skip the lo-up + isolation helper, issue #1925):\n  %s", strings.Join(bad, "\n  "))
+	}
+}
+
+// regression: #6670
+// netnsAllowListKeyed: the allow-list matches file plus function, never the
+// bare name. Each plant names an allowed function or sits in an allowed file
+// and must still be flagged.
+func netnsAllowListKeyed(t *testing.T) {
+	t.Helper()
+	plants := map[string]string{
+		// a second function in an allowed file
+		"readset_trace_linux.go": `package main
+import "golang.org/x/sys/unix"
+func nsCloneMask() uint64 { return unix.CLONE_NEWNET }
+func otherMask() uint64 { return unix.CLONE_NEWNET }
+`,
+		// an allowed name in another file
+		"planted_mask.go": `package main
+import "golang.org/x/sys/unix"
+func nsCloneMask() uint64 { return unix.CLONE_NEWNET }
+`,
+		// an allowed name as a method in the allowed file
+		"netns.go": `package main
+type box struct{}
+func (box) netnsWrapperArgv() []string { return []string{"--net"} }
+`,
+	}
+	want := map[string]string{
+		"readset_trace_linux.go": "in otherMask",
+		"planted_mask.go":        "in nsCloneMask",
+		"netns.go":               "in netnsWrapperArgv",
+	}
+	for file, src := range plants {
+		fset := token.NewFileSet()
+		pf, err := parser.ParseFile(fset, file, src, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := netnsPrimitiveSites(fset, pf)
+		ok := len(got) > 0
+		for _, g := range got {
+			ok = ok && strings.HasSuffix(g, want[file])
+		}
+		if !ok {
+			t.Fatalf("POSITIVE CONTROL (%s): guard flagged %q, want only sites %s", file, got, want[file])
+		}
 	}
 }
