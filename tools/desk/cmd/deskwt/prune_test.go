@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,17 +13,7 @@ import (
 // runCapOut runs `run(args)` capturing STDOUT (the interval/tick summary channel).
 func runCapOut(t *testing.T, fn func()) string {
 	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe: %v", err)
-	}
-	os.Stdout = w
-	fn()
-	_ = w.Close()
-	os.Stdout = old
-	b, _ := io.ReadAll(r)
-	return string(b)
+	return capturePipe(t, &os.Stdout, fn)
 }
 
 // addWorktree runs `deskwt add <name>` and returns the created worktree path. A freshly

@@ -1113,7 +1113,7 @@ func evidenceVerifierInfo(evidence string) (date, runner string) {
 		return "", ""
 	}
 	if _, err := latestPassRunFrom(lines, start, end, func(from int) error {
-		if p, err := flipReadRun(lines, start, from, end); err == nil {
+		if p, err := flipReadRun(lines, start, from, end, nil); err == nil {
 			rows, _ := flipDateRunnerRows(strings.Split(p.Run, "\n"))
 			date, runner = rows[0][0], rows[0][1]
 			return nil

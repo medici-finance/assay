@@ -319,12 +319,22 @@ func isStalled(now, lastActivity time.Time, minAge time.Duration) bool {
 // App-authored PR, silently killing the responder clock on most of the watched repos and
 // omitting lastAuthorCommentAt — which a dispatch consumer reads as the established
 // fact "the author never replied".
-func fetchLastAuthorComment(repo string, num int, authorLogin string) (time.Time, error) {
-	f, fr, ferr := forgeFor(repo)
-	if ferr != nil {
-		return time.Time{}, ferr
+func fetchLastAuthorComment(repo string, num int, authorLogin string, activity ...map[int]deskkit.ChangeCommentTimes) (time.Time, error) {
+	var comments []deskkit.Comment
+	var err error
+	observed := false
+	if len(activity) > 0 {
+		if row, ok := activity[0][num]; ok {
+			comments, err, observed = row.Comments, row.Err, true
+		}
 	}
-	comments, err := f.ListComments(fr, num)
+	if !observed {
+		f, fr, ferr := forgeFor(repo)
+		if ferr != nil {
+			return time.Time{}, ferr
+		}
+		comments, err = f.ListComments(fr, num)
+	}
 	if err != nil {
 		return time.Time{}, deskkit.Unverifiable(fmt.Sprintf("cannot read comments for %s#%d", repo, num), err)
 	}
@@ -564,9 +574,10 @@ func sweepStalledRepo(repo string, c stalledCtx) (stalledPartial, error) {
 	// work returns no error — a per-PR read failure is a labelled row, not a dead board —
 	// so the pool's fail-closed path is unreachable from here and the discarded error
 	// cannot hide one.
+	commentTimes := collectStalledCommentTimes(repo, prs, reviews, c)
 	outcomes, _ := sweepConcurrent(prs, boardSweepLimit, func(p prBase) (stalledOutcome, error) {
 		snapshotReviews, complete := reviews[p.Number]
-		return sweepStalledPR(repo, p, c, snapshotReviews, complete), nil
+		return sweepStalledPR(repo, p, c, snapshotReviews, complete, commentTimes), nil
 	})
 	part.outcomes = outcomes
 	return part, nil
@@ -574,7 +585,7 @@ func sweepStalledRepo(repo string, c stalledCtx) (stalledPartial, error) {
 
 // sweepStalledPR is the former per-PR loop body. Every `continue` it used to execute is a
 // return of the outcome that `continue` implied.
-func sweepStalledPR(repo string, p prBase, c stalledCtx, reviews []review, reviewsComplete bool) stalledOutcome {
+func sweepStalledPR(repo string, p prBase, c stalledCtx, reviews []review, reviewsComplete bool, activity ...map[int]deskkit.ChangeCommentTimes) stalledOutcome {
 	// #247: MERGED / CLOSED / OPEN are distinguished HERE, before any branch
 	// comparison runs. A merged or closed PR is never a stalled draft — it is
 	// finished — and its head compared against main reads "behind by N" exactly
@@ -638,7 +649,7 @@ func sweepStalledPR(repo string, p prBase, c stalledCtx, reviews []review, revie
 			Reason: "cannot read head-commit push date (" + errShort(herr) + ")",
 		}}
 	}
-	lastComment, cerr := fetchLastAuthorComment(repo, p.Number, p.Author.Login)
+	lastComment, cerr := fetchLastAuthorComment(repo, p.Number, p.Author.Login, activity...)
 	if cerr != nil {
 		return stalledOutcome{unassessable: &unassessableRow{
 			Repo: repo, Number: p.Number, Title: p.Title,
@@ -715,4 +726,47 @@ func sweepStalledPR(repo string, p prBase, c stalledCtx, reviews []review, revie
 		row.LastReviewAt = last.SubmittedAt
 	}
 	return stalledOutcome{stalled: &row}
+}
+
+// Read ahead only for open drafts with a complete, blocking-at-head review
+// observation. Missing/overflowed reviews keep the original per-change sequence.
+// Results are scoped to this repo and invocation; no activity clock is cached.
+func collectStalledCommentTimes(repo string, prs []prBase, reviews map[int][]review, c stalledCtx) map[int]deskkit.ChangeCommentTimes {
+	f, fr, err := forgeFor(repo)
+	if err != nil || !deskkit.CanBatchChangeCommentTimes(f) {
+		return nil
+	}
+	var numbers []int
+	seen := map[int]bool{}
+	for _, p := range prs {
+		if p.Number <= 0 || seen[p.Number] {
+			return nil
+		}
+		seen[p.Number] = true
+		rv, complete := reviews[p.Number]
+		if deskkit.ParsePRKind(p.State) == deskkit.PROpen && p.IsDraft && complete &&
+			deskkit.ReduceAppVerdict(c.reviewerLogin, toAppReviews(rv), p.HeadRefOid).IsBlockingAtHead() {
+			numbers = append(numbers, p.Number)
+		}
+	}
+	if len(numbers) < 2 {
+		return nil
+	}
+	out := make(map[int]deskkit.ChangeCommentTimes, len(numbers))
+	for start := 0; start < len(numbers); start += deskkit.ChangeCommentTimeBatchSize {
+		batch := numbers[start:min(start+deskkit.ChangeCommentTimeBatchSize, len(numbers))]
+		rows, err := deskkit.ReadChangeCommentTimes(f, fr, batch)
+		for _, n := range batch {
+			if err != nil {
+				out[n] = deskkit.ChangeCommentTimes{Err: err}
+				continue
+			}
+			if row, ok := rows[n]; ok {
+				out[n] = row
+			} else {
+				out[n] = deskkit.ChangeCommentTimes{Err: deskkit.Unverifiable("change comment activity missing from batch", nil)}
+			}
+		}
+	}
+	return out
 }

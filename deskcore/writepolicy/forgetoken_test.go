@@ -1369,3 +1369,103 @@ func forgeShell(t *testing.T, name string) string {
 	}
 	return bin
 }
+
+// regression: #5046
+func TestForgeStatusGitDirReads(t *testing.T) {
+	// `git -C <dir> status [flags]` is the same listed read as `git status`.
+	for _, cmd := range []string{
+		"git -C /x/y status --porcelain --ignored && gh pr view 1 --json state",
+		"git -C ../a status -sb; gh pr checks 1 | grep status",
+		`git -C "/x/y" status; gh run list --json status`,
+		"gh pr view 1 --json status; git -C a status",
+		"git -C a/b.c status\ngh issue list --json status",
+	} {
+		if forgeTokenRead(cmd) {
+			t.Errorf("%q: git -C <dir> status must clear like git status", cmd)
+		}
+	}
+}
+
+// regression: #5046
+func TestForgeStatusUnsetNames(t *testing.T) {
+	// `unset` of plain variable names removes them and reads nothing.
+	for _, cmd := range []string{
+		"unset GH_TOKEN GITHUB_TOKEN; gh pr view 1 --json status",
+		"unset GH_TOKEN GITHUB_TOKEN && git -C /x/y status --porcelain --ignored && gh pr list --json status",
+		"unset GH_TOKEN\ngh run view 1 --json status",
+		"unset _a b1; git status; gh pr checks 1",
+	} {
+		if forgeTokenRead(cmd) {
+			t.Errorf("%q: unset of variable names must clear", cmd)
+		}
+	}
+}
+
+// regression: #5046
+func TestForgeStatusDirUnsetNearMiss(t *testing.T) {
+	// Only a literal dir after one -C, then status, and only literal names after
+	// unset, clear; every neighbouring spelling still refuses.
+	forgeRefuseAll(t, []string{
+		"git -C $H status; gh pr view 1",
+		`git -C "$H" status; gh pr view 1`,
+		"git -C ~x status; gh pr view 1",
+		"git -C a~ status; gh pr view 1",
+		"git -C a* status; gh pr view 1",
+		"git -C a:b status; gh pr view 1",
+		"git -C a=b status; gh pr view 1",
+		"git -C a{b,c} status; gh pr view 1",
+		"git -C a? status; gh pr view 1",
+		"git -C a[b] status; gh pr view 1",
+		"git -C --x status; gh pr view 1",
+		"git -C a -c core.pager=x status; gh pr view 1",
+		"git -C a -C b status; gh pr view 1",
+		"git -Ca status; gh pr view 1",
+		"git -C a log; gh pr view 1 --json status",
+		"git -C a; gh pr view 1 --json status",
+		"git -C a status; gh auth status",
+		"git -C a status; ./x.sh; gh pr view 1",
+		"unset -f x; gh pr view 1 --json status",
+		"unset -v GH_TOKEN; gh pr view 1 --json status",
+		`unset "$v"; gh pr view 1 --json status`,
+		"unset $v; gh pr view 1 --json status",
+		"unset 'a[1]'; gh pr view 1 --json status",
+		"unset a[1]; gh pr view 1 --json status",
+		"unset; gh pr view 1 --json status",
+		"unset 1x; gh pr view 1 --json status",
+		"unset GH_TOKEN=x; gh pr view 1 --json status",
+		"unset x y=z; gh pr view 1 --json status",
+		`unset "x"; gh pr view 1 --json status`,
+		"unset x; gh auth status",
+		"unsetx GH_TOKEN; gh pr view 1 --json status",
+		"GH_TOKEN=x unset y; gh pr view 1 --json status",
+		"unset x; ./x.sh; gh pr view 1 --json status",
+	})
+}
+
+// regression: #6578
+func TestForgeStatusUnsetMinted(t *testing.T) {
+	// The ruling on #6578: `unset` refuses GH_CONFIG_DIR, and a name an earlier
+	// role mint assigned (T, TF, GH_TOKEN), whether or not that mint is sure to
+	// run, since emptying it sends gh to the stored login.
+	forgeRefuseAll(t, []string{
+		`T=$(desktoken worker); unset T; GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+		`TF=$(desktoken worker); unset TF; GH_TOKEN=$(cat "$TF") gh pr view 1 --json status`,
+		"GH_TOKEN=$(desktoken worker); unset GH_TOKEN; gh pr view 1 --json status",
+		"T=$(desktoken worker); unset x T; gh pr view 1 --json status",
+		"T=$(desktoken worker) || unset T; gh pr view 1 --json status",
+		"T=$(desktoken worker)\nunset T\ngh run view 1 --json status",
+		"unset GH_CONFIG_DIR; gh pr view 1 --json status",
+		"unset x GH_CONFIG_DIR && gh run list --json status",
+	})
+	// Names no earlier mint assigned still clear, so does an unset before the mint.
+	for _, cmd := range []string{
+		`unset T; T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+		`T=$(desktoken worker); unset GH_TOKEN TF; GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+		"unset GH_TOKEN GITHUB_TOKEN; gh pr view 1 --json status",
+		"unset gh_config_dir; gh pr view 1 --json status",
+	} {
+		if forgeTokenRead(cmd) {
+			t.Errorf("%q: unset of a name no mint assigned must clear", cmd)
+		}
+	}
+}
