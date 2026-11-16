@@ -83,8 +83,9 @@ func evidenceRepairBaseline(path, historical, run, predecessor string, first boo
 	if e != nil {
 		return "", nil, "evidence repair: cannot read repair ancestry"
 	}
+	chain := strings.Fields(string(order))
 	position := map[string]int{}
-	for i, id := range strings.Fields(string(order)) {
+	for i, id := range chain {
 		position[id] = i
 	}
 	byCommit := map[string]evidenceRepair{}
@@ -109,11 +110,15 @@ func evidenceRepairBaseline(path, historical, run, predecessor string, first boo
 	var used []evidenceRepair
 	for _, commit := range applied {
 		short := fmt.Sprintf("evidence repair %.12s: ", commit)
-		pp, e := provenanceParents(dir, commit)
-		if e != nil || len(pp) < 1 {
-			return "", nil, short + "cannot read the repair's parent"
+		// The chain is the first-parent walk from the amendment (chain[0]) to
+		// HEAD, so the entry before a repair is its first parent. Reading it
+		// from the walk already made adds no native Git read.
+		at := position[commit]
+		if at == 0 {
+			return "", nil, short + "a repair cannot be the amendment commit itself"
 		}
-		before, e1 := flipEvidenceAt(dir, pp[0], file)
+		parent := chain[at-1]
+		before, e1 := flipEvidenceAt(dir, parent, file)
 		after, e2 := flipEvidenceAt(dir, commit, file)
 		if e1 != nil || e2 != nil || before == flipAbsent || after == flipAbsent {
 			return "", nil, short + "cannot read Evidence around the repair"
@@ -121,7 +126,7 @@ func evidenceRepairBaseline(path, historical, run, predecessor string, first boo
 		if !strings.HasPrefix(strings.TrimSpace(before), strings.TrimSpace(baseline)) {
 			return "", nil, short + "historical Evidence was not preserved before the repair"
 		}
-		verifyBefore, e1 := read(pp[0])
+		verifyBefore, e1 := read(parent)
 		verifyAfter, e2 := read(commit)
 		if e1 != nil || e2 != nil || verifyBefore != verifyAfter {
 			return "", nil, short + "a repair cannot touch any Verify row"
@@ -132,14 +137,32 @@ func evidenceRepairBaseline(path, historical, run, predecessor string, first boo
 		if why := evidenceRepairEditorial(before, after); why != "" {
 			return "", nil, short + why
 		}
-		msg, e := historyGit(dir, "log", "-1", "--format=%B", commit).Output()
-		if e != nil || !commentNamesRecord(string(msg), fmt.Sprintf("#%d", byCommit[commit].link.Issue)) {
+		msg, e := evidenceRepairMessage(dir, commit)
+		if e != nil {
+			return "", nil, short + "could-not-check the repair commit message: " + e.Error()
+		}
+		if !commentNamesRecord(msg, fmt.Sprintf("#%d", byCommit[commit].link.Issue)) {
 			return "", nil, short + "the repair commit does not name its approval's issue or pull request"
 		}
 		baseline = after
 		used = append(used, byCommit[commit])
 	}
 	return baseline, used, ""
+}
+
+// evidenceRepairMessage reads a repair commit's full message (git's %B) in
+// process. It adds no native Git launch to the statusgen inventory: where the
+// in-process reader positively selects native Git, the read fails closed and
+// the repair is could-not-check, never admitted.
+func evidenceRepairMessage(dir, commit string) (string, error) {
+	read := gitCoreForCommits(dir, commit)
+	if read.err != nil {
+		return "", read.err
+	}
+	if read.native != "" {
+		return "", fmt.Errorf("the in-process reader requires native Git here (%s)", read.native)
+	}
+	return read.repo.CommitMessage(commit)
 }
 
 // evidenceRepairEditorial is the content rule. Table lines pair 1:1 in order;

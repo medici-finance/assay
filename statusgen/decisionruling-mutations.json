@@ -76,7 +76,7 @@
     {
       "name": "pull-request-not-issue check disabled",
       "file": "decisionruling.go",
-      "old": "if len(iss.PullRequest) > 0 && string(iss.PullRequest) != \"null\" {",
+      "old": "if !binding.allowPull && len(iss.PullRequest) > 0 && string(iss.PullRequest) != \"null\" {",
       "new": "if false {"
     },
     {

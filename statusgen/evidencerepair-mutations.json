@@ -28,8 +28,8 @@
     {
       "name": "drop commit-to-approval binding",
       "file": "evidencerepair.go",
-      "old": "e != nil || !commentNamesRecord(string(msg), fmt.Sprintf(\"#%d\", byCommit[commit].link.Issue))",
-      "new": "e != nil || (false && !commentNamesRecord(string(msg), fmt.Sprintf(\"#%d\", byCommit[commit].link.Issue)))"
+      "old": "if !commentNamesRecord(msg, fmt.Sprintf(\"#%d\", byCommit[commit].link.Issue)) {",
+      "new": "if false && !commentNamesRecord(msg, fmt.Sprintf(\"#%d\", byCommit[commit].link.Issue)) {"
     },
     {
       "name": "approval need not name brief",
