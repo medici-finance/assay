@@ -241,8 +241,9 @@ and can retry at its next interval.
 
 ### `cellctl up` cleans once on a reclaimable deferral
 
-Bounded launch preparation never walks the cache. `cellctl up` is the one
-exception, and it is narrow. When up's preparation defers for one of these
+Bounded launch preparation never walks the cache. There are two narrow
+exceptions: `cellctl up`, described here, and the stale-measurement re-measure
+that `cellctl desk` and scratch launches take (next section). When up's preparation defers for one of these
 reasons, up runs the same clean as `cellctl cache <cell> clean`, once, and then
 prepares again:
 
@@ -286,10 +287,15 @@ refuses on the fresh numbers. It prints one line in the same form:
 launch cache re-measure: recorded measurement is stale or future-dated; logical bytes before 0, after 0, reclaimed 0; outcome checked-clean
 ```
 
-A stale timestamp alone is no longer grounds for refusal. These launches never
-clean for size or free-space pressure on a fresh measurement, never re-measure
-twice and never loop. Every refusal `up` leaves to the operator is left to the
-operator here too.
+At desk and scratch launch preparation, a stale timestamp alone is no longer
+grounds for refusal. Consumer enrollment and `cellctl cache-run` still refuse on
+it and leave the clean to the operator. These launches never clean for size or
+free-space pressure on a fresh measurement, never re-measure twice and never
+loop. The re-measure is not a read-only measurement, though: it is the full
+clean. If its fresh walk finds the cache past its high-water mark or under
+pressure, it trims the compiler cache, or removes the roots whole when no
+consumer is live, before the launch admits or refuses. Every refusal `up` leaves
+to the operator is left to the operator here too.
 
 ```sh
 cellctl cache example status

@@ -53,8 +53,10 @@ func (c *Cell) printCachePolicy() {
 	}
 }
 
-// cacheAdmission performs bounded preparation. Missing or dirty accounting
-// requires explicit maintenance; launch never falls through into a cache walk.
+// cacheAdmission performs bounded preparation and never falls through into a
+// cache walk itself. Dirty or corrupt accounting requires explicit
+// maintenance; a missing or stale measurement is re-measured once by the
+// caller's prepareLaunchOnce, never here.
 func (c *Cell) cacheAdmission() error {
 	p, err := c.cachePolicy()
 	if err != nil {
@@ -84,8 +86,11 @@ func (c *Cell) upPrepareLaunch() (bool, error) {
 // measurement is aged, unstamped, future-dated or missing (#6593): one Check,
 // then one more bounded preparation that admits or refuses on the fresh
 // numbers. Size or free-space pressure on a fresh measurement, and every
-// operator-only refusal, are returned untouched; those launches never clean
-// for pressure.
+// operator-only refusal, are returned untouched: on a fresh measurement those
+// launches never clean for pressure. The one re-measure is the full, not-dry
+// Check, so when its fresh walk finds pressure or a cache past high water it
+// reclaims (a compiler-cache trim, or whole-root removal with no live
+// consumer) before the second preparation decides.
 func (c *Cell) launchPrepareLaunch() (bool, error) {
 	return c.prepareLaunchOnce("launch cache re-measure", cellcache.Report.Stale)
 }
