@@ -87,7 +87,9 @@ Options:
 2. **Accept with changes.** Name the boundary change you want, for example a different custody port shape or an extra guard. A follow-up change is opened for it, and verification waits until it lands.
 3. **Hold.** The item stays at its current status, the design record stays unapproved, and verification does not start.
 
-Default if no answer: option 3, **Hold**. This is the conservative choice: with no answer, the design record stays a draft, the item stays at its current status, and verification does not start.
+Default if no answer: none — blocks until answered
+
+With no answer, nothing moves: the design record stays a draft, the item stays at its current status, and verification does not start.
 
 ## Read first
 
