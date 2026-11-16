@@ -90,10 +90,10 @@ func TestFindingUnknownHeadField(t *testing.T) {
 	}
 }
 
-// TestFindingResolvedAtEvidenceHead proves the route the refusal names works: a reviewer
+// TestFindingResolvedAtEvHead proves the route the refusal names works: a reviewer
 // resolution whose evidenceHead is the head it was taken at passes the write gate and stops
 // blocking at that head, and keeps blocking at any later head.
-func TestFindingResolvedAtEvidenceHead(t *testing.T) {
+func TestFindingResolvedAtEvHead(t *testing.T) {
 	const sha, later = "9aa837adaf9b6074ca703755216ad448e185ae4a", "b3ef023c5b3ef023c5b3ef023c5b3ef023c5b3ef"
 	f := blockingFinding("F1", "c", "resolved")
 	f.EvidenceHead = sha
