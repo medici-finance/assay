@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -142,17 +141,9 @@ func withEnv(t *testing.T, work string) *[][]string {
 
 func runCapErr(t *testing.T, args []string) (int, string) {
 	t.Helper()
-	old := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("pipe: %v", err)
-	}
-	os.Stderr = w
-	rc := run(args)
-	_ = w.Close()
-	os.Stderr = old
-	b, _ := io.ReadAll(r)
-	return rc, string(b)
+	var rc int
+	out := capturePipe(t, &os.Stderr, func() { rc = run(args) })
+	return rc, out
 }
 
 // --- argv assertions ------------------------------------------------------------

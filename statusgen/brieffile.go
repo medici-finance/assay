@@ -1611,6 +1611,28 @@ func riskMap(v any) (map[string]string, error) {
 // still catching a genuinely-unknown/typo'd stream — it is absent from the full
 // set too. Whole-house callers pass the same slice for both.
 func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string) {
+	return checkBriefFilesMode(streams, allStreams, true)
+}
+
+// briefHistoryNoticesInHydration is a TEST HOOK, false in production. The
+// hydrating loader discards every notice, so it does not ask git for the
+// history-backed ones; TestHydrateBudgetPlant sets this to put the removed cost
+// back and prove the hydration budget reports it. Nothing else may set it.
+var briefHistoryNoticesInHydration bool
+
+// staleFailHistoryQueries counts newestFailFix runs, the one history query
+// checkBriefFiles makes per waiting brief. It is the countable unit the
+// hydration budget (hydrate_budget_test.go) guards: it does not vary with the host.
+var staleFailHistoryQueries atomic.Int64
+
+// checkBriefFilesMode is checkBriefFiles with one choice: whether to compute the
+// notices that need a git history query (waitingBriefNotice: the stale-FAIL
+// route, which reads the shallow state, refs, config and first-parent history of
+// main once per waiting brief). Every PROBLEM, every hydrated Brief field and
+// every other notice is produced identically in both modes. A caller that
+// discards the notices (loadHydratedStreams) passes false and no longer pays one
+// history query per waiting brief; the lint and STATUS.md paths pass true.
+func checkBriefFilesMode(streams, allStreams []*Stream, historyNotices bool) (problems, notices []string) {
 	add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
 	notice := func(format string, a ...any) { notices = append(notices, fmt.Sprintf(format, a...)) }
 
@@ -2021,8 +2043,10 @@ func checkBriefFiles(streams, allStreams []*Stream) (problems, notices []string)
 				// — noticing every gated todo floods the register with items
 				// nobody is waiting on; the brief's "top-of-Next-up"
 				// case is covered by the Next-up-pick check in run() instead.
-				if message := waitingBriefNotice(s.Root, path, bf, row.Status); message != "" {
-					notice("%s", message)
+				if historyNotices {
+					if message := waitingBriefNotice(s.Root, path, bf, row.Status); message != "" {
+						notice("%s", message)
+					}
 				}
 				// Decision-issue linkage, part (b): a done brief still carrying a
 				// decision-issue whose outcome is NOT recorded in the brief body

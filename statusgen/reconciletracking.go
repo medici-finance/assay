@@ -20,7 +20,11 @@ func briefVersionForPass(path, evidence string, p flipPass) (int, error) {
 		return 0, err
 	}
 	if binding == nil {
-		version, err := briefVersionAt(path, p.SHA)
+		versionSource := p.SHA
+		if p.RecordLanding != "" {
+			versionSource = p.RecordLanding
+		}
+		version, err := briefVersionAt(path, versionSource)
 		if err != nil {
 			// The source revision is read in this repository. A run made in
 			// another repository has no such commit here; say what would let

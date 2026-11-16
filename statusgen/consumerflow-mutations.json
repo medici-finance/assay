@@ -1,0 +1,35 @@
+{
+  "test": "go test . -run 'V2ConsumerProvenance|V2LatestBadProvenance|V2ConsumerActorRequired|V2ConsumerVersionSource|V2FoldConsumerFlow' -count=1 -timeout=120s",
+  "control": {
+    "name": "CONTROL \u2014 internal provenance leaks onto coverage JSON",
+    "file": "evaluation/coverage.go",
+    "old": "Witness  *WitnessProvenance `json:\"-\"`",
+    "new": "Witness  *WitnessProvenance `json:\"witness_provenance,omitempty\"`"
+  },
+  "mutations": [
+    {
+      "name": "older good witness replaces canonical latest selection",
+      "file": "evaluation/coverage.go",
+      "old": "latest := witnesses[len(witnesses)-1]\n\tswitch cell := witnessSchemaOf(latest); cell.Schema {",
+      "new": "latest := witnesses[0]\n\tswitch cell := witnessSchemaOf(latest); cell.Schema {"
+    },
+    {
+      "name": "fold bypasses Evidence actor authority after content release",
+      "file": "reconcilefold.go",
+      "old": "if err := flipProvenance(d.path, d.evidence, p.Marks, p.RunStart); err != nil {",
+      "new": "if err := flipProvenance(d.path, d.evidence, p.Marks, p.RunStart); false && err != nil {"
+    },
+    {
+      "name": "mixed record landings are combined into one run",
+      "file": "verifyflip.go",
+      "old": "if landing != \"\" && (landing != w.Landing || runner != w.Runner || cr != w.CR) {",
+      "new": "if false && landing != \"\" && (landing != w.Landing || runner != w.Runner || cr != w.CR) {"
+    },
+    {
+      "name": "v2 version reader uses empty execution SHA instead of validated landing",
+      "file": "reconciletracking.go",
+      "old": "versionSource = p.RecordLanding",
+      "new": "versionSource = p.SHA"
+    }
+  ]
+}
