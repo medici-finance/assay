@@ -73,8 +73,7 @@ func newGitDurable(root, repo, role string) *gitDurable {
 		root:     root,
 		maxRetry: 5,
 		run: func(args ...string) (string, error) {
-			cmd := exec.Command(args[0], args[1:]...)
-			b, err := cmd.CombinedOutput()
+			b, err := landingCommand(args[0], args[1:]...).CombinedOutput()
 			return string(b), err
 		},
 	}
@@ -84,6 +83,36 @@ func newGitDurable(root, repo, role string) *gitDurable {
 		}, g.run)
 	}
 	return g
+}
+
+// landingCommand builds a child process of the Evidence landing — every local git step
+// (the origin read, the pre-push hook path, add, commit, the race's pull --rebase) and the
+// pre-push hook itself — under the declared verifier Git environment (#4823,
+// deskkit.VerifierGitEnv): no inherited GIT_* variable, no operator global or system
+// configuration. The push itself is in-process (gitcore, with the role's in-memory
+// credential) and reads no Git configuration; identity and the role credential helper the
+// pull uses are worktree-scoped in the verifier home, so the declared environment keeps them.
+func landingCommand(name string, args ...string) *exec.Cmd {
+	cmd := exec.Command(name, args...)
+	cmd.Env = deskkit.VerifierGitEnv(os.Environ())
+	return cmd
+}
+
+// landingHook is the checkout's pre-push hook as the Evidence landing runs it: its path is
+// answered through run, and the hook process is built by landingCommand.
+func landingHook(root string, run func(args ...string) (string, error)) deskkit.PrePushHook {
+	return deskkit.PrePushHook{
+		Dir: root,
+		HookPath: func() (string, error) {
+			out, herr := run("git", "-C", root, "rev-parse", "--path-format=absolute", "--git-path", "hooks/pre-push")
+			if herr != nil {
+				return "", fmt.Errorf("%v: %s", herr, out)
+			}
+			return out, nil
+		},
+		Command: landingCommand,
+		Stderr:  os.Stderr,
+	}
 }
 
 // pushHeadToMain pushes the checkout's HEAD commit to the remote's refs/heads/main,
@@ -112,18 +141,7 @@ func pushHeadToMain(root string, endpoint func(originURL string) (deskkit.ForgeG
 	if err != nil {
 		return err
 	}
-	hook := deskkit.PrePushHook{
-		Dir: root,
-		HookPath: func() (string, error) {
-			out, herr := run("git", "-C", root, "rev-parse", "--path-format=absolute", "--git-path", "hooks/pre-push")
-			if herr != nil {
-				return "", fmt.Errorf("%v: %s", herr, out)
-			}
-			return out, nil
-		},
-		Stderr: os.Stderr,
-	}
-	if herr := hook.Run("origin", ep.Opts.URL, "HEAD", head.String(), "refs/heads/main"); herr != nil {
+	if herr := landingHook(root, run).Run("origin", ep.Opts.URL, "HEAD", head.String(), "refs/heads/main"); herr != nil {
 		return herr
 	}
 	if perr := repo.Push(gitcore.PushOpts{
