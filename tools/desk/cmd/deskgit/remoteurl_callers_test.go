@@ -42,20 +42,14 @@ var remoteURLAllowList = map[string]struct {
 	"tools/desk/cmd/deskclaim-ref/gogit.go": {1, "assessed #1623; shared adapter since #3281 — supplies " +
 		"the host hint and default slug only; claim transport builds a canonical URL from " +
 		"ForgeKindFromSlugAndHost. No git verb resolves origin after the read."},
-	"tools/desk/cmd/deskwt/deskwt.go": {1, "OPEN class site (assessed #1623, fix owned by the deskwt-side " +
-		"work, not this change): currentRepo gates IsAllowedRepo, and role-init then runs " +
-		"`git fetch --no-tags origin main`, which resolves origin itself (worktree/global scope, " +
-		"insteadOf)."},
-	"tools/desk/cmd/deskreply/deskreply.go": {1, "assessed #1623 — NOT a gate git contradicts: preflight " +
-		"gates IsAllowedRepo for a forge-API reply, and no git verb that resolves origin runs " +
-		"after it (the reply goes through the forge API, never git transport)."},
+	// #6606 moved deskwt's currentRepo, deskreply's preflight, deskkit's OriginRepoSlug and
+	// preflight's deriveRepoSlug onto deskkit.SlugRemoteURL, which refuses when worktree-scope or
+	// include config could change origin; their entries are removed.
 	"tools/desk/cmd/deskpushguard/main.go": {1, "fallback only when the pre-push hook received no URL " +
 		"argument; the normal path takes the URL git itself hands the hook."},
-	"tools/desk/internal/deskkit/remoterepo.go": {1, "OriginRepoSlug reads the repository-local URL, with " +
-		"fetch insteadOf applied by gitcore; it parses identity and does not run a git transport."},
-	"tools/desk/internal/deskkit/preflight.go": {2, "deriveRepoSlug only labels the mint's owner; the landing " +
-		"probe reads the remote only as a forge-KIND hint (well-known host table, roster first) and " +
-		"lists the kind's canonical URL in-process — no git verb resolves the remote after it."},
+	"tools/desk/internal/deskkit/preflight.go": {1, "the landing probe reads the remote only as a " +
+		"forge-KIND hint (well-known host table, roster first) and lists the kind's canonical URL " +
+		"in-process — no git verb resolves the remote after it."},
 }
 
 // remoteURLCallers walks the tops trees under root (non-test Go files, testdata skipped, the
