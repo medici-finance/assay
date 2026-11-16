@@ -158,6 +158,7 @@ var baseQueueRows = func(root string) ([]baseRow, error) {
 		return nil, fmt.Errorf("statusgen is not available (%v)", err)
 	}
 	cmd := exec.Command(path, "--gate-scores", "--root", root)
+	cmd.Env = deskkit.VerifierGitEnv(os.Environ())
 	out, err := deskkit.OutputProcess(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("statusgen --gate-scores failed for %s: %v", root, err)
