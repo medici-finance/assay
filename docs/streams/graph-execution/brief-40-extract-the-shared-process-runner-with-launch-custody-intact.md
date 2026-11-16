@@ -11,8 +11,10 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: yes, sensitive-data: no}
 gate-why: "Relocates the audited process-launch site and its cache-custody guards. Human acceptance confirms every caller still crosses the same custody and process-containment boundary."
 decision-trigger: spec
+design: DR-process-extract
+decision-issue: 6583
+ruling: "https://github.com/medici-finance/assay/issues/6583#issuecomment-6905190371"
 issues: [5492]
-gates: [{"on": "#5492", "type": "human-gate", "reason": "Decomposition review: dispatch waits for a driver comment on #5492, posted under the driver's own login (never a role App), that accepts this proposed split and its source/acceptance routing. Only a follow-up PR citing that comment removes this edge."}]
 schema: brief-v2
 version: 1
 id: 5377cd38-a556-4367-b01b-dbc4b1390d3b
@@ -29,19 +31,7 @@ exec-tier-why: "Cross-module custody, durable failure recovery and independent l
 domain: complicated
 outcome: none
 consumers:
-- "loopadmin/process/: follow-up graph-execution/40 (this child; only implementation may change to fixed-here)"
-- "tools/desk/cmd/cellctl/: follow-up graph-execution/40 (this child; only implementation may change to fixed-here)"
-- "tools/desk/internal/cellreader/: follow-up graph-execution/40 (this child; only implementation may change to fixed-here)"
-- "tools/desk/internal/gitmaintenance/: follow-up graph-execution/40 (this child; only implementation may change to fixed-here)"
-- "tools/desk/internal/cellcache/: follow-up graph-execution/40 (this child; only implementation may change to fixed-here)"
-- "tools/desk/internal/forgeban/: follow-up graph-execution/40 (this child; only implementation may change to fixed-here)"
-- "tools/desk/internal/deskkit/: follow-up graph-execution/40 (this child; only implementation may change to fixed-here)"
-- "tools/desk/internal/cachequiet/: follow-up graph-execution/40 (this child; only implementation may change to fixed-here)"
-- "tools/desk/go.mod: follow-up graph-execution/40 (this child; only implementation may change to fixed-here)"
-- "docs/contracts.md: follow-up graph-execution/40 (this child; only implementation may change to fixed-here)"
-- "Dockerfile: follow-up graph-execution/40 (this child; implementation corroborates the actual path)"
-- "images/assay-harness/Dockerfile: follow-up graph-execution/40 (this child; implementation corroborates the actual path)"
-- "images/verify-runner/Dockerfile: follow-up graph-execution/40 (this child; implementation corroborates the actual path)"
+- "loopadmin/process/run_test.go: fixed-here (residue R1: TestProcessNilEnvIsEmpty pins a nil environment as empty; the entries for paths #5903 already moved are trimmed per the driver's decomposition acceptance, https://github.com/medici-finance/assay/issues/5492#issuecomment-6902528386)"
 ---
 
 # Brief 40 — Extract the shared process runner with launch custody intact
@@ -73,7 +63,7 @@ files:
 - `.github/scripts/go-test-shard.py`
 - `tools/go-analysis/baseline.json`
 
-facts: Delivery record: the runner move this child specifies landed as increment 1 of #5492 in merged PR #5903 (merge aae4fbf71; the move itself is 957f953b7), after this split was authored. `tools/desk/internal/cellprocess` is retired and `loopadmin/process` exists on main. This child's scope and gate are unchanged, it is not retired, and independent verification and the human gate still own acceptance. Measured against main at 876ca4bca, the delivery satisfies rows 1-6 and the delivered half of row 8 (the move, importer migration, packaging, audit re-key, contract rows and custody guards); those rows now name tests that exist there, under their delivered names. Residue, owned by this child's implementer once #5492 releases the gate: R1, the literal nil-environment test that Task 2 names, which #5903 did not write (row 9); R2, row 7's delivery input, because #5903 cannot be it (see the row 7 note under Verify). The README row for this child is generated and is not edited here; `todo` stays accurate while R1 and R2 are open. The rest of this paragraph describes the pickup head, before that delivery. At the pickup head, `loopadmin/process` is absent. The sole raw harness runner is `tools/desk/internal/cellprocess/run.go::runObserved`; its public wrappers call `withCache`, which imports desk-internal `cellcache` and `deskkit`. A literal file move cannot compile outside that module and omitting those imports removes custody/telemetry. Production importers are cellctl cadence/cache/scratch/comms, cellreader and gitmaintenance. The cache class guard (now `TestLaunchCustodyClassGuard`), `TestCacheObservedRoutes`, cachequiet and the forge register inspect this route. Merged PR #4157 delivered bounded startup and cadence cache maintenance; consume that implementation and its committed controls, do not repair the same class again.
+facts: Delivery record: the runner move this child specifies landed as increment 1 of #5492 in merged PR #5903 (merge aae4fbf71; the move itself is 957f953b7), after this split was authored. `tools/desk/internal/cellprocess` is retired and `loopadmin/process` exists on main. This child's scope and gate are unchanged, it is not retired, and independent verification and the human gate still own acceptance. Measured against main at 876ca4bca, the delivery satisfies rows 1-6 and the delivered half of row 8 (the move, importer migration, packaging, audit re-key, contract rows and custody guards); those rows now name tests that exist there, under their delivered names. Residue, owned by this child's implementer once #5492 releases the gate: R1, the literal nil-environment test that Task 2 names, which #5903 did not write (row 9); R2, row 7's delivery input, because #5903 cannot be it (see the row 7 note under Verify). The README row for this child is generated and is not edited here; `todo` stays accurate while R1 and R2 are open. The rest of this paragraph describes the pickup head, before that delivery. At the pickup head, `loopadmin/process` is absent. The sole raw harness runner is `tools/desk/internal/cellprocess/run.go::runObserved`; its public wrappers call `withCache`, which imports desk-internal `cellcache` and `deskkit`. A literal file move cannot compile outside that module and omitting those imports removes custody/telemetry. Production importers are cellctl cadence/cache/scratch/comms, cellreader and gitmaintenance. The cache class guard (now `TestLaunchCustodyClassGuard`), `TestCacheObservedRoutes`, cachequiet and the forge register inspect this route. Merged PR #4157 delivered bounded startup and cadence cache maintenance; consume that implementation and its committed controls, do not repair the same class again. Residue delivery: R1 adds `TestProcessNilEnvIsEmpty` in `loopadmin/process/run_test.go`; for R2, `consumers:` is trimmed to that one path, the only consumer path the residue delivery edits, citing the driver's acceptance of this decomposition (https://github.com/medici-finance/assay/issues/5492#issuecomment-6902528386). The `gates:` edge was removed by a separate change on main.
 
 layering: Extract process-tree execution once into loopadmin, with a narrow mandatory host-custody port supplied by the desk owner. Keep storage policy, credential resolution and the recorder in their current owners; process code cannot import tools/desk internal packages. Retire the old process package and migrate every importer in the same source increment. A missing mandatory custody adapter refuses instead of silently selecting an unguarded process route.
 
@@ -85,6 +75,23 @@ design-fit:
 - why-add: Moving the existing process owner first makes shared execution reusable while preserving cache custody, bounded preparation and the audit that sees every launch.
 
 single-point-of-failure: the shared execution boundary; independent cache-custody and audit/source guards must remain effective when an upper caller is bypassed.
+
+## Human decision
+
+The question is whether to accept the delivered design that moves the desk's single process runner into the shared loop-admin module. An earlier merged change made the move. This change adds what was left: a test pinning that a launch with a nil environment starts the child with an empty environment, and a trim of the consumer list to the one path this change edits.
+
+Under the design there is one runner. Every launch passes through a mandatory custody port that the desk supplies. A runner built without a custodian refuses to launch, and so does a custodian that admits a launch without a way to finish it. Cache storage policy, credentials and telemetry stay with their existing desk owners. The process-launch audit now covers the new module, and the old runner package is deleted rather than kept as a second copy. Two limits remain open: the import guard checks the desk module only, and native Windows runtime containment has not been qualified.
+
+A human has to decide because this design moves the audited process-launch site and its cache-custody guards. If the boundary is wrong, a caller can start a process outside cache custody or outside the audit, and a passing test run would not show it.
+
+Options:
+1. **Accept the design as delivered.** The design record is approved as written. Independent verification then runs this item's checks on merged main, and final acceptance stays a separate human step.
+2. **Accept with changes.** Name the boundary change you want, for example a different custody port shape or an extra guard. A follow-up change is opened for it, and verification waits until it lands.
+3. **Hold.** The item stays at its current status, the design record stays unapproved, and verification does not start.
+
+Default if no answer: none — blocks until answered
+
+With no answer, nothing moves: the design record stays a draft, the item stays at its current status, and verification does not start.
 
 ## Read first
 
@@ -152,4 +159,4 @@ Rows discriminate through the named production mutations; every claimed fact is 
 
 ## Review
 
-Gate: human. Parent decision issue #5492 remains the decision surface for the complete /26 promise. No child approval is inferred from an empty issue or from authoring this split. At design pickup, present the concrete child acceptance candidate under the existing decision process before activation or final acceptance. The proposed decomposition must be reviewed before dispatch. "Decomposition review" is one event: a driver comment on #5492, under the driver's own login, accepting this split and its routing. Until then the `gates:` edge on #5492 holds this child off Next-up (a forge-backed gate is could-not-check, so held); a follow-up PR citing that comment removes the edge.
+Gate: human. Parent decision issue #5492 remains the decision surface for the complete /26 promise. No child approval is inferred from an empty issue or from authoring this split. At design pickup, present the concrete child acceptance candidate under the existing decision process before activation or final acceptance. The proposed decomposition must be reviewed before dispatch. "Decomposition review" is one event: a driver comment on #5492, under the driver's own login, accepting this split and its routing. The driver posted that comment on 2026-11-15 (https://github.com/medici-finance/assay/issues/5492#issuecomment-6902528386), accepting the split into /40, /41, /42 and /43 as merged; the `gates:` edge on #5492 that held this child off Next-up is removed by the follow-up PR that cites it.

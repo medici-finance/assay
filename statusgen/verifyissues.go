@@ -956,7 +956,9 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 	scope := heldScanScope(evidence, latestRun)
 	var hits []int
 	var quotes []string
-	for i, line := range strings.Split(evidence, "\n") {
+	lines := strings.Split(evidence, "\n")
+	quoteNear := heldQuoteNeighbours(lines)
+	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
 			inFence = !inFence
@@ -1057,6 +1059,14 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 			if cuts == nil && heldObservedOutput(line, clean, read, h) {
 				continue
 			}
+			// On the flip read only, an occurrence inside a double-quoted
+			// span is the row's quoted output, not its disposition: both flip
+			// callers then require a passing witness for every Verify row
+			// (heldScanScope rule 7, #4721). The card and close-verify, which
+			// run no witness check, still read it.
+			if latestRun && cuts == nil && heldQuotedOutput(clean, h, read.key != "", !quoteNear[i]) {
+				continue
+			}
 			keywordAfter := false
 			for _, k := range keywordLocs {
 				if k[0] >= h[0] {
@@ -1113,7 +1123,7 @@ func evidenceVerifierInfo(evidence string) (date, runner string) {
 		return "", ""
 	}
 	if _, err := latestPassRunFrom(lines, start, end, func(from int) error {
-		if p, err := flipReadRun(lines, start, from, end); err == nil {
+		if p, err := flipReadRun(lines, start, from, end, nil); err == nil {
 			rows, _ := flipDateRunnerRows(strings.Split(p.Run, "\n"))
 			date, runner = rows[0][0], rows[0][1]
 			return nil

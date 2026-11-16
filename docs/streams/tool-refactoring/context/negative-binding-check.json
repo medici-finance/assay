@@ -1,0 +1,15 @@
+{
+  "receipt": "sha256:f6ba29225e8b9249427202d9dd51cafc0e47d393ab147fe8bec5a73aa239a2c8",
+  "current": true,
+  "findings": [],
+  "verdicts": [
+    {
+      "obligation": "statusgen-37-inverse-edge",
+      "subject": "assay:assay:statusgen:37",
+      "outcome": "refuse",
+      "rule": "manifest-mismatch",
+      "reason": "manifest-mismatch: $.handoff: manifest names handoff sha256:0000000000000000000000000000000000000000000000000000000000000000, but the handoff's canonical digest is sha256:f6ba29225e8b9249427202d9dd51cafc0e47d393ab147fe8bec5a73aa239a2c8"
+    }
+  ],
+  "outcome": "refuse"
+}

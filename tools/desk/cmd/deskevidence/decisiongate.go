@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -292,26 +293,37 @@ func decisionGateBranchBoard(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branc
 	if sameCommit(head, tip) {
 		return nil, nil
 	}
+	var files []deskkit.ChangedFile
 	cmp, err := fg.CompareRefs(fr, head, tip)
-	if err != nil {
+	switch {
+	case err != nil && deskkit.DescendantDiffServed(fg):
+		// GitLab serves no CompareRefs (#6610): the branch lane is judged by the narrow,
+		// exact read instead, and only an Evidence-only branch is admitted.
+		files, err = gitlabEvidenceOnlyBranch(fg, fr, head, branch, tip, targetRepoPath)
+		if err != nil {
+			return nil, err
+		}
+	case err != nil:
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot compare the landing home's HEAD %s with %s (%s) on %s, so the board the write lands on cannot be shown to match the one judged (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug()), err)
-	}
-	if cmp == nil || !cmp.CommitsComplete || len(cmp.Files) >= decisionGateCompareFileCap {
-		return nil, deskkit.Unverifiable(fmt.Sprintf("the forge's compare of the landing home's HEAD %s with %s (%s) on %s cannot be shown complete, so a board change on the branch cannot be ruled out (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug()), nil)
-	}
-	// The compare lists what the branch changed since the commits' merge base. Only when
-	// the home's HEAD is an ancestor of the tip is that every difference between the board
-	// judged and the board landed on; a home carrying commits the branch lacks would keep
-	// its own board edits in the judge.
-	if cmp.BehindBy != 0 || (cmp.Status != "ahead" && cmp.Status != "identical") {
-		return nil, deskkit.Unverifiable(fmt.Sprintf("the landing home's HEAD %s is not an ancestor of %s (%s) on %s (compare status %q, behind by %d), so the board judged cannot be shown to be the board the write lands on (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug(), cmp.Status, cmp.BehindBy), nil)
+	default:
+		if cmp == nil || !cmp.CommitsComplete || len(cmp.Files) >= decisionGateCompareFileCap {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("the forge's compare of the landing home's HEAD %s with %s (%s) on %s cannot be shown complete, so a board change on the branch cannot be ruled out (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug()), nil)
+		}
+		// The compare lists what the branch changed since the commits' merge base. Only when
+		// the home's HEAD is an ancestor of the tip is that every difference between the board
+		// judged and the board landed on; a home carrying commits the branch lacks would keep
+		// its own board edits in the judge.
+		if cmp.BehindBy != 0 || (cmp.Status != "ahead" && cmp.Status != "identical") {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("the landing home's HEAD %s is not an ancestor of %s (%s) on %s (compare status %q, behind by %d), so the board judged cannot be shown to be the board the write lands on (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug(), cmp.Status, cmp.BehindBy), nil)
+		}
+		files = cmp.Files
 	}
 	isBoard := func(p string) bool {
 		return p != "" && p != targetRepoPath && decisionGateBoardRe.MatchString(p) && !decisionGateRegisterRe.MatchString(p)
 	}
 	var edits []boardEdit
 	seen := map[string]bool{}
-	for _, f := range cmp.Files {
+	for _, f := range files {
 		// A previous name is gone from the branch only when the file was renamed; a copy
 		// keeps it.
 		if f.Status == "renamed" && isBoard(f.PreviousFilename) && !seen[f.PreviousFilename] {
@@ -349,6 +361,46 @@ func decisionGateBranchBoard(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branc
 		edits = append(edits, boardEdit{Path: f.Filename, Content: fc.Content})
 	}
 	return edits, nil
+}
+
+// gitlabEvidenceOnlyBranch is the GitLab branch lane of the board-match hold (#6610). GitLab
+// serves no CompareRefs, so no divergence count or status word is read or guessed. The one
+// shape admitted is the benign one the Evidence-branch lane produces: the branch tip
+// DESCENDS from the landing home's HEAD (an exact ancestry fact, deskkit.ReadDescendantDiff)
+// AND every file the tip differs in from that HEAD is an Evidence path, added or modified
+// (this landing's target, or evidenceLandingPath). Anything else — unrelated or diverged history, a timed-out compare, a
+// listing at the cap, a non-Evidence path, a removal or a rename — stays could-not-check
+// (exit 6). The admitted files still go through the same board read as a GitHub compare's: a
+// changed brief is read at the tip and applied to the judge, never skipped.
+func gitlabEvidenceOnlyBranch(fg deskkit.Forge, fr deskkit.ForgeRepo, head, branch, tip, target string) ([]deskkit.ChangedFile, error) {
+	hold := fmt.Sprintf("the landing home's HEAD %s and %s (%s) on %s", head, branch, tip, fr.Slug())
+	files, err := deskkit.ReadDescendantDiff(fg, fr, head, tip)
+	if err != nil {
+		return nil, deskkit.Unverifiable("cannot compare "+hold+" on the GitLab branch lane, so the board the write lands on cannot be shown to match the one judged (decision-gate hold, lifecycle-v1 §4.5)", err)
+	}
+	if len(files) >= decisionGateCompareFileCap {
+		return nil, deskkit.Unverifiable("the GitLab compare of "+hold+" cannot be shown complete, so a board change on the branch cannot be ruled out (decision-gate hold, lifecycle-v1 §4.5)", nil)
+	}
+	for _, f := range files {
+		if (f.Status != "added" && f.Status != "modified") || (f.Filename != target && !evidenceLandingPath(f.Filename)) {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s differs between %s as %s, which is not an Evidence path added or modified; on GitLab only an Evidence-only branch descending from the home is admitted (decision-gate hold, lifecycle-v1 §4.5)", f.Filename, hold, f.Status), nil)
+		}
+	}
+	return files, nil
+}
+
+// evidenceLandingPath reports whether p is a path an Evidence landing writes: a brief file
+// under docs/streams (isBriefFile, the Evidence section's home) or a per-file verify-outcome
+// record under docs/streams/verify-outcomes/. The test is on the cleaned, slash-separated path
+// and refuses any path that cleaning would change (a "..", "." or doubled separator).
+func evidenceLandingPath(p string) bool {
+	if p == "" || path.Clean(p) != p || strings.HasPrefix(p, "/") {
+		return false
+	}
+	if isBriefFile(p) {
+		return true
+	}
+	return strings.HasPrefix(p, "docs/streams/verify-outcomes/") && strings.HasSuffix(p, ".json")
 }
 
 // stageBoardEdits applies edits to the working tree at root and returns the function

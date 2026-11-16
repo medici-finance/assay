@@ -24,7 +24,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 decision-trigger: creation
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "docs/proposals/non-ci-architecture/11-target-architecture.md §Public Assay includes the control plane and cockpit — 'Use one versioned HTTP/JSON contract for UI and remote clients … CLI and MCP are adapters over those capabilities … Keep the existing human-action absences on agent-facing surfaces'"
@@ -131,7 +131,7 @@ Recorded outcome for #2985: option 1 — defer approvals, with the existing term
 | 8b | check | `go -C tools/desk test -tags cellopfixture ./cmd/cellctl/ -run 'TestApplyRefusesDeskSession' -count=1 -v` | `--- PASS` — with any of `ASSAY_CELL`, `DESK_LOOP` or `DESK_SESSION` set, every state-changing invocation on a pseudo-terminal is refused `desk-session` (a mistake guard, stated as such) |
 | 9 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestNoApprovalSurface' -count=1 -v` | `--- PASS` — no registered cellctl command defines `approve`, `--approval`, `yes`, `y`, `assume-yes` or `skip-verify` |
 | 10 | check +flow | `go -C tools/desk test -tags cellopfixture ./cmd/cellctl/ -run 'TestPlanApplyRoundTrip' -count=1 -v` | `--- PASS` — through the binary built with the fixture verb, on a pseudo-terminal: `--plan --json`, then `--apply` typing the confirm code, then a second apply refused `already-consumed` |
-| 11 | check | `go -C tools/desk run ./cmd/cellctl/ cellop-fixture 2>&1 \| grep -c 'unknown command "cellop-fixture"'` | 1 — a default build compiles and reports the fixture verb as unknown (a compile failure prints no such line and fails this row) |
+| 11 | check | `{ go -C tools/desk run ./cmd/cellctl/ cellop-fixture 2>&1; test $? -eq 1; } \| grep -c 'unknown command "cellop-fixture"'` | 1 — a default build compiles and reports the fixture verb as unknown (a compile failure prints no such line and fails this row) |
 | 12 | check | `statusgen --root . --lint` | exit 0 |
 | 12a | check | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-containers/15 --delivery 6cb553e1a1778c9de1ca22370388fd3a05112718 --base 92d3d10f1f3a614755f7acdbc42db05cf79728f9 > "$o" && cat "$o" && grep -Fxq 'summary: 3 corroborated, 0 disproved, 3 unchecked, 0 brief(s) claiming nothing' "$o")` | exit 0 — the `consumers:` routing holds against the branch diff |
 

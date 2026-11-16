@@ -1,0 +1,14 @@
+package main
+
+// A planted raw capture: it reads the pipe only after fn returns, the shape that deadlocks
+// once fn writes more than the pipe buffer. TestOneCapturePipeHelper must flag this file.
+func rawCapture(fn func()) string {
+	old := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+	fn()
+	_ = w.Close()
+	os.Stdout = old
+	b, _ := io.ReadAll(r)
+	return string(b)
+}

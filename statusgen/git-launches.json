@@ -396,12 +396,12 @@
     "s081": {
       "operation": "exec.Command(\"git\", \"-C\", root, \"merge-base\", \"--is-ancestor\", full, of)",
       "why": "Native topology verdict is retained: TestGraphReadGaps records native incomplete-parent failure where selected canonical merge-base returns a base or IsAncestor returns true. --all additionally requires every criss-cross best base rather than the existing single-result owner. No parallel graph preflight or resolver is added.",
-      "owner": "statusgen/failfirst_ancestry.go — commitIsAncestor caller maintainer"
+      "owner": "statusgen/failfirst_ancestry.go — gitIsAncestor caller maintainer"
     },
     "s082": {
-      "operation": "gitOut(root, \"rev-parse\", \"--verify\", \"--quiet\", base+\"^{commit}\")",
+      "operation": "gitOut(root, \"rev-parse\", \"--verify\", \"--quiet\", sha+\"^{commit}\")",
       "why": "Retained conditional revision branch of the already migrated full-ID resolution flow. Abbreviated witnesses and positive ordinary native profiles keep the original rev-parse query; canonical full-ID reads are qualified separately. The later ancestry verdict remains native with TestGraphReadGaps evidence.",
-      "owner": "statusgen/failfirst_ancestry.go — commitIsAncestor caller maintainer"
+      "owner": "statusgen/failfirst_ancestry.go — witnessCommit caller maintainer"
     },
     "s083": {
       "operation": "exec.Command(\"git\", append(args, \"origin\")...)",
@@ -1519,14 +1519,14 @@
       "reason": "s080"
     },
     {
-      "key": "failfirst_ancestry.go::commitIsAncestor::direct#1",
+      "key": "failfirst_ancestry.go::gitIsAncestor::direct#1",
       "expression": "exec.Command(\"git\", \"-C\", root, \"merge-base\", \"--is-ancestor\", full, of)",
       "disposition": "retained",
       "reason": "s081"
     },
     {
-      "key": "failfirst_ancestry.go::commitIsAncestor::seam#1",
-      "expression": "gitOut(root, \"rev-parse\", \"--verify\", \"--quiet\", base+\"^{commit}\")",
+      "key": "failfirst_ancestry.go::witnessCommit::seam#1",
+      "expression": "gitOut(root, \"rev-parse\", \"--verify\", \"--quiet\", sha+\"^{commit}\")",
       "disposition": "retained",
       "reason": "s082"
     },

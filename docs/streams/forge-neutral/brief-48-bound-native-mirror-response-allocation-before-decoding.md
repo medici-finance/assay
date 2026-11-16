@@ -12,6 +12,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Admitted private forge reads cross this native response boundary. Human acceptance must demonstrate early bounds preserve scope, credential custody, redirects and uncertainty on both success and SDK error paths."
 decision-trigger: spec
 decision-issue: 5384
+ruling: "https://github.com/medici-finance/assay/issues/5384#issuecomment-6923691729"
 issues: []
 schema: brief-v2
 version: 3

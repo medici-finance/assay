@@ -45,9 +45,9 @@ fires within one observer interval instead of relying on a worker to remember it
 > Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
 
 
-> The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
+> The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache, every carried hold naming its source on the same line and re-checked at the next fresh sweep (lifted only when its own lift condition is met or the identity that set it releases it; a hold whose source cannot be read, or cannot be found, is kept and reported, never dropped) — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
-> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, and how it is reconciled and marked read are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
+> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, how it is reconciled and marked read, and how each hold it carries is re-checked against its source are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
 
 > Procedure every desk role shares — liveness, supervision and context, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 

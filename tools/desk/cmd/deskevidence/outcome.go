@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -76,11 +77,43 @@ func guardVerifiedOutcomes(root, landedRoot, target string, before, after []byte
 		if err != nil {
 			return err
 		}
-		if len(problems) > 0 {
-			return deskkit.Refused("verified outcome requires a lint-valid closure tree:\n" + strings.Join(problems, "\n"))
+		own, foreign := splitClosureProblems(problems, seen)
+		for _, p := range foreign {
+			fmt.Fprintf(stderr, "deskevidence: notice: %s — names a brief this record does not close; it is that brief's to fix, not this outcome's to block\n", p)
+		}
+		if len(own) > 0 {
+			return deskkit.Refused("verified outcome requires a lint-valid closure tree:\n" + strings.Join(own, "\n"))
 		}
 	}
 	return nil
+}
+
+// problemKeyRe is the `<stream>/<NN>` brief key statusgen leads a brief's PROBLEM with.
+var problemKeyRe = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*)/0*([0-9]+[a-z]?)$`)
+
+// splitClosureProblems separates the lint PROBLEMs that name a brief this record
+// does not close (foreign) from the rest (own). The closure gate refuses on own
+// only, the same scoping the landing and flip gates apply through their
+// before/after diff (#4823). It fails closed: a PROBLEM naming a closed brief,
+// and any PROBLEM whose leading segment is not a parseable brief key (a path, a
+// stream, a register, a summary line), stays own and still refuses.
+func splitClosureProblems(problems []string, closed map[string]bool) (own, foreign []string) {
+	closedKeys := map[string]bool{}
+	for k := range closed {
+		if m := problemKeyRe.FindStringSubmatch(k); m != nil {
+			closedKeys[m[1]+"/"+m[2]] = true
+		}
+	}
+	for _, p := range problems {
+		lead, _, _ := strings.Cut(strings.TrimSpace(strings.TrimPrefix(p, "PROBLEM:")), ":")
+		m := problemKeyRe.FindStringSubmatch(strings.TrimSpace(lead))
+		if m == nil || closedKeys[m[1]+"/"+m[2]] {
+			own = append(own, p)
+			continue
+		}
+		foreign = append(foreign, p)
+	}
+	return own, foreign
 }
 
 func checkVerifiedClosure(root, key string, options childOptions) (string, error) {

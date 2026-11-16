@@ -10,7 +10,12 @@ The script runs one bounded named Go test with module downloads disabled and
 `GOWORK=off`. It creates synthetic small (2 streams × 4 briefs) and large
 (12 × 20) repositories, isolated homes, and fake process adapters. It never
 queries a provider or uploads records. `sizes.json` and `brief.md` in
-`testdata/perfworkload/` declare the corpus. The source revision and environment
+`testdata/perfworkload/` declare the corpus. A third, `real-shape`, corpus is a git
+repository with first-parent merges on `origin/main` and briefs that wait on a recorded
+verifier FAIL (`merges` in `sizes.json`); it runs the hydrated `gate-scores` path only
+and exists because the plain corpora cannot exhibit history-backed costs. The hydration
+budget tests (`hydrate_budget_test.go`) build the same shape, and `hydration-profile.md`
+records the profile that found the cost. The source revision and environment
 are included in the report; run from a committed source tree for reproducibility.
 The report path is an explicit local output, not a new statusgen option.
 

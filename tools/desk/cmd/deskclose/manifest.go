@@ -274,7 +274,7 @@ func applyRows(m *manifest, g grant, c common, resumeFrom int, maxWait time.Dura
 	for idx, row := range m.Rows {
 		if resumeFrom > 0 && !started {
 			if row.Issue != resumeFrom {
-				fmt.Fprintf(out, "skip-before-resume\t%s#%d\t(row %d)\n", c.repo, row.Issue, idx+1)
+				fmt.Fprintf(out, "skip-before-resume\t%s\t(row %d)\n", itemRef(c.repo, row.Issue, ""), idx+1)
 				continue
 			}
 			started = true
@@ -291,8 +291,8 @@ func applyRows(m *manifest, g grant, c common, resumeFrom int, maxWait time.Dura
 			if !deskkit.IsRateLimited(err) {
 				// HARD error: stop here, leaving everything from this row onward
 				// untouched and explicitly resumable.
-				fmt.Fprintf(out, "stopped\trow %d of %d\t%s#%d\t%s\n",
-					idx+1, len(m.Rows), c.repo, row.Issue, deskkit.StripControl(err.Error()))
+				fmt.Fprintf(out, "stopped\trow %d of %d\t%s\t%s\n",
+					idx+1, len(m.Rows), itemRef(c.repo, row.Issue, ""), deskkit.StripControl(err.Error()))
 				fmt.Fprintf(out, "resume with: %s %s -R %s --file %s --resume-from %d\n",
 					toolName, modeManifest, c.repo, m.Path, row.Issue)
 				return err
@@ -305,14 +305,14 @@ func applyRows(m *manifest, g grant, c common, resumeFrom int, maxWait time.Dura
 				// Exit CLEANLY on the budget, still pointing at the unapplied row. The
 				// exit code stays 4 — the caller must wait — and the row is not skipped,
 				// it is deferred.
-				fmt.Fprintf(out, "paused\trow %d of %d\t%s#%d\twaited %s of %s\n",
-					idx+1, len(m.Rows), c.repo, row.Issue, waited, maxWait)
+				fmt.Fprintf(out, "paused\trow %d of %d\t%s\twaited %s of %s\n",
+					idx+1, len(m.Rows), itemRef(c.repo, row.Issue, ""), waited, maxWait)
 				fmt.Fprintf(out, "resume with: %s %s -R %s --file %s --resume-from %d\n",
 					toolName, modeManifest, c.repo, m.Path, row.Issue)
 				return err
 			}
-			fmt.Fprintf(out, "rate-limited\t%s#%d\twaiting %s then retrying THIS row (not skipping it)\n",
-				c.repo, row.Issue, d)
+			fmt.Fprintf(out, "rate-limited\t%s\twaiting %s then retrying THIS row (not skipping it)\n",
+				itemRef(c.repo, row.Issue, ""), d)
 			sleepFn(d)
 			waited += d
 		}

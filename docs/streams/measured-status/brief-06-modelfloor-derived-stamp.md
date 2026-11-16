@@ -14,6 +14,7 @@ unblocks: []
 effort: M
 gate: human
 decision-issue: 3369
+ruling: "https://github.com/medici-finance/assay/issues/3369#issuecomment-6923924153"
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: [336]
 schema: brief-v2

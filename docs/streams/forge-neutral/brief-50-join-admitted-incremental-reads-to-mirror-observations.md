@@ -12,6 +12,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "This adapter can carry private forge observations. Human acceptance covers the demonstrated admission, uncertainty and native-bound flow; no private ingestion, retention action, service or activation is authorized."
 decision-trigger: spec
 decision-issue: 5398
+ruling: "https://github.com/medici-finance/assay/issues/5398#issuecomment-6621135023"
 issues: []
 schema: brief-v2
 version: 4
