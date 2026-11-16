@@ -26,7 +26,7 @@ file digests and observed board states. The open-PR snapshot had 84 entries;
 was originally collected at 2026-11-12 19:56 UTC; source and PR inspection followed
 in this session. No runtime failure is claimed reproduced against production.
 
-Quality evidence is structural and historical: `verifyrun.go` contains 3,109 lines;
+Quality evidence is structural and historical: at the source pin, `verifyrun.go` contains 3,109 lines;
 row execution, expectation interpretation, Markdown and witness assembly are
 coupled there. `tools/desk/internal/deskkit/verifyoutcomes.go` explicitly says the other module keeps
 an independent read-half copy. `tools/desk/internal/deskkit/declaredscope.go` has its own Context grammar
@@ -35,6 +35,13 @@ These observations nominate extraction seams; line count alone is no rewrite
 criterion. Broad complexity/churn measurements and full defect de-duplication
 were not established. Existing regression corpora and resolved-fix controls are
 inputs; this is not an exhaustive closed-incident census.
+
+Post-snapshot repair checked at `3da0dad8d3fb58a3828fce726300ed502bb0f02c`
+(2026-11-15): [PR 6542](https://github.com/medici-finance/assay/pull/6542)
+binds a fail-first base to a recorded delivering commit. Brief 04 must retain
+the existing delivering-commit, first-parent, ancestry and witness checks when
+extracting row observations. The line count above remains a dated observation;
+pickup must inspect the current seams rather than implement from that count.
 
 ## Selected architecture and transition
 

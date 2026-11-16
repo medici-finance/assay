@@ -23,6 +23,7 @@ sources:
   - "medici-finance/assay#5544 — related class evidence; resolution not asserted"
   - "medici-finance/assay#5565 — related class evidence; resolution not asserted"
   - "medici-finance/assay#1794 — related class evidence; resolution not asserted"
+  - "medici-finance/assay#6542 — post-snapshot landed fail-first delivering-commit binding; checked 2026-11-15 @ 3da0dad8d3fb58a3828fce726300ed502bb0f02c; retain its existing checks"
   - "statusgen/37 — retained owning work; see existing-work.md"
   - "desktools-v2/74 — retained owning work; see existing-work.md"
   - "desktools-v2/81 — retained owning work; see existing-work.md"
@@ -32,6 +33,7 @@ domain: complicated
 consumers:
   - "statusgen/verifyrun.go: follow-up tool-refactoring/04 (this brief; source implementation is still owed)"
   - "statusgen/failfirst.go: follow-up tool-refactoring/04 (this brief; source implementation is still owed)"
+  - "statusgen/failfirst_ancestry.go: follow-up tool-refactoring/04 (this brief; retain the existing delivering-commit binding and ancestry owner)"
   - "statusgen/verifyincontainer.go: follow-up tool-refactoring/04 (this brief; source implementation is still owed)"
   - "statusgen/containerbracket.go: follow-up tool-refactoring/04 (this brief; source implementation is still owed)"
   - "statusgen/rowobservation.go: follow-up tool-refactoring/04 (this brief; source implementation is still owed)"
@@ -48,6 +50,7 @@ decision-trigger: start
 files:
 - statusgen/verifyrun.go
 - statusgen/failfirst.go
+- statusgen/failfirst_ancestry.go
 - statusgen/verifyincontainer.go
 - statusgen/containerbracket.go
 - statusgen/rowobservation.go
@@ -64,6 +67,8 @@ facts (2026-11-12, source `680102a08777`):
 - Existing owner: verifyrun execution adapter; evaluation owns judgment and existing witness-v2 owns serialization.
 - Required reading: [scope](spec.md), [retained work and active PRs](existing-work.md), `docs/library-first.md`, `docs/contracts.md`, and the source paths above. Source inspection precedes any implementation effect.
 - All dependency and caller changes are this brief's bounded scope. Retained work: statusgen/37, desktools-v2/74, desktools-v2/81. Completed Evidence and dated sources stay unchanged.
+
+Post-snapshot pickup note (2026-11-15, checked at `3da0dad8d3fb58a3828fce726300ed502bb0f02c`): PR 6542 landed recorded delivering-commit binding after the source cutoff. Read `failFirstBaseRev` and `failfirst_ancestry.go` before extracting observations; preserve the existing owner and its refusal paths. The original source observations remain historical.
 
 layering: keep pure syntax/state/judgment in its named existing library owner and source, process, credential, forge and persistence effects in adapters. Module boundaries are real: desk-tools may import public statusgen subpackages; statusgen cannot import internal deskkit. No new daemon, effect journal, generic bypass or public command is needed.
 
@@ -97,7 +102,7 @@ Default if no answer: none — blocks until answered.
 ## Task
 
 1. Run only the compiled executable rows from brief 03. Separate spawn/sandbox availability, process/pipeline observations and Expect assessment. Record relevant stage exits and bounded primary stdout/stderr references for base and head, not only the final filter exit or a green/red label.
-2. Keep fail-first delivery history in the delivery repository while criteria remain bound to the tracking source. Integrate the existing cross-repository repairs rather than create an alternate base resolver. Preserve legitimate expected-nonzero commands; an upstream nonzero alone does not prove that the test never ran.
+2. Keep fail-first delivery history in the delivery repository while criteria remain bound to the tracking source. Integrate the existing cross-repository repairs, including PR 6542's recorded `--delivering-commit` binding and its existing first-parent, ancestry and witness checks, rather than create an alternate base resolver. Preserve legitimate expected-nonzero commands; an upstream nonzero alone does not prove that the test never ran.
 3. Feed observations into the existing witness-v2 writer contract in statusgen/37. Any additional field must use its extension/version policy and qualified readers, not a third witness format. Bound retained output and disclose truncation; output-derived acceptance requiring unavailable primary evidence stays held.
 4. Preserve network-off container brackets, read-only source, independent admission/close and scrubbed credentials. A base infrastructure failure, no executable check or incomplete stage observation cannot be credited as a discriminating failure. Keep the hostile-child and malformed-output controls across host and container fixture adapters.
 5. Update the named API/CLI reference and existing semantic-owner row; add the changelog fragment. Keep consumer routing deferred until delivery actually edits each site. Publish the class census and retired-callsite diff.

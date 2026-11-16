@@ -2227,7 +2227,7 @@
           "assay:docs/streams/tool-refactoring/brief-01-bind-operation-subjects-to-explicit-tracking-delivery-and-evidence-repositories.md@eb1f795de1053aad80267161800ed2f7f2315f99",
           "assay:docs/streams/tool-refactoring/brief-02-make-dispatch-planning-and-execution-consume-one-validated-operation-subject.md@b1a3771f4c05a95abedd07c444423a509dab15c2",
           "assay:docs/streams/tool-refactoring/brief-03-compile-verify-rows-and-declared-inputs-through-the-existing-document-owner.md@4befa70e236b79f9a7f5d74b0fb9ac1af4c38eb9",
-          "assay:docs/streams/tool-refactoring/brief-04-produce-bounded-row-observations-with-base-and-head-provenance.md@8f121a2ced410e751681a017ccd0430b84580681",
+          "assay:docs/streams/tool-refactoring/brief-04-produce-bounded-row-observations-with-base-and-head-provenance.md@7bd50e8daa4a6aac181258a50949e473f67fa564",
           "assay:docs/streams/tool-refactoring/brief-05-share-outcome-decoding-and-reduction-between-verification-producers-and-readers.md@1f9a88cb5ec4a047e8d8be837c2ebee517ed0b21",
           "assay:docs/streams/tool-refactoring/brief-06-model-local-cell-lifecycle-transitions-using-the-existing-cell-operation-contract.md@705a1f27427c0ae11561190605a4b76548949377",
           "assay:docs/streams/tool-refactoring/brief-07-qualify-the-real-cellctl-binary-with-isolated-lifecycle-and-environment-fixtures.md@f9d17131efce7be646d9f9e31b0ce8d294e8c828",
@@ -2236,7 +2236,7 @@
           "assay:docs/streams/tool-refactoring/brief-10-migrate-evidence-publication-to-bounded-deltas-and-typed-outcome-admission.md@922982811f2b7294656c78cbc768b0370f2d75ed",
           "assay:docs/streams/tool-refactoring/brief-11-qualify-the-joined-tool-flow-and-prepare-consumer-by-consumer-retirement.md@64ff858dfe80f136070aa00d13d8db6687cd7da8",
           "assay:docs/streams/tool-refactoring/existing-work.md@3b6e223a255d47a6603604d8a5321c3aa683fd24",
-          "assay:docs/streams/tool-refactoring/spec.md@9863a5a419ba0a6cce16968bb314b7e78e7db26b",
+          "assay:docs/streams/tool-refactoring/spec.md@c52079c2437883aff560e29e1e92f16ca036e452",
           "assay:docs/streams/verification-handoff/README.md@aacc5df160c8b2652f193a465e1b30a2afa8c0a4",
           "assay:docs/streams/verification-handoff/brief-01-share-the-blocker-disposition-and-routing-contract.md@d3ea387bf452c2b6786218a9ea319a511f0d9652",
           "assay:docs/streams/verification-handoff/brief-02-persist-verifier-blockers-without-losing-the-handoff.md@8fc031865e32f1c309520f4db0c1065f1db08954",
@@ -2327,7 +2327,7 @@
         "id": "assay",
         "membership": "included",
         "reason": "required plan source in the authorized universe",
-        "revision": "3b2f0b7033a2bbd398eb8f462a7c741657ce147ead74a36f5b6805c4b5f55076"
+        "revision": "732f6b585c6eec5f1b23997c91d323bf79a4f5faabe7c4a5b20411f8718d71b4"
       },
       {
         "id": "guidelines",
@@ -12437,6 +12437,13 @@
       "digest": "sha256:4ad76ef35498e4036e13c105f731ec765775eb257616bfc6f6abe41a1aaf72c9",
       "kind": "source-account",
       "locator": "assay:docs/streams/tool-refactoring/brief-04-produce-bounded-row-observations-with-base-and-head-provenance.md#line-4ad76ef35498",
+      "subject": "assay:assay:tool-refactoring:04"
+    },
+    {
+      "correction": null,
+      "digest": "sha256:9b27d842682dd7d0e40439d1b10ba95184ec1dfdcef307213abb6e45102a72d2",
+      "kind": "source-account",
+      "locator": "assay:docs/streams/tool-refactoring/brief-04-produce-bounded-row-observations-with-base-and-head-provenance.md#line-9b27d842682d",
       "subject": "assay:assay:tool-refactoring:04"
     },
     {
