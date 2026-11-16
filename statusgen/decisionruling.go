@@ -258,6 +258,10 @@ type rulingIssue struct {
 type rulingIssueBinding struct {
 	what  string
 	rules func(iss rulingIssue, link rulingLink) bool
+	// allowPull admits a pull-request conversation comment. Only an
+	// Evidence-Repair approval sets it (#6616); every decision record still
+	// refuses a pull request.
+	allowPull bool
 }
 
 // resolveRulingOn is resolveRuling with condition 6 supplied by the caller. Every
@@ -415,7 +419,7 @@ func resolveRulingOn(c *ghClient, prRepo string, rec decisionRecordStamp, humanL
 	if jerr := json.Unmarshal(ibody, &iss); jerr != nil {
 		return refuse(rulingUnresolvable, "issue %s#%d: HTTP 200 but the payload did not parse", link.Repo, link.Issue)
 	}
-	if len(iss.PullRequest) > 0 && string(iss.PullRequest) != "null" {
+	if !binding.allowPull && len(iss.PullRequest) > 0 && string(iss.PullRequest) != "null" {
 		return refuse(rulingUnrelatedIssue, "%s#%d is a pull request, not a decision issue", link.Repo, link.Issue)
 	}
 	if !binding.rules(rulingIssue{Body: iss.Body}, link) {

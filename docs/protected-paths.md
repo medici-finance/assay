@@ -404,3 +404,39 @@ witness at or after the final amendment. This shape is also the integration cont
 for the closed container-netns transition bracket; the host owns all approval reads.
 Verify-desk drafts each link's payload for the driver, never posts an approval, and
 performs independent verification only after the implementation ships and is pinned.
+
+#### Sanctioned Evidence repairs
+
+Historical Evidence stays a byte prefix of the current record. One kind of later
+edit is admitted, as its own chain entry, under
+[the #6616 ruling](https://github.com/medici-finance/assay/issues/6616#issuecomment-6922071617):
+an editorial repair that splits a combined `Date / Runner` column into `Date` and
+`Runner`, or adds one `(on-behalf-of human:<name>)` principal to a Runner. A transition
+descriptor names each repair after its transition lines:
+
+```text
+Verification-Table: delivery=<sha> base=<sha> original=<sha>
+Acceptance-Transition: link=1 amendment=<sha1> approval=<url1>
+Acceptance-Transition: link=2 amendment=<sha2> approval=<url2>
+Evidence-Repair: commit=<sha> approval=https://github.com/example-org/example-repo/pull/42#issuecomment-123
+```
+
+For each link whose pre-amendment Evidence the repair follows, the planner requires
+that Evidence to be a byte prefix of the Evidence at the repair's first parent. The
+repair commit must be on the observed first-parent chain after link 1's parent. It
+must leave the Verify section byte-identical. Every table row pairs 1:1 with its
+predecessor, and every cell other than Date and Runner stays byte-identical. The
+combined Date and Runner text may only gain that one principal. Every earlier prose
+line survives in order. Added prose carries no marker and no verdict. The commit
+message must name the approval's issue or pull request (`#<N>`). The byte-prefix
+baseline then becomes the Evidence at the repair commit, and the comparison stays
+byte-strict.
+
+The approval is read by the same resolver as transition approvals. It must be an
+unedited comment by a mapped human, on an issue or pull request in the same
+repository, and its text must name the brief (`<stream>/<NN>`). Bot-authored, edited,
+cross-repository or unnamed approvals refuse. A missing or unreadable approval is a
+could-not-check. Without an `Evidence-Repair:` line, a reshaped history refuses as
+before with "historical Evidence was not preserved". A repair grants no witness,
+admission or acceptance credit, and every original row still needs a fresh witness
+after the final link.

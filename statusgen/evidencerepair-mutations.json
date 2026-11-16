@@ -1,0 +1,77 @@
+{
+  "test": "go test . -run '^TestEvidenceRepair(Chain|Refusals|Placement|VerifyRow|Editorial|RecordKind)$' -count=1 -timeout 300s -failfast",
+  "control": {
+    "name": "drop prefix check after repair",
+    "file": "acceptancetransition.go",
+    "old": "if !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(retained)) {",
+    "new": "if false && !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(retained)) {"
+  },
+  "mutations": [
+    {
+      "name": "skip editorial content check",
+      "file": "evidencerepair.go",
+      "old": "if why := evidenceRepairEditorial(before, after); why != \"\" {",
+      "new": "if why := evidenceRepairEditorial(before, after); false && why != \"\" {"
+    },
+    {
+      "name": "let repair touch Verify",
+      "file": "evidencerepair.go",
+      "old": "e1 != nil || e2 != nil || verifyBefore != verifyAfter",
+      "new": "e1 != nil || e2 != nil || (false && verifyBefore != verifyAfter)"
+    },
+    {
+      "name": "skip repair approval read",
+      "file": "acceptancetransition.go",
+      "old": "if why := corroborateEvidenceRepairs(repo, rel, repairs, client); why != \"\" {",
+      "new": "_ = repairs\n\t\tif why := \"\"; why != \"\" {"
+    },
+    {
+      "name": "drop commit-to-approval binding",
+      "file": "evidencerepair.go",
+      "old": "e != nil || !commentNamesRecord(string(msg), fmt.Sprintf(\"#%d\", byCommit[commit].link.Issue))",
+      "new": "e != nil || (false && !commentNamesRecord(string(msg), fmt.Sprintf(\"#%d\", byCommit[commit].link.Issue)))"
+    },
+    {
+      "name": "approval need not name brief",
+      "file": "evidencerepair.go",
+      "old": "decisionRecordStamp{ID: id, Ruling: canonical}",
+      "new": "decisionRecordStamp{ID: \"authorize\", Ruling: canonical}"
+    },
+    {
+      "name": "admit repair before chain",
+      "file": "evidencerepair.go",
+      "old": "if first {",
+      "new": "if false {"
+    },
+    {
+      "name": "admit any runner suffix",
+      "file": "evidencerepair.go",
+      "old": "return next == old || (strings.HasPrefix(next, old) && evidenceRepairPrincipalRe.MatchString(next[len(old):]) && !strings.Contains(old, \"(on-behalf-of \"))",
+      "new": "return strings.HasPrefix(next, old)"
+    },
+    {
+      "name": "admit added table rows",
+      "file": "evidencerepair.go",
+      "old": "if len(oldRows) != len(newRows) {",
+      "new": "if false {"
+    },
+    {
+      "name": "admit dropped prose",
+      "file": "evidencerepair.go",
+      "old": "if j != len(oldText) {",
+      "new": "if false {"
+    },
+    {
+      "name": "admit added marker",
+      "file": "evidencerepair.go",
+      "old": "if strings.Contains(l, m) {",
+      "new": "if false && strings.Contains(l, m) {"
+    },
+    {
+      "name": "admit added verdict",
+      "file": "evidencerepair.go",
+      "old": "if len(flipVerdictTokens(added)) > 0 {",
+      "new": "if false {"
+    }
+  ]
+}
