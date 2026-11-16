@@ -102,24 +102,8 @@ func lintDiffAt(root, targetRepoPath string, newContent []byte, options childOpt
 		return nil, aerr
 	}
 
-	beforeSet := make(map[string]bool, len(before))
-	for _, p := range before {
-		beforeSet[p] = true
-	}
-	touched := landingBriefKey(targetRepoPath)
-	seen := map[string]bool{}
-	for _, p := range after {
-		if seen[p] || beforeSet[p] {
-			continue
-		}
-		seen[p] = true
-		if untouchedCouldNotCheck(p, touched) {
-			fmt.Fprintln(lintDiffStderr, "deskevidence: NOTICE: not counted as introduced by "+targetRepoPath+
-				" (could-not-check on a brief this landing does not touch): "+p)
-			continue
-		}
-		introduced = append(introduced, p)
-	}
+	introduced, excused := attributeIntroduced(before, after, landingScopeOf(targetRepoPath))
+	printExcused(lintDiffStderr, targetRepoPath, excused)
 	if len(introduced) > 0 {
 		printBeforeSet(targetRepoPath, before, introduced)
 	}
@@ -155,48 +139,124 @@ var lintDiffStderr io.Writer = os.Stderr
 // environment, so the before and after runs need not print the same line for the same
 // unchanged brief: #6581 saw one brief's could-not-check in the after run only, and three
 // briefs' "--acceptance-forge is required" in the after run of an outcome record for a
-// fourth. On a brief the landing does not write, an after-only could-not-check is reported,
-// not refused. Anything else still refuses: a could-not-check on the landing's own brief,
-// any finding that is not a could-not-check, and every after-only line when the landing's
-// brief cannot be named.
-var problemBriefKey = regexp.MustCompile(`^PROBLEM: ([a-z0-9][a-z0-9._-]*/[0-9]+): `)
+// fourth. So every new-PROBLEM gate (the Evidence and outcome-record landings through
+// lintDiffAt, and the flip) attributes after-only lines by brief key, with the parser the
+// closure gate's splitClosureProblems uses (outcome.go): an after-only could-not-check on a
+// brief OUTSIDE what the write touches is reported, not refused. Everything else still
+// refuses — any line in scope (the write's own brief, or every brief of a stream whose
+// README it writes), any finding that is not a could-not-check wherever it lands, every
+// line when the write names no brief or stream, and every line while either run reports a
+// stream whose frontmatter name differs from its directory (statusgen keys lines by the
+// frontmatter name, the scope by the directory, so they could not be matched).
 
-func untouchedCouldNotCheck(problem, touched string) bool {
-	if touched == "" {
-		return false
+// landingScope is what a write touches, in statusgen's keys: whole briefs, and whole
+// streams (a README is an input of every brief on its board).
+type landingScope struct {
+	briefs, streams map[string]bool
+}
+
+func (s landingScope) named() bool { return len(s.briefs)+len(s.streams) > 0 }
+
+func (s landingScope) owns(key string) bool {
+	stream, _, _ := strings.Cut(key, "/")
+	return s.briefs[key] || s.streams[stream]
+}
+
+func (s *landingScope) addBrief(key string) {
+	if k := briefKey(key); k != "" {
+		if s.briefs == nil {
+			s.briefs = map[string]bool{}
+		}
+		s.briefs[k] = true
 	}
-	m := problemBriefKey.FindStringSubmatch(problem)
-	if m == nil || m[1] == touched {
-		return false
+}
+
+func (s *landingScope) addStream(stream string) {
+	if k := briefKey(stream + "/0"); k != "" {
+		if s.streams == nil {
+			s.streams = map[string]bool{}
+		}
+		s.streams[stream] = true
 	}
-	return strings.Contains(strings.TrimPrefix(problem, m[0]), ": could-not-check ")
 }
 
 var (
-	briefFileName   = regexp.MustCompile(`^brief-([0-9]+)-[^/]*\.md$`)
-	outcomeFileName = regexp.MustCompile(`^([0-9]+)-[^/]*\.json$`)
+	briefFileName   = regexp.MustCompile(`^brief-([0-9]+[a-z]?)-[^/]*\.md$`)
+	outcomeFileName = regexp.MustCompile(`^([0-9]+[a-z]?)-[^/]*\.json$`)
 )
 
-// landingBriefKey names the one brief, as "<stream>/<num>", that a landing writes: a brief
-// file docs/streams/<stream>/brief-<num>-*.md, or a per-file outcome record
-// <deskkit.OutcomeRecordsDir>/<stream>/<num>-*.json. Any other path returns "", and no
-// after-only PROBLEM is excused for it.
-func landingBriefKey(targetRepoPath string) string {
+// landingScopeOf names what a landing at targetRepoPath touches: the brief of a brief file
+// docs/streams/<stream>/brief-<num>-*.md or of a per-file outcome record
+// <deskkit.OutcomeRecordsDir>/<stream>/<num>-*.json, or the whole stream of a board
+// docs/streams/<stream>/README.md. Any other path names nothing, and nothing is excused.
+func landingScopeOf(targetRepoPath string) landingScope {
+	var s landingScope
 	cleaned := path.Clean(targetRepoPath)
 	dir, file := path.Dir(cleaned), path.Base(cleaned)
-	if path.Dir(dir) == deskkit.OutcomeRecordsDir {
+	stream := path.Base(dir)
+	switch {
+	case path.Dir(dir) == deskkit.OutcomeRecordsDir:
 		if m := outcomeFileName.FindStringSubmatch(file); m != nil {
-			return path.Base(dir) + "/" + m[1]
+			s.addBrief(stream + "/" + m[1])
 		}
-		return ""
+	case path.Dir(dir) != "docs/streams" || stream == path.Base(deskkit.OutcomeRecordsDir):
+	case file == "README.md":
+		s.addStream(stream)
+	default:
+		if m := briefFileName.FindStringSubmatch(file); m != nil {
+			s.addBrief(stream + "/" + m[1])
+		}
 	}
-	if path.Dir(dir) != "docs/streams" || path.Base(dir) == path.Base(deskkit.OutcomeRecordsDir) {
-		return ""
+	return s
+}
+
+// couldNotCheckRe anchors the could-not-check marker: after the brief key, a chain of plain
+// lowercase label segments ("protected table: acceptance transition: ") and then the
+// marker. A finding that merely quotes ": could-not-check " out of brief text carries
+// quotes, digits or "#" ahead of it, and does not match.
+var couldNotCheckRe = regexp.MustCompile(`^(?:[a-z][a-z -]*: )*could-not-check `)
+
+// streamDirMismatch reports whether a lint run names a stream whose frontmatter name
+// differs from its directory (statusgen/checks.go).
+var streamDirMismatch = regexp.MustCompile(`: frontmatter stream "[^"]*" != directory name "`)
+
+// attributeIntroduced is after minus before, by exact line, except that an after-only
+// could-not-check on a brief outside scope is returned as excused rather than introduced.
+func attributeIntroduced(before, after []string, scope landingScope) (introduced, excused []string) {
+	had := make(map[string]bool, len(before))
+	attribute := scope.named()
+	for _, p := range before {
+		had[p] = true
+		attribute = attribute && !streamDirMismatch.MatchString(p)
 	}
-	if m := briefFileName.FindStringSubmatch(file); m != nil {
-		return path.Base(dir) + "/" + m[1]
+	for _, p := range after {
+		attribute = attribute && !streamDirMismatch.MatchString(p)
 	}
-	return ""
+	for _, p := range after {
+		if had[p] {
+			continue
+		}
+		had[p] = true
+		if attribute && foreignCouldNotCheck(p, scope) {
+			excused = append(excused, p)
+			continue
+		}
+		introduced = append(introduced, p)
+	}
+	return introduced, excused
+}
+
+func foreignCouldNotCheck(problem string, scope landingScope) bool {
+	key, rest := problemBriefKey(problem)
+	return key != "" && !scope.owns(key) && couldNotCheckRe.MatchString(rest)
+}
+
+// printExcused writes one NOTICE per excused line: reported, never silently dropped.
+func printExcused(w io.Writer, target string, excused []string) {
+	for _, p := range excused {
+		fmt.Fprintln(w, "deskevidence: NOTICE: not counted as introduced by "+target+
+			" (could-not-check on a brief this write does not touch): "+p)
+	}
 }
 
 // statusgenLintAt shells `statusgen --root <root> --lint` from a neutral working directory

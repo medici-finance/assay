@@ -441,12 +441,18 @@ func TestUntouchedCouldNotCheck(t *testing.T) {
 
 // A real finding still refuses beside an excused could-not-check, and so does a
 // could-not-check on the brief the landing writes, or on any brief when the landing's
-// path names no single brief.
+// path names no brief or stream. A finding that is not a could-not-check refuses on a
+// brief the landing does not write too — on an outcome record as well, which the
+// closure gate's foreign split (splitClosureProblems) hands to this diff — and so does
+// one that only quotes the marker out of brief text.
 //
 // regression: #6581
 func TestIntroducedStillRefused(t *testing.T) {
 	real := "PROBLEM: example-stream/12: Evidence row #3: backticked path \"../x\" does not exist"
 	own := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	foreignReal := "PROBLEM: example-other/54: Evidence row #3: backticked path \"../x\" does not exist"
+	quoted := "PROBLEM: example-other/54: Evidence row #2: cell reads \"x: could-not-check y\""
+	outcome := "docs/streams/verify-outcomes/example-outcome/24-20261116T013825Z-bbe7ddc7f052.json"
 	for _, tc := range []struct {
 		target string
 		after  []string
@@ -455,7 +461,11 @@ func TestIntroducedStillRefused(t *testing.T) {
 		{"docs/streams/example-stream/brief-12-example.md", []string{otherInclude, real}, []string{real}},
 		{"docs/streams/example-stream/brief-12-example.md", []string{own}, []string{own}},
 		{"docs/streams/verify-outcomes/example-stream/12-20261116T013825Z-bbe7ddc7f052.json", []string{own}, []string{own}},
-		{"docs/streams/example-stream/README.md", []string{otherInclude}, []string{otherInclude}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{otherInclude, foreignReal}, []string{foreignReal}},
+		{outcome, []string{otherForge, foreignReal}, []string{foreignReal}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{quoted}, []string{quoted}},
+		{"docs/streams/example-stream/notes.md", []string{otherInclude}, []string{otherInclude}},
+		{"docs/README.md", []string{otherInclude}, []string{otherInclude}},
 	} {
 		stubStatusgenLint(t, nil, tc.after)
 		captureLintDiffNotices(t)
@@ -530,6 +540,46 @@ func TestCouldNotCheckClassChange(t *testing.T) {
 		}
 		if tc.want == nil && !strings.Contains(notices.String(), "NOTICE: not counted as introduced") {
 			t.Fatalf("%s: no NOTICE on stderr:\n%s", tc.name, notices.String())
+		}
+	}
+}
+
+// Attribution is by statusgen's brief key, normalised as the closure gate's
+// splitClosureProblems normalises it: a board README write owns its whole stream and
+// excuses only other streams; a letter-suffixed brief and a zero-padded key are named;
+// and nothing is excused while either run reports a stream whose frontmatter name
+// differs from its directory, since the scope (directory) and the line (frontmatter)
+// could not then be matched.
+//
+// regression: #6581
+func TestAttributionScopes(t *testing.T) {
+	sibling := "PROBLEM: example-stream/30: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	suffixOwn := "PROBLEM: example-stream/12a: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	paddedOwn := "PROBLEM: example-stream/012: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	renamed := "PROBLEM: example-renamed/12: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	mismatch := "PROBLEM: docs/streams/example-stream: frontmatter stream \"example-renamed\" != directory name \"example-stream\""
+	brief12 := "docs/streams/example-stream/brief-12-example.md"
+	for _, tc := range []struct {
+		name, target  string
+		before, after []string
+		want          []string
+	}{
+		{"readme: other stream excused", "docs/streams/example-stream/README.md", nil, []string{otherInclude}, nil},
+		{"readme: own stream refused", "docs/streams/example-stream/README.md", nil, []string{sibling}, []string{sibling}},
+		{"suffixed: foreign excused", "docs/streams/example-stream/brief-12a-example.md", nil, []string{otherForge}, nil},
+		{"suffixed: own refused", "docs/streams/example-stream/brief-12a-example.md", nil, []string{suffixOwn}, []string{suffixOwn}},
+		{"padded key: own refused", brief12, nil, []string{paddedOwn}, []string{paddedOwn}},
+		{"mismatch before: refused", brief12, []string{mismatch}, []string{mismatch, renamed}, []string{renamed}},
+		{"mismatch after: refused", brief12, nil, []string{mismatch, otherInclude}, []string{mismatch, otherInclude}},
+	} {
+		stubStatusgenLint(t, tc.before, tc.after)
+		captureLintDiffNotices(t)
+		introduced, err := lintDiffAt(t.TempDir(), tc.target, []byte("x\n"), childOptions{})
+		if err != nil {
+			t.Fatalf("%s: lintDiffAt: %v", tc.name, err)
+		}
+		if strings.Join(introduced, "\n") != strings.Join(tc.want, "\n") {
+			t.Errorf("%s: introduced = %v, want %v", tc.name, introduced, tc.want)
 		}
 	}
 }
