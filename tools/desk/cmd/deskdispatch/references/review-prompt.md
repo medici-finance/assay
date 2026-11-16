@@ -424,6 +424,8 @@ review-finding record doc).
 - **Resolve at the current head, with current-head evidence.** A resolution whose evidence
   was gathered at a stale head does not clear the finding, and an approval at an old head is
   never carried across a change.
+  Record the head in the finding's `evidenceHead` (the full head you reviewed): v1 has no
+  other head field, and a field the schema does not define refuses the whole block.
 - **Distinguish a shared external prerequisite (a red shared-CI leg) from a code/content
   defect.** A shared prerequisite is ONE shared repair cited across the PRs that hit it, not
   a per-PR correctness defect — but it still blocks a ready-flip until the applicable checks
