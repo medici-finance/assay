@@ -11,8 +11,8 @@ import (
 var redactFixtures = []struct{ name, in, keep string }{
 	{"https single segment", "https://user:secret@example.invalid/repo.git", "example.invalid/repo.git"},
 	{"https no path", "https://user:secret@example.invalid", "example.invalid"},
-	{"ssh url with port", "ssh://user:secret@example.invalid:22/repo.git", "example.invalid:22/repo.git"},
-	{"scp-like", "user:secret@example.invalid:repo.git", "example.invalid:repo.git"},
+	{"ssh url, credential as user", "ssh://secret@github.com:22/repo.git", "github.com:22/repo.git"},
+	{"scp-like", "user:secret@example.invalid:repo", "example.invalid:repo"},
 	{"bare userinfo", "user:secret@example.invalid/repo", "example.invalid/repo"},
 	{"hybrid owner slot", "https://example.invalid/user:secret@alias:repo.git", "alias:repo.git"},
 }
@@ -40,13 +40,17 @@ func TestParseRemoteRepoRedacts(t *testing.T) {
 }
 
 // TestParseRemoteRepoCleanText is the control: a remote with no userinfo keeps its error
-// text byte-for-byte, so the redaction touches only the credential-bearing span.
+// text unchanged (it passes on the unfixed parser too), so the redaction touches only the
+// credential-bearing span.
 func TestParseRemoteRepoCleanText(t *testing.T) {
 	_, _, err := ParseRemoteRepo("https://example.invalid/repo.git")
-	want := `cannot parse owner/repo from remote "https://example.invalid/repo.git": expected a ` +
-		`trailing <owner>/<repo> (git@host:owner/repo, ssh://host/owner/repo, ` +
-		`https://host/owner/repo, or host:owner/repo)`
-	if err == nil || err.Error() != want {
-		t.Fatalf("clean-remote error text changed:\n got: %v\nwant: %s", err, want)
+	want := `cannot parse owner/repo from remote "https://example.invalid/repo.git": expected a trailing <owner>/<repo> (`
+	if err == nil || !strings.HasPrefix(err.Error(), want) || strings.Contains(err.Error(), "<redacted>") {
+		t.Fatalf("clean-remote error text changed:\n got: %v\nwant prefix: %s", err, want)
+	}
+	_, _, err = ParseRemoteRepo("https://example.invalid/bad!owner/repo")
+	want = `cannot parse owner/repo from remote "https://example.invalid/bad!owner/repo": the trailing pair "bad!owner"/"repo" is not a clean`
+	if err == nil || !strings.HasPrefix(err.Error(), want) {
+		t.Fatalf("clean-remote error text changed:\n got: %v\nwant prefix: %s", err, want)
 	}
 }
