@@ -29,6 +29,7 @@ consumers:
   - "statusgen/briefv2.go: fixed-here (this implementation brief)"
   - "statusgen/decisiongatehold.go: fixed-here (this implementation brief)"
   - "changelog/verification-card-links.md: fixed-here (this implementation brief)"
+decision-issue: 4890
 ---
 
 # Brief 52 — Link decision and verification cards without conflating their authority

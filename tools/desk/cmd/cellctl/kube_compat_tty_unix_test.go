@@ -34,7 +34,7 @@ func kubeTTY(t *testing.T, w *cliWorld, limit time.Duration, args ...string) (in
 		var all strings.Builder
 		buf := make([]byte, 4096)
 		sent := false
-		re := regexp.MustCompile(`confirm code: ([0-9a-f]{8})`)
+		re := regexp.MustCompile(`confirm code: ([a-z]{3,8})`)
 		for {
 			n, e := master.Read(buf)
 			if n > 0 {
