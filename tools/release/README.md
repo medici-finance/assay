@@ -114,6 +114,35 @@ git show <tag>:spec/brief-v1.md | grep 'Describes reference implementation'
 
 Once that holds, `#1192` can close, citing the ruling.
 
+## Desk-tools tarball manifest
+
+`desk_manifest.py` writes and checks the `MANIFEST.sha256` each
+`desk-tools-<platform>.tar.gz` carries at its root (#6604). It hashes the
+tarball's members only: every desk-tools binary and `hooks/pre-push`, written
+from the staged bytes the package step then tars. It is not a release manifest;
+the standalone statusgen/qualgen assets, the tarballs and the SBOM stay covered
+by `checksums.txt`. `check` refuses an unlisted file as well as a changed or
+missing one, which `sha256sum -c` alone does not. The Makefile's
+`desk-manifest`, `scripts/build-windows.ps1 desk-manifest` and `deskinstall`
+write the same shape into the install dir. Offline fixtures:
+`python3 -B -m unittest discover -s tools/release -p desk_manifest_test.py -v`.
+
+The workflow change is staged as `desk-tools-manifest.release.yml.patch`
+(two lines in the package loop, after `hooks/pre-push` is staged and before
+`tar`). A maintainer applies it, from the repository root on an up-to-date
+`main`:
+
+```
+git apply --check tools/release/desk-tools-manifest.release.yml.patch   # must print nothing
+git apply tools/release/desk-tools-manifest.release.yml.patch
+```
+
+and commits `.github/workflows/release.yml` by PR. The patch is independent of
+`release.yml.patch`; either applies without the other. `sbom.py` reads only
+executable members, so the 0644 manifest adds no SBOM package. Until it is
+applied, releases ship no tarball manifest and `deskinstall` writes the one in
+the install dir.
+
 ## Release Go cache
 
 `go_cache.py` is an internal, standard-library workflow adapter. The live release

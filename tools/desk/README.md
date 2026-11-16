@@ -15,7 +15,7 @@ tools/desk/
   internal/deskkit/   ← shared safety plumbing (brief 01)
   cmd/<tool>/         ← one binary per workflow verb (deskpr = brief 04; 02/03/05/07 pending)
   dist/               ← desk-build output (unprivileged, git-ignored)
-  MANIFEST.sha256     ← written by `sudo make desk-install`; LOCAL, not committed
+                        (MANIFEST.sha256 is written into the INSTALL dir, never here; see Build & install)
 ```
 
 **New here?** The table below is the whole surface, one line per binary; then
@@ -2338,9 +2338,15 @@ sudo make desk-install   # HUMAN ONLY — see below
 each `cmd/*` binary to `/opt/desk-tools/bin/<tool>`, **root-owned 0755** — the sudo
 password is the manual permission gate; agents cannot write there. It stamps each
 binary with `-ldflags "-X …/deskkit.SourceSHA=<sha> -X …/deskkit.BuiltAt=<ts>"` and
-writes `tools/desk/MANIFEST.sha256` for drift verification. That manifest is a
-**local, generated artifact — it is NOT committed** (`git ls-tree origin/main tools/desk/`
-lists no such file); it describes only what is installed on this machine.
+writes `/opt/desk-tools/bin/MANIFEST.sha256` **beside the installed binaries** for drift
+verification. That manifest describes only what is installed on this machine, and it lives with
+those bytes, in the same shape as the `MANIFEST.sha256` a release tarball carries at its root:
+extracting a release tarball over the install dir replaces it with the release's own, and
+`deskinstall` writes one from the bytes it places. The older location,
+`tools/desk/MANIFEST.sha256` in the source tree, outlived every reinstall and went on describing a
+build that was no longer installed (#6604); `desk-manifest` now deletes it. Which file hashes which
+release artifact (`checksums.txt` versus the tarball manifest) is set out in
+[distribution.md](../../docs/distribution.md#the-umbrella-version).
 
 The install target builds as the invoking user (`$SUDO_USER`) and then installs the
 result as root, so the module cache is not written as root. Both `desk-build` and
@@ -3499,21 +3505,25 @@ sudo make desk-install   # HUMAN ONLY
    skipped, and foreign hooks are **refused** unless invoked with `FORCE=1` (`-Force` in
    PowerShell). Standalone hook installation requires `desk-build` first; an absent
    built guard refuses without changing hooks. No static-copy fallback remains.
-4. Runs `desk-manifest`: writes `tools/desk/MANIFEST.sha256` from the installed binaries.
+4. Runs `desk-manifest`: writes `/opt/desk-tools/bin/MANIFEST.sha256` from the installed
+   files (every regular file in the dir except the manifest), and deletes the obsolete
+   `tools/desk/MANIFEST.sha256`.
 
 `/opt/desk-tools/bin` is deliberately **not on `PATH`** — every desk tool is invoked by its
 absolute path, which is what makes the `Bash(/opt/desk-tools/bin/<tool> …)` allow rules
 anchor on a specific installed binary rather than on whatever a name resolves to.
 
-**Post-install drift check.** `desk-manifest` generates the manifest with
-`( cd /opt/desk-tools/bin && shasum -a 256 * )`, so its entries are **bare basenames** and
-`shasum -c` resolves them against the **current directory**. It must therefore be run from
-the install dir, against an absolute manifest path — running it from the repo root makes
-`shasum` look for `deskboard` in the repo root and fail to open every entry:
+**Post-install drift check.** The manifest's entries are **bare basenames** and `shasum -c`
+resolves them against the **current directory**, so run it from the install dir:
 
 ```bash
-( cd /opt/desk-tools/bin && shasum -a 256 -c /path/to/assay/tools/desk/MANIFEST.sha256 )
+( cd /opt/desk-tools/bin && shasum -a 256 -c MANIFEST.sha256 )
 ```
+
+It holds the hashes of the bytes the last install placed there — `make desk-install`,
+`deskinstall`, or a release tarball's own manifest when the tarball was extracted over the dir.
+Copying binaries in by any other route leaves it describing the previous bytes: rerun
+`sudo make desk-manifest` after such a copy, or expect those entries to fail.
 
 ### App credentials (`desktoken`, `deskpost`, `deskevidence`)
 

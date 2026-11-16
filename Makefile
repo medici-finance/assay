@@ -5,7 +5,8 @@
 # desk-install : HUMAN-ONLY (`sudo make desk-install`). Builds via desk-build as the
 #                invoking user ($SUDO_USER, never root) into tools/desk/dist/, THEN
 #                installs those already-built binaries root-owned 0755 to
-#                /opt/desk-tools/bin and writes tools/desk/MANIFEST.sha256.
+#                /opt/desk-tools/bin and writes /opt/desk-tools/bin/MANIFEST.sha256
+#                beside them (#6604).
 #                The sudo password IS the manual permission gate — no agent runs
 #                this target. `cellctl` is one of those cmd/* builds since
 #                desk-containers/10 (it was a hand-maintained shell script COPIED
@@ -42,7 +43,13 @@ DESK_PKG     := $(DESK_MODULE)/internal/deskkit
 DESK_DIR     := tools/desk
 DIST_DIR     := $(DESK_DIR)/dist
 INSTALL_DIR  := /opt/desk-tools/bin
-MANIFEST     := $(DESK_DIR)/MANIFEST.sha256
+# The manifest lives IN the install dir, beside the bytes it describes, in the same
+# shape as the MANIFEST.sha256 a release tarball carries at its root: extracting a
+# tarball over the dir replaces it with the release's own. The old location in the
+# source tree outlived every reinstall and described a build that was no longer
+# installed (#6604); desk-manifest deletes it.
+MANIFEST        := $(INSTALL_DIR)/MANIFEST.sha256
+LEGACY_MANIFEST := $(DESK_DIR)/MANIFEST.sha256
 
 SHA      := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILT_AT := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -110,15 +117,27 @@ desk-install:
 	@make --no-print-directory desk-hook-install
 	@make --no-print-directory desk-manifest
 
-## desk-manifest: (re)write tools/desk/MANIFEST.sha256 from installed binaries
+## desk-manifest: (re)write $(INSTALL_DIR)/MANIFEST.sha256 from the installed files.
+## Every regular file at the top of the install dir, the manifest itself excluded,
+## sorted, `<sha256>  <name>`. Written to a temp file first, so a failed hash never
+## leaves a half manifest. Check: ( cd $(INSTALL_DIR) && shasum -a 256 -c MANIFEST.sha256 )
 desk-manifest:
-	@if ls $(INSTALL_DIR)/* >/dev/null 2>&1; then \
-		( cd $(INSTALL_DIR) && shasum -a 256 * ) > $(MANIFEST); \
-		echo "desk-manifest: wrote $(MANIFEST)"; \
-	else \
-		: > $(MANIFEST); \
-		echo "desk-manifest: no installed binaries; wrote empty $(MANIFEST)"; \
-	fi
+	@rm -f "$(LEGACY_MANIFEST)"
+	@if [ ! -d "$(INSTALL_DIR)" ]; then \
+		echo "desk-manifest: $(INSTALL_DIR) does not exist; no manifest written"; \
+		exit 0; \
+	fi; \
+	cd "$(INSTALL_DIR)" || exit 1; \
+	files=`find . -maxdepth 1 -type f ! -name MANIFEST.sha256 ! -name MANIFEST.sha256.tmp | sed 's|^\./||' | LC_ALL=C sort`; \
+	if [ -z "$$files" ]; then \
+		rm -f MANIFEST.sha256; \
+		echo "desk-manifest: no installed binaries in $(INSTALL_DIR); no manifest written"; \
+		exit 0; \
+	fi; \
+	: > MANIFEST.sha256.tmp || exit 1; \
+	for f in $$files; do shasum -a 256 "$$f" >> MANIFEST.sha256.tmp || { rm -f MANIFEST.sha256.tmp; exit 1; }; done; \
+	mv MANIFEST.sha256.tmp MANIFEST.sha256 || exit 1; \
+	echo "desk-manifest: wrote $(MANIFEST)"
 
 ## desk-hook-install: delegate all hook ownership/migration to the built guard.
 ## desk-install builds first. Standalone callers must run desk-build first too;
