@@ -83,6 +83,8 @@ func TestParseItemRefRefusals(t *testing.T) {
 		// is addressed by, and picking two of its segments would name a DIFFERENT project that
 		// may well exist — so it is refused, naming the shortfall.
 		{"nested group url", "https://gitlab.example/group/sub/proj/-/issues/12", "not the two segments"},
+		{"leading zero", "#012", "not a positive number"},
+		{"leading zero url", "https://github.com/owner/repo/pull/012", "not a positive number"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -162,5 +164,47 @@ func TestCloseIssueTypedRefusesReasonOnAChange(t *testing.T) {
 	}
 	if err := requireNoReasonOnChange(repo, 4, TargetKind("banana"), ""); err == nil || !IsRefused(err) {
 		t.Fatalf("an unknown kind must be refused rather than defaulted, got %v", err)
+	}
+}
+
+// The URL arm validates the host and every project-path segment before it reads a
+// reference out of them, and a refusal does not repeat the value. Positive controls keep a
+// port-carrying host and a GitLab host parsing.
+//
+// regression: class superseded-target-echo
+func TestItemURLJunkRefused(t *testing.T) {
+	bad := map[string]string{
+		"host mention": "https://@example-user **x** y/owner/repo/pull/12",
+		"host TAB":     "https://lead\tx/owner/repo/pull/12",
+		"host CSI":     "https://x\x1b[2J/owner/repo/pull/12",
+		"host space":   "https://see x/owner/repo/pull/12",
+		"user info":    "https://lead@github.com/owner/repo/pull/12",
+		"path space":   "https://github.com/see owner/repo/pull/12",
+		"path TAB":     "https://github.com/lead\towner/repo/pull/12",
+		"path CSI":     "https://github.com/\x1b[2Jowner/repo/pull/12",
+		"path md":      "https://github.com/**x**owner/repo/pull/12",
+		"path empty":   "https://github.com/owner//repo/pull/12",
+	}
+	for name, in := range bad {
+		t.Run(name, func(t *testing.T) {
+			_, err := ParseItemRef(in)
+			if err == nil || !IsRefused(err) {
+				t.Fatalf("ParseItemRef(%q) = %v; want a refusal", in, err)
+			}
+			for _, j := range []string{"\x1b", "\t", "lead", "see ", "@example-user", "**"} {
+				if strings.Contains(err.Error(), j) {
+					t.Fatalf("the refusal repeated %q: %q", j, err.Error())
+				}
+			}
+		})
+	}
+	for _, in := range []string{
+		"http://127.0.0.1:8080/owner/repo/pull/12",
+		"https://gitlab.example.test/grp/my_proj.x/-/merge_requests/12",
+		"https://github.com/owner/repo/issues/12",
+	} {
+		if _, err := ParseItemRef(in); err != nil {
+			t.Fatalf("ParseItemRef(%q): %v", in, err)
+		}
 	}
 }

@@ -161,7 +161,7 @@ type proposal struct {
 // fixed placeholder when the marker's value did not parse — the value itself is not kept.
 func (p proposal) target() string {
 	if !p.Parsed {
-		return "(an unparseable reference)"
+		return unparseableRef
 	}
 	return itemRef(p.Target.Repo, p.Target.Number, p.Target.Kind)
 }
@@ -388,7 +388,7 @@ func propose(c common, n int, target string, targetKind deskkit.TargetKind, who 
 		return nil
 	}
 
-	body := proposalBody(canon, who, disp)
+	body := proposalBody(c.repo, canon, who, disp)
 	if c.dryRun {
 		a.log(deskkit.ResultDryRun, "dry-run: verified, wrote nothing")
 		fmt.Fprintf(out, "dry-run\t%s\tpropose\ttarget=%s\n", itemRef(c.repo, n, labelTargetOf(it)), canon)
@@ -590,13 +590,14 @@ func standingProposal(repo string, n int, kind deskkit.TargetKind, target string
 	normCaller, callerOk := normalizeItemRef(repo, target)
 	if !recOk {
 		return proposal{}, deskkit.Refused(fmt.Sprintf(
-			"refused: the standing proposal on %s#%d names %s as the superseding item, which does not resolve "+
-				"to a repository", repo, n, p.target()))
+			"refused: the standing proposal on %s#%d names a superseding item that does not resolve to a "+
+				"repository. The value is not repeated here; re-propose against the right target, or dispute "+
+				"the proposal.", repo, n))
 	}
 	if !callerOk {
-		return proposal{}, deskkit.Refused(fmt.Sprintf(
-			"refused: %s does not parse as an item reference (want N, #N, owner/repo#N, or a github.com "+
-				"permalink)", deskkit.StripControl(target)))
+		return proposal{}, deskkit.Refused(
+			"refused: the declared target does not parse as a whole item reference (want N, #N, " +
+				"owner/repo#N, or the object's web URL, and nothing else); the value is not repeated here")
 	}
 	if !strings.EqualFold(normRecorded, normCaller) {
 		return proposal{}, deskkit.Refused(fmt.Sprintf(
@@ -640,7 +641,7 @@ func (v *supersedeVerdict) block() string {
 	return b.String()
 }
 
-func proposalBody(target string, who caller, disp dispositionRead) string {
+func proposalBody(repo, target string, who caller, disp dispositionRead) string {
 	var b strings.Builder
 	b.WriteString(proposalMarker + "\n")
 	fmt.Fprintf(&b, "Superseded-By: %s\n", deskkit.StripControl(target))
@@ -655,8 +656,8 @@ func proposalBody(target string, who caller, disp dispositionRead) string {
 		verdictConfirmed, verdictDisputed, labelNeedsDecision)
 	if disp.Record.Verdict != "" {
 		fmt.Fprintf(&b, "\n- Disposition record: %s — evidence %s (recorded %s by %s)\n",
-			deskkit.StripControl(disp.Record.Verdict), deskkit.StripControl(disp.Record.Evidence),
-			deskkit.StripControl(disp.Record.RecordedAt), deskkit.StripControl(disp.Record.RecordedBy))
+			renderRecordField(disp.Record.Verdict), echoRef(repo, disp.Record.Evidence),
+			renderRecordField(disp.Record.RecordedAt), renderRecordField(disp.Record.RecordedBy))
 	}
 	return b.String()
 }

@@ -522,7 +522,17 @@ func verifyLane(r *closeReq, it item) (string, dispositionRead, error) {
 		}
 		disp = d
 		if target == "" {
-			target = d.Record.Evidence
+			// The record's Evidence becomes the target only through its parse: it is text
+			// any commenter can have written, so it is re-rendered (or refused without being
+			// repeated), never carried onward as written.
+			if _, ok := parseRef(d.Record.Evidence); !ok {
+				return "", disp, deskkit.Refused(fmt.Sprintf(
+					"refused: the disposition record on %s#%d names Evidence that does not parse as a whole "+
+						"item reference, so it cannot stand in for a target. The value is not repeated here; "+
+						"declare the target, or re-record the disposition with a reference.",
+					r.repo, r.number))
+			}
+			target = echoRef(r.repo, d.Record.Evidence)
 		}
 	}
 
@@ -637,8 +647,8 @@ func closeComment(r closeReq, it item, d dispositionRead) string {
 	}
 	if d.Record.Verdict != "" {
 		fmt.Fprintf(&b, "- Disposition record: %s — evidence %s (recorded %s by %s)\n",
-			deskkit.StripControl(d.Record.Verdict), deskkit.StripControl(d.Record.Evidence),
-			deskkit.StripControl(d.Record.RecordedAt), deskkit.StripControl(d.Record.RecordedBy))
+			renderRecordField(d.Record.Verdict), echoRef(r.repo, d.Record.Evidence),
+			renderRecordField(d.Record.RecordedAt), renderRecordField(d.Record.RecordedBy))
 	}
 	if r.verdict != nil {
 		fmt.Fprintf(&b, "- Two-role verdict: **%s** — proposed by %s, confirmed by %s\n\n",

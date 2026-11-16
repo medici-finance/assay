@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -116,8 +117,8 @@ func requireTerminalDisposition(repo string, n int, declaredTarget string) (disp
 	}
 	if v != verdictSuperseded && v != verdictResolvedElsewhere {
 		return d, deskkit.Refused(fmt.Sprintf(
-			"refused: %s#%d carries disposition %q, which is not a terminal verdict",
-			repo, n, deskkit.StripControl(d.Record.Verdict)))
+			"refused: %s#%d carries disposition %s, which is not a terminal verdict",
+			repo, n, renderRecordField(d.Record.Verdict)))
 	}
 	if strings.TrimSpace(d.Record.Evidence) == "" {
 		return d, deskkit.Refused(fmt.Sprintf(
@@ -129,7 +130,7 @@ func requireTerminalDisposition(repo string, n int, declaredTarget string) (disp
 			"refused: %s#%d is recorded %s with Evidence %s, but the close declares target %s. "+
 				"The record and the caller disagree about what settled this item; deskclose does not "+
 				"pick a winner between them.",
-			repo, n, v, deskkit.StripControl(d.Record.Evidence), deskkit.StripControl(declaredTarget)))
+			repo, n, v, echoRef(repo, d.Record.Evidence), echoRef(repo, declaredTarget)))
 	}
 	return d, nil
 }
@@ -147,6 +148,46 @@ func requireTerminalDisposition(repo string, n int, declaredTarget string) (disp
 func parseRef(s string) (deskkit.ItemRef, bool) {
 	r, err := deskkit.ParseItemRef(s)
 	return r, err == nil
+}
+
+// unparseableRef is the fixed text a reference renders as when it does not parse whole.
+// The value itself is never printed: text that is not a reference is text another identity
+// chose, and every place a reference is echoed — a refusal, a receipt, the audit detail, a
+// comment posted under an App's identity — prints only what the parse produced.
+const unparseableRef = "(an unparseable reference)"
+
+// echoRef renders reference text for output through its parse ONLY: the canonical
+// repository-qualified form (a repo-less reference defaults to defaultRepo), in the serving
+// forge's sigil (itemRef), or unparseableRef. It is the one way this package prints a
+// reference it read from a record, a marker or a caller.
+func echoRef(defaultRepo, s string) string {
+	r, ok := parseRef(s)
+	if !ok {
+		return unparseableRef
+	}
+	repo := r.Repo
+	if repo == "" {
+		repo = defaultRepo
+	}
+	return itemRef(repo, r.Number, r.Kind)
+}
+
+// recordFieldRe is what a disposition record's self-reported Verdict, RecordedBy or
+// RecordedAt must look like to be printed: one word of letters, digits and `_ . : -` (a
+// login may end in `[bot]`). It admits no space, `@`, `*`, backtick or link syntax, so a
+// record cannot put a mention or Markdown into a receipt, a refusal or a comment.
+var recordFieldRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}(\[bot\])?$`)
+
+// unreadableField is the fixed text a record field renders as when it fails recordFieldRe.
+const unreadableField = "(unreadable)"
+
+// renderRecordField prints a self-reported record field only when it is one plain word.
+func renderRecordField(s string) string {
+	t := strings.TrimSpace(s)
+	if !recordFieldRe.MatchString(t) {
+		return unreadableField
+	}
+	return t
 }
 
 // refsAgree reports whether two item references name the same item. It compares the
