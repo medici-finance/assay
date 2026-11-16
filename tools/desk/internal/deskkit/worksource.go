@@ -1,6 +1,7 @@
 package deskkit
 
 import (
+	"errors"
 	"fmt"
 	"path"
 	"strconv"
@@ -41,7 +42,12 @@ func LocalWorkCatalog(root, repository string) (WorkCatalog, error) {
 		return WorkCatalog{}, Unverifiable("work source tree unreadable", err)
 	}
 	if repository == "" {
-		urls, e := repo.RemoteURLs("origin")
+		// The slug decides which repository's work this is, so the read refuses when
+		// config it does not merge could change origin as native git resolves it.
+		urls, e := repo.ScopedRemoteURLs("origin")
+		if errors.Is(e, gitcore.ErrRemoteScopeUnmerged) {
+			return WorkCatalog{}, Unverifiable("work source origin could be changed by worktree-scope or include config", e)
+		}
 		if e != nil || len(urls) != 1 {
 			return WorkCatalog{}, Unverifiable("unambiguous work source origin unavailable", e)
 		}
