@@ -383,7 +383,7 @@ func (t *readSetTarget) finish(l traceLog) string {
 	if t.env.StateDir == "" {
 		return evaluation.ReadSetCellToken("", "the read-set file could not be written")
 	}
-	if err := writeReadSetFile(t.env.StateDir, digest, content); err != nil {
+	if err := writeReadSetFile(t.env.StateDir, digest, content, randomTempSuffix); err != nil {
 		return evaluation.ReadSetCellToken("", "the read-set file could not be written")
 	}
 	return evaluation.ReadSetCellToken(digest, "")
@@ -391,7 +391,8 @@ func (t *readSetTarget) finish(l traceLog) string {
 
 // Retention for the state directory: a read-set file waits there only until
 // the landing copies it beside its brief, so pruneReadSets keeps files
-// younger than readSetMaxAge and, of those, the newest readSetMaxFiles.
+// younger than readSetMaxAge (a file exactly that old goes) and, of those,
+// the newest readSetMaxFiles.
 const (
 	readSetMaxAge   = 30 * 24 * time.Hour
 	readSetMaxFiles = 256
@@ -404,8 +405,9 @@ const (
 // refused, and the bytes go to a fresh temp file opened
 // O_CREATE|O_EXCL|O_NOFOLLOW and renamed into place, so an existing file is
 // replaced, never rewritten in place, and a reader sees the old file or the
-// whole new one.
-func writeReadSetFile(stateDir, digest string, content []byte) error {
+// whole new one. suffix names each temp-file attempt; the caller passes
+// randomTempSuffix, and a test passes a fixed name to plant an entry there.
+func writeReadSetFile(stateDir, digest string, content []byte, suffix func() (string, error)) error {
 	dst := readSetStatePath(stateDir, digest)
 	dir := filepath.Dir(dst)
 	if err := os.Mkdir(dir, 0o755); err != nil && !os.IsExist(err) {
@@ -419,7 +421,7 @@ func writeReadSetFile(stateDir, digest string, content []byte) error {
 	if fi, err := os.Lstat(dst); err == nil && !fi.Mode().IsRegular() {
 		return fmt.Errorf("read-set file %s is not a regular file (%s)", dst, fi.Mode().Type())
 	}
-	f, tmp, err := createReadSetTemp(dir, digest)
+	f, tmp, err := createReadSetTemp(dir, digest, suffix)
 	if err != nil {
 		return err
 	}
@@ -438,16 +440,25 @@ func writeReadSetFile(stateDir, digest string, content []byte) error {
 	return nil
 }
 
+// randomTempSuffix is the production temp-name source: 64 random bits.
+func randomTempSuffix() (string, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b[:]), nil
+}
+
 // createReadSetTemp opens a new temp file beside the read-set file, never
 // one that already exists and never through a link.
-func createReadSetTemp(dir, digest string) (*os.File, string, error) {
+func createReadSetTemp(dir, digest string, suffix func() (string, error)) (*os.File, string, error) {
 	var err error
 	for i := 0; i < 16; i++ {
-		var b [8]byte
-		if _, err = rand.Read(b[:]); err != nil {
+		var sfx string
+		if sfx, err = suffix(); err != nil {
 			return nil, "", err
 		}
-		p := filepath.Join(dir, "."+digest+"."+hex.EncodeToString(b[:])+".tmp")
+		p := filepath.Join(dir, "."+digest+"."+sfx+".tmp")
 		f, oerr := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL|readSetNoFollow, 0o644)
 		if oerr == nil {
 			return f, p, nil
@@ -460,7 +471,7 @@ func createReadSetTemp(dir, digest string) (*os.File, string, error) {
 }
 
 // pruneReadSets bounds the state directory dir: it removes every read-set
-// file (a 64-hex name) or leftover temp file older than readSetMaxAge, then
+// file (a 64-hex name) or leftover temp file aged readSetMaxAge or more, then
 // the oldest read-set files beyond readSetMaxFiles. The file named keep, just
 // written, always stays. Any other entry is left alone. Best effort: a file
 // it cannot stat or remove is skipped.
@@ -484,7 +495,7 @@ func pruneReadSets(dir, keep string, now time.Time) {
 		if err != nil {
 			continue
 		}
-		if now.Sub(fi.ModTime()) > readSetMaxAge {
+		if now.Sub(fi.ModTime()) >= readSetMaxAge {
 			_ = os.Remove(filepath.Join(dir, n))
 		} else if isSet {
 			fresh = append(fresh, aged{n, fi.ModTime()})
