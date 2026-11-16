@@ -88,6 +88,19 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if perr != nil {
 		return deskkit.Refused("refused: invalid --outcome-record JSON: " + perr.Error())
 	}
+	// The record file is pinned by its bytes here and re-read in the write window, so a file
+	// changed after preparation refuses instead of having been judged as one record and named
+	// by another.
+	ac.addRecheck(func() error {
+		again, err := os.ReadFile(readPath)
+		if err != nil {
+			return changedSincePrep("the local --outcome-record "+readPath, deskkit.Unverifiable("cannot re-read it", err))
+		}
+		if !bytes.Equal(again, raw) {
+			return changedSincePrep("the local --outcome-record "+readPath, nil)
+		}
+		return nil
+	})
 
 	// STEP ORDER — every refusal in steps 1-2 needs only the record's own
 	// bytes, so none of them reads the forge on the record's behalf:
@@ -164,10 +177,27 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if err := checkAdmittedDeliveryPRs(fg, receipt, facts); err != nil {
 		return err
 	}
+	unredacted, unredactedTS := rec.Raw, rec.TS
 	redacted, rderr := redactOutcomeFn(rec.Raw, join, facts)
 	if rderr != nil {
 		return deskkit.Refused("refused: cannot redact --outcome-record for its register: " + rderr.Error())
 	}
+	// The join facts (the delivery PRs and their visibility) decide the redaction. They are
+	// re-read in the write window and the record must redact to the same bytes.
+	ac.addRecheck(func() error {
+		again, err := resolveJoinFacts(ac.freshForge, fr, kind, join, submitted.SHA, unredactedTS)
+		if err != nil {
+			return changedSincePrep("the outcome record's join facts", err)
+		}
+		if err := checkAdmittedDeliveryPRs(ac.freshForge, receipt, again); err != nil {
+			return changedSincePrep("the outcome record's delivery PRs", err)
+		}
+		reRedacted, err := redactOutcomeFn(unredacted, join, again)
+		if err != nil || !bytes.Equal(reRedacted, redacted) {
+			return changedSincePrep("the outcome record's redaction", err)
+		}
+		return nil
+	})
 	if !bytes.Equal(redacted, rec.Raw) {
 		rrec, rperr := deskkit.ParseRecord(redacted)
 		if rperr != nil {
@@ -202,6 +232,11 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	// bytes, so its name is re-derived — same stream directory, same brief number, which
 	// keeps the admission above bound to this brief.
 	evidenceRoot := receipt.EvidenceRoot(root)
+	// The root the gates below stage into is locked before anything reads it (enterPrep is a
+	// no-op when it is the --root cmdEvidence already locked).
+	if perr := ac.enterPrep(evidenceRoot); perr != nil {
+		return perr
+	}
 	derived, derr := admittedOutcomeReceipt(rec.Raw, evidenceRoot, fg, fr, branch, receipt)
 	if derr != nil {
 		return derr
@@ -293,6 +328,19 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if err := outcomeObservationBindingFn(evidenceRoot, fg, fr, closureRef, receipt, outcome); err != nil {
 		return err
 	}
+	// Bound to a branch tip rather than a pinned landed commit, the Evidence and observation
+	// bindings read a ref the write does not pin: they are re-checked in the write window.
+	if landedHead == "" {
+		ac.addRecheck(func() error {
+			if err := gateOutcomeEvidence(outcomeOnly, evidenceRoot, landedRoot, targetRepoPath, ac.freshForge, fr, closureRef, receipt, outcome, commitContent, ac.options); err != nil {
+				return changedSincePrep("the outcome record's Evidence binding", err)
+			}
+			if err := outcomeObservationBindingFn(evidenceRoot, ac.freshForge, fr, closureRef, receipt, outcome); err != nil {
+				return changedSincePrep("the outcome record's observation binding", err)
+			}
+			return nil
+		})
+	}
 
 	// A brand-new file: scan it whole (no base to diff against).
 	if berr := evidenceOutboundCheck(repoSlug, targetRepoPath, commitContent, commitContent); berr != nil {
@@ -304,6 +352,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if gerr := publicRepoGateFn(fetcher, owner, name); gerr != nil {
 		return gerr
 	}
+	addVisibilityRecheck(ac, owner, name)
 
 	bodyDig := deskkit.Sha256Hex(commitContent)
 	ac.bodyDig = bodyDig
@@ -354,10 +403,21 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	// write budget and the write. The on-behalf-of principal is resolved here too, so a record a
 	// real run would refuse for a missing principal refuses its dry-run as well. It is resolved
 	// ONCE, here, and the write path below reuses it.
-	commitSuffix, oerr := deskkit.OnBehalfOfCommitSuffix("", repoSlug)
+	// One resolver call site serves both reads (the principal-class guard counts call sites).
+	resolveSuffix := func() (string, error) { return deskkit.OnBehalfOfCommitSuffix("", repoSlug) }
+	commitSuffix, oerr := resolveSuffix()
 	if oerr != nil {
 		return oerr
 	}
+	// Resolved in preparation (so a dry-run refuses as a real run would) and re-resolved in the
+	// write window: a principal that changed in between refuses.
+	ac.addRecheck(func() error {
+		again, err := resolveSuffix()
+		if err != nil || again != commitSuffix {
+			return changedSincePrep("the on-behalf-of principal", err)
+		}
+		return nil
+	})
 	if dryRun {
 		mode := "outcome record"
 		if outcomeOnly {
@@ -372,7 +432,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return nil
 	}
 
-	if werr := evidenceWriteBudget(toolName, repoSlug, 0); werr != nil {
+	if werr := ac.enterWriteWindow(toolName, repoSlug, 0); werr != nil {
 		return werr
 	}
 

@@ -1009,7 +1009,7 @@ func preflightOpts(dir, base string, allowDetached bool, detachedMsg string, req
 	}
 	repo, rerr := parseRepo(originURL)
 	if rerr != nil {
-		return nil, deskkit.Unverifiable("cannot parse origin repo from "+originURL, rerr)
+		return nil, deskkit.Unverifiable("cannot parse origin repo", rerr)
 	}
 	if !deskkit.IsAllowedRepo(repo) {
 		return nil, deskkit.Refused("refused: origin " + repo + " is not in the desk-tools repo set")
