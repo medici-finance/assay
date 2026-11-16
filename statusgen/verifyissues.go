@@ -1057,6 +1057,14 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 			if cuts == nil && heldObservedOutput(line, clean, read, h) {
 				continue
 			}
+			// On the flip read only, an occurrence inside a double-quoted
+			// span is the row's quoted output, not its disposition: both flip
+			// callers then require a passing witness for every Verify row
+			// (heldScanScope rule 7, #5482). The card and close-verify, which
+			// run no witness check, still read it.
+			if latestRun && cuts == nil && heldQuotedOutput(clean, h) {
+				continue
+			}
 			keywordAfter := false
 			for _, k := range keywordLocs {
 				if k[0] >= h[0] {

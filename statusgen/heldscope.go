@@ -224,6 +224,21 @@ import (
 //     with no row, marker or verdict included, is not read: the witness row
 //     carries its state.
 //
+//  7. Double-quoted output, flip read only (#5482). A verifier records what a
+//     row's command printed — a mutated test's failure message, a diagnostic
+//     — in double quotes as often as in inline code. On the flip read
+//     (latestRun: verifyflip and the reconcile fold) an occurrence wholly
+//     inside a double-quoted span of its cell is not read (heldQuotedOutput:
+//     ASCII quotes paired in order, an odd count or an escaped quote in the
+//     cell pairing nothing, a span holding only the marker word kept, no
+//     struck span on the line). Those callers go on to require a passing
+//     execution witness for every Verify row in the run they credit
+//     (closureRunWitnesses), so a row that really held cannot flip on its
+//     quoted words being skipped. The verify-gate card, close-verify, the
+//     sign-off act and autoflip run no witness check and read the occurrence
+//     as before. An occurrence outside every quoted span on the same line is
+//     read as always.
+//
 // The hygiene (fences, blockquotes, struck and inline code), the routing rule
 // and the negation rule in unroutedHeldLine apply unchanged to what is read.
 type heldLineRead struct {
@@ -1413,6 +1428,65 @@ func heldObservedOutput(line, clean string, read heldLineRead, h []int) bool {
 			}
 		}
 		return true
+	}
+	return false
+}
+
+// heldQuotedOutput reports whether the occurrence at clean[h[0]:h[1]] sits
+// inside a double-quoted span of its cell (rule 7, #5482). clean is the line
+// as the scan reads it: inline code already masked, struck spans cut (the
+// caller passes only a line with none). The span is read FAIL-CLOSED:
+//   - The cell is the text between the unescaped "|" on either side of the
+//     occurrence, or the line's ends, on every line, table or not (the same
+//     split inlineCodeScan applies), so a span never joins two cells.
+//   - Only the ASCII double quote '"' delimits. A quote inside masked inline
+//     code is gone already. Any backslash-escaped quote in the cell, or an
+//     odd number of quotes in it, leaves the pairing uncertain: no span.
+//   - Quotes pair in order, first with second, third with fourth. The
+//     occurrence must lie wholly inside one pair.
+//   - A span holding nothing but the marker word (heldBareTokenRe: "HELD",
+//     "**could-not-check:**") is the verifier's own status token in quotes,
+//     not output, and is not a span here.
+//   - A line inlineCodeScan does not mask (a possible link reference
+//     definition, whose quoted title is not rendered text; a bare carriage
+//     return, which a renderer splits) has no span.
+func heldQuotedOutput(clean string, h []int) bool {
+	if hasBareCR(clean) || linkDefLine(clean) {
+		return false
+	}
+	lo, hi := 0, len(clean)
+	for i := 0; i < len(clean); i++ {
+		if clean[i] == '\\' {
+			i++
+			continue
+		}
+		if clean[i] != '|' {
+			continue
+		}
+		if i < h[0] {
+			lo = i + 1
+		} else if i >= h[1] {
+			hi = i
+			break
+		}
+	}
+	var quotes []int
+	for i := lo; i < hi; i++ {
+		if clean[i] == '\\' && i+1 < hi && clean[i+1] == '"' {
+			return false
+		}
+		if clean[i] == '"' {
+			quotes = append(quotes, i)
+		}
+	}
+	if len(quotes)%2 != 0 {
+		return false
+	}
+	for k := 0; k < len(quotes); k += 2 {
+		open, closeAt := quotes[k], quotes[k+1]
+		if h[0] > open && h[1] <= closeAt {
+			return !heldBareTokenRe.MatchString(clean[open+1 : closeAt])
+		}
 	}
 	return false
 }

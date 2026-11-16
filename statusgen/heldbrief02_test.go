@@ -20,9 +20,11 @@ import (
 // The last entry's own prose also quotes base-tree tool output that reads
 // COULD-NOT-CHECK, in double quotes rather than inline code. The held
 // occurrences of the last entry are always read (heldscope.go, rule 3), so
-// that line still refuses the real Evidence by design; quoted tool output is
-// excluded only inside a code span (#2100). b02Coded is the real Evidence with
-// that one quote written as a code span, the form the scan already admits.
+// that line still refuses the real Evidence on close-verify and the card;
+// there, quoted tool output is excluded only inside a code span (#2100). The
+// flip read excludes it inside double quotes too (rule 7, #5482;
+// TestHeldQuotedFlipAdmits). b02Coded is the real Evidence with that one
+// quote written as a code span, the form every read admits.
 
 // b02Evidence returns the fixture's Evidence section as the flip reads it.
 func b02Evidence(t *testing.T) string {
@@ -153,7 +155,6 @@ func TestHeldScopeB02Refuses(t *testing.T) {
 			"| 3 | `cd statusgen && go test -run TestPatternsEffectExceedsRoleIsProblem ./...` | could-not-check exit=-1"), true},
 		{"latest PASS not strict", b02Edit(t, ev, false, "**VERIFY: PASS** — 9 of 9", "VERIFY: PASS — 9 of 9"), true},
 		{"latest PASS then BLOCKED", ev + "\nVERIFY: BLOCKED\n", true},
-		{"real Evidence as committed", b02Evidence(t), true},
 		// A hold newer than the last full PASS stays live, whatever its heading
 		// says about its date or its standing.
 		{"hold after the last PASS", ev + hold("Non-implementer verifier re-run — 2026-10-26"), true},
