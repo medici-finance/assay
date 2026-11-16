@@ -1500,21 +1500,7 @@ func resolveDecisionGateFaults(c *ghClient, repo string, faults []gateFault, log
 				Detail: fmt.Sprintf("this change %s; the repository could not be determined from the origin remote, so the ruling link %s cannot be checked against it (%s)", f.what(), r.Rec.Ruling, decisionGateSpecRef)})
 			continue
 		}
-		names := f.boardNames()
-		binding := rulingIssueBinding{
-			what: "brief " + strings.Join(names, " / "),
-			rules: func(iss rulingIssue, _ rulingLink) bool {
-				return briefIssueRulesOn(iss.Body, repo, names, f.briefIDs(), repoAliases)
-			},
-		}
-		var o rulingOutcome
-		for _, id := range names {
-			fmt.Fprintf(os.Stderr, "statusgen: decision-gate: resolving ruling link %s for %s\n", r.Rec.Ruling, id)
-			o = resolveRulingOn(c, repo, decisionRecordStamp{File: r.Rec.Path, ID: id, Ruling: r.Rec.Ruling}, logins, binding)
-			if o.Reason != rulingRecordNotNamed {
-				break // only a comment that names another spelling is worth a second read
-			}
-		}
+		o := resolveBriefRuling(c, repo, r.Rec.Path, r.Rec.Ruling, f.boardNames(), f.briefIDs(), logins, repoAliases)
 		if o.Present && o.Reason == rulingOK {
 			out = append(out, decisionGateResult{Board: board, Detail: fmt.Sprintf("ruled by %s (%s)", o.Author, o.Detail)})
 			continue
@@ -1524,6 +1510,29 @@ func resolveDecisionGateFaults(c *ghClient, repo string, faults []gateFault, log
 				f.what(), r.Rec.Ruling, r.Rec.DecisionIssue, o.Reason, o.Detail, decisionGateSpecRef)})
 	}
 	return out
+}
+
+// resolveBriefRuling is layer two for one brief's recorded ruling: the ruling
+// link resolved through resolveRulingOn (the one network resolver), with
+// condition 6 the brief's own decision-gate marker (briefIssueRulesOn). names
+// are the board-id spellings the ruling comment may name, tried in order; only
+// a comment that names none of the earlier spellings is worth a second read.
+func resolveBriefRuling(c *ghClient, repo, path, ruling string, names, briefIDs []string, logins map[string]string, repoAliases []string) rulingOutcome {
+	binding := rulingIssueBinding{
+		what: "brief " + strings.Join(names, " / "),
+		rules: func(iss rulingIssue, _ rulingLink) bool {
+			return briefIssueRulesOn(iss.Body, repo, names, briefIDs, repoAliases)
+		},
+	}
+	var o rulingOutcome
+	for _, id := range names {
+		fmt.Fprintf(os.Stderr, "statusgen: decision-gate: resolving ruling link %s for %s\n", ruling, id)
+		o = resolveRulingOn(c, repo, decisionRecordStamp{File: path, ID: id, Ruling: ruling}, logins, binding)
+		if o.Reason != rulingRecordNotNamed {
+			break
+		}
+	}
+	return o
 }
 
 // decisionGateAgainst runs both layers for the working tree at root against the
@@ -1654,7 +1663,9 @@ func decisionGatePRLane(root, repo string, files []ghPRFile, mergeBase string, c
 			return refuse(fmt.Sprintf("the working tree is identical to the resolved merge-base %s while the forge lists %d changed file(s), so that base cannot be the PR's base", mergeBase, len(files)))
 		}
 	}
-	return decisionGateAgainst(top, repo, mergeBase)
+	// The hold judges status moves; a ruling link the PR adds or changes is
+	// resolved too, move or no move (briefruling.go).
+	return append(decisionGateAgainst(top, repo, mergeBase), briefRulingLane(top, repo, mergeBase)...)
 }
 
 // repoFromOriginAtFn resolves "owner/repo" from root's origin remote — a seam.
@@ -1669,6 +1680,8 @@ func printDecisionGateReport(rs []decisionGateResult) {
 	fmt.Println("# comment, on its decision issue, by a login mapped to a human (never a bot),")
 	fmt.Println("# whose own text names the brief by its board id. It confirms THAT a human")
 	fmt.Println("# decided, not what they decided. It is never applied at a PR's ready-flip.")
+	fmt.Println("# On a pull request, any brief whose ruling: link the PR adds or changes has")
+	fmt.Println("# that link resolved the same way, move or no move; an unresolvable link is refused.")
 	fmt.Println()
 	if len(rs) == 0 {
 		fmt.Println("no gate: human brief moved, relabelled or dropped — clean")

@@ -229,6 +229,38 @@ func TestRuling_BotAuthor(t *testing.T) {
 	rlWantMissing(t, res[0], rulingBotAuthor)
 }
 
+// The account type must be User: an Organization (or any other non-User type)
+// login is refused by its type, even when the map names it.
+//
+// regression: #4522
+func TestRuling_NonUserAccount(t *testing.T) {
+	f := defaultRLForge()
+	f.commentBody = rlCommentJSON(rlHuman, "Organization", rlRepo, rlIssue)
+	rlWantMissing(t, rlRun(t, f.client(t), rlPlaceholder(rlURL(rlRepo, rlIssue, rlComment)), &ghPRData{}, nil), rulingBotAuthor)
+}
+
+// A [bot] login is refused even when the payload reports type User: the
+// suffix check stays alongside the User-type rule.
+func TestRuling_BotSuffixUser(t *testing.T) {
+	f := defaultRLForge()
+	f.commentBody = rlCommentJSON("example-bot[bot]", "User", rlRepo, rlIssue)
+	logins := map[string]string{"example_human": "example-bot[bot]"}
+	o := resolveRuling(f.client(t), rlRepo, rlPlaceholder(rlURL(rlRepo, rlIssue, rlComment)), logins, nil, nil)
+	if o.Reason != rulingBotAuthor {
+		t.Fatalf("reason = %q, want %q (%s)", o.Reason, rulingBotAuthor, o.Detail)
+	}
+}
+
+// A payload that names no account type cannot show a personal account wrote
+// the comment: could-not-check, never read as User.
+//
+// regression: #4522
+func TestRuling_EmptyAccountType(t *testing.T) {
+	f := defaultRLForge()
+	f.commentBody = rlCommentJSON(rlHuman, "", rlRepo, rlIssue)
+	rlWantMissing(t, rlRun(t, f.client(t), rlPlaceholder(rlURL(rlRepo, rlIssue, rlComment)), &ghPRData{}, nil), rulingUnresolvable)
+}
+
 // Placeholder form: the author is a human account, but not one in the map.
 func TestRuling_WrongAuthorUnmapped(t *testing.T) {
 	f := defaultRLForge()
