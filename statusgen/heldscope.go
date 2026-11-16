@@ -1432,6 +1432,37 @@ func heldObservedOutput(line, clean string, read heldLineRead, h []int) bool {
 	return false
 }
 
+// heldWitnessLines marks each source line of evidence that rule 7 must never
+// skip: a line behind a row the witness check reads as a verifyrun witness
+// row. The witness check reads rows only after stripRowComments removes the
+// complete HTML comments (parseEvidenceRows), so membership is decided on
+// that stripped text and mapped back to every source line the stripped row
+// came from (flipStrippedSpans). A comment can then neither hide a witness
+// shape from the line it sits on nor join two source lines into a witness
+// row the scan did not see. The flip path strips the run twice (its run is
+// already stripped, then parseEvidenceRows strips it again); when the second
+// strip changes the text, or the mapping cannot be rebuilt, the two views
+// can differ, so every line is marked: rule 7 is off, fail-closed.
+func heldWitnessLines(evidence string) []bool {
+	marks := make([]bool, strings.Count(evidence, "\n")+1)
+	stripped, _ := stripRowComments(evidence)
+	spans, ok := flipStrippedSpans(evidence)
+	if again, _ := stripRowComments(stripped); !ok || again != stripped {
+		for i := range marks {
+			marks[i] = true
+		}
+		return marks
+	}
+	for k, row := range strings.Split(stripped, "\n") {
+		if isWitnessRow(row) {
+			for i := spans[k][0]; i <= spans[k][1]; i++ {
+				marks[i] = true
+			}
+		}
+	}
+	return marks
+}
+
 // heldQuotedOutput reports whether the occurrence at clean[h[0]:h[1]] sits
 // inside a double-quoted span (rule 7, #4721). clean is the line as the scan
 // reads it: inline code already masked, struck spans cut (the caller passes
@@ -1484,9 +1515,10 @@ func heldQuotedOutput(clean string, h []int, row, alone bool) bool {
 //     code is gone already. Any backslash-escaped quote in the region, or an
 //     odd number of quotes in it, leaves the pairing uncertain: no span.
 //   - Markup or a character a renderer may not show as a quotation mark
-//     leaves it uncertain too: a "<" or "&" anywhere in the region, a
-//     non-ASCII byte beside a quote, or a quote with white space (or the
-//     region's edge) on both sides.
+//     leaves it uncertain too: a "<" or "&" or link or image syntax ("](")
+//     anywhere in the region, a non-ASCII byte beside a quote, or a quote
+//     with white space (CommonMark's set, or the region's edge) on both
+//     sides.
 //   - Quotes pair in order, first with second, third with fourth. An opening
 //     quote right after a letter or digit, or a closing quote right before
 //     one (an inch mark: 5"), is not a quotation mark: no span.
@@ -1514,8 +1546,16 @@ func heldQuotedIn(clean string, h []int, lo, hi int) bool {
 	if strings.ContainsAny(clean[lo:hi], "<&") {
 		return false
 	}
+	// Link or image syntax hides a quote too: a title in a link or image
+	// ("[a](/u '\"')") or a bare destination ("[a](/u/\")") is not rendered
+	// as text, so "](" in the region leaves the pairing uncertain.
+	if strings.Contains(clean[lo:hi], "](") {
+		return false
+	}
+	// White space is CommonMark's set: a form feed or vertical tab renders
+	// as a space, so it flanks a mark as a space does.
 	space := func(i int) bool {
-		return i < lo || i >= hi || clean[i] == ' ' || clean[i] == '\t'
+		return i < lo || i >= hi || strings.IndexByte(" \t\n\v\f\r", clean[i]) >= 0
 	}
 	for _, q := range quotes {
 		// A quote beside a non-ASCII byte (a no-break or other Unicode

@@ -163,3 +163,94 @@ func TestHeldQuotedWitnessCell(t *testing.T) {
 		{"quoted hold after the state", cell(`pass exit=0 "tenant b: could-not-check, no grant"`), true},
 	}, nil)
 }
+
+// TestHeldQuotedWitnessStripped: the witness check reads Evidence rows only
+// after complete HTML comments are removed (parseEvidenceRows), so whether
+// rule 7 may skip a line is decided on that same stripped text. Each case
+// hides row 2's witness shape from its source line with an invisible
+// comment, while the stripped row is a witness the check credits as a pass:
+// a comment inside the digest, the same with a HELD marker, a comment
+// carrying a pipe in the header and every Command cell, a comment that
+// joins two source lines into one row, and a comment that only the second
+// strip on the flip path removes. Every read refuses each one.
+// regression: #4721
+func TestHeldQuotedWitnessStripped(t *testing.T) {
+	base := witEntry("Run 1", witTable(2, "", witPass, ""), "", "**VERIFY: PASS** — 2/2 rows")
+	row2 := "| 2 | `tool check 2` | pass exit=0 | sha256:0123456789ab |"
+	edit := func(s string, pairs ...string) string {
+		for k := 0; k < len(pairs); k += 2 {
+			if !strings.Contains(s, pairs[k]) {
+				t.Fatalf("fixture: %q not found", pairs[k])
+			}
+			s = strings.Replace(s, pairs[k], pairs[k+1], 1)
+		}
+		return s
+	}
+	cnc := `"tenant b: could-not-check, no grant" pass exit=0`
+	held := `"tenant b: HELD, no grant" pass exit=0`
+	cases := []heldScanCase{
+		{"comment inside the digest", edit(base, row2,
+			"| 2 | `tool check 2` | "+cnc+" | sha256:<!-- -->0123456789ab |"), true},
+		{"digest comment, held marker", edit(base, row2,
+			"| 2 | `tool check 2` | "+held+" | sha256:<!-- -->0123456789ab |"), true},
+		{"comment pipe shifts columns", edit(base,
+			"| # | Command |", "| # | Command <!-- | --> |",
+			"|---|---------|", "|---|---------|---|",
+			"`tool check 1` |", "`tool check 1` <!-- | --> |",
+			row2, "| 2 | `tool check 2` <!-- | --> | "+cnc+" | sha256:0123456789ab |"), true},
+		{"comment joins two lines", edit(base, row2,
+			"| 2 | `tool check 2` <!--\n--> | "+held+" | sha256:0123456789ab |"), true},
+		// The flip strips the run once and the witness check strips it
+		// again, so a comment the first strip assembles is removed too.
+		{"comment built by the strip", edit(base, row2,
+			"| 2 | `tool check 2` | "+cnc+" | sha256:<!<!-- -->-- -->0123456789ab |"), true},
+	}
+	for _, tc := range cases {
+		// The shape under test: no source line holding the hold is a
+		// witness row, but the stripped row 2 is one and reads pass.
+		for _, l := range strings.Split(tc.evidence, "\n") {
+			if strings.Contains(l, "tenant b") && isWitnessRow(l) {
+				t.Fatalf("%s: fixture: the source line is a witness row", tc.name)
+			}
+		}
+		run, _ := stripRowComments(tc.evidence) // the flip's run view
+		rows := parseEvidenceRows(run)["2"]
+		if len(rows) == 0 || witnessStateOf(rows[len(rows)-1].Text) != statePass {
+			t.Fatalf("%s: fixture: stripped row 2 is not a passing witness", tc.name)
+		}
+	}
+	runHeldScanCasesFlip(t, cases, nil)
+}
+
+// TestHeldQuotedLinkTitles: a quote inside markdown link or image syntax (a
+// title in single quotes, or a bare destination) is not rendered as text, so
+// two of them pair in the source around a hold the page shows unquoted. Link
+// or image syntax in the region gives no span, in prose and in a Result cell.
+// regression: #4721
+func TestHeldQuotedLinkTitles(t *testing.T) {
+	runHeldScanCasesFlip(t, []heldScanCase{
+		{"two link titles",
+			heldEv("ok") + "\nSee [out](/a '\"') then row 3 is HELD per [out](/b '\"') above.\n", true},
+		{"two image titles",
+			heldEv("ok") + "\nSee ![out](/a.png '\"') then row 3 is HELD per ![out](/b.png '\"') above.\n", true},
+		{"quote in a bare destination",
+			heldEv("ok") + "\nSee [out](/a/\") then row 3 is HELD per (\".)\n", true},
+		{"link titles in a Result cell",
+			heldEv("ok [out](/a '\"') row 3 could-not-check [out](/b '\"')"), true},
+	}, nil)
+}
+
+// TestHeldQuotedCtrlSpace: a form feed or vertical tab renders as white
+// space, so a mark flanked by them on both sides is a spaced ditto or inch
+// mark, exactly as with spaces, in prose and in a Result cell.
+// regression: #4721
+func TestHeldQuotedCtrlSpace(t *testing.T) {
+	runHeldScanCasesFlip(t, []heldScanCase{
+		{"form-feed-flanked marks",
+			heldEv("ok") + "\nMeasured a 3\f\"\fgap; row 3 is HELD pending the 5\f\"\fretest.\n", true},
+		{"vertical-tab-flanked marks",
+			heldEv("ok") + "\nMeasured a 3\v\"\vgap; row 3 is HELD pending the 5\v\"\vretest.\n", true},
+		{"form feeds in a Result cell",
+			heldEv("3\f\"\fgap; row 3 could-not-check, 5\f\"\fretest"), true},
+	}, nil)
+}

@@ -958,6 +958,10 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 	var quotes []string
 	lines := strings.Split(evidence, "\n")
 	quoteNear := heldQuoteNeighbours(lines)
+	var witnessLine []bool
+	if latestRun {
+		witnessLine = heldWitnessLines(evidence)
+	}
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
@@ -1066,8 +1070,10 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 			// run no witness check, still read it. A verifyrun witness row is
 			// never skipped: the witness check credits it by the first state
 			// word anywhere in its Result cell, so a quoted hold there would
-			// be credited as that state.
-			if latestRun && cuts == nil && !isWitnessRow(lines[i]) &&
+			// be credited as that state. Witness membership is read on the
+			// comment-stripped text the witness check reads
+			// (heldWitnessLines), never on the source line alone.
+			if latestRun && cuts == nil && !witnessLine[i] &&
 				heldQuotedOutput(clean, h, read.key != "", !quoteNear[i]) {
 				continue
 			}
