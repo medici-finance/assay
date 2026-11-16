@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -388,4 +389,214 @@ func asDeskError(err error, target **deskkit.DeskError) bool {
 	}
 	*target = de
 	return true
+}
+
+// captureLintDiffNotices points lintDiffStderr at a buffer for one test.
+func captureLintDiffNotices(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	old := lintDiffStderr
+	var buf bytes.Buffer
+	lintDiffStderr = &buf
+	t.Cleanup(func() { lintDiffStderr = old })
+	return &buf
+}
+
+const (
+	otherInclude = "PROBLEM: example-other/54: protected table: acceptance transition: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
+	otherForge   = "PROBLEM: example-other/54: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	thirdForge   = "PROBLEM: example-third/37: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	// The chained Acceptance-Transition form: statusgen returns it without the
+	// "protected table: " wrapper, numbered by link.
+	chainForge = "PROBLEM: example-other/54: acceptance transition: link 1: could-not-check human authority: --acceptance-forge is required"
+	chainRepo  = "PROBLEM: example-third/37: acceptance transition: link 2: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
+	chainHuman = "PROBLEM: example-third/37: acceptance transition: link 12: could-not-check human authority: example detail"
+)
+
+// An unchanged brief's could-not-check that only the after run printed is not this
+// landing's: it is reported on stderr and does not refuse. Both #6581 shapes: an Evidence
+// landing on another brief, and an outcome record for another brief; and the chained
+// acceptance-transition form of the same reads.
+//
+// regression: #6581
+func TestUntouchedCouldNotCheck(t *testing.T) {
+	for _, tc := range []struct {
+		target string
+		before []string
+		after  []string
+	}{
+		{"docs/streams/example-stream/brief-12-example.md", nil, []string{otherInclude}},
+		{"docs/streams/verify-outcomes/example-outcome/24-20261116T013825Z-bbe7ddc7f052.json",
+			[]string{otherInclude}, []string{otherForge, thirdForge}},
+		{"docs/streams/example-stream/brief-12-example.md", nil, []string{chainForge, chainRepo, chainHuman}},
+	} {
+		stubStatusgenLint(t, tc.before, tc.after)
+		notices := captureLintDiffNotices(t)
+		introduced, err := lintDiffAt(t.TempDir(), tc.target, []byte("x\n"), childOptions{})
+		if err != nil {
+			t.Fatalf("%s: lintDiffAt: %v", tc.target, err)
+		}
+		if len(introduced) != 0 {
+			t.Fatalf("%s: introduced = %v, want none (could-not-check on an untouched brief)", tc.target, introduced)
+		}
+		for _, p := range tc.after {
+			if !strings.Contains(notices.String(), p) {
+				t.Fatalf("%s: stderr does not report %q:\n%s", tc.target, p, notices.String())
+			}
+		}
+	}
+}
+
+// A real finding still refuses beside an excused could-not-check, and so does a
+// could-not-check on the brief the landing writes, or on any brief when the landing's
+// path names no brief or stream. A finding that is not a could-not-check refuses on a
+// brief the landing does not write too — on an outcome record as well, which the
+// closure gate's foreign split (splitClosureProblems) hands to this diff — and so does
+// one that only quotes the marker out of brief text. Only the known could-not-check
+// producers are excused; other protected-table findings refuse, including the numbered
+// protected-acceptance-row shape.
+//
+// regression: #6581
+func TestIntroducedStillRefused(t *testing.T) {
+	real := "PROBLEM: example-stream/12: Evidence row #3: backticked path \"../x\" does not exist"
+	own := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	ownChain := "PROBLEM: example-stream/12: acceptance transition: link 1: could-not-check human authority: --acceptance-forge is required"
+	foreignReal := "PROBLEM: example-other/54: Evidence row #3: backticked path \"../x\" does not exist"
+	quoted := "PROBLEM: example-other/54: Evidence row #2: cell reads \"x: could-not-check y\""
+	rowDrift := "PROBLEM: example-other/54: protected table: original row x: could-not-check y differs from its delivered definition; a changed original row needs an Acceptance-Transition record and its approval"
+	rowState := "PROBLEM: example-other/54: protected acceptance row x: could-not-check y: fail"
+	rowNumbered := "PROBLEM: example-other/54: protected acceptance row 2: could-not-check y: fail"
+	outcome := "docs/streams/verify-outcomes/example-outcome/24-20261116T013825Z-bbe7ddc7f052.json"
+	for _, tc := range []struct {
+		target string
+		after  []string
+		want   []string
+	}{
+		{"docs/streams/example-stream/brief-12-example.md", []string{otherInclude, real}, []string{real}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{own}, []string{own}},
+		{"docs/streams/verify-outcomes/example-stream/12-20261116T013825Z-bbe7ddc7f052.json", []string{own}, []string{own}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{otherInclude, foreignReal}, []string{foreignReal}},
+		{outcome, []string{otherForge, foreignReal}, []string{foreignReal}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{quoted}, []string{quoted}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{ownChain}, []string{ownChain}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{rowDrift}, []string{rowDrift}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{rowState}, []string{rowState}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{rowNumbered}, []string{rowNumbered}},
+		{"docs/streams/example-stream/notes.md", []string{otherInclude}, []string{otherInclude}},
+		{"docs/README.md", []string{otherInclude}, []string{otherInclude}},
+	} {
+		stubStatusgenLint(t, nil, tc.after)
+		captureLintDiffNotices(t)
+		introduced, err := lintDiffAt(t.TempDir(), tc.target, []byte("x\n"), childOptions{})
+		if err != nil {
+			t.Fatalf("%s: lintDiffAt: %v", tc.target, err)
+		}
+		if strings.Join(introduced, "\n") != strings.Join(tc.want, "\n") {
+			t.Errorf("%s: introduced = %v, want %v", tc.target, introduced, tc.want)
+		}
+	}
+}
+
+// A refusal prints the before-landing set beside the introduced lines, so a changed line
+// on a brief shows as a change, not only as an addition.
+//
+// regression: #6581
+func TestRefusalPrintsBeforeSet(t *testing.T) {
+	target := "docs/streams/example-stream/brief-12-example.md"
+	before := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
+	after := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	stubStatusgenLint(t, []string{before}, []string{after})
+	notices := captureLintDiffNotices(t)
+	introduced, err := lintDiffAt(t.TempDir(), target, []byte("x\n"), childOptions{})
+	if err != nil {
+		t.Fatalf("lintDiffAt: %v", err)
+	}
+	if len(introduced) != 1 || introduced[0] != after {
+		t.Fatalf("introduced = %v, want [%s]", introduced, after)
+	}
+	for _, want := range []string{
+		"deskevidence: lint delta for " + target + ": 1 PROBLEM line(s) before this landing, 1 introduced",
+		"  before: " + before,
+		"  introduced: " + after,
+	} {
+		if !strings.Contains(notices.String(), want+"\n") {
+			t.Fatalf("stderr lacks %q:\n%s", want, notices.String())
+		}
+	}
+}
+
+// Pins TODAY's behaviour when one brief's could-not-check changes class (different
+// wording) between the before and after runs. The diff is on exact lines, so the after
+// line is new. On a brief the landing does not write it is excused with a NOTICE; on the
+// landing's own brief it is counted as introduced and refuses. This test records that
+// behaviour; it is not a ruling that it is right.
+//
+// regression: #6581
+func TestCouldNotCheckClassChange(t *testing.T) {
+	const (
+		ownTarget   = "docs/streams/example-stream/brief-12-example.md"
+		otherTarget = "docs/streams/example-third/brief-37-example.md"
+	)
+	ownBefore := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
+	ownAfter := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	for _, tc := range []struct {
+		name   string
+		target string
+		want   []string
+	}{
+		{"untouched brief: excused", otherTarget, nil},
+		{"own brief: refused", ownTarget, []string{ownAfter}},
+	} {
+		stubStatusgenLint(t, []string{ownBefore}, []string{ownAfter})
+		notices := captureLintDiffNotices(t)
+		introduced, err := lintDiffAt(t.TempDir(), tc.target, []byte("x\n"), childOptions{})
+		if err != nil {
+			t.Fatalf("%s: lintDiffAt: %v", tc.name, err)
+		}
+		if strings.Join(introduced, "\n") != strings.Join(tc.want, "\n") {
+			t.Fatalf("%s: introduced = %v, want %v", tc.name, introduced, tc.want)
+		}
+		if tc.want == nil && !strings.Contains(notices.String(), "NOTICE: not counted as introduced") {
+			t.Fatalf("%s: no NOTICE on stderr:\n%s", tc.name, notices.String())
+		}
+	}
+}
+
+// Attribution is by statusgen's brief key, normalised as the closure gate's
+// splitClosureProblems normalises it: a board README write owns its whole stream and
+// excuses only other streams; a letter-suffixed brief and a zero-padded key are named;
+// and nothing is excused while either run reports a stream whose frontmatter name
+// differs from its directory, since the scope (directory) and the line (frontmatter)
+// could not then be matched.
+//
+// regression: #6581
+func TestAttributionScopes(t *testing.T) {
+	sibling := "PROBLEM: example-stream/30: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	suffixOwn := "PROBLEM: example-stream/12a: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	paddedOwn := "PROBLEM: example-stream/012: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	renamed := "PROBLEM: example-renamed/12: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	mismatch := "PROBLEM: docs/streams/example-stream: frontmatter stream \"example-renamed\" != directory name \"example-stream\""
+	brief12 := "docs/streams/example-stream/brief-12-example.md"
+	for _, tc := range []struct {
+		name, target  string
+		before, after []string
+		want          []string
+	}{
+		{"readme: other stream excused", "docs/streams/example-stream/README.md", nil, []string{otherInclude}, nil},
+		{"readme: own stream refused", "docs/streams/example-stream/README.md", nil, []string{sibling}, []string{sibling}},
+		{"suffixed: foreign excused", "docs/streams/example-stream/brief-12a-example.md", nil, []string{otherForge}, nil},
+		{"suffixed: own refused", "docs/streams/example-stream/brief-12a-example.md", nil, []string{suffixOwn}, []string{suffixOwn}},
+		{"padded key: own refused", brief12, nil, []string{paddedOwn}, []string{paddedOwn}},
+		{"mismatch before: refused", brief12, []string{mismatch}, []string{mismatch, renamed}, []string{renamed}},
+		{"mismatch after: refused", brief12, nil, []string{mismatch, otherInclude}, []string{mismatch, otherInclude}},
+	} {
+		stubStatusgenLint(t, tc.before, tc.after)
+		captureLintDiffNotices(t)
+		introduced, err := lintDiffAt(t.TempDir(), tc.target, []byte("x\n"), childOptions{})
+		if err != nil {
+			t.Fatalf("%s: lintDiffAt: %v", tc.name, err)
+		}
+		if strings.Join(introduced, "\n") != strings.Join(tc.want, "\n") {
+			t.Errorf("%s: introduced = %v, want %v", tc.name, introduced, tc.want)
+		}
+	}
 }
