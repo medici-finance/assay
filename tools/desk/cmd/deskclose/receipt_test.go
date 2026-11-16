@@ -157,6 +157,22 @@ func TestItemRefPerForge(t *testing.T) {
 	if got := itemRef(testRepo, 37, deskkit.TargetChange); got != testRepo+"!37" {
 		t.Errorf("an unnamed forge must keep the kind-stating !N, got %q", got)
 	}
+
+	// A refusal quoting a comment link speaks the forge the link's own shape names.
+	for _, tc := range []struct {
+		forge deskkit.ForgeKind
+		kind  deskkit.TargetKind
+		want  string
+	}{
+		{deskkit.ForgeGitLab, deskkit.TargetChange, testRepo + "!37"},
+		{deskkit.ForgeGitLab, deskkit.TargetIssue, testRepo + "#37"},
+		{deskkit.ForgeGitHub, deskkit.TargetChange, testRepo + "#37"},
+	} {
+		link := deskkit.CommentLink{Forge: tc.forge, Item: deskkit.ItemRef{Repo: testRepo, Number: 37, Kind: tc.kind}}
+		if got := linkItemRef(link); got != tc.want {
+			t.Errorf("link on %s %q: got %q, want %q", tc.forge, tc.kind, got, tc.want)
+		}
+	}
 }
 
 // TestIssueReceiptHashOnGitLab is the over-application check: an ISSUE on GitLab is

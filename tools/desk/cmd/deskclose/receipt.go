@@ -16,8 +16,7 @@ import (
 
 // itemRef renders repo + number + kind the way the forge serving repo writes that object.
 // Only a change can differ by forge, so an issue or an unstated kind never consults the
-// resolver. A forge that cannot be named keeps the kind-stating `!N` (deskkit.ItemRef
-// ForgeString): an explicit change sigil never names the issue sharing the number.
+// resolver. A forge that cannot be named keeps the kind-stating `!N` (see renderOnForge).
 func itemRef(repo string, n int, kind deskkit.TargetKind) string {
 	ref := deskkit.ItemRef{Repo: deskkit.StripControl(repo), Number: n, Kind: kind}
 	if kind != deskkit.TargetChange {
@@ -28,7 +27,7 @@ func itemRef(repo string, n int, kind deskkit.TargetKind) string {
 	if err != nil {
 		forge = ""
 	}
-	return ref.ForgeString(forge)
+	return renderOnForge(ref, forge)
 }
 
 // linkItemRef renders the object a comment link names, in the sigil of the forge the link's
@@ -36,5 +35,20 @@ func itemRef(repo string, n int, kind deskkit.TargetKind) string {
 func linkItemRef(link deskkit.CommentLink) string {
 	ref := link.Item
 	ref.Repo = deskkit.StripControl(ref.Repo)
-	return ref.ForgeString(link.Forge)
+	return renderOnForge(ref, link.Forge)
+}
+
+// renderOnForge is the one forge-aware rendering rule. GitHub numbers issues and pull requests in
+// one sequence and writes both `#N`, so the kind is dropped. GitLab numbers them apart and
+// writes a merge request `!N`, which is ItemRef.String's kind-stating form. A forge that
+// cannot be named keeps that kind-stating form too: on a two-sequence forge an unstated `#`
+// for a change names the issue sharing its number, and an explicit `!` never does.
+//
+// It lives here, unexported, rather than in deskkit: deskkit forbids an exported function
+// that takes a ForgeKind (TestForgeForRejectsCallerSuppliedForge), and this only renders.
+func renderOnForge(ref deskkit.ItemRef, forge deskkit.ForgeKind) string {
+	if forge == deskkit.ForgeGitHub {
+		ref.Kind = ""
+	}
+	return ref.String()
 }

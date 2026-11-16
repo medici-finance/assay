@@ -75,20 +75,6 @@ func (r ItemRef) String() string {
 	return fmt.Sprintf("%s%s%d", r.Repo, sigil, r.Number)
 }
 
-// ForgeString renders the reference the way the forge serving it writes it — the form for
-// OUTPUT a reader transcribes (a receipt, a refusal naming an object). String states the
-// kind; this states the object as its own forge would. GitHub writes issues and pull
-// requests alike as `#N` (one sequence); GitLab writes a merge request as `!N` and an issue
-// as `#N` (two sequences, so the sigil is what tells them apart). A forge this cannot name
-// falls back to String's kind-stating form: on a two-sequence forge an unstated `#` for a
-// change would name the issue sharing its number, and an explicit `!` never names that.
-func (r ItemRef) ForgeString(forge ForgeKind) string {
-	if forge == ForgeGitHub {
-		r.Kind = ""
-	}
-	return r.String()
-}
-
 // itemRefShortRe matches the short forms: an optional `owner/repo`, an optional `#`/`!`
 // sigil, and the number.
 var itemRefShortRe = regexp.MustCompile(`^(?:([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+))?([#!]?)([0-9]+)$`)

@@ -164,30 +164,3 @@ func TestCloseIssueTypedRefusesReasonOnAChange(t *testing.T) {
 		t.Fatalf("an unknown kind must be refused rather than defaulted, got %v", err)
 	}
 }
-
-// TestForgeStringSigil pins the output form per forge: GitLab separates a merge request (`!N`)
-// from the issue sharing its number (`#N`); GitHub writes both `#N`; an unnamed forge keeps
-// the kind-stating form rather than guessing the neutral one.
-// regression: #6595
-func TestForgeStringSigil(t *testing.T) {
-	change := ItemRef{Repo: "o/r", Number: 37, Kind: TargetChange}
-	issue := ItemRef{Repo: "o/r", Number: 37, Kind: TargetIssue}
-	bare := ItemRef{Number: 37}
-	for _, tc := range []struct {
-		ref   ItemRef
-		forge ForgeKind
-		want  string
-	}{
-		{change, ForgeGitLab, "o/r!37"},
-		{issue, ForgeGitLab, "o/r#37"},
-		{bare, ForgeGitLab, "#37"},
-		{change, ForgeGitHub, "o/r#37"},
-		{issue, ForgeGitHub, "o/r#37"},
-		{change, "", "o/r!37"},
-		{issue, "", "o/r#37"},
-	} {
-		if got := tc.ref.ForgeString(tc.forge); got != tc.want {
-			t.Errorf("%+v on %q: got %q, want %q", tc.ref, tc.forge, got, tc.want)
-		}
-	}
-}
