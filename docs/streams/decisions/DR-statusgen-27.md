@@ -45,10 +45,15 @@ As the brief asks and #4134 delivered:
 
 1. `runDiffLintOne`, the existing `--lint --diff-base` differential, gains a notice ratchet. No
    new command is added.
-2. One classifier in `statusgen/noticeratchet.go` (`parseLintNotice`) turns each rendered NOTICE
-   into a structured finding (rule, repository-relative path, Verify row or brief-level subject);
-   `evaluateNoticeRatchet` compares head against base on that structure. A renamed brief is
-   compared with its old path.
+2. Within the ratchet, one classifier in `statusgen/noticeratchet.go` (`parseLintNotice`) turns
+   each rendered NOTICE into a structured finding (rule, repository-relative path, Verify row or
+   brief-level subject); `evaluateNoticeRatchet` compares head against base on that structure. A
+   renamed brief is compared with its old path. The ratchet's rule membership lives in its own
+   tables in that file (`ratchetRowRules`, `ratchetBriefRules` and `ratchetUntagged`), beside
+   statusgen/28's `noticeRuleInventory` in `statusgen/notice_report.go`, which #4140 delivered
+   before #4134 merged; none of the ratchet's tables reads that inventory. This record discloses
+   the two tables and does not say whether that is a defect; that stays with the driver's
+   decision on #5854. DR-statusgen-28 records the historical-notice report's side.
 3. The actionable set and the classified non-actionable set are documented in
    `docs/verify-row-strength.md`. A newly introduced actionable finding prints as
    `PROBLEM: [notice-ratchet] ...` and counts toward the exit code.

@@ -30,7 +30,8 @@ The `ruling:` link to that comment, and the brief's `design:` key, are added onl
 `assay:assay:forge-neutral:48`. On 2026-11-16 the driver's own login commented, unedited:
 "forge-neutral/48: accept. I accept the demonstrated mirror-only native response boundary in
 #5387. This acceptance grants no credential, private-data ingestion, persistent store, listener or
-activation." That comment names the brief, not this record, so it serves the brief's decision-gate
+activation." The brief already cites that comment as its `ruling:`. That comment names the brief,
+not this record, so it serves the brief's decision-gate
 hold (`spec/lifecycle-v1.md` §4.5) and cannot serve as this record's `ruling:` link
 (`spec/registers-v1.md` §7.5, `record-not-named`).
 
@@ -55,7 +56,8 @@ As the brief asks and #5387 delivered:
 2. Only the two enumerated incremental mirror operations in `mirrorsource.go` use it, through
    private admitted backend copies that keep cancellation, scope, no-redirect custody and request
    accounting. Ordinary forge operations are unchanged.
-3. The guard and its weight are registered in `docs/contracts.md`.
+3. The guard is registered in `docs/contracts.md` as `R-mirror-native-response`; its weight is
+   in the brief's design-fit and #5387's Weight section.
 
 The brief and its delivering diff are the authority; this summary does not amend either.
 

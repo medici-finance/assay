@@ -5,7 +5,7 @@ title: "Historical notices (statusgen/28): one shared notice report collapses fi
 consequence: major # The transcriber's classification.
 decided-by: "human:<name>"
 alternatives:
-  - "A second, independent notice-classification table beside the differential. Ruled out by the brief's Task 3: one reporting and normalization owner is shared with the differential."
+  - "A second, independent notice-classification table beside the differential. Ruled out for the #4140 delivery by the brief's Task 3: one reporting and normalization owner is shared with the differential. This describes #4140 as merged, not main today: statusgen/27's notice ratchet, merged after it, keeps its own rule tables beside `noticeRuleInventory` (see The design)."
   - "Rewriting or deleting closed evidence to quiet the notices. Ruled out by the brief's ground rules and Task 3: recorded Evidence and frozen closed commands are not rewritten, and a rising historical count is distinguished from a newly closed defective brief rather than falsified."
   - "Hiding ordinary PROBLEMs or changing their exit code. Ruled out by the brief's Task 2."
   - "Blanket-exempting active documents or creating historical security-review records. Ruled out by the brief's Task 4; only docs/archive is excluded, and from live lifecycle classification only."
@@ -43,10 +43,11 @@ the code on main; nothing here adds rationale beyond what those record.
 
 As the brief asks and #4140 delivered:
 
-1. `statusgen/notice_report.go` is the single owner of notice classification: a closed rule
-   inventory, the standing of the brief record a finding lands on, and the text and JSON
-   renderings. A notice belongs to the file in the emitter's leading slot, never to a path or tag
-   quoted inside it.
+1. In the #4140 delivery, `statusgen/notice_report.go` is the single owner of notice
+   classification for the historical-notice report: a closed rule inventory
+   (`noticeRuleInventory` and `noticeFragmentRules`), the standing of the brief record a finding
+   lands on, and the text and JSON renderings. A notice belongs to the file in the emitter's
+   leading slot, never to a path or tag quoted inside it.
 2. A finding about a brief already `done` or `verified` at the merge-base is counted in a
    `[historical-notices]` per-rule total. Active, newly closed, unknown-status and non-brief
    findings keep their individual NOTICE lines.
@@ -55,6 +56,15 @@ As the brief asks and #4140 delivered:
    could-not-check states, which also print as `NOTICE: [notice-report-could-not-check]` lines.
 4. `docs/archive` is excluded from live lifecycle classification only. PROBLEMs, exit codes and
    history are unchanged.
+
+**Main since #4140.** #4140 merged on 2026-10-24 before #4134, which delivered statusgen/27 and
+merged statusgen/28 into its own branch. #4134 added `statusgen/noticeratchet.go`, whose notice
+ratchet classifies rendered NOTICE lines with its own rule tables (`ratchetRowRules`,
+`ratchetBriefRules` and `ratchetUntagged`); none of them reads `noticeRuleInventory`. So on main
+two files each describe themselves as the owner of notice classification, one for the
+historical-notice report and one for the ratchet. This record discloses that and does not say
+whether it is a defect; that stays with the driver's decision on #5855. DR-statusgen-27 records
+the ratchet's side.
 
 The brief and its delivering diff are the authority; this summary does not amend either.
 
