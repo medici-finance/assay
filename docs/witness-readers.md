@@ -59,6 +59,7 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `tools/desk/cmd/deskevidence/decisiongate.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/deskevidence.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/landed.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
+| `tools/desk/cmd/deskevidence/lintdiff.go` | reads informational fields only | names the brief a landing writes from its path, a brief file or a per-file verify-outcome record under `deskkit.OutcomeRecordsDir`; reads no field of a record, no Runner cell and no revision, and opens no record |
 | `tools/desk/cmd/deskevidence/main.go` | reads informational fields only | usage text naming the `--outcome-record` landing shape and its flags; reads no Runner cell, witness record or revision |
 | `tools/desk/cmd/deskevidence/origin.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
 | `tools/desk/cmd/deskevidence/outcome.go` | migrates in statusgen/37 | verify-outcome record writer and landing gate; adopts the witness reference in statusgen/37 |
