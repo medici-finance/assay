@@ -342,3 +342,55 @@ func TestFlipRemoteEvidence(t *testing.T) {
 		})
 	}
 }
+
+// The flip's new-PROBLEM diff attributes by brief key as the landings do (#6581): an
+// after-only could-not-check on another stream's brief is reported and the flip goes
+// through.
+//
+// regression: #6581
+func TestFlipForeignCNCExcused(t *testing.T) {
+	flSetup(t)
+	root := flRoot(t)
+	foreign := "PROBLEM: example-other/54: protected table: acceptance transition: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
+	statusgenLintFn = func(r string, options childOptions) ([]string, error) {
+		if flGit(t, r, "rev-list", "--count", "refs/remotes/origin/main..HEAD") == "0" {
+			return []string{"PROBLEM: pre-existing"}, nil
+		}
+		return []string{"PROBLEM: pre-existing", foreign}, nil
+	}
+	var errb bytes.Buffer
+	old := stderr
+	stderr = &errb
+	t.Cleanup(func() { stderr = old })
+	if code := flRun(root); code != deskkit.ExitOK {
+		t.Fatalf("flip with a foreign could-not-check rc = %d, want 0\n%s", code, errb.String())
+	}
+	if !strings.Contains(errb.String(), "NOTICE: not counted as introduced by "+flReadme) || !strings.Contains(errb.String(), foreign) {
+		t.Fatalf("stderr does not report the excused line:\n%s", errb.String())
+	}
+}
+
+// What the flip touches still refuses: a could-not-check on the flipped brief or on any
+// brief of the board it commits, and a finding that is not a could-not-check anywhere.
+//
+// regression: #6581
+func TestFlipStreamCNCRefused(t *testing.T) {
+	for _, line := range []string{
+		"PROBLEM: vf/01: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required",
+		"PROBLEM: vf/02: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required",
+		"PROBLEM: example-other/54: depends-on edge names a brief that does not exist",
+	} {
+		flSetup(t)
+		root := flRoot(t)
+		statusgenLintFn = func(r string, options childOptions) ([]string, error) {
+			if flGit(t, r, "rev-list", "--count", "refs/remotes/origin/main..HEAD") == "0" {
+				return []string{"PROBLEM: pre-existing"}, nil
+			}
+			return []string{"PROBLEM: pre-existing", line}, nil
+		}
+		if code := flRun(root); code != deskkit.ExitRefused {
+			t.Fatalf("flip introducing %q rc = %d, want 5", line, code)
+		}
+		flUnchanged(t, root)
+	}
+}
