@@ -144,18 +144,23 @@ This brief leaves `todo` only once `DR-desk-containers-35` (brief 35) is approve
 2. **Check and record (surface rows under brief 35's option 1).** `cellctl check` adds rows,
    without printing a value: the file exists, is a regular file, and lies outside every git
    checkout and worktree; and it passes the surface proof brief 35's decision picks. Under
-   option 1: container, a read-write mount for the coordinator container only and read-only for
-   worker, reviewer and verifier; host, owned by the coordinator role's identity, with no other
-   role identity able to write it or its directory, and no access-control list granting write.
+   option 1: container, a read-write mount for the coordinator container only, and a read-only
+   mount only for worker, reviewer and verifier containers that mount no role secret; a worker
+   or verifier container with a role secret mounted gets no dev-env mount, so the coordinator's
+   writable mount is never shared with a holding container (DR-desk-containers-34, write-path
+   clause); host, owned by the coordinator role's identity, with no other role identity able to
+   write it or its directory, and no access-control list granting write.
    A cell whose role windows share one OS user binds no file and its check says why. Any
    ownership, mode, access-control or surface state the check cannot determine fails the check.
    The launcher records, from the cell's identity map, the coordinator role's identity and, on
-   a container cell, each role's mount mode for the file, in a cell state file no role window
-   can write; brief 36 reads that record and refuses when it is absent.
+   a container cell, each role's mount mode for the file, and for every window the role-secret
+   files it can reach (none, or their paths as that window sees them), in a cell state file no
+   role window can write; brief 36 reads that record and refuses when it is absent.
 3. **Projection.** `cellctl desk` and `up` export `ASSAY_CELL_DEV_ENV_FILE` (the path) into the
-   coordinator, worker, reviewer and verifier windows; intake gets none, per brief 35. A
-   launching shell's stale value is removed, as `celldb.go` does for the database pointer. The
-   Codex environment forwards it; a Kubernetes compatibility cell refuses the key by name.
+   coordinator, reviewer, and the worker and verifier windows that bind no role secret; a
+   worker or verifier window that binds one gets no path, and intake gets none, per brief 35.
+   A launching shell's stale value is removed, as `celldb.go` does for the database pointer.
+   The Codex environment forwards it; a Kubernetes compatibility cell refuses the key by name.
    Whether review-kit and unblessed-head children keep it follows decision 1.
 4. **Write verb.** `cellctl devenv set <cell> NAME` (value read from stdin, never argv) and
    `cellctl devenv unset <cell> NAME`. `set` refuses a name outside brief 35's allow-list and a
@@ -184,10 +189,10 @@ chooses otherwise.
 
 | # | Class | Env | Command | Expect |
 |---|---|---|---|---|
-| 1 | check +flow | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvProjection$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvProjection ' "$o")` | Named PASS; coordinator, worker, reviewer and verifier windows get the path variable, intake does not; a stale inherited value is removed. |
-| 2 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvCheck$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvCheck ' "$o")` | Named PASS; a symlink, a file inside a worktree, a group-writable file, a file owned by a non-coordinator role, a directory another role can write, undeterminable ownership or ACL state, and a single-user cell each fail check; a passing check writes the identity and mount record; the dry run contains no fixture value. |
+| 1 | check +flow | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvProjection$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvProjection ' "$o")` | Named PASS; coordinator and reviewer windows, and worker and verifier windows that bind no role secret, get the path variable; a worker or verifier window that binds a role secret does not, and intake does not; a stale inherited value is removed. |
+| 2 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvCheck$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvCheck ' "$o")` | Named PASS; a symlink, a file inside a worktree, a group-writable file, a file owned by a non-coordinator role, a directory another role can write, undeterminable ownership or ACL state, and a single-user cell each fail check; a passing check writes the identity and mount record, including each window's role-secret reach; the dry run contains no fixture value. |
 | 3 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvWriteVerb$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvWriteVerb ' "$o")` | Named PASS; set and unset from the coordinator rewrite the file, change the nonce line, and append a receipt with the sha256 and the names changed, no value; a name outside the allow-list and a 7-character value refuse; the same verb from a worker, reviewer or verifier window refuses. |
-| 4 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvMounts$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvMounts ' "$o")` | Named PASS; on a container cell the generated mounts are read-write for the coordinator container only and read-only for worker, reviewer and verifier; intake has no mount. |
+| 4 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvMounts$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvMounts ' "$o")` | Named PASS; on a container cell the generated mounts are read-write for the coordinator container only and read-only for the reviewer container and for worker and verifier containers that mount no role secret; a worker or verifier container with a role secret mounted has no dev-env mount; intake has no mount. |
 | 5 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecret' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretScope ' "$o" && ! grep -F -- '--- FAIL' "$o")` | The role-secret tests still pass, none fails. |
 | 6 | check | host | `statusgen --root . --lint --acceptance-forge` | exit 0; output contains "LINT: PASS". |
 | 7 | check | tree | `statusgen --consumers --brief desk-containers/37 --base $(git merge-base origin/main HEAD)` | Pre-merge, on the implementation branch: exit 0. |
@@ -199,6 +204,9 @@ chooses otherwise.
 - A cell claims a surface it does not provide: row 2 (single-user and undeterminable refusals).
 - The value leaks through a dry run, check row or receipt: rows 2, 3.
 - The file's path reaches intake, or the role-secret path reaches a reviewer: rows 1, 5.
+- The coordinator's writable mount is shared with a container that holds a role secret, or the
+  path reaches a window that binds one: rows 1 and 4; brief 36 row 16 refuses the row if it
+  happens anyway.
 - A reviewer slot or an unblessed-head worker child reads a dev value: no row; decision 1 above.
 - A reviewer slot building an untrusted head writes to the cell database: no row; today's reach,
   unchanged here; decision 2 above.

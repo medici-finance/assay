@@ -62,10 +62,12 @@ Briefs 35, 36 and 37 as merged; `containers/secrets.md` §4.5.
 1. **verify-desk.** A row whose Env declares names runs with those names from the cell dev-env
    file; Evidence records the declared names and the file sha256 from the run's attestation and
    never a value; a could-not-check from a missing name or a refused file is recorded as such and
-   never re-run by hand with a value pasted in.
+   never re-run by hand with a value pasted in. Such a row runs only in a verifier window that
+   binds no role secret (brief 36 Task 2); a row that needs both stays could-not-check.
 2. **worker-desk and pr-review-desk.** Read the dev-env file, never write it; never create a
    per-desk `.env`; a needed variable goes to the coordinator as a request, and the row declares
-   its name, which must be in brief 35's allow-list (`DEVENV_` names only).
+   its name, which must be in brief 35's allow-list (`DEVENV_` names only). A worker window that
+   binds a role secret does not receive the file's path (brief 37 Task 3).
 3. **the-desk.** The coordinator maintains the file with `cellctl devenv set` and `unset` only,
    never by editing it, and dev-only values only.
 4. **docs/docker.md.** Per-desk env-files keep model and App settings; dev credentials for

@@ -102,28 +102,62 @@ Amended 2026-11-16, by the driver in their own login:
 https://github.com/medici-finance/assay/issues/6615#issuecomment-6922038844
 
 Still open, and the one question this brief puts to the driver: **how a cell proves that only
-the coordinator role can write the file.** On a cell where every role window runs as one OS
-user, file mode cannot tell the coordinator from the worker; DR-desk-containers-34 found the
-same for role secrets.
+the coordinator role can write the file, and how the file stays clear of role-secret
+holders.** On a cell where every role window runs as one OS user, file mode cannot tell the
+coordinator from the worker; DR-desk-containers-34 found the same for role secrets.
+
+Every option must also meet one accepted line of DR-desk-containers-34
+(`docs/streams/decisions/DR-desk-containers-34.md`, the fourth `accepted:` entry). Two clauses
+of it bind here:
+- **Write path:** "no non-holding identity may write anything a holding window executes or
+  reads as configuration (… the holder's PATH and home, or a writable mount shared with a
+  holding container)". The coordinator is a non-holder; worker and verifier windows can be
+  holders.
+- **Unable, not unaware:** "A non-holding role must be unable to open the file, not only unaware
+  of its path". Removing the `ASSAY_ROLE_SECRET_*` variables from a row makes it unaware of a
+  role secret's path; it does not make the row unable to open the file.
+
+The allow-list (Task 3) keeps every declarable name out of what a shell, loader, interpreter or
+tool reads on its own. It does not by itself meet either clause, so the options below are
+judged against both.
 
 Options:
-1. **Prove it per surface; a cell that cannot prove it binds no file (recommended).** On a
-   container cell the file is mounted read-write only into the coordinator container and
-   read-only into the worker, reviewer and verifier containers, and the launcher records that
-   mount layout where the verifier can read it. On a host cell the file is owned by the
-   coordinator role's OS identity, and no other role identity can write it or its directory
-   (mode, owner, access-control list). A cell whose role windows share one OS user binds no
-   dev-env file; rows that declare names stay could-not-check until the cell can prove it. This
-   matches DR-desk-containers-34's read-isolation rule. Its write-path rule is met separately,
-   whichever option is chosen, by the allow-list in Task 3 and brief 36's role-secret strip
-   (rows 8 to 13 here, and brief 36's matching rows), not by this option.
-2. **Accept a single-user cell with an advisory write-deny.** The file is owner-only and a
+1. **Keep the file away from every holder, and prove the writer per surface; a cell that
+   cannot do both binds no file (recommended).** The dev-env file reaches only windows that can
+   open no role secret, and a row that declares names is admitted only in such a window:
+   - container cell: the file is mounted read-write only into the coordinator container, and
+     read-only only into containers that mount no role secret. A worker or verifier container
+     with a role secret mounted gets no dev-env mount and no path, so the coordinator's
+     writable mount is never shared with a holding container. A cell that needs both kinds of
+     row runs them in separate containers.
+   - host cell: the file is owned by the coordinator role's OS identity, and no other role
+     identity can write it or its directory (mode, owner, access-control list). Role secrets
+     bind on the container surface only today; a host window that can open a role-secret file
+     gets no dev-env path, under the same rule.
+   - the launcher records, per window, the coordinator identity, the dev-env mount mode and the
+     role-secret files the window can reach, where the verifier can read it and no role window
+     can write it. Brief 36 admits a row that declares names only when that record says the
+     window binds no role secret and an open of every role-secret path the cell binds fails
+     from the row's environment; a missing or unreadable record refuses.
+   - a cell whose role windows share one OS user binds no dev-env file; rows that declare names
+     stay could-not-check.
+   This meets both clauses: no holding window reads the file, so nothing the coordinator writes
+   reaches a holder, and a row that receives dev-env values cannot open a role secret.
+2. **Mount the file read-only into every reading role, holders included (conflicts with
+   DR-desk-containers-34).** The coordinator container mounts the file read-write and the
+   worker, reviewer and verifier containers mount it read-only, whether or not they hold a role
+   secret; a row that declares names has its role-secret variables removed. That is a writable
+   mount shared with a holding container, which the write-path clause forbids, and the row can
+   still open the role secret by its literal path, which the unable-not-unaware clause
+   forbids. Choosing it needs `DR-desk-containers-35` to amend DR-desk-containers-34 by name for
+   the dev-env file; this brief cannot.
+3. **Accept a single-user cell with an advisory write-deny.** The file is owner-only and a
    harness rule denies non-coordinator windows a write. Works on today's desktop cells, but the
    deny is client-side and advisory, so the verifier's refusal would rest on nothing it can
    check.
-3. **Hold.** No shared file. Per-desk `.env` files stay, and so does the gap the issue names.
+4. **Hold.** No shared file. Per-desk `.env` files stay, and so does the gap the issue names.
 
-Default if no answer: option 3 (hold). A credential channel is never opened by silence.
+Default if no answer: option 4 (hold). A credential channel is never opened by silence.
 Briefs 36 and 37 are written against option 1 and say so; they are re-derived if the answer is
 another option.
 
@@ -140,10 +174,11 @@ amendment and the answer to this question, and the driver approves it by name.
   narrower class and never carries a value that a role secret or the cell database passfile
   covers. That claim rests on checked rows, not on this sentence: the allow-list (Task 3; rows 8
   to 13) keeps every declarable name out of what a shell, loader, interpreter, tool or the
-  role-secret channel reads, so the coordinator, a non-holding role, writes nothing a holding
-  window executes or reads as configuration, as DR-desk-containers-34's write-path rule
-  requires; and brief 36 removes every role-secret variable from a row that declares names, so
-  no row holds both.
+  role-secret channel reads on its own. The allow-list alone does not meet
+  DR-desk-containers-34's write-path or unable-not-unaware clauses (`## Human decision`).
+  Under option 1 those rest on the file never reaching a window that can open a role secret,
+  checked by brief 36 row 16 and brief 37 rows 1 and 4. Removing role-secret variables from a
+  row only makes it unaware of a path and is never claimed as that separation.
 
 ## Task
 
@@ -169,7 +204,10 @@ amendment and the answer to this question, and the driver approves it by name.
      attestations record is not a guessing oracle for a value (a reversible default this brief
      takes; DR-desk-containers-34 forbids hashing a bare secret for that reason);
    - the proof that only the coordinator can write, per surface, as `## Human decision` rules,
-     and how the verifier learns the coordinator's identity (Interface contract).
+     and how the verifier learns the coordinator's identity (Interface contract);
+   - under option 1, the file and its path reach only windows that can open no role secret, and
+     a row that declares names is admitted only in such a window; removing role-secret
+     variables from a row is not that separation.
 2. **Declared names** — extend the Env grammar in `docs/brief-rules.md` rule 45,
    `spec/brief-v1.md` and `docs/brief-template.md`: a `service:<name>` cell may carry the names
    the row needs, `service:<name>:<NAME>[,<NAME>…]` (for example
@@ -205,15 +243,18 @@ amendment and the answer to this question, and the driver approves it by name.
 Brief 36 builds admission against: the key `CELL_DEV_ENV_FILE`, projected into windows as the
 path variable `ASSAY_CELL_DEV_ENV_FILE` (brief 37); the file format and the 8-character floor
 in Task 1; the Env form in Task 2; the allow-list in Task 3. Under option 1 the verifier learns
-the coordinator role's identity, and on a container cell the mount layout, only from what the
-launcher records from the cell's identity map (brief 37 Task 2), never from the file, the
-worktree or a variable a window can set; when that record is absent or unreadable the verifier
-refuses. Brief 37 builds the launcher against Task 1 and the surface rule the decision picks.
+the coordinator role's identity, on a container cell the mount layout, and for each window the
+role-secret files it can reach, only from what the launcher records from the cell's identity
+map (brief 37 Task 2), never from the file, the worktree or a variable a window can set; when
+that record is absent or unreadable the verifier refuses. Brief 37 builds the launcher against Task 1 and the surface rule the decision picks.
 
 ## Definition of Done
 
-Every Verify row below passes; §4.5 states each Task 1 rule; the grammar, the allow-list, the
-lint and the three documents agree.
+Every Verify row below passes; §4.5 states each Task 1 rule, including the separation from
+role-secret holders; the grammar, the allow-list, the lint and the three documents agree. The
+8-character floor is stated here and tested where it is enforced: brief 36 row 2 (admission)
+and brief 37 row 3 (the write verb). The separation is tested by brief 36 row 16 and brief 37
+rows 1 and 4.
 
 ## Verify
 
@@ -247,6 +288,10 @@ Named tests must execute; zero matches or a skip fails independent verification.
   enforced again at admission by brief 36.
 - A row declares `GH_TOKEN` or a `GIT_*` name to pull a stripped value back in: outside the
   allow-list, row 11.
+- A row declares `DEVENV_PGHOST`, reads a role secret by its literal path and sends it to the
+  host the coordinator chose: option 1 keeps the file out of every window that can open a role
+  secret; brief 36 row 16 and brief 37 rows 1 and 4. Option 2 leaves this open, which is why it
+  conflicts with DR-desk-containers-34.
 - A digest of a one-line file lets a reader guess a short value: the nonce line and the
   8-character floor, Task 1.
 - A production value or role secret lands in the dev-env file: no row; review-only, row 7 and
