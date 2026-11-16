@@ -272,8 +272,11 @@ back to the operator untouched:
 - a foreign owner or domain;
 - a new empty cache short of space.
 
-`wipe` and `recover --confirm-stopped` stay manual. `deskdispatch` and consumer
-enrollment keep the bounded refusal and never clean.
+`wipe` and `recover --confirm-stopped` stay manual. Consumer enrollment keeps
+the bounded refusal and never cleans. `deskdispatch` admits through `Admit`:
+when the lock-free pre-check cannot admit, it runs the full locked check, which
+on a real (not dry-run) dispatch may trim or remove inactive roots under
+pressure, as described above.
 
 ### Desk and scratch launches re-measure a stale measurement once
 
