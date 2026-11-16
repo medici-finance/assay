@@ -254,3 +254,23 @@ func TestHeldQuotedCtrlSpace(t *testing.T) {
 			heldEv("3\f\"\fgap; row 3 could-not-check, 5\f\"\fretest"), true},
 	}, nil)
 }
+
+// TestHeldQuotedNBSPSide: a no-break space on one side of one quote, before
+// the opening quote or after the closing one, gives no span, so every read
+// refuses. Each side is pinned alone; the twin with an ASCII space in its
+// place pairs as a quoted span, so only the flip read admits it.
+// regression: #4721
+func TestHeldQuotedNBSPSide(t *testing.T) {
+	runHeldScanCasesFlip(t, []heldScanCase{
+		{"NBSP before the open quote",
+			heldEv("ok") + "\nRow 2 printed \"row 3 is HELD for audit\" on rerun.\n", true},
+		{"NBSP after the close quote",
+			heldEv("ok") + "\nRow 2 printed \"row 3 is HELD for audit\" on rerun.\n", true},
+		{"space before the open quote",
+			heldEv("ok") + "\nRow 2 printed \"row 3 is HELD for audit\" on rerun.\n", true},
+		{"NBSP before, in a Result cell",
+			heldEv("printed \"row 3 could-not-check, no grant\" on rerun"), true},
+		{"NBSP after, in a Result cell",
+			heldEv("printed \"row 3 could-not-check, no grant\" on rerun"), true},
+	}, map[string]bool{"space before the open quote": true})
+}
