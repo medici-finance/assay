@@ -275,7 +275,7 @@ func evaluateOneCoverage(x *evalCtx, b BriefObservation, in CoverageInput) Cover
 			}
 			definition = amended
 		}
-		result, reason, claimRev := resolveVerifyClaim(x, scope.forVerifyRow(r), r, b.Witnesses[r.ID], revision, definition)
+		result, reason, claimRev, provenance := resolveVerifyClaim(x, scope.forVerifyRow(r), r, b.Witnesses[r.ID], revision, definition)
 		if note := x.tokenNotJudged(b.Witnesses[r.ID]); note != "" {
 			reason += "; " + note
 		}
@@ -284,6 +284,7 @@ func evaluateOneCoverage(x *evalCtx, b BriefObservation, in CoverageInput) Cover
 			Kind:     "command",
 			Result:   result,
 			Revision: claimRev,
+			Witness:  provenance,
 			Released: result == ResultPass,
 			Reason:   reason,
 		})
