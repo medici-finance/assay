@@ -4,6 +4,7 @@ date: "2026-11-15"
 title: "Move the one process runner into loopadmin behind a mandatory host-custody port, with no second runner"
 consequence: major
 decided-by: "human:<name>"
+ruling: "https://github.com/medici-finance/assay/issues/6583#issuecomment-6904809368"
 alternatives:
   - "Move the runner's files literally into loopadmin. Ruled out: the old runner's public wrappers imported desk-internal cache and telemetry packages, so a literal move cannot compile outside the desk module, and dropping those imports to make it compile removes cache custody and launch telemetry."
   - "Keep the custody step as an optional callback, or offer an alternate observed entrypoint next to the custodied one. Ruled out: a caller could pick the route without enrollment and start a child outside cache custody. Every public launch route goes through the one admission boundary instead, and a runner built without a custodian refuses."
@@ -18,14 +19,15 @@ accepted:
   - "Windows containment is cross-compiled and vetted here. Native Windows runtime qualification is owed separately and reported as unavailable, never as passed."
 ---
 
-**Status:** draft — the pull request that adds this record does not mark it approved, and no
-ruling is recorded. Approving a design record on a `gate: human` brief is the driver's act; a
-model or a worker cannot set it. `decided-by:` is a placeholder until a human rules on this
-record on the brief's decision issue. Until then this record is not an approved design, and the brief that cites it (graph-execution/40, `design: DR-process-extract`)
-may not be accepted on its account (the design-approval gate, `spec/lifecycle-v1.md`
-§4.4). The ruling comment must name `DR-process-extract`. The record then gets a
-`ruling:` link to that comment, which `statusgen --corroborate` resolves
-(`spec/registers-v1.md` §7.5).
+**Status:** approved — the driver ruled on the brief's decision issue, #6583, from their own
+account on 2026-11-16, choosing option 1, accept the design as delivered. The ruling comment
+names this record: "DR-process-extract approved as written; independent verification runs on
+merged main; final acceptance stays a separate human step." `ruling:` links that comment, and
+`statusgen --corroborate` resolves it (`spec/registers-v1.md` §7.5). `decided-by:` keeps the
+placeholder a public repository requires. The approval rides the pull request that records
+the ruling (`spec/lifecycle-v1.md` §8.4); it covers this design only and does not accept the
+brief that cites it (graph-execution/40, `design: DR-process-extract`).
+**Routes-to:** docs/streams/graph-execution/
 
 ## The decision, and the constraint behind it
 
@@ -53,5 +55,5 @@ controls, and a corrected port shape is a source change, not a data migration.
 It does not widen the import guard to modules outside `tools/desk`, which waits for the
 shared supervisor increment. It does not qualify native Windows runtime containment. It
 does not accept the brief: independent verification of its Verify table and the human's
-final acceptance stay separate steps. It does not remove the brief's decomposition-review
-`gates:` edge, which is left for its own follow-up change.
+final acceptance stay separate steps. It does not cover the removal of the brief's
+decomposition-review `gates:` edge, which landed in a separate change.
