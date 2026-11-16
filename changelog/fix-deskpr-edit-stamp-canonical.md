@@ -1,0 +1,2 @@
+### Fixed
+- `deskdispatch --stamp-only` no longer flips a PR's model stamp between a family alias and the full model id on every run. A request for `opus` over a standing `claude-opus-5-5` stamp under accepted authority now keeps the full id and writes nothing, and the full id over a standing alias still replaces it. The rule is applied in the shared stamp writer, so every stamp writer settles the same way.

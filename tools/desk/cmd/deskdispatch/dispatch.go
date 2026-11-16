@@ -2038,6 +2038,10 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			stepModelStamp, repo, o.pr, forge, firstLine(eerr.Error())), eerr)
 	}
 	tl := deskkit.StampTimeline{Present: change.Labels, Events: events}
+	// A family alias (`opus`) over a standing full id of that family (`claude-opus-5-5`) keeps
+	// the full id, the same settlement ApplyVerifiedStamp makes, so this step's report and its
+	// no-op test name the pair that will actually stand.
+	labels = stampKind.SettleRequest(tl, labels, deskkit.IsStampAuthorityLogin)
 	// Only labels of THIS kit's pair are read, removed or verified: an authoring re-stamp
 	// never removes a review session's dispatched-* pair, and the reverse (#2760).
 	stale := stampKind.ReStampRemovals(tl, labels, deskkit.IsStampAuthorityLogin)

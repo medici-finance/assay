@@ -18,7 +18,8 @@ STAMP AFTER OPEN. The dispatching worker-desk hands the opened PR and the actual
 from its real dispatch receipt to the coordinator desk (the-desk), which runs --stamp-only.
 Worker-desk and its child worker are both refused; inherited DESK_SESSION is claim custody,
 not independent stamp authority. Both model and tier are required;
-no model is inferred from existing labels. The original kit selects the same dispatcher
+no model is inferred from existing labels (the one alias settlement below only narrows the
+selected model). The original kit selects the same dispatcher
 role as ordinary dispatch. The session role must match it and be roster-bound; the worker
 cannot self-attest. No item key, claim, worktree, roster registration, hook, queue label or
 prompt is involved. This does not launch an agent or renew review-claim authority.
@@ -41,7 +42,13 @@ actually selected by the harness, never a guessed provider/model mapping.
 
 The shared stamp step reads current labels and their standing appliers, repairs partial,
 conflicting or foreign/unattributed stamps using the explicitly selected pair, and leaves
-an identical accepted stamp unchanged. Read failures stop before writes. After a write it
+an identical accepted stamp unchanged. One settlement keeps two spellings of one model from
+replacing each other: when the selected model is an unversioned family alias (letters only,
+such as opus) and the accepted standing stamp's slug has that alias as one of its -/.
+separated words (such as claude-opus-5-5), the standing slug is kept and only the tier is
+taken from the selection. That is the only case where an existing label shapes the stamp,
+and it narrows the model without changing it. The full id over a standing alias still
+replaces it, and a foreign or partial stamp is never kept. Read failures stop before writes. After a write it
 re-reads labels AND timeline with the applier-aware reader for the kit's pair; only the
 exact accepted pair returns an applied-and-verified receipt. Unverified writes exit 6, never success. An open
 change is required for --stamp-only. Its --dry-run reads and prints the removal/application

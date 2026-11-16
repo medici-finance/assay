@@ -737,6 +737,68 @@ func (k StampKind) ReStampRemovals(tl StampTimeline, want []string, isDispatcher
 	return out
 }
 
+// SettleRequest returns the label pair a stamp of this kind should leave on the change when it
+// is asked to apply `want`. It is `want` itself, except in one case: the requested model is an
+// unversioned family alias (a single word with no digit, such as `opus`) and the change already
+// carries a complete stamp of this kind, standing under accepted authority, whose model slug
+// names that alias as one of its `-`/`.` separated words (such as `claude-opus-5-5`). Then the
+// standing, more specific slug is kept and only the tier comes from the request.
+//
+// WHY. The same launched model reaches the stamp writer under two spellings: the family alias
+// and the full id. Each is a valid slug, so the reader saw two different stamps, and every run
+// with the other spelling removed the standing label as stale and wrote its own. One spelling
+// must win, and the full id is the one the alias cannot contradict: the alias says only "a model
+// of this family", which the standing id already says more precisely. A request for the full id
+// over a standing alias still replaces the alias, so the label settles on the full id whichever
+// spelling runs last.
+//
+// It never widens trust: a stamp that is foreign, unattributable, incomplete or conflicting does
+// not read Stamped under `authority`, so it is never kept and the ordinary re-stamp replaces it.
+// Every writer of a stamp goes through ApplyVerifiedStamp, which calls this, so no writer can
+// re-introduce the flip.
+func (k StampKind) SettleRequest(tl StampTimeline, want []string, authority func(string) bool) []string {
+	req, st := k.StampOf(want)
+	if st != ModelStamped || !isFamilyAlias(req.Model) {
+		return want
+	}
+	cur, cst := k.AttestedStampOf(tl, authority)
+	if cst != ModelStamped || cur.Model == req.Model || !slugHasWord(cur.Model, req.Model) {
+		return want
+	}
+	out := make([]string, 0, len(want))
+	for _, l := range want {
+		if strings.HasPrefix(normLabel(l), k.ModelPrefix()) {
+			out = append(out, k.ModelPrefix()+cur.Model)
+			continue
+		}
+		out = append(out, l)
+	}
+	return out
+}
+
+// isFamilyAlias reports a slug that names a model family and no version: letters only.
+func isFamilyAlias(slug string) bool {
+	if slug == "" {
+		return false
+	}
+	for _, r := range slug {
+		if r < 'a' || r > 'z' {
+			return false
+		}
+	}
+	return true
+}
+
+// slugHasWord reports whether word is one of slug's `-`/`.` separated words.
+func slugHasWord(slug, word string) bool {
+	for _, w := range strings.FieldsFunc(slug, func(r rune) bool { return r == '-' || r == '.' }) {
+		if w == word {
+			return true
+		}
+	}
+	return false
+}
+
 // DispatcherRole is the desk ROLE whose App identity is the dispatcher — the ONE declared
 // source of that answer, for the reader AND the writer.
 //

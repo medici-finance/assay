@@ -58,14 +58,17 @@ func ApplyVerifiedModelStamp(f Forge, repo ForgeRepo, number int, kind TargetKin
 // ApplyVerifiedStamp is ApplyVerifiedModelStamp for one stamp kind. It reads, removes and
 // verifies only labels of that kind, so applying one pair never touches the other (#2760).
 func ApplyVerifiedStamp(f Forge, repo ForgeRepo, number int, kind TargetKind, sk StampKind, labels []string, authority func(string) bool) error {
-	expected, state := sk.StampOf(labels)
-	if state != ModelStamped {
+	if _, state := sk.StampOf(labels); state != ModelStamped {
 		return Refused("invalid requested model stamp")
 	}
 	tl, err := StampTimelineFor(f, repo, number, kind)
 	if err != nil {
 		return err
 	}
+	// A family alias over a standing full id of that family keeps the full id (SettleRequest),
+	// so two spellings of one model never replace each other.
+	labels = sk.SettleRequest(tl, labels, authority)
+	expected, _ := sk.StampOf(labels)
 	got, state := sk.AttestedStampOf(tl, authority)
 	if state == ModelStamped && got == expected {
 		return nil
