@@ -24,6 +24,13 @@ type cycleFakes struct {
 	sync      map[string]syncReport
 	staleBeat bool
 	confirms  int
+	// admits counts the cycle's own typed confirm; admitted is the plan it was shown, seenStops
+	// and seenPaused what had already changed when it was asked, and refuse makes it decline.
+	admits     int
+	admitted   []cellop.Action
+	seenStops  int
+	seenPaused []string
+	refuse     bool
 }
 
 func newCycleFakes(w *lcWorld) *cycleFakes {
@@ -32,6 +39,31 @@ func newCycleFakes(w *lcWorld) *cycleFakes {
 
 func (f *cycleFakes) ops() cycleOps {
 	return cycleOps{
+		admit: func(actions []cellop.Action) cellop.Result {
+			f.admits++
+			f.admitted = append(f.admitted, actions...)
+			f.seenStops = len(f.w.stops)
+			for _, role := range knownRoles {
+				if p, _ := f.w.lc.Paused(role); p {
+					f.seenPaused = append(f.seenPaused, role)
+				}
+			}
+			r := cellop.NewResult("cycle", f.w.c.Name, f.w.clock)
+			if f.refuse {
+				r.Finish(cellop.Refused, cellop.ReasonConfirmMismatch, "the operator typed the wrong code", f.w.clock)
+				return r
+			}
+			for _, a := range actions {
+				d, err := runCycleAdmit(a)
+				if err != nil {
+					r.Finish(cellop.Failed, cellop.ReasonActionFailed, err.Error(), f.w.clock)
+					return r
+				}
+				r.Actions = append(r.Actions, actionResult(f.w.c.Name, a.ID, cellop.ActionOK, d))
+			}
+			r.Finish(cellop.OK, "", "", f.w.clock)
+			return r
+		},
 		confirm: func(actions []cellop.Action) cellop.Result {
 			f.confirms++
 			r := cellop.NewResult("cycle", f.w.c.Name, f.w.clock)
@@ -728,5 +760,102 @@ func TestClaudeSyncModeSameBytes(t *testing.T) {
 	}
 	if fi, err := os.Stat(settings); err != nil || fi.Mode().Perm() != 0o600 {
 		t.Fatalf("the settings mode after a same-bytes replace is %v (%v), want 0600", fi.Mode().Perm(), err)
+	}
+}
+
+// The cycle takes its typed confirm before it changes anything, on every path: one role, a role
+// that is down, an interactive role, --all-at-once, --force-after-timeout.
+// regression: #6607
+func TestCycleConfirmsFirst(t *testing.T) {
+	cases := map[string]func(w *lcWorld, o *cycleOpts){
+		"running": func(w *lcWorld, o *cycleOpts) { w.cadenceRole("worker-desk", "tmux") },
+		"down":    func(w *lcWorld, o *cycleOpts) {},
+		"interactive": func(w *lcWorld, o *cycleOpts) {
+			w.interactiveRole("worker-desk", "tmux")
+		},
+		"all-at-once": func(w *lcWorld, o *cycleOpts) {
+			w.cadenceRole("worker-desk", "tmux")
+			w.cadenceRole("pr-review-desk", "tmux")
+			o.Roles = append(o.Roles, "pr-review-desk")
+			o.AllAtOnce = true
+		},
+		"force": func(w *lcWorld, o *cycleOpts) {
+			w.cadenceRole("worker-desk", "tmux")
+			w.claim("worker-desk", "example--brief-3")
+			o.Force = true
+		},
+	}
+	for name, set := range cases {
+		t.Run(name, func(t *testing.T) {
+			w := newLCWorld(t)
+			o := cycleOptsFor("worker-desk")
+			set(w, &o)
+			f := newCycleFakes(w)
+			w.lc.cycle(o, f.ops())
+			if f.admits != 1 {
+				t.Fatalf("the cycle asked for its confirm %d times, want 1", f.admits)
+			}
+			if f.seenStops != 0 || len(f.seenPaused) != 0 {
+				t.Fatalf("the confirm came after the cycle acted: stops=%d paused=%v", f.seenStops, f.seenPaused)
+			}
+			if len(f.admitted) != len(o.Roles) {
+				t.Fatalf("the plan shown names %d actions for %d roles: %+v", len(f.admitted), len(o.Roles), f.admitted)
+			}
+			for i, a := range f.admitted {
+				if a.ID != "cycle:"+o.Roles[i] || a.Summary == "" || len(a.Preconditions) != 1 {
+					t.Errorf("plan action %d is %+v", i, a)
+				}
+			}
+		})
+	}
+}
+
+// A wrong or absent confirm ends the cycle with nothing paused, drained, stopped or restarted.
+// regression: #6607
+func TestCycleDeclineDrainsNone(t *testing.T) {
+	for _, allAtOnce := range []bool{false, true} {
+		w := newLCWorld(t)
+		w.cadenceRole("worker-desk", "tmux")
+		w.interactiveRole("pr-review-desk", "tmux")
+		f := newCycleFakes(w)
+		f.refuse = true
+		o := cycleOptsFor("worker-desk", "pr-review-desk")
+		o.AllAtOnce = allAtOnce
+		o.Force = true
+		r := w.lc.cycle(o, f.ops())
+		if r.Outcome != cellop.Refused || r.ExitCode() != 5 || r.Reason == nil || *r.Reason != cellop.ReasonConfirmMismatch {
+			t.Fatalf("all-at-once=%v: a declined cycle read %s (exit %d)", allAtOnce, r.Outcome, r.ExitCode())
+		}
+		if f.confirms != 0 || len(w.stops) != 0 || len(f.syncs) != 0 || len(f.restarts) != 0 || len(w.sleeps) != 0 {
+			t.Fatalf("all-at-once=%v: a declined cycle acted: confirms=%d stops=%v syncs=%v restarts=%v sleeps=%v",
+				allAtOnce, f.confirms, w.stops, f.syncs, f.restarts, w.sleeps)
+		}
+		for _, role := range []string{"worker-desk", "pr-review-desk"} {
+			if p, _ := w.lc.Paused(role); p {
+				t.Errorf("all-at-once=%v: a declined cycle paused %s", allAtOnce, role)
+			}
+		}
+		if got := w.stopFiles(); len(got) != 0 {
+			t.Errorf("all-at-once=%v: a declined cycle left stop files %v", allAtOnce, got)
+		}
+	}
+}
+
+// A cadence probe the plan cannot read stops the cycle before its confirm: nothing is shown as
+// planned that was not measured.
+// regression: #6607
+func TestCycleUnmeasuredAsksNone(t *testing.T) {
+	w := newLCWorld(t)
+	w.cadenceRole("worker-desk", "tmux")
+	w.lc.probes.cadence = func(role string) (cadenceReading, error) {
+		if role == "pr-review-desk" {
+			return cadenceReading{}, errors.New("lease unreadable")
+		}
+		return w.cad[role], nil
+	}
+	f := newCycleFakes(w)
+	r := w.lc.cycle(cycleOptsFor("worker-desk", "pr-review-desk"), f.ops())
+	if r.Outcome != cellop.CouldNotCheck || f.admits != 0 || len(w.stops) != 0 {
+		t.Fatalf("outcome %s admits=%d stops=%v", r.Outcome, f.admits, w.stops)
 	}
 }

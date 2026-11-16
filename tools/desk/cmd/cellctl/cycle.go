@@ -62,6 +62,10 @@ type syncReport struct {
 // cycleOps are cycle's effects past the drain, injectable so the tests drive it without a
 // terminal, a harness CLI or a cockpit.
 type cycleOps struct {
+	// admit is the typed confirm the whole cycle takes before it changes anything: it shows the
+	// cycle's plan (cycleAdmitActions) and applies it on the operator's terminal through the one
+	// apply path. Anything but ok ends the cycle with nothing paused, drained, stopped or restarted.
+	admit func(actions []cellop.Action) cellop.Result
 	// confirm applies planned stops on the operator's confirm and returns that apply's result.
 	confirm func(actions []cellop.Action) cellop.Result
 	sync    func(role string) syncReport
@@ -145,6 +149,20 @@ func (l *interimLifecycle) cycle(o cycleOpts, ops cycleOps) cellop.Result {
 		r.Next = append([]string{}, next...)
 		return r
 	}
+	// The typed confirm comes first, on every path: the cycle restarts roles, and a restart is
+	// applied only after the operator's confirm (spec/cell-op-v1.md §5, §6). Nothing below runs
+	// unless the operator confirmed this plan.
+	plan, err := l.cycleAdmitActions(o)
+	if err != nil {
+		r.Finish(cellop.CouldNotCheck, cellop.ReasonUnmeasured, err.Error(), l.now())
+		return r
+	}
+	admitted := ops.admit(plan)
+	if admitted.Outcome != cellop.OK {
+		return admitted
+	}
+	r.PlanID = admitted.PlanID
+	r.Actions = append(r.Actions, admitted.Actions...)
 	for gi, group := range groups {
 		// A role that is down before the cycle is not cycled: cycle reopens what was open.
 		var live []string
@@ -275,6 +293,79 @@ func (l *interimLifecycle) cycle(o cycleOpts, ops cycleOps) cellop.Result {
 		return finish(cellop.CouldNotCheck, cellop.ReasonUnmeasured, "every role was cycled, but a harness placement could not be checked against the pin")
 	}
 	return finish(cellop.OK, "", "")
+}
+
+// cycleAdmitActions is the plan the operator confirms before the cycle changes anything: one
+// action per targeted role, saying what the cycle will do to it, with the role's cadence lease
+// (running or down) as the precondition the apply re-measures.
+func (l *interimLifecycle) cycleAdmitActions(o cycleOpts) ([]cellop.Action, error) {
+	var out []cellop.Action
+	for _, role := range o.Roles {
+		state, err := l.cycleAdmitState(role)
+		if err != nil {
+			return nil, err
+		}
+		summary := "skip " + role + ": it is down, and the cycle reopens only what was open"
+		if state == "running" {
+			summary = "cycle " + role + ": pause it, drain it (bounded by --drain-timeout), stop it, sync its plugin " +
+				"placement to the pin and check it, restart it and wait for a fresh heartbeat; an interactive " +
+				"role's stop is confirmed again when the drain reaches it"
+			if o.Force {
+				summary += ", and so is a stop forced after a drain timeout, which abandons the claims still held"
+			} else {
+				summary += "; on a drain timeout it is left running"
+			}
+		}
+		out = append(out, cellop.Action{
+			ID: "cycle:" + role, Cell: l.c.Name, Summary: summary,
+			Preconditions: []cellop.Precondition{{Key: "cadence:" + role, Value: state}},
+		})
+	}
+	return out, nil
+}
+
+// cycleAdmitState is the admit plan's precondition for role: whether its cadence lease is held.
+func (l *interimLifecycle) cycleAdmitState(role string) (string, error) {
+	cr, err := l.probes.cadence(role)
+	if err != nil {
+		return "", fmt.Errorf("%s: cadence checkpoint: %v", role, err)
+	}
+	if cr.Held {
+		return "running", nil
+	}
+	return "down", nil
+}
+
+// cycleAdmitRole is the role a stored admit action names, checked against the known roles: the
+// plan store is writable by any same-account process.
+func cycleAdmitRole(a cellop.Action) (string, error) {
+	kind, role, _ := strings.Cut(a.ID, ":")
+	if kind != "cycle" || !valueIn(role, knownRoles) {
+		return "", fmt.Errorf("cycle: %q is not a cycle action naming a known role", a.ID)
+	}
+	return role, nil
+}
+
+// measureCycleAdmit re-measures one admit action's precondition.
+func (l *interimLifecycle) measureCycleAdmit(a cellop.Action) ([]cellop.Precondition, error) {
+	role, err := cycleAdmitRole(a)
+	if err != nil {
+		return nil, err
+	}
+	state, err := l.cycleAdmitState(role)
+	if err != nil {
+		return nil, err
+	}
+	return []cellop.Precondition{{Key: "cadence:" + role, Value: state}}, nil
+}
+
+// runCycleAdmit has no effect of its own: the confirmed plan admits the cycle, which then does
+// what each action says.
+func runCycleAdmit(a cellop.Action) (string, error) {
+	if _, err := cycleAdmitRole(a); err != nil {
+		return "", err
+	}
+	return "confirmed; the cycle changes this role only when it reaches it", nil
 }
 
 // cycleNext joins the Next lines of an early return, in order.
@@ -527,11 +618,26 @@ func (l *interimLifecycle) awaitHeartbeat(role string, since time.Time, wait tim
 
 func (c *Cell) liveCycleOps(cmd *cobra.Command) cycleOps {
 	return cycleOps{
+		admit:     func(actions []cellop.Action) cellop.Result { return c.cycleAdmit(cmd, actions) },
 		confirm:   func(actions []cellop.Action) cellop.Result { return c.cycleConfirm(cmd, actions) },
 		sync:      c.cycleSync,
 		restart:   c.cycleRestart,
 		heartbeat: c.cycleHeartbeat,
 	}
+}
+
+// cycleAdmit stores the cycle's own plan and applies it on this terminal through the one apply
+// session (cellopApplyResult): the operator sees what the cycle will do to each role and types the
+// confirm code before anything is paused.
+func (c *Cell) cycleAdmit(cmd *cobra.Command, actions []cellop.Action) cellop.Result {
+	p := cellopNewPlan(c, "cycle", actions)
+	lc := c.lifecycle()
+	v := cellopVerb{
+		Verb:    "cycle",
+		Measure: func(_ *Cell, a cellop.Action) ([]cellop.Precondition, error) { return lc.measureCycleAdmit(a) },
+		Run:     func(_ *Cell, a cellop.Action) (string, error) { return runCycleAdmit(a) },
+	}
+	return cellopApplyResult(cmd, c, v, p.ID)
 }
 
 // cycleConfirm stores the planned stops and applies them on this terminal, through the one
@@ -851,7 +957,9 @@ func cycleCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "cycle <cell> [role...]",
 		Short: "drain each role window, sync its plugin placement to the pin, check it, restart it, confirm a heartbeat",
-		Long: "For each targeted role (default: the cell's roles), one at a time: drain it (drain's stop of new work, wait\n" +
+		Long: "Before it changes anything, the cycle shows its plan (one line per targeted role, running or down) and\n" +
+			"takes the typed confirm code on the terminal; a wrong or absent code ends it with nothing paused, drained,\n" +
+			"stopped or restarted. Then, for each targeted role (default: the cell's roles), one at a time: drain it (drain's stop of new work, wait\n" +
 			"for idle bounded by --drain-timeout, handoff and per-role stop); bring its harness's plugin placement to the\n" +
 			"marketplace pin and check it (claude: the worktree's project record against\n" +
 			"extraKnownMarketplaces.assay.source.ref; cursor: deskinstall --release <pin>, proved by --check; codex has\n" +
