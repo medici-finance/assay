@@ -153,7 +153,7 @@ _Held by per-stream caps: 14 brief(s) across 1 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 2667b52c5 2026-11-16T16:40:37Z_
+_last regen: 024095621 2026-11-16T17:01:28Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -174,7 +174,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 2667b52c5 2026-11-16T16:40:37Z_
+_last regen: 024095621 2026-11-16T17:01:28Z_
 
 **Progress:** 36/98 brief items done.
 
@@ -284,7 +284,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 10 [exec:strong] | implemented | 1500 | 1 | 24h | driver | close the sign-off card | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | 24h | driver | human action, cite medici-finance/assay#1794 | — | — |
 | desk-containers | 30 [exec:strong] | implemented | 1000 | 0 | 24h | driver | human action, cite medici-finance/assay#5794 | — | — |
-| desk-containers | 34 [exec:strong] | implemented | 1000 | 0 | 23h | driver | human action, cite medici-finance/assay#6301 | — | — |
+| desk-containers | 34 [exec:strong] | implemented | 1000 | 0 | 24h | driver | human action, cite medici-finance/assay#6301 | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | 24h | driver | human action, cite medici-finance/assay#1185 | — | — |
 | desk-supervision | 20 [exec:strong] | implemented | 1000 | 0 | 24h | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3765 | — | — |
 | desk-supervision | 21 [exec:strong] | implemented | 1000 | 0 | 24h | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3764 | — | — |
@@ -442,7 +442,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 27 [exec:strong] | verified | 1000 | 0 | 24h | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 8eb028b49bc5 (claude-opus-5-5) | — |
 | desk-tools | 15 | verified | 1000 | 0 | 24h | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 810a5edf064b (claude-opus-5-5) | — |
 | desk-tools | 23 [exec:strong] | verified | 1000 | 0 | 24h | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
-| desk-tools | 56 [exec:strong] | implemented | 1000 | 0 | 21h | verify runner | none | — | — |
+| desk-tools | 56 [exec:strong] | implemented | 1000 | 0 | 22h | verify runner | none | — | — |
 | desktools-go-git | 08 | verified | 1000 | 0 | 24h | CI auto-flip | none; stuck after one main run → file | 2026-11-06 assay-verifier-app[bot] @ 8592383261fb (forge-identity) | — |
 | desktools-v2 | 05 [exec:strong] | verified | 1000 | 0 | 24h | CI auto-flip | none; stuck after one main run → file | 2026-10-02 assay-verifier-app[bot] @ 454982f91a72 (claude-opus-5-5) | — |
 | desktools-v2 | 12 [exec:strong] | verified | 1000 | 0 | 24h | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ e4d474af8bca (claude-opus-5-5) | — |
