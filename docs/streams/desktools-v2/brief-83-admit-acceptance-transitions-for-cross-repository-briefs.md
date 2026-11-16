@@ -87,7 +87,7 @@ Written for option 1. If the driver picks option 2, drop Tasks 3 and 4 and the b
    - a descriptor or planned-table digest mismatch;
    - a version 2 `acceptance` member missing its tracking fields.
 6. Docs. Amend rule 45, the verify-desk `--acceptance-record` paragraph and `docs/protected-paths.md`. Each uses the exact phrase "cross-repository transition admission" and states that cross-repository admission may carry an acceptance record, and that `--in-container` and `--check` still refuse. Regenerate the Cursor mirror.
-7. Tests. Put the new named tests in `statusgen/transitioncrossrepo_test.go`. The only change to `statusgen/transitionbracket_test.go` is its version 2 subtest, which now asserts the Task 5 refusals instead of a blanket refusal. Leave `containerbracket_test.go`, `containercredit_test.go`, `containercrossrepo_test.go`, `acceptancetransition_test.go` and `protectedrecord_test.go` unchanged.
+7. Tests. Put the new named tests in `statusgen/transitioncrossrepo_test.go` (planned). The only change to `statusgen/transitionbracket_test.go` is its version 2 subtest, which now asserts the Task 5 refusals instead of a blanket refusal. Leave `containerbracket_test.go`, `containercredit_test.go`, `containercrossrepo_test.go`, `acceptancetransition_test.go` and `protectedrecord_test.go` unchanged.
 
 ## Verify
 
