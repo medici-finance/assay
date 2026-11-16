@@ -210,7 +210,9 @@ func runFlip(args []string, options childOptions) error {
 		}
 		return err
 	}
-	if introduced := newProblems(before, after); len(introduced) > 0 {
+	introduced, excused := attributeIntroduced(before, after, flipScope(rel, *brief))
+	printExcused(stderr, rel, excused)
+	if len(introduced) > 0 {
 		if uerr := uncommit(); uerr != nil {
 			return uerr
 		}
@@ -263,20 +265,16 @@ func statusgenVerifyFlip(root, brief, sha, runner string, dryRun bool, options c
 	return rel, stamp, nil
 }
 
-// newProblems is after minus before: the PROBLEM lines the flip introduced.
-func newProblems(before, after []string) []string {
-	had := make(map[string]bool, len(before))
-	for _, p := range before {
-		had[p] = true
+// flipScope is what a flip touches: the board README it commits (every brief of that
+// stream) and the flipped brief's own stream, by statusgen's key as well as by directory.
+// The flip's new-PROBLEM diff attributes by it exactly as a landing's does (lintdiff.go).
+func flipScope(readme, brief string) landingScope {
+	s := landingScopeOf(readme)
+	s.addBrief(brief)
+	if stream, _, ok := strings.Cut(strings.TrimSpace(brief), "/"); ok {
+		s.addStream(stream)
 	}
-	var out []string
-	for _, p := range after {
-		if !had[p] {
-			had[p] = true
-			out = append(out, p)
-		}
-	}
-	return out
+	return s
 }
 
 // gitOut runs git -C dir args and returns trimmed stdout.
