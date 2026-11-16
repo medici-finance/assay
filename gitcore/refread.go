@@ -125,7 +125,7 @@ func (r *Repo) remoteScopeReason(name string) (string, error) {
 		return "worktree-scope config carries include or includeIf directives", nil
 	}
 	if remotes := scoped.Raw.Section("remote"); remotes.HasSubsection(name) && remotes.Subsection(name).HasOption("url") {
-		return "worktree-scope config sets remote." + name + ".url", nil
+		return worktreeURLReason(name), nil
 	}
 	for _, sub := range scoped.Raw.Section("url").Subsections {
 		if sub.HasOption("insteadOf") {
@@ -133,6 +133,72 @@ func (r *Repo) remoteScopeReason(name string) (string, error) {
 		}
 	}
 	return "", nil
+}
+
+func worktreeURLReason(name string) string {
+	return "worktree-scope config sets remote." + name + ".url"
+}
+
+// PinnedRemoteURLs is ScopedRemoteURLs for a caller that also runs in a worktree whose
+// transport is pinned per worktree. It refuses everything ScopedRemoteURLs refuses,
+// except one shape of worktree-scope remote.<name>.url: an empty reset followed by
+// exactly one URL, so git resolves that URL alone. For that shape it returns the
+// repository-local list together with the pinned URL, the repository's insteadOf rules
+// applied as for any fetch URL; pinned is "" when worktree scope sets no URL. Whether
+// the pinned URL may stand for the repository-local one is the caller's decision.
+func (r *Repo) PinnedRemoteURLs(name string) (local []string, pinned string, err error) {
+	unreadable := func(err error) error {
+		return fmt.Errorf("gitcore: remote-urls %s: config scope unreadable: %w", name, err)
+	}
+	refuse := func(why string) error {
+		return fmt.Errorf("gitcore: remote-urls %s: %w: %s", name, ErrRemoteScopeUnmerged, why)
+	}
+	why, err := r.remoteScopeReason(name)
+	if err != nil {
+		return nil, "", unreadable(err)
+	}
+	if why == "" {
+		local, err = r.RemoteURLs(name)
+		return local, "", err
+	}
+	if why != worktreeURLReason(name) {
+		return nil, "", refuse(why)
+	}
+	// remoteScopeReason stops at the first declaration, so the check after the URL one
+	// is repeated here before the pinned shape is accepted.
+	cfg, err := r.rawConfig()
+	if err != nil {
+		return nil, "", unreadable(err)
+	}
+	scoped, _, err := r.worktreeScope(cfg)
+	if err != nil || scoped == nil {
+		return nil, "", unreadable(fmt.Errorf("worktree scope changed during the read: %v", err))
+	}
+	for _, sub := range scoped.Raw.Section("url").Subsections {
+		if sub.HasOption("insteadOf") {
+			return nil, "", refuse("worktree-scope config carries a url.<base>.insteadOf rule")
+		}
+	}
+	values := scoped.Raw.Section("remote").Subsection(name).OptionAll("url")
+	if len(values) != 2 || values[0] != "" || values[1] == "" {
+		return nil, "", refuse(why + " in a shape other than one reset and one URL")
+	}
+	local, err = r.RemoteURLs(name)
+	if err != nil {
+		return nil, "", err
+	}
+	// Append the worktree entries to the shared snapshot in git's scope order, and let
+	// the shared decoder apply the reset and the insteadOf rules.
+	cfg.Raw.Section("remote").Subsection(name).AddOption("url", "").AddOption("url", values[1])
+	merged, err := decodeFetchConfig(cfg.Raw)
+	if err != nil {
+		return nil, "", unreadable(err)
+	}
+	remote, ok := merged.Remotes[name]
+	if !ok || len(merged.Raw.Section("remote").Subsection(name).OptionAll("url")) != 1 || len(remote.URLs) == 0 {
+		return nil, "", refuse(why + " that does not resolve to one URL")
+	}
+	return local, remote.URLs[0], nil
 }
 
 // NativeDiscoveryReason reports repository declarations whose effective worktree

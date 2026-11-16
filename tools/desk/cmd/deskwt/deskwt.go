@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -957,7 +958,10 @@ func currentRepo(dir string) (string, error) {
 	if err != nil || !gitRepo.InsideWorkTree() {
 		return "", deskkit.Unverifiable("not inside a git worktree", err)
 	}
-	originURL, oerr := gitRepo.RemoteURL("origin")
+	originURL, oerr := deskkit.SlugRemoteURL(gitRepo, "origin")
+	if errors.Is(oerr, gitcore.ErrRemoteScopeUnmerged) {
+		return "", deskkit.Unverifiable("origin could be changed by worktree-scope or include config", oerr)
+	}
 	if oerr != nil {
 		return "", deskkit.Unverifiable("cannot read remote.origin.url", oerr)
 	}

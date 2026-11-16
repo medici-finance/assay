@@ -15,8 +15,8 @@ import (
 // localRemoteReads are gitcore's repository-local remote URL reads. They see the shared
 // config file alone: no worktree-scope config and no include/includeIf, so a repository a
 // caller decides from them can differ from the one native git resolves. A caller that
-// derives a repository slug uses gitcore's ScopedRemoteURLs (which refuses when that config
-// could apply) or native git; a NEW raw read must say here why it needs neither.
+// derives a repository slug uses SlugRemoteURL or gitcore's ScopedRemoteURLs (both refuse
+// when that config could apply) or native git; a NEW raw read must say here why it needs none.
 var localRemoteReads = map[string]bool{"RemoteURL": true, "RemoteURLs": true}
 
 // localRemoteReadAllowed is the ratchet: every non-test caller that existed when the scoped
@@ -25,12 +25,8 @@ var localRemoteReadAllowed = map[string]string{
 	"cmd/deskclaim-ref/gogit.go:gogitOriginURL":      "claim host; go-git refusal falls through to native git",
 	"cmd/deskgit/deskgit.go:fetchOriginURL":          "in-process fetch gate on the URL it connects to",
 	"cmd/deskpushguard/main.go:deriveRepo":           "hook fallback when git passes no remote URL",
-	"cmd/deskreply/deskreply.go:preflight":           "reply slug; follow-up candidate",
-	"cmd/deskwt/deskwt.go:currentRepo":               "worktree slug; follow-up candidate",
 	"internal/deskkit/gitread.go:CheckoutGitRead":    "in-process fetch gate on the URL it connects to",
-	"internal/deskkit/preflight.go:deriveRepoSlug":   "landing slug; follow-up candidate",
 	"internal/deskkit/preflight.go:landingRemoteURL": "landing host",
-	"internal/deskkit/remoterepo.go:OriginRepoSlug":  "origin slug helper; follow-up candidate",
 }
 
 // localRemoteReaders lists file:function for every non-test call of a localRemoteReads name.
@@ -92,14 +88,28 @@ func TestNoNewLocalOriginRead(t *testing.T) {
 		t.Fatalf("module root not found at %s: %v", module, err)
 	}
 	var hits []string
+	found := map[string]bool{}
 	for _, hit := range localRemoteReaders(t, module) {
+		found[hit] = true
 		if _, ok := localRemoteReadAllowed[hit]; !ok {
 			hits = append(hits, hit)
 		}
 	}
 	if len(hits) != 0 {
 		t.Fatalf("non-test code reads a remote URL from repository-local config only; a slug decided "+
-			"from it can differ from native git's (use gitcore's ScopedRemoteURLs or native git): %v", hits)
+			"from it can differ from native git's (use SlugRemoteURL, gitcore's ScopedRemoteURLs or native git): %v", hits)
+	}
+	// The ratchet only shrinks: an entry whose caller is gone must leave the list, so a
+	// later raw read cannot reuse its slot.
+	var stale []string
+	for k := range localRemoteReadAllowed {
+		if !found[k] {
+			stale = append(stale, k)
+		}
+	}
+	sort.Strings(stale)
+	if len(stale) != 0 {
+		t.Fatalf("allow-list entries no longer read a remote URL; remove them: %v", stale)
 	}
 }
 
