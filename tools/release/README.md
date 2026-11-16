@@ -133,8 +133,15 @@ The release workflow runs `write` and then `check` in the desk-tools package
 loop, after `hooks/pre-push` is staged and before `tar`, in both
 `.github/workflows/release.yml` and its mirror `ci/staged-workflows/release.yml`.
 `sbom.py` reads only executable members, so the 0644 manifest adds no SBOM
-package. Releases published before that step carry no tarball manifest; for
-those, `deskinstall` still writes the one in the install dir.
+package. The image build (`images.py`, `build_images`) also reads the Linux
+tarball's members: it admits the root `MANIFEST.sha256` as its one
+non-executable member, never copies it into an image, and refuses the build
+unless the manifest lists exactly the other members with matching digests. Any
+other non-executable top-level member is still refused. That makes the
+manifest required in `desk-tools-linux-amd64.tar.gz` and gives it a second,
+post-`tar` check for that platform. Releases published before that step carry
+no tarball manifest; for those, `deskinstall` still writes the one in the
+install dir.
 
 ## Release Go cache
 
