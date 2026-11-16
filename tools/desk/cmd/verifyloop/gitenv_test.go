@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
 // gitEnvOrigin is the origin URL every gitEnvRepo carries in its own config.
@@ -145,5 +147,54 @@ func TestLandingGitEnv(t *testing.T) {
 	}
 	if want := bare + ";" + os.DevNull + ";1;0;0;[]"; string(got) != want {
 		t.Fatalf("pre-push hook Git env = %q, want %q", got, want)
+	}
+}
+
+// regression: #4823
+// TestDetachedWtGitEnv: the native runner's isolated worktree is added and removed under
+// the declared verifier Git environment. An inherited GIT_DIR (or any planted GIT_*) would
+// send the add to another repository, and leave the remove's registration behind.
+func TestDetachedWtGitEnv(t *testing.T) {
+	work, _ := durableFixture(t)
+	head := gitT(t, work, "rev-parse", "HEAD")
+	inheritBadGitEnv(t)
+	dir, cleanup, err := gitDetachedWorktree(loopengine.Item{ID: "example/01", TargetSHA: head, Payload: map[string]string{"root": work}})
+	if err != nil {
+		t.Fatalf("detached worktree add: %v", err)
+	}
+	if got := gitT(t, dir, "rev-parse", "HEAD"); got != head {
+		t.Fatalf("detached worktree HEAD = %s, want %s", got, head)
+	}
+	cleanup()
+	if list := gitT(t, work, "worktree", "list", "--porcelain"); strings.Contains(list, filepath.Base(filepath.Dir(dir))) {
+		t.Fatalf("detached worktree still registered after cleanup:\n%s", list)
+	}
+}
+
+// regression: #4823
+// TestGateScoresGitEnv: the plan's statusgen read runs under the declared verifier Git
+// environment; a stand-in statusgen records what Git sees from inside the root.
+func TestGateScoresGitEnv(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sh statusgen fixture")
+	}
+	work, bare := durableFixture(t)
+	seen := filepath.Join(t.TempDir(), "statusgen-env")
+	bin := filepath.Join(t.TempDir(), "statusgen")
+	script := "#!/bin/sh\ncd \"$3\" || exit 1\n" + gitEnvProbe + " >" + seen + "\necho '[]'\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("STATUSGEN_BIN", bin)
+	inheritBadGitEnv(t)
+	if _, err := baseQueueRows(work); err != nil {
+		t.Fatalf("baseQueueRows: %v", err)
+	}
+	got, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatalf("stand-in statusgen left no record: %v", err)
+	}
+	if want := bare + ";" + os.DevNull + ";1;0;0;[]"; string(got) != want {
+		t.Fatalf("statusgen Git env = %q, want %q", got, want)
 	}
 }
