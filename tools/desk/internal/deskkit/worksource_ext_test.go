@@ -131,3 +131,107 @@ func TestWorkSourceOriginPushURL(t *testing.T) {
 		t.Fatalf("two fetch urls must stay refused, got %v", err)
 	}
 }
+
+// Config the repository-local reader does not merge could change origin as native git
+// resolves it, so the repository-less read refuses it rather than deriving a slug.
+//
+// regression: #6606
+func TestWorkSourceOriginScope(t *testing.T) {
+	const steer = "https://github.com/other/steer.git"
+	cases := []struct {
+		name string
+		ext  bool
+		at   func(root, linked string) string
+		args [][]string
+	}{
+		{"worktree url, linked", true, func(_, l string) string { return l }, [][]string{{"config", "--worktree", "remote.origin.url", steer}}},
+		{"worktree url, main", true, func(r, _ string) string { return r }, [][]string{{"config", "--worktree", "remote.origin.url", steer}}},
+		{"worktree reset", true, func(_, l string) string { return l }, [][]string{{"config", "--worktree", "remote.origin.url", ""}}},
+		{"worktree insteadOf", true, func(_, l string) string { return l }, [][]string{{"config", "--worktree", "url.https://github.com/other/.insteadOf", "https://github.com/owner/"}}},
+		{"worktree include", true, func(_, l string) string { return l }, [][]string{{"config", "--worktree", "include.path", "steer.cfg"}}},
+		{"include", false, func(r, _ string) string { return r }, [][]string{{"config", "include.path", "steer.cfg"}}},
+		{"includeIf", false, func(_, l string) string { return l }, [][]string{{"config", "includeIf.gitdir:/.path", "steer.cfg"}}},
+		{"activation grammar", false, func(r, _ string) string { return r }, [][]string{{"config", "extensions.worktreeConfig", "maybe"}}},
+	}
+	for _, tc := range cases {
+		root, linked, _ := workSourceFixture(t, tc.ext)
+		dir := tc.at(root, linked)
+		for _, args := range tc.args {
+			cmd := exec.Command("git", args...)
+			cmd.Dir = dir
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("%s: fixture git %v: %s %v", tc.name, args, out, err)
+			}
+		}
+		_, err := LocalWorkCatalog(dir, "")
+		if err == nil || !strings.Contains(err.Error(), "worktree-scope or include config") {
+			t.Errorf("%s: origin read must refuse, got %v", tc.name, err)
+			continue
+		}
+		if ExitCodeOf(err) != ExitUnverifiable {
+			t.Fatalf("%s: refusal must be unverifiable, got exit %d", tc.name, ExitCodeOf(err))
+		}
+		if strings.Contains(err.Error(), "other/") || strings.Contains(err.Error(), "steer") {
+			t.Fatalf("%s: refusal echoes a configured value: %v", tc.name, err)
+		}
+		// An explicit repository reads no origin, so it is unaffected.
+		if _, err := LocalWorkCatalog(dir, "owner/repo"); err != nil {
+			t.Fatalf("%s: explicit repository must still resolve: %v", tc.name, err)
+		}
+	}
+}
+
+// Worktree-scope keys that cannot change origin's fetch list keep the read working, as do
+// the same declarations while extensions.worktreeConfig is off (git ignores the file then).
+//
+// regression: #6606
+func TestWorkSourceOriginScopeOK(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		ext  bool
+		args [][]string
+	}{
+		{"pushurl and identity", true, [][]string{
+			{"config", "--worktree", "remote.origin.pushurl", "https://github.com/owner/repo.git"},
+			{"config", "--worktree", "credential.helper", ""},
+			{"config", "--worktree", "url.https://example.invalid/.pushInsteadOf", "https://github.com/"},
+		}},
+		{"extension off", false, [][]string{{"config", "extensions.worktreeConfig", "false"}}},
+	} {
+		root, linked, _ := workSourceFixture(t, tc.ext)
+		for _, args := range tc.args {
+			cmd := exec.Command("git", args...)
+			cmd.Dir = linked
+			if out, err := cmd.CombinedOutput(); err != nil {
+				t.Fatalf("%s: fixture git %v: %s %v", tc.name, args, out, err)
+			}
+		}
+		if !tc.ext {
+			// A config.worktree file that git does not honour while the extension is off.
+			gitDir := strings.TrimSpace(fixtureGit(t, linked, "rev-parse", "--absolute-git-dir"))
+			if err := os.WriteFile(filepath.Join(gitDir, "config.worktree"), []byte("[remote \"origin\"]\n\turl = https://github.com/other/steer.git\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
+		for _, dir := range []string{root, linked} {
+			catalog, err := LocalWorkCatalog(dir, "")
+			if err != nil {
+				t.Fatalf("%s %s: %v", tc.name, filepath.Base(dir), err)
+			}
+			if sel, err := catalog.Select("stream:b-08@2"); err != nil || sel.Subject.Repository != "owner/repo" {
+				t.Fatalf("%s %s: slug must come from the shared fetch url: %+v %v", tc.name, filepath.Base(dir), sel.Subject, err)
+			}
+		}
+	}
+}
+
+func fixtureGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("fixture git %v: %s %v", args, out, err)
+	}
+	return string(out)
+}
