@@ -401,7 +401,7 @@ func preflight(dir string) (*gitFacts, error) {
 	}
 	repo, rerr := parseRepo(originURL)
 	if rerr != nil {
-		return nil, deskkit.Unverifiable("cannot parse origin repo from "+originURL, rerr)
+		return nil, deskkit.Unverifiable("cannot parse origin repo from "+deskkit.RedactURLUserinfo(originURL), rerr)
 	}
 	if !deskkit.IsAllowedRepo(repo) {
 		return nil, deskkit.Refused("refused: origin " + repo + " is not in the desk-tools repo set")

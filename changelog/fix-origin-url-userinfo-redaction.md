@@ -1,0 +1,2 @@
+### Fixed
+- Desk tools no longer echo the userinfo of a remote URL when they refuse an origin they cannot parse: `ParseRemoteRepo` and every refusal or log line that quotes an origin or remote URL (deskwt, deskpr, deskreply, deskflip, deskboot, deskdispatch, deskgit, deskmerge, deskpushguard, deskreconcile) now mask it through the shared `deskkit.RedactURLUserinfo` helper, so a credential-bearing https origin cannot leak into a transcript.

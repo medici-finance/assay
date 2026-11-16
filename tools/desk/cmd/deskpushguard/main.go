@@ -175,7 +175,7 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	var blocked []blockedRef
 	repo, err := deriveRepo(remoteURL, remoteName)
 	if err != nil {
-		fmt.Fprintf(stderr, "deskpushguard: cannot derive repo from remote %q: %v — skipping PR-state check (fail-open)\n", remoteURL, err)
+		fmt.Fprintf(stderr, "deskpushguard: cannot derive repo from remote %q: %v — skipping PR-state check (fail-open)\n", deskkit.RedactURLUserinfo(remoteURL), err)
 	} else {
 		// Check each ref.
 		for _, ref := range refs {
@@ -460,7 +460,7 @@ func parseRepo(url string) (string, error) {
 			return path, nil
 		}
 	}
-	return "", fmt.Errorf("cannot parse repo from URL: %s", url)
+	return "", fmt.Errorf("cannot parse repo from URL: %s", deskkit.RedactURLUserinfo(url))
 }
 
 // fetchPR returns the PR info for a branch, or nil if no PR exists.

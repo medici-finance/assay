@@ -344,14 +344,14 @@ func gatePushDestinations(dir, repo string) error {
 			"refused: `git push origin` would push to %d destinations (%s) — git pushes to every "+
 				"remote.origin.pushurl value, and deskmerge pushes to exactly one. Set exactly one push URL "+
 				"naming %s. Nothing was committed or pushed",
-			len(dests), deskkit.StripControl(strings.Join(dests, ", ")), deskkit.StripControl(repo)))
+			len(dests), deskkit.RedactURLUserinfo(deskkit.StripControl(strings.Join(dests, ", "))), deskkit.StripControl(repo)))
 	}
 	if !originNames(dests[0], repo) {
 		return deskkit.Refused(fmt.Sprintf(
 			"refused: `git push origin` would push to %s, which does not name %s (pushurl, insteadOf or "+
 				"pushInsteadOf resolve it elsewhere) — deskmerge will not push one project's merge to "+
 				"another's. Nothing was committed or pushed",
-			deskkit.StripControl(dests[0]), deskkit.StripControl(repo)))
+			deskkit.RedactURLUserinfo(deskkit.StripControl(dests[0])), deskkit.StripControl(repo)))
 	}
 	return nil
 }

@@ -169,7 +169,7 @@ func Run(o Options) (Result, error) {
 		}
 		repo = ownerNameFromRemote(originURL)
 		if repo == "" {
-			return res, deskkit.Refused("refused: could not resolve owner/name from origin remote " + strings.TrimSpace(originURL) + " — pass --repo owner/name")
+			return res, deskkit.Refused("refused: could not resolve owner/name from origin remote " + deskkit.RedactURLUserinfo(strings.TrimSpace(originURL)) + " — pass --repo owner/name")
 		}
 	}
 

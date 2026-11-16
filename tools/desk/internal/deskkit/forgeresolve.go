@@ -108,7 +108,7 @@ func hostOfRemote(raw string) (string, error) {
 	if strings.Contains(raw, "://") {
 		u, err := url.Parse(raw)
 		if err != nil || u.Hostname() == "" {
-			return "", fmt.Errorf("cannot parse remote URL %q", raw)
+			return "", fmt.Errorf("cannot parse remote URL %q", RedactURLUserinfo(raw))
 		}
 		return strings.ToLower(u.Hostname()), nil
 	}
@@ -117,7 +117,7 @@ func hostOfRemote(raw string) (string, error) {
 	if at >= 0 && colon > at {
 		return strings.ToLower(raw[at+1 : colon]), nil
 	}
-	return "", fmt.Errorf("cannot determine a host from remote URL %q", raw)
+	return "", fmt.Errorf("cannot determine a host from remote URL %q", RedactURLUserinfo(raw))
 }
 
 // knownForgeHostsList renders wellKnownForgeHosts for a refusal message, sorted so the
