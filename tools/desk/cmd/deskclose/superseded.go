@@ -143,10 +143,27 @@ func resolveCaller(repo string) (caller, error) {
 // Author is the FORGE-ATTESTED comment author, read from the thread — never the
 // self-reported Proposed-By line. The same-actor check that keeps one identity from
 // proposing and confirming has to rest on something the proposer cannot write.
+//
+// Target is the PARSED Superseded-By value (parseRef), never the text it was read from:
+// the record holds no raw copy, so no receipt, dry-run line, audit detail or comment can
+// echo one. A marker whose value does not parse whole still STANDS (Parsed false) — the
+// last marker wins, and a malformed latest proposal must be refused as itself rather than
+// let an earlier proposal stand in for it.
 type proposal struct {
-	Target string
+	Target deskkit.ItemRef
+	Parsed bool
 	At     string
 	Author string
+}
+
+// target renders the proposal's target for output: the canonical repository-qualified
+// form (findProposal has already defaulted a repo-less reference to the item's repo), or a
+// fixed placeholder when the marker's value did not parse — the value itself is not kept.
+func (p proposal) target() string {
+	if !p.Parsed {
+		return "(an unparseable reference)"
+	}
+	return p.Target.String()
 }
 
 // threadComment is the subset of an issue/PR comment the proposal reader consumes.
@@ -195,6 +212,7 @@ func parseProposalMarker(body string) (proposal, bool) {
 	lines := strings.Split(strings.ReplaceAll(body, "\r\n", "\n"), "\n")
 	fenced, inRecord := false, false
 	var p proposal
+	named := false
 	for _, ln := range lines {
 		if strings.HasPrefix(strings.TrimSpace(ln), "```") {
 			fenced = !fenced
@@ -219,12 +237,17 @@ func parseProposalMarker(body string) (proposal, bool) {
 		}
 		switch strings.ToLower(m[1]) {
 		case "superseded-by":
-			p.Target = strings.TrimSpace(m[2])
+			raw := strings.TrimSpace(m[2])
+			named = raw != ""
+			p.Target, p.Parsed = parseRef(raw)
+			if !p.Parsed {
+				p.Target = deskkit.ItemRef{}
+			}
 		case "proposed-at":
 			p.At = strings.TrimSpace(m[2])
 		}
 	}
-	if strings.TrimSpace(p.Target) == "" {
+	if !named {
 		return proposal{}, false
 	}
 	return p, true
@@ -243,6 +266,9 @@ func findProposal(repo string, n int, kind deskkit.TargetKind) (proposal, bool, 
 	for _, c := range thread {
 		if p, isP := parseProposalMarker(c.Body); isP {
 			p.Author = strings.TrimSpace(c.User.Login)
+			if p.Parsed && p.Target.Repo == "" {
+				p.Target.Repo = repo
+			}
 			found, ok = p, true
 		}
 	}
@@ -325,6 +351,9 @@ func propose(c common, n int, target string, targetKind deskkit.TargetKind, who 
 		a.log(deskkit.ResultRefused, err.Error())
 		return err
 	}
+	// From here the target is named only in its canonical form, rendered from the parse:
+	// it is what the marker records and what every receipt below echoes.
+	canon := tr.String()
 	tItem, err := fetchItem(tr.repo, tr.number, tr.kind)
 	if err != nil {
 		a.log(deskkit.ResultUnwritten, err.Error())
@@ -352,17 +381,17 @@ func propose(c common, n int, target string, targetKind deskkit.TargetKind, who 
 		a.log(deskkit.ResultUnwritten, err.Error())
 		return err
 	}
-	if found && itemHasLabel(it, labelProposed) && refsAgree(existing.Target, target) {
+	if found && existing.Parsed && itemHasLabel(it, labelProposed) && refsAgree(existing.target(), canon) {
 		a.log(deskkit.ResultNoop, "a proposal for the same target already stands")
 		fmt.Fprintf(out, "noop\t%s#%d\tproposal for %s already stands — awaiting the %s role\n",
-			c.repo, n, deskkit.StripControl(target), roleReviewer)
+			c.repo, n, canon, roleReviewer)
 		return nil
 	}
 
-	body := proposalBody(target, who, disp)
+	body := proposalBody(canon, who, disp)
 	if c.dryRun {
 		a.log(deskkit.ResultDryRun, "dry-run: verified, wrote nothing")
-		fmt.Fprintf(out, "dry-run\t%s#%d\tpropose\ttarget=%s\n", c.repo, n, target)
+		fmt.Fprintf(out, "dry-run\t%s#%d\tpropose\ttarget=%s\n", c.repo, n, canon)
 		fmt.Fprintln(out, body)
 		return nil
 	}
@@ -390,9 +419,9 @@ func propose(c common, n int, target string, targetKind deskkit.TargetKind, who 
 		a.log(deskkit.ResultUnverifiable, err.Error())
 		return err
 	}
-	a.log(deskkit.ResultOK, fmt.Sprintf("proposed superseded by %s as %s (no close)", target, who.role))
+	a.log(deskkit.ResultOK, fmt.Sprintf("proposed superseded by %s as %s (no close)", canon, who.role))
 	fmt.Fprintf(out, "proposed\t%s#%d\tsuperseded-by=%s\tawaiting the %s role's confirm or dispute — this tool did not close it\n",
-		c.repo, n, deskkit.StripControl(target), roleReviewer)
+		c.repo, n, canon, roleReviewer)
 	return nil
 }
 
@@ -432,14 +461,14 @@ func confirm(c common, n int, target string, targetKind deskkit.TargetKind, who 
 	// string: standingProposal has already proven the two agree once normalized, and
 	// the marker's form is always fully qualified (`owner/repo#N`), so it resolves
 	// cleanly even when the caller's own spelling was a bare number.
-	tr, err := resolveRef(c.repo, p.Target, targetKind)
+	tr, err := resolveRef(c.repo, p.target(), targetKind)
 	if err != nil {
 		a.log(deskkit.ResultRefused, err.Error())
 		return err
 	}
 	return applyClose(closeReq{
 		repo: c.repo, number: n, mode: modeSuperseded, kind: labelTargetOf(it),
-		target: strings.TrimSpace(p.Target), targetKind: tr.kind, dryRun: c.dryRun, g: g,
+		target: p.target(), targetKind: tr.kind, dryRun: c.dryRun, g: g,
 		verdict:  &supersedeVerdict{kind: verdictConfirmed, proposal: p, by: who.login},
 		crossRef: &crossRef{repo: tr.repo, number: tr.number, body: crossRefBody(c.repo, n, p, who)},
 	}, out)
@@ -485,7 +514,7 @@ func disputeProposal(c common, n int, target string, targetKind deskkit.TargetKi
 	body := disputeBody(p, who, reason)
 	if c.dryRun {
 		a.log(deskkit.ResultDryRun, "dry-run: verified, wrote nothing")
-		fmt.Fprintf(out, "dry-run\t%s#%d\tdispute\ttarget=%s\n", c.repo, n, p.Target)
+		fmt.Fprintf(out, "dry-run\t%s#%d\tdispute\ttarget=%s\n", c.repo, n, p.target())
 		fmt.Fprintln(out, body)
 		return nil
 	}
@@ -514,9 +543,9 @@ func disputeProposal(c common, n int, target string, targetKind deskkit.TargetKi
 				"is NOT yet human-only-close. Provision the label in the repo and re-run; the re-run is a "+
 				"no-op on the comment.", c.repo, n, labelNeedsDecision), err)
 	}
-	a.log(deskkit.ResultOK, fmt.Sprintf("disputed the supersession by %s; %s applied (no close)", p.Target, labelNeedsDecision))
+	a.log(deskkit.ResultOK, fmt.Sprintf("disputed the supersession by %s; %s applied (no close)", p.target(), labelNeedsDecision))
 	fmt.Fprintf(out, "disputed\t%s#%d\tsuperseded-by=%s\t%s applied — human-only close from here\n",
-		c.repo, n, deskkit.StripControl(p.Target), labelNeedsDecision)
+		c.repo, n, p.target(), labelNeedsDecision)
 	return nil
 }
 
@@ -548,13 +577,21 @@ func standingProposal(repo string, n int, kind deskkit.TargetKind, target string
 	// defaults to repo (this item's own repo, i.e. `-R`). Only after normalizing both
 	// sides does a real mismatch get reported, and then it names BOTH forms explicitly
 	// rather than just "disagree" (#984).
-	normRecorded, recOk := normalizeItemRef(repo, p.Target)
+	// An unparseable recorded target is refused WITHOUT repeating it: the record keeps no
+	// raw copy (proposal.Target), so there is nothing here to echo.
+	if !p.Parsed {
+		return proposal{}, deskkit.Refused(fmt.Sprintf(
+			"refused: the standing proposal on %s#%d names a superseding item that does not parse as a whole "+
+				"item reference (want N, #N, owner/repo#N, or the object's web URL, and nothing else). The value "+
+				"is not repeated here; re-propose against the right target, or dispute the proposal.",
+			repo, n))
+	}
+	normRecorded, recOk := normalizeItemRef(repo, p.target())
 	normCaller, callerOk := normalizeItemRef(repo, target)
 	if !recOk {
 		return proposal{}, deskkit.Refused(fmt.Sprintf(
-			"refused: the standing proposal on %s#%d names %s as the superseding item, which does not parse "+
-				"as an item reference (want N, #N, owner/repo#N, or a github.com permalink)",
-			repo, n, deskkit.StripControl(p.Target)))
+			"refused: the standing proposal on %s#%d names %s as the superseding item, which does not resolve "+
+				"to a repository", repo, n, p.target()))
 	}
 	if !callerOk {
 		return proposal{}, deskkit.Refused(fmt.Sprintf(
@@ -567,7 +604,7 @@ func standingProposal(repo string, n int, kind deskkit.TargetKind, target string
 				"but this %s declares %s (expected form: %s). The record and the caller disagree about what "+
 				"settled it; deskclose does not pick a winner — re-propose against the right target, or %s "+
 				"the proposal as it stands.",
-			repo, n, deskkit.StripControl(p.Target), deskkit.StripControl(normRecorded), half,
+			repo, n, p.target(), normRecorded, half,
 			deskkit.StripControl(target), deskkit.StripControl(normCaller), "dispute"))
 	}
 	return p, nil
@@ -597,7 +634,7 @@ func (v *supersedeVerdict) block() string {
 	var b strings.Builder
 	b.WriteString(verdictMarker + "\n")
 	fmt.Fprintf(&b, "Superseded-Verdict: %s\n", v.kind)
-	fmt.Fprintf(&b, "Superseded-By: %s\n", deskkit.StripControl(v.proposal.Target))
+	fmt.Fprintf(&b, "Superseded-By: %s\n", v.proposal.target())
 	fmt.Fprintf(&b, "Proposed-By: %s\n", deskkit.StripControl(v.proposal.Author))
 	fmt.Fprintf(&b, "Verdict-By: %s\n", deskkit.StripControl(v.by))
 	return b.String()
@@ -633,7 +670,7 @@ func disputeBody(p proposal, who caller, reason string) string {
 	fmt.Fprintf(&b, "The %s role does not agree that %s carries this item's scope. `%s` is applied: from "+
 		"here the close is a human's — deskclose refuses every close on a decision-labelled item, in "+
 		"every mode. The proposal by %s stands on the record above it; nothing here is irreversible.\n",
-		roleReviewer, deskkit.StripControl(p.Target), labelNeedsDecision, deskkit.StripControl(p.Author))
+		roleReviewer, p.target(), labelNeedsDecision, deskkit.StripControl(p.Author))
 	return b.String()
 }
 

@@ -1,0 +1,2 @@
+### Fixed
+- `deskclose` reads an item reference only when the whole value is one (`N`, `#N`, `!N`, `owner/repo#N`, or the object's web URL): a `Superseded-By` proposal value or disposition `Evidence` with anything ahead of the reference is no longer accepted on its trailing number. Receipts, dry-run lines, audit details and comments now print the target re-rendered from the parsed reference in its canonical `owner/repo#N` form, never the text it was read from; a proposal whose target does not parse is refused without repeating the value.

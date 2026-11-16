@@ -488,10 +488,17 @@ func applyClose(r closeReq, out io.Writer) error {
 
 // verifyLane applies the per-lane preconditions and returns the resolved target plus
 // any disposition record consulted.
+//
+// The target it returns is CANONICAL — rendered from the parsed reference
+// (resolvedRef.String), never the text the caller, a manifest row or a record supplied.
+// applyClose echoes it into the close comment, the dry-run and close receipts and the
+// audit detail, so this is the one choke point between a target's source text and every
+// place a target is printed.
 func verifyLane(r *closeReq, it item) (string, dispositionRead, error) {
 	var disp dispositionRead
 	target := r.target
 	targetKind := r.targetKind
+	var resolved *resolvedRef
 
 	if r.mode == modeReviewRequest {
 		n, err := extractPRRef(r.repo, it)
@@ -527,6 +534,7 @@ func verifyLane(r *closeReq, it item) (string, dispositionRead, error) {
 		if err != nil {
 			return "", disp, err
 		}
+		resolved = &tr
 		refItem, err := fetchItem(tr.repo, tr.number, tr.kind)
 		if err != nil {
 			return "", disp, err
@@ -552,6 +560,7 @@ func verifyLane(r *closeReq, it item) (string, dispositionRead, error) {
 		if err != nil {
 			return "", disp, err
 		}
+		resolved = &tr
 		refItem, err := fetchItem(tr.repo, tr.number, tr.kind)
 		if err != nil {
 			return "", disp, err
@@ -562,7 +571,18 @@ func verifyLane(r *closeReq, it item) (string, dispositionRead, error) {
 					"issue retires both", tr.repo, tr.number))
 		}
 	}
-	return target, disp, nil
+	if resolved == nil {
+		if strings.TrimSpace(target) == "" {
+			return "", disp, nil
+		}
+		// A lane that did not resolve its target above still never echoes it raw.
+		tr, err := resolveRef(r.repo, target, targetKind)
+		if err != nil {
+			return "", disp, err
+		}
+		resolved = &tr
+	}
+	return resolved.String(), disp, nil
 }
 
 // resolvedRef is one target reference after parsing: where it lives, which number it is,
@@ -571,6 +591,12 @@ type resolvedRef struct {
 	repo   string
 	number int
 	kind   deskkit.TargetKind
+}
+
+// String renders the reference canonically: repository-qualified, `!N` for a stated
+// change and `#N` otherwise (deskkit.ItemRef.String).
+func (t resolvedRef) String() string {
+	return deskkit.ItemRef{Repo: t.repo, Number: t.number, Kind: t.kind}.String()
 }
 
 // resolveRef turns any accepted reference form — `N`, `#N`, `!N`, `owner/repo#N`,
