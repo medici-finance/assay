@@ -125,6 +125,24 @@ func TestHeldQuotedRenderDiverge(t *testing.T) {
 	}, nil)
 }
 
+// TestHeldQuotedGuardPins: each case pairs as a quoted span on its own line
+// and is refused only by the guard it names, so loosening that guard admits
+// it: a bare carriage return (a CommonMark line ending; doubled, it ends the
+// paragraph between the quotes), a struck-through quote (the struck text is
+// blanked before the scan, its quote still rendered), and one quoted
+// neighbour line in a two-line paragraph (the quotes pair across the lines).
+// regression: #4721
+func TestHeldQuotedGuardPins(t *testing.T) {
+	runHeldScanCasesFlip(t, []heldScanCase{
+		{"bare CR between the quotes",
+			heldEv("ok") + "\nRow 2 printed \"tenant b\r\rrow 3 is HELD\r\rno grant\".\n", true},
+		{"struck quote on the line",
+			heldEv("ok") + "\nRow 2 printed ~~\"old~~ new.\" row 3 is HELD \"(done\n", true},
+		{"one quoted neighbour line",
+			heldEv("ok") + "\nRow 2 printed \"tenant b output\nends here.\" Row 3 is HELD pending \"(retest\n", true},
+	}, nil)
+}
+
 // TestHeldQuotedWitnessCell: rule 7 is not applied to a verifyrun witness
 // row. The flip credits a witness row by the first state word anywhere in its
 // Result cell (witnessStateRe), so a quoted hold ahead of "pass exit=0" would
