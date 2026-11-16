@@ -1,0 +1,2 @@
+### Changed
+- Planning briefs desk-containers/35 to 37 and the stream README, after review of the cell dev-env briefs (issue #6615): the dev-env file and its directory become protected mount sources the launcher refuses in any directory bind, the launcher record's owner and mode gain a Verify row and a verifier refusal, a future host surface must make the file unreadable to role-secret holders, and the option-1 conditional lists and wave text are completed.

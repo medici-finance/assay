@@ -134,6 +134,10 @@ Options:
      identity can write it or its directory (mode, owner, access-control list). Role secrets
      bind on the container surface only today; a host window that can open a role-secret file
      gets no dev-env path, under the same rule.
+     Withholding the path keeps such a window unaware of the file, not unable to open it. That
+     is harmless while no host surface binds a role secret. When one is built,
+     `DR-desk-containers-35` must also make the file unreadable to every holder identity by
+     mode or access-control list, as the container surface does by giving a holder no mount.
    - the launcher records, per window, the coordinator identity, the dev-env mount mode and the
      role-secret files the window can reach, where the verifier can read it and no role window
      can write it. Brief 36 admits a row that declares names only when that record says the
