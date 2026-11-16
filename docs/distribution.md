@@ -33,6 +33,33 @@ each desk-tools tarball, with each asset's sha256 and a `pkg:golang` purl per mo
 `checksums.txt` and attested like the binaries. To list what an asset links:
 `jq -r '.packages[].externalRefs[]?.referenceLocator' sbom.spdx.json | sort -u`.
 
+**Which file hashes what.** Two checksum files, two artifacts, never mixed:
+
+- `checksums.txt` (a release asset) hashes the **release assets as downloaded**: every
+  `desk-tools-<platform>.tar.gz`, every standalone `statusgen-<platform>` and
+  `qualgen-<platform>` binary, and the SBOM. Verify a download with
+  `sha256sum -c --ignore-missing checksums.txt` beside the downloaded files.
+- `MANIFEST.sha256` (inside each desk-tools tarball, at its root) hashes the **tarball's
+  members**: every desk-tools binary and `hooks/pre-push`, by their path in the tarball. It is
+  written by the release from the bytes it then tars, so after `tar -xzf` it verifies the
+  extracted files: `cd <extracted dir> && sha256sum -c MANIFEST.sha256`. statusgen and qualgen are
+  not members of the tarball and are not in it; a copy placed beside the extracted files is
+  covered by `checksums.txt`, not by this manifest. Releases cut before the release workflow's
+  manifest step (#6604) carry none. The first install of a release that carries one, run by a
+  `deskinstall` from before that step, flattens the tarball and leaves its manifest in `--dest`,
+  where the `hooks/pre-push` line fails; running `deskinstall` again (now the new one) rewrites it
+  from the files it placed.
+
+Trust runs in one order. Check the tarball first, against `checksums.txt` and its build
+attestation; only a tarball that passed both carries a `MANIFEST.sha256` worth reading, because
+the manifest travels inside the bytes it describes and anyone who could alter the tarball could
+rewrite it to match. After that it says which extracted file is which and catches a member
+changed or lost after extraction; it adds no authority of its own.
+
+`sha256sum -c` checks only the lines present, so it does not notice a file the manifest leaves
+out. `python3 -B -m tools.release.desk_manifest check <dir>` (from a checkout) also reports every
+file present but not listed.
+
 Per-artifact tags (`statusgen/v0.8.2`, `desk-tools/v0.2.6`) are how the source repo cuts individual
 tools; they are **not** upgrade targets. An adopter moves the whole umbrella, never a single
 artifact.
