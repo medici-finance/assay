@@ -185,6 +185,10 @@ func TestBudgetOnlyInWriteWindow(t *testing.T) {
 	}
 	call := regexp.MustCompile(`\bevidenceWriteBudget\(`)
 	take := regexp.MustCompile(`\bacquireAuditLock\(`)
+	// Every lock acquisition draws on the run's ONE lockWait budget: a call that passes its own
+	// wait (lockWait, a constant) lets a refusal wait twice.
+	anyWait := regexp.MustCompile(`\b(acquireAuditLock|acquirePrepLock)\(`)
+	budgeted := regexp.MustCompile(`\b(acquireAuditLock\(|acquirePrepLock\(args, )(a|ac)\.waitLeft\(\)\)`)
 	for _, name := range files {
 		if strings.HasSuffix(name, "_test.go") {
 			continue
@@ -205,6 +209,9 @@ func TestBudgetOnlyInWriteWindow(t *testing.T) {
 			}
 			if call.MatchString(code) && !(name == "writeflow.go" && strings.Contains(fn, ") enterWriteWindow(")) {
 				t.Errorf("%s:%d spends the write budget outside enterWriteWindow: %s", name, i+1, code)
+			}
+			if anyWait.MatchString(code) && !budgeted.MatchString(code) {
+				t.Errorf("%s:%d takes a lock outside the run's one lockWait budget: %s", name, i+1, code)
 			}
 			if take.MatchString(code) && !(name == "writeflow.go" &&
 				(strings.Contains(fn, ") enterWriteWindow(") || strings.Contains(fn, ") lockForAppend("))) {
