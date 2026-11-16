@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 
@@ -203,13 +204,18 @@ func Install(opts Options) error {
 	if err := os.MkdirAll(opts.DestDir, 0o755); err != nil {
 		return fmt.Errorf("creating dest dir %s: %w", opts.DestDir, err)
 	}
+	placed := map[string]string{}
 	for _, v := range staged {
-		if err := place(opts.DestDir, v.pin, v.bytes); err != nil {
+		if err := place(opts.DestDir, v.pin, v.bytes, placed); err != nil {
 			return fmt.Errorf("%s: placing %s: %w", v.pin.component, v.pin.asset, err)
 		}
 		// Success line — brief 04's CI smoke and brief 05's doc assert on this shape.
 		fmt.Fprintf(out, "installed %s %s sha256:%s\n", v.pin.component, v.pin.tag, v.pin.sha256)
 	}
+	if err := writeDestManifest(opts.DestDir, placed); err != nil {
+		return fmt.Errorf("writing %s: %w", destManifestName, err)
+	}
+	fmt.Fprintf(out, "wrote %s (%d files placed by this install)\n", filepath.Join(opts.DestDir, destManifestName), len(placed))
 	// The binaries this mode places are INSIDE the boundary
 	// (component-model.md §5 lists "the installed binaries" inside), so this
 	// install writes no ledger line of its own — but the ledger path is still
@@ -221,20 +227,61 @@ func Install(opts Options) error {
 	return nil
 }
 
+// destManifestName is the checksum manifest this installer writes into the
+// destination (#6604), in the shape `make desk-manifest` writes into its install
+// dir and release tarballs carry at their root once a release is cut with the
+// workflow's manifest step (none published before it does): `<sha256>  <name>` lines that
+// `sha256sum -c` / `shasum -a 256 -c` read from inside the directory.
+const destManifestName = "MANIFEST.sha256"
+
 // place writes the verified bytes into destDir: a single-binary .exe is written
 // directly (0755); a .tar.gz is unpacked, each regular file placed executable.
-func place(destDir string, p pin, body []byte) error {
+// Every file placed is recorded in placed (name -> sha256 of the bytes written).
+func place(destDir string, p pin, body []byte, placed map[string]string) error {
 	if strings.HasSuffix(p.asset, ".tar.gz") {
-		return extractTarGz(destDir, body)
+		return extractTarGz(destDir, body, placed)
 	}
 	dst := filepath.Join(destDir, p.asset)
-	return os.WriteFile(dst, body, 0o755)
+	if err := os.WriteFile(dst, body, 0o755); err != nil {
+		return err
+	}
+	placed[p.asset] = sha256Hex(body)
+	return nil
+}
+
+func sha256Hex(b []byte) string {
+	h := sha256.Sum256(b)
+	return hex.EncodeToString(h[:])
+}
+
+// writeDestManifest writes destDir/MANIFEST.sha256 from the bytes this install
+// placed, so the manifest beside them never describes an earlier install's
+// bytes (#6604: a manifest left by a from-source install failed every entry
+// once release binaries replaced the ones it hashed). Written via a temp file.
+func writeDestManifest(destDir string, placed map[string]string) error {
+	names := make([]string, 0, len(placed))
+	for name := range placed {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var b strings.Builder
+	for _, name := range names {
+		fmt.Fprintf(&b, "%s  %s\n", placed[name], name)
+	}
+	tmp := filepath.Join(destDir, destManifestName+".tmp")
+	if err := os.WriteFile(tmp, []byte(b.String()), 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, filepath.Join(destDir, destManifestName))
 }
 
 // extractTarGz unpacks a desk-tools tarball into destDir. It places regular
 // files only, flattened to their base name, and rejects any entry whose path
-// would escape destDir (zip-slip guard).
-func extractTarGz(destDir string, body []byte) error {
+// would escape destDir (zip-slip guard). The tarball's own MANIFEST.sha256 is
+// not placed: it names members by their tarball path (hooks/pre-push), which
+// the flattened layout does not keep, so writeDestManifest writes the one that
+// matches what landed. The tarball's bytes are already bound by the sha256 pin.
+func extractTarGz(destDir string, body []byte, placed map[string]string) error {
 	gz, err := gzip.NewReader(strings.NewReader(string(body)))
 	if err != nil {
 		return fmt.Errorf("gzip: %w", err)
@@ -256,18 +303,23 @@ func extractTarGz(destDir string, body []byte) error {
 		if base == "." || base == ".." || base == "" || strings.Contains(base, "..") {
 			return fmt.Errorf("tar: refusing suspicious entry %q", hdr.Name)
 		}
+		if base == destManifestName {
+			continue
+		}
 		dst := filepath.Join(destDir, base)
 		f, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
 		if err != nil {
 			return err
 		}
-		if _, err := io.Copy(f, tr); err != nil { //nolint:gosec // bounded by tar entry
+		h := sha256.New()
+		if _, err := io.Copy(io.MultiWriter(f, h), tr); err != nil { //nolint:gosec // bounded by tar entry
 			f.Close()
 			return err
 		}
 		if err := f.Close(); err != nil {
 			return err
 		}
+		placed[base] = hex.EncodeToString(h.Sum(nil))
 	}
 }
 
