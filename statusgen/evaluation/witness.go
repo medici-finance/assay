@@ -1808,11 +1808,11 @@ func hasObligation(r VerifyRow, ob string) bool {
 }
 
 // judgeWitnessV2 judges a v2 cell at the item's revision. It returns
-// resolveVerifyClaim's (result, reason, revision) triple; every non-release
-// reason starts with its gap name.
-func (x *evalCtx) judgeWitnessV2(sc witnessScope, r VerifyRow, w Witness, cell RunnerCell, target, acceptance string) (result, reason, revision string) {
-	fail := func(rev, gap, format string, a ...any) (string, string, string) {
-		return gapResult(gap), gapf(gap, format, a...), rev
+// the result, reason, informational revision and released record provenance;
+// every non-release reason starts with its gap name and carries no provenance.
+func (x *evalCtx) judgeWitnessV2(sc witnessScope, r VerifyRow, w Witness, cell RunnerCell, target, acceptance string) (result, reason, revision string, provenance *WitnessProvenance) {
+	fail := func(rev, gap, format string, a ...any) (string, string, string, *WitnessProvenance) {
+		return gapResult(gap), gapf(gap, format, a...), rev, nil
 	}
 	if _, ok := x.witnessRepo(); !ok {
 		return fail("", GapUnestablished, "the repository port cannot list trees, attributes or witness landings")
@@ -1851,7 +1851,7 @@ func (x *evalCtx) judgeWitnessV2(sc witnessScope, r VerifyRow, w Witness, cell R
 
 	// Step 2: the change request is bound and verified.
 	if gap, why := x.checkLanding(sc, cell, rec, R, recPath); gap != "" {
-		return gapResult(gap), why, rev
+		return gapResult(gap), why, rev, nil
 	}
 
 	// Step 3: the record is the citing brief's and row's, and the citing
@@ -2069,7 +2069,28 @@ func (x *evalCtx) judgeWitnessV2(sc witnessScope, r VerifyRow, w Witness, cell R
 			return fail(rev, GapToolChanged, "%s %s, pinned %s at the item's revision", k, got, pin)
 		}
 	}
-	return ResultPass, fmt.Sprintf("v2 witness record %s releases: change request %s verified, and every recorded digest equals the item's revision %s", cell.RecordID[:TreeSHALen], rec.CR, R[:TreeSHALen]), rev
+	provenance, why = x.releasedWitnessProvenance(sc, r.ID, w, R)
+	if why != "" {
+		return ResultCouldNotCheck, why, rev, nil
+	}
+	return ResultPass, fmt.Sprintf("v2 witness record %s releases: change request %s verified, and every recorded digest equals the item's revision %s", cell.RecordID[:TreeSHALen], rec.CR, R[:TreeSHALen]), rev, provenance
+}
+
+// releasedWitnessProvenance is called only after the selected witness passes
+// the canonical judgment. Reuse its cached record addition, whose parent form,
+// change request and first-parent landing have just been checked. No record's
+// self-reported informational revision supplies this coordinate.
+func (x *evalCtx) releasedWitnessProvenance(sc witnessScope, row string, w Witness, R string) (*WitnessProvenance, string) {
+	cell := witnessSchemaOf(w)
+	if cell.Schema != WitnessSchemaV2 {
+		return nil, ""
+	}
+	add, found, ok := x.additionOf(R, WitnessRecordPath(sc.briefID, cell.RecordID))
+	if !ok || !found || !IsObjectID(add.Commit) {
+		return nil, gapf(GapUnestablished, "the released record's verified landing could not be retained")
+	}
+	return &WitnessProvenance{Brief: sc.briefID, Row: row, RecordID: cell.RecordID, Runner: cell.Identity,
+		Date: w.Date, CR: cell.CR, Landing: add.Commit}, ""
 }
 
 func sortedKeysOf[V any](m map[string]V) []string {

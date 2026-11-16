@@ -23,7 +23,7 @@
 #
 # One reference for both stages: git is built against the libraries of the very
 # image it ships in, so the two stages cannot be bumped apart.
-ARG RUNNER_BASE=golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5
+ARG RUNNER_BASE=golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea
 
 # ---- git, built from the fleet's pinned upstream release -----------------
 # Its own stage, so the -dev packages never reach the final image. The tarball
@@ -31,8 +31,8 @@ ARG RUNNER_BASE=golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e
 # copied from containers/base/Dockerfile; to bump it, follow the "To bump" note
 # above that file's gitbuild stage and change both Dockerfiles in one change.
 FROM ${RUNNER_BASE} AS gitbuild
-ARG GIT_VERSION=2.56.0
-ARG GIT_TARBALL_SHA256=26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
+ARG GIT_VERSION=2.56.1
+ARG GIT_TARBALL_SHA256=f0b0bf89264b9bd2e1c640363e7529643989da76281600473c50745cd34a607f
 ENV DEBIAN_FRONTEND=noninteractive
 RUN set -eux; \
     apt-get update; \
@@ -191,6 +191,7 @@ COPY deskcore/go.mod /tmp/modsrc/deskcore/
 COPY forgeread/go.mod /tmp/modsrc/forgeread/
 COPY gitquiet/go.mod /tmp/modsrc/gitquiet/
 COPY perfrec/go.mod /tmp/modsrc/perfrec/
+COPY workspace/go.mod /tmp/modsrc/workspace/
 RUN set -eu; \
     export GOWORK=off GOFLAGS=-mod=readonly GOTOOLCHAIN=local; \
     while read -r root; do \
@@ -238,6 +239,7 @@ RUN chown -R 0:0 /usr/local/lib/verify-runner && chmod 0755 /usr/local/lib/verif
 # finds first.
 RUN set -eux; \
     test -x /usr/bin/git; \
+    test "$(/usr/bin/git version)" = "git version 2.56.1"; \
     test -x /usr/libexec/git-core/git-remote-http; \
     if ldd /usr/bin/git /usr/libexec/git-core/git-remote-http | grep 'not found'; then \
         echo "source-built git is missing a shared library" >&2; \
@@ -249,3 +251,7 @@ RUN set -eux; \
     fi; \
     test ! -e /usr/lib/git-core; \
     PATH=/usr/bin:/bin:/usr/sbin:/sbin /usr/local/bin/git-floor-check
+
+# CVE-2026-98432 stopgap: Go >= 1.24 opens MPTCP listeners by default; turn
+# them off. A fragile stopgap only; patched node kernels are the real fix.
+ENV GODEBUG=multipathtcp=0

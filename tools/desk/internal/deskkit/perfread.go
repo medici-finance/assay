@@ -126,7 +126,7 @@ func readPerfDayFile(path string) ([]PerfRecord, int, error) {
 			continue
 		}
 		r, decodeErr := perfrec.Decode(line)
-		if decodeErr != nil || (r.Schema != PerfSchema && r.Schema != PerfSchemaV2 && r.Schema != perfrec.SchemaV3 && r.Schema != perfrec.SchemaV4) {
+		if decodeErr != nil || (r.Schema != PerfSchema && !IsPerfV2(r) && r.Schema != perfrec.SchemaV3 && r.Schema != perfrec.SchemaV4) {
 			skipped++
 			continue
 		}
@@ -141,19 +141,20 @@ func readPerfDayFile(path string) ([]PerfRecord, int, error) {
 // IsPerfStep reports whether a record is a boot- or launch-step record: a legacy (non-perf-v2)
 // record with verb "step:<name>". perf-v2 records are invocations, never steps.
 func IsPerfStep(r PerfRecord) bool {
-	return r.Schema != PerfSchemaV2 && r.Schema != perfrec.SchemaV3 && r.Schema != perfrec.SchemaV4 && strings.HasPrefix(r.Verb, perfStepPfx)
+	return !IsPerfV2(r) && r.Schema != perfrec.SchemaV3 && r.Schema != perfrec.SchemaV4 && strings.HasPrefix(r.Verb, perfStepPfx)
 }
 
 // IsPerfLegacyInvocation reports whether a record belongs to the legacy perf-v1 invocation
 // group SummarisePerf reads: anything that is neither perf-v2 nor a step. (LoadPerfDays only
 // ever returns the three named schemas; a hand-built record without one reads as legacy.)
 func IsPerfLegacyInvocation(r PerfRecord) bool {
-	return r.Schema != PerfSchemaV2 && r.Schema != perfrec.SchemaV3 && r.Schema != perfrec.SchemaV4 && !IsPerfStep(r)
+	return !IsPerfV2(r) && r.Schema != perfrec.SchemaV3 && r.Schema != perfrec.SchemaV4 && !IsPerfStep(r)
 }
 
 // IsPerfV2 reports whether a record belongs to the perf-v2 invocation group SummarisePerfV2
-// reads.
-func IsPerfV2(r PerfRecord) bool { return r.Schema == PerfSchemaV2 }
+// reads: a perf-v2 record, or a perf-v5 one — the same perf-v2 fields, boundary and meanings
+// from a release build, which also names its release tag. The tag never splits the group.
+func IsPerfV2(r PerfRecord) bool { return r.Schema == PerfSchemaV2 || r.Schema == PerfSchemaV5 }
 
 // FilterPerf keeps matching tools and legacy roles. A legacy role filter excludes v3,
 // whose assigned role has different meaning and requires the workflow-aware ReduceV3 filter.

@@ -372,9 +372,12 @@ const (
 
 // checkSchema is the version gate every validator and wire-valid decoder runs first: a document of
 // any other version, or of none, is refused as unknown, never read as this one.
-func checkSchema(s string) error {
-	if s != Schema {
-		return refuse(ReasonUnknownSchema, "schema", "this reader understands %s only", Schema)
+func checkSchema(s string) error { return checkSchemaIs(s, Schema) }
+
+// checkSchemaIs refuses any schema string other than the one this document family carries.
+func checkSchemaIs(s, want string) error {
+	if s != want {
+		return refuse(ReasonUnknownSchema, "schema", "this reader understands %s only", want)
 	}
 	return nil
 }
@@ -917,7 +920,11 @@ func checkWire(data []byte) error {
 // key outside the defined fields, no key differing from a field name only in case, no null or
 // empty optional field, numbers in canonical form, and nothing after the value. The last group is
 // one check: the document must equal its own re-encoding.
-func decode(data []byte, v any) error {
+func decode(data []byte, v any) error { return decodeAs(data, v, Schema) }
+
+// decodeAs is decode for a document family whose schema string is want: the same wire, schema-first
+// and strictness rules, with the schema member compared to want.
+func decodeAs(data []byte, v any, want string) error {
 	if err := checkWire(data); err != nil {
 		return err
 	}
@@ -929,7 +936,7 @@ func decode(data []byte, v any) error {
 	if raw, ok := head["schema"]; ok && json.Unmarshal(raw, &schema) != nil {
 		return refuse(ReasonUnknownSchema, "schema", "not a schema name")
 	}
-	if err := checkSchema(schema); err != nil {
+	if err := checkSchemaIs(schema, want); err != nil {
 		return err
 	}
 	dec := json.NewDecoder(bytes.NewReader(data))

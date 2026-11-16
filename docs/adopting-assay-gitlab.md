@@ -928,14 +928,16 @@ ASSAY_GITLAB_DISPLAY_NAMES=example-verifier-bot=Assay verifier (fleet bot)
 - Renaming the service account's display name to equal its username is a valid deployment
   workaround, but it silently re-breaks whenever an admin edits the display name; declaring it
   here is the durable fix.
-- **Online alternative — not available yet.** The desk verb that lands Evidence
-  (`deskevidence`) can resolve a landed commit's GitLab account to its username through the
-  typed forge (`GET /users?search=`) and compare that to the verifier binding, but on GitLab it
-  never reaches that step today: before any write it runs the decision-gate hold's branch-board
-  read, which needs a ref compare, and the GitLab backend serves none. Every `deskevidence`
-  landing on GitLab therefore stops as **could-not-check (exit 6)** with nothing written, until
-  the GitLab backend serves a compare; [adopting-assay.md](adopting-assay.md) gives the reason
-  (the decision-gate hold, under "PRIMITIVE: add-statusgen-ci"). The offline map above is what
+- **Online alternative — only from a checkout at the branch tip.** The desk verb that lands
+  Evidence (`deskevidence`) can resolve a landed commit's GitLab account to its username through
+  the typed forge (`GET /users?search=`) and compare that to the verifier binding, but before any
+  write it runs the decision-gate hold's branch-board read, which needs a ref compare, and the
+  GitLab backend serves none. The read needs no compare when the landing checkout's HEAD is the
+  target branch's tip (the same commit by full object id, never a prefix), so such a landing goes
+  ahead. Any other `deskevidence` landing on GitLab stops as **could-not-check (exit 6)** with
+  nothing written, until the GitLab backend serves a compare;
+  [adopting-assay.md](adopting-assay.md) gives the reason (the decision-gate hold, under
+  "PRIMITIVE: add-statusgen-ci"). The offline map above is what
   the network-free `--lint` path compares against; unset, that path is could-not-check for the
   display-name case (never a false pass).
 
@@ -1148,7 +1150,7 @@ comment for the full endpoint list):
 | Set approval settings | `POST api/v4/projects/:id/approvals` | `merge_requests_author_approval: false`, `merge_requests_disable_committers_approval: true` — the prevent-author / prevent-committers pair |
 | Require green pipelines before merge | `PUT api/v4/projects/:id` | `only_allow_merge_if_pipeline_succeeds: true` |
 | Require all threads resolved before merge | `PUT api/v4/projects/:id` | `only_allow_merge_if_all_discussions_are_resolved: true` — the merge-hold marker thread's server-side half (§0.1); Free tier, read back the same way as the pipeline flag above |
-| Create the desk labels | `POST api/v4/projects/:id/labels` | one call per label, idempotent (a duplicate name answers 409, or 400 "already exists"); the queue-legibility pair `authorization-needed` / `approval-needed`, the `review-request` dispatch token, and one `raised-by:<role>` per filing role |
+| Create the desk labels | `POST api/v4/projects/:id/labels` | one call per label, idempotent (a duplicate name answers 409, or 400 "already exists"; a name an ancestor group already defines answers 400 "already exists at group level" and counts as present); the queue-legibility pair `authorization-needed` / `approval-needed`, the `review-request` dispatch token, and one `raised-by:<role>` and one `to:<role>` per desk role |
 | Check for the board-push variable | `GET api/v4/projects/:id/variables/STATUSGEN_PUSH_TOKEN` | 404 means "not set yet"; an existing one is a no-op, checked for `masked` and `protected` |
 | Mint the board-push token | `POST api/v4/projects/:id/access_tokens` | `name: assay-statusgen-push`, `scopes: [write_repository]`, `access_level: 40`, `expires_at` = today + `--pat-expiry-days`; a refusal is a recorded failure naming the §2c manual step |
 | Store the board-push token | `POST api/v4/projects/:id/variables` | `key: STATUSGEN_PUSH_TOKEN`, `masked: true`, `protected: true`; read back by `GET` on the same variable |
@@ -1160,9 +1162,20 @@ The label set is the GitLab twin of the GitHub **`create-labels`** primitive
 (`docs/adopting-assay.md`) — the SAME names, colors and descriptions, so the two
 adoption profiles are label-parity. It matters because a label that is absent when a
 desk verb reaches for it degrades **silently**: `deskflip`'s `authorization-needed` →
-`approval-needed` queue swap fails, and `deskfile --raised-by <role>` drops the
-provenance stamp (#774). The script creates them under `--project`; colors are
-sent with the leading `#` GitLab requires.
+`approval-needed` queue swap fails, `deskfile --raised-by <role>` drops the
+provenance stamp (#774), and `deskfile --to <role>` files the issue unaddressed, where
+no desk's sweep finds it. The script creates them under `--project`; colors are
+sent with the leading `#` GitLab requires. The names are plain labels: `to:worker` has
+a single colon and is not a GitLab scoped (`::`) label, so labels of one family never
+displace each other on an issue. A label the project inherits from its group counts as
+present, both for the create (never re-created at project level) and for
+`deskfleet labels --check` / `cellctl check`, which list with `include_ancestor_groups`.
+Provisioning runs before the fleet's roster exists, so the script uses the six
+documented roles. Once the roster binds its roles, `deskfleet labels --forge gitlab
+--project <path> --roles <the roster's role= names> --token-file <file>` (or
+`cellctl new --kind house --forge gitlab … --labels-token-file <file>`) ensures the
+roster-derived set. Either way it runs under the operator's credential, never a desk
+role's token.
 
 ## 4. The ci-config-project runbook (human-only)
 

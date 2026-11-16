@@ -305,7 +305,8 @@ func TestPerfRecordRevision(t *testing.T) {
 	want := strings.TrimSpace(string(head))[:12]
 	bin := buildPerfBinary(t, "-buildvcs=true", "-ldflags", "-X main.statusgenVersion=v9.9.9")
 	for _, c := range []struct{ name, schema, profile string }{
-		{"perf-v2", "perf-v2", ""},
+		// The release-tag stamp makes the unprofiled line perf-v5 (perf-v2 plus the tag, #6141).
+		{"perf-v2", "perf-v5", ""},
 		{"perf-v3", "perf-v3", "tool"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
@@ -334,6 +335,40 @@ func TestPerfRecordRevision(t *testing.T) {
 				t.Errorf("sourceSHA = %v, want %s (the build's vcs.revision) — a release-tag-only stamp must not record unpinned", sha, want)
 			}
 		})
+	}
+}
+
+// TestPerfRecordReleaseTag: a statusgen release build's perf line names its release tag
+// (perf-v5) beside its commit stamp; the field set is perf-v2's plus releaseTag, exactly.
+// The dev build's unchanged perf-v2 line is TestPerfOnWritesOneRecord's.
+// regression: #6141
+func TestPerfRecordReleaseTag(t *testing.T) {
+	bin := buildPerfBinaryWith(t, "-buildvcs=false", "-ldflags", "-X main.statusgenVersion=v1.0.82")
+	run, _, home := perfFixtureRun(t, bin, true, "--lint", "--root", "{root}")
+	if run.code != 0 {
+		t.Fatalf("exit %d\nstdout: %s\nstderr: %s", run.code, run.out, run.errOut)
+	}
+	recs := perfRecords(t, home)
+	if len(recs) != 1 {
+		t.Fatalf("one run wrote %d records, want exactly 1", len(recs))
+	}
+	if recs[0]["schema"] != perfrec.SchemaV5 || recs[0]["releaseTag"] != "v1.0.82" {
+		t.Errorf("record = %v; want %s with releaseTag v1.0.82", recs[0], perfrec.SchemaV5)
+	}
+	if recs[0]["sourceSHA"] != "unpinned" {
+		t.Errorf("sourceSHA = %v; the tag must never be read as the commit stamp", recs[0]["sourceSHA"])
+	}
+	want := []string{"schema", "ts", "tool", "verb", "role", "boundary", "wallMs", "cpu", "exit", "result",
+		"phases", "phaseOverlap", "counters", "unavailable", "sourceSHA", "install", "releaseTag"}
+	for _, k := range want {
+		if _, ok := recs[0][k]; !ok {
+			t.Errorf("perf-v5 line lacks %q: %v", k, recs[0])
+		}
+	}
+	for k := range recs[0] {
+		if !slices.Contains(want, k) && k != "cpuMs" {
+			t.Errorf("perf-v5 line carries %q, outside the perf-v2 field set plus releaseTag", k)
+		}
 	}
 }
 

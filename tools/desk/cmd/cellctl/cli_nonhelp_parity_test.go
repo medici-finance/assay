@@ -437,6 +437,47 @@ func noDeskdDiff(cell string) deliberateDiff {
 		stderrAppend: noDeskdNote(cell), why: whyNoDeskdPane}
 }
 
+const whyLabels = "#6127: a house cell's install ensures the forge label set and check reports it; with no roster role bound in the fixture world, new prints NOT ENSURED with its finish command and check adds one could-not-check row"
+
+// labelExpectation is shared by the frozen shell oracle and pre-migration Go
+// transcript adapters. It is expected output, independent of the implementation.
+func labelExpectation(name, repo string) string {
+	b, err := os.ReadFile(filepath.Join("../../../cellctl/testdata/parity", name+".txt"))
+	if err != nil {
+		panic(err)
+	}
+	return strings.ReplaceAll(string(b), "<repo>", repo)
+}
+
+// labelsNotEnsured is the line `new --kind house` adds after the scaffold line on
+// the fixture world, whose cell roster binds no role yet.
+func labelsNotEnsured(repo string) string {
+	return labelExpectation("labels-new", repo)
+}
+
+func labelsNewDiff(cell string) deliberateDiff {
+	scaffolded := "[new] scaffolded <ROOT>/cells/" + cell + " (house cell) — cellctl check " + cell + ", then cellctl desk " + cell + " <role>\n"
+	return deliberateDiff{code: 0, stdoutReplace: func() []string { return []string{scaffolded, scaffolded + labelsNotEnsured("o/r")} },
+		stderrReplace: []string{"", ""}, why: whyLabels}
+}
+
+func labelsCheckDiff() deliberateDiff {
+	return deliberateDiff{code: 1, stdoutReplace: func() []string {
+		// The map is initialized in every helper subprocess too, from arbitrary cwd.
+		// Read shared fixture bytes only when the transcript comparison needs them.
+		row := "  MISS  root example-org/example-repo carries docs/streams/\n"
+		return []string{row, row + labelExpectation("labels-check", "")}
+	}, stderrReplace: []string{"", ""}, why: whyLabels}
+}
+
+const whyIntakePin = "a freshly scaffolded cell pins the intake role to a strong tier (DESK_MODEL_intake_desk=opus), so show reports that one role line from the new pin instead of the default"
+
+func intakePinShowDiff() deliberateDiff {
+	return deliberateDiff{code: 0, stdoutReplace: func() []string {
+		return []string{"[show] model intake-desk=sonnet (cell.env DESK_MODEL_DEFAULT)\n", "[show] model intake-desk=opus (cell.env DESK_MODEL_intake_desk)\n"}
+	}, stderrReplace: []string{"", ""}, why: whyIntakePin}
+}
+
 func unknownCmd(name string) string {
 	return shapeErr("unknown command \"" + name + "\" for \"cellctl\"")
 }
@@ -444,6 +485,21 @@ func unknownCmd(name string) string {
 func shapeErr(msg string) string { return "cellctl: " + msg + "\nRun 'cellctl --help' for usage.\n" }
 
 var deliberateDiffs = map[string]deliberateDiff{
+	// #6127: the house install's labels step and check's labels row.
+	"check/0":              labelsCheckDiff(),
+	"check/1":              labelsCheckDiff(),
+	"new-house/0":          labelsNewDiff("fresh"),
+	"new-trailing-value/0": labelsNewDiff("f1"),
+	"new-trailing-value/1": labelsNewDiff("f2"),
+	"new-trailing-value/3": labelsNewDiff("f3"),
+	"new-trailing-value/4": labelsNewDiff("f4"),
+	"new-trailing-value/5": labelsNewDiff("f5"),
+
+	// A new house cell pins the intake role to a strong tier, so `show` on a
+	// freshly scaffolded cell reports it. Every other byte and all stderr still must match.
+	"new-house/1":          intakePinShowDiff(),
+	"new-trailing-value/2": intakePinShowDiff(),
+
 	"check/2": {code: 1, stdoutReplace: func() []string {
 		return []string{"cockpit: herdr (auto: on PATH)", "cockpit: tmux (scrubbed auto: private socket)"}
 	}, stderrReplace: []string{"", ""}, why: "scrubbed display support: check reports the actual private tmux process surface unless Herdr is explicitly selected; all other bytes remain equal"},

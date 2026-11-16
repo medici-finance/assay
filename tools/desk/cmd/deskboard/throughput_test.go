@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -235,13 +236,21 @@ func TestThroughput_AdviceIsAnExactCommandOrSaysWhyNot(t *testing.T) {
 		}
 		return
 	}
-	if !strings.Contains(rep.Advice, "deskroster set --role "+s.Loop+" --width ") {
+	// The fixture's ledger is empty, so neither landing nor depth binds: the advice must be the
+	// exact widening command, never a "no widening" line that would skip the checks below.
+	cmd := "deskroster set --role " + s.Loop + " --width "
+	i := strings.Index(rep.Advice, cmd)
+	if i < 0 {
 		t.Fatalf("advice must carry the exact widening command; got %q", rep.Advice)
 	}
 	// The width the advice recommends must actually be accepted by the bound — advice the
 	// knob would refuse is a loop the coordinator cannot close.
-	if err := deskkit.CheckWidth(s.Loop, s.MaxSlots); err != nil {
-		t.Errorf("advice recommends width %d for %s, which the bound REFUSES: %v", s.MaxSlots, s.Loop, err)
+	n, err := strconv.Atoi(strings.TrimSpace(rep.Advice[i+len(cmd):]))
+	if err != nil || n <= s.Slots || n > s.MaxSlots {
+		t.Fatalf("advice width %q is not a widening within the ceiling %d", rep.Advice[i+len(cmd):], s.MaxSlots)
+	}
+	if err := deskkit.CheckWidth(s.Loop, n); err != nil {
+		t.Errorf("advice recommends width %d for %s, which the bound REFUSES: %v", n, s.Loop, err)
 	}
 }
 

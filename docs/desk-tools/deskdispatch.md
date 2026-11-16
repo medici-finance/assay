@@ -78,13 +78,17 @@ change and, like the verifier's, is excluded from issue intake, boards and sweep
 
 STEPS, in order. Each prints one line; the first red one stops the dispatch and NAMES itself.
 
-  Before step 1, two brief-side holds refuse with exit 5, naming claim-acquire, with
+  Before step 1, three brief-side holds refuse with exit 5, naming claim-acquire, with
   nothing claimed and no worktree made: a --brief whose exec-tier is stricter than
-  --tier (checked on a --dry-run too), and a fresh worker dispatch of a gate: human
-  brief whose decision issue (its decision-issue: field, else the issue carrying its
-  decision-gate marker) is open, carries needs-decision, and has no ruling from the
-  ratifying identity since that label was applied. A decision read that fails, or
-  a brief whose decision issue does not exist yet, does not hold.
+  --tier (checked on a --dry-run too); a brief-shaped item key, dispatched with no
+  --brief and no --gate-human, whose brief (see step 4) matches no file, more than
+  one, or sits in a directory or file that cannot be read (could-not-check, naming
+  the key and every path tried); and a fresh worker dispatch of a gate: human
+  brief (given by --brief or named by the key) whose decision issue (its
+  decision-issue: field, else the issue carrying its decision-gate marker) is open,
+  carries needs-decision, and has no ruling from the ratifying identity since that
+  label was applied. A decision read that fails, or a brief whose decision issue
+  does not exist yet, does not hold.
 
   1 claim-acquire     runs the claim tool's acquire <claim-key>. The tool is the pure-Go
                       deskclaim-ref binary when it is on PATH (installed with desk-tools;
@@ -126,14 +130,26 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       it the registration is the AGENT's first act after its PR opens, and
                       the exact command is emitted into the prompt.
   4 decision-gate     with --gate-human (or a --brief whose own metadata gates on a
-                      human), runs tools/decision-issue.sh ensure from the resolved root
-                      (--claim-root when given, else --root) so the human has something
-                      concrete to decide. No pure-Go port of it ships, so a resolved root
-                      without it REFUSES pre-claim (exit 6), naming the path tried and
-                      the --claim-root way out. Idempotent by the script's own
-                      marker dedupe. The script runs under the dispatching role's
-                      credential (GH_TOKEN in its environment, from the same resolution
-                      the claim uses), never the ambient login; with none it refuses.
+                      human), ensures the decision issue so the human has something
+                      concrete to decide. With no --brief, a brief-shaped item key
+                      (<repo>--<stream>--<NN>, <stream>/<NN>) names its brief,
+                      docs/streams/<stream>/brief-<NN>-*.md under --root then
+                      --claim-root, and that brief's `gate: human` gates the same way;
+                      a key whose brief matches no file, or more than one, is REFUSED
+                      pre-claim (exit 5). SKIPPED is printed only when the brief was
+                      read and does not gate, or the item names no brief (issue-<N>). The tool resolves like the claim tool:
+                      `deskdecision ensure` (installed with desk-tools) when it is on
+                      PATH, else tools/decision-issue.sh ensure from the resolved root
+                      (--claim-root when given, else --root). With neither it REFUSES
+                      pre-claim (exit 6), naming every location tried and the
+                      --claim-root way out. Both speak one protocol (argv, exit codes,
+                      issue body, and the `decision-gate:` / legacy `needs-decision:`
+                      marker dedupe), so either finds an issue the other filed.
+                      `deskdecision` is passed `--as <dispatching role>` and resolves
+                      that role's own credential itself (GitHub or GitLab); the script
+                      runs under the dispatching role's credential (GH_TOKEN in its
+                      environment, from the same resolution the claim uses), never the
+                      ambient login; with none it refuses.
                       A brief whose human has already ruled may carry the ruling as a
                       `**Ruling (<YYYY-MM-DD>): option <N>.**` line linking one record
                       under docs/streams/decisions/ (by path in the brief's own
@@ -200,12 +216,27 @@ base moved, the checks at its head and the ones the base requires, every review 
 findings it records, the newest comments, and the diff. It holds no job log and no review
 comment anchored to a file and line — the forge surface reads neither — and says so.
 
+CONTEXT PICKUP. An implementer dispatch (--kit worker, --kit worker-objective) may carry
+--context-snapshot DIR and --context-receipt FILE, together or not at all: the snapshot
+`statusgen context` reads and the context-handoff receipt the brief was authored against.
+Before the claim and before any child process, deskdispatch rechecks the receipt against the
+snapshot with the same resolver package `statusgen context recheck` uses. A current receipt,
+an unrelated edit, an ignored draft rival or a product change to assess is admitted, and the
+prompt gains a "## Context pickup receipt" section with the receipt and merged digests,
+coverage, scope and every finding. A finding to reconcile, an unavailable input or partial
+coverage stops the dispatch with exit 5 and "dispatch HELD on context pickup": nothing is
+claimed and no worktree exists. A receipt whose schema this build does not validate is
+refused and names the manual bootstrap; it is never admitted unchecked. Without the flags the
+dispatch is unchanged and the kit's Architecture pickup section is the manual bootstrap
+(plugins/assay/references/implementation-pickup.md).
+
 --claim-root separates "where the consumer scripts live" from "which repo the worker's
-worktree branches from". The scripts (tools/dispatch-claim.sh, tools/decision-issue.sh)
-were centralized out of the consumer repos, so a cross-repo dispatch points --claim-root
-at the checkout that carries them while --root stays the ITEM's own repo — the worktree
-is always cut from --root. An explicit --claim-root is authoritative: there is no silent
-fall-back to --root.
+worktree branches from". Both scripts (tools/dispatch-claim.sh, tools/decision-issue.sh)
+have a pure-Go port installed with desk-tools (deskclaim-ref, deskdecision), which is
+tried first, so a dispatch with desk-tools on PATH needs no --claim-root. A repo that
+keeps the scripts and runs without the ports points --claim-root at the checkout that
+carries them while --root stays the ITEM's own repo — the worktree is always cut from
+--root. An explicit --claim-root is authoritative: there is no silent fall-back to --root.
 
 Before the claim, deskdispatch echoes any ADVISORY write-scope overlap
 between the item's write scopes (derived from --brief's Context 'files:' list) and any item

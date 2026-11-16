@@ -27,7 +27,12 @@ CELLCTL="${CELLCTL:-$HERE/../testdata/cellctl-shell-oracle.sh}"; [[ "$CELLCTL" =
 # (`<cell>/run/tmux.sock`), and `sun_path` has a hard ~104-108 byte limit every platform enforces
 # — macOS's default $TMPDIR (/var/folders/.../T/, ~50 bytes on its own) blows that budget once
 # `cells/<longest-case-name>/run/tmux.sock` is appended; /tmp does not.
-T="$(cd "$(mktemp -d "/tmp/cellctl-scrubbed.XXXXXX")" && pwd -P)"
+# Fail closed before the EXIT trap: on bash 3.2 `cd ""` succeeds, so a failed mktemp
+# must never leave T at the caller's directory for the trap to delete (#6161).
+made="$(mktemp -d "/tmp/cellctl-scrubbed.XXXXXX")" || exit 1
+[ -n "$made" ] && [ -d "$made" ] || exit 1
+T="$(cd "$made" && pwd -P)" || exit 1
+[ -n "$T" ] || exit 1
 trap 'rm -rf "$T"' EXIT
 fails=0
 assert(){ if eval "$2"; then echo "  ok    $1"; else echo "  FAIL  $1"; fails=$((fails+1)); fi; }
@@ -106,9 +111,10 @@ case "\${1:-}" in --version) echo "codex-cli 0.1.0-test"; exit 0 ;; esac
 case "\${1:-} \${2:-}" in
   "login status")
     [[ -f "$CODEX_STATE/authed" ]] && exit 0 || exit 1 ;;
-  "config --help") printf 'Commands:\n  get     read a config value\n'; exit 0 ;;
-  "config get")
-    if [[ -f "$CODEX_STATE/multiagent" ]]; then cat "$CODEX_STATE/multiagent"; else echo ""; fi
+  # cellctl reads Codex's EFFECTIVE feature state from "codex features list" (one
+  # "<name> <stage> <true|false>" row per feature), never a literal config read (f53fed97f, ea4f9842d).
+  "features list")
+    if [[ -f "$CODEX_STATE/multiagent" ]]; then printf 'multi_agent stable %s\n' "\$(cat "$CODEX_STATE/multiagent")"; fi
     exit 0 ;;
   "plugin --help") printf 'Commands:\n  list    list installed plugins\n'; exit 0 ;;
   "plugin list")
@@ -146,7 +152,9 @@ case_new(){
   assert "new: cell.env CELL_REPO_SLUG is the --repo-slug value" 'grep -qx "CELL_REPO_SLUG=example-org/example-repo" "$C/cell.env"'
   assert "new: cell.env DESKD=0" 'grep -qx "DESKD=0" "$C/cell.env"'
   assert "new: home/.config/assay is a REAL directory (never a symlink)" '[[ -d "$C/home/.config/assay" && ! -L "$C/home/.config/assay" ]]'
-  assert "new: home/.config/assay mode 0700" '[[ "$(stat -f "%Lp" "$C/home/.config/assay" 2>/dev/null || stat -c "%a" "$C/home/.config/assay")" == "700" ]]'
+  # GNU spelling first: GNU `stat -f` is --file-system, which prints the filesystem record and
+  # exits non-zero, so a BSD-first probe returns that record glued to the mode on Linux.
+  assert "new: home/.config/assay mode 0700" 'hn=home; cfgd="$C/$hn/.config/assay"; [[ "$(stat -c "%a" "$cfgd" 2>/dev/null || stat -f "%Lp" "$cfgd")" == "700" ]]'
   assert "new: roster scopes ASSAY_ALLOWED_REPOS to the slug" 'grep -qx "ASSAY_ALLOWED_REPOS=example-org/example-repo" "$C/home/.config/assay/roster.env"'
   assert "new: gitconfig present, empty, never linked to the operator's" '[[ -f "$C/home/.gitconfig" && ! -L "$C/home/.gitconfig" && ! -s "$C/home/.gitconfig" ]]'
   assert "new: gh config dir present, a REAL directory" '[[ -d "$C/home/.config/gh" && ! -L "$C/home/.config/gh" ]]'
@@ -279,7 +287,10 @@ case_plan_grammar(){
   "$CELLCTL" new "$cell" --kind scrubbed --repo "$REPO" --repo-slug example-org/example-repo \
     --roots "example-org/example-repo=$REPO" >/dev/null
   local out
-  out="$(TERM=xterm-256color LANG=en_US.UTF-8 DRY_RUN=1 "$CELLCTL" desk "$cell" the-desk 2>&1)"
+  # TERM, LANG and ASSAY_TELEMETRY are composed only when the launching shell carries them
+  # (ASSAY_TELEMETRY since c893a16f2), so set each here: the KEY-set row below must not depend on
+  # the host shell.
+  out="$(TERM=xterm-256color LANG=en_US.UTF-8 ASSAY_TELEMETRY=0 DRY_RUN=1 "$CELLCTL" desk "$cell" the-desk 2>&1)"
   local lines; lines="$(printf '%s\n' "$out" | grep -E '^\[dry-run\]|^\[plan\]')"
   assert "plan-grammar: the existing [dry-run] line comes first" '[[ "$(head -n1 <<<"$lines")" == \[dry-run\]* ]]'
   local env_keys; env_keys="$(grep '^\[plan\] env ' <<<"$lines" | sed -E 's/^\[plan\] env //; s/=.*$//')"

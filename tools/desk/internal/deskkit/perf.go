@@ -49,6 +49,10 @@ const PerfSchema = perfrec.Schema
 // process-init boundary, counters with explicit coverage.
 const PerfSchemaV2 = perfrec.SchemaV2
 
+// PerfSchemaV5 is what PerfRun writes instead when the binary carries a release tag
+// (perfrec's perf-v5): the perf-v2 record plus that tag, read as one perf-v2 group.
+const PerfSchemaV5 = perfrec.SchemaV5
+
 // perfEnvVar is the one opt-in. It is the SAME variable statusgen/telemetry.go reads.
 const perfEnvVar = perfrec.EnvVar
 
@@ -215,6 +219,8 @@ func perfRunMeasured(tool string, verbs []string, args []string, run func([]stri
 	}
 	sha, _ := Version()
 	rec := sess.Finish(perfTool(tool), verb, perfRole(os.Getenv("DESK_LOOP")), code, sha)
+	// A release build names its tag (perf-v5); a dev or unstamped one stays perf-v2.
+	rec = perfrec.WithRelease(rec, ReleaseTagOrDev())
 	perfAppendEnabled(enabled, rec)
 	return code
 }

@@ -1,0 +1,2 @@
+[{"number":30,"title":"Decision: assay:ex:sample:07 — Pick the retention window","state":"OPEN","body":"<!-- decision-gate: assay:ex:sample:07 -->","labels":[{"name":"needs-decision"}]},
+ {"number":31,"title":"Decision: assay:ex:other:02 — Other","state":"OPEN","body":"<!-- decision-gate: assay:ex:other:02 -->","labels":[{"name":"needs-decision"}]}]

@@ -131,3 +131,55 @@ func TestPRShepherdChangelogFragmentRequiresFlatFile(t *testing.T) {
 		t.Errorf("pr-shepherd SKILL.md still says the bare %q for the fragment slug", bare)
 	}
 }
+
+// attributionBullet returns the kit's no-attribution bullet, continuation lines included.
+func attributionBullet(kit string) string {
+	lines := strings.Split(kit, "\n")
+	for i, l := range lines {
+		if !strings.HasPrefix(l, "- No attribution or generated-by lines") {
+			continue
+		}
+		end := i + 1
+		for end < len(lines) && strings.HasPrefix(lines[end], "  ") {
+			end++
+		}
+		return strings.Join(lines[i:end], "\n")
+	}
+	return ""
+}
+
+// regression: #5892
+// Both implementer kits tell a worker what to do when the push guard refuses a trailer its
+// harness added: STOP, report the named setting, and never rewrite history to get past it.
+func TestAttributionStopClause(t *testing.T) {
+	bodies := map[string]string{}
+	for _, kit := range []string{"worker", "worker-objective"} {
+		text, err := kitText(kit)
+		if err != nil {
+			t.Fatalf("kit %q: %v", kit, err)
+		}
+		b := attributionBullet(text)
+		flat := strings.Join(strings.Fields(b), " ")
+		for _, must := range []string{
+			"`attribution.attributeCommitsToAgent`",
+			"`attribution.attributePRsToAgent`",
+			"STOP: never rewrite history",
+			"never push by another route",
+			"BLOCKED: harness attribution",
+		} {
+			if !strings.Contains(flat, must) {
+				t.Errorf("kit %q attribution bullet lacks %q:\n%s", kit, must, b)
+			}
+		}
+		for _, never := range []string{"commit-tree", "--amend", "filter-branch", "filter-repo", "rebase"} {
+			if strings.Contains(b, never) {
+				t.Errorf("kit %q attribution bullet names a history rewrite %q:\n%s", kit, never, b)
+			}
+		}
+		bodies[kit] = b
+	}
+	if bodies["worker"] != bodies["worker-objective"] {
+		t.Errorf("the attribution bullet differs between the implementer kits:\n%s\n---\n%s",
+			bodies["worker"], bodies["worker-objective"])
+	}
+}

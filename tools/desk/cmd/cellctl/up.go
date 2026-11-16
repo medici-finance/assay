@@ -474,8 +474,9 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string, ctl upControl) {
 	}
 
 	// The reconcile classification (#2880) is read, never acted on, by a plain `up`: each role is
-	// probed up / stale / absent from the same evidence the preflight uses, and stale state is
-	// cleared only by an applied plan (`up --plan`, then `up --apply <plan-id>` on a terminal).
+	// probed up / stale / absent from the same evidence the preflight uses. Plain `up` clears no
+	// stale state: a dead record is cleared by an applied plan (`up --plan`, then `up --apply
+	// <plan-id>` on a terminal), any other by the recover verb its row names (staleRecovery).
 	var commsCfg *deskCommsConfig
 	if c.Kind == "house" {
 		var cfgErr error
@@ -642,16 +643,26 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string, ctl upControl) {
 
 // commsPreflightStale refuses a launch over stale comms state. Plain `up` never clears it, on a
 // terminal or off one: the inventory and the exact commands are printed (the reconcile preflight's
-// own output) and `up --plan` is named as the way to clear it with a typed confirm. A dry run
-// prints the inventory and changes nothing.
+// own output), then commsStalePointer names the verb that clears the comms record's class (`up
+// --plan` only for a dead record or orphans alone). A dry run prints the inventory and changes
+// nothing.
 func (c *Cell) commsPreflightStale(comms *deskCommsConfig, dryRun bool) {
 	if c.Kind != "house" || comms == nil {
 		return
 	}
 	if err := c.reconcile(nil, comms, reconcileIO{DryRun: dryRun, Out: os.Stdout}); err != nil {
-		fmt.Printf("[reconcile] cellctl up %s --plan writes one plan for the whole cell; cellctl up %s --apply <plan-id> runs it on a terminal\n", c.Name, c.Name)
+		fmt.Println(c.commsStalePointer(commsStale(c.reconcileInventory(nil, comms))))
 		die("up: %v", err)
 	}
+}
+
+// commsStalePointer is the way out printed under a refused comms preflight: `up --plan` only for a
+// record it plans (proven dead); otherwise the comms record's own recovery (#6192).
+func (c *Cell) commsStalePointer(e *reconcileEntry) string {
+	if e == nil || e.Class == reconcileDead {
+		return fmt.Sprintf("[reconcile] cellctl up %s --plan writes one plan for the whole cell; cellctl up %s --apply <plan-id> runs it on a terminal", c.Name, c.Name)
+	}
+	return "[reconcile] comms: " + c.commsStaleHint(e)
 }
 
 // knownRolesOrdered lists the keys of set in the cell-role order.

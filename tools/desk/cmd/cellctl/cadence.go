@@ -159,7 +159,9 @@ func (c *Cell) recordRoleChild(pid int) {
 // a flag that could not be checked.
 var errStoppedByFlag = errors.New("stopped by")
 
-func (c *Cell) cadenceGuard(role string) error {
+// cadenceStopPaths is every stop flag the cadence guard reads for role, in the order it reads them:
+// the role's own cadence-directory STOP first, then the config-home flags.
+func (c *Cell) cadenceStopPaths(role string) []string {
 	paths := []string{filepath.Join(c.cadenceDir(role), "STOP"), filepath.Join(c.Config, "DISABLED"), filepath.Join(c.Config, "STOP"), filepath.Join(c.Config, "STOP."+role)}
 	// The cell-scoped stop flags (STOP.cell.<cell>, STOP.cell.<cell>.<role>) stop the
 	// supervisor between passes as the Guard stops a pass's own verbs. c.Name was held to
@@ -175,6 +177,11 @@ func (c *Cell) cadenceGuard(role string) error {
 			paths = append(paths, filepath.Join(c.Config, deskkit.CellStopFlagName(c.Name, n)))
 		}
 	}
+	return paths
+}
+
+func (c *Cell) cadenceGuard(role string) error {
+	paths := c.cadenceStopPaths(role)
 	for _, p := range paths {
 		_, err := os.Lstat(p)
 		if err == nil {
