@@ -77,7 +77,7 @@
       "name": "round trip restore ignores version",
       "file": "acceptancetransition.go",
       "old": "case open && table == acceptedTable && v == acceptedVersion:",
-      "new": "case open && table == acceptedTable:"
+      "new": "case open && table == acceptedTable && (true || v == acceptedVersion):"
     },
     {
       "name": "round trip after the final link tolerated",
