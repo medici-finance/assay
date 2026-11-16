@@ -196,8 +196,8 @@
     {
       "name": "branch board lets a compare error through (an unreadable branch is read as an unchanged board)",
       "file": "cmd/deskevidence/decisiongate.go",
-      "old": "cmp, err := fg.CompareRefs(fr, head, tip)\n\tif err != nil {",
-      "new": "cmp, err := fg.CompareRefs(fr, head, tip)\n\tif false && err != nil {"
+      "old": "\tcase err != nil:\n\t\treturn nil, deskkit.Unverifiable(fmt.Sprintf(\"cannot compare the landing home's HEAD",
+      "new": "\tcase false && err != nil:\n\t\treturn nil, deskkit.Unverifiable(fmt.Sprintf(\"cannot compare the landing home's HEAD"
     },
     {
       "name": "branch board skips the compare for every tip, not only the home's own HEAD (a branch that moved past the judged board is never read) \u2014 #6270",
