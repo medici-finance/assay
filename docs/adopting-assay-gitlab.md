@@ -928,14 +928,21 @@ ASSAY_GITLAB_DISPLAY_NAMES=example-verifier-bot=Assay verifier (fleet bot)
 - Renaming the service account's display name to equal its username is a valid deployment
   workaround, but it silently re-breaks whenever an admin edits the display name; declaring it
   here is the durable fix.
-- **Online alternative — only from a checkout at the branch tip.** The desk verb that lands
-  Evidence (`deskevidence`) can resolve a landed commit's GitLab account to its username through
-  the typed forge (`GET /users?search=`) and compare that to the verifier binding, but before any
-  write it runs the decision-gate hold's branch-board read, which needs a ref compare, and the
-  GitLab backend serves none. The read needs no compare when the landing checkout's HEAD is the
-  target branch's tip (the same commit by full object id, never a prefix), so such a landing goes
-  ahead. Any other `deskevidence` landing on GitLab stops as **could-not-check (exit 6)** with
-  nothing written, until the GitLab backend serves a compare;
+- **Online alternative — from a checkout at the branch tip, or behind it by Evidence only.** The
+  desk verb that lands Evidence (`deskevidence`) can resolve a landed commit's GitLab account to
+  its username through the typed forge (`GET /users?search=`) and compare that to the verifier
+  binding, but before any write it runs the decision-gate hold's branch-board read. On GitHub that
+  read is a ref compare; the GitLab backend serves no ref compare. The read needs no compare when
+  the landing checkout's HEAD is the target branch's tip (the same commit by full object id, never
+  a prefix), so such a landing goes ahead. When the HEAD is not the tip, GitLab is asked one
+  narrower, exact question instead: is the HEAD the merge base of itself and the tip (so the tip
+  descends from it), and which files differ between the two. The landing goes ahead only when the
+  tip is such an exact descendant and every differing file is an Evidence path that was added or
+  modified (this landing's target, a brief file, or a `docs/streams/verify-outcomes/` record, on a
+  clean path); a changed brief is still read at the tip and judged. Every other `deskevidence`
+  landing on GitLab stops as **could-not-check (exit 6)** with nothing written: diverged or
+  unrelated history, a compare GitLab reports as timed out, a listing at the 300-file cap, a
+  removal or rename, an unclean path, or any non-Evidence change.
   [adopting-assay.md](adopting-assay.md) gives the reason (the decision-gate hold, under
   "PRIMITIVE: add-statusgen-ci"). The offline map above is what
   the network-free `--lint` path compares against; unset, that path is could-not-check for the
