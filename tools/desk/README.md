@@ -1583,7 +1583,9 @@ desk decision; that is the reviewer's question, and the reviewer kit (`cmd/deskd
 references/review-prompt.md` §15) asks it on every review. A reviewer who judges that the
 diff took an undeclared reversible default names it in the verdict with the fixed line
 `Undeclared-desk-decision: <one line>`, and the flip refuses while that line stands at the
-CURRENT head — cleared by `deskpr edit --body-file <the PR's current body> --decided F`
+CURRENT head (a value of `none`, `none found`, `none observed` or `none identified`, any case,
+optionally followed by a separator and an explanation, records a clean check and holds
+nothing; an empty value holds) — cleared by `deskpr edit --body-file <the PR's current body> --decided F`
 and a fresh DECISIVE verdict (APPROVE or REQUEST_CHANGES) at the same head, in the same
 lane, that omits the line; no new commit required. The two review lanes are read separately, because the correctness and security
 verdicts are posted by the same reviewer App in parallel: a `Security-Review:` verdict never
