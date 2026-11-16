@@ -889,7 +889,9 @@ with the reconcile inventory and a pointer to the verb that clears it.
 amber-falcon`. The words come from fixed lists built into `cellctl`. An id is never reused within
 a cell, including the ids of plans already applied. A plan stored with an older 24-character hex
 id still applies by that id. The id only finds the plan: apply still shows it and asks for the
-typed confirm code.
+typed confirm code, one lowercase word chosen from the plan's digest and never a word of its id.
+A plan stored with the older 8-hex-character confirm code is refused `plan-invalid`, naming the
+retired form; make the plan again.
 
 `--plan` clears only a role whose checkpoint names a supervisor that has exited (the *dead* class).
 The stale row names the verb that accepts the role's own class:
