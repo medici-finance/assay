@@ -20,7 +20,7 @@ gate-why: >-
   refusal ruled as D2 in the scoping document.
 decision-trigger: start
 decision-issue: 6364
-ruling: "https://github.com/medici-finance/assay/issues/6364#issuecomment-6928690524"
+ruling: "https://github.com/medici-finance/assay/issues/6364#issuecomment-6929236569"
 design: DR-handoff-publish
 issues: []
 outcome: none
@@ -87,7 +87,7 @@ Options:
 
 Default if no answer: option 2 after 2026-11-20 (7 days from the decision issue's filing on 2026-11-13). It is the narrower behaviour and can be widened later; option 1 cannot be undone for text already pushed.
 
-Ruled: option 2 (option A on the decision issue), recorded by the `ruling:` link in this brief's frontmatter.
+Ruled: option 2 (option A on the decision issue), recorded by the `ruling:` link in this brief's frontmatter, which points at the ruling comment that names `intake-class-routing/02`.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per the task instructions.
