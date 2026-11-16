@@ -1018,7 +1018,8 @@ refused `not-interactive` and changes nothing, and `--plan` prints what would be
 request recorded in a file under the cell is a request, never authority. Only `pause`, a timed
 `drain` and a per-role stop of a role already paused or drained are ever taken from a record. The
 stop is taken only after the role re-measures idle, whatever the record says about it. `resume`,
-`start`, `restart`, `drain --now` and a foreign-stop lift always need the terminal. Every verb emits
+`start`, `restart`, `cycle`, `drain --now` and a foreign-stop lift always need the terminal; `cycle`
+takes its typed confirm before it pauses anything. Every verb emits
 the `cell-op-v1` result (`--json`).
 
 **The handoff record.** A desk asked to drain writes a short record of the claims it held, the PRs it
@@ -1044,6 +1045,15 @@ replace it, and the proposal above records that migration.
 against the known roles like a named one) through drain,
 sync, check and restart, one role at a time. The first role that does not come back stops the cycle,
 so a bad pin never takes down more than one role. `--all-at-once` drains every targeted role together.
+
+**The confirm comes first.** Before it pauses, drains, stops or restarts anything, the cycle shows its
+plan — one line per targeted role, saying whether it will be cycled or skipped as down — and takes the
+typed confirm code on the terminal, through the one apply path every state-changing verb uses
+([`spec/cell-op-v1.md`](../spec/cell-op-v1.md) §6). A wrong or absent code ends the cycle
+`refused`/`confirm-mismatch` with nothing changed; a role whose state changed between the plan and the
+code ends it `plan-stale`. This holds on every path, `--all-at-once` and `--force-after-timeout`
+included, and when every targeted role is down. The confirms named in the steps below, for an
+interactive role's stop and a stop forced after a timeout, come on top of this one.
 
 1. **Stop new work and drain.** This is `drain` itself, bounded by `--drain-timeout` (default 30m).
    An interactive role's stop needs the operator's confirm, as it does under `drain`; a declined
