@@ -2340,9 +2340,12 @@ password is the manual permission gate; agents cannot write there. It stamps eac
 binary with `-ldflags "-X …/deskkit.SourceSHA=<sha> -X …/deskkit.BuiltAt=<ts>"` and
 writes `/opt/desk-tools/bin/MANIFEST.sha256` **beside the installed binaries** for drift
 verification. That manifest describes only what is installed on this machine, and it lives with
-those bytes, in the same shape as the `MANIFEST.sha256` a release tarball carries at its root:
-extracting a release tarball over the install dir replaces it with the release's own, and
-`deskinstall` writes one from the bytes it places. The older location,
+those bytes, in the same `<sha256>  <path>` shape as the `MANIFEST.sha256` release tarballs
+carry at their root once the release workflow's manifest step (#6604) has cut a release; no
+release published before that step ships one. `deskinstall` writes one from the bytes it
+places, and lists only those: a binary installed into the same dir by another route (a
+standalone `statusgen`, say) is reported as present but not listed by
+`python3 -B -m tools.release.desk_manifest check`, though `sha256sum -c` passes. The older location,
 `tools/desk/MANIFEST.sha256` in the source tree, outlived every reinstall and went on describing a
 build that was no longer installed (#6604); `desk-manifest` now deletes it. Which file hashes which
 release artifact (`checksums.txt` versus the tarball manifest) is set out in
@@ -3522,6 +3525,10 @@ resolves them against the **current directory**, so run it from the install dir:
 
 It holds the hashes of the bytes the last install placed there — `make desk-install`,
 `deskinstall`, or a release tarball's own manifest when the tarball was extracted over the dir.
+A `deskinstall` older than #6604 flattens the tarball to base names and also places the
+tarball's manifest, whose `hooks/pre-push` line then names a path the flattened dir does not
+have, so the check fails on that line (`check` exits 1). Reinstall with a current `deskinstall`,
+or rerun `sudo make desk-manifest`, to rewrite it from what landed.
 Copying binaries in by any other route leaves it describing the previous bytes: rerun
 `sudo make desk-manifest` after such a copy, or expect those entries to fail.
 

@@ -44,8 +44,14 @@ each desk-tools tarball, with each asset's sha256 and a `pkg:golang` purl per mo
   written by the release from the bytes it then tars, so after `tar -xzf` it verifies the
   extracted files: `cd <extracted dir> && sha256sum -c MANIFEST.sha256`. statusgen and qualgen are
   not members of the tarball and are not in it; a copy placed beside the extracted files is
-  covered by `checksums.txt`, not by this manifest. Releases cut before this manifest shipped
-  carry none.
+  covered by `checksums.txt`, not by this manifest. Releases cut before the release workflow's
+  manifest step (#6604) carry none.
+
+Trust runs in one order. Check the tarball first, against `checksums.txt` and its build
+attestation; only a tarball that passed both carries a `MANIFEST.sha256` worth reading, because
+the manifest travels inside the bytes it describes and anyone who could alter the tarball could
+rewrite it to match. After that it says which extracted file is which and catches a member
+changed or lost after extraction; it adds no authority of its own.
 
 `sha256sum -c` checks only the lines present, so it does not notice a file the manifest leaves
 out. `python3 -B -m tools.release.desk_manifest check <dir>` (from a checkout) also reports every

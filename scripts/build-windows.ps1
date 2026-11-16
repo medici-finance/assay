@@ -148,7 +148,8 @@ $RepoRoot   = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $DeskDir    = Join-Path $RepoRoot 'tools\desk'
 $DistDir    = Join-Path $DeskDir  'dist'
 # The manifest lives in the install dir beside the bytes it describes, as a
-# release tarball's does (#6604); the old source-tree location is deleted.
+# release tarball's will once a release is cut with the workflow's manifest step
+# (#6604; none published before it carries one); the old source-tree location is deleted.
 $Manifest       = Join-Path $InstallDir 'MANIFEST.sha256'
 $LegacyManifest = Join-Path $DeskDir    'MANIFEST.sha256'
 $DeskModule = 'github.com/medici-finance/assay/tools/desk'

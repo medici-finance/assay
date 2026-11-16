@@ -127,21 +127,12 @@ missing one, which `sha256sum -c` alone does not. The Makefile's
 write the same shape into the install dir. Offline fixtures:
 `python3 -B -m unittest discover -s tools/release -p desk_manifest_test.py -v`.
 
-The workflow change is staged as `desk-tools-manifest.release.yml.patch`
-(two lines in the package loop, after `hooks/pre-push` is staged and before
-`tar`). A maintainer applies it, from the repository root on an up-to-date
-`main`:
-
-```
-git apply --check tools/release/desk-tools-manifest.release.yml.patch   # must print nothing
-git apply tools/release/desk-tools-manifest.release.yml.patch
-```
-
-and commits `.github/workflows/release.yml` by PR. The patch is independent of
-`release.yml.patch`; either applies without the other. `sbom.py` reads only
-executable members, so the 0644 manifest adds no SBOM package. Until it is
-applied, releases ship no tarball manifest and `deskinstall` writes the one in
-the install dir.
+The release workflow runs `write` and then `check` in the desk-tools package
+loop, after `hooks/pre-push` is staged and before `tar`, in both
+`.github/workflows/release.yml` and its mirror `ci/staged-workflows/release.yml`.
+`sbom.py` reads only executable members, so the 0644 manifest adds no SBOM
+package. Releases published before that step carry no tarball manifest; for
+those, `deskinstall` still writes the one in the install dir.
 
 ## Release Go cache
 

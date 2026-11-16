@@ -229,7 +229,8 @@ func Install(opts Options) error {
 
 // destManifestName is the checksum manifest this installer writes into the
 // destination (#6604), in the shape `make desk-manifest` writes into its install
-// dir and a release tarball carries at its root: `<sha256>  <name>` lines that
+// dir and release tarballs carry at their root once a release is cut with the
+// workflow's manifest step (none published before it does): `<sha256>  <name>` lines that
 // `sha256sum -c` / `shasum -a 256 -c` read from inside the directory.
 const destManifestName = "MANIFEST.sha256"
 

@@ -44,8 +44,8 @@ DESK_DIR     := tools/desk
 DIST_DIR     := $(DESK_DIR)/dist
 INSTALL_DIR  := /opt/desk-tools/bin
 # The manifest lives IN the install dir, beside the bytes it describes, in the same
-# shape as the MANIFEST.sha256 a release tarball carries at its root: extracting a
-# tarball over the dir replaces it with the release's own. The old location in the
+# shape as the MANIFEST.sha256 release tarballs carry at their root from the first
+# release cut with the workflow's manifest step (#6604); no earlier release ships one. The old location in the
 # source tree outlived every reinstall and described a build that was no longer
 # installed (#6604); desk-manifest deletes it.
 MANIFEST        := $(INSTALL_DIR)/MANIFEST.sha256
