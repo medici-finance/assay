@@ -22,12 +22,13 @@ import (
 // cell byte-identical, splits a combined "Date / Runner" column in every row of
 // its table exactly after the leading date or adds one
 // `(on-behalf-of human:<name>)` principal to a Runner, and adds only prose that
-// carries no marker, verdict, comment, fence or HTML and leaves every reader's
-// whole-document view unchanged. The driver's own unedited comment, read
+// carries no marker, verdict, comment, fence, HTML or link-reference definition
+// and leaves every reader's whole-document view unchanged. The driver's own unedited comment, read
 // through the same forge resolver as Acceptance-Transition approvals, must name
-// the brief and say it authorizes the repair, with no negating or conditional
-// word, on its own issue or pull request, and the repair commit's message
-// must name that issue or pull request.
+// the brief and its own issue or pull request, and carry a sentence saying
+// "I authorize" with no negating or conditional word, question mark or markup
+// in it (repairAuthorizes); the repair commit's message must name that issue
+// or pull request.
 type evidenceRepair struct {
 	commit, approval string
 	link             rulingLink
@@ -202,6 +203,13 @@ func evidenceRepairEditorial(before, after string) string {
 	if len(oldRows) != len(newRows) {
 		return "a repair cannot add or remove table rows"
 	}
+	// sepNext: the next row of the same table is a separator. The Evidence
+	// reader (parseEvidenceRows) takes only a row followed by a separator as a
+	// header, so a mid-table data row whose first cell is "#" is a data row
+	// here too and cannot reset the column map.
+	sepNext := func(i int) bool {
+		return i+1 < len(oldRows) && !oldRows[i+1].start && isSeparatorCells(cellsTrimmed(oldRows[i+1].line))
+	}
 	var header []string
 	split := false
 	for i := range oldRows {
@@ -212,8 +220,9 @@ func evidenceRepairEditorial(before, after string) string {
 			header, split = nil, false
 		}
 		o, n := cellsTrimmed(oldRows[i].line), cellsTrimmed(newRows[i].line)
+		head := isHeaderCells(o) && sepNext(i)
 		if oldRows[i].line == newRows[i].line {
-			if isHeaderCells(o) {
+			if head {
 				header, split = o, false
 				continue
 			}
@@ -230,7 +239,7 @@ func evidenceRepairEditorial(before, after string) string {
 			}
 			continue
 		}
-		if isHeaderCells(o) {
+		if head {
 			at := repairColumn(o, "Date / Runner")
 			if at < 0 || len(n) != len(o)+1 {
 				return "a repair may only split the Date / Runner header"
@@ -329,6 +338,11 @@ func evidenceRepairReaderView(before, after string, added []string) string {
 		// <details> collapses it. A repair needs none of them.
 		if evidenceRepairHTMLRe.MatchString(l) {
 			return "a repair cannot add an HTML line"
+		}
+		// A link-reference or footnote definition is not rendered, and with a
+		// title quote left open it swallows the prose after it on the page.
+		if evidenceRepairDefRe.MatchString(l) {
+			return "a repair cannot add a link-reference or footnote definition"
 		}
 	}
 	if !sameRowRuns(before, after) {
@@ -497,33 +511,103 @@ func corroborateEvidenceRepairs(repo, rel string, repairs []evidenceRepair, clie
 // instruction start anywhere on a line.
 var evidenceRepairHTMLRe = regexp.MustCompile(`<[A-Za-z/?!]`)
 
-// repairApprovalHedges are the words that negate or condition a sentence. An
-// approval is a plain statement, so a comment carrying any of them, anywhere,
-// does not approve.
+// evidenceRepairDefRe is a Markdown link-reference or footnote definition.
+var evidenceRepairDefRe = regexp.MustCompile(`^[ \t]{0,3}\[[^\]]+\]:`)
+
+// repairApprovalHedges are the words that negate or condition a sentence. A
+// sentence that mentions authorizing and carries one of them does not approve.
 var repairApprovalHedges = map[string]bool{
 	"not": true, "no": true, "never": true, "nor": true, "cannot": true,
 	"dont": true, "doesnt": true, "wont": true, "cant": true, "isnt": true,
 	"unless": true, "if": true, "provided": true, "providing": true, "assuming": true,
 	"once": true, "until": true, "when": true, "whenever": true, "after": true,
 	"pending": true, "conditional": true, "conditionally": true, "subject": true,
-	"revoke": true, "revoked": true, "withdraw": true, "withdrawn": true,
-	"unauthorized": true, "unauthorised": true, "deauthorize": true,
+	"would": true, "could": true, "should": true, "might": true, "whether": true,
+	"nobody": true, "nothing": true, "none": true, "neither": true,
+	"but": true, "however": true, "except": true, "without": true,
 }
 
-// repairAuthorizes: the comment says "authorize" as a whole word, and no word
-// in it negates or conditions the sentence.
-func repairAuthorizes(body string) bool {
-	words := strings.FieldsFunc(strings.ToLower(strings.ReplaceAll(body, "’", "'")), func(r rune) bool {
+// repairRefusals are word stems that take an approval back. One anywhere in the
+// comment refuses it, whichever sentence carries it.
+var repairRefusals = []string{"reject", "refus", "declin", "revok", "rescind", "withdr", "retract", "deny", "denie", "veto"}
+
+// repairPlainRe is plain ASCII prose: no strike, emphasis, character reference,
+// tag, quote marker or look-alike letter can hide a word of a sentence that
+// mentions authorizing from the reader of the rendered comment.
+var repairPlainRe = regexp.MustCompile("^[A-Za-z0-9 \t\n.,:;'\"()#/!?-]*$")
+
+// repairSentenceEndRe ends a sentence: a terminator before whitespace or the
+// end. A paragraph break alone does not, so a dangling condition stays with
+// the statement it conditions.
+var repairSentenceEndRe = regexp.MustCompile(`[.!?]+(\s|$)`)
+
+func repairSentences(body string) []string {
+	var out []string
+	from := 0
+	for _, m := range repairSentenceEndRe.FindAllStringIndex(body, -1) {
+		out = append(out, strings.TrimSpace(body[from:m[1]]))
+		from = m[1]
+	}
+	if rest := strings.TrimSpace(body[from:]); rest != "" {
+		out = append(out, rest)
+	}
+	return out
+}
+
+func repairWords(s string) []string {
+	return strings.FieldsFunc(strings.ToLower(s), func(r rune) bool {
 		return !unicode.IsLetter(r) && r != '\''
 	})
+}
+
+// repairAuthorizes: one sentence says "I authorize", in those two adjacent
+// words. Every sentence that mentions authorizing (any word containing
+// "authori") must be a plain declarative ASCII statement with no question
+// mark and no negating or conditional word; other sentences may limit scope
+// ("not a new verification claim"). A refusal word anywhere refuses.
+func repairAuthorizes(body string) bool {
+	norm := strings.NewReplacer("\u2019", "'", "`", "'").Replace(body)
+	for _, w := range repairWords(norm) {
+		for _, r := range repairRefusals {
+			if strings.HasPrefix(w, r) {
+				return false
+			}
+		}
+	}
 	said := false
-	for _, w := range words {
-		if repairApprovalHedges[w] || strings.HasSuffix(w, "n't") {
+	for _, s := range repairSentences(norm) {
+		words := repairWords(s)
+		mentions, first := false, false
+		for i, w := range words {
+			mentions = mentions || strings.Contains(w, "authori")
+			first = first || (w == "authorize" && i > 0 && words[i-1] == "i")
+		}
+		if !mentions {
+			continue
+		}
+		if repairHedged(s, words) {
 			return false
 		}
-		said = said || w == "authorize"
+		said = said || first
 	}
 	return said
+}
+
+// repairHedged: the sentence is a question, is not plain prose, or carries a
+// negating or conditional word.
+func repairHedged(s string, words []string) bool {
+	if strings.Contains(s, "?") {
+		return true
+	}
+	if !repairPlainRe.MatchString(s) {
+		return true
+	}
+	for _, w := range words {
+		if repairApprovalHedges[w] || strings.HasSuffix(w, "n't") {
+			return true
+		}
+	}
+	return false
 }
 
 // repairNamesBrief is commentNamesRecord without path boundaries: the brief id

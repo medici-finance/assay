@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run '^(TestEvidenceRepair(Chain|Refusals|Placement|VerifyRow|Editorial|RecordKind)|TestRepair(DateCellIsDate|ReaderView|WholeDocView|ApprovalScope|SplitComplete|NoHTML|VerdictOrder|DriverUnset))$' -count=1 -timeout 600s -failfast",
+  "test": "go test . -run '^(TestEvidenceRepair(Chain|Refusals|Placement|VerifyRow|Editorial|RecordKind)|TestRepair(DateCellIsDate|ReaderView|WholeDocView|ApprovalScope|SplitComplete|NoHTML|VerdictOrder|DriverUnset|Authorizes|NoLinkDef))$' -count=1 -timeout 600s -failfast",
   "control": {
     "name": "drop prefix check after repair",
     "file": "acceptancetransition.go",
@@ -174,6 +174,48 @@
       "file": "evidencerepair.go",
       "old": "if cfg.Bless.Login == \"\" || driver == \"\" {",
       "new": "if false {"
+    },
+    {
+      "name": "hedge scan over whole body",
+      "file": "evidencerepair.go",
+      "old": "if repairHedged(s, words) {",
+      "new": "if repairHedged(norm, repairWords(norm)) {"
+    },
+    {
+      "name": "a question approves",
+      "file": "evidencerepair.go",
+      "old": "if strings.Contains(s, \"?\") {",
+      "new": "if false {"
+    },
+    {
+      "name": "any speaker authorizes",
+      "file": "evidencerepair.go",
+      "old": "first = first || (w == \"authorize\" && i > 0 && words[i-1] == \"i\")",
+      "new": "first = first || w == \"authorize\""
+    },
+    {
+      "name": "a later refusal is ignored",
+      "file": "evidencerepair.go",
+      "old": "if strings.HasPrefix(w, r) {",
+      "new": "if false && strings.HasPrefix(w, r) {"
+    },
+    {
+      "name": "authorizing sentence may carry markup",
+      "file": "evidencerepair.go",
+      "old": "if !repairPlainRe.MatchString(s) {",
+      "new": "if false {"
+    },
+    {
+      "name": "admit a link-reference definition",
+      "file": "evidencerepair.go",
+      "old": "if evidenceRepairDefRe.MatchString(l) {",
+      "new": "if false {"
+    },
+    {
+      "name": "any # row is a header",
+      "file": "evidencerepair.go",
+      "old": "head := isHeaderCells(o) && sepNext(i)",
+      "new": "head := isHeaderCells(o)"
     }
   ]
 }

@@ -118,10 +118,89 @@ func TestRepairApprovalScope(t *testing.T) {
 			f.refuse(t, c.want, false)
 		})
 	}
-	f, repair := repairChain(t, repairSplit, repairMessage)
-	f.withRepair(repair)
-	if _, why := f.plan(t); why != "" {
-		t.Fatalf("the driver's approval was refused: %s", why)
+	// Admitted: the fixture approval, and the sanctioned approval's own wording
+	// in fixture coordinates, whose closing scope limit ("not a new
+	// verification ... claim") sits outside the authorizing sentence.
+	for name, text := range map[string]string{"plain": repairApprovalText, "ruling-wording": repairRulingText} {
+		t.Run("admit-"+name, func(t *testing.T) {
+			f, repair := repairChain(t, repairSplit, repairMessage)
+			f.extra[repairComment] = repairApproval(login, "User", text, rlPosted)
+			f.withRepair(repair)
+			if _, why := f.plan(t); why != "" {
+				t.Fatalf("the driver's approval was refused: %s", why)
+			}
+		})
+	}
+}
+
+// repairRulingText is the sanctioned approval's wording with its thread,
+// brief and principal moved to fixture coordinates.
+const repairRulingText = "For PR #77 only, I authorize the worker to separate Date and Runner and " +
+	"transcribe `(on-behalf-of human:alex)` into the 14 retained vf/01 Evidence Runner cells " +
+	"from the original verifier publication PR #12. Preserve every original command, " +
+	"expectation, observation, date, verifier identity, attestation, source revision and " +
+	"result. This is a one-item editorial exception to tool-stamped ownership, not a new " +
+	"verification, execution or acceptance claim."
+
+// The approving sentence is a plain declarative "I authorize": a question, a
+// refusal, another speaker, a struck or marked-up sentence, or a negation
+// spelled to hide from a tokenizer does not approve, while a scope limit in
+// another sentence does not refuse (SR-A1, F-repair-approval-hedge).
+//
+// regression: #6616
+func TestRepairAuthorizes(t *testing.T) {
+	const tail = " separating Date and Runner in the vf/01 Evidence for PR #77."
+	refuse := map[string]string{
+		"question":      "For PR #77, I authorize separating Date and Runner in the vf/01 Evidence?",
+		"should-i":      "Should I authorize separating Date and Runner in the vf/01 Evidence for PR #77?",
+		"refuse-to":     "For PR #77, I refuse to authorize" + tail,
+		"decline-to":    "For PR #77, I decline to authorize" + tail,
+		"later-reject":  "I authorize" + tail + " On reflection, I reject it.",
+		"would-but":     "For PR #77, I would authorize the vf/01 repair, but I am rejecting it.",
+		"nobody":        "Nobody should authorize the vf/01 repair on PR #77.",
+		"who-can":       "For PR #77: who can authorize the vf/01 repair?",
+		"others":        "Others authorize" + tail,
+		"struck":        "~~I authorize" + tail + "~~",
+		"modifier":      "I don\u02bct authorize" + tail,
+		"backtick":      "I don`t authorize" + tail,
+		"prime":         "I don\u2032t authorize" + tail,
+		"emphasis":      "I do n*o*t authorize" + tail,
+		"cyrillic":      "I do n\u043et authorize" + tail,
+		"entity":        "I do n&#111;t authorize" + tail,
+		"hedged-repeat": "I authorize" + tail + " I do not authorize the rest.",
+		"split-para":    "If CI passes on PR #77,\n\nI authorize" + tail,
+	}
+	for name, text := range refuse {
+		if repairAuthorizes(text) {
+			t.Errorf("%s: %q was read as an approval", name, text)
+		}
+	}
+	for name, text := range map[string]string{
+		"plain":          repairApprovalText,
+		"ruling-wording": repairRulingText,
+		"apostrophe":     "For PR #77, I authorize the driver\u2019s vf/01 repair.",
+	} {
+		if !repairAuthorizes(text) {
+			t.Errorf("%s: %q was refused", name, text)
+		}
+	}
+}
+
+// An added link-reference or footnote definition is not rendered, and with an
+// open title quote it hides the prose after it on the page (SR-A4).
+//
+// regression: #6616
+func TestRepairNoLinkDef(t *testing.T) {
+	before := "Historical result retained.\nPrior note.\n" + repairDelivered
+	ok := repairSplit(before)
+	for _, add := range []string{"[n]: /x \"\nPrior note.\n\"", "[^1]: note\nPrior note.", "   [x]: y\nPrior note."} {
+		after := strings.Replace(ok, "Prior note.", add, 1)
+		if why := evidenceRepairEditorial(before, after); !strings.Contains(why, "definition") {
+			t.Errorf("%q: want a definition refusal, got %q", add, why)
+		}
+	}
+	if why := evidenceRepairEditorial(before, strings.Replace(ok, "Prior note.", "See [n] below.\nPrior note.", 1)); why != "" {
+		t.Fatalf("a bracket in prose was refused: %s", why)
 	}
 }
 
@@ -139,6 +218,7 @@ func TestRepairSplitComplete(t *testing.T) {
 	)
 	row1 := strings.NewReplacer("| exit 0; ok | 2026-10-16 verifier-app[bot] (model verifier) |",
 		"| exit 0; ok | 2026-10-16 | verifier-app[bot] (model verifier) |")
+	hashed := strings.Replace(before, "| 11 |", "| # | a | b | c | d |\n| 11 |", 1)
 	second := "\nOther table.\n\n| n | Command | Expected | Observed (exit + key output) | Date / Runner |\n" +
 		"|---|---------|----------|------------------------------|---------------|\n" +
 		"| 2 | go vet ./x | exit 0 | exit 0 | 2026-10-16 verifier-app[bot] (model verifier) |\n"
@@ -150,6 +230,10 @@ func TestRepairSplitComplete(t *testing.T) {
 			"| Date | Runner |\n|---|---------|----------|------------------------------|------|--------|",
 			"| 2026-10-16 verifier-app[bot] (model verifier) |", "| 2026-10-16 | verifier-app[bot] (model verifier) |",
 		).Replace(second), "outside any table"},
+		// A mid-table data row whose first cell is "#" is not a header (the
+		// reader needs a separator after it), so it cannot reset the split.
+		{"hash-row", hashed, strings.Replace(repairSplit(hashed), "| 11 | run x 2>&1 \\| grep -c y | 1 | printed 1 | 2026-10-16 | verifier-app[bot] (model verifier) (on-behalf-of human:alex) |",
+			"| 11 | run x 2>&1 \\| grep -c y | 1 | printed 1 | 2026-10-16 verifier-app[bot] (model verifier) |", 1), "every row"},
 	} {
 		if why := evidenceRepairEditorial(c.before, c.after); !strings.Contains(why, c.want) {
 			t.Errorf("%s: want %q, got %q", c.name, c.want, why)
