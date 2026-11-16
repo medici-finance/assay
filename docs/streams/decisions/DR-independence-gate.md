@@ -67,6 +67,25 @@ record and the code no longer disagree — for the dispatch-authority half only.
 half (brief-05) is untouched by this amendment and remains OPEN, per the status paragraph
 above.
 
+**Expiry of the allowance (recorded 2026-11-16).** The `ASSAY_STAMP_TRUSTED_LOGINS`
+allowance described in the amendment above is not a standing roster default. The driver's
+ruling on brief-06's decision issue sets when it ends; it is cited here, not restated:
+
+https://github.com/medici-finance/assay/issues/3369#issuecomment-6923924153
+
+- **Removal condition.** The allowance's roster entry comes out once the backlog it covers has
+  cleared: no open PR in a repository of the desk-tools set still has a `dispatched-*` label
+  whose standing application is by a user account rather than an App. Once that holds, no open
+  PR depends on the allowance, and the floor reads every remaining stamp from a dispatcher App.
+- **Removing the entry is a DRIVER act.** The roster is deployment configuration that the
+  driver holds. A desk, worker or verifier that finds the condition met reports it to the
+  driver; none of them edits the roster.
+- **How the condition is checked.** Neither `statusgen --lint` nor a CI gate can check it.
+  The condition lives in each open PR's label timeline on the forge, and the allowance lives
+  in a roster outside this tree, while the lint reads only the tree. The check is therefore
+  Verify row 5 of brief-06 (`measured-status/brief-06-modelfloor-derived-stamp.md`), which
+  the verify desk runs once for each repository in the desk-tools set.
+
 **Second amendment (2026-09-27, `deskrestamp`'s OWN re-stamp bar — narrower than the
 allowance above, a distinct decision).** The amendment directly above describes the
 model-floor's READER: what a widened set of appliers the floor will *recognise* as already
