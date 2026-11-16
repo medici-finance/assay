@@ -21,6 +21,9 @@ package main
 // "PR opens THERE" framing — and that the worker/review paths are byte-for-byte unchanged.
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -108,4 +111,67 @@ func TestFullPromptNoWorkerLoop(t *testing.T) {
 				"would mint the worker App and miss its own loop's STOP flag", kit, workerLoopIdentityLine)
 		}
 	}
+}
+
+// regression: #4823
+// TestVerifierKitGitEnv: the verifier Assignment declares the controlled Git launch
+// environment before any Verify row, and the worker Assignment does not. The declared
+// lines are pinned literally (never against the helper that renders them), and run for
+// real: under an inherited environment that plants every variable the launch must remove,
+// git in a shell started with those lines finds a present key and writes --worktree config.
+func TestVerifierKitGitEnv(t *testing.T) {
+	repo := kitGitRepo(t)
+	asg := assignmentSection(t, dispatchPrompt(t, "verifier", "verify-item-9"))
+	want := "```sh\nunset GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR " +
+		"GIT_SSH_COMMAND GIT_ASKPASS SSH_ASKPASS\nexport GIT_CONFIG_GLOBAL=" + os.DevNull +
+		" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=0 GIT_TERMINAL_PROMPT=0\n```"
+	if !strings.Contains(asg, "## Git environment") || !strings.Contains(asg, want) {
+		t.Fatalf("the verifier Assignment does not declare %q:\n%s", want, asg)
+	}
+	if !strings.Contains(asg, "never through an include.path file") {
+		t.Fatalf("the verifier Assignment does not keep keys inline:\n%s", asg)
+	}
+	if strings.Index(asg, "## Git environment") > strings.Index(asg, "## Run the Verify table") {
+		t.Fatalf("the Git environment is declared after the Verify table:\n%s", asg)
+	}
+	worker := assignmentSection(t, dispatchPrompt(t, "worker", "example-stream--07"))
+	if strings.Contains(worker, "## Git environment") {
+		t.Fatalf("the worker Assignment carries the verifier Git environment:\n%s", worker)
+	}
+
+	// Run the block the verifier is told to start its shell with.
+	env := asg[strings.Index(asg, "## Git environment"):]
+	env = env[strings.Index(env, "```sh\n")+len("```sh\n"):]
+	env = env[:strings.Index(env, "\n```")]
+	nowhere := filepath.Join(t.TempDir(), "nowhere")
+	t.Setenv("GIT_CONFIG", "")
+	t.Setenv("GIT_CONFIG_PARAMETERS", "'remote.origin.url'='https://github.com/foreign/repo.git'")
+	t.Setenv("GIT_DIR", nowhere)
+	t.Setenv("GIT_WORK_TREE", nowhere)
+	t.Setenv("GIT_SSH_COMMAND", "false")
+	t.Setenv("SSH_ASKPASS", "false")
+	cmd := exec.Command("sh", "-c", env+"\n"+`u=$(git config --get remote.origin.url) || { echo "get-failed"; exit 1; }
+git config --worktree verify.probe ok || { echo "worktree-write-failed"; exit 1; }
+git config --list >/dev/null || { echo "list-failed"; exit 1; }
+printf '%s;%s;%s' "$u" "${GIT_CONFIG-unset}" "$GIT_TERMINAL_PROMPT"`)
+	cmd.Dir = repo
+	out, err := cmd.CombinedOutput()
+	if got, wantOut := strings.TrimSpace(string(out)), kitGitOrigin+";unset;0"; err != nil || got != wantOut {
+		t.Fatalf("git under the declared verifier env = %q (%v), want %q", got, err, wantOut)
+	}
+}
+
+// kitGitOrigin is the origin URL kitGitRepo carries inline in its own config.
+const kitGitOrigin = "https://github.com/example-org/example-repo.git"
+
+// kitGitRepo makes a repository with kitGitOrigin inline in its own config.
+func kitGitRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	for _, args := range [][]string{{"init", "-q"}, {"config", "remote.origin.url", kitGitOrigin}} {
+		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	return dir
 }
