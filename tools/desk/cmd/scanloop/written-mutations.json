@@ -1,0 +1,59 @@
+{
+  "test": "go test ./cmd/scanloop/ -count=1 -timeout 300s -run 'TestUnwritten_|TestCredit|TestHasPlaceholder_|TestCarriers_'",
+  "control": {
+    "name": "CONTROL — every member is credited whatever the scan wrote (the reported defect)",
+    "file": "cmd/scanloop/written.go",
+    "old": "\t\tif _, hit := credited[m]; !hit {",
+    "new": "\t\tif _, hit := credited[m]; false && !hit {"
+  },
+  "mutations": [
+    {
+      "name": "the lane computes the unwritten members but never reports them",
+      "file": "cmd/scanloop/lane.go",
+      "old": "\t\t\tout.Unwritten = unwritten",
+      "new": "\t\t\t_ = unwritten"
+    },
+    {
+      "name": "Land ledgers an unwritten member anyway",
+      "file": "cmd/scanloop/adapter.go",
+      "old": "\t\tif unwritten[member] {\n\t\t\tcontinue",
+      "new": "\t\tif false && unwritten[member] {\n\t\t\tcontinue"
+    },
+    {
+      "name": "Land drops an unwritten member without parking it (no EMITTED line, the leak check names it)",
+      "file": "cmd/scanloop/adapter.go",
+      "old": "\t\ts.parkMembers(outcome.Unwritten)",
+      "new": "\t\t_ = outcome.Unwritten"
+    },
+    {
+      "name": "second instance — the no-carrier exit credits every member again",
+      "file": "cmd/scanloop/lane.go",
+      "old": "\t\t\tif first > 0 {\n\t\t\t\tout.Artifact = fmt.Sprintf(\"%s#%d\", repo, first)\n\t\t\t}",
+      "new": "\t\t\tif first > 0 {\n\t\t\t\tout.Artifact = fmt.Sprintf(\"%s#%d\", repo, first)\n\t\t\t}\n\t\t\tout.Unwritten = nil"
+    },
+    {
+      "name": "a zero-delta scan still commits (nothing to commit fails the dispatch)",
+      "file": "cmd/scanloop/lane.go",
+      "old": "\t\tif !req.DryRun && excluded == len(changed) {",
+      "new": "\t\tif !req.DryRun && len(changed) > 0 && excluded == len(changed) {"
+    },
+    {
+      "name": "a carried member's exit names this pass's carrier, not the one that carries it",
+      "file": "cmd/scanloop/adapter.go",
+      "old": "firstNonEmpty(outcome.MemberArtifacts[member], r.Artifact, outcome.Artifact)",
+      "new": "firstNonEmpty(r.Artifact, outcome.Artifact)"
+    },
+    {
+      "name": "the placeholder stem takes the first path segment (a nested GitLab group misses its file)",
+      "file": "cmd/scanloop/written.go",
+      "old": "\tif i := strings.LastIndex(repo, \"/\"); i >= 0 {",
+      "new": "\tif i := strings.Index(repo, \"/\"); i >= 0 {"
+    },
+    {
+      "name": "HasPlaceholder goes back to the first-slash cut",
+      "file": "cmd/scanloop/adapter.go",
+      "old": "\tshort := placeholderStemOf(repo)",
+      "new": "\tshort := repo[strings.Index(repo, \"/\")+1:]"
+    }
+  ]
+}

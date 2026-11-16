@@ -36,6 +36,10 @@ type fakeGit struct {
 	prsUpdated int
 	prEdits    int
 	commands   []string
+	// wrote is what `git status` reports under the scan directory after a scan: the placeholders
+	// the modelled scanner wrote. batchLoop fills it from the poll, so every member is written
+	// unless a test says otherwise (#6601: a member is credited only for what the scan wrote).
+	wrote string
 }
 
 func newFakeGit() *fakeGit {
@@ -50,6 +54,8 @@ func (g *fakeGit) exec(dir, name string, args ...string) (string, error) {
 	switch name {
 	case "git":
 		switch {
+		case len(args) > 0 && args[0] == "status":
+			return g.wrote, nil
 		case len(args) >= 5 && args[0] == "worktree" && args[1] == "add":
 			// worktree add <path> -b <branch> <base>
 			path, branch := args[2], args[4]
@@ -130,7 +136,35 @@ func batchLoop(t *testing.T, poll string, g *fakeGit) *ScanLoop {
 	loop.DryRun = false
 	loop.Exec = g.exec
 	loop.Write = func(string, string) error { return nil }
+	if g.wrote == "" {
+		g.wrote = scanWrote(inboundIDs(poll)...)
+	}
 	return loop
+}
+
+// inboundIDs is every item id an INBOUND poll names, in poll order.
+func inboundIDs(poll string) []string {
+	var ids []string
+	for _, l := range strings.Split(poll, "\n") {
+		if f := strings.Fields(l); len(f) >= 2 && f[0] == "INBOUND:" {
+			ids = append(ids, f[1])
+		}
+	}
+	return ids
+}
+
+// scanWrote is `git status --porcelain=v1 -z` output naming the repo-stemmed placeholder of each
+// item as a new file — what the scanner writes for an issue it does not skip.
+func scanWrote(ids ...string) string {
+	var b strings.Builder
+	for _, id := range ids {
+		repo, n, ok := splitMember(id)
+		if !ok {
+			continue
+		}
+		b.WriteString("?? " + deskkit.ScanDir + "/" + placeholderNamesFor(repo, n)[0] + "\x00")
+	}
+	return b.String()
 }
 
 // TestBatch_ManyNewIssuesYieldExactlyOneScanAndOnePR is the finding's direct control. Three inbound
