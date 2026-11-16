@@ -14,7 +14,7 @@ For one objective answer: what must be `done` before it can go live, and what
 can be done now to move it forward. The answer is a page with:
 
 - the six-line monthly progress chart first;
-- separate seven-day and four-week movement boards, with evidence-backed focus;
+- compact seven-day and four-week numeric movement tables, with evidence-backed focus;
 - outcome context in details;
 - the prerequisite graph, showing only work that is not fully done;
 - the critical path;
@@ -125,6 +125,8 @@ Read [Report presentation](references/report.md) before writing the HTML. It def
 plain-language titles, six-line progress chart (three weekly readings plus seven daily),
 movement and outcome views, report comparisons, blockers, graph and evidence coverage;
 hide only `done` nodes from the graph and retain `verified` work awaiting final approval.
+Default to its compact comparison layout: keep related periods aligned in numeric tables,
+with restrained row shading and inspectable evidence, rather than a chart card per metric.
 Write the self-contained report outside repositories and never commit it.
 
 ## Boundaries
