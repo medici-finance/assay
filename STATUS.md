@@ -35,7 +35,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [milestone-support](docs/streams/milestone-support/README.md) | P2 | active | 1/14 | 2026-11-13 |  |
 | [performance-collection](docs/streams/performance-collection/README.md) | P2 | active | 0/9 | 2026-11-02 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-11-02 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/44 | 2026-11-15 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/44 | 2026-11-16 |  |
 | [verification-handoff](docs/streams/verification-handoff/README.md) | P2 | active | 0/6 | 2026-11-10 |  |
 | [windows-port](docs/streams/windows-port/README.md) | P2 | active | 9/18 | 2026-11-14 |  |
 
@@ -112,6 +112,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-17 |
 | [review-profiles](docs/streams/review-profiles/README.md) | P2 | 0/6 | 2026-10-29 |
 | [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-10-20 |
+| [tool-refactoring](docs/streams/tool-refactoring/README.md) | P1 | 0/11 | 2026-11-16 |
 
 ## Next up
 
@@ -119,11 +120,11 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **COULD NOT CHECK — main-red arm could not check — no `--main-health` input was supplied, so whether main is red is unknown here (statusgen does not read live CI). A main-red fix cannot be lifted into the critical tier on this run; this is not a reading that main is green.**
 
-> **Already delivered or re-homed — held out of dispatch (4):** intake-class-routing/01 → already-merged-unflipped (merged PR #6309, Brief: trailer), intake-class-routing/03 → already-merged-unflipped (merged PR #6307, Brief: trailer), intake-class-routing/04 → already-merged-unflipped (merged PR #6308, Brief: trailer), intake-class-routing/05 → already-merged-unflipped (merged PR #6310, Brief: trailer). Each is a board-honesty finding on strong evidence (a merged PR whose `Brief:` trailer names it, or a pointer row whose brief file is gone); reconcile or retire the row to clear it.
+> **Already delivered or re-homed — held out of dispatch (5):** intake-class-routing/01 → already-merged-unflipped (merged PR #6309, Brief: trailer), intake-class-routing/03 → already-merged-unflipped (merged PR #6307, Brief: trailer), intake-class-routing/04 → already-merged-unflipped (merged PR #6308, Brief: trailer), intake-class-routing/05 → already-merged-unflipped (merged PR #6310, Brief: trailer), statusgen/44 → already-merged-unflipped (merged PR #6575, Brief: trailer). Each is a board-honesty finding on strong evidence (a merged PR whose `Brief:` trailer names it, or a pointer row whose brief file is gone); reconcile or retire the row to clear it.
 
-_Next-up: 20 of 46 eligible — 26 held back (16 by per-stream caps, 10 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 20 of 46 eligible — 26 held back (15 by per-stream caps, 11 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
-_Held by per-stream caps: 16 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (14), desk-tools (2). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 15 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (14), desk-tools (1). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
@@ -136,6 +137,7 @@ _Held by per-stream caps: 16 brief(s) across 2 stream(s) — top: desktools-v2. 
 | statusgen | 27 — Reject newly introduced actionable lint notices on changed briefs [exec:strong] | 1 | 12000 |
 | desk-tools | 48 — Report remaining landing capacity from the enforced budget owners [exec:strong] | 2 | 10500 |
 | desk-tools | 50 — Bind verifier environment evidence to the run admission [exec:strong] | 1 | 10500 |
+| desk-tools | 52 — Link decision and verification cards without conflating their authority [exec:strong] | 1 | 10500 |
 | comms-core | 02 — Extract the comms server over the existing file backend [exec:strong] | 1 | 4000 |
 | milestone-support | 08 — Normalize PR trailers and claims through the shared resolver [exec:strong] | 3 | 4000 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 3500 |
@@ -146,13 +148,12 @@ _Held by per-stream caps: 16 brief(s) across 2 stream(s) — top: desktools-v2. 
 | measured-status | 06 — model-floor: derive dispatch authority from the dispatch stamp, and give a first-class re-stamp path — stop refusing verdicts by guessing at a label actor's login [exec:strong] | 1 | 2200 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2000 |
 | intake-class-routing | 02 — The scan publishes recorded handoffs and land stops a judged exit without one [exec:strong] | 0 | 2000 |
-| statusgen | 32 — Connect board drift notices to the existing reconciliation owners [exec:strong] | 1 | 2000 |
 
 ## Drive: `build-less-brittle`
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 3da0dad8d 2026-11-15T23:47:58Z_
+_last regen: b08fef45c 2026-11-16T01:25:18Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +174,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 3da0dad8d 2026-11-15T23:47:58Z_
+_last regen: b08fef45c 2026-11-16T01:25:18Z_
 
 **Progress:** 36/98 brief items done.
 
@@ -305,7 +306,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 |---|---|---|---|---|---|---|---|---|---|
 | desk-tools | 39 [exec:strong] | implemented | 20500 | 39 | 8h | worker | fix, cite medici-finance/assay#4560 | — | — |
 | graph-execution | 03 [exec:strong] | implemented | 18000 | 32 | 8h | worker | fix, cite medici-finance/assay#2715 | — | — |
-| statusgen | 36 [exec:strong] | implemented | 16000 | 30 | 8h | worker | fix, cite medici-finance/assay#5684 | — | — |
+| statusgen | 36 [exec:strong] | implemented | 16500 | 31 | 8h | worker | fix, cite medici-finance/assay#5684 | — | — |
 | desk-containers | 15 [exec:strong] | implemented | 14500 | 27 | 8h | worker | fix, cite medici-finance/assay#4823 | — | — |
 | forge-neutral | 39 [exec:strong] | implemented | 12000 | 20 | 8h | worker | fix, cite medici-finance/assay#4560 | — | — |
 | desk-supervision | 28 [exec:strong] | implemented | 11500 | 21 | 8h | worker | fix, cite medici-finance/assay#4691 | — | — |
@@ -1088,6 +1089,20 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 43 Desk read-side consumers call the board library in-process — todo (wave 4)
 - 44 Hydration budget: profile a real tree and remove the dominant cost — todo (wave 1)
 
+### tool-refactoring (11 open)
+
+- 01 Bind operation subjects to explicit tracking, delivery and evidence repositories — todo (wave 0)
+- 02 Make dispatch planning and execution consume one validated operation subject — todo (wave 1)
+- 03 Compile Verify rows and declared inputs through the existing document owner — todo (wave 0)
+- 04 Produce bounded row observations with base and head provenance — todo (wave 1)
+- 05 Share outcome decoding and reduction between verification producers and readers — todo (wave 0)
+- 06 Model local cell lifecycle transitions using the existing cell-operation contract — todo (wave 0)
+- 07 Qualify the real cellctl binary with isolated lifecycle and environment fixtures — todo (wave 1)
+- 08 Separate immutable publication preparation from fresh effect admission — todo (wave 1)
+- 09 Migrate PR create, update and edit to the shared publication plan — todo (wave 2)
+- 10 Migrate Evidence publication to bounded deltas and typed outcome admission — todo (wave 2)
+- 11 Qualify the joined tool flow and prepare consumer-by-consumer retirement — todo (wave 3)
+
 ### verification-handoff (6 open)
 
 - 01 Share the blocker disposition and routing contract — implemented (wave 0)
@@ -1320,4 +1335,4 @@ _Terminal: retired by a later decision or merged into a successor. Not counted i
 
 ## Totals
 
-**37** streams (**27** active, **0** paused, **10** parked) · **118/608** briefs done · **15** withdrawn · completed initiatives: see `docs/archive/`
+**38** streams (**27** active, **0** paused, **11** parked) · **118/619** briefs done · **15** withdrawn · completed initiatives: see `docs/archive/`
