@@ -92,6 +92,11 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
     artifacts = Path(artifacts).resolve()
     # The build job supplies the exact binaries that the final release publishes.
     # Read regular executable members only; never extract paths or links from tar.
+    # The one non-executable member admitted is the root MANIFEST.sha256 the
+    # package step writes (#6604): it is read, never copied into an image, and
+    # every other member's bytes must match it before any build runs.
+    digests = {}
+    manifest = None
     with tarfile.open(artifacts / "desk-tools-linux-amd64.tar.gz", "r:gz") as archive:
         for member in archive.getmembers():
             name = member.name.removeprefix("./")
@@ -99,15 +104,27 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
                 continue
             if not member.isfile() or name.startswith("/") or ".." in Path(name).parts:
                 raise ValueError("unsafe Linux suite archive member")
+            if name in digests or (name == SUITE_MANIFEST and manifest is not None):
+                raise ValueError(f"duplicate Linux suite archive member: {name}")
+            if name == SUITE_MANIFEST:
+                if member.size > SUITE_MANIFEST_MAX:
+                    raise ValueError("Linux suite MANIFEST.sha256 is too large")
+                with archive.extractfile(member) as src:
+                    manifest = src.read()
+                continue
             if "/" in name:
                 if name != "hooks/pre-push":
                     raise ValueError("unexpected nested Linux suite archive member")
+                with archive.extractfile(member) as src:
+                    digests[name] = stream_sha256(src)
                 continue
             if not member.mode & 0o111:
                 raise ValueError("non-executable Linux suite archive member")
             with archive.extractfile(member) as src, (bins / name).open("wb") as dst:
                 shutil.copyfileobj(src, dst)
             (bins / name).chmod(0o755)
+            digests[name] = file_sha256(bins / name)
+    check_suite_manifest(manifest, digests)
     for artifact, name in (("statusgen-linux-amd64", "statusgen"),
                            ("image-bugs-gc-linux-amd64", "bugs-gc")):
         shutil.copyfile(artifacts / artifact, bins / name)
@@ -241,6 +258,47 @@ def check_runner(root, ref, platform):
         "--tmpfs", "/tmp:rw,noexec,nosuid,size=16m",
         "--entrypoint", "python3", ref, "-B", "-c",
         (root / "images/verify-runner/check.py").read_text())
+
+
+SUITE_MANIFEST = "MANIFEST.sha256"
+SUITE_MANIFEST_MAX = 1024 * 1024
+SUITE_MANIFEST_LINE = re.compile(r"([0-9a-f]{64})  ([^\r\n]+)")
+
+
+def check_suite_manifest(data, digests):
+    """Refuse unless data is a MANIFEST.sha256 listing exactly the suite's
+    members with their digests: the format tools/release/desk_manifest.py
+    writes, one '<sha256>  <path>' line each, newline-terminated. It is parsed
+    here rather than imported because the image tests load images.py alone.
+    The manifest is no trust root (checksums.txt and the attestation are); this
+    is a second, post-tar reading of the bytes the package step described."""
+    if data is None:
+        raise ValueError("Linux suite archive has no MANIFEST.sha256")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ValueError("Linux suite MANIFEST.sha256 is malformed: not UTF-8") from None
+    lines = text.split("\n")
+    if lines.pop() != "":
+        raise ValueError("Linux suite MANIFEST.sha256 is malformed: no final newline")
+    problems, listed = [], {}
+    for number, line in enumerate(lines, 1):
+        match = SUITE_MANIFEST_LINE.fullmatch(line)
+        if not match:
+            problems.append(f"line {number} malformed")
+            continue
+        digest, name = match.groups()
+        if name in listed:
+            problems.append(f"{name}: listed twice")
+        listed[name] = digest
+    for name, digest in sorted(listed.items()):
+        if name not in digests:
+            problems.append(f"{name}: listed but not present")
+        elif digests[name] != digest:
+            problems.append(f"{name}: sha256 does not match the manifest")
+    problems += [f"{name}: present but not listed" for name in sorted(set(digests) - set(listed))]
+    if problems:
+        raise ValueError("Linux suite MANIFEST.sha256 disagrees with the archive: " + "; ".join(problems))
 
 
 def stream_sha256(stream):

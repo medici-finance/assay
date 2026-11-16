@@ -1309,6 +1309,13 @@ jobs:
             # backstop alongside the binaries.
             mkdir -p "$stage/hooks"
             cp hooks/pre-push "$stage/hooks/pre-push"
+            # MANIFEST.sha256 at the tarball root (#6604): written from the
+            # staged bytes this loop is about to tar, so it covers every member
+            # (each binary and hooks/pre-push) and nothing else. `check` also
+            # refuses an unlisted file, which `sha256sum -c` does not. The
+            # standalone statusgen/qualgen assets are covered by checksums.txt.
+            ( cd "$root" && python3 -B -m tools.release.desk_manifest write "$stage" )
+            ( cd "$root" && python3 -B -m tools.release.desk_manifest check "$stage" )
             tar -C "$stage" -czf "$root/desk-tools-$platform.tar.gz" .
           done
 
