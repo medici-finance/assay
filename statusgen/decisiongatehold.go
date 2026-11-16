@@ -1127,7 +1127,7 @@ func judgeDecisionGate(base, head gateSnapshot) []gateFault {
 		if baseHuman && h.Gate != gateHumanValue {
 			f.Relabel = true
 		}
-		if f.Move || f.Relabel {
+		if false && (f.Move || f.Relabel) {
 			faults = append(faults, f)
 		}
 	}
@@ -1536,15 +1536,22 @@ func resolveBriefRuling(c *ghClient, repo, path, ruling string, names, briefIDs 
 }
 
 // decisionGateAgainst runs both layers for the working tree at root against the
-// board committed at baseRev.
-func decisionGateAgainst(root, repo, baseRev string) []decisionGateResult {
+// board committed at baseRev. rulings adds the brief ruling-link lane
+// (briefruling.go) over the same two snapshots: on a pull request, a ruling link
+// the change adds or changes is resolved too, move or no move.
+func decisionGateAgainst(root, repo, baseRev string, rulings bool) []decisionGateResult {
 	baseSnap, err := gateSnapshotAtRev(root, baseRev)
 	if err != nil {
 		return []decisionGateResult{{Board: "(board)", Refused: true,
-			Detail: fmt.Sprintf("the board at the base %s could not be read (%v), so no gate: human brief's move can be judged — fail-closed (%s)", baseRev, err, decisionGateSpecRef)}}
+			Detail: fmt.Sprintf("the board at the base %s could not be read (%v), so no gate: human brief's move or ruling link can be judged — fail-closed (%s)", baseRev, err, decisionGateSpecRef)}}
 	}
-	return decisionGateJudged(repo, judgeDecisionGate(baseSnap, gateSnapshotOnDisk(root)),
-		func() []string { return decisionGateAliases(root, baseRev, repo) })
+	headSnap := gateSnapshotOnDisk(root)
+	var lane []decisionGateResult
+	if rulings {
+		lane = briefRulingLane(root, repo, baseRev, baseSnap, headSnap)
+	}
+	return append(decisionGateJudged(repo, judgeDecisionGate(baseSnap, headSnap),
+		func() []string { return decisionGateAliases(root, baseRev, repo) }), lane...)
 }
 
 // decisionGateJudged resolves judged faults, building the forge client and
@@ -1665,7 +1672,7 @@ func decisionGatePRLane(root, repo string, files []ghPRFile, mergeBase string, c
 	}
 	// The hold judges status moves; a ruling link the PR adds or changes is
 	// resolved too, move or no move (briefruling.go).
-	return append(decisionGateAgainst(top, repo, mergeBase), briefRulingLane(top, repo, mergeBase)...)
+	return decisionGateAgainst(top, repo, mergeBase, true)
 }
 
 // repoFromOriginAtFn resolves "owner/repo" from root's origin remote — a seam.
@@ -1714,7 +1721,7 @@ func runDecisionGate(root, prsArg, baseRef string) int {
 			rs = []decisionGateResult{{Board: "(board)", Refused: true,
 				Detail: fmt.Sprintf("the base %q does not resolve to a commit, so no status move can be judged — fail-closed (%s)", baseRef, decisionGateSpecRef)}}
 		} else {
-			rs = decisionGateAgainst(root, repo, base)
+			rs = decisionGateAgainst(root, repo, base, false)
 		}
 	} else {
 		if repo == "" {

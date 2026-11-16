@@ -76,8 +76,8 @@
     {
       "name": "only the first board-id spelling is tried (a ruling naming the pre-renumber id is lost)",
       "file": "decisiongatehold.go",
-      "old": "if o.Reason != rulingRecordNotNamed {\n\t\t\t\tbreak",
-      "new": "if true {\n\t\t\t\tbreak"
+      "old": "if o.Reason != rulingRecordNotNamed {\n\t\t\tbreak",
+      "new": "if true {\n\t\t\tbreak"
     },
     {
       "name": "the brief's own verbatim brief: id no longer matches the marker (house alias refused)",

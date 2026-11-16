@@ -10,32 +10,38 @@
     {
       "name": "brief ruling lane disconnected from the PR lane",
       "file": "decisiongatehold.go",
-      "old": "return append(decisionGateAgainst(top, repo, mergeBase), briefRulingLane(top, repo, mergeBase)...)",
-      "new": "return decisionGateAgainst(top, repo, mergeBase)"
+      "old": "return decisionGateAgainst(top, repo, mergeBase, true)",
+      "new": "return decisionGateAgainst(top, repo, mergeBase, false)"
     },
     {
       "name": "decision-issue binding disabled (a link to another issue is resolved)",
       "file": "briefruling.go",
-      "old": "if link.Issue != t.Head.DecisionIssue {",
+      "old": "if link.Issue != h.DecisionIssue {",
       "new": "if false {"
     },
     {
       "name": "no decision issue recorded is let through",
       "file": "briefruling.go",
-      "old": "if t.Head.DecisionIssue == 0 {",
+      "old": "if h.DecisionIssue == 0 {",
       "new": "if false {"
     },
     {
-      "name": "unchanged ruling link re-resolved (base comparison disabled)",
+      "name": "unchanged ruling link re-resolved (same-board-id comparison disabled)",
       "file": "briefruling.go",
-      "old": "} else if t.Base != nil && !t.Base.FMErr && sameBriefRuling(*t.Base, t.Head) {",
-      "new": "} else if false {"
+      "old": "return !(briefRulingSingle(b) && sameBriefRuling(b, h))",
+      "new": "return true"
     },
     {
-      "name": "moved brief's ruling link read as new",
+      "name": "renumbered brief's ruling link read as new",
       "file": "briefruling.go",
-      "old": "moved = true",
-      "new": "moved = false"
+      "old": "if (head[k] == nil || head[k].Path == \"\") && briefRulingSingle(d) && sameBriefRuling(d, h) {",
+      "new": "if false && (head[k] == nil || head[k].Path == \"\") && briefRulingSingle(d) && sameBriefRuling(d, h) {"
+    },
+    {
+      "name": "ruling link added to an ambiguous board id let through",
+      "file": "briefruling.go",
+      "old": "if !had[link] {",
+      "new": "if false && !had[link] {"
     },
     {
       "name": "staged step pre-filter back to findings only",

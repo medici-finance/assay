@@ -174,6 +174,35 @@ func TestBriefRulingMovedFile(t *testing.T) {
 	}
 }
 
+// A brief renumbered with its ruling link and decision issue unchanged carries
+// no new link.
+func TestBriefRulingRenumbered(t *testing.T) {
+	base := map[string]string{
+		dhReadmePath: dhReadme(dhRow("18", "todo")),
+		dhBriefPath:  dhFM("", dhRuledLines()),
+	}
+	head := map[string]string{
+		dhBriefPath: "",
+		"docs/streams/" + dhStream + "/brief-19.md": dhFM("", dhRuledLines()),
+	}
+	if rs := brPR(t, nil, base, head); len(rs) != 0 {
+		t.Fatalf("a renumbered brief's unchanged ruling link was judged: %+v", rs)
+	}
+}
+
+// A ruling link added to one file of a board id that resolves to more than one
+// record cannot be bound to a single decision issue: refused, never skipped.
+func TestBriefRulingAmbiguous(t *testing.T) {
+	head := map[string]string{"docs/streams/" + dhStream + "/done/brief-18.md": dhFM("", dhRuledLines())}
+	rs := brPR(t, nil, brBase(), head)
+	for _, r := range rs {
+		if r.Refused && strings.Contains(r.Detail, "more than one record") {
+			return
+		}
+	}
+	t.Fatalf("a ruling link added to an ambiguous board id was not refused: %+v", rs)
+}
+
 // A changed ruling link is judged even when the base carried another one.
 func TestBriefRulingChanged(t *testing.T) {
 	base := map[string]string{
