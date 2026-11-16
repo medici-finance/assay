@@ -10,8 +10,8 @@
     {
       "name": "the exclusion step never runs (carried paths are known but still committed)",
       "file": "cmd/scanloop/lane.go",
-      "old": "\t\t\tn, ok := req.Carried[c.path]\n\t\t\tif !ok {",
-      "new": "\t\t\tn, ok := req.Carried[c.path]\n\t\t\tif true || !ok {"
+      "old": "\t\t\tn, ok := carriedBy(req.Carried, c.path)\n\t\t\tif !ok {",
+      "new": "\t\t\tn, ok := carriedBy(req.Carried, c.path)\n\t\t\tif true || !ok {"
     },
     {
       "name": "an unreadable open-carrier list reads as none (silent fall-back to the superset)",
