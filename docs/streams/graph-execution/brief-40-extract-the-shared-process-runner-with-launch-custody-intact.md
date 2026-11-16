@@ -13,7 +13,7 @@ gate-why: "Relocates the audited process-launch site and its cache-custody guard
 decision-trigger: spec
 design: DR-process-extract
 decision-issue: 6583
-ruling: "https://github.com/medici-finance/assay/issues/6583#issuecomment-6904809368"
+ruling: "https://github.com/medici-finance/assay/issues/6583#issuecomment-6905190371"
 issues: [5492]
 schema: brief-v2
 version: 1

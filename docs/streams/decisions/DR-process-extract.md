@@ -4,7 +4,7 @@ date: "2026-11-15"
 title: "Move the one process runner into loopadmin behind a mandatory host-custody port, with no second runner"
 consequence: major
 decided-by: "human:<name>"
-ruling: "https://github.com/medici-finance/assay/issues/6583#issuecomment-6904809368"
+ruling: "https://github.com/medici-finance/assay/issues/6583#issuecomment-6905190371"
 alternatives:
   - "Move the runner's files literally into loopadmin. Ruled out: the old runner's public wrappers imported desk-internal cache and telemetry packages, so a literal move cannot compile outside the desk module, and dropping those imports to make it compile removes cache custody and launch telemetry."
   - "Keep the custody step as an optional callback, or offer an alternate observed entrypoint next to the custodied one. Ruled out: a caller could pick the route without enrollment and start a child outside cache custody. Every public launch route goes through the one admission boundary instead, and a runner built without a custodian refuses."
@@ -21,8 +21,10 @@ accepted:
 
 **Status:** approved — the driver ruled on the brief's decision issue, #6583, from their own
 account on 2026-11-16, choosing option 1, accept the design as delivered. The ruling comment
-names this record: "DR-process-extract approved as written; independent verification runs on
-merged main; final acceptance stays a separate human step." `ruling:` links that comment, and
+names both the brief and this record: "Ruling for graph-execution/40 and DR-process-extract:
+Option 1 — accept the design as delivered. DR-process-extract approved as written; independent
+verification runs on merged main; final acceptance stays a separate human step." `ruling:`
+links that comment, and
 `statusgen --corroborate` resolves it (`spec/registers-v1.md` §7.5). `decided-by:` keeps the
 placeholder a public repository requires. The approval rides the pull request that records
 the ruling (`spec/lifecycle-v1.md` §8.4); it covers this design only and does not accept the
