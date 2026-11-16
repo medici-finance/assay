@@ -10,8 +10,8 @@
     {
       "name": "the exclusion step never runs (carried paths are known but still committed)",
       "file": "cmd/scanloop/lane.go",
-      "old": "\tif len(req.Carried) > 0 {",
-      "new": "\tif false && len(req.Carried) > 0 {"
+      "old": "\t\t\tn, ok := req.Carried[c.path]\n\t\t\tif !ok {",
+      "new": "\t\t\tn, ok := req.Carried[c.path]\n\t\t\tif true || !ok {"
     },
     {
       "name": "an unreadable open-carrier list reads as none (silent fall-back to the superset)",
@@ -40,8 +40,8 @@
     {
       "name": "a pass with nothing of its own still commits and opens a carrier",
       "file": "cmd/scanloop/lane.go",
-      "old": "\t\tif !req.DryRun && len(changed) > 0 && excluded == len(changed) {",
-      "new": "\t\tif false && !req.DryRun && len(changed) > 0 && excluded == len(changed) {"
+      "old": "\t\tif !req.DryRun && excluded == len(changed) {",
+      "new": "\t\tif false && !req.DryRun && excluded == len(changed) {"
     },
     {
       "name": "scanloop run never wires the open-carrier read (the fix is dead in the shipped command)",
