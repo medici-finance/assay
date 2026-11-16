@@ -2342,7 +2342,8 @@ writes `/opt/desk-tools/bin/MANIFEST.sha256` **beside the installed binaries** f
 verification. That manifest describes only what is installed on this machine, and it lives with
 those bytes, in the same `<sha256>  <path>` shape as the `MANIFEST.sha256` release tarballs
 carry at their root once the release workflow's manifest step (#6604) has cut a release; no
-release published before that step ships one. `deskinstall` writes one from the bytes it
+release published before that step ships one, so after extracting such a tarball over the dir,
+rerun `sudo make desk-manifest` or install with `deskinstall` to rewrite the manifest. `deskinstall` writes one from the bytes it
 places, and lists only those: a binary installed into the same dir by another route (a
 standalone `statusgen`, say) is reported as present but not listed by
 `python3 -B -m tools.release.desk_manifest check`, though `sha256sum -c` passes. The older location,

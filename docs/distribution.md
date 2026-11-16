@@ -45,7 +45,10 @@ each desk-tools tarball, with each asset's sha256 and a `pkg:golang` purl per mo
   extracted files: `cd <extracted dir> && sha256sum -c MANIFEST.sha256`. statusgen and qualgen are
   not members of the tarball and are not in it; a copy placed beside the extracted files is
   covered by `checksums.txt`, not by this manifest. Releases cut before the release workflow's
-  manifest step (#6604) carry none.
+  manifest step (#6604) carry none. The first install of a release that carries one, run by a
+  `deskinstall` from before that step, flattens the tarball and leaves its manifest in `--dest`,
+  where the `hooks/pre-push` line fails; running `deskinstall` again (now the new one) rewrites it
+  from the files it placed.
 
 Trust runs in one order. Check the tarball first, against `checksums.txt` and its build
 attestation; only a tarball that passed both carries a `MANIFEST.sha256` worth reading, because
