@@ -122,8 +122,8 @@ func TestFullPromptNoWorkerLoop(t *testing.T) {
 func TestVerifierKitGitEnv(t *testing.T) {
 	repo := kitGitRepo(t)
 	asg := assignmentSection(t, dispatchPrompt(t, "verifier", "verify-item-9"))
-	want := "```sh\nunset GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR " +
-		"GIT_SSH_COMMAND GIT_ASKPASS SSH_ASKPASS\nexport GIT_CONFIG_GLOBAL=" + os.DevNull +
+	want := "```sh\nfor v in $(env | sed -n 's/^\\([Gg][Ii][Tt]_[A-Za-z0-9_]*\\)=.*/\\1/p') SSH_ASKPASS; " +
+		"do unset \"$v\"; done\nexport GIT_CONFIG_GLOBAL=" + os.DevNull +
 		" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=0 GIT_TERMINAL_PROMPT=0\n```"
 	if !strings.Contains(asg, "## Git environment") || !strings.Contains(asg, want) {
 		t.Fatalf("the verifier Assignment does not declare %q:\n%s", want, asg)
@@ -150,13 +150,20 @@ func TestVerifierKitGitEnv(t *testing.T) {
 	t.Setenv("GIT_WORK_TREE", nowhere)
 	t.Setenv("GIT_SSH_COMMAND", "false")
 	t.Setenv("SSH_ASKPASS", "false")
+	t.Setenv("GIT_OBJECT_DIRECTORY", nowhere)
+	t.Setenv("GIT_INDEX_FILE", filepath.Join(nowhere, "index"))
+	t.Setenv("GIT_SSH", "false")
+	t.Setenv("GIT_EXEC_PATH", nowhere)
+	t.Setenv("GIT_SSL_NO_VERIFY", "1")
+	t.Setenv("GIT_FOO", "example")
 	cmd := exec.Command("sh", "-c", env+"\n"+`u=$(git config --get remote.origin.url) || { echo "get-failed"; exit 1; }
 git config --worktree verify.probe ok || { echo "worktree-write-failed"; exit 1; }
 git config --list >/dev/null || { echo "list-failed"; exit 1; }
-printf '%s;%s;%s' "$u" "${GIT_CONFIG-unset}" "$GIT_TERMINAL_PROMPT"`)
+left=$(env | sed -nE 's/^(GIT_[A-Za-z0-9_]*|SSH_ASKPASS)=.*/\1/p' | grep -vxE 'GIT_CONFIG_(GLOBAL|NOSYSTEM|COUNT)|GIT_TERMINAL_PROMPT' | sort | tr '\n' ' ')
+printf '%s;%s;%s;[%s]' "$u" "${GIT_CONFIG-unset}" "$GIT_TERMINAL_PROMPT" "$left"`)
 	cmd.Dir = repo
 	out, err := cmd.CombinedOutput()
-	if got, wantOut := strings.TrimSpace(string(out)), kitGitOrigin+";unset;0"; err != nil || got != wantOut {
+	if got, wantOut := strings.TrimSpace(string(out)), kitGitOrigin+";unset;0;[]"; err != nil || got != wantOut {
 		t.Fatalf("git under the declared verifier env = %q (%v), want %q", got, err, wantOut)
 	}
 }

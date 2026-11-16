@@ -4,8 +4,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
 // gitEnvOrigin is the origin URL every gitEnvRepo carries in its own config.
@@ -13,12 +16,12 @@ const gitEnvOrigin = "https://github.com/example-org/example-repo.git"
 
 // gitEnvProbe runs real git in its cwd under the environment it was started with: a read
 // of a key that is present, a --worktree write and a --list must all succeed. It then
-// prints the read value, the declared variables, and the names of any variable a verifier
-// launch must remove that is still set (empty or not).
+// prints the read value, the declared variables, and the names of every GIT_* variable
+// other than the four declared ones, and of SSH_ASKPASS, that is still set (empty or not).
 const gitEnvProbe = `u=$(git config --get remote.origin.url) || { echo "get-failed"; exit 1; }
 git config --worktree verify.probe ok || { echo "worktree-write-failed"; exit 1; }
 git config --list >/dev/null || { echo "list-failed"; exit 1; }
-leak=$(env | grep -E '^(GIT_CONFIG|GIT_CONFIG_PARAMETERS|GIT_DIR|GIT_WORK_TREE|GIT_COMMON_DIR|GIT_SSH_COMMAND|GIT_ASKPASS|SSH_ASKPASS)=' | cut -d= -f1 | sort | tr '\n' ' ')
+leak=$(env | sed -nE 's/^([Gg][Ii][Tt]_[A-Za-z0-9_]*|SSH_ASKPASS)=.*/\1/p' | grep -vxE 'GIT_CONFIG_(GLOBAL|NOSYSTEM|COUNT)|GIT_TERMINAL_PROMPT' | sort | tr '\n' ' ')
 printf '%s;%s;%s;%s;%s;[%s]' "$u" "$GIT_CONFIG_GLOBAL" "$GIT_CONFIG_NOSYSTEM" "$GIT_CONFIG_COUNT" "$GIT_TERMINAL_PROMPT" "$leak"`
 
 // gitEnvWant is what gitEnvProbe prints under the declared verifier launch environment.
@@ -44,8 +47,9 @@ func gitEnvRepo(t *testing.T) (dir, head string) {
 	return dir, run("rev-parse", "HEAD")
 }
 
-// inheritBadGitEnv plants, in the environment a verifier launch inherits, every variable
-// the launch must remove or override. Each one breaks gitEnvProbe or shows in its output
+// inheritBadGitEnv plants, in the environment a verifier launch inherits, variables the
+// launch must remove or override: the ones a named list once covered, the ones it missed,
+// and an arbitrary GIT_FOO. Each one breaks gitEnvProbe or shows in its output
 // if it survives: an empty GIT_CONFIG blinds `git config`, GIT_DIR and GIT_WORK_TREE point
 // git away from the repository, GIT_CONFIG_PARAMETERS rewrites the origin URL, and the
 // rest are reported by name or value.
@@ -64,6 +68,16 @@ func inheritBadGitEnv(t *testing.T) {
 	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "operator.gitconfig"))
 	t.Setenv("GIT_CONFIG_NOSYSTEM", "")
 	t.Setenv("GIT_CONFIG_COUNT", "1")
+	// Not on any named list: every inherited GIT_* variable is removed, so each of these is
+	// reported by name if it survives, and the redirecting ones also break the probe.
+	t.Setenv("GIT_OBJECT_DIRECTORY", nowhere)
+	t.Setenv("GIT_ALTERNATE_OBJECT_DIRECTORIES", nowhere)
+	t.Setenv("GIT_INDEX_FILE", filepath.Join(nowhere, "index"))
+	t.Setenv("GIT_NAMESPACE", "example-ns")
+	t.Setenv("GIT_SSH", "false")
+	t.Setenv("GIT_EXEC_PATH", nowhere)
+	t.Setenv("GIT_SSL_NO_VERIFY", "1")
+	t.Setenv("GIT_FOO", "example")
 }
 
 // regression: #4823
@@ -88,5 +102,99 @@ func TestOwnGitCallsEnv(t *testing.T) {
 	defer cleanup()
 	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
 		t.Fatalf("isolated worktree not created: %v", err)
+	}
+}
+
+// regression: #4823
+// TestLandingGitEnv: the Evidence landing's own children run under the declared verifier
+// Git environment: the origin read, add and commit (through the landing's run), and the
+// pre-push hook (its path read and the hook process). The push itself is in-process and is
+// stubbed here; its local-path transport is fixture-only.
+func TestLandingGitEnv(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sh hook fixture")
+	}
+	work, bare := durableFixture(t)
+	gitT(t, work, "config", "user.name", "t")
+	gitT(t, work, "config", "user.email", "t@example.invalid")
+	seen := filepath.Join(t.TempDir(), "hook-env")
+	hook := "#!/bin/sh\n" + gitEnvProbe + " >" + seen + "\n"
+	if err := os.WriteFile(filepath.Join(work, ".git", "hooks", "pre-push"), []byte(hook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, "evidence.md"), []byte("evidence\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inheritBadGitEnv(t)
+	g := newGitDurable(work, "example-org/example-repo", "verifier")
+	if got, err := g.run("git", "-C", work, "remote", "get-url", "origin"); err != nil || strings.TrimSpace(got) != bare {
+		t.Fatalf("landing origin read = %q (%v), want %q", got, err, bare)
+	}
+	g.push = func() error { return nil }
+	if err := g.commitPushRace([]string{"evidence.md"}, "verify(x): evidence"); err != nil {
+		t.Fatalf("commitPushRace: %v", err)
+	}
+	if got := gitT(t, work, "show", "-s", "--format=%s", "HEAD"); got != "verify(x): evidence" {
+		t.Fatalf("landing commit subject = %q, want the Evidence commit", got)
+	}
+	head := gitT(t, work, "rev-parse", "HEAD")
+	if err := landingHook(work, g.run).Run("origin", bare, "HEAD", head, "refs/heads/main"); err != nil {
+		t.Fatalf("pre-push hook: %v", err)
+	}
+	got, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatalf("pre-push hook left no record: %v", err)
+	}
+	if want := bare + ";" + os.DevNull + ";1;0;0;[]"; string(got) != want {
+		t.Fatalf("pre-push hook Git env = %q, want %q", got, want)
+	}
+}
+
+// regression: #4823
+// TestDetachedWtGitEnv: the native runner's isolated worktree is added and removed under
+// the declared verifier Git environment. An inherited GIT_DIR (or any planted GIT_*) would
+// send the add to another repository, and leave the remove's registration behind.
+func TestDetachedWtGitEnv(t *testing.T) {
+	work, _ := durableFixture(t)
+	head := gitT(t, work, "rev-parse", "HEAD")
+	inheritBadGitEnv(t)
+	dir, cleanup, err := gitDetachedWorktree(loopengine.Item{ID: "example/01", TargetSHA: head, Payload: map[string]string{"root": work}})
+	if err != nil {
+		t.Fatalf("detached worktree add: %v", err)
+	}
+	if got := gitT(t, dir, "rev-parse", "HEAD"); got != head {
+		t.Fatalf("detached worktree HEAD = %s, want %s", got, head)
+	}
+	cleanup()
+	if list := gitT(t, work, "worktree", "list", "--porcelain"); strings.Contains(list, filepath.Base(filepath.Dir(dir))) {
+		t.Fatalf("detached worktree still registered after cleanup:\n%s", list)
+	}
+}
+
+// regression: #4823
+// TestGateScoresGitEnv: the plan's statusgen read runs under the declared verifier Git
+// environment; a stand-in statusgen records what Git sees from inside the root.
+func TestGateScoresGitEnv(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("sh statusgen fixture")
+	}
+	work, bare := durableFixture(t)
+	seen := filepath.Join(t.TempDir(), "statusgen-env")
+	bin := filepath.Join(t.TempDir(), "statusgen")
+	script := "#!/bin/sh\ncd \"$3\" || exit 1\n" + gitEnvProbe + " >" + seen + "\necho '[]'\n"
+	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("STATUSGEN_BIN", bin)
+	inheritBadGitEnv(t)
+	if _, err := baseQueueRows(work); err != nil {
+		t.Fatalf("baseQueueRows: %v", err)
+	}
+	got, err := os.ReadFile(seen)
+	if err != nil {
+		t.Fatalf("stand-in statusgen left no record: %v", err)
+	}
+	if want := bare + ";" + os.DevNull + ";1;0;0;[]"; string(got) != want {
+		t.Fatalf("statusgen Git env = %q, want %q", got, want)
 	}
 }
