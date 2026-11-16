@@ -18,9 +18,6 @@ import (
 // Expiry is the fixed lifetime of every plan: it expires exactly this long after it was created.
 const Expiry = 10 * time.Minute
 
-// ConfirmLen is how many leading hex characters of the digest make the confirm code.
-const ConfirmLen = 8
-
 var (
 	// idRE is a plan id: two words joined by a hyphen (planid.go), or the 24 lowercase hex
 	// characters a plan stored before two-word ids carries. Both are safe as file names.
@@ -28,6 +25,9 @@ var (
 	nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 	verbRE = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 	hexRE  = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	// retiredConfirmRE is the confirm code's earlier form, the digest's first 8 hex characters.
+	// Verify names it when it refuses a plan stored in that form.
+	retiredConfirmRE = regexp.MustCompile(`^[0-9a-f]{8}$`)
 )
 
 // ErrInvalid wraps every reason a plan document fails the contract.
@@ -147,7 +147,11 @@ func (p *Plan) Seal() error {
 	if err != nil {
 		return err
 	}
-	p.Digest, p.ConfirmCode = d, d[:ConfirmLen]
+	w, err := confirmWord(d, p.ID)
+	if err != nil {
+		return err
+	}
+	p.Digest, p.ConfirmCode = d, w
 	return nil
 }
 
@@ -241,8 +245,15 @@ func (p Plan) Verify() error {
 	if p.Digest != d {
 		return bad("digest does not recompute from the plan's canonical form")
 	}
-	if p.ConfirmCode != d[:ConfirmLen] {
-		return bad("confirm_code is not the digest's first %d characters", ConfirmLen)
+	w, err := confirmWord(d, p.ID)
+	if err != nil {
+		return bad("confirm word: %v", err)
+	}
+	if p.ConfirmCode != w {
+		if retiredConfirmRE.MatchString(p.ConfirmCode) {
+			return bad("confirm_code %q is the retired 8-hex-character form; the confirm is now one word, so make the plan again with --plan", p.ConfirmCode)
+		}
+		return bad("confirm_code is not the word the digest selects")
 	}
 	return nil
 }
