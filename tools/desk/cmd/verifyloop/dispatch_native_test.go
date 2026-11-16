@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -129,6 +130,12 @@ func fakeAgentTurn(mode string, modeDefault bool, sessionID string, nextID *int,
 		return "Ran the Verify table.\nVERDICT: PASS\n" +
 			"| go build ./tools/desk/... | 0 | ok |\n" +
 			"| go test ./tools/desk/cmd/verifyloop/... | 0 | ok |\n"
+
+	case "gitenv":
+		// Run real git in the runner's own cwd under the environment it was launched
+		// with, and report what the probe saw (see gitEnvProbe).
+		out, _ := exec.Command("sh", "-c", gitEnvProbe).CombinedOutput()
+		return "VERDICT: PASS\n| git-env | 0 | " + strings.TrimSpace(string(out)) + " |\n"
 
 	case "freetext":
 		// No VERDICT line anywhere — must land BLOCKED (parse-or-BLOCKED).
@@ -288,6 +295,30 @@ func TestNativeDispatchRoundTrip(t *testing.T) {
 	// RunnerID is recorded from what the engine spawned, never self-reported.
 	if !strings.HasPrefix(r.RunnerID, "acp:") {
 		t.Fatalf("RunnerID = %q, want engine-recorded acp:<cmd>", r.RunnerID)
+	}
+}
+
+// regression: #4823
+// TestNativeRunnerGitEnv: the runner is launched with the declared verifier Git
+// environment, whatever the operator's environment says: real git in its cwd finds a
+// present key and writes --worktree config, and nothing the launch removes is inherited.
+func TestNativeRunnerGitEnv(t *testing.T) {
+	nativeTestHome(t)
+	repo, _ := gitEnvRepo(t)
+	inheritBadGitEnv(t)
+	v := nativeLoop(t, "gitenv")
+	v.MakeWorktree = func(loopengine.Item) (string, func(), error) { return repo, func() {}, nil }
+
+	h, err := v.Dispatch(fixtureItem(), loopengine.TierLocal)
+	if err != nil {
+		t.Fatalf("native Dispatch: %v", err)
+	}
+	r := awaitResult(t, h)
+	if len(r.Rows) != 1 {
+		t.Fatalf("parsed %d rows, want 1: %+v", len(r.Rows), r.Rows)
+	}
+	if r.Rows[0].Output != gitEnvWant {
+		t.Fatalf("runner Git env = %q, want %q", r.Rows[0].Output, gitEnvWant)
 	}
 }
 
