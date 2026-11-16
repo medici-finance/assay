@@ -838,7 +838,7 @@ func TestHookStatusGitDirUnset(t *testing.T) {
 	t.Setenv("CLAUDE_PROJECT_DIR", wt)
 	ambientEnv(t, "verify-desk", "fixture-session")
 	for _, cmd := range []string{
-		"unset GH_TOKEN GITHUB_TOKEN; git -C /x/y status --porcelain --ignored",
+		"unset GH_TOKEN GITHUB_TOKEN; git -C /x/y status --porcelain --ignored; gh pr view 1 --json state",
 		"git -C /x/y status --porcelain --ignored && gh pr view 1 --json state",
 		"unset GH_TOKEN GITHUB_TOKEN && gh run view 1 --json status",
 	} {
@@ -851,6 +851,24 @@ func TestHookStatusGitDirUnset(t *testing.T) {
 		`unset "$v"; gh pr view 1 --json status`,
 		"unset GH_TOKEN; gh auth status",
 		"git -C a status; gh auth token",
+	} {
+		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
+		requireAmbientRefusal(t, v, err, cmd)
+	}
+}
+
+// regression: #6578
+func TestHookStatusUnsetMinted(t *testing.T) {
+	// Through run(): `unset` of a role mint's variable or of GH_CONFIG_DIR
+	// refuses beside a listed read; an unset before the mint still clears.
+	_, wt := gitFixture(t)
+	t.Setenv("CLAUDE_PROJECT_DIR", wt)
+	ambientEnv(t, "verify-desk", "fixture-session")
+	ambientAllowed(t, wt, `unset T; T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1 --json status`)
+	for _, cmd := range []string{
+		`T=$(desktoken worker); unset T; GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+		"GH_TOKEN=$(desktoken worker); unset GH_TOKEN; gh pr view 1 --json status",
+		"unset GH_CONFIG_DIR; gh pr view 1 --json status",
 	} {
 		v, err := ambientRun(t, wt, "Bash", ambientBash(cmd))
 		requireAmbientRefusal(t, v, err, cmd)

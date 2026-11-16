@@ -1412,6 +1412,10 @@ func TestForgeStatusDirUnsetNearMiss(t *testing.T) {
 		"git -C a~ status; gh pr view 1",
 		"git -C a* status; gh pr view 1",
 		"git -C a:b status; gh pr view 1",
+		"git -C a=b status; gh pr view 1",
+		"git -C a{b,c} status; gh pr view 1",
+		"git -C a? status; gh pr view 1",
+		"git -C a[b] status; gh pr view 1",
 		"git -C --x status; gh pr view 1",
 		"git -C a -c core.pager=x status; gh pr view 1",
 		"git -C a -C b status; gh pr view 1",
@@ -1436,4 +1440,32 @@ func TestForgeStatusDirUnsetNearMiss(t *testing.T) {
 		"GH_TOKEN=x unset y; gh pr view 1 --json status",
 		"unset x; ./x.sh; gh pr view 1 --json status",
 	})
+}
+
+// regression: #6578
+func TestForgeStatusUnsetMinted(t *testing.T) {
+	// The ruling on #6578: `unset` refuses GH_CONFIG_DIR, and a name an earlier
+	// role mint assigned (T, TF, GH_TOKEN), whether or not that mint is sure to
+	// run, since emptying it sends gh to the stored login.
+	forgeRefuseAll(t, []string{
+		`T=$(desktoken worker); unset T; GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+		`TF=$(desktoken worker); unset TF; GH_TOKEN=$(cat "$TF") gh pr view 1 --json status`,
+		"GH_TOKEN=$(desktoken worker); unset GH_TOKEN; gh pr view 1 --json status",
+		"T=$(desktoken worker); unset x T; gh pr view 1 --json status",
+		"T=$(desktoken worker) || unset T; gh pr view 1 --json status",
+		"T=$(desktoken worker)\nunset T\ngh run view 1 --json status",
+		"unset GH_CONFIG_DIR; gh pr view 1 --json status",
+		"unset x GH_CONFIG_DIR && gh run list --json status",
+	})
+	// Names no earlier mint assigned still clear, so does an unset before the mint.
+	for _, cmd := range []string{
+		`unset T; T=$(desktoken worker); GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+		`T=$(desktoken worker); unset GH_TOKEN TF; GH_TOKEN=$(cat "$T") gh pr view 1 --json status`,
+		"unset GH_TOKEN GITHUB_TOKEN; gh pr view 1 --json status",
+		"unset gh_config_dir; gh pr view 1 --json status",
+	} {
+		if forgeTokenRead(cmd) {
+			t.Errorf("%q: unset of a name no mint assigned must clear", cmd)
+		}
+	}
 }

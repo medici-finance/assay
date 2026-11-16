@@ -129,8 +129,8 @@ var (
 )
 
 // forgeListedReads reports whether every command in s is one listed read:
-// `git status` or `git -C <literal dir> status`, `unset` of variable names, a
-// forgeGhReads pair, a forgeFilters filter, or the role mint, spelled literally. It decides only for the `status` and `gh` pair, and anything
+// `git status` or `git -C <literal dir> status`, `unset` of variable names other
+// than GH_CONFIG_DIR and a name an earlier role mint assigned, a forgeGhReads pair, a forgeFilters filter, or the role mint, spelled literally. It decides only for the `status` and `gh` pair, and anything
 // else refuses, as that pair did before #5046: a computed word, an alias, another
 // program, a wrapper, a redirection. Quotes play no part in the split, so they cannot
 // hide a command: a shell ends a command only at a byte split on here, so every command
@@ -139,8 +139,10 @@ var (
 // Inside a piece, each word is read as the shell reads it (forgeUnquote).
 // A GH_TOKEN prefix clears only after a mint of its variable that is sure to run:
 // one no earlier `#` could comment out and no separator could skip or fork.
+// assigned holds every name an earlier mint assigns, sure to run or not, so no
+// `unset` can empty it before a GH_TOKEN prefix reads it.
 func forgeListedReads(s string) bool {
-	minted := map[string]bool{}
+	minted, assigned := map[string]bool{}, map[string]bool{}
 	seps := forgeSeparator.FindAllStringIndex(s, -1)
 	for i := 0; i <= len(seps); i++ {
 		start, end, before, after := 0, len(s), "", ""
@@ -155,6 +157,7 @@ func forgeListedReads(s string) bool {
 			continue
 		}
 		if m := forgeRoleMint.FindStringSubmatch(c); m != nil {
+			assigned[m[1]] = true
 			if forgeMintBefore.MatchString(before) && forgeMintAfter.MatchString(after) && !strings.Contains(s[:start], "#") {
 				minted[m[1]] = true
 			}
@@ -173,7 +176,7 @@ func forgeListedReads(s string) bool {
 		switch {
 		case len(f) >= 2 && f[0] == "git" && f[1] == "status":
 		case len(f) >= 4 && f[0] == "git" && f[1] == "-C" && forgeGitDir(f[2]) && f[3] == "status":
-		case len(f) >= 2 && f[0] == "unset" && forgeVarNames(f[1:]):
+		case len(f) >= 2 && f[0] == "unset" && forgeVarNames(f[1:], assigned):
 		case len(f) >= 3 && f[0] == "gh" && forgeGhReads[f[1]+" "+f[2]] && forgeGhArgs(f[3:]):
 		case len(f) >= 1 && forgeFilterArgs(f[0], f[1:]):
 		default:
@@ -187,8 +190,8 @@ func forgeListedReads(s string) bool {
 var forgeVarName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 // forgeGitDir reports whether w, the one operand of `git -C`, is a literal path:
-// a forgeGhWord as the shell reads it, not starting `-`. No `$`, `~`, glob or `=`
-// reaches here, so git receives the word checked.
+// a forgeGhWord as the shell reads it, not starting `-`: only letters, digits and
+// `._,/@-`, so no `$`, `~`, glob, brace or `=` reaches here, so git receives the word checked.
 func forgeGitDir(w string) bool {
 	d := forgeUnquote(w)
 	return forgeGhWord.MatchString(d) && d[0] != '-'
@@ -196,10 +199,13 @@ func forgeGitDir(w string) bool {
 
 // forgeVarNames reports whether every word is a variable name, written without
 // quotes: `unset` of names only removes them, and no flag (`-f`, `-v`), array
-// element or computed name clears.
-func forgeVarNames(words []string) bool {
+// element or computed name clears. Two kinds of name refuse (#6578 ruling):
+// GH_CONFIG_DIR, whose removal points gh at the stored login, and a name in
+// minted, an earlier role mint's variable, whose removal leaves the GH_TOKEN
+// prefix empty so gh falls back to that login.
+func forgeVarNames(words []string, minted map[string]bool) bool {
 	for _, w := range words {
-		if !forgeVarName.MatchString(w) {
+		if !forgeVarName.MatchString(w) || w == "GH_CONFIG_DIR" || minted[w] {
 			return false
 		}
 	}
