@@ -17,35 +17,57 @@ import (
 // admission without widening that control.
 var VerifierGitConfigGlobal = os.DevNull
 
-// verifierGitUnset names the variables a verifier launch REMOVES from the
-// environment it inherits. Removed, never set empty: an empty GIT_CONFIG
-// names an empty file path to `git config`, which then reports present keys as
-// absent (rc 1) and refuses --worktree and --global writes, while transport
-// still honours the real configuration. GIT_DIR, GIT_WORK_TREE and
-// GIT_COMMON_DIR would redirect every git call away from the verifier home;
-// GIT_SSH_COMMAND, GIT_ASKPASS and SSH_ASKPASS would put an operator program
-// on the transport and credential path.
-var verifierGitUnset = []string{
-	"GIT_CONFIG",
-	"GIT_CONFIG_PARAMETERS",
-	"GIT_DIR",
-	"GIT_WORK_TREE",
-	"GIT_COMMON_DIR",
-	"GIT_SSH_COMMAND",
-	"GIT_ASKPASS",
-	"SSH_ASKPASS",
+// verifierGitDropped reports whether key is removed from the environment a
+// verifier Git process inherits: EVERY GIT_* variable (matched case-blind, as
+// verifierEnv always has), plus SSH_ASKPASS. A denylist of named GIT_*
+// variables leaves the rest open: GIT_OBJECT_DIRECTORY,
+// GIT_ALTERNATE_OBJECT_DIRECTORIES, GIT_INDEX_FILE and GIT_NAMESPACE redirect
+// what a read resolves; GIT_SSH and GIT_EXEC_PATH put an operator program on
+// the transport or subcommand path; GIT_SSL_NO_VERIFY turns TLS verification
+// off. Removed, never set empty: an empty GIT_CONFIG names an empty file path
+// to `git config`, which then reports present keys as absent (rc 1) and refuses
+// --worktree and --global writes, while transport still honours the real
+// configuration.
+func verifierGitDropped(key string) bool {
+	if strings.HasPrefix(strings.ToUpper(key), "GIT_") {
+		return true
+	}
+	return key == "SSH_ASKPASS" || (runtime.GOOS == "windows" && strings.EqualFold(key, "SSH_ASKPASS"))
 }
 
-// VerifierGitUnset returns the variables a verifier launch removes from the
-// environment it inherits (a fresh copy).
-func VerifierGitUnset() []string { return append([]string(nil), verifierGitUnset...) }
+// withoutInheritedGit returns base with every verifierGitDropped variable
+// removed. It is the one filter both verifier Git environments start from:
+// VerifierGitEnv (the launch environment) and verifierEnv (admission reads).
+func withoutInheritedGit(base []string) []string {
+	out := make([]string, 0, len(base))
+	for _, kv := range base {
+		if !verifierGitDropped(envKey(kv)) {
+			out = append(out, kv)
+		}
+	}
+	return out
+}
+
+// VerifierGitUnset returns the names of the variables in base that a verifier
+// launch removes, for a spawn API that can only remove named variables from
+// the environment it inherits (pass that inherited environment as base).
+func VerifierGitUnset(base []string) []string {
+	var keys []string
+	for _, kv := range base {
+		if k := envKey(kv); verifierGitDropped(k) {
+			keys = append(keys, k)
+		}
+	}
+	return keys
+}
 
 // VerifierGitLaunchEnv is the set of variables a verifier launch DECLARES: the
 // operator's global and system configuration are not read, injected
 // configuration is off (GIT_CONFIG_COUNT=0), and git never prompts on a
 // terminal. It is only half of the launch environment; VerifierGitEnv also
-// removes VerifierGitUnset from the inherited environment, and a caller that
-// spawns through an API which can only append must remove those itself.
+// removes every inherited GIT_* variable and SSH_ASKPASS, and a caller that
+// spawns through an API which can only append must remove those itself
+// (VerifierGitUnset names them).
 //
 // It isolates the INPUT of the origin-authority reader. The reader itself
 // stays strict and unchanged: an include that may affect authority, if one is
@@ -60,28 +82,23 @@ func VerifierGitLaunchEnv() []string {
 	}
 }
 
-// VerifierGitEnv returns base with every VerifierGitUnset variable and every
-// variable VerifierGitLaunchEnv declares removed, then the declared values
-// appended. It is the single choke point for a verifier launch environment.
+// VerifierGitEnv returns base with every inherited GIT_* variable and
+// SSH_ASKPASS removed (withoutInheritedGit), then the declared values appended.
+// It is the single choke point for a verifier launch environment.
 func VerifierGitEnv(base []string) []string {
-	drop := VerifierGitUnset()
-	declared := VerifierGitLaunchEnv()
-	for _, kv := range declared {
-		drop = append(drop, envKey(kv))
-	}
-	out := make([]string, 0, len(base)+len(declared))
-	for _, kv := range base {
-		if !envKeyIn(envKey(kv), drop) {
-			out = append(out, kv)
-		}
-	}
-	return append(out, declared...)
+	return append(withoutInheritedGit(base), VerifierGitLaunchEnv()...)
 }
 
+// verifierGitShellUnset is the POSIX shell form of withoutInheritedGit: it
+// unsets every GIT_* variable the shell exports (case-blind), whatever its
+// name, and SSH_ASKPASS.
+const verifierGitShellUnset = `for v in $(env | sed -n 's/^\([Gg][Ii][Tt]_[A-Za-z0-9_]*\)=.*/\1/p') SSH_ASKPASS; do unset "$v"; done`
+
 // VerifierGitShell is the POSIX shell form of VerifierGitEnv for a verifier
-// shell: an `unset` line, then an `export` line.
+// shell: a line that unsets every inherited GIT_* variable and SSH_ASKPASS,
+// then an `export` line.
 func VerifierGitShell() string {
-	return "unset " + strings.Join(VerifierGitUnset(), " ") + "\nexport " + strings.Join(VerifierGitLaunchEnv(), " ")
+	return verifierGitShellUnset + "\nexport " + strings.Join(VerifierGitLaunchEnv(), " ")
 }
 
 func envKey(kv string) string {
@@ -89,13 +106,4 @@ func envKey(kv string) string {
 		return kv[:i]
 	}
 	return kv
-}
-
-func envKeyIn(key string, keys []string) bool {
-	for _, k := range keys {
-		if key == k || (runtime.GOOS == "windows" && strings.EqualFold(key, k)) {
-			return true
-		}
-	}
-	return false
 }
