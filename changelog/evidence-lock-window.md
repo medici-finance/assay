@@ -1,3 +1,6 @@
 ### Fixed
 - `deskevidence` holds the shared desk audit lock only for its write window (budget read, conditional forge write, audit append) instead of the whole run, so a landing's preparation and statusgen lint no longer starve other desk writers that wait on the same lock. Preparation keeps its own per-landing-root lock, so two landings on the same root still never stage into it at once.
 - A `deskevidence` run waits at most 60s for its locks in total: the preparation lock, the write-window audit lock and the audit lock a refusal row needs share one wait budget, so a contended refusal no longer waits twice.
+- The `deskevidence` preparation lock is keyed on the parsed, canonical landing root, so every spelling of one directory (`-root`, a symlink, a re-cased path) takes one lock, and a repeated `--root` is refused. A busy preparation lock is reported as contention, so it no longer charges the write budget or trips the circuit breaker.
+- The `deskevidence` write window re-reads what preparation read (admission, the local input by digest, visibility, the on-behalf-of principal, the board and the decision-gate verdict, plus the outcome record's bytes, join facts and redaction) and refuses with nothing written if any changed.
+- Capability preflight now runs under the preparation lock and reads the parsed `--root`.

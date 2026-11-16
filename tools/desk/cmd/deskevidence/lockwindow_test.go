@@ -188,7 +188,7 @@ func TestBudgetOnlyInWriteWindow(t *testing.T) {
 	// Every lock acquisition draws on the run's ONE lockWait budget: a call that passes its own
 	// wait (lockWait, a constant) lets a refusal wait twice.
 	anyWait := regexp.MustCompile(`\b(acquireAuditLock|acquirePrepLock)\(`)
-	budgeted := regexp.MustCompile(`\b(acquireAuditLock\(|acquirePrepLock\(args, )(a|ac)\.waitLeft\(\)\)`)
+	budgeted := regexp.MustCompile(`\b(acquireAuditLock|acquirePrepLock)\([^()]*\b(a|ac)\.waitLeft\(\)\)`)
 	for _, name := range files {
 		if strings.HasSuffix(name, "_test.go") {
 			continue
@@ -295,14 +295,7 @@ func TestPrepRefusalWaitsOnce(t *testing.T) {
 	evidencePath := "docs/streams/x/brief.md"
 	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | x | y |\n")
 	f.setFile(evidencePath, "old")
-	abs, err := filepath.Abs(root)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if real, rerr := filepath.EvalSymlinks(abs); rerr == nil {
-		abs = real
-	}
-	holdLockFile(t, stateDir, prepLockName(abs))
+	holdPrepLock(t, root)
 	holdLockFile(t, stateDir, "audit.lock")
 	const wait = 400 * time.Millisecond
 	if elapsed := refusedRunTime(t, f, root, evidencePath, wait); elapsed > wait+wait/2 {

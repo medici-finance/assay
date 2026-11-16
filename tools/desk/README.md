@@ -5426,7 +5426,25 @@ so it runs under the preparation lock; its refusal row is appended under the aud
 Preparation stages content
 into the landing root, so it keeps its own exclusion: a per-root lock
 (`~/.config/assay/evidence-prep-<hash>.lock`) that serialises two landings on the SAME root and
-never two on different roots. A run that ends before its write window (refusal, noop, dry-run)
+never two on different roots. The lock is keyed on the PARSED `--root` (either spelling the
+flag package accepts; a repeated `--root` is refused) and on the root admission names for the
+staged gates, each made canonical (absolute, symlinks resolved, then the directory's device and
+inode, or a case-folded path where those are unavailable), so two spellings of one directory
+take one lock (`TestDashRootTakesPrepLock`, `TestRecasedRootTakesPrepLock`,
+`TestRepeatedRootRefused`). A preparation lock that stays busy is contention, the same class
+as a busy audit lock (#6227): it is neither charged to the budget nor counted by the circuit
+breaker (`TestPrepBusyIsContended`).
+
+**The write window re-reads what preparation read.** Preparation holds no audit lock, so the
+write does not trust its reads: in `enterWriteWindow`, after the audit lock and before the
+budget, every input the write relies on is re-read through the uncached forge and a change
+refuses with nothing written. These are the admission (attestation, trust, labels, the home and
+tracking checkouts), the local evidence input (pinned by SHA-256 at preparation), visibility,
+the on-behalf-of principal, the board and the decision-gate verdict; on the outcome path, the
+record bytes, the join facts and their redaction, visibility, the principal and (for a
+branch-tip binding) the Evidence and observation bindings. The expensive staged gates (the
+statusgen PROBLEM-diff, verdict and sidecar checks) stay in preparation, their inputs pinned
+by those re-reads (`prepwindow_test.go`). A run that ends before its write window (refusal, noop, dry-run)
 takes the audit lock only for its one audit append. `TestBudgetOnlyInWriteWindow` fails any
 budget spend or audit-lock acquisition outside that window. The two locks share ONE 60s wait
 budget per run, so a refusal never waits twice: a run whose write-window lock (or preparation

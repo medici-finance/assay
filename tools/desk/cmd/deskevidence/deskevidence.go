@@ -142,11 +142,28 @@ func admitLanding(root, repoSlug, owner, name, target, branch string, ac *auditC
 	if ferr != nil {
 		return nil, fr, deskkit.VerifierReceipt{}, ferr
 	}
+	fresh := fg
+	ac.freshForge = fresh
 	fg = deskkit.EvidenceLandingForge(fg, fr, target, branch)
 	receipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)
 	if aerr != nil {
 		return nil, fr, receipt, aerr
 	}
+	// Admission (the attestation record, its trust events and labels, the verifier home's
+	// checkout and tree) was read during preparation, outside the audit lock. It is re-run in
+	// the write window through the forge WITHOUT the publication snapshot — so its reads are
+	// fresh, under the same minted credential — and the landing refuses when it no longer
+	// admits, or admits a different binding or read root.
+	ac.addRecheck(func() error {
+		again, err := verifierEvidenceAdmissionFn(root, repoSlug, target, fresh)
+		if err != nil {
+			return changedSincePrep("pre-work admission", err)
+		}
+		if again.EvidenceBinding() != receipt.EvidenceBinding() || again.BriefRoot != receipt.BriefRoot || again.SourceHome != receipt.SourceHome {
+			return changedSincePrep("the admitted verifier binding", nil)
+		}
+		return nil
+	})
 	return fg, fr, receipt, nil
 }
 
@@ -246,7 +263,12 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// to the remote branch stays the repo-relative one.
 	// Verifier admission reads the same --root: a landing names the dispatched verifier
 	// home, never the desk's own checkout.
-	root := fs.String("root", "", "the dispatched verifier home: admission is checked here and a repo-relative --evidence-file resolves against it instead of the current working directory (a --brief-path fragment may be an absolute path outside it)")
+	// It is counted (onceString): the preparation lock is keyed on this parsed value, and a
+	// repeated --root (in any spelling the flag package accepts: --root, -root, --root=…) would
+	// leave the landing on the last one while a reader of the command line saw the first.
+	var rootFlag onceString
+	fs.Var(&rootFlag, "root", "the dispatched verifier home: admission is checked here and a repo-relative --evidence-file resolves against it instead of the current working directory (a --brief-path fragment may be an absolute path outside it)")
+	root := &rootFlag.value
 	// --append-only guards a line-oriented sidecar against a net row DELETION. #1709: the
 	// whole-file Contents-API commit model has no protection against an append-only file
 	// shrinking, so a stale-base/wrong-file mistake reverted a sidecar (25→17 rows) as a
@@ -276,6 +298,27 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	}
 	if oerr := applyOverride(); oerr != nil {
 		return oerr
+	}
+	if rootFlag.count > 1 {
+		return deskkit.Refused(fmt.Sprintf("refused: --root given %d times — name the landing root once", rootFlag.count))
+	}
+	// Preparation lock on the PARSED --root (the value admission and the local read use),
+	// before admission reads the home. The root the landing stages into is locked as well once
+	// admission names it (enterPrep is a no-op when that is the same directory).
+	if perr := ac.enterPrep(*root); perr != nil {
+		return perr
+	}
+	// Capability preflight reads only the local tree at that root and the tool version: it runs
+	// under the preparation lock, before landing reads, credentials and effects, and a refused
+	// attempt still leaves one row. It reads the PARSED root, so every spelling of the flag
+	// checks the tree the landing uses.
+	preflightRoot := *root
+	if preflightRoot == "" {
+		preflightRoot = "."
+	}
+	var diagnostic strings.Builder
+	if code := deskkit.RefuseIfTreeV2BelowV1([]string{preflightRoot}, deskkit.EffectiveToolVersion(version), "deskevidence", &diagnostic); code != 0 {
+		return capabilityError(code, diagnostic.String())
 	}
 
 	// --outcome-record is a SEPARATE landing shape from --evidence-file/--brief-path: it
@@ -353,6 +396,10 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	if receipt.Binding.Version == 2 && strings.TrimSpace(evidenceRoot) == "" {
 		return deskkit.Unverifiable("admission supplied no Evidence read root", nil)
 	}
+	// The gates below stage into this root (lintRoot); lock it before anything reads it.
+	if perr := ac.enterPrep(evidenceRoot); perr != nil {
+		return perr
+	}
 
 	// Resolve the LOCAL read path. With --root set, a repo-relative --evidence-file is read
 	// from that checkout (#1709) rather than the process cwd; the target repo path committed
@@ -382,23 +429,41 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 
 	// Name-addressed reads admit the actual bytes from the receipt's read root,
 	// independently of discovery scope. Absolute fragments retain their separate path.
-	var localContent []byte
-	var rerr error
-	if !filepath.IsAbs(evidenceRepoPath) {
-		var result readercaps.Result
-		localContent, result = capstree.ReadRecord(evidenceRoot, evidenceRepoPath, deskkit.ReaderCapabilities(deskkit.EffectiveToolVersion(version), toolName))
-		if err := capabilityResultError(result); err != nil {
-			return err
+	readLocal := func() ([]byte, error) {
+		if !filepath.IsAbs(evidenceRepoPath) {
+			content, result := capstree.ReadRecord(evidenceRoot, evidenceRepoPath, deskkit.ReaderCapabilities(deskkit.EffectiveToolVersion(version), toolName))
+			if err := capabilityResultError(result); err != nil {
+				return nil, err
+			}
+			return content, nil
 		}
-	} else {
-		localContent, rerr = os.ReadFile(localReadPath)
+		content, rerr := os.ReadFile(localReadPath)
 		if rerr != nil {
-			return deskkit.Unverifiable("cannot read --evidence-file "+localReadPath, rerr)
+			return nil, deskkit.Unverifiable("cannot read --evidence-file "+localReadPath, rerr)
 		}
-		if err := requireRecordCapabilities(localContent, localReadPath); err != nil {
-			return err
+		if err := requireRecordCapabilities(content, localReadPath); err != nil {
+			return nil, err
 		}
+		return content, nil
 	}
+	localContent, lerr := readLocal()
+	if lerr != nil {
+		return lerr
+	}
+	// The local input is pinned by digest here and re-read in the write window: the commit is
+	// built from these bytes, so a file changed after preparation refuses rather than landing
+	// content the gates judged under another input.
+	localDigest := deskkit.Sha256Hex(localContent)
+	ac.addRecheck(func() error {
+		again, err := readLocal()
+		if err != nil {
+			return changedSincePrep("the local --evidence-file "+localReadPath, err)
+		}
+		if deskkit.Sha256Hex(again) != localDigest {
+			return changedSincePrep("the local --evidence-file "+localReadPath, nil)
+		}
+		return nil
+	})
 	// The general per-file cap is sized for a brief file — a few KB. #1338's raised override
 	// for the verify-outcomes aggregate sidecar is RETIRED (#882): that file's
 	// unbounded fleet-wide growth was the reason it needed one, and the class guard above now
@@ -497,7 +562,23 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// lint will read it) and then applied to the fragment, which is what is merged: the block-
 	// level idempotency check then compares the stamped block with what a stamped earlier
 	// landing left standing.
-	resolveSubject := func() (string, error) { return principalSubjectFn(repoSlug) }
+	// The principal the stamp writes is re-resolved in the write window: a roster change after
+	// preparation refuses rather than landing rows stamped for a principal no longer bound.
+	var stampSubject *string
+	resolveSubject := func() (string, error) {
+		s, err := principalSubjectFn(repoSlug)
+		if err == nil && stampSubject == nil {
+			stampSubject = &s
+			ac.addRecheck(func() error {
+				again, aerr := principalSubjectFn(repoSlug)
+				if aerr != nil || again != *stampSubject {
+					return changedSincePrep("the on-behalf-of principal", aerr)
+				}
+				return nil
+			})
+		}
+		return s, err
+	}
 	// stampedRows records every Runner cell the stamp wrote (original row → stamped row), so a
 	// --dry-run shows the rows exactly as they will land, restamps included.
 	var stampedRows map[string]string
@@ -641,6 +722,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	if gerr := publicRepoGateFn(fetcher, owner, name); gerr != nil {
 		return gerr
 	}
+	addVisibilityRecheck(ac, owner, name)
 
 	bodyDig := deskkit.Sha256Hex(commitContent)
 	ac.bodyDig = bodyDig
@@ -751,6 +833,31 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			"refused: landing %s would move, relabel or drop a gate: human brief with no human ruling on its decision issue (decision-gate hold, lifecycle-v1 §4.5):\n%s",
 			targetRepoPath, strings.Join(gateRefused, "\n")))
 	}
+	// The board the gates judged was read from the forge at closureRef, and the decision-gate
+	// judge reads who wrote each ruling from the forge: neither is pinned by the conditional
+	// write. Both are re-read in the write window — the board must be the one judged, and the
+	// judge (cheap next to the lint pair) re-runs on it and must still refuse nothing. The
+	// lint pair and the verdict and sidecar gates stay in preparation: their inputs are the
+	// staged root (re-validated by the admission re-check), the commit bytes (the local digest
+	// and the destination's conditional write) and this board.
+	judgedBoard := boardEdits
+	ac.addRecheck(func() error {
+		edits, herr := decisionGateBranchBoardFn(ac.freshForge, fr, landedRoot, closureRef, targetRepoPath)
+		if herr != nil {
+			return changedSincePrep("the target branch's board", herr)
+		}
+		if !sameBoard(edits, judgedBoard) {
+			return changedSincePrep("the target branch's board", nil)
+		}
+		again, gerr := decisionGateDiffFn(landedRoot, targetRepoPath, remoteContent, remoteExists, commitContent, edits, ac.options)
+		if gerr != nil {
+			return changedSincePrep("the decision-gate verdict", gerr)
+		}
+		if len(again) > 0 {
+			return changedSincePrep("the decision-gate verdict", deskkit.Refused(strings.Join(again, "\n")))
+		}
+		return nil
+	})
 
 	// verified-sidecar acceptance gate (#1309 stuck-flip). When THIS landing appends one or
 	// more `"outcome":"verified"` rows to the verify-outcomes sidecar, refuse unless the landing
@@ -1077,9 +1184,14 @@ type auditCtx struct {
 	file          string
 	bodyDig       string
 	detail        string
-	successResult string        // ResultOK unless a noop set it to ResultNoop
-	lock          *auditLock    // held from enterWriteWindow through the audit append
-	lockWaited    time.Duration // lock waiting spent so far; the run's total is bounded by lockWait
+	successResult string          // ResultOK unless a noop set it to ResultNoop
+	lock          *auditLock      // held from enterWriteWindow through the audit append
+	lockWaited    time.Duration   // lock waiting spent so far; the run's total is bounded by lockWait
+	prep          []*prepLock     // preparation locks held, one per canonical landing root (enterPrep)
+	prepKeys      map[string]bool // canonical keys of the roots in prep
+	rechecks      []func() error  // preparation reads re-validated in the write window (addRecheck)
+	rechecked     bool            // the rechecks ran (once per run)
+	freshForge    deskkit.Forge   // the landing's forge WITHOUT the publication snapshot, for re-reads
 }
 
 func (a *auditCtx) log(result, detail string) {

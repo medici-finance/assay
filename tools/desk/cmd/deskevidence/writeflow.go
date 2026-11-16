@@ -1,11 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -83,6 +83,16 @@ func (a *auditCtx) enterWriteWindow(tool, repo string, pr int) error {
 		}
 		a.lock = l
 	}
+	// Re-validate what preparation read, once, under the lock and before the budget is spent:
+	// a refusal here spends nothing and writes nothing.
+	if !a.rechecked {
+		a.rechecked = true
+		for _, check := range a.rechecks {
+			if err := check(); err != nil {
+				return err
+			}
+		}
+	}
 	return evidenceWriteBudget(tool, repo, pr)
 }
 
@@ -125,10 +135,85 @@ func (a *auditCtx) releaseAuditLock() {
 }
 
 // prepLockName is the per-landing-root preparation lock's file name in the desk state dir:
-// one file per resolved root, so two landings on DIFFERENT roots never wait on each other and
-// two on the SAME root still cannot stage into it at once.
-func prepLockName(root string) string {
-	return "evidence-prep-" + deskkit.Sha256Hex([]byte(root))[:16] + ".lock"
+// one file per canonical root key (prepLockKey), so two landings on DIFFERENT roots never
+// wait on each other and two on the SAME root still cannot stage into it at once.
+func prepLockName(key string) string {
+	return "evidence-prep-" + deskkit.Sha256Hex([]byte(key))[:16] + ".lock"
+}
+
+// prepLockKey is the canonical identity of a landing root: the absolute path with symlinks
+// resolved, then the directory's own identity (rootIdentity: device and inode where the
+// platform has them, a case-folded path on Windows). Two spellings of one directory — a
+// relative path, a symlink, a re-cased path on a case-insensitive filesystem — therefore
+// take ONE lock. shown is the resolved path, for messages.
+func prepLockKey(root string) (key, shown string, err error) {
+	if root == "" {
+		root = "."
+	}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return "", "", deskkit.Unverifiable("cannot resolve the landing root for the preparation lock", err)
+	}
+	if real, rerr := filepath.EvalSymlinks(abs); rerr == nil {
+		abs = real
+	}
+	return rootIdentity(abs), abs, nil
+}
+
+// enterPrep takes the preparation lock for one landing root, drawing on the run's one lockWait
+// budget. cmdEvidence calls it with the parsed --root before admission and again with the
+// root the landing stages into once admission has named it (they differ for a cross-repo
+// run); a root whose canonical key this run already holds is not taken twice.
+func (a *auditCtx) enterPrep(root string) error {
+	key, shown, err := prepLockKey(root)
+	if err != nil {
+		return err
+	}
+	if a.prepKeys[key] {
+		return nil
+	}
+	start := time.Now()
+	p, err := acquirePrepLock(key, shown, a.waitLeft())
+	a.lockWaited += time.Since(start)
+	if err != nil {
+		return err
+	}
+	if a.prepKeys == nil {
+		a.prepKeys = map[string]bool{}
+	}
+	a.prepKeys[key] = true
+	a.prep = append(a.prep, p)
+	return nil
+}
+
+// releasePrep drops every preparation lock this run took, newest first.
+func (a *auditCtx) releasePrep() {
+	for i := len(a.prep) - 1; i >= 0; i-- {
+		a.prep[i].release()
+	}
+	a.prep, a.prepKeys = nil, nil
+}
+
+// addRecheck registers a check that enterWriteWindow re-runs under the audit lock, immediately
+// before the write: preparation's reads that the write relies on (admission, the local input,
+// visibility, the board and the decision-gate verdict) are re-read there and the landing
+// refuses when one changed. Preparation itself runs without the audit lock (#5023), so nothing
+// it read may be carried into the write unchecked.
+func (a *auditCtx) addRecheck(fn func() error) {
+	a.rechecks = append(a.rechecks, fn)
+}
+
+// changedSincePrep is the refusal for an input that no longer matches what preparation read.
+// A re-check that could not be made at all keeps its could-not-check class.
+func changedSincePrep(what string, err error) error {
+	msg := "refused: " + what + " changed between preparation and the write window; nothing was written — re-run the landing"
+	if err == nil {
+		return deskkit.Refused(msg)
+	}
+	if deskkit.ExitCodeOf(err) == deskkit.ExitRefused {
+		return deskkit.Refused(msg + ": " + err.Error())
+	}
+	return deskkit.Unverifiable(what+" could not be re-checked in the write window; nothing was written", err)
 }
 
 // prepLock is a held per-root preparation lock.
@@ -150,16 +235,10 @@ func (p *prepLock) release() {
 // root and restore it afterwards (lintdiff.go, decisiongate.go), so two landings on the same
 // root would read each other's staged bytes. The audit lock used to serialise them as a side
 // effect of spanning the whole run; this lock keeps that exclusion, scoped to the root it
-// protects, with the same bounded wait and the same fail-closed refusal.
-func acquirePrepLock(args []string, wait time.Duration) (*prepLock, error) {
-	root := deskkit.RootsFromArgs(args)[0]
-	abs, err := filepath.Abs(root)
-	if err != nil {
-		return nil, deskkit.Unverifiable("cannot resolve the landing root for the preparation lock", err)
-	}
-	if real, rerr := filepath.EvalSymlinks(abs); rerr == nil {
-		abs = real
-	}
+// protects, with the same bounded wait and the same fail-closed refusal. A lock still busy
+// after the wait is contention, classed exactly as the audit lock's (#6227): the audit line
+// says contended, which neither the write budget nor the circuit breaker counts.
+func acquirePrepLock(key, abs string, wait time.Duration) (*prepLock, error) {
 	dir, err := deskDir()
 	if err != nil {
 		return nil, deskkit.Unverifiable("cannot resolve desk-tools dir (HOME missing?)", err)
@@ -171,7 +250,7 @@ func acquirePrepLock(args []string, wait time.Duration) (*prepLock, error) {
 	if err != nil {
 		return nil, deskkit.Unverifiable("cannot open the desk state dir", err)
 	}
-	name := prepLockName(abs)
+	name := prepLockName(key)
 	f, err := d.OpenFile(name, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
 		d.Close()
@@ -182,9 +261,9 @@ func acquirePrepLock(args []string, wait time.Duration) (*prepLock, error) {
 		d.Close()
 		var busy *deskkit.BusyError
 		if errors.As(err, &busy) {
-			return nil, deskkit.Unverifiable(fmt.Sprintf(
+			return nil, deskkit.AuditLockContended(fmt.Sprintf(
 				"another deskevidence landing is preparing on %s (preparation lock %s busy for %s; retryable)",
-				abs, busy.Path, busy.Waited.Round(time.Second)), nil)
+				abs, busy.Path, busy.Waited.Round(time.Second)))
 		}
 		return nil, deskkit.Unverifiable("cannot acquire the preparation lock", err)
 	}
@@ -202,6 +281,15 @@ func acquirePrepLock(args []string, wait time.Duration) (*prepLock, error) {
 // invocations cannot each read a budget below the cap and both commit (#227) — while the
 // long preparation no longer holds the lock every other desk writer needs (#5023).
 //
+// Because preparation runs without the audit lock, the write window does not trust what it
+// read: every input the write relies on (admission and its attestation, the local input
+// pinned by digest, visibility, the on-behalf-of principal, the board and the decision-gate
+// verdict; on the outcome path the record bytes, join facts and redaction) is re-read there
+// through the uncached forge, and a change refuses before the budget is spent (addRecheck).
+// Only the expensive staged gates stay in preparation, their inputs pinned by those re-reads.
+// The preparation lock is keyed on the parsed --root (and the root admission names), made
+// canonical by rootIdentity; a busy one is contention (#6227), never a could-not-check.
+//
 // This is a serialisation fix, not a retry: the second caller does not race and lose, it
 // waits for the lock and then re-reads the budget it was going to spend. If it cannot
 // acquire its locks inside 60s of waiting in total (one lockWait budget shared by the
@@ -217,25 +305,53 @@ func runOutward(args []string, options childOptions) (err error) {
 		ac.repo = args[0]
 	}
 
-	start := time.Now()
-	prep, perr := acquirePrepLock(args, ac.waitLeft())
-	ac.lockWaited += time.Since(start)
-	if perr != nil {
-		// Still exactly one audit line for this invocation; nothing outward happened.
-		ac.lockForAppend()
-		ac.finalize(perr)
-		ac.releaseAuditLock()
-		return perr
-	}
-	defer prep.release()
+	// The preparation locks are taken inside cmdEvidence (ac.enterPrep), from the PARSED --root
+	// and the root admission names, so the lock is keyed on the root the landing actually uses.
+	// They are released last, after the audit append.
+	defer ac.releasePrep()
 	defer ac.releaseAuditLock()
 	defer func() { ac.lockForAppend(); ac.finalize(err) }()
 
-	// Capability admission is before landing reads, credentials and effects; a refused
-	// attempt still leaves one row.
-	var diagnostic strings.Builder
-	if code := deskkit.RefuseIfTreeV2BelowV1(deskkit.RootsFromArgs(args), deskkit.EffectiveToolVersion(version), "deskevidence", &diagnostic); code != 0 {
-		return capabilityError(code, diagnostic.String())
-	}
+	// Capability preflight (RefuseIfTreeV2BelowV1) runs inside cmdEvidence, under the
+	// preparation lock on the parsed --root it reads.
 	return cmdEvidence(args, ac)
+}
+
+// onceString is a string flag that counts how often it was set, so a repeated flag is refused
+// instead of silently taking its last value.
+type onceString struct {
+	value string
+	count int
+}
+
+func (s *onceString) String() string { return s.value }
+
+func (s *onceString) Set(v string) error {
+	s.value = v
+	s.count++
+	return nil
+}
+
+// sameBoard reports whether two board reads carry the same edits in the same order.
+func sameBoard(a, b []boardEdit) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i].Path != b[i].Path || a[i].Delete != b[i].Delete || !bytes.Equal(a[i].Content, b[i].Content) {
+			return false
+		}
+	}
+	return true
+}
+
+// addVisibilityRecheck re-runs the public-repo write gate in the write window through the
+// forge without the publication snapshot, whose visibility answer was cached at preparation.
+func addVisibilityRecheck(ac *auditCtx, owner, name string) {
+	ac.addRecheck(func() error {
+		if err := publicRepoGateFn(deskkit.ForgeRepoInfoFetcher{Forge: ac.freshForge}, owner, name); err != nil {
+			return changedSincePrep("the repository's visibility", err)
+		}
+		return nil
+	})
 }

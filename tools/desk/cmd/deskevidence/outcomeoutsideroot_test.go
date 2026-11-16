@@ -102,8 +102,8 @@ func TestOutcomeRecordOutsideRoot(t *testing.T) {
 		if code != deskkit.ExitOK {
 			t.Fatalf("exit = %d, want 0: %s", code, errBuf)
 		}
-		if p.admissions != 1 {
-			t.Fatalf("admission ran %d time(s), want exactly 1", p.admissions)
+		if p.admissions != 2 {
+			t.Fatalf("admission ran %d time(s), want exactly 2 (preparation, then the write window's re-check)", p.admissions)
 		}
 		if f.putCalls != 1 {
 			t.Fatalf("landing made %d write(s), want 1", f.putCalls)
