@@ -162,13 +162,14 @@ func (v *VerifyLoop) runNativeDispatch(it loopengine.Item, dir, prompt string, r
 	v.auditNative("dispatch", deskkit.ResultOK, it, "native dispatch spawning runner ["+strings.Join(runnerCmd, " ")+"] runnerID="+runnerID+" cwd="+dir)
 
 	var stderr bytes.Buffer
-	// The runner is a verifier launch (#4823): the variables deskkit.VerifierGitUnset names
-	// are removed from what it inherits, and its declared Git environment is applied to
-	// NativeEnv and appended after it, so no inherited or configured value overrides it.
+	// The runner is a verifier launch (#4823): every GIT_* variable and SSH_ASKPASS that
+	// acp.Spawn would inherit (deskkit.VerifierGitUnset of that same os.Environ()) is
+	// removed, and its declared Git environment is applied to NativeEnv and appended after
+	// it, so no inherited or configured value overrides it.
 	cl, err := acp.Spawn(runnerCmd, acp.Opts{
 		Dir:              dir,
 		Env:              deskkit.VerifierGitEnv(v.NativeEnv),
-		Unset:            deskkit.VerifierGitUnset(),
+		Unset:            deskkit.VerifierGitUnset(os.Environ()),
 		Stderr:           &stderr,
 		FSRoot:           dir, // the fs fence: reads/writes are refused outside the worktree
 		PermissionPolicy: v.permissionPolicy(it, dir),

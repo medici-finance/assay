@@ -87,11 +87,14 @@ values — they resolve from the project's house-rules doc, not from here.
 **Mechanism.** A verifier run is launched with a declared Git environment:
 `GIT_CONFIG_GLOBAL` names a fixed, include-free file (the null device),
 `GIT_CONFIG_NOSYSTEM=1`, injected configuration is off (`GIT_CONFIG_COUNT=0`) and
-`GIT_TERMINAL_PROMPT=0`. `GIT_CONFIG`, `GIT_CONFIG_PARAMETERS`, `GIT_DIR`, `GIT_WORK_TREE`,
-`GIT_COMMON_DIR`, `GIT_SSH_COMMAND`, `GIT_ASKPASS` and `SSH_ASKPASS` are removed from the
-inherited environment. They are removed, never set empty: an empty `GIT_CONFIG` makes
-`git config` report present keys as absent and refuse `--worktree` writes. `verifyloop` applies
-this environment to the runner it spawns, to every Verify row it runs and to its own Git calls;
+`GIT_TERMINAL_PROMPT=0`. Every other `GIT_*` variable, whatever its name, and `SSH_ASKPASS`
+are removed from the inherited environment: a list of named variables leaves the rest open
+(`GIT_OBJECT_DIRECTORY`, `GIT_INDEX_FILE` or `GIT_NAMESPACE` redirect what a read resolves,
+`GIT_SSH` or `GIT_EXEC_PATH` put an operator program on the transport path,
+`GIT_SSL_NO_VERIFY` turns TLS verification off). They are removed, never set empty: an empty
+`GIT_CONFIG` makes `git config` report present keys as absent and refuse `--worktree` writes.
+`verifyloop` applies this environment to the runner it spawns, to every Verify row it runs and
+to its own Git calls, the Evidence landing's commit steps and pre-push hook included;
 `deskdispatch --kit verifier` prints the same `unset` and `export` lines in the verifier
 prompt. The operator's global and system configuration, and any `includeIf` rule
 they carry, never reach a verifier run. The verifier home's identity, credential helper and
@@ -113,7 +116,7 @@ lint on a CI runner passes. An operator `includeIf` that matches the verifier cl
 row:
 
 ```
-unset GIT_CONFIG GIT_CONFIG_PARAMETERS GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_SSH_COMMAND GIT_ASKPASS SSH_ASKPASS
+for v in $(env | sed -n 's/^\([Gg][Ii][Tt]_[A-Za-z0-9_]*\)=.*/\1/p') SSH_ASKPASS; do unset "$v"; done
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=0 GIT_TERMINAL_PROMPT=0
 ```
 
