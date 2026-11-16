@@ -133,7 +133,7 @@ func (f recFixture) readSetOf(t *testing.T, runner string) (evaluation.ReadSetHe
 	if !ok || digest == "" {
 		t.Fatalf("Runner cell %q carries no read set (could-not-check %q)", runner, couldNot)
 	}
-	p := filepath.Join(f.root, "docs", filepath.FromSlash(evaluation.ReadSetDir), digest)
+	p := readSetStatePath(gitDirOf(t, f.root), digest)
 	raw, err := os.ReadFile(p)
 	if err != nil {
 		t.Fatalf("read-set file: %v", err)
@@ -148,9 +148,16 @@ func (f recFixture) readSetOf(t *testing.T, runner string) (evaluation.ReadSetHe
 	return h, entries
 }
 
-// readsDirs lists every reads/ directory under root.
+// readsDirs lists every reads/ directory under root, and the recorder's state
+// directory under root's git dir when it exists.
 func readsDirs(root string) []string {
 	var out []string
+	if b, err := exec.Command("git", "-C", root, "rev-parse", "--absolute-git-dir").Output(); err == nil {
+		d := filepath.Join(strings.TrimSpace(string(b)), evaluation.ReadSetStateDir)
+		if fi, err := os.Stat(d); err == nil && fi.IsDir() {
+			out = append(out, d)
+		}
+	}
 	filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
 		if err == nil && d.IsDir() && d.Name() == ".git" {
 			return filepath.SkipDir
@@ -248,6 +255,15 @@ func TestVerifyrunRecordsReadSet(t *testing.T) {
 	resetReadMemo()
 	runner := f.run(t, "1")["1"]
 	h, entries := f.readSetOf(t, runner)
+	// The file lands under the git dir, never in the worktree: a dispatched
+	// verifier home refuses any untracked worktree file.
+	st, err := exec.Command("git", "-C", f.root, "status", "--porcelain", "--untracked-files=all").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(st), evaluation.ReadSetDir+"/") {
+		t.Errorf("the recorder wrote a read-set file into the worktree:\n%s", st)
+	}
 	if h.Commit != f.head(t) {
 		t.Errorf("header commit %q, want the full witness commit %q", h.Commit, f.head(t))
 	}
@@ -502,9 +518,24 @@ func TestVerifyrunReadSetFilesAndDirty(t *testing.T) {
 	if _, _, ok := evaluation.ReadSetToken(first); !ok || !strings.Contains(first, "(reads sha256:") {
 		t.Fatalf("first run wrote no read set: %q", first)
 	}
-	// A resumed run over the brief's own uncommitted Evidence and read-set
-	// file records a clean tree.
+	// A resumed run over the brief's own uncommitted Evidence records a clean
+	// tree: the read-set file sits under the git dir. So does one over the
+	// file a landing copies beside the brief.
 	resumed := f.run(t, "1")["1"]
+	if strings.Contains(resumed, "+dirty") {
+		t.Errorf("resumed run over its own Evidence is +dirty: %q", resumed)
+	}
+	digest, _, _ := evaluation.ReadSetToken(resumed)
+	raw, err := os.ReadFile(readSetStatePath(gitDirOf(t, f.root), digest))
+	if err != nil {
+		t.Fatalf("read-set file under the git dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(f.root, "docs", evaluation.ReadSetDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	putFile(t, filepath.Join(f.root, "docs", evaluation.ReadSetDir, digest), string(raw))
+	resetReadMemo()
+	resumed = f.run(t, "1")["1"]
 	if strings.Contains(resumed, "+dirty") {
 		t.Errorf("resumed run over its own read-set file is +dirty: %q", resumed)
 	}

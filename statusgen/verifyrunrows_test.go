@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -135,8 +136,8 @@ func checkUnrestrictedGolden(t *testing.T) {
 // the recorder cannot run it is exactly rowReadSetToken(). On Linux with a
 // working recorder the row records a content-addressed read set, whose digest
 // the golden cannot know in advance: the token is accepted only when the brief
-// carries it on that row AND a file of that name sits in the reads directory
-// beside the brief with content hashing to it. Anything else yields the
+// carries it on that row AND a file of that name sits in the recorder's state
+// directory under the git dir with content hashing to it. Anything else yields the
 // no-recorder token, so the byte comparison fails.
 func goldenReadsToken(t *testing.T, brief, id string) string {
 	t.Helper()
@@ -149,12 +150,27 @@ func goldenReadsToken(t *testing.T, brief, id string) string {
 	if m == nil {
 		return want
 	}
-	content, err := os.ReadFile(filepath.Join(filepath.Dir(brief), evaluation.ReadSetDir, m[1]))
+	content, err := os.ReadFile(readSetStatePath(gitDirOf(t, filepath.Dir(brief)), m[1]))
 	if err != nil || evaluation.ReadSetDigest(content) != m[1] {
 		t.Errorf("row %s carries read-set token %s with no matching read-set file: %v", id, m[1], err)
 		return want
 	}
 	return evaluation.ReadSetCellToken(m[1], "")
+}
+
+// gitDirOf is root's own absolute git dir, symlink-free: where the recorder
+// writes read-set files (readSetStatePath).
+func gitDirOf(t *testing.T, root string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", root, "rev-parse", "--absolute-git-dir").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := filepath.EvalSymlinks(strings.TrimSpace(string(out)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
 }
 
 // regression: #4247

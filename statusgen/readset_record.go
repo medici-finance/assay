@@ -69,8 +69,11 @@ type traceLog struct {
 
 // recordEnv is the per-session context the classification needs.
 type recordEnv struct {
-	Top        string   // the tree's toplevel, absolute and symlink-free
-	GitDirs    []string // git dir and common dir at session start
+	Top     string   // the tree's toplevel, absolute and symlink-free
+	GitDirs []string // git dir and common dir at session start
+	// StateDir is the worktree's own git dir, under which finish writes the
+	// read-set files (evaluation.ReadSetStateDir), outside the worktree.
+	StateDir   string
 	GOROOT     string
 	GOMODCACHE string
 	GOCACHE    string
@@ -356,6 +359,14 @@ func (t *readSetTarget) forRow(id, command string) *readSetTarget {
 	return &c
 }
 
+// readSetStatePath is where a run writes the read-set file named digest:
+// under the worktree's own git dir (stateDir), outside the worktree, so a
+// dispatched verifier home's source closure, which refuses any untracked
+// worktree file, still admits the run's Evidence (evaluation.ReadSetStateDir).
+func readSetStatePath(stateDir, digest string) string {
+	return filepath.Join(stateDir, evaluation.ReadSetStateDir, digest)
+}
+
 // finish classifies a row's trace and, when it yields a read set, writes the
 // file and returns its `sha256:` token; otherwise the could-not-check token.
 func (t *readSetTarget) finish(l traceLog) string {
@@ -367,7 +378,10 @@ func (t *readSetTarget) finish(l traceLog) string {
 		Commit: t.commit, Command: evaluation.ReadSetCommandDigest(t.command), Brief: t.brief, Row: t.row,
 	}, entries)
 	digest := evaluation.ReadSetDigest(content)
-	dst := filepath.Join(t.env.Top, filepath.FromSlash(evaluation.ReadSetPath(path.Dir(t.brief), digest)))
+	if t.env.StateDir == "" {
+		return evaluation.ReadSetCellToken("", "the read-set file could not be written")
+	}
+	dst := readSetStatePath(t.env.StateDir, digest)
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return evaluation.ReadSetCellToken("", "the read-set file could not be written")
 	}
@@ -425,6 +439,9 @@ func newRecordEnv(root string, rowEnv []string, start time.Time) (*recordEnv, st
 			d = r
 		}
 		e.GitDirs = append(e.GitDirs, d)
+	}
+	if len(e.GitDirs) > 0 {
+		e.StateDir = e.GitDirs[0] // the absolute git dir: this worktree's own
 	}
 	e.TempRoot = "/tmp"
 	for _, kv := range rowEnv {
