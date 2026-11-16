@@ -33,7 +33,7 @@ func workSourceFixture(t *testing.T, worktreeConfig bool) (string, string, strin
 	run(root, "remote", "add", "origin", "https://github.com/owner/repo.git")
 	files := map[string]string{
 		"docs/streams/graph-repos.yaml":        "schema: graph-repos-v1\ncell: cell\nrepos:\n  repo: {cell: cell, repo: owner/repo}\n",
-		"docs/streams/stream/brief-08-work.md": "---\nbrief: cell:repo:stream:08\nid: 11cf440e-4e8e-4e51-98d6-211210dbefab\nversion: 2\nschema: brief-v2\n---\n# Work\n",
+		"docs/streams/stream/brief-08-work.md": "---\nbrief: cell:repo:stream:08\nid: 00000000-0000-4000-8000-000000006606\nversion: 2\nschema: brief-v2\n---\n# Work\n",
 	}
 	for name, body := range files {
 		file := filepath.Join(root, filepath.FromSlash(name))
