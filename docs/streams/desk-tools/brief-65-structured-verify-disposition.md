@@ -25,6 +25,7 @@ gate-why: >-
   rules that bound it, and the dated end of the prose fallback.
 decision-trigger: creation
 issues: [5482]
+outcome: none
 schema: brief-v2
 version: 1
 authored: 2026-11-16 by a worker-desk authoring session (design proposal; no ruling recorded yet)
@@ -199,13 +200,13 @@ control and the default must not do that. Option 1 is the recommendation.
      `witnessStateOf` and `witnessCells` still read each row as before.
    - `TestVerifyrunHoldFlag` (planned): `--hold 2=reason` renders `disp=held`; `--defer 2=#7`
      renders `disp=deferred:#7`; `--defer 2=x` exits 2.
-   - `TestLandKeepsDisp` and `TestLandMixedDispRefuses` (planned, deskevidence).
+   - `TestLandKeepsDisp` (planned) and `TestLandMixedDispRefuses` (planned), in deskevidence.
 8. Add `statusgen/disposition-mutations.json` (planned) with a positive control and five
-   mutants, each caught by a named test: a missing token read as pass (`TestDispMissingRefuses`),
-   `held` dropped from the refusing set (`TestDispHeldRefuses`), the pass/state agreement check
-   skipped (`TestDispPassOnFailRefuses`), the date check removed from the legacy path
-   (`TestDispLegacyRetired`), and verdict lines no longer read in a structured run
-   (`TestDispVerdictLineHeld`).
+   mutants, each caught by a named test: a missing token read as pass (`TestDispMissingRefuses` (planned)),
+   `held` dropped from the refusing set (`TestDispHeldRefuses` (planned)), the pass/state agreement check
+   skipped (`TestDispPassOnFailRefuses` (planned)), the date check removed from the legacy path
+   (`TestDispLegacyRetired` (planned)), and verdict lines no longer read in a structured run
+   (`TestDispVerdictLineHeld` (planned)).
 9. Update the heldscope.go doc block to say rules 1-6 (and 7, if present) are the legacy fallback
    and end on 2027-01-31, add `statusgen/disposition.go` (planned) to `docs/witness-readers.md` as
    `reads informational fields only`, and change every consumer entry to `fixed-here`.
@@ -234,8 +235,8 @@ where the named tests and the mutation spec do not exist. The verifier records t
 | # | Class | Command | Expect |
 |---|---|---|---|
 | 1 | check:ci +flow | `test -f statusgen/disposition_test.go && cd statusgen && go test . -run '^TestDisp' -count=1 -v > "${TMPDIR:-/tmp}/dt65-flip.log" 2>&1; grep -F -e '--- PASS: TestDispProseCountPasses ' "${TMPDIR:-/tmp}/dt65-flip.log" && grep -F -e '--- PASS: TestDispQuotedOutputPasses ' "${TMPDIR:-/tmp}/dt65-flip.log" && grep -F -e '--- PASS: TestDispHeldRefuses ' "${TMPDIR:-/tmp}/dt65-flip.log" && grep -F -e '--- PASS: TestDispCouldNotCheckRefuses ' "${TMPDIR:-/tmp}/dt65-flip.log" && grep -F -e '--- PASS: TestDispMissingRefuses ' "${TMPDIR:-/tmp}/dt65-flip.log" && grep -F -e '--- PASS: TestDispLegacyRetired ' "${TMPDIR:-/tmp}/dt65-flip.log" && grep -F -e '--- PASS: TestDispFoldAgrees ' "${TMPDIR:-/tmp}/dt65-flip.log" && ! grep -F -e '--- FAIL' "${TMPDIR:-/tmp}/dt65-flip.log"` | exit 0; risk-bearing; the prose-count and quoted-output fixtures flip, held and could-not-check dispositions refuse, a missing token and a retired legacy run exit could-not-check, and the fold agrees. Red at the delivery base (no such test file) |
-| 2 | check:ci +flow | `cd statusgen && go test . -run '^TestVerifyrun(WritesDisp\|HoldFlag)$' -count=1 -v > "${TMPDIR:-/tmp}/dt65-run.log" 2>&1; grep -F -e '--- PASS: TestVerifyrunWritesDisp ' "${TMPDIR:-/tmp}/dt65-run.log" && grep -F -e '--- PASS: TestVerifyrunHoldFlag ' "${TMPDIR:-/tmp}/dt65-run.log" && ! grep -F -e '--- FAIL' "${TMPDIR:-/tmp}/dt65-run.log"` | exit 0; risk-bearing; verifyrun writes the token for each state and the hold and defer flags, and the existing witness readers still read each row. Red at the delivery base (no such tests) |
-| 3 | check:ci +neighbour | `cd statusgen && go test . -run 'Held\|Vflip\|FlipMergeBases\|Fold\|WitnessReaderCensus' -count=1 && cd ../tools/desk && go test ./cmd/deskevidence/ -count=1 -v > "${TMPDIR:-/tmp}/dt65-land.log" 2>&1; grep -F -e '--- PASS: TestLandMixedDispRefuses ' "${TMPDIR:-/tmp}/dt65-land.log" && ! grep -F -e '--- FAIL' "${TMPDIR:-/tmp}/dt65-land.log"` | exit 0; risk-bearing; the existing held-scan, flip, fold and reader-census suites pass unchanged beside the new reader, and a landing refuses a mixed run |
+| 2 | check:ci +flow | `cd statusgen && go test . -run '^TestVerifyrunWritesDisp$' -count=1 -v > "${TMPDIR:-/tmp}/dt65-run.log" 2>&1; go test . -run '^TestVerifyrunHoldFlag$' -count=1 -v >> "${TMPDIR:-/tmp}/dt65-run.log" 2>&1; grep -F -e '--- PASS: TestVerifyrunWritesDisp ' "${TMPDIR:-/tmp}/dt65-run.log" && grep -F -e '--- PASS: TestVerifyrunHoldFlag ' "${TMPDIR:-/tmp}/dt65-run.log" && ! grep -F -e '--- FAIL' "${TMPDIR:-/tmp}/dt65-run.log"` | exit 0; risk-bearing; verifyrun writes the token for each state and the hold and defer flags, and the existing witness readers still read each row. Red at the delivery base (no such tests) |
+| 3 | check:ci +neighbour | `cd statusgen && go test . -run Held -count=1 && go test . -run Vflip -count=1 && go test . -run FlipMergeBases -count=1 && go test . -run Fold -count=1 && go test . -run WitnessReaderCensus -count=1 && cd ../tools/desk && go test ./cmd/deskevidence/ -count=1 -v > "${TMPDIR:-/tmp}/dt65-land.log" 2>&1; grep -F -e '--- PASS: TestLandMixedDispRefuses ' "${TMPDIR:-/tmp}/dt65-land.log" && ! grep -F -e '--- FAIL' "${TMPDIR:-/tmp}/dt65-land.log"` | exit 0; risk-bearing; the existing held-scan, flip, fold and reader-census suites pass unchanged beside the new reader, and a landing refuses a mixed run |
 | 4 | check:ci +mutation | `T=$(mktemp -d) && (cd tools/desk && go build -o "$T/muhar" ./cmd/muhar) && cd statusgen && "$T/muhar" -spec disposition-mutations.json -j 4 > "$T/out" 2>&1; rc=$?; L=$(tail -1 "$T/out"); echo "$L"; [ $rc -eq 0 ] && grep -F -e 'positive control CAUGHT' "$T/out" && [ "$L" = 'Totals: 5 caught, 0 NOT CAUGHT, 0 could-not-mutate.' ]` | exit 0; risk-bearing; all five mutants and the positive control are caught, so each fail-closed rule has a test that fires. Red at the delivery base (no spec) |
 | 5 | check +flow +dereference | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && git diff --quiet "$DELIVERY_BASE" "$DELIVERY_HEAD" -- statusgen/heldscope_test.go && ! grep -q -e '[:] follow-up ' docs/streams/desk-tools/brief-65-structured-verify-disposition.md && o=$(mktemp) && statusgen --root . --consumers --brief desk-tools/65 --delivery "$DELIVERY_HEAD" --base "$DELIVERY_BASE" > "$o" 2>&1; grep -F -e ' 0 disproved, 0 unchecked' "$o"` | exit 0; risk-bearing; the legacy held-scan tests are untouched and every consumer is in the delivering diff |
 
@@ -243,16 +244,16 @@ where the named tests and the mutation spec do not exist. The verifier records t
 
 | Failure mode | Caught by |
 |---|---|
-| A row with no disposition is read as pass | row 1 (`TestDispMissingRefuses`); row 4 (missing-as-pass mutant) |
-| A held or could-not-check disposition no longer refuses | row 1 (`TestDispHeldRefuses`, `TestDispCouldNotCheckRefuses`); row 4 |
-| `disp=pass` is written onto a row that did not pass | row 1 (`TestDispPassOnFailRefuses`); row 4 (agreement-skip mutant) |
-| A deferral without a routing reference releases a row | row 1 (`TestDispDeferNeedsRef`); row 2 (`--defer 2=x` exits 2) |
-| A verifier's `VERIFY: HELD` line is ignored in a structured run | row 1 (`TestDispVerdictLineHeld`); row 4 |
-| The legacy prose fallback never ends | row 1 (`TestDispLegacyRetired`); row 4 (date-check mutant) |
+| A row with no disposition is read as pass | row 1 (`TestDispMissingRefuses` (planned)); row 4 (missing-as-pass mutant) |
+| A held or could-not-check disposition no longer refuses | row 1 (`TestDispHeldRefuses` (planned), `TestDispCouldNotCheckRefuses` (planned)); row 4 |
+| `disp=pass` is written onto a row that did not pass | row 1 (`TestDispPassOnFailRefuses` (planned)); row 4 (agreement-skip mutant) |
+| A deferral without a routing reference releases a row | row 1 (`TestDispDeferNeedsRef` (planned)); row 2 (`--defer 2=x` exits 2) |
+| A verifier's `VERIFY: HELD` line is ignored in a structured run | row 1 (`TestDispVerdictLineHeld` (planned)); row 4 |
+| The legacy prose fallback never ends | row 1 (`TestDispLegacyRetired` (planned)); row 4 (date-check mutant) |
 | The legacy fallback changes during the window | row 3 (held-scan suite unchanged); row 5 (its test file untouched) |
-| A token in the Result cell breaks an existing witness reader | row 2 (`TestVerifyrunWritesDisp`); row 3 (flip, fold and census suites) |
+| A token in the Result cell breaks an existing witness reader | row 2 (`TestVerifyrunWritesDisp` (planned)); row 3 (flip, fold and census suites) |
 | A landed disposition is edited after the run | `[w2]`: the record no longer matches and coverage refuses (Task 6). `[w1]`: no row; the landing actor check is the binding control, as for the state today. Review-only |
-| The flip and the fold disagree | row 1 (`TestDispFoldAgrees`) |
+| The flip and the fold disagree | row 1 (`TestDispFoldAgrees` (planned)) |
 | A verifier records a real hold only as prose in a structured run | No row; it is the threat option 1 accepts. Review-only: the PR names it, and the `--hold` flag and verdict lines are the sanctioned forms |
 
 **RISK-VALUE:** none of the four risk answers is yes; the brief is `gate: human` because it
