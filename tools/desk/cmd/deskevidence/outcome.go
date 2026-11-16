@@ -91,6 +91,25 @@ func guardVerifiedOutcomes(root, landedRoot, target string, before, after []byte
 // problemKeyRe is the `<stream>/<NN>` brief key statusgen leads a brief's PROBLEM with.
 var problemKeyRe = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*)/0*([0-9]+[a-z]?)$`)
 
+// briefKey normalises a `<stream>/<NN>` key (leading zeros dropped, so a board's
+// "07" and a file's "7" agree), or returns "" when k is not one. The one parser
+// the closure gate and the landing and flip diffs (lintdiff.go) attribute by.
+func briefKey(k string) string {
+	m := problemKeyRe.FindStringSubmatch(strings.TrimSpace(k))
+	if m == nil {
+		return ""
+	}
+	return m[1] + "/" + m[2]
+}
+
+// problemBriefKey is the normalised brief key a PROBLEM line leads with, and the
+// text after it; key is "" when the leading segment is not a brief key (a path,
+// a stream, a register, a summary line).
+func problemBriefKey(p string) (key, rest string) {
+	lead, rest, _ := strings.Cut(strings.TrimSpace(strings.TrimPrefix(p, "PROBLEM:")), ":")
+	return briefKey(lead), strings.TrimSpace(rest)
+}
+
 // splitClosureProblems separates the lint PROBLEMs that name a brief this record
 // does not close (foreign) from the rest (own). The closure gate refuses on own
 // only, the same scoping the landing and flip gates apply through their
@@ -100,14 +119,13 @@ var problemKeyRe = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*)/0*([0-9]+[a-z]?)$`)
 func splitClosureProblems(problems []string, closed map[string]bool) (own, foreign []string) {
 	closedKeys := map[string]bool{}
 	for k := range closed {
-		if m := problemKeyRe.FindStringSubmatch(k); m != nil {
-			closedKeys[m[1]+"/"+m[2]] = true
+		if key := briefKey(k); key != "" {
+			closedKeys[key] = true
 		}
 	}
 	for _, p := range problems {
-		lead, _, _ := strings.Cut(strings.TrimSpace(strings.TrimPrefix(p, "PROBLEM:")), ":")
-		m := problemKeyRe.FindStringSubmatch(strings.TrimSpace(lead))
-		if m == nil || closedKeys[m[1]+"/"+m[2]] {
+		key, _ := problemBriefKey(p)
+		if key == "" || closedKeys[key] {
 			own = append(own, p)
 			continue
 		}
