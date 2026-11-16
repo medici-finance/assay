@@ -1,0 +1,1 @@
+- `cellctl hotfix install statusgen` builds a local, expiring hotfix of `statusgen` over its own `.assay-versions` pin line; shims, `deskboot binary-pin` and the binary's own start-up check all judge it against that line, and `statusgen` refuses a hotfix copy it cannot prove (exit 6) or runs the pinned fallback with a NOTICE.
