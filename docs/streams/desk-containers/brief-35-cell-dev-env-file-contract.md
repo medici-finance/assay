@@ -139,10 +139,11 @@ Options:
      `DR-desk-containers-35` must also make the file unreadable to every holder identity by
      mode or access-control list, as the container surface does by giving a holder no mount.
    - the launcher records, per window, the coordinator identity, the dev-env mount mode and the
-     role-secret files the window can reach, where the verifier can read it and no role window
-     can write it. Brief 36 admits a row that declares names only when that record says the
-     window binds no role secret and an open of every role-secret path the cell binds fails
-     from the row's environment; a missing or unreadable record refuses.
+     role-secret files the window can reach, where the verifier can read it and no role
+     identity can write it, the coordinator's included: the launcher writes it as an identity
+     that is none of the role identities. Brief 36 admits a row that declares names only when
+     that record says the window binds no role secret and an open of every role-secret path the
+     cell binds fails from the row's environment; a missing or unreadable record refuses.
    - a cell whose role windows share one OS user binds no dev-env file; rows that declare names
      stay could-not-check.
    This meets both clauses: no holding window reads the file, so nothing the coordinator writes

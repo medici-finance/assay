@@ -156,17 +156,20 @@ This brief leaves `todo` only once `DR-desk-containers-35` (brief 35) is approve
    The launcher records, from the cell's identity map, the coordinator role's identity and, on
    a container cell, each role's mount mode for the file, and for every window the role-secret
    files it can reach (none, or their paths as that window sees them), in a cell state file no
-   role window can write; brief 36 reads that record and refuses when it is absent. On a host
-   cell the launcher writes the record as its own identity, with no group or other write and
-   no access-control list entry granting write, in a directory no role identity can write; a
-   record or directory already present that another identity can write, or that is a symlink,
-   fails the check rather than being reused. On a container cell the record lives in the cell
-   directory, which is already a protected mount source that no container mounts.
-   On a container cell, on every option, the dev-env file and its directory join the
-   launcher's protected mount sources (`protected()` in
-   `tools/desk/internal/cellcontainer/config.go`), so a directory bind of any role, such as the
-   incoming directory or a role's config directory, that contains either one refuses the plan;
-   the file reaches a container only through its own file mount.
+   role identity can write, the coordinator's included; brief 36 reads that record and refuses
+   when it is absent. On a host cell the launcher writes the record as its own identity, which
+   is none of the role identities (the coordinator's included), with no group or other write
+   and no access-control list entry granting write, in a directory no role identity can write;
+   a host cell whose launcher identity is a role identity writes no record, binds no file, and
+   its check says why. A record or directory already present that any identity but the
+   launcher's can write, or that is a symlink, fails the check rather than being reused. On a
+   container cell the record lives in the cell directory, which is already a protected mount
+   source that no container mounts.
+   On a container cell, on every option, the dev-env file and its directory join the launch
+   plan's protected paths, as cellctl adds the cell directory after the plan is built
+   (`tools/desk/cmd/cellctl/container_native.go:62`), so a directory bind of any role, such as
+   the incoming directory or a role's config directory, that contains either one refuses before
+   launch; the file reaches a container only through its own file mount.
 3. **Projection.** `cellctl desk` and `up` export `ASSAY_CELL_DEV_ENV_FILE` (the path) into the
    coordinator, reviewer, and the worker and verifier windows that bind no role secret; a
    worker or verifier window that binds one gets no path, and intake gets none, per brief 35.
@@ -203,11 +206,11 @@ and 8 apply under brief 35's option 1 and are re-derived with Tasks 2 and 3 if
 | 1 | check +flow | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvProjection$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvProjection ' "$o")` | Named PASS; coordinator and reviewer windows, and worker and verifier windows that bind no role secret, get the path variable; a worker or verifier window that binds a role secret does not, and intake does not; a stale inherited value is removed. |
 | 2 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvCheck$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvCheck ' "$o")` | Named PASS; a symlink, a file inside a worktree, a group-writable file, a file owned by a non-coordinator role, a directory another role can write, undeterminable ownership or ACL state, and a single-user cell each fail check; a passing check writes the identity and mount record, including each window's role-secret reach; the dry run contains no fixture value. |
 | 3 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvWriteVerb$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvWriteVerb ' "$o")` | Named PASS; set and unset from the coordinator rewrite the file, change the nonce line, and append a receipt with the sha256 and the names changed, no value; a name outside the allow-list and a 7-character value refuse; the same verb from a worker, reviewer or verifier window refuses. |
-| 4 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvMounts$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvMounts ' "$o")` | Named PASS; on a container cell the generated mounts are read-write for the coordinator container only and read-only for the reviewer container and for worker and verifier containers that mount no role secret; a worker or verifier container with a role secret mounted has no dev-env mount; intake has no mount; a role's directory bind (the incoming directory or a role config directory) that contains the dev-env file or its directory refuses the plan, because both are protected mount sources. |
+| 4 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvMounts$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvMounts ' "$o")` | Named PASS; on a container cell the generated mounts are read-write for the coordinator container only and read-only for the reviewer container and for worker and verifier containers that mount no role secret; a worker or verifier container with a role secret mounted has no dev-env mount; intake has no mount; a role's directory bind (the incoming directory or a role config directory) that contains the dev-env file or its directory refuses before launch, because both are in the launch plan's protected paths. |
 | 5 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecret' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretScope ' "$o" && ! grep -F -- '--- FAIL' "$o")` | The role-secret tests still pass, none fails. |
 | 6 | check | host | `statusgen --root . --lint --acceptance-forge` | exit 0; output contains "LINT: PASS". |
 | 7 | check | tree | `statusgen --consumers --brief desk-containers/37 --base $(git merge-base origin/main HEAD)` | Pre-merge, on the implementation branch: exit 0. |
-| 8 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvRecordMode$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvRecordMode ' "$o")` | Named PASS; on a host cell the launcher record is written owned by the launcher's identity, with no group or other write and no ACL write grant, in a directory with the same properties; a pre-existing record or directory that is group-writable, owned by a role identity other than the launcher's, or a symlink fails check and is not reused; on a container cell the record is inside the cell directory, which is a protected mount source. |
+| 8 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvRecordMode$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvRecordMode ' "$o")` | Named PASS; on a host cell the launcher record is written owned by the launcher's identity, with no group or other write and no ACL write grant, in a directory with the same properties, and the launcher's identity is not the coordinator's nor any other role identity's; a host cell whose launcher identity is the coordinator's, or any other role identity's, writes no record and fails check; a pre-existing record or directory that is group-writable, owned by any role identity (the coordinator's included), or a symlink fails check and is not reused; on a container cell the record is inside the cell directory, which is a protected mount source. |
 
 ## Threat model / pre-mortem
 
@@ -223,7 +226,7 @@ and 8 apply under brief 35's option 1 and are re-derived with Tasks 2 and 3 if
   and its directory are protected mount sources).
 - A role window rewrites the launcher record to claim it binds no role secret, or to name
   itself the coordinator: row 8 (the record's owner and mode); brief 36 row 3 refuses a record
-  another identity can write.
+  any role identity can write, the coordinator's included.
 - A reviewer slot or an unblessed-head worker child reads a dev value: no row; decision 1 above.
 - A reviewer slot building an untrusted head writes to the cell database: no row; today's reach,
   unchanged here; decision 2 above.

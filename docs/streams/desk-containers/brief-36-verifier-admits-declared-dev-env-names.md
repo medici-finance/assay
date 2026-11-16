@@ -84,10 +84,11 @@ Amended 2026-11-16, by the driver in their own login:
 https://github.com/medici-finance/assay/issues/6615#issuecomment-6922038844
 
 Open, and not this brief's to answer: brief 35's question of how a surface proves the
-coordinator is the only writer, and how the file stays clear of role-secret holders. This brief depends on brief 35 (`depends:` above) and does not
-presuppose that answer. Tasks 2 and 4 and Verify rows 3 and 16 are written for brief 35's
-option 1, the recommended one, and apply only if `DR-desk-containers-35` chooses it; if it
-chooses another option, they are re-derived from that record before this brief leaves `todo`.
+coordinator is the only writer, and how the file stays clear of role-secret holders. This
+brief depends on brief 35 (`depends:` above) and does not presuppose that answer. Tasks 2
+and 4 and Verify rows 3 and 16 are written for brief 35's option 1, the recommended one, and
+apply only if `DR-desk-containers-35` chooses it; if it chooses another option, they are
+re-derived from that record before this brief leaves `todo`.
 Brief 35's option 2 conflicts with DR-desk-containers-34 and cannot be implemented from this
 brief without that record amending it. Brief 35's
 default is hold, and under hold no cell binds a file, so every row that declares names stays
@@ -153,8 +154,8 @@ This brief leaves `todo` only once `DR-desk-containers-35` (brief 35) is approve
      read-write. The verifier's own mount says nothing about the other roles' mounts, so where
      only that mount is visible and the cell gives no such record, the file refuses.
    - the launcher's record itself (brief 37 Task 2) is trusted only as written by the
-     launcher: on a host cell, a record, or its directory, that any role identity but the
-     coordinator's can write by mode, ownership or access-control list, or that is a symlink,
+     launcher: on a host cell, a record, or its directory, that any role identity can write by
+     mode, ownership or access-control list, the coordinator's included, or that is a symlink,
      refuses, checked through an opened descriptor as above; on a container cell the record is
      in the cell directory, which no container mounts.
    - Anything the check cannot determine refuses as could-not-check, never falls through to
@@ -197,7 +198,7 @@ matches or a skip fails independent verification. Rows 3 and 16 apply under brie
 |---|---|---|---|---|
 | 1 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvAdmitsDeclared$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvAdmitsDeclared ' "$o")` | Named PASS; a row declaring two `DEVENV_` names sees exactly those from the file; an inherited value under a declared name is replaced; an undeclared file name is absent. |
 | 2 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvMissingIsCNC$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvMissingIsCNC ' "$o")` | Named PASS; unset path, missing file, a malformed line, a name on two lines of the file, a declared name absent from the file and a declared value of 7 characters each yield could-not-check, never pass, and no reason contains a fixture value or a file line. |
-| 3 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvTrustRefusal$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvTrustRefusal ' "$o")` | Named PASS; each of these refuses: a symlink; a file inside a worktree; a file the verifier can write; a group-writable file; a file owned by a non-coordinator role's identity with mode 0644; a parent directory another role's identity can write; ownership or access-control state that cannot be determined (a failing stat or ACL query stub); a host cell with no identity record, and a host cell whose identity record is unreadable; a host cell whose identity record, or its directory, a non-coordinator role identity can write, or that is a symlink; an unknown surface kind; a container cell with no mount record. A file swapped after the check is not read: checks and read use one descriptor. |
+| 3 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvTrustRefusal$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvTrustRefusal ' "$o")` | Named PASS; each of these refuses: a symlink; a file inside a worktree; a file the verifier can write; a group-writable file; a file owned by a non-coordinator role's identity with mode 0644; a parent directory another role's identity can write; ownership or access-control state that cannot be determined (a failing stat or ACL query stub); a host cell with no identity record, and a host cell whose identity record is unreadable; a host cell whose identity record, or its directory, any role identity can write (the coordinator's included), or that is a symlink; an unknown surface kind; a container cell with no mount record. A file swapped after the check is not read: checks and read use one descriptor. |
 | 4 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvAttestsDigest$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvAttestsDigest ' "$o")` | Named PASS; the attestation carries the sorted names and the file sha256 and no fixture value. |
 | 5 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvRedactsOutput$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvRedactsOutput ' "$o")` | Named PASS; a row that prints an admitted value leaves `[redacted:<NAME>]` in the captured output and the output hash equals the hash of the redacted bytes; with two admitted values where one is a substring of the other, no part of either is left in the output. |
 | 6 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestAdmitted' > "$o" 2>&1 && grep -F -- '--- PASS: TestAdmittedRowEnvShape ' "$o" && ! grep -F -- '--- FAIL' "$o")` | The existing admission tests (`TestAdmitted*`) still pass, none fails. |
