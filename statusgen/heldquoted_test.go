@@ -59,14 +59,21 @@ func TestHeldQuotedFlipAdmits(t *testing.T) {
 		{"escaped quotes, even count",
 			heldEv("ok") + "\nRow 2 printed \\\"tenant b: could-not-check\\\".\n", true},
 		{"escaped pair inside even span",
-			heldEv("ok") + "\nRow 2 printed \"a \\\" b \\\" could-not-check\".\n", true},
+			heldEv("ok") + "\nRow 2 printed \"a \\\" b \\\" could-not-check, no grant\".\n", true},
 		// The quotes pair across the paragraph, not per line: HELD renders
 		// between two spans, each of which crosses a line.
 		{"span crossing a line",
 			heldEv("ok") + "\nRow 2 printed \"first part\nsecond part\" and row 3 is HELD pending \"third part\nfourth\".\n", true},
+		// The same with every quote flanked as a quotation mark, so only the
+		// paragraph check refuses it.
+		{"flanked span crossing a line",
+			heldEv("ok") + "\nRow 2 printed \"first part\nsecond part.\" Row 3 is HELD pending \" third part\nfourth\".\n", true},
 		// A pipe on a prose line splits nothing when rendered.
 		{"pipe on a prose line",
 			heldEv("ok") + "\nRow 2 printed \"a | b\" and row 3 is HELD pending \" end.\n", true},
+		// The same, flanked, so only the whole-line reading refuses it.
+		{"flanked pipe on a prose line",
+			heldEv("ok") + "\nRow 2 printed \"a | b .\" and row 3 is HELD pending \" end.\n", true},
 		// Inch marks are not quotation marks (flanking).
 		{"inch marks",
 			heldEv("ok") + "\nMeasured a 3\" gap; row 3 HELD pending the 5\" retest.\n", true},
