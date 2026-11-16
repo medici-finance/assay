@@ -402,9 +402,9 @@ func captureLintDiffNotices(t *testing.T) *bytes.Buffer {
 }
 
 const (
-	fn54Include = "PROBLEM: forge-neutral/54: protected table: acceptance transition: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
-	fn54Forge   = "PROBLEM: forge-neutral/54: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
-	dt37Forge   = "PROBLEM: desk-tools/37: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	otherInclude = "PROBLEM: example-other/54: protected table: acceptance transition: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
+	otherForge   = "PROBLEM: example-other/54: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	thirdForge   = "PROBLEM: example-third/37: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
 )
 
 // An unchanged brief's could-not-check that only the after run printed is not this
@@ -418,9 +418,9 @@ func TestUntouchedCouldNotCheck(t *testing.T) {
 		before []string
 		after  []string
 	}{
-		{"docs/streams/forge-gitlab/brief-12-gitlab-hardening-reads.md", nil, []string{fn54Include}},
-		{"docs/streams/verify-outcomes/desk-supervision/24-20261116T013825Z-bbe7ddc7f052.json",
-			[]string{fn54Include}, []string{fn54Forge, dt37Forge}},
+		{"docs/streams/example-stream/brief-12-example.md", nil, []string{otherInclude}},
+		{"docs/streams/verify-outcomes/example-outcome/24-20261116T013825Z-bbe7ddc7f052.json",
+			[]string{otherInclude}, []string{otherForge, thirdForge}},
 	} {
 		stubStatusgenLint(t, tc.before, tc.after)
 		notices := captureLintDiffNotices(t)
@@ -445,17 +445,17 @@ func TestUntouchedCouldNotCheck(t *testing.T) {
 //
 // regression: #6581
 func TestIntroducedStillRefused(t *testing.T) {
-	real := "PROBLEM: forge-gitlab/12: Evidence row #3: backticked path \"../x\" does not exist"
-	own := "PROBLEM: forge-gitlab/12: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	real := "PROBLEM: example-stream/12: Evidence row #3: backticked path \"../x\" does not exist"
+	own := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
 	for _, tc := range []struct {
 		target string
 		after  []string
 		want   []string
 	}{
-		{"docs/streams/forge-gitlab/brief-12-gitlab-hardening-reads.md", []string{fn54Include, real}, []string{real}},
-		{"docs/streams/forge-gitlab/brief-12-gitlab-hardening-reads.md", []string{own}, []string{own}},
-		{"docs/streams/verify-outcomes/forge-gitlab/12-20261116T013825Z-bbe7ddc7f052.json", []string{own}, []string{own}},
-		{"docs/streams/forge-gitlab/README.md", []string{fn54Include}, []string{fn54Include}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{otherInclude, real}, []string{real}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{own}, []string{own}},
+		{"docs/streams/verify-outcomes/example-stream/12-20261116T013825Z-bbe7ddc7f052.json", []string{own}, []string{own}},
+		{"docs/streams/example-stream/README.md", []string{otherInclude}, []string{otherInclude}},
 	} {
 		stubStatusgenLint(t, nil, tc.after)
 		captureLintDiffNotices(t)
