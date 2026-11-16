@@ -228,8 +228,8 @@ matches or a skip fails independent verification. Rows 3 and 16 apply under brie
 ## Threat model / pre-mortem
 
 - An implementer-side window writes the file so a row passes: rows 3 (refusal, including a file
-  a non-coordinator role owns and a directory on its path another identity can write) and 4 (digest recorded, so
-  a change is visible).
+  a non-coordinator role owns and a directory on its path another identity can write) and 4
+  (digest recorded, so a change is visible).
 - The coordinator, a non-holding role, steers what a holding window executes or reads as
   configuration through a declared name: rows 10 to 15 (allow-list at admission).
 - A row declares a `DEVENV_` host, reads a role secret by its literal path and sends it there,
