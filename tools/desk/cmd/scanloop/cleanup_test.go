@@ -33,6 +33,9 @@ func failingExec(fail ...string) (Exec, *[]string) {
 				return "", errors.New("exit status 128: " + f + " refused")
 			}
 		}
+		if name == "git" && len(args) > 0 && args[0] == "status" {
+			return scanWrote("medici-finance/assay#77"), nil // the scan wrote the item's placeholder
+		}
 		return "", nil
 	}, &ran
 }

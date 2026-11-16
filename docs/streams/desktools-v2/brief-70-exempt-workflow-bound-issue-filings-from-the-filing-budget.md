@@ -8,6 +8,7 @@ unblocks: []
 effort: M
 gate: human
 decision-issue: 4072
+ruling: "https://github.com/medici-finance/assay/issues/4072#issuecomment-6923697101"
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 gate-why: "Relaxes a fail-closed brake (proposal 11 lists new-issue caps as brakes). The driver ruling, ratified by the driver's merge of this brief PR (#4069, merged 2026-10-22), names the compensating bound; its implemented values and refusals need human acceptance at done."
 issues: []

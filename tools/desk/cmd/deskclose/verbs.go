@@ -488,10 +488,17 @@ func applyClose(r closeReq, out io.Writer) error {
 
 // verifyLane applies the per-lane preconditions and returns the resolved target plus
 // any disposition record consulted.
+//
+// The target it returns is CANONICAL — rendered from the parsed reference
+// (resolvedRef.String), never the text the caller, a manifest row or a record supplied.
+// applyClose echoes it into the close comment, the dry-run and close receipts and the
+// audit detail, so this is the one choke point between a target's source text and every
+// place a target is printed.
 func verifyLane(r *closeReq, it item) (string, dispositionRead, error) {
 	var disp dispositionRead
 	target := r.target
 	targetKind := r.targetKind
+	var resolved *resolvedRef
 
 	if r.mode == modeReviewRequest {
 		n, err := extractPRRef(r.repo, it)
@@ -515,7 +522,17 @@ func verifyLane(r *closeReq, it item) (string, dispositionRead, error) {
 		}
 		disp = d
 		if target == "" {
-			target = d.Record.Evidence
+			// The record's Evidence becomes the target only through its parse: it is text
+			// any commenter can have written, so it is re-rendered (or refused without being
+			// repeated), never carried onward as written.
+			if _, ok := parseRef(d.Record.Evidence); !ok {
+				return "", disp, deskkit.Refused(fmt.Sprintf(
+					"refused: the disposition record on %s#%d names Evidence that does not parse as a whole "+
+						"item reference, so it cannot stand in for a target. The value is not repeated here; "+
+						"declare the target, or re-record the disposition with a reference.",
+					r.repo, r.number))
+			}
+			target = echoRef(r.repo, d.Record.Evidence)
 		}
 	}
 
@@ -527,6 +544,7 @@ func verifyLane(r *closeReq, it item) (string, dispositionRead, error) {
 		if err != nil {
 			return "", disp, err
 		}
+		resolved = &tr
 		refItem, err := fetchItem(tr.repo, tr.number, tr.kind)
 		if err != nil {
 			return "", disp, err
@@ -552,6 +570,7 @@ func verifyLane(r *closeReq, it item) (string, dispositionRead, error) {
 		if err != nil {
 			return "", disp, err
 		}
+		resolved = &tr
 		refItem, err := fetchItem(tr.repo, tr.number, tr.kind)
 		if err != nil {
 			return "", disp, err
@@ -562,7 +581,18 @@ func verifyLane(r *closeReq, it item) (string, dispositionRead, error) {
 					"issue retires both", tr.repo, tr.number))
 		}
 	}
-	return target, disp, nil
+	if resolved == nil {
+		if strings.TrimSpace(target) == "" {
+			return "", disp, nil
+		}
+		// A lane that did not resolve its target above still never echoes it raw.
+		tr, err := resolveRef(r.repo, target, targetKind)
+		if err != nil {
+			return "", disp, err
+		}
+		resolved = &tr
+	}
+	return resolved.String(), disp, nil
 }
 
 // resolvedRef is one target reference after parsing: where it lives, which number it is,
@@ -571,6 +601,12 @@ type resolvedRef struct {
 	repo   string
 	number int
 	kind   deskkit.TargetKind
+}
+
+// String renders the reference canonically: repository-qualified, in the sigil the
+// serving forge writes that object with (itemRef).
+func (t resolvedRef) String() string {
+	return itemRef(t.repo, t.number, t.kind)
 }
 
 // resolveRef turns any accepted reference form — `N`, `#N`, `!N`, `owner/repo#N`,
@@ -611,8 +647,8 @@ func closeComment(r closeReq, it item, d dispositionRead) string {
 	}
 	if d.Record.Verdict != "" {
 		fmt.Fprintf(&b, "- Disposition record: %s — evidence %s (recorded %s by %s)\n",
-			deskkit.StripControl(d.Record.Verdict), deskkit.StripControl(d.Record.Evidence),
-			deskkit.StripControl(d.Record.RecordedAt), deskkit.StripControl(d.Record.RecordedBy))
+			renderRecordField(d.Record.Verdict), echoRef(r.repo, d.Record.Evidence),
+			renderRecordField(d.Record.RecordedAt), renderRecordField(d.Record.RecordedBy))
 	}
 	if r.verdict != nil {
 		fmt.Fprintf(&b, "- Two-role verdict: **%s** — proposed by %s, confirmed by %s\n\n",

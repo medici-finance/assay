@@ -34,6 +34,7 @@ consumers:
   - "statusgen/notice_report.go: follow-up statusgen/28 (this brief; change is owed at implementation)"
   - "statusgen/notice_report_test.go: follow-up statusgen/28 (this brief; change is owed at implementation)"
   - "changelog/historical-notices.md: follow-up statusgen/28 (this brief; change is owed at implementation)"
+decision-issue: 5855
 ---
 
 # Brief 28 — Separate frozen historical notices from actionable lint findings
