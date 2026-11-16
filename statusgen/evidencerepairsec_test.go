@@ -105,6 +105,11 @@ func TestRepairApprovalScope(t *testing.T) {
 		{"wrong-thread", login, "For PR #78 only, I authorize separating Date and Runner in the vf/01 Evidence.", "does not authorize"},
 		{"no-thread", login, "I authorize separating Date and Runner in the vf/01 Evidence.", "does not authorize"},
 		{"no-authorize", login, "For PR #77: separating Date and Runner in the vf/01 Evidence looks fine.", "does not authorize"},
+		// A negated or conditional sentence is not an approval (SR-A1).
+		{"negated", login, "For PR #77 only, I do NOT authorize separating Date and Runner in the vf/01 Evidence.", "does not authorize"},
+		{"contracted", login, "For PR #77 only, I don't authorize separating Date and Runner in the vf/01 Evidence.", "does not authorize"},
+		{"conditional", login, "If CI passes on PR #77, I authorize separating Date and Runner in the vf/01 Evidence.", "does not authorize"},
+		{"unauthorized", login, "For PR #77: separating Date and Runner in the vf/01 Evidence is unauthorized.", "does not authorize"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			f, repair := repairChain(t, repairSplit, repairMessage)
@@ -117,6 +122,105 @@ func TestRepairApprovalScope(t *testing.T) {
 	f.withRepair(repair)
 	if _, why := f.plan(t); why != "" {
 		t.Fatalf("the driver's approval was refused: %s", why)
+	}
+}
+
+// A split table is split in every row: a header-only or partial split leaves
+// rows that disagree on which column holds the runner. The column map resets
+// at each table, so a later table cannot inherit an earlier table's split
+// (SR-A3).
+//
+// regression: #6616
+func TestRepairSplitComplete(t *testing.T) {
+	before := "Historical result retained.\n" + repairDelivered
+	header := strings.NewReplacer(
+		"| Date / Runner |\n|---|---------|----------|------------------------------|---------------|",
+		"| Date | Runner |\n|---|---------|----------|------------------------------|------|--------|",
+	)
+	row1 := strings.NewReplacer("| exit 0; ok | 2026-10-16 verifier-app[bot] (model verifier) |",
+		"| exit 0; ok | 2026-10-16 | verifier-app[bot] (model verifier) |")
+	second := "\nOther table.\n\n| n | Command | Expected | Observed (exit + key output) | Date / Runner |\n" +
+		"|---|---------|----------|------------------------------|---------------|\n" +
+		"| 2 | go vet ./x | exit 0 | exit 0 | 2026-10-16 verifier-app[bot] (model verifier) |\n"
+	for _, c := range []struct{ name, before, after, want string }{
+		{"header-only", before, header.Replace(before), "every row"},
+		{"partial", before, row1.Replace(header.Replace(before)), "every row"},
+		{"later-table", before + second, repairSplit(before) + strings.NewReplacer(
+			"| Date / Runner |\n|---|---------|----------|------------------------------|---------------|",
+			"| Date | Runner |\n|---|---------|----------|------------------------------|------|--------|",
+			"| 2026-10-16 verifier-app[bot] (model verifier) |", "| 2026-10-16 | verifier-app[bot] (model verifier) |",
+		).Replace(second), "outside any table"},
+	} {
+		if why := evidenceRepairEditorial(c.before, c.after); !strings.Contains(why, c.want) {
+			t.Errorf("%s: want %q, got %q", c.name, c.want, why)
+		}
+	}
+	if why := evidenceRepairEditorial(before, repairSplit(before)); why != "" {
+		t.Fatalf("the full split was refused: %s", why)
+	}
+}
+
+// An added line may not start an HTML block: an unterminated processing
+// instruction, CDATA section or declaration hides the rest of the rendered page,
+// and <details> collapses it, while the machine readers still see the rows
+// (SR-A4).
+//
+// regression: #6616
+func TestRepairNoHTML(t *testing.T) {
+	before := "Historical result retained.\n" + repairDelivered
+	ok := repairSplit(before)
+	for _, line := range []string{"<?x", "<![CDATA[", "<!X", "<pre>", "<details>", "</details>", "  <div>", "Note <b>x</b>"} {
+		after := strings.Replace(ok, "Editorial repair only", line+"\nEditorial repair only", 1)
+		if why := evidenceRepairEditorial(before, after); !strings.Contains(why, "HTML") {
+			t.Errorf("%q: want an HTML refusal, got %q", line, why)
+		}
+	}
+	if why := evidenceRepairEditorial(before, strings.Replace(ok, "Editorial repair only", "Note: 2 < 3.\nEditorial repair only", 1)); why != "" {
+		t.Fatalf("a plain '<' in prose was refused: %s", why)
+	}
+}
+
+// The whole-document verdict comparison is element-wise: the same number of
+// verdicts with a different word, or a struck one unstruck, is refused even
+// when no added line carries it (SR-A5).
+//
+// regression: #6616
+func TestRepairVerdictOrder(t *testing.T) {
+	for _, c := range []struct{ name, old, new string }{
+		{"word", "VERIFY: FAIL\n", "VERIFY: PASS\n"},
+		{"struck", "~~VERIFY: PASS~~\n", "VERIFY: PASS\n"},
+	} {
+		before := "Historical result retained.\n" + c.old + repairDelivered
+		after := strings.Replace(repairSplit(before), c.old, c.new, 1)
+		if why := evidenceRepairReaderView(before, after, nil); !strings.Contains(why, "add a verdict") {
+			t.Errorf("%s: want a verdict refusal, got %q", c.name, why)
+		}
+	}
+}
+
+// With no driver resolvable from the blessing login, a repair approval is
+// could-not-check before any forge read, named as such (SR-A5).
+//
+// regression: #6616
+func TestRepairDriverUnset(t *testing.T) {
+	t.Cleanup(scanReloadConfig)
+	home := t.TempDir()
+	dir := filepath.Join(home, ".config", "assay")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	roster := strings.Replace(fixtureRoster+darFixtureExtra(), "ASSAY_BLESS_LOGIN=ada:100001", "ASSAY_BLESS_LOGIN=example-unmapped:100009", 1)
+	if err := os.WriteFile(filepath.Join(dir, "roster.env"), []byte(roster), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	scanReloadConfig()
+	link := rulingLink{Repo: rlRepo, Issue: repairPR, CommentID: repairComment}
+	why := corroborateEvidenceRepairs(rlRepo, "docs/streams/vf/brief-01-x.md",
+		[]evidenceRepair{{commit: strings.Repeat("a", 40), link: link}},
+		func() *ghClient { t.Fatal("the driver guard read the forge"); return nil })
+	if !strings.Contains(why, "could-not-check human authority: the driver's login is unset") {
+		t.Fatalf("want the driver could-not-check, got %q", why)
 	}
 }
 

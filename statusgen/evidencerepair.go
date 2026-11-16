@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // A sanctioned editorial repair of historical Evidence is its own entry in the
@@ -18,13 +19,14 @@ import (
 // check compares against, from the pre-amendment Evidence to the Evidence at
 // the repair commit, and only after the repair is shown to be editorial: it
 // leaves Verify untouched, keeps every table row and every non-Date/Runner
-// cell byte-identical, splits a combined "Date / Runner" column exactly after
-// its leading date or adds one `(on-behalf-of human:<name>)` principal to a
-// Runner, and adds only prose that carries no marker, verdict, comment or
-// fence and leaves every reader's whole-document view unchanged. The driver's
-// own unedited comment, read through the same forge resolver as
-// Acceptance-Transition approvals, must name the brief and say it authorizes
-// the repair on its own issue or pull request, and the repair commit's message
+// cell byte-identical, splits a combined "Date / Runner" column in every row of
+// its table exactly after the leading date or adds one
+// `(on-behalf-of human:<name>)` principal to a Runner, and adds only prose that
+// carries no marker, verdict, comment, fence or HTML and leaves every reader's
+// whole-document view unchanged. The driver's own unedited comment, read
+// through the same forge resolver as Acceptance-Transition approvals, must name
+// the brief and say it authorizes the repair, with no negating or conditional
+// word, on its own issue or pull request, and the repair commit's message
 // must name that issue or pull request.
 type evidenceRepair struct {
 	commit, approval string
@@ -176,32 +178,49 @@ func evidenceRepairMessage(dir, commit string) (string, error) {
 // prior line survives in order; an added line is prose with no marker or
 // verdict.
 func evidenceRepairEditorial(before, after string) string {
-	isRow := func(l string) bool { return strings.HasPrefix(strings.TrimSpace(l), "|") }
-	var oldRows, newRows, oldText, newText []string
-	for _, l := range strings.Split(before, "\n") {
-		if isRow(l) {
-			oldRows = append(oldRows, l)
-		} else {
-			oldText = append(oldText, l)
-		}
+	// A row records whether it starts a table (the line before it is not a
+	// row), so the column map resets at every table.
+	type row struct {
+		line  string
+		start bool
 	}
-	for _, l := range strings.Split(after, "\n") {
-		if isRow(l) {
-			newRows = append(newRows, l)
-		} else {
-			newText = append(newText, l)
+	collect := func(s string) (rows []row, text []string) {
+		prev := false
+		for _, l := range strings.Split(s, "\n") {
+			isRow := strings.HasPrefix(strings.TrimSpace(l), "|")
+			if isRow {
+				rows = append(rows, row{l, !prev})
+			} else {
+				text = append(text, l)
+			}
+			prev = isRow
 		}
+		return rows, text
 	}
+	oldRows, oldText := collect(before)
+	newRows, newText := collect(after)
 	if len(oldRows) != len(newRows) {
 		return "a repair cannot add or remove table rows"
 	}
 	var header []string
 	split := false
 	for i := range oldRows {
-		o, n := cellsTrimmed(oldRows[i]), cellsTrimmed(newRows[i])
-		if oldRows[i] == newRows[i] {
+		if oldRows[i].start != newRows[i].start {
+			return "a repair cannot split or join a table"
+		}
+		if oldRows[i].start {
+			header, split = nil, false
+		}
+		o, n := cellsTrimmed(oldRows[i].line), cellsTrimmed(newRows[i].line)
+		if oldRows[i].line == newRows[i].line {
 			if isHeaderCells(o) {
 				header, split = o, false
+				continue
+			}
+			// Under a split header every row is split: a header-only or
+			// partial split leaves rows that disagree on the runner column.
+			if split {
+				return "a repair must split every row of a split table"
 			}
 			continue
 		}
@@ -304,6 +323,12 @@ func evidenceRepairReaderView(before, after string, added []string) string {
 		t := strings.TrimSpace(l)
 		if strings.Contains(l, "<!--") || strings.Contains(l, "-->") || strings.HasPrefix(t, "```") || strings.HasPrefix(t, "~~~") {
 			return "a repair cannot add a comment or fence line"
+		}
+		// Any other HTML start: an unterminated processing instruction, CDATA
+		// section or declaration hides the rest of the rendered page, and
+		// <details> collapses it. A repair needs none of them.
+		if evidenceRepairHTMLRe.MatchString(l) {
+			return "a repair cannot add an HTML line"
 		}
 	}
 	if !sameRowRuns(before, after) {
@@ -452,7 +477,7 @@ func corroborateEvidenceRepairs(repo, rel string, repairs []evidenceRepair, clie
 				if !repairNamesBrief(body, id) {
 					return "does not name the brief " + id + " as its own path"
 				}
-				if !commentNamesRecord(body, thread) || !strings.Contains(strings.ToLower(body), "authoriz") {
+				if !commentNamesRecord(body, thread) || !repairAuthorizes(body) {
 					return "does not authorize a repair on " + thread + " (it must say it authorizes and name " + thread + ")"
 				}
 				return ""
@@ -466,6 +491,39 @@ func corroborateEvidenceRepairs(repo, rel string, repairs []evidenceRepair, clie
 		}
 	}
 	return ""
+}
+
+// evidenceRepairHTMLRe is an HTML tag, comment, declaration or processing
+// instruction start anywhere on a line.
+var evidenceRepairHTMLRe = regexp.MustCompile(`<[A-Za-z/?!]`)
+
+// repairApprovalHedges are the words that negate or condition a sentence. An
+// approval is a plain statement, so a comment carrying any of them, anywhere,
+// does not approve.
+var repairApprovalHedges = map[string]bool{
+	"not": true, "no": true, "never": true, "nor": true, "cannot": true,
+	"dont": true, "doesnt": true, "wont": true, "cant": true, "isnt": true,
+	"unless": true, "if": true, "provided": true, "providing": true, "assuming": true,
+	"once": true, "until": true, "when": true, "whenever": true, "after": true,
+	"pending": true, "conditional": true, "conditionally": true, "subject": true,
+	"revoke": true, "revoked": true, "withdraw": true, "withdrawn": true,
+	"unauthorized": true, "unauthorised": true, "deauthorize": true,
+}
+
+// repairAuthorizes: the comment says "authorize" as a whole word, and no word
+// in it negates or conditions the sentence.
+func repairAuthorizes(body string) bool {
+	words := strings.FieldsFunc(strings.ToLower(strings.ReplaceAll(body, "’", "'")), func(r rune) bool {
+		return !unicode.IsLetter(r) && r != '\''
+	})
+	said := false
+	for _, w := range words {
+		if repairApprovalHedges[w] || strings.HasSuffix(w, "n't") {
+			return false
+		}
+		said = said || w == "authorize"
+	}
+	return said
 }
 
 // repairNamesBrief is commentNamesRecord without path boundaries: the brief id

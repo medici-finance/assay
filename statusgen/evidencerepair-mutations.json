@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run '^(TestEvidenceRepair(Chain|Refusals|Placement|VerifyRow|Editorial|RecordKind)|TestRepair(DateCellIsDate|ReaderView|WholeDocView|ApprovalScope))$' -count=1 -timeout 600s -failfast",
+  "test": "go test . -run '^(TestEvidenceRepair(Chain|Refusals|Placement|VerifyRow|Editorial|RecordKind)|TestRepair(DateCellIsDate|ReaderView|WholeDocView|ApprovalScope|SplitComplete|NoHTML|VerdictOrder|DriverUnset))$' -count=1 -timeout 600s -failfast",
   "control": {
     "name": "drop prefix check after repair",
     "file": "acceptancetransition.go",
@@ -82,13 +82,13 @@
     {
       "name": "approval need not name its thread",
       "file": "evidencerepair.go",
-      "old": "if !commentNamesRecord(body, thread) || !strings.Contains",
-      "new": "if !strings.Contains"
+      "old": "if !commentNamesRecord(body, thread) || !repairAuthorizes(body) {",
+      "new": "if !repairAuthorizes(body) {"
     },
     {
       "name": "approval need not authorize",
       "file": "evidencerepair.go",
-      "old": " || !strings.Contains(strings.ToLower(body), \"authoriz\") {",
+      "old": " || !repairAuthorizes(body) {",
       "new": " {"
     },
     {
@@ -138,6 +138,42 @@
       "file": "evidencerepair.go",
       "old": "if len(ra[id]) != len(rows) {",
       "new": "if false && len(ra[id]) != len(rows) {"
+    },
+    {
+      "name": "approval may be negated or conditional",
+      "file": "evidencerepair.go",
+      "old": "if repairApprovalHedges[w] || strings.HasSuffix(w, \"n't\") {",
+      "new": "if false {"
+    },
+    {
+      "name": "admit a partial table split",
+      "file": "evidencerepair.go",
+      "old": "\t\t\tif split {\n\t\t\t\treturn \"a repair must split every row of a split table\"\n\t\t\t}\n",
+      "new": ""
+    },
+    {
+      "name": "keep the column map across tables",
+      "file": "evidencerepair.go",
+      "old": "\t\tif oldRows[i].start {\n\t\t\theader, split = nil, false\n\t\t}\n",
+      "new": ""
+    },
+    {
+      "name": "admit an added HTML line",
+      "file": "evidencerepair.go",
+      "old": "if evidenceRepairHTMLRe.MatchString(l) {",
+      "new": "if false {"
+    },
+    {
+      "name": "compare verdict counts only",
+      "file": "evidencerepair.go",
+      "old": "if vb[i].word != va[i].word || vb[i].strict != va[i].strict || vb[i].struck != va[i].struck {",
+      "new": "if false && (vb[i].word != va[i].word || vb[i].strict != va[i].strict || vb[i].struck != va[i].struck) {"
+    },
+    {
+      "name": "skip the driver-unset guard",
+      "file": "evidencerepair.go",
+      "old": "if cfg.Bless.Login == \"\" || driver == \"\" {",
+      "new": "if false {"
     }
   ]
 }
