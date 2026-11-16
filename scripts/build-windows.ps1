@@ -370,7 +370,9 @@ function Target-DeskInstall {
 
 function Target-DeskManifest {
     # Same contract as the Makefile's desk-manifest (#6604): every regular file
-    # at the top of the install dir, the manifest excluded, ordinal-sorted, in
+    # at the top of the install dir, the manifest excluded, sorted by Name
+    # (Sort-Object: culture-aware and case-insensitive, unlike the Makefile's
+    # LC_ALL=C sort; line order does not affect checking), in
     # shasum-compatible lines "<sha256(lowercased)>  <filename>", written beside
     # those files; the old tools/desk/MANIFEST.sha256 is deleted.
     Remove-Item -Force -ErrorAction SilentlyContinue -Path $LegacyManifest

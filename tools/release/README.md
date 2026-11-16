@@ -123,8 +123,10 @@ from the staged bytes the package step then tars. It is not a release manifest;
 the standalone statusgen/qualgen assets, the tarballs and the SBOM stay covered
 by `checksums.txt`. `check` refuses an unlisted file as well as a changed or
 missing one, which `sha256sum -c` alone does not. The Makefile's
-`desk-manifest`, `scripts/build-windows.ps1 desk-manifest` and `deskinstall`
-write the same shape into the install dir. Offline fixtures:
+`desk-manifest` and `deskinstall` write the same shape into the install dir.
+`scripts/build-windows.ps1 desk-manifest` was changed to write it too, but it
+has not been run on Windows, and no CI leg runs it, so treat that target as
+untested. Offline fixtures:
 `python3 -B -m unittest discover -s tools/release -p desk_manifest_test.py -v`.
 
 The release workflow runs `write` and then `check` in the desk-tools package

@@ -54,7 +54,7 @@ files:
 facts:
 - The script was added with #6604. The release workflow's desk-tools package step runs `python3 -B -m tools.release.desk_manifest write "$stage"` and then `check "$stage"` before `tar`, in both `.github/workflows/release.yml` and `ci/staged-workflows/release.yml`. `tools/release/README.md` and `docs/distribution.md` quote the `check` form for operators. Re-enumerate at pickup.
 - Its contract: exit 0 on a written or clean manifest; exit 1 when `check` finds a problem; exit 2 for a usage error or when it cannot run (no directory, no manifest, an empty directory on `write`, a symlink or non-regular entry). `check` refuses a changed file, a listed file that is missing, a file present but not listed, a duplicate line and a malformed line. `write` goes through a temp file and `os.replace`.
-- The row was routed when the script landed. /46 owns the existing `deskrelease` command and /52 and /47 are at the five-simple-row ceiling, so this brief owns it rather than widening another child.
+- The row was routed when the script landed. /46 owns the existing `deskrelease` command and /52 is at the five-simple-row ceiling and /47 is already `implemented`, so this brief owns it rather than widening another child.
 - Contract: `docs/streams/desktools-v2/cli-contract.md` (from /15). A refused positional count exits 2 (`ExitUsage`), which matches the script's usage exit.
 
 layering: Cobra adds `manifest write` and `manifest check` under `deskrelease`, passing the validated directory into handlers that keep the script's walk, refusals and exit codes. No configuration key, flag or environment variable relaxes the unlisted-file refusal or skips a direction of the check.
