@@ -29,7 +29,7 @@ hand-edits a board cell, and the board follows the witness.
 > Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
 
 
-> The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache, every carried hold naming its source on the same line, and a hold with no live source dropped and reported at the next fresh sweep — is [`../../references/standing-note.md`](../../references/standing-note.md).
+> The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache, every carried hold naming its source on the same line and re-checked at the next fresh sweep (lifted only when its own lift condition is met or the identity that set it releases it; a hold whose source cannot be read, or cannot be found, is kept and reported, never dropped) — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
 > In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, how it is reconciled and marked read, and how each hold it carries is re-checked against its source are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
 

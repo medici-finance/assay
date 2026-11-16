@@ -204,8 +204,12 @@ prior tool output as *evicted*. That note orients the next cycle; it never subst
 read — see the reference for the nine-section schema and the re-probe rule that keeps a resumed
 session from acting on a remembered answer. A hold this desk carries, such as no ready-flip on one
 repository until a fix ships, names its source on the same line, at the scope that source states.
-At the next fresh sweep the desk re-reads that source and drops, and reports dropping, any hold
-with no live source (the reference's hold rule). A summary of the note never widens a hold.
+At the next fresh sweep the desk re-reads that source and drops, and reports dropping, a hold
+only when its own lift condition is met or the identity that set it releases it; a closed source
+is not a lift. A hold whose source cannot be read stays held as could-not-check, and one whose
+source cannot be found stays held, reported and escalated to the driver; neither is dropped (the
+reference's hold rule). Dropping a hold line never lifts a gate. A summary of the note never
+widens a hold.
 
 > In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, how it is reconciled and marked read, and how each hold it carries is re-checked against its source are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
 

@@ -71,10 +71,13 @@ recorded. Either way, `cellctl drain --now` appends every claim still held at st
    conclusions: refresh them, don't remember them.
 4. Re-check every hold the record carries at the first fresh sweep, under the hold rule in the
    standing note ([`standing-note.md`](./standing-note.md) § The hold rule). Re-read each hold's
-   source and keep the hold only at the scope that source states. A hold whose line names no
-   source, or whose source no longer supports it, is dropped, and the sweep reports the drop. A
-   hold whose source exists but cannot be read this sweep is reported as could-not-check. It is
-   neither dropped nor counted as confirmed.
+   source and keep the hold only at the scope that source states. A hold is dropped, and the
+   sweep reports the drop, only when its own lift condition is observed met or an identity
+   that could have set it released it; a closed source is not a lift. A line that names no
+   source is looked up first; if no record is found, the hold is kept, reported as unsourced
+   and escalated to the driver once. A hold whose source exists but cannot be read this sweep
+   is reported as could-not-check. It is neither dropped nor counted as confirmed. Dropping a
+   hold line never lifts a gate enforced elsewhere.
 5. Mark it read by renaming it to `<role>.read.md` in the same directory, so the next boot does not
    replay it. A drain writes a fresh `<role>.md`, so no read record is overwritten by accident.
 
