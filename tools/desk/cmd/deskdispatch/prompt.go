@@ -520,6 +520,7 @@ func writeVerifierAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPl
 		}
 	}
 	fmt.Fprintf(b, "## Pre-work admission\n\nBefore any Verify row or model-attested result, run `deskdispatch --check-verifier --root %s --brief %s`. Only a successfully verified dispatcher receipt admits this exact run. PENDING, missing, refused or unreadable records admit no work. Do not edit any file in the home before the check; afterwards edit only the brief's Evidence section, never the stream index (after you return, the desk edits this brief's own row for its row-scoped landing; any stream-index change in the home refuses this check). Repeat the check before Evidence landing and carry its Verification-Attestation binding. Never stamp an implementation PR or self-stamp to pass this gate.\n\n", home, brief)
+	writeVerifierGitEnv(b)
 	b.WriteString("## Run the Verify table against merged main — READ-ONLY, no PR\n\n")
 	fmt.Fprintf(b, "You are VERIFYING `%s` in `%s`. This is a VERIFY pass, not an implementation: you run "+
 		"the item's Verify table against MERGED main and produce a written VERDICT (Evidence rows plus "+
@@ -532,6 +533,20 @@ func writeVerifierAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPl
 	b.WriteString("Release the dispatch claim once your verdict has LANDED — Evidence recorded and the item " +
 		"advanced or routed to the human gate — not on a branch push, which is not this class's output:\n\n")
 	writeReleaseClaim(b, o, plan, repo)
+}
+
+// writeVerifierGitEnv declares the verifier lane's controlled Git launch environment
+// (#4823): the operator's global and system Git configuration, and any includeIf they
+// carry, never reach a Verify row. It isolates the input of the origin-authority reader;
+// the reader stays strict, so an include that may affect authority is still refused.
+func writeVerifierGitEnv(b *strings.Builder) {
+	fmt.Fprintf(b, "## Git environment\n\nRun every Verify row in a shell started with the declared verifier Git environment "+
+		"(the listed variables are removed, never set empty):\n\n"+
+		"```sh\n%s\n```\n\n"+
+		"Identity, credential helper and remote keys for this home live in the clone's own config "+
+		"(`git config --worktree`), never through an include.path file. If an authority read still "+
+		"reports could-not-check, report it as observed; never retry by stripping or rewriting Git "+
+		"configuration.\n\n", deskkit.VerifierGitShell())
 }
 
 // writeReleaseClaim emits the dispatch-claim release command. The release names the CLAIM key
