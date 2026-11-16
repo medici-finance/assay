@@ -5412,16 +5412,56 @@ invocations each read a budget below the cap and both committed; measured, seedi
 `RateLimitPerPRPerHour-1` charged entries and holding one invocation inside its PUT produced
 **two commits and 11 charged writes against a 10 cap**.
 
+**The window is the write, not the run** (#5023). The lock is taken by
+`ac.enterWriteWindow` immediately before the budget read and held through the conditional
+forge write and the audit append; preparation (admission, remote snapshot, closure and
+decision-gate reads, the statusgen PROBLEM-diff) runs before it, so one landing's lint no
+longer holds the lock every other desk writer waits on. The remote target stays protected by
+the write itself, which is conditional on the blob preparation read: a target changed after
+preparation refuses with no write (`TestEvidenceSnapshotConcurrentFileEditRefuses`,
+`cmd/deskevidence/snapshot_test.go:122`), and an unrelated commit on the branch is still
+accepted (`TestEvidenceSnapshotUnrelatedCommitDoesNotConflict`, `snapshot_test.go:138`).
+Capability preflight (`RefuseIfTreeV2BelowV1`) reads only the local tree and the tool version,
+so it runs under the preparation lock; its refusal row is appended under the audit lock.
+Preparation stages content
+into the landing root, so it keeps its own exclusion: a per-root lock
+(`~/.config/assay/evidence-prep-<hash>.lock`) that serialises two landings on the SAME root and
+never two on different roots. The lock is keyed on the PARSED `--root` (either spelling the
+flag package accepts; a repeated `--root` is refused) and on the root admission names for the
+staged gates, each made canonical (absolute, symlinks resolved, then the directory's device and
+inode, or a case-folded path where those are unavailable), so two spellings of one directory
+take one lock (`TestDashRootTakesPrepLock`, `TestRecasedRootTakesPrepLock`,
+`TestRepeatedRootRefused`). A preparation lock that stays busy is contention, the same class
+as a busy audit lock (#6227): it is neither charged to the budget nor counted by the circuit
+breaker (`TestPrepBusyIsContended`).
+
+**The write window re-reads what preparation read.** Preparation holds no audit lock, so the
+write does not trust its reads: in `enterWriteWindow`, after the audit lock and before the
+budget, every input the write relies on is re-read through the uncached forge and a change
+refuses with nothing written. These are the admission (attestation, trust, labels, the home and
+tracking checkouts), the local evidence input (pinned by SHA-256 at preparation), visibility,
+the on-behalf-of principal, the board and the decision-gate verdict; on the outcome path, the
+record bytes, the join facts and their redaction, visibility, the principal and (for a
+branch-tip binding) the Evidence and observation bindings. The expensive staged gates (the
+statusgen PROBLEM-diff, verdict and sidecar checks) stay in preparation, their inputs pinned
+by those re-reads (`prepwindow_test.go`). A run that ends before its write window (refusal, noop, dry-run)
+takes the audit lock only for its one audit append. `TestBudgetOnlyInWriteWindow` fails any
+budget spend or audit-lock acquisition outside that window. The two locks share ONE 60s wait
+budget per run, so a refusal never waits twice: a run whose write-window lock (or preparation
+lock) stayed busy makes a single attempt at the audit lock for its refusal row and, failing
+that, appends it unlocked. `TestAuditWaitIsBounded` and `TestPrepRefusalWaitsOnce` pin the
+upper bound.
+
 Two details are load-bearing and easy to undo:
 
-- **Defer order.** `lock.release()` is registered BEFORE the deferred audit append, so
+- **Defer order.** `ac.releaseAuditLock()` is registered BEFORE the deferred audit append, so
   (Go runs defers LIFO) it runs after it. Swapping them puts the append outside the
   critical section, which is the exact window the lock exists to close. Guarded at source
   by `TestDeferOrderIsSourceGuarded` — the swap is not observable from a behavioural test
   (the gap is microseconds), so a source guard is the only thing that catches the refactor.
 - **It is a lock, not a retry.** The second caller does not lose a race and try again; it
   waits, then re-reads the ledger the first caller actually wrote. A lock it cannot get
-  inside 60s is Unverifiable (exit 6) — never "assume free" (C-10). A retry loop would
+  inside 60s of waiting in total (one budget across the preparation and audit locks) is Unverifiable (exit 6) — never "assume free" (C-10). A retry loop would
   only make the double-spend rarer. `TestContendedLockTimesOutUnverifiable` holds the lock
   from a second file description and pins both halves: it waits, and it then refuses.
 
@@ -5431,8 +5471,8 @@ Two limits, so the guarantee is not read as more than it is:
   do not serialise against each other. Each also writes its own `~/.config/assay/
   audit.jsonl`, so the rate-limit ledger they are protecting is per-host too — the lock is
   exactly as wide as the thing it guards, and no wider.
-- **The holder is bounded by an HTTP timeout, not by the lock.** Every network call runs
-  inside the critical section, so `httpClient` carries a 30s per-request `Timeout`
+- **The holder is bounded by an HTTP timeout, not by the lock.** The forge write and the
+  attribution read run inside the critical section, so `httpClient` carries a 30s per-request `Timeout`
   (`cmd/deskevidence/github.go`). Without it a hung connection would pin the *shared*
   `audit.lock` and starve `deskpost` and `deskrelease` with it. `deskpost` and
   `deskrelease` still use `http.DefaultClient` and do not have this bound. The timeout is
@@ -5440,8 +5480,8 @@ Two limits, so the guarantee is not read as more than it is:
   replaces `httpClient` with one wired to the fake, so the production declaration is never
   exercised and reverting it to `http.DefaultClient` used to survive the suite green.
 - **Failure mode: refuse, never proceed.** A lock that cannot be acquired — for any reason,
-  including the 60s deadline — returns `Unverifiable` from `runOutward` before
-  `cmdEvidence` is called, so nothing outward happens and exactly one audit line is
+  including the run's single 60s wait budget — returns `Unverifiable` from `enterWriteWindow` before the
+  budget is read, so nothing outward happens and exactly one audit line is
   written. There is no arm that degrades to "proceed unserialised", which would be worse
   than no lock because it would report success.
   `TestLockFailureStillWritesOneAuditLine` and `TestContendedLockTimesOutUnverifiable` both

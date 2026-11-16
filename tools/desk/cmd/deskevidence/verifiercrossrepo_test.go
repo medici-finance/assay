@@ -183,7 +183,11 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 	fragment := filepath.Join(t.TempDir(), "rows.md")
 	os.WriteFile(fragment, []byte(rows), 0600)
 	land := func(repo string, args ...string) error {
-		return cmdEvidence(append([]string{repo, "evidence-branch"}, args...), &auditCtx{})
+		// Like runOutward: release the preparation and audit locks when the landing ends.
+		ac := &auditCtx{}
+		defer ac.releasePrep()
+		defer ac.releaseAuditLock()
+		return cmdEvidence(append([]string{repo, "evidence-branch"}, args...), ac)
 	}
 	if err := land("example-org/source", "--root", source, "--brief-path", brief, "--evidence-file", fragment); err == nil {
 		t.Fatal("Evidence admitted to deliverable repository")
