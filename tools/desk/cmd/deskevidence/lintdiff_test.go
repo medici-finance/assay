@@ -468,3 +468,68 @@ func TestIntroducedStillRefused(t *testing.T) {
 		}
 	}
 }
+
+// A refusal prints the before-landing set beside the introduced lines, so a changed line
+// on a brief shows as a change, not only as an addition.
+//
+// regression: #6581
+func TestRefusalPrintsBeforeSet(t *testing.T) {
+	target := "docs/streams/example-stream/brief-12-example.md"
+	before := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
+	after := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	stubStatusgenLint(t, []string{before}, []string{after})
+	notices := captureLintDiffNotices(t)
+	introduced, err := lintDiffAt(t.TempDir(), target, []byte("x\n"), childOptions{})
+	if err != nil {
+		t.Fatalf("lintDiffAt: %v", err)
+	}
+	if len(introduced) != 1 || introduced[0] != after {
+		t.Fatalf("introduced = %v, want [%s]", introduced, after)
+	}
+	for _, want := range []string{
+		"deskevidence: lint delta for " + target + ": 1 PROBLEM line(s) before this landing, 1 introduced",
+		"  before: " + before,
+		"  introduced: " + after,
+	} {
+		if !strings.Contains(notices.String(), want+"\n") {
+			t.Fatalf("stderr lacks %q:\n%s", want, notices.String())
+		}
+	}
+}
+
+// Pins TODAY's behaviour when one brief's could-not-check changes class (different
+// wording) between the before and after runs. The diff is on exact lines, so the after
+// line is new. On a brief the landing does not write it is excused with a NOTICE; on the
+// landing's own brief it is counted as introduced and refuses. This test records that
+// behaviour; it is not a ruling that it is right.
+//
+// regression: #6581
+func TestCouldNotCheckClassChange(t *testing.T) {
+	const (
+		ownTarget   = "docs/streams/example-stream/brief-12-example.md"
+		otherTarget = "docs/streams/example-third/brief-37-example.md"
+	)
+	ownBefore := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
+	ownAfter := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	for _, tc := range []struct {
+		name   string
+		target string
+		want   []string
+	}{
+		{"untouched brief: excused", otherTarget, nil},
+		{"own brief: refused", ownTarget, []string{ownAfter}},
+	} {
+		stubStatusgenLint(t, []string{ownBefore}, []string{ownAfter})
+		notices := captureLintDiffNotices(t)
+		introduced, err := lintDiffAt(t.TempDir(), tc.target, []byte("x\n"), childOptions{})
+		if err != nil {
+			t.Fatalf("%s: lintDiffAt: %v", tc.name, err)
+		}
+		if strings.Join(introduced, "\n") != strings.Join(tc.want, "\n") {
+			t.Fatalf("%s: introduced = %v, want %v", tc.name, introduced, tc.want)
+		}
+		if tc.want == nil && !strings.Contains(notices.String(), "NOTICE: not counted as introduced") {
+			t.Fatalf("%s: no NOTICE on stderr:\n%s", tc.name, notices.String())
+		}
+	}
+}

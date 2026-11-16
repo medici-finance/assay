@@ -120,7 +120,30 @@ func lintDiffAt(root, targetRepoPath string, newContent []byte, options childOpt
 		}
 		introduced = append(introduced, p)
 	}
+	if len(introduced) > 0 {
+		printBeforeSet(targetRepoPath, before, introduced)
+	}
 	return introduced, nil
+}
+
+// printBeforeSet writes the before-landing PROBLEM set to lintDiffStderr beside the lines
+// counted as introduced, so a refusal shows the whole delta: an introduced line whose
+// brief also has a differently worded line before is visible as a change, not only as an
+// addition (#6581).
+func printBeforeSet(targetRepoPath string, before, introduced []string) {
+	var b strings.Builder
+	fmt.Fprintf(&b, "deskevidence: lint delta for %s: %d PROBLEM line(s) before this landing, %d introduced\n",
+		targetRepoPath, len(before), len(introduced))
+	if len(before) == 0 {
+		b.WriteString("  before: (none)\n")
+	}
+	for _, p := range before {
+		b.WriteString("  before: " + p + "\n")
+	}
+	for _, p := range introduced {
+		b.WriteString("  introduced: " + p + "\n")
+	}
+	fmt.Fprint(lintDiffStderr, b.String())
 }
 
 // lintDiffStderr receives the NOTICE lines for after-only could-not-check PROBLEMs that

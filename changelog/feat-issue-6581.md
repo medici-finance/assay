@@ -1,2 +1,3 @@
 ### Fixed
 - `deskevidence` no longer refuses a landing because a brief it does not write shows a could-not-check PROBLEM only in the after-landing lint, such as an origin-authority or `--acceptance-forge is required` read. Each such line is printed as a NOTICE on stderr. A could-not-check on the landing's own brief, any other new PROBLEM, and every new line for a path that names no single brief still refuse.
+- When `deskevidence` refuses a landing for introduced statusgen PROBLEM lines, it now prints the before-landing PROBLEM set beside the introduced lines on stderr, so a line that changed wording shows as a change and not only as an addition.
