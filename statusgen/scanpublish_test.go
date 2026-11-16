@@ -676,3 +676,64 @@ func TestPublicCoverageShape(t *testing.T) {
 		t.Fatalf("the judgment record has fields the public allowlist does not cover: %v", u)
 	}
 }
+
+// TestPublicCoverageEmbeddedTags plants one embedded struct per json tag shape and requires the
+// coverage walk to name its field at the path encoding/json writes it to: promoted for no tag or an
+// options-only tag, nested under the name for a named tag. A walk that skips any of them is fail-open.
+// regression: 6362-a6
+func TestPublicCoverageEmbeddedTags(t *testing.T) {
+	type plain struct {
+		A string `json:"a"`
+	}
+	type opts struct {
+		B string `json:"b"`
+	}
+	type named struct {
+		C string `json:"c"`
+	}
+	type Exported struct {
+		D string `json:"d"`
+	}
+	type hidden struct {
+		E string `json:"e"`
+	}
+	cases := []struct {
+		name  string
+		probe any
+		want  string
+	}{
+		{"untagged", struct{ plain }{}, "a"},
+		{"options-only", struct {
+			opts `json:",omitempty"`
+		}{}, "b"},
+		{"named", struct {
+			named `json:"inner"`
+		}{}, "inner.c"},
+		{"exported options-only", struct {
+			Exported `json:",omitempty"`
+		}{}, "d"},
+		{"pointer named", struct {
+			*named `json:"inner"`
+		}{&named{}}, "inner.c"},
+		{"dash", struct {
+			hidden `json:"-"`
+		}{}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := strings.Join(uncoveredFields(reflect.TypeOf(c.probe), "", map[string]string{}), ",")
+			if got != c.want {
+				t.Fatalf("uncovered = %q, want %q", got, c.want)
+			}
+			// The probe's own control: encoding/json writes exactly the leaf the walk names.
+			b, err := json.Marshal(c.probe)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := map[string]string{"": `{}`, "a": `{"a":""}`, "b": `{"b":""}`, "d": `{"d":""}`, "inner.c": `{"inner":{"c":""}}`}[c.want]
+			if string(b) != want {
+				t.Fatalf("encoding/json wrote %s, want %s: the probe does not match the walk's path", b, want)
+			}
+		})
+	}
+}

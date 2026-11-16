@@ -5,7 +5,7 @@ title: "The scan publishes recorded intake judgments beside their placeholders, 
 consequence: major
 decided-by: "human:<name>"
 alternatives:
-  - "Publish the judgment's fields as recorded (the brief's option 1), relying on the reviewed intake change and the repository's outbound checks to catch prose before merge. Not chosen as the default. A judgment is pushed to a draft pull request branch before anyone reads it, and in a public repository text that has been pushed cannot be taken back. It stays open as the other side of the fork on #6364."
+  - "Publish the judgment's fields as recorded (the brief's option 1), relying on the reviewed intake change and the repository's outbound checks to catch prose before merge. Not chosen as the default. A judgment is pushed to a draft pull request branch before anyone reads it, and in a public repository text that has been pushed cannot be taken back. It was the other side of the fork on #6364, which the driver ruled on 2026-11-16 for option A (typed references only), not this option."
   - "Have `scanloop` write the companion file and the two placeholder keys itself, after `land --handoff`. Not chosen: the scanner renders, strips and archives the placeholder, so a second writer could disagree with it on the same file. The scanner stays the only writer and `scanloop` only supplies inputs."
   - "Under a public root, drop the free-text fields and publish the rest. Not chosen: the board refuses to schedule on a judgment whose evidence is empty, so dropping evidence publishes a judgment that admits nothing, and dropping it silently hides that the judgment was held back."
   - "A denylist that strips or refuses the named free-text fields (`evidence`, `required_action`, `wake_condition`). Not chosen, and replaced during review: any string field the list does not name can carry prose, so a denylist publishes by default whatever it forgot."
@@ -78,12 +78,11 @@ that has no judgment behind it (in `scanloop`). The refusal is the scoping docum
 
 ## What this record does NOT decide
 
-It does not decide the scrub boundary itself. Option 2 of the brief (typed references only,
-option A on the decision issue) is implemented as the interim default because it is the
-narrower behaviour and can be widened later. Whether the driver keeps it or chooses to publish
-the fields as recorded is the open fork on #6364, and this record does not resolve it. If the
-ruling chooses the other option, this record is amended or superseded, and the implementation
-follows the ruling.
+It does not decide the scrub boundary itself. That fork was put on the decision issue #6364,
+and the driver ruled it there on 2026-11-16 for option A (typed references only), which is the
+brief's option 2 and the behaviour this record describes. The ruling settles the fork; it is not
+an approval of this record, which stays as stated above. If a later ruling chooses the other
+option, this record is amended or superseded, and the implementation follows the ruling.
 
 It does not add an event time to the issue wire or an exact event-time match; that is a
 follow-up brief if the driver wants it. It does not change `spec/intake-handoff-v1.md`,

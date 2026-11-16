@@ -124,7 +124,10 @@ var publicUncovered = sync.OnceValue(func() []string {
 
 // uncoveredFields walks the fields encoding/json reads from t by JSON path, into nested structs,
 // pointers to them and embedded structs (a time is a leaf), and returns each leaf path covered does
-// not list, or lists with a shape other than the field's own.
+// not list, or lists with a shape other than the field's own. It skips exactly the fields
+// encoding/json skips (an unexported field that is not an embedded struct, a "-" tag), so an
+// embedded struct is walked whatever its tag: promoted when the tag names no field (none, or
+// options only such as ",omitempty"), and nested under the tag's name when it names one.
 func uncoveredFields(t reflect.Type, prefix string, covered map[string]string) []string {
 	var out []string
 	for i := 0; i < t.NumField(); i++ {
@@ -134,12 +137,13 @@ func uncoveredFields(t reflect.Type, prefix string, covered map[string]string) [
 			ft = ft.Elem()
 		}
 		nested := ft.Kind() == reflect.Struct && ft != reflect.TypeOf(time.Time{})
-		if f.Anonymous && nested && f.Tag.Get("json") == "" {
-			// encoding/json promotes an embedded struct's fields, exported or not.
-			out = append(out, uncoveredFields(ft, prefix, covered)...)
+		tag := f.Tag.Get("json")
+		if tag == "-" || (!f.IsExported() && !(f.Anonymous && ft.Kind() == reflect.Struct)) {
 			continue
 		}
-		if !f.IsExported() || f.Tag.Get("json") == "-" {
+		if name, _, _ := strings.Cut(tag, ","); f.Anonymous && nested && name == "" {
+			// encoding/json promotes an embedded struct's fields, exported or not.
+			out = append(out, uncoveredFields(ft, prefix, covered)...)
 			continue
 		}
 		path := prefix + jsonFieldName(f)
