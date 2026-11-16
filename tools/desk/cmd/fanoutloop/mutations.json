@@ -36,6 +36,12 @@
       "file": "cmd/fanoutloop/represented.go",
       "old": "\tif deskkit.BriefAuthoringOnly(briefID, files) {",
       "new": "\tif false && deskkit.BriefAuthoringOnly(briefID, files) {"
+    },
+    {
+      "name": "#5853 \u2014 DISABLE the routedToVerify choke point so a brief row whose README status is past in-progress falls through to IMPLEMENT dispatch exactly as before the fix; TestPlanImplementedHumanGoesVerify, TestPlanVerifiedRowGoesVerify and TestSelectQueueRoutesInjectedDone must go red",
+      "file": "cmd/fanoutloop/adapter.go",
+      "old": "\tif strings.TrimSpace(r.Status) == \"\" || isDispatchableStatus(r.Status) {",
+      "new": "\tif true || strings.TrimSpace(r.Status) == \"\" || isDispatchableStatus(r.Status) {"
     }
   ]
 }

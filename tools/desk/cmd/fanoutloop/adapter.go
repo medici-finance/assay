@@ -137,6 +137,32 @@ type FanoutLoop struct {
 	// under mu, so a re-poll never reports a stale run's diagnostics.
 	landedUnreconciled []landedRow
 	freshHeld          string
+	// awaitingVerify lists every brief row (fresh or rework lane) whose live Status is past
+	// `in-progress` — delivered work, routed to the verify listing and never dispatched (#5853).
+	awaitingVerify []BoardRow
+}
+
+// routedToVerify is the single choke point that keeps delivered work out of IMPLEMENT (#5853): a
+// brief row whose live Status is KNOWN and past `in-progress` (implemented, verified, done, …) is
+// recorded for renderPlan's ROUTED TO VERIFY heading and reported as routed. Every brief lane
+// (fresh Next-up and the STATUS.md rework section) passes through it, whatever source produced the
+// row. An unknown Status ("") is could-not-check and is never rounded to delivered. Durable repair
+// obligations are not brief rows and stay the dispatchable rework source.
+func (f *FanoutLoop) routedToVerify(r BoardRow) bool {
+	if strings.TrimSpace(r.Status) == "" || isDispatchableStatus(r.Status) {
+		return false
+	}
+	f.mu.Lock()
+	f.awaitingVerify = append(f.awaitingVerify, r)
+	f.mu.Unlock()
+	return true
+}
+
+// awaitingVerifyRows returns the rows the last SelectQueue routed to the verify listing.
+func (f *FanoutLoop) awaitingVerifyRows() []BoardRow {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]BoardRow(nil), f.awaitingVerify...)
 }
 
 // landedRow is one fresh Next-up row whose brief already has a MERGED PR: its board cell simply never
@@ -163,6 +189,7 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	// Reset the plan diagnostics up front so a re-poll never reports a stale run's landed/held state.
 	f.mu.Lock()
 	f.landedUnreconciled = nil
+	f.awaitingVerify = nil
 	f.freshHeld = ""
 	f.mu.Unlock()
 
@@ -215,13 +242,17 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	// OPEN or MERGED PR is a phantom this lane used to skip. Held on could-not-check. The DURABLE repair
 	// obligations (step 2b) stay EXEMPT: a repair obligation legitimately reworks a MERGED original via a
 	// fresh follow-up branch (§Sources of work row 5b), so a representing PR is expected there.
+	// A row whose Status is past `in-progress` — by construction every row of that section, whose own
+	// Status column reads implemented/verified — is delivered work: routedToVerify lists it for
+	// verification and it is never offered as IMPLEMENT (#5853). Owed implementation rework reaches a
+	// worker as a durable repair obligation (2b), whose prompt carries the failed verification.
 	rework, err := f.reworkSource()
 	if err != nil {
 		return nil, err
 	}
 	if !held {
 		for _, r := range rework {
-			if f.isHandled(r.ID()) {
+			if f.isHandled(r.ID()) || f.routedToVerify(r) {
 				continue
 			}
 			if _, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
@@ -264,7 +295,7 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 				// NOT dropped here — they ARE this loop's work (Procedure 2) and flow through below.
 				continue
 			}
-			if f.isHandled(r.ID()) {
+			if f.isHandled(r.ID()) || f.routedToVerify(r) {
 				continue
 			}
 			if rp, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {

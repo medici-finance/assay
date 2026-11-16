@@ -40,6 +40,11 @@ type BoardRow struct {
 	// (the `review-request` label) — see isForeignDispatchToken. The default STATUS.md reader carries
 	// no label column, so rows it produces leave this nil and fall back to the title convention.
 	Labels []string
+	// Status is the row's live lifecycle cell (its own stream README Status cell, or the board's
+	// own Status column when the README cannot be read). "" is could-not-check. SelectQueue routes a
+	// row whose Status is known and past `in-progress` to the verify listing, never to IMPLEMENT
+	// (#5853): delivered work is never re-dispatched as fresh implementation.
+	Status string
 }
 
 // ID is the claim key / stable item ID for a board row. In the multi-repo live wiring it is
@@ -242,6 +247,9 @@ func readNextUp(root, targetSHA string) ([]BoardRow, error) {
 			continue
 		}
 		br := BoardRow{Stream: stream, Num: num, Title: title}
+		if live, ok := liveStatus(stream, num); ok {
+			br.Status = live
+		}
 		br.BriefPath, br.Effort, br.ExecTier, br.Gate, br.Risk, br.Implementer, br.OutOfRepo, br.WriteScopes = resolveBrief(root, stream, num)
 		rows = append(rows, br)
 	}
@@ -387,7 +395,10 @@ func readAwaitingRework(root string) ([]BoardRow, error) {
 				stream, num, live)
 			continue
 		}
-		br := BoardRow{Stream: stream, Num: num}
+		br := BoardRow{Stream: stream, Num: num, Status: strings.TrimSpace(cells["status"])}
+		if live, ok := liveStatus(stream, num); ok {
+			br.Status = live
+		}
 		br.BriefPath, br.Effort, br.ExecTier, br.Gate, br.Risk, br.Implementer, br.OutOfRepo, br.WriteScopes = resolveBrief(root, stream, num)
 		rows = append(rows, br)
 	}

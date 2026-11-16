@@ -183,6 +183,16 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 		}
 	}
 
+	// ROUTED TO VERIFY (#5853): brief rows whose own README Status is past `in-progress`. The work is
+	// delivered; what it owes is verification (or, for a failed verification, a durable repair
+	// obligation), never a fresh IMPLEMENT. Listed here and DELIBERATELY absent from DISPATCH above.
+	if routed := f.awaitingVerifyRows(); len(routed) > 0 {
+		fmt.Fprintf(out, "\n=== ROUTED TO VERIFY: %d row(s) — README status past in-progress; NOT dispatched as IMPLEMENT (#5853) ===\n", len(routed))
+		for _, r := range routed {
+			fmt.Fprintf(out, "  %s — README status %s (verify-desk queue)\n", r.ID(), r.Status)
+		}
+	}
+
 	// ADVISORY write-scope overlap warnings, AFTER the queue rows.
 	// These are coordination HINTS, not locks: nothing above was gated, delayed, or skipped on
 	// account of an overlap — every eligible item was planned exactly as before. Disjoint
@@ -273,7 +283,9 @@ USAGE:
 a directed message to this desk — leads, then orphan resumes, then Awaiting-implementer-rework rows,
 then the Next-up board in board order — issue-<NN> placeholders INCLUDED, only a different loop's
 review-request dispatch tokens skipped), each item's tier, and the exact dispatch instruction. It
-spawns nothing and writes nothing. The already-represented reconciliation (#1339) routes a fresh row
+spawns nothing and writes nothing. A brief row whose own README status is past in-progress
+(implemented, verified, done) is delivered work: it is listed under 'ROUTED TO VERIFY' and never
+offered as IMPLEMENT (#5853). The already-represented reconciliation (#1339) routes a fresh row
 whose brief already has a MERGED PR to the LANDED-UNRECONCILED listing (its board cell just never
 reconciled) and never dispatches it, routes one with an OPEN PR to the resume lane, and dispatches
 only unrepresented rows. A PR that only AUTHORED the queued brief (a docs-only PR adding its brief
