@@ -171,6 +171,19 @@ func (s *ScanLoop) park(dispatchID string) {
 	}
 }
 
+// parkMembers parks named inbound items directly — the members of a batch the lane could not
+// credit with an exit, while the rest of the batch lands.
+func (s *ScanLoop) parkMembers(ids []string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.parked == nil {
+		s.parked = map[string]bool{}
+	}
+	for _, m := range ids {
+		s.parked[m] = true
+	}
+}
+
 // Parked names the items emitted for routing this pass, sorted.
 func (s *ScanLoop) Parked() []string {
 	s.mu.Lock()
@@ -626,12 +639,25 @@ func (s *ScanLoop) Land(r loopengine.Result) error {
 	// lane's outward write has happened, so every member still gets its ledger entry and its audit
 	// `land` line, and the failures are reported together once the batch is landed.
 	var recordErrs []error
+	// A member the scan wrote no placeholder for has not left by the placeholder exit (#6601): no
+	// ledger entry, no audit line, no exit record. It is parked, so the pass report names it under
+	// EMITTED with the land command for its real disposition, and the leak check does not count it.
+	unwritten := map[string]bool{}
+	for _, m := range outcome.Unwritten {
+		unwritten[m] = true
+	}
+	if len(unwritten) > 0 {
+		s.parkMembers(outcome.Unwritten)
+	}
 	for _, member := range members {
+		if unwritten[member] {
+			continue
+		}
 		rec := ExitRecord{
 			ItemID:   member,
 			Exit:     exit,
 			Lane:     outcome.Lane,
-			Artifact: firstNonEmpty(r.Artifact, outcome.Artifact),
+			Artifact: firstNonEmpty(outcome.MemberArtifacts[member], r.Artifact, outcome.Artifact),
 			Verdict:  r.Verdict,
 		}
 		if err := s.Ledger().Record(rec); err != nil {
@@ -759,10 +785,9 @@ func HasPlaceholder(root, repo string, number int) (bool, error) {
 		return false, deskkit.Unverifiable("scanloop: cannot read the placeholder state under "+dir, err)
 	}
 	want := strconv.Itoa(number)
-	short := repo
-	if _, name, ok := strings.Cut(repo, "/"); ok {
-		short = name
-	}
+	// The scanner stems a foreign placeholder with the slug's LAST segment, so a GitLab nested
+	// group (`group/sub/project`) is `project-issue-N.md` (#6601).
+	short := placeholderStemOf(repo)
 	for _, e := range entries {
 		if e.IsDir() {
 			continue

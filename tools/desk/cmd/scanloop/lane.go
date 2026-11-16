@@ -84,6 +84,13 @@ type LaneOutcome struct {
 	// an item that did leave. They are never swallowed either: each is a "# WARNING:" step in the
 	// dispatch block and a line of its own in the pass report.
 	Warnings []string
+	// Unwritten names the batch members the scan wrote NO placeholder for (written.go). Land
+	// records no exit for them and parks them for a routing decision: a placeholder exit whose
+	// artifact does not carry the member's placeholder is a false exit (#6601).
+	Unwritten []string
+	// MemberArtifacts overrides Artifact for a member whose placeholder is carried by ANOTHER open
+	// scan carrier, so its exit names the change that actually carries it.
+	MemberArtifacts map[string]string
 	// metaDir is the private directory the lane created for the derived title and body files, or
 	// "" when it created none. Execute removes it whatever happened.
 	metaDir string
@@ -300,12 +307,33 @@ func (l scanCarrierPRLane) carry(req LaneRequest) (LaneOutcome, error) {
 	// 2b. put back what another open scan carrier already carries, so this carrier is its own
 	//     delta and merges in any order (carriers.go). Untracked files are cleaned, tracked ones
 	//     restored to the base this worktree was cut from — both inside the isolated worktree only.
-	if len(req.Carried) > 0 {
+	//
+	//     The same read is what the members are credited from: a member is a placeholder exit only
+	//     if the scan wrote its placeholder (written.go). A batch item always names its members; a
+	//     request with neither members nor carried paths keeps the plain commit path.
+	members := strings.Fields(req.Item.Payload["members"])
+	if len(req.Carried) > 0 || len(members) > 0 {
 		st, err := capture(req.Worktree, "git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", deskkit.ScanDir)
 		if err != nil {
 			return out, err
 		}
 		changed := parseStatusZ(st)
+		if !req.DryRun && len(members) > 0 {
+			credited, unwritten := creditMembers(members, changed)
+			out.Unwritten = unwritten
+			for m, p := range credited {
+				if n, ok := req.Carried[p]; ok {
+					if out.MemberArtifacts == nil {
+						out.MemberArtifacts = map[string]string{}
+					}
+					out.MemberArtifacts[m] = fmt.Sprintf("%s#%d", repo, n)
+				}
+			}
+			for _, m := range unwritten {
+				out.Steps = append(out.Steps, "# unwritten: the scan wrote no placeholder for "+m+
+					" — no placeholder exit is recorded for it; it is parked for a routing decision")
+			}
+		}
 		var restore, clean []string
 		by := map[int]bool{}
 		first := 0
@@ -335,17 +363,26 @@ func (l scanCarrierPRLane) carry(req LaneRequest) (LaneOutcome, error) {
 			}
 		}
 		excluded := len(restore) + len(clean)
-		note := fmt.Sprintf("# exclude: %d path(s) already carried by open scan carrier(s) %s left out of this carrier",
-			excluded, carriersNamed(by))
-		if req.DryRun {
-			note = fmt.Sprintf("# exclude: any of %d path(s) carried by other open scan carrier(s) are left out of this carrier",
-				len(req.Carried))
+		if len(req.Carried) > 0 {
+			note := fmt.Sprintf("# exclude: %d path(s) already carried by open scan carrier(s) %s left out of this carrier",
+				excluded, carriersNamed(by))
+			if req.DryRun {
+				note = fmt.Sprintf("# exclude: any of %d path(s) carried by other open scan carrier(s) are left out of this carrier",
+					len(req.Carried))
+			}
+			out.Steps = append(out.Steps, note)
 		}
-		out.Steps = append(out.Steps, note)
-		if !req.DryRun && len(changed) > 0 && excluded == len(changed) {
-			// Everything the scan wrote is already on an open carrier: nothing of this pass's own
-			// to commit, so no commit and no PR. The item's placeholder is on that carrier.
-			out.Artifact = fmt.Sprintf("%s#%d", repo, first)
+		if !req.DryRun && excluded == len(changed) {
+			// Nothing of this pass's own to commit — the scan wrote nothing, or everything it wrote
+			// is already on an open carrier — so no commit and no PR. A member whose placeholder is
+			// on another carrier names that carrier; an unwritten member has no artifact at all.
+			if first > 0 {
+				out.Artifact = fmt.Sprintf("%s#%d", repo, first)
+			}
+			if len(changed) == 0 {
+				out.Steps = append(out.Steps, "# zero delta: the scan wrote nothing under "+deskkit.ScanDir+
+					" — no commit and no carrier")
+			}
 			if err := step(req.Root, "git", "worktree", "remove", req.Worktree); err != nil {
 				out.warn("cleanup: could not remove worktree " + req.Worktree + ": " + err.Error() +
 					" — worktree retained for diagnosis; nothing was committed or published")

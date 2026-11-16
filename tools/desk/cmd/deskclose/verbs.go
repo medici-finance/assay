@@ -419,7 +419,7 @@ func applyClose(r closeReq, out io.Writer) error {
 	// the no-op shape the postcondition fails on — see step 7 and postcondition.go.
 	if it.closed() {
 		a.log(deskkit.ResultNoop, "already closed — idempotent no-op")
-		fmt.Fprintf(out, "noop\t%s#%d\talready closed\n", r.repo, r.number)
+		fmt.Fprintf(out, "noop\t%s\talready closed\n", itemRef(r.repo, r.number, itemKind))
 		return nil
 	}
 	if err := refuseDecisionItem(r.repo, it); err != nil {
@@ -439,7 +439,7 @@ func applyClose(r closeReq, out io.Writer) error {
 		// ResultDryRun is emitted only from a path that provably performed no outward
 		// write, and the flag that selects it is the flag that suppresses the write.
 		a.log(deskkit.ResultDryRun, "dry-run: verified, wrote nothing")
-		fmt.Fprintf(out, "dry-run\t%s#%d\t%s\ttarget=%s\n", r.repo, r.number, r.mode, r.target)
+		fmt.Fprintf(out, "dry-run\t%s\t%s\ttarget=%s\n", itemRef(r.repo, r.number, itemKind), r.mode, r.target)
 		fmt.Fprintln(out, body)
 		return nil
 	}
@@ -482,7 +482,7 @@ func applyClose(r closeReq, out io.Writer) error {
 		return closeRefused(a, r.repo, r.number, err)
 	}
 	a.log(deskkit.ResultOK, fmt.Sprintf("closed as %s via lane %s (target %s)", r.stateReason(), r.mode, r.target))
-	fmt.Fprintf(out, "closed\t%s#%d\t%s\ttarget=%s\treason=%s\n", r.repo, r.number, r.mode, r.target, r.stateReason())
+	fmt.Fprintf(out, "closed\t%s\t%s\ttarget=%s\treason=%s\n", itemRef(r.repo, r.number, itemKind), r.mode, r.target, r.stateReason())
 	return nil
 }
 
