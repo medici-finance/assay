@@ -143,7 +143,7 @@
       "name": "approval may be negated or conditional",
       "file": "evidencerepair.go",
       "old": "if repairApprovalHedges[w] || strings.HasSuffix(w, \"n't\") {",
-      "new": "if false {"
+      "new": "if false && (repairApprovalHedges[w] || strings.HasSuffix(w, \"n't\")) {"
     },
     {
       "name": "admit a partial table split",
@@ -191,7 +191,7 @@
       "name": "any speaker authorizes",
       "file": "evidencerepair.go",
       "old": "first = first || (w == \"authorize\" && i > 0 && words[i-1] == \"i\")",
-      "new": "first = first || w == \"authorize\""
+      "new": "first = first || (w == \"authorize\" && i >= 0)"
     },
     {
       "name": "a later refusal is ignored",
@@ -215,7 +215,7 @@
       "name": "any # row is a header",
       "file": "evidencerepair.go",
       "old": "head := isHeaderCells(o) && sepNext(i)",
-      "new": "head := isHeaderCells(o)"
+      "new": "head := isHeaderCells(o) && (sepNext(i) || true)"
     }
   ]
 }
