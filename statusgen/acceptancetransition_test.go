@@ -814,3 +814,92 @@ func TestGlobalIncludeApproval(t *testing.T) {
 		})
 	}
 }
+
+// regression: #4823
+// TestVerifierLaunchEnv pins Ruling A: the verifier lane's declared Git
+// environment (GIT_CONFIG_GLOBAL at a fixed include-free file,
+// GIT_CONFIG_NOSYSTEM=1) keeps an operator includeIf rewrite out of the
+// authority read, so the closure reaches a verdict. The reader stays strict:
+// an include carrying remote keys in the clone's own config is still refused.
+func TestVerifierLaunchEnv(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		controlled bool
+		include    bool // remote keys moved into a clone-local include.path file
+		want       bool
+	}{
+		{"operator-env", false, false, false},
+		{"controlled-inline", true, false, true},
+		{"controlled-include", true, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+			t.Setenv("GIT_CONFIG_SYSTEM", os.DevNull)
+			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+			t.Setenv("GIT_CONFIG_COUNT", "0")
+			t.Setenv("GIT_CONFIG_PARAMETERS", "")
+			f := transitionFixtureAt(t)
+			f.evidence(t, nil)
+			head := vfRev(t, f.root, "HEAD")
+			vfGit(t, f.root, vfMailHuman, "update-ref", "refs/remotes/origin/main", head)
+			adminRaw, err := historyGit(f.root, "rev-parse", "--absolute-git-dir").Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			admin := strings.TrimSpace(string(adminRaw))
+			// A synthetic operator global: an includeIf that matches this clone and
+			// rewrites the forge host. Never the host's own configuration.
+			home := t.TempDir()
+			rewrite := filepath.Join(home, "rewrite.config")
+			if err := os.WriteFile(rewrite, []byte("[url \"https://github.com/foreign/\"]\n insteadOf = https://github.com/\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			operator := fmt.Sprintf("[includeIf \"gitdir:%s\"]\n path = %s\n", filepath.ToSlash(admin), filepath.ToSlash(rewrite))
+			if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte(operator), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if tc.include {
+				// The verifier-home shape the issue reports: identity, credential and
+				// remote keys carried by an include.path file in the clone config.
+				id := filepath.Join(t.TempDir(), "verifier-id.cfg")
+				body := "[user]\n name = fixture\n email = fixture@example.invalid\n" +
+					"[remote \"origin\"]\n url = https://github.com/" + rlRepo + ".git\n"
+				if err := os.WriteFile(id, []byte(body), 0600); err != nil {
+					t.Fatal(err)
+				}
+				vfGit(t, f.root, vfMailHuman, "config", "--unset-all", "remote.origin.url")
+				vfGit(t, f.root, vfMailHuman, "config", "include.path", id)
+			} else {
+				// Identity written inline in the clone's own config, never via include.path.
+				vfGit(t, f.root, vfMailHuman, "config", "user.name", "fixture")
+			}
+			t.Setenv("HOME", home)
+			t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+			if tc.controlled {
+				t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
+				t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+			} else {
+				os.Unsetenv("GIT_CONFIG_GLOBAL") // t.Setenv above restores it
+			}
+			if !tc.want {
+				transitionClient = func() *ghClient { t.Fatal("authority include reached approval reader"); return nil }
+			}
+			resetReadMemo()
+			verify, evidence, err := briefSections(vfBrief(f.root))
+			if err != nil {
+				t.Fatal(err)
+			}
+			findings, why := closureWitnesses(verify, evidence, vfBrief(f.root))
+			accepted := why == "" && len(findings) == 3
+			for _, finding := range findings {
+				accepted = accepted && closureSatisfied(finding)
+			}
+			if accepted != tc.want {
+				t.Fatalf("closure accepted=%v want=%v: %s", accepted, tc.want, why)
+			}
+			if !tc.want && !strings.Contains(why, "could-not-check repository authority: repository origin authority is unavailable: an include may affect authority") {
+				t.Fatalf("refusal class not named: %s", why)
+			}
+		})
+	}
+}
