@@ -153,7 +153,7 @@ _Held by per-stream caps: 15 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: b08fef45c 2026-11-16T01:25:18Z_
+_last regen: 74562300a 2026-11-16T01:45:55Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -174,7 +174,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: b08fef45c 2026-11-16T01:25:18Z_
+_last regen: 74562300a 2026-11-16T01:45:55Z_
 
 **Progress:** 36/98 brief items done.
 
@@ -283,7 +283,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 10 [exec:strong] | implemented | 1500 | 1 | 8h | driver | close the sign-off card | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1500 | 1 | 8h | driver | human action, cite medici-finance/assay#1794 | — | — |
 | desk-containers | 30 [exec:strong] | implemented | 1000 | 0 | 8h | driver | human action, cite medici-finance/assay#5794 | — | — |
-| desk-containers | 34 [exec:strong] | implemented | 1000 | 0 | 7h | driver | human action, cite medici-finance/assay#6301 | — | — |
+| desk-containers | 34 [exec:strong] | implemented | 1000 | 0 | 8h | driver | human action, cite medici-finance/assay#6301 | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1000 | 0 | 8h | driver | human action, cite medici-finance/assay#1185 | — | — |
 | desk-supervision | 20 [exec:strong] | implemented | 1000 | 0 | 8h | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3765 | — | — |
 | desk-supervision | 21 [exec:strong] | implemented | 1000 | 0 | 8h | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3764 | — | — |
