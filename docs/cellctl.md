@@ -2027,6 +2027,72 @@ a cell name outside the root let through, a re-entry handed the wrong cells root
 whether the tests named in the spec notice each one. It is run by hand; no CI
 job runs it yet.
 
+## Managed repository stores (proposed, not active)
+
+A cell can own its own clone of each repository it works in. The clone is called a store, and it
+lives at `<cell>/repos/<repo key>/source`. It replaces sharing the operator's checkout. The
+contract is `spec/cell-workspaces-v1.md` section 5.4, and the code is `workspace/repository.go`
+(pure), `workspace/local/repository.go` (the effects) and
+`tools/desk/cmd/cellctl/workspace_repository.go` (composition).
+
+**Nothing is active.** No verb provisions a store and no new `cell.env` key turns it on. The
+operator decision for the first cell is still open. Until it is recorded, a cell works only from
+the checkouts `CELL_REPO` and `CELL_ROOTS` name.
+
+What cellctl owns once the decision is recorded:
+
+- **Repository identity.** Each `CELL_ROOTS` key, or any remote URL the shared origin parser
+  reads, resolves on the cell's forge (`CELL_FORGE`, with its host) to a canonical identity.
+  GitHub and GitLab route paths case-insensitively, so `Acme/Tools`,
+  `https://github.com/acme/tools.git` and `git@github.com:acme/tools.git` are one store.
+  `other/tools`, or `acme/tools` on a second forge, is a different store. The store key is the
+  repository's base name plus a digest of forge and path, so two same-named repositories never
+  share a directory.
+- **Legacy scope.** Every store stays physically outside the following, compared by resolved path
+  and by Git common directory:
+  - `CELL_REPO`;
+  - every `CELL_ROOTS` checkout and its `.claude/worktrees`;
+  - the cell's `worktrees`, `comms`, `tmp` and Go cache directories;
+  - the old sanctioned temporary worktree prefix that `deskwt` compiles in.
+
+  cellctl reads the legacy keys to work out this scope and never writes them. Rollback, child and
+  container profiles keep the same legacy keys, so they see the same checkouts as before.
+- **Publication.** cellctl writes `<cell>/run/workspaces/stores.json`, a generation-stamped
+  mapping, and writes it only after every store has verified. The generation check and the
+  rename happen under an exclusive lock beside the file, bounded: two publishers from one prior
+  generation cannot both succeed, and one that cannot get the lock in time is refused as `busy`. A managed-aware reader takes store
+  paths from this file alone, and finds it through one key, `CELL_WORKSPACE_STORES_V1` (below).
+  The mapping's contents are never exported as environment variables, so a reader that knows
+  nothing of it still sees the legacy keys exactly as before. The file carries the separately
+  versioned schema `cell-repository/v1`, which the workspace v1 reader refuses as an unknown
+  schema.
+  The lock file `stores.json.lock` stays beside the mapping after a publication; a rollback
+  removes it together with `stores.json`.
+- **Cell binding.** The cell's UUID is recorded against its resolved root in a machine-level
+  registry. A copied or moved cell directory that presents the same UUID is refused.
+
+The clone itself goes through an injected transport, which is the role's existing forge
+credential path. cellctl picks no new credential and stores none: an origin URL that carries a
+credential is refused. So is a store whose only remote is not `origin`, whose origin is not the
+requested repository on its forge (a local path, a file URL and another owner or host are all
+refused), whose branches track anything but `origin`, or whose Git directory carries an older
+remote-definition file it did not make. Before the mapping is written, every
+store the call made is read again.
+
+Proposed configuration, for the activation decision only. The key is not registered and nothing
+reads it today:
+
+| Key | Meaning |
+|---|---|
+| `CELL_WORKSPACE_STORES_V1` | The absolute path of the cell's store mapping file (schema `cell-repository/v1`). No default: when absent, the cell has no managed stores, and nothing is inferred from `CELL_REPO`, `CELL_ROOTS` or any other key. |
+
+It is the only key. There is no mode key, no repository-list key and no registry key. The
+repository allowlist, the transport and the cell-identity registry location are inputs of an
+activation, named by its own manifest and ruling, and none of them has a default.
+
+Tests: `TestCellRepositoryIsolation` and `TestCellRootBinding` (`workspace/local`, with mutation
+entries in `workspace/local/mutations.json`), and `TestStoreOriginNames` (`workspace/local`), and `TestWorkspaceRootMapAtomic`, `TestWorkspacePublishRereadsProvisioned` and `TestWorkspaceMappingPublishExclusive` (`cellctl`).
+
 ## Container cells
 
 ### Native Docker runtime (Go)

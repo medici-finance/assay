@@ -88,3 +88,5 @@ jobs:
           set -euo pipefail
           (cd tools/desk && go build -o "${RUNNER_TEMP}/muhar" ./cmd/muhar)
           cd workspace && "${RUNNER_TEMP}/muhar" -spec mutations.json
+          # The local adapter's store-independence checks (spec section 5.4).
+          "${RUNNER_TEMP}/muhar" -spec local/mutations.json

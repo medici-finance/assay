@@ -93,6 +93,7 @@ COPY gitquiet/ /src/gitquiet/
 COPY gitcore/ /src/gitcore/
 COPY deskcore /src/deskcore/
 COPY workflow/ /src/workflow/
+COPY workspace/ /src/workspace/
 
 # statusgen — its own module, stamped with main.statusgenVersion.
 WORKDIR /src/statusgen
