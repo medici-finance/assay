@@ -208,14 +208,10 @@ func fetchCommentAt(link deskkit.CommentLink, url string, kind deskkit.TargetKin
 			return out, nil
 		}
 	}
-	sigil := "#"
-	if link.Forge == deskkit.ForgeGitLab && link.Item.Kind == deskkit.TargetChange {
-		sigil = "!"
-	}
 	return ghComment{}, deskkit.Refused(fmt.Sprintf(
-		"refused: the authorization permalink names comment %d on %s%s%d, but no such comment is on that item — "+
+		"refused: the authorization permalink names comment %d on %s, but no such comment is on that item — "+
 			"the link and the artifact disagree, or the comment was deleted",
-		link.CommentID, deskkit.StripControl(link.Item.Repo), sigil, link.Item.Number))
+		link.CommentID, linkItemRef(link)))
 }
 
 // linkMatchesForge refuses a link whose forge or host is not the one serving its repository.
