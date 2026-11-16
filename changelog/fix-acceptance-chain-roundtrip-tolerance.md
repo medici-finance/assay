@@ -1,0 +1,2 @@
+### Fixed
+- `statusgen`'s acceptance-transition chain no longer leaves a delivered brief permanently unamendable after a main-side edit that was later restored. A span that leaves the accepted Verify table and returns to it with the table and `version:` byte-identical, before the next link, is now a no-op: the next link keeps the accepted revision as its predecessor. Any other unlinked change still refuses, including a restore that differs by whitespace or version and a round trip after the final link.
