@@ -321,7 +321,10 @@ the cache. Fresh clean accounting, current free-space headroom and owned root me
 are required; missing, stale, dirty or corrupt accounting refuses with a request to run
 `cellctl cache <cell> clean`. `cellctl up` alone runs that clean itself, once, when the
 refusal is the size or free-space margin or a stale measurement, then prepares again
-([Managed Go caches](cellctl-go-cache.md#cellctl-up-cleans-once-on-a-reclaimable-deferral)). A newly created empty owned root is initialized with
+([Managed Go caches](cellctl-go-cache.md#cellctl-up-cleans-once-on-a-reclaimable-deferral)).
+`cellctl desk` and scratch launches run it once only when the measurement is stale,
+unstamped, future-dated or missing
+([Managed Go caches](cellctl-go-cache.md#desk-and-scratch-launches-re-measure-a-stale-measurement-once)). A newly created empty owned root is initialized with
 bounded metadata reads. Maintenance inventory releases admission custody while walking,
 then reacquires it and revalidates consumer enrollment and current free space before
 cleanup. A consumer admitted during inventory invalidates that pass even if it exits

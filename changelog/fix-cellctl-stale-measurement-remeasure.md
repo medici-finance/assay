@@ -1,0 +1,2 @@
+### Fixed
+- `cellctl desk` and scratch launches no longer refuse on a stale, unstamped, future-dated or missing go-cache measurement alone: the launch re-measures once with the same clean `cellctl cache <cell> clean` runs, then admits or refuses on the fresh numbers. It never cleans for size pressure, never re-measures twice and never loops. `cellctl up` now also takes its one clean on an unstamped, future-dated or missing measurement.
