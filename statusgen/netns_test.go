@@ -474,7 +474,11 @@ func nonLoopbackIPv4(t *testing.T) string {
 // file in this package for the namespace primitives (a `"--net"` / `"--net=…"`
 // argument literal, or a CLONE_NEWNET flag) and allows them only inside
 // netnsWrapperArgv.
-var netnsAllowedSites = map[string]bool{"netnsWrapperArgv": true}
+//
+// nsCloneMask (readset_trace_linux.go) is the one other listed site: the
+// read-set tracer's deny mask, which reads a traced row's clone flags and
+// fails the row closed on any new namespace. It builds no sandbox.
+var netnsAllowedSites = map[string]bool{"netnsWrapperArgv": true, "nsCloneMask": true}
 
 func netnsPrimitiveSites(fset *token.FileSet, f *ast.File) []string {
 	var sites []string

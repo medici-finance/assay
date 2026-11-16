@@ -269,3 +269,16 @@ func demoRoot(t *testing.T) string {
 	}
 	return root
 }
+
+// regression: #4823
+// TestRowExecGitEnv: a Verify row runs real git under the declared verifier Git
+// environment: a present key is found, a --worktree write succeeds, and nothing the
+// launch must remove is inherited.
+func TestRowExecGitEnv(t *testing.T) {
+	repo, _ := gitEnvRepo(t)
+	inheritBadGitEnv(t)
+	exit, out := shellExec(repo, gitEnvProbe)
+	if exit != 0 || out != gitEnvWant {
+		t.Fatalf("row Git env = %q (exit %d), want %q", out, exit, gitEnvWant)
+	}
+}
