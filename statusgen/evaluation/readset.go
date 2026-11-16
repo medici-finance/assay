@@ -40,6 +40,15 @@ import (
 // holds its read-set files, each named by the sha256 of its content.
 const ReadSetDir = "reads"
 
+// ReadSetStateDir is where the recorder writes a run's read-set files: a
+// directory under the running worktree's own git dir, named by `git rev-parse
+// --git-path`, never the worktree itself. A dispatched verifier's home refuses
+// any untracked worktree file in its attested source closure, so a file the
+// run wrote beside the brief would deadlock its own Evidence. The landing
+// copies each file the Evidence names into the brief's ReadSetDir in the same
+// commit as its row; the digest, and so the binding, is unchanged.
+const ReadSetStateDir = "assay-read-sets"
+
 // The exact refusal strings (brief 15, Task step 5 and 6).
 const (
 	ReasonReadSetUnreadable = "the witness's recorded read set cannot be read or does not match its digest"

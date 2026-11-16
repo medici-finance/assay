@@ -761,17 +761,38 @@ type WriteFileInput struct {
 	// against one specific read uses this so nothing that lands after that read can be
 	// overwritten unrefused. Empty means "no precondition beyond the backend's own fetch".
 	ExpectedSHA string
+	// ExpectAbsent makes the write CREATE-ONLY: the backend refuses (Refused) when its own
+	// pre-write fetch finds the file already present, instead of turning the write into an
+	// update of whatever it found. A caller that judged the write against a read showing NO
+	// file uses this, so a file created after that read is never overwritten. The create the
+	// backend then sends cites no prior revision (GitHub's Contents API without `sha`, GitLab's
+	// `create` action), so a file appearing after the backend's own fetch is the forge's
+	// refusal. It cannot be combined with ExpectedSHA.
+	ExpectAbsent bool
 	// ExpectedHead pins the whole parent tree for a verified-outcome write.
 	// A backend lacking an atomic branch-head precondition must refuse it;
 	// file-level ExpectedSHA alone cannot protect closure in other files.
 	ExpectedHead string
 }
 
-// expectedSHAPrecondition is the backend-neutral half of WriteFileInput.ExpectedSHA, run by
-// every backend right after its own pre-write fetch: nil when no precondition was asked for or
-// the fetched id matches it; Refused when the file is gone or is no longer the version the
-// caller judged against.
+// expectedSHAPrecondition is the backend-neutral half of WriteFileInput.ExpectedSHA and
+// WriteFileInput.ExpectAbsent, run by every backend right after its own pre-write fetch: nil
+// when no precondition was asked for or the fetch matches it; Refused when the file is gone or
+// is no longer the version the caller judged against, or exists where the caller saw none.
 func expectedSHAPrecondition(in WriteFileInput, exists bool, priorSHA string) error {
+	if in.ExpectAbsent {
+		if in.ExpectedSHA != "" {
+			return Refused(fmt.Sprintf(
+				"refusing a write to %s on %s that is both create-only and conditional on content id %s",
+				in.File, in.Branch, in.ExpectedSHA))
+		}
+		if exists {
+			return Refused(fmt.Sprintf(
+				"refusing a create-only write to %s on %s: the file now exists (content id %s) though the read this write was judged against showed none — it changed under this write; re-fetch and retry",
+				in.File, in.Branch, priorSHA))
+		}
+		return nil
+	}
 	if in.ExpectedSHA == "" {
 		return nil
 	}

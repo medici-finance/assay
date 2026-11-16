@@ -27,6 +27,7 @@ domain: complicated
 gate-why: "The extraction changes how existing authorized processes obtain credentials. Human acceptance confirms role and installation binding, guard/audit parity, restrictive custody and GitLab rotation semantics survive direct calls; no new process receives credentials."
 decision-trigger: spec
 decision-issue: 3734
+ruling: "https://github.com/medici-finance/assay/issues/3734#issuecomment-6923693852"
 consumers:
   - "tools/desk/internal/credential/: follow-up desktools-v2/58"
   - "tools/desk/cmd/desktoken/: follow-up desktools-v2/58"

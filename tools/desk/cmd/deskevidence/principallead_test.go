@@ -708,7 +708,14 @@ func TestHiddenReadingsStopAtBudget(t *testing.T) {
 		if !refused {
 			t.Errorf("text of %d bytes read within a %d-byte limit", len(cell), limit)
 		}
-		if got := after.TotalAlloc - before.TotalAlloc; got > 32<<20 {
+		got := after.TotalAlloc - before.TotalAlloc
+		if raceBuild {
+			// The race detector's own allocations, tens of MiB here, swamp the ceiling; the
+			// ceiling is judged by the uninstrumented run, and this one checks the refusal only.
+			t.Logf("allocation ceiling not checked under the race detector (%d bytes allocated)", got)
+			continue
+		}
+		if got > 32<<20 {
 			t.Errorf("%d bytes allocated reading a text of %d bytes within a %d-byte limit", got, len(cell), limit)
 		}
 	}

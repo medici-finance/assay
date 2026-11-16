@@ -322,8 +322,8 @@ brief records beside an ignored index. Explicit Evidence source reads use the sa
 record checker through the filesystem adapter, rooted in the admitted receipt, independent
 of discovery paths. Remote and final write bytes are separately admitted. Diagnostics
 are bounded/escaped in the shared result; authority and effects stay with the host.
-Evidence commit capability refusal is adapted inside its existing audit lock, before
-landing reads or credentials; refusal appends one audit row when the sink is writable, and append failures are reported.
+Evidence commit capability refusal is adapted under the per-landing-root preparation lock, before
+landing reads or credentials (the refusal row itself is appended under the audit lock); refusal appends one audit row when the sink is writable, and append failures are reported.
 
 `readercaps/record` decides presence only after `briefdoc.ParseMapping` validates one
 document and its keys, then retains `ParseFields` policy validation for opted-in records; `readercaps/tree` is

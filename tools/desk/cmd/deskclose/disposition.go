@@ -117,8 +117,8 @@ func requireTerminalDisposition(repo string, n int, declaredTarget string) (disp
 	}
 	if v != verdictSuperseded && v != verdictResolvedElsewhere {
 		return d, deskkit.Refused(fmt.Sprintf(
-			"refused: %s#%d carries disposition %q, which is not a terminal verdict",
-			repo, n, deskkit.StripControl(d.Record.Verdict)))
+			"refused: %s#%d carries disposition %s, which is not a terminal verdict",
+			repo, n, renderRecordField(d.Record.Verdict)))
 	}
 	if strings.TrimSpace(d.Record.Evidence) == "" {
 		return d, deskkit.Refused(fmt.Sprintf(
@@ -130,85 +130,100 @@ func requireTerminalDisposition(repo string, n int, declaredTarget string) (disp
 			"refused: %s#%d is recorded %s with Evidence %s, but the close declares target %s. "+
 				"The record and the caller disagree about what settled this item; deskclose does not "+
 				"pick a winner between them.",
-			repo, n, v, deskkit.StripControl(d.Record.Evidence), deskkit.StripControl(declaredTarget)))
+			repo, n, v, echoRef(repo, d.Record.Evidence), echoRef(repo, declaredTarget)))
 	}
 	return d, nil
 }
 
-// refNumRe pulls the trailing item number out of any ref shape: `#123`, `!123`,
-// `owner/repo#123`, `owner/repo!123`, or an issues / pull / merge-request permalink. The `!`
-// sigil and the `merge_requests` path segment are the typed CHANGE spellings (see
-// deskkit.ParseItemRef): a comparison that did not recognise them would read `!4` as
-// unparseable and report two spellings of one target as a disagreement.
-var refNumRe = regexp.MustCompile(`(?:[#!]|/(?:issues|pull|merge_requests)/)(\d+)\s*$`)
+// parseRef is this package's ONE reader of an item reference held as text: a `--by` /
+// `--of` value, a manifest row's target, a proposal marker's Superseded-By, a disposition
+// record's Evidence. It delegates to deskkit.ParseItemRef, whose grammar is anchored at
+// BOTH ends — the whole value must be a reference (`N`, `#N`, `!N`, `owner/repo#N`,
+// `owner/repo!N`, or the object's web URL), after surrounding whitespace is trimmed.
+//
+// A tail match is never a match. The readers this replaced pulled the number off the END
+// of the value, so anything ahead of a well-formed `owner/repo#N` — a control sequence, a
+// tab or carriage return, free text — was accepted as that reference and then echoed in a
+// tab-separated receipt. A value that is not wholly a reference is now not a reference.
+func parseRef(s string) (deskkit.ItemRef, bool) {
+	r, err := deskkit.ParseItemRef(s)
+	return r, err == nil
+}
+
+// unparseableRef is the fixed text a reference renders as when it does not parse whole.
+// The value itself is never printed: text that is not a reference is text another identity
+// chose, and every place a reference is echoed — a refusal, a receipt, the audit detail, a
+// comment posted under an App's identity — prints only what the parse produced.
+const unparseableRef = "(an unparseable reference)"
+
+// echoRef renders reference text for output through its parse ONLY: the canonical
+// repository-qualified form (a repo-less reference defaults to defaultRepo), in the serving
+// forge's sigil (itemRef), or unparseableRef. It is the one way this package prints a
+// reference it read from a record, a marker or a caller.
+func echoRef(defaultRepo, s string) string {
+	r, ok := parseRef(s)
+	if !ok {
+		return unparseableRef
+	}
+	repo := r.Repo
+	if repo == "" {
+		repo = defaultRepo
+	}
+	return itemRef(repo, r.Number, r.Kind)
+}
+
+// recordFieldRe is what a disposition record's self-reported Verdict, RecordedBy or
+// RecordedAt must look like to be printed: one word of letters, digits and `_ . : -` (a
+// login may end in `[bot]`). It admits no space, `@`, `*`, backtick or link syntax, so a
+// record cannot put a mention or Markdown into a receipt, a refusal or a comment.
+var recordFieldRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}(\[bot\])?$`)
+
+// unreadableField is the fixed text a record field renders as when it fails recordFieldRe.
+const unreadableField = "(unreadable)"
+
+// renderRecordField prints a self-reported record field only when it is one plain word.
+func renderRecordField(s string) string {
+	t := strings.TrimSpace(s)
+	if !recordFieldRe.MatchString(t) {
+		return unreadableField
+	}
+	return t
+}
 
 // refsAgree reports whether two item references name the same item. It compares the
 // numbers, and the owner/repo when BOTH sides carry one — a bare `#123` is read in the
 // context of the other ref rather than being called a mismatch, because that is how
-// both a manifest and a marker comment are actually written.
+// both a manifest and a marker comment are actually written. Either side failing to
+// parse whole (parseRef) is a disagreement, never a match on its tail.
 func refsAgree(a, b string) bool {
-	an, aok := refNum(a)
-	bn, bok := refNum(b)
-	if !aok || !bok || an != bn {
+	ar, aok := parseRef(a)
+	br, bok := parseRef(b)
+	if !aok || !bok || ar.Number != br.Number {
 		return false
 	}
-	ar, br := refRepo(a), refRepo(b)
-	if ar == "" || br == "" {
+	if ar.Repo == "" || br.Repo == "" {
 		return true
 	}
-	return strings.EqualFold(ar, br)
+	return strings.EqualFold(ar.Repo, br.Repo)
 }
 
-func refNum(s string) (int, bool) {
-	m := refNumRe.FindStringSubmatch(strings.TrimSpace(s))
-	if m == nil {
-		return 0, false
-	}
-	n, err := atoiPositive(m[1], "ref")
-	return n, err == nil
-}
-
-// normalizeItemRef reduces any ref shape this package accepts — a bare number, `#N`,
-// `owner/repo#N`, or a github.com issues/pull permalink — to the canonical
-// `owner/repo#N` form, defaulting a repo-less ref to defaultRepo. This is the seam a
-// same-target COMPARISON runs through before deciding two refs disagree: `refsAgree`
-// treats a bare number as unparseable (refNumRe requires a `#` or an `/issues|pull/`
-// path ahead of the digits), so "40" and "owner/repo#40" read as two different targets
-// rather than the same one spelled two ways — the exact shape of #984. Comparing
-// normalized forms instead means a format mismatch is never mistaken for a target
-// disagreement.
+// normalizeItemRef reduces any ref shape this package accepts to the canonical
+// `owner/repo#N` comparison form, defaulting a repo-less ref to defaultRepo. This is the
+// seam a same-target COMPARISON runs through before deciding two refs disagree, so a
+// format mismatch ("40" against "owner/repo#40") is never mistaken for a target
+// disagreement (#984). The kind sigil is dropped on purpose: the comparison is about
+// WHICH number in WHICH repo, and a value that does not parse whole is refused.
 func normalizeItemRef(defaultRepo, ref string) (string, bool) {
-	trimmed := strings.TrimSpace(ref)
-	if trimmed == "" {
+	r, ok := parseRef(ref)
+	if !ok {
 		return "", false
 	}
-	n, ok := refNum(trimmed)
-	if !ok {
-		// No `#`/path marker at all: accept a bare positive integer, defaulting the
-		// repo to defaultRepo (atoiPositive already tolerates a leading "#").
-		bn, err := atoiPositive(trimmed, "ref")
-		if err != nil {
-			return "", false
-		}
-		n = bn
-	}
-	repo := refRepo(trimmed)
+	repo := r.Repo
 	if repo == "" {
 		repo = defaultRepo
 	}
 	if repo == "" {
 		return "", false
 	}
-	return fmt.Sprintf("%s#%d", repo, n), true
-}
-
-var refRepoRe = regexp.MustCompile(
-	`(?:^|github\.com/)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+?)(?:[#!]|/(?:issues|pull)/)\d+\s*$`)
-
-func refRepo(s string) string {
-	m := refRepoRe.FindStringSubmatch(strings.TrimSpace(s))
-	if m == nil {
-		return ""
-	}
-	return m[1]
+	return fmt.Sprintf("%s#%d", repo, r.Number), true
 }
