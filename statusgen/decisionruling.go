@@ -262,6 +262,10 @@ type rulingIssueBinding struct {
 	// Evidence-Repair approval sets it (#6616); every decision record still
 	// refuses a pull request.
 	allowPull bool
+	// comment, when set, is a further rule on the comment body, run after it
+	// names the record; a non-empty result refuses with that detail. Only an
+	// Evidence-Repair approval sets it (#6616).
+	comment func(body string) string
 }
 
 // resolveRulingOn is resolveRuling with condition 6 supplied by the caller. Every
@@ -402,6 +406,11 @@ func resolveRulingOn(c *ghClient, prRepo string, rec decisionRecordStamp, humanL
 	// to the record.
 	if !commentNamesRecord(cm.Body, rec.ID) {
 		return refuse(rulingRecordNotNamed, "comment %d on %s does not name the record %s — the ruling comment must name the record it rules on", link.CommentID, link.Repo, rec.ID)
+	}
+	if binding.comment != nil {
+		if why := binding.comment(cm.Body); why != "" {
+			return refuse(rulingRecordNotNamed, "comment %d on %s %s", link.CommentID, link.Repo, why)
+		}
 	}
 
 	// 6. The issue is a decision issue for THIS record.

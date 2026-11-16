@@ -2070,7 +2070,7 @@ Flags:
                     which needs --acceptance-forge on the host and executes the
                     canonical original-plus-approved obligation plan. A transition
                     may end with Evidence-Repair: commit=<sha> approval=<url> lines:
-                    a mapped human's unedited comment sanctions an editorial
+                    the driver's unedited comment sanctions an editorial
                     repair (Date/Runner split, added principal) that touched no
                     Verify row and no other cell; the byte-prefix check then
                     starts from the Evidence at that commit. Open and

@@ -18,12 +18,14 @@ import (
 // check compares against, from the pre-amendment Evidence to the Evidence at
 // the repair commit, and only after the repair is shown to be editorial: it
 // leaves Verify untouched, keeps every table row and every non-Date/Runner
-// cell byte-identical, splits a combined "Date / Runner" column or adds one
-// `(on-behalf-of human:<name>)` principal to a Runner, and adds only prose
-// that carries no marker or verdict. A mapped human's own unedited comment,
-// read through the same forge resolver as Acceptance-Transition approvals,
-// must name the brief, and the repair commit's message must name the
-// approval's issue or pull request.
+// cell byte-identical, splits a combined "Date / Runner" column exactly after
+// its leading date or adds one `(on-behalf-of human:<name>)` principal to a
+// Runner, and adds only prose that carries no marker, verdict, comment or
+// fence and leaves every reader's whole-document view unchanged. The driver's
+// own unedited comment, read through the same forge resolver as
+// Acceptance-Transition approvals, must name the brief and say it authorizes
+// the repair on its own issue or pull request, and the repair commit's message
+// must name that issue or pull request.
 type evidenceRepair struct {
 	commit, approval string
 	link             rulingLink
@@ -237,7 +239,7 @@ func evidenceRepairEditorial(before, after string) string {
 					return fmt.Sprintf("a repair changed the %s cell of row %s", header[j], o[0])
 				}
 			}
-			if !principalOnly(o[at], n[at]+" "+n[at+1]) {
+			if !splitAtDate(o[at], n[at], n[at+1]) {
 				return fmt.Sprintf("a repair changed the Date / Runner text of row %s", o[0])
 			}
 			continue
@@ -285,7 +287,87 @@ func evidenceRepairEditorial(before, after string) string {
 	if len(flipVerdictTokens(added)) > 0 {
 		return "a repair cannot add a verdict"
 	}
+	return evidenceRepairReaderView(before, after, added)
+}
+
+// evidenceRepairReaderView holds what the Evidence readers see, not only the
+// raw lines: they strip closed HTML comments, track fences across the whole
+// document and read a table as one run of rows. An added line may not open or
+// close a comment or a fence, may not split a table, and the whole-document
+// view of markers, verdicts and rows must be unchanged.
+func evidenceRepairReaderView(before, after string, added []string) string {
+	for _, l := range added {
+		t := strings.TrimSpace(l)
+		if strings.Contains(l, "<!--") || strings.Contains(l, "-->") || strings.HasPrefix(t, "```") || strings.HasPrefix(t, "~~~") {
+			return "a repair cannot add a comment or fence line"
+		}
+	}
+	if !sameRowRuns(before, after) {
+		return "a repair cannot split or join a table"
+	}
+	nb, na := normalizeProtectedEvidence(before), normalizeProtectedEvidence(after)
+	for _, m := range []string{"Verification-Table:", "Acceptance-Transition:", "Evidence-Repair:", "Verification-Attestation:"} {
+		if len(protectedMarkersNamed(nb, m)) != len(protectedMarkersNamed(na, m)) {
+			return "a repair cannot add a marker"
+		}
+	}
+	sb, ub := stripRowComments(before)
+	sa, ua := stripRowComments(after)
+	if (ub < 0) != (ua < 0) {
+		return "a repair cannot open an unterminated comment"
+	}
+	vb, va := flipVerdictTokens(strings.Split(sb, "\n")), flipVerdictTokens(strings.Split(sa, "\n"))
+	if len(vb) != len(va) {
+		return "a repair cannot add a verdict"
+	}
+	for i := range vb {
+		if vb[i].word != va[i].word || vb[i].strict != va[i].strict || vb[i].struck != va[i].struck {
+			return "a repair cannot add a verdict"
+		}
+	}
+	// Ids cannot change (every non-Date/Runner cell is byte-identical), so a
+	// lost row is the only way the reader's view of rows can differ.
+	ra := parseEvidenceRows(after)
+	for id, rows := range parseEvidenceRows(before) {
+		if len(ra[id]) != len(rows) {
+			return "a repair cannot hide an Evidence row"
+		}
+	}
 	return ""
+}
+
+// sameRowRuns: the lengths of consecutive table-row runs are unchanged.
+func sameRowRuns(before, after string) bool {
+	runs := func(s string) []int {
+		var out []int
+		n := 0
+		for _, l := range strings.Split(s, "\n") {
+			if strings.HasPrefix(strings.TrimSpace(l), "|") {
+				n++
+				continue
+			}
+			if n > 0 {
+				out = append(out, n)
+			}
+			n = 0
+		}
+		if n > 0 {
+			out = append(out, n)
+		}
+		return out
+	}
+	return fmt.Sprint(runs(before)) == fmt.Sprint(runs(after))
+}
+
+// splitAtDate: the Date cell is exactly the old cell's leading date, and the
+// Runner cell is the rest, unchanged or with one added principal.
+func splitAtDate(old, date, runner string) bool {
+	i := strings.IndexAny(old, " \t")
+	if i <= 0 || date != old[:i] || !flipDateRe.MatchString(date) {
+		return false
+	}
+	rest := strings.TrimSpace(old[i:])
+	return rest != "" && principalOnly(rest, runner)
 }
 
 // principalOnly: unchanged, or exactly one added on-behalf-of principal.
@@ -334,20 +416,43 @@ func evidenceRepairBriefID(rel string) string {
 }
 
 // corroborateEvidenceRepairs reads each used repair's approval through the
-// Acceptance-Transition resolver: same repository, unedited, non-bot, mapped
-// human, and naming the brief. A pull-request comment is admitted only here.
+// Acceptance-Transition resolver: same repository, unedited, non-bot, authored
+// by the driver, naming the brief and authorizing the repair on its thread. A pull-request comment is admitted only here.
 func corroborateEvidenceRepairs(repo, rel string, repairs []evidenceRepair, client func() *ghClient) string {
 	id := evidenceRepairBriefID(rel)
 	if id == "" && len(repairs) > 0 {
 		return "evidence repair: cannot derive the brief id an approval must name"
 	}
+	if len(repairs) == 0 {
+		return ""
+	}
+	// Only the driver (the blessing authority) may approve a repair: any other
+	// mapped human's comment is refused by the resolver's decided-by check.
+	cfg := scanEffectiveConfig()
+	driver := humanNameForLogin(cfg.HumanLogins, cfg.Bless.Login)
+	if cfg.Bless.Login == "" || driver == "" {
+		return "evidence repair: could-not-check human authority: the driver's login is unset or maps to no human"
+	}
 	for _, r := range repairs {
 		fmt.Fprintln(os.Stderr, "acceptance transition: reading evidence-repair approval", r.approval)
 		canonical := fmt.Sprintf("https://github.com/%s/issues/%d#issuecomment-%d", r.link.Repo, r.link.Issue, r.link.CommentID)
-		out := resolveRulingOn(client(), repo, decisionRecordStamp{ID: id, Ruling: canonical}, scanEffectiveConfig().HumanLogins, rulingIssueBinding{
+		thread := fmt.Sprintf("#%d", r.link.Issue)
+		out := resolveRulingOn(client(), repo, decisionRecordStamp{ID: id, Ruling: canonical, Names: []string{driver}}, cfg.HumanLogins, rulingIssueBinding{
 			what:      "evidence repair for " + rel,
 			allowPull: true,
-			rules:     func(rulingIssue, rulingLink) bool { return true },
+			// The thread binding is the comment rule below plus the commit
+			// message naming the same issue or pull request; a repair
+			// approval needs no decision-gate marker on that thread.
+			rules: func(rulingIssue, rulingLink) bool { return true },
+			comment: func(body string) string {
+				if !repairNamesBrief(body, id) {
+					return "does not name the brief " + id + " as its own path"
+				}
+				if !commentNamesRecord(body, thread) || !strings.Contains(strings.ToLower(body), "authoriz") {
+					return "does not authorize a repair on " + thread + " (it must say it authorizes and name " + thread + ")"
+				}
+				return ""
+			},
 		})
 		if !out.Present || out.Reason != rulingOK {
 			if out.Reason == rulingUnresolvable {
@@ -357,4 +462,29 @@ func corroborateEvidenceRepairs(repo, rel string, repairs []evidenceRepair, clie
 		}
 	}
 	return ""
+}
+
+// repairNamesBrief is commentNamesRecord without path boundaries: the brief id
+// cannot be the tail of a longer path such as another stream's directory.
+func repairNamesBrief(text, id string) bool {
+	if id == "" {
+		return false
+	}
+	for from := 0; ; {
+		i := strings.Index(text[from:], id)
+		if i < 0 {
+			return false
+		}
+		start, end := from+i, from+i+len(id)
+		before := start == 0 || !strings.ContainsRune("-_/.", rune(text[start-1])) && !isIDByte(text[start-1])
+		after := end == len(text) || text[end] != '/' && text[end] != '-' && text[end] != '_' && !isIDByte(text[end])
+		if before && after {
+			return true
+		}
+		from = start + 1
+	}
+}
+
+func isIDByte(b byte) bool {
+	return (b >= '0' && b <= '9') || (b >= 'A' && b <= 'Z') || (b >= 'a' && b <= 'z')
 }
