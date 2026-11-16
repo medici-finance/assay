@@ -1,0 +1,2 @@
+### Fixed
+- `qualgen` (`mine`, `check`, `pr`, `sweep` and the instruction-brittleness pass) now reads a repository whose config sets `extensions.worktreeConfig` (repository format version 0), in the main checkout and in linked worktrees. It previously refused with `does not support extension: worktreeconfig`. Every opener now goes through the shared `gitcore` opener, which tolerates only that extension: a repository with any other unsupported extension is still refused. A new guard test keeps raw go-git openers out of qualgen's non-test code.
