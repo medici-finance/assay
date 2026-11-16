@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// regression: #6606
+// regression: #6621 (security review A2)
 func TestParseRepoRedactsUserinfo(t *testing.T) {
 	for _, in := range []string{
 		"https://user:secret@example.invalid",

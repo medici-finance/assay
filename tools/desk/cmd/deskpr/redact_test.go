@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// regression: #6606
+// regression: #6621 (security review A2)
 func TestPreflightRedactsOrigin(t *testing.T) {
 	work := newBaseFixture(t)
 	mustGit(t, work, "checkout", "-q", "-b", "feature/redact")

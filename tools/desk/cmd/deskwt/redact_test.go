@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// regression: #6606
+// regression: #6621 (security review A2)
 func TestCurrentRepoRedactsOrigin(t *testing.T) {
 	work := t.TempDir()
 	mustGit(t, "", "init", "-b", "main", work)

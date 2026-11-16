@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// regression: #6606
+// regression: #6621 (security review A2)
 func TestPreflightRedactsOrigin(t *testing.T) {
 	work := newBaseFixture(t)
 	mustGit(t, work, "remote", "set-url", "origin", "https://user:secret@example.invalid/repo.git")

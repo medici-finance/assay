@@ -17,7 +17,7 @@ var redactFixtures = []struct{ name, in, keep string }{
 	{"hybrid owner slot", "https://example.invalid/user:secret@alias:repo.git", "alias:repo.git"},
 }
 
-// regression: #6606
+// regression: #6621 (security review A2)
 func TestParseRemoteRepoRedacts(t *testing.T) {
 	for _, c := range redactFixtures {
 		t.Run(c.name, func(t *testing.T) {
