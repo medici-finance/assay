@@ -463,8 +463,9 @@ No new brief IDs or generated status changes. Both prose and discrete clients co
 same role-qualified plan; graph-execution/27 composes all five existing role evaluators.
 
 Critical path stays /37 -> /39 -> /40 -> /43 -> /44 for the review bridge. All-five-role
-runtime parity in graph-execution/27 also waits on /42, /45 and the actual prose adapters
-from /43 and /51, including /51’s existing human gate. Those edges are reciprocal; R6
+runtime parity in graph-execution/27 also waits on /42, /45 and the actual prose adapter
+from /43. Those edges are reciprocal. From 16 November 2026 /51 is an ordering notice there,
+not a hold: verify-role parity is reported unavailable until /51’s prose adapter lands; R6
 cross-window reuse follows its own route.
 Completed Evidence remains intact. A modified active assignment is rebound only through its
 owner checkpoint; authoring this amendment does not replace its current contract.

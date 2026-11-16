@@ -4,7 +4,7 @@ title: "Drive the verifier skill from the current queue and landing contract"
 why: "The skill still asks agents to assemble their own answer from scattered mechanics. Once the tool contract exists, a short lane-to-action table should direct each run through the implemented path."
 wave: 5
 depends: ["desk-tools/45", "desk-tools/46", "desk-tools/47", "desk-tools/48", "desk-tools/49", "desk-tools/50", "desk-tools/52", "statusgen/29", "statusgen/38"]
-unblocks: ["graph-execution/27", "verification-handoff/06"]
+unblocks: ["verification-handoff/06"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}
@@ -23,7 +23,7 @@ exec-tier: strong
 exec-tier-why: "Cross-component queue, input provenance and effect boundaries must agree; a subtle error can suppress needed verification or advance the wrong state."
 domain: complicated
 outcome: none
-version: 5
+version: 6
 id: af2553b5-b208-4d3d-aab1-5d8c518b2add
 consumers:
   - "tools/desk/internal/deskkit/citrigger_test.go: follow-up desk-tools/51 (register the skill-body cross-module read; existing CI already runs on every push and pull request)"
@@ -117,6 +117,20 @@ and /52 dependencies. Do not implement their policies in skill prose.
   qualification to verification-handoff/06 after the tools and this contract exist. Update only
   existing shipped role/reference consumers; no new desk, command-policy engine or standing
   verification gate.
+
+### Verify-role parity follow-on — 2026-11-16
+
+graph-execution/27 (version 12) no longer waits for this brief: its `depends:` entry here became
+a `feathers:` ordering notice, and its planner-parity row reports the verify role `unavailable`
+while this brief's prose adapter is absent. This brief's own Verify table is unchanged, and row 4
+still does not depend on that driver.
+
+Added obligation: register the verify role's prose adapter with the role binding
+graph-execution/27 declares, when that binding exists at pickup. Registration makes that brief's
+`TestDeskPlannerParity` (planned) compare the verify role for real, and its mutation fails a tree that
+registers the adapter while still reporting the role unavailable. If graph-execution/27 has not
+delivered at pickup, record the registration as owed in this brief's hand-off; that brief's
+row then covers the verify role when it lands.
 
 ### Existing task obligations
 
