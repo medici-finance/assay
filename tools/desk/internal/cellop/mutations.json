@@ -58,8 +58,8 @@
     {
       "name": "consume is not exclusive",
       "file": "internal/cellop/consume.go",
-      "old": "os.O_WRONLY|os.O_CREATE|os.O_EXCL",
-      "new": "os.O_WRONLY|os.O_CREATE|os.O_TRUNC"
+      "old": "f, err := os.OpenFile(s.MarkerPath(id), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)",
+      "new": "f, err := os.OpenFile(s.MarkerPath(id), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)"
     },
     {
       "name": "no pre-run terminal gate",
