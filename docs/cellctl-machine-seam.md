@@ -46,7 +46,7 @@ A plan made off a terminal, by the fixture verb:
   "created": "2026-10-15T01:46:23Z",
   "expires": "2026-10-15T01:56:23Z",
   "digest": "2b07ff56ef9f897fd6b8355971ddcd4fa5bc0493e5dbadca3406124873a861ce",
-  "confirm_code": "2b07ff56"
+  "confirm_code": "astral"
 }
 ```
 
@@ -78,7 +78,7 @@ And the result of a state-changing form run without a terminal (`drain example -
 
 1. refuse `not-interactive` unless stdin and stdout are terminals, and `desk-session` when `ASSAY_CELL`, `DESK_LOOP` or `DESK_SESSION` is set;
 2. load the plan strictly and recompute its digest; refuse `wrong-verb`, `foreign-cell`, `plan-expired` and `already-consumed`;
-3. show the plan, its cells and its confirm code on the terminal, and read one typed line; anything but the code is `confirm-mismatch`;
+3. show the plan, its cells and its confirm code (one word) on the terminal, and read one typed line; anything but that word, ignoring case and surrounding space, is `confirm-mismatch`;
 4. re-measure every precondition: a changed value is `plan-stale`, a measurement that fails is `could-not-check`; nothing is consumed;
 5. consume, by exclusive creation of `<cell>/run/plans/consumed/<plan-id>`: exactly one of any number of concurrent applies gets past this step;
 6. run the actions. A failure after step 5 leaves the plan consumed, with a `failed` or `partial` result.

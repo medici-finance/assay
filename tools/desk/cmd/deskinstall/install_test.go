@@ -162,3 +162,81 @@ func TestWindowsInstallRefusesAbsentPin(t *testing.T) {
 		t.Errorf("refusal did not name the absent pin: %v", err)
 	}
 }
+
+// regression: #6604
+// TestInstallWritesDestManifest — the install writes dest/MANIFEST.sha256 from
+// the bytes it placed, so the manifest beside the binaries verifies them (an
+// earlier install's manifest is replaced, never left describing other bytes).
+func TestInstallWritesDestManifest(t *testing.T) {
+	manifest, _, _, fetch, trust := fixture(t, "v0.26.0")
+	dest := t.TempDir()
+	stale := "0000000000000000000000000000000000000000000000000000000000000000  deskboard.exe\n"
+	if err := os.WriteFile(filepath.Join(dest, destManifestName), []byte(stale), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := Install(Options{ManifestPath: manifest, DestDir: dest, Platform: "windows-amd64",
+		Fetch: fetch, TrustedRoot: trust}); err != nil {
+		t.Fatalf("install refused: %v", err)
+	}
+	raw, err := os.ReadFile(filepath.Join(dest, destManifestName))
+	if err != nil {
+		t.Fatalf("no %s written beside the placed binaries: %v", destManifestName, err)
+	}
+	var names []string
+	for _, line := range strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n") {
+		digest, name, ok := strings.Cut(line, "  ")
+		if !ok {
+			t.Fatalf("malformed manifest line %q", line)
+		}
+		body, err := os.ReadFile(filepath.Join(dest, name))
+		if err != nil {
+			t.Fatalf("manifest names %s, not placed: %v", name, err)
+		}
+		if sum(body) != digest {
+			t.Errorf("%s: manifest sha256 %s, placed bytes %s", name, digest, sum(body))
+		}
+		names = append(names, name)
+	}
+	if got := strings.Join(names, ","); got != "deskboard.exe,statusgen-windows-amd64.exe" {
+		t.Errorf("manifest covers %q, want every placed file", got)
+	}
+}
+
+// regression: #6604
+// TestExtractSkipsTarManifest — a tarball's own MANIFEST.sha256 names members by
+// their tarball path (hooks/pre-push), which flattening does not keep, so it is
+// not placed; every other regular member is placed and recorded.
+func TestExtractSkipsTarManifest(t *testing.T) {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	for name, body := range map[string]string{
+		"./deskboard":       "board",
+		"./hooks/pre-push":  "#!/bin/sh\n",
+		"./MANIFEST.sha256": "tarball manifest\n",
+	} {
+		if err := tw.WriteHeader(&tar.Header{Name: name, Mode: 0o755, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dest := t.TempDir()
+	placed := map[string]string{}
+	if err := extractTarGz(dest, buf.Bytes(), placed); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dest, destManifestName)); !os.IsNotExist(err) {
+		t.Errorf("the tarball's own manifest was placed (stat err=%v)", err)
+	}
+	if placed["deskboard"] != sum([]byte("board")) || placed["pre-push"] != sum([]byte("#!/bin/sh\n")) || len(placed) != 2 {
+		t.Errorf("placed = %v, want deskboard and pre-push with their sha256", placed)
+	}
+}

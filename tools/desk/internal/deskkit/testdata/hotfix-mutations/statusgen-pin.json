@@ -1,0 +1,119 @@
+{
+  "test": "go test ./internal/deskkit/ ./cmd/cellctl/ ./cmd/deskboot/ -count=1 -timeout 600s -run '^(TestHotfixToolPin|TestHotfixIneligibleMatch|TestValidateHotfix|TestHotfixInstallStatusgen|TestBinaryPinStatusgen)$'",
+  "control": {
+    "name": "CONTROL: invert the verdict assertion in TestHotfixToolPin",
+    "file": "internal/deskkit/hotfix_test.go",
+    "old": "\t\t\tif got != tc.want || found != tc.found {",
+    "new": "\t\t\tif !(got != tc.want || found != tc.found) {"
+  },
+  "mutations": [
+    {
+      "name": "statusgen reads the desk-tools pin line (TestHotfixToolPin)",
+      "file": "internal/deskkit/hotfix.go",
+      "old": "\tif tool != StatusgenArtifact {",
+      "new": "\tif true {"
+    },
+    {
+      "name": "a malformed winning statusgen line is skipped in favour of the next one",
+      "file": "internal/deskkit/hotfix.go",
+      "old": "\t\tt, _, ok, err := lookupPin(raw, path, n)\n\t\tif err != nil {\n\t\t\treturn \"\", false\n\t\t}",
+      "new": "\t\tt, _, ok, err := lookupPin(raw, path, n)\n\t\tif err != nil {\n\t\t\tcontinue\n\t\t}"
+    },
+    {
+      "name": "the Windows statusgen-<platform>.exe line is not read",
+      "file": "internal/deskkit/hotfix.go",
+      "old": "\t\t\tnames = append(names, base+\".exe\")\n",
+      "new": "\n"
+    },
+    {
+      "name": "the statusgen-<platform> line is not read",
+      "file": "internal/deskkit/hotfix.go",
+      "old": "\t\tnames = append(names, base)\n",
+      "new": "\n"
+    },
+    {
+      "name": "TestHotfixIneligibleMatch: statusgen's own layer-2 copy is hotfix-eligible",
+      "file": "internal/deskkit/version.go",
+      "old": "\t\"statusgen/hotfixself.go\",\n",
+      "new": "\n"
+    },
+    {
+      "name": "TestHotfixIneligibleMatch: statusgen's version gate is hotfix-eligible",
+      "file": "internal/deskkit/version.go",
+      "old": "\t\"statusgen/versiongate.go\",\n",
+      "new": "\n"
+    },
+    {
+      "name": "S4: TestHotfixIneligibleMatch: statusgen's identity stamp file is hotfix-eligible",
+      "file": "internal/deskkit/version.go",
+      "old": "\t\"statusgen/buildstamp.go\",\n",
+      "new": "\n"
+    },
+    {
+      "name": "S4: TestHotfixIneligibleMatch: the network-off helper (owner-rule argv) is hotfix-eligible",
+      "file": "internal/deskkit/version.go",
+      "old": "\t\"statusgen/netns.go\",\n",
+      "new": "\n"
+    },
+    {
+      "name": "S4: TestHotfixIneligibleMatch: the refusal's exit path (exitProcess) is hotfix-eligible",
+      "file": "internal/deskkit/version.go",
+      "old": "\t\"statusgen/perfrecord.go\",\n",
+      "new": "\n"
+    },
+    {
+      "name": "A2: the no-pin refusal names the desk-tools pin for a statusgen hotfix (TestValidateHotfix)",
+      "file": "internal/deskkit/hotfix.go",
+      "old": "\tif tool == StatusgenArtifact {\n\t\treturn StatusgenArtifact\n\t}\n\treturn \"desk-tools\"",
+      "new": "\tif tool == StatusgenArtifact {\n\t\treturn \"desk-tools\"\n\t}\n\treturn \"desk-tools\""
+    },
+    {
+      "name": "TestBinaryPinStatusgen: deskboot checks a statusgen hotfix against the desk-tools line",
+      "file": "cmd/deskboot/binarypin.go",
+      "old": "\t\tt, ok := deskkit.HotfixToolPin(pinRoot, tool, hostPlatform)",
+      "new": "\t\tt, ok := deskkit.HotfixToolPin(pinRoot, \"deskboard\", hostPlatform)"
+    },
+    {
+      "name": "TestBinaryPinStatusgen: a missing statusgen pin line is not refused",
+      "file": "cmd/deskboot/binarypin.go",
+      "old": "\t\tif _, ok := toolPin(h.tool); !ok {",
+      "new": "\t\tif _, ok := toolPin(h.tool); !ok && false {"
+    },
+    {
+      "name": "TestHotfixInstallStatusgen: install reads the desk-tools pin for statusgen",
+      "file": "cmd/cellctl/hotfix.go",
+      "old": "\tpinTag, found := deskkit.HotfixToolPin(pinRoot, o.tools[0], runtime.GOOS+\"-\"+runtime.GOARCH)",
+      "new": "\tpinTag, found := deskkit.HotfixToolPin(pinRoot, \"deskboard\", runtime.GOOS+\"-\"+runtime.GOARCH)"
+    },
+    {
+      "name": "TestHotfixInstallStatusgen: statusgen is installed in one call with desk tools",
+      "file": "cmd/cellctl/hotfix.go",
+      "old": "\tif hasStatusgen(o.tools) && len(o.tools) > 1 {",
+      "new": "\tif hasStatusgen(o.tools) && len(o.tools) > 1 && false {"
+    },
+    {
+      "name": "TestHotfixInstallStatusgen: statusgen is built in the tools/desk module",
+      "file": "cmd/cellctl/hotfix.go",
+      "old": "\t\tmod, modRel, pkgs = filepath.Join(src, \"statusgen\"), \"statusgen\", []string{\".\"}",
+      "new": "\t\tmod, modRel, pkgs = filepath.Join(src, \"tools\", \"desk\"), \"statusgen\", []string{\".\"}"
+    },
+    {
+      "name": "TestHotfixInstallStatusgen: statusgen's hotfix expiry is not stamped",
+      "file": "cmd/cellctl/hotfix.go",
+      "old": "\t\t\t\"-X main.statusgenHotfixExpires=\" + expires,\n",
+      "new": "\n"
+    },
+    {
+      "name": "TestHotfixInstallStatusgen: status checks statusgen against the desk-tools line",
+      "file": "cmd/cellctl/hotfix.go",
+      "old": "\t\tpinTag, _ := deskkit.HotfixToolPin(pinRoot, tool, runtime.GOOS+\"-\"+runtime.GOARCH)",
+      "new": "\t\tpinTag, _ := deskkit.HotfixToolPin(pinRoot, \"deskboard\", runtime.GOOS+\"-\"+runtime.GOARCH)"
+    },
+    {
+      "name": "TestHotfixInstallStatusgen: shim selection checks statusgen against the desk-tools line",
+      "file": "cmd/cellctl/shims.go",
+      "old": "\ttag, _ := deskkit.HotfixToolPin(c.Repo, tool, runtime.GOOS+\"-\"+runtime.GOARCH)",
+      "new": "\ttag, _ := deskkit.HotfixToolPin(c.Repo, \"deskboard\", runtime.GOOS+\"-\"+runtime.GOARCH)"
+    }
+  ]
+}

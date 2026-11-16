@@ -47,6 +47,7 @@ gate-why: >-
   verification, source pinning and placement are unchanged and the bootstrap still refuses a
   bad hash.
 decision-trigger: "spec"
+decision-issue: 4552
 ---
 
 # Brief 35 — Migrate the install path to Cobra and Viper
