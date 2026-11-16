@@ -1,10 +1,10 @@
 {
-  "test": "go test -tags cellopfixture ./internal/cellop ./cmd/cellctl -count=1 -timeout=300s -run '^(TestOutcomeExitCodes|TestPlanDigestIsJCS|TestStoreModesAndStrictDecode|TestApplyRefusesOffTTYAndDeskSession|TestConcurrentApplyRunsOnce|TestApplyReverifies|TestPlanExpiryAndForeignCell|TestMarkerResetBound|TestBatchConsumedFirstAndStops|TestFailureAfterConsume|TestReadConfirm|TestEveryStateChangingInvocationRequiresTTY|TestApplyRefusesDeskSession|TestNoApprovalSurface|TestOneApplyPath|TestConsentTreeChecks|TestPlanApplyRoundTrip|TestPlanIDWordLists|TestSaveNewRedrawsTakenIDs|TestSaveNewRaceAndExhaustion|TestApplyByTwoWordID|TestApplyByLegacyHexID|TestPlanIDPatternMatchesSchema)$'",
+  "test": "go test -tags cellopfixture ./internal/cellop ./cmd/cellctl -count=1 -timeout=300s -run '^(TestOutcomeExitCodes|TestPlanDigestIsJCS|TestStoreModesAndStrictDecode|TestApplyRefusesOffTTYAndDeskSession|TestConcurrentApplyRunsOnce|TestApplyReverifies|TestPlanExpiryAndForeignCell|TestMarkerResetBound|TestBatchConsumedFirstAndStops|TestFailureAfterConsume|TestReadConfirm|TestEveryStateChangingInvocationRequiresTTY|TestApplyRefusesDeskSession|TestNoApprovalSurface|TestOneApplyPath|TestConsentTreeChecks|TestPlanApplyRoundTrip|TestPlanIDWordLists|TestSaveNewRedrawsTakenIDs|TestSaveNewRaceAndExhaustion|TestApplyByTwoWordID|TestApplyByLegacyHexID|TestPlanIDPatternMatchesSchema|TestConfirmIsOneWord|TestRetiredHexConfirm|TestApplyConfirmWordCase|TestConfirmWordPinned)$'",
   "control": {
     "name": "skip the typed confirm",
     "file": "internal/cellop/apply.go",
-    "old": "if err != nil || strings.TrimSpace(typed) != p.ConfirmCode {",
-    "new": "if false && (err != nil || strings.TrimSpace(typed) != p.ConfirmCode) {"
+    "old": "if err != nil || strings.ToLower(strings.TrimSpace(typed)) != p.ConfirmCode {",
+    "new": "if false && (err != nil || strings.ToLower(strings.TrimSpace(typed)) != p.ConfirmCode) {"
   },
   "mutations": [
     {
@@ -58,8 +58,8 @@
     {
       "name": "consume is not exclusive",
       "file": "internal/cellop/consume.go",
-      "old": "os.O_WRONLY|os.O_CREATE|os.O_EXCL",
-      "new": "os.O_WRONLY|os.O_CREATE|os.O_TRUNC"
+      "old": "f, err := os.OpenFile(s.MarkerPath(id), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)",
+      "new": "f, err := os.OpenFile(s.MarkerPath(id), os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)"
     },
     {
       "name": "no pre-run terminal gate",
@@ -102,6 +102,24 @@
       "file": "internal/cellop/plan.go",
       "old": "idRE   = regexp.MustCompile(`^(?:[a-z]{3,8}-[a-z]{3,8}|[0-9a-f]{24})$`)",
       "new": "idRE   = regexp.MustCompile(`^[a-z]{3,8}-[a-z]{3,8}$`)"
+    },
+    {
+      "name": "confirm word may be a word of the id",
+      "file": "internal/cellop/planid.go",
+      "old": "if w := confirmWords[i]; !slices.Contains(idWords, w) {",
+      "new": "if w := confirmWords[i]; !slices.Contains(idWords[:0], w) {"
+    },
+    {
+      "name": "confirm word ignores the digest",
+      "file": "internal/cellop/planid.go",
+      "old": "for i := v % n; ; i = (i + 1) % n {",
+      "new": "for i := v % 1; ; i = (i + 1) % n {"
+    },
+    {
+      "name": "retired hex confirm still accepted",
+      "file": "internal/cellop/plan.go",
+      "old": "if p.ConfirmCode != w {",
+      "new": "if p.ConfirmCode != w && !retiredConfirmRE.MatchString(p.ConfirmCode) {"
     }
   ]
 }

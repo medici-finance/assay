@@ -40,7 +40,7 @@ func TestScanOverrideReceiptsDoNotConsumeWriteBudget(t *testing.T) {
 		}},
 	} {
 		p := reader.read()
-		if err := checkRepoWideBudget("deskpr", testRepo, now, p); err != nil {
+		if err := checkRepoWideBudget("deskpr", testRepo, RateLimitPerPRPerHour, now, p); err != nil {
 			t.Fatalf("%s charged local receipts: %v", reader.name, err)
 		}
 	}

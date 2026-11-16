@@ -65,7 +65,8 @@ func (s Session) now() time.Time {
 //  1. refuse not-interactive off a terminal, and desk-session when a marker is set;
 //  2. load and verify the plan; refuse a plan made by another verb, a plan that does not list the
 //     invoking cell (foreign-cell), an expired plan, and a plan already consumed;
-//  3. show the plan, its cells and its confirm code, and require the operator to type the code;
+//  3. show the plan, its cells and its confirm code (one word), and require the operator to type it
+//     (case is ignored);
 //  4. re-measure every precondition, refusing plan-stale (could-not-check if a measurement fails),
 //     without consuming;
 //  5. consume atomically (exclusive creation of the marker), refusing already-consumed;
@@ -123,7 +124,7 @@ func (s Session) Apply(id string) Result {
 	}
 	r.Actions = notRun(p, children)
 	typed, err := s.Confirm(p, children)
-	if err != nil || strings.TrimSpace(typed) != p.ConfirmCode {
+	if err != nil || strings.ToLower(strings.TrimSpace(typed)) != p.ConfirmCode {
 		return refuse(Refused, ReasonConfirmMismatch, "the confirm code was not typed; nothing was changed")
 	}
 	// The operator may have waited at the prompt: the expiry binds the moment of apply.

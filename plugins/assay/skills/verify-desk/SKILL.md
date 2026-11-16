@@ -811,7 +811,9 @@ where admission is checked. The admitted forms are:
 - Outcome record: `--outcome-record <absolute file outside the home>`.
 For GitHub, all three forms and `deskevidence flip` pass `--acceptance-forge` explicitly
 on the host. The full landed closure lint may need fresh corroboration of an approved
-transition on another brief; the emitted outcome command carries that permission too.
+transition; the emitted outcome command carries that permission too. An outcome record
+refuses on a lint PROBLEM naming the brief it closes or naming no brief; a PROBLEM naming
+another brief prints as a notice and is that brief's to fix, never this record's to block.
 It supplies no approval or acceptance credit and does not alter authored Verify commands
 or network-off execution. Unknown repository authority, an unavailable approval read and
 a refuted approval still hold or refuse the landing. Keep the diagnostic and route the

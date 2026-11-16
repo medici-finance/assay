@@ -889,7 +889,9 @@ with the reconcile inventory and a pointer to the verb that clears it.
 amber-falcon`. The words come from fixed lists built into `cellctl`. An id is never reused within
 a cell, including the ids of plans already applied. A plan stored with an older 24-character hex
 id still applies by that id. The id only finds the plan: apply still shows it and asks for the
-typed confirm code.
+typed confirm code, one lowercase word chosen from the plan's digest and never a word of its id.
+A plan stored with the older 8-hex-character confirm code is refused `plan-invalid`, naming the
+retired form; make the plan again.
 
 `--plan` clears only a role whose checkpoint names a supervisor that has exited (the *dead* class).
 The stale row names the verb that accepts the role's own class:
@@ -1018,7 +1020,8 @@ refused `not-interactive` and changes nothing, and `--plan` prints what would be
 request recorded in a file under the cell is a request, never authority. Only `pause`, a timed
 `drain` and a per-role stop of a role already paused or drained are ever taken from a record. The
 stop is taken only after the role re-measures idle, whatever the record says about it. `resume`,
-`start`, `restart`, `drain --now` and a foreign-stop lift always need the terminal. Every verb emits
+`start`, `restart`, `cycle`, `drain --now` and a foreign-stop lift always need the terminal; `cycle`
+takes its typed confirm before it pauses anything. Every verb emits
 the `cell-op-v1` result (`--json`).
 
 **The handoff record.** A desk asked to drain writes a short record of the claims it held, the PRs it
@@ -1044,6 +1047,15 @@ replace it, and the proposal above records that migration.
 against the known roles like a named one) through drain,
 sync, check and restart, one role at a time. The first role that does not come back stops the cycle,
 so a bad pin never takes down more than one role. `--all-at-once` drains every targeted role together.
+
+**The confirm comes first.** Before it pauses, drains, stops or restarts anything, the cycle shows its
+plan — one line per targeted role, saying whether it will be cycled or skipped as down — and takes the
+typed confirm code on the terminal, through the one apply path every state-changing verb uses
+([`spec/cell-op-v1.md`](../spec/cell-op-v1.md) §6). A wrong or absent code ends the cycle
+`refused`/`confirm-mismatch` with nothing changed; a role whose state changed between the plan and the
+code ends it `plan-stale`. This holds on every path, `--all-at-once` and `--force-after-timeout`
+included, and when every targeted role is down. The confirms named in the steps below, for an
+interactive role's stop and a stop forced after a timeout, come on top of this one.
 
 1. **Stop new work and drain.** This is `drain` itself, bounded by `--drain-timeout` (default 30m).
    An interactive role's stop needs the operator's confirm, as it does under `drain`; a declined
@@ -2026,6 +2038,72 @@ refused key let through, an empty line allowed to set its key, a template line l
 a cell name outside the root let through, a re-entry handed the wrong cells root — and reports
 whether the tests named in the spec notice each one. It is run by hand; no CI
 job runs it yet.
+
+## Managed repository stores (proposed, not active)
+
+A cell can own its own clone of each repository it works in. The clone is called a store, and it
+lives at `<cell>/repos/<repo key>/source`. It replaces sharing the operator's checkout. The
+contract is `spec/cell-workspaces-v1.md` section 5.4, and the code is `workspace/repository.go`
+(pure), `workspace/local/repository.go` (the effects) and
+`tools/desk/cmd/cellctl/workspace_repository.go` (composition).
+
+**Nothing is active.** No verb provisions a store and no new `cell.env` key turns it on. The
+operator decision for the first cell is still open. Until it is recorded, a cell works only from
+the checkouts `CELL_REPO` and `CELL_ROOTS` name.
+
+What cellctl owns once the decision is recorded:
+
+- **Repository identity.** Each `CELL_ROOTS` key, or any remote URL the shared origin parser
+  reads, resolves on the cell's forge (`CELL_FORGE`, with its host) to a canonical identity.
+  GitHub and GitLab route paths case-insensitively, so `Acme/Tools`,
+  `https://github.com/acme/tools.git` and `git@github.com:acme/tools.git` are one store.
+  `other/tools`, or `acme/tools` on a second forge, is a different store. The store key is the
+  repository's base name plus a digest of forge and path, so two same-named repositories never
+  share a directory.
+- **Legacy scope.** Every store stays physically outside the following, compared by resolved path
+  and by Git common directory:
+  - `CELL_REPO`;
+  - every `CELL_ROOTS` checkout and its `.claude/worktrees`;
+  - the cell's `worktrees`, `comms`, `tmp` and Go cache directories;
+  - the old sanctioned temporary worktree prefix that `deskwt` compiles in.
+
+  cellctl reads the legacy keys to work out this scope and never writes them. Rollback, child and
+  container profiles keep the same legacy keys, so they see the same checkouts as before.
+- **Publication.** cellctl writes `<cell>/run/workspaces/stores.json`, a generation-stamped
+  mapping, and writes it only after every store has verified. The generation check and the
+  rename happen under an exclusive lock beside the file, bounded: two publishers from one prior
+  generation cannot both succeed, and one that cannot get the lock in time is refused as `busy`. A managed-aware reader takes store
+  paths from this file alone, and finds it through one key, `CELL_WORKSPACE_STORES_V1` (below).
+  The mapping's contents are never exported as environment variables, so a reader that knows
+  nothing of it still sees the legacy keys exactly as before. The file carries the separately
+  versioned schema `cell-repository/v1`, which the workspace v1 reader refuses as an unknown
+  schema.
+  The lock file `stores.json.lock` stays beside the mapping after a publication; a rollback
+  removes it together with `stores.json`.
+- **Cell binding.** The cell's UUID is recorded against its resolved root in a machine-level
+  registry. A copied or moved cell directory that presents the same UUID is refused.
+
+The clone itself goes through an injected transport, which is the role's existing forge
+credential path. cellctl picks no new credential and stores none: an origin URL that carries a
+credential is refused. So is a store whose only remote is not `origin`, whose origin is not the
+requested repository on its forge (a local path, a file URL and another owner or host are all
+refused), whose branches track anything but `origin`, or whose Git directory carries an older
+remote-definition file it did not make. Before the mapping is written, every
+store the call made is read again.
+
+Proposed configuration, for the activation decision only. The key is not registered and nothing
+reads it today:
+
+| Key | Meaning |
+|---|---|
+| `CELL_WORKSPACE_STORES_V1` | The absolute path of the cell's store mapping file (schema `cell-repository/v1`). No default: when absent, the cell has no managed stores, and nothing is inferred from `CELL_REPO`, `CELL_ROOTS` or any other key. |
+
+It is the only key. There is no mode key, no repository-list key and no registry key. The
+repository allowlist, the transport and the cell-identity registry location are inputs of an
+activation, named by its own manifest and ruling, and none of them has a default.
+
+Tests: `TestCellRepositoryIsolation` and `TestCellRootBinding` (`workspace/local`, with mutation
+entries in `workspace/local/mutations.json`), and `TestStoreOriginNames` (`workspace/local`), and `TestWorkspaceRootMapAtomic`, `TestWorkspacePublishRereadsProvisioned` and `TestWorkspaceMappingPublishExclusive` (`cellctl`).
 
 ## Container cells
 

@@ -412,7 +412,9 @@ Evidence author under the same roster policy and Git blame judge as lint, withou
 lint's historical severity classification. A known rejected identity returns 1;
 unavailable policy/history or a graft-hidden attribution returns 2. Both suppress
 JSON. Default resolution and `--check-verified` alone retain their behavior.
-`deskevidence` requests both flags and full lint before a new verified outcome.
+`deskevidence` requests both flags and full lint before a new verified outcome; it refuses
+on a lint PROBLEM naming the brief it closes or naming no brief, and prints a PROBLEM naming
+another brief as a notice, which that brief must fix (#4823).
 Its release must be paired with a statusgen release supporting this flag; an older
 statusgen returns an unknown-flag error and publication fails closed.
 

@@ -252,6 +252,7 @@ func TestFlowQueue(t *testing.T) {
 			t.Fatalf("advice on a partial depth must name the gap and not widen: %q", adv)
 		}
 		rep.Stages[0].Partial = ""
+		rep.Stages[0].landCap = &deskkit.LoopCapacity{Repo: "acme/alpha", InFlight: 1, Items: 9, WritesPerItem: 2}
 		if adv := throughputAdvice(rep); !strings.Contains(adv, "deskroster set") {
 			t.Fatalf("a complete depth may widen: %q", adv)
 		}

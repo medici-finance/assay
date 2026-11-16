@@ -56,7 +56,7 @@ func TestVerifiedOutcomeClosureGuard(t *testing.T) {
 	const success = "{\"brief\":\"test/01\",\"outcome\":\"verified\"}\n"
 	const failure = "{\"brief\":\"test/01\",\"outcome\":\"verify-fail\"}\n"
 	for _, tc := range []struct {
-		name, before, after                 string
+		name, before, after, lint           string
 		closureErr, drift, lintRed, wantErr bool
 		// kind is what the branch holds the closure brief as (S-2266-8); "" leaves it a
 		// plain file.
@@ -66,6 +66,14 @@ func TestVerifiedOutcomeClosureGuard(t *testing.T) {
 		{name: "unclosed", after: success, closureErr: true, wantErr: true},
 		{name: "local-only", after: success, drift: true, wantErr: true},
 		{name: "lint-refused", after: success, lintRed: true, wantErr: true},
+		// regression: #4823 — a PROBLEM on a brief this record does not close is
+		// that brief's to fix; one on the closed brief (or unattributed) still refuses.
+		{name: "foreign-brief-problem", after: success, lint: "PROBLEM: other/37: protected table: x"},
+		{name: "foreign-stream-problem", after: success, lint: "PROBLEM: test-b/01: protected table: x"},
+		{name: "own-brief-problem", after: success, lint: "PROBLEM: test/01: protected table: x", wantErr: true},
+		{name: "own-brief-padded", after: success, lint: "PROBLEM: test/1: protected table: x", wantErr: true},
+		{name: "own-among-foreign", after: success, lint: "PROBLEM: other/37: x\nPROBLEM: test/01: x", wantErr: true},
+		{name: "unattributed-problem", after: success, lint: "PROBLEM: docs/streams/test/README.md: x", wantErr: true},
 		{name: "failure-after-history", before: success, after: success + failure, closureErr: true},
 		{name: "duplicate-new-success", before: success, after: success + success, closureErr: true, wantErr: true},
 		// regression: S-2266-8 — a link served as its target's bytes matches the local
@@ -103,6 +111,9 @@ func TestVerifiedOutcomeClosureGuard(t *testing.T) {
 			statusgenLintFn = func(string, childOptions) ([]string, error) {
 				if tc.lintRed {
 					return []string{"PROBLEM: bad closure"}, nil
+				}
+				if tc.lint != "" {
+					return strings.Split(tc.lint, "\n"), nil
 				}
 				return nil, nil
 			}

@@ -62,6 +62,9 @@ type carrierWorld struct {
 	listFail  bool
 	filesFail bool
 	scans     int
+	// skip is the issues the model's scanner skips (an excluded label, a hold): it writes no
+	// placeholder for them, as statusgen does not (#6601).
+	skip map[int]bool
 	// noCoalesce wires a pass as `scanloop run` does with coalescing disabled: no open scan PR is
 	// read, so every pass is fresh — the shape that built the supersets fastest.
 	noCoalesce bool
@@ -141,6 +144,9 @@ func (w *carrierWorld) exec(dir, name string, args ...string) (string, error) {
 		w.scans++
 		tr := w.trees[dir]
 		for _, n := range w.issues {
+			if w.skip[n] {
+				continue
+			}
 			if p := placeholderOf(n); !tr.base[p] && !tr.committed[p] {
 				tr.dirty[p] = true
 			}
@@ -326,6 +332,13 @@ func (w *carrierWorld) serveForge(t *testing.T, kind string) {
 // its forge reads.
 func (w *carrierWorld) pass(t *testing.T, issue int, at time.Time) (string, error) {
 	t.Helper()
+	_, out, err := w.passL(t, issue, at)
+	return out, err
+}
+
+// passL is pass that also hands back the loop, so a test can read its ledger.
+func (w *carrierWorld) passL(t *testing.T, issue int, at time.Time) (*ScanLoop, string, error) {
+	t.Helper()
 	w.mu.Lock()
 	w.issues = append(w.issues, issue)
 	w.now = at
@@ -345,7 +358,7 @@ func (w *carrierWorld) pass(t *testing.T, issue int, at time.Time) (string, erro
 	loop.Emit = &sb
 	err := drainPass(passConfig(t), loop, &sb)
 	renderPassReport(&sb, loop)
-	return sb.String(), err
+	return loop, sb.String(), err
 }
 
 func wantFiles(t *testing.T, w *carrierWorld, n int, issues ...int) {
