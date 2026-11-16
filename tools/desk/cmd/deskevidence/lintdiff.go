@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -102,15 +106,74 @@ func lintDiffAt(root, targetRepoPath string, newContent []byte, options childOpt
 	for _, p := range before {
 		beforeSet[p] = true
 	}
+	touched := landingBriefKey(targetRepoPath)
 	seen := map[string]bool{}
 	for _, p := range after {
 		if seen[p] || beforeSet[p] {
 			continue
 		}
 		seen[p] = true
+		if untouchedCouldNotCheck(p, touched) {
+			fmt.Fprintln(lintDiffStderr, "deskevidence: NOTICE: not counted as introduced by "+targetRepoPath+
+				" (could-not-check on a brief this landing does not touch): "+p)
+			continue
+		}
 		introduced = append(introduced, p)
 	}
 	return introduced, nil
+}
+
+// lintDiffStderr receives the NOTICE lines for after-only could-not-check PROBLEMs that
+// lintDiffAt does not count (#6581). A seam so tests can read them.
+var lintDiffStderr io.Writer = os.Stderr
+
+// A could-not-check PROBLEM says statusgen could not read something (an origin's authority,
+// a forge it was not given) — not that the tree is wrong. Its wording follows the reader's
+// environment, so the before and after runs need not print the same line for the same
+// unchanged brief: #6581 saw one brief's could-not-check in the after run only, and three
+// briefs' "--acceptance-forge is required" in the after run of an outcome record for a
+// fourth. On a brief the landing does not write, an after-only could-not-check is reported,
+// not refused. Anything else still refuses: a could-not-check on the landing's own brief,
+// any finding that is not a could-not-check, and every after-only line when the landing's
+// brief cannot be named.
+var problemBriefKey = regexp.MustCompile(`^PROBLEM: ([a-z0-9][a-z0-9._-]*/[0-9]+): `)
+
+func untouchedCouldNotCheck(problem, touched string) bool {
+	if touched == "" {
+		return false
+	}
+	m := problemBriefKey.FindStringSubmatch(problem)
+	if m == nil || m[1] == touched {
+		return false
+	}
+	return strings.Contains(strings.TrimPrefix(problem, m[0]), ": could-not-check ")
+}
+
+var (
+	briefFileName   = regexp.MustCompile(`^brief-([0-9]+)-[^/]*\.md$`)
+	outcomeFileName = regexp.MustCompile(`^([0-9]+)-[^/]*\.json$`)
+)
+
+// landingBriefKey names the one brief, as "<stream>/<num>", that a landing writes: a brief
+// file docs/streams/<stream>/brief-<num>-*.md, or a per-file outcome record
+// docs/streams/verify-outcomes/<stream>/<num>-*.json. Any other path returns "", and no
+// after-only PROBLEM is excused for it.
+func landingBriefKey(targetRepoPath string) string {
+	cleaned := path.Clean(targetRepoPath)
+	dir, file := path.Dir(cleaned), path.Base(cleaned)
+	if path.Dir(dir) == deskkit.OutcomeRecordsDir {
+		if m := outcomeFileName.FindStringSubmatch(file); m != nil {
+			return path.Base(dir) + "/" + m[1]
+		}
+		return ""
+	}
+	if path.Dir(dir) != "docs/streams" || path.Base(dir) == path.Base(deskkit.OutcomeRecordsDir) {
+		return ""
+	}
+	if m := briefFileName.FindStringSubmatch(file); m != nil {
+		return path.Base(dir) + "/" + m[1]
+	}
+	return ""
 }
 
 // statusgenLintAt shells `statusgen --root <root> --lint` from a neutral working directory

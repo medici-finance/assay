@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -388,4 +389,82 @@ func asDeskError(err error, target **deskkit.DeskError) bool {
 	}
 	*target = de
 	return true
+}
+
+// captureLintDiffNotices points lintDiffStderr at a buffer for one test.
+func captureLintDiffNotices(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	old := lintDiffStderr
+	var buf bytes.Buffer
+	lintDiffStderr = &buf
+	t.Cleanup(func() { lintDiffStderr = old })
+	return &buf
+}
+
+const (
+	fn54Include = "PROBLEM: forge-neutral/54: protected table: acceptance transition: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
+	fn54Forge   = "PROBLEM: forge-neutral/54: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	dt37Forge   = "PROBLEM: desk-tools/37: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+)
+
+// An unchanged brief's could-not-check that only the after run printed is not this
+// landing's: it is reported on stderr and does not refuse. Both #6581 shapes: an Evidence
+// landing on another brief, and an outcome record for another brief.
+//
+// regression: #6581
+func TestUntouchedCouldNotCheck(t *testing.T) {
+	for _, tc := range []struct {
+		target string
+		before []string
+		after  []string
+	}{
+		{"docs/streams/forge-gitlab/brief-12-gitlab-hardening-reads.md", nil, []string{fn54Include}},
+		{"docs/streams/verify-outcomes/desk-supervision/24-20261116T013825Z-bbe7ddc7f052.json",
+			[]string{fn54Include}, []string{fn54Forge, dt37Forge}},
+	} {
+		stubStatusgenLint(t, tc.before, tc.after)
+		notices := captureLintDiffNotices(t)
+		introduced, err := lintDiffAt(t.TempDir(), tc.target, []byte("x\n"), childOptions{})
+		if err != nil {
+			t.Fatalf("%s: lintDiffAt: %v", tc.target, err)
+		}
+		if len(introduced) != 0 {
+			t.Fatalf("%s: introduced = %v, want none (could-not-check on an untouched brief)", tc.target, introduced)
+		}
+		for _, p := range tc.after {
+			if !strings.Contains(notices.String(), p) {
+				t.Fatalf("%s: stderr does not report %q:\n%s", tc.target, p, notices.String())
+			}
+		}
+	}
+}
+
+// A real finding still refuses beside an excused could-not-check, and so does a
+// could-not-check on the brief the landing writes, or on any brief when the landing's
+// path names no single brief.
+//
+// regression: #6581
+func TestIntroducedStillRefused(t *testing.T) {
+	real := "PROBLEM: forge-gitlab/12: Evidence row #3: backticked path \"../x\" does not exist"
+	own := "PROBLEM: forge-gitlab/12: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	for _, tc := range []struct {
+		target string
+		after  []string
+		want   []string
+	}{
+		{"docs/streams/forge-gitlab/brief-12-gitlab-hardening-reads.md", []string{fn54Include, real}, []string{real}},
+		{"docs/streams/forge-gitlab/brief-12-gitlab-hardening-reads.md", []string{own}, []string{own}},
+		{"docs/streams/verify-outcomes/forge-gitlab/12-20261116T013825Z-bbe7ddc7f052.json", []string{own}, []string{own}},
+		{"docs/streams/forge-gitlab/README.md", []string{fn54Include}, []string{fn54Include}},
+	} {
+		stubStatusgenLint(t, nil, tc.after)
+		captureLintDiffNotices(t)
+		introduced, err := lintDiffAt(t.TempDir(), tc.target, []byte("x\n"), childOptions{})
+		if err != nil {
+			t.Fatalf("%s: lintDiffAt: %v", tc.target, err)
+		}
+		if strings.Join(introduced, "\n") != strings.Join(tc.want, "\n") {
+			t.Fatalf("%s: introduced = %v, want %v", tc.target, introduced, tc.want)
+		}
+	}
 }
