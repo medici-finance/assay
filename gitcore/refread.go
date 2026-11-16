@@ -6,7 +6,7 @@ import (
 	"github.com/go-git/go-git/v5/config"
 	"os"
 	"path/filepath"
-	"strconv"
+	"strings"
 
 	"github.com/go-git/go-git/v5/plumbing"
 )
@@ -57,8 +57,8 @@ func (r *Repo) worktreeScope(cfg *config.Config) (*config.Config, string, error)
 	if !ext.HasOption("worktreeconfig") {
 		return nil, "", nil
 	}
-	enabled, boolErr := strconv.ParseBool(ext.Option("worktreeconfig"))
-	if boolErr != nil {
+	enabled, ok := gitConfigBool(ext.Option("worktreeconfig"))
+	if !ok {
 		return nil, "native worktree config activation grammar", nil
 	}
 	if !enabled {
@@ -78,12 +78,29 @@ func (r *Repo) worktreeScope(cfg *config.Config) (*config.Config, string, error)
 	scoped, readErr := config.ReadConfig(f)
 	closeErr := f.Close()
 	if readErr != nil {
-		return nil, "", readErr
+		// Git accepts forms this decoder rejects (for example a dotted section header or
+		// a key on the header line), and those can set a remote URL. The parse error is
+		// not echoed: it can quote the file's content.
+		return nil, "worktree-scope config is in a form this reader does not parse", nil
 	}
 	if closeErr != nil {
 		return nil, "", closeErr
 	}
 	return scoped, "", nil
+}
+
+// gitConfigBool reads the spellings git's own boolean parser and this package's
+// origin snapshot owner both accept: true/yes/on/1 and false/no/off/0, in any case.
+// ok is false for everything else, including the empty and no-value forms and the
+// t/f spellings strconv.ParseBool also takes, so a caller refuses rather than guesses.
+func gitConfigBool(v string) (value, ok bool) {
+	switch strings.ToLower(v) {
+	case "true", "yes", "on", "1":
+		return true, true
+	case "false", "no", "off", "0":
+		return false, true
+	}
+	return false, false
 }
 
 // ErrRemoteScopeUnmerged marks a remote URL read refused because config that

@@ -2,7 +2,9 @@ package deskkit
 
 import (
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -141,6 +143,66 @@ func TestOriginSlugEnvRefused(t *testing.T) {
 					t.Errorf("pinned=%v: ScopedRemoteURLs must refuse, got %v", pinned, err)
 				}
 			})
+		}
+	}
+}
+
+// Activation spellings outside git's own boolean grammar, and a worktree-scope file in a
+// form git accepts but this reader does not parse, refuse with the scope reason, for the
+// slug readers and the work-source reader alike. Git's own spellings still decide.
+//
+// regression: #6606
+func TestOriginSlugGrammar(t *testing.T) {
+	activation := func(v string) func(t *testing.T, root, linked string) {
+		return func(t *testing.T, root, _ string) {
+			gitAll(t, root, [][]string{{"config", "extensions.worktreeConfig", v}})
+		}
+	}
+	unparsed := func(t *testing.T, _, linked string) {
+		out, err := exec.Command("git", "-C", linked, "rev-parse", "--absolute-git-dir").Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		// git reads this as remote.origin.url; the decoder here rejects the header form.
+		body := "[remote \"origin\"] url = https://github.com/other/steer.git\n"
+		file := filepath.Join(strings.TrimSpace(string(out)), "config.worktree")
+		if err := os.WriteFile(file, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, tc := range []struct {
+		name  string
+		ext   bool
+		setup func(t *testing.T, root, linked string)
+	}{
+		{"activation t", false, activation("t")},
+		{"activation F", false, activation("F")},
+		{"unparsed worktree file", true, unparsed},
+	} {
+		root, linked, _ := workSourceFixture(t, tc.ext)
+		tc.setup(t, root, linked)
+		for _, dir := range []string{linked, root} {
+			if tc.name == "unparsed worktree file" && dir == root {
+				continue // the file is the linked worktree's own scope
+			}
+			slug, err := OriginRepoSlug(dir)
+			if !errors.Is(err, gitcore.ErrRemoteScopeUnmerged) || strings.Contains(err.Error(), "steer") {
+				t.Errorf("%s: OriginRepoSlug must refuse with the scope reason, got %q %v", tc.name, slug, err)
+			}
+			_, err = LocalWorkCatalog(dir, "")
+			if err == nil || !strings.Contains(err.Error(), "could be changed by worktree-scope or include config") ||
+				strings.Contains(err.Error(), "steer") {
+				t.Errorf("%s: LocalWorkCatalog must refuse with the scope message, got %v", tc.name, err)
+			}
+		}
+	}
+	for _, v := range []string{"TRUE", "On", "no", "0"} {
+		root, linked, _ := workSourceFixture(t, false)
+		gitAll(t, root, [][]string{{"config", "extensions.worktreeConfig", v}})
+		for _, dir := range []string{linked, root} {
+			if slug, err := OriginRepoSlug(dir); err != nil || slug != "owner/repo" {
+				t.Errorf("activation %s: OriginRepoSlug = %q %v, want owner/repo", v, slug, err)
+			}
 		}
 	}
 }
