@@ -1,13 +1,13 @@
 package deskkit
 
 import (
+	"errors"
 	"fmt"
 	"path"
 	"strconv"
 	"strings"
 
-	git "github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/statusgen/briefdoc"
 	"github.com/medici-finance/assay/statusgen/readercaps"
 	"github.com/medici-finance/assay/statusgen/workref"
@@ -15,42 +15,50 @@ import (
 )
 
 // LocalWorkCatalog reads one immutable checked-out commit, using the existing
-// go-git adapter. It performs no network/credential lookup and never treats an
-// edited file, origin basename or fuzzy filename match as owning-root evidence.
+// in-process git adapter (gitcore). It performs no network/credential lookup and never
+// treats an edited file, origin basename or fuzzy filename match as owning-root evidence.
+//
+// The repository is opened through gitcore.Open, never go-git's PlainOpen directly:
+// PlainOpen refuses every repository whose config carries extensions.worktreeConfig
+// (go-git lowercases the extension name before checking its own mixed-case allowlist), and
+// git sets exactly that extension wherever per-worktree config is in use (#6606). gitcore
+// tolerates that one git-native extension and still refuses any other unsupported one, so
+// an unreadable repository format stays fail-closed.
 func LocalWorkCatalog(root, repository string) (WorkCatalog, error) {
-	repo, err := git.PlainOpenWithOptions(root, &git.PlainOpenOptions{DetectDotGit: true, EnableDotGitCommonDir: true})
+	top, err := gitcore.Toplevel(root)
 	if err != nil {
 		return WorkCatalog{}, Unverifiable("work source repository unreadable", err)
 	}
-	head, err := repo.Head()
+	repo, err := gitcore.Open(top)
+	if err != nil {
+		return WorkCatalog{}, Unverifiable("work source repository unreadable", err)
+	}
+	head, err := repo.HeadID()
 	if err != nil {
 		return WorkCatalog{}, Unverifiable("work source commit unavailable", err)
 	}
-	commit, err := repo.CommitObject(head.Hash())
-	if err != nil {
-		return WorkCatalog{}, Unverifiable("work source commit unreadable", err)
-	}
-	tree, err := commit.Tree()
+	names, err := repo.Files(head)
 	if err != nil {
 		return WorkCatalog{}, Unverifiable("work source tree unreadable", err)
 	}
 	if repository == "" {
-		remote, e := repo.Remote("origin")
-		if e != nil || len(remote.Config().URLs) != 1 {
+		// The slug decides which repository's work this is, so the read refuses when
+		// config it does not merge could change origin as native git resolves it.
+		urls, e := repo.ScopedRemoteURLs("origin")
+		if errors.Is(e, gitcore.ErrRemoteScopeUnmerged) {
+			return WorkCatalog{}, Unverifiable("work source origin could be changed by worktree-scope or include config", e)
+		}
+		if e != nil || len(urls) != 1 {
 			return WorkCatalog{}, Unverifiable("unambiguous work source origin unavailable", e)
 		}
-		repository, err = RemoteRepoSlug(remote.Config().URLs[0])
+		repository, err = RemoteRepoSlug(urls[0])
 		if err != nil {
 			return WorkCatalog{}, err
 		}
 	}
-	file, err := tree.File("docs/streams/graph-repos.yaml")
+	raw, err := repo.FileAt(head, "docs/streams/graph-repos.yaml")
 	if err != nil {
 		return WorkCatalog{}, Unverifiable("work source graph registry unavailable", err)
-	}
-	raw, err := file.Contents()
-	if err != nil {
-		return WorkCatalog{}, Unverifiable("work source graph registry unreadable", err)
 	}
 	var graph struct {
 		Schema string `yaml:"schema"`
@@ -83,12 +91,12 @@ func LocalWorkCatalog(root, repository string) (WorkCatalog, error) {
 	}
 	var records []WorkRecord
 	var bindings []workref.Binding
-	err = tree.Files().ForEach(func(file *object.File) error {
-		dir, base := path.Split(file.Name)
+	addWork := func(name string) error {
+		dir, base := path.Split(name)
 		if !strings.HasPrefix(dir, "docs/streams/") || !strings.HasPrefix(base, "brief-") || !strings.HasSuffix(base, ".md") || strings.Count(strings.TrimPrefix(dir, "docs/streams/"), "/") != 1 {
 			return nil
 		}
-		raw, e := file.Contents()
+		raw, e := repo.FileAt(head, name)
 		if e != nil {
 			return e
 		}
@@ -106,28 +114,30 @@ func LocalWorkCatalog(root, repository string) (WorkCatalog, error) {
 		} // legacy v1 has no qualified executable definition
 		parsed, e := workref.Parse(identity, workref.TypedBrief)
 		if e != nil || parsed.Cell == "" || parsed.Repo == "" || parsed.Revision != 0 {
-			return fmt.Errorf("invalid work definition in %s", file.Name)
+			return fmt.Errorf("invalid work definition in %s", name)
 		}
 		if parsed.Cell != declaring.Cell || parsed.Repo != declaring.Repo {
-			return fmt.Errorf("foreign work definition in %s", file.Name)
+			return fmt.Errorf("foreign work definition in %s", name)
 		}
 		if dir != "docs/streams/"+parsed.Stream+"/" || !strings.HasPrefix(base, "brief-"+parsed.Number+"-") {
-			return fmt.Errorf("work definition path mismatch in %s", file.Name)
+			return fmt.Errorf("work definition path mismatch in %s", name)
 		}
 		version, e := strconv.ParseUint(fields.Values["version"], 10, 64)
 		if e != nil {
-			return fmt.Errorf("invalid work version in %s", file.Name)
+			return fmt.Errorf("invalid work version in %s", name)
 		}
-		subject := BriefSubject{UUID: fields.Values["id"], Version: version, Repository: repository, Commit: head.Hash().String(), Path: file.Name}
+		subject := BriefSubject{UUID: fields.Values["id"], Version: version, Repository: repository, Commit: head, Path: name}
 		if e := subject.Validate(); e != nil {
 			return e
 		}
 		records = append(records, WorkRecord{Identity: parsed.Identity, Subject: subject, Label: RepoShortLabel(repository)})
 		bindings = append(bindings, workref.Binding{Identity: parsed.Identity, Key: subject.UUID})
 		return nil
-	})
-	if err != nil {
-		return WorkCatalog{}, Unverifiable("incomplete work source observations", err)
+	}
+	for _, name := range names {
+		if err := addWork(name); err != nil {
+			return WorkCatalog{}, Unverifiable("incomplete work source observations", err)
+		}
 	}
 	registry, err := workref.NewRegistry(roots, bindings)
 	if err != nil {
