@@ -498,8 +498,15 @@ func (t *tracer) entry(tid int, p *tproc, spec sysSpec, si syscallInfo) *pending
 	return c
 }
 
-const nsFlags = unix.CLONE_NEWNS | unix.CLONE_NEWUTS | unix.CLONE_NEWIPC | unix.CLONE_NEWUSER | unix.CLONE_NEWPID |
-	unix.CLONE_NEWNET | unix.CLONE_NEWCGROUP | unix.CLONE_NEWTIME
+// nsCloneMask is the clone flag set a traced row may never pass: any new
+// namespace. It only READS a row's clone flags to deny them; it assembles no
+// sandbox, so the network-namespace choke-point guard lists it by name.
+func nsCloneMask() uint64 {
+	return unix.CLONE_NEWNS | unix.CLONE_NEWUTS | unix.CLONE_NEWIPC | unix.CLONE_NEWUSER | unix.CLONE_NEWPID |
+		unix.CLONE_NEWNET | unix.CLONE_NEWCGROUP | unix.CLONE_NEWTIME
+}
+
+var nsFlags = nsCloneMask()
 
 func (t *tracer) traced(pid int) bool {
 	if pid <= 0 {

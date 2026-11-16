@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // verifyrun --rows (desktools-v2/74): a run executes and records only the named
@@ -122,15 +124,41 @@ func checkUnrestrictedGolden(t *testing.T) {
 	}
 	golden := witnessHeader
 	for _, id := range []string{"1", "2", "3", "4"} {
-		golden += fmt.Sprintf("\n| %s | `touch %s` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-22 | human:fixture @ %s %s (git-config) |", id, f.marker(id), tree, rowReadSetToken())
+		golden += fmt.Sprintf("\n| %s | `touch %s` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-22 | human:fixture @ %s %s (git-config) |", id, f.marker(id), tree, goldenReadsToken(t, f.brief, id))
 	}
 	if want := strings.Replace(before, "## Evidence\n", "## Evidence\n\n"+golden+"\n", 1); getFile(t, f.brief) != want {
 		t.Fatalf("an unrestricted run is not byte-identical to the pre-change output:\n--- got\n%s\n--- want\n%s", getFile(t, f.brief), want)
 	}
 }
 
+// goldenReadsToken is the read-set token the golden expects on row id. Where
+// the recorder cannot run it is exactly rowReadSetToken(). On Linux with a
+// working recorder the row records a content-addressed read set, whose digest
+// the golden cannot know in advance: the token is accepted only when the brief
+// carries it on that row AND a file of that name sits in the reads directory
+// beside the brief with content hashing to it. Anything else yields the
+// no-recorder token, so the byte comparison fails.
+func goldenReadsToken(t *testing.T, brief, id string) string {
+	t.Helper()
+	want := rowReadSetToken()
+	if runtime.GOOS != "linux" {
+		return want
+	}
+	re := regexp.MustCompile(`(?m)^\| ` + regexp.QuoteMeta(id) + ` \| .* \(reads sha256:([0-9a-f]{64})\) \(git-config\) \|$`)
+	m := re.FindStringSubmatch(getFile(t, brief))
+	if m == nil {
+		return want
+	}
+	content, err := os.ReadFile(filepath.Join(filepath.Dir(brief), evaluation.ReadSetDir, m[1]))
+	if err != nil || evaluation.ReadSetDigest(content) != m[1] {
+		t.Errorf("row %s carries read-set token %s with no matching read-set file: %v", id, m[1], err)
+		return want
+	}
+	return evaluation.ReadSetCellToken(m[1], "")
+}
+
 // regression: #4247
-// TestVerifyrunRowsSelectsOnlyNamed: `--rows 2,4` runs and records rows 2 and 4
+// TestVerifyrunRowsSelectsOnlyNamed:`--rows 2,4` runs and records rows 2 and 4
 // only, under the standard header so they key by their # IDs; --check then
 // credits only those rows; stdout names the others not selected; a run without
 // --rows writes the table it wrote before the flag existed (the golden, on its
