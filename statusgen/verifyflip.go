@@ -69,6 +69,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 const (
@@ -458,6 +460,9 @@ type flipPass struct {
 	Run      string // comment-removed selected text; closureRunWitnesses preserves full-record classification
 	Marks    []int
 	RunStart int
+	// RecordLanding is read-only v2 provenance, never an execution SHA/stamp.
+	RecordLanding string
+	RecordRun     string // library-rendered diagnostic, not execution provenance
 }
 
 // flipLatestPass reads the latest strict PASS run out of Evidence with every
@@ -467,6 +472,16 @@ type flipPass struct {
 // error is a *flipRefusal. The reconcile fold (reconcilefold.go) derives
 // `verified` from it, so the board and verifyflip read one PASS the same way.
 func flipLatestPass(evidence string) (flipPass, error) {
+	return selectLatestPass(evidence, nil)
+}
+
+// latestCoveragePass uses the same run selector as the legacy read. Only the
+// existing row owner receives canonical coverage for its read-only v2 arm.
+func latestCoveragePass(evidence string, coverage Coverage) (flipPass, error) {
+	return selectLatestPass(evidence, &coverage)
+}
+
+func selectLatestPass(evidence string, coverage *Coverage) (flipPass, error) {
 	lines, start, end, err := latestPassSpan(evidence)
 	if err != nil {
 		return flipPass{}, err
@@ -481,7 +496,7 @@ func flipLatestPass(evidence string) (flipPass, error) {
 	// check keeps judging every line from there, never fewer.
 	var p flipPass
 	if _, err := latestPassRunFrom(lines, start, end, func(from int) error {
-		q, err := flipReadRun(lines, start, from, end)
+		q, err := flipReadRun(lines, start, from, end, coverage)
 		if err == nil {
 			p = q
 		}
@@ -490,6 +505,61 @@ func flipLatestPass(evidence string) (flipPass, error) {
 		return flipPass{}, err
 	}
 	return p, nil
+}
+
+// readCoverageRun receives only rows already bounded and read by flipReadRun.
+// Canonical coverage grants read-only record provenance, never a write stamp.
+func readCoverageRun(lines []string, start, from, end int, rows [][2]string, at []int, coverage Coverage) (flipPass, error) {
+	if !coverage.Released {
+		return flipPass{}, refuseFlip("coverage is not released for the v2 PASS")
+	}
+	byRecord := map[string]*evaluation.WitnessProvenance{}
+	seenRows := map[string]bool{}
+	for _, claim := range coverage.Claims {
+		if claim.Kind != "command" {
+			continue
+		}
+		w := claim.Witness
+		if !claim.Released || w == nil || w.Brief != coverage.BriefID || w.Row == "" || seenRows[w.Row] || !isObjectID(w.Landing) || !hex64Re.MatchString(w.RecordID) || byRecord[w.RecordID] != nil {
+			return flipPass{}, refuseFlip("v2 PASS has no unambiguous released record provenance")
+		}
+		seenRows[w.Row] = true
+		byRecord[w.RecordID] = w
+	}
+	if len(rows) != len(byRecord) {
+		return flipPass{}, refuseFlip("v2 PASS rows differ from its released record set")
+	}
+	date := rows[0][0]
+	if !flipDateRe.MatchString(date) {
+		return flipPass{}, refuseFlip("bad date: the latest PASS is dated %q, not YYYY-MM-DD", date)
+	}
+	if _, err := time.Parse("2006-01-02", date); err != nil {
+		return flipPass{}, refuseFlip("bad date: the latest PASS has no calendar date")
+	}
+	if date > flipToday() {
+		return flipPass{}, refuseFlip("bad date: the latest PASS is after today")
+	}
+	seen := map[string]bool{}
+	runner, cr, landing := "", "", ""
+	for _, row := range rows {
+		cell := evaluation.ParseRunnerCell(row[1])
+		w := byRecord[cell.RecordID]
+		if !flipRowDated(row) || row[0] != date || cell.Schema != evaluation.WitnessSchemaV2 || cell.Malformed || w == nil || seen[cell.RecordID] || w.Runner != cell.Identity || w.Date != row[0] || w.CR != cell.CR {
+			return flipPass{}, refuseFlip("v2 PASS rows do not match one released run")
+		}
+		if landing != "" && (landing != w.Landing || runner != w.Runner || cr != w.CR) {
+			return flipPass{}, refuseFlip("v2 PASS mixes record landings, runners or change requests")
+		}
+		runner, cr, landing = w.Runner, w.CR, w.Landing
+		seen[cell.RecordID] = true
+	}
+	pass := flipPass{Runner: runner, RecordLanding: landing, RecordRun: byRecord[evaluation.ParseRunnerCell(rows[0][1]).RecordID].RunDescription(), Run: strings.Join(lines[from:end], "\n"), RunStart: start,
+		StampErr: refuseFlip("v2 coverage provenance supplies no Verified-cell write stamp")}
+	for _, i := range at {
+		pass.Marks = append(pass.Marks, from+i)
+	}
+	pass.Marks = append(pass.Marks, end)
+	return pass, nil
 }
 
 // latestPassRunFrom is the run boundary every reader of the latest PASS run
@@ -609,8 +679,11 @@ func latestPassSpan(evidence string) (lines []string, start, end int, err error)
 // flipReadRun reads lines [from, end) as the run the strict PASS on line end
 // closes, with start the line after the verdict before it: its Date/Runner
 // rows must agree on one date and one `<login> @ <sha>`.
-func flipReadRun(lines []string, start, from, end int) (flipPass, error) {
+func flipReadRun(lines []string, start, from, end int, coverage *Coverage) (flipPass, error) {
 	rows, at := flipDateRunnerRows(lines[from:end])
+	if len(rows) > 0 && coverage != nil && evaluation.ParseRunnerCell(rows[0][1]).Schema == evaluation.WitnessSchemaV2 {
+		return readCoverageRun(lines, start, from, end, rows, at, *coverage)
+	}
 	if len(rows) == 0 {
 		return flipPass{}, refuseFlip("runner mismatch: no Date/Runner rows are recorded for the latest PASS")
 	}

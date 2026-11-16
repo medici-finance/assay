@@ -40,7 +40,7 @@ package main
 // human look. The safe direction is the only cheap one.
 //
 // READ COST. The probe runs ONLY for rows whose rollup counted 0/0/0. Worst
-// path per such PR: 1 check-runs read + 1 combined-status read + 1 workflows
+// path per such PR: 1 ChecksAtHead operation (check runs + commit statuses) + 1 workflows
 // directory listing + ≤zeroCIWorkflowCap workflow content reads + (only when a
 // workflow carries a path filter) the changed-files walk. All through the typed
 // Forge seam, all GETs — the read-mapping tests enumerate them.
@@ -92,6 +92,14 @@ var prLifecycleTypes = []string{"opened", "synchronize", "reopened"}
 // so one flaky read degrades exactly one board row instead of the board —
 // the same fail-closed-narrowly contract as assessRepoBranch (health.go).
 func probeZeroCI(repo string, p prBase) (state, detail string) {
+	return probeZeroCIWithFiles(repo, p, func() (map[string]bool, bool, error) {
+		return fetchChangedFiles(repo, p.Number)
+	})
+}
+
+// probeZeroCIWithFiles lets the classifier share its existing file observation;
+// mutable CI is always freshly collected here, never taken from the fact store.
+func probeZeroCIWithFiles(repo string, p prBase, changedFiles func() (map[string]bool, bool, error)) (state, detail string) {
 	unv := func(format string, args ...any) (string, string) {
 		return zeroCIUnverified, fmt.Sprintf(format, args...)
 	}
@@ -101,15 +109,15 @@ func probeZeroCI(repo string, p prBase) (state, detail string) {
 	// suspect READ, not a checked zero — and an all-SKIPPED/NEUTRAL set ran
 	// but produced no verdict, which is not green either (a flip needs at
 	// least one completed successful check, not the absence of a failure).
-	runs, truncated, err := fetchCheckRuns(repo, p.HeadRefOid)
+	checks, err := fetchHeadChecks(repo, p.HeadRefOid)
 	if err != nil {
 		return unv("cannot read check-runs at head %s — %s", short(p.HeadRefOid), oneLine(err.Error()))
 	}
-	if truncated {
+	if checks.CheckRunsTotalCount > len(checks.CheckRuns) {
 		return unv("check-run list truncated at the per_page=%d cap for %s — cannot prove nothing ran", bhPageCap, short(p.HeadRefOid))
 	}
 	evidence, skipped := 0, 0
-	for _, r := range runs {
+	for _, r := range checks.CheckRuns {
 		if !strings.EqualFold(r.Status, "completed") {
 			evidence++ // still running — the rollup should have counted it pending
 			continue
@@ -129,10 +137,9 @@ func probeZeroCI(repo string, p prBase) (state, detail string) {
 		return unv("%d check run(s) at head %s, all SKIPPED/NEUTRAL — checks ran but produced no verdict; "+
 			"no completed successful check exists", skipped, short(p.HeadRefOid))
 	}
-	statuses, serr := fetchCombinedStatusTotal(repo, p.HeadRefOid)
-	if serr != nil {
-		return unv("cannot read combined commit status at head %s — %s", short(p.HeadRefOid), oneLine(serr.Error()))
-	}
+	// The typed operation already read both check runs and commit statuses.
+	// Use this invocation's observation for both decisions; never cache mutable CI.
+	statuses := checks.StatusTotalCount
 	if statuses > 0 {
 		return unv("%d commit status context(s) exist at head %s but the PR rollup counted none — the rollup read "+
 			"is suspect (external CI posts statuses, not check runs)", statuses, short(p.HeadRefOid))
@@ -191,7 +198,7 @@ func probeZeroCI(repo string, p prBase) (state, detail string) {
 	}
 	var files []string
 	if needFiles {
-		fset, complete, ferr := fetchChangedFiles(repo, p.Number)
+		fset, complete, ferr := changedFiles()
 		if ferr != nil {
 			return unv("cannot read changed files for %s#%d — %s", repo, p.Number, oneLine(ferr.Error()))
 		}
@@ -222,25 +229,6 @@ func probeZeroCI(repo string, p prBase) (state, detail string) {
 	}
 	return zeroCINoChecks, fmt.Sprintf("%d pull_request workflow(s) at head, none matches this diff "+
 		"(branch/path filters) — a checked zero", len(triggers))
-}
-
-// fetchCombinedStatusTotal reads the combined commit status at a sha and
-// returns GitHub's own context count. External CI (non-Actions) posts commit
-// statuses, not check runs — a zero-check-runs sha with statuses here is a
-// suspect rollup read, not a checked zero.
-func fetchCombinedStatusTotal(repo, sha string) (int, error) {
-	f, fr, ferr := forgeFor(repo)
-	if ferr != nil {
-		return 0, ferr
-	}
-	// ChecksAtHead already carries the combined-status rollup's asserted total (StatusTotalCount)
-	// — the exact bare count this probe reads — so the combined-status read folds into the
-	// existing op rather than a redundant new one.
-	checks, err := f.ChecksAtHead(fr, sha)
-	if err != nil {
-		return 0, err
-	}
-	return checks.StatusTotalCount, nil
 }
 
 // isNotFound reports whether a gh api failure was an HTTP 404 — for the

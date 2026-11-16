@@ -82,7 +82,8 @@ in context, continue from it; a new turn does not require rereading unchanged ma
 After compaction or a source change, recover the missing or changed instructions before
 acting. Use the existing [standing note](./standing-note.md), not a second checkpoint
 schema: keep item/repository, lane and exact head, worktree, child and command handles,
-unresolved findings/holds and evidence paths under In-flight; keep last sweep and next
+unresolved findings, holds (each naming its source on the same line, under the
+note's hold rule) and evidence paths under In-flight; keep last sweep and next
 due check under Board/Monitors. This remains a re-probe index, never authority, fresh
 queue evidence or a verdict.
 Save full logs to files and bring back status, relevant failure excerpts and paths.

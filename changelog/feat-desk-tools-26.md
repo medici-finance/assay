@@ -1,0 +1,2 @@
+### Fixed
+- `deskwt` tests no longer hang when a command prints more than the pipe buffer. The stdout and stderr capture helpers now drain the pipe while the command runs, through one shared helper. Before, `prune --help` (about 9 KiB) deadlocked the package on a container's 8 KiB pipes until `go test -timeout` fired. A guard test with a planted fixture rejects any other capture pipe in the package's tests.

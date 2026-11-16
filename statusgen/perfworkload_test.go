@@ -20,10 +20,18 @@ import (
 type perfSize struct {
 	Streams         int
 	BriefsPerStream int
+	// Merges > 0 selects the real-shape profile (hydrate_budget_test.go): a git
+	// repository with this many first-parent merges on main whose every brief waits on
+	// a recorded FAIL. statusgen/44: the plain corpus has neither, so it never
+	// exercised the history-backed notices that cost 11 s on a real tree.
+	Merges int
 }
 
 func perfWorkRoot(t *testing.T, size perfSize) string {
 	t.Helper()
+	if size.Merges > 0 {
+		return hydrateRealShapeRoot(t, hydrateShape{streams: size.Streams, briefsPerStream: size.BriefsPerStream, merges: size.Merges})
+	}
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)
@@ -154,11 +162,15 @@ func TestPerfWorkloadSamples(t *testing.T) {
 	lab := newPerfLab(t)
 	var cliRows strings.Builder
 	cliRows.WriteString("\n| Corpus | Compiled CLI mode | Process wall ms p50 / p95 | Process CPU ms p50 / p95 | Actual deskread starts |\n|---|---|---|---|---|\n")
-	for _, name := range []string{"small", "large"} {
+	for _, name := range []string{"small", "large", "real-shape"} {
 		root := perfWorkRoot(t, sizes[name])
 		// Real settle interval, once per corpus: no clock manipulation in measurements.
 		time.Sleep(readMemoSettleWindow + 100*time.Millisecond)
-		for _, mode := range []string{"lint", "regen", "gate-scores", "next-up"} {
+		modes := []string{"lint", "regen", "gate-scores", "next-up"}
+		if sizes[name].Merges > 0 {
+			modes = []string{"gate-scores"} // the hydrated path; lint/regen legitimately pay for history
+		}
+		for _, mode := range modes {
 			cold, warm := []perfWorkSample{}, []perfWorkSample{}
 			for i := 0; i < samples; i++ {
 				resetPerfInputs()

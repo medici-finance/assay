@@ -8,7 +8,7 @@ Dispositions:
 - `reads informational fields only` — reads an identity token, a Result or state cell, a path, or a count; never a revision, a tree token, a record id or a staleness verdict. A file that only mentions the words (a comment, an unrelated `Runner`) is listed here with that noted.
 - `migrates in statusgen/37` — writes or interprets a cell or record in a way the v2 writer changes; until statusgen/37 lands it either fails closed on a v2 cell (noted) or is untouched by it.
 
-The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witnessreaders_test.go`) is: a Runner cell (`Runner cell`, `.Runner`, `witnessCells`, `witnessTreeOf`, `ParseRunnerCell`), a witness record (`ParseWitnessRecord`, `WitnessRecord`, `witness_schema_version`), a verify-outcome record (`verify-outcome`, `OutcomeRecord`, `outcome-record`) or a claim's revision (`Claim.Revision`, `coverageClaimJSON`, `evaluation.Claim`).
+The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witnessreaders_test.go`) is: a Runner cell (`Runner cell`, `.Runner`, `witnessCells`, `witnessTreeOf`, `ParseRunnerCell`), a witness record (`ParseWitnessRecord`, `WitnessRecord`, `witness_schema_version`), a verify-outcome record (`verify-outcome`, `OutcomeRecord`, `outcome-record`) or a claim's revision (`Claim.Revision`, `coverageClaimJSON`, `evaluation.Claim`) and internal released-record provenance (`WitnessProvenance`, `RecordLanding`).
 
 | File | Disposition | Note |
 |---|---|---|
@@ -42,11 +42,12 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `statusgen/protectedclosure.go` | reads informational fields only | reads the Result, Command or state cells of a witness row through witnessCells, never the revision or marker |
 | `statusgen/readset_adapter.go` | judges through the library | reads a witness's read-set file and its introducing commit, exports the witness tree for the floor's `go list`, and hands the library the files it lists or why it could not list them; the library decides the claim |
 | `statusgen/readset_platform.go` | migrates in statusgen/37 | writes the v1 Runner cell's read-set token (the could-not-check form off Linux) through the library's token writer, and holds `readSetRecorderShipped`, the switch that keeps every caller from judging a read-set token until a recorder ships |
-| `statusgen/reconcilefold.go` | reads informational fields only | renders or round-trips a Runner cell without interpreting the marker |
+| `statusgen/reconcilefold.go` | judges through the library | consumes released canonical record provenance for a read-only v2 PASS, retaining closure and Evidence actor checks; WitnessInfo.Run is a human-readable diagnostic |
+| `statusgen/reconciletracking.go` | judges through the library | reads brief version at the canonically validated record landing; it never treats that landing as an execution SHA or falls back to informational.commit/current HEAD |
 | `statusgen/unrun.go` | reads informational fields only | reads the Result, Command or state cells of a witness row through witnessCells, never the revision or marker |
 | `statusgen/verifiedrunneragree.go` | reads informational fields only | identity token and Result cell for attribution and the verifier floor; takes the whole token, never splits on the marker |
 | `statusgen/verifyclosure.go` | reads informational fields only | classifies a path as a verify-outcome record or board bookkeeping; reads no field of a record |
-| `statusgen/verifyflip.go` | migrates in statusgen/37 | matches `<login> @ <hex sha>` with its own pattern on a verdict run; a v2 marker is not hex, so a v2 cell fails closed until statusgen/37 migrates it |
+| `statusgen/verifyflip.go` | judges through the library | latestCoveragePass delegates to the shared flipReadRun owner; the library renders the read-only canonical landing diagnostic; flipLatestPass and the lower Verified-cell writer retain their legacy execution-SHA/stamp requirement and refuse v2 until statusgen/37 |
 | `statusgen/verifyissues.go` | reads informational fields only | reads the Result, Command or state cells of a witness row through witnessCells, never the revision or marker |
 | `statusgen/verifyoutcomes.go` | reads informational fields only | classifies a path as a verify-outcome record or board bookkeeping; reads no field of a record |
 | `statusgen/verifyrun.go` | migrates in statusgen/37 | writes the v1 Runner cell and Evidence row; the v2 writer is statusgen/37 (reader side only here: witnessCells and witnessTreeOf hand the cell to the library) |

@@ -794,6 +794,12 @@ func TestVerifyrunRowsTransitionSplitRunsDoNotClose(t *testing.T) {
 func TestVerifyrunRowsFailFirstScope(t *testing.T) {
 	f := newRowsFixture(t, "| # | Command | Expect |\n|---|---|---|\n| 1 | `true` | exit 0 (live) |\n| 2 | `true` | exit 0 |\n")
 	base := mustGitOut(t, f.root, "rev-parse", "HEAD")
+	// The base must be the merge-base itself, and an unresolvable merge-base
+	// is refused (ruling A, medici-finance/assay#5544): pin origin/main here.
+	mustGitOut(t, f.root, "update-ref", remoteMainRef, base)
+	// A base equal to HEAD is refused (a red there is not a red without the
+	// change), so HEAD moves one commit past the merge-base.
+	mustGitOut(t, f.root, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "next")
 	// Selecting the risk-bearing row 1 prints no notice (its exit is the
 	// fail-first verdict: green at base is non-discriminating).
 	for _, c := range []struct {

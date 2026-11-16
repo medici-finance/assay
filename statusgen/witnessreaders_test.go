@@ -16,7 +16,7 @@ import (
 const witnessReadersDoc = "../docs/witness-readers.md"
 
 // witnessCensusPattern is the census grep, mirrored in the doc's prose.
-var witnessCensusPattern = regexp.MustCompile(`Runner cell|runnerCell|\.Runner\b|"Runner"|witnessCells|witnessTreeOf|ParseRunnerCell|ParseWitnessRecord|WitnessRecord|witness_schema_version|WitnessCell|verify-outcome|VerifyOutcome|OutcomeRecord|outcome-record|outcomerecord|Claim\.Revision|\bcl\.Revision|claim\.Revision|coverageClaimJSON|evaluation\.Claim\b`)
+var witnessCensusPattern = regexp.MustCompile(`Runner cell|runnerCell|\.Runner\b|"Runner"|witnessCells|witnessTreeOf|ParseRunnerCell|ParseWitnessRecord|WitnessRecord|witness_schema_version|WitnessCell|verify-outcome|VerifyOutcome|OutcomeRecord|outcome-record|outcomerecord|Claim\.Revision|\bcl\.Revision|claim\.Revision|coverageClaimJSON|evaluation\.Claim\b|\bWitnessProvenance\b|\bRecordLanding\b`)
 
 var witnessReaderDispositions = map[string]bool{
 	"judges through the library":      true,
