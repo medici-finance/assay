@@ -133,7 +133,7 @@ A read verb with unmeasured fields, still `ok`:
 | `created` | RFC 3339 UTC, whole seconds. |
 | `expires` | Exactly 10 minutes after `created`. Fixed: no verb and no flag changes it. |
 | `digest` | The sha256, lowercase hex, of the plan's RFC 8785 (JCS) canonical JSON with `digest` and `confirm_code` omitted. `confirm_code` is omitted with `digest` because it is derived from it. |
-| `confirm_code` | The first 8 characters of `digest`, shown to the operator, who types it to apply. |
+| `confirm_code` | One lowercase word, shown to the operator, who types it to apply (case and surrounding space are ignored). The word list is the two `id` word lists compiled into the tool, adjectives then nouns, in their fixed order. The word is the entry at the first 8 bytes of `digest`, read as a big-endian unsigned integer, modulo the list's length; if that word is either word of the plan's own `id`, the next entry is taken, wrapping at the end, until it is neither. A reader recomputes the word from the digest and the id, so a changed plan, or a changed child of a batch, changes or invalidates it. **Format change:** this version replaces the earlier confirm, the first 8 characters of `digest`. A stored plan whose `confirm_code` is still 8 hex characters is refused `plan-invalid`, with a detail naming the retired form; make the plan again. A plan expires 10 minutes after it is made, so only a plan made just before an upgrade meets this. |
 
 A plan carries no numbers and only fixed ASCII member names, so any RFC 8785 implementation and the reference canonicaliser produce the same bytes for it.
 
@@ -171,7 +171,7 @@ A plan carries no numbers and only fixed ASCII member names, so any RFC 8785 imp
   "created": "2026-10-14T12:00:00Z",
   "expires": "2026-10-14T12:10:00Z",
   "digest": "a6343e121573fbea0b925c9e296a0de5d685d600b870a0dc88235e6d1684fa13",
-  "confirm_code": "a6343e12"
+  "confirm_code": "dahlia"
 }
 ```
 
@@ -210,7 +210,7 @@ A stopped sequence leaves the batch consumed. Its result is `partial` if any act
   "created": "2026-10-14T12:00:00Z",
   "expires": "2026-10-14T12:10:00Z",
   "digest": "6418a0ec15eb153eb63d4790d82ee6772568d9319ed640cf325590fa9cc1a074",
-  "confirm_code": "6418a0ec"
+  "confirm_code": "mighty"
 }
 ```
 
@@ -242,7 +242,7 @@ The two children it names:
   "created": "2026-10-14T12:00:00Z",
   "expires": "2026-10-14T12:10:00Z",
   "digest": "6f1f7269f904c7952a6e5c355144fc800c0def49ecb4fd461e2811eaaa2b92d3",
-  "confirm_code": "6f1f7269"
+  "confirm_code": "regal"
 }
 ```
 
@@ -272,7 +272,7 @@ The two children it names:
   "created": "2026-10-14T12:00:00Z",
   "expires": "2026-10-14T12:10:00Z",
   "digest": "41933593c54bd797301158e84c52268d01d0e9b789cd2c982ebf1f8021b6425f",
-  "confirm_code": "41933593"
+  "confirm_code": "yak"
 }
 ```
 
@@ -298,7 +298,7 @@ Each registers the annotation `cellop:state-changing`: on the command when every
 Every state-changing invocation requires stdin and stdout to be terminals. Off a terminal it is refused `not-interactive` (exit 5), and the `--plan` form still works. On a terminal, apply:
 
 1. shows the plan, its cells and its `confirm_code`;
-2. requires the operator to type that code, refusing `confirm-mismatch` otherwise;
+2. requires the operator to type that word, refusing `confirm-mismatch` otherwise;
 3. re-measures every precondition, refusing `plan-stale` (exit 5) if any value changed, or `could-not-check` (exit 6) if one cannot be measured, and in both cases **does not consume** the plan;
 4. **consumes atomically**, by exclusive creation of `run/plans/consumed/<plan-id>`, refusing `already-consumed`;
 5. only then runs the actions.
