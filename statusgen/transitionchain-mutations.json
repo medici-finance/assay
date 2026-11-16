@@ -96,6 +96,18 @@
       "file": "acceptancetransition.go",
       "old": "case !open && position < len(links) && links[position].amendment == rev:",
       "new": "case position < len(links) && links[position].amendment == rev:"
+    },
+    {
+      "name": "round trip restore ignores in-line whitespace",
+      "file": "acceptancetransition.go",
+      "old": "case open && table == acceptedTable && v == acceptedVersion:",
+      "new": "case open && strings.Join(strings.Fields(table), \" \") == strings.Join(strings.Fields(acceptedTable), \" \") && v == acceptedVersion:"
+    },
+    {
+      "name": "round trip restore ignores row order",
+      "file": "acceptancetransition.go",
+      "old": "case open && table == acceptedTable && v == acceptedVersion:",
+      "new": "case open && func() bool { n := map[string]int{}; for _, l := range strings.Split(table, \"\\n\") { n[l]++ }; for _, l := range strings.Split(acceptedTable, \"\\n\") { n[l]-- }; for _, c := range n { if c != 0 { return false } }; return true }() && v == acceptedVersion:"
     }
   ]
 }

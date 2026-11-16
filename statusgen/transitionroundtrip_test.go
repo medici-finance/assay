@@ -71,7 +71,8 @@ func TestChainRoundTripNoop(t *testing.T) {
 
 // regression: #6599
 func TestChainRoundTripRefusals(t *testing.T) {
-	for _, mode := range []string{"inexact", "trailing-blank", "version", "unapproved-bump", "open"} {
+	modes := []string{"inexact", "trailing-blank", "version", "unapproved-bump", "open", "reorder", "tab", "eol-space"}
+	for _, mode := range modes {
 		t.Run(mode, func(t *testing.T) {
 			edit, restore := sweepRow2, sameBody
 			switch mode {
@@ -87,6 +88,33 @@ func TestChainRoundTripRefusals(t *testing.T) {
 				restore = func(b string) string { return strings.Replace(b, "version: 1", "version: 2", 1) }
 			case "open":
 				restore = func(b string) string { return strings.Replace(b, "| 2 | `true` |", "| 2 | `true || false` |", 1) }
+			case "reorder":
+				// Every delivered row comes back, but rows 1 and 2 swap.
+				restore = func(b string) string {
+					r1, r2 := "| 1 | `true` | exit 0 | check | sh |\n", "| 2 | `true` | exit 0 | check | sh |\n"
+					return strings.Replace(b, r1+r2, r2+r1, 1)
+				}
+			case "tab":
+				// A tab where the delivered row had a space.
+				restore = func(b string) string {
+					return strings.Replace(b, "| 2 | `true` | exit 0 |", "| 2 | `true` |\texit 0 |", 1)
+				}
+			case "eol-space":
+				// A space after the delivered row's last cell.
+				restore = func(b string) string {
+					return strings.Replace(b, "| 2 | `true` | exit 0 | check | sh |\n", "| 2 | `true` | exit 0 | check | sh | \n", 1)
+				}
+			}
+			if mode != "unapproved-bump" {
+				// Each inexact restore must really differ, or the case pins nothing.
+				inexact := restore
+				restore = func(b string) string {
+					r := inexact(b)
+					if r == b {
+						t.Fatalf("%s restore matched nothing in the delivered body", mode)
+					}
+					return r
+				}
 			}
 			f, swept := roundTripFixture(t, edit, restore)
 			missing := swept

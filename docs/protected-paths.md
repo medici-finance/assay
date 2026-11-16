@@ -377,7 +377,20 @@ alone may reuse a v1 approval under the unchanged v1 rules, without combined cel
 Legacy one-line descriptors retain their original rules and refusal verdicts.
 
 Every first-parent Verify or version change from delivery through HEAD must be
-exactly one ordered amendment. Each parent table and unique two-parent merge base
+exactly one ordered amendment, with one exception, the byte-identical round trip
+(human ruling on #6599). A span of unlinked first-parent changes that leaves the
+accepted state, which is the delivery or the last link, is a no-op when it returns
+to that state before the next link. The return must make the Verify section
+byte-identical to the accepted one and `version:` equal to the accepted version.
+Byte-identical means equal after the walk's existing normalization: CRLF line
+endings become LF and only the Verify section is compared. No other trimming
+applies, so a restore with reordered rows, a changed space or tab, an added blank
+line, or a different version still refuses as `link <k> missing at <12-hex>`,
+naming the span's first revision. The span must close before the next link: a link
+that lands while a span is still open refuses. The next link's predecessor stays the
+accepted revision, so a collapsed span never yields a version step and an approval
+must still name that revision as predecessor. A round trip after the final link has
+no later link to close against and refuses. Each parent table and unique two-parent merge base
 must match the preceding table; the version increases by one at each amendment.
 Evidence preservation, including only the existing empty-placeholder exception,
 stays unchanged. Immutable history and row-shape checks precede approval reads.

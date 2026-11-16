@@ -125,12 +125,15 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		return bf.Version, nil
 	}
 	// Account for every Verify OR version change, including a reverted edit.
-	// The one exception (#6599): a span that leaves the accepted state (the
-	// delivery or the last link) and returns to it with the Verify table and
-	// version BYTE-IDENTICAL, followed by the next link, is a no-op. It
-	// collapses away: the next link's predecessor stays the accepted revision,
-	// so the span never yields a version step. Any other change still needs a
-	// link, and a round trip after the final link stays refused.
+	// The one exception (#6599, human ruling there): a span that leaves the
+	// accepted state (the delivery or the last link) and returns to it with
+	// the Verify section and version BYTE-IDENTICAL, followed by the next
+	// link, is a no-op. Byte-identical is measured on what read returns: the
+	// Verify section only, after its CRLF to LF normalisation, with no other
+	// trimming, so reordered rows or any other whitespace change still refuse.
+	// The span collapses away: the next link's predecessor stays the accepted
+	// revision, so the span never yields a version step. Any other change
+	// still needs a link, and a round trip after the final link stays refused.
 	history, e := transitionFirstParents(dir, delivery)
 	if e != nil {
 		return fail(1, "cannot read amendment ancestry")
