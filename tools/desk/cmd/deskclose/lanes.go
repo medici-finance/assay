@@ -201,7 +201,7 @@ func applySelfWithdraw(r selfWithdrawReq, out io.Writer) error {
 
 	if strings.EqualFold(pr.State, "closed") || pr.Merged {
 		a.log(deskkit.ResultNoop, "already closed — idempotent no-op")
-		fmt.Fprintf(out, "noop\t%s#%d\talready closed\n", r.repo, r.number)
+		fmt.Fprintf(out, "noop\t%s\talready closed\n", itemRef(r.repo, r.number, deskkit.TargetChange))
 		return nil
 	}
 	it := item{Number: pr.Number, Title: pr.Title, State: pr.State, Labels: append([]string(nil), pr.Labels...), IsPR: true}
@@ -250,7 +250,7 @@ func applySelfWithdraw(r selfWithdrawReq, out io.Writer) error {
 	body := selfWithdrawComment(r, self)
 	if r.dryRun {
 		a.log(deskkit.ResultDryRun, "dry-run: verified, wrote nothing")
-		fmt.Fprintf(out, "dry-run\t%s#%d\t%s\tbecause=%s\tby=%s\n", r.repo, r.number, modeSelfWithdraw, r.because, r.by)
+		fmt.Fprintf(out, "dry-run\t%s\t%s\tbecause=%s\tby=%s\n", itemRef(r.repo, r.number, deskkit.TargetChange), modeSelfWithdraw, r.because, r.by)
 		fmt.Fprintln(out, body)
 		return nil
 	}
@@ -274,7 +274,7 @@ func applySelfWithdraw(r selfWithdrawReq, out io.Writer) error {
 	}
 	a.log(deskkit.ResultOK, fmt.Sprintf("closed via lane %s (because %s, by %s) as %s",
 		modeSelfWithdraw, r.because, r.by, deskkit.StripControl(self.login)))
-	fmt.Fprintf(out, "closed\t%s#%d\t%s\tbecause=%s\tby=%s\n", r.repo, r.number, modeSelfWithdraw, r.because, r.by)
+	fmt.Fprintf(out, "closed\t%s\t%s\tbecause=%s\tby=%s\n", itemRef(r.repo, r.number, deskkit.TargetChange), modeSelfWithdraw, r.because, r.by)
 	return nil
 }
 
@@ -400,7 +400,7 @@ func applyVerifyGateRefire(c common, n int, reason string, out io.Writer) error 
 	}
 	if !it.closed() {
 		a.log(deskkit.ResultNoop, "already open — nothing to re-fire; idempotent no-op")
-		fmt.Fprintf(out, "noop\t%s#%d\talready open\n", c.repo, n)
+		fmt.Fprintf(out, "noop\t%s\talready open\n", itemRef(c.repo, n, deskkit.TargetIssue))
 		return nil
 	}
 	if err := refuseDecisionItem(c.repo, it); err != nil {
@@ -419,7 +419,7 @@ func applyVerifyGateRefire(c common, n int, reason string, out io.Writer) error 
 	body := refireComment(c.repo, n, reason, who)
 	if c.dryRun {
 		a.log(deskkit.ResultDryRun, "dry-run: verified, wrote nothing")
-		fmt.Fprintf(out, "dry-run\t%s#%d\t%s\treason=%s\n", c.repo, n, modeVerifyGateRefire, deskkit.StripControl(reason))
+		fmt.Fprintf(out, "dry-run\t%s\t%s\treason=%s\n", itemRef(c.repo, n, deskkit.TargetIssue), modeVerifyGateRefire, deskkit.StripControl(reason))
 		fmt.Fprintln(out, body)
 		return nil
 	}
@@ -458,7 +458,7 @@ func applyVerifyGateRefire(c common, n int, reason string, out io.Writer) error 
 	}
 	a.log(deskkit.ResultOK, fmt.Sprintf("re-closed via lane %s as %s (reason: %s)",
 		modeVerifyGateRefire, deskkit.StripControl(who.login), deskkit.StripControl(reason)))
-	fmt.Fprintf(out, "refired\t%s#%d\t%s\treason=%s\n", c.repo, n, modeVerifyGateRefire, deskkit.StripControl(reason))
+	fmt.Fprintf(out, "refired\t%s\t%s\treason=%s\n", itemRef(c.repo, n, deskkit.TargetIssue), modeVerifyGateRefire, deskkit.StripControl(reason))
 	return nil
 }
 
