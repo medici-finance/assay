@@ -70,13 +70,13 @@ func TestHeldQuotedFlipAdmits(t *testing.T) {
 		// The same with every quote flanked as a quotation mark, so only the
 		// paragraph check refuses it.
 		{"flanked span crossing a line",
-			heldEv("ok") + "\nRow 2 printed \"first part\nsecond part.\" Row 3 is HELD pending \" third part\nfourth\".\n", true},
+			heldEv("ok") + "\nRow 2 printed \"first part\nsecond part.\" Row 3 is HELD pending \"(third part\nfourth\".\n", true},
 		// A pipe on a prose line splits nothing when rendered.
 		{"pipe on a prose line",
 			heldEv("ok") + "\nRow 2 printed \"a | b\" and row 3 is HELD pending \" end.\n", true},
 		// The same, flanked, so only the whole-line reading refuses it.
 		{"flanked pipe on a prose line",
-			heldEv("ok") + "\nRow 2 printed \"a | b .\" and row 3 is HELD pending \" end.\n", true},
+			heldEv("ok") + "\nRow 2 printed \"a | b .\" and row 3 is HELD pending \"(end.\n", true},
 		// Inch marks are not quotation marks (flanking).
 		{"inch marks",
 			heldEv("ok") + "\nMeasured a 3\" gap; row 3 HELD pending the 5\" retest.\n", true},
@@ -104,6 +104,25 @@ func TestHeldQuotedRealEvidence(t *testing.T) {
 		{"real Evidence, hold appended",
 			ev + "\n### Non-implementer verifier re-run — 2026-10-26\n\n- Row 3: could-not-check, no Linux runner online.\n\n**VERIFY: BLOCKED**\n", true},
 	}, map[string]bool{"real Evidence as committed": true})
+}
+
+// TestHeldQuotedRenderDiverge: quote characters the source pairs around a
+// hold that a renderer does not show as a quotation give no span, so every
+// read refuses: quotes inside HTML comments, a character reference beside
+// ASCII quotes, spaced ditto or inch marks, and inch marks flanked by a
+// no-break space. Each shape is refused by exactly one of the guards.
+// regression: #4721
+func TestHeldQuotedRenderDiverge(t *testing.T) {
+	runHeldScanCasesFlip(t, []heldScanCase{
+		{"quotes in HTML comments",
+			heldEv("ok") + "\nRow 2 printed <!--\"--> row 3 is HELD <!--\"--> as noted.\n", true},
+		{"quote entity beside quotes",
+			heldEv("ok") + "\nRow 2 printed &quot;a .\" row 3 is HELD \". b&quot; on rerun.\n", true},
+		{"spaced inch marks",
+			heldEv("ok") + "\nMeasured a 3 \" gap; row 3 is HELD pending the 5 \" retest.\n", true},
+		{"NBSP-flanked inch marks",
+			heldEv("ok") + "\nMeasured a 3\u00a0\"\u00a0gap; row 3 is HELD pending the 5\u00a0\"\u00a0retest.\n", true},
+	}, nil)
 }
 
 // TestHeldQuotedWitnessCell: rule 7 is not applied to a verifyrun witness

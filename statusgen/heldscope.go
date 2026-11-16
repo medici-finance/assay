@@ -1483,6 +1483,10 @@ func heldQuotedOutput(clean string, h []int, row, alone bool) bool {
 //   - Only the ASCII double quote '"' delimits. A quote inside masked inline
 //     code is gone already. Any backslash-escaped quote in the region, or an
 //     odd number of quotes in it, leaves the pairing uncertain: no span.
+//   - Markup or a character a renderer may not show as a quotation mark
+//     leaves it uncertain too: a "<" or "&" anywhere in the region, a
+//     non-ASCII byte beside a quote, or a quote with white space (or the
+//     region's edge) on both sides.
 //   - Quotes pair in order, first with second, third with fourth. An opening
 //     quote right after a letter or digit, or a closing quote right before
 //     one (an inch mark: 5"), is not a quotation mark: no span.
@@ -1502,6 +1506,24 @@ func heldQuotedIn(clean string, h []int, lo, hi int) bool {
 	}
 	if len(quotes)%2 != 0 {
 		return false
+	}
+	// Markup can hide or supply a quote the source pairs: a "<" (an HTML
+	// comment or tag around a quote) or a "&" (a character reference such
+	// as &quot;) in the region leaves the pairing uncertain, as a "<"
+	// leaves inlineCodeScan's.
+	if strings.ContainsAny(clean[lo:hi], "<&") {
+		return false
+	}
+	space := func(i int) bool {
+		return i < lo || i >= hi || clean[i] == ' ' || clean[i] == '\t'
+	}
+	for _, q := range quotes {
+		// A quote beside a non-ASCII byte (a no-break or other Unicode
+		// space, a curly quote) or with white space on both sides (a spaced
+		// ditto or inch mark) may not render as a quotation mark.
+		if q > lo && clean[q-1] >= 0x80 || q+1 < hi && clean[q+1] >= 0x80 || space(q-1) && space(q+1) {
+			return false
+		}
 	}
 	alnum := func(i int) bool {
 		if i < lo || i >= hi {

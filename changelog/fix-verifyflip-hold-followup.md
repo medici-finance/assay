@@ -1,2 +1,3 @@
 ### Fixed
 - `statusgen verifyflip` and the reconcile fold no longer skip a double-quoted hold inside a verifyrun witness row (the held scan's rule 7). The witness check credits such a row by the first state word in its Result cell, so a Result cell reading `"<hold>" pass exit=0` flipped where it had been refused before rule 7; it is refused again on every read.
+- The held scan's rule 7 no longer reads a span from quote characters a renderer may not show as a pair: a `<` or `&` in the cell or line (quotes inside HTML comments, a `&quot;` reference beside an ASCII quote), a quote beside a non-ASCII character (a no-break space), or a quote with white space on both sides (a spaced ditto or inch mark). Such a hold is refused on every read.
