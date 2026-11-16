@@ -95,6 +95,20 @@ func TestEvidenceReceiptRequests(t *testing.T) {
 		t.Fatalf("want snapshot, conditional commit, and exact commit receipt check, got %+v", calls)
 	}
 	assertOneMintedIdentity(t, calls)
+	// The write window re-admits through the fresh (uncached) forge, as the minted identity,
+	// and before the commit.
+	if len(lf.readmit) == 0 {
+		t.Fatal("the write window did not re-admit the landing")
+	}
+	assertOneMintedIdentity(t, lf.readmit)
+	for i, c := range lf.api.calls {
+		if c.Operation == "commit" {
+			if i == 0 || lf.api.calls[i-1].Operation != "readmit" {
+				t.Fatalf("the commit was not preceded by the window's re-admission: %+v", lf.api.calls)
+			}
+			break
+		}
+	}
 	if !strings.Contains(lf.api.puts[0].Message, lf.receipt.EvidenceBinding()) {
 		t.Fatal("commit lost attestation trailer")
 	}

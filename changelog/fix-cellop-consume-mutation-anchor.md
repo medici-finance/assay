@@ -1,2 +1,0 @@
-### Fixed
-- The cell-operation mutation spec's "consume is not exclusive" entry now plants its mutation in the consumed-marker creation inside `Store.Consume`. Its anchor text also matched the plan-file creation in `Store.Save`, which comes first in the file, and muhar replaces the first match, so the entry had been mutating `Save` and was caught by the save tests while the consume path went untested. The anchor is now the one line unique to `Consume`, and the entry is caught by the concurrent-apply and batch-consume tests.

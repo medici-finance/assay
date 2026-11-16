@@ -538,6 +538,21 @@ Risk-bearing value: frontmatter risk is all no. The delivered literals that boun
 
 **VERIFY: BLOCKED** — 22/24 rows pass at 43d134d8d592 in the closed container bracket. Row 15 is pre-merge-only and could not be checked post-merge. Row 16 is held on a repo-wide lint red that names no file of this brief. No obligation of this brief was observed failing. gate: model.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 15 | `statusgen --root . --consumers --brief assay:assay:graph-execution:34 --delivery 0d66f0aec69310518d900af570fb92af1177878e --base dbfa166d5d967904f4b14956b8735933d48579d6` | pass exit=0 | sha256:65486abebacc | 2026-11-16 | assay-verifier-app[bot] @ 5638ed549a0c (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 16 | `statusgen --root . --lint` | fail exit=1 | sha256:d9f6dec89eca | 2026-11-16 | assay-verifier-app[bot] @ 5638ed549a0c (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6597 run=60ebbc1af3c13bb68f1c9b7f86cb3d7236ac4285c4808e8a224f9b2f43dbc370 source=5638ed549a0c3074046a77d708d9f1d4fb31099c brief=docs/streams/graph-execution/brief-34-signal-input-and-signal-classes.md model=claude-opus-5-5 tier=strong
+
+Re-verify 2026-11-16 at 5638ed549a0c (attestation line above), rows 15 and 16 only, on the host lane: both rows are class check, so no container bracket applies. Admitted by deskdispatch --check-verifier (rc 0, tool v1.0.85, darwin-arm64). Host statusgen v1.0.85, go1.27.4. The witness above was written by statusgen verifyrun --rows 15,16 in one credited attempt, 14:47:15Z to 14:49:29Z. Rows 1-14 and 17-24 keep their 2026-11-02 passes at 43d134d8d592 from the closed bracket above. No row command was changed.
+
+Row 15 now carries the pinned --delivery/--base it lacked on 2026-11-02 and passes post-merge: exit 0, "summary: 5 corroborated, 0 disproved, 5 unchecked, 0 brief(s) claiming nothing". Every fixed-here entry is CORROBORATED: the schema and its twin, statusgen/patterns.go with its tests and testdata, spec/workflow-pattern-v1.md, and statusgen/enforcementstatus.go with the generated skill tables. The 5 unchecked entries are out-of-scope judgements left to the reviewer. The tool also printed its standing PRODUCER-DELIVERY: COULD-NOT-CHECK notice, which evaluates neither producer identity nor completeness.
+
+Row 16 exited 1 with "LINT: FAIL 3 problem(s)". All three are on other streams' protected acceptance tables, and each reads "acceptance transition: could-not-check human authority: --acceptance-forge is required": desk-tools/37, desktools-v2/65 and, new since 2026-11-02, forge-neutral/54. No PROBLEM or notice names graph-execution/34 or any file this brief changed. The run made no forge reads, so --acceptance-forge was out of reach. This is the same repo-wide red as before (medici-finance/assay#4823), now on three briefs; it holds the row until main lints clean. The RISK-VALUE DERIVED lines above still stand at this source.
+
+**VERIFY: BLOCKED** — 23/24. Row 15 passes at 5638ed549a0c; rows 1-14 and 17-24 pass at 43d134d8d592. Row 16 is held by a repo-wide lint red on desk-tools/37, desktools-v2/65 and forge-neutral/54 that needs --acceptance-forge and names no file of this brief. No obligation of this brief was observed failing. gate: model.
+
+
 ## Review
 
 Gate: model (from frontmatter). The reviewer answers:

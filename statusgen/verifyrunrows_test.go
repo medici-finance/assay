@@ -174,7 +174,7 @@ func gitDirOf(t *testing.T, root string) string {
 }
 
 // regression: #4247
-// TestVerifyrunRowsSelectsOnlyNamed:`--rows 2,4` runs and records rows 2 and 4
+// TestVerifyrunRowsSelectsOnlyNamed: `--rows 2,4` runs and records rows 2 and 4
 // only, under the standard header so they key by their # IDs; --check then
 // credits only those rows; stdout names the others not selected; a run without
 // --rows writes the table it wrote before the flag existed (the golden, on its
