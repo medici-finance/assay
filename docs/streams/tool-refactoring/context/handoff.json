@@ -2250,7 +2250,7 @@
           "assay:docs/streams/tool-refactoring/brief-06-model-local-cell-lifecycle-transitions-using-the-existing-cell-operation-contract.md@705a1f27427c0ae11561190605a4b76548949377",
           "assay:docs/streams/tool-refactoring/brief-07-qualify-the-real-cellctl-binary-with-isolated-lifecycle-and-environment-fixtures.md@f9d17131efce7be646d9f9e31b0ce8d294e8c828",
           "assay:docs/streams/tool-refactoring/brief-08-separate-immutable-publication-preparation-from-fresh-effect-admission.md@e79c373a14a3c972edbeab36bc0522dfe7c3ee5a",
-          "assay:docs/streams/tool-refactoring/brief-09-migrate-pr-create-update-and-edit-to-the-shared-publication-plan.md@921a462968b0f9b28a3dd5fef2d0352b599a8ad2",
+          "assay:docs/streams/tool-refactoring/brief-09-migrate-pr-create-update-and-edit-to-the-shared-publication-plan.md@637f322c2c7b52c2c031d22a13a2185486b33d33",
           "assay:docs/streams/tool-refactoring/brief-10-migrate-evidence-publication-to-bounded-deltas-and-typed-outcome-admission.md@922982811f2b7294656c78cbc768b0370f2d75ed",
           "assay:docs/streams/tool-refactoring/brief-11-qualify-the-joined-tool-flow-and-prepare-consumer-by-consumer-retirement.md@64ff858dfe80f136070aa00d13d8db6687cd7da8",
           "assay:docs/streams/tool-refactoring/existing-work.md@3b6e223a255d47a6603604d8a5321c3aa683fd24",
@@ -2345,7 +2345,7 @@
         "id": "assay",
         "membership": "included",
         "reason": "required plan source in the authorized universe",
-        "revision": "a01fdeb632eba9454edc15fb67884ec13db561febbad52384d767da4e8116485"
+        "revision": "3b2f0b7033a2bbd398eb8f462a7c741657ce147ead74a36f5b6805c4b5f55076"
       },
       {
         "id": "guidelines",

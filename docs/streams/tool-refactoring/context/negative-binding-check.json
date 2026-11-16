@@ -1,5 +1,5 @@
 {
-  "receipt": "sha256:020d96486ce005657ec83ca286656571ea12756e89e93e6f261f6ef48242743a",
+  "receipt": "sha256:9d5d0873e86a9071e63e39f1bcd08284f8b15817bfed448c483625e96a698323",
   "current": true,
   "findings": [],
   "verdicts": [
@@ -8,7 +8,7 @@
       "subject": "assay:assay:statusgen:37",
       "outcome": "refuse",
       "rule": "manifest-mismatch",
-      "reason": "manifest-mismatch: $.handoff: manifest names handoff sha256:0000000000000000000000000000000000000000000000000000000000000000, but the handoff's canonical digest is sha256:020d96486ce005657ec83ca286656571ea12756e89e93e6f261f6ef48242743a"
+      "reason": "manifest-mismatch: $.handoff: manifest names handoff sha256:0000000000000000000000000000000000000000000000000000000000000000, but the handoff's canonical digest is sha256:9d5d0873e86a9071e63e39f1bcd08284f8b15817bfed448c483625e96a698323"
     }
   ],
   "outcome": "refuse"

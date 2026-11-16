@@ -58,7 +58,7 @@ files:
 
 facts (2026-11-12, source `680102a08777`):
 - Planned paths above identify new Go/test deliverables and existing starting seams; no out-of-repository files are changed.
-- Class: migrate pr create update and edit to the shared publication plan; the issue cases in sources nominate this mechanism, not a claim that every old report still reproduces.
+- Class: migrate pr create, update and edit to the shared publication plan; the issue cases in sources nominate this mechanism, not a claim that every old report still reproduces.
 - Existing owner: deskpr command adapter over publication, work-selection and forge owners.
 - Required reading: [scope](spec.md), [retained work and active PRs](existing-work.md), `docs/library-first.md`, `docs/contracts.md`, and the source paths above. Source inspection precedes any implementation effect.
 - All dependency and caller changes are this brief's bounded scope. Retained work: desk-tools/61, desk-tools/62, desk-tools/63, desk-tools/64, milestone-support/08. Completed Evidence and dated sources stay unchanged.
