@@ -156,7 +156,7 @@ var (
 
 // landingBriefKey names the one brief, as "<stream>/<num>", that a landing writes: a brief
 // file docs/streams/<stream>/brief-<num>-*.md, or a per-file outcome record
-// docs/streams/verify-outcomes/<stream>/<num>-*.json. Any other path returns "", and no
+// <deskkit.OutcomeRecordsDir>/<stream>/<num>-*.json. Any other path returns "", and no
 // after-only PROBLEM is excused for it.
 func landingBriefKey(targetRepoPath string) string {
 	cleaned := path.Clean(targetRepoPath)
