@@ -630,7 +630,7 @@ Ranked: the force bit and refspec shape first (a force-overwritten main cannot b
 
 RISK-VALUE: DERIVED — PushOpts.Force = false (unset) @ tools/desk/cmd/deskpr/push.go:113 and tools/desk/cmd/verifyloop/durable.go:129, with RefSpecs carrying no "+" @ push.go:115 and durable.go:131. buildRefSpecs (gitcore/gitcore.go:510-514) adds "+" only when force is set, so neither push can overwrite remote history; the brief's facts require "no force possible", and S2 shows a "+" refspec is caught by row 3.
 RISK-VALUE: DERIVED — len(dests) != 1 refuses @ tools/desk/cmd/deskpr/push.go:185. git push sends to every push URL a remote lists, while gitcore.Push sends to one URL; refusing anything but exactly one keeps a migrated push from silently reaching fewer destinations than the old one did.
-RISK-VALUE: NAMED, NOT DERIVED — pre-push hook remote sha = all zeros @ tools/desk/internal/deskkit/prepush.go:69 — the fill is git's "not known to exist" id, but whether every hook a checkout might carry tolerates it is open-ended and not checkable offline.
+RISK-VALUE: NAMED, NOT DERIVED — pre-push hook remote sha = all zeros @ tools/desk/internal/deskkit/prepush.go:69 — the fill is git's "not known to exist" id, but whether every hook a checkout might carry tolerates it is open-ended and not checkable offline. The question stays open as medici-finance/assay#4194 (read open on 2026-11-15).
 
 **VERIFY: FAIL** — row 6 exit=1 on the single credited witness run at 9a46e3a9a72a (5 pass, 1 fail, 0 could-not-run). Check-definition defect: the counting script row 6 copies now needs a pin file and counts 165 then 164 in the old trees; the one-spawn removal still holds. Rows 1 to 5 pass. Route: #2337.
 
