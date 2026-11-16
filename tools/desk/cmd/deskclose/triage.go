@@ -192,7 +192,7 @@ func applyTriage(r triageReq, out io.Writer) error {
 	}
 	if it.closed() {
 		a.log(deskkit.ResultNoop, "already closed — idempotent no-op")
-		fmt.Fprintf(out, "noop\t%s#%d\talready closed\n", r.repo, r.number)
+		fmt.Fprintf(out, "noop\t%s\talready closed\n", itemRef(r.repo, r.number, deskkit.TargetIssue))
 		return nil
 	}
 
@@ -218,7 +218,7 @@ func applyTriage(r triageReq, out io.Writer) error {
 	}
 	if r.dryRun {
 		a.log(deskkit.ResultDryRun, joinDetail("dry-run: verified, wrote nothing", recordStatus))
-		fmt.Fprintf(out, "dry-run\t%s#%d\t%s\tdisposition=%s\n", r.repo, r.number, modeTriage, r.disposition)
+		fmt.Fprintf(out, "dry-run\t%s\t%s\tdisposition=%s\n", itemRef(r.repo, r.number, deskkit.TargetIssue), modeTriage, r.disposition)
 		fmt.Fprintln(out, body)
 		return nil
 	}
@@ -253,8 +253,8 @@ func applyTriage(r triageReq, out io.Writer) error {
 	}
 	a.log(deskkit.ResultOK, joinDetail(fmt.Sprintf("closed as %s via lane %s (disposition %s, %s)",
 		reasonNotPlanned, modeTriage, r.disposition, deskkit.StripControl(source)), recordStatus))
-	fmt.Fprintf(out, "closed\t%s#%d\t%s\tdisposition=%s\treason=%s\n",
-		r.repo, r.number, modeTriage, r.disposition, reasonNotPlanned)
+	fmt.Fprintf(out, "closed\t%s\t%s\tdisposition=%s\treason=%s\n",
+		itemRef(r.repo, r.number, deskkit.TargetIssue), modeTriage, r.disposition, reasonNotPlanned)
 	return nil
 }
 
@@ -389,14 +389,10 @@ func decisionOnThisIssue(link deskkit.CommentLink, r triageReq) error {
 	if sameRepo && sameItem {
 		return nil
 	}
-	sigil := "#"
-	if link.Forge == deskkit.ForgeGitLab && link.Item.Kind == deskkit.TargetChange {
-		sigil = "!"
-	}
 	return deskkit.Refused(fmt.Sprintf(
-		"refused: --decision names a comment on %s%s%d, but the close targets %s#%d — the recorded human "+
+		"refused: --decision names a comment on %s, but the close targets %s — the recorded human "+
 			"decision must be ON the issue being closed, never a ruling from elsewhere reused here.",
-		deskkit.StripControl(link.Item.Repo), sigil, link.Item.Number, r.repo, r.number))
+		linkItemRef(link), itemRef(r.repo, r.number, deskkit.TargetIssue)))
 }
 
 // requireTrackerExists confirms a --tracker names a REAL item (a fetch), so the close records
