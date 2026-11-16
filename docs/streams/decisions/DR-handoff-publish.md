@@ -32,9 +32,13 @@ accepted:
 human has ruled. Approving it is the driver's act. Until a ruling comment that names
 `DR-handoff-publish` exists and the record links it, read this as a proposal: the brief that
 cites it (`intake-class-routing/02`, via `design: DR-handoff-publish`) does not pass the
-design-approval gate (`spec/lifecycle-v1.md` §4.4), and `statusgen --corroborate` reports
-`placeholder-unratified` on a pull request that edits this file
-([register README](README.md)).
+design-approval gate (`spec/lifecycle-v1.md` §4.4). `statusgen --corroborate` is designed to
+report `placeholder-unratified` on a pull request that edits this file
+([register README](README.md)), but the CI step returns early on a pull request that touches no
+`docs/streams/findings/` entry, so on such a pull request it does not run (the open gap
+medici-finance/assay#6077, also medici-finance/assay#4853), and `statusgen --lint` checks only
+that a cited record exists and is well formed, not that it is approved
+(medici-finance/assay#6565). No check confirms this record's approval today.
 
 ## The decision, and the constraint behind it
 

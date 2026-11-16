@@ -99,49 +99,80 @@ func pubEnum(v string, allowEmpty bool, vals ...string) bool {
 
 // publicCoveredFields lists, by JSON path, every field of the judgment record that publicFormRefusal
 // checks below, or admits because its type cannot carry text (a number, a bool, a time, a list of
-// numbers). The list is compared with the record's type, not with a judgment's values: a field the
-// record gains later is not on it, so every judgment is refused under a public root, naming that
-// field, until the field is listed here and checked below.
-var publicCoveredFields = map[string]bool{
-	"schema": true, "item": true, "opened": true, "revision": true, "deciding_role": true,
-	"disposition": true, "delivered": true, "route": true, "successor": true, "author_tier": true,
-	"external_role": true, "required_action": true, "wake_condition": true, "evidence": true,
-	"verification.schema": true, "verification.disposition": true, "verification.deciding_role": true,
-	"verification.successor": true, "verification.external_role": true, "verification.required_action": true,
-	"verification.observed_at": true, "verification.fresh_until": true,
-	"verification.source.repo": true, "verification.source.brief": true, "verification.source.source_version": true,
-	"verification.source.source_revision": true, "verification.source.receipt_id": true,
-	"verification.source.case_id": true, "verification.source.rows": true, "verification.source.blocker_ref": true,
+// numbers), with the shape (leafShape) the check was written for. The list is compared with the
+// record's type, not with a judgment's values: a field the record gains later is not on it, and a
+// listed field whose type changes (a list of numbers becoming a list of strings, a map, an any) no
+// longer matches its shape, so either way every judgment is refused under a public root, naming that
+// field, until the list and the check below are brought up to date.
+var publicCoveredFields = map[string]string{
+	"schema": "string", "item": "string", "opened": "string", "revision": "int", "deciding_role": "string",
+	"disposition": "string", "delivered": "bool", "route": "string", "successor": "string", "author_tier": "string",
+	"external_role": "string", "required_action": "string", "wake_condition": "string", "evidence": "string",
+	"verification.schema": "string", "verification.disposition": "string", "verification.deciding_role": "string",
+	"verification.successor": "string", "verification.external_role": "string", "verification.required_action": "string",
+	"verification.observed_at": "time", "verification.fresh_until": "time",
+	"verification.source.repo": "string", "verification.source.brief": "string", "verification.source.source_version": "string",
+	"verification.source.source_revision": "string", "verification.source.receipt_id": "string",
+	"verification.source.case_id": "string", "verification.source.rows": "[]int", "verification.source.blocker_ref": "string",
 }
 
-// publicUncovered is the record's fields that publicCoveredFields does not list, read once.
+// publicUncovered is the record's fields that publicCoveredFields does not list, or lists with
+// another shape, read once.
 var publicUncovered = sync.OnceValue(func() []string {
 	return uncoveredFields(reflect.TypeOf(issueflow.IntakeHandoff{}), "", publicCoveredFields)
 })
 
-// uncoveredFields walks t's exported fields by JSON path, into nested structs and pointers to them
-// (a time is a leaf), and returns each leaf path covered does not list.
-func uncoveredFields(t reflect.Type, prefix string, covered map[string]bool) []string {
+// uncoveredFields walks the fields encoding/json reads from t by JSON path, into nested structs,
+// pointers to them and embedded structs (a time is a leaf), and returns each leaf path covered does
+// not list, or lists with a shape other than the field's own.
+func uncoveredFields(t reflect.Type, prefix string, covered map[string]string) []string {
 	var out []string
 	for i := 0; i < t.NumField(); i++ {
 		f := t.Field(i)
-		if !f.IsExported() {
-			continue
-		}
-		path := prefix + jsonFieldName(f)
 		ft := f.Type
 		if ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
-		if ft.Kind() == reflect.Struct && ft != reflect.TypeOf(time.Time{}) {
+		nested := ft.Kind() == reflect.Struct && ft != reflect.TypeOf(time.Time{})
+		if f.Anonymous && nested && f.Tag.Get("json") == "" {
+			// encoding/json promotes an embedded struct's fields, exported or not.
+			out = append(out, uncoveredFields(ft, prefix, covered)...)
+			continue
+		}
+		if !f.IsExported() || f.Tag.Get("json") == "-" {
+			continue
+		}
+		path := prefix + jsonFieldName(f)
+		if nested {
 			out = append(out, uncoveredFields(ft, path+".", covered)...)
 			continue
 		}
-		if !covered[path] {
+		if want, ok := covered[path]; !ok {
 			out = append(out, path)
+		} else if got := leafShape(ft); got != want {
+			out = append(out, fmt.Sprintf("%s (shape %s, listed as %s)", path, got, want))
 		}
 	}
 	return out
+}
+
+// leafShape names a leaf field's type by kind: "string" for any string type, "time" for a time,
+// "[]" plus the element's shape for a list, "map[k]v" for a map, and the kind's name otherwise
+// ("interface" for an any).
+func leafShape(t reflect.Type) string {
+	if t.Kind() == reflect.Pointer {
+		t = t.Elem()
+	}
+	if t == reflect.TypeOf(time.Time{}) {
+		return "time"
+	}
+	switch t.Kind() {
+	case reflect.Slice, reflect.Array:
+		return "[]" + leafShape(t.Elem())
+	case reflect.Map:
+		return "map[" + leafShape(t.Key()) + "]" + leafShape(t.Elem())
+	}
+	return t.Kind().String()
 }
 
 // jsonFieldName is the name encoding/json gives f.
@@ -156,8 +187,8 @@ func jsonFieldName(f reflect.StructField) string {
 // The check is an ALLOWLIST over every field of the record: a public root takes a judgment only when
 // each string field is a closed enum value, a bounded typed reference, an opaque id or an RFC 3339
 // time, and the free-text fields (required action, wake condition, in the verification block too)
-// are empty. A field the record gains later is refused by default: until publicCoveredFields lists
-// it, every judgment is refused, naming it.
+// are empty. A field the record gains later, or a listed field whose shape changes, is refused by
+// default: until publicCoveredFields lists it with its shape, every judgment is refused, naming it.
 func publicFormRefusal(h issueflow.IntakeHandoff) string {
 	closed := func(field string) string { return field + " is not a closed shape" }
 	if u := publicUncovered(); len(u) > 0 {

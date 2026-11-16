@@ -637,10 +637,40 @@ func TestPublicUncoveredFields(t *testing.T) {
 		Block  *inner `json:"block"`
 		hidden string
 	}
-	covered := map[string]bool{"schema": true, "block.repo": true, "block.at": true}
+	covered := map[string]string{"schema": "string", "block.repo": "string", "block.at": "time"}
 	got := strings.Join(uncoveredFields(reflect.TypeOf(probe{}), "", covered), ",")
 	if got != "note,block.extra" {
 		t.Fatalf("uncovered = %q, want note,block.extra", got)
+	}
+	if u := publicUncovered(); len(u) > 0 {
+		t.Fatalf("the judgment record has fields the public allowlist does not cover: %v", u)
+	}
+}
+
+// TestPublicCoverageShape — a listed field whose type no longer matches the shape it was checked
+// for, and a field promoted from an unexported embedded struct, are both reported.
+//
+// regression: F-judged-allowlist-shape — coverage was by path only (review finding 6362-a6).
+func TestPublicCoverageShape(t *testing.T) {
+	type source struct {
+		Rows  []string       `json:"rows"`
+		Extra map[string]int `json:"extra"`
+		Any   any            `json:"any"`
+	}
+	type promoted struct {
+		Comment string `json:"comment"`
+	}
+	type probe struct {
+		promoted
+		Schema string `json:"schema"`
+		Source source `json:"source"`
+		Skip   string `json:"-"`
+	}
+	covered := map[string]string{"schema": "string", "source.rows": "[]int", "source.extra": "map[string]int", "source.any": "string"}
+	got := strings.Join(uncoveredFields(reflect.TypeOf(probe{}), "", covered), ",")
+	want := "comment,source.rows (shape []string, listed as []int),source.any (shape interface, listed as string)"
+	if got != want {
+		t.Fatalf("uncovered = %q, want %q", got, want)
 	}
 	if u := publicUncovered(); len(u) > 0 {
 		t.Fatalf("the judgment record has fields the public allowlist does not cover: %v", u)
