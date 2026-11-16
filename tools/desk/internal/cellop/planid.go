@@ -7,6 +7,9 @@ import (
 	"io/fs"
 	"math/big"
 	"os"
+	"slices"
+	"strconv"
+	"strings"
 )
 
 // A plan id is two words joined by a hyphen, an adjective then a noun ("amber-falcon"), so an
@@ -55,6 +58,31 @@ var idNouns = [...]string{
 	"lagoon", "meadow", "mesa", "prairie", "reef", "ridge", "river", "summit", "tundra", "valley",
 	"comet", "galaxy", "nebula", "quasar", "aurora", "meteor", "orbit", "planet", "pulsar", "zenith",
 	"horizon",
+}
+
+// confirmWords is the confirm code's word list: both id lists, adjectives then nouns. Its order is
+// part of the contract: reordering it changes the word every stored plan's digest selects.
+var confirmWords = append(append([]string{}, idAdjectives[:]...), idNouns[:]...)
+
+// confirmWord is the confirm code of a plan with digest d and id id: the word of confirmWords at
+// the first 8 bytes of d (big-endian) modulo the list's length, stepping forward past either word
+// of id, so the operator never confirms by retyping a word of the id. The digest covers the id
+// and, for a batch, every child's digest, so the word is bound to exactly the plan it confirms.
+func confirmWord(d, id string) (string, error) {
+	if !hexRE.MatchString(d) {
+		return "", fmt.Errorf("digest %q is not 64 lowercase hex characters", d)
+	}
+	v, err := strconv.ParseUint(d[:16], 16, 64)
+	if err != nil {
+		return "", err
+	}
+	idWords := strings.Split(id, "-")
+	n := uint64(len(confirmWords))
+	for i := v % n; ; i = (i + 1) % n {
+		if w := confirmWords[i]; !slices.Contains(idWords, w) {
+			return w, nil
+		}
+	}
 }
 
 // maxDraws bounds how many ids SaveNew draws before it gives up: a draw is retried only when its
