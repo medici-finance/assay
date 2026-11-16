@@ -184,7 +184,7 @@ func TestBudgetOnlyInWriteWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	call := regexp.MustCompile(`\bevidenceWriteBudget\(`)
-	take := regexp.MustCompile(`\bacquireAuditLock\(\)`)
+	take := regexp.MustCompile(`\bacquireAuditLock\(`)
 	for _, name := range files {
 		if strings.HasSuffix(name, "_test.go") {
 			continue
@@ -211,5 +211,95 @@ func TestBudgetOnlyInWriteWindow(t *testing.T) {
 				t.Errorf("%s:%d takes the audit lock outside the write window: %s", name, i+1, code)
 			}
 		}
+	}
+}
+
+// holdLockFile takes an exclusive flock on dir/name from a second open file description, the
+// way another desk session would hold it, and releases it at cleanup.
+func holdLockFile(t *testing.T, dir, name string) {
+	t.Helper()
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	h, err := os.OpenFile(filepath.Join(dir, name), os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := deskkit.TryLockExclusive(h); err != nil {
+		t.Fatalf("hold %s: %v", name, err)
+	}
+	t.Cleanup(func() {
+		_ = deskkit.UnlockFile(h)
+		_ = h.Close()
+	})
+}
+
+// refusedRunTime runs one landing on root against held locks with lockWait shortened to wait,
+// asserts the fail-closed refusal (exit 6, one audit line, no write) and returns how long the
+// run took.
+func refusedRunTime(t *testing.T, f *fakeForge, root, evidencePath string, wait time.Duration) time.Duration {
+	t.Helper()
+	old := lockWait
+	lockWait = wait
+	t.Cleanup(func() { lockWait = old })
+	before := len(auditEntries(t))
+	start := time.Now()
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
+	elapsed := time.Since(start)
+	if code != deskkit.ExitUnverifiable {
+		t.Fatalf("exit = %d, want %d (unverifiable)", code, deskkit.ExitUnverifiable)
+	}
+	f.mu.Lock()
+	puts := f.putCalls
+	f.mu.Unlock()
+	if puts != 0 {
+		t.Fatalf("putCalls = %d, want 0", puts)
+	}
+	if n := len(auditEntries(t)) - before; n != 1 {
+		t.Fatalf("wrote %d audit lines, want exactly 1", n)
+	}
+	return elapsed
+}
+
+// regression: #5023
+//
+// TestAuditWaitIsBounded: a run that cannot get the audit lock refuses after ONE lockWait. The
+// deferred audit append must not wait a second full lockWait for the same busy lock.
+func TestAuditWaitIsBounded(t *testing.T) {
+	f, _ := setupFake(t)
+	holdLockFile(t, filepath.Join(os.Getenv("HOME"), ".config", "assay"), "audit.lock")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | x | y |\n")
+	f.setFile(evidencePath, "old")
+	const wait = 400 * time.Millisecond
+	if elapsed := refusedRunTime(t, f, root, evidencePath, wait); elapsed > wait+wait/2 {
+		t.Fatalf("refused after %s, want at most %s: the run waited on the audit lock more than once "+
+			"(the documented bound is one lockWait in total)", elapsed, wait+wait/2)
+	}
+}
+
+// regression: #5023
+//
+// TestPrepRefusalWaitsOnce: a run whose preparation lock stays busy refuses after ONE lockWait
+// in total, even when the audit lock its refusal row needs is busy too.
+func TestPrepRefusalWaitsOnce(t *testing.T) {
+	f, _ := setupFake(t)
+	stateDir := filepath.Join(os.Getenv("HOME"), ".config", "assay")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | x | y |\n")
+	f.setFile(evidencePath, "old")
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if real, rerr := filepath.EvalSymlinks(abs); rerr == nil {
+		abs = real
+	}
+	holdLockFile(t, stateDir, prepLockName(abs))
+	holdLockFile(t, stateDir, "audit.lock")
+	const wait = 400 * time.Millisecond
+	if elapsed := refusedRunTime(t, f, root, evidencePath, wait); elapsed > wait+wait/2 {
+		t.Fatalf("refused after %s, want at most %s: the preparation-lock wait and the audit-lock "+
+			"wait were not one shared lockWait", elapsed, wait+wait/2)
 	}
 }

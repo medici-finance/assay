@@ -5399,12 +5399,22 @@ invocations each read a budget below the cap and both committed; measured, seedi
 forge write and the audit append; preparation (admission, remote snapshot, closure and
 decision-gate reads, the statusgen PROBLEM-diff) runs before it, so one landing's lint no
 longer holds the lock every other desk writer waits on. The remote target stays protected by
-the write itself, which is conditional on the blob preparation read. Preparation stages content
+the write itself, which is conditional on the blob preparation read: a target changed after
+preparation refuses with no write (`TestEvidenceSnapshotConcurrentFileEditRefuses`,
+`cmd/deskevidence/snapshot_test.go:108`), and an unrelated commit on the branch is still
+accepted (`TestEvidenceSnapshotUnrelatedCommitDoesNotConflict`, `snapshot_test.go:124`).
+Capability preflight (`RefuseIfTreeV2BelowV1`) reads only the local tree and the tool version,
+so it runs under the preparation lock; its refusal row is appended under the audit lock.
+Preparation stages content
 into the landing root, so it keeps its own exclusion: a per-root lock
 (`~/.config/assay/evidence-prep-<hash>.lock`) that serialises two landings on the SAME root and
 never two on different roots. A run that ends before its write window (refusal, noop, dry-run)
 takes the audit lock only for its one audit append. `TestBudgetOnlyInWriteWindow` fails any
-budget spend or audit-lock acquisition outside that window.
+budget spend or audit-lock acquisition outside that window. The two locks share ONE 60s wait
+budget per run, so a refusal never waits twice: a run whose write-window lock (or preparation
+lock) stayed busy makes a single attempt at the audit lock for its refusal row and, failing
+that, appends it unlocked. `TestAuditWaitIsBounded` and `TestPrepRefusalWaitsOnce` pin the
+upper bound.
 
 Two details are load-bearing and easy to undo:
 
@@ -5415,7 +5425,7 @@ Two details are load-bearing and easy to undo:
   (the gap is microseconds), so a source guard is the only thing that catches the refactor.
 - **It is a lock, not a retry.** The second caller does not lose a race and try again; it
   waits, then re-reads the ledger the first caller actually wrote. A lock it cannot get
-  inside 60s is Unverifiable (exit 6) — never "assume free" (C-10). A retry loop would
+  inside 60s of waiting in total (one budget across the preparation and audit locks) is Unverifiable (exit 6) — never "assume free" (C-10). A retry loop would
   only make the double-spend rarer. `TestContendedLockTimesOutUnverifiable` holds the lock
   from a second file description and pins both halves: it waits, and it then refuses.
 
@@ -5434,7 +5444,7 @@ Two limits, so the guarantee is not read as more than it is:
   replaces `httpClient` with one wired to the fake, so the production declaration is never
   exercised and reverting it to `http.DefaultClient` used to survive the suite green.
 - **Failure mode: refuse, never proceed.** A lock that cannot be acquired — for any reason,
-  including the 60s deadline — returns `Unverifiable` from `enterWriteWindow` before the
+  including the run's single 60s wait budget — returns `Unverifiable` from `enterWriteWindow` before the
   budget is read, so nothing outward happens and exactly one audit line is
   written. There is no arm that degrades to "proceed unserialised", which would be worse
   than no lock because it would report success.

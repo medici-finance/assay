@@ -28,7 +28,11 @@ func deskDir() (string, error) {
 // than lockWait is treated as stale → Unverifiable (exit 6).
 type auditLock struct{ l *deskkit.AuditLock }
 
-// lockWait is how long acquireAuditLock will wait for a contended lock before refusing.
+// lockWait is how long ONE run may wait for its locks, in total, before refusing. The
+// preparation lock, the audit lock of the write window and the audit lock of a refusal's
+// append all draw on the same budget (auditCtx.waitLeft), so a run waits at most lockWait
+// however many of them are busy; an acquisition left with no budget makes one attempt.
+// Only time spent waiting counts: preparation work between the locks does not.
 // It is a package var for ONE reason: so a test can shorten it and prove the deadline
 // exists (removing it survived every behavioural test — #406). There is
 // deliberately no flag and no env override. Shortening it in production would not make
@@ -36,14 +40,14 @@ type auditLock struct{ l *deskkit.AuditLock }
 // early is one step from "assume free" — the exact failure a fail-closed tool forbids. 60s stays.
 var lockWait = 60 * time.Second
 
-func acquireAuditLock() (*auditLock, error) {
+func acquireAuditLock(wait time.Duration) (*auditLock, error) {
 	dir, err := deskDir()
 	if err != nil {
 		return nil, deskkit.Unverifiable("cannot resolve desk-tools dir (HOME missing?)", err)
 	}
 	// The one choke point for the audit lock: it records the holder's pid and start beside the lock,
 	// and a lock still busy after the wait names the lock file, that holder and the clearing action.
-	l, err := deskkit.AcquireAuditLock(dir, lockWait)
+	l, err := deskkit.AcquireAuditLock(dir, wait)
 	if err != nil {
 		return nil, err
 	}
@@ -68,9 +72,12 @@ func (l *auditLock) release() { l.l.Release() }
 // into the same landing root — is the per-root preparation lock runOutward holds instead.
 //
 // A second call is a no-op on the lock (a GitLab side-branch fallback spends no budget).
+// The wait draws on the run's one lockWait budget (waitLeft).
 func (a *auditCtx) enterWriteWindow(tool, repo string, pr int) error {
 	if a.lock == nil {
-		l, err := acquireAuditLock()
+		start := time.Now()
+		l, err := acquireAuditLock(a.waitLeft())
+		a.lockWaited += time.Since(start)
 		if err != nil {
 			return err
 		}
@@ -85,13 +92,28 @@ func (a *auditCtx) enterWriteWindow(tool, repo string, pr int) error {
 // lock it cannot get is not a reason to drop the line: the append is O_APPEND-atomic and the
 // line records an invocation that wrote nothing, so it is appended without the lock, the
 // same rule the lock-failure path has always followed.
+//
+// It waits only for what is left of the run's lockWait budget. A run that already spent the
+// budget on a busy lock (the write window's, or the preparation lock's) makes one attempt and
+// does not wait a second lockWait for its refusal row.
 func (a *auditCtx) lockForAppend() {
 	if a.lock != nil {
 		return
 	}
-	if l, err := acquireAuditLock(); err == nil {
+	start := time.Now()
+	l, err := acquireAuditLock(a.waitLeft())
+	a.lockWaited += time.Since(start)
+	if err == nil {
 		a.lock = l
 	}
+}
+
+// waitLeft is what remains of this run's lockWait budget; zero means one attempt, no wait.
+func (a *auditCtx) waitLeft() time.Duration {
+	if left := lockWait - a.lockWaited; left > 0 {
+		return left
+	}
+	return 0
 }
 
 // releaseAuditLock drops the audit lock if this run took it. Safe when it never did.
@@ -129,7 +151,7 @@ func (p *prepLock) release() {
 // root would read each other's staged bytes. The audit lock used to serialise them as a side
 // effect of spanning the whole run; this lock keeps that exclusion, scoped to the root it
 // protects, with the same bounded wait and the same fail-closed refusal.
-func acquirePrepLock(args []string) (*prepLock, error) {
+func acquirePrepLock(args []string, wait time.Duration) (*prepLock, error) {
 	root := deskkit.RootsFromArgs(args)[0]
 	abs, err := filepath.Abs(root)
 	if err != nil {
@@ -155,7 +177,7 @@ func acquirePrepLock(args []string) (*prepLock, error) {
 		d.Close()
 		return nil, deskkit.Unverifiable("cannot open the preparation lock", err)
 	}
-	held, err := deskkit.AcquireHeld(d, name, f, deskkit.LockSpec{Name: "deskevidence preparation lock for " + abs, Wait: lockWait})
+	held, err := deskkit.AcquireHeld(d, name, f, deskkit.LockSpec{Name: "deskevidence preparation lock for " + abs, Wait: wait})
 	if err != nil {
 		d.Close()
 		var busy *deskkit.BusyError
@@ -182,7 +204,8 @@ func acquirePrepLock(args []string) (*prepLock, error) {
 //
 // This is a serialisation fix, not a retry: the second caller does not race and lose, it
 // waits for the lock and then re-reads the budget it was going to spend. If it cannot
-// acquire either lock inside 60s it is Unverifiable (exit 6) — never "assume free".
+// acquire its locks inside 60s of waiting in total (one lockWait budget shared by the
+// preparation lock and the audit lock) it is Unverifiable (exit 6) — never "assume free".
 //
 // Defer ORDER is load-bearing. Go runs defers LIFO, so `ac.releaseAuditLock()` (registered
 // FIRST) runs LAST — i.e. after `ac.finalize`. Registering them the other way round
@@ -194,7 +217,9 @@ func runOutward(args []string, options childOptions) (err error) {
 		ac.repo = args[0]
 	}
 
-	prep, perr := acquirePrepLock(args)
+	start := time.Now()
+	prep, perr := acquirePrepLock(args, ac.waitLeft())
+	ac.lockWaited += time.Since(start)
 	if perr != nil {
 		// Still exactly one audit line for this invocation; nothing outward happened.
 		ac.lockForAppend()

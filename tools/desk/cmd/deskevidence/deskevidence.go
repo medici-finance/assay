@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/statusgen/readercaps"
 	capstree "github.com/medici-finance/assay/statusgen/readercaps/tree"
@@ -1076,8 +1077,9 @@ type auditCtx struct {
 	file          string
 	bodyDig       string
 	detail        string
-	successResult string     // ResultOK unless a noop set it to ResultNoop
-	lock          *auditLock // held from enterWriteWindow through the audit append
+	successResult string        // ResultOK unless a noop set it to ResultNoop
+	lock          *auditLock    // held from enterWriteWindow through the audit append
+	lockWaited    time.Duration // lock waiting spent so far; the run's total is bounded by lockWait
 }
 
 func (a *auditCtx) log(result, detail string) {

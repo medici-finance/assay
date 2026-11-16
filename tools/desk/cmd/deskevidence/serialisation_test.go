@@ -312,6 +312,8 @@ func TestContendedLockTimesOutUnverifiable(t *testing.T) {
 	if elapsed := time.Since(start); elapsed < shortWait {
 		t.Errorf("returned after %s, want at least the %s deadline — it must WAIT for the lock, "+
 			"not give up on first contention", elapsed, shortWait)
+	} else if elapsed >= 2*shortWait {
+		t.Errorf("returned after %s, want under %s — the refusal waited on the lock twice; the bound is one lockWait", elapsed, 2*shortWait)
 	}
 	f.mu.Lock()
 	puts := f.putCalls
@@ -394,7 +396,7 @@ func TestAuditLockPathMatchesTheOtherDeskTools(t *testing.T) {
 	if dir != want {
 		t.Fatalf("deskDir = %q, want %q (cmd/deskpost/writeflow.go uses the same path)", dir, want)
 	}
-	l, err := acquireAuditLock()
+	l, err := acquireAuditLock(lockWait)
 	if err != nil {
 		t.Fatalf("acquire: %v", err)
 	}
