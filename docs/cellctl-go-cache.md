@@ -236,10 +236,19 @@ Enrollment is the last check before a supervised child starts. Every child the
 process supervisor runs with the cell's cache policy in its environment passes
 it: harness windows, cadence passes, scratch tasks, and the hidden `cellctl cache-run` supervisor inside a scrubbed tmux
 pane. It waits at most two seconds for the lock, then reads the recorded
-measurement. When that measurement is older than five minutes, carries no
-timestamp, is dated in the future or is missing, enrollment refuses, starts no
-child, leaves `report.json` as it found it and asks for
-`cellctl cache <cell> clean`. It never runs that clean itself, for three
+measurement. When the cache root exists and its measurement is older than five
+minutes, carries no timestamp, is dated in the future or is missing (no
+readable `report.json`), enrollment refuses, starts no child, leaves
+`report.json` as it found it and asks for `cellctl cache <cell> clean`.
+
+One case admits without a prior measurement: a cache root that does not exist
+yet. Enrollment creates it, so the root is known empty without an inventory.
+It makes the cache directories, records a `bounded-empty` measurement in
+`report.json` after one free-space check, and starts the child. If that check
+finds less free space than the floor plus a quarter of the byte budget, it
+records a `storage-deferred` report instead and starts no child.
+
+On an existing root, enrollment never runs the clean itself, for three
 reasons:
 
 - The clean is a full inventory, up to 262,144 entries by default, and may

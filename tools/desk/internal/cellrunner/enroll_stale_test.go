@@ -20,8 +20,9 @@ import (
 //
 // Final consumer enrollment is the boundary every supervised child crosses,
 // including the hidden `cellctl cache-run` pane supervisor (it calls
-// RunInteractive with no preparation of its own). On a recorded measurement
-// that is aged, future-dated, unstamped or missing it must refuse WITHOUT
+// RunInteractive with no preparation of its own). On an existing root whose
+// recorded measurement is aged, future-dated, unstamped or missing it must
+// refuse WITHOUT
 // re-measuring: no child starts, report.json is left byte-for-byte as it was
 // (a clean would rewrite it), no consumer record is left behind, and the
 // refusal hands the clean to the operator. Re-measuring belongs to the launch
@@ -34,18 +35,7 @@ func TestEnrollStaleRefusesNoWalk(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			p, err := cellcache.Resolve(cell, func(k string) string {
-				switch k {
-				case "CELL_GO_CACHE":
-					return "on"
-				case "CELL_GO_CACHE_MIN_FREE":
-					return "0"
-				}
-				return ""
-			})
-			if err != nil {
-				t.Fatal(err)
-			}
+			p := smallPolicy(t, cell)
 			if _, err = cellcache.Prepare(*p); err != nil {
 				t.Fatal(err)
 			}
@@ -100,5 +90,68 @@ func TestEnrollStaleRefusesNoWalk(t *testing.T) {
 				t.Fatalf("refused enrollment left a consumer record: %v %v", left, err)
 			}
 		})
+	}
+}
+
+// smallPolicy resolves an enabled cache policy for cell with a 1 MiB budget
+// and no floor, so the empty-root admission's free-space margin (floor plus a
+// quarter of the budget) does not depend on the host's free temp space.
+func smallPolicy(t *testing.T, cell string) *cellcache.Policy {
+	t.Helper()
+	p, err := cellcache.Resolve(cell, func(k string) string {
+		switch k {
+		case "CELL_GO_CACHE":
+			return "on"
+		case "CELL_GO_CACHE_BYTES":
+			return "1048576"
+		case "CELL_GO_CACHE_MIN_FREE":
+			return "0"
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return p
+}
+
+// regression: #6593
+//
+// The one enrollment that admits with no prior measurement: when the cache
+// root does not exist yet, enrollment creates it, so it is known empty without
+// an inventory. It records a bounded-empty report after one free-space check
+// and starts the child. docs/cellctl-go-cache.md, "Consumer enrollment refuses
+// a stale measurement", states this exception.
+func TestEnrollCreatedRootAdmits(t *testing.T) {
+	cell, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := smallPolicy(t, cell)
+	if _, err = os.Lstat(p.Root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("cache root exists before enrollment: %v", err)
+	}
+	marker := filepath.Join(cell, "child-ran")
+	started := false
+	_, _, err = RunObserved(t.Context(), []string{"/bin/sh", "-c", `: > "$1"`, "sh", marker}, p.Env(), "", io.Discard, io.Discard, func(int) error { started = true; return nil })
+	if err != nil {
+		t.Fatalf("enrollment refused a root it created: %v", err)
+	}
+	if !started {
+		t.Fatal("no child started on a created root")
+	}
+	if _, err = os.Stat(marker); err != nil {
+		t.Fatalf("child did not run: %v", err)
+	}
+	b, err := os.ReadFile(p.ReportPath())
+	if err != nil {
+		t.Fatalf("created-root admission recorded no report: %v", err)
+	}
+	var rep cellcache.Report
+	if err = json.Unmarshal(b, &rep); err != nil {
+		t.Fatal(err)
+	}
+	if rep.Admission != "bounded-empty" || rep.Outcome != "checked-clean" {
+		t.Fatalf("created-root report = %s/%s, want bounded-empty/checked-clean", rep.Admission, rep.Outcome)
 	}
 }
