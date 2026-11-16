@@ -149,18 +149,6 @@ func parseRef(s string) (deskkit.ItemRef, bool) {
 	return r, err == nil
 }
 
-// canonicalRef renders a parsed reference for output: repository-qualified (a repo-less
-// reference takes defaultRepo) and in deskkit's canonical sigil form. Every receipt, dry-run
-// line, audit detail and comment that names a target prints THIS, never the text the
-// reference was read from, so nothing the source text carried beyond the reference can
-// reach an operator's terminal or a log line.
-func canonicalRef(defaultRepo string, r deskkit.ItemRef) string {
-	if r.Repo == "" {
-		r.Repo = defaultRepo
-	}
-	return r.String()
-}
-
 // refsAgree reports whether two item references name the same item. It compares the
 // numbers, and the owner/repo when BOTH sides carry one — a bare `#123` is read in the
 // context of the other ref rather than being called a mismatch, because that is how
