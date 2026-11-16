@@ -1,0 +1,35 @@
+{
+  "test": "go test -count=1 -run 'TestChangeCommentTimes|TestStalledActivityCost|TestStalledSnapshot|TestAuthorSkipClassGuard' ./cmd/deskboard ./internal/deskkit",
+  "control": {
+    "name": "CONTROL: discard author reply activity",
+    "file": "cmd/deskboard/stalled.go",
+    "old": "perr == nil && t.After(last)",
+    "new": "perr == nil && false && t.After(last)"
+  },
+  "mutations": [
+    {
+      "name": "retain per-change comment requests",
+      "file": "cmd/deskboard/stalled.go",
+      "old": "if len(numbers) < 2 {",
+      "new": "if len(numbers) >= 0 {"
+    },
+    {
+      "name": "accept another change number in a requested alias",
+      "file": "internal/deskkit/changecommenttimes.go",
+      "old": "row.Number != n || ",
+      "new": ""
+    },
+    {
+      "name": "ignore GraphQL partial failures",
+      "file": "internal/deskkit/changecommenttimes.go",
+      "old": "if bad || row == nil",
+      "new": "if false && bad || row == nil"
+    },
+    {
+      "name": "read outside the admitted repository",
+      "file": "internal/deskkit/changecommenttimes.go",
+      "old": "if g.onlyRepo != \"\" && !strings.EqualFold(g.onlyRepo, repo.Slug()) {",
+      "new": "if false && g.onlyRepo != \"\" && !strings.EqualFold(g.onlyRepo, repo.Slug()) {"
+    }
+  ]
+}
