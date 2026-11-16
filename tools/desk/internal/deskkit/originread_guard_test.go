@@ -51,19 +51,39 @@ func localRemoteReaders(t *testing.T, root string) []string {
 			return err
 		}
 		rel, _ := filepath.Rel(root, p)
-		for _, decl := range f.Decls {
-			fn, ok := decl.(*ast.FuncDecl)
-			if !ok || fn.Body == nil {
-				continue
-			}
-			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				if call, ok := n.(*ast.CallExpr); ok {
-					if sel, ok := call.Fun.(*ast.SelectorExpr); ok && localRemoteReads[sel.Sel.Name] {
-						seen[filepath.ToSlash(rel)+":"+fn.Name.Name] = true
-					}
+		// Any selector naming a read counts, called or not: a method value or method
+		// expression (r.RemoteURLs, (*gitcore.Repo).RemoteURLs) reaches the read too.
+		// Package-level var/const initializers (a func literal or a method value bound
+		// at package scope) are keyed by the declared names.
+		mark := func(node ast.Node, key string) {
+			ast.Inspect(node, func(n ast.Node) bool {
+				if sel, ok := n.(*ast.SelectorExpr); ok && localRemoteReads[sel.Sel.Name] {
+					seen[filepath.ToSlash(rel)+":"+key] = true
 				}
 				return true
 			})
+		}
+		for _, decl := range f.Decls {
+			switch d := decl.(type) {
+			case *ast.FuncDecl:
+				if d.Body != nil {
+					mark(d.Body, d.Name.Name)
+				}
+			case *ast.GenDecl:
+				for _, spec := range d.Specs {
+					vs, ok := spec.(*ast.ValueSpec)
+					if !ok {
+						continue
+					}
+					var names []string
+					for _, n := range vs.Names {
+						names = append(names, n.Name)
+					}
+					for _, v := range vs.Values {
+						mark(v, strings.Join(names, ","))
+					}
+				}
+			}
 		}
 		return nil
 	})
@@ -122,6 +142,9 @@ func TestNoNewLocalOriginReadPlant(t *testing.T) {
 		"b.go":      "package x\nfunc b(r R) { _, _ = gitcore.RemoteURL(r, \"origin\") }\n",
 		"c.go":      "package x\nfunc c(r R) { r.ScopedRemoteURLs(\"origin\") }\n",
 		"d_test.go": "package x\nfunc d(r R) { r.RemoteURL(\"origin\") }\n",
+		"e.go":      "package x\nvar e = func(r R) { r.RemoteURLs(\"origin\") }\n",
+		"f.go":      "package x\nfunc f(r R) { read := r.RemoteURL; _, _ = read(\"origin\") }\n",
+		"g.go":      "package x\nvar g = (*gitcore.Repo).RemoteURLs\n",
 	}
 	for name, src := range plants {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o600); err != nil {
@@ -129,7 +152,8 @@ func TestNoNewLocalOriginReadPlant(t *testing.T) {
 		}
 	}
 	got := strings.Join(localRemoteReaders(t, dir), ",")
-	if got != "a.go:a,b.go:b" {
-		t.Fatalf("scanner flagged %q, want the two planted non-test reads only", got)
+	if got != "a.go:a,b.go:b,e.go:e,f.go:f,g.go:g" {
+		t.Fatalf("scanner flagged %q, want the planted non-test reads only (calls, a package-level "+
+			"func literal, a method value, a method expression)", got)
 	}
 }

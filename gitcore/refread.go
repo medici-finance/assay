@@ -96,7 +96,8 @@ var ErrRemoteScopeUnmerged = errors.New("remote URL could be changed by config t
 // extensions.worktreeConfig) carries an include/includeIf directive, a
 // remote.<name>.url entry or a url.<base>.insteadOf rule. Any of those can change
 // the fetch URL list native git resolves while RemoteURLs reads the shared file
-// alone. Only the kind of declaration is reported, never a configured value.
+// alone. It also refuses while command-priority config (OriginConfigInjected) or
+// GIT_DIR, GIT_COMMON_DIR or GIT_WORK_TREE is set in the environment. Only the kind of declaration is reported, never a configured value.
 // Worktree-scope pushurl, identity and credential keys do not touch that list.
 func (r *Repo) ScopedRemoteURLs(name string) ([]string, error) {
 	why, err := r.remoteScopeReason(name)
@@ -110,6 +111,16 @@ func (r *Repo) ScopedRemoteURLs(name string) ([]string, error) {
 }
 
 func (r *Repo) remoteScopeReason(name string) (string, error) {
+	// Command-priority config and repository-location variables are read by native git
+	// and by no file this reader opens; the origin snapshot owner refuses the same set.
+	if OriginConfigInjected() {
+		return "command-priority config (GIT_CONFIG_COUNT, GIT_CONFIG_PARAMETERS or GIT_CONFIG) is set", nil
+	}
+	for _, v := range []string{"GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE"} {
+		if os.Getenv(v) != "" {
+			return "a repository-location variable (GIT_DIR, GIT_COMMON_DIR or GIT_WORK_TREE) is set", nil
+		}
+	}
 	cfg, err := r.rawConfig()
 	if err != nil {
 		return "", err

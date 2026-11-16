@@ -107,3 +107,40 @@ func TestOriginSlugPinAccepted(t *testing.T) {
 		}
 	}
 }
+
+// Environment native git reads and no config file carries: command-priority config and
+// repository-location variables. Each refuses with and without the worktree pin, and the
+// work-source reader built on ScopedRemoteURLs refuses too.
+//
+// regression: #6606
+func TestOriginSlugEnvRefused(t *testing.T) {
+	for _, v := range []struct{ key, val string }{
+		{"GIT_CONFIG_COUNT", "1"},
+		{"GIT_CONFIG_PARAMETERS", "'remote.origin.url'=''"},
+		{"GIT_CONFIG", "steer.cfg"},
+		{"GIT_DIR", "steer"},
+		{"GIT_COMMON_DIR", "steer"},
+		{"GIT_WORK_TREE", "steer"},
+	} {
+		for _, pinned := range []bool{false, true} {
+			_, linked, _ := workSourceFixture(t, true)
+			if pinned {
+				gitAll(t, linked, pinArgs)
+			}
+			t.Run(v.key, func(t *testing.T) {
+				t.Setenv(v.key, v.val)
+				slug, err := OriginRepoSlug(linked)
+				if !errors.Is(err, gitcore.ErrRemoteScopeUnmerged) || strings.Contains(err.Error(), "steer") {
+					t.Errorf("pinned=%v: OriginRepoSlug must refuse, got %q %v", pinned, slug, err)
+				}
+				repo, err := gitcore.Open(linked)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if _, err := repo.ScopedRemoteURLs("origin"); !errors.Is(err, gitcore.ErrRemoteScopeUnmerged) {
+					t.Errorf("pinned=%v: ScopedRemoteURLs must refuse, got %v", pinned, err)
+				}
+			})
+		}
+	}
+}
