@@ -83,7 +83,7 @@ https://github.com/medici-finance/assay/issues/3369#issuecomment-6923924153
 - **How the condition is checked.** Neither `statusgen --lint` nor a CI gate can check it.
   The condition lives in each open PR's label timeline on the forge, and the allowance lives
   in a roster outside this tree, while the lint reads only the tree. The check is therefore
-  Verify row 5 of brief-06 (`measured-status/brief-06-modelfloor-derived-stamp.md`), which
+  Verify row 5 of [brief-06](../measured-status/brief-06-modelfloor-derived-stamp.md), which
   the verify desk runs once for each repository in the desk-tools set.
 
 **Second amendment (2026-09-27, `deskrestamp`'s OWN re-stamp bar — narrower than the
