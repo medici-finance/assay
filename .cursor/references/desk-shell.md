@@ -82,6 +82,40 @@ git -C /abs/worktree \
 Never `git config user.*` in a linked worktree. The concrete bot name and user id are house
 values — they resolve from the project's house-rules doc, not from here.
 
+## Verifier Git environment
+
+**Mechanism.** A verifier run is launched with a declared Git environment:
+`GIT_CONFIG_GLOBAL` names a fixed, include-free file (the null device) and
+`GIT_CONFIG_NOSYSTEM=1`, with injected configuration cleared (`GIT_CONFIG_COUNT=0`,
+`GIT_CONFIG_PARAMETERS=`, `GIT_CONFIG=`). `verifyloop` sets it on the runner it spawns and on
+every Verify row it runs; `deskdispatch --kit verifier` prints the same `export` line in the
+verifier prompt. The operator's global and system configuration, and any `includeIf` rule
+they carry, never reach a verifier run. The verifier home's identity, credential helper and
+remote keys are written into the clone's own config (`deskwt` role-init uses
+`git config --worktree`), never through an `include.path` file.
+
+The repository-authority reader that `statusgen --lint --acceptance-forge` and the outcome
+landing use stays strict. It refuses any include that may affect authority (a `remote`, `url`
+or `extensions` section) as could-not-check. The declared environment changes what the reader
+is given, not what it accepts: with the keys inline and the operator configuration out of
+scope, nothing is left for it to refuse.
+
+**Signal.** A protected-table lint in the verifier lane reports
+`could-not-check repository authority: ... an include may affect authority` while the same
+lint on a CI runner passes. An operator `includeIf` that matches the verifier clone, or an
+`include.path` file in the clone that carries `remote.*` keys, is in scope.
+
+**Correct form.** Start the verifier shell with the declared environment before any Verify
+row:
+
+```
+export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_COUNT=0 GIT_CONFIG_PARAMETERS= GIT_CONFIG=
+```
+
+Write the home's keys inline (`git -C <home> config --worktree <key> <value>`). If an
+authority read still reports could-not-check, report it as observed. Never retry by stripping
+or rewriting Git configuration, and never relax the reader.
+
 ## Loop and session markers
 
 **Mechanism.** The loop-role marker and the session marker are read from the environment by the

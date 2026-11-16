@@ -130,6 +130,11 @@ func fakeAgentTurn(mode string, modeDefault bool, sessionID string, nextID *int,
 			"| go build ./tools/desk/... | 0 | ok |\n" +
 			"| go test ./tools/desk/cmd/verifyloop/... | 0 | ok |\n"
 
+	case "gitenv":
+		// Report the Git environment this runner was launched with.
+		return "VERDICT: PASS\n| git-env | 0 | " + os.Getenv("GIT_CONFIG_GLOBAL") + ";" +
+			os.Getenv("GIT_CONFIG_NOSYSTEM") + ";" + os.Getenv("GIT_CONFIG_COUNT") + " |\n"
+
 	case "freetext":
 		// No VERDICT line anywhere — must land BLOCKED (parse-or-BLOCKED).
 		return "I looked at the brief but I'm just going to describe things in prose without any structured verdict at all.\n"
@@ -288,6 +293,30 @@ func TestNativeDispatchRoundTrip(t *testing.T) {
 	// RunnerID is recorded from what the engine spawned, never self-reported.
 	if !strings.HasPrefix(r.RunnerID, "acp:") {
 		t.Fatalf("RunnerID = %q, want engine-recorded acp:<cmd>", r.RunnerID)
+	}
+}
+
+// regression: #4823
+// TestNativeRunnerGitEnv: the runner is launched with the declared verifier Git
+// environment, whatever the operator's environment says.
+func TestNativeRunnerGitEnv(t *testing.T) {
+	nativeTestHome(t)
+	operator := filepath.Join(t.TempDir(), "operator.gitconfig")
+	t.Setenv("GIT_CONFIG_GLOBAL", operator)
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "")
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	v := nativeLoop(t, "gitenv")
+
+	h, err := v.Dispatch(fixtureItem(), loopengine.TierLocal)
+	if err != nil {
+		t.Fatalf("native Dispatch: %v", err)
+	}
+	r := awaitResult(t, h)
+	if len(r.Rows) != 1 {
+		t.Fatalf("parsed %d rows, want 1: %+v", len(r.Rows), r.Rows)
+	}
+	if want := os.DevNull + ";1;0"; r.Rows[0].Output != want {
+		t.Fatalf("runner Git env = %q, want %q", r.Rows[0].Output, want)
 	}
 }
 

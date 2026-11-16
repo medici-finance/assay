@@ -269,3 +269,16 @@ func demoRoot(t *testing.T) string {
 	}
 	return root
 }
+
+// regression: #4823
+// TestRowExecGitEnv: a Verify row runs under the declared verifier Git
+// environment, not the operator's global or system configuration.
+func TestRowExecGitEnv(t *testing.T) {
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "operator.gitconfig"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "")
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	exit, out := shellExec(t.TempDir(), `printf '%s;%s;%s' "$GIT_CONFIG_GLOBAL" "$GIT_CONFIG_NOSYSTEM" "$GIT_CONFIG_COUNT"`)
+	if want := os.DevNull + ";1;0"; exit != 0 || out != want {
+		t.Fatalf("row Git env = %q (exit %d), want %q", out, exit, want)
+	}
+}

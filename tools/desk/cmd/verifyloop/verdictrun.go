@@ -48,10 +48,13 @@ import (
 type rowExec func(root, command string) (exit int, output string)
 
 // shellExec is the default rowExec: run the command via `sh -c` from the repo root, exactly
-// as a human running the Verify row would. The exit code is the verdict.
+// as a human running the Verify row would. The exit code is the verdict. The row runs under
+// the declared verifier Git environment (deskkit.VerifierGitLaunchEnv), appended last so it
+// wins: the operator's global and system Git configuration never reach a verifier row.
 func shellExec(root, command string) (int, string) {
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Dir = root
+	cmd.Env = append(os.Environ(), deskkit.VerifierGitLaunchEnv()...)
 	out, err := cmd.CombinedOutput()
 	return exitCodeOf(err), string(out)
 }

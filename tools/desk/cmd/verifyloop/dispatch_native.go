@@ -162,9 +162,12 @@ func (v *VerifyLoop) runNativeDispatch(it loopengine.Item, dir, prompt string, r
 	v.auditNative("dispatch", deskkit.ResultOK, it, "native dispatch spawning runner ["+strings.Join(runnerCmd, " ")+"] runnerID="+runnerID+" cwd="+dir)
 
 	var stderr bytes.Buffer
+	// The runner is a verifier launch: its declared Git environment is appended after
+	// NativeEnv so no inherited or configured value overrides it (#4823).
+	env := append(append([]string(nil), v.NativeEnv...), deskkit.VerifierGitLaunchEnv()...)
 	cl, err := acp.Spawn(runnerCmd, acp.Opts{
 		Dir:              dir,
-		Env:              v.NativeEnv,
+		Env:              env,
 		Stderr:           &stderr,
 		FSRoot:           dir, // the fs fence: reads/writes are refused outside the worktree
 		PermissionPolicy: v.permissionPolicy(it, dir),

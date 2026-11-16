@@ -23,6 +23,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // verifierOnlyScaffold is the WORKER-identity line that must never reach a verifier: adopting
@@ -107,5 +109,26 @@ func TestFullPromptNoWorkerLoop(t *testing.T) {
 			t.Errorf("the full %s prompt carries the worker's loop identity %q — the agent's next write "+
 				"would mint the worker App and miss its own loop's STOP flag", kit, workerLoopIdentityLine)
 		}
+	}
+}
+
+// regression: #4823
+// TestVerifierKitGitEnv: the verifier Assignment declares the controlled Git
+// launch environment before any Verify row, and the worker Assignment does not.
+func TestVerifierKitGitEnv(t *testing.T) {
+	asg := assignmentSection(t, dispatchPrompt(t, "verifier", "verify-item-9"))
+	want := "export " + strings.Join(deskkit.VerifierGitLaunchEnv(), " ")
+	if !strings.Contains(asg, "## Git environment") || !strings.Contains(asg, want) {
+		t.Fatalf("the verifier Assignment does not declare %q:\n%s", want, asg)
+	}
+	if !strings.Contains(asg, "never through an include.path file") {
+		t.Fatalf("the verifier Assignment does not keep keys inline:\n%s", asg)
+	}
+	if strings.Index(asg, "## Git environment") > strings.Index(asg, "## Run the Verify table") {
+		t.Fatalf("the Git environment is declared after the Verify table:\n%s", asg)
+	}
+	worker := assignmentSection(t, dispatchPrompt(t, "worker", "example-stream--07"))
+	if strings.Contains(worker, "## Git environment") {
+		t.Fatalf("the worker Assignment carries the verifier Git environment:\n%s", worker)
 	}
 }
