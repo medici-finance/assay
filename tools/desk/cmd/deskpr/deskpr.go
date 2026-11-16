@@ -144,7 +144,7 @@ func cmdCreate(args []string) (err error) {
 	bodyMin := fs.String("body-min", "", "one-line PR body (alternative to --body-file)")
 	base := fs.String("base", "main", "base branch")
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
-	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
+	applyOverride, scanOverride := deskkit.RegisterOutboundOverride(fs, "deskpr", "create")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	decided := fs.String("decided", "", "path to a file declaring desk-taken decisions (decision:/alternative:/cost: triples, one item per numbered line) — writes the `## Desk-decided` block into the body and applies the desk-decided label; a PR that only transcribes recorded rulings passes none of this")
 	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the Brief:/Authors:/Issue: trailer, the secret scan, the public-repo self-containment scan, the push-transport gate, the publish-identity gate) and stop BEFORE minting a token or opening any connection — exit 0 only when every local gate passed; a category this cannot decide offline is reported, by name, as not checked")
@@ -171,6 +171,11 @@ func cmdCreate(args []string) (err error) {
 		if verr := deskkit.ValidateScanOverride(*scanOverride); verr != nil {
 			return verr
 		}
+	}
+	// #5914: hand the reason to the process outbound context too, so the checking Forge's
+	// own scan of every write this verb makes honours the override this verb records.
+	if aerr := applyOverride(); aerr != nil {
+		return aerr
 	}
 	if strings.TrimSpace(*title) == "" {
 		return deskkit.SchemaRefusal("deskpr", "--check", "refused: --title is required")
@@ -518,7 +523,7 @@ func cmdUpdate(args []string) (err error) {
 
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder))
-	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
+	applyOverride, scanOverride := deskkit.RegisterOutboundOverride(fs, "deskpr", "update")
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the secret scan, the push-transport gate, the publish-identity gate) and stop BEFORE minting a token or opening any connection; the Brief:/Authors:/Issue: trailer lives on the EXISTING PR's forge-held body and is reported not checked, by name, rather than skipped silently")
@@ -556,6 +561,11 @@ func cmdUpdate(args []string) (err error) {
 		if verr := deskkit.ValidateScanOverride(*scanOverride); verr != nil {
 			return verr
 		}
+	}
+	// #5914: hand the reason to the process outbound context too, so the checking Forge's
+	// own scan of every write this verb makes honours the override this verb records.
+	if aerr := applyOverride(); aerr != nil {
+		return aerr
 	}
 	dir, gerr := getwd()
 	if gerr != nil {
