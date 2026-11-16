@@ -8,6 +8,8 @@ unblocks: ["desk-tools/43", "desk-tools/44"]
 effort: M
 gate: human
 decision-issue: 4523
+design: DR-desk-tools-41
+ruling: "https://github.com/medici-finance/assay/issues/4523#issuecomment-6923696525"
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2

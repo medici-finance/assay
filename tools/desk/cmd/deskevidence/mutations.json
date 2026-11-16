@@ -196,8 +196,8 @@
     {
       "name": "branch board lets a compare error through (an unreadable branch is read as an unchanged board)",
       "file": "cmd/deskevidence/decisiongate.go",
-      "old": "cmp, err := fg.CompareRefs(fr, head, tip)\n\tif err != nil {",
-      "new": "cmp, err := fg.CompareRefs(fr, head, tip)\n\tif false && err != nil {"
+      "old": "\tcase err != nil:\n\t\treturn nil, deskkit.Unverifiable(fmt.Sprintf(\"cannot compare the landing home's HEAD",
+      "new": "\tcase false && err != nil:\n\t\treturn nil, deskkit.Unverifiable(fmt.Sprintf(\"cannot compare the landing home's HEAD"
     },
     {
       "name": "branch board skips the compare for every tip, not only the home's own HEAD (a branch that moved past the judged board is never read) \u2014 #6270",
@@ -588,6 +588,24 @@
       "file": "cmd/deskevidence/outcomerecord.go",
       "old": "\tif remoteExists {",
       "new": "\tif !dryRun && remoteExists {"
+    },
+    {
+      "name": "#6610: admit any path on the GitLab branch lane (a non-Evidence change on the branch is never refused)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "|| (f.Filename != target && !evidenceLandingPath(f.Filename)) {",
+      "new": "|| false {"
+    },
+    {
+      "name": "#6610: admit a removal or rename on the GitLab branch lane",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if (f.Status != \"added\" && f.Status != \"modified\") ||",
+      "new": "if false &&"
+    },
+    {
+      "name": "#6610: drop the clean-path test on an Evidence path (an unclean spelling of a brief path is admitted)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "path.Clean(p) != p ||",
+      "new": "path.Clean(p) == \"\" ||"
     }
   ]
 }
