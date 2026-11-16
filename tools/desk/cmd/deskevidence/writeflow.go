@@ -1,6 +1,10 @@
 package main
 
 import (
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -19,7 +23,7 @@ func deskDir() (string, error) {
 	return deskkit.StateDir()
 }
 
-// auditLock is the flock held across AllowWrite→remote-call→audit-append,
+// auditLock is the flock held across AllowWrite→remote-call→audit-append (enterWriteWindow),
 // so two parallel desk sessions cannot double-commit or double-count. A lock held longer
 // than lockWait is treated as stale → Unverifiable (exit 6).
 type auditLock struct{ l *deskkit.AuditLock }
@@ -48,22 +52,139 @@ func acquireAuditLock() (*auditLock, error) {
 
 func (l *auditLock) release() { l.l.Release() }
 
+// enterWriteWindow is the ONE place deskevidence takes the shared audit lock and spends its
+// write budget: every landing calls it immediately before its conditional forge write, and the
+// lock it takes is then held through that write, the attribution read and the deferred audit
+// append (finalize), so the read-check-write-append window stays one critical section exactly
+// as #227 made it.
+//
+// The lock is NOT held across preparation. The admission reads, the remote snapshot, the
+// closure and decision-gate reads and the two statusgen lint runs used to run inside it, so one
+// landing kept the desk-wide lock for as long as its lint took and starved every other desk
+// writer that shares it — the intake drain and reviewer posts (#5023). Nothing preparation
+// reads is protected by this lock: the budget ledger is read here, under it, and the remote
+// target is protected by the write itself, which is conditional on the blob preparation read
+// (ExpectedSHA) and refuses when it moved. Preparation's own exclusion — two landings staging
+// into the same landing root — is the per-root preparation lock runOutward holds instead.
+//
+// A second call is a no-op on the lock (a GitLab side-branch fallback spends no budget).
+func (a *auditCtx) enterWriteWindow(tool, repo string, pr int) error {
+	if a.lock == nil {
+		l, err := acquireAuditLock()
+		if err != nil {
+			return err
+		}
+		a.lock = l
+	}
+	return evidenceWriteBudget(tool, repo, pr)
+}
+
+// lockForAppend takes the audit lock for the single audit append when the run ended before
+// its write window (a refusal, a noop, a dry-run), so that append is serialised against the
+// other writers' read-then-append exactly as it was when the lock spanned the whole run. A
+// lock it cannot get is not a reason to drop the line: the append is O_APPEND-atomic and the
+// line records an invocation that wrote nothing, so it is appended without the lock, the
+// same rule the lock-failure path has always followed.
+func (a *auditCtx) lockForAppend() {
+	if a.lock != nil {
+		return
+	}
+	if l, err := acquireAuditLock(); err == nil {
+		a.lock = l
+	}
+}
+
+// releaseAuditLock drops the audit lock if this run took it. Safe when it never did.
+func (a *auditCtx) releaseAuditLock() {
+	if a.lock != nil {
+		a.lock.release()
+		a.lock = nil
+	}
+}
+
+// prepLockName is the per-landing-root preparation lock's file name in the desk state dir:
+// one file per resolved root, so two landings on DIFFERENT roots never wait on each other and
+// two on the SAME root still cannot stage into it at once.
+func prepLockName(root string) string {
+	return "evidence-prep-" + deskkit.Sha256Hex([]byte(root))[:16] + ".lock"
+}
+
+// prepLock is a held per-root preparation lock.
+type prepLock struct {
+	held *deskkit.HeldLock
+	dir  *os.Root
+}
+
+func (p *prepLock) release() {
+	if p == nil {
+		return
+	}
+	_ = p.held.Release()
+	_ = p.dir.Close()
+}
+
+// acquirePrepLock serialises preparation on one landing root. The PROBLEM-diff guard, the
+// decision-gate judge and the verified-sidecar gate stage the landing's content INTO that
+// root and restore it afterwards (lintdiff.go, decisiongate.go), so two landings on the same
+// root would read each other's staged bytes. The audit lock used to serialise them as a side
+// effect of spanning the whole run; this lock keeps that exclusion, scoped to the root it
+// protects, with the same bounded wait and the same fail-closed refusal.
+func acquirePrepLock(args []string) (*prepLock, error) {
+	root := deskkit.RootsFromArgs(args)[0]
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return nil, deskkit.Unverifiable("cannot resolve the landing root for the preparation lock", err)
+	}
+	if real, rerr := filepath.EvalSymlinks(abs); rerr == nil {
+		abs = real
+	}
+	dir, err := deskDir()
+	if err != nil {
+		return nil, deskkit.Unverifiable("cannot resolve desk-tools dir (HOME missing?)", err)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, deskkit.Unverifiable("cannot create the desk state dir", err)
+	}
+	d, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, deskkit.Unverifiable("cannot open the desk state dir", err)
+	}
+	name := prepLockName(abs)
+	f, err := d.OpenFile(name, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		d.Close()
+		return nil, deskkit.Unverifiable("cannot open the preparation lock", err)
+	}
+	held, err := deskkit.AcquireHeld(d, name, f, deskkit.LockSpec{Name: "deskevidence preparation lock for " + abs, Wait: lockWait})
+	if err != nil {
+		d.Close()
+		var busy *deskkit.BusyError
+		if errors.As(err, &busy) {
+			return nil, deskkit.Unverifiable(fmt.Sprintf(
+				"another deskevidence landing is preparing on %s (preparation lock %s busy for %s; retryable)",
+				abs, busy.Path, busy.Waited.Round(time.Second)), nil)
+		}
+		return nil, deskkit.Unverifiable("cannot acquire the preparation lock", err)
+	}
+	return &prepLock{held: held, dir: d}, nil
+}
+
 // runOutward is the single orchestration path for deskevidence's one mutating verb.
-// Guard() has already run in main. It holds the flock across the WHOLE of cmdEvidence:
+// Guard() has already run in main. It takes two locks with two different scopes:
 //
-//	validation → remote fetch → AllowWrite → commitFile → audit append
+//	per-root preparation lock: validation → remote reads → staged lint/gates → … → audit append
+//	shared audit lock:                    enterWriteWindow: AllowWrite → forge write → audit append
 //
-// so the rate-limit read, the remote call and the audit write are one critical section.
-// Two concurrent invocations therefore cannot each read a budget below the cap and both
-// commit — which is exactly what happened before this landed (#227), because
-// deskevidence's write window was the only outward-write window in the desk-tools set with
-// no lock over it.
+// The shared audit lock covers ONLY the write window (enterWriteWindow), so the rate-limit
+// read, the remote write and the audit append are one critical section — two concurrent
+// invocations cannot each read a budget below the cap and both commit (#227) — while the
+// long preparation no longer holds the lock every other desk writer needs (#5023).
 //
 // This is a serialisation fix, not a retry: the second caller does not race and lose, it
 // waits for the lock and then re-reads the budget it was going to spend. If it cannot
-// acquire the lock inside 60s it is Unverifiable (exit 6) — never "assume free".
+// acquire either lock inside 60s it is Unverifiable (exit 6) — never "assume free".
 //
-// Defer ORDER is load-bearing. Go runs defers LIFO, so `lock.release()` (registered
+// Defer ORDER is load-bearing. Go runs defers LIFO, so `ac.releaseAuditLock()` (registered
 // FIRST) runs LAST — i.e. after `ac.finalize`. Registering them the other way round
 // would release the lock before the audit line is appended and leave the append outside
 // the critical section, which is the specific window #227 is about. Do not reorder.
@@ -73,20 +194,20 @@ func runOutward(args []string, options childOptions) (err error) {
 		ac.repo = args[0]
 	}
 
-	lock, lerr := acquireAuditLock()
-	if lerr != nil {
-		// Still exactly one audit line for this invocation. It is written WITHOUT
-		// the lock — which is sound, because nothing outward happened and an append to
-		// audit.jsonl is O_APPEND-atomic; the lock exists to serialise the read-then-write
-		// sequence, not any single append.
-		ac.finalize(lerr)
-		return lerr
+	prep, perr := acquirePrepLock(args)
+	if perr != nil {
+		// Still exactly one audit line for this invocation; nothing outward happened.
+		ac.lockForAppend()
+		ac.finalize(perr)
+		ac.releaseAuditLock()
+		return perr
 	}
-	defer lock.release()
-	defer func() { ac.finalize(err) }()
+	defer prep.release()
+	defer ac.releaseAuditLock()
+	defer func() { ac.lockForAppend(); ac.finalize(err) }()
 
-	// Capability admission is before landing reads, credentials and effects, but
-	// inside the existing audit window: a refused attempt still leaves one row.
+	// Capability admission is before landing reads, credentials and effects; a refused
+	// attempt still leaves one row.
 	var diagnostic strings.Builder
 	if code := deskkit.RefuseIfTreeV2BelowV1(deskkit.RootsFromArgs(args), deskkit.EffectiveToolVersion(version), "deskevidence", &diagnostic); code != 0 {
 		return capabilityError(code, diagnostic.String())

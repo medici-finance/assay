@@ -75,9 +75,10 @@ func refuseAppendedOutcomesLog(targetRepoPath string) error {
 //  8. Commit conditionally through the forge as verifier App
 //  9. Verify the landed commit's author is the verifier App bot
 //
-// It is called ONLY from runOutward, which owns the audit lock and the single
-// deferred audit line (`ac`). Adding a second entry point without the lock would
-// re-open #227.
+// It is called ONLY from runOutward, which owns the single deferred audit line (`ac`);
+// the audit lock is taken at step 7 by ac.enterWriteWindow and held through the audit
+// append. Adding a second entry point, or a budget spend that bypasses enterWriteWindow,
+// would re-open #227.
 
 // verifierEvidenceAdmissionFn is pre-work admission, read through the forge the
 // CALLER hands it. Admission reads the dispatcher's attestation record from the
@@ -87,7 +88,8 @@ func refuseAppendedOutcomesLog(targetRepoPath string) error {
 var verifierEvidenceAdmissionFn = deskkit.CheckVerifierEvidenceWithForge
 
 // A package seam keeps offline landing fixtures out of the operator's ledger.
-// Production always uses the shared budget check, under runOutward's audit lock.
+// Production always uses the shared budget check, and only through ac.enterWriteWindow,
+// which takes the audit lock first.
 var evidenceWriteBudget = deskkit.AllowWrite
 
 // admitVerifierEvidence runs pre-work admission for the exact path this landing
@@ -791,7 +793,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 
 	// Outward-write rate limit. pr=0 is the repo's unnumbered bucket; deskevidence carries a
 	// per-tool override on it (see unnumberedBucketCap in ratelimit.go).
-	if werr := evidenceWriteBudget(toolName, repoSlug, 0); werr != nil {
+	if werr := ac.enterWriteWindow(toolName, repoSlug, 0); werr != nil {
 		return werr
 	}
 
@@ -1074,7 +1076,8 @@ type auditCtx struct {
 	file          string
 	bodyDig       string
 	detail        string
-	successResult string // ResultOK unless a noop set it to ResultNoop
+	successResult string     // ResultOK unless a noop set it to ResultNoop
+	lock          *auditLock // held from enterWriteWindow through the audit append
 }
 
 func (a *auditCtx) log(result, detail string) {

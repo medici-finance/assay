@@ -372,7 +372,7 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return nil
 	}
 
-	if werr := evidenceWriteBudget(toolName, repoSlug, 0); werr != nil {
+	if werr := ac.enterWriteWindow(toolName, repoSlug, 0); werr != nil {
 		return werr
 	}
 

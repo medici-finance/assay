@@ -5394,9 +5394,21 @@ invocations each read a budget below the cap and both committed; measured, seedi
 `RateLimitPerPRPerHour-1` charged entries and holding one invocation inside its PUT produced
 **two commits and 11 charged writes against a 10 cap**.
 
+**The window is the write, not the run** (#5023). The lock is taken by
+`ac.enterWriteWindow` immediately before the budget read and held through the conditional
+forge write and the audit append; preparation (admission, remote snapshot, closure and
+decision-gate reads, the statusgen PROBLEM-diff) runs before it, so one landing's lint no
+longer holds the lock every other desk writer waits on. The remote target stays protected by
+the write itself, which is conditional on the blob preparation read. Preparation stages content
+into the landing root, so it keeps its own exclusion: a per-root lock
+(`~/.config/assay/evidence-prep-<hash>.lock`) that serialises two landings on the SAME root and
+never two on different roots. A run that ends before its write window (refusal, noop, dry-run)
+takes the audit lock only for its one audit append. `TestBudgetOnlyInWriteWindow` fails any
+budget spend or audit-lock acquisition outside that window.
+
 Two details are load-bearing and easy to undo:
 
-- **Defer order.** `lock.release()` is registered BEFORE the deferred audit append, so
+- **Defer order.** `ac.releaseAuditLock()` is registered BEFORE the deferred audit append, so
   (Go runs defers LIFO) it runs after it. Swapping them puts the append outside the
   critical section, which is the exact window the lock exists to close. Guarded at source
   by `TestDeferOrderIsSourceGuarded` — the swap is not observable from a behavioural test
@@ -5413,8 +5425,8 @@ Two limits, so the guarantee is not read as more than it is:
   do not serialise against each other. Each also writes its own `~/.config/assay/
   audit.jsonl`, so the rate-limit ledger they are protecting is per-host too — the lock is
   exactly as wide as the thing it guards, and no wider.
-- **The holder is bounded by an HTTP timeout, not by the lock.** Every network call runs
-  inside the critical section, so `httpClient` carries a 30s per-request `Timeout`
+- **The holder is bounded by an HTTP timeout, not by the lock.** The forge write and the
+  attribution read run inside the critical section, so `httpClient` carries a 30s per-request `Timeout`
   (`cmd/deskevidence/github.go`). Without it a hung connection would pin the *shared*
   `audit.lock` and starve `deskpost` and `deskrelease` with it. `deskpost` and
   `deskrelease` still use `http.DefaultClient` and do not have this bound. The timeout is
@@ -5422,8 +5434,8 @@ Two limits, so the guarantee is not read as more than it is:
   replaces `httpClient` with one wired to the fake, so the production declaration is never
   exercised and reverting it to `http.DefaultClient` used to survive the suite green.
 - **Failure mode: refuse, never proceed.** A lock that cannot be acquired — for any reason,
-  including the 60s deadline — returns `Unverifiable` from `runOutward` before
-  `cmdEvidence` is called, so nothing outward happens and exactly one audit line is
+  including the 60s deadline — returns `Unverifiable` from `enterWriteWindow` before the
+  budget is read, so nothing outward happens and exactly one audit line is
   written. There is no arm that degrades to "proceed unserialised", which would be worse
   than no lock because it would report success.
   `TestLockFailureStillWritesOneAuditLine` and `TestContendedLockTimesOutUnverifiable` both

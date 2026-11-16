@@ -8,7 +8,7 @@ import "errors"
 // caller is AcquireAuditLock, the single choke point every acquirer goes through, so every
 // audit line a lock-wait refusal produces can be classified without parsing the message.
 //
-// The wait is the first step of an outward write, before any audit read, forge read or forge
+// The wait is the first step of an outward write window, before any audit read or forge
 // write, so this refusal says nothing about the caller's input (#6227). LockStepResult turns it
 // into ResultContended, which neither the budget nor the circuit breaker counts.
 func AuditLockContended(msg string) *DeskError {
