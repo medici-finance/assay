@@ -63,21 +63,21 @@ func brWantRefused(t *testing.T, rs []decisionGateResult, reason rulingReason) {
 	t.Fatalf("no refusal naming %q for the added ruling link: %+v", reason, rs)
 }
 
-// regression: #4522
+// regression: #2595
 func TestBriefRulingBotAuthor(t *testing.T) {
 	f := dhForge(brRulingText)
 	f.commentBody = rlCommentJSONWith("example-bot[bot]", "Bot", rlRepo, rlIssue, brRulingText, rlPosted, rlPosted)
 	brWantRefused(t, brPR(t, f, brBase(), brRuled()), rulingBotAuthor)
 }
 
-// regression: #4522
+// regression: #2595
 func TestBriefRulingEdited(t *testing.T) {
 	f := dhForge(brRulingText)
 	f.commentBody = rlCommentJSONWith(rlHuman, "User", rlRepo, rlIssue, brRulingText, rlPosted, "2026-09-02T10:00:00Z")
 	brWantRefused(t, brPR(t, f, brBase(), brRuled()), rulingEditedComment)
 }
 
-// regression: #4522
+// regression: #2595
 func TestBriefRulingMissing(t *testing.T) {
 	f := dhForge(brRulingText)
 	f.commentStatus = 404
@@ -85,14 +85,14 @@ func TestBriefRulingMissing(t *testing.T) {
 	brWantRefused(t, brPR(t, f, brBase(), brRuled()), rulingDeleted)
 }
 
-// regression: #4522
+// regression: #2595
 func TestBriefRulingNonDriver(t *testing.T) {
 	f := dhForge(brRulingText)
 	f.commentBody = rlCommentJSONWith("example-stranger", "User", rlRepo, rlIssue, brRulingText, rlPosted, rlPosted)
 	brWantRefused(t, brPR(t, f, brBase(), brRuled()), rulingWrongAuthor)
 }
 
-// regression: #4522
+// regression: #2595
 func TestBriefRulingNotUser(t *testing.T) {
 	f := dhForge(brRulingText)
 	f.commentBody = rlCommentJSONWith(rlHuman, "Organization", rlRepo, rlIssue, brRulingText, rlPosted, rlPosted)
@@ -237,7 +237,7 @@ func brRunStep(t *testing.T, base, head map[string]string) (int, string, bool) {
 	return code, string(out), statErr == nil
 }
 
-// regression: #4522
+// regression: #2595
 func TestStagedCorroborateFilter(t *testing.T) {
 	dr := "docs/streams/decisions/DR-example-ruling-rec.md"
 	for _, tc := range []struct {

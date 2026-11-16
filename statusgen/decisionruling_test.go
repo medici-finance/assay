@@ -232,7 +232,7 @@ func TestRuling_BotAuthor(t *testing.T) {
 // The account type must be User: an Organization (or any other non-User type)
 // login is refused by its type, even when the map names it.
 //
-// regression: #4522
+// regression: #2595
 func TestRuling_NonUserAccount(t *testing.T) {
 	f := defaultRLForge()
 	f.commentBody = rlCommentJSON(rlHuman, "Organization", rlRepo, rlIssue)
@@ -254,7 +254,7 @@ func TestRuling_BotSuffixUser(t *testing.T) {
 // A payload that names no account type cannot show a personal account wrote
 // the comment: could-not-check, never read as User.
 //
-// regression: #4522
+// regression: #2595
 func TestRuling_EmptyAccountType(t *testing.T) {
 	f := defaultRLForge()
 	f.commentBody = rlCommentJSON(rlHuman, "", rlRepo, rlIssue)
