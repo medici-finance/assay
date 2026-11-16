@@ -52,6 +52,7 @@ func validSlugSegment(seg string) bool {
 // parsed here, so a rewrite prefix cannot mangle the owner/repo it carries.
 func ParseRemoteRepo(raw string) (owner, repo string, err error) {
 	work := strings.TrimSpace(raw)
+	shown := RedactRemoteUserinfo(raw)
 	if work == "" {
 		return "", "", fmt.Errorf("empty remote URL")
 	}
@@ -80,16 +81,38 @@ func ParseRemoteRepo(raw string) (owner, repo string, err error) {
 	if len(segs) < 2 {
 		return "", "", fmt.Errorf(
 			"cannot parse owner/repo from remote %q: expected a trailing <owner>/<repo> "+
-				"(git@host:owner/repo, ssh://host/owner/repo, https://host/owner/repo, or host:owner/repo)", raw)
+				"(git@host:owner/repo, ssh://host/owner/repo, https://host/owner/repo, or host:owner/repo)", shown)
 	}
 	owner = segs[len(segs)-2]
 	repo = strings.TrimSuffix(segs[len(segs)-1], ".git")
 	if !slugSegmentRe.MatchString(owner) || !slugSegmentRe.MatchString(repo) {
 		return "", "", fmt.Errorf(
 			"cannot parse owner/repo from remote %q: the trailing pair %q/%q is not a clean "+
-				"<owner>/<repo> (a host, userinfo, or rewrite prefix leaked into it)", raw, owner, repo)
+				"<owner>/<repo> (a host, userinfo, or rewrite prefix leaked into it)", shown,
+			RedactRemoteUserinfo(owner), RedactRemoteUserinfo(repo))
 	}
 	return owner, repo, nil
+}
+
+// RedactRemoteUserinfo renders a remote string for an error or log line with every userinfo
+// span replaced by "<redacted>": in each '/'-delimited segment, everything up to and including
+// the last '@' becomes "<redacted>@". That covers the URL authority
+// (https://user:secret@host/...), the scp-like and bare forms (user:secret@host:path), and
+// the scp segment a hybrid rewrite embeds in a path. The scheme, host, port and path stay
+// visible, so the message still shows the remote's shape; a string with no '@' is returned
+// unchanged. Every error ParseRemoteRepo returns names the remote through it, so callers
+// surface the parser's error rather than re-echoing the raw string.
+func RedactRemoteUserinfo(raw string) string {
+	if !strings.Contains(raw, "@") {
+		return raw
+	}
+	segs := strings.Split(raw, "/")
+	for i, seg := range segs {
+		if at := strings.LastIndexByte(seg, '@'); at >= 0 {
+			segs[i] = "<redacted>" + seg[at:]
+		}
+	}
+	return strings.Join(segs, "/")
 }
 
 // RemoteRepoSlug is ParseRemoteRepo returning the combined "owner/repo" slug — the form the
