@@ -22,7 +22,7 @@ import (
 // occurrences of the last entry are always read (heldscope.go, rule 3), so
 // that line still refuses the real Evidence on close-verify and the card;
 // there, quoted tool output is excluded only inside a code span (#2100). The
-// flip read excludes it inside double quotes too (rule 7, #5482;
+// flip read excludes it inside double quotes too (rule 7, #4721;
 // TestHeldQuotedFlipAdmits). b02Coded is the real Evidence with that one
 // quote written as a code span, the form every read admits.
 

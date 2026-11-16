@@ -21,7 +21,7 @@ const quotedFailFirst = "Fail-first: with the guard disabled, row 2's command ex
 
 // TestHeldQuotedFlipAdmits: an occurrence inside a double-quoted span is
 // admitted by the flip read only; a genuine hold beside it still refuses.
-// regression: #5482
+// regression: #4721
 func TestHeldQuotedFlipAdmits(t *testing.T) {
 	admitted := map[string]bool{
 		"quoted fail-first message":    true,
@@ -48,10 +48,31 @@ func TestHeldQuotedFlipAdmits(t *testing.T) {
 		{"bare marker in quotes", heldEv("ok") + "\nRow 2 is \"HELD\".\n", true},
 		{"bare marker, punctuation", heldEv("ok") + "\nRow 2: \"**could-not-check:**\"\n", true},
 		{"unpaired quote", heldEv("ok") + "\nRow 2 printed \"see log, could-not-check\n", true},
+		// Three quotes, the marker inside the first, pairable, span: only
+		// the odd-count guard refuses it.
 		{"odd quote count",
-			heldEv("ok") + "\nRow 2 was 5\" short; \"could-not-check, no runner\n", true},
+			heldEv("ok") + "\nRow 2 printed \"tenant b: could-not-check\" then \"more.\n", true},
 		{"escaped quote in the span",
 			heldEv("ok") + "\nRow 2 printed \"a \\\" could-not-check b\".\n", true},
+		// Even counts with an escaped quote: only the escaped-quote guard
+		// refuses them.
+		{"escaped quotes, even count",
+			heldEv("ok") + "\nRow 2 printed \\\"tenant b: could-not-check\\\".\n", true},
+		{"escaped pair inside even span",
+			heldEv("ok") + "\nRow 2 printed \"a \\\" b \\\" could-not-check\".\n", true},
+		// The quotes pair across the paragraph, not per line: HELD renders
+		// between two spans, each of which crosses a line.
+		{"span crossing a line",
+			heldEv("ok") + "\nRow 2 printed \"first part\nsecond part\" and row 3 is HELD pending \"third part\nfourth\".\n", true},
+		// A pipe on a prose line splits nothing when rendered.
+		{"pipe on a prose line",
+			heldEv("ok") + "\nRow 2 printed \"a | b\" and row 3 is HELD pending \" end.\n", true},
+		// Inch marks are not quotation marks (flanking).
+		{"inch marks",
+			heldEv("ok") + "\nMeasured a 3\" gap; row 3 HELD pending the 5\" retest.\n", true},
+		// A genuine hold in a result cell that also quotes output.
+		{"held cell beside quoted output",
+			heldEv(`could-not-check — runner printed "ok"`), true},
 		{"span would cross a cell",
 			heldEv(`ok "x | could-not-check | y"`), true},
 		{"curly quotes not read",
@@ -65,7 +86,7 @@ func TestHeldQuotedFlipAdmits(t *testing.T) {
 // only live occurrence is the last entry's base-tree diagnostic in double
 // quotes (b02Quote), flips; close-verify and the card still refuse it. The
 // same Evidence with a genuine hold appended refuses on every read.
-// regression: #5482
+// regression: #4721
 func TestHeldQuotedRealEvidence(t *testing.T) {
 	ev := b02Evidence(t)
 	runHeldLayerCasesFlip(t, []heldScanCase{
