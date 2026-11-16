@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // Tests for the flip read's double-quoted output rule (heldscope.go, rule 7).
 //
@@ -101,4 +104,25 @@ func TestHeldQuotedRealEvidence(t *testing.T) {
 		{"real Evidence, hold appended",
 			ev + "\n### Non-implementer verifier re-run — 2026-10-26\n\n- Row 3: could-not-check, no Linux runner online.\n\n**VERIFY: BLOCKED**\n", true},
 	}, map[string]bool{"real Evidence as committed": true})
+}
+
+// TestHeldQuotedWitnessCell: rule 7 is not applied to a verifyrun witness
+// row. The flip credits a witness row by the first state word anywhere in its
+// Result cell (witnessStateRe), so a quoted hold ahead of "pass exit=0" would
+// otherwise be skipped by the held scan and credited as a pass. Every read
+// refuses both orders, as before rule 7.
+// regression: #4721
+func TestHeldQuotedWitnessCell(t *testing.T) {
+	row2 := "| `tool check 2` | pass exit=0"
+	cell := func(result string) string {
+		table := strings.Replace(witTable(2, "", witPass, ""), row2, "| `tool check 2` | "+result, 1)
+		if !strings.Contains(table, result) {
+			t.Fatalf("fixture: row 2 not rewritten")
+		}
+		return witEntry("Run 1", table, "", "**VERIFY: PASS** — 2/2 rows")
+	}
+	runHeldScanCasesFlip(t, []heldScanCase{
+		{"quoted hold before the state", cell(`"tenant b: could-not-check, no grant" pass exit=0`), true},
+		{"quoted hold after the state", cell(`pass exit=0 "tenant b: could-not-check, no grant"`), true},
+	}, nil)
 }

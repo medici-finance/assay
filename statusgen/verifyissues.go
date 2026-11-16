@@ -1063,8 +1063,12 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 			// span is the row's quoted output, not its disposition: both flip
 			// callers then require a passing witness for every Verify row
 			// (heldScanScope rule 7, #4721). The card and close-verify, which
-			// run no witness check, still read it.
-			if latestRun && cuts == nil && heldQuotedOutput(clean, h, read.key != "", !quoteNear[i]) {
+			// run no witness check, still read it. A verifyrun witness row is
+			// never skipped: the witness check credits it by the first state
+			// word anywhere in its Result cell, so a quoted hold there would
+			// be credited as that state.
+			if latestRun && cuts == nil && !isWitnessRow(lines[i]) &&
+				heldQuotedOutput(clean, h, read.key != "", !quoteNear[i]) {
 				continue
 			}
 			keywordAfter := false
