@@ -65,7 +65,7 @@ Briefs 35, 36 and 37 as merged; `containers/secrets.md` §4.5.
    never re-run by hand with a value pasted in.
 2. **worker-desk and pr-review-desk.** Read the dev-env file, never write it; never create a
    per-desk `.env`; a needed variable goes to the coordinator as a request, and the row declares
-   its name.
+   its name, which must be in brief 35's allow-list (`DEVENV_` names only).
 3. **the-desk.** The coordinator maintains the file with `cellctl devenv set` and `unset` only,
    never by editing it, and dev-only values only.
 4. **docs/docker.md.** Per-desk env-files keep model and App settings; dev credentials for
@@ -86,8 +86,8 @@ Every Verify row below passes.
 | 4 | check:ci | tree | `grep -F 'dev-env file' plugins/assay/skills/pr-review-desk/SKILL.md` | At least one match. |
 | 5 | check:ci | tree | `grep -F '§4.5' docs/docker.md` | At least one match. |
 | 6 | check +flow | host | `statusgen --root . --lint --acceptance-forge` | exit 0; output contains "LINT: PASS"; the skills, the docker guide and the briefs lint together. |
-| 8 | check | tree | `statusgen --consumers --brief desk-containers/38 --base $(git merge-base origin/main HEAD)` | Pre-merge, on the implementation branch: exit 0. |
 | 7 | gate:model | tree | Review of the four skill diffs against brief 35 | Each role's text matches the contract; no role-secret section loosened. |
+| 8 | check | tree | `statusgen --consumers --brief desk-containers/38 --base $(git merge-base origin/main HEAD)` | Pre-merge, on the implementation branch: exit 0. |
 
 ## Evidence
 

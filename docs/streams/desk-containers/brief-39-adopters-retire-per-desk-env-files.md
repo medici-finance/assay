@@ -48,8 +48,9 @@ Briefs 35 to 38 as merged; `containers/secrets.md` §4.5.
    a cell uses; sort each value (model or App setting stays in the per-desk env-file; a role
    secret moves to `CELL_ROLE_SECRETS`; a dev value moves to the dev-env file through the
    coordinator's `cellctl devenv set`; a production value is removed); set `CELL_DEV_ENV_FILE`;
-   run `cellctl check`; add declared names to each Verify row that needs one; then delete the
-   old files.
+   run `cellctl check`; add declared names to each Verify row that needs one, renaming each into
+   the `DEVENV_` namespace brief 35 allows and passing it to the tool in the row's own command;
+   then delete the old files.
 2. Link to it from `docs/cellctl.md` §`cell.env`.
 3. Changelog fragment.
 

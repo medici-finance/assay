@@ -15,9 +15,9 @@ gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: >-
   The launcher decides which role windows can reach a credential file and which can write it.
-  The human confirms the per-role projection, the write-surface proof, and how the cell database
-  pointer, which reaches all five roles today, sits beside DR-desk-containers-34's worker and
-  verifier limit.
+  The human confirms the per-role projection, the write-surface proof, and whether reviewer
+  slots that build untrusted heads keep the write reach to the cell database that every role
+  has today.
 decision-trigger: creation
 issues: [6615]
 decision-issue: 6615
@@ -52,13 +52,17 @@ files: `tools/desk/cmd/cellctl/{envkeys.go,launch.go,celldb.go,check.go,desk.go,
 `tools/desk/cmd/cellctl/devenv_test.go` (planned), `docs/cellctl.md`, `docs/postgres.md`,
 `changelog/cellctl-dev-env-file.md` (planned).
 
-facts (freshness-checked 2026-11-16 @ 0d369ac33):
+facts (freshness-checked 2026-11-16 @ 0d369ac33; line numbers re-read on main 2026-11-16):
 
-- `CELL_DB_DSN` and `CELL_DB_PASSFILE` are composed into every role window: `launch.go` (the
-  cell database pointer "composed for every role and absent when the cell has none"),
-  `celldb.go`, and `docs/postgres.md` ("every role window of the cell gets
-  `ASSAY_CELL_DB_DSN`"). `codex_environment.go` forwards both; `kube_compat.go` refuses them on a
-  Kubernetes compatibility cell; `desk.go`'s dry run prints the DSN and the passfile path.
+- `CELL_DB_DSN` and `CELL_DB_PASSFILE` are composed into every role window: `launch.go`
+  lines 279-281 (the cell database pointer "composed for every role and absent when the cell
+  has none", `c.cellDBEnv(env)`), `celldb.go`, and `docs/postgres.md` ("every role window of
+  the cell gets `ASSAY_CELL_DB_DSN`"). `codex_environment.go` forwards both; `kube_compat.go`
+  refuses them on a Kubernetes compatibility cell; `desk.go`'s dry run prints the DSN and the
+  passfile path. `deskdispatch` strips only `ASSAY_ROLE_SECRET_*` from its children
+  (`tools/desk/cmd/deskdispatch/exec.go`, `roleSecretChildEnv`), so review-kit children,
+  including reviewer slots that build an untrusted pull-request head, inherit the database
+  pointer today.
 - `CELL_ROLE_SECRETS` (`envkeys.go`) binds a role secret to worker or verifier only, container
   surface only; `rolesecret.go` checks the file without opening it and appends receipts to
   `<cell>/state/role-secrets.receipts`.
@@ -74,36 +78,54 @@ facts (freshness-checked 2026-11-16 @ 0d369ac33):
 
 ## Human decision
 
-Ruled: one file per cell; the coordinator role owns and maintains it and is the only role that
-may write it; implementer, reviewer and verifier read it only; the verifier refuses a file any
-other role can write; every change records the sha256 and the names added or removed, never
-values.
-
+Ruled: one file per cell, from which a Verify row receives only the names it declares; names
+and the file sha256 are recorded, never values.
 Ruled 2026-11-16, by the driver in their own login:
 https://github.com/medici-finance/assay/issues/6615#issuecomment-6921966886
 
-Amended 2026-11-16 (the coordinator role owns, maintains and alone writes the file), by the driver in their own login:
+Amended: the coordinator role owns and maintains the file and is the only role that may write
+it; implementer, reviewer and verifier read it only; the verifier refuses a file any other role
+can write; every change records the sha256 and the names added or removed, never values.
+Amended 2026-11-16, by the driver in their own login:
 https://github.com/medici-finance/assay/issues/6615#issuecomment-6922038844
 
-Two consequences this brief puts to the driver:
+Open, and not this brief's to answer: brief 35's question of how a surface proves the
+coordinator is the only writer. This brief depends on brief 35 (`depends:` above) and does not
+presuppose that answer. Task 2's surface checks and record, Task 4's mounts, and Verify rows 2
+and 4 are written for brief 35's option 1, the recommended one, and apply only if
+`DR-desk-containers-35` chooses it; if it chooses another option, they are re-derived from that
+record before this brief leaves `todo`. Under brief 35's default, hold, no cell binds a file and
+this brief does not start.
 
-1. **The reviewer reads the file.** The amendment gives reviewer windows read access.
-   DR-desk-containers-34 keeps role secrets from reviewers because reviewer slots read untrusted
-   pull-request heads. This brief keeps the two apart by class: the dev-env file holds dev-only,
-   throwaway values (brief 35 Task 1), so a reviewer that leaks one leaks nothing usable outside
-   a local dev environment; role secrets stay on their own channel and never enter the file.
-   Recommended: accept, as ruled. Alternative: the reviewer reads the file but `deskdispatch`
-   strips the path variable from review-kit children, so only the window, not a slot building a
-   head, can reach it.
-2. **The cell database pointer.** It reaches all five roles today, and DR-desk-containers-34
-   limits role secrets to worker and verifier. Recommended: the cell database is cell
-   infrastructure, not a Verify-row credential; it keeps its own channel and its all-role reach,
-   and is documented as a distinct class that never goes into the dev-env file. Alternative:
-   narrow it to worker and verifier, which breaks any coordinator, reviewer or intake use of the
-   cell's own database.
+Two further questions this brief puts to the driver:
 
-Default if no answer: hold. Each answer widens or narrows a credential's reach, so neither is
-taken by silence, and the brief stays `todo` until both are answered.
+1. **Which reviewer and worker children reach the file's path.** The amendment gives reviewer
+   windows read access. DR-desk-containers-34 keeps role secrets from reviewers because reviewer
+   slots read untrusted pull-request heads, and its dispatcher strips the role-secret path from
+   any child that runs an unblessed head and from every review-kit child. This brief keeps the
+   two channels apart by class: the dev-env file holds dev-only, throwaway values (brief 35
+   Task 1), so a reviewer that leaks one leaks nothing usable outside a local dev environment;
+   role secrets stay on their own channel and never enter the file.
+   Recommended: accept, as ruled, for the reviewer window. Alternative: `deskdispatch` strips
+   `ASSAY_CELL_DEV_ENV_FILE` from review-kit children and from any worker child that runs an
+   unblessed head, as it does the role-secret path, so only the windows, not a slot building an
+   untrusted head, can reach it. The question covers both: review-kit children and worker
+   children running an unblessed head.
+2. **Should reviewer slots that build untrusted heads keep write reach to the cell database?**
+   Today every role window, and every child `deskdispatch` starts, including a reviewer slot
+   building an untrusted pull-request head, receives the cell database pointer and its passfile
+   (facts above), and with them write access to the cell's database. This brief changes none of
+   that reach and widens nothing. It asks whether that reach should stand. DR-desk-containers-34
+   would not give a role secret to such a slot; the database pointer is a separate channel it
+   does not govern.
+   Options: (a) keep today's reach and document the database pointer as cell infrastructure on
+   its own channel, never placed in the dev-env file; (b) strip the database pointer from
+   review-kit children and unblessed-head children, or hand them a read-only role, which breaks
+   any review step that writes to the cell's database. Recommended: (a) for windows, with the
+   driver choosing between (a) and (b) for reviewer slots building untrusted heads.
+
+Default if no answer: hold. Each answer sets a credential's reach, so neither is taken by
+silence, and the brief stays `todo` until both are answered.
 
 This brief leaves `todo` only once `DR-desk-containers-35` (brief 35) is approved.
 
@@ -119,23 +141,34 @@ This brief leaves `todo` only once `DR-desk-containers-35` (brief 35) is approve
 
 1. **Key.** `envkeys.go` gains `CELL_DEV_ENV_FILE` (cell class, absolute path), read only from
    the cell's own `cell.env`.
-2. **Check.** `cellctl check` adds rows, without printing a value: the file exists, is a
-   regular file, lies outside every git checkout and worktree, and passes the surface proof
-   brief 35's decision picks (container: read-write mount for the coordinator container only,
-   read-only for worker, reviewer and verifier; host: owned by the coordinator role's identity,
-   no other role identity can write it or its directory, no access-control list grants write).
-   A cell whose role windows share one OS user binds no file and its check says why.
+2. **Check and record (surface rows under brief 35's option 1).** `cellctl check` adds rows,
+   without printing a value: the file exists, is a regular file, and lies outside every git
+   checkout and worktree; and it passes the surface proof brief 35's decision picks. Under
+   option 1: container, a read-write mount for the coordinator container only and read-only for
+   worker, reviewer and verifier; host, owned by the coordinator role's identity, with no other
+   role identity able to write it or its directory, and no access-control list granting write.
+   A cell whose role windows share one OS user binds no file and its check says why. Any
+   ownership, mode, access-control or surface state the check cannot determine fails the check.
+   The launcher records, from the cell's identity map, the coordinator role's identity and, on
+   a container cell, each role's mount mode for the file, in a cell state file no role window
+   can write; brief 36 reads that record and refuses when it is absent.
 3. **Projection.** `cellctl desk` and `up` export `ASSAY_CELL_DEV_ENV_FILE` (the path) into the
    coordinator, worker, reviewer and verifier windows; intake gets none, per brief 35. A
    launching shell's stale value is removed, as `celldb.go` does for the database pointer. The
    Codex environment forwards it; a Kubernetes compatibility cell refuses the key by name.
+   Whether review-kit and unblessed-head children keep it follows decision 1.
 4. **Write verb.** `cellctl devenv set <cell> NAME` (value read from stdin, never argv) and
-   `cellctl devenv unset <cell> NAME`, run from the coordinator role only (refused from any other
-   role window). Each write is atomic, rewrites the nonce line, and appends to
-   `<cell>/state/dev-env.receipts` (directory `0700`, file `0600`): time, role, the new sha256,
-   names added, names removed, never a value.
+   `cellctl devenv unset <cell> NAME`. `set` refuses a name outside brief 35's allow-list and a
+   value shorter than 8 characters, naming the name and never echoing the value. Each write is
+   atomic, rewrites the nonce line with at least 128 bits from the operating system's
+   cryptographic random source, and appends to `<cell>/state/dev-env.receipts` (directory
+   `0700`, file `0600`, writable by the coordinator role's identity only): time, role, the new
+   sha256, names added, names removed, never a value. The verb refuses when run from any role
+   window but the coordinator's; that refusal is a client-side check on the window's declared
+   role, not the control. The binding control is the surface proof (Task 2; rows 2 and 4): on a
+   cell that passes it no other role can write the file whatever verb it runs.
 5. **Cell database.** Document in `docs/postgres.md` and `docs/cellctl.md` how the database
-   pointer relates to the dev-env file, as the decision picks.
+   pointer relates to the dev-env file, as decision 2 picks.
 6. Changelog fragment.
 
 ## Definition of Done
@@ -145,13 +178,15 @@ Every Verify row below passes; no output in any test contains a fixture value.
 ## Verify
 
 All tests below are implementation deliverables, not results claimed by this authoring PR.
-Named tests must execute; zero matches or a skip fails independent verification.
+Named tests must execute; zero matches or a skip fails independent verification. Rows 2 and 4
+apply under brief 35's option 1 and are re-derived with Task 2 if `DR-desk-containers-35`
+chooses otherwise.
 
 | # | Class | Env | Command | Expect |
 |---|---|---|---|---|
 | 1 | check +flow | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvProjection$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvProjection ' "$o")` | Named PASS; coordinator, worker, reviewer and verifier windows get the path variable, intake does not; a stale inherited value is removed. |
-| 2 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvCheck$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvCheck ' "$o")` | Named PASS; a symlink, a file inside a worktree, a group-writable file and a single-user cell each fail check; the dry run contains no fixture value. |
-| 3 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvWriteVerb$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvWriteVerb ' "$o")` | Named PASS; set and unset from the coordinator rewrite the file and append a receipt with the sha256 and the names changed, no value; the same verb from a worker, reviewer or verifier window refuses. |
+| 2 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvCheck$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvCheck ' "$o")` | Named PASS; a symlink, a file inside a worktree, a group-writable file, a file owned by a non-coordinator role, a directory another role can write, undeterminable ownership or ACL state, and a single-user cell each fail check; a passing check writes the identity and mount record; the dry run contains no fixture value. |
+| 3 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvWriteVerb$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvWriteVerb ' "$o")` | Named PASS; set and unset from the coordinator rewrite the file, change the nonce line, and append a receipt with the sha256 and the names changed, no value; a name outside the allow-list and a 7-character value refuse; the same verb from a worker, reviewer or verifier window refuses. |
 | 4 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvMounts$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvMounts ' "$o")` | Named PASS; on a container cell the generated mounts are read-write for the coordinator container only and read-only for worker, reviewer and verifier; intake has no mount. |
 | 5 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecret' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretScope ' "$o" && ! grep -F -- '--- FAIL' "$o")` | The role-secret tests still pass, none fails. |
 | 6 | check | host | `statusgen --root . --lint --acceptance-forge` | exit 0; output contains "LINT: PASS". |
@@ -159,12 +194,14 @@ Named tests must execute; zero matches or a skip fails independent verification.
 
 ## Threat model / pre-mortem
 
-- A worker or reviewer window writes the file: rows 2, 3, 4.
-- A cell claims a surface it does not provide: row 2 (single-user refusal).
+- A worker or reviewer window writes the file: rows 2 and 4 (the surface proof, the binding
+  control); row 3 covers only the verb's client-side refusal.
+- A cell claims a surface it does not provide: row 2 (single-user and undeterminable refusals).
 - The value leaks through a dry run, check row or receipt: rows 2, 3.
 - The file's path reaches intake, or the role-secret path reaches a reviewer: rows 1, 5.
-- A reviewer slot building an untrusted head reads a dev value: no row; accepted by the ruling
-  for dev-only values, decision 1 above.
+- A reviewer slot or an unblessed-head worker child reads a dev value: no row; decision 1 above.
+- A reviewer slot building an untrusted head writes to the cell database: no row; today's reach,
+  unchanged here; decision 2 above.
 
 ## Evidence
 
