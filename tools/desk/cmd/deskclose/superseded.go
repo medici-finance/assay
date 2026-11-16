@@ -302,7 +302,7 @@ func propose(c common, n int, target string, targetKind deskkit.TargetKind, who 
 	a.title = it.Title
 	if it.closed() {
 		a.log(deskkit.ResultNoop, "already closed — nothing to propose")
-		fmt.Fprintf(out, "noop\t%s#%d\talready closed\n", c.repo, n)
+		fmt.Fprintf(out, "noop\t%s\talready closed\n", itemRef(c.repo, n, labelTargetOf(it)))
 		return nil
 	}
 	if err := refuseDecisionItem(c.repo, it); err != nil {
@@ -354,15 +354,15 @@ func propose(c common, n int, target string, targetKind deskkit.TargetKind, who 
 	}
 	if found && itemHasLabel(it, labelProposed) && refsAgree(existing.Target, target) {
 		a.log(deskkit.ResultNoop, "a proposal for the same target already stands")
-		fmt.Fprintf(out, "noop\t%s#%d\tproposal for %s already stands — awaiting the %s role\n",
-			c.repo, n, deskkit.StripControl(target), roleReviewer)
+		fmt.Fprintf(out, "noop\t%s\tproposal for %s already stands — awaiting the %s role\n",
+			itemRef(c.repo, n, labelTargetOf(it)), deskkit.StripControl(target), roleReviewer)
 		return nil
 	}
 
 	body := proposalBody(target, who, disp)
 	if c.dryRun {
 		a.log(deskkit.ResultDryRun, "dry-run: verified, wrote nothing")
-		fmt.Fprintf(out, "dry-run\t%s#%d\tpropose\ttarget=%s\n", c.repo, n, target)
+		fmt.Fprintf(out, "dry-run\t%s\tpropose\ttarget=%s\n", itemRef(c.repo, n, labelTargetOf(it)), target)
 		fmt.Fprintln(out, body)
 		return nil
 	}
@@ -391,8 +391,8 @@ func propose(c common, n int, target string, targetKind deskkit.TargetKind, who 
 		return err
 	}
 	a.log(deskkit.ResultOK, fmt.Sprintf("proposed superseded by %s as %s (no close)", target, who.role))
-	fmt.Fprintf(out, "proposed\t%s#%d\tsuperseded-by=%s\tawaiting the %s role's confirm or dispute — this tool did not close it\n",
-		c.repo, n, deskkit.StripControl(target), roleReviewer)
+	fmt.Fprintf(out, "proposed\t%s\tsuperseded-by=%s\tawaiting the %s role's confirm or dispute — this tool did not close it\n",
+		itemRef(c.repo, n, labelTargetOf(it)), deskkit.StripControl(target), roleReviewer)
 	return nil
 }
 
@@ -412,7 +412,7 @@ func confirm(c common, n int, target string, targetKind deskkit.TargetKind, who 
 	a.title = it.Title
 	if it.closed() {
 		a.log(deskkit.ResultNoop, "already closed — idempotent no-op")
-		fmt.Fprintf(out, "noop\t%s#%d\talready closed\n", c.repo, n)
+		fmt.Fprintf(out, "noop\t%s\talready closed\n", itemRef(c.repo, n, labelTargetOf(it)))
 		return nil
 	}
 	if err := refuseDecisionItem(c.repo, it); err != nil {
@@ -469,7 +469,7 @@ func disputeProposal(c common, n int, target string, targetKind deskkit.TargetKi
 	}
 	if itemHasLabel(it, labelNeedsDecision) {
 		a.log(deskkit.ResultNoop, "already on the decision queue")
-		fmt.Fprintf(out, "noop\t%s#%d\talready carries %s — it is the human's\n", c.repo, n, labelNeedsDecision)
+		fmt.Fprintf(out, "noop\t%s\talready carries %s — it is the human's\n", itemRef(c.repo, n, labelTargetOf(it)), labelNeedsDecision)
 		return nil
 	}
 	if err := refuseDecisionItem(c.repo, it); err != nil {
@@ -485,7 +485,7 @@ func disputeProposal(c common, n int, target string, targetKind deskkit.TargetKi
 	body := disputeBody(p, who, reason)
 	if c.dryRun {
 		a.log(deskkit.ResultDryRun, "dry-run: verified, wrote nothing")
-		fmt.Fprintf(out, "dry-run\t%s#%d\tdispute\ttarget=%s\n", c.repo, n, p.Target)
+		fmt.Fprintf(out, "dry-run\t%s\tdispute\ttarget=%s\n", itemRef(c.repo, n, labelTargetOf(it)), p.Target)
 		fmt.Fprintln(out, body)
 		return nil
 	}
@@ -515,8 +515,8 @@ func disputeProposal(c common, n int, target string, targetKind deskkit.TargetKi
 				"no-op on the comment.", c.repo, n, labelNeedsDecision), err)
 	}
 	a.log(deskkit.ResultOK, fmt.Sprintf("disputed the supersession by %s; %s applied (no close)", p.Target, labelNeedsDecision))
-	fmt.Fprintf(out, "disputed\t%s#%d\tsuperseded-by=%s\t%s applied — human-only close from here\n",
-		c.repo, n, deskkit.StripControl(p.Target), labelNeedsDecision)
+	fmt.Fprintf(out, "disputed\t%s\tsuperseded-by=%s\t%s applied — human-only close from here\n",
+		itemRef(c.repo, n, labelTargetOf(it)), deskkit.StripControl(p.Target), labelNeedsDecision)
 	return nil
 }
 
