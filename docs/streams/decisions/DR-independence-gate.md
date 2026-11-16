@@ -100,9 +100,10 @@ ruling on brief-06's decision issue sets when it ends; it is cited here, not res
 https://github.com/medici-finance/assay/issues/3369#issuecomment-6923924153
 
 - **Removal condition.** The allowance's roster entry comes out once the backlog it covers has
-  cleared: no open PR in a repository of the desk-tools set still has a `dispatched-*` label
-  whose standing application is by a user account rather than an App. Once that holds, no open
-  PR depends on the allowance, and the floor reads every remaining stamp from a dispatcher App.
+  cleared: no open PR in a repository of the desk-tools write set (`ASSAY_ALLOWED_REPOS`, the
+  set where the floor admits verdicts) still has a `dispatched-*` label whose standing
+  application is by a user account rather than an App. Once that holds, no open PR depends on
+  the allowance, and the floor reads every remaining stamp from a dispatcher App.
 - **Removing the entry is a DRIVER act.** The roster is deployment configuration that the
   driver holds. A desk, worker or verifier that finds the condition met reports it to the
   driver; none of them edits the roster.
@@ -110,10 +111,13 @@ https://github.com/medici-finance/assay/issues/3369#issuecomment-6923924153
   The condition lives in each open PR's label timeline on the forge, and the allowance lives
   in a roster outside this tree, while the lint reads only the tree. The check is therefore
   Verify row 5 of [brief-06](../measured-status/brief-06-modelfloor-derived-stamp.md). One
-  run of that row covers every repository in the desk-tools set: it reads the set from the
-  deployment's `DESK_ROOTS`, and it fails closed (could-not-check) when that is unset or
-  names no repository. The row is classed `check` with Env `host`, so a witness holding forge
-  read access runs it and the scheduled CI re-run does not.
+  run of that row covers every repository in the write set: it reads the set from the
+  deployment's `ASSAY_ALLOWED_REPOS`, enumerating each `owner/*` entry from the forge, and it
+  fails closed (could-not-check) when that is unset, malformed or names no repository. It
+  exits 0 only when no open PR still carries a user-standing stamp, and exits 1 when one
+  does, so a run while the backlog remains can never record a pass. The row is classed
+  `check` with Env `host`, so a witness holding forge read access runs it and the scheduled
+  CI re-run does not; row 6 tests the same script offline against planted timelines.
 
 The decision is what makes the author≠verifier property TRUE rather than ASSERTED. The
 constraint behind it is the self-attestation error class: everything a session writes about
