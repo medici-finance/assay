@@ -255,8 +255,46 @@ func TestAdmittedScrubbedInputCouldNotRun(t *testing.T) {
 				if !strings.Contains(out, name) || !strings.Contains(out, "outside admission") {
 					t.Fatalf("could-not-run note does not name %s and say to run outside admission:\n%s", name, out)
 				}
+				if !strings.Contains(out, "not permission to run it outside admission") ||
+					!strings.Contains(out, "once the row itself has been reviewed") {
+					t.Fatalf("could-not-run note reads as permission to run outside admission:\n%s", out)
+				}
 			})
 		}
+	}
+}
+
+// regression: could-not-run is never green
+// TestScrubbedRowNeverGreen: a row's own text can make it could-not-run under
+// admission, so could-not-run must never clear anything. The verdict is
+// could-not-run even when the row's recorded exit equals the expected one,
+// and in a table where the other row passes or fails the run's exit is
+// could-not-run, never pass, with the row recorded could-not-run.
+func TestScrubbedRowNeverGreen(t *testing.T) {
+	if state, _ := (expectSpec{exitCode: 0}).verdict(runResult{exit: 0, couldNotRun: true, reason: "r"}); state != stateCouldNotRun {
+		t.Fatalf("a could-not-run result with the expected exit reads %s, want %s", state, stateCouldNotRun)
+	}
+	for _, other := range []string{"true", "false"} {
+		t.Run(other, func(t *testing.T) {
+			root, _ := admittedFixture(t, true)
+			t.Setenv("ASSAY_TEST_POSTGRES_DSN", "postgres://example.invalid/db")
+			tick := string(rune(96))
+			brief := filepath.Join(t.TempDir(), "brief.md")
+			body := "# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n" +
+				"| 1 | " + tick + other + tick + " | exit 0 |\n" +
+				"| 2 | " + tick + `test -n "$ASSAY_TEST_POSTGRES_DSN"` + tick + " | exit 0 |\n\n## Evidence\n\n"
+			if err := os.WriteFile(brief, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			got, out := captureVerifyrunOut(t, []string{"--brief", brief, "--root", root, "--dry-run"})
+			if got.code != verifyrunExitCouldNot {
+				t.Fatalf("run with a could-not-run row beside a %q row gave exit %d, want could-not-run (exit %d):\n%s",
+					other, got.code, verifyrunExitCouldNot, out)
+			}
+			if !strings.Contains(out, "row 2: could-not-run") {
+				t.Fatalf("row 2 is not recorded could-not-run:\n%s", out)
+			}
+		})
 	}
 }
 
