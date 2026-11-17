@@ -139,7 +139,7 @@ RUN set -eux; \
 # substitutes for.
 # Release CI reuses the same binaries it publishes as Linux assets.
 FROM scratch AS released
-COPY .release-images/desk-tools/ /out/
+COPY --chmod=0755 .release-images/desk-tools/ /out/
 FROM ${BINARY_STAGE} AS toolkit
 
 # Git release archive verified against the upstream maintainer signature.
@@ -203,6 +203,16 @@ RUN git config --system --add safe.directory /work
 
 # Binaries onto PATH (desk-tools suite + statusgen + bugs-gc).
 COPY --from=toolkit /out/ /usr/local/bin/
+
+# Install-mode gate, the last layer-writing step: every file on PATH here is
+# root:root and writable by root alone. A COPY from the build context keeps the
+# checkout's mode unless it names --chmod, so a checkout made under umask 002
+# would otherwise ship group-writable binaries.
+RUN set -eu; \
+    if find /usr/local/bin -xdev ! -type l \( -perm /022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "an installed file is not root:root or is writable by its group or others" >&2; \
+        exit 1; \
+    fi
 
 # Re-declare in this stage so the OCI labels can read the build-args (ARG values
 # do not cross stage boundaries).

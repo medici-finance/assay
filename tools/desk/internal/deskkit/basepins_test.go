@@ -557,7 +557,7 @@ func TestBaseImagePinsTarballs(t *testing.T) {
 	}
 	// The class guard: a new unpinned fetch planted at a site this change does
 	// not touch must go red too, not just the four pinned downloads.
-	plugin := "COPY plugins/assay/ /opt/assay/plugin/\n"
+	plugin := "COPY --chmod=u=rwX,go=rX plugins/assay/ /opt/assay/plugin/\n"
 	for name, plant := range map[string]string{
 		"new unchecked curl":         "RUN set -eux; curl -fsSL https://example.com/t.tgz -o /tmp/t.tgz; tar -C /tmp -xzf /tmp/t.tgz\n",
 		"curl piped to sh":           "RUN curl -fsSL https://example.com/i.sh | sh\n",

@@ -127,7 +127,7 @@ RUN DESK_LD="-s -w"; \
 # ---------------------------------------------------------------------------
 # Release CI reuses the same binaries it publishes as Linux assets.
 FROM scratch AS released
-COPY .release-images/harness/ /out/
+COPY --chmod=0755 .release-images/harness/ /out/
 FROM ${BINARY_STAGE} AS toolkit
 
 # Git release archive verified against the upstream maintainer signature.
@@ -182,9 +182,10 @@ COPY --from=toolkit /out/ /usr/local/bin/
 # The assay plugin, pre-seeded at BUILD time. CLAUDE_CODE_PLUGIN_SEED_DIR
 # pre-populates marketplaces+plugins read-only with no runtime clone — the
 # headless install path. Loose skill copies do not install in a container; the
-# plugin is what does.
-COPY .claude-plugin/ /opt/assay/plugin-seed/assay/.claude-plugin/
-COPY plugins/        /opt/assay/plugin-seed/assay/plugins/
+# plugin is what does. The symbolic mode keeps each hook and script executable
+# and every file writable by root alone, whatever mode the checkout gave it.
+COPY --chmod=u=rwX,go=rX .claude-plugin/ /opt/assay/plugin-seed/assay/.claude-plugin/
+COPY --chmod=u=rwX,go=rX plugins/        /opt/assay/plugin-seed/assay/plugins/
 ENV CLAUDE_CODE_PLUGIN_SEED_DIR=/opt/assay/plugin-seed
 
 # Provenance labels. The repo URL comes from a build ARG the workflow fills from
@@ -201,7 +202,17 @@ LABEL org.opencontainers.image.title="assay-harness" \
 
 # Non-root by construction: a worker Job is ephemeral and clones into HOME; the
 # uid is fixed so a securityContext can pin runAsUser without reading the image.
-RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin harness
+# The same RUN is the install-mode gate, and the last layer-writing step: every
+# file installed on PATH or under the plugin seed is root:root and writable by
+# root alone. A COPY from the build context keeps the checkout's mode unless it
+# names --chmod, so a checkout made under umask 002 would otherwise ship
+# group-writable binaries and hooks.
+RUN set -eu; \
+    if find /usr/local/bin /opt/assay -xdev ! -type l \( -perm /022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "an installed file is not root:root or is writable by its group or others" >&2; \
+        exit 1; \
+    fi; \
+    useradd --create-home --uid 10001 --shell /usr/sbin/nologin harness
 USER 10001
 ENV HOME=/home/harness \
     GIT_TERMINAL_PROMPT=0
