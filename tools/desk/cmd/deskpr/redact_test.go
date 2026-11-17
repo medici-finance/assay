@@ -18,3 +18,18 @@ func TestPreflightRedactsOrigin(t *testing.T) {
 		t.Fatalf("preflight error must redact the credential and keep the shape: %s", msg)
 	}
 }
+
+// Shapes a local redactor once passed through: a password in an scp-like or ssh remote.
+//
+// regression: #6606
+func TestRedactURLAllShapes(t *testing.T) {
+	for _, in := range []string{
+		"https://user:secret@example.invalid/o/r",
+		"ssh://user:secret@example.invalid/o/r",
+		"user:secret@example.invalid:o/r",
+	} {
+		if got := redactURL(in); strings.Contains(got, "secret") || !strings.Contains(got, "<redacted>@example.invalid") {
+			t.Errorf("redactURL(%q) = %q, want the userinfo redacted and the host kept", in, got)
+		}
+	}
+}
