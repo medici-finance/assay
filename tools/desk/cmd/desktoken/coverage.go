@@ -308,6 +308,11 @@ func listInstallations(jwt string, clients ...*http.Client) ([]coverageInstallat
 	return installs, nil
 }
 
+// maxRepoPages bounds one repositories walk (100 pages of coveragePerPage); a forge that
+// keeps answering full pages past it is an error, never walked forever. A var only so a test
+// can lower it.
+var maxRepoPages = 100
+
 // listInstallationRepos pages GET /installation/repositories authenticated with
 // an installation token, following pages until one returns fewer than
 // coveragePerPage. A page that does not return HTTP 200 is an ERROR — never a
@@ -315,6 +320,10 @@ func listInstallations(jwt string, clients ...*http.Client) ([]coverageInstallat
 func listInstallationRepos(token string, clients ...*http.Client) ([]string, error) {
 	var out []string
 	for page := 1; ; page++ {
+		if page > maxRepoPages {
+			return nil, fmt.Errorf("installation repositories still has pages after %d — "+
+				"refusing to read a partial list as the whole one", maxRepoPages)
+		}
 		url := fmt.Sprintf("%s/installation/repositories?per_page=%d&page=%d",
 			deskkit.GitHubAPIBase, coveragePerPage, page)
 		req, err := http.NewRequest("GET", url, nil)

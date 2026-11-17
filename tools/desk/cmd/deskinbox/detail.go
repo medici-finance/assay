@@ -83,10 +83,19 @@ func commentsClient() *http.Client {
 	return &http.Client{Timeout: commentsTimeout}
 }
 
+// maxCommentPages bounds one comments walk: 100 pages of 100 is far beyond any real thread,
+// and a forge that keeps answering full pages past it is refused, never walked forever. A var
+// only so a test can lower it.
+var maxCommentPages = 100
+
 // listIssueComments walks GET /issues/{n}/comments to exhaustion.
 func listIssueComments(token string, repo deskkit.ForgeRepo, number int) ([]comment, error) {
 	var out []comment
 	for page := 1; ; page++ {
+		if page > maxCommentPages {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("GET issues/comments still has pages after %d — "+
+				"refusing to read a partial thread as the whole one", maxCommentPages), nil)
+		}
 		var chunk []struct {
 			User struct {
 				Login string `json:"login"`

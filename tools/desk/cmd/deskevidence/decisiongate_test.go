@@ -1010,8 +1010,9 @@ func TestStatusgenDecisionGateAtDeadline(t *testing.T) {
 	prev := lockWait
 	lockWait = 300 * time.Millisecond
 	t.Cleanup(func() { lockWait = prev })
-	if decisionGateDeadline() != lockWait {
-		t.Fatalf("decisionGateDeadline() = %s, want the write-window bound lockWait (%s)", decisionGateDeadline(), lockWait)
+	// Two children run per landing (before and after): together they stay inside lockWait.
+	if 2*decisionGateDeadline() > lockWait || decisionGateDeadline() <= 0 {
+		t.Fatalf("decisionGateDeadline() = %s; the two runs per landing must fit the write window lockWait (%s)", decisionGateDeadline(), lockWait)
 	}
 	fakeStatusgenOnPath(t, `echo "no gate: human brief moved, relabelled or dropped — clean"
 sleep 30`)
@@ -1031,8 +1032,10 @@ sleep 30`)
 			t.Fatalf("a decision-gate child killed at its deadline read as clean (refused=%v)", r.refused)
 		}
 		wantUnverifiable(t, r.err)
-		if !strings.Contains(r.err.Error(), "killed") {
-			t.Errorf("the refusal does not say the child was killed: %v", r.err)
+		// The deadline branch's own wording, not a "signal: killed" that a parse of the
+		// killed run's partial output could also carry.
+		if !strings.Contains(r.err.Error(), "did not finish within") || !strings.Contains(r.err.Error(), "was killed") {
+			t.Errorf("the refusal is not the deadline refusal: %v", r.err)
 		}
 		if el := time.Since(start); el > 10*time.Second {
 			t.Errorf("returned after %s; the deadline is %s", el, lockWait)

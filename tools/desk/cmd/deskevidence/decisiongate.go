@@ -619,12 +619,13 @@ func statusgenDecisionGateAt(root, base string, options childOptions) ([]string,
 const decisionGateWaitDelay = 2 * time.Second
 
 // decisionGateDeadline is how long ONE `statusgen --decision-gate` child may run before it is
-// killed. It is the write-window bound, lockWait: the child runs during preparation, while
+// killed: HALF the write-window bound, lockWait. The child runs during preparation, while
 // this run holds the per-root preparation lock that other landings wait on for at most
-// lockWait — a child allowed to outlive that bound would turn every waiter's wait into a
-// stale-lock refusal. The audit itself is a single diff walk (well under a second on a full
-// checkout), so the bound is wide.
-func decisionGateDeadline() time.Duration { return lockWait }
+// lockWait — a check allowed to outlive that bound would turn every waiter's wait into a
+// stale-lock refusal. decisionGateDiffAt runs the child TWICE (before and after), so each
+// run gets half the window and the pair together stays inside it. The audit itself is a
+// single diff walk (well under a second on a full checkout), so the bound is still wide.
+func decisionGateDeadline() time.Duration { return lockWait / 2 }
 
 // parseDecisionGateRun reads one `statusgen --decision-gate` run (split out so the
 // exit/line reading is testable without a statusgen binary).
