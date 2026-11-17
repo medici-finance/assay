@@ -23,6 +23,7 @@ gate-why: >-
   it, but a change to a credential control's input path is reviewed by a human before the
   ready flip.
 decision-trigger: start
+decision-issue: 6762
 issues: [3196]
 outcome: none
 design: DR-scan-diff-reader
