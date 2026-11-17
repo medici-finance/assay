@@ -26,7 +26,7 @@ decision-trigger: creation
 issues: [6615]
 decision-issue: 6615
 schema: brief-v2
-version: 2
+version: 3
 authored: 2026-11-16 by assay-worker-app (issue #6615)
 sources:
   - "Issue #6615 and the driver's ruling on it (cited in `## Human decision`)."
@@ -120,14 +120,17 @@ This brief leaves `todo` only once `DR-desk-containers-35` (brief 35) is approve
    dev-env names is admitted only when both hold:
    - the launcher's record for this window (brief 37 Task 2) states that it binds no role
      secret;
-   - for every role-secret file path that record lists for the cell, an open for read from the
-     row's environment (its identity, its mounts) fails.
-   An open that succeeds, a record that lists a role secret for this window, or a record that
-   is missing or unreadable makes the row could-not-check, naming the service and never a path's
-   contents. As defence in depth, the row also runs with every `ASSAY_ROLE_SECRET_*` variable
-   removed; that removal is not the separation and no check relies on it. A row that needs both
-   a role secret and a dev-env value stays could-not-check; `DR-desk-containers-35` may revisit
-   that, this brief does not.
+   - for every role-secret file path the whole record lists, for every window of every cell
+     the launcher starts, an open for read from the row's environment (its identity, its
+     mounts) fails.
+   The probe never depends on which entry the verifier reads as its own window's, so an entry
+   key that names the wrong window or cell cannot narrow it (brief 35 Interface contract,
+   record location). An open that succeeds, a record that lists a role secret for this window,
+   or a record that is missing or unreadable makes the row could-not-check, naming the service
+   and never a path's contents. As defence in depth, the row also runs with every
+   `ASSAY_ROLE_SECRET_*` variable removed; that removal is not the separation and no check
+   relies on it. A row that needs both a role secret and a dev-env value stays could-not-check;
+   `DR-desk-containers-35` may revisit that, this brief does not.
 3. **Fail closed.** The row is could-not-check, never pass, with a reason naming the variable
    but never a value and never quoting a file line, when: the path variable is unset or empty;
    the file is missing or unreadable; a line is malformed or unparseable; a name appears on
@@ -150,8 +153,8 @@ This brief leaves `todo` only once `DR-desk-containers-35` (brief 35) is approve
      and checked the same way, is owned by the system administrator, the launcher identity
      (brief 35 Interface contract) or the coordinator, and is writable only by its owner by mode
      and access-control list, so no other identity can rename or replace the file or a
-     directory above it; a sticky-bit directory passes only where the next component is owned
-     by one of those identities;
+     directory above it. There is no sticky-bit exception: a sticky-bit directory that another
+     identity can write refuses like any other, as brief 37 Task 2's launcher check does;
    - on a container cell: the verifier's own mount of the file is read-only, and the launcher's
      mount record (brief 37 Task 2) states that only the coordinator container mounts it
      read-write. The verifier's own mount says nothing about the other roles' mounts, so where
@@ -210,7 +213,7 @@ matches or a skip fails independent verification. Rows 3 and 16 apply under brie
 |---|---|---|---|---|
 | 1 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvAdmitsDeclared$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvAdmitsDeclared ' "$o")` | Named PASS; a row declaring two `DEVENV_` names sees exactly those from the file; an inherited value under a declared name is replaced; an undeclared file name is absent. |
 | 2 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvMissingIsCNC$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvMissingIsCNC ' "$o")` | Named PASS; unset path, missing file, a malformed line, a name on two lines of the file, a declared name absent from the file and a declared value of 7 characters each yield could-not-check, never pass, and no reason contains a fixture value or a file line. |
-| 3 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvTrustRefusal$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvTrustRefusal ' "$o")` | Named PASS; each of these refuses: a symlink; a file inside a worktree; a file the verifier can write; a group-writable file; a file owned by a non-coordinator role's identity with mode 0644; a parent or higher directory writable by an identity other than its owner, or owned by `example-operator` (neither administrator, launcher nor coordinator); ownership or access-control state that cannot be determined (a failing stat or ACL query stub); a host cell with no identity record, and a host cell whose identity record is unreadable; planted bypass records, each refused: one owned by `example-operator`, an identity the record names as no role, which a role-identity deny-list admits; one owned by the coordinator identity; one at the right path whose anchor directory's parent another identity can write; one with an ACL entry granting write to `example-operator`; one that is a symlink; and an anchor owned by the coordinator or by the verifier's own identity; a record offered at another path through a variable, which is never opened; a container cell whose record is not a read-only file mount at the fixed in-container path; an unknown surface kind; a container cell with no mount record. A record owned by the anchored launcher identity `example-launcher`, at the fixed name, with a clean anchor path, is accepted. A file swapped after the check is not read: checks and read use one descriptor. |
+| 3 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvTrustRefusal$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvTrustRefusal ' "$o")` | Named PASS; each of these refuses: a symlink; a file inside a worktree; a file the verifier can write; a group-writable file; a file owned by a non-coordinator role's identity with mode 0644; a parent or higher directory writable by an identity other than its owner, or owned by `example-operator` (neither administrator, launcher nor coordinator); a sticky-bit parent directory writable by other identities, even where the next component is owned by the coordinator; ownership or access-control state that cannot be determined (a failing stat or ACL query stub); a host cell with no identity record, and a host cell whose identity record is unreadable; planted bypass records, each refused: one owned by `example-operator`, an identity the record names as no role, which a role-identity deny-list admits; one owned by the coordinator identity; one at the right path whose anchor directory's parent another identity can write; one at the right path whose anchor directory itself another identity can write, by a group or other write bit or an ACL entry; one with an ACL entry granting write to `example-operator`; one that is a symlink; and an anchor owned by the coordinator or by the verifier's own identity; a record offered at another path through a variable, which is never opened; a container cell whose record is not a read-only file mount at the fixed in-container path; an unknown surface kind; a container cell with no mount record. A record owned by the anchored launcher identity `example-launcher`, at the fixed name, with a clean anchor path, is accepted. A file swapped after the check is not read: checks and read use one descriptor. |
 | 4 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvAttestsDigest$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvAttestsDigest ' "$o")` | Named PASS; the attestation carries the sorted names and the file sha256 and no fixture value. |
 | 5 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvRedactsOutput$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvRedactsOutput ' "$o")` | Named PASS; a row that prints an admitted value leaves `[redacted:<NAME>]` in the captured output and the output hash equals the hash of the redacted bytes; with two admitted values where one is a substring of the other, no part of either is left in the output. |
 | 6 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestAdmitted' > "$o" 2>&1 && grep -F -- '--- PASS: TestAdmittedRowEnvShape ' "$o" && ! grep -F -- '--- FAIL' "$o")` | The existing admission tests (`TestAdmitted*`) still pass, none fails. |
@@ -223,7 +226,7 @@ matches or a skip fails independent verification. Rows 3 and 16 apply under brie
 | 13 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvAllowList$/^toolconfig$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvAllowList/toolconfig ' "$o")` | Named PASS; `GH_CONFIG_DIR`, `GH_TOKEN`, a `GIT_*` name or `BASH_ENV` is could-not-check naming the tool-configuration class. |
 | 14 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvAllowList$/^socket$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvAllowList/socket ' "$o")` | Named PASS; `SSH_AUTH_SOCK` is could-not-check naming the agent-socket class. |
 | 15 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvAllowList$/^assay$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvAllowList/assay ' "$o")` | Named PASS; an `ASSAY_ROLE_SECRET_*` name, `ASSAY_CELL_DEV_ENV_FILE` or any other `ASSAY_*` name is could-not-check naming the Assay class; a name outside every class and outside `DEVENV_` is still could-not-check (deny by default). |
-| 16 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvNoSecretReach$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvNoSecretReach ' "$o")` | Named PASS; a row that declares names is could-not-check when every `ASSAY_ROLE_SECRET_*` variable is already removed but a fixture role-secret file the launcher record lists is still openable from the row's environment (strip-only does not admit); when the record lists a role secret for this window; and when the record is missing or unreadable. It is admitted only when the record lists none for the window and an open of every listed role-secret path fails. No reason contains a fixture value. |
+| 16 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvNoSecretReach$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvNoSecretReach ' "$o")` | Named PASS; a row that declares names is could-not-check when every `ASSAY_ROLE_SECRET_*` variable is already removed but a fixture role-secret file the launcher record lists is still openable from the row's environment (strip-only does not admit); when the record lists a role secret for this window; when the record is missing or unreadable; and when a role-secret path the record lists only under another window's or another cell's entry is still openable from the row's environment. It is admitted only when the record lists none for the window and an open of every role-secret path the whole record lists fails. No reason contains a fixture value. |
 
 ## Threat model / pre-mortem
 
@@ -240,6 +243,8 @@ matches or a skip fails independent verification. Rows 3 and 16 apply under brie
   holding window as binding none or empties the role-secret probe: row 3. The owner must be
   the launcher identity anchored outside the record (brief 35 Interface contract), so an owner
   the record leaves out is refused rather than missed.
+- A window steers which record entry the verifier reads as its own, to narrow the role-secret
+  probe to paths it cannot open: Task 2 probes every path the whole record lists; row 16.
 - A file swapped between the check and the read: Task 4's single descriptor, row 3.
 - A trust state the verifier cannot read lets the file through: row 3's undeterminable and
   unknown-surface cases refuse.

@@ -1,0 +1,2 @@
+### Changed
+- Planning briefs desk-containers/36 and 37 now state one directory-path rule for the cell dev-env file: no sticky-bit exception on either the verifier or the launcher side, and the launcher check names the owners allowed above the record anchor. The verifier's role-secret open probe covers every path the whole launcher record lists, so a wrong window entry cannot narrow it, and its trust-refusal row gains a writable-anchor-directory case.
