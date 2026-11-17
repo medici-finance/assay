@@ -44,7 +44,7 @@ consumers:
 
 ## Context
 
-files: statusgen/verifyrun.go, statusgen/containerbracket.go, statusgen/protectedclosure.go, statusgen/acceptancetransition.go, statusgen/transitioncrossrepo_test.go (new), statusgen/transitionbracket_test.go (removal of the `version2` case only), docs/brief-rules.md (rule 45 only), docs/protected-paths.md, plugins/assay/skills/verify-desk/SKILL.md, the generated Cursor mirror.
+files: statusgen/verifyrun.go, statusgen/containerbracket.go, statusgen/protectedclosure.go, statusgen/acceptancetransition.go, statusgen/transitioncrossrepo_test.go (new), statusgen/transitionbracket_test.go (removal of the `version2` case only), docs/brief-rules.md (rule 45 only), docs/protected-paths.md, plugins/assay/skills/verify-desk/SKILL.md, .cursor/skills/verify-desk/SKILL.md (generated mirror).
 
 facts (main `6a13cb4a8`):
 - The host run refuses outright. `statusgen/verifyrun.go:2668`-`:2671`: with `--acceptance-record`, any of `--in-container`, `--check` or an admitted deliverable home (`admittedHome != ""`, which is how a version 2 run is admitted) exits could-not-run with "statusgen verifyrun: --acceptance-record requires host execution and same-repository admission".
