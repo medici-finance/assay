@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -136,5 +137,24 @@ func TestChangeDiffOverCapBody(t *testing.T) {
 	}
 	if !IsForgeBodyOverCap(err) {
 		t.Errorf("want over-cap refusal, got %v", err)
+	}
+}
+
+// ReadForgeBody (the deadline-aware reader) reads through the cap: an over-cap body is the cap's
+// own refusal, not "not read in full", and hands back no bytes.
+//
+// regression: #6730
+func TestReadForgeBodyOverCap(t *testing.T) {
+	defer SetForgeBodyCapForTest(64)()
+	resp := &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("[]" + strings.Repeat(" ", 200)))}
+	raw, err := ReadForgeBody(resp, "GET /example", true)
+	if !IsForgeBodyOverCap(err) {
+		t.Fatalf("an over-cap body: err %v, want the forge body cap refusal", err)
+	}
+	if raw != nil {
+		t.Errorf("an over-cap read handed back %d bytes; want none", len(raw))
+	}
+	if ExitCodeOf(err) != 6 {
+		t.Errorf("exit %d, want 6", ExitCodeOf(err))
 	}
 }

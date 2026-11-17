@@ -37,7 +37,7 @@ var forgeBodyReadPermits = map[string]string{
 // bodyReadFuncs are the calls whose error result is a body read's error.
 var bodyReadFuncs = map[string]bool{
 	"ReadCappedForgeBody": true, "ReadForgeBodyUpTo": true, "readCapped": true,
-	"readCappedResponse": true, "readCappedN": true,
+	"readCappedResponse": true, "readCappedN": true, "ReadForgeBody": true,
 }
 
 // regression: #6730

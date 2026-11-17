@@ -197,14 +197,14 @@ func mintInstallationToken(owner string) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+jwt)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := deskkit.BoundedHTTPClient().Do(req)
 	if err != nil {
 		return "", deskkit.Unverifiable("POST access_tokens failed", err)
 	}
 	defer resp.Body.Close()
-	body, rerr := deskkit.ReadCappedForgeBody(resp.Body, "POST access_tokens")
+	body, rerr := deskkit.ReadForgeBody(resp, "POST access_tokens", true)
 	if rerr != nil {
-		return "", deskkit.Unverifiable("POST access_tokens: response body not read in full", rerr)
+		return "", rerr
 	}
 	if resp.StatusCode != http.StatusCreated {
 		return "", deskkit.Unverifiable(fmt.Sprintf("access_tokens HTTP %d", resp.StatusCode), nil)
@@ -276,7 +276,7 @@ func newGHClient(owner, repo string) (*ghClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ghClient{owner: owner, repo: repo, token: tok, http: http.DefaultClient}, nil
+	return &ghClient{owner: owner, repo: repo, token: tok, http: deskkit.BoundedHTTPClient()}, nil
 }
 
 // requireGitHubForge refuses, BEFORE any GitHub App token is minted, when the repo's resolved
@@ -409,9 +409,9 @@ func (c *ghClient) doJSONRetry(method, path string, in, out any, allowRemint boo
 		return deskkit.Unverifiable(fmt.Sprintf("%s %s failed", method, path), err)
 	}
 	defer resp.Body.Close()
-	raw, rerr := deskkit.ReadCappedForgeBody(resp.Body, method+" "+path)
+	raw, rerr := deskkit.ReadForgeBody(resp, method+" "+path, out != nil)
 	if rerr != nil {
-		return deskkit.Unverifiable(fmt.Sprintf("%s %s: response body not read in full", method, path), rerr)
+		return rerr
 	}
 
 	if resp.StatusCode == http.StatusUnauthorized && allowRemint {

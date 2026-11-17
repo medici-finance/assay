@@ -220,7 +220,7 @@ func (f *HTTPRepoInfoFetcher) client() *http.Client {
 	if f.Client != nil {
 		return f.Client
 	}
-	return http.DefaultClient
+	return BoundedHTTPClient()
 }
 
 // RepoVisibility calls GET /repos/{owner}/{repo} and returns the .visibility field.

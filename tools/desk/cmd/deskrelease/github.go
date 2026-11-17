@@ -143,7 +143,7 @@ func newGHClient(slug string) (*ghClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ghClient{owner: owner, repo: name, token: tok, http: http.DefaultClient}, nil
+	return &ghClient{owner: owner, repo: name, token: tok, http: deskkit.BoundedHTTPClient()}, nil
 }
 
 // do performs one REST call. A 2xx body is decoded into out; a 404 is reported via the
@@ -174,9 +174,9 @@ func (c *ghClient) do(method, path string, in, out any) (found bool, err error) 
 		return false, deskkit.Unverifiable(fmt.Sprintf("%s %s failed", method, path), derr)
 	}
 	defer resp.Body.Close()
-	raw, rerr := deskkit.ReadCappedForgeBody(resp.Body, method+" "+path)
+	raw, rerr := deskkit.ReadForgeBody(resp, method+" "+path, out != nil)
 	if rerr != nil {
-		return false, deskkit.Unverifiable(fmt.Sprintf("%s %s: response body not read in full", method, path), rerr)
+		return false, rerr
 	}
 
 	if resp.StatusCode == http.StatusNotFound {

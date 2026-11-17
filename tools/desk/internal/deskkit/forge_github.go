@@ -115,16 +115,27 @@ func (g *GitHubForge) restClient() (*ghapi.RESTClient, error) {
 	if g.Client != nil && g.Client.Transport != nil {
 		transport = g.Client.Transport
 	}
+	// Timeout bounds every request this client sends (ForgeRequestTimeout, or a shorter or
+	// longer one the injected Client sets). Without it go-gh builds an http.Client with no
+	// deadline, and a stalled forge holds the shared audit lock of every desk write verb that
+	// reads or writes through this backend while holding it.
 	rc, err := ghapi.NewRESTClient(ghapi.ClientOptions{
 		Host:      host,
 		AuthToken: g.Token,
 		Transport: observedTransport(countRoundTrips(transport), g.Observer, "provider", false),
+		Timeout:   g.requestTimeout(),
 	})
 	if err != nil {
 		return nil, Unverifiable("cannot build go-gh REST client", err)
 	}
 	g.rc = rc
 	return rc, nil
+}
+
+// requestTimeout is the per-request deadline of every client this backend builds: the
+// injected Client's Timeout when it sets one, else ForgeRequestTimeout. Never zero.
+func (g *GitHubForge) requestTimeout() time.Duration {
+	return boundedTimeout(g.Client)
 }
 
 // ForgeAPIError is a non-2xx REST/GraphQL response. A caller maps it to Unverifiable (an
@@ -2696,7 +2707,7 @@ func (g *GitHubForge) ChangeDiff(repo ForgeRepo, number int) (string, error) {
 	if g.Client != nil && g.Client.Transport != nil {
 		transport = g.Client.Transport
 	}
-	resp, derr := (&http.Client{Transport: countRoundTrips(transport)}).Do(req)
+	resp, derr := (&http.Client{Transport: countRoundTrips(transport), Timeout: g.requestTimeout()}).Do(req)
 	if derr != nil {
 		return "", Unverifiable(fmt.Sprintf("GET %s (diff) failed", path), derr)
 	}

@@ -149,8 +149,10 @@ func (a *auditCtx) providerFailed(err error) error {
 	return deskkit.CredentialError(err)
 }
 
-// httpClient is a test hook — production code uses http.DefaultClient.
-var httpClient = http.DefaultClient
+// httpClient is a test hook. Production uses a client bounded by deskkit.ForgeRequestTimeout,
+// never the deadline-free http.DefaultClient: deskrelease runs this binary while it holds the
+// shared audit lock, so a stalled mint would otherwise hold that lock with it.
+var httpClient = deskkit.BoundedHTTPClient()
 
 // --- helpers --------------------------------------------------------------------
 
