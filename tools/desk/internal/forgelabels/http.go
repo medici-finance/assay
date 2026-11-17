@@ -21,12 +21,23 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // maxResponseBytes bounds one forge response read; no label answer is near it.
 const maxResponseBytes = 4 << 20
+
+// requestTimeout bounds one forge request, response body included, when the caller's client
+// sets no deadline of its own: a nil client, or one whose Timeout is zero (net/http reads zero
+// as "no deadline"). The forge answers a label request in seconds, so one still open after 30s
+// is stalled, not slow. A client that sets its own Timeout keeps it.
+const requestTimeout = 30 * time.Second
+
+// defaultTimeout is the deadline applied where the caller set none. It is a var only so a
+// test can shorten it; production code never changes it.
+var defaultTimeout = requestTimeout
 
 // ValidateAPIBase refuses a base URL that would carry a credential in the clear.
 func ValidateAPIBase(name, raw string) error {
@@ -89,16 +100,20 @@ type httpTransport struct {
 }
 
 // NewHTTPTransport returns the Transport for forge ("github" or "gitlab") at base, carrying
-// token as that forge's credential header over a copy of hc that refuses redirects.
+// token as that forge's credential header over a copy of hc that refuses redirects. A nil hc,
+// or one with no Timeout, gets the default transport bounded by requestTimeout.
 func NewHTTPTransport(forge, base string, hc *http.Client, token string) (Transport, error) {
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
 	if err := ValidateAPIBase("forge API base", base); err != nil {
 		return nil, err
 	}
-	if hc == nil {
-		hc = http.DefaultClient
+	var c http.Client
+	if hc != nil {
+		c = *hc
 	}
-	c := *hc
+	if c.Timeout <= 0 {
+		c.Timeout = defaultTimeout
+	}
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	t := &httpTransport{base: base, hc: &c}
 	switch forge {
