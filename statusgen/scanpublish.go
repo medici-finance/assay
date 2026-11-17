@@ -120,8 +120,19 @@ var publicCoveredFields = map[string]string{
 // publicUncovered is the record's fields that publicCoveredFields does not list, or lists with
 // another shape, read once.
 var publicUncovered = sync.OnceValue(func() []string {
-	return uncoveredFields(reflect.TypeOf(issueflow.IntakeHandoff{}), "", publicCoveredFields)
+	return uncoveredRecord(reflect.TypeOf(issueflow.IntakeHandoff{}), publicCoveredFields)
 })
+
+// uncoveredRecord is uncoveredFields for a whole record type. A record that marshals itself
+// writes whatever its own method returns, whatever its fields hold, so checking its fields alone
+// proves nothing: the record itself is reported, ahead of any field.
+func uncoveredRecord(t reflect.Type, covered map[string]string) []string {
+	var out []string
+	if marshalsItself(t) {
+		out = append(out, "the record itself (shape marshaler)")
+	}
+	return append(out, uncoveredFields(t, "", covered)...)
+}
 
 // uncoveredFields walks the fields encoding/json reads from t by JSON path, into nested structs,
 // pointers to them and embedded structs (a time, and any type that marshals itself, is a leaf), and returns each leaf path covered does

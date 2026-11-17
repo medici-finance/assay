@@ -748,33 +748,88 @@ type covTextLevel int
 
 func (covTextLevel) MarshalText() ([]byte, error) { return []byte("PROSE"), nil }
 
+// covPtrBlob marshals itself only through a pointer receiver, which encoding/json calls on the
+// value a pointer field points at.
+type covPtrBlob struct{ text string }
+
+func (b *covPtrBlob) MarshalJSON() ([]byte, error) { return json.Marshal(b.text) }
+
 // TestPublicCoverageMarshaler plants a field whose type marshals itself (a struct with only
-// unexported fields and a MarshalJSON, and an int kind with a MarshalText) and requires the coverage
+// unexported fields and a MarshalJSON, the same reached through a pointer field with a
+// pointer-receiver MarshalJSON, and an int kind with a MarshalText) and requires the coverage
 // walk to report it with the shape "marshaler": unlisted, and listed as the kind it looks like.
-// regression: security advisory A7 on this change (a self-marshalling type escaped the walk).
+// regression: security advisory A7 on this change (a self-marshalling type escaped the walk);
+// the pointer field pins advisory A9 and finding 6362-a11 (the pointer-receiver arm).
 func TestPublicCoverageMarshaler(t *testing.T) {
 	type probe struct {
 		Schema string         `json:"schema"`
 		Blob   covMarshalBlob `json:"blob"`
+		Ptr    *covPtrBlob    `json:"ptr"`
 		Level  covTextLevel   `json:"level"`
 		Levels []covTextLevel `json:"levels"`
 		At     time.Time      `json:"at"`
 	}
 	covered := map[string]string{"schema": "string", "level": "int", "levels": "[]int", "at": "time"}
 	got := strings.Join(uncoveredFields(reflect.TypeOf(probe{}), "", covered), ",")
-	want := "blob,level (shape marshaler, listed as int),levels (shape []marshaler, listed as []int)"
+	want := "blob,ptr,level (shape marshaler, listed as int),levels (shape []marshaler, listed as []int)"
 	if got != want {
 		t.Fatalf("uncovered = %q, want %q", got, want)
 	}
 	// The probe's own control: encoding/json writes the planted text through each marshaler.
-	b, err := json.Marshal(probe{Blob: covMarshalBlob{"PROSE"}, Level: 1, Levels: []covTextLevel{1}})
+	b, err := json.Marshal(probe{Blob: covMarshalBlob{"PROSE"}, Ptr: &covPtrBlob{"PROSE"}, Level: 1, Levels: []covTextLevel{1}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Count(string(b), "PROSE") != 3 {
-		t.Fatalf("encoding/json wrote %s, want PROSE three times: the probe does not marshal itself", b)
+	if strings.Count(string(b), "PROSE") != 4 {
+		t.Fatalf("encoding/json wrote %s, want PROSE four times: the probe does not marshal itself", b)
 	}
 	if u := publicUncovered(); len(u) > 0 {
 		t.Fatalf("the judgment record has fields the public allowlist does not cover: %v", u)
+	}
+}
+
+// covRootSelf is a record whose own MarshalJSON decides what is written: its fields are all
+// covered, yet what encoding/json writes is the method's text.
+type covRootSelf struct {
+	Schema string `json:"schema"`
+}
+
+func (covRootSelf) MarshalJSON() ([]byte, error) { return []byte(`{"schema":"PROSE"}`), nil }
+
+// covRootPtrSelf is the same through a pointer receiver.
+type covRootPtrSelf struct {
+	Schema string `json:"schema"`
+}
+
+func (*covRootPtrSelf) MarshalJSON() ([]byte, error) { return []byte(`{"schema":"PROSE"}`), nil }
+
+// TestPublicCoverageRootMarshal requires a record type that marshals itself to be reported as
+// the record itself, though every field it declares is covered; a plain record reports nothing.
+// regression: security advisory A8 on this change (the record type itself was never checked).
+func TestPublicCoverageRootMarshal(t *testing.T) {
+	type plain struct {
+		Schema string `json:"schema"`
+	}
+	covered := map[string]string{"schema": "string"}
+	for _, tc := range []struct {
+		name string
+		typ  reflect.Type
+		want string
+	}{
+		{"value receiver", reflect.TypeOf(covRootSelf{}), "the record itself (shape marshaler)"},
+		{"pointer receiver", reflect.TypeOf(covRootPtrSelf{}), "the record itself (shape marshaler)"},
+		{"plain record", reflect.TypeOf(plain{}), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := strings.Join(uncoveredRecord(tc.typ, covered), ","); got != tc.want {
+				t.Fatalf("uncovered = %q, want %q", got, tc.want)
+			}
+		})
+	}
+	// The probes' own control: encoding/json writes the method's text, not the field's value.
+	for _, v := range []any{covRootSelf{Schema: "x"}, &covRootPtrSelf{Schema: "x"}} {
+		if b, err := json.Marshal(v); err != nil || !strings.Contains(string(b), "PROSE") {
+			t.Fatalf("encoding/json wrote %s (%v), want the method's PROSE", b, err)
+		}
 	}
 }
