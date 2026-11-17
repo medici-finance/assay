@@ -127,7 +127,7 @@ Options:
 3. **Hold.** The host stays refused; secret-bound checks on a host keep waiting for an
    operator, and the two host checks named by the earlier verification stay failing.
 
-Default if no answer: option 3 (hold). A host credential path is never opened by silence.
+Default if no answer: none — blocks until answered. Until it is answered the host stays refused (option 3); a host credential path is never opened by silence.
 
 ## Ground rules
 
