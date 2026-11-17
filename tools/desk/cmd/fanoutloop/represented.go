@@ -36,7 +36,18 @@ import (
 // representedPRs is the PR-list transport `plan` reconciles through — ONE list read per plan run when
 // wired. NIL in the shipped build (no forge-CLI is shipped and the typed op is deferred to the
 // cutover); when nil, cmdPlan leaves FanoutLoop.Represented unset and every row is offered as before.
-var representedPRs func(repo string) ([]deskkit.PRRef, error)
+//
+// incomplete reports that the list is a bounded WINDOW of the repo's open+merged changes (the forge
+// holds more than the read walked). Absence from an incomplete list is could-not-check, never "no PR"
+// (forge.go's ChangeList contract), so representedSourceFor then looks each candidate missing from
+// the window up by its `Brief:` trailer (briefChangeLookup).
+var representedPRs func(repo string) (prs []deskkit.PRRef, incomplete bool, err error)
+
+// briefChangeLookup finds every PR whose body names one brief (`Brief: <stream>/<NN>`) without a
+// window bound (#5853). It is consulted ONLY when representedPRs reported an incomplete window, and
+// only for candidate briefs the window did not represent. NIL by default; main() wires
+// liveBriefChangeLookup. Nil while a window is incomplete makes every such candidate could-not-check.
+var briefChangeLookup func(repo, briefID string) ([]deskkit.PRRef, error)
 
 // representedPRFiles reads one PR's COMPLETE changed-file list for the briefs-AUTHORING exemption
 // (#1339). NIL by default, like representedPRs: nil = no file transport, so no PR is set aside as
@@ -68,65 +79,124 @@ func representedSourceFor(repo string, candidates func() (map[string]bool, error
 		if representedPRs == nil {
 			return nil, nil
 		}
-		prs, err := representedPRs(repo)
+		prs, incomplete, err := representedPRs(repo)
 		if err != nil {
 			return nil, err
 		}
-		if representedPRFiles == nil || candidates == nil {
+		if !incomplete && (representedPRFiles == nil || candidates == nil) {
 			return deskkit.RepresentedBriefPRs(prs), nil
+		}
+		if candidates == nil {
+			// An incomplete window with no candidate set: no brief can be looked up past it, so the
+			// whole read is could-not-check (the fresh-lane HOLD), never a window taken as complete.
+			return nil, fmt.Errorf("the open+merged PR list for %s is a bounded window and no candidate set was supplied to look past it", repo)
 		}
 		cands, cerr := candidates()
 		if cerr != nil {
 			return nil, cerr
 		}
-		all := deskkit.RepresentingPRsByBrief(prs)
-		out := make(map[string]deskkit.RepresentedPR, len(all))
-		pending := make(map[string][]deskkit.RepresentedPR)
-		for id, list := range all {
-			if !cands[id] {
-				out[id] = list[0]
-				continue
-			}
-			if representedPRBatchFiles == nil {
-				if rp, ok := firstDeliveringPR(repo, id, list); ok {
-					out[id] = rp
-				}
-				continue
-			}
-			pending[id] = list
+		var out map[string]deskkit.RepresentedPR
+		if representedPRFiles == nil {
+			out = deskkit.RepresentedBriefPRs(prs)
+		} else {
+			out = representedWithAuthoring(repo, prs, cands)
 		}
-		// Only the first unclassified PR for each brief is authoritative this round.
-		// Never prefetch older history: an unreadable/delivering head ends that walk.
-		for len(pending) > 0 {
-			ids := make([]string, 0, len(pending))
-			for id := range pending {
-				ids = append(ids, id)
-			}
-			sort.Strings(ids)
-			numbers := make([]int, 0, len(ids))
-			for _, id := range ids {
-				numbers = append(numbers, pending[id][0].Number)
-			}
-			observations := representedPRBatchFiles(repo, numbers)
-			for _, id := range ids {
-				list := pending[id]
-				rp := list[0]
-				observation, ok := observations[rp.Number]
-				if !ok {
-					observation.Err = fmt.Errorf("complete changed-file observation absent")
-				}
-				if !authoringPR(repo, id, rp, observation.Files, observation.Err) {
-					out[id] = rp
-					delete(pending, id)
-				} else if len(list) == 1 {
-					delete(pending, id)
-				} else {
-					pending[id] = list[1:]
-				}
-			}
+		if incomplete {
+			lookUpPastWindow(repo, cands, out)
 		}
 		return out, nil
 	}
+}
+
+// lookUpPastWindow completes out for an INCOMPLETE window (#5853): each candidate brief the window
+// did not represent is looked up by its `Brief:` trailer (briefChangeLookup). A hit is reduced
+// exactly as the window is — parsed trailers, OPEN or MERGED only, the authoring exemption when the
+// file transport is wired — so a merged delivery outside the window lands under LANDED-UNRECONCILED
+// and an open one routes to resume. A failed or unwired lookup marks the brief Unchecked: the plan
+// lists it under COULD-NOT-CHECK and never offers it as IMPLEMENT. A complete lookup with no
+// representing hit leaves the brief absent: genuinely fresh. `issue-<NN>` placeholders carry an
+// `Issue:` link, never a `Brief:` one, so they are not looked up.
+func lookUpPastWindow(repo string, cands map[string]bool, out map[string]deskkit.RepresentedPR) {
+	ids := make([]string, 0, len(cands))
+	for id := range cands {
+		if _, ok := out[id]; ok || strings.HasPrefix(id[strings.LastIndex(id, "/")+1:], "issue-") {
+			continue
+		}
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		if briefChangeLookup == nil {
+			out[id] = deskkit.RepresentedPR{Unchecked: "the PR list is a bounded window and no per-brief lookup is wired"}
+			continue
+		}
+		hits, err := briefChangeLookup(repo, id)
+		if err != nil {
+			out[id] = deskkit.RepresentedPR{Unchecked: fmt.Sprintf("the PR list is a bounded window and the `Brief:` lookup failed (%v)", err)}
+			continue
+		}
+		list := deskkit.RepresentingPRsByBrief(hits)[id]
+		if len(list) == 0 {
+			continue
+		}
+		if representedPRFiles == nil {
+			out[id] = list[0]
+		} else if rp, ok := firstDeliveringPR(repo, id, list); ok {
+			out[id] = rp
+		}
+	}
+}
+
+// representedWithAuthoring reduces the window to the brief→RepresentedPR map, applying the
+// briefs-authoring exemption to candidate briefs (see representedSourceFor).
+func representedWithAuthoring(repo string, prs []deskkit.PRRef, cands map[string]bool) map[string]deskkit.RepresentedPR {
+	all := deskkit.RepresentingPRsByBrief(prs)
+	out := make(map[string]deskkit.RepresentedPR, len(all))
+	pending := make(map[string][]deskkit.RepresentedPR)
+	for id, list := range all {
+		if !cands[id] {
+			out[id] = list[0]
+			continue
+		}
+		if representedPRBatchFiles == nil {
+			if rp, ok := firstDeliveringPR(repo, id, list); ok {
+				out[id] = rp
+			}
+			continue
+		}
+		pending[id] = list
+	}
+	// Only the first unclassified PR for each brief is authoritative this round.
+	// Never prefetch older history: an unreadable/delivering head ends that walk.
+	for len(pending) > 0 {
+		ids := make([]string, 0, len(pending))
+		for id := range pending {
+			ids = append(ids, id)
+		}
+		sort.Strings(ids)
+		numbers := make([]int, 0, len(ids))
+		for _, id := range ids {
+			numbers = append(numbers, pending[id][0].Number)
+		}
+		observations := representedPRBatchFiles(repo, numbers)
+		for _, id := range ids {
+			list := pending[id]
+			rp := list[0]
+			observation, ok := observations[rp.Number]
+			if !ok {
+				observation.Err = fmt.Errorf("complete changed-file observation absent")
+			}
+			if !authoringPR(repo, id, rp, observation.Files, observation.Err) {
+				out[id] = rp
+				delete(pending, id)
+			} else if len(list) == 1 {
+				delete(pending, id)
+			} else {
+				pending[id] = list[1:]
+			}
+		}
+	}
+	return out
 }
 
 // firstDeliveringPR returns the first PR in list that is not an authoring-only PR for briefID, and

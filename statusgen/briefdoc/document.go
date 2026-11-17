@@ -40,6 +40,12 @@ type Risk struct{ Regulatory, Customer, Irreversible, SensitiveData bool }
 
 func UnreadableRisk() Risk { return Risk{true, true, true, true} }
 
+// DesignGateCutover is the design-approval gate's grandfather boundary
+// (spec/lifecycle-v1.md §4.4): the gate binds only a risk-gated brief whose
+// `authored:` date is strictly after it. One value, shared so a desk tool that
+// predicts the gate cannot drift from the lint that enforces it.
+const DesignGateCutover = "2026-09-05"
+
 // SchemaVersions is the shared syntax registry used by the actual brief parser
 // and reader advertisements. Register a schema only with its production wiring;
 // syntax recognition grants no assessment, dispatch or acceptance support.

@@ -36,6 +36,24 @@
       "file": "cmd/fanoutloop/represented.go",
       "old": "\tif deskkit.BriefAuthoringOnly(briefID, files) {",
       "new": "\tif false && deskkit.BriefAuthoringOnly(briefID, files) {"
+    },
+    {
+      "name": "#5853 SKIP the per-brief lookup past an incomplete window, as before the fix: a todo row whose merged PR is older than the window is offered as IMPLEMENT again. TestPlan_WindowMissLookupLands must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\tif incomplete {\n\t\t\tlookUpPastWindow(",
+      "new": "\t\tif false && incomplete {\n\t\t\tlookUpPastWindow("
+    },
+    {
+      "name": "#5853 ROUND a failed lookup to not-found: the row falls through to IMPLEMENT instead of could-not-check. TestPlan_LookupErrorUnchecked must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\tif err != nil {\n\t\t\tout[id] = deskkit.RepresentedPR{Unchecked:",
+      "new": "\t\tif err != nil {\n\t\t\tcontinue\n\t\t\tout[id] = deskkit.RepresentedPR{Unchecked:"
+    },
+    {
+      "name": "#5853 ALWAYS run the per-brief lookup, even over a complete window: one search per queued brief every plan. TestPlan_CompleteWindowNoLookup must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\tprs, incomplete, err := representedPRs(repo)\n",
+      "new": "\t\tprs, _, err := representedPRs(repo)\n\t\tincomplete := true\n"
     }
   ]
 }
