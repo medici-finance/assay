@@ -53,7 +53,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -83,7 +82,8 @@ type AccountFetcher interface {
 // HTTPAccountFetcher implements AccountFetcher with a direct REST call to GitHub using a
 // bearer token — the production implementation `deskroster liveness` runs on. Same shape as
 // HTTPRepoInfoFetcher (repovis.go): BaseURL defaults to GitHubAPIBase, Client defaults to
-// http.DefaultClient, so a test points BaseURL at an httptest server.
+// BoundedHTTPClient (never the deadline-free http.DefaultClient), so a test points BaseURL at
+// an httptest server.
 type HTTPAccountFetcher struct {
 	Token   string
 	BaseURL string // defaults to GitHubAPIBase when empty
@@ -98,7 +98,7 @@ func (f *HTTPAccountFetcher) client() *http.Client {
 	if f.Client != nil {
 		return f.Client
 	}
-	return http.DefaultClient
+	return BoundedHTTPClient()
 }
 
 // GetAccount calls GET /users/{login} and returns the CURRENT id/login GitHub reports for
@@ -128,7 +128,7 @@ func (f *HTTPAccountFetcher) GetAccount(login string) (*Account, error) {
 		return nil, fmt.Errorf("GET %s returned HTTP %d", reqURL, resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := ReadCappedForgeBody(resp.Body, "GET "+reqURL)
 	if err != nil {
 		return nil, err
 	}

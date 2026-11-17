@@ -23,7 +23,7 @@ exec-tier: strong
 exec-tier-why: "Cross-component queue, input provenance and effect boundaries must agree; a subtle error can suppress needed verification or advance the wrong state."
 domain: complicated
 outcome: none
-version: 6
+version: 7
 id: af2553b5-b208-4d3d-aab1-5d8c518b2add
 consumers:
   - "tools/desk/internal/deskkit/citrigger_test.go: follow-up desk-tools/51 (register the skill-body cross-module read; existing CI already runs on every push and pull request)"
@@ -120,18 +120,19 @@ and /52 dependencies. Do not implement their policies in skill prose.
 
 ### Verify-role parity follow-on — 2026-11-16
 
-graph-execution/27 (version 12) no longer waits for this brief: its `depends:` entry here became
+graph-execution/27 (from version 12) no longer waits for this brief: its `depends:` entry here became
 a `feathers:` ordering notice, and its planner-parity row reports the verify role `unavailable`
 while this brief's prose adapter is absent. This brief's own Verify table is unchanged, and row 4
 still does not depend on that driver.
 
 graph-execution/27 owns the registration and keys it on presence, not on anything this brief
-records: its planner-parity test reads this brief's declared path,
-tools/desk/cmd/verifyloop/flow_51_test.go declaring `TestVerifyDriverPlan`, and a tree that
-holds that path without the verify role registered and compared fails that test.
+records: its planner-parity test looks for the `TestVerifyDriverPlan` (planned) declaration this
+brief delivers, anywhere in the tools/desk/cmd/verifyloop package, and a tree that holds that
+declaration without the verify role registered and compared fails that test. A package it
+cannot read fails that test too; it is never read as the adapter being absent.
 
-- If graph-execution/27 has delivered at pickup, `TestDeskPlannerParity` is already on main
-  and fails this brief's change as soon as the declared path lands. Register the verify role's
+- If graph-execution/27 has delivered at pickup, `TestDeskPlannerParity` (planned) is already on main
+  and fails this brief's change as soon as that declaration lands. Register the verify role's
   prose adapter in that brief's binding in the same change, so the test compares the verify
   role and passes. The binding under tools/desk/internal/deskclient/ is in this brief's scope
   for that one registration and nothing else.

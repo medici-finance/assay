@@ -115,16 +115,27 @@ func (g *GitHubForge) restClient() (*ghapi.RESTClient, error) {
 	if g.Client != nil && g.Client.Transport != nil {
 		transport = g.Client.Transport
 	}
+	// Timeout bounds every request this client sends (ForgeRequestTimeout, or a shorter or
+	// longer one the injected Client sets). Without it go-gh builds an http.Client with no
+	// deadline, and a stalled forge holds the shared audit lock of every desk write verb that
+	// reads or writes through this backend while holding it.
 	rc, err := ghapi.NewRESTClient(ghapi.ClientOptions{
 		Host:      host,
 		AuthToken: g.Token,
-		Transport: observedTransport(countRoundTrips(transport), g.Observer, "provider", false),
+		Transport: capForgeBodies(observedTransport(countRoundTrips(transport), g.Observer, "provider", false)),
+		Timeout:   g.requestTimeout(),
 	})
 	if err != nil {
 		return nil, Unverifiable("cannot build go-gh REST client", err)
 	}
 	g.rc = rc
 	return rc, nil
+}
+
+// requestTimeout is the per-request deadline of every client this backend builds: the
+// injected Client's Timeout when it sets one, else ForgeRequestTimeout. Never zero.
+func (g *GitHubForge) requestTimeout() time.Duration {
+	return boundedTimeout(g.Client)
 }
 
 // ForgeAPIError is a non-2xx REST/GraphQL response. A caller maps it to Unverifiable (an
@@ -265,9 +276,13 @@ func (g *GitHubForge) doJSONHeader(method, path string, in, out any) (http.Heade
 		return nil, err
 	}
 	defer resp.Body.Close()
-	raw, readErr := io.ReadAll(resp.Body)
+	raw, readErr := ReadCappedForgeBody(resp.Body, method+" "+path)
 	if capture != nil && capture.body != nil {
 		attachRequestPoints(capture.body, decodeRequestPoints(raw, perfrec.UnitGitHubPoints))
+	}
+	if IsForgeBodyOverCap(readErr) {
+		// Not a transient cut: the same request returns the same oversize body again.
+		return nil, readErr
 	}
 	if readErr != nil {
 		return nil, transientRead(Unverifiable(fmt.Sprintf("%s %s response body cut off mid-transfer (%d bytes arrived) — refusing to treat a partial answer as a complete one", method, path, len(raw)), readErr))
@@ -2692,12 +2707,15 @@ func (g *GitHubForge) ChangeDiff(repo ForgeRepo, number int) (string, error) {
 	if g.Client != nil && g.Client.Transport != nil {
 		transport = g.Client.Transport
 	}
-	resp, derr := (&http.Client{Transport: countRoundTrips(transport)}).Do(req)
+	resp, derr := (&http.Client{Transport: countRoundTrips(transport), Timeout: g.requestTimeout()}).Do(req)
 	if derr != nil {
 		return "", Unverifiable(fmt.Sprintf("GET %s (diff) failed", path), derr)
 	}
 	defer resp.Body.Close()
-	raw, berr := io.ReadAll(resp.Body)
+	raw, berr := ReadCappedForgeBody(resp.Body, "GET "+path+" (diff)")
+	if IsForgeBodyOverCap(berr) {
+		return "", berr
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", &ForgeAPIError{Status: resp.StatusCode, Method: http.MethodGet, Path: path}
 	}
@@ -3673,7 +3691,9 @@ func (g *GitHubForge) runLog(repo ForgeRepo, run RunRef, lim runLogBounds) ([]Ru
 		return nil, err
 	}
 	path := fmt.Sprintf("/repos/%s/%s/actions/runs/%d/logs", repo.Owner, repo.Name, id)
-	resp, rerr := rc.Request(http.MethodGet, g.baseURL()+path, nil)
+	// The archive keeps its own, larger bound (runLogSink); the transport cap is raised to one
+	// byte past it for this request so the sink's own refusal is the one that fires.
+	resp, rerr := rc.RequestWithContext(withForgeBodyLimit(context.Background(), lim.archiveCap+1), http.MethodGet, g.baseURL()+path, nil)
 	if rerr != nil {
 		var he *ghapi.HTTPError
 		if errors.As(rerr, &he) {

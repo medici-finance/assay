@@ -18,7 +18,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -451,7 +450,7 @@ func githubGET(c *http.Client, method, url, jwt string) (int, []byte, error) {
 		return 0, nil, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	body, err := readCappedResponse(resp.Body)
 	if err != nil {
 		return resp.StatusCode, nil, err
 	}
