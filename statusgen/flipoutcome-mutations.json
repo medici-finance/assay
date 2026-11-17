@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run TestVflipOutcome -count=1 -timeout 300s",
+  "test": "go test . -run 'TestVflipOutcome|TestOutcome(Status|Adders)Parity' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL \u2014 the whole cross-check skipped (the unfixed flip)",
     "file": "flipoutcome.go",
@@ -54,6 +54,18 @@
       "file": "flipoutcome.go",
       "old": "\t\treturn fmt.Errorf(\"outcome record: verify-outcome records unreadable: %v\", err)",
       "new": "\t\treturn nil"
+    },
+    {
+      "name": "typed clean check: the pathspec glob's wildcard stops at '/' (a Git pathspec's does not)",
+      "file": "flipoutcome.go",
+      "old": "\t\t\tb.WriteString(\".*\")",
+      "new": "\t\t\tb.WriteString(\"[^/]*\")"
+    },
+    {
+      "name": "typed adding-commit walk: a merge that brings the path in counts as adding it (native log lists no merge)",
+      "file": "flipoutcome.go",
+      "old": "\tif c.PathID == \"\" || len(c.Parents) > 1 {",
+      "new": "\tif c.PathID == \"\" {"
     }
   ]
 }
