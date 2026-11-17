@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"sort"
@@ -294,7 +293,7 @@ func listInstallations(jwt string, clients ...*http.Client) ([]coverageInstallat
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := deskkit.ReadCappedForgeBody(resp.Body, "GET installations")
 	if err != nil {
 		return nil, fmt.Errorf("read installations response: %w", err)
 	}
@@ -330,7 +329,7 @@ func listInstallationRepos(token string, clients ...*http.Client) ([]string, err
 		if err != nil {
 			return nil, fmt.Errorf("GET repositories page %d: %w", page, err)
 		}
-		body, rerr := io.ReadAll(resp.Body)
+		body, rerr := deskkit.ReadCappedForgeBody(resp.Body, fmt.Sprintf("GET repositories page %d", page))
 		resp.Body.Close()
 		if rerr != nil {
 			return nil, fmt.Errorf("read repositories page %d: %w", page, rerr)

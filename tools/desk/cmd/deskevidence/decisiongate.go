@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -597,11 +598,33 @@ func statusgenDecisionGateAt(root, base string, options childOptions) ([]string,
 	if _, err := exec.LookPath("statusgen"); err != nil {
 		return nil, deskkit.Unverifiable("statusgen is not on PATH — cannot run the decision-gate check (lifecycle-v1 §4.5) on this landing", err)
 	}
-	cmd := statusgenAudit(context.Background(), auditDecision, root, options, "--decision-gate-base", base)
+	limit := decisionGateDeadline()
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	defer cancel()
+	cmd := statusgenAudit(ctx, auditDecision, root, options, "--decision-gate-base", base)
 	cmd.Dir = os.TempDir()
+	// After the kill, stop waiting on output pipes a grandchild may still hold open.
+	cmd.WaitDelay = decisionGateWaitDelay
 	out, cerr := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		// Checked BEFORE the output is read: a killed run's partial REFUSED lines (or their
+		// absence) are not the gate's answer.
+		return nil, deskkit.Unverifiable(fmt.Sprintf("statusgen --decision-gate at %s did not finish within %s and was killed — could-not-check", root, limit), ctx.Err())
+	}
 	return parseDecisionGateRun(root, string(out), cerr)
 }
+
+// decisionGateWaitDelay bounds how long a killed decision-gate child's output pipes are
+// drained after the kill.
+const decisionGateWaitDelay = 2 * time.Second
+
+// decisionGateDeadline is how long ONE `statusgen --decision-gate` child may run before it is
+// killed. It is the write-window bound, lockWait: the child runs during preparation, while
+// this run holds the per-root preparation lock that other landings wait on for at most
+// lockWait — a child allowed to outlive that bound would turn every waiter's wait into a
+// stale-lock refusal. The audit itself is a single diff walk (well under a second on a full
+// checkout), so the bound is wide.
+func decisionGateDeadline() time.Duration { return lockWait }
 
 // parseDecisionGateRun reads one `statusgen --decision-gate` run (split out so the
 // exit/line reading is testable without a statusgen binary).

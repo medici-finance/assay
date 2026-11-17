@@ -15,7 +15,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -106,7 +105,7 @@ func listIssueComments(token string, repo deskkit.ForgeRepo, number int) ([]comm
 		if derr != nil {
 			return nil, deskkit.Unverifiable("GET issues/comments failed", derr)
 		}
-		raw, rerr := io.ReadAll(resp.Body)
+		raw, rerr := deskkit.ReadCappedForgeBody(resp.Body, "GET issues/comments")
 		resp.Body.Close()
 		if rerr != nil {
 			// A body cut off mid-read (a stall past the deadline, a dropped connection) is

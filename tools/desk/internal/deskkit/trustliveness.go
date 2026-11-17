@@ -53,7 +53,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"sort"
@@ -128,7 +127,7 @@ func (f *HTTPAccountFetcher) GetAccount(login string) (*Account, error) {
 		return nil, fmt.Errorf("GET %s returned HTTP %d", reqURL, resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := ReadCappedForgeBody(resp.Body, "GET "+reqURL)
 	if err != nil {
 		return nil, err
 	}

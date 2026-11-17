@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -996,5 +997,47 @@ func TestStageRemovesCreatedDirs(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(filepath.Join(root, readme)); string(b) != "LOCAL\n" {
 		t.Fatalf("the home's own file changed: %q", b)
+	}
+}
+
+// A decision-gate child that never finishes is killed at the write-window bound and reported
+// could-not-check — never awaited for as long as it runs while this run holds the
+// preparation lock other landings wait on. The fake prints a clean-looking line first, then
+// sleeps in a grandchild that keeps the output pipe open.
+//
+// regression: #6730
+func TestStatusgenDecisionGateAtDeadline(t *testing.T) {
+	prev := lockWait
+	lockWait = 300 * time.Millisecond
+	t.Cleanup(func() { lockWait = prev })
+	if decisionGateDeadline() != lockWait {
+		t.Fatalf("decisionGateDeadline() = %s, want the write-window bound lockWait (%s)", decisionGateDeadline(), lockWait)
+	}
+	fakeStatusgenOnPath(t, `echo "no gate: human brief moved, relabelled or dropped — clean"
+sleep 30`)
+	type result struct {
+		refused []string
+		err     error
+	}
+	done := make(chan result, 1)
+	start := time.Now()
+	go func() {
+		r, err := statusgenDecisionGateAt(t.TempDir(), "HEAD", childOptions{})
+		done <- result{r, err}
+	}()
+	select {
+	case r := <-done:
+		if r.err == nil {
+			t.Fatalf("a decision-gate child killed at its deadline read as clean (refused=%v)", r.refused)
+		}
+		wantUnverifiable(t, r.err)
+		if !strings.Contains(r.err.Error(), "killed") {
+			t.Errorf("the refusal does not say the child was killed: %v", r.err)
+		}
+		if el := time.Since(start); el > 10*time.Second {
+			t.Errorf("returned after %s; the deadline is %s", el, lockWait)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatalf("statusgenDecisionGateAt still blocked after 15s on a child that never finishes (deadline %s)", lockWait)
 	}
 }

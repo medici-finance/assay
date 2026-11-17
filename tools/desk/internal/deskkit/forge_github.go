@@ -265,9 +265,13 @@ func (g *GitHubForge) doJSONHeader(method, path string, in, out any) (http.Heade
 		return nil, err
 	}
 	defer resp.Body.Close()
-	raw, readErr := io.ReadAll(resp.Body)
+	raw, readErr := ReadCappedForgeBody(resp.Body, method+" "+path)
 	if capture != nil && capture.body != nil {
 		attachRequestPoints(capture.body, decodeRequestPoints(raw, perfrec.UnitGitHubPoints))
+	}
+	if IsForgeBodyOverCap(readErr) {
+		// Not a transient cut: the same request returns the same oversize body again.
+		return nil, readErr
 	}
 	if readErr != nil {
 		return nil, transientRead(Unverifiable(fmt.Sprintf("%s %s response body cut off mid-transfer (%d bytes arrived) — refusing to treat a partial answer as a complete one", method, path, len(raw)), readErr))
@@ -2697,7 +2701,10 @@ func (g *GitHubForge) ChangeDiff(repo ForgeRepo, number int) (string, error) {
 		return "", Unverifiable(fmt.Sprintf("GET %s (diff) failed", path), derr)
 	}
 	defer resp.Body.Close()
-	raw, berr := io.ReadAll(resp.Body)
+	raw, berr := ReadCappedForgeBody(resp.Body, "GET "+path+" (diff)")
+	if IsForgeBodyOverCap(berr) {
+		return "", berr
+	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return "", &ForgeAPIError{Status: resp.StatusCode, Method: http.MethodGet, Path: path}
 	}

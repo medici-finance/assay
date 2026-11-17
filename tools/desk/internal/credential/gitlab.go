@@ -338,7 +338,7 @@ func RotateGitLabToken(c *http.Client, base, current string) (*GitLabRotateResul
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := readCappedResponse(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read rotate response: %w", err)
 	}

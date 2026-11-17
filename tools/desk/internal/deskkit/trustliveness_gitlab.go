@@ -31,7 +31,6 @@ package deskkit
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -126,7 +125,7 @@ func (f *HTTPGitLabAccountFetcher) GetAccount(login string) (*Account, error) {
 		return nil, fmt.Errorf("GET %s returned HTTP %d", reqURL, resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, gitlabAccountFetcherMaxBody))
+	body, err := ReadForgeBodyUpTo(resp.Body, "GET "+reqURL, gitlabAccountFetcherMaxBody)
 	if err != nil {
 		return nil, err
 	}

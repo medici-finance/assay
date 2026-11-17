@@ -1,0 +1,5 @@
+### Fixed
+- Forge response bodies the desk tools read are now capped at 32 MiB (`deskkit.MaxForgeBodyBytes`). The cap covers the forge library, the credential mint and rotation reads, `deskpost`, `deskrelease`, `desktoken coverage`, `deskadvisory` and the `deskinbox` comments reader. A body over the cap is refused as could-not-check (exit 6) and never read as a truncated answer.
+- `deskpost` and `deskrelease` no longer discard a response body read error. A body cut off mid-read is could-not-check (exit 6) and is never decoded as the part that arrived.
+- `deskgitlab` no longer discards a response body read error either. An answer whose body is cut off, stalls, exceeds the 4 MiB bound, or is empty where a GET's result belongs is treated as no answer. A run that meets one exits 6 (could-not-check).
+- The `deskevidence` decision-gate check (`statusgen --decision-gate`) is now killed if it runs longer than the write-window bound (60s), and the landing reports could-not-check (exit 6). Before, the landing waited on it with no limit while holding the preparation lock.
