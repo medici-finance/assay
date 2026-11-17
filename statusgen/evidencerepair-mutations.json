@@ -1,0 +1,233 @@
+{
+  "test": "go test . -run '^(TestEvidenceRepair(Chain|Refusals|Placement|VerifyRow|Editorial|RecordKind)|TestRepair(DateCellIsDate|ReaderView|WholeDocView|ApprovalScope|SplitComplete|NoHTML|VerdictOrder|DriverUnset|Authorizes|NoLinkDef))$' -count=1 -timeout 600s -failfast",
+  "control": {
+    "name": "drop prefix check after repair",
+    "file": "acceptancetransition.go",
+    "old": "if !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(retained)) {",
+    "new": "if false && !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(retained)) {"
+  },
+  "mutations": [
+    {
+      "name": "skip editorial content check",
+      "file": "evidencerepair.go",
+      "old": "if why := evidenceRepairEditorial(before, after); why != \"\" {",
+      "new": "if why := evidenceRepairEditorial(before, after); false && why != \"\" {"
+    },
+    {
+      "name": "let repair touch Verify",
+      "file": "evidencerepair.go",
+      "old": "e1 != nil || e2 != nil || verifyBefore != verifyAfter",
+      "new": "e1 != nil || e2 != nil || (false && verifyBefore != verifyAfter)"
+    },
+    {
+      "name": "skip repair approval read",
+      "file": "acceptancetransition.go",
+      "old": "if why := corroborateEvidenceRepairs(repo, rel, repairs, client); why != \"\" {",
+      "new": "_ = repairs\n\t\tif why := \"\"; why != \"\" {"
+    },
+    {
+      "name": "drop commit-to-approval binding",
+      "file": "evidencerepair.go",
+      "old": "if !commentNamesRecord(msg, fmt.Sprintf(\"#%d\", byCommit[commit].link.Issue)) {",
+      "new": "if false && !commentNamesRecord(msg, fmt.Sprintf(\"#%d\", byCommit[commit].link.Issue)) {"
+    },
+    {
+      "name": "admit repair before chain",
+      "file": "evidencerepair.go",
+      "old": "if first {",
+      "new": "if false {"
+    },
+    {
+      "name": "admit any runner suffix",
+      "file": "evidencerepair.go",
+      "old": "return next == old || (strings.HasPrefix(next, old) && evidenceRepairPrincipalRe.MatchString(next[len(old):]) && !strings.Contains(old, \"(on-behalf-of \"))",
+      "new": "return strings.HasPrefix(next, old)"
+    },
+    {
+      "name": "admit added table rows",
+      "file": "evidencerepair.go",
+      "old": "if len(oldRows) != len(newRows) {",
+      "new": "if false {"
+    },
+    {
+      "name": "admit dropped prose",
+      "file": "evidencerepair.go",
+      "old": "if j != len(oldText) {",
+      "new": "if false {"
+    },
+    {
+      "name": "admit added marker",
+      "file": "evidencerepair.go",
+      "old": "if strings.Contains(l, m) {",
+      "new": "if false && strings.Contains(l, m) {"
+    },
+    {
+      "name": "admit added verdict",
+      "file": "evidencerepair.go",
+      "old": "if len(flipVerdictTokens(added)) > 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "approval need not name brief",
+      "file": "evidencerepair.go",
+      "old": "if !repairNamesBrief(body, id) {",
+      "new": "if false {"
+    },
+    {
+      "name": "any mapped human approves",
+      "file": "evidencerepair.go",
+      "old": "Names: []string{driver}}",
+      "new": "Names: nil}"
+    },
+    {
+      "name": "approval need not name its thread",
+      "file": "evidencerepair.go",
+      "old": "if !commentNamesRecord(body, thread) || !repairAuthorizes(body) {",
+      "new": "if !repairAuthorizes(body) {"
+    },
+    {
+      "name": "approval need not authorize",
+      "file": "evidencerepair.go",
+      "old": " || !repairAuthorizes(body) {",
+      "new": " {"
+    },
+    {
+      "name": "admit split inside date cell",
+      "file": "evidencerepair.go",
+      "old": "if !splitAtDate(o[at], n[at], n[at+1]) {",
+      "new": "if !principalOnly(o[at], n[at]+\" \"+n[at+1]) {"
+    },
+    {
+      "name": "date cell need not be a date",
+      "file": "evidencerepair.go",
+      "old": "date != old[:i] || !flipDateRe.MatchString(date) {",
+      "new": "date != old[:i] {"
+    },
+    {
+      "name": "admit added comment or fence",
+      "file": "evidencerepair.go",
+      "old": "return \"a repair cannot add a comment or fence line\"",
+      "new": "continue"
+    },
+    {
+      "name": "admit split table",
+      "file": "evidencerepair.go",
+      "old": "if !sameRowRuns(before, after) {",
+      "new": "if false {"
+    },
+    {
+      "name": "admit hidden marker",
+      "file": "evidencerepair.go",
+      "old": "if len(protectedMarkersNamed(nb, m)) != len(protectedMarkersNamed(na, m)) {",
+      "new": "if false && len(protectedMarkersNamed(nb, m)) != len(protectedMarkersNamed(na, m)) {"
+    },
+    {
+      "name": "admit unterminated comment",
+      "file": "evidencerepair.go",
+      "old": "if (ub < 0) != (ua < 0) {",
+      "new": "if false && (ub < 0) != (ua < 0) {"
+    },
+    {
+      "name": "admit whole-document verdict",
+      "file": "evidencerepair.go",
+      "old": "if len(vb) != len(va) {",
+      "new": "if false {"
+    },
+    {
+      "name": "admit hidden row",
+      "file": "evidencerepair.go",
+      "old": "if len(ra[id]) != len(rows) {",
+      "new": "if false && len(ra[id]) != len(rows) {"
+    },
+    {
+      "name": "approval may be negated or conditional",
+      "file": "evidencerepair.go",
+      "old": "if repairApprovalHedges[w] || strings.HasSuffix(w, \"n't\") {",
+      "new": "if false && (repairApprovalHedges[w] || strings.HasSuffix(w, \"n't\")) {"
+    },
+    {
+      "name": "admit a partial table split",
+      "file": "evidencerepair.go",
+      "old": "\t\t\tif split {\n\t\t\t\treturn \"a repair must split every row of a split table\"\n\t\t\t}\n",
+      "new": ""
+    },
+    {
+      "name": "keep the column map across tables",
+      "file": "evidencerepair.go",
+      "old": "\t\tif oldRows[i].start {\n\t\t\theader, split = nil, false\n\t\t}\n",
+      "new": ""
+    },
+    {
+      "name": "admit an added HTML line",
+      "file": "evidencerepair.go",
+      "old": "if evidenceRepairHTMLRe.MatchString(l) {",
+      "new": "if false {"
+    },
+    {
+      "name": "compare verdict counts only",
+      "file": "evidencerepair.go",
+      "old": "if vb[i].word != va[i].word || vb[i].strict != va[i].strict || vb[i].struck != va[i].struck {",
+      "new": "if false && (vb[i].word != va[i].word || vb[i].strict != va[i].strict || vb[i].struck != va[i].struck) {"
+    },
+    {
+      "name": "skip the driver-unset guard",
+      "file": "evidencerepair.go",
+      "old": "if cfg.Bless.Login == \"\" || driver == \"\" {",
+      "new": "if false {"
+    },
+    {
+      "name": "hedge scan over whole body",
+      "file": "evidencerepair.go",
+      "old": "if repairHedged(s, words) {",
+      "new": "if repairHedged(norm, repairWords(norm)) {"
+    },
+    {
+      "name": "a question approves",
+      "file": "evidencerepair.go",
+      "old": "if strings.Contains(s, \"?\") {",
+      "new": "if false {"
+    },
+    {
+      "name": "any speaker authorizes",
+      "file": "evidencerepair.go",
+      "old": "first = first || (w == \"authorize\" && i > 0 && words[i-1] == \"i\")",
+      "new": "first = first || (w == \"authorize\" && i >= 0)"
+    },
+    {
+      "name": "a later refusal is ignored",
+      "file": "evidencerepair.go",
+      "old": "if strings.HasPrefix(w, r) {",
+      "new": "if false && strings.HasPrefix(w, r) {"
+    },
+    {
+      "name": "authorizing sentence may carry markup",
+      "file": "evidencerepair.go",
+      "old": "if !repairPlainRe.MatchString(s) {",
+      "new": "if false {"
+    },
+    {
+      "name": "admit a link-reference definition",
+      "file": "evidencerepair.go",
+      "old": "if evidenceRepairDefRe.MatchString(l) {",
+      "new": "if false {"
+    },
+    {
+      "name": "any # row is a header",
+      "file": "evidencerepair.go",
+      "old": "head := isHeaderCells(o) && sepNext(i)",
+      "new": "head := isHeaderCells(o) && (sepNext(i) || true)"
+    },
+    {
+      "name": "a contraction elsewhere in the sentence approves",
+      "file": "evidencerepair.go",
+      "old": "if repairApprovalHedges[w] || strings.HasSuffix(w, \"n't\") {",
+      "new": "if repairApprovalHedges[w] {"
+    },
+    {
+      "name": "any authoriz- form approves",
+      "file": "evidencerepair.go",
+      "old": "first = first || (w == \"authorize\" && i > 0 && words[i-1] == \"i\")",
+      "new": "first = first || (strings.HasPrefix(w, \"authoriz\") && i > 0 && words[i-1] == \"i\")"
+    }
+  ]
+}
