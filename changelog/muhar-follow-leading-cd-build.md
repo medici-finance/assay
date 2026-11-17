@@ -1,0 +1,2 @@
+### Fixed
+- `muhar` builds each mutant in the directory its suite runs in when the spec's `test` command is exactly `cd <dir> && go test …`, so a spec whose suite runs in another module no longer stops at "HARNESS BROKEN — positive control could not be validated". The directory must be a plain relative path inside the checkout; any other `cd` form or a longer compound is not followed, and the build runs from the spec root as before.
