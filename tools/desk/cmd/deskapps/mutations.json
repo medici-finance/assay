@@ -16,8 +16,8 @@
     {
       "name": "log the conversion response body (the conversion's raw JSON — pem, client_secret, webhook_secret included — reaches stdout, Task item 7b, Verify row 5/11)",
       "file": "cmd/deskapps/convert.go",
-      "old": "\tbody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))\n\tif err != nil {\n\t\treturn nil, err\n\t}",
-      "new": "\tbody, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tfmt.Println(\"deskapps: conversion response\", string(body))"
+      "old": "\tbody, err := deskkit.ReadForgeBodyUpTo(resp.Body, \"POST app-manifest conversion\", maxConversionBytes)\n\tif err != nil {\n\t\treturn nil, err\n\t}",
+      "new": "\tbody, err := deskkit.ReadForgeBodyUpTo(resp.Body, \"POST app-manifest conversion\", maxConversionBytes)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tfmt.Println(\"deskapps: conversion response\", string(body))"
     }
   ]
 }
