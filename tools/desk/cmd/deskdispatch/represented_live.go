@@ -19,7 +19,43 @@ import (
 // (internal/forgeban; TestNoForgeCLIShellout). The role is the desk dispatcher role — the
 // identity that dispatches a fresh worker — resolved through the same ResolveForge seam the
 // stamp step uses.
-func liveRepresentedPRs(repo string) ([]deskkit.PRRef, error) {
+func liveRepresentedPRs(repo string) ([]deskkit.PRRef, bool, error) {
+	fr, err := forgeRepoOf(repo)
+	if err != nil {
+		return nil, false, err
+	}
+	fg, _, rerr := deskkit.ResolveForge(fr, deskkit.DispatcherRole)
+	if rerr != nil {
+		return nil, false, rerr
+	}
+	return representedWindow(fg, repo, fr)
+}
+
+// representedWindow is the transport's body past forge resolution, split out so tests drive the
+// exact reduction the shipped binary runs: the window and its completeness, never one without the
+// other.
+func representedWindow(fg deskkit.Forge, repo string, fr deskkit.ForgeRepo) ([]deskkit.PRRef, bool, error) {
+	refs, incomplete, rerr := deskkit.RepresentedPRRefs(fg, fr)
+	if rerr != nil {
+		return nil, false, rerr
+	}
+	if incomplete {
+		// The seam read the most-recently-updated window up to its page ceiling and the repo
+		// holds more open+merged changes than that. The flag is RETURNED, not just reported: a
+		// brief whose delivering PR is older than the window is absent from it, and absence from
+		// an incomplete list is could-not-check (#5853). phantomCheckFor looks a brief the window
+		// missed up by its trailer (liveBriefChangeLookup) rather than dispatching it as new work.
+		fmt.Fprintf(os.Stderr, "deskdispatch: NOTICE — %s has more open+merged changes than the "+
+			"phantom check's recent-window ceiling; a brief the window does not represent is looked "+
+			"up by its `Brief:` trailer\n", repo)
+	}
+	return refs, incomplete, nil
+}
+
+// liveBriefChangeLookup is lookupBriefChanges' shipped transport: deskkit.ChangesByBriefReader over
+// the dispatcher role's forge, the complete body-marker search the decision-gate discovery uses. A
+// backend without that search is an error, which the phantom check turns into could-not-check.
+func liveBriefChangeLookup(repo, id string) ([]deskkit.PRRef, error) {
 	fr, err := forgeRepoOf(repo)
 	if err != nil {
 		return nil, err
@@ -28,21 +64,9 @@ func liveRepresentedPRs(repo string) ([]deskkit.PRRef, error) {
 	if rerr != nil {
 		return nil, rerr
 	}
-	refs, incomplete, rerr := deskkit.RepresentedPRRefs(fg, fr)
-	if rerr != nil {
-		return nil, rerr
+	lookup := deskkit.ChangesByBriefReader(fg)
+	if lookup == nil {
+		return nil, fmt.Errorf("this forge backend has no `Brief:` trailer search")
 	}
-	if incomplete {
-		// The seam read the most-recently-updated window up to its page ceiling and the repo
-		// holds more open+merged changes than that. This is reported, not swallowed: a brief
-		// whose representing PR fell outside the recent window is the one a phantom check has
-		// least reason to find (a currently-queued brief's PR is recently active), so the
-		// dispatch proceeds on the window rather than HOLDING every fresh dispatch on a repo
-		// whose lifetime merged-PR count exceeds the ceiling — but the operator is told the
-		// window was bounded, so a surprising non-refusal is diagnosable rather than silent.
-		fmt.Fprintf(os.Stderr, "deskdispatch: NOTICE — %s has more open+merged changes than the "+
-			"phantom check's recent-window ceiling; the check ran against the most-recently-updated "+
-			"window and a representing PR older than that window would not be seen\n", repo)
-	}
-	return refs, nil
+	return lookup(fr, id)
 }

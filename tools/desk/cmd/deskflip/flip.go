@@ -1722,7 +1722,7 @@ func (o flipOpts) resolveRepo() (string, error) {
 	slug := repoSlugFromURL(r.stdout)
 	if slug == "" {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
-			"origin %q does not parse to an owner/name — pass --repo <owner/name>.", r.stdout), nil)
+			"origin %q does not parse to an owner/name — pass --repo <owner/name>.", deskkit.RedactRemoteUserinfo(r.stdout)), nil)
 	}
 	return slug, nil
 }

@@ -31,6 +31,9 @@ var forgeBodyGuardRoots = []string{
 	"cmd/deskinbox",
 	"cmd/deskgitlab",
 	"cmd/desktoken",
+	"cmd/deskfleet",
+	"cmd/deskapps",
+	"internal/forgelabels",
 }
 
 // forgeBodyReadPermits are the readers that keep their own, narrower bound AND refuse an
@@ -39,6 +42,8 @@ var forgeBodyReadPermits = map[string]string{
 	"internal/deskkit/compositionsource.go:httpFetchBounded": "reads limit+1 and refuses a body over its own limit",
 	"internal/deskkit/forge_github.go:runLog": "streams into runLogSink, which refuses an archive past runLogArchiveCap; " +
 		"the client transport caps the same body one byte past that bound",
+	"cmd/deskfleet/pushrotate.go:provePush": "drains a status-only probe answer to io.Discard under maxResponseBytes; " +
+		"the body is never read as an answer",
 }
 
 // bodyReadFuncs are the calls whose error result is a body read's error.

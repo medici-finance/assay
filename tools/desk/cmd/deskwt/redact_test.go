@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // regression: #6621 (security review A2)
@@ -20,6 +22,8 @@ func TestCurrentRepoRedactsOrigin(t *testing.T) {
 }
 
 // Shapes a local redactor once passed through: a password in an scp-like or ssh remote.
+// The package's local redactor is gone; its messages render through deskkit.RedactRemoteURL,
+// so these shapes are pinned on that renderer.
 //
 // regression: #6606
 func TestRedactURLAllShapes(t *testing.T) {
@@ -30,13 +34,13 @@ func TestRedactURLAllShapes(t *testing.T) {
 		"git:secret@github.com:o/r",
 		"git@github.com:secret@github.com:o/r",
 	} {
-		if got := redactURL(in); strings.Contains(got, "secret") || !strings.Contains(got, "<redacted>@github.com") {
-			t.Errorf("redactURL(%q) = %q, want the userinfo redacted and the host kept", in, got)
+		if got := deskkit.RedactRemoteURL(in); strings.Contains(got, "secret") || !strings.Contains(got, "<redacted>@github.com") {
+			t.Errorf("RedactRemoteURL(%q) = %q, want the userinfo redacted and the host kept", in, got)
 		}
 	}
 	for _, in := range []string{"ssh://git@github.com/o/r", "git@github.com:o/r"} {
-		if got := redactURL(in); got != in {
-			t.Errorf("redactURL(%q) = %q, want the conventional git login kept", in, got)
+		if got := deskkit.RedactRemoteURL(in); got != in {
+			t.Errorf("RedactRemoteURL(%q) = %q, want the conventional git login kept", in, got)
 		}
 	}
 }

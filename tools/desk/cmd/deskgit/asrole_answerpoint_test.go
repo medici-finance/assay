@@ -212,7 +212,9 @@ func TestAsRole_UserBearingProxy_NeverGetsToken(t *testing.T) {
 			var code int
 			out := captureStdoutStderr(t, func() { code = run([]string{verb, "--as", "worker"}) })
 			rec.assertNoToken(t, verb+" through a user-bearing proxy")
-			if rec.requestCount() == 0 && !strings.Contains(out, "Password for '"+proxyURL+"'") {
+			// git's prompt names the proxy URL; deskgit's error masks its userinfo, so the
+			// prompt is matched in its redacted rendering.
+			if rec.requestCount() == 0 && !strings.Contains(out, "Password for '"+deskkit.RedactRemoteUserinfo(proxyURL)+"'") {
 				t.Fatalf("%s: neither the proxy nor its password prompt was reached — the test did not exercise the proxy credential\n%s", verb, out)
 			}
 			if code != deskkit.ExitUnverifiable {

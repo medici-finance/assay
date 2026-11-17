@@ -61,6 +61,10 @@ func prRepresents(state string) bool {
 type RepresentedPR struct {
 	Number int
 	Merged bool
+	// Unchecked, when non-empty, says why the brief's representing PR could NOT be determined
+	// (a bounded list read was incomplete and the per-brief lookup failed). Number and Merged are
+	// then meaningless: the row is could-not-check — never dispatched, never landed.
+	Unchecked string
 }
 
 // RepresentingPRsByBrief maps each brief id (`<stream>/<NN>`, lower-cased) to EVERY OPEN or MERGED

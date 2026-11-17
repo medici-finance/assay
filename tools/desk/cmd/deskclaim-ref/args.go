@@ -64,7 +64,9 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 	}
 
 	selectContext()
-	repo, rerr := resolveRepo(repoFlag)
+	// An inferred slug and its forge host must come from the same origin read.
+	readOrigin := sync.OnceValues(func() (string, error) { return checkedOriginURL(".") })
+	repo, rerr := resolveRepo(repoFlag, readOrigin)
 	if rerr != nil || repo == "" {
 		errf("unverifiable: could not resolve the target repo (pass --repo owner/name): %v", rerr)
 		return exitUnverifiable
@@ -105,7 +107,7 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 	// medici-finance/assay#2753), it is built here with this invocation's credential; a shipped
 	// store whose preconditions fail is a refusal (exit 6) and never becomes the forge-ref store.
 	deskkit.SetForgeRefClaimStoreOpener(func(r string) (deskkit.ClaimStore, error) {
-		return buildStore(r, tokenFile)
+		return buildStore(r, tokenFile, readOrigin)
 	})
 	res, err := deskkit.ResolveClaimStore(repo)
 	if err != nil {
