@@ -28,6 +28,7 @@ consumers:
   - "statusgen/main.go: follow-up statusgen/27 (this brief; change is owed at implementation)"
   - "docs/verify-row-strength.md: follow-up statusgen/27 (this brief; change is owed at implementation)"
   - "changelog/notice-ratchet.md: follow-up statusgen/27 (this brief; change is owed at implementation)"
+decision-issue: 5854
 ---
 
 # Brief 27 — Reject newly introduced actionable lint notices on changed briefs

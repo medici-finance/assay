@@ -5,7 +5,7 @@ serves: assay
 status: active
 priority: P2
 track: platform
-issues: [63, 64, 1193]
+issues: [63, 64, 1193, 6615]
 board: generated
 ---
 
@@ -64,6 +64,11 @@ component list, build/run topology, and open questions.
 | 32 | [Qualify the compatibility Kubernetes desk cell](brief-32-qualify-the-compatibility-kubernetes-desk-cell.md) | 9 | M | todo | — | — |
 | 33 | [Automatic desk instances and desired population through the shared runtime](brief-33-automatic-desk-instances-and-desired-population-through-the-shared-runtime.md) | 9 | M | todo | — | — |
 | 34 | [Project secrets reach dispatched worker and verifier windows, never an untrusted head](brief-34-project-secrets-reach-dispatched-windows.md) | 9 | M | implemented | — | — |
+| 35 | [Cell dev-env file contract — one coordinator-owned file per cell, names declared by Verify rows](brief-35-cell-dev-env-file-contract.md) | 1 | M | todo | — | — |
+| 36 | [Verifier admits only declared dev-env names, attests names and digest, redacts values](brief-36-verifier-admits-declared-dev-env-names.md) | 2 | M | todo | — | — |
+| 37 | [cellctl projects the cell dev-env file path to each role and gives the coordinator its write verb](brief-37-cellctl-projects-dev-env-file.md) | 2 | M | todo | — | — |
+| 38 | [Desk skills and docker guidance adopt the cell dev-env file](brief-38-desk-skills-adopt-the-cell-dev-env-file.md) | 3 | S | todo | — | — |
+| 39 | [Adopter migration — retire per-desk .env files for the cell dev-env file](brief-39-adopters-retire-per-desk-env-files.md) | 4 | S | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -260,6 +265,35 @@ deskdispatch reads no role-context value, so nothing else has to land first.
 Harness facts for the Codex half come from the `harness-portability` stream's capability
 survey; that stream's resident-rules fragment is not reused, because it writes into a
 session-writable worktree file.
+
+### Cell dev-env file — `35 → {36, 37} → 38 → 39` (added 2026-11-16, issue #6615)
+
+One dev-env file per cell replaces per-desk `.env` files. The coordinator role owns it and is
+its only writer; worker, reviewer and verifier windows read it; a Verify row receives only the
+names it declares, and the verifier records names and the file digest, never values. Ruled and
+amended by the driver on #6615 (the URLs are in brief 35's `## Human decision`).
+
+- **Wave 1** — `desk-containers/35` (the contract and the Env grammar for declared names;
+  human gate: how a cell proves the coordinator is the only writer).
+- **Wave 2** — `desk-containers/36` (verifier admission in statusgen) and
+  `desk-containers/37` (cellctl projection, write verb, change receipts); both depend on 35 only
+  and run in parallel. Both are human-gated.
+- **Wave 3** — `desk-containers/38` (role skills and `docs/docker.md`; depends on 35, 36, 37).
+- **Wave 4** — `desk-containers/39` (adopter migration; depends on 38).
+
+I verified desk-containers/35 is the real head by reading `statusgen/rowclass.go`:
+`rowEnvService = "service"`; it showed the Env grammar carries only a service name, so a row has
+no way to declare a variable name and brief 36 would have nothing to admit against until 35 adds
+the form. I also read `admittedRowEnv`'s doc comment in `statusgen/verifieradmission.go`
+("Out of scope, stated so it is not overclaimed"), which showed that rows inherit every variable
+it does not strip, so the gap the issue names exists on main today and needs no upstream fix
+first. The pacing item is 35's human decision, since 36 and 37 enforce whichever surface rule it
+picks; a single-user cell binds no file under the recommended option, just as
+DR-desk-containers-34 rules for role secrets.
+
+Tempting-but-wrong first step: having cellctl export the file path to every window first (37
+before 35's decision). Without the write-surface proof that would put one shared credential file
+in every role window of a single-user cell, which is the per-desk sprawl in one place.
 
 ## Shared conventions
 

@@ -1,0 +1,41 @@
+{
+  "test": "go test ./internal/forgelabels/ -count=1 -timeout 120s -run 'TestTransport|TestNewHTTPTransport'",
+  "control": {
+    "name": "CONTROL — follow redirects (the credential header would travel to the Location host)",
+    "file": "internal/forgelabels/http.go",
+    "old": "\tc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }",
+    "new": "\tc.CheckRedirect = nil"
+  },
+  "mutations": [
+    {
+      "name": "drop the default deadline (a nil or zero-Timeout client hangs on a stalled forge)",
+      "file": "internal/forgelabels/http.go",
+      "old": "\tif c.Timeout <= 0 {\n\t\tc.Timeout = defaultTimeout\n\t}",
+      "new": ""
+    },
+    {
+      "name": "bound only a nil client (an injected zero-Timeout client stays unbounded)",
+      "file": "internal/forgelabels/http.go",
+      "old": "\tif c.Timeout <= 0 {",
+      "new": "\tif hc == nil {"
+    },
+    {
+      "name": "override a deadline the caller set itself",
+      "file": "internal/forgelabels/http.go",
+      "old": "\tif c.Timeout <= 0 {",
+      "new": "\tif true {"
+    },
+    {
+      "name": "the documented default bound is not in force (zero = no deadline)",
+      "file": "internal/forgelabels/http.go",
+      "old": "var defaultTimeout = requestTimeout",
+      "new": "var defaultTimeout time.Duration"
+    },
+    {
+      "name": "ignore a body read error (a cut-off 200 reads as an empty label list)",
+      "file": "internal/forgelabels/http.go",
+      "old": "\tif err != nil {\n\t\treturn Response{Status: resp.StatusCode}, fmt.Errorf(\"%s %s: read response",
+      "new": "\tif false && err != nil {\n\t\treturn Response{Status: resp.StatusCode}, fmt.Errorf(\"%s %s: read response"
+    }
+  ]
+}

@@ -12,6 +12,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Read-through orchestration controls when private forge observations may be refreshed and returned. Accept the demonstrated admission, shared-gate and bounded-demand contract; fake storage proves neither durable coordination nor permission to expose a service."
 decision-trigger: spec
 decision-issue: 5399
+ruling: "https://github.com/medici-finance/assay/issues/5399#issuecomment-6923692736"
 issues: []
 schema: brief-v2
 version: 11

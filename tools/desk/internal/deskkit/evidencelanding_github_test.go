@@ -263,3 +263,74 @@ func TestSnapshotBlobTextRewritten(t *testing.T) {
 		})
 	}
 }
+
+// regression: SR-6680-3
+// TestLandingCreateRaceRefused: a landing whose validators read NO destination file, on the
+// native (non-snapshot) write path, refuses when the file has been created since that read —
+// even against a forge that accepts the overwrite (here, a server that never answers 422).
+// Before the create-only precondition the native write re-read the destination, found the new
+// file and updated it in place, citing the new file's own blob id.
+func TestLandingCreateRaceRefused(t *testing.T) {
+	const file = "docs/streams/verify-outcomes/example/01-new.json"
+	body := "created meanwhile\n"
+	oid := blobID(body, false)
+	var created, puts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/example-org/project/contents/"+file:
+			if created.Load() == 0 {
+				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]any{"message": "Not Found"})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"type": "file", "path": file, "sha": oid, "encoding": "base64", "content": ghB64Wrapped(body)})
+		case r.Method == http.MethodPost && r.URL.Path == "/graphql":
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"repository": map[string]any{
+				"object": map[string]any{"__typename": "Commit", "file": map[string]any{"mode": 0100644, "oid": oid}},
+			}}})
+		case r.Method == http.MethodPut && r.URL.Path == "/repos/example-org/project/contents/"+file:
+			// This forge accepts every PUT: the refusal under test is the code's, not a 422.
+			puts.Add(1)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"content": map[string]any{"sha": strings.Repeat("c", 40)},
+				"commit":  map[string]any{"sha": strings.Repeat("d", 40), "author": map[string]any{"name": "example-app"}},
+			})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusTeapot)
+		}
+	}))
+	defer srv.Close()
+	repo := ForgeRepo{Owner: "example-org", Name: "project"}
+	e := &evidenceLandingForge{Forge: &GitHubForge{Token: "stub", BaseURL: srv.URL, Client: srv.Client()}, repo: repo, file: file, branch: "evidence"}
+	if _, err := e.ReadFile(repo, ReadFileInput{File: file, Ref: "evidence"}); !IsForgeNotFound(err) {
+		t.Fatalf("validators' read: want absent, got %v", err)
+	}
+	created.Store(1) // another writer creates the destination after the validators' read
+	res, err := e.WriteFile(repo, WriteFileInput{File: file, Branch: "evidence", Content: []byte("{}\n"), Message: "outcome"})
+	if puts.Load() != 0 {
+		t.Fatalf("a file created after the validators' read was overwritten: %d PUT(s), result %+v", puts.Load(), res)
+	}
+	if err == nil || !IsRefused(err) || !strings.Contains(err.Error(), "create-only") {
+		t.Fatalf("want a create-only refusal, got %+v, %v", res, err)
+	}
+}
+
+// regression: SR-6680-3
+// TestCreateOnlyPrecondition: the backend-neutral precondition every backend runs after its
+// own fetch refuses a create-only write over a present file, and a create-only write that also
+// names a revision; it lets a create-only write over an absent file through.
+func TestCreateOnlyPrecondition(t *testing.T) {
+	in := WriteFileInput{File: "f", Branch: "b", ExpectAbsent: true}
+	if err := expectedSHAPrecondition(in, false, ""); err != nil {
+		t.Fatalf("absent file refused: %v", err)
+	}
+	if err := expectedSHAPrecondition(in, true, "abc"); err == nil || !IsRefused(err) {
+		t.Fatalf("present file accepted: %v", err)
+	}
+	in.ExpectedSHA = "abc"
+	if err := expectedSHAPrecondition(in, true, "abc"); err == nil || !IsRefused(err) {
+		t.Fatalf("contradictory preconditions accepted: %v", err)
+	}
+}

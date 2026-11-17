@@ -216,3 +216,16 @@ func TestReadyDeskDecidedCheckedAtFirstReadToo(t *testing.T) {
 		t.Errorf("the reviews were read %d time(s), want 1 — the first-read refusal comes before the re-read", n)
 	}
 }
+
+// Twin of TestFlipNoneVerdictFlips (issue #4870): both ready-flip verbs read a none line
+// the same way through the shared gate.
+// regression: #4870
+func TestReadyNoneVerdictFlips(t *testing.T) {
+	f := readyFake(t)
+	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody+"Undeclared-desk-decision: none — checked the diff\n")}
+	assertReadyFlipped(t, f)
+
+	f2 := readyFake(t)
+	f2.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody+"Undeclared-desk-decision: nonexistent-default chosen\n")}
+	assertReadyRefusedDeskDecided(t, f2, "undeclared desk decision")
+}

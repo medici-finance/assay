@@ -734,7 +734,7 @@ func (c *Cell) upTmux(cfg string, probes []upProbe, reconciled map[string]bool, 
 	rows := c.convergeRoles(probes, reconciled, c.roleGate(wait), open)
 	_ = exec.Command("tmux", "select-window", "-t", c.Session+":"+surfaceName(c.Name, "the-desk")).Run()
 	report(rows)
-	fmt.Printf("[cell] %s up: %s (config=%s)\n", c.Session, upWindowList(firstName, "", upRoleNames(probes)), cfg)
+	fmt.Printf("[cell] %s up: %s (config=%s)\n", c.Session, upWindowList(firstName, upRoleNames(probes)), cfg)
 	fmt.Printf("[cell] attach: tmux attach -t %s   ·   down: cellctl down %s\n", c.Session, c.Name)
 	if attach {
 		runForeground([]string{"tmux", "attach", "-t", c.Session}, os.Environ(), "")
@@ -773,10 +773,10 @@ func (c *Cell) upHerdr(cfg string, probes []upProbe, reconciled map[string]bool,
 	}
 	newWsID, newDefaultTab := w.ID, w.DefaultTab
 	if firstName != "" {
-		c.herdrWindow(c.Name+"-"+firstName, firstCmd, newWsID)
+		c.herdrWindow(herdrTabLabel(firstName), firstCmd, newWsID)
 	}
 	rows := c.convergeRoles(probes, reconciled, c.roleGate(wait), func(role string) error {
-		tab, pane, err := c.herdrWindowIDs(surfaceName(c.Name, role), c.paneRoleCmd(role, cfg, o), newWsID)
+		tab, pane, err := c.herdrWindowIDs(herdrTabLabel(role), c.paneRoleCmd(role, cfg, o), newWsID)
 		if err == nil {
 			c.noteSurface(role, surfaceReceipt{Cockpit: "herdr", Workspace: newWsID, Surface: tab, Pane: pane})
 		}
@@ -791,8 +791,8 @@ func (c *Cell) upHerdr(cfg string, probes []upProbe, reconciled map[string]bool,
 		}
 	}
 	report(rows)
-	fmt.Printf("[cell] %s up in herdr: %s (config=%s)\n", c.Name, upWindowList(firstName, c.Name+"-", upRoleNames(probes)), cfg)
-	fmt.Printf("[cell] each window is the tab labelled <cell>-<role>   ·   down: cellctl down %s\n", c.Name)
+	fmt.Printf("[cell] %s up in herdr: %s (config=%s)\n", c.Name, upWindowList(firstName, upRoleNames(probes)), cfg)
+	fmt.Printf("[cell] each window is the tab labelled <role> in the %s workspace   ·   down: cellctl down %s\n", c.Name, c.Name)
 	return rows
 }
 
@@ -918,11 +918,11 @@ func (c *Cell) upOrca(cfg string, roles []string, probes []upProbe, reconciled m
 
 // upWindowList is the summary line's window list: "<prefix><first> +<roles>" when there is a
 // first (deskd) window, else the role windows alone — a cell with no deskd names no first window.
-func upWindowList(firstName, prefix string, roles []string) string {
+func upWindowList(firstName string, roles []string) string {
 	if firstName == "" {
 		return strings.Join(roles, " ")
 	}
-	return prefix + firstName + " +" + strings.Join(roles, " ")
+	return firstName + " +" + strings.Join(roles, " ")
 }
 
 func orcaTerminalVerb() (string, bool) {

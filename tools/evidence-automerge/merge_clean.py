@@ -65,6 +65,24 @@ def marker_values(body, pattern, skip_fenced=False):
     return values
 
 
+# Same rule as deskkit's undeclaredNoneRe: a value recording that the reviewer
+# looked and found nothing, alone or before a separator and free explanation.
+UNDECLARED_NONE = r"none(?:[ \t]+(?:found|observed|identified))?(?:[ \t]*(?:[.,;:(\u2026\u2014\u2013]|-[ \t]).*)?"
+
+
+def undeclared_values(body):
+    # Mirrors deskkit.UndeclaredDeskDecisionLines: a none value is dropped and an
+    # empty value still holds.
+    values = []
+    for value in marker_values(body, r"Undeclared-desk-decision:[ \t]*(.*)"):
+        value = value.strip(GO_SPACE)
+        if not value:
+            values.append("(empty value)")
+        elif not re.fullmatch(UNDECLARED_NONE, value, re.I | re.ASCII):
+            values.append(value)
+    return values
+
+
 def declaration_clear(body, labels):
     # Fences affect section headings only. Keep the raw section contents:
     # the canonical declaration parser reads every numbered item in it.
@@ -147,7 +165,7 @@ def reviewed(reviews, head, body="", labels=()):
         hold_security_lane = sec_pass or sec_fail
         lane = "security" if hold_security_lane else "correctness"
         if current:
-            if marker_values(text, r"Undeclared-desk-decision:[ \t]*(.+)"):
+            if undeclared_values(text):
                 holds[lane] = True
             elif hold_security_lane or state in ("APPROVED", "CHANGES_REQUESTED"):
                 holds[lane] = False
