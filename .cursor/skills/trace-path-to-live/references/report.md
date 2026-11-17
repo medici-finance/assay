@@ -3,8 +3,9 @@
 
 ### Plain-language titles and counts
 
-Use these visible headings: **Progress over the last month**, **Work still to finish**,
-**What to do next**, **Longest sequence of dependent work**, **Work dependencies**, and
+Use these visible headings: **Progress over the last month**, **Banked, not recorded**,
+**Work burned and scope added**, **Work still to finish**, **What to do next**,
+**Longest sequence of dependent work**, **Work dependencies**, and
 **What was checked and what is unknown**. Technical terms may appear in explanatory details,
 not unexplained titles, chart legends or headline cards. In particular, do not label cards
 "combined closure", "full-service" or "path points". Name each confirmed outcome in ordinary
@@ -14,11 +15,20 @@ Distinguish **Total work** (all distinct briefs in scope, including completed wo
 **All work remaining** (every brief whose status is not `done`). A `verified` brief is
 **Awaiting final approval** and still counts as remaining. Do not equate dependency satisfaction
 or a zero path weight with full completion. Show weighted-path scores only in an optional
-method explanation as relative work estimates, explicitly not days or brief counts.
+method explanation and in **Work burned and scope added**, as relative work estimates,
+explicitly not days or brief counts.
+
+For each confirmed target also show **Prerequisites satisfied x of n** beside **Not done y of
+n**. `n` is the distinct briefs in that target's prerequisite closure, across roots, without
+the target itself. `x` counts those recorded `verified` or `done`, the states the launch
+reader treats as satisfying a dependency. `y` counts those not `done`. Say once that a
+`verified` prerequisite no longer holds its dependents and still counts as remaining. A
+prerequisite whose status could not be read makes `x` a lower bound: say so beside the count.
 
 ### Movement boards and focus — after monthly progress
 
-Keep **Progress over the last month** first and visible. Follow it with **What moved each
+Keep **Progress over the last month** first and visible, with **Banked, not recorded** and
+**Work burned and scope added** directly after it. Follow them with **What moved each
 day**, **What moved over four weeks**, and **Where to focus now**. Queue sizes measure the
 amount of work in each state; movement records events. A flat queue does not prove that no
 work happened.
@@ -91,7 +101,7 @@ impact from commit/PR volume.
 ### Progress over the last month — first substantive content
 
 Keep the month-long queue chart visible as the first substantive section, before both movement
-tables and focus.
+tables and focus. A stall statement, when one applies, is a short banner above it.
 It has **six lines**, a labelled legend and an accessible table of the same values:
 
 | Line | Count |
@@ -138,6 +148,12 @@ Explain that these are historical counts for today's selected work; newly author
 make both total and remaining rise. This is not a historical reconstruction of the entire plan.
 Disclose other lifecycle states; include them in remaining when not `done`, and do not silently
 assign them to one of the four named stages. No projection or ideal burn line is required.
+
+### Stall, banked evidence, burn and shared obstacles
+
+Read [Progress measures](progress.md) for four views this page also carries: the stall
+statement above the chart, **Banked, not recorded**, **Work burned and scope added**, and
+**Shared obstacles** with their ranking. That file also defines their sources and unknowns.
 
 ### Progress toward each outcome
 
@@ -224,11 +240,12 @@ Write ONE self-contained HTML page: inline CSS and JS, no external fetch, no CDN
 to the progress chart and plain-language counts above, it contains:
 
 - the objective and the confirmed targets;
-- the visible monthly progress chart first, then separate daily and four-week movement tables;
+- the stall statement when it applies, then the visible monthly progress chart, the banked
+  view and the burn and scope view, then separate daily and four-week movement tables;
 - outcome progress, a comparable previous-report change view and classified blockers as above;
 - the critical path, overall and per target;
-- the ranked moves;
-- the graph, rendered from only nodes whose status is **not `done`**:
+- the ranked moves, standing obstacles first;
+- the graph, rendered from only nodes whose status is **not `done`**, plus standing obstacles:
   - each node shows its status, gate, eligibility, PR and claim badges;
   - the critical path is highlighted;
   - exclude `done` nodes and their edges from rendering, search, click-isolation and layout;
