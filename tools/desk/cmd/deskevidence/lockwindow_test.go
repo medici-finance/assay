@@ -241,14 +241,23 @@ func holdLockFile(t *testing.T, dir, name string) {
 	})
 }
 
-// refusedRunTime runs one landing on root against held locks with lockWait shortened to wait,
-// asserts the fail-closed refusal (exit 6, one audit line, no write) and returns how long the
-// run took.
-func refusedRunTime(t *testing.T, f *fakeForge, root, evidencePath string, wait time.Duration) time.Duration {
+// lockGrant is one lock acquisition a run made and the wait it was granted.
+type lockGrant struct {
+	lock string
+	wait time.Duration
+}
+
+// refusedRunGrants runs one landing on root against held locks with lockWait shortened to wait,
+// asserts the fail-closed refusal (exit 6, one audit line, no write) and returns every lock
+// acquisition the run made with the wait each was granted.
+func refusedRunGrants(t *testing.T, f *fakeForge, root, evidencePath string, wait time.Duration) []lockGrant {
 	t.Helper()
 	old := lockWait
 	lockWait = wait
 	t.Cleanup(func() { lockWait = old })
+	var grants []lockGrant
+	lockGranted = func(lock string, w time.Duration) { grants = append(grants, lockGrant{lock, w}) }
+	t.Cleanup(func() { lockGranted = nil })
 	before := len(auditEntries(t))
 	start := time.Now()
 	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
@@ -265,7 +274,37 @@ func refusedRunTime(t *testing.T, f *fakeForge, root, evidencePath string, wait 
 	if n := len(auditEntries(t)) - before; n != 1 {
 		t.Fatalf("wrote %d audit lines, want exactly 1", n)
 	}
-	return elapsed
+	// A floor, never a ceiling: the run did wait for the busy lock. How much longer a loaded
+	// runner takes is not evidence of a second wait (#6738); the grants below are.
+	if elapsed < wait {
+		t.Fatalf("refused after %s, before its %s wait ran out", elapsed, wait)
+	}
+	return grants
+}
+
+// assertOneWait checks the run's waits on the busy locks add up to ONE lockWait by counting
+// them: the first busy acquisition may be granted at most wait, and every later one is
+// granted nothing (one attempt, no wait), since a refused acquisition spent its whole grant.
+func assertOneWait(t *testing.T, grants []lockGrant, busy map[string]bool, wait time.Duration) {
+	t.Helper()
+	waited := 0
+	for _, g := range grants {
+		if !busy[g.lock] {
+			continue
+		}
+		if g.wait > wait {
+			t.Errorf("%s lock granted %s, more than the run's one lockWait %s", g.lock, g.wait, wait)
+		}
+		if waited > 0 && g.wait > 0 {
+			t.Errorf("%s lock granted %s after a busy lock already spent the budget: the run waits "+
+				"twice (grants %v; the documented bound is one lockWait in total)", g.lock, g.wait, grants)
+		}
+		waited++
+	}
+	if waited < 2 {
+		t.Fatalf("saw %d acquisitions of a busy lock (grants %v), want the refused one and the "+
+			"refusal row's append: the check cannot see a second wait", waited, grants)
+	}
 }
 
 // regression: #5023
@@ -279,10 +318,8 @@ func TestAuditWaitIsBounded(t *testing.T) {
 	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | x | y |\n")
 	f.setFile(evidencePath, "old")
 	const wait = 400 * time.Millisecond
-	if elapsed := refusedRunTime(t, f, root, evidencePath, wait); elapsed > wait+wait/2 {
-		t.Fatalf("refused after %s, want at most %s: the run waited on the audit lock more than once "+
-			"(the documented bound is one lockWait in total)", elapsed, wait+wait/2)
-	}
+	grants := refusedRunGrants(t, f, root, evidencePath, wait)
+	assertOneWait(t, grants, map[string]bool{"audit": true}, wait)
 }
 
 // regression: #5023
@@ -298,8 +335,6 @@ func TestPrepRefusalWaitsOnce(t *testing.T) {
 	holdPrepLock(t, root)
 	holdLockFile(t, stateDir, "audit.lock")
 	const wait = 400 * time.Millisecond
-	if elapsed := refusedRunTime(t, f, root, evidencePath, wait); elapsed > wait+wait/2 {
-		t.Fatalf("refused after %s, want at most %s: the preparation-lock wait and the audit-lock "+
-			"wait were not one shared lockWait", elapsed, wait+wait/2)
-	}
+	grants := refusedRunGrants(t, f, root, evidencePath, wait)
+	assertOneWait(t, grants, map[string]bool{"prep": true, "audit": true}, wait)
 }

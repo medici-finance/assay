@@ -158,26 +158,19 @@ func transportHost(raw string) (host string, networked bool, err error) {
 	return h, true, nil
 }
 
-// redactURL drops any userinfo from an http(s) URL before it is quoted in a message: an https
-// origin can carry a credential in it. An SSH URL's user (`git@`) is a login name, not a
-// secret, and is kept so the message names the URL git actually resolved.
+// redactURL drops any userinfo from a remote URL before it is quoted in a message: an https
+// origin can carry a credential in it, and so can an ssh or scp-like one. Each '/'-segment
+// goes through deskkit.RedactRemoteUserinfo, except one whose whole userinfo is the
+// conventional SSH login `git`, which is not a secret and is kept so the message names the
+// URL git actually resolved.
 func redactURL(u string) string {
-	lower := strings.ToLower(u)
-	if !strings.HasPrefix(lower, "https://") && !strings.HasPrefix(lower, "http://") {
-		return u
-	}
-	if i := strings.Index(u, "://"); i >= 0 {
-		rest := u[i+3:]
-		slash := strings.IndexByte(rest, '/')
-		auth := rest
-		if slash >= 0 {
-			auth = rest[:slash]
-		}
-		if at := strings.LastIndexByte(auth, '@'); at >= 0 {
-			return u[:i+3] + "<redacted>@" + rest[at+1:]
+	segs := strings.Split(strings.TrimSpace(u), "/")
+	for i, seg := range segs {
+		if !strings.HasPrefix(seg, "git@") || strings.Count(seg, "@") != 1 {
+			segs[i] = deskkit.RedactRemoteUserinfo(seg)
 		}
 	}
-	return u
+	return strings.Join(segs, "/")
 }
 
 // transportRefusal is the ONE refusal shape for a role worktree whose App transport could not

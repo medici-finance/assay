@@ -28,9 +28,8 @@ var localRemoteReadAllowed = map[string]struct {
 	reads   int
 	decides string
 }{
-	"cmd/deskclaim-ref/gogit.go:gogitOriginURL":      {1, "claim host; go-git refusal falls through to native git"},
+	"cmd/deskclaim-ref/gogit.go:gogitOriginURL":      {1, "claim forge host; the slug goes through OriginRepoSlug"},
 	"cmd/deskgit/deskgit.go:fetchOriginURL":          {1, "in-process fetch gate on the URL it connects to"},
-	"cmd/deskpushguard/main.go:deriveRepo":           {1, "hook fallback when git passes no remote URL"},
 	"internal/deskkit/gitread.go:CheckoutGitRead":    {1, "in-process fetch gate on the URL it connects to"},
 	"internal/deskkit/preflight.go:landingRemoteURL": {1, "landing host"},
 }

@@ -21,6 +21,14 @@ var pinArgs = [][]string{
 	{"config", "--worktree", "--replace-all", "credential.helper", ""},
 }
 
+// pinTo is the worktree pin shape with url in place of the repair's own URL.
+func pinTo(url string) [][]string {
+	return [][]string{
+		{"config", "--worktree", "--replace-all", "remote.origin.url", ""},
+		{"config", "--worktree", "--add", "remote.origin.url", url},
+	}
+}
+
 func gitAll(t *testing.T, dir string, cmds [][]string) {
 	t.Helper()
 	for _, args := range cmds {
@@ -57,6 +65,32 @@ func TestOriginSlugScopeRefused(t *testing.T) {
 		{"pin plus insteadOf", true, false, append(append([][]string{}, pinArgs...),
 			wt("url.https://github.com/other/.insteadOf", "https://github.com:443/owner/"))},
 		{"pin plus include", true, false, append(append([][]string{}, pinArgs...), wt("include.path", "steer.cfg"))},
+		{"pin over two local urls", true, false, append([][]string{
+			{"config", "--add", "remote.origin.url", "https://github.com/owner/repo.git"}}, pinArgs...)},
+		{"pin other host", true, false, pinTo("https://steer.example.invalid:443/owner/repo.git")},
+		{"pin longer path", true, false, pinTo("https://github.com:443/steer/owner/repo.git")},
+		// Hosts that fold onto an ASCII host only under Unicode case mapping (U+0130, U+212A).
+		{"pin lookalike host", true, false, pinTo("https://g\u0130thub.com:443/owner/repo.git")},
+		{"pin lookalike, ssh origin", true, false, append([][]string{
+			{"remote", "set-url", "origin", "git@github.com:owner/repo.git"}},
+			pinTo("https://G\u0130THUB.com/owner/repo.git")...)},
+		{"pin Kelvin-sign host", true, false, append([][]string{
+			{"remote", "set-url", "origin", "https://bitbucket.org/owner/repo.git"}},
+			pinTo("https://bitbuc\u212aet.org/owner/repo.git")...)},
+		{"ssh origin, pin other host", true, false, append([][]string{
+			{"remote", "set-url", "origin", "git@github.com:owner/repo.git"}},
+			pinTo("https://steer.example.invalid/owner/repo.git")...)},
+		{"pin lookalike scp host", true, false, pinTo("git@g\u0130thub.com:owner/repo")},
+		// An ssh alias stands for a network host; a pin with no host is not that host.
+		{"alias pin without host", true, false, append([][]string{
+			{"remote", "set-url", "origin", "example-alias:owner/repo"}},
+			pinTo("file:///owner/repo.git")...)},
+		{"alias pin local path", true, false, append([][]string{
+			{"remote", "set-url", "origin", "example-alias:owner/repo"}},
+			pinTo("/owner/repo.git")...)},
+		// A pin may move ssh to https; it may not move to a cleartext transport.
+		{"pin cleartext http", true, false, pinTo("http://github.com/owner/repo.git")},
+		{"pin git protocol", true, false, pinTo("git://github.com/owner/repo.git")},
 		{"include", false, true, [][]string{{"config", "include.path", "steer.cfg"}}},
 		{"includeIf", false, false, [][]string{{"config", "includeIf.gitdir:/.path", "steer.cfg"}}},
 		{"activation grammar", false, true, [][]string{{"config", "extensions.worktreeConfig", "maybe"}}},
@@ -93,6 +127,8 @@ func TestOriginSlugPinAccepted(t *testing.T) {
 	}{
 		{"https origin pinned", pinArgs},
 		{"ssh origin pinned", append([][]string{{"remote", "set-url", "origin", "git@github.com:owner/repo.git"}}, pinArgs...)},
+		// An ssh alias only ssh resolves: the pin's host cannot be compared, its path still is.
+		{"ssh alias pinned", append([][]string{{"remote", "set-url", "origin", "example-alias:owner/repo"}}, pinArgs...)},
 		{"identity only", nil},
 	}
 	for _, tc := range cases {
