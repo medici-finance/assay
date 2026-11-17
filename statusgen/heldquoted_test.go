@@ -370,6 +370,7 @@ func TestHeldQuotedFencedWit(t *testing.T) {
 	}{
 		{"fenced hold before the state", fenced("```", "HELD pass exit=0"), true},
 		{"tilde-fenced hold", fenced("~~~", "HELD pass exit=0"), true},
+		{"four-backtick fenced hold", fenced("````", "HELD pass exit=0"), true},
 		{"fenced quoted hold", fenced("```", `"tenant b: could-not-check, no grant" pass exit=0`), true},
 		{"fenced row with no hold", fenced("```", "pass exit=0"), false},
 	} {
