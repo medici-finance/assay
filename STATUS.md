@@ -153,7 +153,7 @@ _Held by per-stream caps: 14 brief(s) across 1 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 909f35841 2026-11-17T02:36:20Z_
+_last regen: 55701ae60 2026-11-17T03:09:29Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -174,7 +174,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 909f35841 2026-11-17T02:36:20Z_
+_last regen: 55701ae60 2026-11-17T03:09:29Z_
 
 **Progress:** 36/99 brief items done.
 
@@ -347,7 +347,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 28 [exec:strong] | implemented | 1010 | 0 | 34h | worker | fix, cite medici-finance/assay#1735 | — | — |
 | desk-tools | 31 [exec:strong] | implemented | 1010 | 0 | 34h | worker | fix, cite medici-finance/assay#1927 | — | — |
 | desk-tools | 36 [exec:strong] | implemented | 1010 | 0 | 34h | worker | fix, cite #2688 | — | — |
-| desk-tools | 56 [exec:strong] | implemented | 1010 | 0 | 31h | worker | fix, cite medici-finance/assay#6659 | — | — |
+| desk-tools | 56 [exec:strong] | implemented | 1010 | 0 | 32h | worker | fix, cite medici-finance/assay#6659 | — | — |
 | desktools-v2 | 74 [exec:strong] | implemented | 1010 | 0 | 34h | worker | fix, cite medici-finance/assay#2715 | — | — |
 | forge-gitlab | 18 [exec:strong] | implemented | 1010 | 0 | 34h | worker | fix, cite medici-finance/assay#5782 | — | — |
 | harness-portability | 15 [exec:strong] | implemented | 1010 | 0 | 34h | worker | fix, cite medici-finance/assay#1927 | — | — |
