@@ -317,3 +317,194 @@ func muharTestBinary(t *testing.T) string {
 	}
 	return bin
 }
+
+// cdFixture lays out a checkout with two modules: desk (the spec's root) and
+// other (the module a `cd ../other && go test …` suite runs in), mirroring a
+// tools/desk spec whose suite runs in a sibling module. It returns the
+// checkout and the spec root.
+func cdFixture(t *testing.T) (string, string) {
+	t.Helper()
+	repo := t.TempDir()
+	for _, dir := range []string{".git", "desk", "other"} {
+		if err := os.MkdirAll(filepath.Join(repo, dir), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeFixture(t, filepath.Join(repo, "desk", "go.mod"), "module desk\n\ngo 1.21\n")
+	writeFixture(t, filepath.Join(repo, "desk", "d.go"), "package desk\n")
+	writeFixture(t, filepath.Join(repo, "other", "go.mod"), "module other\n\ngo 1.21\n")
+	writeFixture(t, filepath.Join(repo, "other", "p.go"), "package other\nfunc Value() int { return 1 }\nfunc Other() int { return 2 }\nfunc Third() int { return 4 }\n")
+	writeFixture(t, filepath.Join(repo, "other", "p_test.go"), "package other\nimport \"testing\"\nfunc TestValue(t *testing.T) { if Value() != 1 || Other() != 2 { t.Fatal(\"value\") } }\n")
+	return repo, filepath.Join(repo, "desk")
+}
+
+func runCdSpec(t *testing.T, root, test string) (string, int) {
+	t.Helper()
+	spec := map[string]any{
+		"root":    root,
+		"test":    test,
+		"control": Mutation{Name: "positive-control", File: "../other/p.go", Old: "return 1", New: "return 0"},
+		"mutations": []Mutation{
+			{Name: "other-mutant", File: "../other/p.go", Old: "return 2", New: "return 3"},
+			// Proves the build compiles the mutated package itself: a build
+			// of any other package would pass it, and its suite would then
+			// count it CAUGHT.
+			{Name: "bad-build", File: "../other/p.go", Old: "return 4", New: "return missingValue"},
+		},
+	}
+	body, err := json.Marshal(spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	specPath := filepath.Join(t.TempDir(), "spec.json")
+	writeFixture(t, specPath, string(body))
+	output, err := exec.Command(muharTestBinary(t), "-j", "1", "-spec", specPath).CombinedOutput()
+	code := 0
+	if err != nil {
+		exitErr, ok := err.(*exec.ExitError)
+		if !ok {
+			t.Fatalf("muhar did not run: %v\n%s", err, output)
+		}
+		code = exitErr.ExitCode()
+	}
+	return string(output), code
+}
+
+// A suite that starts `cd <dir> &&` runs in <dir>, and so must each mutant's
+// build: built from the spec root instead, a mutant in another module is
+// "outside main module", the positive control cannot be validated, and the
+// whole run is discarded as HARNESS BROKEN.
+//
+// regression: #4117
+func TestBuildFollowsLeadingCd(t *testing.T) {
+	needGo(t)
+	for _, test := range []string{
+		"cd ../other && go test -count=1 ./...",
+		"cd ../other && GOWORK=off go test -count=1 .",
+		// The shape of the spec that found the defect: an assignment whose
+		// value is a command substitution, and a quoted test filter.
+		"cd ../other && HOME=$(mktemp -d) KUBECONFIG=/dev/null go test -count=1 -timeout 60s -run '^(TestValue|TestNone)$' .",
+	} {
+		_, root := cdFixture(t)
+		out, code := runCdSpec(t, root, test)
+		if code != 0 || !strings.Contains(out, "Harness healthy: baseline GREEN, positive control CAUGHT.") || !strings.Contains(out, "COULD_NOT_MUTATE bad-build") || !strings.Contains(out, "Totals: 1 caught, 0 NOT CAUGHT, 1 could-not-mutate.") {
+			t.Errorf("suite %q: the mutant build did not follow the leading cd (exit %d)\n%s", test, code, out)
+		}
+	}
+}
+
+// A compound that is not exactly `cd <dir> && go test …` is not followed: the
+// build runs from the spec root as before, so the cross-module control does
+// not build and the run is discarded, never judged from the wrong directory.
+//
+// regression: #4117
+func TestBuildRefusesCompoundCd(t *testing.T) {
+	needGo(t)
+	_, root := cdFixture(t)
+	out, code := runCdSpec(t, root, "cd ../other; go test -count=1 ./...")
+	if code != 2 || !strings.Contains(out, "positive control could not be validated") {
+		t.Fatalf("a `;` compound was followed (exit %d)\n%s", code, out)
+	}
+}
+
+// regression: #4117
+func TestLeadingCd(t *testing.T) {
+	repo, base := cdFixture(t)
+	outside := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(base, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(repo, "escape")); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	other := filepath.Join(repo, "other")
+	escapeRel, err := filepath.Rel(base, outside)
+	if err != nil {
+		t.Fatal(err)
+	}
+	escapeRel = filepath.ToSlash(escapeRel)
+	for _, tc := range []struct{ test, dir, rest string }{
+		{"cd ../other && go test ./...", other, "go test ./..."},
+		{"cd\t../other\t&&\tgo test .", other, "go test ."},
+		{"cd sub && A=1 B='x y' go test -run '^(X|Y)$' ./...", filepath.Join(base, "sub"), "A=1 B='x y' go test -run '^(X|Y)$' ./..."},
+		{"cd ../other && HOME=$(mktemp -d) go test .", other, "HOME=$(mktemp -d) go test ."},
+		{"cd . && go test ./...", base, "go test ./..."},
+	} {
+		dir, rest, ok := leadingCd(base, tc.test)
+		if !ok || dir != tc.dir || rest != tc.rest {
+			t.Errorf("leadingCd(%q) = %q, %q, %v; want %q, %q", tc.test, dir, rest, ok, tc.dir, tc.rest)
+		}
+	}
+	// The derived build keeps the suite's own environment and flags.
+	if _, rest, ok := leadingCd(base, "cd ../other && GOWORK=off go test -tags=t1 ./... -count=1"); !ok {
+		t.Fatal("cd with an environment prefix was refused")
+	} else if got, ok := goBuildFromTest(rest, "."); !ok || got != "GOWORK='off' 'go' 'test' '-vet=off' '-c' '-o' "+shellQuote(os.DevNull)+" '-tags=t1' '.'" {
+		t.Errorf("derived build after cd = %q, %v", got, ok)
+	}
+	refused := []string{
+		// The shell would leave for /sub; joined to the root it would name the
+		// root's own sub, so an absolute directory is never followed.
+		"cd /sub && go test ./...",
+	}
+	// A directory whose name the shell would expand is never followed, even
+	// when a directory of that literal name exists.
+	if err := os.MkdirAll(filepath.Join(base, "a$b"), 0o755); err == nil {
+		refused = append(refused, "cd a$b && go test ./...")
+	}
+	for _, test := range append(refused,
+		"go test ./...",                         // no cd: unchanged behaviour
+		"GOWORK=off go test ./...",              // no cd
+		"cd "+other+" && go test ./...",         // absolute
+		"cd "+escapeRel+" && go test ./...",     // escapes the checkout
+		"cd ../escape && go test ./...",         // escapes through a symlink
+		"cd ../missing && go test ./...",        // does not exist
+		"cd ../other/p.go && go test ./...",     // not a directory
+		"cd ~ && go test ./...",                 // tilde
+		"cd $HOME && go test ./...",             // expansion
+		"cd '../other' && go test ./...",        // quoted
+		"cd ../ot* && go test ./...",            // glob
+		"cd ../other;go test ./...",             // not &&
+		"cd ../other; go test ./...",            // not &&
+		"cd ../other &&go test ./...",           // malformed
+		"cd ../other || go test ./...",          // not &&
+		"cd ../other && go vet ./...",           // not go test
+		"cd ../other && cd .. && go test ./...", // a second cd
+		"cd ../other && go test ./... && rm x",  // chained
+		"cd ../other && go test ./... ; rm x",   // chained
+		"cd ../other && go test ./... | tee l",  // piped
+		"cd ../other && go test ./... > log",    // redirected
+		"cd ../other && go test ./... &",        // backgrounded
+		"cd ../other && go test `pwd`",          // backtick
+		"cd ../other && go test $(cd /; pwd)",   // chain inside a substitution
+		"cd ../other && go test \"$(pwd)\"",     // substitution in double quotes
+		"cd ../other && (go test ./...)",        // subshell
+		"cd ../other && go test (x)",            // subshell
+		"cd ../other && go test 'unterminated",  // bad quote
+		"cd ../other && go test $(pwd",          // unbalanced
+		"cd ../other && go test \\; x",          // escape
+		"cd ../other && go test ./...\nrm x",    // newline
+		"cd ../other\n&& go test ./...",         // newline
+		"cd ../other && \"go\" test ./...",      // quoted command word
+	) {
+		if dir, rest, ok := leadingCd(base, test); ok {
+			t.Errorf("leadingCd(%q) = %q, %q; want refused", test, dir, rest)
+		}
+	}
+	// With no checkout above it (a parallel worker's copy), the bound is the
+	// spec root itself.
+	bare := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(bare, "root", "in"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(bare, "sibling"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, ok := leadingCd(filepath.Join(bare, "root"), "cd in && go test ."); !ok {
+		t.Error("cd into the root's own subdirectory was refused")
+	}
+	if checkoutRoot(bare) == bare {
+		if _, _, ok := leadingCd(filepath.Join(bare, "root"), "cd ../sibling && go test ."); ok {
+			t.Error("cd out of a root with no checkout above it was followed")
+		}
+	}
+}
