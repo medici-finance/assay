@@ -1081,6 +1081,7 @@ func TestVflipMergeNotJudged(t *testing.T) {
 	o := vfDefaults()
 	o.evidence = "<!-- appended at implementation time -->"
 	o.author = vfMailWorker
+	o.outcome = "none" // the fixture would commit it as the worker; the verifier commits it below
 	root, readme := vfFixture(t, o)
 	runGitEnv(t, root, nil, "checkout", "-q", "-b", "side")
 	vfAppend(t, root, "\n\n"+witnessTableFor(vfRow1, vfRow2)+"\n\n"+vfPass)
@@ -1093,6 +1094,7 @@ func TestVflipMergeNotJudged(t *testing.T) {
 	vfGit(t, root, vfMailWorker, "merge", "-q", "--no-ff", "--no-edit", "side")
 	vfAppend(t, root, "\n\nverifier note: re-read at "+vfSHA+", nothing changed.")
 	vfCommit(t, root, vfMailVerifier)
+	vfOutcomeCommitted(t, root, "verified", vfSHA, "2026-08-13T12:00:00Z")
 	vfExpect(t, root, readme, verifyflipExitOK, "flipped")
 }
 
