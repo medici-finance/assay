@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run '^Test(FlipShaFormAgree|TransitionMixedForms|TransitionWitnessTree|EvidenceOnlyTreeClean|EvidenceOnlyNeedsEvidence|EvidenceConflictDirty|TransitionThenBracket|VerifyrunRowsTransitionSplitRunsDoNotClose|VerifyrunRowsMixedAssembly|MixedTransitionProductionFlow|ShRunnerCellsAgree|ShCheckVerified[A-Za-z]*|ShFlip[A-Za-z]*)$' -count=1 -timeout 300s",
+  "test": "go test . -run '^Test(FlipShaFormAgree|TransitionMixedForms|TransitionWitnessTree|EvidenceOnlyTreeClean|EvidenceOnlyNeedsEvidence|EvidenceConflictDirty|TransitionThenBracket|VerifyrunRowsTransitionSplitRunsDoNotClose|VerifyrunRowsMixedAssembly|MixedTransitionProductionFlow|ShRunnerCellsAgree|ShCloseStampAgrees|ShCheckVerified[A-Za-z]*|ShFlip[A-Za-z]*)$' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — the pre-#4299 sha check (every row must name the first row's sha exactly)",
     "file": "runnercell.go",
@@ -72,6 +72,18 @@
       "file": "runnercell.go",
       "old": "\t\tif agree == nil && errors.As(e, &r) && r.runner {",
       "new": "\t\tif false && agree == nil && errors.As(e, &r) && r.runner {"
+    },
+    {
+      "name": "the human close stamps row 0's Runner cell verbatim again, not the run's agreed reading (#6767)",
+      "file": "verifyissues.go",
+      "old": "\t\t\tdate, runner = rows[0][0], p.Cell",
+      "new": "\t\t\tdate, runner = rows[0][0], rows[0][1]"
+    },
+    {
+      "name": "the agreed close reading drops runnerCellsAgree's tail (the principal is lost) (#6767)",
+      "file": "verifyflip.go",
+      "old": "Cell: login + \" @ \" + sha + tail,",
+      "new": "Cell: login + \" @ \" + sha,"
     },
     {
       "name": "transitionWitnessTree drops git's resolution of the short token",

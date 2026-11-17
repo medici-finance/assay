@@ -22,7 +22,7 @@ var runnerRowsCallRe = regexp.MustCompile(`\bflipDateRunnerRows\(`)
 // it does not judge runner agreement on its own.
 var runnerRowReaders = map[string]string{
 	"verifyflip.go":         "flipReadRun judges through runnerCellsAgree (check-verified reads its refusals, latestPassRunnerRefusal); flipReadLooseRun reads cells with no <login> @ <sha>; latestPassSpan counts rows after the verdict",
-	"verifyissues.go":       "evidenceVerifierInfo reads row 0 only after flipReadRun accepted the run",
+	"verifyissues.go":       "evidenceVerifierInfo reads row 0's Date only (flipReadRun accepted one date for the run); its runner is flipPass.Cell, the runnerCellsAgree reading, never a row's cell",
 	"heldscope.go":          "reads Date cells and row presence; no Runner judgement",
 	"coverage_crossrepo.go": "reads one qualifier per row (an uncommitted-source mark); no agreement judgement",
 }

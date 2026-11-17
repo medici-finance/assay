@@ -1162,8 +1162,14 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 // Rows are read by flipDateRunnerRows: Date and Runner counted from the RIGHT
 // of each data row (a command's unescaped | cannot shift them), past any
 // column the header places after Runner (a fail-first table's Base), in
-// tables whose header names Date and Runner. The Runner cell is taken whole,
-// qualifiers included.
+// tables whose header names Date and Runner. On a run flipReadRun reads, the
+// runner is the run's agreed reading (flipPass.Cell: `<login> @ <sha>` plus
+// the tail runnerCellsAgree returns, the principal kept), never row 0's cell:
+// rows may differ in descriptive qualifiers and in whether they carry the
+// identity source, so row 0 does not speak for the run, and this stamp never
+// claims more than verifyflip's (#6767). Only the date is row 0's, and every
+// row of such a run carries the same date. A loose run's Runner cell is taken
+// whole, qualifiers included, as flipReadLooseRun reads one cell for every row.
 func evidenceVerifierInfo(evidence string) (date, runner string) {
 	lines, start, end, err := latestPassSpan(evidence)
 	if err != nil {
@@ -1172,7 +1178,7 @@ func evidenceVerifierInfo(evidence string) (date, runner string) {
 	if _, err := latestPassRunFrom(lines, start, end, func(from int) error {
 		if p, err := flipReadRun(lines, start, from, end, nil); err == nil {
 			rows, _ := flipDateRunnerRows(strings.Split(p.Run, "\n"))
-			date, runner = rows[0][0], rows[0][1]
+			date, runner = rows[0][0], p.Cell
 			return nil
 		}
 		d, r, err := flipReadLooseRun(lines, from, end)

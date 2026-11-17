@@ -273,3 +273,46 @@ func TestShAutoflipWitnessGate(t *testing.T) {
 		t.Errorf("a PASS whose command is not the Verify row's dropped the hold: %v (%s)", got.Outcome, got.Reason)
 	}
 }
+
+// regression: #6767
+func TestShCloseStampAgrees(t *testing.T) {
+	// A hand row first: it omits the identity source the tool rows record
+	// and carries a descriptive qualifier no other row has. The human close
+	// (evidenceVerifierInfo) and verifyflip must read one login, one sha and
+	// one qualifier list from it; the close keeps only the principal more.
+	ev := "### Verification — 2026-08-13\n\n" + shHandHead +
+		shHandRow("1", "pass exit=0", "2026-08-13", shHandQuals) + "\n" +
+		shHandRow("2", "pass exit=1", "2026-08-13", shHandQuals) + "\n\n" +
+		witnessTableFor(shQual(vfRow1, shToolQuals), shQual(vfRow2, shToolQuals)) + "\n\n" +
+		"**VERIFY: PASS** — rows 1-2 pass."
+	p, err := flipLatestPass(ev)
+	if err != nil || p.StampErr != nil {
+		t.Fatalf("verifyflip refuses the run: %v / %v", err, p.StampErr)
+	}
+	date, runner := evidenceVerifierInfo(ev)
+	if date != "2026-08-13" || runner != vfRunner+" @ "+vfSHA+shPrincipal {
+		t.Fatalf("close stamp = %q %q, want the agreed reading %q", date, runner, vfRunner+" @ "+vfSHA+shPrincipal)
+	}
+	if p.Stamp != date+" "+vfRunner+" @ "+vfSHA {
+		t.Fatalf("verifyflip stamp = %q", p.Stamp)
+	}
+	closeRead, ok1 := readRunnerCell(runner)
+	flipRead, ok2 := readRunnerCell(strings.TrimPrefix(p.Stamp, date+" "))
+	if !ok1 || !ok2 || closeRead.login != flipRead.login || closeRead.sha != flipRead.sha {
+		t.Fatalf("login/sha differ: close %+v, verifyflip %+v", closeRead, flipRead)
+	}
+	var kept []string
+	for _, q := range closeRead.quals {
+		if !strings.Contains(q, "human:") {
+			kept = append(kept, q)
+		}
+	}
+	if strings.Join(kept, "|") != strings.Join(flipRead.quals, "|") {
+		t.Fatalf("qualifiers differ: close %q, verifyflip %q", closeRead.quals, flipRead.quals)
+	}
+	// Same tail on every row: the close still stamps that tail whole.
+	same := strings.ReplaceAll(ev, shHandQuals+" |", shToolQuals+" |")
+	if _, r := evidenceVerifierInfo(same); r != vfRunner+" @ "+vfSHA+shToolQuals {
+		t.Fatalf("one-tail run: close runner = %q", r)
+	}
+}

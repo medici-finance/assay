@@ -488,6 +488,10 @@ type flipPass struct {
 	StampErr error
 	Runner   string
 	SHA      string
+	// Cell is the run's agreed Runner reading, `<login> @ <sha>` plus the tail
+	// runnerCellsAgree returns, principal kept (flipStamp drops it): what the
+	// human close stamps (evidenceVerifierInfo), never one row's text.
+	Cell     string
 	Run      string // comment-removed selected text; closureRunWitnesses preserves full-record classification
 	Marks    []int
 	RunStart int
@@ -758,7 +762,7 @@ func flipReadRun(lines []string, start, from, end int, coverage *Coverage) (flip
 	if err != nil {
 		return flipPass{}, err
 	}
-	p := flipPass{Runner: login, SHA: sha, Run: strings.Join(lines[from:end], "\n"), RunStart: start}
+	p := flipPass{Runner: login, SHA: sha, Cell: login + " @ " + sha + tail, Run: strings.Join(lines[from:end], "\n"), RunStart: start}
 	p.Stamp, p.StampErr = flipStamp(date, []string{runner, login, sha, tail})
 	for _, i := range at {
 		p.Marks = append(p.Marks, from+i)
