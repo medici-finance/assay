@@ -125,6 +125,15 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 		return bf.Version, nil
 	}
 	// Account for every Verify OR version change, including a reverted edit.
+	// The one exception (#6599, human ruling there): a span that leaves the
+	// accepted state (the delivery or the last link) and returns to it with
+	// the Verify section and version BYTE-IDENTICAL, followed by the next
+	// link, is a no-op. Byte-identical is measured on what read returns: the
+	// Verify section only, after its CRLF to LF normalisation, with no other
+	// trimming, so reordered rows or any other whitespace change still refuse.
+	// The span collapses away: the next link's predecessor stays the accepted
+	// revision, so the span never yields a version step. Any other change
+	// still needs a link, and a round trip after the final link stays refused.
 	history, e := transitionFirstParents(dir, delivery)
 	if e != nil {
 		return fail(1, "cannot read amendment ancestry")
@@ -134,6 +143,14 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 	if e != nil {
 		return fail(1, e.Error())
 	}
+	acceptedTable, e := read(delivery)
+	if e != nil {
+		return fail(1, "cannot read acceptance history")
+	}
+	acceptedVersion := previousVersion
+	// unaccounted is the first revision of the latest unlinked span since the
+	// last accepted state; open says it has not yet returned byte-identical.
+	unaccounted, open := "", false
 	position := 0
 	for _, rev := range strings.Fields(string(history)) {
 		table, e := read(rev)
@@ -145,14 +162,28 @@ func acceptanceTransition(path, verify, full, run, delivery, base, original, bas
 			return fail(position+1, e.Error())
 		}
 		if strings.TrimSpace(table) != strings.TrimSpace(previousTable) || v != previousVersion {
-			if position >= len(links) || links[position].amendment != rev {
-				return fail(position+1, fmt.Sprintf("link %d missing at %.12s", position+1, rev))
+			switch {
+			case !open && position < len(links) && links[position].amendment == rev:
+				links[position].predecessor = previous
+				previous = rev
+				position++
+				unaccounted, acceptedTable, acceptedVersion = "", table, v
+			case open && table == acceptedTable && v == acceptedVersion:
+				open = false
+			case open:
+				for _, link := range links[position:] {
+					if link.amendment == rev {
+						return fail(position+1, fmt.Sprintf("link %d missing at %.12s", position+1, unaccounted))
+					}
+				}
+			default:
+				unaccounted, open = rev, true
 			}
-			links[position].predecessor = previous
-			previous = rev
-			position++
 		}
 		previousTable, previousVersion = table, v
+	}
+	if unaccounted != "" {
+		return fail(position+1, fmt.Sprintf("link %d missing at %.12s", position+1, unaccounted))
 	}
 	if position != len(links) {
 		return fail(position+1, "amendment is not an ordered first-parent acceptance change")

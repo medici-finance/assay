@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -335,8 +336,9 @@ func dispatch(o dispatchOpts) error {
 	// wedges nothing (no claim yet) and is a no-op for a review/verifier dispatch or a --pr resume.
 	// A --rework dispatch whose brief already has a MERGED PR comes back as a FOLLOW-UP: the plan's
 	// branch is moved off the merged branch's name here, still pre-claim, so the worktree, the claim
-	// and the prompt all see the follow-up branch.
-	followUp, err := phantomCheckFor(o, repo, plan.dl)
+	// and the prompt all see the follow-up branch. With no --brief it reads the brief the item key
+	// names (plan.gateOpts), so the `delivery:` set-aside (#6751) holds on the key-only path too.
+	followUp, err := phantomCheckFor(plan.gateOpts(o), repo, plan.dl)
 	if err != nil {
 		return err
 	}
@@ -752,7 +754,8 @@ type dispatchPlan struct {
 	gateHuman bool
 	// keyBrief is the brief the ITEM KEY names, read for the human gate when no --brief was given
 	// (#6173, briefkey.go): absolute path, and its shown spelling. Empty when --brief was given or
-	// the key is not brief-shaped. Only the gate steps read it (gateOpts).
+	// the key is not brief-shaped. Only the gate steps and the phantom check's `delivery:` set-aside
+	// (#6751) read it, both through gateOpts.
 	keyBrief, keyBriefShown string
 	// claimKey is the key the durable claim is taken (and later released) under —
 	// derived once from the item key by claimKeyFor, so the acquire call and the release
@@ -1208,7 +1211,8 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	plan.gateHuman = o.gateHuman
 	// No --brief: a brief-shaped item key still names a brief, and its `gate: human` binds the same
 	// way (#6173). It is resolved here, pre-claim, and a key whose brief cannot be read is REFUSED
-	// rather than reported as "not human-gated". It feeds the gate steps only (gateOpts).
+	// rather than reported as "not human-gated". It feeds the gate steps and the phantom check's
+	// `delivery:` set-aside (gateOpts).
 	if !plan.gateHuman && strings.TrimSpace(o.brief) == "" {
 		kb, shown, kerr := keyBriefFn(o)
 		if kerr != nil {
@@ -2038,18 +2042,31 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			stepModelStamp, repo, o.pr, forge, firstLine(eerr.Error())), eerr)
 	}
 	tl := deskkit.StampTimeline{Present: change.Labels, Events: events}
+	// A family alias (`opus`) over a standing full id of that family (`claude-opus-5-5`) keeps
+	// the full id, so two spellings of one model never replace each other. Only when NO
+	// attestation is named: a bound run stamps exactly the selection the record binds, so a
+	// settlement never replaces an attestation that is already bound. The receipt says so.
+	settled := ""
+	if bound == "" {
+		asked := labels
+		labels = stampKind.SettleRequest(tl, labels, deskkit.IsStampAuthorityLogin)
+		if !slices.Equal(asked, labels) {
+			settled = fmt.Sprintf(" (SETTLED: requested %s kept as the standing %s, the full id of that model family)",
+				asked[0], labels[0])
+		}
+	}
 	// Only labels of THIS kit's pair are read, removed or verified: an authoring re-stamp
 	// never removes a review session's dispatched-* pair, and the reverse (#2760).
 	stale := stampKind.ReStampRemovals(tl, labels, deskkit.IsStampAuthorityLogin)
 	if o.dryRun {
-		return fmt.Sprintf("PLAN: repo=%s pr=%d role=%s model=%s tier=%s remove=%v apply=%v (%s)%s; nothing written or verified", repo, o.pr, stampRole, o.model, o.tier, stale, labels, forge, bound), nil
+		return fmt.Sprintf("PLAN: repo=%s pr=%d role=%s model=%s tier=%s remove=%v apply=%v (%s)%s; nothing written or verified", repo, o.pr, stampRole, o.model, o.tier, stale, labels, forge, bound+settled), nil
 	}
 	if len(stale) == 0 && labelsPresent(change.Labels, labels) {
 		// An IDENTICAL stamp already standing under the dispatcher is a no-op: nothing is
 		// removed and nothing is re-applied, so a re-dispatch neither churns the label
 		// history nor leaves the PR briefly unstamped.
 		return fmt.Sprintf("OK: verified %s already standing on %s#%d under accepted stamp authority (%s)%s — an identical stamp is a no-op, nothing was written",
-			strings.Join(labels, " + "), repo, o.pr, forge, bound), nil
+			strings.Join(labels, " + "), repo, o.pr, forge, bound+settled), nil
 	}
 	if err := deskkit.ApplyVerifiedStamp(fg, fr, o.pr, deskkit.TargetChange, stampKind, labels, deskkit.IsStampAuthorityLogin); err != nil {
 		return "", err
@@ -2066,10 +2083,10 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	if stampKind == deskkit.StampAuthored {
 		return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App — the authoring attestation; "+
 			"no dispatched-* label was read or written, and the capability floor does not read this pair (%s)%s%s",
-			strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped, bound), nil
+			strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped, bound+settled), nil
 	}
-	return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App, the identity the capability floor accepts (%s)%s",
-		strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped), nil
+	return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App, the identity the capability floor accepts (%s)%s%s",
+		strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped, settled), nil
 }
 
 // labelsPresent reports whether every wanted label is already on the change, by the same

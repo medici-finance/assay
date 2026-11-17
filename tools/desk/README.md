@@ -5473,14 +5473,27 @@ Two limits, so the guarantee is not read as more than it is:
   do not serialise against each other. Each also writes its own `~/.config/assay/
   audit.jsonl`, so the rate-limit ledger they are protecting is per-host too — the lock is
   exactly as wide as the thing it guards, and no wider.
-- **The holder is bounded by an HTTP timeout, not by the lock.** The forge write and the
-  attribution read run inside the critical section, so `httpClient` carries a 30s per-request `Timeout`
-  (`cmd/deskevidence/github.go`). Without it a hung connection would pin the *shared*
-  `audit.lock` and starve `deskpost` and `deskrelease` with it. `deskpost` and
-  `deskrelease` still use `http.DefaultClient` and do not have this bound. The timeout is
-  guarded at source by `TestHTTPClientIsBoundedNotDefault`, not behaviourally: every test
-  replaces `httpClient` with one wired to the fake, so the production declaration is never
-  exercised and reverting it to `http.DefaultClient` used to survive the suite green.
+- **The holder's in-process forge requests are bounded; the decision-gate child is bounded once #6747 lands.**
+  Every forge request in the write window runs inside the critical section: the window
+  rechecks' re-reads through the uncached forge (the re-admission, the board re-read, the
+  visibility read and, on the outcome path, the join-fact and delivery-PR re-reads and, for a
+  branch-tip binding, the Evidence and observation binding re-reads), the decision-gate
+  judge's re-run on the re-read board, then the forge write and the attribution read. Each
+  in-process request gives up after 30 seconds (`deskkit.ForgeRequestTimeout`): the GitHub
+  backend's REST client and its diff read, the GitLab client, and the clients `deskpost` and
+  `deskrelease` use for their own forge calls all carry that per-request bound, and a client a
+  caller injects with its own non-zero timeout keeps it. The judge re-run is not an
+  in-process request: it is a `statusgen --decision-gate` child process, run twice, that reads
+  from the forge who wrote each ruling. Until #6747 lands, that child is started with
+  `context.Background()` and nothing in this process bounds it, so a hung forge connection
+  inside it can pin the *shared* `audit.lock` until the child exits, and no other desk writer
+  that needs the lock, `deskpost` and `deskrelease` included, can take it meanwhile. #6747
+  runs the child under the write-window bound, `lockWait` (60s), kills it at that deadline and
+  reads the kill as could-not-check. `TestNoUnboundedForgeClient`
+  (`internal/deskkit/forgetimeout_test.go`) is a source guard behind the shared helpers: a
+  pattern scan of the forge library, the credential package and the lock-holding tools for
+  the common deadline-free client shapes and for an `io.ReadAll` whose error is not checked,
+  not a proof that no other construction exists, and it does not see the child process.
 - **Failure mode: refuse, never proceed.** A lock that cannot be acquired — for any reason,
   including the run's single 60s wait budget — returns `Unverifiable` from `enterWriteWindow` before the
   budget is read, so nothing outward happens and exactly one audit line is
