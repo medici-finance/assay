@@ -272,21 +272,32 @@ jobs:
           fi
           tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/gh.tar.gz"
           echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
-      - name: statusgen --corroborate (findings-register transitions)
+      # Runs when the PR touches a findings entry, a decision record, or a
+      # ruling: line anywhere on the board. The guard then resolves every ruling
+      # link the PR adds or changes on the forge (a decision record's in the
+      # stamp lane, a brief's in the decision-gate lane): the comment must exist,
+      # be unedited, and be by a personal (type User) account the human-login
+      # map names. Comment and issue reads need only `issues: read` (granted
+      # above). An unresolvable link is MISSING, never a skip.
+      - name: statusgen --corroborate (findings, decision records, ruling links)
         env:
           GH_TOKEN: ${{ github.token }}
           # name:login pairs; unset leaves every human:<name> unmapped, so every
-          # register transition is MISSING-CORROBORATION. Fails closed.
+          # register transition and every ruling link is MISSING-CORROBORATION.
+          # Fails closed.
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
           # Assign first, then test: a failing git diff must red the step, not
-          # read as "no findings touched".
-          changed="$(git diff --no-ext-diff --no-textconv --name-only HEAD^1 HEAD -- docs/streams/findings/)"
-          if [ -z "$changed" ]; then
-            echo "PR touches no docs/streams/findings/ entry — register-transition check not applicable"
+          # read as "nothing touched".
+          changed="$(git diff --no-ext-diff --no-textconv --name-only HEAD^1 HEAD -- docs/streams/findings/ docs/streams/decisions/)"
+          # A ruling: line added, changed or removed in any board file (a brief's
+          # frontmatter, active, done/ or archived).
+          ruled="$(git diff --no-ext-diff --no-textconv --name-only -G '^[[:space:]]*ruling:' HEAD^1 HEAD -- docs/streams/ docs/archive/)"
+          if [ -z "$changed" ] && [ -z "$ruled" ]; then
+            echo "PR touches no findings entry, decision record or ruling: line — corroboration not applicable"
             exit 0
           fi
           # The guard reads the base name live; the tie step checked the event's.
