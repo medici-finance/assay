@@ -12,7 +12,25 @@ from pathlib import Path
 import shutil
 import stat
 import subprocess
+import sys
 import uuid
+
+TAIL_LINES = 200
+
+def show_output(label, outcome, stdout, stderr):
+    """Print a failed call's captured output, bounded, before it is reported UNQUALIFIED.
+
+    Diagnostics only: it never changes the verdict, the exception or the exit code.
+    """
+    print("UNQUALIFIED call " + label + ": " + outcome, file=sys.stderr)
+    for stream, data in (("stderr", stderr), ("stdout", stdout)):
+        lines = (data or b"").decode("utf-8", "replace").splitlines()
+        shown = lines[-TAIL_LINES:]
+        print("----- begin %s.%s (last %d of %d lines) -----" % (label, stream, len(shown), len(lines)), file=sys.stderr)
+        for line in shown:
+            print(line, file=sys.stderr)
+        print("----- end %s.%s -----" % (label, stream), file=sys.stderr)
+    sys.stderr.flush()
 
 def main():
     parser = argparse.ArgumentParser()
@@ -45,15 +63,19 @@ def main():
     def run(label, argv, cwd=source, timeout=60, accept=False):
         try:
             result = subprocess.run(argv, cwd=cwd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
-        except subprocess.TimeoutExpired:
+        except subprocess.TimeoutExpired as expired:
             calls.append({"label":label,"argv":[str(x) for x in argv],"state":"TIMEOUT_UNQUALIFIED"})
             (work / "CALLS.json").write_text(json.dumps(calls,indent=2)+"\n")
+            (work / (label + ".stdout")).write_bytes(expired.stdout or b"")
+            (work / (label + ".stderr")).write_bytes(expired.stderr or b"")
+            show_output(label, "timeout after %ss" % timeout, expired.stdout, expired.stderr)
             raise RuntimeError("UNQUALIFIED: bounded call timeout: "+label) from None
         (work / (label + ".stdout")).write_bytes(result.stdout)
         (work / (label + ".stderr")).write_bytes(result.stderr)
         calls.append({"label": label, "argv": [str(x) for x in argv], "exit": result.returncode})
         (work / "CALLS.json").write_text(json.dumps(calls, indent=2) + "\n")
         if result.returncode and not accept:
+            show_output(label, "exit %d" % result.returncode, result.stdout, result.stderr)
             raise RuntimeError("UNQUALIFIED: " + label)
         return result
     head = run("source", ["git", "rev-parse", "HEAD"]).stdout.decode().strip()
