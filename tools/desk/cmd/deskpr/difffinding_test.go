@@ -13,7 +13,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// difffinding_test.go — desk-tools/62: a branch-diff secret-scan refusal names the file,
+// difffinding_test.go — #3196: a branch-diff secret-scan refusal names the file,
 // the line in that file and the side, not the line's position in the stripped diff (#3196).
 
 // plantedRun returns a 40-character mixed-case alphanumeric run from a fixed seed — the
@@ -218,7 +218,7 @@ func TestDiffFindingVerdicts(t *testing.T) {
 	}
 }
 
-// legacyDiffStrip is a frozen, verbatim copy of the strip deskpr ran before desk-tools/62
+// legacyDiffStrip is a frozen, verbatim copy of the strip deskpr ran before the #3196 fix
 // moved it into deskkit.DiffLineIndex: the "without the index" half of the verdict check.
 func legacyDiffStrip(diff string) string {
 	hunk := regexp.MustCompile(`^(@@ -[0-9]+(?:,[0-9]+)? \+[0-9]+(?:,[0-9]+)? @@)`)

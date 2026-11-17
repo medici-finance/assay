@@ -37,7 +37,7 @@ type ScanFinding struct {
 	// contains the span itself.
 	Shape string
 	// Path and Side are set only when a diff-surface caller has mapped Line back to the file
-	// it came from (deskpr's branch diff, desk-tools/62): Line is then the line in Path at
+	// it came from (deskpr's branch diff, #3196): Line is then the line in Path at
 	// Side — the head file for added and context lines, the base file for removed lines —
 	// and 0 when the diff does not number it. Both empty means Line is a line of the
 	// scanned surface itself.

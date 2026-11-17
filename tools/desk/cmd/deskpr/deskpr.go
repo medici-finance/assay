@@ -1140,7 +1140,7 @@ func scanWrite(f *gitFacts, title, verb, override string) error {
 	//     removes that class while catching an added forged attribution exactly as
 	//     before.
 	//
-	// desk-tools/62: the stripped text and its line index come from one pass, and a finding
+	// #3196: the stripped text and its line index come from one pass, and a finding
 	// on that text is mapped back to the file, the line in it and the side before it is
 	// reported. The bytes scanned and the verdict are what they were; only where the
 	// refusal points changes.
@@ -1235,7 +1235,7 @@ func pushRole() string {
 //     scanner never enters header mode, and the funcname strip is gated on that same
 //     signal, so a prose-quoted hunk header is scanned as the prose it is.
 //
-// The strip itself lives in deskkit.DiffLineIndex (desk-tools/62), the diff owner the
+// The strip itself lives in deskkit.DiffLineIndex (#3196), the diff owner the
 // outbound check already uses, so the scanned text and the index that maps a finding back
 // to its file, line and side come from one pass. This is its text half, kept for callers
 // that need no location.

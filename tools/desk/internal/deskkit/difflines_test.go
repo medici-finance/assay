@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// difflines_test.go — DiffLineIndex (desk-tools/62): the stripped text a branch-diff scan
+// difflines_test.go — DiffLineIndex (#3196): the stripped text a branch-diff scan
 // reads, and the index that maps each of its lines back to a file, a line in it and a side.
 
 // indexDiffs are the diffs TestDiffLineIndex pins and TestAddedLinesParity reads: one
@@ -166,7 +166,7 @@ func TestDiffLineIndex(t *testing.T) {
 }
 
 // legacyStripDiffMetaLines is a frozen, verbatim copy of the meta-line strip deskpr ran
-// before desk-tools/62 moved it into DiffLineIndex. It is the oracle that proves the bytes
+// before the #3196 fix moved it into DiffLineIndex. It is the oracle that proves the bytes
 // the branch-diff scan reads did not change. Never edit it to match the index.
 func legacyStripDiffMetaLines(diff string) string {
 	lines := strings.Split(diff, "\n")
