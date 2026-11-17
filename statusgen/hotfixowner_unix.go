@@ -6,18 +6,36 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
 )
 
 // sgHotfixOwnedBy is deskkit's HotfixOwnedBy: path (symlinks resolved) must be owned by uid
 // and not group- or world-writable, and every parent directory must be owned by uid or root
 // and not group- or world-writable unless sticky. Production passes uid 0; only a test, or a
-// binary built with the test-only hotfixseam tag, passes another uid.
-func sgHotfixOwnedBy(uid uint32) func(string) error { return sgHotfixOwnedByIn(uid, 0) }
+// binary built with the test-only hotfixseam tag, passes another uid. It trusts no owner
+// outside the initial user namespace (sgUserNSIdentity): there every path is could-not-check.
+func sgHotfixOwnedBy(uid uint32) func(string) error {
+	return sgHotfixOwnedByNS(uid, sgReadProc, runtime.GOOS)
+}
+
+// sgHotfixOwnedByNS is sgHotfixOwnedBy over an explicit /proc reader and platform, so a test
+// feeds it a mapping. The namespace gate runs before any owner is read, on every path.
+func sgHotfixOwnedByNS(uid uint32, read func(string) ([]byte, error), goos string) func(string) error {
+	check := sgHotfixOwnedByIn(uid, 0)
+	return func(path string) error {
+		if err := sgUserNSIdentity(read, goos); err != nil {
+			return fmt.Errorf("%s: %v", path, err)
+		}
+		return check(path)
+	}
+}
 
 // sgHotfixOwnedByRoot is the same check where root itself carries uid root, as in the
 // network-off helper's user namespace (sgActiveOwnerFor): the file and every parent must be
-// owned by that uid, and uid 0 there, the mapped caller, is never accepted as root.
+// owned by that uid, and uid 0 there, the mapped caller, is never accepted as root. It is the
+// one owner check without the identity gate, because the helper runs in a non-initial
+// namespace by design and has already read that namespace's mapping to find root's uid.
 func sgHotfixOwnedByRoot(root uint32) func(string) error { return sgHotfixOwnedByIn(root, root) }
 
 // sgHotfixOwnedByIn is the check itself: path owned by uid, every parent by uid or root.

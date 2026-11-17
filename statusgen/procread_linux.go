@@ -1,0 +1,31 @@
+//go:build linux
+
+package main
+
+import (
+	"fmt"
+	"io"
+	"os"
+	"syscall"
+)
+
+// sgProcSuperMagic is procfs's filesystem type (PROC_SUPER_MAGIC).
+const sgProcSuperMagic = 0x9fa0
+
+// sgReadProc reads a /proc file only when the opened file is on procfs, so a file bind-mounted
+// over /proc/self/uid_map in a caller's own mount namespace cannot pose as the kernel's answer.
+func sgReadProc(path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var st syscall.Statfs_t
+	if err := syscall.Fstatfs(int(f.Fd()), &st); err != nil {
+		return nil, fmt.Errorf("%s: filesystem type unreadable: %v", path, err)
+	}
+	if int64(st.Type) != sgProcSuperMagic {
+		return nil, fmt.Errorf("%s is not on procfs (filesystem type %#x)", path, st.Type)
+	}
+	return io.ReadAll(f)
+}

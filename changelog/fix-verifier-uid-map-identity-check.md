@@ -1,0 +1,2 @@
+### Fixed
+- The hotfix overlay's root-ownership checks (`statusgen` and the desk tools) now trust a file owner only in the initial user namespace: unless `/proc/self/uid_map` and `/proc/self/gid_map` both show the identity mapping `0 0 4294967295`, the check refuses as could-not-check instead of passing a caller-owned file that reads as uid 0 under `unshare --map-root-user`. Platforms without those files keep the existing behavior (#6768).

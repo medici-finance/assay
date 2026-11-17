@@ -375,7 +375,7 @@ func sgHotfixApplies(tag, exe, overlay, defaultOverlay string) bool {
 }
 
 // sgActiveOwner is root's ownership check, unless a hotfixseam build names another uid.
-func sgActiveOwner() func(string) error { return sgActiveOwnerFor(os.Args, os.ReadFile) }
+func sgActiveOwner() func(string) error { return sgActiveOwnerFor(os.Args, sgReadProc) }
 
 // The two kernel files the network-off helper reads to find root's uid inside its namespace.
 const (
@@ -391,7 +391,7 @@ const (
 // reads as the kernel's overflow uid. So the helper checks ownership by the uid the parent
 // namespace's root carries there (sgNamespaceRootUID), for the file and every parent
 // directory alike. A caller-owned overlay, which reads as uid 0 in there, is refused. When
-// the mapping cannot be read or is ambiguous, the helper checks uid 0, as before.
+// the mapping cannot be read or is ambiguous, the helper falls back to the uid-0 check.
 //
 // Inside the helper this rule is weaker than uid 0: every unmapped host uid reads as the
 // overflow uid, so there "owned by root" means "owned by anyone but the caller". The helper's
@@ -402,6 +402,10 @@ const (
 // TestStatusgenHotfixNetnsRoot), and a root-owned file cannot be re-owned between the two
 // checks without root. Only a direct `__verifyrun-netns` invocation skips the parent, and
 // that runs as the caller in the caller's own namespace.
+//
+// Every uid-0 check, the helper's fallback included, first requires the initial user
+// namespace's identity mapping in uid_map and gid_map (sgUserNSIdentity): in any other
+// namespace the caller can read as uid 0, so the check refuses as could-not-check.
 func sgActiveOwnerFor(args []string, read func(string) ([]byte, error)) func(string) error {
 	if v := strings.TrimSpace(sgHotfixSeamGet(sgHotfixSeamRootUID)); v != "" {
 		if uid, err := strconv.ParseUint(v, 10, 32); err == nil {
@@ -417,7 +421,7 @@ func sgActiveOwnerFor(args []string, read func(string) ([]byte, error)) func(str
 			}
 		}
 	}
-	return sgHotfixOwnedBy(0)
+	return sgHotfixOwnedByNS(0, read, runtime.GOOS)
 }
 
 // sgNamespaceRootUID is the uid that the parent user namespace's root (uid 0) carries in this

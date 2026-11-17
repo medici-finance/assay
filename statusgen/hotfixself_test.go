@@ -288,6 +288,7 @@ func TestStatusgenHotfixParity(t *testing.T) {
 // --map-root-user`, where the caller's uid reads as 0 and an unmapped uid, root's included,
 // reads as the overflow uid. sgNamespaceRootUID finds the uid root carries there; the helper,
 // and only the helper, checks ownership by that uid, and never takes uid 0 there for root.
+// Every other path is the uid-0 check, which outside the initial namespace is could-not-check.
 func TestStatusgenHotfixNetnsRoot(t *testing.T) {
 	for _, c := range []struct {
 		name, uidMap, overflow string
@@ -340,18 +341,27 @@ func TestStatusgenHotfixNetnsRoot(t *testing.T) {
 		!strings.Contains(err.Error(), "owned by uid 0, not "+fmt.Sprint(me)) {
 		t.Fatalf("helper in a namespace where root reads as uid %d: %v", me, err)
 	}
-	// The same file under root's uid 0 check: every other invocation, a helper whose mapping
-	// cannot be read, and a helper whose mapping is ambiguous.
+	// The same file under root's uid 0 check: a helper in the initial namespace, and the
+	// default argv in this test's own namespace.
+	for name, owner := range map[string]func(string) error{
+		"helper, initial ns": sgActiveOwnerFor(helper, procFor("0 0 4294967295\n", fmt.Sprint(me))),
+		"default argv":       sgActiveOwner(),
+	} {
+		if err := owner(f); err == nil || !strings.Contains(err.Error(), notRoot) {
+			t.Errorf("%s: owner check on a uid-%d file = %v, want %q", name, me, err, notRoot)
+		}
+	}
+	// Every other invocation, a helper whose mapping cannot be read, and a helper whose
+	// mapping is ambiguous fall to the uid-0 check, which outside the initial namespace is
+	// could-not-check before any owner is read (sgUserNSIdentity).
 	for name, owner := range map[string]func(string) error{
 		"ordinary invocation":   sgActiveOwnerFor([]string{"statusgen", "verifyrun"}, asRoot),
 		"helper argv not first": sgActiveOwnerFor([]string{"statusgen", "verifyrun", netnsHelperArg}, asRoot),
 		"helper, no uid_map":    sgActiveOwnerFor(helper, func(string) ([]byte, error) { return nil, os.ErrPermission }),
-		"helper, initial ns":    sgActiveOwnerFor(helper, procFor("0 0 4294967295\n", fmt.Sprint(me))),
 		"helper, ambiguous map": sgActiveOwnerFor(helper, procFor(fmt.Sprintf("0 %d 70000\n", me+1), "1")),
-		"default argv":          sgActiveOwner(),
 	} {
-		if err := owner(f); err == nil || !strings.Contains(err.Error(), notRoot) {
-			t.Errorf("%s: owner check on a uid-%d file = %v, want %q", name, me, err, notRoot)
+		if err := owner(f); err == nil || !strings.Contains(err.Error(), "could-not-check") {
+			t.Errorf("%s: owner check on a uid-%d file = %v, want could-not-check", name, me, err)
 		}
 	}
 	// In the --map-root-user namespace root reads as the overflow uid; a file owned by anyone

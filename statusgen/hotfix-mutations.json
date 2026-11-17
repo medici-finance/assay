@@ -1,5 +1,5 @@
 {
-  "test": "go test . -count=1 -timeout 300s -run '^(TestStatusgenHotfixSelf|TestStatusgenHotfixParity|TestStatusgenHotfixReaders|TestStatusgenHotfixNetnsRoot|TestStatusgenHotfixPinReader)$'",
+  "test": "go test . -count=1 -timeout 300s -run '^(TestStatusgenHotfixSelf|TestStatusgenHotfixParity|TestStatusgenHotfixReaders|TestStatusgenHotfixNetnsRoot|TestStatusgenHotfixPinReader|TestStatusgenOwnerUserNS|TestStatusgenOwnerGateFirst|TestStatusgenUserNSIdentity|TestStatusgenOwnerInGated)$'",
   "control": {
     "name": "CONTROL: invert the valid-proceeds assertion in TestStatusgenHotfixSelf",
     "file": "hotfixself_test.go",
@@ -132,6 +132,36 @@
       "file": "versiongate.go",
       "old": "\tif i := strings.IndexByte(tag, '+'); i >= 0 {",
       "new": "\tif i := strings.IndexByte(tag, '+'); i >= 0 && false {"
+    },
+    {
+      "name": "user namespace gate: the gate is skipped before the uid-0 owner check (TestStatusgenOwnerUserNS)",
+      "file": "hotfixowner_unix.go",
+      "old": "\t\tif err := sgUserNSIdentity(read, goos); err != nil {",
+      "new": "\t\tif err := sgUserNSIdentity(read, goos); err != nil && false {"
+    },
+    {
+      "name": "user namespace gate: a non-identity mapping is accepted",
+      "file": "userns.go",
+      "old": "\t\tif !sgIsIdentityIDMap(string(b)) {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "user namespace gate: gid_map is not read",
+      "file": "userns.go",
+      "old": "\tfor _, p := range []string{sgProcUIDMap, sgProcGIDMap} {",
+      "new": "\tfor _, p := range []string{sgProcUIDMap} {"
+    },
+    {
+      "name": "user namespace gate: an absent mapping on Linux is accepted",
+      "file": "userns.go",
+      "old": "\t\t\tif goos != \"linux\" && errors.Is(err, fs.ErrNotExist) {",
+      "new": "\t\t\tif errors.Is(err, fs.ErrNotExist) {"
+    },
+    {
+      "name": "user namespace gate: the ordinary invocation takes the ungated uid-0 check",
+      "file": "hotfixself.go",
+      "old": "\treturn sgHotfixOwnedByNS(0, read, runtime.GOOS)",
+      "new": "\treturn sgHotfixOwnedByIn(0, 0)"
     }
   ]
 }
