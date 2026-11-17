@@ -36,6 +36,12 @@
       "file": "cmd/fanoutloop/represented.go",
       "old": "\tif deskkit.BriefAuthoringOnly(briefID, files) {",
       "new": "\tif false && deskkit.BriefAuthoringOnly(briefID, files) {"
+    },
+    {
+      "name": "#6751 declared partial deliveries \u2014 DISABLE the set-aside so a MERGED PR the brief's own delivery: list declares covers: partial represents the brief first-wins again, as before the fix: the row reads landed-unreconciled and is never offered while statusgen offers it. TestPlan_PartialMergeDispatches must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\tif partials != nil {\n\t\t\tdropDeclaredPartials(repo, all, partials(repo))",
+      "new": "\t\tif false && partials != nil {\n\t\t\tdropDeclaredPartials(repo, all, partials(repo))"
     }
   ]
 }

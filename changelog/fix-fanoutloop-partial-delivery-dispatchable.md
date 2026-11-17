@@ -1,0 +1,2 @@
+### Fixed
+- `fanoutloop plan` now offers a Next-up row whose only merged PRs are ones the brief's own `delivery:` list declares `covers: partial`. It used to list such rows as landed-unreconciled, and `deskdispatch` refused them as "already DELIVERED", while statusgen counted them as work in progress and kept the row on Next-up. Both tools now read `delivery:` the way statusgen does. An undeclared or `full` merged PR still lands the row. A partial claim that cannot be resolved sets nothing aside and logs a could-not-check notice.

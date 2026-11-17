@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -192,6 +194,13 @@ func phantomCheckFor(o dispatchOpts, repo string, dl deliverable) (phantomFollow
 				"new work. Resume the PR (--pr %d) or close it; do not fresh-dispatch over it.",
 			stepClaimAcquire, briefID, repo, n, matchedOn, sanitizeSegment(o.item), n))
 	}
+	// A MERGED PR the brief's own `delivery:` list declares `covers: partial` is work in progress,
+	// not the brief's delivery (#6751) — statusgen's reading, which keeps the row on Next-up. A fresh
+	// dispatch sets such PRs aside; --rework keeps them, so its follow-up branch still moves off the
+	// newest merged branch's name.
+	if !o.rework {
+		merged = dropDeclaredPartialMerges(o, repo, briefID, merged)
+	}
 	if len(merged) > 0 {
 		n := merged[0]
 		for _, m := range merged {
@@ -213,6 +222,51 @@ func phantomCheckFor(o dispatchOpts, repo string, dl deliverable) (phantomFollow
 			stepClaimAcquire, briefID, repo, n, matchedOn, short, briefID))
 	}
 	return none, nil
+}
+
+// dropDeclaredPartialMerges returns merged without the PR numbers the --brief file's `delivery:` list
+// declares `covers: partial` for repo (deskkit.DeclaredPartialDeliveries, resolved through the
+// graph-repos.yaml of the tree that holds the brief). No --brief, an unreadable brief, or a partial
+// claim that cannot be resolved sets nothing aside — the refusal stands, as before #6751 — and the
+// could-not-check reason is disclosed on stderr.
+func dropDeclaredPartialMerges(o dispatchOpts, repo, briefID string, merged []int) []int {
+	if len(merged) == 0 || strings.TrimSpace(o.brief) == "" {
+		return merged
+	}
+	raw, err := os.ReadFile(o.brief)
+	if err != nil {
+		return merged
+	}
+	nums, why := deskkit.DeclaredPartialDeliveries(string(raw), repo, deskkit.LoadDeliveryAliases(briefTreeRoot(o)))
+	if why != "" {
+		fmt.Fprintf(os.Stderr, "deskdispatch: NOTICE — %s's delivery: list could not be read with certainty (%s); "+
+			"no merged PR is set aside as a partial delivery (could-not-check, not a pass)\n", briefID, why)
+		return merged
+	}
+	if len(nums) == 0 {
+		return merged
+	}
+	kept := make([]int, 0, len(merged))
+	for _, n := range merged {
+		if nums[n] {
+			fmt.Fprintf(os.Stderr, "deskdispatch: NOTICE — %s#%d names %s in its `Brief:` trailer, but the brief's "+
+				"delivery: list declares it a partial delivery, so it is work in progress, not the brief's delivery\n",
+				repo, n, briefID)
+			continue
+		}
+		kept = append(kept, n)
+	}
+	return kept
+}
+
+// briefTreeRoot is the checkout that holds the --brief file: the directory above its
+// docs/streams/, else --root.
+func briefTreeRoot(o dispatchOpts) string {
+	p := filepath.ToSlash(o.brief)
+	if i := strings.LastIndex(p, "/docs/streams/"); i > 0 {
+		return filepath.FromSlash(p[:i])
+	}
+	return o.root
 }
 
 // applyFollowUp turns the plan into a FOLLOW-UP of merged PR pr: the default branch moves to a new
