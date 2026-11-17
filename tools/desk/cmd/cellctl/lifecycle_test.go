@@ -59,6 +59,7 @@ type lcWorld struct {
 	calls   []string // every cockpit argv
 	noHelp  map[string]bool
 	paneErr bool
+	tabs    string // herdr's tab list when set, else herdrTabs
 	clock   time.Time
 	sleeps  []time.Duration
 	onSleep func(n int)
@@ -121,6 +122,9 @@ func (w *lcWorld) run(name string, args ...string) ([]byte, error) {
 	case strings.HasPrefix(line, "tmux list-windows"):
 		return []byte(tmuxList), nil
 	case strings.HasPrefix(line, "herdr tab list"):
+		if w.tabs != "" {
+			return []byte(w.tabs), nil
+		}
 		return []byte(herdrTabs), nil
 	case strings.HasPrefix(line, "herdr pane process-info"):
 		if w.paneErr {
