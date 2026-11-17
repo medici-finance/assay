@@ -1,10 +1,10 @@
 {
-  "test": "go test . -run '^Test(FlipShaFormAgree|TransitionMixedForms|TransitionWitnessTree|EvidenceOnlyTreeClean|EvidenceOnlyNeedsEvidence|EvidenceConflictDirty|TransitionThenBracket|VerifyrunRowsTransitionSplitRunsDoNotClose|VerifyrunRowsMixedAssembly|MixedTransitionProductionFlow)$' -count=1 -timeout 300s",
+  "test": "go test . -run '^Test(FlipShaFormAgree|TransitionMixedForms|TransitionWitnessTree|EvidenceOnlyTreeClean|EvidenceOnlyNeedsEvidence|EvidenceConflictDirty|TransitionThenBracket|VerifyrunRowsTransitionSplitRunsDoNotClose|VerifyrunRowsMixedAssembly|MixedTransitionProductionFlow|ShRunnerCellsAgree|ShCheckVerified[A-Za-z]*|ShFlip[A-Za-z]*)$' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — the pre-#4299 sha check (every row must name the first row's sha exactly)",
-    "file": "verifyflip.go",
-    "old": "\t\tif !flipSHAAgree(strings.ToLower(m[2]), strings.ToLower(sha)) {",
-    "new": "\t\tif !strings.EqualFold(m[2], m0[2]) {"
+    "file": "runnercell.go",
+    "old": "\t\tif !flipSHAAgree(strings.ToLower(r.sha), strings.ToLower(sha)) {",
+    "new": "\t\tif !strings.EqualFold(r.sha, r0.sha) {"
   },
   "mutations": [
     {
@@ -33,27 +33,45 @@
     },
     {
       "name": "the qualifier tail after the sha is no longer compared (+dirty, on-behalf-of, source)",
-      "file": "verifyflip.go",
-      "old": "\t\tif m[3] != m0[3] || !flipSHAAgree(m[2], sha) {",
-      "new": "\t\tif !flipSHAAgree(m[2], sha) {"
+      "file": "runnercell.go",
+      "old": "\t\tif r.tail != r0.tail {",
+      "new": "\t\tif false && r.tail != r0.tail {"
     },
     {
       "name": "the exact-case sha comparison dropped (an upper-cased prefix agrees)",
-      "file": "verifyflip.go",
-      "old": "\t\tif m[3] != m0[3] || !flipSHAAgree(m[2], sha) {",
-      "new": "\t\tif m[3] != m0[3] {"
+      "file": "runnercell.go",
+      "old": "\t\tif !flipSHAAgree(r.sha, sha) {",
+      "new": "\t\tif false && !flipSHAAgree(r.sha, sha) {"
     },
     {
       "name": "the run's sha is the first row's, not its longest form",
-      "file": "verifyflip.go",
-      "old": "\t\tif m := flipRunnerRe.FindStringSubmatch(r[1]); m != nil && len(m[2]) > len(sha) {",
-      "new": "\t\tif m := flipRunnerRe.FindStringSubmatch(r[1]); m != nil && sha == \"\" {"
+      "file": "runnercell.go",
+      "old": "\t\tif len(r.sha) > len(sha) {",
+      "new": "\t\tif sha == \"\" {"
     },
     {
       "name": "the stamp keeps the first row's sha form",
       "file": "verifyflip.go",
-      "old": "\tp.Stamp, p.StampErr = flipStamp(date, []string{m0[0], m0[1], sha, m0[3]})",
-      "new": "\tp.Stamp, p.StampErr = flipStamp(date, m0)"
+      "old": "\tp.Stamp, p.StampErr = flipStamp(date, []string{runner, login, sha, tail})",
+      "new": "\tp.Stamp, p.StampErr = flipStamp(date, []string{runner, login, flipRunnerRe.FindStringSubmatch(runner)[2], tail})"
+    },
+    {
+      "name": "the identity qualifiers (principal, tree state) are no longer compared across rows (#6767)",
+      "file": "runnercell.go",
+      "old": "\t\tif strings.Join(runnerIdentityQuals(r), \"\\x00\") != id0 {",
+      "new": "\t\tif false && strings.Join(runnerIdentityQuals(r), \"\\x00\") != id0 {"
+    },
+    {
+      "name": "two rows naming different identity sources no longer refuse (#6767)",
+      "file": "runnercell.go",
+      "old": "\t\t\t\tif src != \"\" && q != src {",
+      "new": "\t\t\t\tif false && src != \"\" && q != src {"
+    },
+    {
+      "name": "check-verified reads no runner-agreement refusal from verifyflip's selector (#6767)",
+      "file": "runnercell.go",
+      "old": "\t\tif agree == nil && errors.As(e, &r) && r.runner {",
+      "new": "\t\tif false && agree == nil && errors.As(e, &r) && r.runner {"
     },
     {
       "name": "transitionWitnessTree drops git's resolution of the short token",

@@ -121,13 +121,23 @@ Flags:
 `
 
 // flipRefusal is a refusal (exit 1): the tree was read and does not license the
-// flip. Any other error is could-not-check (exit 2).
-type flipRefusal struct{ msg string }
+// flip. Any other error is could-not-check (exit 2). runner marks a refusal
+// runnerCellsAgree made: the run's Runner cells all read `<login> @ <sha>` but
+// do not name one runner (latestPassRunnerRefusal reads it).
+type flipRefusal struct {
+	msg    string
+	runner bool
+}
 
 func (e *flipRefusal) Error() string { return e.msg }
 
 func refuseFlip(format string, a ...any) error {
-	return &flipRefusal{fmt.Sprintf("refusing: "+format, a...)}
+	return &flipRefusal{msg: fmt.Sprintf("refusing: "+format, a...)}
+}
+
+// refuseRunner is refuseFlip for a Runner-agreement refusal (runnerCellsAgree).
+func refuseRunner(format string, a ...any) error {
+	return &flipRefusal{msg: fmt.Sprintf("refusing: "+format, a...), runner: true}
 }
 
 // verifyFlipPlan is the result of a successful plan: what would be written.
@@ -285,10 +295,10 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 		return verifyFlipPlan{}, err
 	}
 	if err := flipHeldRefusal(key, row.Status, bf.Evidence); err != nil {
-		return verifyFlipPlan{}, &flipRefusal{err.Error()}
+		return verifyFlipPlan{}, &flipRefusal{msg: err.Error()}
 	}
 	if err := closeVerifyFailRefusal(key, row.Status, bf.Evidence); err != nil {
-		return verifyFlipPlan{}, &flipRefusal{err.Error()}
+		return verifyFlipPlan{}, &flipRefusal{msg: err.Error()}
 	}
 
 	// Witness: every Verify row carries a passing execution witness INSIDE the
@@ -503,6 +513,14 @@ func latestCoveragePass(evidence string, coverage Coverage) (flipPass, error) {
 }
 
 func selectLatestPass(evidence string, coverage *Coverage) (flipPass, error) {
+	return selectLatestPassSeen(evidence, coverage, nil)
+}
+
+// selectLatestPassSeen is selectLatestPass; seen, when set, is handed every
+// refusal a read of the run returned, in the order the reads were made, so a
+// caller can ask why the selector credited no run without selecting one of
+// its own (latestPassRunnerRefusal, #6767).
+func selectLatestPassSeen(evidence string, coverage *Coverage, seen func(error)) (flipPass, error) {
 	lines, start, end, err := latestPassSpan(evidence)
 	if err != nil {
 		return flipPass{}, err
@@ -520,6 +538,8 @@ func selectLatestPass(evidence string, coverage *Coverage) (flipPass, error) {
 		q, err := flipReadRun(lines, start, from, end, coverage)
 		if err == nil {
 			p = q
+		} else if seen != nil {
+			seen(err)
 		}
 		return err
 	}); err != nil {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"regexp"
 	"strings"
 )
@@ -13,8 +14,11 @@ import (
 // whose Runner cell names the model instead ("(claude-opus-5-5 verifier)").
 // Both name one login at one sha for one principal. verifyflip used to demand
 // byte-equal qualifiers and refused such a run, while `brief --check-verified`
-// read no Runner cell at all and admitted it. Both now read the run through
-// runnerCellsAgree, so one Evidence gets one answer.
+// read no Runner cell at all and admitted it. verifyflip now reads the run
+// through runnerCellsAgree, and check-verified refuses exactly the runs
+// verifyflip's own run selector refuses on that reading
+// (latestPassRunnerRefusal). A run verifyflip refuses for another reason, such
+// as a Runner cell in another form, is not check-verified's question.
 //
 // The reading: every row names one login and one sha (an exact prefix of at
 // least treeSHALen counts as the same sha, flipSHAAgree). When every row's
@@ -107,20 +111,20 @@ func runnerCellsAgree(cells []string) (login, sha, tail string, err error) {
 	same := true
 	for i, r := range reads {
 		if r.login != r0.login {
-			return "", "", "", refuseFlip("runner mismatch: rows of the latest PASS name %q and %q", r0.login, r.login)
+			return "", "", "", refuseRunner("runner mismatch: rows of the latest PASS name %q and %q", r0.login, r.login)
 		}
 		if !flipSHAAgree(strings.ToLower(r.sha), strings.ToLower(sha)) {
-			return "", "", "", refuseFlip("sha mismatch: rows of the latest PASS name %s and %s", sha, r.sha)
+			return "", "", "", refuseRunner("sha mismatch: rows of the latest PASS name %s and %s", sha, r.sha)
 		}
 		// The sha's form must read the same too: only its length may differ,
 		// and only as an exact prefix (a case change is another text).
 		if !flipSHAAgree(r.sha, sha) {
-			return "", "", "", refuseFlip("runner mismatch: rows of the latest PASS read %q and %q", cells[0], cells[i])
+			return "", "", "", refuseRunner("runner mismatch: rows of the latest PASS read %q and %q", cells[0], cells[i])
 		}
 		if r.tail != r0.tail {
 			same = false
 			if !r.clean || !r0.clean {
-				return "", "", "", refuseFlip("runner mismatch: rows of the latest PASS read %q and %q", cells[0], cells[i])
+				return "", "", "", refuseRunner("runner mismatch: rows of the latest PASS read %q and %q", cells[0], cells[i])
 			}
 		}
 	}
@@ -131,13 +135,13 @@ func runnerCellsAgree(cells []string) (login, sha, tail string, err error) {
 	every := map[string]int{}
 	for i, r := range reads {
 		if strings.Join(runnerIdentityQuals(r), "\x00") != id0 {
-			return "", "", "", refuseFlip("runner mismatch: rows of the latest PASS read %q and %q", cells[0], cells[i])
+			return "", "", "", refuseRunner("runner mismatch: rows of the latest PASS read %q and %q", cells[0], cells[i])
 		}
 		seen := map[string]bool{}
 		for _, q := range r.quals {
 			if runnerSourceQual(q) {
 				if src != "" && q != src {
-					return "", "", "", refuseFlip("runner mismatch: rows of the latest PASS record identity sources %q and %q", src, q)
+					return "", "", "", refuseRunner("runner mismatch: rows of the latest PASS record identity sources %q and %q", src, q)
 				}
 				src = q
 			}
@@ -155,33 +159,27 @@ func runnerCellsAgree(cells []string) (login, sha, tail string, err error) {
 	return r0.login, sha, tail, nil
 }
 
-// latestPassRunnerRefusal is `brief --check-verified`'s (and verifyclosure's)
-// read of the latest PASS run's Runner cells, through the same reader
-// verifyflip uses (runnerCellsAgree, on the run latestPassSpan and
-// latestPassRunFrom select). A run whose rows all read `<login> @ <sha>` but
-// do not read as one runner refuses here exactly as it refuses there. Evidence
-// with no strict latest PASS, or a run with a Runner cell written in another
-// form, is not this check's question: the selected closure's other checks
-// own those, and a verified brief closed on an older layout keeps its answer.
+// latestPassRunnerRefusal is `brief --check-verified`'s read of the latest
+// PASS run's Runner cells. It selects no run of its own: it asks verifyflip's
+// selector (selectLatestPassSeen, the one flipLatestPass runs) and refuses
+// only when that selector credits no run AND one of the reads it made refused
+// on runner agreement (runnerCellsAgree, a refusal marked runner). So when
+// verifyflip credits a run, check-verified judges that same run and admits it;
+// when verifyflip refuses on runner agreement, check-verified refuses with the
+// same reason. A run verifyflip refuses for any other reason (no strict latest
+// PASS, a Runner cell in another form, a date) is not this check's question:
+// the selected closure's other checks own those, and a verified brief closed
+// on an older layout keeps its answer.
 func latestPassRunnerRefusal(evidence string) error {
-	lines, start, end, err := latestPassSpan(evidence)
-	if err != nil {
+	var agree error
+	_, err := selectLatestPassSeen(evidence, nil, func(e error) {
+		var r *flipRefusal
+		if agree == nil && errors.As(e, &r) && r.runner {
+			agree = e
+		}
+	})
+	if err == nil {
 		return nil
 	}
-	_, err = latestPassRunFrom(lines, start, end, func(from int) error {
-		rows, _ := flipDateRunnerRows(lines[from:end])
-		cells := make([]string, 0, len(rows))
-		for _, r := range rows {
-			if !flipRunnerRe.MatchString(r[1]) {
-				return nil
-			}
-			cells = append(cells, r[1])
-		}
-		if len(cells) == 0 {
-			return nil
-		}
-		_, _, _, err := runnerCellsAgree(cells)
-		return err
-	})
-	return err
+	return agree
 }

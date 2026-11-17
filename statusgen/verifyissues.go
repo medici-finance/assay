@@ -932,10 +932,15 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 // check verifyflip and the reconcile fold run), and the flip-side read
 // (unroutedHeldLine with latestRun true, which adds rule 3c) then finds no
 // hold. So a superseded HELD or could-not-check line no longer stops the
-// autoflip after a later full PASS, and the autoflip drops it on exactly the
-// reading verifyflip drops it on, never on a narrower one. Anything that
-// cannot be read (no path, the brief unreadable, no selectable run, a witness
-// refusal or a missing or failed row) keeps the plain read's answer.
+// autoflip after a later full PASS: the autoflip drops it on verifyflip's
+// held reading and witness check of the same run. It does not run
+// verifyflip's other checks of that run (the expected sha and runner, the
+// close-verify FAIL read, the git provenance of the run's lines), so its
+// drop set is not a subset of verifyflip's by construction; the autoflip
+// never ran those checks before this read either, and its candidates are
+// already verified. Anything that cannot be read (no path, the brief
+// unreadable, no selectable run, a witness refusal or a missing or failed
+// row) keeps the plain read's answer.
 func verifyPassHeldWitnessed(evidence, path string) (bool, string) {
 	held, why := verifyPassHeldContradiction(evidence)
 	if !held || path == "" {

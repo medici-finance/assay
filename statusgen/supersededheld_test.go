@@ -194,3 +194,81 @@ func TestShItemBesideTableHeld(t *testing.T) {
 		t.Fatal("a bullet next to a delimiter-shaped bullet was read as prose")
 	}
 }
+
+// shVerdictFirst is an earlier entry whose FAIL verdict sits above its own
+// rows (runner is its rows' Runner cell), then a latest PASS entry whose two
+// rows carry q1 and q2. verifyflip reads the span from that verdict first and,
+// when it refuses, again from the latest entry heading (latestPassRunFrom).
+func shVerdictFirst(runner, q1, q2 string) string {
+	early := func(row string) string {
+		row = strings.ReplaceAll(row, "2026-08-13", "2026-08-12")
+		return strings.Replace(row, vfRunner+" @ "+vfSHA+" |", runner+" |", 1)
+	}
+	return "### Verification — 2026-08-12\n\n**VERIFY: FAIL** — row 2 failed.\n\n" +
+		witnessTableFor(early(vfRow1), early(vfRow2)) + "\n\n" +
+		"### Verification — 2026-08-13\n\n" +
+		witnessTableFor(shQual(vfRow1, q1), shQual(vfRow2, q2)) + "\n\n" + vfPass
+}
+
+// check-verified judges the run verifyflip's selector credits, never a span
+// of its own: a verdict-first earlier entry does not hide a latest run whose
+// rows name two principals, and does not refuse a latest run verifyflip
+// credits.
+// regression: #6767
+func TestShCheckVerifiedSameRun(t *testing.T) {
+	kim := " (on-behalf-of human:kim)"
+	// Loose earlier rows, two principals in the latest run: both refuse.
+	split := shVerdictFirst("ci-host", shPrincipal, kim)
+	vfRefuses(t, shOpts(split), "")
+	if code, diag := shCheckVerified(t, split, vfStamp); code == briefInfoExitOK || !strings.Contains(diag, "runner mismatch") {
+		t.Errorf("check-verified exit = %d (%s); verifyflip credits no run here, on runner agreement", code, diag)
+	}
+	// Another principal only in the earlier entry: verifyflip credits the
+	// latest run, and check-verified admits it.
+	one := shVerdictFirst(vfRunner+" @ "+vfSHA+kim, shPrincipal, shPrincipal)
+	root, readme := vfFixture(t, shOpts(one))
+	vfExpect(t, root, readme, verifyflipExitOK, "")
+	if code, diag := shCheckVerified(t, one, vfStamp); code != briefInfoExitOK {
+		t.Errorf("check-verified exit = %d on the run verifyflip credits: %s", code, diag)
+	}
+}
+
+// The autoflip drops a superseded hold only behind the witness check
+// verifyflip makes (closureRunWitnesses). Each case below reads clean on the
+// rule 3c read alone, so only that check keeps the hold: a latest PASS that
+// re-runs only some Verify rows, and one whose command is not the Verify
+// row's.
+// regression: #6767
+func TestShAutoflipWitnessGate(t *testing.T) {
+	early := func(row string) string {
+		return shQual(strings.ReplaceAll(row, "2026-08-13", "2026-08-12"), shToolQuals)
+	}
+	partial := "### Verification — 2026-08-12\n\n" +
+		witnessTableFor(early(strings.Replace(vfRow1, "pass exit=0", "could-not-run exit=- timed out", 1)), early(vfRow2)) + "\n\n" +
+		"**VERIFY: BLOCKED** — row 1 COULD-NOT-CHECK (environment).\n\n" +
+		"### Verification — 2026-08-13\n\n" + witnessTableFor(shQual(vfRow2, shToolQuals)) + "\n\n" + vfPass
+	if held, _ := unroutedHeldLine(partial, true); held {
+		t.Fatal("fixture: the rule 3c read alone holds the partial run, so it cannot show the witness check's work")
+	}
+	root, _ := vfFixture(t, shOpts(partial))
+	brief := filepath.Join(root, "docs", "streams", "vf", "brief-01-flip.md")
+	// Positive control: the same hold, then a PASS that re-runs both rows,
+	// drops, so the brief path is read and the witness check can pass.
+	full := strings.Replace(partial, witnessTableFor(shQual(vfRow2, shToolQuals)),
+		witnessTableFor(shQual(vfRow1, shToolQuals), shQual(vfRow2, shToolQuals)), 1)
+	if held, why := verifyPassHeldWitnessed(full, brief); held {
+		t.Fatalf("control: a full witnessed PASS kept the hold (%s)", why)
+	}
+	if held, why := verifyPassHeldWitnessed(partial, brief); !held {
+		t.Errorf("a PASS that re-ran only row 2 dropped row 1's hold (%s)", why)
+	}
+	vfRefuses(t, shOpts(partial), "")
+
+	moved := shAFEvidence("| 1 | `go vet ./other/...` | pass exit=0 | sha256:abc123def456", "")
+	if held, _ := unroutedHeldLine(moved, true); held {
+		t.Fatal("fixture: the rule 3c read alone holds the moved-command run")
+	}
+	if got := shAutoflip(t, moved); !strings.Contains(got.Reason, "not marked deferred") {
+		t.Errorf("a PASS whose command is not the Verify row's dropped the hold: %v (%s)", got.Outcome, got.Reason)
+	}
+}

@@ -21,8 +21,7 @@ var runnerRowsCallRe = regexp.MustCompile(`\bflipDateRunnerRows\(`)
 // runnerRowReaders is every non-test caller of flipDateRunnerRows, and why
 // it does not judge runner agreement on its own.
 var runnerRowReaders = map[string]string{
-	"verifyflip.go":         "flipReadRun judges through runnerCellsAgree; flipReadLooseRun reads cells with no <login> @ <sha>; latestPassSpan counts rows after the verdict",
-	"runnercell.go":         "latestPassRunnerRefusal: the check-verified half of runnerCellsAgree",
+	"verifyflip.go":         "flipReadRun judges through runnerCellsAgree (check-verified reads its refusals, latestPassRunnerRefusal); flipReadLooseRun reads cells with no <login> @ <sha>; latestPassSpan counts rows after the verdict",
 	"verifyissues.go":       "evidenceVerifierInfo reads row 0 only after flipReadRun accepted the run",
 	"heldscope.go":          "reads Date cells and row presence; no Runner judgement",
 	"coverage_crossrepo.go": "reads one qualifier per row (an uncommitted-source mark); no agreement judgement",
