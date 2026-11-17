@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -118,5 +119,57 @@ func TestAdmittedRowsNoCred(t *testing.T) {
 				t.Fatal("the invoking process lost its own HOME or DESK_LOOP")
 			}
 		})
+	}
+}
+
+// TestAdmittedEnvScrubsCred pins the scrub one variable at a time, whatever
+// its case, beside variables that only resemble one.
+func TestAdmittedEnvScrubsCred(t *testing.T) {
+	gone := []string{"HOME=/h", "Home=/h", "DESK_LOOP=verify-desk", "desk_loop=x",
+		"XDG_CONFIG_HOME=/h/.config", "CELLCTL_GH_AMBIENT=x", "GH_CONFIG_DIR=/h/gh",
+		"GH_HOST=example.invalid", "gh_anything=x", "ASSAY_APP_PEM_FILE=/k", "Assay_Roster=x",
+		"GIT_CONFIG_GLOBAL=/h/.gitconfig"}
+	kept := []string{"PATH=/bin", "HOMEBREW_PREFIX=/opt", "DESK_SESSION=s", "XDG_CACHE_HOME=/c",
+		"GHOST=x", "MY_ASSAY_NOTE=x", "GIT_CONFIG_GLOBAL=" + os.DevNull}
+	env := admittedRowEnv(append(append([]string{}, gone...), kept...))
+	for _, kv := range gone {
+		if slices.Contains(env, kv) {
+			t.Errorf("admitted row environment carries %s", kv)
+		}
+	}
+	for _, kv := range kept {
+		if !slices.Contains(env, kv) {
+			t.Errorf("admitted row environment dropped %s", kv)
+		}
+	}
+}
+
+// TestRowreadBrokerClosed: the run's row-read socket answers only the rowread
+// verb's own closed set (a write verb is refused before any reader starts),
+// and a row whose run cannot be reached gets a could-not-check, never an
+// empty answer.
+func TestRowreadBrokerClosed(t *testing.T) {
+	f := newRowreadForge(t, `"x"`)
+	sock, dir, err := rowreadSocketPath(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dir != "" {
+		t.Cleanup(func() { os.RemoveAll(dir) })
+	}
+	stop, err := serveRowread(sock, os.Environ())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out, errb strings.Builder
+	if code := rowreadForward(sock, []string{"post", "--issue", "example-org/one#7"}, &out, &errb); code != rowreadExitUsage {
+		t.Fatalf("brokered write verb: exit %d, want %d (refused)", code, rowreadExitUsage)
+	}
+	if f.started() {
+		t.Fatal("a refused brokered request started the reader")
+	}
+	stop()
+	if code := rowreadForward(sock, []string{"comments", "--issue", "example-org/one#7"}, &out, &errb); code != rowreadExitCouldNot {
+		t.Fatalf("unreachable run: exit %d, want %d (could-not-check)", code, rowreadExitCouldNot)
 	}
 }

@@ -93,6 +93,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
@@ -644,6 +645,21 @@ type shellPlan struct {
 	// readSet, when set, records each row's read set (build-less-brittle/15,
 	// Linux only); runWitnessesSandboxed narrows it to the row.
 	readSet *readSetTarget
+}
+
+// removeRowScratch removes an admitted run's row scratch, first making
+// writable any directory a row left read-only.
+func removeRowScratch(dir string) {
+	if os.RemoveAll(dir) == nil {
+		return
+	}
+	filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && d.IsDir() {
+			os.Chmod(p, 0o700)
+		}
+		return nil
+	})
+	os.RemoveAll(dir)
 }
 
 // rowEnv is the environment every Verify row of the run executes in: the
@@ -2815,7 +2831,31 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	defer releaseInterrupt()
 	plan.stop = stop
 	if attestation != "" {
-		plan.env = admittedRowEnv(os.Environ())
+		// An admitted run's rows get the scrubbed environment, a fresh empty
+		// HOME of the run's own and the run's row-read socket, all under one
+		// scratch directory removed when the run returns.
+		environ := os.Environ()
+		scratch, err := os.MkdirTemp("", "verifyrun-row-")
+		if err != nil {
+			fmt.Fprintln(stderr, "statusgen verifyrun: cannot make the rows' scratch:", err)
+			return verifyrunExitCouldNot
+		}
+		defer removeRowScratch(scratch)
+		home, err := admittedRowHome(environ, scratch)
+		if err != nil {
+			fmt.Fprintln(stderr, "statusgen verifyrun: cannot make the rows' HOME:", err)
+			return verifyrunExitCouldNot
+		}
+		plan.env = append(admittedRowEnv(environ), home...)
+		if sock, sockDir, err := rowreadSocketPath(scratch); err == nil {
+			if sockDir != "" {
+				defer removeRowScratch(sockDir)
+			}
+			if stopBroker, err := serveRowread(sock, rowreadReaderEnv(environ)); err == nil {
+				defer stopBroker()
+				plan.env = append(plan.env, rowreadSocketVar+"="+sock)
+			}
+		}
 	}
 	// Fail-first (verify-integrity/03): the base run comes FIRST, on its own
 	// checkout, so the head run below is the ordinary run, unchanged.

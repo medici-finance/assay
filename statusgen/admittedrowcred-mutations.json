@@ -1,0 +1,89 @@
+{
+  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed)$' -count=1 -timeout 600s",
+  "control": {
+    "name": "admitted rows keep every credential pointer",
+    "file": "verifieradmission.go",
+    "old": "\t\tcase admittedRowCredential(key):\n",
+    "new": ""
+  },
+  "mutations": [
+    {
+      "name": "HOME passes through to the rows",
+      "file": "verifieradmission.go",
+      "old": "[]string{\"HOME\", \"XDG_CONFIG_HOME\", \"DESK_LOOP\", \"CELLCTL_GH_AMBIENT\"}",
+      "new": "[]string{\"XDG_CONFIG_HOME\", \"DESK_LOOP\", \"CELLCTL_GH_AMBIENT\"}"
+    },
+    {
+      "name": "DESK_LOOP passes through to the rows",
+      "file": "verifieradmission.go",
+      "old": "[]string{\"HOME\", \"XDG_CONFIG_HOME\", \"DESK_LOOP\", \"CELLCTL_GH_AMBIENT\"}",
+      "new": "[]string{\"HOME\", \"XDG_CONFIG_HOME\", \"CELLCTL_GH_AMBIENT\"}"
+    },
+    {
+      "name": "XDG_CONFIG_HOME passes through to the rows",
+      "file": "verifieradmission.go",
+      "old": "[]string{\"HOME\", \"XDG_CONFIG_HOME\", \"DESK_LOOP\", \"CELLCTL_GH_AMBIENT\"}",
+      "new": "[]string{\"HOME\", \"DESK_LOOP\", \"CELLCTL_GH_AMBIENT\"}"
+    },
+    {
+      "name": "cell ambient login passes through to the rows",
+      "file": "verifieradmission.go",
+      "old": "[]string{\"HOME\", \"XDG_CONFIG_HOME\", \"DESK_LOOP\", \"CELLCTL_GH_AMBIENT\"}",
+      "new": "[]string{\"HOME\", \"XDG_CONFIG_HOME\", \"DESK_LOOP\"}"
+    },
+    {
+      "name": "GH_* family passes through to the rows",
+      "file": "verifieradmission.go",
+      "old": "return strings.HasPrefix(key, \"GH_\") || strings.HasPrefix(key, \"ASSAY_\") ||",
+      "new": "return strings.HasPrefix(key, \"ASSAY_\") ||"
+    },
+    {
+      "name": "ASSAY_* family passes through to the rows",
+      "file": "verifieradmission.go",
+      "old": "return strings.HasPrefix(key, \"GH_\") || strings.HasPrefix(key, \"ASSAY_\") ||",
+      "new": "return strings.HasPrefix(key, \"GH_\") ||"
+    },
+    {
+      "name": "the home's own global git config survives",
+      "file": "verifieradmission.go",
+      "old": "return key == \"GIT_CONFIG_GLOBAL\" && value == os.DevNull",
+      "new": "return key == \"GIT_CONFIG_GLOBAL\" && (value == os.DevNull || strings.HasSuffix(value, \".gitconfig\"))"
+    },
+    {
+      "name": "rows get no HOME of their own",
+      "file": "verifieradmission.go",
+      "old": "\tadd := []string{\"HOME=\" + home}\n",
+      "new": "\tadd := []string{}\n"
+    },
+    {
+      "name": "the rows' scratch outlives the run",
+      "file": "verifyrun.go",
+      "old": "\t\tdefer removeRowScratch(scratch)\n",
+      "new": ""
+    },
+    {
+      "name": "rows are not offered the run's row-read socket",
+      "file": "verifyrun.go",
+      "old": "\t\t\t\tplan.env = append(plan.env, rowreadSocketVar+\"=\"+sock)\n",
+      "new": ""
+    },
+    {
+      "name": "the brokered reader keeps the forge token variables",
+      "file": "rowreadbroker.go",
+      "old": "\t\tif admittedRowForgeToken(key) || strings.EqualFold(key, \"CELLCTL_GH_AMBIENT\") {",
+      "new": "\t\tif key == \"\" {"
+    },
+    {
+      "name": "the broker answers any verb without the closed set",
+      "file": "rowreadbroker.go",
+      "old": "\t\treply.Code = runRowreadWith(req.Args, reader, &out, &errb)\n",
+      "new": "\t\treply.Code = runRowreadWith(append([]string{\"comments\"}, req.Args[1:]...), reader, &out, &errb)\n"
+    },
+    {
+      "name": "an unreachable run reads as an empty answer",
+      "file": "rowreadbroker.go",
+      "old": "\t\tfmt.Fprintf(stderr, \"statusgen rowread: could-not-check: the run's row-read socket is unreachable: %v\\n\", err)\n\t\treturn rowreadExitCouldNot",
+      "new": "\t\treturn rowreadExitOK"
+    }
+  ]
+}

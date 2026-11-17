@@ -156,6 +156,9 @@ type deskreadReader struct {
 	bin string
 	// timeout bounds the whole set read.
 	timeout time.Duration
+	// env, when set, is the environment readVerb starts the verb in; nil
+	// inherits this process's. The row-read broker sets it (rowreadbroker.go).
+	env []string
 }
 
 func newDeskreadReader() deskreadReader {
@@ -281,7 +284,11 @@ func (d deskreadReader) readItem(kind, repo string, number int) (*deskreadItemEn
 func (d deskreadReader) readVerb(args []string) ([]byte, error) {
 	argv := perfChildArgs(d.bin, args) // probe outside the phase
 	leave := perfEnter("deskread")
-	out, err := exec.Command(d.bin, argv...).Output()
+	cmd := exec.Command(d.bin, argv...)
+	if d.env != nil {
+		cmd.Env = d.env
+	}
+	out, err := cmd.Output()
 	leave()
 	return out, err
 }

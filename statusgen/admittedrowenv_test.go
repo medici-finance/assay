@@ -297,10 +297,10 @@ func TestAdmittedRowsShellEnv(t *testing.T) {
 
 // TestAdmittedRowsKeepNarrowing: an admitted run's rows read without system
 // config, terminal prompt or askpass helper, whether the launch set those
-// narrowing settings or the caller's environment widened them, and a launch's
-// global config naming the home's own file survives (the row proves it is the
-// only one read: an XDG config beside it is not). The unadmitted control
-// proves the widening plant lands.
+// narrowing settings or the caller's environment widened them. A launch's
+// global config naming the home's own file does not survive (that file can
+// name a credential helper): the row reads neither it nor the XDG config
+// beside it. The unadmitted control proves the widening plant lands.
 func TestAdmittedRowsKeepNarrowing(t *testing.T) {
 	const pinned = `test "$GIT_CONFIG_NOSYSTEM" = 1 && test "$GIT_TERMINAL_PROMPT" = 0 && test "${GIT_ASKPASS-unset}" = ""`
 	for _, mode := range []string{"launch", "widened", "control"} {
@@ -325,7 +325,7 @@ func TestAdmittedRowsKeepNarrowing(t *testing.T) {
 				t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 				t.Setenv("GIT_TERMINAL_PROMPT", "0")
 				t.Setenv("GIT_ASKPASS", "")
-				row = `test "$(git config --get-all fixture.probe)" = global && ` + pinned
+				row = `test -z "$(git config --get-all fixture.probe)" && ` + pinned
 			} else {
 				t.Setenv("GIT_CONFIG_NOSYSTEM", "0")
 				t.Setenv("GIT_TERMINAL_PROMPT", "1")
@@ -352,7 +352,7 @@ func TestAdmittedEnvNarrowOnly(t *testing.T) {
 		kv   string
 		keep bool
 	}{
-		{"GIT_CONFIG_GLOBAL=" + global, true},
+		{"GIT_CONFIG_GLOBAL=" + global, false},
 		{"GIT_CONFIG_GLOBAL=" + os.DevNull, true},
 		{"GIT_CONFIG_GLOBAL=" + filepath.Join(elsewhere, ".gitconfig"), false},
 		{"GIT_CONFIG_GLOBAL=.gitconfig", false},
@@ -421,7 +421,7 @@ func TestAdmittedRowsDropForgeTokens(t *testing.T) {
 // TestAdmittedEnvDropsForgeTokens pins the removal one variable at a time,
 // whatever its case, beside a variable that only shares a prefix.
 func TestAdmittedEnvDropsForgeTokens(t *testing.T) {
-	in := []string{"PATH=/bin", "GH_TOKEN_FILE=kept", "Gh_Token=x"}
+	in := []string{"PATH=/bin", "GITHUB_TOKEN_FILE=kept", "Gh_Token=x"}
 	for _, name := range forgeTokenVars {
 		in = append(in, name+"=x")
 	}
@@ -431,7 +431,7 @@ func TestAdmittedEnvDropsForgeTokens(t *testing.T) {
 			t.Errorf("admitted row environment carries %s", kv)
 		}
 	}
-	for _, kv := range []string{"PATH=/bin", "GH_TOKEN_FILE=kept"} {
+	for _, kv := range []string{"PATH=/bin", "GITHUB_TOKEN_FILE=kept"} {
 		if !slices.Contains(admittedRowEnv(in), kv) {
 			t.Errorf("admitted row environment dropped %s", kv)
 		}
