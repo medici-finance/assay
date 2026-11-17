@@ -64,7 +64,9 @@ a NOTICE, never a failure.
 
 Exit status: 0 when every step succeeded; 1 when any step failed (a failed
 settings step does not abort the ones after it — every step runs and the
-failures are listed in the summary); 2 for a usage error, before any effect.`
+failures are listed in the summary); 2 for a usage error, before any effect;
+6 (could-not-check) when an answer's body could not be read whole — cut off,
+over the size bound, or empty where a result was expected.`
 
 func main() {
 	selected := perfrec.ResolveContext(perfrec.ContextInput{})

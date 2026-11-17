@@ -167,10 +167,12 @@ var unboundedClientRoots = []string{
 // client that sends, with no request deadline: a reference to http.DefaultClient, a call of
 // net/http's package-level Get/Head/Post/PostForm (which use it), and an http.Client or go-gh
 // ClientOptions literal with no Timeout key (copies go through boundedCopy instead). It also
-// reports `x, _ := io.ReadAll(...)`: once a deadline can cut a body short, a discarded read
-// error turns a truncated page into a complete-looking answer (use ReadForgeBody).
+// reports an io.ReadAll whose error is not checked (readAllDiscardSites lists the shapes):
+// once a deadline can cut a body short, a discarded read error turns a truncated page into a
+// complete-looking answer (use ReadForgeBody).
 func unboundedClientSites(root string) (sites []string, files int, err error) {
 	fset := token.NewFileSet()
+	byDir := map[string][]*ast.File{}
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, werr error) error {
 		if werr != nil {
 			return werr
@@ -189,68 +191,71 @@ func unboundedClientSites(root string) (sites []string, files int, err error) {
 			return perr
 		}
 		files++
-		// Resolve the names this file gives net/http and io, so an aliased import
-		// (nethttp "net/http") is checked exactly like the default name.
-		httpName, ioName := importName(f, "net/http", "http"), importName(f, "io", "io")
-		ast.Inspect(f, func(n ast.Node) bool {
-			what := ""
-			switch x := n.(type) {
-			case *ast.SelectorExpr:
-				if id, ok := x.X.(*ast.Ident); ok && httpName != "" && id.Name == httpName {
-					switch x.Sel.Name {
-					case "DefaultClient":
-						what = "http.DefaultClient"
-					case "Get", "Head", "Post", "PostForm":
-						what = "http." + x.Sel.Name + " (uses http.DefaultClient)"
-					}
-				}
-			case *ast.AssignStmt:
-				// raw, _ := io.ReadAll(...) — a body cut off by the deadline read as complete.
-				if len(x.Lhs) == 2 && len(x.Rhs) == 1 {
-					if b, ok := x.Lhs[1].(*ast.Ident); ok && b.Name == "_" {
-						if call, ok := x.Rhs[0].(*ast.CallExpr); ok {
-							if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "ReadAll" {
-								if id, ok := sel.X.(*ast.Ident); ok && ioName != "" && id.Name == ioName {
-									what = "io.ReadAll error discarded"
-								}
-							}
-						}
-					}
-				}
-			case *ast.CompositeLit:
-				sel, isSel := x.Type.(*ast.SelectorExpr)
-				httpClient := false
-				if isSel && sel.Sel.Name == "Client" {
-					if id, ok := sel.X.(*ast.Ident); ok && httpName != "" && id.Name == httpName {
-						httpClient = true
-					}
-				}
-				if isSel && (httpClient || sel.Sel.Name == "ClientOptions") {
-					has := false
-					for _, e := range x.Elts {
-						if kv, ok := e.(*ast.KeyValueExpr); ok {
-							if k, ok := kv.Key.(*ast.Ident); ok && k.Name == "Timeout" {
-								has = true
-							}
-						}
-					}
-					if !has {
-						what = sel.Sel.Name + " literal with no Timeout"
-						if httpClient {
-							what = "http.Client literal with no Timeout"
-						}
-					}
-				}
-			}
-			if what != "" {
-				sites = append(sites, fset.Position(n.Pos()).String()+": "+what)
-			}
-			return true
-		})
+		byDir[filepath.Dir(path)] = append(byDir[filepath.Dir(path)], f)
 		return nil
 	})
+	if err != nil {
+		return nil, files, err
+	}
+	for _, pkg := range byDir {
+		wrappers := readAllWrappers(pkg)
+		for _, f := range pkg {
+			sites = append(sites, clientSitesIn(fset, f)...)
+			sites = append(sites, readAllDiscardSites(fset, f, wrappers)...)
+		}
+	}
 	sort.Strings(sites)
-	return sites, files, err
+	return sites, files, nil
+}
+
+// clientSitesIn reports the deadline-free client shapes in one file.
+func clientSitesIn(fset *token.FileSet, f *ast.File) (sites []string) {
+	// Resolve the name this file gives net/http, so an aliased import
+	// (nethttp "net/http") is checked exactly like the default name.
+	httpName := importName(f, "net/http", "http")
+	ast.Inspect(f, func(n ast.Node) bool {
+		what := ""
+		switch x := n.(type) {
+		case *ast.SelectorExpr:
+			if id, ok := x.X.(*ast.Ident); ok && httpName != "" && id.Name == httpName {
+				switch x.Sel.Name {
+				case "DefaultClient":
+					what = "http.DefaultClient"
+				case "Get", "Head", "Post", "PostForm":
+					what = "http." + x.Sel.Name + " (uses http.DefaultClient)"
+				}
+			}
+		case *ast.CompositeLit:
+			sel, isSel := x.Type.(*ast.SelectorExpr)
+			httpClient := false
+			if isSel && sel.Sel.Name == "Client" {
+				if id, ok := sel.X.(*ast.Ident); ok && httpName != "" && id.Name == httpName {
+					httpClient = true
+				}
+			}
+			if isSel && (httpClient || sel.Sel.Name == "ClientOptions") {
+				has := false
+				for _, e := range x.Elts {
+					if kv, ok := e.(*ast.KeyValueExpr); ok {
+						if k, ok := kv.Key.(*ast.Ident); ok && k.Name == "Timeout" {
+							has = true
+						}
+					}
+				}
+				if !has {
+					what = sel.Sel.Name + " literal with no Timeout"
+					if httpClient {
+						what = "http.Client literal with no Timeout"
+					}
+				}
+			}
+		}
+		if what != "" {
+			sites = append(sites, fset.Position(n.Pos()).String()+": "+what)
+		}
+		return true
+	})
+	return sites
 }
 
 // importName is the local name file f gives the import path: its alias when it has one, def
@@ -323,6 +328,144 @@ func TestUnboundedGuardSeesPlant(t *testing.T) {
 		if !found {
 			t.Errorf("guard missed the planted %q; it reported: %v", want, sites)
 		}
+	}
+}
+
+// readAllSitesIn scans dir with the class guard and returns only its io.ReadAll findings.
+func readAllSitesIn(t *testing.T, dir string) []string {
+	t.Helper()
+	sites, _, err := unboundedClientSites(dir)
+	if err != nil {
+		t.Fatalf("scan %s: %v", dir, err)
+	}
+	var out []string
+	for _, s := range sites {
+		if strings.Contains(s, "io.ReadAll") {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// funcLines maps each top-level function in path, and each top-level var whose value holds a
+// function literal, to its [start, end] line span, so a test can say which planted function
+// or literal a reported site falls in.
+func funcLines(t *testing.T, path string) map[string][2]int {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, path, nil, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", path, err)
+	}
+	out := map[string][2]int{}
+	span := func(n ast.Node) [2]int {
+		return [2]int{fset.Position(n.Pos()).Line, fset.Position(n.End()).Line}
+	}
+	for _, d := range f.Decls {
+		switch x := d.(type) {
+		case *ast.FuncDecl:
+			out[x.Name.Name] = span(x)
+		case *ast.GenDecl:
+			for _, s := range x.Specs {
+				vs, ok := s.(*ast.ValueSpec)
+				if !ok || len(vs.Names) != 1 {
+					continue
+				}
+				hasLit := false
+				ast.Inspect(vs, func(n ast.Node) bool {
+					if _, ok := n.(*ast.FuncLit); ok {
+						hasLit = true
+					}
+					return !hasLit
+				})
+				if hasLit {
+					out[vs.Names[0].Name] = span(vs)
+				}
+			}
+		}
+	}
+	return out
+}
+
+// regression: #6718
+func TestReadAllGuardWideShapes(t *testing.T) {
+	dir := filepath.Join("testdata", "unboundedclient")
+	path := filepath.Join(dir, "planted_readall.go")
+	spans := funcLines(t, path)
+	sites := readAllSitesIn(t, dir)
+	inFunc := func(fn, shape string) bool {
+		span, ok := spans[fn]
+		if !ok {
+			t.Fatalf("fixture has no function %s", fn)
+		}
+		for _, s := range sites {
+			if !strings.HasPrefix(s, path+":") || !strings.HasSuffix(s, ": "+shape) {
+				continue
+			}
+			if line := siteLine(s, path); line >= span[0] && line <= span[1] {
+				return true
+			}
+		}
+		return false
+	}
+	for _, c := range []struct{ fn, shape string }{
+		{"plantedBlankAssign", "io.ReadAll error discarded"},
+		{"plantedVarDecl", "io.ReadAll error discarded"},
+		{"plantedIgnored", "io.ReadAll result ignored"},
+		{"plantedUnchecked", "io.ReadAll error never checked"},
+		{"plantedBlanked", "io.ReadAll error never checked"},
+		{"plantedOverwritten", "io.ReadAll error never checked"},
+		{"plantedIoutil", "io.ReadAll error discarded"},
+		{"plantedWrapper", "io.ReadAll error discarded (via readBody)"},
+		// Function literals outside every function declaration.
+		{"plantedFuncVar", "io.ReadAll error discarded"},
+		{"plantedLitDiscard", "io.ReadAll error discarded"},
+		{"plantedLitUnchecked", "io.ReadAll error never checked"},
+	} {
+		if !inFunc(c.fn, c.shape) {
+			t.Errorf("guard missed %s (%q); it reported: %v", c.fn, c.shape, sites)
+		}
+	}
+	// The package-level `var x, _ = io.ReadAll(...)` sits outside any function.
+	found := false
+	for _, s := range sites {
+		if strings.HasPrefix(s, path+":") && strings.HasSuffix(s, ": io.ReadAll error discarded") {
+			if line := siteLine(s, path); line > 0 && !inAnySpan(line, spans) {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Errorf("guard missed the package-level var declaration; it reported: %v", sites)
+	}
+}
+
+// siteLine is the line number in a "<path>:<line>:<col>: <what>" site, 0 when absent.
+func siteLine(site, path string) int {
+	rest, _ := strings.CutPrefix(site, path+":")
+	line := 0
+	for _, c := range rest {
+		if c < '0' || c > '9' {
+			break
+		}
+		line = line*10 + int(c-'0')
+	}
+	return line
+}
+
+func inAnySpan(line int, spans map[string][2]int) bool {
+	for _, s := range spans {
+		if line >= s[0] && line <= s[1] {
+			return true
+		}
+	}
+	return false
+}
+
+// regression: #6718
+func TestReadAllGuardNoFalseHit(t *testing.T) {
+	if sites := readAllSitesIn(t, filepath.Join("testdata", "readallclean")); len(sites) > 0 {
+		t.Fatalf("guard flagged a checked io.ReadAll error:\n  %s", strings.Join(sites, "\n  "))
 	}
 }
 

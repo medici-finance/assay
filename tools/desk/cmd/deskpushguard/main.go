@@ -416,7 +416,10 @@ func deriveRepo(remoteURL, remoteName string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("cannot get %s URL: %w", remoteName, err)
 		}
-		url, err := repo.RemoteURL(remoteName)
+		// SlugRemoteURL refuses when config this reader does not merge could change the
+		// URL git fetches from. It reads the fetch URL: a pushurl or pushInsteadOf is not
+		// consulted, so this fallback checks the fetch repository's PRs.
+		url, err := deskkit.SlugRemoteURL(repo, remoteName)
 		if err != nil {
 			return "", fmt.Errorf("cannot get %s URL: %w", remoteName, err)
 		}
