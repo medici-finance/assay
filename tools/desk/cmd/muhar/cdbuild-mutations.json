@@ -89,7 +89,7 @@
       "name": "CDPATH searched even for a ./ or ../ word",
       "file": "cmd/muhar/runner.go",
       "old": "first == \".\" || first == \"..\" || ",
-      "new": ""
+      "new": "first == \"\" && false || "
     },
     {
       "name": "the first CDPATH entry wins, not the last",

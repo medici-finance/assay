@@ -578,8 +578,15 @@ func TestBuildNoCheckoutFailsClosed(t *testing.T) {
 	if err := os.Remove(filepath.Join(repo, ".git")); err != nil {
 		t.Fatal(err)
 	}
-	if got := checkoutRoot(root); got != root {
-		t.Skipf("a .git above the temporary directory (%s) bounds the fixture", got)
+	// Probed here, not with checkoutRoot: a broken checkoutRoot must fail
+	// this test, never skip it.
+	for d := filepath.Dir(repo); ; d = filepath.Dir(d) {
+		if _, err := os.Lstat(filepath.Join(d, ".git")); err == nil {
+			t.Skipf("a .git above the temporary directory (%s) bounds the fixture", d)
+		}
+		if filepath.Dir(d) == d {
+			break
+		}
 	}
 	test := "cd ../other && go test -count=1 ."
 	out, code := runCdSpec(t, root, test)
