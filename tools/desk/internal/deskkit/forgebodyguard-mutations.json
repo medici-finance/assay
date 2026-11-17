@@ -1,0 +1,47 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -run '^TestForgeBody' -timeout=120s",
+  "control": {
+    "name": "CONTROL \u2014 disarm the bare io.ReadAll(body) shape (every planted ReadAll read scans clean)",
+    "file": "internal/deskkit/forgebodycap_guard_test.go",
+    "old": "\t\t\t\tcase ioName != \"\" && isPkgCall(x, ioName, \"ReadAll\") && len(x.Args) == 1 && isBody(x.Args[0]):",
+    "new": "\t\t\t\tcase false && ioName != \"\" && isPkgCall(x, ioName, \"ReadAll\") && len(x.Args) == 1 && isBody(x.Args[0]):"
+  },
+  "mutations": [
+    {
+      "name": "key a permit by file and function only (a second read of another kind in a permitted function passes under the first read's permit)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\tif _, ok := permits[h]; ok && !used[h] {",
+      "new": "\t\tif _, ok := permits[h]; (ok && !used[h]) || permits[h[:strings.LastIndex(h, \" \")]+\" uncapped-body-copy\"] != \"\" {"
+    },
+    {
+      "name": "let a permit cover every hit with its key (two same-kind reads under one permit both pass)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\tif _, ok := permits[h]; ok && !used[h] {",
+      "new": "\t\tif _, ok := permits[h]; ok {"
+    },
+    {
+      "name": "stop seeing a truncating reader handed to a capped reader (ReadForgeBodyUpTo(io.LimitReader(resp.Body, n), ...) scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\t\t\tcase isCappedReadCall(x) && len(x.Args) >= 1 && isTruncating(x.Args[0]):",
+      "new": "\t\t\t\tcase false && isCappedReadCall(x) && len(x.Args) >= 1 && isTruncating(x.Args[0]):"
+    },
+    {
+      "name": "stop following a local alias of a truncating reader (lr := io.LimitReader(...); ReadCappedForgeBody(lr, ...) scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\t\tif aliases[x.Name] {",
+      "new": "\t\t\tif false && aliases[x.Name] {"
+    },
+    {
+      "name": "stop seeing an io.LimitedReader literal as a truncating reader",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "if !ok || sel.Sel.Name != \"LimitedReader\" {",
+      "new": "if !ok || sel.Sel.Name != \"LimitedReaderX\" {"
+    },
+    {
+      "name": "look only at the capped reader's argument itself, not inside it (bufio.NewReader(io.LimitReader(...)) scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\treturn !seen\n\t})\n\treturn seen\n}\n\n// truncatingAliases",
+      "new": "\t\treturn false\n\t})\n\treturn seen\n}\n\n// truncatingAliases"
+    }
+  ]
+}

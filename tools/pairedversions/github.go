@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -90,8 +91,12 @@ func (g *ghAPI) Release(home, tag string) (*release, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: HTTP %d", url, resp.StatusCode)
 	}
+	raw, err := readCapped(resp.Body, "GET "+url, maxAPIBodyBytes)
+	if err != nil {
+		return nil, err
+	}
 	var gr ghRelease
-	if err := json.NewDecoder(resp.Body).Decode(&gr); err != nil {
+	if err := json.Unmarshal(raw, &gr); err != nil {
 		return nil, fmt.Errorf("decoding release %s of %s: %w", tag, home, err)
 	}
 
@@ -181,8 +186,12 @@ func (g *ghAPI) releasePage(url string) ([]ghReleaseMeta, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: HTTP %d", url, resp.StatusCode)
 	}
+	raw, err := readCapped(resp.Body, "GET "+url, maxAPIBodyBytes)
+	if err != nil {
+		return nil, err
+	}
 	var batch []ghReleaseMeta
-	if err := json.NewDecoder(resp.Body).Decode(&batch); err != nil {
+	if err := json.Unmarshal(raw, &batch); err != nil {
 		return nil, fmt.Errorf("decoding %s: %w", url, err)
 	}
 	return batch, nil
@@ -199,8 +208,36 @@ func (g *ghAPI) asset(home string, id int64) ([]byte, error) {
 		return nil, fmt.Errorf("GET %s: HTTP %d", url, resp.StatusCode)
 	}
 	// A checksums.txt is a few hundred bytes; the cap keeps a wrong-URL HTML
-	// body from being read into memory unbounded.
-	return io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	// body from being read into memory unbounded, and an asset past it is
+	// refused rather than handed on as its first maxAssetBytes bytes.
+	return readCapped(resp.Body, "GET "+url, maxAssetBytes)
+}
+
+// The bounds on what one API answer may carry. They are vars only so a test can
+// prove the over-bound path with a small body; nothing else sets them.
+var (
+	// maxAssetBytes bounds a release asset read (checksums.txt).
+	maxAssetBytes int64 = 1 << 20
+	// maxAPIBodyBytes bounds one JSON answer (a release, or one page of the
+	// release list), the same ceiling the desk tools put on a forge answer.
+	maxAPIBodyBytes int64 = 32 << 20
+)
+
+// errBodyOverCap marks an answer refused for being larger than its bound.
+var errBodyOverCap = errors.New("response body exceeds its bound")
+
+// readCapped reads body whole when it is at most limit bytes, and REFUSES it
+// otherwise: one byte past the bound is read so that an over-bound answer is
+// told apart from one that ends exactly there, and nothing of a refused answer
+// is returned. A truncated answer is never handed on as if it were complete —
+// a release list or a checksums file cut short would parse as a shorter,
+// well-formed authority.
+func readCapped(body io.Reader, what string, limit int64) ([]byte, error) {
+	raw, err := io.ReadAll(io.LimitReader(body, limit+1))
+	if int64(len(raw)) > limit {
+		return nil, fmt.Errorf("%s: %w (%d bytes) — refused, never read as a truncated answer", what, errBodyOverCap, limit)
+	}
+	return raw, err
 }
 
 // parseChecksums reads the `<sha256>  <name>` lines a checksums.txt carries.
