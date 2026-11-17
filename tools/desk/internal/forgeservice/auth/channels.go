@@ -79,6 +79,10 @@ func (c *Controller) ServeGrant(ctx context.Context, ch GrantChannel) error {
 }
 func heldResponse() wireResponse { return wireResponse{Schema: Schema, Error: "held"} }
 
+// expiredDeadline is in the past: setting it fails a handler's pending read
+// or write at once without closing the connection under the handler.
+var expiredDeadline = time.Unix(1, 0)
+
 // claimChannel runs only for the owner's fixed channel paths, under the
 // original exclusive gate. An active or uncertain holder is never recovered.
 func (c *Controller) claimChannel(ctx context.Context, root *os.Root, name string) error {
@@ -181,16 +185,22 @@ func (c *Controller) serve(ctx context.Context, root *os.Root, name string, slot
 		active.Add(1)
 		go func() {
 			defer active.Done()
-			defer func() { <-slots }()
+			// The slot is given back BEFORE the connection closes. A client
+			// reads its response to EOF, so it learns the exchange is over only
+			// from this close: a client holding a complete response therefore
+			// always finds the slot free, and a strictly sequential client is
+			// never refused on the full-pool branch above. Cancellation only
+			// expires the deadline, so this deferred close is the only close.
 			defer conn.Close()
+			defer func() { <-slots }()
 			call, cancel := context.WithTimeout(ctx, c.config.IOTimeout)
 			defer cancel()
-			stop := context.AfterFunc(call, func() { conn.Close() })
-			defer stop()
 			deadline, _ := call.Deadline()
 			if conn.SetDeadline(deadline) != nil {
 				return
 			}
+			stop := context.AfterFunc(call, func() { conn.SetDeadline(expiredDeadline) })
+			defer stop()
 			var q wireRequest
 			response := heldResponse()
 			if readFrame(conn, c.config.MaxFrameBytes, &q) == nil && call.Err() == nil {

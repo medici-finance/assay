@@ -34,7 +34,7 @@
     {
       "name": "the phantom precondition is skipped, so a phantom reaches admission, the mint and the claim; TestPhantomPreconditionPrecedesAdmissionMintAndClaim must go red",
       "file": "cmd/deskdispatch/dispatch.go",
-      "old": "\tfollowUp, err := phantomCheckFor(o, repo, plan.dl)",
+      "old": "\tfollowUp, err := phantomCheckFor(plan.gateOpts(o), repo, plan.dl)",
       "new": "\tfollowUp, err := phantomFollowUp{}, error(nil)"
     },
     {

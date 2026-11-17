@@ -269,12 +269,15 @@ session-writable worktree file.
 ### Cell dev-env file — `35 → {36, 37} → 38 → 39` (added 2026-11-16, issue #6615)
 
 One dev-env file per cell replaces per-desk `.env` files. The coordinator role owns it and is
-its only writer; worker, reviewer and verifier windows read it; a Verify row receives only the
-names it declares, and the verifier records names and the file digest, never values. Ruled and
+its only writer; worker, reviewer and verifier windows read it, except that under brief 35's
+recommended option a worker or verifier window that holds a role secret gets neither the file
+nor its path; a Verify row receives only the names it declares, and the verifier records names
+and the file digest, never values. Ruled and
 amended by the driver on #6615 (the URLs are in brief 35's `## Human decision`).
 
 - **Wave 1** — `desk-containers/35` (the contract and the Env grammar for declared names;
-  human gate: how a cell proves the coordinator is the only writer).
+  human gate: how a cell proves the coordinator is the only writer, and how the file stays
+  clear of role-secret holders).
 - **Wave 2** — `desk-containers/36` (verifier admission in statusgen) and
   `desk-containers/37` (cellctl projection, write verb, change receipts); both depend on 35 only
   and run in parallel. Both are human-gated.
