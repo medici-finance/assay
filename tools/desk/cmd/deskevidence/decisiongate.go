@@ -604,7 +604,7 @@ func statusgenDecisionGateAt(root, base string, options childOptions) ([]string,
 	cmd := statusgenAudit(ctx, auditDecision, root, options, "--decision-gate-base", base)
 	cmd.Dir = os.TempDir()
 	// After the kill, stop waiting on output pipes a grandchild may still hold open.
-	cmd.WaitDelay = decisionGateWaitDelay
+	cmd.WaitDelay = decisionGateWaitDelay()
 	out, cerr := cmd.CombinedOutput()
 	if ctx.Err() != nil {
 		// Checked BEFORE the output is read: a killed run's partial REFUSED lines (or their
@@ -615,17 +615,19 @@ func statusgenDecisionGateAt(root, base string, options childOptions) ([]string,
 }
 
 // decisionGateWaitDelay bounds how long a killed decision-gate child's output pipes are
-// drained after the kill.
-const decisionGateWaitDelay = 2 * time.Second
+// drained after the kill: 2s, or an eighth of lockWait when that is shorter, so the drain
+// never takes most of the child's share of the window.
+func decisionGateWaitDelay() time.Duration { return min(2*time.Second, lockWait/8) }
 
 // decisionGateDeadline is how long ONE `statusgen --decision-gate` child may run before it is
-// killed: HALF the write-window bound, lockWait. The child runs during preparation, while
-// this run holds the per-root preparation lock that other landings wait on for at most
-// lockWait — a check allowed to outlive that bound would turn every waiter's wait into a
-// stale-lock refusal. decisionGateDiffAt runs the child TWICE (before and after), so each
-// run gets half the window and the pair together stays inside it. The audit itself is a
-// single diff walk (well under a second on a full checkout), so the bound is still wide.
-func decisionGateDeadline() time.Duration { return lockWait / 2 }
+// killed. The child runs during preparation, while this run holds the per-root preparation
+// lock that other landings wait on for at most lockWait — a check allowed to outlive that
+// bound would turn every waiter's wait into a stale-lock refusal. decisionGateDiffAt runs the
+// child TWICE (before and after), so each child's whole span — its deadline PLUS the
+// post-kill drain (decisionGateWaitDelay) — is at most HALF of lockWait, and the pair together
+// stays inside it. The audit itself is a single diff walk (well under a second on a full
+// checkout), so the bound is still wide.
+func decisionGateDeadline() time.Duration { return lockWait/2 - decisionGateWaitDelay() }
 
 // parseDecisionGateRun reads one `statusgen --decision-gate` run (split out so the
 // exit/line reading is testable without a statusgen binary).

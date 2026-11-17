@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/forgelabels/ -count=1 -timeout 120s -run 'TestTransport|TestNewHTTPTransport'",
+  "test": "go test ./internal/forgelabels/ -count=1 -timeout 120s -run 'TestTransport|TestNewHTTPTransport|TestDoRefusesOverCapBody'",
   "control": {
     "name": "CONTROL — follow redirects (the credential header would travel to the Location host)",
     "file": "internal/forgelabels/http.go",
@@ -36,6 +36,12 @@
       "file": "internal/forgelabels/http.go",
       "old": "\tif err != nil {\n\t\treturn Response{Status: resp.StatusCode}, fmt.Errorf(\"%s %s: read response",
       "new": "\tif false && err != nil {\n\t\treturn Response{Status: resp.StatusCode}, fmt.Errorf(\"%s %s: read response"
+    },
+    {
+      "name": "read the answer truncated (an over-cap body is parsed as its first 4 MiB — a `[]` prefix reads as a complete, empty label list)",
+      "file": "internal/forgelabels/http.go",
+      "old": "b, err := deskkit.ReadForgeBodyUpTo(resp.Body, method+\" \"+path, maxResponseBytes)",
+      "new": "b, err := deskkit.ReadForgeBodyUpTo(io.LimitReader(resp.Body, maxResponseBytes), method+\" \"+path, maxResponseBytes)"
     }
   ]
 }
