@@ -3,8 +3,8 @@
   "control": {
     "name": "admitted rows inherit the forge credential variables again",
     "file": "verifieradmission.go",
-    "old": "\t\tcase admittedRowForgeToken(key):\n",
-    "new": "\t\tcase false && admittedRowForgeToken(key):\n"
+    "old": "\t\tcase admittedRowDenied(kv):\n\t\tcase admittedRowGlobal(kv), admittedRowPass(kv):\n",
+    "new": "\t\tdefault:\n"
   },
   "mutations": [
     {

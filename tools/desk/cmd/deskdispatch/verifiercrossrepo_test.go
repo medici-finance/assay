@@ -98,7 +98,10 @@ func TestCrossRepoDispatchExecution(t *testing.T) {
 			crossDispatchConfig(t, visibility)
 			source := crossDispatchRepo(t, "example-org/source", map[string]string{"source.txt": "deliverable\n"})
 			output := t.TempDir()
-			t.Setenv("VERIFY_OUTPUT", output)
+			// An admitted row's environment is an allow-list (#6792), so a
+			// fixture-only variable never reaches it: the row names its output
+			// directory by absolute path instead.
+			rowOut := func(name string) string { return "'" + filepath.Join(output, name) + "'" }
 			// A desk machine carries a global git identity, so every tree can name
 			// a runner; without one a wrong-tree run would stop at attribution and
 			// hide which tree the rows were about to run in.
@@ -108,7 +111,7 @@ func TestCrossRepoDispatchExecution(t *testing.T) {
 			}
 			t.Setenv("GIT_CONFIG_GLOBAL", global)
 			const brief = "docs/streams/sample/brief-01-check.md"
-			body := "---\ndeliverable_repo: source\n---\n# Restricted fixture canary\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | `if test -f source.txt; then touch \"$VERIFY_OUTPUT/row\"; else touch \"$VERIFY_OUTPUT/elsewhere\"; false; fi` | exit 0 |\n\n## Evidence\n\nPrior-evidence-canary.\n"
+			body := "---\ndeliverable_repo: source\n---\n# Restricted fixture canary\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | `if test -f source.txt; then touch " + rowOut("row") + "; else touch " + rowOut("elsewhere") + "; false; fi` | exit 0 |\n\n## Evidence\n\nPrior-evidence-canary.\n"
 			tracking := crossDispatchRepo(t, "example-org/tracking", map[string]string{brief: body, "docs/streams/graph-repos.yaml": "schema: graph-repos-v1\nself: track\nrepos:\n  track:\n    repo: example-org/tracking\n  source:\n    repo: example-org/source\n"})
 			gh := installGHStamp(t)
 			verifierGHFixture(t, gh)
