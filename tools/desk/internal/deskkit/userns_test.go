@@ -76,11 +76,10 @@ var ownerReaders = map[string]string{
 
 // regression: #6768
 // TestHotfixOwnerReadersKnown: any new file in the module that reads a file owner's uid (a
-// Stat_t and its Uid) fails here until it is listed in ownerReaders with its reason, so a
+// Stat_t or Statx_t and its Uid) fails here until it is listed in ownerReaders with its reason, so a
 // new root-owner check cannot land without the namespace gate being considered.
 func TestHotfixOwnerReadersKnown(t *testing.T) {
 	root := filepath.Join("..", "..")
-	uid := regexp.MustCompile(`\.Uid\b`)
 	seen := map[string]bool{}
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -99,7 +98,7 @@ func TestHotfixOwnerReadersKnown(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if !strings.Contains(string(b), "Stat_t") || !uid.Match(b) {
+		if !readsOwnerUID(b) {
 			return nil
 		}
 		rel, err := filepath.Rel(root, p)
@@ -119,6 +118,35 @@ func TestHotfixOwnerReadersKnown(t *testing.T) {
 	for f := range ownerReaders {
 		if !seen[f] {
 			t.Errorf("ownerReaders lists %s, which no longer reads a file owner: drop it", f)
+		}
+	}
+}
+
+// ownerStatType matches each stat struct that carries a file owner: Stat_t (syscall or unix) and
+// unix.Statx_t, whose name does not contain Stat_t.
+var ownerStatType = regexp.MustCompile(`Statx?_t\b`)
+
+// ownerUIDField matches a read of a Uid field.
+var ownerUIDField = regexp.MustCompile(`\.Uid\b`)
+
+// readsOwnerUID: the source names a stat struct that carries a file owner and reads a Uid field.
+func readsOwnerUID(src []byte) bool {
+	return ownerStatType.Match(src) && ownerUIDField.Match(src)
+}
+
+// regression: #6781
+// TestHotfixOwnerScanStatx: the owner-reader scan sees a file owner read through either stat struct,
+// so a root-owner check written against unix.Statx_t cannot pass the scan unlisted.
+func TestHotfixOwnerScanStatx(t *testing.T) {
+	for src, want := range map[string]bool{
+		"func f(st *syscall.Stat_t) bool { return st.Uid == 0 }": true,
+		"func f(st *unix.Stat_t) bool { return st.Uid == 0 }":    true,
+		"func f(st *unix.Statx_t) bool { return st.Uid == 0 }":   true,
+		"func f(u *user.User) bool { return u.Uid == \"0\" }":    false,
+		"func f(st *unix.Statx_t) bool { return st.Ino == 1 }":   false,
+	} {
+		if got := readsOwnerUID([]byte(src)); got != want {
+			t.Errorf("readsOwnerUID(%q) = %v, want %v", src, got, want)
 		}
 	}
 }

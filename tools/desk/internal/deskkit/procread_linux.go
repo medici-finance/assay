@@ -21,26 +21,30 @@ const procRootIno = 1
 // the path beneath it with openat2 refusing any mount crossing (RESOLVE_NO_XDEV), any magic
 // link and any escape. A mount anywhere on the path, a kernel without openat2, or a path
 // outside /proc is an error, which the namespace gate turns into could-not-check.
-func readProcFile(path string) ([]byte, error) {
+func readProcFile(path string) ([]byte, error) { return readProcFileIn("/proc", path) }
+
+// readProcFileIn is readProcFile with the procfs root as a parameter, so a test can hand it a directory
+// that is not a procfs root and see it refused. Production passes "/proc" only.
+func readProcFileIn(procRoot, path string) ([]byte, error) {
 	rel, ok := strings.CutPrefix(path, "/proc/")
 	if !ok || rel == "" {
 		return nil, fmt.Errorf("%s is not on procfs (not under /proc)", path)
 	}
-	root, err := unix.Open("/proc", unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	root, err := unix.Open(procRoot, unix.O_PATH|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
 	if err != nil {
-		return nil, fmt.Errorf("/proc unopenable: %v", err)
+		return nil, fmt.Errorf("%s unopenable: %v", procRoot, err)
 	}
 	defer unix.Close(root)
 	var sfs unix.Statfs_t
 	if err := unix.Fstatfs(root, &sfs); err != nil {
-		return nil, fmt.Errorf("/proc: filesystem type unreadable: %v", err)
+		return nil, fmt.Errorf("%s: filesystem type unreadable: %v", procRoot, err)
 	}
 	var st unix.Stat_t
 	if err := unix.Fstat(root, &st); err != nil {
-		return nil, fmt.Errorf("/proc: unstattable: %v", err)
+		return nil, fmt.Errorf("%s: unstattable: %v", procRoot, err)
 	}
 	if int64(sfs.Type) != unix.PROC_SUPER_MAGIC || st.Ino != procRootIno {
-		return nil, fmt.Errorf("/proc is not a procfs root (filesystem type %#x, inode %d)", sfs.Type, st.Ino)
+		return nil, fmt.Errorf("%s is not a procfs root (filesystem type %#x, inode %d)", procRoot, sfs.Type, st.Ino)
 	}
 	fd, err := unix.Openat2(root, rel, &unix.OpenHow{
 		Flags:   unix.O_RDONLY | unix.O_CLOEXEC,

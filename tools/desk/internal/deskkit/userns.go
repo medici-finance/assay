@@ -29,6 +29,13 @@ func HotfixOwnerReason(err error) string {
 	return HotfixReasonNotRootOwned
 }
 
+// HotfixOwnerUnverifiedForTest is a namespace-gate refusal, for a test outside this package
+// that must see HotfixOwnerReason map it to HotfixReasonOwnerUnverified. Production never
+// calls it.
+func HotfixOwnerUnverifiedForTest(detail string) error {
+	return fmt.Errorf("%w: %s", errOwnerUnverified, detail)
+}
+
 // userNSIdentity is the gate every hotfix owner check passes before it trusts a file owner. A
 // file owner is read as this process's user namespace maps it. In any namespace but the
 // initial one, uid 0 can be the caller itself (`unshare --map-root-user` maps the caller's uid

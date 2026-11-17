@@ -1,5 +1,5 @@
 {
-  "test": "go test . -count=1 -timeout 300s -run '^(TestStatusgenHotfixSelf|TestStatusgenHotfixParity|TestStatusgenHotfixReaders|TestStatusgenHotfixNetnsRoot|TestStatusgenHotfixPinReader|TestStatusgenOwnerUserNS|TestStatusgenOwnerGateFirst|TestStatusgenUserNSIdentity|TestStatusgenOwnerInGated|TestStatusgenOwnerReasonDistinct|TestStatusgenOwnerReadersKnown)$'",
+  "test": "go test . -count=1 -timeout 300s -run '^(TestStatusgenHotfixSelf|TestStatusgenHotfixParity|TestStatusgenHotfixReaders|TestStatusgenHotfixNetnsRoot|TestStatusgenHotfixPinReader|TestStatusgenOwnerUserNS|TestStatusgenOwnerGateFirst|TestStatusgenUserNSIdentity|TestStatusgenOwnerInGated|TestStatusgenOwnerReasonDistinct|TestStatusgenOwnerReadersKnown|TestStatusgenOwnerScanStatx|TestStatusgenReadProcIsProcfs|TestStatusgenProcRootChecked)$'",
   "control": {
     "name": "CONTROL: invert the valid-proceeds assertion in TestStatusgenHotfixSelf",
     "file": "hotfixself_test.go",
@@ -144,6 +144,30 @@
       "file": "hotfixowner_unix.go",
       "old": "\t\t\treturn fmt.Errorf(\"%s: %w\", path, err)",
       "new": "\t\t\treturn fmt.Errorf(\"%s: %v\", path, err)"
+    },
+    {
+      "name": "N1: the procfs-root check is removed (TestStatusgenProcRootChecked; Linux only)",
+      "file": "procread_linux.go",
+      "old": "\tif int64(sfs.Type) != unix.PROC_SUPER_MAGIC || st.Ino != sgProcRootIno {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "N1: the procfs-root check keeps only the inode test (TestStatusgenProcRootChecked; Linux only)",
+      "file": "procread_linux.go",
+      "old": "\tif int64(sfs.Type) != unix.PROC_SUPER_MAGIC || st.Ino != sgProcRootIno {",
+      "new": "\tif st.Ino != sgProcRootIno {"
+    },
+    {
+      "name": "N1: the procfs-root check keeps only the filesystem-type test (TestStatusgenProcRootChecked; Linux only)",
+      "file": "procread_linux.go",
+      "old": "\tif int64(sfs.Type) != unix.PROC_SUPER_MAGIC || st.Ino != sgProcRootIno {",
+      "new": "\tif int64(sfs.Type) != unix.PROC_SUPER_MAGIC {"
+    },
+    {
+      "name": "N2: the owner-reader scan keys on Stat_t alone, so a Statx_t owner read passes unlisted (TestStatusgenOwnerScanStatx)",
+      "file": "userns_test.go",
+      "old": "var sgOwnerStatType = regexp.MustCompile(`Statx?_t\\b`)",
+      "new": "var sgOwnerStatType = regexp.MustCompile(`Stat_t`)"
     }
   ]
 }
