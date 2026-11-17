@@ -40,6 +40,9 @@ type vfOpts struct {
 	gate, risk, status, verified, evidence, verify, author string
 	// schema is the brief frontmatter schema; empty means brief-v1.
 	schema string
+	// outcome is the fixture's verify-outcome record result (#6734): empty
+	// means an agreeing "verified" record at vfSHA, "none" writes no record.
+	outcome string
 }
 
 func vfDefaults() vfOpts {
@@ -78,9 +81,39 @@ func vfFixture(t *testing.T, o vfOpts) (root, readme string) {
 	if err := os.WriteFile(readme, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	switch o.outcome {
+	case "none":
+	case "":
+		vfOutcome(t, root, "verified", vfSHA, "2026-08-13T12:00:00Z")
+	default:
+		vfOutcome(t, root, o.outcome, vfSHA, "2026-08-13T12:00:00Z")
+	}
 	vfGit(t, root, o.author, "init", "-q")
 	vfCommit(t, root, o.author)
 	return root, readme
+}
+
+// vfOutcome writes a verify-outcome record for vf/01 under root (#6734): the
+// result, the revision the run observed (source_sha) and its ts.
+func vfOutcome(t *testing.T, root, outcome, sourceSHA, ts string) {
+	t.Helper()
+	vfOutcomeRaw(t, root, fmt.Sprintf(`{"brief":"vf/01","ts":%q,"outcome":%q,"sha":"0000000000aa","source_sha":%q}`, ts, outcome, sourceSHA))
+}
+
+// vfOutcomeRaw writes one verify-outcome record line at its canonical path.
+func vfOutcomeRaw(t *testing.T, root, line string) {
+	t.Helper()
+	name, err := outcomeRecordName([]byte(line))
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := filepath.Join(root, filepath.FromSlash(name))
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, outcomeCanonicalBytes([]byte(line)), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // vfGit runs git in root with author and committer pinned to mail.
