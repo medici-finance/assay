@@ -1794,6 +1794,24 @@
       "file": "verifyissues.go",
       "old": "texts, settled = append(texts, runTexts...), settled && runSettled",
       "new": "_, _ = runTexts, runSettled"
+    },
+    {
+      "name": "S-restrip-coverage: only a run the legacy selector accepts is re-stripped (run validation chooses the text)",
+      "file": "heldscope.go",
+      "old": "\tlines, start, end, err := latestPassSpan(evidence)\n\tif err != nil {\n\t\treturn nil\n\t}\n\tspans := ",
+      "new": "\tlines, start, end, err := latestPassSpan(evidence)\n\tif _, ferr := flipLatestPass(evidence); err != nil || ferr != nil {\n\t\treturn nil\n\t}\n\tspans := "
+    },
+    {
+      "name": "S-restrip-coverage: the heading-narrowed candidate span is not read",
+      "file": "heldscope.go",
+      "old": "\t\tspans = append(spans, strings.Join(lines[from:end], \"\\n\"))",
+      "new": "\t\t_ = from"
+    },
+    {
+      "name": "S-restrip-coverage: the verdict-bounded candidate span is not read",
+      "file": "heldscope.go",
+      "old": "\tspans := []string{strings.Join(lines[start:end], \"\\n\")}",
+      "new": "\tspans := []string{}"
     }
   ]
 }

@@ -3,6 +3,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // Tests for the flip read's double-quoted output rule (heldscope.go, rule 7).
@@ -652,6 +654,108 @@ func TestHeldQuotedRunRestrip(t *testing.T) {
 	plain := ev(failProse, "pass exit=0 "+nest("ok", "ay"))
 	if err := flipHeldRefusal("ic/01", "verified", plain); err != nil {
 		t.Errorf("no joined marker: flipHeldRefusal err=%v, want none", err)
+	}
+}
+
+// TestHeldQuotedV2RunRestrip: the reconcile fold selects its run with the
+// coverage arm (latestCoveragePass), which reads a run whose Runner cells use
+// the v2 record form, while the legacy arm (flipLatestPass) refuses that run.
+// The run re-strip must not depend on which arm accepts the run: the same
+// leftover opener before the run, and the same marker only the run's own
+// second strip joins, refuse on a v2 run as on a legacy one. One case puts
+// the opener in an earlier entry's tail that the entry heading narrows off
+// the run. Controls: a v2 run with no marker, and with a nest that joins no
+// marker, are not refused and are fully credited.
+// regression: #4721
+func TestHeldQuotedV2RunRestrip(t *testing.T) {
+	nest := func(a, b string) string { return a + "<!-" + "<!-- x -->" + "- y -->" + b }
+	lone := "<!-" + "<!-- z -->" + "-"
+	rec1, rec2 := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	landing := strings.Repeat("c", 40)
+	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `tool check 1` | exit 0 |\n| 2 | `tool check 2` | exit 0 |\n"
+	// noHeading at the end of prior (a sentinel run drops) leaves the run
+	// without its own entry heading, so no heading narrows the span.
+	const noHeading = "\x00"
+	run := func(prior, result string) string {
+		rows := witnessHeader + "\n" +
+			"| 1 | `tool check 1` | pass exit=0 | sha256:0a1b2c3d4e5f | 2026-10-22 | verifier-app @ [w2] cr:7 rec:" + rec1 + " (forge-identity) |\n" +
+			"| 2 | `tool check 2` | " + result + " | sha256:0a1b2c3d4e5f | 2026-10-22 | verifier-app @ [w2] cr:7 rec:" + rec2 + " (forge-identity) |\n"
+		if bare, ok := strings.CutSuffix(prior, noHeading); ok {
+			prior = bare
+		} else {
+			prior += "### Run 1\n\n"
+		}
+		return prior + rows + "\n**VERIFY: PASS** — 2/2 rows\n\n"
+	}
+	claim := func(row, rec string) evaluation.Claim {
+		return evaluation.Claim{Kind: "command", Released: true, Witness: &evaluation.WitnessProvenance{
+			Brief: "ic/01", Row: row, RecordID: rec, Runner: "verifier-app", Date: "2026-10-22", CR: "7", Landing: landing}}
+	}
+	cov := evaluation.Coverage{BriefID: "ic/01", Released: true, Claims: []evaluation.Claim{claim("1", rec1), claim("2", rec2)}}
+	failProse := "### Run 0\n\nnote " + lone + " here\n\n**VERIFY: FAIL** — 0/2 rows\n\n"
+	// A verdict-first earlier entry: its rows and its prose sit below its
+	// verdict, so the span before the PASS holds its tail and the coverage
+	// arm reads the run again from the latest entry heading.
+	tail := "### Run 0\n\n**VERIFY: FAIL** — 1/2 rows\n\n" + witTable(2, "", witPass, "") + "\nnote " + lone + " here\n\n"
+	// credited reports whether the fold's selector picks a run, the witness
+	// check credits a row of it holding a marker as a pass, and the closure
+	// witness audit is satisfied for every Verify row.
+	credited := func(t *testing.T, ev string) (heldPass, allSat bool) {
+		t.Helper()
+		if _, err := flipLatestPass(ev); err == nil {
+			t.Fatalf("fixture: the legacy selector accepts the v2 run")
+		}
+		p, err := latestCoveragePass(ev, cov)
+		if err != nil {
+			t.Fatalf("fixture: coverage selector: %v", err)
+		}
+		if strings.Contains(p.Run, "Run 0") {
+			t.Fatalf("fixture: the selected run holds the earlier entry")
+		}
+		for _, rows := range parseEvidenceRows(p.Run) {
+			last := rows[len(rows)-1].Text
+			if heldOrCouldNotCheckRe.MatchString(last) && witnessStateOf(last) == statePass {
+				heldPass = true
+			}
+		}
+		findings, refusal := closureRunWitnesses(verify, ev, p.Run)
+		allSat = refusal == "" && len(findings) > 0
+		for _, f := range findings {
+			allSat = allSat && closureSatisfied(f)
+		}
+		return heldPass, allSat
+	}
+	for _, tc := range []struct{ name, prior, result string }{
+		{"opener in an earlier FAIL entry", failProse, "pass exit=0 " + nest("HE", "LD")},
+		{"hyphenated marker", failProse, "pass exit=0 " + nest("could-not-", "check")},
+		{"leading marker", failProse, nest("HE", "LD") + " pass exit=0"},
+		{"opener in an earlier entry's tail", tail, "pass exit=0 " + nest("HE", "LD")},
+		{"run with no entry heading", failProse + noHeading, "pass exit=0 " + nest("HE", "LD")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ev := run(tc.prior, tc.result)
+			if heldPass, allSat := credited(t, ev); !heldPass || !allSat {
+				t.Fatalf("fixture: held row credited=%v, every row satisfied=%v; want both", heldPass, allSat)
+			}
+			if err := flipHeldRefusal("ic/01", "implemented", ev); err == nil {
+				t.Errorf("flipHeldRefusal err=<nil>, want refusal=true")
+			}
+		})
+	}
+	for _, tc := range []struct{ name, prior, result string }{
+		{"control: no marker", failProse, "pass exit=0"},
+		{"control: a nest that joins no marker", failProse, "pass exit=0 " + nest("ok", "ay")},
+		{"control: tail, no marker", tail, "pass exit=0"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ev := run(tc.prior, tc.result)
+			if heldPass, allSat := credited(t, ev); heldPass || !allSat {
+				t.Fatalf("fixture: held row credited=%v, every row satisfied=%v; want false, true", heldPass, allSat)
+			}
+			if err := flipHeldRefusal("ic/01", "implemented", ev); err != nil {
+				t.Errorf("flipHeldRefusal err=%v, want none", err)
+			}
+		})
 	}
 }
 

@@ -1513,6 +1513,26 @@ func heldRestrips(stripped string) (texts []string, settled bool) {
 	return texts, false
 }
 
+// heldRunSpans returns every text a latest-PASS selector can hand the witness
+// check as its run: the once-stripped lines latestPassSpan bounds,
+// [start, end), and, when an entry heading narrows that span (heldRunFrom),
+// [from, end). selectLatestPass reads one of these two, whether the run is
+// read by the legacy arm (flipLatestPass) or by the coverage arm
+// (latestCoveragePass, the reconcile fold's v2 rows), so returning both
+// without validating either covers every run any caller credits. It returns
+// nothing when latestPassSpan refuses: no selector returns a run then.
+func heldRunSpans(evidence string) []string {
+	lines, start, end, err := latestPassSpan(evidence)
+	if err != nil {
+		return nil
+	}
+	spans := []string{strings.Join(lines[start:end], "\n")}
+	if from, ok := heldRunFrom(lines, start, end); ok && from != start {
+		spans = append(spans, strings.Join(lines[from:end], "\n"))
+	}
+	return spans
+}
+
 // heldJoinedWitnessLines marks each source line behind a stripped row (an
 // index into stripped's lines, from heldCommentJoins) that the witness check
 // reads as a verifyrun witness row. The held scan reads the source line with
