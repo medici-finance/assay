@@ -552,6 +552,61 @@ func TestHeldQuotedSplitMark(t *testing.T) {
 	}
 }
 
+// TestHeldQuotedTwiceSplit: the flip's witness check reads the run after two
+// comment strips (the run is stripped, then parseEvidenceRows strips again).
+// A comment opener nested inside a marker word leaves, after the first strip,
+// a new complete comment that still splits the marker; only the second strip
+// joins it. The witness check credits that row as a pass, so the flip must
+// refuse. A nested opener that joins no marker is not refused.
+// regression: #4721
+func TestHeldQuotedTwiceSplit(t *testing.T) {
+	row2 := "| 2 | `tool check 2` | pass exit=0 | sha256:0123456789ab | 2026-10-22 | fixture-verifier[bot] @ 0123456789ab |"
+	ev := func(result string) string {
+		table := witTable(2, "", witPass, "")
+		if !strings.Contains(table, row2) {
+			t.Fatalf("fixture: row 2 not found")
+		}
+		table = strings.Replace(table, row2, "| 2 | `tool check 2` | "+result+
+			" | sha256:0123456789ab | 2026-10-22 | fixture-verifier[bot] @ 0123456789ab |", 1)
+		return witEntry("Run 1", table, "", "**VERIFY: PASS** — 2/2 rows")
+	}
+	// nest splits a word around a comment whose opener is itself split by a
+	// complete comment: one strip leaves a comment, a second joins the word.
+	nest := func(a, b string) string { return a + "<!-" + "<!-- x -->" + "- y -->" + b }
+	for _, tc := range []struct {
+		name   string
+		result string
+	}{
+		{"trailing", "pass exit=0 " + nest("HE", "LD")},
+		{"leading", nest("HE", "LD") + " pass exit=0"},
+		{"hyphenated marker", "pass exit=0 " + nest("could-not-", "check")},
+		{"across a line break", "pass exit=0 HE<!-<!--\n-->- y -->LD"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			held := ev(tc.result)
+			if !heldWitCredited(t, held) {
+				t.Fatalf("fixture: no HELD row is credited as a passing witness")
+			}
+			if err := flipHeldRefusal("ic/01", "verified", held); err == nil {
+				t.Errorf("flipHeldRefusal err=<nil>, want refusal=true")
+			}
+		})
+	}
+	plain := ev("pass exit=0 " + nest("ok", "ay"))
+	if err := flipHeldRefusal("ic/01", "verified", plain); err != nil {
+		t.Errorf("no joined marker: flipHeldRefusal err=%v, want none", err)
+	}
+	// A nest that needs more strips than heldRestripCap allows is not read
+	// further: it refuses, fail-closed, though it joins no marker.
+	deep := "<!-- x -->"
+	for k := 0; k < heldRestripCap+3; k++ {
+		deep = "<!-" + deep + "- y -->"
+	}
+	if err := flipHeldRefusal("ic/01", "verified", ev("pass exit=0 ok"+deep+"ay")); err == nil {
+		t.Errorf("nest past the strip cap: flipHeldRefusal err=<nil>, want refusal=true")
+	}
+}
+
 // TestHeldQuotedRefLabel: a reference label is not rendered as text. A full
 // reference or a footnote reference whose definition sits in another
 // paragraph renders as a link or a number, so a quote inside its label pairs

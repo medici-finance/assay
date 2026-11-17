@@ -974,6 +974,24 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 			}
 		}
 		witnessJoined = heldJoinedWitnessLines(evidence, stripped, rows)
+		// A marker only a further strip joins (heldRestrips) cannot be mapped
+		// to its source line: when any re-stripped text holds a marker on a
+		// witness row, or the strip does not settle, every line is read as
+		// joined, with no negation or quoting excuse (fail-closed).
+		texts, settled := heldRestrips(stripped)
+		restripHold := !settled
+		for _, text := range texts {
+			for _, row := range strings.Split(text, "\n") {
+				if isWitnessRow(row) && heldOrCouldNotCheckRe.MatchString(row) {
+					restripHold = true
+				}
+			}
+		}
+		if restripHold {
+			for i := range witnessJoined {
+				witnessJoined[i] = true
+			}
+		}
 	}
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)

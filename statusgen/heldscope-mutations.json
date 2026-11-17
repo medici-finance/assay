@@ -1770,6 +1770,24 @@
       "file": "heldscope.go",
       "old": "if strings.IndexByte(clean[lo:hi], '$') >= 0 {",
       "new": "if strings.IndexByte(clean[lo:hi], '$') < -1 {"
+    },
+    {
+      "name": "S-split-twice: a marker only a further strip joins is no longer read",
+      "file": "verifyissues.go",
+      "old": "if restripHold {",
+      "new": "if restripHold && len(texts) < 0 {"
+    },
+    {
+      "name": "S-split-twice: a re-stripped text is never returned",
+      "file": "heldscope.go",
+      "old": "\t\ttexts = append(texts, next)\n",
+      "new": ""
+    },
+    {
+      "name": "S-split-twice: a nest past the strip cap reads as settled",
+      "file": "heldscope.go",
+      "old": "\treturn texts, false\n}",
+      "new": "\treturn texts, true\n}"
     }
   ]
 }

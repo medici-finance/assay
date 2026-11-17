@@ -1485,6 +1485,34 @@ func heldCommentJoins(evidence string) (stripped string, joins []int) {
 	return b.String(), joins
 }
 
+// heldRestripCap bounds heldRestrips' repeated strip. Each strip that
+// changes the text removes at least one comment, so the cap only stops a
+// pathological nest; reaching it fails closed.
+const heldRestripCap = 8
+
+// heldRestrips strips stripped (evidence already stripped once,
+// heldCommentJoins) again until the text stops changing, and returns every
+// text a further strip produced, in order; settled is false when the text
+// still changes after heldRestripCap strips. The flip's witness check reads
+// the run after a second strip (parseEvidenceRows), so a comment opener
+// nested inside a marker word leaves a comment the first strip did not
+// remove, and only the second strip joins the marker. heldCommentJoins, which
+// strips once, cannot map that join back to a source line, so the caller
+// reads each returned text's witness rows whole, as heldWitnessLines and the
+// latest-run prefix gate already distrust a text a further strip changes.
+func heldRestrips(stripped string) (texts []string, settled bool) {
+	cur := stripped
+	for n := 0; n < heldRestripCap; n++ {
+		next, _ := stripRowComments(cur)
+		if next == cur {
+			return texts, true
+		}
+		texts = append(texts, next)
+		cur = next
+	}
+	return texts, false
+}
+
 // heldJoinedWitnessLines marks each source line behind a stripped row (an
 // index into stripped's lines, from heldCommentJoins) that the witness check
 // reads as a verifyrun witness row. The held scan reads the source line with
