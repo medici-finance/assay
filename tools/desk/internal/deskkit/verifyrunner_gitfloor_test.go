@@ -35,14 +35,32 @@ const (
 	// runnerOwnerGate fails the build on any file of the install tree that is
 	// not root:root.
 	runnerOwnerGate = `if find /usr/bin/git /usr/libexec/git-core /usr/share/git-core -xdev \( ! -user 0 -o ! -group 0 \) -print | grep .`
-	// runnerModeGate fails the build on any installed runner file that is not
-	// root:root or is writable by its group or others (#6784): a COPY with no
-	// --chmod keeps the build context's mode, group-writable under umask 002.
-	runnerModeGate = `if find /usr/local/bin /usr/local/lib/verify-runner /usr/local/share/verify-runner -xdev ! -type l \( -perm /022 -o ! -user 0 -o ! -group 0 \) -print | grep .`
+	// runnerModeGate fails the build on any installed runner path that is a
+	// symlink, is set-id, is not root:root, or is writable by its group or
+	// others (#6784): a COPY with no --chmod keeps the build context's mode,
+	// group-writable under umask 002.
+	runnerModeGate = `if find /usr/local/bin /usr/local/lib/verify-runner /usr/local/share/verify-runner -xdev \( -type l -o -perm /6022 -o ! -user 0 -o ! -group 0 \) -print | grep .`
 	// runnerCheckCopyMode is the mode the floor script is installed with,
 	// never the build context's.
 	runnerCheckCopyMode = "--chmod=0755"
 )
+
+// gateRoots are the starting points of the owner and install-mode gates that
+// must be tested to exist first: find on a missing root writes only to stderr,
+// the pipeline's status is grep's, and the gate would pass unread. /usr/bin/git
+// is the owner gate's other root; its `test -x` is checked separately.
+var gateRoots = []string{
+	"/usr/libexec/git-core", "/usr/share/git-core",
+	"/usr/local/bin", "/usr/local/lib/verify-runner", "/usr/local/share/verify-runner",
+}
+
+// runnerCopyModes is the mode each build-context COPY into an installed path
+// of the final stage must name, so the image never keeps the checkout's mode.
+// The floor script's own COPY is checked with the floor (copyCheck below).
+var runnerCopyModes = map[string]string{
+	"/usr/local/bin/statusgen":                           "--chmod=0755",
+	"/usr/local/share/verify-runner/go-module-roots.txt": "--chmod=0644",
+}
 
 // verifyRunnerFloorProblem returns why the verify-runner Dockerfile does not
 // hold the git floor, or "" when it does. base is containers/base/Dockerfile's
@@ -114,10 +132,20 @@ func verifyRunnerFloorProblem(runner, base string) string {
 	}
 
 	gitIn, copyCheck, purge, runCheck, lastLayer := -1, -1, -1, -1, -1
+	moded := map[string]bool{}
 	for i := lastFrom + 1; i < len(ins); i++ {
 		in := ins[i]
 		if in.op == "RUN" || in.op == "COPY" || in.op == "ADD" {
 			lastLayer = i
+		}
+		if in.op == "COPY" && len(in.args) > 0 {
+			dest := in.args[len(in.args)-1]
+			if mode, ok := runnerCopyModes[dest]; ok {
+				if len(in.args) != 3 || in.args[0] != mode {
+					return "the final stage copies to " + dest + " without `" + mode + "`, so the image keeps the build context's mode"
+				}
+				moded[dest] = true
+			}
 		}
 		switch {
 		case in.op == "RUN" && aptInstallsGit(in.args):
@@ -134,6 +162,11 @@ func verifyRunnerFloorProblem(runner, base string) string {
 			return "the final stage copies containers/scripts/git-floor-check.sh without `" + runnerCheckCopyMode + "` to " + gitFloorScriptInImg + ", so the image keeps the build context's mode"
 		case in.op == "RUN" && hasWord(in.args, "git-floor-check") || in.op == "RUN" && hasWord(in.args, gitFloorScriptInImg):
 			runCheck = i
+		}
+	}
+	for dest, mode := range runnerCopyModes {
+		if !moded[dest] {
+			return "the final stage never copies to " + dest + " with `" + mode + "`"
 		}
 	}
 	switch {
@@ -236,14 +269,22 @@ func runnerFloorRunProblem(in dfInstr) string {
 	// The owner gate keeps the install tree root-owned and the last test proves
 	// the distro git's exec directory is gone (both asserted by the Dockerfile's
 	// own comment); a dropped one must go red here too.
+	// Each gate root is tested to exist (#6784), so a missing one fails the
+	// build instead of leaving its gate to pass on a find that read nothing.
+	for _, root := range gateRoots {
+		if segAt(segs, "test -d "+root) < 0 {
+			return "the git-floor-check RUN lacks `test -d " + root + "` (a gate passes on a root find cannot read)"
+		}
+	}
 	if p := gateProblem(segs, runnerOwnerGate, "root-ownership"); p != "" {
 		return "the git-floor-check RUN " + p
 	}
 	if segAt(segs, "test ! -e /usr/lib/git-core") < 0 {
 		return "the git-floor-check RUN lacks `test ! -e /usr/lib/git-core` (the distro git's exec directory must be gone)"
 	}
-	// The install-mode gate (#6784): a group- or other-writable installed file
-	// fails the build rather than ship to a consumer that refuses it.
+	// The install-mode gate (#6784): a group- or other-writable, set-id or
+	// symlinked installed path fails the build rather than ship to a consumer
+	// that refuses it.
 	if p := gateProblem(segs, runnerModeGate, "install-mode"); p != "" {
 		return "the git-floor-check RUN " + p
 	}
@@ -283,6 +324,9 @@ func TestVerifyRunnerImageRunsGitFloor(t *testing.T) {
 	gitCopy := "COPY --from=gitbuild /out/usr/ /usr/\n"
 	checkCopy := "COPY " + runnerCheckCopyMode + " containers/scripts/git-floor-check.sh " + gitFloorScriptInImg + "\n"
 	statusgenCopy := "COPY --chmod=0755 .release-images/verify-runner/statusgen-linux-${TARGETARCH} /usr/local/bin/statusgen\n"
+	rootsCopy := "COPY --chmod=0644 images/verify-runner/go-module-roots.txt /usr/local/share/verify-runner/go-module-roots.txt\n"
+	testDirShare := "    test -d /usr/share/git-core; \\\n"
+	testDirMode := "    test -d /usr/local/share/verify-runner; \\\n"
 	testX := "    test -x /usr/bin/git; \\\n"
 	testRemote := "    test -x /usr/libexec/git-core/git-remote-http; \\\n"
 	lddGate := "    if ldd /usr/bin/git /usr/libexec/git-core/git-remote-http | grep 'not found'; then \\\n" +
@@ -301,10 +345,11 @@ func TestVerifyRunnerImageRunsGitFloor(t *testing.T) {
 		"        echo \"the source-built git install tree holds files not owned by root:root\" >&2; \\\n        exit 1; \\\n    fi; \\\n"
 	execDirTest := "    test ! -e /usr/lib/git-core; \\\n"
 	modeGate := "    " + runnerModeGate + "; then \\\n" +
-		"        echo \"an installed runner file is not root:root or is writable by its group or others\" >&2; \\\n        exit 1; \\\n    fi; \\\n"
+		"        echo \"an installed runner path is a symlink, is set-id, is not root:root, or is writable by its group or others\" >&2; \\\n        exit 1; \\\n    fi; \\\n"
 	floorRun := "RUN set -eux; \\\n" + testX
 	for _, anchor := range []string{shaArg, verArg, shaLine, tarLine, curlLine, gitbuildFrom, finalFrom, purgeLine, gitCopy,
-		checkCopy, statusgenCopy, testX, testRemote, lddGate, floorCmd, aptAnchor, baseArg, ownerGate, execDirTest, floorRun, modeGate} {
+		checkCopy, statusgenCopy, testX, testRemote, lddGate, floorCmd, aptAnchor, baseArg, ownerGate, execDirTest, floorRun, modeGate,
+		rootsCopy, testDirShare, testDirMode} {
 		if strings.Count(text, anchor) != 1 {
 			t.Fatalf("the mutants below need %q exactly once in the Dockerfile", anchor)
 		}
@@ -367,7 +412,14 @@ func TestVerifyRunnerImageRunsGitFloor(t *testing.T) {
 		"install-mode gate dropped":          strings.Replace(text, modeGate, "", 1),
 		"install-mode gate masked":           strings.Replace(text, modeGate, strings.Replace(modeGate, "exit 1; \\\n    fi;", "true; \\\n    fi;", 1), 1),
 		"install-mode gate narrowed":         strings.Replace(text, modeGate, strings.Replace(modeGate, "/usr/local/bin ", "", 1), 1),
-		"install-mode gate drops other-w":    strings.Replace(text, modeGate, strings.Replace(modeGate, "-perm /022", "-perm /020", 1), 1),
+		"install-mode gate drops other-w":    strings.Replace(text, modeGate, strings.Replace(modeGate, "-perm /6022", "-perm /6020", 1), 1),
+		"install-mode gate drops set-id":     strings.Replace(text, modeGate, strings.Replace(modeGate, "-perm /6022", "-perm /022", 1), 1),
+		"install-mode gate skips symlinks":   strings.Replace(text, modeGate, strings.Replace(modeGate, `\( -type l -o `, `! -type l \( `, 1), 1),
+		"mode gate root not tested":          strings.Replace(text, testDirMode, "", 1),
+		"owner gate root not tested":         strings.Replace(text, testDirShare, "", 1),
+		"roots manifest copied without mode": strings.Replace(text, rootsCopy, strings.Replace(rootsCopy, "--chmod=0644 ", "", 1), 1),
+		"roots manifest copied 0664":         strings.Replace(text, rootsCopy, strings.Replace(rootsCopy, "0644", "0664", 1), 1),
+		"statusgen copied without mode":      strings.Replace(text, statusgenCopy, strings.Replace(statusgenCopy, "--chmod=0755 ", "", 1), 1),
 	}
 	// The rule each of the newer mutants must trip, so a mutant caught for some
 	// other reason (an earlier check) cannot stand in for its own guard.
@@ -387,6 +439,13 @@ func TestVerifyRunnerImageRunsGitFloor(t *testing.T) {
 		"install-mode gate masked":           "install-mode",
 		"install-mode gate narrowed":         "install-mode",
 		"install-mode gate drops other-w":    "install-mode",
+		"install-mode gate drops set-id":     "install-mode",
+		"install-mode gate skips symlinks":   "install-mode",
+		"mode gate root not tested":          "test -d /usr/local/share/verify-runner",
+		"owner gate root not tested":         "test -d /usr/share/git-core",
+		"roots manifest copied without mode": "go-module-roots.txt without `--chmod=0644`",
+		"roots manifest copied 0664":         "go-module-roots.txt without `--chmod=0644`",
+		"statusgen copied without mode":      "statusgen without `--chmod=0755`",
 	}
 	for name, m := range mutants {
 		if m == text {

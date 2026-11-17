@@ -243,12 +243,17 @@ RUN chown -R 0:0 /usr/local/lib/verify-runner && chmod 0755 /usr/local/lib/verif
 #
 # The install-mode gate: every file and directory the runner installs under
 # /usr/local/bin, /usr/local/lib/verify-runner and /usr/local/share/verify-runner
-# is root:root and writable by nobody but root (no bit of mode 022). A consumer
-# that checks an installed image before trusting it refuses a group-writable
-# file, and a COPY with no --chmod keeps the build context's mode, which on a
-# checkout made under umask 002 is group-writable. Symlinks are skipped: their
-# mode is always 0777 and never consulted. It sits in this last RUN so no later
-# layer can install a file it has not seen.
+# is root:root, carries no set-id bit, and is writable by nobody but root (no
+# bit of mode 6022). A consumer that checks an installed image before trusting
+# it refuses a group-writable file, and a COPY with no --chmod keeps the build
+# context's mode, which on a checkout made under umask 002 is group-writable.
+# A symlink under those roots fails the build too: its own mode says nothing
+# about the file it points at. It sits in this last RUN so no later layer can
+# install a file it has not seen.
+#
+# Each root of both find gates is tested to exist first: find on a missing
+# root only writes to stderr, the pipeline's status is grep's, and the gate
+# would pass on a root it never read.
 RUN set -eux; \
     test -x /usr/bin/git; \
     test "$(/usr/bin/git version)" = "git version 2.56.1"; \
@@ -257,13 +262,18 @@ RUN set -eux; \
         echo "source-built git is missing a shared library" >&2; \
         exit 1; \
     fi; \
+    test -d /usr/libexec/git-core; \
+    test -d /usr/share/git-core; \
     if find /usr/bin/git /usr/libexec/git-core /usr/share/git-core -xdev \( ! -user 0 -o ! -group 0 \) -print | grep .; then \
         echo "the source-built git install tree holds files not owned by root:root" >&2; \
         exit 1; \
     fi; \
     test ! -e /usr/lib/git-core; \
-    if find /usr/local/bin /usr/local/lib/verify-runner /usr/local/share/verify-runner -xdev ! -type l \( -perm /022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
-        echo "an installed runner file is not root:root or is writable by its group or others" >&2; \
+    test -d /usr/local/bin; \
+    test -d /usr/local/lib/verify-runner; \
+    test -d /usr/local/share/verify-runner; \
+    if find /usr/local/bin /usr/local/lib/verify-runner /usr/local/share/verify-runner -xdev \( -type l -o -perm /6022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "an installed runner path is a symlink, is set-id, is not root:root, or is writable by its group or others" >&2; \
         exit 1; \
     fi; \
     PATH=/usr/bin:/bin:/usr/sbin:/sbin /usr/local/bin/git-floor-check
