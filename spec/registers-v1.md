@@ -715,7 +715,9 @@ through the forge and treat the stamp as corroborated ONLY when all of these hol
 1. the link parses to the grammar above and names the record's own repository;
 2. the comment exists, sits on the issue the link names, and was not edited after it was
    posted (its last-updated time equals its creation time);
-3. its author is not a bot account;
+3. its author is a personal account: the forge reports the account type `User` (a bot, an
+   organization or any other type is `bot-author`; a payload with no type is
+   `unresolvable-link`, never read as `User`);
 4. its author's login maps, through the human-login map, to a human — and, when
    `decided-by` names a real human, to that human;
 5. the comment's own text names the record by its `DR-<slug>` id, as a whole token (a

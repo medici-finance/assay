@@ -164,7 +164,34 @@ func newAuthorityFixture(t *testing.T, change func(*ProducerConfig)) *authorityF
 		_, e := v.Authorize(call, g, cfg.Launches[0].Scope.Scope)
 		return e
 	})
+	quiesceData(t, c, cfg.IOTimeout)
 	return &authorityFixture{controller: c, config: cfg, resources: r, clock: wall, grant: g, verifier: v, verifierConfig: vc, client: client, version: registered.Version}
+}
+
+// quiesceData returns only once no handler holds a data slot. A handler
+// releases its slot after it closes the connection, so a client that has read
+// a whole response can still return before that release. Taking every slot
+// waits on the release itself rather than on elapsed time, and every fixture
+// returns an idle pool, so a test that fills the pool never races the
+// fixture's own startup reads. The bound is the handler's own I/O deadline.
+func quiesceData(t *testing.T, c *Controller, bound time.Duration) {
+	t.Helper()
+	timer := time.NewTimer(bound)
+	defer timer.Stop()
+	taken := 0
+	defer func() {
+		for range taken {
+			<-c.dataSlots
+		}
+	}()
+	for range cap(c.dataSlots) {
+		select {
+		case c.dataSlots <- struct{}{}:
+			taken++
+		case <-timer.C:
+			t.Fatal("fixture data slots still held after startup reads")
+		}
+	}
 }
 
 // Only fixture startup reads retry, under the same absolute context deadline.

@@ -7,9 +7,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
-func TestHerdrOneWorkspacePerCell(t *testing.T) {
+// herdrFixture puts a recording herdr stub first on PATH and returns its directory; every call's
+// argv lands, one line each, in <dir>/calls.
+func herdrFixture(t *testing.T) string {
+	t.Helper()
 	dir := t.TempDir()
 	bin := filepath.Join(dir, "herdr")
 	script := `#!/bin/sh
@@ -31,6 +35,11 @@ esac
 	}
 	t.Setenv("HERDR_FIXTURE", dir)
 	t.Setenv("PATH", dir+":/usr/bin:/bin")
+	return dir
+}
+
+func TestHerdrOneWorkspacePerCell(t *testing.T) {
+	dir := herdrFixture(t)
 	cell := func(name string) *Cell {
 		p := filepath.Join(dir, name)
 		os.Mkdir(p, 0700)
@@ -72,6 +81,10 @@ esac
 	}
 	if strings.Count(string(calls), "workspace create ") != 2 || !strings.Contains(string(calls), "tab create --workspace two --label two-comms-fixture") || !strings.Contains(string(calls), "tab create --workspace one --label one-worker") {
 		t.Fatalf("unscoped creation: %s", calls)
+	}
+	// regression: #6698 — the scrubbed cell's attach tab is labelled bare, like a role tab.
+	if !strings.Contains(string(calls), "tab create --workspace one --label cell\n") {
+		t.Fatalf("the attach tab must be labelled cell, not <cell>-cell: %s", calls)
 	}
 	os.WriteFile(filepath.Join(dir, "two.ws"), []byte("recycled-foreign-owner"), 0600)
 	if err := two.closeHerdrWorkspace(); err == nil {
@@ -126,5 +139,33 @@ func TestHerdrUnfinishedReceiptWarns(t *testing.T) {
 	got := string(b[:n])
 	if strings.Count(got, "unfinished Herdr workspace create") != 1 || !strings.Contains(got, `"orphan-cell"`) {
 		t.Fatalf("want exactly one orphan warning naming the cell, got %q", got)
+	}
+}
+
+// regression: #6698 — herdr's agents window shows "<workspace> - <tab>", and the workspace is
+// already named after the cell, so every tab `up` opens is labelled with the bare window name.
+func TestHerdrUpLabelsBareRoles(t *testing.T) {
+	dir := herdrFixture(t)
+	defer func(d time.Duration) { upStagger = d }(upStagger)
+	upStagger = 0
+	p := filepath.Join(dir, "example")
+	if err := os.Mkdir(p, 0700); err != nil {
+		t.Fatal(err)
+	}
+	c := &Cell{Name: "example", Dir: p, Env: envWith(map[string]string{})}
+	probes := []upProbe{{Role: "worker-desk", Kind: probeAbsent}, {Role: "verify-desk", Kind: probeAbsent}}
+	rows := c.upHerdr("/cfg", probes, nil, 0, "deskd", "echo deskd", upOverrides{Cockpit: "herdr"}, func([]upRow) {})
+	if len(rows) != 2 || rows[0].State != upStateUp || rows[1].State != upStateUp {
+		t.Fatalf("rows %+v", rows)
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "calls"))
+	calls := string(b)
+	for _, label := range []string{"deskd", "worker-desk", "verify-desk"} {
+		if !strings.Contains(calls, "tab create --workspace example --label "+label+"\n") {
+			t.Errorf("no tab labelled %q: %s", label, calls)
+		}
+	}
+	if strings.Contains(calls, "--label example-") {
+		t.Errorf("a tab label repeats the cell name: %s", calls)
 	}
 }

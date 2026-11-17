@@ -30,6 +30,7 @@ package deskkit
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -234,6 +235,9 @@ func ParseFindingBlock(body string) (*FindingBlockV1, bool, error) {
 	dec := json.NewDecoder(strings.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&b); err != nil {
+		if field, ok := strings.CutPrefix(err.Error(), "json: unknown field "); ok {
+			return nil, true, Refused(unknownFindingField(field))
+		}
 		return nil, true, Refused("review-finding: the finding block is not valid JSON: " + err.Error())
 	}
 	if b.Schema != FindingBlockSchema {
@@ -241,6 +245,29 @@ func ParseFindingBlock(body string) (*FindingBlockV1, bool, error) {
 			b.Schema, FindingBlockSchema))
 	}
 	return &b, true, nil
+}
+
+// unknownFindingField is the refusal for a field review-finding/v1 does not define. Every v1
+// reader decodes strictly, so a block carrying any undefined field is unreadable to all of
+// them: a new field is a review-finding/v2, never an addition to v1. The refusal names the
+// field and the v1 finding fields, read off Finding's own tags so the list cannot drift. A
+// head-like field gets the v1 route for it: the head a record's assertion — a resolution
+// included — was checked at is evidenceHead, and the head first raised against is originHead.
+func unknownFindingField(quoted string) string {
+	var fields []string
+	t := reflect.TypeOf(Finding{})
+	for i := 0; i < t.NumField(); i++ {
+		if name, _, _ := strings.Cut(t.Field(i).Tag.Get("json"), ","); name != "" {
+			fields = append(fields, name)
+		}
+	}
+	msg := "review-finding: the finding block carries field " + quoted + ", which " + FindingBlockSchema +
+		" does not define — every v1 reader refuses a block with an undefined field, so a new field needs review-finding/v2. A finding's v1 fields are: " +
+		strings.Join(fields, ", ")
+	if strings.Contains(strings.ToLower(quoted), "head") {
+		msg += ". For a head, use evidenceHead — the full head this record's assertion (a resolution included) was checked at, which must be the head the review is taken at — or originHead, the head the finding was first raised against"
+	}
+	return msg
 }
 
 // Validate checks a parsed block against the interface contract for the authoring role. It

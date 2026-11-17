@@ -13,14 +13,16 @@ description: >-
 For one objective answer: what must be `done` before it can go live, and what
 can be done now to move it forward. The answer is a page with:
 
-- the six-line monthly progress chart first;
+- the six-line monthly progress chart first, under any stall statement;
+- banked evidence; burn beside scope growth;
 - separate seven-day and four-week movement boards, with evidence-backed focus;
 - outcome context in details;
 - the prerequisite graph, showing only work that is not fully done;
 - the critical path;
 - a ranked move list, where each move is tied to one node and the role that owns it.
 
-Combine existing readers with recorded default-branch history; never invent progress.
+Combine existing readers with recorded default-branch history; never invent progress;
+activity is not progress.
 
 ## 1. Resolve the objective, then confirm it
 
@@ -47,7 +49,7 @@ every later step wrong. Do not walk an unconfirmed guess.
   Two rules apply:
   - Never regenerate or check out in a shared checkout.
   - Keep the basename. Cross-repo `gates:` resolve through a sibling directory with that name.
-- **Record the SHAs.** Note each root's SHA. The page cites them.
+- **Record the SHAs.** The page cites each root's SHA.
 - **Unreadable roots.** A root that cannot be fetched or read is **`could-not-check`**, never
   empty. Name it on the page.
 
@@ -56,7 +58,7 @@ every later step wrong. Do not walk an unconfirmed guess.
 Run `statusgen --root <dir> --launch --launch-target <id>` in each materialised root. The
 transitive `depends:` closure, with live status, comes from the root that owns the target.
 
-`target "<id>" not found in any stream`: check freshness (step 2 removes a stale tree), then the two-digit id, then every fetched root. `--launch` reads one root; try all before reporting not-found.
+`target "<id>" not found in any stream`: check freshness, the two-digit id, then every fetched root. `--launch` reads one root; try all before reporting not-found.
 
 ## 4. Stitch the graph across roots
 
@@ -82,7 +84,8 @@ transitive `depends:` closure, with live status, comes from the root that owns t
   it returns. Match a PR to a node by its `Brief: <stream>/<NN>` trailer, by its
   `Cross-repo-brief: <alias>:<stream>/<NN>` trailer (a cross-repo dispatch, whose PR lives in a
   different repo from the brief), or else by the brief id in its title.
-- **Progress evidence and baseline.** Follow [Report presentation](references/report.md); keep supporting evidence separate from canonical lifecycle state.
+- **Progress evidence and baseline.** Follow [Report presentation](references/report.md) and
+  [Progress measures](references/progress.md); keep evidence separate from lifecycle state.
 - **Claims.** Use the list verb of the repo's dispatch-claim helper. Claim keys have three forms:
   `<repo>--<stream>--<NN>` for a same-repo brief, `<alias>--<stream>--<NN>` for a cross-repo
   brief (keyed under the tracking alias), and `<repo>--issue-<N>` for issue-shaped work. A node
@@ -90,7 +93,7 @@ transitive `depends:` closure, with live status, comes from the root that owns t
 - **Stale board views.** `deskboard dispatch` / `awaiting` read the configured working trees. If
   those are behind the fetched branch, take status from step 3, not from them.
 - **Stage pressure.** `statusgen --bottleneck --json` or `deskboard throughput --json` shows it.
-  It is used only to break ties in the ranking.
+  It only breaks ranking ties.
 
 ## 5. Critical path
 
@@ -115,16 +118,18 @@ Each move names one node and one owning role:
 
 Rank the moves in this order:
 
-1. moves on the critical path;
-2. then by the number of not-done closure nodes the move unblocks;
-3. then by stage pressure.
+1. standing obstacles;
+2. moves on the critical path;
+3. then by the number of not-done closure nodes the move unblocks;
+4. then by stage pressure.
 
 ## 7. The page
 
-Read [Report presentation](references/report.md) before writing the HTML. It defines the
-plain-language titles, six-line progress chart (three weekly readings plus seven daily),
-movement and outcome views, report comparisons, blockers, graph and evidence coverage;
-hide only `done` nodes from the graph and retain `verified` work awaiting final approval.
+Read [Report presentation](references/report.md) and
+[Progress measures](references/progress.md) before writing HTML. They define the titles,
+stall statement, six-line chart, banked evidence, burn and growth, movement and outcome
+views, comparisons, blockers, obstacles, graph and coverage; hide only `done` nodes
+and retain `verified` work awaiting final approval.
 Write the self-contained report outside repositories and never commit it.
 
 ## Boundaries

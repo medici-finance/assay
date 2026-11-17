@@ -695,6 +695,7 @@ func TestMathTextsBarIsNoBracket(t *testing.T) {
 }
 
 // regression: #4102
+// regression: #6693
 // TestHiddenReadingsStopAtBudget: a text holding many hidden elements builds no more of its
 // hidden readings once the limit is spent, whether the text itself spends it or the first few
 // of its hidden readings do.
@@ -709,14 +710,16 @@ func TestHiddenReadingsStopAtBudget(t *testing.T) {
 			t.Errorf("text of %d bytes read within a %d-byte limit", len(cell), limit)
 		}
 		got := after.TotalAlloc - before.TotalAlloc
+		ceiling := uint64(32 << 20)
 		if raceBuild {
-			// The race detector's own allocations, tens of MiB here, swamp the ceiling; the
-			// ceiling is judged by the uninstrumented run, and this one checks the refusal only.
-			t.Logf("allocation ceiling not checked under the race detector (%d bytes allocated)", got)
-			continue
+			// A race build keeps fewer of the regexp machines put back into their sync.Pool,
+			// so the reading rebuilds them per match: about 75-95 MB here against 1-2 MB in an
+			// ordinary build. The race ceiling sits above that and well below the 330 MB or
+			// more a reading that ignores the spent budget allocates.
+			ceiling = 192 << 20
 		}
-		if got > 32<<20 {
-			t.Errorf("%d bytes allocated reading a text of %d bytes within a %d-byte limit", got, len(cell), limit)
+		if got > ceiling {
+			t.Errorf("%d bytes allocated reading a text of %d bytes within a %d-byte limit (ceiling %d, race build %v)", got, len(cell), limit, ceiling, raceBuild)
 		}
 	}
 }

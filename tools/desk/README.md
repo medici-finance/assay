@@ -1583,7 +1583,9 @@ desk decision; that is the reviewer's question, and the reviewer kit (`cmd/deskd
 references/review-prompt.md` §15) asks it on every review. A reviewer who judges that the
 diff took an undeclared reversible default names it in the verdict with the fixed line
 `Undeclared-desk-decision: <one line>`, and the flip refuses while that line stands at the
-CURRENT head — cleared by `deskpr edit --body-file <the PR's current body> --decided F`
+CURRENT head (a value of `none`, `none found`, `none observed` or `none identified`, any case,
+optionally followed by a separator and an explanation, records a clean check and holds
+nothing; an empty value holds) — cleared by `deskpr edit --body-file <the PR's current body> --decided F`
 and a fresh DECISIVE verdict (APPROVE or REQUEST_CHANGES) at the same head, in the same
 lane, that omits the line; no new commit required. The two review lanes are read separately, because the correctness and security
 verdicts are posted by the same reviewer App in parallel: a `Security-Review:` verdict never
@@ -5471,14 +5473,22 @@ Two limits, so the guarantee is not read as more than it is:
   do not serialise against each other. Each also writes its own `~/.config/assay/
   audit.jsonl`, so the rate-limit ledger they are protecting is per-host too — the lock is
   exactly as wide as the thing it guards, and no wider.
-- **The holder is bounded by an HTTP timeout, not by the lock.** The forge write and the
-  attribution read run inside the critical section, so `httpClient` carries a 30s per-request `Timeout`
-  (`cmd/deskevidence/github.go`). Without it a hung connection would pin the *shared*
-  `audit.lock` and starve `deskpost` and `deskrelease` with it. `deskpost` and
-  `deskrelease` still use `http.DefaultClient` and do not have this bound. The timeout is
-  guarded at source by `TestHTTPClientIsBoundedNotDefault`, not behaviourally: every test
-  replaces `httpClient` with one wired to the fake, so the production declaration is never
-  exercised and reverting it to `http.DefaultClient` used to survive the suite green.
+- **The holder is NOT bounded today: the write window's forge requests have no timeout.**
+  Every forge request in the write window runs inside the critical section: the window
+  rechecks' re-reads through the uncached forge (the re-admission, the board re-read, the
+  visibility read and, on the outcome path, the join-fact and delivery-PR re-reads and, for a
+  branch-tip binding, the Evidence and observation binding re-reads), the decision-gate
+  judge's re-run on the re-read board, then the forge write and the attribution read. The
+  judge re-run is a `statusgen --decision-gate` child process, run twice, that reads from the
+  forge who wrote each ruling; it is started with `context.Background()`, so nothing in this
+  process bounds it. The in-process requests are unbounded too: the GitHub backend's REST
+  client (`internal/deskkit/forge_github.go`, `restClient`) is built with no `Timeout`, and a
+  zero go-gh `Timeout` means no per-request limit. A hung connection can therefore pin the
+  *shared* `audit.lock` until the process dies, and no other desk writer that needs that lock,
+  `deskpost` and `deskrelease` included, can take it meanwhile (their own clients are
+  `http.DefaultClient`, which has no timeout either). The 30s per-request bound this item used
+  to describe, and the source guard that pinned it, were removed when `deskevidence` moved
+  onto the forge resolver. Restoring a per-request bound is tracked by #6718.
 - **Failure mode: refuse, never proceed.** A lock that cannot be acquired — for any reason,
   including the run's single 60s wait budget — returns `Unverifiable` from `enterWriteWindow` before the
   budget is read, so nothing outward happens and exactly one audit line is

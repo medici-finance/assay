@@ -215,11 +215,13 @@ func landingScopeOf(targetRepoPath string) landingScope {
 // the start of the text after the brief key: statusgen's acceptance-transition authority
 // reads (statusgen/acceptancetransition.go acceptanceStep), in the legacy form the closure
 // lint wraps as "protected table: acceptance transition: " and the chained form it returns
-// unwrapped as "acceptance transition: link <n>: " (statusgen/protectedclosure.go). It is
-// not a lexical match on the marker: a line excuses only when it starts with one of these
-// exact producer prefixes. A producer not listed here, including a new one, is refused
-// until it is added to this list.
-var couldNotCheckRe = regexp.MustCompile(`^(?:protected table: acceptance transition|acceptance transition: link [1-9][0-9]*): could-not-check (?:repository|human) authority: `)
+// unwrapped as "acceptance transition: link <n>: " (statusgen/protectedclosure.go); and,
+// inside either form, the Evidence-repair approval read, which names its repair commit as
+// "evidence repair <12 hex>: " (statusgen/evidencerepair.go corroborateEvidenceRepairs).
+// It is not a lexical match on the marker: a line excuses only when it starts with one of
+// these exact producer prefixes. A producer not listed here, including a new one, is
+// refused until it is added to this list.
+var couldNotCheckRe = regexp.MustCompile(`^(?:protected table: acceptance transition|acceptance transition: link [1-9][0-9]*)(?:: evidence repair [0-9a-f]{12})?: could-not-check (?:repository|human) authority: `)
 
 // streamDirMismatch reports whether a lint run names a stream whose frontmatter name
 // differs from its directory (statusgen/checks.go).

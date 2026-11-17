@@ -1,6 +1,7 @@
 package deskkit
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -52,6 +53,56 @@ func TestReviewFindingBlockMalformed(t *testing.T) {
 				t.Fatalf("malformed block should refuse (exit %d), got %d", ExitRefused, ExitCodeOf(err))
 			}
 		})
+	}
+}
+
+// regression: resolvedHead refused with no route to evidenceHead
+// TestFindingUnknownHeadField proves a block carrying a head field v1 does not define still
+// refuses — v1 readers are strict, so the field is never silently dropped — and that the
+// refusal names the field and the v1 field that carries the fact: evidenceHead, the head a
+// resolution was checked at. resolvedHead is the field a reviewer reached for; fixedHead and
+// resolved_head are planted siblings the fix does not name.
+func TestFindingUnknownHeadField(t *testing.T) {
+	const sha = "9aa837adaf9b6074ca703755216ad448e185ae4a"
+	for _, field := range []string{"resolvedHead", "fixedHead", "resolved_head"} {
+		t.Run(field, func(t *testing.T) {
+			body := `x <!-- assay:review-finding:v1 {"schema":"review-finding/v1","findings":[{"id":"F1","class":"c",` +
+				`"severity":"blocking","blocker":"code-content","state":"resolved","failure":"f","` + field + `":"` + sha + `"}]} -->`
+			_, present, err := ParseFindingBlock(body)
+			if !present || err == nil || ExitCodeOf(err) != ExitRefused {
+				t.Fatalf("an undefined head field must refuse the block: present=%v err=%v", present, err)
+			}
+			for _, want := range []string{strconv.Quote(field), "For a head, use evidenceHead", "review-finding/v2"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("refusal does not name %s: %v", want, err)
+				}
+			}
+		})
+	}
+	// A field that is not a head names the field and the v1 field list, but no head route.
+	body := `x <!-- assay:review-finding:v1 {"schema":"review-finding/v1","findings":[{"id":"F1","class":"c","severity":"advisory","blocker":"code-content","state":"open","note":"n"}]} -->`
+	_, _, err := ParseFindingBlock(body)
+	if err == nil || !strings.Contains(err.Error(), `"note"`) || !strings.Contains(err.Error(), "sharedRepair") {
+		t.Fatalf("an undefined field must be named with the v1 field list: %v", err)
+	}
+	if strings.Contains(err.Error(), "For a head") {
+		t.Fatalf("a non-head field was given the head route: %v", err)
+	}
+}
+
+// TestFindingResolvedAtEvHead proves the route the refusal names works: a reviewer
+// resolution whose evidenceHead is the head it was taken at passes the write gate and stops
+// blocking at that head, and keeps blocking at any later head.
+func TestFindingResolvedAtEvHead(t *testing.T) {
+	const sha, later = "9aa837adaf9b6074ca703755216ad448e185ae4a", "b3ef023c5b3ef023c5b3ef023c5b3ef023c5b3ef"
+	f := blockingFinding("F1", "c", "resolved")
+	f.EvidenceHead = sha
+	b := &FindingBlockV1{Schema: FindingBlockSchema, Findings: []Finding{f}}
+	if err := b.Validate(RoleReviewer); err != nil {
+		t.Fatalf("a reviewer resolution with an evidenceHead was refused: %v", err)
+	}
+	if f.StandingBlockerAt(sha) || !f.StandingBlockerAt(later) {
+		t.Fatalf("evidenceHead does not pin the resolution: at=%v later=%v", f.StandingBlockerAt(sha), f.StandingBlockerAt(later))
 	}
 }
 
