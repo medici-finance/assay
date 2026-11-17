@@ -155,23 +155,29 @@ This brief leaves `todo` only once `DR-desk-containers-35` (brief 35) is approve
    with no sticky-bit exception (a sticky-bit directory another identity can write fails, as
    brief 36 Task 4 refuses it). A cell whose role windows share one OS user binds no file and
    its check says why. Any ownership, mode, access-control or surface state the check cannot
-   determine fails the check. The launcher records, from the cell's identity map, the
-   coordinator role's identity and, on a container cell, each role's mount mode for the file,
-   and for every window the role-secret files it can reach (none, or their paths as that window
-   sees them), in one record per launcher at a fixed name in the launcher anchor directory
-   (brief 35 Interface contract), never under `<cell>/state/`, which the coordinator owns, and
-   never at a path from `cell.env`, the cells root or a variable; brief 36 reads that record
-   and refuses when it is absent. The launcher writes the record as its own identity, which
-   owns the anchor and is none of the role identities (the coordinator's included), with no
-   group or other write and no access-control list entry granting write. A launcher whose
-   identity is a role identity, or that does not own the anchor, writes no record, binds no
-   file, and its check says why. A record, the anchor or any directory above it that any
-   identity but its owner can write, or that is a symlink, fails the check rather than being
-   reused, and so does an anchor or a directory above it owned by any identity but the system
-   administrator or the launcher, and a record owned by any identity but the launcher (brief 35
-   Interface contract). On a container cell the launcher binds that one record file read-only
-   into each verifier container at the fixed in-container path and into no other container; the
-   cell directory stays unmounted.
+   determine fails the check, as does a filesystem whose reported owner and mode need not
+   reflect who can write it (a network or user-space filesystem, or a volume mounted to ignore
+   ownership). *Writable only by its owner* and the no-follow walk mean exactly what brief 36
+   Task 4 defines: every access-control right that can replace an entry counts, and the walk is
+   a descriptor chain from the filesystem root. The launcher records, from the cell's identity
+   map, the coordinator role's identity and, on a container cell, each role's mount mode for the
+   file, and for every window the role-secret files it can reach (none, or their paths as that
+   window sees them), in one record per launcher at a fixed name in the launcher anchor
+   directory (brief 35 Interface contract), never under `<cell>/state/`, which the coordinator
+   owns, and never at a path from `cell.env`, the cells root or a variable; brief 36 reads that
+   record and refuses when it is absent. The launcher writes the record as its own identity,
+   which owns the anchor and is none of the role identities (the coordinator's included), with
+   no group or other write and no access-control list entry granting write. The launcher
+   identity is the one pinned at install with the anchor path (brief 36 Task 4), never read from
+   who owns the anchor. A launcher whose identity is a role identity, or is not the pinned
+   identity, or that does not own the anchor, writes no record, binds no file, and its check
+   says why. A record, the anchor or any directory above it that any identity but its owner can
+   write, or that is a symlink, fails the check rather than being reused, and so does an anchor
+   or a directory above it owned by any identity but the system administrator or the launcher,
+   and a record owned by any identity but the launcher (brief 35 Interface contract). On a
+   container cell the launcher binds that one record file read-only into each verifier container
+   at the fixed in-container path and into no other container; the cell directory stays
+   unmounted.
    On a container cell, on every option, the dev-env file, its directory and the launcher
    anchor join the launch plan's protected paths, as cellctl adds the cell directory after the
    plan is built (`tools/desk/cmd/cellctl/container_native.go:62`), so a directory bind of any
@@ -222,7 +228,7 @@ and 8 apply under brief 35's option 1 and are re-derived with Tasks 2 and 3 if
 | 5 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecret' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretScope ' "$o" && ! grep -F -- '--- FAIL' "$o")` | The role-secret tests still pass, none fails. |
 | 6 | check | host | `statusgen --root . --lint --acceptance-forge` | exit 0; output contains "LINT: PASS". |
 | 7 | check | tree | `statusgen --consumers --brief desk-containers/37 --base $(git merge-base origin/main HEAD)` | Pre-merge, on the implementation branch: exit 0. |
-| 8 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvRecordMode$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvRecordMode ' "$o")` | Named PASS; the launcher record is written at the fixed name in the launcher anchor directory, never under `<cell>/state/`, owned by the anchor's owner (`example-launcher` in the fixture), with no group or other write and no ACL write grant, and the launcher's identity is not the coordinator's nor any other role identity's; a launcher whose identity is the coordinator's or any other role identity's, or that does not own the anchor, writes no record and fails check; a pre-existing record, anchor or directory above it that is group-writable, writable by an identity other than its owner, owned by `example-operator`, or a symlink fails check and is not reused; on a container cell only verifier containers get the record, as a read-only file mount at the fixed path. |
+| 8 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestDevEnvRecordMode$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvRecordMode ' "$o")` | Named PASS; the launcher record is written at the fixed name in the launcher anchor directory, never under `<cell>/state/`, owned by the pinned launcher identity, which also owns the anchor (`example-launcher` in the fixture), with no group or other write and no ACL write grant, and the launcher's identity is not the coordinator's nor any other role identity's; a launcher whose identity is the coordinator's or any other role identity's, or is not the pinned identity, or that does not own the anchor, writes no record and fails check; a pre-existing record, anchor or directory above it that is group-writable, writable by an identity other than its owner, owned by `example-operator`, or a symlink fails check and is not reused; a directory above the anchor owned by the coordinator identity and writable only by its owner fails check, and so does a pre-existing record owned by the coordinator identity, neither reused; a directory above the anchor whose only grant to another identity is an ACL right to delete or to add an entry fails check; on a container cell only verifier containers get the record, as a read-only file mount at the fixed path. |
 
 ## Threat model / pre-mortem
 
