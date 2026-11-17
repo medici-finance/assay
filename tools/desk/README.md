@@ -5473,22 +5473,25 @@ Two limits, so the guarantee is not read as more than it is:
   do not serialise against each other. Each also writes its own `~/.config/assay/
   audit.jsonl`, so the rate-limit ledger they are protecting is per-host too — the lock is
   exactly as wide as the thing it guards, and no wider.
-- **The holder is NOT bounded today: the write window's forge requests have no timeout.**
+- **The holder's in-process forge requests are bounded; one child process is not.**
   Every forge request in the write window runs inside the critical section: the window
   rechecks' re-reads through the uncached forge (the re-admission, the board re-read, the
   visibility read and, on the outcome path, the join-fact and delivery-PR re-reads and, for a
   branch-tip binding, the Evidence and observation binding re-reads), the decision-gate
-  judge's re-run on the re-read board, then the forge write and the attribution read. The
-  judge re-run is a `statusgen --decision-gate` child process, run twice, that reads from the
-  forge who wrote each ruling; it is started with `context.Background()`, so nothing in this
-  process bounds it. The in-process requests are unbounded too: the GitHub backend's REST
-  client (`internal/deskkit/forge_github.go`, `restClient`) is built with no `Timeout`, and a
-  zero go-gh `Timeout` means no per-request limit. A hung connection can therefore pin the
-  *shared* `audit.lock` until the process dies, and no other desk writer that needs that lock,
-  `deskpost` and `deskrelease` included, can take it meanwhile (their own clients are
-  `http.DefaultClient`, which has no timeout either). The 30s per-request bound this item used
-  to describe, and the source guard that pinned it, were removed when `deskevidence` moved
-  onto the forge resolver. Restoring a per-request bound is tracked by #6718.
+  judge's re-run on the re-read board, then the forge write and the attribution read. Each
+  in-process request gives up after 30 seconds (`deskkit.ForgeRequestTimeout`): the GitHub
+  backend's REST client and its diff read, the GitLab client, and the clients `deskpost` and
+  `deskrelease` use for their own forge calls all carry that per-request bound, and a client a
+  caller injects with its own non-zero timeout keeps it. The exception is the judge re-run:
+  it is a `statusgen --decision-gate` child process, run twice, that reads from the forge who
+  wrote each ruling, and it is started with `context.Background()`, so nothing in this process
+  bounds it. A hung forge connection inside that child can still pin the *shared*
+  `audit.lock` until the child exits, and no other desk writer that needs the lock,
+  `deskpost` and `deskrelease` included, can take it meanwhile. `TestNoUnboundedForgeClient`
+  (`internal/deskkit/forgetimeout_test.go`) is a source guard behind the shared helpers: a
+  pattern scan of the forge library, the credential package and the lock-holding tools for
+  the common deadline-free client shapes and for an `io.ReadAll` whose error is not checked,
+  not a proof that no other construction exists, and it does not see the child process.
 - **Failure mode: refuse, never proceed.** A lock that cannot be acquired — for any reason,
   including the run's single 60s wait budget — returns `Unverifiable` from `enterWriteWindow` before the
   budget is read, so nothing outward happens and exactly one audit line is
