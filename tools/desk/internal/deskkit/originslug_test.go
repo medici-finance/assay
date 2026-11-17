@@ -77,6 +77,9 @@ func TestOriginSlugScopeRefused(t *testing.T) {
 		{"pin Kelvin-sign host", true, false, append([][]string{
 			{"remote", "set-url", "origin", "https://bitbucket.org/owner/repo.git"}},
 			pinTo("https://bitbuc\u212aet.org/owner/repo.git")...)},
+		{"ssh origin, pin other host", true, false, append([][]string{
+			{"remote", "set-url", "origin", "git@github.com:owner/repo.git"}},
+			pinTo("https://steer.example.invalid/owner/repo.git")...)},
 		{"pin lookalike scp host", true, false, pinTo("git@g\u0130thub.com:owner/repo")},
 		// An ssh alias stands for a network host; a pin with no host is not that host.
 		{"alias pin without host", true, false, append([][]string{
