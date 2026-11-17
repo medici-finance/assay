@@ -1051,6 +1051,12 @@
       "file": "internal/deskkit/stampapply.go",
       "old": "\tgot, state := sk.AttestedStampOf(tl, authority)\n\tif state == ModelStamped && got == expected {\n\t\treturn nil\n\t}",
       "new": "\tlabels = sk.SettleRequest(tl, labels, authority)\n\texpected, _ = sk.StampOf(labels)\n\tgot, state := sk.AttestedStampOf(tl, authority)\n\tif state == ModelStamped && got == expected {\n\t\treturn nil\n\t}"
+    },
+    {
+      "name": "#6751 unknown covers \u2014 DROP the skip so a delivery: entry whose covers word is neither full nor partial (a typo such as Partial) is read as partial and its merged PR set aside, where statusgen counts it as delivery. TestDeclaredPartialDeliveries must go red.",
+      "file": "internal/deskkit/partialdelivery.go",
+      "old": "\t\tif cov != \"full\" && cov != \"partial\" {\n\t\t\tcontinue // not a claim statusgen acts on either\n\t\t}",
+      "new": "\t\tif false && cov != \"full\" && cov != \"partial\" {\n\t\t\tcontinue // not a claim statusgen acts on either\n\t\t}"
     }
   ],
   "_not_mutated": {

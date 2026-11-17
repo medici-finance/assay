@@ -336,8 +336,9 @@ func dispatch(o dispatchOpts) error {
 	// wedges nothing (no claim yet) and is a no-op for a review/verifier dispatch or a --pr resume.
 	// A --rework dispatch whose brief already has a MERGED PR comes back as a FOLLOW-UP: the plan's
 	// branch is moved off the merged branch's name here, still pre-claim, so the worktree, the claim
-	// and the prompt all see the follow-up branch.
-	followUp, err := phantomCheckFor(o, repo, plan.dl)
+	// and the prompt all see the follow-up branch. With no --brief it reads the brief the item key
+	// names (plan.gateOpts), so the `delivery:` set-aside (#6751) holds on the key-only path too.
+	followUp, err := phantomCheckFor(plan.gateOpts(o), repo, plan.dl)
 	if err != nil {
 		return err
 	}

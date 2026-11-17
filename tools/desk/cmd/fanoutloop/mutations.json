@@ -42,6 +42,12 @@
       "file": "cmd/fanoutloop/represented.go",
       "old": "\t\tif partials != nil {\n\t\t\tdropDeclaredPartials(repo, all, partials(repo))",
       "new": "\t\tif false && partials != nil {\n\t\t\tdropDeclaredPartials(repo, all, partials(repo))"
+    },
+    {
+      "name": "#6751 rework rows' delivery: \u2014 read only the Next-up rows for declared partials, not the awaiting-rework rows, so a rework row whose only merged PR is declared covers: partial is dropped as represented again. TestPlan_PartialReworkRowOffered must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\tvar aliases *deskkit.DeliveryAliases\n\tfor _, r := range append(rows, rework...) {",
+      "new": "\tvar aliases *deskkit.DeliveryAliases\n\t_ = rework\n\tfor _, r := range rows {"
     }
   ]
 }

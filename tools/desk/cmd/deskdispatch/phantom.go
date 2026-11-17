@@ -224,9 +224,10 @@ func phantomCheckFor(o dispatchOpts, repo string, dl deliverable) (phantomFollow
 	return none, nil
 }
 
-// dropDeclaredPartialMerges returns merged without the PR numbers the --brief file's `delivery:` list
+// dropDeclaredPartialMerges returns merged without the PR numbers the brief's `delivery:` list
 // declares `covers: partial` for repo (deskkit.DeclaredPartialDeliveries, resolved through the
-// graph-repos.yaml of the tree that holds the brief). No --brief, an unreadable brief, or a partial
+// graph-repos.yaml of the tree that holds the brief). The brief is --brief, or with none the one the
+// item key names (the caller passes plan.gateOpts). No brief at all, an unreadable brief, or a partial
 // claim that cannot be resolved sets nothing aside — the refusal stands, as before #6751 — and the
 // could-not-check reason is disclosed on stderr.
 func dropDeclaredPartialMerges(o dispatchOpts, repo, briefID string, merged []int) []int {

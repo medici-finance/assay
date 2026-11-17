@@ -170,3 +170,27 @@ func TestPlan_PartialFileTransport(t *testing.T) {
 		t.Errorf("a partial merged delivery must be set aside on the file-transport path too (#6751):\n%s", s)
 	}
 }
+
+// TestPlan_PartialReworkRowOffered: an awaiting-rework row's brief is read for `delivery:` too. A
+// rework row whose only merged PR is declared partial is offered to the rework lane (deskdispatch
+// --rework then follows that PR up on a new branch) rather than dropped as represented.
+func TestPlan_PartialReworkRowOffered(t *testing.T) {
+	setupDeskHome(t)
+	withPlanTransports(t, []deskkit.PRRef{{Number: 5127, State: "MERGED", Body: "Brief: example-partial/15"}}, nil)
+	f := planWithRows(nil)
+	f.Rework = func() ([]BoardRow, error) {
+		return []BoardRow{briefRow("example-partial", "15", "L", "", "model", false)}, nil
+	}
+	f.Root = partialRoot(t, partialBrief(partialA))
+	f.TargetSHA = "sha"
+	items, err := f.SelectQueue()
+	if err != nil {
+		t.Fatalf("SelectQueue: %v", err)
+	}
+	for _, it := range items {
+		if it.ID == "example-partial/15" && it.Payload["kind"] == kindRework {
+			return
+		}
+	}
+	t.Errorf("a rework row whose only merged PR is declared partial must reach the rework lane: %+v", items)
+}

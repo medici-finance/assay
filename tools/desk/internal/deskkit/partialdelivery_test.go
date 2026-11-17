@@ -38,6 +38,9 @@ func TestDeclaredPartialDeliveries(t *testing.T) {
 		{"malformed ref", "delivery:\n  - {in: \"example-5127\", covers: partial, note: \"n\"}\n", nil, true},
 		{"not a list", "delivery: example#5127\n", nil, true},
 		{"unknown covers ignored", "delivery:\n  - {in: \"missing#1\", covers: some}\n", nil, false},
+		// A resolvable alias with an unknown or wrong-case covers word: statusgen counts that PR as
+		// delivery, so it must not be set aside (a typo'd `Partial` is not `partial`).
+		{"unknown covers on a resolvable alias", "delivery:\n  - {in: \"example#5127\", covers: Partial}\n", nil, false},
 	}
 	for _, c := range cases {
 		got, why := DeclaredPartialDeliveries(partialFM(c.delivery), repo, partialAliases)

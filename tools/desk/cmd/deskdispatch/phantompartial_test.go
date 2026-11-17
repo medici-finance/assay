@@ -16,7 +16,13 @@ import (
 
 func phantomPartialBrief(t *testing.T, delivery ...string) string {
 	t.Helper()
-	root := t.TempDir()
+	return phantomPartialTree(t, t.TempDir(), delivery...)
+}
+
+// phantomPartialTree plants the partial-delivery fixture brief and the alias registry under root and
+// returns the brief's path.
+func phantomPartialTree(t *testing.T, root string, delivery ...string) string {
+	t.Helper()
 	dir := filepath.Join(root, "docs", "streams", "example-partial")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
@@ -59,6 +65,29 @@ func TestPhantomPartialMergeAdmits(t *testing.T) {
 	}
 	if fu.pr != 0 {
 		t.Errorf("a fresh dispatch over partial deliveries is not a follow-up: %+v", fu)
+	}
+}
+
+// TestPhantomKeyOnlyPartialAdmits: the documented key-only dispatch (no --brief) reads the brief the
+// item key names, so a row whose merged PRs are all declared partial is admitted there too, not
+// refused as "already DELIVERED" while fanoutloop offers it.
+//
+// regression: #6751
+func TestPhantomKeyOnlyPartialAdmits(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	phantomPartialTree(t, root, `{in: "example#5127", covers: partial, note: "first slice"}`)
+	withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
+		return []deskkit.PRRef{{Number: 5127, State: "MERGED", Body: "Brief: example-partial/15"}}, nil
+	})
+	s.replies = happyReplies(filepath.Join(t.TempDir(), "worker-home"))
+	rc, stderr, _ := bkRun(t, root, "assay--example-partial--15")
+	if rc != deskkit.ExitOK || strings.Contains(stderr, "already DELIVERED") {
+		t.Fatalf("a key-only dispatch must read the key-named brief's delivery: list (#6751): rc=%d\n%s", rc, stderr)
+	}
+	if !strings.Contains(stderr, "declares it a partial delivery") {
+		t.Errorf("the set-aside NOTICE is missing on the key-only path:\n%s", stderr)
 	}
 }
 
