@@ -41,7 +41,7 @@ func (m *manager) launchCheck() (Report, error) {
 		return m.emptyAdmission()
 
 	}
-	r, why, reclaimable := precheck(m.p, false, admitEnv{free: m.free, now: time.Now})
+	r, why, kind := precheck(m.p, false, admitEnv{free: m.free, now: time.Now})
 	if why == "" {
 		return r, nil
 	}
@@ -55,8 +55,10 @@ func (m *manager) launchCheck() (Report, error) {
 	}
 	// Missing, stale, dirty, partial or corrupt accounting cannot become a zero
 	// estimate, and Prepare never walks the cache itself. The refusal says
-	// whether one clean may clear it; only `cellctl up` acts on that.
-	r = Report{Schema: schema, Policy: m.p, Outcome: "could-not-check", Admission: "bounded-refusal", Reason: fmt.Sprintf("%s; run cellctl cache <cell> clean before retrying launch", why), reclaimable: reclaimable}
+	// whether one clean may clear it (only `cellctl up` acts on that) and
+	// whether it is only a measurement too old, new or absent to lean on (every
+	// cellctl launch re-measures once on that).
+	r = Report{Schema: schema, Policy: m.p, Outcome: "could-not-check", Admission: "bounded-refusal", Reason: fmt.Sprintf("%s; run cellctl cache <cell> clean before retrying launch", why), reclaimable: kind != refuseOperator, stale: kind == refuseStale}
 	return r, &Deferred{r}
 }
 
