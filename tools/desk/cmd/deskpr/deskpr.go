@@ -1143,12 +1143,11 @@ func scanWrite(f *gitFacts, title, verb, override string) error {
 	// #3196: the stripped text and its line index come from one pass, and a finding
 	// on that text is mapped back to the file, the line in it and the side before it is
 	// reported. The bytes scanned and the verdict are what they were; only where the
-	// refusal points changes.
+	// refusal points changes. The location is added AFTER HandleScanRefusal has classified
+	// the refusal, so an author-chosen path can never steer that classification.
 	stripped, refs := deskkit.DiffLineIndex(diff)
-	diffSecrets := func(surface string, content []byte) error {
-		return locateDiffFinding(deskkit.ScanSurfaceSecrets(surface, content), refs)
-	}
-	if err := scanWith("branch diff vs "+f.defaultRef, diffSecrets, []byte(stripped)); err != nil {
+	if err := locateDiffFinding(scanWith("branch diff vs "+f.defaultRef, deskkit.ScanSurfaceSecrets,
+		[]byte(stripped)), refs); err != nil {
 		return err
 	}
 	if err := scanWith("added lines of branch diff vs "+f.defaultRef, deskkit.ScanSurfaceRulingClaim,
@@ -1251,9 +1250,15 @@ func stripDiffMetaLines(diff string) string {
 // DiffLineIndex built with that text.
 //
 // Only the location changes. The refusal keeps its exit code and its message (the location
-// is appended), and the finding keeps its rule, length and redacted shape, so the override
-// path and --explain see what they saw before. A line the index cannot number is reported
-// as an unknown line and never guessed. An error that carries no finding passes through.
+// is inserted before a trailing override hint, or appended when there is none), and the
+// finding keeps its rule, length and redacted shape, so --explain sees what it saw before.
+// A line the index cannot number is reported as an unknown line and never guessed. An
+// error that carries no finding passes through.
+//
+// It runs on HandleScanRefusal's RESULT, never on its input: the path is author-chosen
+// text, and HandleScanRefusal classifies a refusal by substrings of its message, so a
+// location appended first could change which override path the refusal takes. The path
+// is printed through deskkit.DisplayPath, so control and bidi characters in it are quoted.
 func locateDiffFinding(err error, refs []deskkit.DiffLineRef) error {
 	var de *deskkit.DeskError
 	if !errors.As(err, &de) || de.Finding == nil {
@@ -1267,7 +1272,7 @@ func locateDiffFinding(err error, refs []deskkit.DiffLineRef) error {
 	line := ref.FileLine
 	where := "unknown file"
 	if ref.Path != "" {
-		where = ref.Path
+		where = deskkit.DisplayPath(ref.Path)
 	}
 	if line > 0 {
 		where += ":" + strconv.Itoa(line)
@@ -1281,6 +1286,12 @@ func locateDiffFinding(err error, refs []deskkit.DiffLineRef) error {
 	located.Line, located.Path, located.Side = line, ref.Path, string(ref.Side)
 	out := *de
 	out.Msg = de.Msg + " — at " + where
+	for _, hint := range []string{deskkit.OverrideHint(deskkit.OverrideByFlag), deskkit.OverrideHint(deskkit.OverrideByEnv)} {
+		if strings.HasSuffix(de.Msg, hint) {
+			out.Msg = strings.TrimSuffix(de.Msg, hint) + " — at " + where + hint
+			break
+		}
+	}
 	out.Finding = &located
 	return &out
 }

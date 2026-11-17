@@ -179,7 +179,7 @@ func TestDiffFindingVerdicts(t *testing.T) {
 				t.Fatalf("scanned bytes changed:\nlegacy: %q\nindex:  %q", legacyText, stripped)
 			}
 			o.Content = []byte(stripped)
-			located := deskkit.HandleScanRefusal(o, locateDiffFinding(deskkit.ScanSurfaceSecrets(surface, []byte(stripped)), refs))
+			located := locateDiffFinding(deskkit.HandleScanRefusal(o, deskkit.ScanSurfaceSecrets(surface, []byte(stripped))), refs)
 
 			if (legacy == nil) != (located == nil) {
 				t.Fatalf("verdict changed: legacy=%v located=%v", legacy, located)

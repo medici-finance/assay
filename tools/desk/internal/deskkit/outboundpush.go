@@ -410,6 +410,10 @@ func advanceDiffLine(n int) int {
 
 // diffSidePath reads the path from a `--- ` / `+++ ` header value: "/dev/null" is no path,
 // and git's a/ or b/ prefix is dropped (the same reading AddedLinesByFile makes of +++).
+// It assumes the in-process (go-git) encoder's output, which writes paths raw: the git
+// CLI's C-style quoted form (the path in double quotes, with backslash escapes) is not
+// unquoted, so such a path would be reported with its quotes and escapes as they appear
+// in the header.
 func diffSidePath(v, prefix string) string {
 	if v == "/dev/null" {
 		return ""

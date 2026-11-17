@@ -59,7 +59,7 @@ func (f *ScanFinding) Explain() string {
 		if f.Line > 0 {
 			line = strconv.Itoa(f.Line)
 		}
-		path := f.Path
+		path := DisplayPath(f.Path)
 		if path == "" {
 			path = "unknown"
 		}
@@ -132,4 +132,16 @@ func redactShape(run string) string {
 		return "… (" + class + ")"
 	}
 	return run[:2] + "…" + run[len(run)-2:] + " (" + class + ")"
+}
+
+// DisplayPath renders a file path for a console line. A path whose every rune is graphic
+// (strconv.IsGraphic) prints as it is. Any other path prints Go-quoted, as
+// strconv.QuoteToGraphic writes it, so control and bidi characters in a path show as
+// escapes and cannot reorder or rewrite the line they are printed on. A path is author
+// text: it reaches the console from a diff header, not from the tool.
+func DisplayPath(p string) string {
+	if q := strconv.QuoteToGraphic(p); q != `"`+p+`"` {
+		return q
+	}
+	return p
 }
