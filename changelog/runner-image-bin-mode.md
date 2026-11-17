@@ -1,0 +1,2 @@
+### Fixed
+- The verify-runner image installs `/usr/local/bin/git-floor-check`, `/usr/local/bin/statusgen` and `/usr/local/share/verify-runner/go-module-roots.txt` with explicit modes (`COPY --chmod`), so a build from a checkout made under umask 002 no longer ships a group-writable file that an installed-image check refuses. The image's last build step now fails on any file under `/usr/local/bin`, `/usr/local/lib/verify-runner` or `/usr/local/share/verify-runner` that is not root:root or is writable by its group or others.

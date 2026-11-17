@@ -35,6 +35,13 @@ const (
 	// runnerOwnerGate fails the build on any file of the install tree that is
 	// not root:root.
 	runnerOwnerGate = `if find /usr/bin/git /usr/libexec/git-core /usr/share/git-core -xdev \( ! -user 0 -o ! -group 0 \) -print | grep .`
+	// runnerModeGate fails the build on any installed runner file that is not
+	// root:root or is writable by its group or others (#6784): a COPY with no
+	// --chmod keeps the build context's mode, group-writable under umask 002.
+	runnerModeGate = `if find /usr/local/bin /usr/local/lib/verify-runner /usr/local/share/verify-runner -xdev ! -type l \( -perm /022 -o ! -user 0 -o ! -group 0 \) -print | grep .`
+	// runnerCheckCopyMode is the mode the floor script is installed with,
+	// never the build context's.
+	runnerCheckCopyMode = "--chmod=0755"
 )
 
 // verifyRunnerFloorProblem returns why the verify-runner Dockerfile does not
@@ -121,8 +128,10 @@ func verifyRunnerFloorProblem(runner, base string) string {
 			gitIn = i
 		case in.op == "COPY" && hasWord(in.args, "--from=gitbuild"):
 			return "the final stage copies from gitbuild somewhere other than `/out/usr/ /usr/`, so /usr/bin/git is not the built one"
-		case in.op == "COPY" && len(in.args) == 2 && in.args[0] == "containers/scripts/git-floor-check.sh" && in.args[1] == gitFloorScriptInImg:
+		case in.op == "COPY" && len(in.args) == 3 && in.args[0] == runnerCheckCopyMode && in.args[1] == "containers/scripts/git-floor-check.sh" && in.args[2] == gitFloorScriptInImg:
 			copyCheck = i
+		case in.op == "COPY" && hasWord(in.args, "containers/scripts/git-floor-check.sh"):
+			return "the final stage copies containers/scripts/git-floor-check.sh without `" + runnerCheckCopyMode + "` to " + gitFloorScriptInImg + ", so the image keeps the build context's mode"
 		case in.op == "RUN" && hasWord(in.args, "git-floor-check") || in.op == "RUN" && hasWord(in.args, gitFloorScriptInImg):
 			runCheck = i
 		}
@@ -233,10 +242,15 @@ func runnerFloorRunProblem(in dfInstr) string {
 	if segAt(segs, "test ! -e /usr/lib/git-core") < 0 {
 		return "the git-floor-check RUN lacks `test ! -e /usr/lib/git-core` (the distro git's exec directory must be gone)"
 	}
+	// The install-mode gate (#6784): a group- or other-writable installed file
+	// fails the build rather than ship to a consumer that refuses it.
+	if p := gateProblem(segs, runnerModeGate, "install-mode"); p != "" {
+		return "the git-floor-check RUN " + p
+	}
 	return ""
 }
 
-// regression: #4207
+// regression: #4207, #6784
 func TestVerifyRunnerImageRunsGitFloor(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		// The mutant anchors below are LF-terminated; a CRLF checkout would
@@ -267,8 +281,8 @@ func TestVerifyRunnerImageRunsGitFloor(t *testing.T) {
 	finalFrom := "FROM ${RUNNER_BASE}\n"
 	purgeLine := " && apt-get purge -y git git-man \\\n"
 	gitCopy := "COPY --from=gitbuild /out/usr/ /usr/\n"
-	checkCopy := "COPY containers/scripts/git-floor-check.sh " + gitFloorScriptInImg + "\n"
-	statusgenCopy := "COPY .release-images/verify-runner/statusgen-linux-${TARGETARCH} /usr/local/bin/statusgen\n"
+	checkCopy := "COPY " + runnerCheckCopyMode + " containers/scripts/git-floor-check.sh " + gitFloorScriptInImg + "\n"
+	statusgenCopy := "COPY --chmod=0755 .release-images/verify-runner/statusgen-linux-${TARGETARCH} /usr/local/bin/statusgen\n"
 	testX := "    test -x /usr/bin/git; \\\n"
 	testRemote := "    test -x /usr/libexec/git-core/git-remote-http; \\\n"
 	lddGate := "    if ldd /usr/bin/git /usr/libexec/git-core/git-remote-http | grep 'not found'; then \\\n" +
@@ -286,9 +300,11 @@ func TestVerifyRunnerImageRunsGitFloor(t *testing.T) {
 	ownerGate := "    " + runnerOwnerGate + "; then \\\n" +
 		"        echo \"the source-built git install tree holds files not owned by root:root\" >&2; \\\n        exit 1; \\\n    fi; \\\n"
 	execDirTest := "    test ! -e /usr/lib/git-core; \\\n"
+	modeGate := "    " + runnerModeGate + "; then \\\n" +
+		"        echo \"an installed runner file is not root:root or is writable by its group or others\" >&2; \\\n        exit 1; \\\n    fi; \\\n"
 	floorRun := "RUN set -eux; \\\n" + testX
 	for _, anchor := range []string{shaArg, verArg, shaLine, tarLine, curlLine, gitbuildFrom, finalFrom, purgeLine, gitCopy,
-		checkCopy, statusgenCopy, testX, testRemote, lddGate, floorCmd, aptAnchor, baseArg, ownerGate, execDirTest, floorRun} {
+		checkCopy, statusgenCopy, testX, testRemote, lddGate, floorCmd, aptAnchor, baseArg, ownerGate, execDirTest, floorRun, modeGate} {
 		if strings.Count(text, anchor) != 1 {
 			t.Fatalf("the mutants below need %q exactly once in the Dockerfile", anchor)
 		}
@@ -344,19 +360,33 @@ func TestVerifyRunnerImageRunsGitFloor(t *testing.T) {
 		"owner gate masked":             strings.Replace(text, ownerGate, strings.Replace(ownerGate, "exit 1; \\\n    fi;", "true; \\\n    fi;", 1), 1),
 		"distro exec dir check dropped": strings.Replace(text, execDirTest, "", 1),
 		"floor RUN removed whole":       text[:strings.Index(text, floorRun)],
+		// The install mode (#6784): the reported instance, and the gate that
+		// closes the class for every other installed file.
+		"check script copied without mode":   strings.Replace(text, checkCopy, "COPY containers/scripts/git-floor-check.sh "+gitFloorScriptInImg+"\n", 1),
+		"check script copied group-writable": strings.Replace(text, checkCopy, "COPY --chmod=0775 containers/scripts/git-floor-check.sh "+gitFloorScriptInImg+"\n", 1),
+		"install-mode gate dropped":          strings.Replace(text, modeGate, "", 1),
+		"install-mode gate masked":           strings.Replace(text, modeGate, strings.Replace(modeGate, "exit 1; \\\n    fi;", "true; \\\n    fi;", 1), 1),
+		"install-mode gate narrowed":         strings.Replace(text, modeGate, strings.Replace(modeGate, "/usr/local/bin ", "", 1), 1),
+		"install-mode gate drops other-w":    strings.Replace(text, modeGate, strings.Replace(modeGate, "-perm /022", "-perm /020", 1), 1),
 	}
 	// The rule each of the newer mutants must trip, so a mutant caught for some
 	// other reason (an earlier check) cannot stand in for its own guard.
 	wantRule := map[string]string{
-		"runner base digest dropped":    "not golang:" + fleetGoToolchain,
-		"runner base tag changed":       "not golang:" + fleetGoToolchain,
-		"runner base ARG dropped":       "not golang:" + fleetGoToolchain,
-		"both FROMs literal, no digest": "not golang:" + fleetGoToolchain,
-		"runner base other image":       "not golang:" + fleetGoToolchain,
-		"owner gate dropped":            "root-ownership",
-		"owner gate masked":             "root-ownership",
-		"distro exec dir check dropped": "test ! -e /usr/lib/git-core",
-		"floor RUN removed whole":       "never runs git-floor-check",
+		"runner base digest dropped":         "not golang:" + fleetGoToolchain,
+		"runner base tag changed":            "not golang:" + fleetGoToolchain,
+		"runner base ARG dropped":            "not golang:" + fleetGoToolchain,
+		"both FROMs literal, no digest":      "not golang:" + fleetGoToolchain,
+		"runner base other image":            "not golang:" + fleetGoToolchain,
+		"owner gate dropped":                 "root-ownership",
+		"owner gate masked":                  "root-ownership",
+		"distro exec dir check dropped":      "test ! -e /usr/lib/git-core",
+		"floor RUN removed whole":            "never runs git-floor-check",
+		"check script copied without mode":   "without `--chmod=0755`",
+		"check script copied group-writable": "without `--chmod=0755`",
+		"install-mode gate dropped":          "install-mode",
+		"install-mode gate masked":           "install-mode",
+		"install-mode gate narrowed":         "install-mode",
+		"install-mode gate drops other-w":    "install-mode",
 	}
 	for name, m := range mutants {
 		if m == text {

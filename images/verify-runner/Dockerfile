@@ -171,7 +171,7 @@ RUN set -eu; \
 # stops on a missing module as could-not-run, naming the module and both
 # versions.
 ENV GOMODCACHE=/go/pkg/mod
-COPY images/verify-runner/go-module-roots.txt /usr/local/share/verify-runner/go-module-roots.txt
+COPY --chmod=0644 images/verify-runner/go-module-roots.txt /usr/local/share/verify-runner/go-module-roots.txt
 COPY tools/desk/go.mod tools/desk/go.sum /tmp/modsrc/tools/desk/
 COPY statusgen/go.mod statusgen/go.sum /tmp/modsrc/statusgen/
 COPY qualgen/go.mod qualgen/go.sum /tmp/modsrc/qualgen/
@@ -200,12 +200,15 @@ RUN set -eu; \
     done < /usr/local/share/verify-runner/go-module-roots.txt; \
     rm -rf /tmp/modsrc /root/.cache
 
-COPY .release-images/verify-runner/statusgen-linux-${TARGETARCH} /usr/local/bin/statusgen
+COPY --chmod=0755 .release-images/verify-runner/statusgen-linux-${TARGETARCH} /usr/local/bin/statusgen
 
 # git from the gitbuild stage, over /usr. The check script stays in the image so a
-# running home can re-check itself.
+# running home can re-check itself. Every COPY from the build context into an
+# installed path names its mode with --chmod, so the image never inherits the
+# checkout's mode bits; the install-mode gate in the last RUN fails the build
+# on any one that does not.
 COPY --from=gitbuild /out/usr/ /usr/
-COPY containers/scripts/git-floor-check.sh /usr/local/bin/git-floor-check
+COPY --chmod=0755 containers/scripts/git-floor-check.sh /usr/local/bin/git-floor-check
 
 # The cluster backend's fixed entrypoints. An admission policy that pins each
 # container's command (or the absence of one) to a single script path can only
@@ -237,6 +240,15 @@ RUN chown -R 0:0 /usr/local/lib/verify-runner && chmod 0755 /usr/local/lib/verif
 # committed tree. It runs with the admitted runner's own fixed PATH, so it is the
 # git the runner reaches that is checked, not whichever one this image's PATH
 # finds first.
+#
+# The install-mode gate: every file and directory the runner installs under
+# /usr/local/bin, /usr/local/lib/verify-runner and /usr/local/share/verify-runner
+# is root:root and writable by nobody but root (no bit of mode 022). A consumer
+# that checks an installed image before trusting it refuses a group-writable
+# file, and a COPY with no --chmod keeps the build context's mode, which on a
+# checkout made under umask 002 is group-writable. Symlinks are skipped: their
+# mode is always 0777 and never consulted. It sits in this last RUN so no later
+# layer can install a file it has not seen.
 RUN set -eux; \
     test -x /usr/bin/git; \
     test "$(/usr/bin/git version)" = "git version 2.56.1"; \
@@ -250,6 +262,10 @@ RUN set -eux; \
         exit 1; \
     fi; \
     test ! -e /usr/lib/git-core; \
+    if find /usr/local/bin /usr/local/lib/verify-runner /usr/local/share/verify-runner -xdev ! -type l \( -perm /022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "an installed runner file is not root:root or is writable by its group or others" >&2; \
+        exit 1; \
+    fi; \
     PATH=/usr/bin:/bin:/usr/sbin:/sbin /usr/local/bin/git-floor-check
 
 # CVE-2026-98432 stopgap: Go >= 1.24 opens MPTCP listeners by default; turn
