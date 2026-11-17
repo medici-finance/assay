@@ -14,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -38,6 +37,8 @@ var forgeBodyGuardRoots = []string{
 // over-bound body (they read limit+1 and check). Key: "<root>/<file>:<func>".
 var forgeBodyReadPermits = map[string]string{
 	"internal/deskkit/compositionsource.go:httpFetchBounded": "reads limit+1 and refuses a body over its own limit",
+	"internal/deskkit/forge_github.go:runLog": "streams into runLogSink, which refuses an archive past runLogArchiveCap; " +
+		"the client transport caps the same body one byte past that bound",
 }
 
 // bodyReadFuncs are the calls whose error result is a body read's error.
@@ -84,10 +85,14 @@ func TestForgeBodyGuardSeesPlanted(t *testing.T) {
 	}
 	want := []string{
 		"planted/planted.go:aliasedRead uncapped-body-read",
+		"planted/planted.go:bodyAliasRead uncapped-body-read",
+		"planted/planted.go:copyRead uncapped-body-copy",
+		"planted/planted.go:decodeRead uncapped-body-decode",
 		"planted/planted.go:discardedCapped discarded-read-error",
 		"planted/planted.go:discardedRead discarded-read-error",
 		"planted/planted.go:discardedRead uncapped-body-read",
 		"planted/planted.go:truncatingRead uncapped-body-read",
+		"planted/sub/nested.go:nestedRead uncapped-body-read",
 	}
 	sort.Strings(hits)
 	if strings.Join(hits, "\n") != strings.Join(want, "\n") {
@@ -95,62 +100,123 @@ func TestForgeBodyGuardSeesPlanted(t *testing.T) {
 	}
 }
 
-// scanForgeBodyReads parses every shipped .go file directly in dir (no _test.go, no testdata)
-// and returns one "<label>/<file>:<func> <kind>" per offending read.
+// scanForgeBodyReads parses every shipped .go file under dir, subdirectories included (no
+// _test.go, no testdata), and returns one "<label>/<path>:<func> <kind>" per offending read.
+//
+// The shapes it sees are the ones a source scan can see without type information: a literal
+// io.ReadAll, json.NewDecoder or io.Copy/io.CopyN whose reader is a response body — named
+// directly (resp.Body) or through a local alias assigned from one (r := resp.Body) — and a
+// discarded body-read error. A body handed to a helper that takes a plain io.Reader is out of
+// its sight; the forge clients' transport cap (forgebodytransport.go, guarded by
+// TestForgeClientsCapped) is what bounds those reads.
 func scanForgeBodyReads(dir, label string) ([]string, error) {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
 	var out []string
 	fset := token.NewFileSet()
 	files := 0
-	for _, e := range entries {
-		name := e.Name()
-		if e.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
-			continue
+	werr := filepath.WalkDir(dir, func(path string, e os.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-		f, perr := parser.ParseFile(fset, filepath.Join(dir, name), nil, parser.SkipObjectResolution)
+		name := e.Name()
+		if e.IsDir() {
+			if name == "testdata" || (path != dir && strings.HasPrefix(name, ".")) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			return nil
+		}
+		f, perr := parser.ParseFile(fset, path, nil, parser.SkipObjectResolution)
 		if perr != nil {
-			return nil, perr
+			return perr
 		}
 		files++
-		ioName := ""
-		for _, imp := range f.Imports {
-			if p, _ := strconv.Unquote(imp.Path.Value); p == "io" {
-				ioName = "io"
-				if imp.Name != nil {
-					ioName = imp.Name.Name
-				}
-			}
-		}
-		for _, d := range f.Decls {
-			fn, ok := d.(*ast.FuncDecl)
-			if !ok || fn.Body == nil {
-				continue
-			}
-			where := fmt.Sprintf("%s/%s:%s", label, name, fn.Name.Name)
-			ast.Inspect(fn.Body, func(n ast.Node) bool {
-				switch x := n.(type) {
-				case *ast.CallExpr:
-					if ioName != "" && isPkgCall(x, ioName, "ReadAll") && len(x.Args) == 1 && mentionsBody(x.Args[0]) {
-						out = append(out, where+" uncapped-body-read")
-					}
-				case *ast.AssignStmt:
-					if len(x.Lhs) == 2 && len(x.Rhs) == 1 && isBlank(x.Lhs[1]) {
-						if c, ok := x.Rhs[0].(*ast.CallExpr); ok && isBodyReadCall(c, ioName) {
-							out = append(out, where+" discarded-read-error")
-						}
-					}
-				}
-				return true
-			})
-		}
+		rel, _ := filepath.Rel(dir, path)
+		out = append(out, scanBodyReadFile(f, label+"/"+filepath.ToSlash(rel))...)
+		return nil
+	})
+	if werr != nil {
+		return nil, werr
 	}
 	if files == 0 {
 		return nil, fmt.Errorf("no Go source under %s — a guard that scans nothing certifies nothing", dir)
 	}
 	return out, nil
+}
+
+func scanBodyReadFile(f *ast.File, label string) []string {
+	ioName := importName(f, "io", "io")
+	jsonName := importName(f, "encoding/json", "json")
+	var out []string
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Body == nil {
+			continue
+		}
+		where := fmt.Sprintf("%s:%s", label, fn.Name.Name)
+		aliases := bodyAliases(fn.Body)
+		isBody := func(e ast.Expr) bool {
+			if mentionsBody(e) {
+				return true
+			}
+			id, ok := e.(*ast.Ident)
+			return ok && aliases[id.Name]
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			switch x := n.(type) {
+			case *ast.CallExpr:
+				switch {
+				case ioName != "" && isPkgCall(x, ioName, "ReadAll") && len(x.Args) == 1 && isBody(x.Args[0]):
+					out = append(out, where+" uncapped-body-read")
+				case ioName != "" && (isPkgCall(x, ioName, "Copy") || isPkgCall(x, ioName, "CopyN")) && len(x.Args) >= 2 && isBody(x.Args[1]):
+					out = append(out, where+" uncapped-body-copy")
+				case jsonName != "" && isPkgCall(x, jsonName, "NewDecoder") && len(x.Args) == 1 && isBody(x.Args[0]):
+					out = append(out, where+" uncapped-body-decode")
+				}
+			case *ast.AssignStmt:
+				if len(x.Lhs) == 2 && len(x.Rhs) == 1 && isBlank(x.Lhs[1]) {
+					if c, ok := x.Rhs[0].(*ast.CallExpr); ok && isBodyReadCall(c, ioName) {
+						out = append(out, where+" discarded-read-error")
+					}
+				}
+			}
+			return true
+		})
+	}
+	return out
+}
+
+// bodyAliases: local names assigned a bare response body (r := resp.Body, var r io.Reader =
+// resp.Body). A call result (a capped reader, a wrapper) is not an alias.
+func bodyAliases(body *ast.BlockStmt) map[string]bool {
+	out := map[string]bool{}
+	bare := func(e ast.Expr) bool {
+		s, ok := e.(*ast.SelectorExpr)
+		return ok && s.Sel.Name == "Body"
+	}
+	ast.Inspect(body, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.AssignStmt:
+			if len(x.Lhs) == len(x.Rhs) {
+				for i, r := range x.Rhs {
+					if id, ok := x.Lhs[i].(*ast.Ident); ok && bare(r) {
+						out[id.Name] = true
+					}
+				}
+			}
+		case *ast.ValueSpec:
+			if len(x.Names) == len(x.Values) {
+				for i, v := range x.Values {
+					if bare(v) {
+						out[x.Names[i].Name] = true
+					}
+				}
+			}
+		}
+		return true
+	})
+	return out
 }
 
 func isPkgCall(c *ast.CallExpr, pkg, fn string) bool {

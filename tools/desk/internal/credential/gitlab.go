@@ -38,7 +38,6 @@ package credential
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -380,8 +379,8 @@ func GitLabSelfCheck(c *http.Client, base, token string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("GET %s: %w", GitLabSelfCheckPath, err)
 	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	// Closed unread: the status is the whole answer, so no byte of the body is taken.
+	_ = resp.Body.Close()
 	return resp.StatusCode, nil
 }
 

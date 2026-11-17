@@ -3,6 +3,8 @@
 package planted
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 
 	stdio "io"
@@ -34,4 +36,19 @@ func discardedCapped(resp *http.Response) []byte {
 
 func cappedRead(resp *http.Response) ([]byte, error) {
 	return deskkit.ReadCappedForgeBody(resp.Body, "GET /example")
+}
+
+func decodeRead(resp *http.Response, v any) error {
+	return json.NewDecoder(resp.Body).Decode(v)
+}
+
+func copyRead(resp *http.Response) ([]byte, error) {
+	var buf bytes.Buffer
+	_, err := stdio.Copy(&buf, resp.Body)
+	return buf.Bytes(), err
+}
+
+func bodyAliasRead(resp *http.Response) ([]byte, error) {
+	r := resp.Body
+	return stdio.ReadAll(r)
 }

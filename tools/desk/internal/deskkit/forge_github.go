@@ -122,7 +122,7 @@ func (g *GitHubForge) restClient() (*ghapi.RESTClient, error) {
 	rc, err := ghapi.NewRESTClient(ghapi.ClientOptions{
 		Host:      host,
 		AuthToken: g.Token,
-		Transport: observedTransport(countRoundTrips(transport), g.Observer, "provider", false),
+		Transport: capForgeBodies(observedTransport(countRoundTrips(transport), g.Observer, "provider", false)),
 		Timeout:   g.requestTimeout(),
 	})
 	if err != nil {
@@ -3691,7 +3691,9 @@ func (g *GitHubForge) runLog(repo ForgeRepo, run RunRef, lim runLogBounds) ([]Ru
 		return nil, err
 	}
 	path := fmt.Sprintf("/repos/%s/%s/actions/runs/%d/logs", repo.Owner, repo.Name, id)
-	resp, rerr := rc.Request(http.MethodGet, g.baseURL()+path, nil)
+	// The archive keeps its own, larger bound (runLogSink); the transport cap is raised to one
+	// byte past it for this request so the sink's own refusal is the one that fires.
+	resp, rerr := rc.RequestWithContext(withForgeBodyLimit(context.Background(), lim.archiveCap+1), http.MethodGet, g.baseURL()+path, nil)
 	if rerr != nil {
 		var he *ghapi.HTTPError
 		if errors.As(rerr, &he) {
