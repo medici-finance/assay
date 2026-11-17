@@ -153,7 +153,7 @@ _Held by per-stream caps: 14 brief(s) across 1 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: ce261f119 2026-11-17T03:18:36Z_
+_last regen: 60255306d 2026-11-17T11:35:43Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -174,7 +174,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: ce261f119 2026-11-17T03:18:36Z_
+_last regen: 60255306d 2026-11-17T11:35:43Z_
 
 **Progress:** 36/100 brief items done.
 
@@ -460,9 +460,9 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | contributor-trust | 06 | implemented | 2510 | 1 | 42h | verify-desk | dispatch one judge | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2510 | 1 | 42h | verify-desk | dispatch one judge | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 2010 | 2 | 42h | verify-desk | dispatch one judge | — | — |
-| desk-tools | 50 [exec:strong] | implemented | 2010 | 2 | — | verify-desk | triage, then re-bucket | — | — |
 | forge-neutral | 17 [exec:strong] | implemented | 2010 | 0 | 42h | verify-desk | triage, then re-bucket | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2010 | 2 | 42h | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 50 [exec:strong] | implemented | 2000 | 2 | <1h | verify-desk | triage, then re-bucket | — | — |
 | desktools-v2 | 71 [exec:strong] | implemented | 1010 | 0 | 42h | verify-desk | dispatch one judge | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1010 | 0 | 42h | verify-desk | triage, then re-bucket | — | — |
 
