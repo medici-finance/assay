@@ -102,10 +102,13 @@ func (a DeliveryAliases) resolve(ref, repo string) (n int, here bool, why string
 }
 
 // DeclaredPartialDeliveries returns the numbers of repo's PRs that briefContent's `delivery:` list
-// declares `covers: partial` (and not also `full`). why is non-empty when the list cannot be read
-// with certainty — an unparseable frontmatter, a malformed list, or a partial claim that does not
-// resolve — and the set is then nil: could-not-check sets nothing aside.
-func DeclaredPartialDeliveries(briefContent, repo string, aliases DeliveryAliases) (map[int]bool, string) {
+// declares `covers: partial` (and not also `full`). briefID is the `<stream>/<NN>` of the item the
+// caller will relax: the file's own frontmatter `brief:` id must reduce to that same id, or its
+// declarations describe some other brief and are never applied. why is non-empty when the list
+// cannot be read with certainty — an unparseable frontmatter, a missing, unparseable or different
+// `brief:` id, a malformed list, or a partial claim that does not resolve — and the set is then
+// nil: could-not-check sets nothing aside.
+func DeclaredPartialDeliveries(briefContent, briefID, repo string, aliases DeliveryAliases) (map[int]bool, string) {
 	block, _, err := briefdoc.Split(briefContent)
 	if err != nil {
 		return nil, fmt.Sprintf("the brief's frontmatter could not be read (%v)", err)
@@ -113,6 +116,9 @@ func DeclaredPartialDeliveries(briefContent, repo string, aliases DeliveryAliase
 	values, err := briefdoc.ParseMapping(block)
 	if err != nil {
 		return nil, fmt.Sprintf("the brief's frontmatter could not be parsed (%v)", err)
+	}
+	if why := briefFileNames(values, briefID); why != "" {
+		return nil, why
 	}
 	raw, ok := values["delivery"]
 	if !ok || raw == nil {
@@ -162,6 +168,25 @@ func DeclaredPartialDeliveries(briefContent, repo string, aliases DeliveryAliase
 		out[n] = true
 	}
 	return out, ""
+}
+
+// briefFileNames reports why the frontmatter values do not describe briefID, or "" when the file's
+// own `brief:` id reduces (CanonicalBriefID) to the same `<stream>/<NN>`. A file that names no id, an
+// id that does not parse, or a different brief is never read as evidence about briefID.
+func briefFileNames(values map[string]interface{}, briefID string) string {
+	want := strings.ToLower(strings.TrimSpace(briefID))
+	v, _ := values["brief"].(string)
+	if strings.TrimSpace(v) == "" {
+		return fmt.Sprintf("the brief file carries no `brief:` id, so it cannot be tied to %s", want)
+	}
+	got := CanonicalBriefID(strings.TrimSpace(v))
+	if got == "" {
+		return fmt.Sprintf("the brief file's `brief:` id %q does not parse, so it cannot be tied to %s", v, want)
+	}
+	if want == "" || got != want {
+		return fmt.Sprintf("the brief file is %s, not the dispatched item %s", got, want)
+	}
+	return ""
 }
 
 // DropDeclaredPartials returns list without the MERGED PRs whose numbers partial holds, in the

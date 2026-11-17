@@ -23,16 +23,17 @@ func phantomPartialBrief(t *testing.T, delivery ...string) string {
 // returns the brief's path.
 func phantomPartialTree(t *testing.T, root string, delivery ...string) string {
 	t.Helper()
+	plantRegistry(t, root)
+	return phantomBriefAs(t, root, "brief: example:example:example-partial:15\n", delivery...)
+}
+
+// phantomBriefAs is phantomPartialTree with the brief file's own `brief:` line given by the caller
+// ("" plants a file with no id), still at the example-partial/15 path the item key resolves to.
+func phantomBriefAs(t *testing.T, root, idLine string, delivery ...string) string {
+	t.Helper()
 	dir := filepath.Join(root, "docs", "streams", "example-partial")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	reg := "schema: graph-repos-v1\ncell: example\nrepos:\n  example: {cell: example, repo: " + allowedRepo + "}\n"
-	if err := os.WriteFile(filepath.Join(root, "docs", "streams", "graph-repos.yaml"), []byte(reg), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	var b strings.Builder
-	b.WriteString("---\nbrief: example:example:example-partial:15\ntitle: Partial fixture\neffort: L\ngate: model\n")
+	b.WriteString("---\n" + idLine + "title: Partial fixture\neffort: L\ngate: model\n")
 	b.WriteString("risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\ndelivery:\n")
 	for _, d := range delivery {
 		b.WriteString("  - " + d + "\n")
@@ -128,5 +129,58 @@ func TestPhantomPartialReworkFollows(t *testing.T) {
 	fu, err := phantomCheck(dispatchOpts{item: "assay--example-partial--15", kit: "worker", brief: brief, rework: true}, allowedRepo)
 	if err != nil || fu.pr != 5127 {
 		t.Fatalf("--rework over a partial merge must follow up #5127: %+v %v", fu, err)
+	}
+}
+
+// TestPhantomBriefIDBound: the --brief file's `delivery:` list relaxes the phantom check only for the
+// brief that file IS. A file whose own `brief:` id differs from the dispatched item, names no id, or
+// carries an id that does not parse sets nothing aside: the item's merged PR still refuses the fresh
+// dispatch, exactly as it does with no --brief, and a could-not-check NOTICE names the reason.
+//
+// regression: #6751
+func TestPhantomBriefIDBound(t *testing.T) {
+	cases := []struct{ name, idLine, notice string }{
+		{"different brief", "brief: example:example:example-other:02\n", "example-other/02, not the dispatched item example-partial/15"},
+		{"no id", "", "carries no `brief:` id"},
+		{"unparseable id", "brief: \"not an id\"\n", "does not parse"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			brief := phantomBriefAs(t, phantomRegistry(t), c.idLine,
+				`{in: "example#5127", covers: partial, note: "first slice"}`)
+			withRepresentedPRs(t, func(string) ([]deskkit.PRRef, error) {
+				return []deskkit.PRRef{{Number: 5127, State: "MERGED", Body: "Brief: example-partial/15"}}, nil
+			})
+			var err error
+			stderr := captureStderr(t, func() {
+				_, err = phantomCheck(dispatchOpts{item: "assay--example-partial--15", kit: "worker", brief: brief}, allowedRepo)
+			})
+			if err == nil || !strings.Contains(err.Error(), "already DELIVERED") {
+				t.Fatalf("a --brief file that is not the item's own brief must not relax the check: %v", err)
+			}
+			if !strings.Contains(stderr, "could-not-check") || !strings.Contains(stderr, c.notice) {
+				t.Errorf("the could-not-check NOTICE must name why (%q):\n%s", c.notice, stderr)
+			}
+		})
+	}
+}
+
+// phantomRegistry plants only the alias registry under a fresh root and returns the root.
+func phantomRegistry(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	plantRegistry(t, root)
+	return root
+}
+
+// plantRegistry writes the fixture alias registry (example → allowedRepo) and the brief directory.
+func plantRegistry(t *testing.T, root string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(root, "docs", "streams", "example-partial"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	reg := "schema: graph-repos-v1\ncell: example\nrepos:\n  example: {cell: example, repo: " + allowedRepo + "}\n"
+	if err := os.WriteFile(filepath.Join(root, "docs", "streams", "graph-repos.yaml"), []byte(reg), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

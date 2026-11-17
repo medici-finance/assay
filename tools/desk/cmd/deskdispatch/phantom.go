@@ -227,9 +227,11 @@ func phantomCheckFor(o dispatchOpts, repo string, dl deliverable) (phantomFollow
 // dropDeclaredPartialMerges returns merged without the PR numbers the brief's `delivery:` list
 // declares `covers: partial` for repo (deskkit.DeclaredPartialDeliveries, resolved through the
 // graph-repos.yaml of the tree that holds the brief). The brief is --brief, or with none the one the
-// item key names (the caller passes plan.gateOpts). No brief at all, an unreadable brief, or a partial
-// claim that cannot be resolved sets nothing aside — the refusal stands, as before #6751 — and the
-// could-not-check reason is disclosed on stderr.
+// item key names (the caller passes plan.gateOpts). The file must be the dispatched item's own brief:
+// its frontmatter `brief:` id is compared with briefID inside DeclaredPartialDeliveries, so a --brief
+// file naming a different brief, or naming none, relaxes nothing. No brief at all, an unreadable
+// brief, an id that does not match, or a partial claim that cannot be resolved sets nothing aside —
+// the refusal stands, as before #6751 — and the could-not-check reason is disclosed on stderr.
 func dropDeclaredPartialMerges(o dispatchOpts, repo, briefID string, merged []int) []int {
 	if len(merged) == 0 || strings.TrimSpace(o.brief) == "" {
 		return merged
@@ -238,7 +240,7 @@ func dropDeclaredPartialMerges(o dispatchOpts, repo, briefID string, merged []in
 	if err != nil {
 		return merged
 	}
-	nums, why := deskkit.DeclaredPartialDeliveries(string(raw), repo, deskkit.LoadDeliveryAliases(briefTreeRoot(o)))
+	nums, why := deskkit.DeclaredPartialDeliveries(string(raw), briefID, repo, deskkit.LoadDeliveryAliases(briefTreeRoot(o)))
 	if why != "" {
 		fmt.Fprintf(os.Stderr, "deskdispatch: NOTICE — %s's delivery: list could not be read with certainty (%s); "+
 			"no merged PR is set aside as a partial delivery (could-not-check, not a pass)\n", briefID, why)

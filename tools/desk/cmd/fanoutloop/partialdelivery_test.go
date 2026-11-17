@@ -194,3 +194,18 @@ func TestPlan_PartialReworkRowOffered(t *testing.T) {
 	}
 	t.Errorf("a rework row whose only merged PR is declared partial must reach the rework lane: %+v", items)
 }
+
+// TestPlan_PartialMismatchLands: the brief file at the row's path whose own `brief:` id names a
+// different brief is no evidence about this row, so its partial claim sets nothing aside and the
+// merged PR still lands the row (could-not-check, the pre-#6751 answer).
+//
+// regression: #6751
+func TestPlan_PartialMismatchLands(t *testing.T) {
+	other := strings.Replace(partialBrief(partialA), "example-partial:15", "example-other:02", 1)
+	s := partialPlan(t, other, []deskkit.PRRef{
+		{Number: 5127, State: "MERGED", Body: "Brief: example-partial/15"},
+	})
+	if strings.Contains(s, "=== DISPATCH example-partial/15") || !strings.Contains(s, "example-partial/15 — merged PR #5127") {
+		t.Errorf("a brief file naming a different brief must not set this row's merged PR aside:\n%s", s)
+	}
+}

@@ -43,7 +43,7 @@ func TestDeclaredPartialDeliveries(t *testing.T) {
 		{"unknown covers on a resolvable alias", "delivery:\n  - {in: \"example#5127\", covers: Partial}\n", nil, false},
 	}
 	for _, c := range cases {
-		got, why := DeclaredPartialDeliveries(partialFM(c.delivery), repo, partialAliases)
+		got, why := DeclaredPartialDeliveries(partialFM(c.delivery), "example-partial/15", repo, partialAliases)
 		if (why != "") != c.unsure {
 			t.Errorf("%s: why=%q, want unsure=%v", c.name, why, c.unsure)
 		}
@@ -55,9 +55,43 @@ func TestDeclaredPartialDeliveries(t *testing.T) {
 
 func TestDeclaredPartialsNoRegistry(t *testing.T) {
 	got, why := DeclaredPartialDeliveries(partialFM("delivery:\n  - {in: \"example#1\", covers: partial, note: \"n\"}\n"),
-		"example-org/example-repo", LoadDeliveryAliases(t.TempDir()))
+		"example-partial/15", "example-org/example-repo", LoadDeliveryAliases(t.TempDir()))
 	if got != nil || why == "" {
 		t.Fatalf("no registry is could-not-check, never a set-aside: %v %q", got, why)
+	}
+}
+
+// TestPartialBriefIDBound: the `delivery:` list is evidence only about the brief the file itself
+// names. A different, missing or unparseable frontmatter `brief:` id is could-not-check and sets
+// nothing aside; the same id in either the hierarchical or the slash spelling, any case, is honoured.
+//
+// regression: #6751
+func TestPartialBriefIDBound(t *testing.T) {
+	const repo = "example-org/example-repo"
+	delivery := "delivery:\n  - {in: \"example#5127\", covers: partial, note: \"n\"}\n"
+	body := func(idLine string) string {
+		return "---\n" + idLine + "title: T\n" + delivery + "schema: brief-v2\n---\n\n# T\n"
+	}
+	cases := []struct {
+		name, idLine, item string
+		want               map[int]bool
+	}{
+		{"same id", "brief: example:example:example-partial:15\n", "example-partial/15", map[int]bool{5127: true}},
+		{"same id, slash and case", "brief: Example-Partial/15\n", "example-partial/15", map[int]bool{5127: true}},
+		{"different brief", "brief: example:example:example-other:02\n", "example-partial/15", nil},
+		{"different number", "brief: example:example:example-partial:16\n", "example-partial/15", nil},
+		{"no id", "", "example-partial/15", nil},
+		{"unparseable id", "brief: \"not an id\"\n", "example-partial/15", nil},
+		{"no item id", "brief: example:example:example-partial:15\n", "", nil},
+	}
+	for _, c := range cases {
+		got, why := DeclaredPartialDeliveries(body(c.idLine), c.item, repo, partialAliases)
+		if (why == "") != (c.want != nil) {
+			t.Errorf("%s: why=%q, want could-not-check=%v", c.name, why, c.want == nil)
+		}
+		if !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s: got %v, want %v", c.name, got, c.want)
+		}
 	}
 }
 

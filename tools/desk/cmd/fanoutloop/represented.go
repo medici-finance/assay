@@ -202,7 +202,7 @@ func (f *FanoutLoop) declaredPartials(repo string) map[string]map[int]bool {
 			a := deskkit.LoadDeliveryAliases(f.Root)
 			aliases = &a
 		}
-		nums, why := deskkit.DeclaredPartialDeliveries(string(raw), repo, *aliases)
+		nums, why := deskkit.DeclaredPartialDeliveries(string(raw), id, repo, *aliases)
 		if why != "" {
 			fmt.Fprintf(os.Stderr, "fanoutloop: NOTICE — %s's delivery: list could not be read with certainty (%s); "+
 				"no merged PR is set aside as a partial delivery for it (could-not-check, not a pass)\n", id, why)
