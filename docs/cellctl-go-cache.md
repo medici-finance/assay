@@ -230,6 +230,42 @@ inactivity. Long-running roles can hold the module cache, and compiler-cache
 entries younger than the trim age, beyond the byte budget. Existing tasks are
 never killed to meet a floor.
 
+### Consumer enrollment refuses a stale measurement
+
+Enrollment is the last check before a supervised child starts. Every child the
+process supervisor runs with the cell's cache policy in its environment passes
+it: harness windows, cadence passes, scratch tasks, and the hidden `cellctl cache-run` supervisor inside a scrubbed tmux
+pane. It waits at most two seconds for the lock, then reads the recorded
+measurement. When the cache root exists and its measurement is older than five
+minutes, carries no timestamp, is dated in the future or is missing (no
+readable `report.json`), enrollment refuses, starts no child, leaves
+`report.json` as it found it and asks for `cellctl cache <cell> clean`.
+
+One case admits without a prior measurement: a cache root that does not exist
+yet. Enrollment creates it, so the root is known empty without an inventory.
+It makes the cache directories, records a `bounded-empty` measurement in
+`report.json` after one free-space check, and starts the child. If that check
+finds less free space than the floor plus a quarter of the byte budget, it
+records a `storage-deferred` report instead and starts no child.
+
+On an existing root, enrollment never runs the clean itself, for three
+reasons:
+
+- The clean is a full inventory, up to 262,144 entries by default, and may
+  trim or remove roots. Running it at enrollment would make each child start,
+  down to a small scratch task, cost a maintenance pass.
+- The clean releases the lock while it walks and discards its pass when a
+  consumer enrolls meanwhile. A clean started from inside an enrollment would
+  contend with the very enrollment it serves.
+- Re-measuring belongs to the launch owner's preparation, which runs before
+  enrollment and can report to the operator. `cellctl cache-run` has no
+  preparation of its own because its one caller, a scrubbed `cellctl desk`
+  launch, prepares in the parent before it opens the pane.
+
+A refusal at enrollment therefore means the measurement aged between
+preparation and the child start, or the caller has no preparation step. Run
+`cellctl cache <cell> clean`, then retry.
+
 If safe cleanup cannot satisfy policy, `deskdispatch` reports typed
 `storage-deferred`, exit 6 and JSON measurements **before** credentials, claims,
 worktrees or prompts. All execution kits are conservatively treated as potentially
