@@ -242,6 +242,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 62 | [Name the file, line and side of a branch-diff secret-scan refusal, not its line in the stripped diff](brief-62-diff-finding-file-line.md) | 1 | M | todo | — | — |
 | 63 | [Admit the open false-positive shapes as registry entries, each with the refusals that bound it, and cap word-shaped admission](brief-63-registry-acceptance-shapes.md) | 2 | L | todo | — | — |
 | 64 | [Decide which lines of a branch diff the secret scan reads, and pin the answer](brief-64-diff-scan-scope.md) | 2 | M | todo | — | — |
+| 65 | [Read each Verify row's disposition from a field the verifier tooling writes, not from Evidence prose](brief-65-structured-verify-disposition.md) | 1 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -277,7 +278,7 @@ See "Secret-scan class — 10 November 2026" below.
 
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
-  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60, /61, /62 (all independent; parallelizable). desk-tools/06
+  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60, /61, /62, /65 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 - **Wave 2** — desk-tools/35 (depends on desk-tools/34), desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
@@ -536,3 +537,19 @@ stays 1). #6062 (closing #6060) documented the remote check's full-diff breadth,
 `KEY=<value>` shape (#1642's latest occurrence, #5825, #5974) is not duplicated: it becomes one
 registry entry. The sibling class fix for a different scanner (#5142, draft #3350) is cited and
 not folded in.
+
+## Structured Verify disposition — 16 November 2026
+
+The implemented-to-verified flip (`statusgen verifyflip`, and the reconcile fold through the same
+reader) refuses when the credited run's Evidence reads HELD or could-not-check on a row not marked
+deferred. It finds those words in free prose, behind six exclusion rules in `statusgen/heldscope.go`.
+#6638 (open) proposes a seventh for quoted output and names the residual it leaves: a prose count
+such as "Could-not-check (3)". The source is the driver's ruling on the originating house issue,
+which asks the gate to read a structured disposition instead of prose.
+
+| Brief | What it does | Gate |
+|---|---|---|
+| [65](brief-65-structured-verify-disposition.md) | `verifyrun` writes a `disp=` field into each witness Result cell (pass, fail, held, could-not-check, or deferred with an issue reference), and the flip reads that field. A missing, unknown or contradictory field refuses as could-not-check. Runs without the field keep the prose rules until 2027-01-31, then refuse. | human, at creation; not yet answered |
+
+Close-verify, the card emitter and autoflip keep the prose rules. This brief changes the flip read
+only, the same scope #6638 takes.
