@@ -216,6 +216,18 @@
       "file": "evidencerepair.go",
       "old": "head := isHeaderCells(o) && sepNext(i)",
       "new": "head := isHeaderCells(o) && (sepNext(i) || true)"
+    },
+    {
+      "name": "a contraction elsewhere in the sentence approves",
+      "file": "evidencerepair.go",
+      "old": "if repairApprovalHedges[w] || strings.HasSuffix(w, \"n't\") {",
+      "new": "if repairApprovalHedges[w] {"
+    },
+    {
+      "name": "any authoriz- form approves",
+      "file": "evidencerepair.go",
+      "old": "first = first || (w == \"authorize\" && i > 0 && words[i-1] == \"i\")",
+      "new": "first = first || (strings.HasPrefix(w, \"authoriz\") && i > 0 && words[i-1] == \"i\")"
     }
   ]
 }

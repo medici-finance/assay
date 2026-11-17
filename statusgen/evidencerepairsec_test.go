@@ -169,6 +169,12 @@ func TestRepairAuthorizes(t *testing.T) {
 		"entity":        "I do n&#111;t authorize" + tail,
 		"hedged-repeat": "I authorize" + tail + " I do not authorize the rest.",
 		"split-para":    "If CI passes on PR #77,\n\nI authorize" + tail,
+		// "I authorize" stays adjacent, so only the n't suffix refuses these.
+		"contraction-after": "For PR #77 only, I authorize separating Date and Runner in the vf/01 Evidence, which shouldn't be applied yet.",
+		"contraction-curly": "For PR #77 only, I authorize separating Date and Runner in the vf/01 Evidence, which shouldn\u2019t be applied yet.",
+		// Only the bare present form counts; "authorized" and "authorizes" do not.
+		"past-tense":   "For PR #77 only, I authorized" + tail,
+		"third-person": "For PR #77 only, I authorizes" + tail,
 	}
 	for name, text := range refuse {
 		if repairAuthorizes(text) {
