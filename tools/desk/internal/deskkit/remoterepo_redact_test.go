@@ -62,10 +62,10 @@ func TestRedactSlashInPassword(t *testing.T) {
 		{"https://user:sec/ret-tail@example.invalid/o/r.git", "https://<redacted>@example.invalid/o/r.git"},
 		{"user:sec/ret-tail@example.invalid:o/r.git", "<redacted>@example.invalid:o/r.git"},
 		// A list joined by ", " or newlines is masked remote by remote.
-		{"https://a:sec@github.com/o/r, ssh://git@github.com/o/r", "https://<redacted>@github.com/o/r, ssh://<redacted>@github.com/o/r"},
-		{"origin is user:sec@example.invalid:o/r\nand https://b:sec@example.invalid/o/r", "origin is <redacted>@example.invalid:o/r\nand https://<redacted>@example.invalid/o/r"},
+		{"https://a:secret@github.com/o/r, ssh://git@github.com/o/r", "https://<redacted>@github.com/o/r, ssh://<redacted>@github.com/o/r"},
+		{"origin is user:sec@example.invalid:o/r\nand https://b:secret@example.invalid/o/r", "origin is <redacted>@example.invalid:o/r\nand https://<redacted>@example.invalid/o/r"},
 		// A quoted remote in git's own stderr keeps its quote and the prose before it.
-		{"fatal: unable to access 'https://a:sec@example.invalid/o/r/': denied", "fatal: unable to access 'https://<redacted>@example.invalid/o/r/': denied"},
+		{"fatal: unable to access 'https://a:secret@example.invalid/o/r/': denied", "fatal: unable to access 'https://<redacted>@example.invalid/o/r/': denied"},
 		{"https://example.invalid/o/r.git", "https://example.invalid/o/r.git"},
 	}
 	for _, c := range cases {
@@ -77,16 +77,16 @@ func TestRedactSlashInPassword(t *testing.T) {
 
 // regression: #6696
 func TestRedactArgvAndKeepGit(t *testing.T) {
-	got := RedactRemoteArgv([]string{"ls-remote", "--refs", "https://u:sec@example.invalid/o/r.git", "refs/heads/x"})
+	got := RedactRemoteArgv([]string{"ls-remote", "--refs", "https://u:secret@example.invalid/o/r.git", "refs/heads/x"})
 	if want := "ls-remote --refs https://<redacted>@example.invalid/o/r.git refs/heads/x"; got != want {
 		t.Errorf("RedactRemoteArgv = %q, want %q", got, want)
 	}
 	// The push gate's display keeps only the bare SSH account name "git".
 	for in, want := range map[string]string{
-		"ssh://git@github.com/o/r.git":     "ssh://git@github.com/o/r.git",
-		"git@github.com:o/r.git":           "git@github.com:o/r.git",
-		"ssh://git-sec@github.com/o/r.git": "ssh://<redacted>@github.com/o/r.git",
-		"https://u:sec@example.invalid/":   "https://<redacted>@example.invalid/",
+		"ssh://git@github.com/o/r.git":      "ssh://git@github.com/o/r.git",
+		"git@github.com:o/r.git":            "git@github.com:o/r.git",
+		"ssh://git-sec@github.com/o/r.git":  "ssh://<redacted>@github.com/o/r.git",
+		"https://u:secret@example.invalid/": "https://<redacted>@example.invalid/",
 	} {
 		if got := showURL(in); got != want {
 			t.Errorf("showURL(%q) = %q, want %q", in, got, want)
