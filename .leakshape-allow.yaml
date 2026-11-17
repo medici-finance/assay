@@ -328,11 +328,6 @@ allow:
       - 5079c0845b8eaab1d4e9a81b1a14a680a4b690ec5c4dceaaf09f995d110ffebc
       - 5d488afdbb0ec4818ebc69aeedd5abfb3dde7dc322b6a63f6798a45f61808a76
     reason: *doc-ssh
-  - path: tools/desk/cmd/deskdispatch/originparsehint_test.go
-    shape: ssh-host-alias
-    sha256:
-      - 1f92946d05735645f974b2a4b6787d3fb0317dc60cd55826f276475f65f353fc
-    reason: *fx-ssh
   - path: tools/desk/cmd/deskdispatch/stampworktreeidentity_test.go
     shape: noreply-id-email
     sha256:

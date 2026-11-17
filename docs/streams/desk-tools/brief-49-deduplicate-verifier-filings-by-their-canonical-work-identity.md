@@ -30,6 +30,7 @@ consumers:
   - "tools/desk/cmd/verifyloop/repair.go: fixed-here (this implementation brief)"
   - "tools/desk/internal/deskkit/repairobligation.go: fixed-here (this implementation brief)"
   - "changelog/verifier-filing-key.md: fixed-here (this implementation brief)"
+decision-issue: 5835
 ---
 
 # Brief 49 — Deduplicate verifier filings by their canonical work identity

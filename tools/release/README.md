@@ -114,6 +114,35 @@ git show <tag>:spec/brief-v1.md | grep 'Describes reference implementation'
 
 Once that holds, `#1192` can close, citing the ruling.
 
+## Desk-tools tarball manifest
+
+`desk_manifest.py` writes and checks the `MANIFEST.sha256` each
+`desk-tools-<platform>.tar.gz` carries at its root (#6604). It hashes the
+tarball's members only: every desk-tools binary and `hooks/pre-push`, written
+from the staged bytes the package step then tars. It is not a release manifest;
+the standalone statusgen/qualgen assets, the tarballs and the SBOM stay covered
+by `checksums.txt`. `check` refuses an unlisted file as well as a changed or
+missing one, which `sha256sum -c` alone does not. The Makefile's
+`desk-manifest` and `deskinstall` write the same shape into the install dir.
+`scripts/build-windows.ps1 desk-manifest` was changed to write it too, but it
+has not been run on Windows, and no CI leg runs it, so treat that target as
+untested. Offline fixtures:
+`python3 -B -m unittest discover -s tools/release -p desk_manifest_test.py -v`.
+
+The release workflow runs `write` and then `check` in the desk-tools package
+loop, after `hooks/pre-push` is staged and before `tar`, in both
+`.github/workflows/release.yml` and its mirror `ci/staged-workflows/release.yml`.
+`sbom.py` reads only executable members, so the 0644 manifest adds no SBOM
+package. The image build (`images.py`, `build_images`) also reads the Linux
+tarball's members: it admits the root `MANIFEST.sha256` as its one
+non-executable member, never copies it into an image, and refuses the build
+unless the manifest lists exactly the other members with matching digests. Any
+other non-executable top-level member is still refused. That makes the
+manifest required in `desk-tools-linux-amd64.tar.gz` and gives it a second,
+post-`tar` check for that platform. Releases published before that step carry
+no tarball manifest; for those, `deskinstall` still writes the one in the
+install dir.
+
 ## Release Go cache
 
 `go_cache.py` is an internal, standard-library workflow adapter. The live release

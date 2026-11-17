@@ -50,6 +50,7 @@ consumers:
 - "forgeread root, statusgen offline/frozen paths and current operation inventories: out-of-scope (this adds only the admitted mirror native boundary; root evaluators, offline/frozen inputs and operation inventories consume no new port)"
 - "provider quota selection, credential custody, retention and service activation: out-of-scope (existing owners and gates)"
 
+decision-issue: 5410
 ---
 
 # Brief 53 — Qualified native mirror attempt accounting and retry metadata

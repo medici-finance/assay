@@ -54,6 +54,7 @@ consumers:
   - "tools/go-analysis/baseline.json: out-of-scope (no identity translation or allowance expansion; exact resolved removals require complete comparable qualification and reviewed policy-transition admission)"
   - "tools/desk/scripts/count-git-exec.sh: out-of-scope (desk-tools' counter and its gate flip belong to desktools-go-git/08; this brief adds statusgen's own ratchet beside it)"
   - "statusgen/evaluation/: out-of-scope (pure evaluation; reads no repository)"
+decision-issue: 4655
 ---
 
 # Brief 76 — Move statusgen's git launches to go-git and ratchet git launches down

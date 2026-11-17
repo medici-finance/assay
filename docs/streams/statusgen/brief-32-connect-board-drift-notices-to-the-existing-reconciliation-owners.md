@@ -30,6 +30,7 @@ consumers:
   - "statusgen/verifiedrunneragree.go: follow-up statusgen/32 (this brief; change is owed at implementation)"
   - "tools/desk/cmd/deskevidence/flip.go: follow-up statusgen/32 (this brief; change is owed at implementation)"
   - "changelog/notice-loop-closure.md: follow-up statusgen/32 (this brief; change is owed at implementation)"
+decision-issue: 5836
 ---
 
 # Brief 32 — Connect board drift notices to the existing reconciliation owners
