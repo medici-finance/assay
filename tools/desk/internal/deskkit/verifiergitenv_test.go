@@ -146,3 +146,45 @@ func TestVerifierGitShell(t *testing.T) {
 		t.Fatalf("VerifierGitShell() =\n%s\nwant\n%s", got, want)
 	}
 }
+
+// regression: #4823
+// TestVerifierGitShellDoc pins the bundle reference's verifier shell lines (desk-shell.md
+// §Verifier Git environment, the fenced block under "Correct form") to VerifierGitShell():
+// an operator copies those lines into a verifier shell, so a doc that drifts from the Go
+// form starts the shell with a different environment from the one verifyloop and the
+// verifier kit declare. The doc is POSIX shell, so its global file is /dev/null wherever
+// the test runs.
+func TestVerifierGitShellDoc(t *testing.T) {
+	raw, err := os.ReadFile(deskShellDoc)
+	if err != nil {
+		t.Skipf("could-not-check: %s is not in this checkout (%v)", deskShellDoc, err)
+	}
+	s := string(raw)
+	sec := strings.Index(s, "\n## Verifier Git environment\n")
+	if sec < 0 {
+		t.Fatalf("desk-shell.md has no %q section", "## Verifier Git environment")
+	}
+	s = s[sec+1:]
+	if next := strings.Index(s, "\n## "); next >= 0 {
+		s = s[:next]
+	}
+	form := strings.Index(s, "**Correct form.**")
+	if form < 0 {
+		t.Fatalf("desk-shell.md §Verifier Git environment has no **Correct form.** paragraph")
+	}
+	s = s[form:]
+	open := strings.Index(s, "```\n")
+	if open < 0 {
+		t.Fatalf("desk-shell.md §Verifier Git environment: no fenced block after **Correct form.**")
+	}
+	s = s[open+len("```\n"):]
+	end := strings.Index(s, "```")
+	if end < 0 {
+		t.Fatalf("desk-shell.md §Verifier Git environment: unterminated fenced block")
+	}
+	got := strings.TrimRight(s[:end], "\n")
+	want := strings.Replace(VerifierGitShell(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_GLOBAL=/dev/null", 1)
+	if got != want {
+		t.Fatalf("desk-shell.md verifier shell lines drift from VerifierGitShell():\ndoc:\n%s\ncode:\n%s", got, want)
+	}
+}

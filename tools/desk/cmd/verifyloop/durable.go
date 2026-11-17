@@ -92,6 +92,13 @@ func newGitDurable(root, repo, role string) *gitDurable {
 // configuration. The push itself is in-process (gitcore, with the role's in-memory
 // credential) and reads no Git configuration; identity and the role credential helper the
 // pull uses are worktree-scoped in the verifier home, so the declared environment keeps them.
+//
+// Cutover requirement: because GIT_CONFIG_GLOBAL is the null device and system configuration
+// is off, nothing the landing's git children need may live only in the operator's global or
+// system config. The commit identity, the pull's credential helper and any core.hooksPath
+// that selects the pre-push hook must be set in the checkout's repository or worktree config
+// (or, for the credential, come from a non-GIT_* environment variable). A global-only
+// core.hooksPath is not read, so the hook resolves to the repository's own hooks directory.
 func landingCommand(name string, args ...string) *exec.Cmd {
 	cmd := exec.Command(name, args...)
 	cmd.Env = deskkit.VerifierGitEnv(os.Environ())

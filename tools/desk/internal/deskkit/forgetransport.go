@@ -39,7 +39,7 @@ func githubSeamClient() *http.Client {
 	if githubTransportWrapper == nil {
 		return nil
 	}
-	return &http.Client{Transport: countedTransport{next: githubTransportWrapper(countRoundTrips(http.DefaultTransport))}}
+	return &http.Client{Transport: countedTransport{next: githubTransportWrapper(countRoundTrips(http.DefaultTransport))}, Timeout: ForgeRequestTimeout}
 }
 
 // countingTransport counts each actual HTTP round-trip for the local perf record
@@ -86,10 +86,7 @@ func countRoundTrips(rt http.RoundTripper) http.RoundTripper {
 // http.DefaultTransport when c is nil). The caller's client is never mutated, so a test
 // client shared across backends keeps exactly the transport it was built with.
 func countingClient(c *http.Client) *http.Client {
-	if c == nil {
-		return &http.Client{Transport: countRoundTrips(nil)}
-	}
-	cp := *c
-	cp.Transport = countRoundTrips(c.Transport)
-	return &cp
+	cp := boundedCopy(c)
+	cp.Transport = countRoundTrips(cp.Transport)
+	return cp
 }

@@ -24,6 +24,10 @@ package main
 // TestEditGoesThroughThePublicRepoGate.
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -630,5 +634,93 @@ func TestEditDetachedNeedsPR(t *testing.T) {
 	}
 	if got := editCalls(*calls); len(got) != 0 {
 		t.Fatalf("the refusal still edited: %v", got)
+	}
+}
+
+// TestEditOverrideReachesForge — `deskpr edit --force-scan-override` used to record the
+// override at the verb's own self-containment check and then refuse at the forge write,
+// because the outbound check the checking Forge runs reads the PROCESS override context
+// and edit never set it. On a public-repo fixture a body carrying a session id
+// must, with the audited override, land exactly once; without it, refuse and write nothing.
+//
+// regression: #5914
+func TestEditOverrideReachesForge(t *testing.T) {
+	body := "the corrected body cites session 00000000-0000-4000-8000-000000000001\nBrief: fixture/01\n"
+	t.Run("override lands the edit", func(t *testing.T) {
+		work := newPublicFixture(t)
+		calls := withEnv(t, work)
+		t.Setenv("FAKEGH_LIST_HAS_PR", "1")
+		t.Setenv("FAKEGH_PR_BODY", "the original body\nBrief: fixture/01\n")
+		bodyPath := writeTempFile(t, body)
+		err := cmdEdit([]string{"--body-file", bodyPath,
+			"--force-scan-override", "synthetic fixture id, not a real session"})
+		if err != nil {
+			t.Fatalf("edit with an audited override err = %v, want nil — the override the verb "+
+				"recorded must reach the forge write", err)
+		}
+		if curForge.edited == nil {
+			t.Fatalf("the override was recorded but no edit was applied; calls: %v", *calls)
+		}
+	})
+	t.Run("no override still refuses", func(t *testing.T) {
+		work := newPublicFixture(t)
+		withEnv(t, work)
+		t.Setenv("FAKEGH_LIST_HAS_PR", "1")
+		t.Setenv("FAKEGH_PR_BODY", "the original body\nBrief: fixture/01\n")
+		bodyPath := writeTempFile(t, body)
+		err := cmdEdit([]string{"--body-file", bodyPath})
+		if deskkit.ExitCodeOf(err) != deskkit.ExitRefused ||
+			!strings.Contains(err.Error(), "not self-contained") {
+			t.Fatalf("err = %v, want exit 5 from the self-containment scan", err)
+		}
+		assertNoWrites(t)
+	})
+}
+
+// overrideFlagSites returns the places src names deskkit.ScanOverrideFlag. In this package
+// the flag must be registered only through deskkit.RegisterOutboundOverride, the one call
+// that also hands the reason to the outbound check the checking Forge runs (#5914); a
+// hand-registered flag is how edit came to record an override its own forge write ignored.
+func overrideFlagSites(t *testing.T, name string, src any) []string {
+	t.Helper()
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, name, src, 0)
+	if err != nil {
+		t.Fatalf("parse %s: %v", name, err)
+	}
+	var out []string
+	ast.Inspect(f, func(n ast.Node) bool {
+		if sel, ok := n.(*ast.SelectorExpr); ok && sel.Sel.Name == "ScanOverrideFlag" {
+			out = append(out, fset.Position(sel.Pos()).String())
+		}
+		return true
+	})
+	return out
+}
+
+// regression: #5914
+func TestOverrideFlagChokePoint(t *testing.T) {
+	// Positive control: the matcher must flag a planted hand registration, so a broken
+	// matcher fails here instead of reporting the package clean.
+	plant := "package main\nfunc f() { _ = fs.String(deskkit.ScanOverrideFlag, \"\", \"\") }\n"
+	if got := overrideFlagSites(t, "plant.go", plant); len(got) != 1 {
+		t.Fatalf("positive control: matcher found %v in the planted registration, want one site", got)
+	}
+	files, err := filepath.Glob("*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("could-not-check: no package sources found (%v)", err)
+	}
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		src, rerr := os.ReadFile(name)
+		if rerr != nil {
+			t.Fatalf("read %s: %v", name, rerr)
+		}
+		if got := overrideFlagSites(t, name, src); len(got) != 0 {
+			t.Errorf("%v registers --force-scan-override by hand — use deskkit.RegisterOutboundOverride "+
+				"so the forge-level check receives the same reason", got)
+		}
 	}
 }

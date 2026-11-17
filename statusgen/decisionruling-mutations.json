@@ -76,7 +76,7 @@
     {
       "name": "pull-request-not-issue check disabled",
       "file": "decisionruling.go",
-      "old": "if len(iss.PullRequest) > 0 && string(iss.PullRequest) != \"null\" {",
+      "old": "if !binding.allowPull && len(iss.PullRequest) > 0 && string(iss.PullRequest) != \"null\" {",
       "new": "if false {"
     },
     {
@@ -186,6 +186,18 @@
       "file": "decisionruling.go",
       "old": "case !e.Unpublished && names:",
       "new": "case names:"
+    },
+    {
+      "name": "account-type User check disabled (an Organization login the map names rules)",
+      "file": "decisionruling.go",
+      "old": "if !strings.EqualFold(cm.User.Type, \"User\") {\n\t\treturn refuse(rulingBotAuthor,",
+      "new": "if false && !strings.EqualFold(cm.User.Type, \"User\") {\n\t\treturn refuse(rulingBotAuthor,"
+    },
+    {
+      "name": "empty account type read as User",
+      "file": "decisionruling.go",
+      "old": "if strings.TrimSpace(cm.User.Type) == \"\" {",
+      "new": "if false {"
     }
   ]
 }

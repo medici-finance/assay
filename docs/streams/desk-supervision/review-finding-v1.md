@@ -43,6 +43,12 @@ skips it as a comment and reads the surrounding prose exactly as before. A body
 with no block is the legacy case: it asserts nothing about the ledger, and a
 clean finding set is **never inferred from unparseable prose**.
 
+**Strict v1 readers.** Every v1 reader decodes the block strictly: a field this
+page does not list makes the whole block unreadable, and the write gates
+(`deskpost review`, `deskreply`) refuse it, naming the field. A new field is
+therefore a `review-finding/v2`, never an addition to v1 — an older pinned reader
+would read every block carrying it as could-not-check.
+
 ## The fields
 
 | Field | Meaning |
@@ -53,7 +59,7 @@ clean finding set is **never inferred from unparseable prose**.
 | `severity` | `blocking` or `advisory`. Only a reviewer may promote `advisory`→`blocking`, with changed impact or new evidence. |
 | `blocker` | `code-content` (a defect in this branch) or `external-prerequisite` (a shared-CI leg or upstream fact — one shared repair, not a per-PR defect). |
 | `state` | `open`, `fixed-awaiting-review`, `disputed`, `resolved`, `awaiting-arbitration`. |
-| `originHead` / `evidenceHead` | The head first raised against; the head this record's evidence was gathered at. A resolution whose `evidenceHead` is not the current head cannot clear the finding. |
+| `originHead` / `evidenceHead` | The head first raised against; the head this record's evidence was gathered at. On a `resolved` finding `evidenceHead` **is** the head that resolved it — v1 has no separate resolved-head field — and it must be the head the review is taken at (a full commit id; empty means the record's own head): a resolution whose `evidenceHead` is not the current head cannot clear the finding. |
 | `failure` / `explanation` / `evidence` | A **blocking** finding must carry a concrete reproduction, an evidence-based explanation, or an evidence link — a bare assertion cannot block. |
 | `sharedRepair` | The one shared repair reference an external-prerequisite blocker points at, so N PRs cite one repair. |
 
