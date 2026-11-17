@@ -9,6 +9,7 @@ package cellrunner
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"strings"
@@ -22,6 +23,10 @@ import (
 // cacheCustody admits a launch by taking the cell's cache lease. A crash or
 // uncertain child cleanup leaves a durable active-cache record.
 type cacheCustody struct{}
+
+// notices receives the one-line report of an enrollment that admitted on a
+// stale measurement. A test swaps it to read the line.
+var notices io.Writer = os.Stderr
 
 func (cacheCustody) Admit(env []string) (process.Admission, error) {
 	began := time.Now()
@@ -39,6 +44,9 @@ func (cacheCustody) Admit(env []string) (process.Admission, error) {
 	deskkit.PerfStepEnabled(enabled, "cellctl", "launch-cache-enrollment", time.Since(began), phaseCode)
 	if err != nil {
 		return nil, err
+	}
+	if stale := lease.Stale(); stale != "" {
+		fmt.Fprintf(notices, "cache-enrollment: %s\n", stale)
 	}
 	// A disabled cache returns a nil lease; (*cellcache.Lease)(nil).Finish is a no-op.
 	return lease, nil

@@ -45,6 +45,8 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // decisionsDirName is the DECISIONS entry directory under docs/streams/
@@ -59,7 +61,7 @@ const decisionsDirName = "decisions"
 // risk-gated briefs authored after the rule lands — which is the whole feature.
 // A named constant, not a magic literal, because it is exactly the lifecycle-cost
 // decision the human ratifies at the gate.
-const designGateCutover = "2026-09-05"
+const designGateCutover = briefdoc.DesignGateCutover
 
 // decisionEntry is one DECISIONS record's frontmatter (a design-decision record).
 // Alternatives is a list because enumerating the paths NOT taken — and why each

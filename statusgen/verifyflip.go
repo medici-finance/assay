@@ -45,6 +45,13 @@ package main
 //   - No unrouted HELD/could-not-check line contradicts the pass, no FAIL is
 //     left unanswered, and every Verify row has a passing execution witness
 //     inside the PASS run itself.
+//   - Outcome record (#6734, flipoutcome.go): the brief's latest
+//     verify-outcome record names the flipped revision and says verified,
+//     is committed, and was added by the bound verifier or a roster human.
+//     Absent, another revision, another result, uncommitted, or another
+//     author refuses, naming which; an unreadable record, one whose ts is not
+//     RFC 3339, one not at its own record name, or a skipped legacy line
+//     naming the brief is could-not-check.
 //
 // WHAT IT WRITES — exactly two cells of one README row: Status → `verified`
 // and Verified → `<date> <runner>`, both from the recorded run. An
@@ -94,10 +101,16 @@ YYYY-MM-DD or is after today, a PASS line, row or other content line of the PASS
 run or after it not committed by the bound verifier or a roster human, a commit
 by anyone else that changed Evidence after the PASS was recorded (a merge that
 dropped Evidence one side added included), uncommitted Evidence changes, an
-unrouted HELD row, a Verify row without a passing witness in the PASS run, or a
-README that is not a regular file. Exit 2 is could-not-check (including an
-ambiguous brief file, no roster, a shallow clone, a brief moved or removed since
-the PASS was recorded).
+unrouted HELD row, a Verify row without a passing witness in the PASS run, a
+latest verify-outcome record for the brief that is absent, names another
+revision than --sha (its source_sha; an older record without one is read by its
+sha, which is usually the Evidence landing commit, so re-run the verify), does
+not say verified, is uncommitted, or was not added by the bound verifier or a
+roster human, or a README that is not a regular file. Exit 2 is could-not-check
+(including an ambiguous brief file, no roster, a shallow clone, a brief moved or
+removed since the PASS was recorded, an unreadable verify-outcome record, one
+whose ts is not RFC 3339, one not at its own record name, a skipped legacy line
+naming the brief, or a deciding legacy line).
 
 Flags:
   --brief <stream>/<NN>   the brief key (required)
@@ -320,6 +333,14 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 	// line to the end of Evidence, and every commit that changed Evidence after
 	// the PASS was recorded must be the bound verifier's or a roster human's.
 	if err := flipProvenance(path, bf.Evidence, marks, runStart); err != nil {
+		return verifyFlipPlan{}, err
+	}
+
+	// Outcome record (#6734): the run that wrote the PASS also wrote a
+	// verify-outcome record. Its latest record must name this revision and say
+	// verified; absent, another revision or another result refuses, and an
+	// unreadable record is could-not-check (flipoutcome.go).
+	if err := flipOutcomeCheck(root, key, wantSHA); err != nil {
 		return verifyFlipPlan{}, err
 	}
 

@@ -1044,3 +1044,30 @@ sleep 30`)
 		t.Fatalf("statusgenDecisionGateAt still blocked after 15s on a child that never finishes (deadline %s)", lockWait)
 	}
 }
+
+// One decision-gate child's WHOLE span — its deadline plus the post-kill drain of output
+// pipes a grandchild still holds — fits half of lockWait, so the before/after pair cannot
+// hold the preparation lock past lockWait. The fake leaves a grandchild holding the pipe, so
+// the run lasts the deadline AND the drain.
+//
+// regression: #6755
+func TestDecisionGateSpanFitsHalf(t *testing.T) {
+	prev := lockWait
+	lockWait = 4 * time.Second
+	t.Cleanup(func() { lockWait = prev })
+	if span := decisionGateDeadline() + decisionGateWaitDelay(); 2*span > lockWait || decisionGateDeadline() <= 0 {
+		t.Fatalf("deadline %s + drain %s per child: the before/after pair must fit lockWait (%s)", decisionGateDeadline(), decisionGateWaitDelay(), lockWait)
+	}
+	fakeStatusgenOnPath(t, `sleep 30`)
+	start := time.Now()
+	_, err := statusgenDecisionGateAt(t.TempDir(), "HEAD", childOptions{})
+	el := time.Since(start)
+	if err == nil {
+		t.Fatal("a decision-gate child killed at its deadline read as clean")
+	}
+	// Half the window plus 1s of slack for process start and scheduling; a drain outside
+	// the deadline puts one child at lockWait/2 + 2s.
+	if limit := lockWait/2 + time.Second; el > limit {
+		t.Fatalf("one decision-gate child held the caller for %s; its whole span must fit half of lockWait (%s) — two would hold the preparation lock past lockWait", el, lockWait/2)
+	}
+}

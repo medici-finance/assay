@@ -86,6 +86,25 @@ type LockSpec struct {
 	Command string
 	// Log receives one line per wait that succeeded late and per recovery step.
 	Log io.Writer
+	// clock, when a test sets it, replaces the wall clock the bounded wait reads
+	// and sleeps on, so a test can prove the wait stops at Wait without sleeping.
+	// Nil (every production caller) is real time.
+	clock *waitClock
+}
+
+// waitClock is the time source AcquireHeld's bounded wait uses.
+type waitClock struct {
+	now   func() time.Time
+	sleep func(time.Duration)
+}
+
+var wallClock = waitClock{now: time.Now, sleep: time.Sleep}
+
+func (s LockSpec) waitClock() waitClock {
+	if s.clock != nil {
+		return *s.clock
+	}
+	return wallClock
 }
 
 func (s LockSpec) command() string {
@@ -193,16 +212,17 @@ func (h *HeldLock) Release() error {
 // lasting busy read it diagnoses the holder and returns a *BusyError, recovering
 // a stale holder first only under spec.EndStale. f is closed on every failure.
 func AcquireHeld(root *os.Root, name string, f *os.File, spec LockSpec) (*HeldLock, error) {
-	began := time.Now()
+	clock := spec.waitClock()
+	began := clock.now()
 	deadline := began.Add(spec.Wait)
 	delay := 10 * time.Millisecond
 	var observed *LockHolder
 	for {
 		err := TryLockExclusive(f)
 		if err == nil {
-			if observed != nil && spec.Log != nil && time.Since(began) >= time.Second {
+			if waited := clock.now().Sub(began); observed != nil && spec.Log != nil && waited >= time.Second {
 				fmt.Fprintf(spec.Log, "deskkit: lock %q (%s) taken after a %s wait; it was held by pid %d (%s)\n",
-					spec.Name, lockPath(f), time.Since(began).Round(time.Millisecond), observed.PID, observed.Command)
+					spec.Name, lockPath(f), waited.Round(time.Millisecond), observed.PID, observed.Command)
 			}
 			return hold(root, name, f, spec), nil
 		}
@@ -217,7 +237,7 @@ func AcquireHeld(root *os.Root, name string, f *os.File, spec LockSpec) (*HeldLo
 		if observed == nil {
 			observed, _ = readLockHolder(root, name)
 		}
-		now := time.Now()
+		now := clock.now()
 		if !now.Before(deadline) {
 			break
 		}
@@ -225,12 +245,12 @@ func AcquireHeld(root *os.Root, name string, f *os.File, spec LockSpec) (*HeldLo
 		if rest := deadline.Sub(now); sleep > rest {
 			sleep = rest
 		}
-		time.Sleep(sleep)
+		clock.sleep(sleep)
 		if delay *= 2; delay > 500*time.Millisecond {
 			delay = 500 * time.Millisecond
 		}
 	}
-	busy := &BusyError{Lock: spec.Name, Path: lockPath(f), Waited: time.Since(began)}
+	busy := &BusyError{Lock: spec.Name, Path: lockPath(f), Waited: clock.now().Sub(began)}
 	busy.Diagnosis = Diagnose(root, name, f, spec)
 	busy.Action = actionAvailable(busy.Diagnosis, spec)
 	if busy.Diagnosis.Eligible && spec.EndStale {

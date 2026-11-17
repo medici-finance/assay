@@ -1,0 +1,41 @@
+{
+  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 180s -run 'TestWindowMiss|TestCompleteWindowNoLookup|TestWindowHitNoLookup|TestPhantomCheck'",
+  "control": {
+    "name": "CONTROL: a MERGED representing PR no longer refuses the fresh dispatch; TestWindowMissMergedRefuses and TestWindowHitNoLookup must go red",
+    "file": "cmd/deskdispatch/phantom.go",
+    "old": "\tif len(merged) > 0 {",
+    "new": "\tif false && len(merged) > 0 {"
+  },
+  "mutations": [
+    {
+      "name": "#5853 SKIP the per-brief lookup past an incomplete window, as before the fix: a brief delivered outside the window is dispatched as new work. TestWindowMissMergedRefuses must go red",
+      "file": "cmd/deskdispatch/phantom.go",
+      "old": "\tif len(open) == 0 && len(merged) == 0 && incomplete {",
+      "new": "\tif false && len(open) == 0 && len(merged) == 0 && incomplete {"
+    },
+    {
+      "name": "#5853 ROUND a failed or missing lookup to not-found: the dispatch proceeds instead of holding as could-not-check. TestWindowMissLookupErrHolds and TestWindowMissNoLookupHolds must go red",
+      "file": "cmd/deskdispatch/phantom.go",
+      "old": "\t\tif lerr != nil {\n\t\t\treturn nil, nil, deskkit.Unverifiable(",
+      "new": "\t\tif lerr != nil {\n\t\t\tcontinue\n\t\t\treturn nil, nil, deskkit.Unverifiable("
+    },
+    {
+      "name": "#5853 ALWAYS run the per-brief lookup, even over a complete window or a window that already represents the brief. TestCompleteWindowNoLookup and TestWindowHitNoLookup must go red",
+      "file": "cmd/deskdispatch/phantom.go",
+      "old": "\tif len(open) == 0 && len(merged) == 0 && incomplete {",
+      "new": "\tif true || incomplete {"
+    },
+    {
+      "name": "#5853 the lookup past the window skips the --cross-repo link, so a delivery carrying only Cross-repo-brief: is missed. TestWindowMissCrossRepoLink must go red",
+      "file": "cmd/deskdispatch/phantom.go",
+      "old": "\tif xrLink != \"\" {\n\t\tids = append(ids, xrLink)",
+      "new": "\tif false && xrLink != \"\" {\n\t\tids = append(ids, xrLink)"
+    },
+    {
+      "name": "#5853 PLANTED SECOND INSTANCE of the class at the transport, not the check: the live window reduction drops the Incomplete flag, so absence from a truncated window reads as not-found again. TestWindowMissMergedRefuses must go red",
+      "file": "cmd/deskdispatch/represented_live.go",
+      "old": "\treturn refs, incomplete, nil",
+      "new": "\treturn refs, false, nil"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+package main
+
+import "strings"
+
+// Planted positive control for redactguard_test.go: a per-package userinfo redactor copy.
+// The guard must flag the function AND its splice literal.
+func redactURL(raw string) string {
+	if i := strings.Index(raw, "://"); i >= 0 {
+		rest := raw[i+3:]
+		if at := strings.LastIndexByte(rest, '@'); at >= 0 {
+			return raw[:i+3] + "<redacted>@" + rest[at+1:]
+		}
+	}
+	return raw
+}

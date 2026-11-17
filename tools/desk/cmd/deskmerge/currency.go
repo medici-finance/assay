@@ -209,14 +209,14 @@ func resolveRepoRoot(repo, override string) (string, error) {
 		return "", deskkit.Refused(fmt.Sprintf(
 			"refused: %s's origin resolves to %d fetch URLs (%s) — a multi-valued remote.origin.url "+
 				"list names no single project, so deskmerge will not compute a merge in it. Set exactly one",
-			abs, len(urls), deskkit.StripControl(strings.Join(urls, ", "))))
+			abs, len(urls), deskkit.RedactRemoteUserinfo(deskkit.StripControl(strings.Join(urls, ", ")))))
 	}
 	url := urls[0]
 	if !originNames(url, repo) {
 		return "", deskkit.Refused(fmt.Sprintf(
 			"refused: %s's origin is %s, which does not name %s — deskmerge will not compute a merge "+
 				"in one project's checkout and push it to another's",
-			abs, deskkit.StripControl(url), deskkit.StripControl(repo)))
+			abs, deskkit.RedactRemoteUserinfo(deskkit.StripControl(url)), deskkit.StripControl(repo)))
 	}
 	return abs, nil
 }
@@ -302,7 +302,7 @@ func fetchFromOrigin(root, repo string, refSpecs []string) error {
 	}
 	url := urls[0]
 	if !originNames(url, repo) {
-		return fmt.Errorf("origin %s does not name %s", deskkit.StripControl(url), deskkit.StripControl(repo))
+		return fmt.Errorf("origin %s does not name %s", deskkit.RedactRemoteUserinfo(deskkit.StripControl(url)), deskkit.StripControl(repo))
 	}
 	opts := gitcore.FetchOpts{RefSpecs: refSpecs, Force: true}
 	lower := strings.ToLower(url)
@@ -317,7 +317,7 @@ func fetchFromOrigin(root, repo string, refSpecs []string) error {
 		opts.URL = url
 	default:
 		return fmt.Errorf("origin %s is not an https URL or a local repository — no in-process transport carries it",
-			deskkit.StripControl(url))
+			deskkit.RedactRemoteUserinfo(deskkit.StripControl(url)))
 	}
 	return fetchFn(root, opts)
 }
