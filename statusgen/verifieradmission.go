@@ -164,16 +164,10 @@ func sameDirectory(a, b string) bool {
 func admittedRowEnv(environ []string) []string {
 	var env []string
 	for _, kv := range environ {
-		key, _, _ := strings.Cut(kv, "=")
 		switch {
 		case admittedRowInput(kv):
 			env = append(env, kv)
-		case admittedRowShellStartup(key):
-		case admittedRowForgeToken(key):
-		case admittedRowCredential(key):
-		case strings.EqualFold(key, runCredentialEnv):
-		case strings.EqualFold(key, rowreadSocketVar):
-		case strings.HasPrefix(strings.ToUpper(key), "GIT_") && !admittedRowGlobal(kv):
+		case admittedRowDenied(kv):
 		default:
 			env = append(env, kv)
 		}
@@ -184,6 +178,25 @@ func admittedRowEnv(environ []string) []string {
 		"GIT_CONFIG_COUNT=2",
 		"GIT_CONFIG_KEY_0=grep.patternType", "GIT_CONFIG_VALUE_0=default",
 		"GIT_CONFIG_KEY_1=grep.extendedRegexp", "GIT_CONFIG_VALUE_1=false")
+}
+
+// admittedRowDenied reports whether an inherited variable is one the scrub
+// refuses by name: a shell startup variable, a forge token, a credential
+// pointer, an inherited run credential or row-read socket, or a GIT_* variable
+// other than the narrowing global setting.
+func admittedRowDenied(kv string) bool {
+	key, _, _ := strings.Cut(kv, "=")
+	switch {
+	case admittedRowShellStartup(key):
+	case admittedRowForgeToken(key):
+	case admittedRowCredential(key):
+	case strings.EqualFold(key, runCredentialEnv):
+	case strings.EqualFold(key, rowreadSocketVar):
+	case strings.HasPrefix(strings.ToUpper(key), "GIT_") && !admittedRowGlobal(kv):
+	default:
+		return false
+	}
+	return true
 }
 
 // admittedRowGlobal reports whether an inherited GIT_* variable is a global
