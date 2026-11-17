@@ -228,7 +228,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 47 | [Resume interrupted Evidence landing through the existing sanctioned paths](brief-47-resume-interrupted-evidence-landing-through-the-existing-sanctioned-paths.md) | 4 | M | todo | — | — |
 | 48 | [Report remaining landing capacity from the enforced budget owners](brief-48-report-remaining-landing-capacity-from-the-enforced-budget-owners.md) | 2 | M | todo | — | — |
 | 49 | [Deduplicate verifier filings by their canonical work identity](brief-49-deduplicate-verifier-filings-by-their-canonical-work-identity.md) | 1 | M | todo | — | — |
-| 50 | [Bind verifier environment evidence to the run admission](brief-50-bind-verifier-environment-evidence-to-the-run-admission.md) | 1 | M | todo | — | — |
+| 50 | [Bind verifier environment evidence to the run admission](brief-50-bind-verifier-environment-evidence-to-the-run-admission.md) | 1 | M | implemented | — | — |
 | 51 | [Drive the verifier skill from the current queue and landing contract](brief-51-drive-the-verifier-skill-from-the-current-queue-and-landing-contract.md) | 5 | M | todo | — | — |
 | 52 | [Link decision and verification cards without conflating their authority](brief-52-link-decision-and-verification-cards-without-conflating-their-authority.md) | 1 | M | todo | — | — |
 | 53 | [Rename pr-review-desk to review-desk without breaking live windows or adopters](brief-53-rename-pr-review-desk-to-review-desk.md) | 1 | L | todo | — | — |

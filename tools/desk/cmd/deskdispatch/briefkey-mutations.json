@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 300s -run 'TestBriefKey|TestExplicitBriefUnchanged|TestIssueKeyStillSkips'",
+  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 300s -run 'TestBriefKey|TestExplicitBriefUnchanged|TestIssueKeyStillSkips|TestPhantomKeyOnlyPartialAdmits|TestPhantomBriefIDBound'",
   "control": {
     "name": "CONTROL — the item key names no brief (the pre-#6173 behaviour); TestBriefKeyGateFires must go red",
     "file": "cmd/deskdispatch/dispatch.go",
@@ -72,6 +72,18 @@
       "file": "cmd/deskdispatch/briefkey.go",
       "old": "lerr == nil && fi.Mode()&fs.ModeSymlink != 0 {",
       "new": "false && lerr == nil && fi.Mode()&fs.ModeSymlink != 0 {"
+    },
+    {
+      "name": "#6751 the phantom check reads the raw options again, so a key-only dispatch never reads the key-named brief's delivery: list and refuses a partially delivered row as already DELIVERED; TestPhantomKeyOnlyPartialAdmits must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tfollowUp, err := phantomCheckFor(plan.gateOpts(o), repo, plan.dl)",
+      "new": "\tfollowUp, err := phantomCheckFor(o, repo, plan.dl)"
+    },
+    {
+      "name": "#6751 the --brief file is not tied to the dispatched item: DROP the frontmatter brief: id comparison, so a --brief file naming a different brief (or none) sets the item's merged PR aside and a fresh dispatch is admitted where the merge-base refuses it. TestPhantomBriefIDBound must go red",
+      "file": "internal/deskkit/partialdelivery.go",
+      "old": "\tif why := briefFileNames(values, briefID); why != \"\" {",
+      "new": "\tif why := briefFileNames(values, briefID); false && why != \"\" {"
     }
   ]
 }

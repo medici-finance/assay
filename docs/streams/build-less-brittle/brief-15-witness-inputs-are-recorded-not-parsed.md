@@ -26,6 +26,8 @@ design: DR-witness-read-sets
 issues: [2026]
 delivery:
   - {in: "assay#5127", covers: partial, note: "the read-set judgement behind the go compile-input floor, the verifyrun read-set token and the deskevidence refusal only, with judgement off while no recorder ships (readSetRecorderShipped = false); the recorder and Verify rows 14, 16, 21, 23, 25 and 26 remain owed"}
+  - {in: "assay#6670", covers: partial, note: "the Linux read-set recorder in verifyrun, writing each row's set under the git dir, with judgement still off (readSetRecorderShipped = false); the row-26 landing in deskevidence and the switch flip remain owed"}
+  - {in: "assay#6692", covers: partial, note: "hardening of the read-set state-dir writer (no-follow, rename, bounded prune) and the netns allow-list keying; the row-26 landing in deskevidence and the switch flip remain owed"}
 regression-of: medici-finance/assay#2304
 schema: brief-v2
 version: 1

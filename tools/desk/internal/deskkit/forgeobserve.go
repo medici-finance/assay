@@ -66,7 +66,7 @@ func ObserveAuthClient(c *http.Client, o RequestObserver) *http.Client {
 		return c
 	}
 	if c == nil {
-		c = http.DefaultClient
+		c = BoundedHTTPClient()
 	}
 	cp := *c
 	base := c.Transport

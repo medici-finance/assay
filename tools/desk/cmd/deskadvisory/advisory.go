@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -204,7 +203,7 @@ func ghAPI(path string) ([]byte, error) {
 		return nil, derr
 	}
 	defer resp.Body.Close()
-	body, rerr := io.ReadAll(resp.Body)
+	body, rerr := deskkit.ReadCappedForgeBody(resp.Body, "GitHub API "+path)
 	if rerr != nil {
 		return nil, fmt.Errorf("GitHub API %s: read response: %w", path, rerr)
 	}

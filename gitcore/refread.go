@@ -1,13 +1,17 @@
 package gitcore
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"github.com/go-git/go-git/v5/config"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
+	"github.com/go-git/gcfg"
 	"github.com/go-git/go-git/v5/plumbing"
 )
 
@@ -53,40 +57,68 @@ func (r *Repo) rawConfig() (*config.Config, error) {
 // extensions.worktreeConfig is off or this worktree has no config.worktree, and a
 // reason instead when the activation value is outside the grammar read here.
 func (r *Repo) worktreeScope(cfg *config.Config) (*config.Config, string, error) {
+	scoped, _, why, err := r.worktreeScopeBytes(cfg)
+	return scoped, why, err
+}
+
+// worktreeScopeBytes is worktreeScope that also returns the bytes the scoped config was
+// decoded from, so a caller can read a property of that same text the decoded form drops.
+func (r *Repo) worktreeScopeBytes(cfg *config.Config) (*config.Config, []byte, string, error) {
 	ext := cfg.Raw.Section("extensions")
 	if !ext.HasOption("worktreeconfig") {
-		return nil, "", nil
+		return nil, nil, "", nil
 	}
 	enabled, ok := gitConfigBool(ext.Option("worktreeconfig"))
 	if !ok {
-		return nil, "native worktree config activation grammar", nil
+		return nil, nil, "native worktree config activation grammar", nil
 	}
 	if !enabled {
-		return nil, "", nil
+		return nil, nil, "", nil
 	}
 	gitDir, _, err := resolveGitDir(r.dir)
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
 	f, err := os.Open(filepath.Join(gitDir, "config.worktree"))
 	if os.IsNotExist(err) {
-		return nil, "", nil
+		return nil, nil, "", nil
 	}
 	if err != nil {
-		return nil, "", err
+		return nil, nil, "", err
 	}
-	scoped, readErr := config.ReadConfig(f)
+	data, readErr := io.ReadAll(f)
 	closeErr := f.Close()
 	if readErr != nil {
+		return nil, nil, "", readErr
+	}
+	if closeErr != nil {
+		return nil, nil, "", closeErr
+	}
+	scoped, err := config.ReadConfig(bytes.NewReader(data))
+	if err != nil {
 		// Git accepts forms this decoder rejects (for example a dotted section header or
 		// a key on the header line), and those can set a remote URL. The parse error is
 		// not echoed: it can quote the file's content.
-		return nil, "worktree-scope config is in a form this reader does not parse", nil
+		return nil, nil, "worktree-scope config is in a form this reader does not parse", nil
 	}
-	if closeErr != nil {
-		return nil, "", closeErr
-	}
-	return scoped, "", nil
+	return scoped, data, "", nil
+}
+
+// valuelessURLs reports, in file order, whether each remote.<name>.url entry in data was
+// written as a bare key with no '=' at all. The go-git decoder returns "" for both that
+// form and the explicit empty reset `url =`, but git reads only the second as a reset:
+// it refuses a valueless remote.<name>.url as missing a value. This reads the same text
+// with the parser that decoder is built on, which still reports the difference. Section
+// and key names match case-insensitively and the subsection exactly, as the decoder does.
+func valuelessURLs(data []byte, name string) ([]bool, error) {
+	var blanks []bool
+	err := gcfg.ReadWithCallback(bytes.NewReader(data), func(s, ss, k, _ string, blank bool) error {
+		if k != "" && strings.EqualFold(s, "remote") && ss == name && strings.EqualFold(k, "url") {
+			blanks = append(blanks, blank)
+		}
+		return nil
+	})
+	return blanks, err
 }
 
 // gitConfigBool reads the spellings git's own boolean parser and this package's
@@ -169,8 +201,9 @@ func worktreeURLReason(name string) string {
 
 // PinnedRemoteURLs is ScopedRemoteURLs for a caller that also runs in a worktree whose
 // transport is pinned per worktree. It refuses everything ScopedRemoteURLs refuses,
-// except one shape of worktree-scope remote.<name>.url: an empty reset followed by
-// exactly one URL, so git resolves that URL alone. For that shape it returns the
+// except one shape of worktree-scope remote.<name>.url: an explicit empty reset
+// (`url =`, never a bare valueless `url` key) followed by exactly one URL, so git
+// resolves that URL alone. For that shape it returns the
 // repository-local list together with the pinned URL, the repository's insteadOf rules
 // applied as for any fetch URL; pinned is "" when worktree scope sets no URL. Whether
 // the pinned URL may stand for the repository-local one is the caller's decision.
@@ -198,7 +231,7 @@ func (r *Repo) PinnedRemoteURLs(name string) (local []string, pinned string, err
 	if err != nil {
 		return nil, "", unreadable(err)
 	}
-	scoped, _, err := r.worktreeScope(cfg)
+	scoped, data, _, err := r.worktreeScopeBytes(cfg)
 	if err != nil || scoped == nil {
 		return nil, "", unreadable(fmt.Errorf("worktree scope changed during the read: %v", err))
 	}
@@ -210,6 +243,16 @@ func (r *Repo) PinnedRemoteURLs(name string) (local []string, pinned string, err
 	values := scoped.Raw.Section("remote").Subsection(name).OptionAll("url")
 	if len(values) != 2 || values[0] != "" || values[1] == "" {
 		return nil, "", refuse(why + " in a shape other than one reset and one URL")
+	}
+	// Only `url =` is the reset. A bare `url` key decodes to the same "" but git refuses
+	// it, so the shape is accepted only when the parse of the same bytes accounts for
+	// every entry and none of them was written without a value.
+	blanks, err := valuelessURLs(data, name)
+	if err != nil || len(blanks) != len(values) {
+		return nil, "", refuse(why + " in a form whose url entries could not be read back")
+	}
+	if slices.Contains(blanks, true) {
+		return nil, "", refuse(why + " with a url key that has no value (a bare key, not the explicit `url =` reset)")
 	}
 	local, err = r.RemoteURLs(name)
 	if err != nil {
