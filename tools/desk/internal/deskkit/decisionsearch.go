@@ -74,10 +74,16 @@ type markerSearch struct {
 	what     string
 	openOnly bool
 	rich     bool
+	// changes walks pull requests instead of issues (ChangesByBriefReader): every item must be a
+	// pull request, and its state is reported as OPEN, MERGED or CLOSED.
+	changes bool
 }
 
 func (g *GitHubForge) searchBodyMarkers(repo ForgeRepo, ms markerSearch) ([]IssueSearchResult, error) {
 	scope := "is:issue"
+	if ms.changes {
+		scope = "is:pr"
+	}
 	if ms.openOnly {
 		scope += " is:open"
 	}
@@ -89,13 +95,15 @@ func (g *GitHubForge) searchBodyMarkers(repo ForgeRepo, ms markerSearch) ([]Issu
 			Total      *int  `json:"total_count"`
 			Incomplete *bool `json:"incomplete_results"`
 			Items      *[]struct {
-				Number      int       `json:"number"`
-				Title       string    `json:"title"`
-				State       string    `json:"state"`
-				HTMLURL     string    `json:"html_url"`
-				Body        *string   `json:"body"`
-				PullRequest *struct{} `json:"pull_request"`
-				User        *struct {
+				Number      int     `json:"number"`
+				Title       string  `json:"title"`
+				State       string  `json:"state"`
+				HTMLURL     string  `json:"html_url"`
+				Body        *string `json:"body"`
+				PullRequest *struct {
+					MergedAt *string `json:"merged_at"`
+				} `json:"pull_request"`
+				User *struct {
 					Login string `json:"login"`
 					ID    int64  `json:"id"`
 				} `json:"user"`
@@ -116,11 +124,14 @@ func (g *GitHubForge) searchBodyMarkers(repo ForgeRepo, ms markerSearch) ([]Issu
 			return nil, Unverifiable(ms.what+" search is incomplete", errDecisionSearchIncomplete)
 		}
 		for _, item := range *w.Items {
-			if item.Number <= 0 || item.Body == nil || seen[item.Number] || item.PullRequest != nil {
+			if item.Number <= 0 || item.Body == nil || seen[item.Number] || (item.PullRequest != nil) != ms.changes {
 				return nil, Unverifiable(ms.what+" search has invalid or repeated issues", errDecisionSearchIncomplete)
 			}
 			seen[item.Number] = true
 			hit := IssueSearchResult{Number: item.Number, Body: *item.Body}
+			if ms.changes {
+				hit.State = changeSearchState(item.State, item.PullRequest.MergedAt)
+			}
 			if ms.rich {
 				hit.Title, hit.State, hit.URL = item.Title, item.State, item.HTMLURL
 				if item.User != nil {
@@ -147,6 +158,9 @@ func (g *GitLabForge) searchDecisionMarkers(repo ForgeRepo, in SearchIssuesInput
 }
 
 func (g *GitLabForge) searchBodyMarkers(repo ForgeRepo, ms markerSearch) ([]IssueSearchResult, error) {
+	if ms.changes {
+		return nil, Refused(ms.what + " search over changes is not supported on this backend")
+	}
 	cl, err := g.client()
 	if err != nil {
 		return nil, err
@@ -206,6 +220,56 @@ func validateDecisionSearch(in SearchIssuesInput) error {
 		return Refused("decision-marker brief must be one opaque marker token")
 	}
 	return nil
+}
+
+// changeSearchState maps a pull-request search item to the PRRef state vocabulary. Any other
+// state is passed through as-is, and no reconciliation counts it.
+func changeSearchState(state string, mergedAt *string) string {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "open":
+		return "OPEN"
+	case "closed":
+		if mergedAt != nil && *mergedAt != "" {
+			return "MERGED"
+		}
+		return "CLOSED"
+	}
+	return state
+}
+
+// ChangesByBriefReader returns the lookup a planner falls back to when its bounded open+merged
+// change list (ListChanges) came back Incomplete: every pull request of the repo whose body
+// carries the phrase `Brief: <briefID>`, walked to completion by the same body-marker search the
+// decision-gate discovery uses (same endpoint, same minted session). A result that cannot be
+// proven complete is an error, never an empty answer. The phrase search is only a candidate
+// index: the caller still reduces the hits by their parsed `Brief:` trailers
+// (RepresentingPRsByBrief), because a body that merely mentions the phrase names nothing.
+//
+// It returns nil when the forge has no such search (any backend but GitHub); a caller treats a
+// nil reader as could-not-check for every brief it needed to look up.
+func ChangesByBriefReader(f Forge) func(repo ForgeRepo, briefID string) ([]PRRef, error) {
+	g := githubPlanningBatchForge(f)
+	if g == nil {
+		return nil
+	}
+	return func(repo ForgeRepo, briefID string) ([]PRRef, error) {
+		id := strings.TrimSpace(briefID)
+		if id == "" || strings.IndexFunc(id, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) || r == '"' || r == '\\' }) >= 0 {
+			return nil, Refused("brief-trailer lookup id must be one opaque token")
+		}
+		if !ValidRepoSlug(repo.Slug()) || g.onlyRepo != "" && !strings.EqualFold(repo.Slug(), g.onlyRepo) {
+			return nil, Refused("brief-trailer lookup target is outside the admitted repo")
+		}
+		hits, err := g.searchBodyMarkers(repo, markerSearch{text: "Brief: " + id, what: "brief-trailer", changes: true})
+		if err != nil {
+			return nil, err
+		}
+		out := make([]PRRef, 0, len(hits))
+		for _, h := range hits {
+			out = append(out, PRRef{Number: h.Number, State: h.State, Body: h.Body})
+		}
+		return out, nil
+	}
 }
 
 func (g *GitHubForge) searchFilingKey(repo ForgeRepo, in SearchIssuesInput) ([]IssueSearchResult, error) {
