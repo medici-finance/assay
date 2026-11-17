@@ -24,6 +24,7 @@ exec-tier-why: Semantic extraction, cost coverage and cross-caller failure behav
 domain: complicated
 gate-why: Review/issue observations can expose scoped operational facts; implemented coverage and authority boundaries require the existing human acceptance.
 decision-trigger: spec
+decision-issue: 6709
 consumers:
   - "plugins/assay/skills/pr-review-desk/SKILL.md: fixed-here"
   - "plugins/assay/skills/the-desk/SKILL.md: fixed-here"
@@ -66,7 +67,8 @@ Accepting lets the brief move to `implemented` and go to independent verificatio
 source specification's approval is already recorded (`## Review`); this decision covers
 implementation coverage and authority boundaries only. This section was written after
 implementation, under the ruling on #5145; the matching proposed record is
-`DR-desk-tools-43`.
+`DR-desk-tools-43`. The decision issue is #6709: the ruling is a comment there, from the
+driver's own account, naming `desk-tools/43`, `DR-desk-tools-43` and the chosen option.
 
 What is delivered on main by #4311 (source-qualified, not independently verified):
 

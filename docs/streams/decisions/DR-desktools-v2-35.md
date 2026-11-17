@@ -22,8 +22,8 @@ the driver's own account chooses an option.
 
 The `decided-by` stamp above is the public placeholder and names nobody
 (`spec/registers-v1.md` §7.5). This record carries no `ruling:` link, because there is no driver
-comment to link. `statusgen --corroborate` is expected to report it `placeholder-unratified`
-until the driver posts an unedited comment on #4552, from the driver's own account, naming
+comment to link. A local `statusgen --corroborate` run is expected to report it
+`placeholder-unratified` until the driver posts an unedited comment on #4552, from the driver's own account, naming
 `desktools-v2/35` and `DR-desktools-v2-35` with the chosen option. The `ruling:` key is added by
 a later push, only after that comment exists.
 
@@ -55,10 +55,12 @@ Default if no answer: none. The brief blocks until answered.
 
 ## What this record does not decide
 
-It does not decide the four install-script rows the brief assigns to itself
+It does not decide the install-script rows the brief assigns to itself. #4553 left four of
+them `pending` in `docs/streams/desktools-v2/cli-migration.json` and raised their scope on #4552
 (`assay-install.sh`, `bootstrap-windows.ps1`, `build-windows.ps1` and
-`windows-bootstrap-hashcheck-smoke.ps1`). #4553 left them `pending` in
-`docs/streams/desktools-v2/cli-migration.json` and raised their scope on #4552 with three paths:
+`windows-bootstrap-hashcheck-smoke.ps1`). Three remain in the registry: the hash-check smoke
+script and its row have since been retired (the brief's `facts:`). #4552 offers three paths for
+them:
 mark them `exempt` under the CLI contract, narrow the brief to the Go installer, or port them.
 That scope question is the driver's and is not settled here. This record also does not choose an
 option, record a verification result, move the brief's board row, or decide desktools-v2/17 or

@@ -6,7 +6,7 @@ consequence: major
 decided-by: "human:<name>"
 alternatives:
   - "Option 2 — request corrections and keep the change pending; option 3 — hold the change (the brief's `## Human decision` and decision issue #4890). Not ruled out: no driver ruling chooses between the options."
-  - "Migrating human authority onto the cards, or replaying historical closes (excluded by the interface contract recorded on #4898)."
+  - "Migrating human authority onto the cards, or replaying historical closes (excluded by the brief's own `## Interface contract`)."
 accepted:
   - "Proposed, not ruled. Card emitters expose canonical brief identity, an explicit purpose, and source and verification revision links; decision and verification cards stay separate (#4898)."
   - "Proposed, not ruled. The classifier reads typed card lines only (a non-code line, after CRLF normalisation) and rejects malformed, foreign, mixed, wrong-purpose or combined cards (#4898)."
@@ -23,8 +23,8 @@ driver comment choosing an option.
 
 The `decided-by` stamp above is the public placeholder and names nobody
 (`spec/registers-v1.md` §7.5). This record carries no `ruling:` link, because there is no driver
-comment to link. `statusgen --corroborate` is expected to report it `placeholder-unratified`
-until the driver posts an unedited comment on #4890, from the driver's own account, naming
+comment to link. A local `statusgen --corroborate` run is expected to report it
+`placeholder-unratified` until the driver posts an unedited comment on #4890, from the driver's own account, naming
 `desk-tools/52` and `DR-desk-tools-52` with the chosen option. The `ruling:` key is added by a
 later push, only after that comment exists.
 
@@ -41,7 +41,8 @@ not precede the implementation. It is written on demand under the ruling on #514
 back-filled records to held briefs that block other work.
 
 This record does not mint a decision. The options are taken from the brief and #4890; the
-delivered behaviour and the interface contract are taken from #4898. Nothing here adds rationale
+delivered behaviour is taken from #4898, and the interface contract from the brief's own
+`## Interface contract`. Nothing here adds rationale
 beyond what those record.
 
 ## The decision put to the driver

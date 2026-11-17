@@ -6,11 +6,11 @@ consequence: major
 decided-by: "human:<name>"
 alternatives:
   - "Option 2 — request corrections and keep the change pending; option 3 — hold the change (the brief's `## Human decision` and decision issue #5835). Not ruled out: no driver ruling chooses between the options. The line `Hold the change.` after the brief's options is a leftover, not a choice (desk comment on #5835)."
-  - "A global suppress-all-on-brief rule, or automatic issue closure (excluded by the interface contract recorded on #4229)."
+  - "A global suppress-all-on-brief rule, or automatic issue closure (excluded by the brief's own `## Interface contract`)."
 accepted:
   - "Proposed, not ruled. A filing key `fk1/<16 hex>`, a hash of repository, canonical brief id, raising role and case id, is stamped as a body marker; a caller-supplied marker is refused (#4229)."
   - "Proposed, not ruled. One exact filing-key search runs on the typed issue-search seam before the existing fuzzy title matching. A truncated or failed read is unknown, never absent; a hit is confirmed locally (open, exact marker, same role, trusted author). `deskfile new --filing-brief B --filing-case C` exits 5 on a hit and 6 on unknown; the legacy title matcher and the audited `--force-new --reason` path stay (#4229)."
-  - "Proposed, not ruled. No private cache is added and the dry-run repair sink is not activated (#4229)."
+  - "Proposed, not ruled. No private cache is added and the dry-run repair sink is not activated (the brief's `## Task`, item 4)."
   - "Under any option, approval grants no workflow activation or additional write scope (the brief's `## Human decision`), and independent verification stays a separate act; this record supplies neither."
 ---
 
@@ -23,8 +23,8 @@ driver comment choosing an option.
 
 The `decided-by` stamp above is the public placeholder and names nobody
 (`spec/registers-v1.md` §7.5). This record carries no `ruling:` link, because there is no driver
-comment to link. `statusgen --corroborate` is expected to report it `placeholder-unratified`
-until the driver posts an unedited comment on #5835, from the driver's own account, naming
+comment to link. A local `statusgen --corroborate` run is expected to report it
+`placeholder-unratified` until the driver posts an unedited comment on #5835, from the driver's own account, naming
 `desk-tools/49` and `DR-desk-tools-49` with the chosen option. The `ruling:` key is added by a
 later push, only after that comment exists.
 
@@ -41,7 +41,8 @@ brief that other work depends on: desk-tools/51 and verification-handoff/02 each
 under the ruling on #5145, which limits back-filled records to held briefs that block other work.
 
 This record does not mint a decision. The options are taken from the brief and #5835; the
-delivered behaviour and the interface contract are taken from #4229. Nothing here adds rationale
+delivered behaviour is taken from #4229, and the interface contract and the no-cache rule
+from the brief's own `## Interface contract` and `## Task`. Nothing here adds rationale
 beyond what those record.
 
 ## The decision put to the driver

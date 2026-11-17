@@ -19,8 +19,8 @@ has chosen an option for desktools-v2/73: an unedited comment from the driver's 
 [issue #4070](https://github.com/medici-finance/assay/issues/4070#issuecomment-6477323944),
 posted 2026-10-28, names `desktools-v2/73` and option 1, the restamp-or-refuse split. That
 comment does not name `DR-desktools-v2-73`, because this record did not exist when it was posted.
-`statusgen --corroborate` requires the comment's own text to name the record, so it is expected
-to report this record `placeholder-unratified` until the driver posts a comment naming
+`statusgen --corroborate` requires the comment's own text to name the record, so a local run is
+expected to report this record `placeholder-unratified` until the driver posts a comment naming
 `DR-desktools-v2-73`.
 
 The `decided-by` stamp above is the public placeholder and names nobody

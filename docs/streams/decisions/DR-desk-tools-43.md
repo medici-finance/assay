@@ -17,17 +17,20 @@ accepted:
 ## State and provenance
 
 **Approval state: placeholder-unratified. This is not an approved design record.** No recorded
-driver ruling exists for desk-tools/43, and the brief has no decision issue. Its `## Review`
+driver ruling exists for desk-tools/43. Its decision issue,
+[issue #6709](https://github.com/medici-finance/assay/issues/6709), was filed on 2026-11-16 with
+this record and carries no driver comment choosing an option. The brief's `## Review`
 records that the source specification's approval exists and that this brief adds implementation
 acceptance only. The `## Human decision` section added beside this record puts that acceptance to
 the driver.
 
 The `decided-by` stamp above is the public placeholder and names nobody
 (`spec/registers-v1.md` §7.5). This record carries no `ruling:` link, because there is no driver
-comment to link. `statusgen --corroborate` is expected to report it `placeholder-unratified`
-until the driver posts an unedited comment, from the driver's own account, naming
-`desk-tools/43` and `DR-desk-tools-43` with the chosen option. The `ruling:` key is added by a
-later push, only after that comment exists.
+comment to link. A local `statusgen --corroborate` run is expected to report it
+`placeholder-unratified` until the driver posts an unedited comment on #6709, from the driver's
+own account, naming `desk-tools/43` and `DR-desk-tools-43` with the chosen option. The brief's
+`decision-issue:` key names #6709; that key releases nothing on its own, because the hold also
+needs the `ruling:` key, which is added by a later push, only after that comment exists.
 
 The brief's `design:` key is deliberately absent. The design-gate lint
 (`spec/lifecycle-v1.md` §4.4) checks only that a cited record exists, never that it is approved,
