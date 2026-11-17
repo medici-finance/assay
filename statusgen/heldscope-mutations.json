@@ -1727,7 +1727,7 @@
       "name": "S5: markup open at the line's start no longer voids the span",
       "file": "verifyissues.go",
       "old": "!witnessLine[i] && !openAtStart &&",
-      "new": "!witnessLine[i] &&"
+      "new": "!witnessLine[i] && (openAtStart || !openAtStart) &&"
     },
     {
       "name": "S5: an open HTML block no longer counts as open markup",
