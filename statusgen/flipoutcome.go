@@ -48,6 +48,11 @@ package main
 // deciding legacy log line has no adding commit of its own, so it is
 // could-not-check.
 //
+// Both reads (the clean check and the adding-commit walk) go through the
+// run's typed reader (gitCoreFor), never a native git launch: a repository
+// the typed reader declines is could-not-check, and so is a history it
+// cannot read in full.
+//
 // KNOWN LIMIT. A record DELETED in an earlier commit by someone other than
 // the verifier leaves no file to judge; the history walk flipProvenance does
 // for Evidence is not repeated for the record directory. The deciding record
@@ -64,9 +69,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"path"
-	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // flipOutcomeCheck cross-checks the brief's latest verify-outcome record under
@@ -165,15 +172,105 @@ func flipOutcomeCommitted(root, key string) error {
 	if err != nil {
 		return fmt.Errorf("outcome record: %v", err)
 	}
-	out, err := historyGit(root, "status", "--porcelain=v1", "--untracked-files=all", "--",
-		path.Join(outcomeRecordsDir, stream), path.Join("docs/streams", verifyOutcomesGlob)).Output()
+	read, err := flipOutcomeRepo(root)
 	if err != nil {
 		return fmt.Errorf("outcome record: git status: %v", err)
 	}
-	if s := strings.TrimSpace(string(out)); s != "" {
-		return refuseFlip("outcome record: uncommitted verify-outcome record changes for %s (%s) — an uncommitted record has no author to judge; commit it as the verifier or discard it", key, strings.Split(s, "\n")[0])
+	status, err := read.repo.DirtyPorcelain()
+	if err != nil {
+		return fmt.Errorf("outcome record: git status: %v", err)
+	}
+	if dirty := outcomeStatusLines(status, read.prefix, stream); len(dirty) > 0 {
+		return refuseFlip("outcome record: uncommitted verify-outcome record changes for %s (%s) — an uncommitted record has no author to judge; commit it as the verifier or discard it", key, dirty[0])
 	}
 	return nil
+}
+
+// flipOutcomeRepo opens root through the run's typed reader. The record checks
+// read only through it: a repository whose profile the typed reader declines
+// (it names a native reason) is could-not-check, never a native retry.
+func flipOutcomeRepo(root string) (gitCoreRead, error) {
+	read := gitCoreFor(root)
+	if read.err != nil {
+		return read, read.err
+	}
+	if read.native != "" {
+		return read, fmt.Errorf("could-not-check: the typed reader declines this repository (%s)", read.native)
+	}
+	return read, nil
+}
+
+// outcomeStatusLines keeps the porcelain lines (top-relative paths, as
+// DirtyPorcelain and `git status --porcelain` print them) whose path falls
+// under the two pathspecs the check reads, taken relative to root (prefix is
+// root's top-relative slash prefix): the brief's stream record directory, and
+// docs/streams/<verifyOutcomesGlob>, matched as a Git pathspec glob, where a
+// wildcard also matches '/'.
+func outcomeStatusLines(porcelain, prefix, stream string) []string {
+	dir := path.Join(outcomeRecordsDir, stream)
+	glob := outcomePathspecGlob(path.Join("docs/streams", verifyOutcomesGlob))
+	var keep []string
+	for _, line := range strings.Split(porcelain, "\n") {
+		if len(line) < 4 {
+			continue
+		}
+		for _, p := range strings.Split(line[3:], " -> ") {
+			rel, ok := strings.CutPrefix(p, prefix)
+			if !ok {
+				continue
+			}
+			if rel == dir || strings.HasPrefix(rel, dir+"/") || glob.MatchString(rel) {
+				keep = append(keep, line)
+				break
+			}
+		}
+	}
+	return keep
+}
+
+// outcomePathspecGlob compiles a Git pathspec glob in its default (non-
+// :(glob)) form: '*' and '?' match any character, '/' included.
+func outcomePathspecGlob(spec string) *regexp.Regexp {
+	var b strings.Builder
+	b.WriteString("^")
+	for _, r := range spec {
+		switch r {
+		case '*':
+			b.WriteString(".*")
+		case '?':
+			b.WriteString(".")
+		default:
+			b.WriteString(regexp.QuoteMeta(string(r)))
+		}
+	}
+	b.WriteString("$")
+	return regexp.MustCompile(b.String())
+}
+
+// outcomeAddingCommits lists, over the history reachable from HEAD, the
+// commits that add rel (a slash path relative to the reader's root) — the set
+// `git log --full-history --diff-filter=A HEAD -- <rel>` prints. A history the
+// walk cannot read in full is an error, never an empty set.
+func outcomeAddingCommits(read gitCoreRead, rel string) ([]string, error) {
+	var commits []string
+	err := read.repo.PathHistory("HEAD", read.prefix+path.Clean(rel), func(c gitcore.PathCommit) bool {
+		if outcomeAddingCommit(c) {
+			commits = append(commits, c.Hash)
+		}
+		return true
+	})
+	return commits, err
+}
+
+// outcomeAddingCommit reports whether c is one `git log --full-history
+// --diff-filter=A -- <path>` lists: a non-merge commit (merges carry no diff
+// in that log) that holds the path where its parent, or the empty tree of a
+// root commit, does not.
+func outcomeAddingCommit(c gitcore.PathCommit) bool {
+	if c.PathID == "" || len(c.Parents) > 1 {
+		return false
+	}
+	return len(c.Parents) == 0 || c.ParentPathIDs[0] == ""
 }
 
 // flipOutcomeAuthor judges the commit(s) that added the deciding record: each
@@ -186,11 +283,14 @@ func flipOutcomeAuthor(root string, rec outcomeRecord) error {
 	if p.Unavailable != "" {
 		return fmt.Errorf("outcome record: %s", p.Unavailable)
 	}
-	out, err := historyGit(root, "log", "--full-history", "--diff-filter=A", "--format=%H", "HEAD", "--", filepath.FromSlash(rec.Path)).Output()
+	read, err := flipOutcomeRepo(root)
 	if err != nil {
 		return fmt.Errorf("outcome record: git log %s: %v", rec.Path, err)
 	}
-	commits := strings.Fields(string(out))
+	commits, err := outcomeAddingCommits(read, rec.Path)
+	if err != nil {
+		return fmt.Errorf("outcome record: git log %s: %v", rec.Path, err)
+	}
 	if len(commits) == 0 {
 		return fmt.Errorf("outcome record: no commit adds %s — its author cannot be judged", rec.Path)
 	}
