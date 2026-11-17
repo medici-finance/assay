@@ -1,7 +1,7 @@
 {
-  "test": "go test ./internal/forgeservice/auth/ -count=1 -run 'TestQualifyFixtureShowsOutput|TestForgeLocalAuthorityCI'",
+  "test": "go test ./internal/forgeservice/auth/ -count=1 -run 'TestQualifyFixtureShowsOutput|TestMutationsScriptShowsNestedOutput|TestForgeLocalAuthorityCI'",
   "control": {
-    "name": "CONTROL — the nonzero-exit branch raises without printing anything",
+    "name": "CONTROL \u2014 the nonzero-exit branch raises without printing anything",
     "file": "internal/forgeservice/auth/testdata/qualify_fixture.py",
     "old": "            show_output(label, \"exit %d\" % result.returncode, result.stdout, result.stderr)\n",
     "new": ""
@@ -36,6 +36,36 @@
       "file": "internal/forgeservice/auth/testdata/qualify_fixture.py",
       "old": "\"exit %d\" % result.returncode",
       "new": "\"failed\""
+    },
+    {
+      "name": "a failed baseline exits without printing the nested go test output",
+      "file": "internal/forgeservice/auth/testdata/local_authority_mutations.py",
+      "old": "            show_tail(label, \"exit %d\" % code, baseline)\n",
+      "new": ""
+    },
+    {
+      "name": "an uncaught mutant raises without printing the nested go test output",
+      "file": "internal/forgeservice/auth/testdata/local_authority_mutations.py",
+      "old": "                show_tail(label, \"exit %d\" % code, mutated)\n",
+      "new": ""
+    },
+    {
+      "name": "a failed restored run exits without printing the nested go test output",
+      "file": "internal/forgeservice/auth/testdata/local_authority_mutations.py",
+      "old": "            show_tail(label, \"exit %d\" % code, restored)\n",
+      "new": ""
+    },
+    {
+      "name": "a timed-out nested go test raises without printing its partial output",
+      "file": "internal/forgeservice/auth/testdata/local_authority_mutations.py",
+      "old": "            show_tail(label, \"timeout after %ss\" % expired.timeout, text)\n",
+      "new": ""
+    },
+    {
+      "name": "the nested go test output is no longer bounded to its tail",
+      "file": "internal/forgeservice/auth/testdata/local_authority_mutations.py",
+      "old": "tail = lines[-TAIL_LINES:]",
+      "new": "tail = lines"
     }
   ]
 }
