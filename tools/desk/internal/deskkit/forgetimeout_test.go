@@ -347,8 +347,9 @@ func readAllSitesIn(t *testing.T, dir string) []string {
 	return out
 }
 
-// funcLines maps each top-level function in path to its [start, end] line span, so a test
-// can say which planted function a reported site falls in.
+// funcLines maps each top-level function in path, and each top-level var whose value holds a
+// function literal, to its [start, end] line span, so a test can say which planted function
+// or literal a reported site falls in.
 func funcLines(t *testing.T, path string) map[string][2]int {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -357,9 +358,30 @@ func funcLines(t *testing.T, path string) map[string][2]int {
 		t.Fatalf("parse %s: %v", path, err)
 	}
 	out := map[string][2]int{}
+	span := func(n ast.Node) [2]int {
+		return [2]int{fset.Position(n.Pos()).Line, fset.Position(n.End()).Line}
+	}
 	for _, d := range f.Decls {
-		if fd, ok := d.(*ast.FuncDecl); ok {
-			out[fd.Name.Name] = [2]int{fset.Position(fd.Pos()).Line, fset.Position(fd.End()).Line}
+		switch x := d.(type) {
+		case *ast.FuncDecl:
+			out[x.Name.Name] = span(x)
+		case *ast.GenDecl:
+			for _, s := range x.Specs {
+				vs, ok := s.(*ast.ValueSpec)
+				if !ok || len(vs.Names) != 1 {
+					continue
+				}
+				hasLit := false
+				ast.Inspect(vs, func(n ast.Node) bool {
+					if _, ok := n.(*ast.FuncLit); ok {
+						hasLit = true
+					}
+					return !hasLit
+				})
+				if hasLit {
+					out[vs.Names[0].Name] = span(vs)
+				}
+			}
 		}
 	}
 	return out
@@ -395,6 +417,10 @@ func TestReadAllGuardWideShapes(t *testing.T) {
 		{"plantedOverwritten", "io.ReadAll error never checked"},
 		{"plantedIoutil", "io.ReadAll error discarded"},
 		{"plantedWrapper", "io.ReadAll error discarded (via readBody)"},
+		// Function literals outside every function declaration.
+		{"plantedFuncVar", "io.ReadAll error discarded"},
+		{"plantedLitDiscard", "io.ReadAll error discarded"},
+		{"plantedLitUnchecked", "io.ReadAll error never checked"},
 	} {
 		if !inFunc(c.fn, c.shape) {
 			t.Errorf("guard missed %s (%q); it reported: %v", c.fn, c.shape, sites)

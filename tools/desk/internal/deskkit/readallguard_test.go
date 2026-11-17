@@ -13,11 +13,16 @@ package deskkit
 //   - the error bound to a name that is never read afterwards: no later reference, only
 //     `_ = err`, or overwritten (`err = ...`) before any read;
 //   - each of the above through io/ioutil.ReadAll, or through a function in the same package
-//     whose body returns io.ReadAll(...) directly (a one-level wrapper).
+//     whose body returns io.ReadAll(...) directly (a one-level wrapper);
+//   - each of the above inside a function declaration or inside any function literal,
+//     including one outside every function declaration (a package-level func value, a func
+//     field in a package-level composite literal).
 //
 // It is a syntactic scan, not data-flow analysis: a read of the error anywhere after the call
 // in the enclosing function (a closure included) counts as checked, and a wrapper more than
-// one call deep is not followed. ReadForgeBody is the control; this guard is defense in depth.
+// one call deep is not followed. Known misses: `defer`/`go io.ReadAll(r)`, a method wrapper, a
+// bare return inside a nested literal (read as the enclosing named error result), and an error
+// bound to a field or index. ReadForgeBody is the control; this guard is defense in depth.
 
 import (
 	"go/ast"
@@ -143,8 +148,21 @@ func readAllDiscardSites(fset *token.FileSet, f *ast.File, wrappers map[string]b
 		})
 	}
 	for _, d := range f.Decls {
-		if fd, ok := d.(*ast.FuncDecl); ok && fd.Body != nil {
-			scanFunc(fd.Type, fd.Body)
+		switch x := d.(type) {
+		case *ast.FuncDecl:
+			if x.Body != nil {
+				scanFunc(x.Type, x.Body)
+			}
+		case *ast.GenDecl:
+			// A function literal outside every function declaration: a package-level func
+			// value, or a func field in a package-level composite literal.
+			ast.Inspect(x, func(n ast.Node) bool {
+				if lit, ok := n.(*ast.FuncLit); ok {
+					scanFunc(lit.Type, lit.Body)
+					return false
+				}
+				return true
+			})
 		}
 	}
 	return sites

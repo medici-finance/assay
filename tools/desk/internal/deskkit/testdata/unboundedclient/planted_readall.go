@@ -56,3 +56,22 @@ func plantedWrapper(resp *http.Response) []byte {
 	raw, _ := readBody(resp.Body)
 	return raw
 }
+
+// Function literals outside every function declaration: a package-level func value, and
+// func fields in a package-level composite literal.
+var plantedFuncVar = func(resp *http.Response) []byte {
+	raw, _ := io.ReadAll(resp.Body)
+	return raw
+}
+
+type plantedTable struct{ read func(*http.Response) []byte }
+
+var plantedLitDiscard = plantedTable{read: func(resp *http.Response) []byte {
+	raw, _ := io.ReadAll(resp.Body)
+	return raw
+}}
+
+var plantedLitUnchecked = plantedTable{read: func(resp *http.Response) []byte {
+	raw, err := io.ReadAll(resp.Body)
+	return raw
+}}
