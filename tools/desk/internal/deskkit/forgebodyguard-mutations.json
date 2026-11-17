@@ -34,14 +34,62 @@
     {
       "name": "stop seeing an io.LimitedReader literal as a truncating reader",
       "file": "internal/deskkit/forgebodycap_guard_test.go",
-      "old": "if !ok || sel.Sel.Name != \"LimitedReader\" {",
-      "new": "if !ok || sel.Sel.Name != \"LimitedReaderX\" {"
+      "old": "if ioName == \"\" || !ok || sel.Sel.Name != \"LimitedReader\" {",
+      "new": "if ioName == \"\" || !ok || sel.Sel.Name != \"LimitedReaderX\" {"
     },
     {
       "name": "look only at the capped reader's argument itself, not inside it (bufio.NewReader(io.LimitReader(...)) scans clean)",
       "file": "internal/deskkit/forgebodycap_guard_test.go",
-      "old": "\t\treturn !seen\n\t})\n\treturn seen\n}\n\n// truncatingAliases",
-      "new": "\t\treturn false\n\t})\n\treturn seen\n}\n\n// truncatingAliases"
+      "old": "\t\treturn !seen\n\t})\n\treturn seen\n}\n\n// selectorKey",
+      "new": "\t\treturn false\n\t})\n\treturn seen\n}\n\n// selectorKey"
+    },
+    {
+      "name": "stop following a helper that returns a truncating reader (ReadCappedForgeBody(limitBody(resp), ...) scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\tcase *ast.Ident:\n\t\t\treturn helpers[f.Name]",
+      "new": "\t\tcase *ast.Ident:\n\t\t\treturn false && helpers[f.Name]"
+    },
+    {
+      "name": "find helpers in one pass only (a helper returning another helper's call, declared before it, scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\t\t\t\t\t\t\tout[name] = true\n\t\t\t\t\t\t\t\tgrew = true",
+      "new": "\t\t\t\t\t\t\t\tout[name] = true"
+    },
+    {
+      "name": "follow one alias hop only (lr := io.LimitReader(...); r2 := lr; ReadCappedForgeBody(r2, ...) scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "buildsTruncating(v, ioName, out, helpers)",
+      "new": "buildsTruncating(v, ioName, nil, helpers)"
+    },
+    {
+      "name": "find aliases in one pass only (an alias assigned before its source in source order scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\t\t\tout[k] = true\n\t\t\t\tgrew = true",
+      "new": "\t\t\t\tout[k] = true"
+    },
+    {
+      "name": "stop seeing a field path reassigned a truncating reader (resp.Body = io.NopCloser(io.LimitReader(resp.Body, n)) scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "if k := selectorKey(x); k != \"\" && aliases[k] {",
+      "new": "if k := selectorKey(x); false && k != \"\" && aliases[k] {"
+    },
+    {
+      "name": "skip function literals outside every function declaration (var f = func(...) { io.ReadAll(resp.Body) } scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\t\t\t\t\tyield(name, lit.Body)",
+      "new": "\t\t\t\t\t\t_, _ = name, lit"
+    },
+    {
+      "name": "name a method without its receiver type (two same-named methods share one key)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\treturn id.Name + \".\" + fn.Name.Name",
+      "new": "\t\treturn id.Name[:0] + fn.Name.Name"
+    },
+    {
+      "name": "stop seeing a body handed to a plain io.Reader helper in a root with no transport cap",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\t\t\tcase strict && !isCappedReadCall(x) && anyArg(x, isBody):",
+      "new": "\t\t\t\tcase false && strict && !isCappedReadCall(x) && anyArg(x, isBody):"
     }
   ]
 }
