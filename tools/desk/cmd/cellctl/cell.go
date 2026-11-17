@@ -333,7 +333,10 @@ type Cell struct {
 	pendingSurfaces map[string]surfaceReceipt
 	Cadence         *cadenceOptions
 	cadenceLease    *cellcadence.Lease
-	Env             *Env
+	// sessionRoots are a house verify-desk window's per-session stream-root trees, refreshed
+	// before every cadence pass (sessionroots.go).
+	sessionRoots []sessionRoot
+	Env          *Env
 
 	Name string
 	Dir  string
