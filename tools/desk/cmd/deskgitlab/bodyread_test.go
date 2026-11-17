@@ -27,7 +27,7 @@ func bodyServer(t *testing.T, h http.HandlerFunc) *apiClient {
 func wantNoAnswer(t *testing.T, c *apiClient, status string, body []byte) {
 	t.Helper()
 	if status != transportFailed {
-		t.Errorf("status %q with body %q; want %q (no answer)", status, body, transportFailed)
+		t.Errorf("status %q with a %d-byte body; want %q (no answer)", status, len(body), transportFailed)
 	}
 	if body != nil {
 		t.Errorf("an unreadable answer handed back %d bytes; want none", len(body))

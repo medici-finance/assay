@@ -4,6 +4,9 @@ package credential
 // with no bytes handed back, never read as a truncated answer.
 
 import (
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -28,9 +31,60 @@ func TestMaxResponseBytesIsWired(t *testing.T) {
 	if MaxResponseBytes != 32<<20 {
 		t.Errorf("MaxResponseBytes = %d, want 32 MiB", MaxResponseBytes)
 	}
+	if responseCap != MaxResponseBytes {
+		t.Errorf("responseCap = %d, want MaxResponseBytes (%d)", responseCap, MaxResponseBytes)
+	}
 	// readCappedResponse applies MaxResponseBytes: a body one byte over it is refused.
 	big := strings.NewReader(strings.Repeat(" ", int(MaxResponseBytes)+1))
 	if raw, err := readCappedResponse(big); err == nil {
 		t.Errorf("a body one byte over MaxResponseBytes read as success (%d bytes)", len(raw))
+	}
+}
+
+// lowCap lowers the cap readCappedResponse applies for one test.
+func lowCap(t *testing.T, n int64) {
+	t.Helper()
+	prev := responseCap
+	responseCap = n
+	t.Cleanup(func() { responseCap = prev })
+}
+
+// overCapServer answers every request 200 with a JSON body longer than the lowered cap.
+func overCapServer(t *testing.T, body string) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, body+strings.Repeat(" ", 200))
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// The GitHub App read (installations, mint) goes through the cap.
+//
+// regression: #6730
+func TestGithubGETOverCapBody(t *testing.T) {
+	lowCap(t, 64)
+	srv := overCapServer(t, `[]`)
+	_, body, err := githubGET(srv.Client(), "GET", srv.URL+"/app/installations", "example-jwt")
+	if err == nil {
+		t.Fatalf("an over-cap body read as success (%d bytes)", len(body))
+	}
+	if body != nil {
+		t.Errorf("an over-cap read handed back %d bytes; want none", len(body))
+	}
+}
+
+// The GitLab self-rotation read goes through the cap.
+//
+// regression: #6730
+func TestRotateGitLabOverCapBody(t *testing.T) {
+	lowCap(t, 64)
+	srv := overCapServer(t, `{"token":"example-rotated","expires_at":"2099-01-01"}`)
+	res, err := RotateGitLabToken(srv.Client(), srv.URL, "example-current")
+	if err == nil {
+		t.Fatalf("an over-cap rotation answer read as success: %+v", res)
+	}
+	if strings.Contains(err.Error(), "example-current") {
+		t.Errorf("the current credential appeared in the error")
 	}
 }

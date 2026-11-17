@@ -17,8 +17,12 @@ const MaxResponseBytes int64 = 32 << 20
 // Callers turn the error into could-not-check (credential.Error → deskkit.CredentialError,
 // exit 6), never a success.
 func readCappedResponse(body io.Reader) ([]byte, error) {
-	return readCappedN(body, MaxResponseBytes)
+	return readCappedN(body, responseCap)
 }
+
+// responseCap is the limit readCappedResponse applies: MaxResponseBytes, lowered only by a test
+// that proves a call site reads through the cap without serving a 32 MiB body.
+var responseCap = MaxResponseBytes
 
 // readCappedN is readCappedResponse with the limit as a parameter (so a test proves the
 // over-cap path without a 32 MiB body).
