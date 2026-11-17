@@ -23,9 +23,15 @@ import (
 // library, the credential paths, the lock-holding write verbs, and the commands that read
 // the forge directly.
 var forgeBodyGuardRoots = []string{
-	"internal/deskkit", "internal/credential",
-	"cmd/deskevidence", "cmd/deskpost", "cmd/deskrelease", "cmd/desktoken",
-	"cmd/deskadvisory", "cmd/deskinbox", "cmd/deskgitlab",
+	"internal/deskkit",
+	"internal/credential",
+	"cmd/deskevidence",
+	"cmd/deskpost",
+	"cmd/deskrelease",
+	"cmd/deskadvisory",
+	"cmd/deskinbox",
+	"cmd/deskgitlab",
+	"cmd/desktoken",
 }
 
 // forgeBodyReadPermits are the readers that keep their own, narrower bound AND refuse an
