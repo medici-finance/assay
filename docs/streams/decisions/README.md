@@ -61,7 +61,8 @@ accepted:
 
 - **With a `ruling:` link**, it reads the comment through the forge API. It passes only when
   the comment exists, sits on the linked issue in this repository and was never edited, its
-  author is not a bot, the author's login maps (through the human-login map) to a human —
+  author is a personal account (type `User`, never a bot or an organization), the author's
+  login maps (through the human-login map) to a human —
   the one `decided-by` names, if it names one — the comment's own text names the record's
   `DR-<slug>` id, and the issue is this record's decision issue: its body carries
   `<!-- decision-gate: DR-<slug> -->` for this record, or the decision-gate marker of a
