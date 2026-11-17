@@ -119,7 +119,7 @@ func raceHarness(t *testing.T, r *raceStore) func(args ...string) int {
 	t.Helper()
 	oldBuild, oldOut, oldErr := buildStore, out, errOut
 	var so, se strings.Builder
-	buildStore = func(_, _ string) (deskkit.ClaimStore, error) { return r, nil }
+	buildStore = func(_, _ string, _ func() (string, error)) (deskkit.ClaimStore, error) { return r, nil }
 	out, errOut = &so, &se
 	t.Cleanup(func() { buildStore, out, errOut = oldBuild, oldOut, oldErr })
 	return func(args ...string) int { return run(args) }
@@ -251,7 +251,7 @@ func listFailHarness(t *testing.T, s deskkit.ClaimStore) func(args ...string) in
 	t.Helper()
 	oldBuild, oldOut, oldErr := buildStore, out, errOut
 	var so, se strings.Builder
-	buildStore = func(_, _ string) (deskkit.ClaimStore, error) { return s, nil }
+	buildStore = func(_, _ string, _ func() (string, error)) (deskkit.ClaimStore, error) { return s, nil }
 	out, errOut = &so, &se
 	t.Cleanup(func() { buildStore, out, errOut = oldBuild, oldOut, oldErr })
 	return func(args ...string) int { return run(args) }
@@ -290,7 +290,7 @@ func harnessRun(t *testing.T, f *fakeStore, args ...string) (int, *strings.Build
 	t.Helper()
 	oldBuild, oldOut, oldErr := buildStore, out, errOut
 	so, se := &strings.Builder{}, &strings.Builder{}
-	buildStore = func(_, _ string) (deskkit.ClaimStore, error) { return f, nil }
+	buildStore = func(_, _ string, _ func() (string, error)) (deskkit.ClaimStore, error) { return f, nil }
 	out, errOut = so, se
 	defer func() { buildStore, out, errOut = oldBuild, oldOut, oldErr }()
 	return run(args), so, se
@@ -427,7 +427,7 @@ func TestShow_unreadable_alias_leg_exits_6(t *testing.T) {
 	f.seedClaim("b--pr-7", "s-B", "claimed", "", 5*time.Minute)
 	oldBuild, oldOut, oldErr := buildStore, out, errOut
 	so, se := &strings.Builder{}, &strings.Builder{}
-	buildStore = func(_, _ string) (deskkit.ClaimStore, error) { return listFailStore{f}, nil }
+	buildStore = func(_, _ string, _ func() (string, error)) (deskkit.ClaimStore, error) { return listFailStore{f}, nil }
 	out, errOut = so, se
 	defer func() { buildStore, out, errOut = oldBuild, oldOut, oldErr }()
 	if rc := run([]string{"show", "b--pr-7", "--repo", aliasRepo}); rc != exitUnverifiable {

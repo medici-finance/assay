@@ -1,10 +1,12 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/gitcore/gittest"
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/regression"
@@ -21,9 +23,9 @@ func TestClaimReaderCompatibility(t *testing.T) {
 		{"ordinary", "", common, false, false},
 		{"ordinary-global", "global", common, false, false},
 		{"linked", "", common, true, false},
-		{"linked-global", "global", selected, true, false},
-		{"linked-worktree", "worktree", selected, true, true},
-		{"main-worktree", "worktree", selected, false, true},
+		{"linked-global", "global", common, true, false},
+		{"linked-worktree", "worktree", "", true, true},
+		{"main-worktree", "worktree", "", false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			regression.IsolateGit(t)
@@ -70,20 +72,13 @@ func TestClaimReaderCompatibility(t *testing.T) {
 				local("-C", dir, "config", "--"+tc.scope, "url."+selected+".insteadOf", common)
 			}
 			before := regression.TreeDigest(t, root)
-			old, err := os.Getwd()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := os.Chdir(dir); err != nil {
-				t.Fatal(err)
-			}
-			t.Cleanup(func() {
-				if err := os.Chdir(old); err != nil {
-					t.Error(err)
+			got, err := checkedOriginURL(dir)
+			if tc.want == "" {
+				if !errors.Is(err, gitcore.ErrRemoteScopeUnmerged) || got != "" {
+					t.Errorf("origin read = %q, %v; want unmerged worktree scope", got, err)
 				}
-			})
-			if got := originRemoteURL(); got != tc.want {
-				t.Errorf("origin compatibility = %q, want %q", got, tc.want)
+			} else if err != nil || got != tc.want {
+				t.Errorf("origin read = %q, %v; want %q", got, err, tc.want)
 			}
 			if after := regression.TreeDigest(t, root); after != before {
 				t.Error("origin read changed fixture configuration or repository state")
