@@ -5471,8 +5471,12 @@ Two limits, so the guarantee is not read as more than it is:
   do not serialise against each other. Each also writes its own `~/.config/assay/
   audit.jsonl`, so the rate-limit ledger they are protecting is per-host too — the lock is
   exactly as wide as the thing it guards, and no wider.
-- **The holder is bounded by an HTTP timeout, not by the lock.** The forge write and the
-  attribution read run inside the critical section, so `httpClient` carries a 30s per-request `Timeout`
+- **The holder is bounded by an HTTP timeout, not by the lock.** Every forge request in the
+  write window runs inside the critical section: the window rechecks' re-reads through the
+  uncached forge (the re-admission, the board re-read, the visibility read and, on the outcome
+  path, the join-fact and delivery-PR re-reads and, for a branch-tip binding, the Evidence and
+  observation binding re-reads), then the forge write and the attribution read.
+  So `httpClient` carries a 30s per-request `Timeout`
   (`cmd/deskevidence/github.go`). Without it a hung connection would pin the *shared*
   `audit.lock` and starve `deskpost` and `deskrelease` with it. `deskpost` and
   `deskrelease` still use `http.DefaultClient` and do not have this bound. The timeout is
