@@ -9,10 +9,14 @@ import (
 )
 
 // AdmitMaxAge bounds how old the recorded measurement may be for the lock-free
-// pre-check to lean on it. Explicit maintenance records a fresh report;
-// launch enrollment never refreshes a historical measurement. An older or
-// future-dated estimate is not trusted. Admit may run a full check; bounded
-// launch Prepare/Acquire refuse and request explicit maintenance instead.
+// pre-check to lean on it, and is the age past which a measurement is called
+// stale. Explicit maintenance records a fresh report; launch enrollment never
+// refreshes a historical measurement. Admit runs a full check on an older
+// estimate. Bounded launch Prepare/Acquire admit on a measurement whose only
+// defect is age, report it stale with its age, and refuse it only when the
+// policy carries a freshness bound it exceeds (Policy.MeasurementMaxAge). An
+// unstamped or future-dated measurement is invalid, not stale: it is never
+// trusted on either path.
 const AdmitMaxAge = 5 * time.Minute
 
 // AdmitMtimeSlack is how far before the recorded measurement a top-level
@@ -129,14 +133,19 @@ func admit(p Policy, dry bool, env admitEnv) (Report, error) {
 // cheapClean returns a checked-clean report and "" when the lock-free test
 // clears the cache, or a zero report and the reason it could not.
 func cheapClean(p Policy, dry bool, env admitEnv) (Report, string) {
-	r, why, _ := precheck(p, dry, env)
+	r, why, _ := precheck(p, dry, env, AdmitMaxAge)
 	return r, why
 }
 
 // precheck is cheapClean plus whether the refusal is one a single clean can
-// clear: the size or free-space margin, an aged measurement, or a top-level
-// change since it. Every other refusal is not reclaimable.
-func precheck(p Policy, dry bool, env admitEnv) (Report, string, bool) {
+// clear: the size or free-space margin, a measurement older than bound, or a
+// top-level change since it. Every other refusal is not reclaimable.
+//
+// bound is the freshness the caller asks for; zero asks for none. A
+// measurement past AdmitMaxAge but inside bound (or with no bound) is stale,
+// not invalid: it admits on the remaining checks, with the free-space margin
+// read now, and the report says it is stale and how old it is.
+func precheck(p Policy, dry bool, env admitEnv, bound time.Duration) (Report, string, bool) {
 	no := func(format string, a ...any) (Report, string, bool) {
 		return Report{}, fmt.Sprintf(format, a...), false
 	}
@@ -183,11 +192,11 @@ func precheck(p Policy, dry bool, env admitEnv) (Report, string, bool) {
 	}
 	now := env.now().UTC()
 	age := now.Sub(rep.After.At)
-	if rep.After.At.IsZero() || age < 0 || age > AdmitMaxAge {
-		if rep.After.At.IsZero() || age < 0 {
-			return no("recorded measurement is stale or future-dated")
-		}
-		return reclaim("recorded measurement is stale or future-dated")
+	if rep.After.At.IsZero() || age < 0 {
+		return no("recorded measurement is unstamped or future-dated")
+	}
+	if bound > 0 && age > bound {
+		return reclaim("recorded measurement is stale: %s old, over the freshness bound %s", age.Round(time.Second), bound)
 	}
 	for _, name := range []string{"build", "mod"} {
 		st, err := r.Lstat(name)
@@ -222,9 +231,16 @@ func precheck(p Policy, dry bool, env admitEnv) (Report, string, bool) {
 	}
 	at := now
 	size := *est
+	admission, reason := "precheck", ""
+	if age > AdmitMaxAge {
+		// The size is the recorded one, so the report keeps its time.
+		at = rep.After.At
+		admission = "precheck-stale"
+		reason = fmt.Sprintf("recorded measurement is stale: %s old (fresh within %s); admitted on its recorded size, free space read now", age.Round(time.Second), AdmitMaxAge)
+	}
 	return Report{
 		Schema: schema, Policy: p, Filesystem: filesystemName(dev), Outcome: "checked-clean",
-		DryRun: dry, Admission: "precheck",
+		DryRun: dry, Admission: admission, Reason: reason,
 		Before: Measurement{At: at, LogicalBytes: &size, AvailableBytes: &free},
 		After:  Measurement{At: at, LogicalBytes: &size, AvailableBytes: &free},
 	}, "", false

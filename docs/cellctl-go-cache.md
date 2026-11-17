@@ -230,16 +230,36 @@ inactivity. Long-running roles can hold the module cache, and compiler-cache
 entries younger than the trim age, beyond the byte budget. Existing tasks are
 never killed to meet a floor.
 
-### Consumer enrollment refuses a stale measurement
+### Consumer enrollment and the recorded measurement
 
 Enrollment is the last check before a supervised child starts. Every child the
 process supervisor runs with the cell's cache policy in its environment passes
 it: harness windows, cadence passes, scratch tasks, and the hidden `cellctl cache-run` supervisor inside a scrubbed tmux
 pane. It waits at most two seconds for the lock, then reads the recorded
-measurement. When the cache root exists and its measurement is older than five
-minutes, carries no timestamp, is dated in the future or is missing (no
+measurement.
+
+A measurement that is invalid refuses. When the cache root exists and its
+measurement carries no timestamp, is dated in the future or is missing (no
 readable `report.json`), enrollment refuses, starts no child, leaves
 `report.json` as it found it and asks for `cellctl cache <cell> clean`.
+
+A measurement that is only stale admits. Stale means older than five minutes
+and otherwise sound: owned, stamped, clean, unchanged since, and inside the
+size margin. Enrollment does not re-measure it. It reads free space now,
+starts the child, leaves `report.json` as it was, and prints one line on
+stderr naming the age:
+
+```text
+cache-enrollment: recorded measurement is stale: 1h0m0s old (fresh within 5m0s); admitted on its recorded size, free space read now
+```
+
+The bounded preparation report (`storage-admission`) says the same, with
+`"admission":"precheck-stale"` and the recorded measurement's own time. A
+launch owner that wants a freshness bound asks for one in the policy
+(`measurement_max_age_seconds` in the `ASSAY_GO_CACHE_POLICY` JSON).
+Preparation and enrollment then refuse a measurement older than that bound,
+and one clean clears the refusal. No cell setting writes the bound today: a
+cell launch takes the default, which is no bound.
 
 One case admits without a prior measurement: a cache root that does not exist
 yet. Enrollment creates it, so the root is known empty without an inventory.
@@ -262,8 +282,8 @@ reasons:
   preparation of its own because its one caller, a scrubbed `cellctl desk`
   launch, prepares in the parent before it opens the pane.
 
-A refusal at enrollment therefore means the measurement aged between
-preparation and the child start, or the caller has no preparation step. Run
+A refusal at enrollment therefore means the measurement is missing or
+invalid, or older than a freshness bound the policy asks for. Run
 `cellctl cache <cell> clean`, then retry.
 
 If safe cleanup cannot satisfy policy, `deskdispatch` reports typed
@@ -284,7 +304,8 @@ prepares again:
 
 - the recorded size is over three quarters of the budget;
 - the free-space margin above the floor is short;
-- the recorded measurement is older than five minutes;
+- the recorded measurement is older than the policy's freshness bound (only
+  when the policy sets one; age alone is not a deferral);
 - a top-level `build` or `mod` directory changed after it.
 
 The clean is a full, not-dry `Check` under the same lock and maintenance entry
@@ -301,7 +322,7 @@ cannot finish, up refuses as before: `up preparation: storage-deferred: …; no
 windows launched`. Up never cleans twice or loops. Every other refusal goes
 back to the operator untouched:
 
-- missing, corrupt or future-dated accounting;
+- missing, corrupt, unstamped or future-dated accounting;
 - a last pass that was dirty, partial or storage-deferred;
 - a foreign owner or domain;
 - a new empty cache short of space.
@@ -412,6 +433,6 @@ Maintenance inventory streams directory entries, with a limit of 262,144 entries
 
 For an inventory wider than the default, explicitly raise the maintenance-only budget, for example `ASSAY_MAINTENANCE_ENTRY_LIMIT=524288 cellctl cache house clean` (or the existing scratch sweep command). Values must be 1 through 1,048,576. Invalid values and exhausted budgets fail closed; there is no unlimited fallback. This setting does not change retained-data protections, per-role authority or launch pressure policy. Trees beyond the finite ceiling or depth limit remain incomplete and require owner-assisted layout correction.
 
-The existing cadence supervisor triggers this cache maintenance between completed passes and again at the due boundary when accounting is dirty, stale or otherwise cannot be proved clean. It retains the same owner’s finite inventory and reclamation checks. Interactive mode (`--cadence off`) and initial bounded startup still require operator `cache clean` when accounting refuses, except that `cellctl up` runs that clean itself once on a size, free-space or stale-measurement deferral (see "`cellctl up` cleans once on a reclaimable deferral"). Scratch diagnostic retention remains operator-triggered; no new background service is installed.
+The existing cadence supervisor triggers this cache maintenance between completed passes and again at the due boundary when accounting is dirty, stale or otherwise cannot be proved clean. It retains the same owner’s finite inventory and reclamation checks. Interactive mode (`--cadence off`) and initial bounded startup still require operator `cache clean` when accounting refuses, except that `cellctl up` runs that clean itself once on a size, free-space or freshness-bound deferral (see "`cellctl up` cleans once on a reclaimable deferral"). Scratch diagnostic retention remains operator-triggered; no new background service is installed.
 
 The default entry budget covers the representative fixture with 150,000 compiler-cache entries and 75,000 module-cache entries. The override remains finite; it is a maintenance resource budget, not a launch-policy or retention override.

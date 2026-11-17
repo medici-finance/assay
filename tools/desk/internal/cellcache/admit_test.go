@@ -167,7 +167,7 @@ func TestCacheAdmitTakesLock(t *testing.T) {
 		{name: "stale estimate", want: "stale", env: func(e *admitEnv) {
 			e.now = func() time.Time { return time.Now().Add(AdmitMaxAge + time.Minute) }
 		}},
-		{name: "future estimate", want: "stale or future", env: func(e *admitEnv) {
+		{name: "future estimate", want: "unstamped or future-dated", env: func(e *admitEnv) {
 			e.now = func() time.Time { return time.Now().Add(-time.Hour) }
 		}},
 		{name: "missing report", want: "no readable recorded measurement", setup: func(t *testing.T, p *Policy) {

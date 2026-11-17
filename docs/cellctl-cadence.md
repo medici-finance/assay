@@ -317,10 +317,13 @@ or the periodic sweep a running desk supervisor starts beside its child (see
 [Periodic maintenance](cellctl-scratch.md#periodic-maintenance)).
 
 Managed Go-cache preparation and final process enrollment never recursively inventory
-the cache. Fresh clean accounting, current free-space headroom and owned root metadata
-are required; missing, stale, dirty or corrupt accounting refuses with a request to run
-`cellctl cache <cell> clean`. `cellctl up` alone runs that clean itself, once, when the
-refusal is the size or free-space margin or a stale measurement, then prepares again
+the cache. Clean accounting, current free-space headroom and owned root metadata
+are required; missing, unstamped, future-dated, dirty or corrupt accounting refuses with
+a request to run `cellctl cache <cell> clean`. Accounting that is only stale admits and
+is reported stale with its age, unless the policy sets a freshness bound it exceeds
+([Managed Go caches](cellctl-go-cache.md#consumer-enrollment-and-the-recorded-measurement)).
+`cellctl up` alone runs that clean itself, once, when the refusal is the size or
+free-space margin or a freshness bound, then prepares again
 ([Managed Go caches](cellctl-go-cache.md#cellctl-up-cleans-once-on-a-reclaimable-deferral)). A newly created empty owned root is initialized with
 bounded metadata reads. Maintenance inventory releases admission custody while walking,
 then reacquires it and revalidates consumer enrollment and current free space before

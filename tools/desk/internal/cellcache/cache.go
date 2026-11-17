@@ -912,6 +912,18 @@ func CheckRecorded(root string, dry bool) (Report, error) {
 type Lease struct {
 	policy Policy
 	record string
+	stale  string
+}
+
+// Stale is the enrollment's stale-measurement report, or "" when the
+// measurement it admitted on was fresh (or the cache is disabled). Enrollment
+// admits on a measurement whose only defect is age; this says so, with the
+// age, so the launch owner can tell the operator.
+func (l *Lease) Stale() string {
+	if l == nil {
+		return ""
+	}
+	return l.stale
 }
 
 func Acquire(env []string) (*Lease, error) {
@@ -943,8 +955,13 @@ func Acquire(env []string) (*Lease, error) {
 		return nil, err
 	}
 	defer m.close()
-	if _, err = m.launchCheck(); err != nil {
+	admitted, err := m.launchCheck()
+	if err != nil {
 		return nil, err
+	}
+	stale := ""
+	if admitted.Admission == "precheck-stale" {
+		stale = admitted.Reason
 	}
 	for _, name := range []string{"build", "mod", "gopath"} {
 		if err = m.r.MkdirAll(name, 0700); err != nil {
@@ -976,7 +993,7 @@ func Acquire(env []string) (*Lease, error) {
 	if err = m.writeMeta("enrollment", []byte(name)); err != nil {
 		return nil, err
 	}
-	return &Lease{policy: *p, record: name}, nil
+	return &Lease{policy: *p, record: name, stale: stale}, nil
 }
 
 // Finish releases only after the process supervisor proves its entire child

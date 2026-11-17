@@ -20,9 +20,9 @@ func reclaimableRefusal(err error) bool {
 }
 
 // Prepare marks a bounded refusal reclaimable only when the recorded size or
-// free-space margin, an aged measurement, or a top-level change since it is the
-// reason. Missing, corrupt, dirty, future-dated, foreign and empty-cache-short
-// refusals are never reclaimable: those stay with the operator.
+// free-space margin, a measurement past the policy's freshness bound, or a
+// top-level change since it is the reason. Missing, corrupt, dirty,
+// future-dated, unstamped, foreign and empty-cache-short refusals are never reclaimable: those stay with the operator.
 //
 // regression: #6117
 func TestCacheReclaimableRefusals(t *testing.T) {
@@ -30,7 +30,7 @@ func TestCacheReclaimableRefusals(t *testing.T) {
 		kind string
 		want bool
 	}{
-		{"size", true}, {"stale", true}, {"changed", true}, {"space", true},
+		{"size", true}, {"stale-bound", true}, {"changed", true}, {"space", true},
 		{"missing", false}, {"corrupt", false}, {"future", false}, {"dirty-pass", false},
 		{"domain", false}, {"empty-space", false},
 	}
@@ -80,7 +80,9 @@ func TestCacheReclaimableRefusals(t *testing.T) {
 				if _, err := Check(p, false); err != nil {
 					t.Fatal(err)
 				}
-			case "stale":
+			case "stale-bound":
+				// Age alone admits; only a freshness bound refuses it.
+				p.MeasurementMaxAge = 600
 				rewrite(func(r *Report) { r.After.At = time.Now().Add(-time.Hour) })
 			case "changed":
 				material(t, p, "build/new", 1)

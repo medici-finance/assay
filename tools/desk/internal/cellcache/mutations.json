@@ -224,10 +224,28 @@
       "new": "size, err := int64(0), error(nil)"
     },
     {
-      "name": "admission leans on a stale or future-dated estimate",
+      "name": "admission leans on an unstamped or future-dated estimate",
       "file": "internal/cellcache/admit.go",
-      "old": "if rep.After.At.IsZero() || age < 0 || age > AdmitMaxAge {",
+      "old": "if rep.After.At.IsZero() || age < 0 {",
       "new": "if _ = age; false {"
+    },
+    {
+      "name": "admission leans on an estimate past the freshness bound",
+      "file": "internal/cellcache/admit.go",
+      "old": "if bound > 0 && age > bound {",
+      "new": "if false && bound > 0 {"
+    },
+    {
+      "name": "stale treated as invalid: launch refuses a stale-only measurement",
+      "file": "internal/cellcache/launch.go",
+      "old": "m.p.MeasurementBound())",
+      "new": "AdmitMaxAge)"
+    },
+    {
+      "name": "invalid treated as stale: launch admits an unstamped or future-dated measurement",
+      "file": "internal/cellcache/admit.go",
+      "old": "\treturn no(\"recorded measurement is unstamped or future-dated\")\n\t}",
+      "new": "\tage = AdmitMaxAge + 1\n\t}"
     },
     {
       "name": "admission admits when the free-space read fails",

@@ -73,10 +73,14 @@ func TestCacheUpCleansSizeDeferralOnce(t *testing.T) {
 	}
 }
 
-// A stale measurement is reclaimable too: one clean re-measures and admits.
+// A measurement whose only defect is age is stale, not a deferral: `up`
+// admits on it with no clean, and its storage-admission line says it is stale
+// and how old it is. A policy that carries a freshness bound refuses it
+// reclaimably instead (TestCacheStaleBoundRefuses).
 //
 // regression: #6117
-func TestCacheUpCleansStaleDeferral(t *testing.T) {
+// regression: #6723
+func TestCacheUpAdmitsStaleNoClean(t *testing.T) {
 	c, p := admissionCell(t)
 	raw, err := os.ReadFile(p.ReportPath())
 	must(t, err)
@@ -88,11 +92,13 @@ func TestCacheUpCleansStaleDeferral(t *testing.T) {
 	must(t, os.WriteFile(p.ReportPath(), raw, 0600))
 	stderr := captureStderrOf(t, func() { _, err = c.upPrepareLaunch() })
 	if err != nil {
-		t.Fatalf("up did not admit after re-measuring: %v\n%s", err, stderr)
+		t.Fatalf("up refused a stale-only measurement: %v\n%s", err, stderr)
 	}
-	lines := upCleanLines(stderr)
-	if len(lines) != 1 || !strings.Contains(lines[0], "recorded measurement is stale") || !strings.Contains(lines[0], "logical bytes before 0, after 0") {
-		t.Fatalf("want one clean line naming the stale measurement:\n%s", stderr)
+	if lines := upCleanLines(stderr); len(lines) != 0 {
+		t.Fatalf("up cleaned a stale-only measurement:\n%s", stderr)
+	}
+	if !strings.Contains(stderr, `"admission":"precheck-stale"`) || !strings.Contains(stderr, "recorded measurement is stale: 1h0m") {
+		t.Fatalf("up did not report the stale age:\n%s", stderr)
 	}
 }
 
