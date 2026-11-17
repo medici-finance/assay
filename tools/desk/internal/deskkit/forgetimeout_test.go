@@ -189,11 +189,14 @@ func unboundedClientSites(root string) (sites []string, files int, err error) {
 			return perr
 		}
 		files++
+		// Resolve the names this file gives net/http and io, so an aliased import
+		// (nethttp "net/http") is checked exactly like the default name.
+		httpName, ioName := importName(f, "net/http", "http"), importName(f, "io", "io")
 		ast.Inspect(f, func(n ast.Node) bool {
 			what := ""
 			switch x := n.(type) {
 			case *ast.SelectorExpr:
-				if id, ok := x.X.(*ast.Ident); ok && id.Name == "http" {
+				if id, ok := x.X.(*ast.Ident); ok && httpName != "" && id.Name == httpName {
 					switch x.Sel.Name {
 					case "DefaultClient":
 						what = "http.DefaultClient"
@@ -207,7 +210,7 @@ func unboundedClientSites(root string) (sites []string, files int, err error) {
 					if b, ok := x.Lhs[1].(*ast.Ident); ok && b.Name == "_" {
 						if call, ok := x.Rhs[0].(*ast.CallExpr); ok {
 							if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "ReadAll" {
-								if id, ok := sel.X.(*ast.Ident); ok && id.Name == "io" {
+								if id, ok := sel.X.(*ast.Ident); ok && ioName != "" && id.Name == ioName {
 									what = "io.ReadAll error discarded"
 								}
 							}
@@ -218,7 +221,7 @@ func unboundedClientSites(root string) (sites []string, files int, err error) {
 				sel, isSel := x.Type.(*ast.SelectorExpr)
 				httpClient := false
 				if isSel && sel.Sel.Name == "Client" {
-					if id, ok := sel.X.(*ast.Ident); ok && id.Name == "http" {
+					if id, ok := sel.X.(*ast.Ident); ok && httpName != "" && id.Name == httpName {
 						httpClient = true
 					}
 				}
@@ -250,6 +253,24 @@ func unboundedClientSites(root string) (sites []string, files int, err error) {
 	return sites, files, err
 }
 
+// importName is the local name file f gives the import path: its alias when it has one, def
+// when it is imported plainly, "" when the file does not import it (or blank-imports it).
+func importName(f *ast.File, path, def string) string {
+	for _, im := range f.Imports {
+		if strings.Trim(im.Path.Value, "`\"") != path {
+			continue
+		}
+		if im.Name == nil {
+			return def
+		}
+		if im.Name.Name == "_" {
+			return ""
+		}
+		return im.Name.Name
+	}
+	return ""
+}
+
 // regression: #6718
 func TestNoUnboundedForgeClient(t *testing.T) {
 	var all []string
@@ -273,7 +294,8 @@ func TestNoUnboundedForgeClient(t *testing.T) {
 }
 
 // TestUnboundedGuardSeesPlant is the positive control: the planted fixture holds one instance
-// of each shape, and the guard must report all five.
+// of each shape (planted.go) and the aliased-import variants (planted_alias.go), and the guard
+// must report every one.
 func TestUnboundedGuardSeesPlant(t *testing.T) {
 	dir := filepath.Join("testdata", "unboundedclient")
 	if _, err := os.Stat(filepath.Join(dir, "planted.go")); err != nil {
@@ -283,11 +305,18 @@ func TestUnboundedGuardSeesPlant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan the planted fixture: %v", err)
 	}
-	for _, want := range []string{"http.DefaultClient", "http.Get (uses http.DefaultClient)", "ClientOptions literal with no Timeout",
-		"http.Client literal with no Timeout", "io.ReadAll error discarded"} {
+	for _, want := range []string{
+		"planted.go:*: http.DefaultClient", "planted.go:*: http.Get (uses http.DefaultClient)",
+		"planted.go:*: ClientOptions literal with no Timeout", "planted.go:*: http.Client literal with no Timeout",
+		"planted.go:*: io.ReadAll error discarded",
+		// The same shapes under aliased imports (nethttp "net/http", stdio "io").
+		"planted_alias.go:*: http.DefaultClient", "planted_alias.go:*: http.Client literal with no Timeout",
+		"planted_alias.go:*: io.ReadAll error discarded",
+	} {
+		file, shape, _ := strings.Cut(want, ":*: ")
 		found := false
 		for _, s := range sites {
-			if strings.HasSuffix(s, ": "+want) {
+			if strings.Contains(s, string(filepath.Separator)+file+":") && strings.HasSuffix(s, ": "+shape) {
 				found = true
 			}
 		}

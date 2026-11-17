@@ -7,7 +7,16 @@ import (
 	"time"
 )
 
-// forgetimeout.go — the one per-request bound every forge client in the desk tools carries.
+// forgetimeout.go — the per-request bound on the forge clients that can run while the shared
+// audit lock is held.
+//
+// Scope: the forge library (this package), the credential package, the lock-holding write verbs
+// (deskevidence, deskpost, deskrelease) and the mint tool deskrelease runs under the lock
+// (desktoken). TestNoUnboundedForgeClient scans exactly those trees. It is NOT every forge client
+// in the desk tools: tools that never take the audit lock (deskinbox, deskadvisory, and the
+// forgelabels client behind cellctl/deskfleet/deskgitlab) still fall back to http.DefaultClient;
+// readers with their own bound keep it (compositionsource at 60s, the hotfix forge at 30s); and a
+// caller-injected client with a non-zero Timeout keeps that Timeout (boundedTimeout).
 //
 // Why a bound at all: the desk write verbs (deskevidence, deskpost, deskrelease) hold the
 // shared audit lock (<state dir>/audit.lock) across forge reads and writes. A client with no
@@ -22,13 +31,14 @@ import (
 // The largest body a forge client reads is a run-log archive, capped at runLogArchiveCap
 // (64 MiB): reading a full-size archive inside 30s needs about 2.2 MB/s. A slower link gets a
 // could-not-check naming the timeout — never a partial log, because a body cut off mid-transfer
-// is already refused as Unverifiable.
+// is refused as Unverifiable (the run-log reader's own check; ReadForgeBody below for the raw
+// REST clients in deskpost and deskrelease).
 const ForgeRequestTimeout = 30 * time.Second
 
 // BoundedHTTPClient returns a fresh client on the default transport that gives up on any one
-// request after ForgeRequestTimeout. It is the replacement for http.DefaultClient wherever a
-// forge client would otherwise fall back to it; TestNoUnboundedForgeClient keeps the fallback
-// from coming back.
+// request after ForgeRequestTimeout. It replaces http.DefaultClient wherever a forge client in
+// the scope above would otherwise fall back to it; TestNoUnboundedForgeClient keeps the fallback
+// from coming back there.
 func BoundedHTTPClient() *http.Client {
 	return &http.Client{Timeout: ForgeRequestTimeout}
 }
