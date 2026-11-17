@@ -133,7 +133,7 @@ func TestAdmittedEnvScrubsCred(t *testing.T) {
 		"GH_HOST=example.invalid", "gh_anything=x", "ASSAY_APP_PEM_FILE=/k", "Assay_Roster=x",
 		"GIT_CONFIG_GLOBAL=/h/.gitconfig", runCredentialEnv + "=/elsewhere",
 		rowreadSocketVar + "=/elsewhere/sock"}
-	kept := []string{"PATH=/bin", "HOMEBREW_PREFIX=/opt", "DESK_SESSION=s", "XDG_CACHE_HOME=/c",
+	kept := []string{"PATH=/bin", "HOMEBREW_PREFIX=/opt", "EXAMPLE_SETTING=s", "XDG_CACHE_HOME=/c",
 		"GHOST=x", "MY_ASSAY_NOTE=x", "GIT_CONFIG_GLOBAL=" + os.DevNull}
 	env := admittedRowEnv(append(append([]string{}, gone...), kept...))
 	for _, kv := range gone {

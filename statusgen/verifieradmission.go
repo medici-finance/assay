@@ -144,10 +144,9 @@ func sameDirectory(a, b string) bool {
 //
 // Out of scope, stated so it is not overclaimed: PATH (which git and which
 // tools a row runs), SSH_AUTH_SOCK (an agent a row's git can authenticate
-// through), SSH_ASKPASS, the Windows profile variables (USERPROFILE, APPDATA,
-// LOCALAPPDATA) and forge credential variables outside the families above,
-// such as the GitLab ones this repository reads (STATUSGEN_GITLAB_TOKEN,
-// GITLAB_TOKEN, CI_JOB_TOKEN), pass through unchanged. The scrub removes the
+// through), SSH_ASKPASS, the Windows profile variables, and credential
+// variables outside the families above, such as other forges' and other
+// tools', pass through unchanged. The scrub removes the
 // pointers, not the files: a row runs as the same user and can still open a
 // stored login or a key file by an absolute path it already knows. Two more
 // paths stay reachable without any variable: a credential helper configured in
