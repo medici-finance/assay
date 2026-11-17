@@ -41,7 +41,7 @@ a path weight. Each brief appears in at most one group, chosen by its recorded s
 
 | Group | Recorded stage | Evidence required | Source |
 |-------|----------------|-------------------|--------|
-| **Delivered; board row held** | `todo` or `in-progress` | the board reconcile lists the row as held and names the merged delivering change | the body of the latest reconcile commit on the default branch, or on the reconcile job's own open change when it passes the check below |
+| **Delivered; board row held** | `todo` or `in-progress` | the board reconcile lists the row as held and names the merged delivering change | the body of the reconcile job's own latest commit: on the default branch that is the second parent of the merge that landed the job's change (the merge's own body may be only the request title), else the head of the job's open change. Both must pass the checks below |
 | **Passed; record or sign-off held** | `implemented` | the latest retained non-implementer outcome record passed every Verify row, and its recorded outcome is not `verified` | the brief's newest record in the `docs/streams/verify-outcomes/` register, newest by the record's own `ts` and read through the register's reader, which also unions any legacy `verify-outcomes*.jsonl` lines |
 | **Verified; completion refused** | `verified` | the completion reader lists the brief as refused or could-not-check | `statusgen --root <dir> --auto-flip-model --dry-run` in a scratch clone pinned to the captured revision, or the output of the latest default-branch run of the same reader |
 
@@ -55,10 +55,13 @@ Rules for the three groups:
   change that fails either test is an unreadable source: the group is **Unknown**. Name the
   head revision and say which of the two the list came from. Only the default-branch commit
   feeds **Shared obstacles**.
-- Check the default-branch commit the same way. Read it only when it is on the default
-  branch's first-parent history and is either authored by the job's own identity or is the
-  merge of the job's fixed-branch change from the same repository. A commit that merely
-  carries a held-rows block in its body is not that source.
+- Check the default-branch source too, and read the job's own commit, never a merge commit's
+  body. Find the latest first-parent merge that the forge confirms merged the job's
+  fixed-branch change from the same repository. Read the held list from that merge's second
+  parent, which must be authored by the job's own identity. A single-parent commit on the
+  first-parent history counts only when the forge ties it to the job's own run: an author
+  name alone proves nothing, because a rebased or squashed contributor commit can carry any
+  author. Anything else is an unreadable source, and the group is **Unknown**.
 - The job commits only when a board row changes, so the latest reconcile commit can be older
   than the captured revision. Give its date beside the captured revision; when it is older,
   the held list is a lower bound. With no such commit to read, `statusgen reconcile --root <dir> --repo <owner/name>` without `--apply`
