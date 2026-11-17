@@ -152,7 +152,7 @@ _Held by per-stream caps: 20 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 41aaa64ab 2026-11-17T15:24:58Z_
+_last regen: 0f974dec9 2026-11-17T15:31:36Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +173,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 41aaa64ab 2026-11-17T15:24:58Z_
+_last regen: 0f974dec9 2026-11-17T15:31:36Z_
 
 **Progress:** 36/100 brief items done.
 
@@ -474,11 +474,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-containers | 09 [exec:strong] | implemented | 2510 | 3 | 46h | verify-desk | dispatch one judge | — | — |
 | measured-status | 06 [exec:strong] | implemented | 2200 | 0 | <1h | verify-desk | triage, then re-bucket | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 2010 | 2 | 46h | verify-desk | dispatch one judge | — | — |
-| desk-tools | 62 [exec:strong] | implemented | 2010 | 2 | — | verify-desk | triage, then re-bucket | — | — |
 | forge-neutral | 17 [exec:strong] | implemented | 2010 | 0 | 46h | verify-desk | triage, then re-bucket | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2010 | 2 | 46h | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 48 [exec:strong] | implemented | 2000 | 2 | <1h | verify-desk | triage, then re-bucket | — | — |
-| desk-tools | 50 [exec:strong] | implemented | 2000 | 2 | 3h | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 50 [exec:strong] | implemented | 2000 | 2 | 4h | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 62 [exec:strong] | implemented | 2000 | 2 | <1h | verify-desk | triage, then re-bucket | — | — |
 | desktools-v2 | 71 [exec:strong] | implemented | 1010 | 0 | 46h | verify-desk | dispatch one judge | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1010 | 0 | 46h | verify-desk | triage, then re-bucket | — | — |
 
