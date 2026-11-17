@@ -38,8 +38,8 @@ func runCmdIn(dir, name string, args ...string) (string, error) {
 	err := cmd.Run()
 	stdout := strings.TrimSpace(out.String())
 	if err != nil {
-		return stdout, fmt.Errorf("%s %s: %w (%s)", name, strings.Join(args, " "),
-			err, deskkit.StripControl(strings.TrimSpace(errb.String())))
+		return stdout, fmt.Errorf("%s %s: %w (%s)", name, deskkit.RedactRemoteArgv(args),
+			err, deskkit.RedactRemoteUserinfo(deskkit.StripControl(strings.TrimSpace(errb.String()))))
 	}
 	return stdout, nil
 }

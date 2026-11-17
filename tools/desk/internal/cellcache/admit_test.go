@@ -167,7 +167,7 @@ func TestCacheAdmitTakesLock(t *testing.T) {
 		{name: "stale estimate", want: "stale", env: func(e *admitEnv) {
 			e.now = func() time.Time { return time.Now().Add(AdmitMaxAge + time.Minute) }
 		}},
-		{name: "future estimate", want: "stale or future", env: func(e *admitEnv) {
+		{name: "future estimate", want: "unstamped or future-dated", env: func(e *admitEnv) {
 			e.now = func() time.Time { return time.Now().Add(-time.Hour) }
 		}},
 		{name: "missing report", want: "no readable recorded measurement", setup: func(t *testing.T, p *Policy) {
@@ -260,7 +260,7 @@ func TestCacheAdmitTakesLock(t *testing.T) {
 			if c.env != nil {
 				c.env(&env)
 			}
-			if _, why := cheapClean(p, false, env); !strings.Contains(why, c.want) {
+			if _, why := cheapClean(p, false, env, AdmitMaxAge); !strings.Contains(why, c.want) {
 				t.Fatalf("cheap test verdict %q, want it to say %q", why, c.want)
 			}
 			r, err := admit(p, false, env)
@@ -273,7 +273,7 @@ func TestCacheAdmitTakesLock(t *testing.T) {
 	p := warmed(t)
 	p.Floor = 1 << 30
 	calls := 0
-	if r, why := cheapClean(p, false, envWith(1<<30+admitBudget/4, &calls)); why != "" || r.Admission != "precheck" {
+	if r, why := cheapClean(p, false, envWith(1<<30+admitBudget/4, &calls), AdmitMaxAge); why != "" || r.Admission != "precheck" {
 		t.Fatalf("exact margin not admitted: %q", why)
 	}
 }

@@ -249,12 +249,12 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 43 | [Incremental forge indexes and dependency-aware invalidation](brief-43-incremental-forge-indexes-and-dependency-aware-invalidation.md) | 11 | M | todo | — | — |
 | 44 | [Shared Git object and fetch reuse qualification trial](brief-44-shared-git-object-and-fetch-reuse-qualification-trial.md) | 11 | M | todo | — | — |
 | 45 | [Forge service fault simulation and scoped cutover qualification](brief-45-forge-service-fault-simulation-and-scoped-cutover-qualification.md) | 12 | L | todo | — | — |
-| 46 | [Pure read-only mirror kernel and conformance](brief-46-pure-read-only-mirror-kernel-and-conformance.md) | 2 | M | todo | — | — |
-| 47 | [Admitted incremental forge readers for mirror ingestion](brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md) | 2 | M | todo | — | — |
+| 46 | [Pure read-only mirror kernel and conformance](brief-46-pure-read-only-mirror-kernel-and-conformance.md) | 2 | M | implemented | — | — |
+| 47 | [Admitted incremental forge readers for mirror ingestion](brief-47-admitted-incremental-forge-readers-for-mirror-ingestion.md) | 2 | M | implemented | — | — |
 | 48 | [Bound native mirror response allocation before decoding](brief-48-bound-native-mirror-response-allocation-before-decoding.md) | 3 | M | todo | — | — |
 | 49 | [Retire claim-decay stored GitHub login fallback](brief-49-retire-claim-decay-stored-github-login-fallback.md) | 0 | S | implemented | — | — |
-| 50 | [Join admitted incremental reads to mirror observations](brief-50-join-admitted-incremental-reads-to-mirror-observations.md) | 4 | M | todo | — | — |
-| 51 | [Store-injected mirror read-through coordinator and shared refresh gate port](brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md) | 3 | M | todo | — | — |
+| 50 | [Join admitted incremental reads to mirror observations](brief-50-join-admitted-incremental-reads-to-mirror-observations.md) | 4 | M | implemented | — | — |
+| 51 | [Store-injected mirror read-through coordinator and shared refresh gate port](brief-51-store-injected-mirror-read-through-coordinator-and-shared-refresh-gate-port.md) | 3 | M | implemented | — | — |
 | 52 | [Canonical PostgreSQL mirror store without execution dependencies](brief-52-canonical-postgresql-mirror-store-without-execution-dependencies.md) | 3 | L | todo | — | — |
 | 53 | [Qualified native mirror attempt accounting and retry metadata](brief-53-qualified-native-mirror-attempt-accounting-and-retry-metadata.md) | 5 | L | todo | — | — |
 | 54 | [Canonical PostgreSQL refresh gate and admitted read-through integration](brief-54-canonical-postgresql-refresh-gate-and-admitted-read-through-integration.md) | 6 | L | done | 2026-11-07 assay-verifier-app[bot] @ 5142af8c66f4 (on-behalf-of human:ian) (forge-identity) | 2026-11-08 human:reviewer |

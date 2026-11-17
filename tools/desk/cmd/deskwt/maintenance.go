@@ -61,7 +61,7 @@ func maintenanceGit(ctx context.Context, dir string, args ...string) deskkit.Too
 func maintenanceRead(ctx context.Context, dir string, args ...string) (string, error) {
 	r := maintenanceGit(ctx, dir, args...)
 	if r.Failed() || r.Stderr != "" {
-		return "", r.Fail(deskkit.ExitUnverifiable, "maintenance inventory: git %s", strings.Join(args, " "))
+		return "", r.Fail(deskkit.ExitUnverifiable, "maintenance inventory: git %s", deskkit.RedactRemoteArgv(args))
 	}
 	return r.Stdout, nil
 }

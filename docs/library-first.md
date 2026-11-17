@@ -276,9 +276,11 @@ CLI keeps its flags, exit classes, TTL and `--fresh` behavior.
 The provider cannot import `deskkit`, because `deskkit` imports it. The controls therefore
 arrive as adapters: `deskkit.CredentialAdapters` hands over the same guard, audit, custody and
 lock functions the CLI used, and a missing adapter refuses. The package stays internal and
-outside statusgen's reach; this is not an SDK. The verbs that still run `desktoken` as a
-child are listed in `tools/desk/README.md` and keep the CLI's rules. Moving them in process
-is deferred to their own changes.
+outside statusgen's reach; this is not an SDK. No desk verb runs `desktoken` as a child to
+obtain a credential any more: the write verbs read it in process (#5457). The only sites that
+still start the CLI are the probes that test the installed binary itself (the boot mint check,
+the preflight cold-mint probe and the release path's binary pin). The callsite inventory in
+`tools/desk/README.md` lists every reader and where it stands.
 
 ## Shared work-reference core — milestone-support/01
 

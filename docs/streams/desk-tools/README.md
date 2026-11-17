@@ -218,15 +218,15 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 37 | [Review workflow semantic oracle and matched cost baseline](brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md) | 1 | M | verified | 2026-11-01 assay-verifier-app[bot] @ ab6803d9f65c (claude-opus-5-5) | — |
 | 38 | [Correct desk performance attribution and counter coverage](brief-38-correct-desk-performance-attribution-and-counter-coverage.md) | 2 | M | implemented | — | — |
 | 39 | [Extract shared review observation and pure planning contracts](brief-39-extract-shared-review-observation-and-pure-planning-contracts.md) | 2 | M | implemented | — | — |
-| 40 | [Deliver one review queue observation and offline planning bridge](brief-40-deliver-one-review-queue-observation-and-offline-planning-bridge.md) | 3 | M | todo | — | — |
-| 41 | [Share exact-source review preparation context](brief-41-share-exact-source-review-preparation-context.md) | 3 | M | todo | — | — |
+| 40 | [Deliver one review queue observation and offline planning bridge](brief-40-deliver-one-review-queue-observation-and-offline-planning-bridge.md) | 3 | M | implemented | — | — |
+| 41 | [Share exact-source review preparation context](brief-41-share-exact-source-review-preparation-context.md) | 3 | M | implemented | — | — |
 | 42 | [Narrow issue discovery projections before enrichment](brief-42-narrow-issue-discovery-projections-before-enrichment.md) | 3 | M | implemented | — | — |
 | 43 | [Migrate review callers with qualified versions and rollback](brief-43-migrate-review-callers-with-qualified-versions-and-rollback.md) | 4 | M | todo | — | — |
 | 44 | [Qualify complete workflow cost and last-consumer retirement](brief-44-qualify-complete-workflow-cost-and-last-consumer-retirement.md) | 5 | M | todo | — | — |
 | 45 | [Expose the canonical verification queue to its consumers](brief-45-expose-the-canonical-verification-queue-to-its-consumers.md) | 1 | M | implemented | — | — |
 | 46 | [Reuse accepted verification inputs to stop repeated PASS dispatch](brief-46-reuse-accepted-verification-inputs-to-stop-repeated-pass-dispatch.md) | 3 | M | todo | — | — |
 | 47 | [Resume interrupted Evidence landing through the existing sanctioned paths](brief-47-resume-interrupted-evidence-landing-through-the-existing-sanctioned-paths.md) | 4 | M | todo | — | — |
-| 48 | [Report remaining landing capacity from the enforced budget owners](brief-48-report-remaining-landing-capacity-from-the-enforced-budget-owners.md) | 2 | M | todo | — | — |
+| 48 | [Report remaining landing capacity from the enforced budget owners](brief-48-report-remaining-landing-capacity-from-the-enforced-budget-owners.md) | 2 | M | implemented | — | — |
 | 49 | [Deduplicate verifier filings by their canonical work identity](brief-49-deduplicate-verifier-filings-by-their-canonical-work-identity.md) | 1 | M | todo | — | — |
 | 50 | [Bind verifier environment evidence to the run admission](brief-50-bind-verifier-environment-evidence-to-the-run-admission.md) | 1 | M | implemented | — | — |
 | 51 | [Drive the verifier skill from the current queue and landing contract](brief-51-drive-the-verifier-skill-from-the-current-queue-and-landing-contract.md) | 5 | M | todo | — | — |
@@ -239,7 +239,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 59 | [Remove incidental prune mutation fixture work](brief-59-remove-incidental-prune-mutation-fixture-work.md) | 1 | M | implemented | — | — |
 | 60 | [Operate is human, and the gate ladder — what an agent fleet owns, what a human owns, and the written condition under which a human gate may ever widen (every threshold recorded as not set)](brief-60-operate-is-human-and-the-gate-ladder.md) | 1 | S | todo | — | — |
 | 61 | [Declare the secret scan's benign shapes in one registry, each entry bounded by a refusal it must keep](brief-61-benign-shape-registry.md) | 1 | L | todo | — | — |
-| 62 | [Name the file, line and side of a branch-diff secret-scan refusal, not its line in the stripped diff](brief-62-diff-finding-file-line.md) | 1 | M | todo | — | — |
+| 62 | [Name the file, line and side of a branch-diff secret-scan refusal, not its line in the stripped diff](brief-62-diff-finding-file-line.md) | 1 | M | implemented | — | — |
 | 63 | [Admit the open false-positive shapes as registry entries, each with the refusals that bound it, and cap word-shaped admission](brief-63-registry-acceptance-shapes.md) | 2 | L | todo | — | — |
 | 64 | [Decide which lines of a branch diff the secret scan reads, and pin the answer](brief-64-diff-scan-scope.md) | 2 | M | todo | — | — |
 | 65 | [Read each Verify row's disposition from a field the verifier tooling writes, not from Evidence prose](brief-65-structured-verify-disposition.md) | 1 | L | todo | — | — |

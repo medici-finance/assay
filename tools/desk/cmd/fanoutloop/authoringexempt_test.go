@@ -18,7 +18,7 @@ import (
 func withPlanTransports(t *testing.T, prs []deskkit.PRRef, files func(repo string, n int) ([]deskkit.ChangedFile, error)) {
 	t.Helper()
 	oldPRs, oldFiles := representedPRs, representedPRFiles
-	representedPRs = func(string) ([]deskkit.PRRef, error) { return prs, nil }
+	representedPRs = func(string) ([]deskkit.PRRef, bool, error) { return prs, false, nil }
 	representedPRFiles = files
 	t.Cleanup(func() { representedPRs, representedPRFiles = oldPRs, oldFiles })
 }
