@@ -104,3 +104,34 @@ func TestOpenersUnknownExtension(t *testing.T) {
 		}
 	}
 }
+
+// TestOpenersBareRepo: every opener reads a bare repository given its own
+// path, as go-git's raw opener did before qualgen moved to gitcore. The bare
+// path keeps the same extension handling: worktreeConfig is tolerated and an
+// unknown extension still refuses.
+//
+// regression: F-bare-repo-regression
+func TestOpenersBareRepo(t *testing.T) {
+	f := newExtFixture(t)
+	bare := filepath.Join(t.TempDir(), "bare.git")
+	gitCmd(t, f.main, "clone", "-q", "--bare", f.main, bare)
+	check := func(phase string, wantRead bool) {
+		t.Helper()
+		for opener, e := range openErrs(t, f, bare) {
+			if wantRead && e != "" {
+				t.Errorf("%s: %s on bare refused: %s", phase, opener, e)
+			}
+			if !wantRead && e == "" {
+				t.Errorf("%s: %s on bare read the repository; it must refuse", phase, opener)
+			}
+		}
+	}
+	check("baseline", true)
+	gitCmd(t, bare, "config", "core.repositoryformatversion", "0")
+	gitCmd(t, bare, "config", "extensions.worktreeConfig", "true")
+	check("worktreeConfig=true", true)
+	gitCmd(t, bare, "config", "--unset", "extensions.worktreeConfig")
+	gitCmd(t, bare, "config", "core.repositoryformatversion", "1")
+	gitCmd(t, bare, "config", "extensions.frobnicate", "true")
+	check("unknown extension", false)
+}
