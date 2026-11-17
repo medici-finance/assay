@@ -40,7 +40,19 @@ type auditLock struct{ l *deskkit.AuditLock }
 // early is one step from "assume free" — the exact failure a fail-closed tool forbids. 60s stays.
 var lockWait = 60 * time.Second
 
+// lockGranted, when a test sets it, is told the wait each lock acquisition is granted. It lets a
+// test assert the run's waits add up to one lockWait by counting them, not by timing the run on
+// a runner whose load it does not control (#6738). Production leaves it nil.
+var lockGranted func(lock string, wait time.Duration)
+
+func grantWait(lock string, wait time.Duration) {
+	if lockGranted != nil {
+		lockGranted(lock, wait)
+	}
+}
+
 func acquireAuditLock(wait time.Duration) (*auditLock, error) {
+	grantWait("audit", wait)
 	dir, err := deskDir()
 	if err != nil {
 		return nil, deskkit.Unverifiable("cannot resolve desk-tools dir (HOME missing?)", err)
@@ -239,6 +251,7 @@ func (p *prepLock) release() {
 // after the wait is contention, classed exactly as the audit lock's (#6227): the audit line
 // says contended, which neither the write budget nor the circuit breaker counts.
 func acquirePrepLock(key, abs string, wait time.Duration) (*prepLock, error) {
+	grantWait("prep", wait)
 	dir, err := deskDir()
 	if err != nil {
 		return nil, deskkit.Unverifiable("cannot resolve desk-tools dir (HOME missing?)", err)

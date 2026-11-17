@@ -1,0 +1,2 @@
+### Fixed
+- The forge-local authority producer now frees a connection's slot before it closes that connection, so an operator's back-to-back control requests are no longer refused as `held` when the previous request's handler had not yet released the single control slot. This was the cause of the intermittent `TestLocalAuthorityPrivateControlProtocol` failure ("data channel modified authority"). Every channel shares the one handler path, and the test fixture now asserts an idle slot pool after its startup reads instead of waiting for one.
