@@ -12,5 +12,7 @@ func sgHotfixOwnedBy(uid uint32) func(string) error {
 	}
 }
 
-// sgHotfixOwnedByRoot on Windows refuses every path, as sgHotfixOwnedBy does.
-func sgHotfixOwnedByRoot(root uint32) func(string) error { return sgHotfixOwnedBy(root) }
+// sgHotfixOwnedByNS on Windows refuses every path, as sgHotfixOwnedBy does.
+func sgHotfixOwnedByNS(uid uint32, _ func(string) ([]byte, error), _ string) func(string) error {
+	return sgHotfixOwnedBy(uid)
+}
