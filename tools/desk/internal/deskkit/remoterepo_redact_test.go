@@ -105,8 +105,8 @@ func TestRedactPunctInPassword(t *testing.T) {
 	keys := map[string]string{
 		"url.https://user:" + "pre'tail" + "@example.invalid/.insteadof": "url.https://<redacted>@example.invalid/.insteadof",
 		"url.user:pretail@example.invalid:.pushinsteadof":                "url.<redacted>@example.invalid:.pushinsteadof",
-		"url.ssh://git@example.invalid/.insteadof":                       "url.ssh://git@example.invalid/.insteadof",
-		"url.ssh://pretail@example.invalid/.insteadof":                   "url.ssh://<redacted>@example.invalid/.insteadof",
+		"url.ssh://git@github.com/.insteadof":                            "url.ssh://git@github.com/.insteadof",
+		"url.ssh://pretail@github.com/.insteadof":                        "url.ssh://<redacted>@github.com/.insteadof",
 		"remote.origin.pushurl":                                          "remote.origin.pushurl",
 	}
 	for in, want := range keys {
