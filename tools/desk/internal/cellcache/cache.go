@@ -51,15 +51,26 @@ type Report struct {
 	// because the test could not. Empty for every other caller.
 	Admission string `json:"admission,omitempty"`
 	// reclaimable marks a bounded launch refusal that one explicit clean can
-	// clear: the recorded size or free-space margin, or a measurement that has
-	// aged or been overtaken by a top-level change. It is not serialized.
+	// clear: the recorded size or free-space margin, or a measurement that is
+	// aged, unstamped, future-dated, missing or overtaken by a top-level
+	// change. It is not serialized.
 	reclaimable bool
+	// stale marks a bounded launch refusal whose reason is only that the
+	// recorded measurement cannot be leaned on: aged, unstamped, future-dated
+	// or missing. A stale refusal is also reclaimable. It is not serialized.
+	stale bool
 }
 
+// Stale reports whether this bounded launch refusal is only that the recorded
+// measurement is aged, unstamped, future-dated or missing, so that one fresh
+// measurement (Check, not dry) decides the launch. Size or free-space pressure
+// on a fresh measurement, and every refusal Reclaimable rejects, are not stale.
+func (r Report) Stale() bool { return r.stale }
+
 // Reclaimable reports whether this bounded launch refusal is one that a single
-// clean (Check, not dry) may clear. Ownership, domain, corrupt, dirty or
-// missing accounting and an empty cache short of space are never reclaimable;
-// those stay with the operator.
+// clean (Check, not dry) may clear. Ownership, domain, corrupt or dirty
+// accounting and an empty cache short of space are never reclaimable; those
+// stay with the operator.
 func (r Report) Reclaimable() bool { return r.reclaimable }
 
 // LowWaterTrim is what one low-water trim set out to do and whether it got
