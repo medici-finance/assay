@@ -1,3 +1,3 @@
 ### Fixed
-- The `forge-local-authority` CI job now prints a failing qualification call's exit code (or timeout) and the last 200 lines of its stderr and stdout before reporting `UNQUALIFIED: <label>`, so a red can be read as a flake or a real failure from the log alone.
-- The production-controls step of that job now also prints the last 200 lines of the nested `go test -v` run behind a failed baseline, uncaught mutant, failed restore or timeout, so the log shows which test failed and why.
+- The `forge-local-authority` CI job now prints a failing qualification call's exit code (or timeout) and the last 200 lines of its stderr and stdout before reporting `UNQUALIFIED: <label>`.
+- When a production control fails, the job log now names the control, the failing stage (baseline, uncaught mutant, restored run, or a timeout), its exit code, and the last 150 lines of that stage's nested `go test -v` run, so the log shows which test failed and what it printed last. Whether that failure is a flake or a real one can still need a re-run of the job at the same commit.

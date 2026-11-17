@@ -1,7 +1,7 @@
 {
-  "test": "go test ./internal/forgeservice/auth/ -count=1 -run 'TestQualifyFixtureShowsOutput|TestMutationsScriptShowsNestedOutput|TestForgeLocalAuthorityCI'",
+  "test": "go test ./internal/forgeservice/auth/ -count=1 -run 'TestQualifyFixtureShowsOutput|TestMutationsShowNestedOutput|TestForgeLocalAuthorityCI'",
   "control": {
-    "name": "CONTROL \u2014 the nonzero-exit branch raises without printing anything",
+    "name": "CONTROL — the nonzero-exit branch raises without printing anything",
     "file": "internal/forgeservice/auth/testdata/qualify_fixture.py",
     "old": "            show_output(label, \"exit %d\" % result.returncode, result.stdout, result.stderr)\n",
     "new": ""
@@ -66,6 +66,12 @@
       "file": "internal/forgeservice/auth/testdata/local_authority_mutations.py",
       "old": "tail = lines[-TAIL_LINES:]",
       "new": "tail = lines"
+    },
+    {
+      "name": "the nested tail no longer fits inside the qualification call's own 200-line tail",
+      "file": "internal/forgeservice/auth/testdata/local_authority_mutations.py",
+      "old": "TAIL_LINES = 150",
+      "new": "TAIL_LINES = 200"
     }
   ]
 }

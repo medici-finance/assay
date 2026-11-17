@@ -17,7 +17,9 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[6]
 MODULE = ROOT / "tools/desk"
 OWNER = Path("internal/forgeservice/auth")
-TAIL_LINES = 200
+# Stays well under qualify_fixture.py's own 200-line stderr tail, which this
+# block and the traceback after it must fit inside to reach the job log.
+TAIL_LINES = 150
 
 def show_tail(label, outcome, text):
     """Print a bounded, labelled tail of a nested go test run's output to stderr."""

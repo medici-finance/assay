@@ -4,6 +4,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -51,7 +53,7 @@ m.main()
 `
 
 // regression: #6082
-func TestMutationsScriptShowsNestedOutput(t *testing.T) {
+func TestMutationsShowNestedOutput(t *testing.T) {
 	python, err := exec.LookPath("python3")
 	if err != nil {
 		t.Fatal("could-not-check: python3 is required to drive local_authority_mutations.py")
@@ -64,27 +66,43 @@ func TestMutationsScriptShowsNestedOutput(t *testing.T) {
 	if err := os.WriteFile(packet, []byte("{}\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// first is the oldest line inside the 200-line tail; cut is the newest line beyond it.
+	// The production-controls call's stderr reaches the job log through
+	// qualify_fixture.py's own tail, so the whole nested block must fit inside it.
+	fixture, err := os.ReadFile(filepath.Join(testdata, "qualify_fixture.py"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound := regexp.MustCompile(`(?m)^TAIL_LINES = (\d+)$`).FindSubmatch(fixture)
+	if bound == nil {
+		t.Fatal("could-not-check: qualify_fixture.py declares no TAIL_LINES bound")
+	}
+	outer, err := strconv.Atoi(string(bound[1]))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// first is the oldest line inside the 150-line tail; cut is the newest line beyond it.
 	cases := []struct{ mode, label, outcome, raised, total, first, cut string }{
-		{"baseline", "construction-policy-baseline", "exit 1", "UNQUALIFIED baseline: construction-policy\n", "250", "0051", "0050"},
-		{"mutant", "construction-policy-mutant", "exit 0", "RuntimeError: NOT CAUGHT by independent compiling witness: construction-policy\n", "251", "0052", "0051"},
-		{"restored", "construction-policy-restored", "exit 1", "restored baseline failed: construction-policy\n", "250", "0051", "0050"},
-		{"timeout", "construction-policy-baseline", "timeout after 330s", "subprocess.TimeoutExpired", "250", "0051", "0050"},
+		{"baseline", "construction-policy-baseline", "exit 1", "UNQUALIFIED baseline: construction-policy\n", "250", "0101", "0100"},
+		{"mutant", "construction-policy-mutant", "exit 0", "RuntimeError: NOT CAUGHT by independent compiling witness: construction-policy\n", "251", "0102", "0101"},
+		{"restored", "construction-policy-restored", "exit 1", "restored baseline failed: construction-policy\n", "250", "0101", "0100"},
+		{"timeout", "construction-policy-baseline", "timeout after 330s", "subprocess.TimeoutExpired", "250", "0101", "0100"},
 	}
 	for _, c := range cases {
 		t.Run(c.mode, func(t *testing.T) {
 			cmd := exec.Command(python, "-c", mutationsHarness, testdata, c.mode)
 			// TMPDIR keeps the script's receipt directories inside the test's own scratch.
 			cmd.Env = append(os.Environ(), "TMPDIR="+t.TempDir(), "AUTH57_CUSTODY_INPUT="+packet, "PYTHONDONTWRITEBYTECODE=1", "KUBECONFIG=/dev/null")
-			out, err := cmd.CombinedOutput()
-			if err == nil {
-				t.Fatalf("the failing %s check exited 0:\n%s", c.mode, out)
+			var stdout, stderr strings.Builder
+			cmd.Stdout, cmd.Stderr = &stdout, &stderr
+			if cmd.Run() == nil {
+				t.Fatalf("the failing %s check exited 0:\n%s%s", c.mode, stdout.String(), stderr.String())
 			}
-			text := string(out)
+			text := stderr.String()
+			header := "UNQUALIFIED call " + c.label + ": " + c.outcome
 			var missing []string
 			for _, want := range []string{
-				"UNQUALIFIED call " + c.label + ": " + c.outcome + "\n",
-				"----- begin " + c.label + ".log (last 200 of " + c.total + " lines) -----\n",
+				header + "\n",
+				"----- begin " + c.label + ".log (last 150 of " + c.total + " lines) -----\n",
 				"example-go-" + c.first + "\n", "example-go-0250\n",
 				"----- end " + c.label + ".log -----\n",
 				c.raised,
@@ -94,7 +112,17 @@ func TestMutationsScriptShowsNestedOutput(t *testing.T) {
 				}
 			}
 			if len(missing) > 0 || strings.Contains(text, "example-go-"+c.cut+"\n") {
-				t.Fatalf("nested go test output missing %q (or shown beyond its 200-line tail):\n%s", missing, text)
+				t.Errorf("nested go test output missing from stderr %q (or shown beyond its 150-line tail):\n%s", missing, text)
+			}
+			lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
+			at := -1
+			for i, line := range lines {
+				if line == header {
+					at = i
+				}
+			}
+			if at < 0 || len(lines)-at > outer {
+				t.Errorf("the nested block's header is not inside qualify_fixture.py's last %d stderr lines (%d lines from it to the end), so the job log would cut it", outer, len(lines)-at)
 			}
 		})
 	}
