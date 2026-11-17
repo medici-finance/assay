@@ -204,13 +204,18 @@ RUN git config --system --add safe.directory /work
 # Binaries onto PATH (desk-tools suite + statusgen + bugs-gc).
 COPY --from=toolkit /out/ /usr/local/bin/
 
-# Install-mode gate, the last layer-writing step: every file on PATH here is
-# root:root and writable by root alone. A COPY from the build context keeps the
-# checkout's mode unless it names --chmod, so a checkout made under umask 002
-# would otherwise ship group-writable binaries.
+# Install-mode gate, the last layer-writing step: every path on PATH here is
+# root:root, carries no set-id bit and is writable by root alone (no bit of
+# mode 6022). A COPY from the build context keeps the checkout's mode unless it
+# names --chmod, so a checkout made under umask 002 would otherwise ship
+# group-writable binaries. A symlink fails too: its own mode says nothing about
+# the file it points at. The root is tested to exist first: find on a missing
+# root only writes to stderr, the pipeline's status is grep's, and the gate
+# would pass on a tree it never read.
 RUN set -eu; \
-    if find /usr/local/bin -xdev ! -type l \( -perm /022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
-        echo "an installed file is not root:root or is writable by its group or others" >&2; \
+    test -d /usr/local/bin; \
+    if find /usr/local/bin -xdev \( -type l -o -perm /6022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "an installed path is a symlink, is set-id, is not root:root, or is writable by its group or others" >&2; \
         exit 1; \
     fi
 

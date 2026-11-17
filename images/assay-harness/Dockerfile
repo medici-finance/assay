@@ -203,13 +203,19 @@ LABEL org.opencontainers.image.title="assay-harness" \
 # Non-root by construction: a worker Job is ephemeral and clones into HOME; the
 # uid is fixed so a securityContext can pin runAsUser without reading the image.
 # The same RUN is the install-mode gate, and the last layer-writing step: every
-# file installed on PATH or under the plugin seed is root:root and writable by
-# root alone. A COPY from the build context keeps the checkout's mode unless it
-# names --chmod, so a checkout made under umask 002 would otherwise ship
-# group-writable binaries and hooks.
+# path installed on PATH or under the plugin seed is root:root, carries no
+# set-id bit and is writable by root alone (no bit of mode 6022). A COPY from
+# the build context keeps the checkout's mode unless it names --chmod, so a
+# checkout made under umask 002 would otherwise ship group-writable binaries and
+# hooks. A symlink fails too: its own mode says nothing about the file it points
+# at. Each root is tested to exist first: find on a missing root only writes to
+# stderr, the pipeline's status is grep's, and the gate would pass on a tree it
+# never read.
 RUN set -eu; \
-    if find /usr/local/bin /opt/assay -xdev ! -type l \( -perm /022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
-        echo "an installed file is not root:root or is writable by its group or others" >&2; \
+    test -d /usr/local/bin; \
+    test -d /opt/assay; \
+    if find /usr/local/bin /opt/assay -xdev \( -type l -o -perm /6022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "an installed path is a symlink, is set-id, is not root:root, or is writable by its group or others" >&2; \
         exit 1; \
     fi; \
     useradd --create-home --uid 10001 --shell /usr/sbin/nologin harness

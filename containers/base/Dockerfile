@@ -303,9 +303,16 @@ RUN set -eux; \
 # grep pass); the ldd check catches a shared library the apt list above stopped
 # providing (git-remote-http carries the libcurl link). /usr/local must be
 # root-owned throughout, since git now lives there. Nothing installed under
-# /usr/local or /opt/assay may be writable by its group or others: a COPY from
-# the build context keeps the checkout's mode unless it names --chmod, so a
-# checkout made under umask 002 would otherwise ship group-writable files on PATH.
+# /usr/local or /opt/assay may be set-id or writable by its group or others (no
+# bit of mode 6022): a COPY from the build context keeps the checkout's mode
+# unless it names --chmod, so a checkout made under umask 002 would otherwise
+# ship group-writable files on PATH. Both roots are tested to exist first: find
+# on a missing root only writes to stderr, the pipeline's status is grep's, and
+# the gate would pass on a tree it never read. Any symlink under /opt/assay
+# fails, since its own mode says nothing about its target. /usr/local holds
+# legitimate in-root links (the node archive's npm, npx and corepack, and
+# base-files' /usr/local/man), so there a link fails only if it dangles or
+# resolves outside /usr/local, whose files the first find already checks.
 RUN set -eux; \
     test "$(/usr/local/bin/git version)" = "git version 2.56.1"; \
     test -x /usr/local/bin/git; \
@@ -318,8 +325,22 @@ RUN set -eux; \
         echo "/usr/local holds files not owned by root:root" >&2; \
         exit 1; \
     fi; \
-    if find /usr/local /opt/assay -xdev ! -type l \( -perm /022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
-        echo "an installed file is not root:root or is writable by its group or others" >&2; \
+    test -d /usr/local; \
+    test -d /opt/assay; \
+    if find /usr/local -xdev ! -type l \( -perm /6022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "an installed file is set-id, is not root:root, or is writable by its group or others" >&2; \
+        exit 1; \
+    fi; \
+    if find /usr/local -xdev -xtype l -print | grep .; then \
+        echo "a symlink under /usr/local dangles" >&2; \
+        exit 1; \
+    fi; \
+    if find /usr/local -xdev -type l -exec realpath -m {} + | grep -v '^/usr/local/'; then \
+        echo "a symlink under /usr/local resolves outside it" >&2; \
+        exit 1; \
+    fi; \
+    if find /opt/assay -xdev \( -type l -o -perm /6022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "a path under /opt/assay is a symlink, is set-id, is not root:root, or is writable by its group or others" >&2; \
         exit 1; \
     fi; \
     git-floor-check
