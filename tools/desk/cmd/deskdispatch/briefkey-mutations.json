@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 300s -run 'TestBriefKey|TestExplicitBriefUnchanged|TestIssueKeyStillSkips'",
+  "test": "go test ./cmd/deskdispatch/ -count=1 -timeout 300s -run 'TestBriefKey|TestExplicitBriefUnchanged|TestIssueKeyStillSkips|TestPhantomKeyOnlyPartialAdmits'",
   "control": {
     "name": "CONTROL — the item key names no brief (the pre-#6173 behaviour); TestBriefKeyGateFires must go red",
     "file": "cmd/deskdispatch/dispatch.go",
@@ -72,6 +72,12 @@
       "file": "cmd/deskdispatch/briefkey.go",
       "old": "lerr == nil && fi.Mode()&fs.ModeSymlink != 0 {",
       "new": "false && lerr == nil && fi.Mode()&fs.ModeSymlink != 0 {"
+    },
+    {
+      "name": "#6751 the phantom check reads the raw options again, so a key-only dispatch never reads the key-named brief's delivery: list and refuses a partially delivered row as already DELIVERED; TestPhantomKeyOnlyPartialAdmits must go red",
+      "file": "cmd/deskdispatch/dispatch.go",
+      "old": "\tfollowUp, err := phantomCheckFor(plan.gateOpts(o), repo, plan.dl)",
+      "new": "\tfollowUp, err := phantomCheckFor(o, repo, plan.dl)"
     }
   ]
 }

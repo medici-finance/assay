@@ -754,7 +754,8 @@ type dispatchPlan struct {
 	gateHuman bool
 	// keyBrief is the brief the ITEM KEY names, read for the human gate when no --brief was given
 	// (#6173, briefkey.go): absolute path, and its shown spelling. Empty when --brief was given or
-	// the key is not brief-shaped. Only the gate steps read it (gateOpts).
+	// the key is not brief-shaped. Only the gate steps and the phantom check's `delivery:` set-aside
+	// (#6751) read it, both through gateOpts.
 	keyBrief, keyBriefShown string
 	// claimKey is the key the durable claim is taken (and later released) under —
 	// derived once from the item key by claimKeyFor, so the acquire call and the release
@@ -1210,7 +1211,8 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	plan.gateHuman = o.gateHuman
 	// No --brief: a brief-shaped item key still names a brief, and its `gate: human` binds the same
 	// way (#6173). It is resolved here, pre-claim, and a key whose brief cannot be read is REFUSED
-	// rather than reported as "not human-gated". It feeds the gate steps only (gateOpts).
+	// rather than reported as "not human-gated". It feeds the gate steps and the phantom check's
+	// `delivery:` set-aside (gateOpts).
 	if !plan.gateHuman && strings.TrimSpace(o.brief) == "" {
 		kb, shown, kerr := keyBriefFn(o)
 		if kerr != nil {
