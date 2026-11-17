@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 // rowCredMarker is the planted stored login. A row that prints it found it.
@@ -112,8 +113,10 @@ func TestAdmittedRowsNoCred(t *testing.T) {
 			if rowHome == "" || rowHome == planted || strings.HasPrefix(rowHome, planted+string(os.PathSeparator)) {
 				t.Fatalf("admitted row HOME = %q, want a fresh directory outside the invoking HOME %q", rowHome, planted)
 			}
-			if _, err := os.Stat(rowHome); !os.IsNotExist(err) {
-				t.Fatalf("the row's HOME %q outlived the run (stat: %v)", rowHome, err)
+			for _, dir := range []string{rowHome, filepath.Dir(filepath.Dir(rowHome))} {
+				if _, err := os.Stat(dir); !os.IsNotExist(err) {
+					t.Fatalf("the row's HOME or the run's scratch %q outlived the run (stat: %v)", dir, err)
+				}
 			}
 			if os.Getenv("HOME") != planted || os.Getenv("DESK_LOOP") != "verify-desk" {
 				t.Fatal("the invoking process lost its own HOME or DESK_LOOP")
@@ -128,7 +131,8 @@ func TestAdmittedEnvScrubsCred(t *testing.T) {
 	gone := []string{"HOME=/h", "Home=/h", "DESK_LOOP=verify-desk", "desk_loop=x",
 		"XDG_CONFIG_HOME=/h/.config", "CELLCTL_GH_AMBIENT=x", "GH_CONFIG_DIR=/h/gh",
 		"GH_HOST=example.invalid", "gh_anything=x", "ASSAY_APP_PEM_FILE=/k", "Assay_Roster=x",
-		"GIT_CONFIG_GLOBAL=/h/.gitconfig"}
+		"GIT_CONFIG_GLOBAL=/h/.gitconfig", runCredentialEnv + "=/elsewhere",
+		rowreadSocketVar + "=/elsewhere/sock"}
 	kept := []string{"PATH=/bin", "HOMEBREW_PREFIX=/opt", "DESK_SESSION=s", "XDG_CACHE_HOME=/c",
 		"GHOST=x", "MY_ASSAY_NOTE=x", "GIT_CONFIG_GLOBAL=" + os.DevNull}
 	env := admittedRowEnv(append(append([]string{}, gone...), kept...))
@@ -171,5 +175,108 @@ func TestRowreadBrokerClosed(t *testing.T) {
 	stop()
 	if code := rowreadForward(sock, []string{"comments", "--issue", "example-org/one#7"}, &out, &errb); code != rowreadExitCouldNot {
 		t.Fatalf("unreachable run: exit %d, want %d (could-not-check)", code, rowreadExitCouldNot)
+	}
+}
+
+// regression: #6770
+// TestAdmittedRowOwnHome: each row of an admitted run gets its own fresh,
+// empty HOME and TMPDIR, so a row finds nothing an earlier row of the same run
+// left there. Each is removed when its row ends.
+func TestAdmittedRowOwnHome(t *testing.T) {
+	plan := resolveShellPlan()
+	if !plan.ok {
+		t.Skip("no runnable shell: " + plan.reason)
+	}
+	plan.env = admittedRowEnv(os.Environ())
+	plan.rowScratch = t.TempDir()
+	row := `[ -z "$(ls -A "$HOME")" ] && [ -z "$(ls -A "$TMPDIR")" ] || { echo left-behind; exit 3; }; ` +
+		`echo x > "$HOME/planted"; echo x > "$TMPDIR/planted"; printf 'home=%s\ntmp=%s\n' "$HOME" "$TMPDIR"`
+	var seen []string
+	for i := 0; i < 2; i++ {
+		got := runVerifyCommandWith(t.TempDir(), row, 30*time.Second, nil, plan, rowShellSh)
+		if got.couldNotRun || got.exit != 0 {
+			t.Fatalf("row %d: %+v (output %q)", i+1, got, got.output)
+		}
+		for _, line := range strings.Split(string(got.output), "\n") {
+			_, dir, ok := strings.Cut(line, "=")
+			if !ok || (!strings.HasPrefix(line, "home=") && !strings.HasPrefix(line, "tmp=")) {
+				continue
+			}
+			if !strings.HasPrefix(dir, plan.rowScratch+string(os.PathSeparator)) {
+				t.Errorf("row %d: %s is not under the run's scratch", i+1, line)
+			}
+			if _, err := os.Stat(dir); !os.IsNotExist(err) {
+				t.Errorf("row %d: %s outlived its row (stat: %v)", i+1, line, err)
+			}
+			seen = append(seen, dir)
+		}
+	}
+	if len(seen) != 4 || seen[0] == seen[2] || seen[1] == seen[3] {
+		t.Fatalf("two rows did not get a HOME and TMPDIR each of their own: %q", seen)
+	}
+}
+
+// regression: #6770
+// TestAdmittedRunCredAfterScrub: the scrub removes every inherited ASSAY_*
+// variable, the run credential's own name included, and the run then hands
+// its read-only credential path to a forge-reading row after the scrub. A row
+// that reads no forge gets no path. Both get their own HOME.
+func TestAdmittedRunCredAfterScrub(t *testing.T) {
+	plan := resolveShellPlan()
+	if !plan.ok {
+		t.Skip("no runnable shell: " + plan.reason)
+	}
+	path := rcCredFile(t, rcRead)
+	prev := runReadCredentialMint
+	runReadCredentialMint = func(string, string) (string, error) { return "", nil }
+	t.Cleanup(func() { runReadCredentialMint = prev })
+	cred := &runReadCredential{repo: "example-org/one"}
+	cred.once.Do(func() { cred.path, cred.secret = path, rcMinted })
+	t.Setenv(runCredentialEnv, "/inherited/elsewhere")
+	t.Setenv("ASSAY_ROLE_KEY_FILE", "/inherited/role.key")
+	plan.env = admittedRowEnv(os.Environ())
+	plan.readCred = cred
+	plan.rowScratch = t.TempDir()
+	show := `printf 'cred=%s\nkey=%s\nhome=%s\n' "${` + runCredentialEnv + `:-none}" "${ASSAY_ROLE_KEY_FILE:-none}" "$HOME"`
+	for command, want := range map[string]string{
+		show + " # --acceptance-forge": "cred=" + path + "\nkey=none\nhome=" + plan.rowScratch,
+		show:                           "cred=none\nkey=none\nhome=" + plan.rowScratch,
+	} {
+		got := runVerifyCommandWith(t.TempDir(), command, 30*time.Second, nil, plan, rowShellSh)
+		if got.couldNotRun || got.exit != 0 {
+			t.Fatalf("row did not run: %+v", got)
+		}
+		if !strings.Contains(string(got.output), want) {
+			t.Errorf("%q: row saw %q, want it to start %q", command, got.output, want)
+		}
+	}
+}
+
+// regression: #6770
+// TestAdmittedRunHandsCred: end to end through verifyrun, an admitted run
+// hands its own read-only credential path to a --acceptance-forge row after
+// the scrub, never the path an inherited variable named.
+func TestAdmittedRunHandsCred(t *testing.T) {
+	root, _ := admittedFixture(t, true)
+	prev := runReadCredentialMint
+	runReadCredentialMint = func(_, out string) (string, error) {
+		if err := os.WriteFile(out+".perms", []byte(rcRead), 0o600); err != nil {
+			return "", err
+		}
+		return out, os.WriteFile(out, []byte(rcMinted), 0o600)
+	}
+	t.Cleanup(func() { runReadCredentialMint = prev })
+	t.Setenv(runCredentialEnv, "/inherited/elsewhere")
+	rec := filepath.Join(t.TempDir(), "cred")
+	row := `printf '%s' "${` + runCredentialEnv + `:-none}" > '` + rec + `' # --acceptance-forge`
+	if code := verifyrunRow(t, root, row); code != verifyrunExitPass {
+		t.Fatalf("admitted forge row exit %d, want pass", code)
+	}
+	b, err := os.ReadFile(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := string(b); got == "none" || got == "/inherited/elsewhere" || filepath.Base(got) != "read-credential" {
+		t.Fatalf("admitted forge row saw credential path %q, want the run's own", got)
 	}
 }

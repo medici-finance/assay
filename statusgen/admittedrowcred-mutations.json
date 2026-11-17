@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed)$' -count=1 -timeout 600s",
+  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred)$' -count=1 -timeout 600s",
   "control": {
     "name": "admitted rows keep every credential pointer",
     "file": "verifieradmission.go",
@@ -50,12 +50,6 @@
       "new": "return key == \"GIT_CONFIG_GLOBAL\" && (value == os.DevNull || strings.HasSuffix(value, \".gitconfig\"))"
     },
     {
-      "name": "rows get no HOME of their own",
-      "file": "verifieradmission.go",
-      "old": "\tadd := []string{\"HOME=\" + home}\n",
-      "new": "\tadd := []string{}\n"
-    },
-    {
       "name": "the rows' scratch outlives the run",
       "file": "verifyrun.go",
       "old": "\t\tdefer removeRowScratch(scratch)\n",
@@ -84,6 +78,48 @@
       "file": "rowreadbroker.go",
       "old": "\t\tfmt.Fprintf(stderr, \"statusgen rowread: could-not-check: the run's row-read socket is unreachable: %v\\n\", err)\n\t\treturn rowreadExitCouldNot",
       "new": "\t\treturn rowreadExitOK"
+    },
+    {
+      "name": "rows get no HOME of their own",
+      "file": "verifieradmission.go",
+      "old": "\treturn dir, []string{\"HOME=\" + home, \"TMPDIR=\" + tmp}, nil\n",
+      "new": "\treturn dir, []string{\"TMPDIR=\" + tmp}, nil\n"
+    },
+    {
+      "name": "rows get no TMPDIR of their own",
+      "file": "verifieradmission.go",
+      "old": "\treturn dir, []string{\"HOME=\" + home, \"TMPDIR=\" + tmp}, nil\n",
+      "new": "\treturn dir, []string{\"HOME=\" + home}, nil\n"
+    },
+    {
+      "name": "rows share one HOME across the run",
+      "file": "verifieradmission.go",
+      "old": "\tdir, err := os.MkdirTemp(scratch, \"row-\")\n",
+      "new": "\tdir, err := filepath.Join(scratch, \"row\"), os.MkdirAll(filepath.Join(scratch, \"row\"), 0o700)\n\tos.RemoveAll(filepath.Join(dir, \"home\"))\n\tos.RemoveAll(filepath.Join(dir, \"tmp\"))\n"
+    },
+    {
+      "name": "a row's own HOME outlives the row",
+      "file": "verifyrun.go",
+      "old": "\t\tdefer removeRowScratch(dir)\n\t\tplan.env = withRowVars(plan.rowEnv(), vars...)\n",
+      "new": "\t\t_ = dir\n\t\tplan.env = withRowVars(plan.rowEnv(), vars...)\n"
+    },
+    {
+      "name": "an inherited row-read socket passes through",
+      "file": "verifieradmission.go",
+      "old": "\t\tcase strings.EqualFold(key, rowreadSocketVar):\n",
+      "new": ""
+    },
+    {
+      "name": "the per-row variables drop the run credential path",
+      "file": "verifieradmission.go",
+      "old": "\t\t\treturn strings.EqualFold(k, key)\n",
+      "new": "\t\t\treturn strings.EqualFold(k, key) || strings.HasPrefix(key, \"ASSAY_\")\n"
+    },
+    {
+      "name": "an admitted run hands rows no read credential",
+      "file": "verifyrun.go",
+      "old": "\t\tplan.readCred = runCred\n",
+      "new": ""
     }
   ]
 }

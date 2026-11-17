@@ -160,10 +160,12 @@ func TestRowreadHoldsNoToken(t *testing.T) {
 		secrets = append(secrets, v)
 		t.Setenv(name, v)
 	}
-	rowHome, rowTmp := t.TempDir(), t.TempDir()
-	t.Setenv("HOME", rowHome)
-	t.Setenv("TMPDIR", rowTmp)
-	row := `statusgen rowread comments --issue example-org/one#7 --body-contains '(fixture triage)' > "$TMPDIR/out" && env > "$TMPDIR/rowenv" && test -s "$TMPDIR/out"`
+	// The row gets a HOME and TMPDIR of its own, removed when it ends, so it
+	// copies both to rec for the scans below.
+	rec := t.TempDir()
+	rowHome, rowTmp := filepath.Join(rec, "home"), filepath.Join(rec, "tmp")
+	row := `statusgen rowread comments --issue example-org/one#7 --body-contains '(fixture triage)' > "$TMPDIR/out" && env > "$TMPDIR/rowenv" && test -s "$TMPDIR/out"` +
+		` && cp -R "$HOME" '` + rowHome + `' && cp -R "$TMPDIR" '` + rowTmp + `'`
 	if code := verifyrunRow(t, root, row); code != verifyrunExitPass {
 		t.Fatalf("admitted rowread row exit %d, want pass", code)
 	}

@@ -141,7 +141,11 @@ func rowreadForward(sock string, args []string, stdout, stderr io.Writer) int {
 // rowreadReaderEnv is the reader's environment for a brokered read: the
 // invoking environment, which holds the run's read role, less the forge token
 // variables and a cell's stored login, so the reader authenticates only with
-// the credential it mints.
+// the credential it mints. That credential is minted under the invoking
+// process's DESK_LOOP role, through the desk read path; it is not the run's
+// read-only credential file (runcredential.go), which only a row passing
+// --acceptance-forge is handed. A brokered read can therefore see what that
+// role can read, limited to the broker's closed set of read verbs.
 func rowreadReaderEnv(environ []string) []string {
 	var env []string
 	for _, kv := range environ {

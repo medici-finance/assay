@@ -125,8 +125,10 @@ func sameDirectory(a, b string) bool {
 // variables among them), every ASSAY_* variable (the methodology's own
 // configuration, role key paths included), CELLCTL_GH_AMBIENT (a cell's copy
 // of the stored login) and the GITHUB_* token variables (admittedRowForgeToken).
-// The caller puts HOME back as a fresh, empty directory of the run's own
-// (admittedRowHome). This function only builds the rows' copy. A row reads
+// An inherited row-read socket variable is removed as well: the run names its
+// own socket after this function, and no other. The caller gives each row a
+// fresh, empty HOME and TMPDIR of its own (admittedRowDirs, withRowVars). This
+// function only builds the rows' copy. A row reads
 // forge state through the run's own read-only lanes: statusgen rowread, which
 // the run answers from its own process (rowreadbroker.go), or the run's
 // read-only credential file for a row that passes --acceptance-forge. It never
@@ -147,7 +149,10 @@ func sameDirectory(a, b string) bool {
 // such as the GitLab ones this repository reads (STATUSGEN_GITLAB_TOKEN,
 // GITLAB_TOKEN, CI_JOB_TOKEN), pass through unchanged. The scrub removes the
 // pointers, not the files: a row runs as the same user and can still open a
-// stored login or a key file by an absolute path it already knows. The
+// stored login or a key file by an absolute path it already knows. Two more
+// paths stay reachable without any variable: a credential helper configured in
+// the checkout's own git config, and a home that a tool resolves from the
+// user's account record rather than from HOME (ssh resolves ~ that way). The
 // invoking process's own environment also stays reachable: a same-user
 // process can generally read another's startup environment (ps -E on macOS,
 // /proc/<pid>/environ on Linux), which keeps every variable removed here. A
@@ -164,6 +169,7 @@ func admittedRowEnv(environ []string) []string {
 		case admittedRowForgeToken(key):
 		case admittedRowCredential(key):
 		case strings.EqualFold(key, runCredentialEnv):
+		case strings.EqualFold(key, rowreadSocketVar):
 		case strings.HasPrefix(strings.ToUpper(key), "GIT_") && !admittedRowGlobal(kv):
 		default:
 			env = append(env, kv)
@@ -196,21 +202,51 @@ func admittedRowCredential(key string) bool {
 		slices.Contains([]string{"HOME", "XDG_CONFIG_HOME", "DESK_LOOP", "CELLCTL_GH_AMBIENT"}, key)
 }
 
-// admittedRowHome makes the HOME an admitted run's rows share: a fresh, empty
-// directory under the run's own scratch (removed with it after the run), so a
-// row's git and tools find no user config and no stored login there. It
-// returns the variables to add to the row environment: that HOME, and the Go
-// toolchain's build cache and module path pinned where the invoking user's
-// already are (unless the caller set them), so a row that builds or tests Go
-// code neither starts cold nor downloads modules into the scratch, where their
-// read-only files would outlive the run. Both are resolved in the invoking
-// process, which still holds the original HOME.
-func admittedRowHome(environ []string, scratch string) ([]string, error) {
-	home := filepath.Join(scratch, "home")
-	if err := os.Mkdir(home, 0o700); err != nil {
-		return nil, err
+// admittedRowDirs makes one admitted row's own HOME and TMPDIR: fresh, empty
+// 0700 directories under a new directory in the run's scratch, so a row's git
+// and tools find no user config and no stored login there, and nothing an
+// earlier row of the same run left behind. It returns that directory, which
+// the caller removes when the row ends, and the two variables to set.
+func admittedRowDirs(scratch string) (string, []string, error) {
+	dir, err := os.MkdirTemp(scratch, "row-")
+	if err != nil {
+		return "", nil, err
 	}
-	add := []string{"HOME=" + home}
+	home, tmp := filepath.Join(dir, "home"), filepath.Join(dir, "tmp")
+	for _, d := range []string{home, tmp} {
+		if err := os.Mkdir(d, 0o700); err != nil {
+			removeRowScratch(dir)
+			return "", nil, err
+		}
+	}
+	return dir, []string{"HOME=" + home, "TMPDIR=" + tmp}, nil
+}
+
+// withRowVars returns env with each of vars set, replacing any entry of the
+// same name, whatever its case.
+func withRowVars(env []string, vars ...string) []string {
+	out := make([]string, 0, len(env)+len(vars))
+	for _, kv := range env {
+		key, _, _ := strings.Cut(kv, "=")
+		if !slices.ContainsFunc(vars, func(v string) bool {
+			k, _, _ := strings.Cut(v, "=")
+			return strings.EqualFold(k, key)
+		}) {
+			out = append(out, kv)
+		}
+	}
+	return append(out, vars...)
+}
+
+// admittedRowGo pins the Go toolchain's build cache and module path where the
+// invoking user's already are (unless the caller set them), so a row that
+// builds or tests Go code neither starts cold nor downloads modules into its
+// own HOME, where their read-only files would outlive the row. Both are
+// resolved in the invoking process, which still holds the original HOME. They
+// name a directory under that HOME, so a row can learn its path; a row runs as
+// the same user, and PATH usually names it too.
+func admittedRowGo(environ []string) []string {
+	var add []string
 	set := func(key string) bool {
 		return slices.ContainsFunc(environ, func(kv string) bool { return strings.HasPrefix(kv, key+"=") })
 	}
@@ -224,7 +260,7 @@ func admittedRowHome(environ []string, scratch string) ([]string, error) {
 			add = append(add, "GOPATH="+filepath.Join(dir, "go"))
 		}
 	}
-	return add, nil
+	return add
 }
 
 // admittedRowShellStartup reports whether a variable is one a row's shell runs

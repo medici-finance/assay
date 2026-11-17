@@ -649,6 +649,9 @@ type shellPlan struct {
 	// (runcredential.go). Only a row that reads the forge gets its file path.
 	// nil leaves every row as it was.
 	readCred *runReadCredential
+	// rowScratch, when set (an admitted run), is the directory under which
+	// each row gets its own fresh HOME and TMPDIR, removed when the row ends.
+	rowScratch string
 }
 
 // removeRowScratch removes an admitted run's row scratch, first making
@@ -914,6 +917,17 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 				reason: "could-not-check: the row reads the forge, and the verifier's run-scoped read-only credential is unavailable: " + err.Error()}
 		}
 		plan.env = append(slices.Clip(plan.rowEnv()), runCredentialEnv+"="+credPath)
+	}
+	// A row of an admitted run gets a HOME and a TMPDIR of its own, so it
+	// finds nothing an earlier row of the run left there.
+	if plan.rowScratch != "" {
+		dir, vars, err := admittedRowDirs(plan.rowScratch)
+		if err != nil {
+			return runResult{exit: -1, couldNotRun: true,
+				reason: "could-not-check: cannot make the row's own HOME: " + err.Error()}
+		}
+		defer removeRowScratch(dir)
+		plan.env = withRowVars(plan.rowEnv(), vars...)
 	}
 	// Resolve the concrete interpreter argv for the row's declared shell (issue
 	// #1424). For `sh` this is the bash plan resolved and PROBED once for this run
@@ -2860,9 +2874,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	defer releaseInterrupt()
 	plan.stop = stop
 	if attestation != "" {
-		// An admitted run's rows get the scrubbed environment, a fresh empty
-		// HOME of the run's own and the run's row-read socket, all under one
-		// scratch directory removed when the run returns.
+		// An admitted run's rows get the scrubbed environment and the run's
+		// row-read socket. Each row also gets a fresh, empty HOME and TMPDIR of
+		// its own (runVerifyCommandWith). All of it sits under one 0700
+		// scratch directory, removed when the run returns.
 		environ := os.Environ()
 		scratch, err := os.MkdirTemp("", "verifyrun-row-")
 		if err != nil {
@@ -2870,12 +2885,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 		defer removeRowScratch(scratch)
-		home, err := admittedRowHome(environ, scratch)
-		if err != nil {
-			fmt.Fprintln(stderr, "statusgen verifyrun: cannot make the rows' HOME:", err)
-			return verifyrunExitCouldNot
-		}
-		plan.env = append(admittedRowEnv(environ), home...)
+		plan.env = append(admittedRowEnv(environ), admittedRowGo(environ)...)
+		plan.rowScratch = scratch
 		if sock, sockDir, err := rowreadSocketPath(scratch); err == nil {
 			if sockDir != "" {
 				defer removeRowScratch(sockDir)
