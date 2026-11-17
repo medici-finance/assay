@@ -33,5 +33,10 @@ func checkSelectedClosure(root, key, status, verified string, art briefArtifacts
 	if err := evaluation.ValidateSelectedClosure(observation); err != nil {
 		return nil, err
 	}
+	// The Runner cells of the latest PASS run are read as verifyflip reads
+	// them (runnerCellsAgree), so the two never disagree on one Evidence (#6767).
+	if err := latestPassRunnerRefusal(art.Evidence); err != nil {
+		return nil, err
+	}
 	return findings, nil
 }

@@ -924,6 +924,38 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 	return unroutedHeldLine(evidence, false)
 }
 
+// verifyPassHeldWitnessed is the model autoflip's held read (#6767). It is
+// verifyPassHeldContradiction, except that a hold found only before the
+// latest PASS run is dropped when that run is one verifyflip would credit:
+// the run verifyflip selects (flipLatestPass) carries a passing execution
+// witness for every Verify row of the brief at path (closureRunWitnesses, the
+// check verifyflip and the reconcile fold run), and the flip-side read
+// (unroutedHeldLine with latestRun true, which adds rule 3c) then finds no
+// hold. So a superseded HELD or could-not-check line no longer stops the
+// autoflip after a later full PASS, and the autoflip drops it on exactly the
+// reading verifyflip drops it on, never on a narrower one. Anything that
+// cannot be read (no path, the brief unreadable, no selectable run, a witness
+// refusal or a missing or failed row) keeps the plain read's answer.
+func verifyPassHeldWitnessed(evidence, path string) (bool, string) {
+	held, why := verifyPassHeldContradiction(evidence)
+	if !held || path == "" {
+		return held, why
+	}
+	p, err := flipLatestPass(evidence)
+	if err != nil {
+		return held, why
+	}
+	verify, _, err := briefSections(path)
+	if err != nil {
+		return held, why
+	}
+	findings, refusal := closureRunWitnesses(verify, evidence, p.Run, path)
+	if refusal != "" || len(findings) == 0 || checkExitCode(findings) != verifyrunExitPass {
+		return held, why
+	}
+	return unroutedHeldLine(evidence, true)
+}
+
 // unroutedHeldLine is verifyPassHeldContradiction's line scan WITHOUT the
 // strict-PASS precondition: it reports the first line that says HELD or
 // could-not-check on an occurrence not genuinely routed to a follow-up AND
