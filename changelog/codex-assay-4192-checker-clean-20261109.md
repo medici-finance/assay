@@ -1,0 +1,1 @@
+- Keep the Kubernetes checker self-tests from writing Python bytecode into a verifier checkout, and assert that fixture imports leave the package tree unchanged.
