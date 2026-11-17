@@ -2387,7 +2387,7 @@ func (o dispatchOpts) resolveRepo() (string, error) {
 	if slug == "" {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: origin %q does not parse to an owner/name — pass --repo <owner/name>.",
-			stepClaimAcquire, r.stdout), nil)
+			stepClaimAcquire, deskkit.RedactRemoteUserinfo(r.stdout)), nil)
 	}
 	return slug, nil
 }

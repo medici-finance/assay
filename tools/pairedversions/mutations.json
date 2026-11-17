@@ -1,0 +1,35 @@
+{
+  "test": "go test ./... -count=1 -timeout=120s",
+  "control": {
+    "name": "CONTROL \u2014 accept a checksums line of any shape (a malformed line is no longer refused)",
+    "file": "github.go",
+    "old": "\t\tif len(f) != 2 {",
+    "new": "\t\tif len(f) == 2 {"
+  },
+  "mutations": [
+    {
+      "name": "read the checksums asset truncated (an over-bound checksums.txt is parsed as its first maxAssetBytes bytes)",
+      "file": "github.go",
+      "old": "\treturn readCapped(resp.Body, \"GET \"+url, maxAssetBytes)",
+      "new": "\treturn io.ReadAll(io.LimitReader(resp.Body, maxAssetBytes))"
+    },
+    {
+      "name": "readCapped reads only up to the bound (an over-bound answer is handed back as its first limit bytes, never refused)",
+      "file": "github.go",
+      "old": "\traw, err := io.ReadAll(io.LimitReader(body, limit+1))",
+      "new": "\traw, err := io.ReadAll(io.LimitReader(body, limit))"
+    },
+    {
+      "name": "read the release answer uncapped (a release past the bound is decoded)",
+      "file": "github.go",
+      "old": "\traw, err := readCapped(resp.Body, \"GET \"+url, maxAPIBodyBytes)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tvar gr ghRelease",
+      "new": "\traw, err := io.ReadAll(resp.Body)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tvar gr ghRelease"
+    },
+    {
+      "name": "read a release-list page uncapped (a page past the bound is decoded)",
+      "file": "github.go",
+      "old": "\traw, err := readCapped(resp.Body, \"GET \"+url, maxAPIBodyBytes)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tvar batch []ghReleaseMeta",
+      "new": "\traw, err := io.ReadAll(resp.Body)\n\tif err != nil {\n\t\treturn nil, err\n\t}\n\tvar batch []ghReleaseMeta"
+    }
+  ]
+}

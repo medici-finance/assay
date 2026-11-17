@@ -1,0 +1,35 @@
+{
+  "test": "go test ./internal/deskkit/ ./cmd/deskpr/ -run '^(TestDiffLineIndex|TestAddedLinesParity|TestDiffFinding)' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — the branch-diff finding is never looked up in the index",
+    "file": "cmd/deskpr/deskpr.go",
+    "old": "\tif f.Line >= 1 && f.Line <= len(refs) {",
+    "new": "\tif false && f.Line >= 1 && f.Line <= len(refs) {"
+  },
+  "mutations": [
+    {
+      "name": "the refusal reports the stripped-text line, not the file line",
+      "file": "cmd/deskpr/deskpr.go",
+      "old": "\tline := ref.FileLine\n",
+      "new": "\tline := f.Line\n"
+    },
+    {
+      "name": "every indexed line is labelled added",
+      "file": "internal/deskkit/outboundpush.go",
+      "old": "\t\treturn DiffLineRef{Path: path, Side: side, FileLine: n}",
+      "new": "\t\treturn DiffLineRef{Path: path, Side: DiffSideAdded, FileLine: n}"
+    },
+    {
+      "name": "removed lines are numbered on the new side",
+      "file": "internal/deskkit/outboundpush.go",
+      "old": "ref = mk(DiffSideRemoved, removedPath, oldLine)",
+      "new": "ref = mk(DiffSideRemoved, removedPath, newLine)"
+    },
+    {
+      "name": "a renamed file's added lines are dropped from the index",
+      "file": "internal/deskkit/outboundpush.go",
+      "old": "\t\t\t\tcase '+':\n\t\t\t\t\tref = mk(DiffSideAdded, addedPath, newLine)",
+      "new": "\t\t\t\tcase '+':\n\t\t\t\t\tif oldPath != \"\" && oldPath != newPath {\n\t\t\t\t\t\tbreak\n\t\t\t\t\t}\n\t\t\t\t\tref = mk(DiffSideAdded, addedPath, newLine)"
+    }
+  ]
+}

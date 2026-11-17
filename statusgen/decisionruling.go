@@ -763,7 +763,10 @@ func resolveDecisionRulings(c *ghClient, root, repo string, recs []decisionRecor
 	return out
 }
 
-// rulingForgeClient builds the production client. The token comes from GH_TOKEN,
+// rulingForgeClient builds the production client. Inside an admitted verifyrun
+// or an admitted Verify row it carries only the verifier's run-scoped read-only
+// credential (admittedForgeClient), and without one every read is a
+// could-not-check. Everywhere else the token comes from GH_TOKEN,
 // then GITHUB_TOKEN, then `gh auth token` — the same credential the rest of
 // --corroborate reaches through the gh CLI. An empty token still reaches a public
 // repository; a private one then 404s, which fails closed (deleted-comment).
@@ -776,6 +779,12 @@ func resolveDecisionRulings(c *ghClient, root, repo string, recs []decisionRecor
 // makes no request at all: every read is answered with the refusal, which the
 // resolver reports as unresolvable, a could-not-check.
 func rulingForgeClient() *ghClient {
+	// Inside an admitted verifyrun, or an admitted Verify row, the forge is read
+	// only with the verifier's run-scoped read-only credential. No variable and
+	// no stored login is consulted there (runcredential.go, #6746).
+	if c := admittedForgeClient(); c != nil {
+		return c
+	}
 	tok := strings.TrimSpace(os.Getenv("GH_TOKEN"))
 	if tok == "" {
 		tok = strings.TrimSpace(os.Getenv("GITHUB_TOKEN"))

@@ -267,6 +267,9 @@ With `--acceptance-record`, execute the protected host rows in **one** host invo
 clean committed source, before inserting uncommitted Evidence. Include every supplemental
 row so the producer records `author-added; no acceptance credit`. Select these host rows
 with `--rows`; use `--acceptance-forge` when the descriptor names an approved transition.
+An admitted run reads that approval only with a read-only verifier credential it mints for
+itself through `desktoken` on `PATH`, and revokes when the run ends. It ignores `GH_TOKEN` and
+the stored login, and with no such credential the read is could-not-check.
 A chain descriptor carries `Acceptance-Transition: link=<k> amendment=<sha> approval=<url>`
 for each contiguous link after the one `Verification-Table:` line. Draft each link's
 exact v2 payload for the driver; never post an approval. Link 1 alone may retain a v1

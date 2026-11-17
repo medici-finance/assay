@@ -1166,7 +1166,7 @@ func listReachability(opts gitcore.ListOpts) (ProbeVerdict, string, error) {
 	select {
 	case res = <-done:
 	case <-time.After(listTimeout):
-		return ProbeInconclusive, "List of " + redactURLCredential(opts.URL) + " did not answer within " + listTimeout.String(), nil
+		return ProbeInconclusive, "List of " + RedactRemoteUserinfo(opts.URL) + " did not answer within " + listTimeout.String(), nil
 	}
 	if res.err == nil {
 		return ProbePermitted, listedDetail(res.refs), nil

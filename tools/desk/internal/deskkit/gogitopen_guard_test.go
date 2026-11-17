@@ -19,15 +19,6 @@ import (
 // non-test code is how a second raw opener would reappear, so it is the guarded shape.
 const goGitRoot = "github.com/go-git/go-git/v5"
 
-// rawGoGitAllowed names the only non-test files that may import goGitRoot, each with why.
-// A new entry needs the same: a reader for which go-git's refusal is a deliberate fall-through
-// to another reader, never a fail-closed result.
-var rawGoGitAllowed = map[string]string{
-	// originRemoteURL step 1: on a worktreeConfig or linked checkout go-git's refusal hands
-	// the read to native git, whose insteadOf scopes TestClaimReaderCompatibility pins.
-	"cmd/deskclaim-ref/gogit.go": "fall-through origin reader (#727)",
-}
-
 // rawGoGitImporters lists the non-test Go files under root that import goGitRoot.
 func rawGoGitImporters(t *testing.T, root string) []string {
 	t.Helper()
@@ -72,13 +63,7 @@ func TestNoRawGoGitOpener(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(module, "go.mod")); err != nil {
 		t.Fatalf("module root not found at %s: %v", module, err)
 	}
-	var hits []string
-	for _, hit := range rawGoGitImporters(t, module) {
-		if _, ok := rawGoGitAllowed[hit]; !ok {
-			hits = append(hits, hit)
-		}
-	}
-	if len(hits) != 0 {
+	if hits := rawGoGitImporters(t, module); len(hits) != 0 {
 		t.Fatalf("non-test code imports %s (raw repository opener; use gitcore.Toplevel + gitcore.Open): %v", goGitRoot, hits)
 	}
 }
