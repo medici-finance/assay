@@ -303,8 +303,23 @@ re-witness at a single main revision, on decision issue #4512 (the `ruling:` fro
      A row that runs a prebuilt tool therefore keeps today's whole-tree scope. So does a row on
      a host that installs a tool the row needs, such as git, under `/usr/local`. To gain a read
      set, the row builds the tool itself (`go build -buildvcs=false -o <tmp> .` then runs it).
-3. **Storage.** verifyrun writes the read set to `docs/streams/<stream>/reads/<sha256>`, named by
-   the full sha256 of its content. The file starts with a header and then the sorted,
+   - **Known limit: tracee memory is read racily.** At a system-call stop the tracer reads
+     `clone3`'s `clone_args` and every path argument from the tracee's memory while the
+     tracee's sibling threads keep running. A deliberately adversarial multi-threaded row can
+     change that memory between the tracer's read and the kernel's own copy, so the flags or
+     path recorded may not be the ones the kernel acted on. Default deny does not close this.
+     The recorder is a completeness guard for rows authored and reviewed in this repository,
+     not a defence against a hostile row. This limit is stated here so that the switch
+     `readSetRecorderShipped` flips only with it accepted.
+3. **Storage.** A read set lives in the repository at `docs/streams/<stream>/reads/<sha256>`, named by
+   the full sha256 of its content. verifyrun first writes it to the run's own state directory,
+   `<git dir>/assay-read-sets/<sha256>` (under the path `git rev-parse --git-path` names), never
+   into the worktree, because the verifier home's source closure refuses untracked files; the
+   landing (step 7) copies it into the repository. verifyrun never writes through a link there:
+   the state directory must be a real directory, a symlink at the file's name is refused, and
+   the bytes go to a fresh temp file (`O_CREAT|O_EXCL|O_NOFOLLOW`) renamed into place. Each
+   write prunes the directory to files younger than 30 days and, of those, the newest 256. The
+   file starts with a header and then the sorted,
    newline-separated entries:
    - `witness-commit <40 hex>`, the full commit the row ran on;
    - `command sha256:<64 hex>`, the digest of the row's Command text;
@@ -380,8 +395,16 @@ re-witness at a single main revision, on decision issue #4512 (the `ruling:` fro
    skips the floor fails closed. The floor never widens a release. It only refuses.
 7. **Landing (deskevidence).** When a landed Evidence row's Runner cell carries a
    `reads sha256:` token, deskevidence commits the brief and the named
-   `docs/streams/<stream>/reads/<sha256>` file in ONE commit. It refuses the landing, before any
-   write, when the file is absent locally or its digest differs. The same holds for the
+   `docs/streams/<stream>/reads/<sha256>` file in ONE commit, taking the file from the run's state
+   directory `<git dir>/assay-read-sets/<sha256>` (step 3). The recorder writes there, not beside
+   the brief, because the verifier home's source closure refuses untracked files: a file in the
+   worktree would refuse the run's own Evidence. It refuses the landing, before any write, when
+   the file is absent from that directory or its digest differs. **Order: the landing copies the
+   file before any worktree cleanup.** A linked worktree's git dir, and the state directory in
+   it, is deleted with the worktree's admin directory by `git worktree remove` or `prune`, so a
+   landing after cleanup finds no file and refuses. The landing that delivers row 26 pins this
+   order in its test. The same
+   holds for the
    Evidence-PR flow: the PR adds the row and its file in one commit, because step 5's
    introduction binding ignores a file that arrives in a later commit than its row.
 8. **Contract.** In `docs/contracts.md`, rewrite the S-evidence-coverage row's
@@ -474,7 +497,7 @@ every host, proves the non-Linux token itself.
 | 23 | `test "$(uname -s)" = Linux && cd statusgen && go test . -run '^TestVerifyrunHistoryReadInLinkedWorktree$' -count=1 -v \| grep -c -E '^--- PASS: TestVerifyrunHistoryReadInLinkedWorktree \('` | output is `1` on a Linux runner with the recorder facility (elsewhere the row cannot pass; see "Linux rows" above) — in a primary checkout and in a linked worktree whose git directory is outside the tree, the test runs a `git log` row and asserts the read set carries a `history` entry and is not dropped by the untracked or out-of-tree rules | check:ci +mutation |
 | 24 | `cd statusgen && go test ./evaluation/ -run '^TestReadSetExemptPathsSubtracted$' -count=1 -v \| grep -c -E '^--- PASS: TestReadSetExemptPathsSubtracted \('` | output is `1` — the test asserts recorded reads of the brief's own file, a `docs/streams/` file and `STATUS.md` do not hold the claim when they change, that the reason states the exempt count, and that a non-exempt recorded path still does | check:ci |
 | 25 | `test "$(uname -s)" = Linux && cd statusgen && go test . -run '^TestVerifyrunReadSetFilesAndDirty$' -count=1 -v \| grep -c -E '^--- PASS: TestVerifyrunReadSetFilesAndDirty \('` | output is `1` on a Linux runner with the recorder facility (elsewhere the row cannot pass; see "Linux rows" above) — the test asserts a resumed run of a brief over its own uncommitted Evidence and read-set files writes a clean tree token, and a run with another brief's uncommitted read-set file writes `+dirty` | check:ci |
-| 26 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestDeskevidenceLandsReadSetWithRow$' -count=1 -v \| grep -c -E '^--- PASS: TestDeskevidenceLandsReadSetWithRow \('` | output is `1` — against a fake forge the test asserts one commit carries both the Evidence row and its read-set file, and that a row whose read-set file is absent locally, or has another digest, is refused before any write | check:ci +flow |
+| 26 | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestDeskevidenceLandsReadSetWithRow$' -count=1 -v \| grep -c -E '^--- PASS: TestDeskevidenceLandsReadSetWithRow \('` | output is `1` — against a fake forge the test asserts one commit carries both the Evidence row and its read-set file, and that the file is taken from the run's state directory `<git dir>/assay-read-sets/` (the verifier home's source closure refuses untracked files, so the recorder never writes into the worktree), and that a row whose read-set file is absent there, or has another digest, is refused before any write | check:ci +flow |
 | 27 | `awk '/^## Batch re-witness/{f=1} f' docs/streams/build-less-brittle/README.md \| grep -c -F -e 'One fresh detached worktree per brief' -e 'Nothing lands until the pre-landing checks pass'` | output is `2` — the README's batch section requires a clean per-brief tree and holds every landing until the dry-run count and the sampled re-run pass over the whole batch, each phrase on its own line | check |
 | 28 | `cd statusgen && go test . -run '^TestRecorderOffLinuxWritesCouldNotCheck$' -count=1 -v \| grep -c -E '^--- PASS: TestRecorderOffLinuxWritesCouldNotCheck \('` | output is `1` on any host — off Linux the test runs a row through verifyrun and asserts its Runner token is `reads could-not-check: recorder is Linux-only (<os>)` and that no read-set file is written; on Linux it asserts the same through the platform-neutral function `readset_other.go` calls, given a non-Linux OS name | check:ci +mutation |
 | 29 | `cd statusgen && go test . -run '^TestBrief15RecorderRowsNeverPassWithoutRecorder$' -count=1 -v \| grep -c -E '^--- PASS: TestBrief15RecorderRowsNeverPassWithoutRecorder \('` | output is `1` — the test reads this brief's Verify table from the repository and feeds the Expect cells of rows 14, 16, 21, 23 and 25 through verifyrun's own `parseExpect` and `verdict`: a run that exits non-zero with no output (the uname guard) and one that exits non-zero printing `0` (the skip) are each not `pass`, and a run that exits 0 printing `1` is `pass`; for row 27 a run printing `1` is not `pass` and one printing `2` is | check:ci +mutation |
