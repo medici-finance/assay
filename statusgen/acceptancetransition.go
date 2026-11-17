@@ -369,7 +369,12 @@ func acceptanceStep(path, verify, full, run, delivery, base, original, baseline,
 	if e != nil || atAmendment != historical {
 		return fail("amendment changed historical Evidence")
 	}
-	if !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(historical)) {
+	// A verified Evidence-Repair moves the baseline, never the strictness (#6616).
+	retained, repairs, why := evidenceRepairBaseline(path, historical, run, pp[0], chain == nil || chain.number == 1, read)
+	if why != "" {
+		return fail(why)
+	}
+	if !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(retained)) {
 		return fail("historical Evidence was not preserved")
 	}
 	if audit {
@@ -511,7 +516,9 @@ func acceptanceStep(path, verify, full, run, delivery, base, original, baseline,
 			}
 			selected[id] = true
 		}
-
+		if why := corroborateEvidenceRepairs(repo, rel, repairs, client); why != "" {
+			return fail(why)
+		}
 	}
 	changes := map[string]verifyRow{}
 	var ids []string

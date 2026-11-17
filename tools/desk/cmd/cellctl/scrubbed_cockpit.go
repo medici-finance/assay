@@ -62,7 +62,7 @@ func (c *Cell) scrubbedHerdrAttach(socket, session string) error {
 			if sh == shellPOSIX {
 				command = "exec " + command
 			}
-			err = c.herdrWindow(c.Name+"-cell", command, w.ID)
+			err = c.herdrWindow(herdrTabLabel("cell"), command, w.ID)
 		}
 	}
 	deskkit.UnlockFile(lock)

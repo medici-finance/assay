@@ -130,8 +130,8 @@
     {
       "name": "current historical Evidence prefix omitted",
       "file": "acceptancetransition.go",
-      "old": "if !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(historical)) {",
-      "new": "if false && !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(historical)) {"
+      "old": "if !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(retained)) {",
+      "new": "if false && !strings.HasPrefix(strings.TrimSpace(full), strings.TrimSpace(retained)) {"
     },
     {
       "name": "placeholder quotation requirement omitted",
