@@ -134,7 +134,7 @@ func TestRepresentedSourceFor_ReducesPRListOnce(t *testing.T) {
 	}
 	defer func() { representedPRs = orig }()
 
-	src := representedSourceFor("example-org/example-repo", nil)
+	src := representedSourceFor("example-org/example-repo", nil, nil)
 	m, err := src()
 	if err != nil {
 		t.Fatalf("representedSourceFor: %v", err)

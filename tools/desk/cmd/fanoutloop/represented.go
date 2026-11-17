@@ -74,7 +74,17 @@ var representedPRBatchFiles func(repo string, numbers []int) map[int]deskkit.Pen
 // the representing one — the pre-exemption answer, a row NOT dispatched — and says so on stderr:
 // could-not-check is never rounded to "authoring". nil candidates (or no file transport) applies no
 // exemption and reduces first-wins exactly as before.
-func representedSourceFor(repo string, candidates func() ([]string, error)) func() (map[string]deskkit.RepresentedPR, error) {
+//
+// DECLARED PARTIAL DELIVERIES (#6751). Before either reduction, every MERGED PR the brief's own
+// `delivery:` list declares `covers: partial` for this repo is set aside (dropDeclaredPartials), the
+// reading statusgen applies: a partial delivery is work in progress, never the brief's delivery. A
+// brief whose only representing PRs were declared partials is then not represented, and its row is
+// offered as fresh dispatch exactly as statusgen offers it; an OPEN PR still routes to resume, and an
+// undeclared or `full` merged PR still lands. partials (FanoutLoop.declaredPartials in cmdPlan) maps
+// the lower-cased brief id to those PR numbers; nil applies no set-aside. The same set-aside applies
+// to the hits of a lookup past an incomplete window (lookUpPastWindow), so a partial delivery older
+// than the window does not land the row either.
+func representedSourceFor(repo string, candidates func() ([]string, error), partials func(repo string) map[string]map[int]bool) func() (map[string]deskkit.RepresentedPR, error) {
 	return func() (map[string]deskkit.RepresentedPR, error) {
 		if representedPRs == nil {
 			return nil, nil
@@ -83,8 +93,14 @@ func representedSourceFor(repo string, candidates func() ([]string, error)) func
 		if err != nil {
 			return nil, err
 		}
+		all := deskkit.RepresentingPRsByBrief(prs)
+		var partial map[string]map[int]bool
+		if partials != nil {
+			partial = partials(repo)
+			dropDeclaredPartials(repo, all, partial)
+		}
 		if !incomplete && (representedPRFiles == nil || candidates == nil) {
-			return deskkit.RepresentedBriefPRs(prs), nil
+			return firstOfEach(all), nil
 		}
 		if candidates == nil {
 			// An incomplete window with no candidate set: no brief can be looked up past it, so the
@@ -101,25 +117,35 @@ func representedSourceFor(repo string, candidates func() ([]string, error)) func
 		}
 		var out map[string]deskkit.RepresentedPR
 		if representedPRFiles == nil {
-			out = deskkit.RepresentedBriefPRs(prs)
+			out = firstOfEach(all)
 		} else {
-			out = representedWithAuthoring(repo, prs, cands)
+			out = representedWithAuthoring(repo, all, cands)
 		}
 		if incomplete {
-			lookUpPastWindow(repo, order, out)
+			lookUpPastWindow(repo, order, out, partial)
 		}
 		return out, nil
 	}
 }
 
+// firstOfEach reduces a brief→representing-PRs map first-wins: each brief's first PR represents it.
+func firstOfEach(all map[string][]deskkit.RepresentedPR) map[string]deskkit.RepresentedPR {
+	out := make(map[string]deskkit.RepresentedPR, len(all))
+	for id, list := range all {
+		out[id] = list[0]
+	}
+	return out
+}
+
 // lookUpPastWindow completes out for an INCOMPLETE window (#5853): each candidate brief the window
 // did not represent is looked up by its `Brief:` trailer (briefChangeLookup). A hit is reduced
-// exactly as the window is — parsed trailers, OPEN or MERGED only, the authoring exemption when the
-// file transport is wired — so a merged delivery outside the window lands under LANDED-UNRECONCILED
-// and an open one routes to resume. A failed or unwired lookup marks the brief Unchecked: the plan
-// lists it under COULD-NOT-CHECK and never offers it as IMPLEMENT. A complete lookup with no
-// representing hit leaves the brief absent: genuinely fresh. `issue-<NN>` placeholders carry an
-// `Issue:` link, never a `Brief:` one, so they are not looked up.
+// exactly as the window is — parsed trailers, OPEN or MERGED only, declared partial deliveries set
+// aside (#6751), the authoring exemption when the file transport is wired — so a merged delivery
+// outside the window lands under LANDED-UNRECONCILED and an open one routes to resume. A failed or
+// unwired lookup marks the brief Unchecked: the plan lists it under COULD-NOT-CHECK and never offers
+// it as IMPLEMENT. A complete lookup with no representing hit leaves the brief absent: genuinely
+// fresh. `issue-<NN>` placeholders carry an `Issue:` link, never a `Brief:` one, so they are not
+// looked up.
 //
 // THE SEARCH BUDGET. Each lookup is one forge search, and a run can have more candidates than the
 // forge's per-minute search allowance. So the lookups run in QUEUE PRIORITY order (order, as
@@ -128,7 +154,7 @@ func representedSourceFor(repo string, candidates func() ([]string, error)) func
 // ends the walk: every candidate not yet looked up is marked Unchecked without another request, so
 // a run never keeps spending a budget the forge already refused (and that other searches share).
 // Any other lookup error is that one brief's could-not-check and the walk continues.
-func lookUpPastWindow(repo string, order []string, out map[string]deskkit.RepresentedPR) {
+func lookUpPastWindow(repo string, order []string, out map[string]deskkit.RepresentedPR, partial map[string]map[int]bool) {
 	ids := make([]string, 0, len(order))
 	seen := make(map[string]bool, len(order))
 	for _, id := range order {
@@ -164,7 +190,11 @@ func lookUpPastWindow(repo string, order []string, out map[string]deskkit.Repres
 		for k, h := range hits {
 			newestFirst[len(hits)-1-k] = h
 		}
-		list := deskkit.RepresentingPRsByBrief(newestFirst)[id]
+		byBrief := deskkit.RepresentingPRsByBrief(newestFirst)
+		if nums := partial[id]; nums != nil {
+			dropDeclaredPartials(repo, byBrief, map[string]map[int]bool{id: nums})
+		}
+		list := byBrief[id]
 		if len(list) == 0 {
 			continue
 		}
@@ -176,10 +206,35 @@ func lookUpPastWindow(repo string, order []string, out map[string]deskkit.Repres
 	}
 }
 
-// representedWithAuthoring reduces the window to the brief→RepresentedPR map, applying the
-// briefs-authoring exemption to candidate briefs (see representedSourceFor).
-func representedWithAuthoring(repo string, prs []deskkit.PRRef, cands map[string]bool) map[string]deskkit.RepresentedPR {
-	all := deskkit.RepresentingPRsByBrief(prs)
+// dropDeclaredPartials removes, in place, the merged PRs each brief declares a partial delivery from
+// that brief's representing list, deleting a brief left with none. Each set-aside is disclosed on
+// stderr, so a reader of the plan sees why a merged PR no longer lands its row.
+func dropDeclaredPartials(repo string, all map[string][]deskkit.RepresentedPR, partial map[string]map[int]bool) {
+	for id, nums := range partial {
+		list, ok := all[id]
+		if !ok {
+			continue
+		}
+		kept := deskkit.DropDeclaredPartials(list, nums)
+		for _, rp := range list {
+			if rp.Merged && nums[rp.Number] {
+				fmt.Fprintf(os.Stderr, "fanoutloop: NOTICE — %s#%d names %s in its `Brief:` trailer, but the brief's "+
+					"delivery: list declares it a partial delivery, so it is work in progress, not the brief's "+
+					"delivery (#6751)\n", repo, rp.Number, id)
+			}
+		}
+		if len(kept) == 0 {
+			delete(all, id)
+		} else {
+			all[id] = kept
+		}
+	}
+}
+
+// representedWithAuthoring reduces the brief→representing-PRs map (declared partials already set
+// aside) to the brief→RepresentedPR map, applying the briefs-authoring exemption to candidate briefs
+// (see representedSourceFor).
+func representedWithAuthoring(repo string, all map[string][]deskkit.RepresentedPR, cands map[string]bool) map[string]deskkit.RepresentedPR {
 	out := make(map[string]deskkit.RepresentedPR, len(all))
 	pending := make(map[string][]deskkit.RepresentedPR)
 	for id, list := range all {
@@ -223,6 +278,52 @@ func representedWithAuthoring(repo string, prs []deskkit.PRRef, cands map[string
 			} else {
 				pending[id] = list[1:]
 			}
+		}
+	}
+	return out
+}
+
+// declaredPartials is the partials source cmdPlan hands representedSourceFor: for each of this run's
+// Next-up and awaiting-rework rows, the merged PRs its brief file (read from --root, the same tree the
+// board reader resolves frontmatter from) declares `covers: partial` for repo, resolved through
+// --root's alias registry. A brief that cannot be read, or whose partial claims cannot be resolved,
+// contributes nothing (the pre-#6751 answer: its merged PR still lands the row) and says why on
+// stderr — could-not-check is never rounded to "partial".
+func (f *FanoutLoop) declaredPartials(repo string) map[string]map[int]bool {
+	rows, err := f.boardSource()
+	if err != nil {
+		return nil
+	}
+	rework, err := f.reworkSource()
+	if err != nil {
+		return nil
+	}
+	out := map[string]map[int]bool{}
+	var aliases *deskkit.DeliveryAliases
+	for _, r := range append(rows, rework...) {
+		if strings.TrimSpace(r.BriefPath) == "" {
+			continue
+		}
+		id := strings.ToLower(r.Stream + "/" + r.Num)
+		if _, done := out[id]; done {
+			continue
+		}
+		raw, rerr := os.ReadFile(filepath.Join(f.Root, filepath.FromSlash(r.BriefPath)))
+		if rerr != nil {
+			continue // no brief to read: nothing declared, the pre-#6751 answer
+		}
+		if aliases == nil {
+			a := deskkit.LoadDeliveryAliases(f.Root)
+			aliases = &a
+		}
+		nums, why := deskkit.DeclaredPartialDeliveries(string(raw), id, repo, *aliases)
+		if why != "" {
+			fmt.Fprintf(os.Stderr, "fanoutloop: NOTICE — %s's delivery: list could not be read with certainty (%s); "+
+				"no merged PR is set aside as a partial delivery for it (could-not-check, not a pass)\n", id, why)
+			continue
+		}
+		if len(nums) > 0 {
+			out[id] = nums
 		}
 	}
 	return out

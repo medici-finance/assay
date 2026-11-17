@@ -83,7 +83,10 @@ type FanoutLoop struct {
 	// live one; tests inject fixtures). The source builds the map with deskkit.RepresentedBriefPRs
 	// over the repo's open+merged PRs — keyed on each PR's `Brief:` trailer, NEVER a branch name (a
 	// branch spelled differently from the derived pattern is exactly the phantom this reconciliation
-	// exists to catch).
+	// exists to catch). A MERGED PR the brief's own `delivery:` list declares `covers: partial` is
+	// work in progress, not the delivery, so the live source sets it aside before routing (#6751,
+	// represented.go): a brief whose only merged PRs are declared partials is not represented and
+	// its row is offered, as statusgen offers it.
 	//
 	// It governs FRESH Next-up rows AND `### Awaiting implementer rework` STATUS.md rows
 	// (#1028: a rework row whose deliverable already merged is a phantom this lane used to
@@ -255,7 +258,8 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	// landed-unreconciled (its board cell just never flipped after the merge) and is recorded for the
 	// plan's own heading, never dispatched; an OPEN PR → the row is started work, routed to the RESUME
 	// lane (deduped against an orphan already covering that PR); no PR → fresh dispatch. The match is on
-	// the brief id keyed against the PR's `Brief:` trailer, never a branch name.
+	// the brief id keyed against the PR's `Brief:` trailer, never a branch name. A merged PR the brief
+	// declares `covers: partial` never reaches this map (#6751): the source set it aside.
 	rows, err := f.boardSource()
 	if err != nil {
 		return nil, err

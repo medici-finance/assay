@@ -135,7 +135,7 @@ func cmdPlan(args []string) error {
 	// before.
 	if representedPRs != nil {
 		if resolved, rerr := resolveRepoForPlan(*root, *repo); rerr == nil {
-			f.Represented = representedSourceFor(resolved, f.candidateBriefIDs)
+			f.Represented = representedSourceFor(resolved, f.candidateBriefIDs, f.declaredPartials)
 		} else {
 			heldErr := rerr
 			f.Represented = func() (map[string]deskkit.RepresentedPR, error) { return nil, heldErr }

@@ -164,33 +164,22 @@ func newAuthorityFixture(t *testing.T, change func(*ProducerConfig)) *authorityF
 		_, e := v.Authorize(call, g, cfg.Launches[0].Scope.Scope)
 		return e
 	})
-	quiesceData(t, c, cfg.IOTimeout)
+	assertIdleSlots(t, c, "fixture startup reads")
 	return &authorityFixture{controller: c, config: cfg, resources: r, clock: wall, grant: g, verifier: v, verifierConfig: vc, client: client, version: registered.Version}
 }
 
-// quiesceData returns only once no handler holds a data slot. A handler
-// releases its slot after it closes the connection, so a client that has read
-// a whole response can still return before that release. Taking every slot
-// waits on the release itself rather than on elapsed time, and every fixture
-// returns an idle pool, so a test that fills the pool never races the
-// fixture's own startup reads. The bound is the handler's own I/O deadline.
-func quiesceData(t *testing.T, c *Controller, bound time.Duration) {
+// assertIdleSlots checks, without waiting, that no handler holds a data or
+// control slot. A handler gives its slot back before it closes the connection
+// and every client reads to EOF, so once a client holds a complete response
+// its slot is already free: every fixture returns an idle pool, and a test
+// that fills a pool never races the fixture's own startup reads.
+func assertIdleSlots(t *testing.T, c *Controller, after string) {
 	t.Helper()
-	timer := time.NewTimer(bound)
-	defer timer.Stop()
-	taken := 0
-	defer func() {
-		for range taken {
-			<-c.dataSlots
-		}
-	}()
-	for range cap(c.dataSlots) {
-		select {
-		case c.dataSlots <- struct{}{}:
-			taken++
-		case <-timer.C:
-			t.Fatal("fixture data slots still held after startup reads")
-		}
+	if n := len(c.dataSlots); n != 0 {
+		t.Fatalf("%d data slots still held after %s", n, after)
+	}
+	if n := len(c.controlSlots); n != 0 {
+		t.Fatalf("%d control slots still held after %s", n, after)
 	}
 }
 

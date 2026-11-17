@@ -76,8 +76,26 @@
     {
       "name": "#5853 take the OLDEST lookup hit (search order) instead of the newest: an old merged PR outranks a newer open follow-up. TestPlan_LookupNewestHitWins must go red.",
       "file": "cmd/fanoutloop/represented.go",
-      "old": "\t\tlist := deskkit.RepresentingPRsByBrief(newestFirst)[id]",
-      "new": "\t\tlist := deskkit.RepresentingPRsByBrief(hits)[id]\n\t\t_ = newestFirst"
+      "old": "\t\tbyBrief := deskkit.RepresentingPRsByBrief(newestFirst)\n",
+      "new": "\t\tbyBrief := deskkit.RepresentingPRsByBrief(hits)\n\t\t_ = newestFirst\n"
+    },
+    {
+      "name": "#6751 declared partial deliveries \u2014 DISABLE the set-aside so a MERGED PR the brief's own delivery: list declares covers: partial represents the brief first-wins again, as before the fix: the row reads landed-unreconciled and is never offered while statusgen offers it. TestPlan_PartialMergeDispatches must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\tif partials != nil {\n\t\t\tpartial = partials(repo)\n\t\t\tdropDeclaredPartials(repo, all, partial)",
+      "new": "\t\tif false && partials != nil {\n\t\t\tpartial = partials(repo)\n\t\t\tdropDeclaredPartials(repo, all, partial)"
+    },
+    {
+      "name": "#6751 x #5853 SKIP the partial set-aside on a lookup hit past an incomplete window: a declared partial delivery older than the window lands the row again. TestPlan_LookupPartialOffered must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\tif nums := partial[id]; nums != nil {",
+      "new": "\t\tif nums := partial[id]; false && nums != nil {"
+    },
+    {
+      "name": "#6751 rework rows' delivery: \u2014 read only the Next-up rows for declared partials, not the awaiting-rework rows, so a rework row whose only merged PR is declared covers: partial is dropped as represented again. TestPlan_PartialReworkRowOffered must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\tvar aliases *deskkit.DeliveryAliases\n\tfor _, r := range append(rows, rework...) {",
+      "new": "\tvar aliases *deskkit.DeliveryAliases\n\t_ = rework\n\tfor _, r := range rows {"
     }
   ]
 }

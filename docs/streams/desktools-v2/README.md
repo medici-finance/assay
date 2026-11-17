@@ -142,6 +142,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 80 | [Port the release spec-header stamp script](brief-80-port-the-release-spec-header-stamp-script.md) | 4 | S | todo | — | — |
 | 81 | [Run acceptance-transition rows inside a closed container-netns bracket](brief-81-run-acceptance-transition-rows-inside-a-closed-container-netns-bracket.md) | 1 | M | implemented | — | — |
 | 82 | [Port the desk-tools tarball manifest script](brief-82-port-the-desk-tools-tarball-manifest-script.md) | 4 | S | todo | — | — |
+| 83 | [Admit acceptance transitions for cross-repository briefs](brief-83-admit-acceptance-transitions-for-cross-repository-briefs.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

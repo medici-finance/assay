@@ -42,7 +42,7 @@ func TestRepresentedBatchLazyFrontier(t *testing.T) {
 	})
 	got, err := representedSourceFor("example-org/example-repo", func() ([]string, error) {
 		return []string{"example-port/11", "example-port/12"}, nil
-	})()
+	}, nil)()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,7 +66,7 @@ func TestRepresentedBatchUncertainty(t *testing.T) {
 	})
 	got, err := representedSourceFor("example-org/example-repo", func() ([]string, error) {
 		return []string{"example-port/11", "example-port/12", "example-port/13"}, nil
-	})()
+	}, nil)()
 	if err != nil || len(got) != 3 {
 		t.Fatalf("uncertainty/deletion became exemption: %+v %v", got, err)
 	}

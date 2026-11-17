@@ -23,7 +23,7 @@ decision-trigger: creation
 issues: [6615]
 decision-issue: 6615
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-11-16 by assay-worker-app (issue #6615)
 sources:
   - "Issue #6615: cell dev environment, one dev-env file per cell, admitted to Verify rows by declared name."
@@ -134,11 +134,19 @@ Options:
      identity can write it or its directory (mode, owner, access-control list). Role secrets
      bind on the container surface only today; a host window that can open a role-secret file
      gets no dev-env path, under the same rule.
+     Withholding the path keeps such a window unaware of the file, not unable to open it. That
+     is harmless while no host surface binds a role secret. When one is built,
+     `DR-desk-containers-35` must also make the file unreadable to every holder identity by
+     mode or access-control list, as the container surface does by giving a holder no mount.
    - the launcher records, per window, the coordinator identity, the dev-env mount mode and the
-     role-secret files the window can reach, where the verifier can read it and no role window
-     can write it. Brief 36 admits a row that declares names only when that record says the
-     window binds no role secret and an open of every role-secret path the cell binds fails
-     from the row's environment; a missing or unreadable record refuses.
+     role-secret files the window can reach, where the verifier can read it and no role
+     identity can write it, the coordinator's included: the launcher writes it as an identity
+     that is none of the role identities. The verifier trusts the record only through an anchor
+     the record does not supply (Interface contract): it sits at a fixed path in a launcher
+     anchor directory, and its owner must be the identity that owns that anchor. Brief 36
+     admits a row that declares names only when that record says the window binds no role
+     secret and an open of every role-secret path the record lists fails from the row's
+     environment; a missing, unreadable or unanchored record refuses.
    - a cell whose role windows share one OS user binds no dev-env file; rows that declare names
      stay could-not-check.
    This meets both clauses: no holding window reads the file, so nothing the coordinator writes
@@ -204,7 +212,8 @@ amendment and the answer to this question, and the driver approves it by name.
      attestations record is not a guessing oracle for a value (a reversible default this brief
      takes; DR-desk-containers-34 forbids hashing a bare secret for that reason);
    - the proof that only the coordinator can write, per surface, as `## Human decision` rules,
-     and how the verifier learns the coordinator's identity (Interface contract);
+     how the verifier learns the coordinator's identity, and the launcher record's anchor
+     (Interface contract);
    - under option 1, the file and its path reach only windows that can open no role secret, and
      a row that declares names is admitted only in such a window; removing role-secret
      variables from a row is not that separation.
@@ -247,6 +256,27 @@ the coordinator role's identity, on a container cell the mount layout, and for e
 role-secret files it can reach, only from what the launcher records from the cell's identity
 map (brief 37 Task 2), never from the file, the worktree or a variable a window can set; when
 that record is absent or unreadable the verifier refuses. Brief 37 builds the launcher against Task 1 and the surface rule the decision picks.
+
+Under option 1 the record itself is trusted through an anchor, an allow-list rather than a
+list of role identities to deny, because the verifier cannot learn every role identity:
+- **Launcher identity.** The verifier learns it from the operating system, never from the
+  record, the dev-env file, `cell.env`, the cells root, the worktree or a variable a window can
+  set: it is the owner of the launcher anchor directory, a fixed absolute path the verifier is
+  built or installed with, which `DR-desk-containers-35` names. It must be none of the role
+  identities, so it differs from the coordinator identity the record names and from the
+  verifier's own; a launcher that is a role identity writes no record.
+- **Anchor path.** Every component from the filesystem root down to the anchor is owned by the
+  system administrator or the launcher identity and writable only by its owner (no group or
+  other write, no access-control entry granting write); a component that fails this, or is a
+  symlink, makes the anchor untrusted.
+- **Record location.** One record per launcher, at a fixed name in the anchor, with an entry
+  per window of every cell the launcher starts. No window input selects it; the verifier
+  reads the entry for its own window and probes every role-secret path the record lists.
+- **Record owner and mode.** The record's owner is the launcher identity and no other identity
+  can write it, by mode or access-control entry; it is not a symlink.
+- **Container cell.** The launcher binds that one record file read-only into each verifier
+  container at a fixed in-container path and into no other container; the verifier checks
+  that mount as it checks its own dev-env mount, in place of an owner check.
 
 ## Definition of Done
 
@@ -292,6 +322,13 @@ Named tests must execute; zero matches or a skip fails independent verification.
   host the coordinator chose: option 1 keeps the file out of every window that can open a role
   secret; brief 36 row 16 and brief 37 rows 1 and 4. Option 2 leaves this open, which is why it
   conflicts with DR-desk-containers-34.
+- A role window, or any identity the record does not name as a role, forges the launcher
+  record so a holding window reads as binding none: the record anchor (Interface contract);
+  enforced by brief 36 row 3 and brief 37 row 8.
+- The administrator hands the anchor to a role identity: the verifier refuses when that
+  identity is the recorded coordinator or the verifier itself, and brief 37 row 8 refuses it at
+  launch, where the identity map is known. Beyond that it is review-only: who owns the anchor
+  is an administrator act that `DR-desk-containers-35` records.
 - A digest of a one-line file lets a reader guess a short value: the nonce line and the
   8-character floor, Task 1.
 - A production value or role secret lands in the dev-env file: no row; review-only, row 7 and

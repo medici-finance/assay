@@ -808,25 +808,9 @@ func bestEffortOriginRepo(dir string) string {
 //
 // Deliberately string-level and total: it must never fail or panic on the hostile URLs it
 // exists to log, so it does not go through net/url (which rejects many shapes git accepts).
+// It is deskkit.RedactRemoteUserinfo, the one redactor every remote shape goes through.
 func redactURL(raw string) string {
-	u := strings.TrimSpace(raw)
-	if i := strings.Index(u, "://"); i >= 0 {
-		scheme, rest := u[:i+3], u[i+3:]
-		if at := strings.LastIndexByte(rest[:authorityEnd(rest)], '@'); at >= 0 {
-			return scheme + "<redacted>@" + rest[at+1:]
-		}
-		return u
-	}
-	// scp-like [user@]host:path — a user component here is a username, not a secret, but
-	// redact it for consistency so no shape leaks a token through a different branch.
-	if colon := strings.IndexByte(u, ':'); colon >= 0 {
-		if slash := strings.IndexByte(u, '/'); slash < 0 || colon < slash {
-			if at := strings.LastIndexByte(u[:colon], '@'); at >= 0 {
-				return "<redacted>@" + u[at+1:]
-			}
-		}
-	}
-	return u
+	return deskkit.RedactRemoteUserinfo(strings.TrimSpace(raw))
 }
 
 // remoteHelperRe matches a git remote-helper transport form `<helper>::<address>`
