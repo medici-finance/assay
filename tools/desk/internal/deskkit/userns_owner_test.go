@@ -3,10 +3,12 @@
 package deskkit
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // regression: #6768
@@ -43,5 +45,31 @@ func TestHotfixOwnerUserNS(t *testing.T) {
 		if err := HotfixRootOwned()(f); err == nil || !strings.Contains(err.Error(), "not 0") {
 			t.Fatalf("HotfixRootOwned on a file this test owns = %v, want owned-by refusal", err)
 		}
+	}
+}
+
+// regression: #6768
+// TestHotfixOwnerReasonDistinct: when the namespace gate refuses, layer 2 and ValidateHotfix
+// name could-not-check (HotfixReasonOwnerUnverified), never "not root-owned", which only a
+// file owner actually read may earn.
+func TestHotfixOwnerReasonDistinct(t *testing.T) {
+	id := "0 0 4294967295\n"
+	overlay := t.TempDir()
+	gated := hotfixOwnedByNS(0, fixIDMaps("0 1000 1\n", id), "linux")
+	in := hotfixSelfInput{Overlay: overlay, Exe: filepath.Join(overlay, "bin", "deskpr"), Owner: gated}
+	if r := selfIntegrity(in, "deskpr"); !strings.HasPrefix(r, HotfixReasonOwnerUnverified+": ") {
+		t.Errorf("layer 2, gate refusal: reason %q, want %q", r, HotfixReasonOwnerUnverified)
+	}
+	_, err := ValidateHotfix(overlay, "deskpr", "", time.Now(), gated)
+	var he *HotfixError
+	if !errors.As(err, &he) || he.Reason != HotfixReasonOwnerUnverified {
+		t.Errorf("ValidateHotfix, gate refusal: %v, want reason %q", err, HotfixReasonOwnerUnverified)
+	}
+	if os.Getuid() == 0 {
+		return
+	}
+	in.Owner = hotfixOwnedByNS(0, fixIDMaps(id, id), "linux")
+	if r := selfIntegrity(in, "deskpr"); !strings.HasPrefix(r, HotfixReasonNotRootOwned+": ") {
+		t.Errorf("control, a caller-owned overlay: reason %q, want %q", r, HotfixReasonNotRootOwned)
 	}
 }

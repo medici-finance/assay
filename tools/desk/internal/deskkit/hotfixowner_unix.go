@@ -24,7 +24,7 @@ func HotfixOwnedBy(uid uint32) HotfixOwnerCheck {
 func hotfixOwnedByNS(uid uint32, read func(string) ([]byte, error), goos string) HotfixOwnerCheck {
 	return func(path string) error {
 		if err := userNSIdentity(read, goos); err != nil {
-			return fmt.Errorf("%s: %v", path, err)
+			return fmt.Errorf("%s: %w", path, err)
 		}
 		real, err := filepath.EvalSymlinks(path)
 		if err != nil {

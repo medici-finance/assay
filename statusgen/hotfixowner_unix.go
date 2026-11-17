@@ -25,18 +25,11 @@ func sgHotfixOwnedByNS(uid uint32, read func(string) ([]byte, error), goos strin
 	check := sgHotfixOwnedByIn(uid, 0)
 	return func(path string) error {
 		if err := sgUserNSIdentity(read, goos); err != nil {
-			return fmt.Errorf("%s: %v", path, err)
+			return fmt.Errorf("%s: %w", path, err)
 		}
 		return check(path)
 	}
 }
-
-// sgHotfixOwnedByRoot is the same check where root itself carries uid root, as in the
-// network-off helper's user namespace (sgActiveOwnerFor): the file and every parent must be
-// owned by that uid, and uid 0 there, the mapped caller, is never accepted as root. It is the
-// one owner check without the identity gate, because the helper runs in a non-initial
-// namespace by design and has already read that namespace's mapping to find root's uid.
-func sgHotfixOwnedByRoot(root uint32) func(string) error { return sgHotfixOwnedByIn(root, root) }
 
 // sgHotfixOwnedByIn is the check itself: path owned by uid, every parent by uid or root.
 func sgHotfixOwnedByIn(uid, root uint32) func(string) error {

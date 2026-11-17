@@ -264,6 +264,7 @@ func TestStatusgenHotfixParity(t *testing.T) {
 		"HotfixReasonOutlived": sgReasonOutlived, "HotfixReasonExpired": sgReasonExpired,
 		"HotfixReasonCeiling": sgReasonCeiling, "HotfixReasonSourceRule": sgReasonSourceRule,
 		"HotfixReasonUnstamped": sgReasonUnstamped, "HotfixReasonNoPin": sgReasonNoPin,
+		"HotfixReasonOwnerUnverified": sgReasonOwnerUnverified,
 	}
 	for name, mine := range strs {
 		m := regexp.MustCompile(`(?m)^\s*` + name + `\s*=\s*"([^"]*)"`).FindStringSubmatch(src)
@@ -284,91 +285,55 @@ func TestStatusgenHotfixParity(t *testing.T) {
 	}
 }
 
-// TestStatusgenHotfixNetnsRoot: the check:ci network-off helper runs under `unshare --net
-// --map-root-user`, where the caller's uid reads as 0 and an unmapped uid, root's included,
-// reads as the overflow uid. sgNamespaceRootUID finds the uid root carries there; the helper,
-// and only the helper, checks ownership by that uid, and never takes uid 0 there for root.
-// Every other path is the uid-0 check, which outside the initial namespace is could-not-check.
+// regression: #6768
+// TestStatusgenHotfixNetnsRoot: argv selects no owner rule. The check:ci network-off helper
+// runs under `unshare --net --map-root-user`, and from inside a user namespace its parents
+// cannot be seen: under a nested mapping a caller's own file can read as owned by whichever
+// uid a namespace-derived rule would trust. So the helper's owner check is the uid-0 check
+// behind the namespace gate, like every invocation: outside the initial namespace it is
+// could-not-check before any owner is read, and in it the helper and an ordinary invocation
+// give the same verdict.
 func TestStatusgenHotfixNetnsRoot(t *testing.T) {
-	for _, c := range []struct {
-		name, uidMap, overflow string
-		want                   uint32
-		ok                     bool
-	}{
-		{"initial namespace", "         0          0 4294967295\n", "65534\n", 0, true},
-		{"map-root-user, root unmapped", "         0       1000          1\n", "65534\n", 65534, true},
-		{"root mapped to another inside uid", "1000 0 1\n0 1000 1\n", "65534", 1000, true},
-		{"root mapped in a subuid range", "0 0 1\n1 100000 65536\n", "65534", 0, true},
-		{"overflow uid is itself mapped", "0 1000 70000\n", "65534", 0, false},
-		{"empty map", "", "65534", 0, false},
-		{"malformed map line", "0 1000\n", "65534", 0, false},
-		{"zero-length extent", "0 1000 0\n", "65534", 0, false},
-		{"malformed overflow", "0 1000 1\n", "nobody", 0, false},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			got, ok := sgNamespaceRootUID(c.uidMap, c.overflow)
-			if got != c.want || ok != c.ok {
-				t.Fatalf("sgNamespaceRootUID(%q, %q) = %d, %v; want %d, %v", c.uidMap, c.overflow, got, ok, c.want, c.ok)
-			}
-		})
-	}
-
 	me := uint32(os.Getuid())
 	if me == 0 {
-		t.Skip("running as root: the owner probes below need a non-root file owner")
+		t.Skip("running as root: the control below needs a non-root file owner")
 	}
 	f := filepath.Join(t.TempDir(), "statusgen")
 	sgFixWrite(t, f, "x\n", 0o755)
-	procFor := func(uidMap, overflow string) func(string) ([]byte, error) {
-		return func(p string) ([]byte, error) {
-			switch p {
-			case sgProcUIDMap:
-				return []byte(uidMap), nil
-			case sgProcOverflowUID:
-				return []byte(overflow), nil
-			}
-			return nil, os.ErrNotExist
-		}
-	}
+	id := "0 0 4294967295\n"
 	helper := []string{"statusgen", netnsHelperArg, "net:[1]", "sh", "-c", "true"}
-	// A namespace in which root reads as this test's uid: the file's own owner check passes,
-	// and the parent walk then meets a uid-0 directory, which in such a namespace is the
-	// mapped caller and is refused.
-	asRoot := procFor(fmt.Sprintf("0 %d 1\n", me+1), fmt.Sprint(me))
+	ordinary := []string{"statusgen", "verifyrun"}
 	notRoot := fmt.Sprintf("is owned by uid %d, not 0", me)
-	err := sgActiveOwnerFor(helper, asRoot)(f)
-	if err == nil || strings.Contains(err.Error(), notRoot) || !strings.Contains(err.Error(), "parent ") ||
-		!strings.Contains(err.Error(), "owned by uid 0, not "+fmt.Sprint(me)) {
-		t.Fatalf("helper in a namespace where root reads as uid %d: %v", me, err)
-	}
-	// The same file under root's uid 0 check: a helper in the initial namespace, and the
-	// default argv in this test's own namespace.
-	for name, owner := range map[string]func(string) error{
-		"helper, initial ns": sgActiveOwnerFor(helper, procFor("0 0 4294967295\n", fmt.Sprint(me))),
-		"default argv":       sgActiveOwner(),
-	} {
-		if err := owner(f); err == nil || !strings.Contains(err.Error(), notRoot) {
-			t.Errorf("%s: owner check on a uid-%d file = %v, want %q", name, me, err, notRoot)
+	// withOverflow also serves the kernel's overflow uid, which a namespace-derived rule
+	// would read beside uid_map; the gate reads neither more nor less for it.
+	withOverflow := func(r func(string) ([]byte, error)) func(string) ([]byte, error) {
+		return func(p string) ([]byte, error) {
+			if p == "/proc/sys/kernel/overflowuid" {
+				return []byte("65534\n"), nil
+			}
+			return r(p)
 		}
 	}
-	// Every other invocation, a helper whose mapping cannot be read, and a helper whose
-	// mapping is ambiguous fall to the uid-0 check, which outside the initial namespace is
-	// could-not-check before any owner is read (sgUserNSIdentity).
-	for name, owner := range map[string]func(string) error{
-		"ordinary invocation":   sgActiveOwnerFor([]string{"statusgen", "verifyrun"}, asRoot),
-		"helper argv not first": sgActiveOwnerFor([]string{"statusgen", "verifyrun", netnsHelperArg}, asRoot),
-		"helper, no uid_map":    sgActiveOwnerFor(helper, func(string) ([]byte, error) { return nil, os.ErrPermission }),
-		"helper, ambiguous map": sgActiveOwnerFor(helper, procFor(fmt.Sprintf("0 %d 70000\n", me+1), "1")),
-	} {
-		if err := owner(f); err == nil || !strings.Contains(err.Error(), "could-not-check") {
-			t.Errorf("%s: owner check on a uid-%d file = %v, want could-not-check", name, me, err)
+	for name, args := range map[string][]string{"helper": helper, "ordinary": ordinary} {
+		if err := sgActiveOwnerFor(args, withOverflow(sgFixIDMaps(id, id)))(f); err == nil || !strings.Contains(err.Error(), notRoot) {
+			t.Errorf("control, %s argv in the initial namespace: %v, want %q", name, err, notRoot)
 		}
 	}
-	// In the --map-root-user namespace root reads as the overflow uid; a file owned by anyone
-	// else, the caller included, is refused.
-	if err := sgActiveOwnerFor(helper, procFor(fmt.Sprintf("0 %d 1\n", me), "65534"))(f); err == nil ||
-		!strings.Contains(err.Error(), fmt.Sprintf("is owned by uid %d, not 65534", me)) {
-		t.Fatalf("helper, root unmapped: %v", err)
+	for name, read := range map[string]func(string) ([]byte, error){
+		"map-root-user":            sgFixIDMaps(fmt.Sprintf("0 %d 1\n", me), "0 1000 1\n"),
+		"nested, caller as root":   sgFixIDMaps(fmt.Sprintf("%d 0 1\n", me), id),
+		"nested, root as caller":   sgFixIDMaps(fmt.Sprintf("0 %d 1\n", me+1), id),
+		"root in a subuid range":   sgFixIDMaps("0 0 1\n1 100000 65536\n", id),
+		"uid_map unreadable":       func(string) ([]byte, error) { return nil, os.ErrPermission },
+		"overflow uid ambiguous":   sgFixIDMaps(fmt.Sprintf("0 %d 70000\n", me+1), id),
+		"helper map, gid remapped": sgFixIDMaps(id, "0 1000 1\n"),
+	} {
+		for argName, args := range map[string][]string{"helper": helper, "ordinary": ordinary} {
+			err := sgActiveOwnerFor(args, withOverflow(read))(f)
+			if err == nil || !strings.Contains(err.Error(), "could-not-check") || strings.Contains(err.Error(), "owned by") {
+				t.Errorf("%s, %s argv: owner check on a uid-%d file = %v, want could-not-check before any owner verdict", name, argName, me, err)
+			}
+		}
 	}
 }
 

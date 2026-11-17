@@ -79,3 +79,24 @@ func TestStatusgenOwnerGateFirst(t *testing.T) {
 		t.Fatalf("own file under a remapped namespace = %v, want could-not-check before any owner verdict", err)
 	}
 }
+
+// regression: #6768
+// TestStatusgenOwnerReasonDistinct: when the namespace gate refuses, the self-check names
+// could-not-check (sgReasonOwnerUnverified), never "not root-owned", which only a file owner
+// actually read may earn.
+func TestStatusgenOwnerReasonDistinct(t *testing.T) {
+	id := "0 0 4294967295\n"
+	overlay := t.TempDir()
+	in := sgHotfixInput{Overlay: overlay, Exe: filepath.Join(overlay, "bin", "statusgen")}
+	in.Owner = sgHotfixOwnedByNS(0, sgFixIDMaps("0 1000 1\n", id), "linux")
+	if r := sgSelfIntegrity(in); !strings.HasPrefix(r, sgReasonOwnerUnverified+": ") {
+		t.Errorf("gate refusal: reason %q, want %q", r, sgReasonOwnerUnverified)
+	}
+	if os.Getuid() == 0 {
+		return
+	}
+	in.Owner = sgHotfixOwnedByNS(0, sgFixIDMaps(id, id), "linux")
+	if r := sgSelfIntegrity(in); !strings.HasPrefix(r, sgReasonNotRootOwned+": ") {
+		t.Errorf("control, a caller-owned overlay: reason %q, want %q", r, sgReasonNotRootOwned)
+	}
+}

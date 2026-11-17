@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -57,10 +58,9 @@ func TestStatusgenUserNSIdentity(t *testing.T) {
 
 }
 
-// TestStatusgenOwnerInGated: the raw owner check, sgHotfixOwnedByIn, has exactly two callers,
-// both in hotfixowner_unix.go: sgHotfixOwnedByNS, behind the namespace gate, and
-// sgHotfixOwnedByRoot, the network-off helper's check, which reads its namespace's mapping
-// itself. A third caller anywhere would be a root-owner check that skips the gate.
+// TestStatusgenOwnerInGated: the raw owner check, sgHotfixOwnedByIn, has exactly one caller,
+// sgHotfixOwnedByNS in hotfixowner_unix.go, behind the namespace gate. A second caller
+// anywhere would be a root-owner check that skips the gate.
 func TestStatusgenOwnerInGated(t *testing.T) {
 	files, err := filepath.Glob("*.go")
 	if err != nil {
@@ -78,10 +78,61 @@ func TestStatusgenOwnerInGated(t *testing.T) {
 		n := len(call.FindAllIndex(b, -1))
 		want := 0
 		if f == "hotfixowner_unix.go" {
-			want = 3 // the definition and its two gated callers
+			want = 2 // the definition and its one gated caller
 		}
 		if n != want {
 			t.Errorf("%s names sgHotfixOwnedByIn %d times, want %d: a root-owner check must pass the user-namespace gate", f, n, want)
+		}
+	}
+}
+
+// sgOwnerReaders is every non-test file in this module that reads a file owner's uid, and
+// why it may. A file owner is read as this process's user namespace maps it, so a check that
+// trusts an owner as root, apart from the caller, belongs behind the namespace gate.
+var sgOwnerReaders = map[string]string{
+	"hotfixowner_unix.go": "the root-owner check, behind sgUserNSIdentity (TestStatusgenOwnerInGated)",
+	"rosterowner_unix.go": "compares the owner with the caller's own uid, which no namespace remaps apart",
+}
+
+// regression: #6768
+// TestStatusgenOwnerReadersKnown: any new file that reads a file owner's uid (a Stat_t and
+// its Uid) fails here until it is listed in sgOwnerReaders with its reason, so a new
+// root-owner check cannot land without the namespace gate being considered.
+func TestStatusgenOwnerReadersKnown(t *testing.T) {
+	uid := regexp.MustCompile(`\.Uid\b`)
+	seen := map[string]bool{}
+	err := filepath.WalkDir(".", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if n := d.Name(); p != "." && (n == "testdata" || n == "vendor" || strings.HasPrefix(n, ".")) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(string(b), "Stat_t") || !uid.Match(b) {
+			return nil
+		}
+		seen[filepath.ToSlash(p)] = true
+		if _, ok := sgOwnerReaders[filepath.ToSlash(p)]; !ok {
+			t.Errorf("%s reads a file owner's uid and is not in sgOwnerReaders: a root-owner check must pass the user-namespace gate (sgUserNSIdentity); list it with its reason", p)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for f := range sgOwnerReaders {
+		if !seen[f] {
+			t.Errorf("sgOwnerReaders lists %s, which no longer reads a file owner: drop it", f)
 		}
 	}
 }
