@@ -1,0 +1,107 @@
+{
+  "test": "go test . -run 'TestVflipOutcome|TestOutcome(Status|Adders)Parity' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL \u2014 the whole cross-check skipped (the unfixed flip)",
+    "file": "flipoutcome.go",
+    "old": "\trecords, skipped, err := readVerifyOutcomeRecordsSkips(root)\n",
+    "new": "\tif true {\n\t\treturn nil\n\t}\n\trecords, skipped, err := readVerifyOutcomeRecordsSkips(root)\n"
+  },
+  "mutations": [
+    {
+      "name": "old ranking restored: the record-input guards are skipped, so an unparseable-ts record ranks oldest and loses (F-sec-2 / C-1)",
+      "file": "flipoutcome.go",
+      "old": "\tif err := flipOutcomeInputs(records, skipped, key); err != nil {",
+      "new": "\tif err := flipOutcomeInputs(records, skipped, key); err != nil && false {"
+    },
+    {
+      "name": "per-file ts guard dropped (an unparseable ts falls through to the path check's message)",
+      "file": "flipoutcome.go",
+      "old": "if _, err := time.Parse(time.RFC3339, rec.TS); err != nil {",
+      "new": "if _, err := time.Parse(time.RFC3339, rec.TS); err != nil && false {"
+    },
+    {
+      "name": "record path not checked against its bytes (F-sec-3 / A-3)",
+      "file": "flipoutcome.go",
+      "old": "\t\tif want != rec.Path {",
+      "new": "\t\tif want != rec.Path && false {"
+    },
+    {
+      "name": "skipped legacy lines ignored (the legacy tolerance reaches the gate)",
+      "file": "flipoutcome.go",
+      "old": "\t\tif head.Brief == key || bytes.Contains(sk.Line, quoted) {",
+      "new": "\t\tif false && (head.Brief == key || bytes.Contains(sk.Line, quoted)) {"
+    },
+    {
+      "name": "uncommitted records counted (F-sec-1 / A-2)",
+      "file": "flipoutcome.go",
+      "old": "\tif err := flipOutcomeCommitted(root, key); err != nil {",
+      "new": "\tif err := flipOutcomeCommitted(root, key); err != nil && false {"
+    },
+    {
+      "name": "deciding record's author not judged (F-sec-1 / A-2)",
+      "file": "flipoutcome.go",
+      "old": "\t\tif v, why := p.classify(a.Name, a.Email); v != actorVerifier && v != actorHuman {",
+      "new": "\t\tif v, why := p.classify(a.Name, a.Email); false && v != actorVerifier && v != actorHuman {"
+    },
+    {
+      "name": "revision ignored",
+      "file": "flipoutcome.go",
+      "old": "\tif !strings.HasPrefix(r, w) && !strings.HasPrefix(w, r) {",
+      "new": "\tif false && !strings.HasPrefix(r, w) && !strings.HasPrefix(w, r) {"
+    },
+    {
+      "name": "unreadable record store read as agreeing",
+      "file": "flipoutcome.go",
+      "old": "\t\treturn fmt.Errorf(\"outcome record: verify-outcome records unreadable: %v\", err)",
+      "new": "\t\treturn nil"
+    },
+    {
+      "name": "typed clean check: the pathspec glob's wildcard stops at '/' (a Git pathspec's does not)",
+      "file": "flipoutcome.go",
+      "old": "\t\t\tb.WriteString(\".*\")",
+      "new": "\t\t\tb.WriteString(\"[^/]*\")"
+    },
+    {
+      "name": "typed adding-commit walk: a merge that brings the path in counts as adding it (native log lists no merge)",
+      "file": "flipoutcome.go",
+      "old": "\tif c.PathID == \"\" || len(c.Parents) > 1 {",
+      "new": "\tif c.PathID == \"\" {"
+    },
+    {
+      "name": "future-dated record ignored: the reduction's excluded future record no longer makes the latest unknown",
+      "file": "flipoutcome.go",
+      "old": "\tif future[key] {",
+      "new": "\tif future[key] && false {"
+    },
+    {
+      "name": "no adding commit read as agreeing: a record no non-merge commit adds passes the author check",
+      "file": "flipoutcome.go",
+      "old": "\tif len(commits) == 0 {",
+      "new": "\tif len(commits) == 0 && false {"
+    },
+    {
+      "name": "deciding legacy line read as agreeing: a legacy log line decides with no author judged",
+      "file": "flipoutcome.go",
+      "old": "\t\treturn fmt.Errorf(\"outcome record: the deciding record for %s is a legacy log line (%s), which has no adding commit of its own to judge\", rec.Brief, rec.Source)",
+      "new": "\t\treturn nil"
+    },
+    {
+      "name": "typed-reader decline ignored: a declined repository is read as if supported",
+      "file": "flipoutcome.go",
+      "old": "\tif read.native != \"\" {",
+      "new": "\tif read.native != \"\" && false {"
+    },
+    {
+      "name": "adding-commit walk error swallowed: a partial walk's adders are judged",
+      "file": "flipoutcome.go",
+      "old": "\treturn commits, err\n",
+      "new": "\t_ = err\n\treturn commits, nil\n"
+    },
+    {
+      "name": "record files not compared against HEAD by content (the typed status read's cached metadata decides)",
+      "file": "flipoutcome.go",
+      "old": "\treturn flipOutcomeHeadBytes(root, read, stream)\n",
+      "new": "\treturn nil\n"
+    }
+  ]
+}
