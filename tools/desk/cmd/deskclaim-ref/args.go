@@ -64,9 +64,9 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 	}
 
 	selectContext()
-	repo := resolveRepo(repoFlag)
-	if repo == "" {
-		errf("unverifiable: could not resolve the target repo (pass --repo owner/name)")
+	repo, rerr := resolveRepo(repoFlag)
+	if rerr != nil || repo == "" {
+		errf("unverifiable: could not resolve the target repo (pass --repo owner/name): %v", rerr)
 		return exitUnverifiable
 	}
 	if owner == "" {

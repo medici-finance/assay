@@ -183,21 +183,9 @@ func urlHost(u string) string {
 
 // redactURL strips userinfo from a URL before it reaches a message: an https remote can carry
 // `user:token@`. Only the userinfo goes; host and path stay, so the line still says where.
+// It is deskkit.RedactRemoteUserinfo, the one redactor every remote shape goes through.
 func redactURL(raw string) string {
-	u := strings.TrimSpace(raw)
-	i := strings.Index(u, "://")
-	if i < 0 {
-		return u
-	}
-	scheme, rest := u[:i+3], u[i+3:]
-	end := len(rest)
-	if s := strings.IndexByte(rest, '/'); s >= 0 {
-		end = s
-	}
-	if at := strings.LastIndexByte(rest[:end], '@'); at >= 0 {
-		return scheme + "<redacted>@" + rest[at+1:]
-	}
-	return u
+	return deskkit.RedactRemoteUserinfo(strings.TrimSpace(raw))
 }
 
 // pushDestinationGate is the push-destination gate for create and update. It runs after

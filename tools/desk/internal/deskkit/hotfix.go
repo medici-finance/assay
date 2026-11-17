@@ -412,7 +412,7 @@ func (f HotfixForge) compare(base, head string) (*hotfixCompare, error) {
 		return nil, hotfixErr(6, HotfixReasonNotOnMain, "could-not-check: forge unreachable: %v", err)
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 32<<20))
+	body, err := ReadCappedForgeBody(resp.Body, "GET hotfix check")
 	if err != nil {
 		return nil, hotfixErr(6, HotfixReasonNotOnMain, "could-not-check: forge read: %v", err)
 	}
