@@ -23,9 +23,9 @@ description: >-
 
 > **Every `gh` call carries this role's `GH_TOKEN`, reads included.** When no desk verb covers a forge call, run it only through the recipe in [§Forge CLI as the role](../../references/desk-shell.md#forge-cli-as-the-role), never a hand-typed shortcut. That recipe takes the role from `$DESK_LOOP`, mints it with `desktoken`, scopes the token to that one command without exporting it, and stops before `gh` unless the mint exited 0 and the token file holds a non-whitespace token. A bare `gh` call runs as the host's stored login, which is usually a human's, so a desk never runs one, not even for a read.
 
-> The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
+> The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache, every carried hold naming its source on the same line and re-checked at the next fresh sweep (lifted only when its own lift condition is met or the identity that set it releases it; a hold whose source cannot be read, or cannot be found, is kept and reported, never dropped) — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
-> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, and how it is reconciled and marked read are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
+> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, how it is reconciled and marked read, and how each hold it carries is re-checked against its source are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
 
 > Procedure every desk role shares — liveness, supervision and context, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 
@@ -331,7 +331,8 @@ correctness). A **mutating** response does not converge harmlessly: hence §Clos
    it `question` with what is missing, or scope it; a worker-legible issue rides Next-up. **Do not
    fan out workers, take a dispatch claim, or author implementation or close PRs from this window.** The item is not routed until its handoff is recorded and published (see the
    accountable handoff step above).
-   **Class decision** (same judgement as the triple). Is the symptom an instance of an open
+   **Class decision** (same judgement as the triple). Group the owed batch by mechanism before judging it,
+   on a strong-tier session: [`../../references/intake-class-pass.md`](../../references/intake-class-pass.md). Is the symptom an instance of an open
    `error-class` issue intake opened (title `class: <mechanism>`)? **Yes** → `deskfile attach`
    (outside the new-issue budget) one instance block: `kind` (`confirmed-defect` / `false-positive` /
    `intended-control` / `requested-capability` / `uncertain`), `incident-group` (mirrors share one),

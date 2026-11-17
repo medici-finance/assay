@@ -140,7 +140,9 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 		return sha
 	}
 	oldMint := mintTokenFn
-	mintTokenFn = func(string) error { return nil }
+	mintTokenFn = func(string) (deskkit.RoleCredential, error) {
+		return deskkit.RoleCredential{Token: ghToken, Resolution: deskkit.ForgeResolution{Kind: deskkit.ForgeGitHub}}, nil
+	}
 	t.Cleanup(func() { mintTokenFn = oldMint })
 	oldBudget := evidenceWriteBudget
 	budgetCalls := 0
@@ -156,13 +158,15 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 	// hold; the hold has its own suites (decisiongate_test.go), so the fake
 	// forge here does not serve the compare/tip reads it needs.
 	oldDecisionGate := decisionGateDiffFn
-	decisionGateDiffFn = func(string, string, []byte, bool, []byte, []boardEdit) ([]string, error) { return nil, nil }
+	decisionGateDiffFn = func(string, string, []byte, bool, []byte, []boardEdit, childOptions) ([]string, error) {
+		return nil, nil
+	}
 	t.Cleanup(func() { decisionGateDiffFn = oldDecisionGate })
 	oldBranchBoard := decisionGateBranchBoardFn
 	decisionGateBranchBoardFn = func(deskkit.Forge, deskkit.ForgeRepo, string, string, string) ([]boardEdit, error) { return nil, nil }
 	t.Cleanup(func() { decisionGateBranchBoardFn = oldBranchBoard })
 	oldLint := lintDiffFn
-	lintDiffFn = func(root, path string, content []byte) ([]string, error) {
+	lintDiffFn = func(root, path string, content []byte, options childOptions) ([]string, error) {
 		if root != br {
 			t.Fatalf("lint read source instead of tracking: %s", root)
 		}
@@ -171,7 +175,7 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 	t.Cleanup(func() { lintDiffFn = oldLint })
 	// Nor the non-decisive verdict gate (verdictgate_test.go owns it).
 	oldVerdict := evidenceVerdictCheckFn
-	evidenceVerdictCheckFn = func(string, string, []byte, []byte, bool, string) (closureVerdict, string, error) {
+	evidenceVerdictCheckFn = func(string, string, []byte, []byte, bool, string, childOptions) (closureVerdict, string, error) {
 		return closureAccepted, "", nil
 	}
 	t.Cleanup(func() { evidenceVerdictCheckFn = oldVerdict })
@@ -179,7 +183,11 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 	fragment := filepath.Join(t.TempDir(), "rows.md")
 	os.WriteFile(fragment, []byte(rows), 0600)
 	land := func(repo string, args ...string) error {
-		return cmdEvidence(append([]string{repo, "evidence-branch"}, args...), &auditCtx{})
+		// Like runOutward: release the preparation and audit locks when the landing ends.
+		ac := &auditCtx{}
+		defer ac.releasePrep()
+		defer ac.releaseAuditLock()
+		return cmdEvidence(append([]string{repo, "evidence-branch"}, args...), ac)
 	}
 	if err := land("example-org/source", "--root", source, "--brief-path", brief, "--evidence-file", fragment); err == nil {
 		t.Fatal("Evidence admitted to deliverable repository")

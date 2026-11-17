@@ -226,8 +226,20 @@
     {
       "name": "admit any scope at the lower boundary (a narrowed or widened token passes as the installation grant)",
       "file": "internal/credential/github.go",
-      "old": "\tif req.Scope != \"\" && req.Scope != ScopeInstallation {",
-      "new": "\tif false && req.Scope != \"\" && req.Scope != ScopeInstallation {"
+      "old": "\tif req.Scope != \"\" && req.Scope != ScopeInstallation && req.Scope != ScopeReadOnly {",
+      "new": "\tif false && req.Scope != \"\" && req.Scope != ScopeInstallation && req.Scope != ScopeReadOnly {"
+    },
+    {
+      "name": "admit a repository narrowing without the read-only scope (an installation-scope mint carries a repository it never narrows to)",
+      "file": "internal/credential/github.go",
+      "old": "\t} else if req.Repository != \"\" {",
+      "new": "\t} else if false && req.Repository != \"\" {"
+    },
+    {
+      "name": "accept any grant the forge returns as read-only (a write or admin grant is written and handed to the run)",
+      "file": "internal/credential/readonly.go",
+      "old": "func ReadOnlyGrantOK(perms map[string]string) bool {\n\tif len(perms) == 0 {",
+      "new": "func ReadOnlyGrantOK(perms map[string]string) bool {\n\treturn true\n\tif len(perms) == 0 {"
     },
     {
       "name": "stop requiring the Guard adapter (a caller with no guard mints with no kill-switch)",

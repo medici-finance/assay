@@ -10,7 +10,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -113,6 +115,49 @@ func TestRunPreservesLaunchAndExit(t *testing.T) {
 	gotDir, _ := filepath.EvalSymlinks(got.Dir)
 	if gotDir != wantDir || stderr.String() != "fixture stderr\n" {
 		t.Fatalf("cwd/stderr changed: %q / %q", got.Dir, stderr.String())
+	}
+}
+
+// TestNilEnvProbe is the child side of TestProcessNilEnvIsEmpty. A nil
+// environment leaves no variable to gate on, so the probe is selected by its
+// argv marker and is inert in an ordinary test run.
+func TestNilEnvProbe(t *testing.T) {
+	if len(os.Args) < 2 || os.Args[len(os.Args)-2] != "--" || os.Args[len(os.Args)-1] != "nil-env-probe" {
+		return
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(os.Environ())
+	os.Exit(0)
+}
+
+// regression: #5492
+func TestProcessNilEnvIsEmpty(t *testing.T) {
+	t.Setenv("CELLPROCESS_PARENT_ONLY", "must-not-leak")
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	argv := []string{exe, "-test.run=^TestNilEnvProbe$", "--", "nil-env-probe"}
+	var stdout, stderr bytes.Buffer
+	// The literal nil, not a non-nil slice that omits a variable.
+	code, uncertain, err := Run(context.Background(), argv, nil, t.TempDir(), &stdout, &stderr)
+	if code != 0 || uncertain || err != nil {
+		t.Fatalf("result=%d uncertain=%v err=%v stderr=%q", code, uncertain, err, stderr.String())
+	}
+	var got []string
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("probe output %q: %v", stdout.String(), err)
+	}
+	var leaked []string
+	for _, kv := range got {
+		// os/exec adds SYSTEMROOT on Windows; it is not inherited parent state.
+		if runtime.GOOS == "windows" && strings.HasPrefix(strings.ToUpper(kv), "SYSTEMROOT=") {
+			continue
+		}
+		name, _, _ := strings.Cut(kv, "=")
+		leaked = append(leaked, name) // names only: values may be secrets
+	}
+	if len(leaked) != 0 {
+		t.Fatalf("nil environment inherited %d parent variable(s): %q", len(leaked), leaked)
 	}
 }
 

@@ -136,7 +136,7 @@
     {
       "name": "version read failure is a could-not-check (reconcilefold.go:187)",
       "file": "reconcilefold.go",
-      "old": "return WitnessInfo{}, false, fmt.Sprintf(\"could-not-check the brief version for run source %s: %v\", p.SHA, verr)",
+      "old": "\t\t// Diagnostic only: briefVersionForPass owns the coordinate read.\n\t\tsourceDescription := p.SHA\n\t\tif p.RecordRun != \"\" {\n\t\t\tsourceDescription = p.RecordRun\n\t\t}\n\t\treturn WitnessInfo{}, false, fmt.Sprintf(\"could-not-check the brief version for run source %s: %v\", sourceDescription, verr)",
       "new": "return WitnessInfo{}, false, \"\""
     },
     {
@@ -226,7 +226,7 @@
     {
       "name": "tracking: a malformed cross-repository line is skipped, not refused",
       "file": "reconciletracking.go",
-      "old": "if !ok || a.version != 2 {\n\t\t\treturn 0, fmt.Errorf(\"malformed cross-repository run attestation%s\", missingCrossFields(m.text))\n\t\t}",
+      "old": "if !ok || a.version != 2 {\n\t\t\treturn nil, fmt.Errorf(\"malformed cross-repository run attestation%s\", missingCrossFields(m.text))\n\t\t}",
       "new": "if !ok || a.version != 2 {\n\t\t\tcontinue\n\t\t}"
     },
     {

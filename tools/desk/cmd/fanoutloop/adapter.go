@@ -83,7 +83,10 @@ type FanoutLoop struct {
 	// live one; tests inject fixtures). The source builds the map with deskkit.RepresentedBriefPRs
 	// over the repo's open+merged PRs — keyed on each PR's `Brief:` trailer, NEVER a branch name (a
 	// branch spelled differently from the derived pattern is exactly the phantom this reconciliation
-	// exists to catch).
+	// exists to catch). A MERGED PR the brief's own `delivery:` list declares `covers: partial` is
+	// work in progress, not the delivery, so the live source sets it aside before routing (#6751,
+	// represented.go): a brief whose only merged PRs are declared partials is not represented and
+	// its row is offered, as statusgen offers it.
 	//
 	// It governs FRESH Next-up rows AND `### Awaiting implementer rework` STATUS.md rows
 	// (#1028: a rework row whose deliverable already merged is a phantom this lane used to
@@ -144,6 +147,9 @@ type FanoutLoop struct {
 type landedRow struct {
 	briefID string // `<stream>/<NN>`
 	pr      int    // the merged PR's number
+	// unchecked, when non-empty, marks a COULD-NOT-CHECK row instead (#5853): its representing PR
+	// could not be determined (pr is 0) and renderPlan lists it under its own heading with this reason.
+	unchecked string
 }
 
 func (f *FanoutLoop) Name() string { return "worker-desk" }
@@ -224,7 +230,8 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 			if f.isHandled(r.ID()) {
 				continue
 			}
-			if _, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
+			if rp, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
+				f.noteUnchecked(r, rp)
 				continue
 			}
 			reworkItems = append(reworkItems, r.toReworkItem(f.TargetSHA))
@@ -251,7 +258,8 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	// landed-unreconciled (its board cell just never flipped after the merge) and is recorded for the
 	// plan's own heading, never dispatched; an OPEN PR → the row is started work, routed to the RESUME
 	// lane (deduped against an orphan already covering that PR); no PR → fresh dispatch. The match is on
-	// the brief id keyed against the PR's `Brief:` trailer, never a branch name.
+	// the brief id keyed against the PR's `Brief:` trailer, never a branch name. A merged PR the brief
+	// declares `covers: partial` never reaches this map (#6751): the source set it aside.
 	rows, err := f.boardSource()
 	if err != nil {
 		return nil, err
@@ -268,6 +276,9 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 				continue
 			}
 			if rp, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
+				if f.noteUnchecked(r, rp) {
+					continue
+				}
 				if rp.Merged {
 					// Landed-unreconciled: the deliverable merged, the board row just never reconciled.
 					// A plan diagnostic, never a dispatch — recorded for renderPlan's own heading.
@@ -313,6 +324,18 @@ func (f *FanoutLoop) landedUnreconciledRows() []landedRow {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]landedRow(nil), f.landedUnreconciled...)
+}
+
+// noteUnchecked records a row whose representing PR could not be determined (#5853) under the plan's
+// COULD-NOT-CHECK heading and reports true; such a row is never dispatched and never landed.
+func (f *FanoutLoop) noteUnchecked(r BoardRow, rp deskkit.RepresentedPR) bool {
+	if rp.Unchecked == "" {
+		return false
+	}
+	f.mu.Lock()
+	f.landedUnreconciled = append(f.landedUnreconciled, landedRow{briefID: r.Stream + "/" + r.Num, unchecked: rp.Unchecked})
+	f.mu.Unlock()
+	return true
 }
 
 // freshHoldReason returns the reason the last SelectQueue HELD the fresh lane (a could-not-check

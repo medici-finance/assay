@@ -1849,6 +1849,22 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 		}
 	}
 
+	// Share a complete file observation within this PR's classification, including
+	// the zero-CI path-filter probe. The existing fact store still owns cross-sweep
+	// reuse and qualified head validation. Failed/partial reads are never memoized.
+	var fileSet map[string]bool
+	filesRead := false
+	changedFiles := func() (map[string]bool, bool, error) {
+		if filesRead {
+			return fileSet, true, nil
+		}
+		files, complete, err := facts.changedFiles(repo, p)
+		if err == nil && complete {
+			fileSet, filesRead = files, true
+		}
+		return files, complete, err
+	}
+
 	// degradeReasons collects the could-not-check reason from every read below that
 	// degrades THIS row rather than failing the whole sweep: each is folded into the
 	// row's own Note at the end (this brief's task 2/6), so an operator reading the board
@@ -1904,7 +1920,19 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 	pass, pending, fail, unknownChecks := ciState(p)
 	zeroState, zeroDetail := "", ""
 	if pass == 0 && pending == 0 && fail == 0 && unknownChecks == 0 {
-		zeroState, zeroDetail = probeZeroCI(repo, p)
+		zeroState, zeroDetail = probeZeroCIWithFiles(repo, p, func() (map[string]bool, bool, error) {
+			// CI path filters must not inherit the risk scanner's cross-sweep
+			// file cache: a base branch can move without a PR update (#2722).
+			var expected []string
+			if facts != nil && facts.qualified {
+				expected = []string{p.HeadRefOid}
+			}
+			files, complete, err := fetchChangedFiles(repo, p.Number, expected...)
+			if err == nil && complete {
+				fileSet, filesRead = files, true
+			}
+			return files, complete, err
+		})
 	}
 
 	in := buildClassifyInput(p, rs, ciRequired, zeroState)
@@ -1975,7 +2003,7 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 			// change-level: this PR's own changed files, for the benign-merge compare. A
 			// read failure here is a fact about ONE PR — reuse fetchChangedFiles' own
 			// truncation contract (degrade to RE-REVIEW) rather than a second mechanism.
-			own, complete, ownErr := facts.changedFiles(repo, p)
+			own, complete, ownErr := changedFiles()
 			if ownErr != nil {
 				in.ownFilesChanged = true
 				degrade(fmt.Sprintf("could not read this PR's own changed files for the "+
@@ -2012,7 +2040,7 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 	// failure gets the same fail-closed treatment the `!complete` case below already
 	// gives a truncated diff, because both mean the same thing to this gate: the
 	// trigger it exists to catch might be in the part that could not be read.
-	files, complete, rcErr := facts.changedFiles(repo, p)
+	files, complete, rcErr := changedFiles()
 	if rcErr != nil {
 		complete = false
 		degrade(fmt.Sprintf("could not read changed files for risk classification (%v) — "+

@@ -28,7 +28,11 @@ func TestOutcomeRecordOutsideRoot(t *testing.T) {
 		t.Helper()
 		f, errBuf := setupFake(t)
 		p := &probe{}
-		mintTokenFn = func(string) error { p.mints++; ghToken = fakeVerifierToken; return nil }
+		mintTokenFn = func(string) (deskkit.RoleCredential, error) {
+			p.mints++
+			ghToken = fakeVerifierToken
+			return deskkit.RoleCredential{Token: ghToken, Resolution: deskkit.ForgeResolution{Kind: deskkit.ForgeGitHub}}, nil
+		}
 		oldForge := forgeForFn
 		forgeForFn = func(owner, name string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 			p.forges++
@@ -98,8 +102,8 @@ func TestOutcomeRecordOutsideRoot(t *testing.T) {
 		if code != deskkit.ExitOK {
 			t.Fatalf("exit = %d, want 0: %s", code, errBuf)
 		}
-		if p.admissions != 1 {
-			t.Fatalf("admission ran %d time(s), want exactly 1", p.admissions)
+		if p.admissions != 2 {
+			t.Fatalf("admission ran %d time(s), want exactly 2 (preparation, then the write window's re-check)", p.admissions)
 		}
 		if f.putCalls != 1 {
 			t.Fatalf("landing made %d write(s), want 1", f.putCalls)

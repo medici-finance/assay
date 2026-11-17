@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -335,8 +336,9 @@ func dispatch(o dispatchOpts) error {
 	// wedges nothing (no claim yet) and is a no-op for a review/verifier dispatch or a --pr resume.
 	// A --rework dispatch whose brief already has a MERGED PR comes back as a FOLLOW-UP: the plan's
 	// branch is moved off the merged branch's name here, still pre-claim, so the worktree, the claim
-	// and the prompt all see the follow-up branch.
-	followUp, err := phantomCheckFor(o, repo, plan.dl)
+	// and the prompt all see the follow-up branch. With no --brief it reads the brief the item key
+	// names (plan.gateOpts), so the `delivery:` set-aside (#6751) holds on the key-only path too.
+	followUp, err := phantomCheckFor(plan.gateOpts(o), repo, plan.dl)
 	if err != nil {
 		return err
 	}
@@ -752,7 +754,8 @@ type dispatchPlan struct {
 	gateHuman bool
 	// keyBrief is the brief the ITEM KEY names, read for the human gate when no --brief was given
 	// (#6173, briefkey.go): absolute path, and its shown spelling. Empty when --brief was given or
-	// the key is not brief-shaped. Only the gate steps read it (gateOpts).
+	// the key is not brief-shaped. Only the gate steps and the phantom check's `delivery:` set-aside
+	// (#6751) read it, both through gateOpts.
 	keyBrief, keyBriefShown string
 	// claimKey is the key the durable claim is taken (and later released) under —
 	// derived once from the item key by claimKeyFor, so the acquire call and the release
@@ -813,12 +816,9 @@ type dispatchPlan struct {
 	// from — fields on the plan so a test can fix both.
 	now     func() time.Time
 	entropy io.Reader
-	// forgeKind is the resolved forge serving the target repo, set ONLY for a review
-	// dispatch — the one kind whose prompt is forge-shaped (the head-fetch refspec: GitHub
-	// refs/pull/<N>/head vs GitLab refs/merge-requests/<iid>/head, #773). A worker dispatch
-	// emits no forge-shaped ref, so this stays empty for one and the worker path is
-	// unchanged. Resolved pre-claim so a repo whose forge cannot be determined refuses the
-	// review dispatch before any durable state exists.
+	// forgeKind is resolved pre-claim for review and verifier prompts: reviews
+	// name forge-specific head refs, while verifier outcome recipes opt in to
+	// GitHub-only approval reads. Worker prompts keep their existing path.
 	forgeKind deskkit.ForgeKind
 	// claimStore is where the dispatch claim is kept, as deskkit.ResolveClaimStore decided it
 	// from the roster — never a flag. Resolved pre-claim, so a store that
@@ -1057,15 +1057,25 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		fmt.Fprintf(os.Stderr, "%s: %s\n", toolName, store.Notice)
 	}
 
+	// A contradictory local branch must be refused before any forge read.
+	if verifierKit(o.kit) || reviewKit(o.kit) {
+		if strings.TrimSpace(o.branch) != "" {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: --branch is not accepted with --kit %s — its worktree is cut DETACHED "+
+					"off origin/main and never touches a feature branch.", stepWorktreeCreate, o.kit))
+		}
+	}
+
 	// A REVIEW dispatch's prompt is forge-shaped: the reviewer fetches the change's HEAD from
 	// the forge-specific server-side ref namespace (GitHub refs/pull/<N>/head ↔ GitLab
 	// refs/merge-requests/<iid>/head). Resolve WHICH forge serves the target repo now, pre-claim,
 	// so a GitHub-shaped fetch is never emitted into a GitLab reviewer's prompt (#773) and so a
 	// repo whose forge cannot be determined refuses HERE, before any durable state exists, rather
 	// than handing a reviewer a coordinate it cannot check out. A worker dispatch emits no
-	// forge-shaped ref, so this is skipped for one and the worker path stays byte-for-byte
-	// unchanged — including its executed-process count.
-	if reviewKit(o.kit) {
+	// forge-shaped ref, so its path stays byte-for-byte unchanged. A verifier
+	// also resolves here so only GitHub outcome recipes request GitHub approval
+	// reads; other forges retain their ordinary landing path.
+	if reviewKit(o.kit) || verifierKit(o.kit) {
 		kind, ferr := o.resolveTargetForgeKind(repo)
 		if ferr != nil {
 			return plan, ferr
@@ -1076,11 +1086,6 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// Read-only kits allocate detached. A reviewer checks out the PR head
 	// afterward; no disposable feature branch or upstream is needed.
 	if verifierKit(o.kit) || reviewKit(o.kit) {
-		if strings.TrimSpace(o.branch) != "" {
-			return plan, deskkit.Refused(fmt.Sprintf(
-				"step %s: --branch is not accepted with --kit %s — its worktree is cut DETACHED "+
-					"off origin/main and never touches a feature branch.", stepWorktreeCreate, o.kit))
-		}
 		plan.detached = true
 	} else {
 		plan.branch = o.branch
@@ -1206,7 +1211,8 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	plan.gateHuman = o.gateHuman
 	// No --brief: a brief-shaped item key still names a brief, and its `gate: human` binds the same
 	// way (#6173). It is resolved here, pre-claim, and a key whose brief cannot be read is REFUSED
-	// rather than reported as "not human-gated". It feeds the gate steps only (gateOpts).
+	// rather than reported as "not human-gated". It feeds the gate steps and the phantom check's
+	// `delivery:` set-aside (gateOpts).
 	if !plan.gateHuman && strings.TrimSpace(o.brief) == "" {
 		kb, shown, kerr := keyBriefFn(o)
 		if kerr != nil {
@@ -1589,7 +1595,7 @@ type claimAuth struct {
 // guessing.
 func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, isScript bool) (claimAuth, error) {
 	role := stampRoleForKit(o.kit)
-	// forgeKind is pre-resolved by planClaim for a review dispatch (its prompt is forge-shaped);
+	// forgeKind is pre-resolved by planClaim for review and verifier dispatches;
 	// a worker dispatch leaves it empty, so resolve it HERE, at execution time — after every
 	// caller-flag precondition has passed, so a flag-mistake refusal never pays for this git
 	// read (the "nothing durable before the flags are good" contract the zero-process tests pin).
@@ -2036,18 +2042,31 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			stepModelStamp, repo, o.pr, forge, firstLine(eerr.Error())), eerr)
 	}
 	tl := deskkit.StampTimeline{Present: change.Labels, Events: events}
+	// A family alias (`opus`) over a standing full id of that family (`claude-opus-5-5`) keeps
+	// the full id, so two spellings of one model never replace each other. Only when NO
+	// attestation is named: a bound run stamps exactly the selection the record binds, so a
+	// settlement never replaces an attestation that is already bound. The receipt says so.
+	settled := ""
+	if bound == "" {
+		asked := labels
+		labels = stampKind.SettleRequest(tl, labels, deskkit.IsStampAuthorityLogin)
+		if !slices.Equal(asked, labels) {
+			settled = fmt.Sprintf(" (SETTLED: requested %s kept as the standing %s, the full id of that model family)",
+				asked[0], labels[0])
+		}
+	}
 	// Only labels of THIS kit's pair are read, removed or verified: an authoring re-stamp
 	// never removes a review session's dispatched-* pair, and the reverse (#2760).
 	stale := stampKind.ReStampRemovals(tl, labels, deskkit.IsStampAuthorityLogin)
 	if o.dryRun {
-		return fmt.Sprintf("PLAN: repo=%s pr=%d role=%s model=%s tier=%s remove=%v apply=%v (%s)%s; nothing written or verified", repo, o.pr, stampRole, o.model, o.tier, stale, labels, forge, bound), nil
+		return fmt.Sprintf("PLAN: repo=%s pr=%d role=%s model=%s tier=%s remove=%v apply=%v (%s)%s; nothing written or verified", repo, o.pr, stampRole, o.model, o.tier, stale, labels, forge, bound+settled), nil
 	}
 	if len(stale) == 0 && labelsPresent(change.Labels, labels) {
 		// An IDENTICAL stamp already standing under the dispatcher is a no-op: nothing is
 		// removed and nothing is re-applied, so a re-dispatch neither churns the label
 		// history nor leaves the PR briefly unstamped.
 		return fmt.Sprintf("OK: verified %s already standing on %s#%d under accepted stamp authority (%s)%s — an identical stamp is a no-op, nothing was written",
-			strings.Join(labels, " + "), repo, o.pr, forge, bound), nil
+			strings.Join(labels, " + "), repo, o.pr, forge, bound+settled), nil
 	}
 	if err := deskkit.ApplyVerifiedStamp(fg, fr, o.pr, deskkit.TargetChange, stampKind, labels, deskkit.IsStampAuthorityLogin); err != nil {
 		return "", err
@@ -2064,10 +2083,10 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	if stampKind == deskkit.StampAuthored {
 		return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App — the authoring attestation; "+
 			"no dispatched-* label was read or written, and the capability floor does not read this pair (%s)%s%s",
-			strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped, bound), nil
+			strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped, bound+settled), nil
 	}
-	return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App, the identity the capability floor accepts (%s)%s",
-		strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped), nil
+	return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App, the identity the capability floor accepts (%s)%s%s",
+		strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped, settled), nil
 }
 
 // labelsPresent reports whether every wanted label is already on the change, by the same
@@ -2368,7 +2387,7 @@ func (o dispatchOpts) resolveRepo() (string, error) {
 	if slug == "" {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: origin %q does not parse to an owner/name — pass --repo <owner/name>.",
-			stepClaimAcquire, r.stdout), nil)
+			stepClaimAcquire, deskkit.RedactRemoteUserinfo(r.stdout)), nil)
 	}
 	return slug, nil
 }

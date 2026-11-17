@@ -144,7 +144,7 @@ func cmdCreate(args []string) (err error) {
 	bodyMin := fs.String("body-min", "", "one-line PR body (alternative to --body-file)")
 	base := fs.String("base", "main", "base branch")
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
-	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
+	applyOverride, scanOverride := deskkit.RegisterOutboundOverride(fs, "deskpr", "create")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	decided := fs.String("decided", "", "path to a file declaring desk-taken decisions (decision:/alternative:/cost: triples, one item per numbered line) — writes the `## Desk-decided` block into the body and applies the desk-decided label; a PR that only transcribes recorded rulings passes none of this")
 	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the Brief:/Authors:/Issue: trailer, the secret scan, the public-repo self-containment scan, the push-transport gate, the publish-identity gate) and stop BEFORE minting a token or opening any connection — exit 0 only when every local gate passed; a category this cannot decide offline is reported, by name, as not checked")
@@ -171,6 +171,11 @@ func cmdCreate(args []string) (err error) {
 		if verr := deskkit.ValidateScanOverride(*scanOverride); verr != nil {
 			return verr
 		}
+	}
+	// #5914: hand the reason to the process outbound context too, so the checking Forge's
+	// own scan of every write this verb makes honours the override this verb records.
+	if aerr := applyOverride(); aerr != nil {
+		return aerr
 	}
 	if strings.TrimSpace(*title) == "" {
 		return deskkit.SchemaRefusal("deskpr", "--check", "refused: --title is required")
@@ -518,7 +523,7 @@ func cmdUpdate(args []string) (err error) {
 
 	fs := flag.NewFlagSet("update", flag.ContinueOnError)
 	fs.SetOutput(new(strings.Builder))
-	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
+	applyOverride, scanOverride := deskkit.RegisterOutboundOverride(fs, "deskpr", "update")
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	check := fs.Bool("check", false, "run every LOCAL gate (flags, branch state, the secret scan, the push-transport gate, the publish-identity gate) and stop BEFORE minting a token or opening any connection; the Brief:/Authors:/Issue: trailer lives on the EXISTING PR's forge-held body and is reported not checked, by name, rather than skipped silently")
@@ -556,6 +561,11 @@ func cmdUpdate(args []string) (err error) {
 		if verr := deskkit.ValidateScanOverride(*scanOverride); verr != nil {
 			return verr
 		}
+	}
+	// #5914: hand the reason to the process outbound context too, so the checking Forge's
+	// own scan of every write this verb makes honours the override this verb records.
+	if aerr := applyOverride(); aerr != nil {
+		return aerr
 	}
 	dir, gerr := getwd()
 	if gerr != nil {
@@ -999,7 +1009,7 @@ func preflightOpts(dir, base string, allowDetached bool, detachedMsg string, req
 	}
 	repo, rerr := parseRepo(originURL)
 	if rerr != nil {
-		return nil, deskkit.Unverifiable("cannot parse origin repo from "+originURL, rerr)
+		return nil, deskkit.Unverifiable("cannot parse origin repo", rerr)
 	}
 	if !deskkit.IsAllowedRepo(repo) {
 		return nil, deskkit.Refused("refused: origin " + repo + " is not in the desk-tools repo set")
@@ -1129,8 +1139,15 @@ func scanWrite(f *gitFacts, title, verb, override string) error {
 	//     hard stop with no audited way through. Narrowing it to the added direction
 	//     removes that class while catching an added forged attribution exactly as
 	//     before.
-	if err := scanWith("branch diff vs "+f.defaultRef, deskkit.ScanSurfaceSecrets,
-		[]byte(stripDiffMetaLines(diff))); err != nil {
+	//
+	// #3196: the stripped text and its line index come from one pass, and a finding
+	// on that text is mapped back to the file, the line in it and the side before it is
+	// reported. The bytes scanned and the verdict are what they were; only where the
+	// refusal points changes. The location is added AFTER HandleScanRefusal has classified
+	// the refusal, so an author-chosen path can never steer that classification.
+	stripped, refs := deskkit.DiffLineIndex(diff)
+	if err := locateDiffFinding(scanWith("branch diff vs "+f.defaultRef, deskkit.ScanSurfaceSecrets,
+		[]byte(stripped)), refs); err != nil {
 		return err
 	}
 	if err := scanWith("added lines of branch diff vs "+f.defaultRef, deskkit.ScanSurfaceRulingClaim,
@@ -1175,13 +1192,6 @@ func pushRole() string {
 	return "worker"
 }
 
-// reHunkHeader matches the deterministic RANGE part of a unified-diff hunk header —
-// `@@ -27,5 +27,5 @@` — and nothing after it. Group 1 is the part that is kept; whatever
-// follows on the line is git's funcname (see stripDiffMetaLines). Written to be strict:
-// if a line does not match, it is kept WHOLE and scanned, so a malformed or unfamiliar
-// header can only ever cause MORE scanning, never less.
-var reHunkHeader = regexp.MustCompile(`^(@@ -[0-9]+(?:,[0-9]+)? \+[0-9]+(?:,[0-9]+)? @@)`)
-
 // stripDiffMetaLines drops git-GENERATED text from a unified diff, leaving every line of
 // author content intact for BodyCheck. Two kinds of generated text:
 //
@@ -1219,43 +1229,71 @@ var reHunkHeader = regexp.MustCompile(`^(@@ -[0-9]+(?:,[0-9]+)? \+[0-9]+(?:,[0-9
 //     diff) is NOT mistaken for a `+++ b/...` header -- inside a hunk the scanner is
 //     out of header mode, so every line is kept and scanned by BodyCheck. The same holds
 //     for a content line beginning `@@`: in a real diff it carries a ` `/`+`/`-` marker,
-//     so it never matches reHunkHeader's `^@@ ` anchor.
+//     so it never matches the hunk-header range pattern's `^@@ ` anchor.
 //   - A diff quoted in documentation (no `^diff --git ` lines) is never stripped -- the
 //     scanner never enters header mode, and the funcname strip is gated on that same
 //     signal, so a prose-quoted hunk header is scanned as the prose it is.
+//
+// The strip itself lives in deskkit.DiffLineIndex (#3196), the diff owner the
+// outbound check already uses, so the scanned text and the index that maps a finding back
+// to its file, line and side come from one pass. This is its text half, kept for callers
+// that need no location.
 func stripDiffMetaLines(diff string) string {
-	lines := strings.Split(diff, "\n")
-	kept := make([]string, 0, len(lines))
-	inHeader, isGitOutput := false, false
-	for _, ln := range lines {
-		if strings.HasPrefix(ln, "diff --git ") {
-			inHeader, isGitOutput = true, true
-			continue
-		}
-		if inHeader && strings.HasPrefix(ln, "@@ ") {
-			inHeader = false
-		}
-		if inHeader {
-			continue
-		}
-		if isGitOutput {
-			if m := reHunkHeader.FindStringSubmatch(ln); m != nil {
-				ln = m[1]
-			} else if len(ln) > 0 && (ln[0] == '+' || ln[0] == '-' || ln[0] == ' ') {
-				// Strip the unified-diff line marker (+/-/space): it is diff SYNTAX glued to
-				// the content, not part of it. Leaving it glued caused false refusals when the
-				// marker joined otherwise-clean content (an added line
-				// `+/tools/approvalguard/approvalguard` — the leading `+` made isPathLike's
-				// "no +/=" rule reject an otherwise word-shaped 34-char path). Stripping the
-				// one marker CANNOT weaken detection — the real content is what we want to
-				// scan, and `+ghp_…` / `+<base64-secret>` still match once the `+` is gone —
-				// while removing the whole "diff marker glued to content" false-positive class.
-				ln = ln[1:]
-			}
-		}
-		kept = append(kept, ln)
+	stripped, _ := deskkit.DiffLineIndex(diff)
+	return stripped
+}
+
+// locateDiffFinding rewrites a branch-diff scan refusal so it names where the offending
+// line lives: `<path>:<line> (<side>)`, the line counted in the file at that side (head for
+// added and context lines, base for removed lines). The scanner reports a line of the
+// stripped diff text, which matches no line anyone can open (#3196). refs is the index
+// DiffLineIndex built with that text.
+//
+// Only the location changes. The refusal keeps its exit code and its message (the location
+// is inserted before a trailing override hint, or appended when there is none), and the
+// finding keeps its rule, length and redacted shape, so --explain sees what it saw before.
+// A line the index cannot number is reported as an unknown line and never guessed. An
+// error that carries no finding passes through.
+//
+// It runs on HandleScanRefusal's RESULT, never on its input: the path is author-chosen
+// text, and HandleScanRefusal classifies a refusal by substrings of its message, so a
+// location appended first could change which override path the refusal takes. The path
+// is printed through deskkit.DisplayPath, so control and bidi characters in it are quoted.
+func locateDiffFinding(err error, refs []deskkit.DiffLineRef) error {
+	var de *deskkit.DeskError
+	if !errors.As(err, &de) || de.Finding == nil {
+		return err
 	}
-	return strings.Join(kept, "\n")
+	f := de.Finding
+	ref := deskkit.DiffLineRef{}
+	if f.Line >= 1 && f.Line <= len(refs) {
+		ref = refs[f.Line-1]
+	}
+	line := ref.FileLine
+	where := "unknown file"
+	if ref.Path != "" {
+		where = deskkit.DisplayPath(ref.Path)
+	}
+	if line > 0 {
+		where += ":" + strconv.Itoa(line)
+	} else {
+		where += " (unknown line)"
+	}
+	if ref.Side != "" {
+		where += " (" + string(ref.Side) + ")"
+	}
+	located := *f
+	located.Line, located.Path, located.Side = line, ref.Path, string(ref.Side)
+	out := *de
+	out.Msg = de.Msg + " — at " + where
+	for _, hint := range []string{deskkit.OverrideHint(deskkit.OverrideByFlag), deskkit.OverrideHint(deskkit.OverrideByEnv)} {
+		if strings.HasSuffix(de.Msg, hint) {
+			out.Msg = strings.TrimSuffix(de.Msg, hint) + " — at " + where + hint
+			break
+		}
+	}
+	out.Finding = &located
+	return &out
 }
 
 // addedDiffLines extracts the ADDED content lines of a unified diff — the lines this
@@ -1280,7 +1318,7 @@ func stripDiffMetaLines(diff string) string {
 //   - text that never presents a `diff --git ` line is not git-diff output at all; it
 //     is returned WHOLE, so a malformed or unfamiliar input can only ever cause MORE
 //     scanning, never less — the same fail-open-toward-scanning posture as
-//     reHunkHeader's strictness.
+//     the hunk-header range pattern's strictness.
 func addedDiffLines(diff string) string {
 	lines := strings.Split(diff, "\n")
 	kept := make([]string, 0, len(lines))

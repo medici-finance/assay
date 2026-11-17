@@ -889,7 +889,9 @@ with the reconcile inventory and a pointer to the verb that clears it.
 amber-falcon`. The words come from fixed lists built into `cellctl`. An id is never reused within
 a cell, including the ids of plans already applied. A plan stored with an older 24-character hex
 id still applies by that id. The id only finds the plan: apply still shows it and asks for the
-typed confirm code.
+typed confirm code, one lowercase word chosen from the plan's digest and never a word of its id.
+A plan stored with the older 8-hex-character confirm code is refused `plan-invalid`, naming the
+retired form; make the plan again.
 
 `--plan` clears only a role whose checkpoint names a supervisor that has exited (the *dead* class).
 The stale row names the verb that accepts the role's own class:
@@ -968,7 +970,7 @@ closes a session, a workspace, a sibling's window or another cell's. A role with
 or a cockpit build without the close verb, is refused `per-role-close-unsupported`, and only the
 cell-wide `down` can close it.
 
-### Lifecycle — `pause`, `resume`, `drain`
+### Lifecycle — `pause`, `resume`, `drain`, `cycle`
 
 ```bash
 cellctl pause  <cell> [role...]
@@ -1018,7 +1020,8 @@ refused `not-interactive` and changes nothing, and `--plan` prints what would be
 request recorded in a file under the cell is a request, never authority. Only `pause`, a timed
 `drain` and a per-role stop of a role already paused or drained are ever taken from a record. The
 stop is taken only after the role re-measures idle, whatever the record says about it. `resume`,
-`start`, `restart`, `drain --now` and a foreign-stop lift always need the terminal. Every verb emits
+`start`, `restart`, `cycle`, `drain --now` and a foreign-stop lift always need the terminal; `cycle`
+takes its typed confirm before it pauses anything. Every verb emits
 the `cell-op-v1` result (`--json`).
 
 **The handoff record.** A desk asked to drain writes a short record of the claims it held, the PRs it
@@ -1037,6 +1040,78 @@ behind one internal interface in `tools/desk/cmd/cellctl/lifecycle.go`:
 
 This is the first implementation, not the design. The runner lifecycle and its coordination store
 replace it, and the proposal above records that migration.
+
+#### `cycle` — drain, sync, check, restart
+
+`cellctl cycle <cell> [role...]` takes each role window (default: the cell's `ROLES`, each name checked
+against the known roles like a named one) through drain,
+sync, check and restart, one role at a time. The first role that does not come back stops the cycle,
+so a bad pin never takes down more than one role. `--all-at-once` drains every targeted role together.
+
+**The confirm comes first.** Before it pauses, drains, stops or restarts anything, the cycle shows its
+plan — one line per targeted role, saying whether it will be cycled or skipped as down — and takes the
+typed confirm code on the terminal, through the one apply path every state-changing verb uses
+([`spec/cell-op-v1.md`](../spec/cell-op-v1.md) §6). A wrong or absent code ends the cycle
+`refused`/`confirm-mismatch` with nothing changed; a role whose state changed between the plan and the
+code ends it `plan-stale`. This holds on every path, `--all-at-once` and `--force-after-timeout`
+included, and when every targeted role is down. The confirms named in the steps below, for an
+interactive role's stop and a stop forced after a timeout, come on top of this one.
+
+1. **Stop new work and drain.** This is `drain` itself, bounded by `--drain-timeout` (default 30m).
+   An interactive role's stop needs the operator's confirm, as it does under `drain`; a declined
+   confirm stops nothing, and the cycle lifts its own stop so the role keeps running. On timeout the
+   role is not restarted. The cycle lifts its own stops so the role keeps running, names each claim
+   still held, and exits non-zero. The cycle stamps each stop flag it creates with its own
+   invocation id in the pause record, and every lift it makes, on success, decline or timeout, lifts
+   only those. A pause it did not create is kept on every path: one the operator set before the
+   cycle, or set on a different flag while the cycle waited. A pause asked for on the very flag the
+   cycle holds is not recorded as a second claimant: `pause` reports "already paused", and the cycle
+   lifts that flag at its next step. A role under a stop the cycle did not create is not restarted,
+   because the cadence guard stops its supervisor before the first heartbeat is written: the cycle
+   still syncs and checks it, leaves it down with the stop kept, ends partial, and `Next` names the
+   verb that clears the stop it found, then `cellctl up <cell> --role <role>`. An operator's cadence
+   `STOP` is cleared by `cellctl cadence <cell> resume <role>`. A pause in the pause record is cleared
+   by `cellctl resume <cell>`, which lifts every pause recorded in the cell, not only this role's. Any
+   other stop flag is lifted only by name, with `cellctl resume <cell> --foreign <flag>`. The role's
+   own cadence `STOP` that the drain's `down` wrote (body `cellctl down`) is not such a stop: the
+   launch removes it, so the role is restarted. A stop recorded with the cycle's own id that is still
+   there is reported as a lift the cycle could not make, not as an operator's pause. Under
+   `--all-at-once`, a role the cycle ends before reaching is reported down, and `Next` names
+   `cellctl up <cell> --role <role>` for it. Under `--all-at-once`, a role the drain had already
+   stopped before the timeout is reported down, its stop is lifted, and `Next` names
+   `cellctl up <cell> --role <role>` to bring it back. With `--force-after-timeout` it plans the stop the way
+   `drain --now` does, listing each held claim as abandoned, and applies it only on the confirm. A
+   forced confirm that applies only in part reports the roles whose stop applied the same way: down,
+   stop lifted, `up` in `Next`.
+2. **Sync and check.** The role's harness placement is brought to the marketplace pin
+   (`extraKnownMarketplaces.assay.source.ref` in the role worktree's `.claude/settings.json`). The
+   pin must be a strict release version, `X.Y.Z` with an optional leading `v`. Any other value is
+   could-not-check, and it is never compared or printed into a remedy:
+   - **claude:** `claude plugin update assay@assay -s project` in the worktree, with the settings
+     bytes restored afterwards. The worktree's project record is then read back and compared with
+     the pin. A record that differs from the pin, behind or ahead of it, fails the check and names the
+     remedy: re-point the marketplace to the pin, then uninstall → install. The cycle never uninstalls.
+     "Checked" on this path means the record's version equals the pin; unlike the cursor path it does
+     not verify the bundle's content or its marketplace source. The `settings.json` restore keeps the
+     file's own mode, even when the update replaced the file with the same bytes. A mode that cannot
+     be read before the update is could-not-check.
+   - **cursor:** the cell's own desk-tools `deskinstall` (under `DESK_TOOLS_BIN`, never the first
+     one on `PATH`), run as `deskinstall --harness cursor --forge <CELL_FORGE> --release v<pin> --check`,
+     placing on drift and checking again.
+   - **codex:** no placement mode exists, so the check is could-not-check.
+
+   A failed check leaves the role down and says why. A could-not-check one restarts the role, and the
+   cycle's outcome is could-not-check, never ok.
+3. **Restart.** The window reopens as `up <cell> --role <role> --no-attach` does, and its cadence is
+   resumed. That child `up` has no terminal on stdin, so unless `CELL_ATTENDED=1` is already set it
+   runs unattended even when `cycle` is on a terminal: a deskd that is down is not stood. Run
+   `cellctl up <cell>` on a terminal to stand it.
+4. **Heartbeat.** The cycle waits up to `--heartbeat-wait` for a heartbeat in the role's cadence
+   checkpoint that is newer than the restart and not dated past now (plus a five-minute clock skew), so a
+   future-dated checkpoint is not a fresh heartbeat.
+
+The report is one line per role (`report:<role>`): drained or forced, the plugin version before and
+after, and the heartbeat. A role that was down before the cycle is skipped and says so.
 
 **List:** `cellctl ls` prints the cells under the cells root. No cells is not an error.
 
@@ -1138,7 +1213,7 @@ seconds, 5 by default) once per window, dry runs included.
 | Cockpit | What `up` opens |
 |---|---|
 | **tmux** | a session `<cell>-cell`: the `deskd` window (only when the cell has one, i.e. `DESKD=1` on a house cell), the comms window when comms is configured, then one window per role. Whichever window comes first creates the session; a cell with no deskd gets no placeholder window |
-| **herdr** | one **labelled tab per window**, `<cell>-<role>`, each fed the same `cellctl desk <cell> <role>` command every other cockpit runs (via `herdr pane run`, into a pane the tab's own `tab create` cut). The `deskd` window is a tab too when the cell has one (`DESKD=1` on a house cell); a cell with no deskd gets no placeholder tab. If herdr has no window (a "workspace" in herdr's own grammar) open yet, `up` starts one first — the same trigger point and create-if-absent shape as tmux's `<cell>-cell` session — before any tab lands; an already-open window is unchanged |
+| **herdr** | one **labelled tab per window**, labelled with the bare window name (`<role>`, `deskd`): the workspace already carries the cell's name, so herdr's agents window reads `<cell> - <role>`. A receipt or tab from an older build labelled `<cell>-<role>` is still recognised by a per-role `down`. Each tab is fed the same `cellctl desk <cell> <role>` command every other cockpit runs (via `herdr pane run`, into a pane the tab's own `tab create` cut). The `deskd` window is a tab too when the cell has one (`DESKD=1` on a house cell); a cell with no deskd gets no placeholder tab. If herdr has no window (a "workspace" in herdr's own grammar) open yet, `up` starts one first — the same trigger point and create-if-absent shape as tmux's `<cell>-cell` session — before any tab lands; an already-open window is unchanged |
 | **orca** | one **terminal per role** under the cell directory (registered with Orca via `orca repo add` first — Orca 404s an unregistered path), running the same `cellctl desk` command; or, with `--automate`, one scheduled automation per role instead |
 
 ### The `--automate` recipe (orca only)
@@ -1963,6 +2038,72 @@ refused key let through, an empty line allowed to set its key, a template line l
 a cell name outside the root let through, a re-entry handed the wrong cells root — and reports
 whether the tests named in the spec notice each one. It is run by hand; no CI
 job runs it yet.
+
+## Managed repository stores (proposed, not active)
+
+A cell can own its own clone of each repository it works in. The clone is called a store, and it
+lives at `<cell>/repos/<repo key>/source`. It replaces sharing the operator's checkout. The
+contract is `spec/cell-workspaces-v1.md` section 5.4, and the code is `workspace/repository.go`
+(pure), `workspace/local/repository.go` (the effects) and
+`tools/desk/cmd/cellctl/workspace_repository.go` (composition).
+
+**Nothing is active.** No verb provisions a store and no new `cell.env` key turns it on. The
+operator decision for the first cell is still open. Until it is recorded, a cell works only from
+the checkouts `CELL_REPO` and `CELL_ROOTS` name.
+
+What cellctl owns once the decision is recorded:
+
+- **Repository identity.** Each `CELL_ROOTS` key, or any remote URL the shared origin parser
+  reads, resolves on the cell's forge (`CELL_FORGE`, with its host) to a canonical identity.
+  GitHub and GitLab route paths case-insensitively, so `Acme/Tools`,
+  `https://github.com/acme/tools.git` and `git@github.com:acme/tools.git` are one store.
+  `other/tools`, or `acme/tools` on a second forge, is a different store. The store key is the
+  repository's base name plus a digest of forge and path, so two same-named repositories never
+  share a directory.
+- **Legacy scope.** Every store stays physically outside the following, compared by resolved path
+  and by Git common directory:
+  - `CELL_REPO`;
+  - every `CELL_ROOTS` checkout and its `.claude/worktrees`;
+  - the cell's `worktrees`, `comms`, `tmp` and Go cache directories;
+  - the old sanctioned temporary worktree prefix that `deskwt` compiles in.
+
+  cellctl reads the legacy keys to work out this scope and never writes them. Rollback, child and
+  container profiles keep the same legacy keys, so they see the same checkouts as before.
+- **Publication.** cellctl writes `<cell>/run/workspaces/stores.json`, a generation-stamped
+  mapping, and writes it only after every store has verified. The generation check and the
+  rename happen under an exclusive lock beside the file, bounded: two publishers from one prior
+  generation cannot both succeed, and one that cannot get the lock in time is refused as `busy`. A managed-aware reader takes store
+  paths from this file alone, and finds it through one key, `CELL_WORKSPACE_STORES_V1` (below).
+  The mapping's contents are never exported as environment variables, so a reader that knows
+  nothing of it still sees the legacy keys exactly as before. The file carries the separately
+  versioned schema `cell-repository/v1`, which the workspace v1 reader refuses as an unknown
+  schema.
+  The lock file `stores.json.lock` stays beside the mapping after a publication; a rollback
+  removes it together with `stores.json`.
+- **Cell binding.** The cell's UUID is recorded against its resolved root in a machine-level
+  registry. A copied or moved cell directory that presents the same UUID is refused.
+
+The clone itself goes through an injected transport, which is the role's existing forge
+credential path. cellctl picks no new credential and stores none: an origin URL that carries a
+credential is refused. So is a store whose only remote is not `origin`, whose origin is not the
+requested repository on its forge (a local path, a file URL and another owner or host are all
+refused), whose branches track anything but `origin`, or whose Git directory carries an older
+remote-definition file it did not make. Before the mapping is written, every
+store the call made is read again.
+
+Proposed configuration, for the activation decision only. The key is not registered and nothing
+reads it today:
+
+| Key | Meaning |
+|---|---|
+| `CELL_WORKSPACE_STORES_V1` | The absolute path of the cell's store mapping file (schema `cell-repository/v1`). No default: when absent, the cell has no managed stores, and nothing is inferred from `CELL_REPO`, `CELL_ROOTS` or any other key. |
+
+It is the only key. There is no mode key, no repository-list key and no registry key. The
+repository allowlist, the transport and the cell-identity registry location are inputs of an
+activation, named by its own manifest and ruling, and none of them has a default.
+
+Tests: `TestCellRepositoryIsolation` and `TestCellRootBinding` (`workspace/local`, with mutation
+entries in `workspace/local/mutations.json`), and `TestStoreOriginNames` (`workspace/local`), and `TestWorkspaceRootMapAtomic`, `TestWorkspacePublishRereadsProvisioned` and `TestWorkspaceMappingPublishExclusive` (`cellctl`).
 
 ## Container cells
 

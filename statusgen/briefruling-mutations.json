@@ -1,0 +1,83 @@
+{
+  "test": "go test . -run 'TestBriefRuling|TestStagedCorroborateFilter' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — a refused ruling link read as ruled",
+    "file": "briefruling.go",
+    "old": "if o.Present && o.Reason == rulingOK {",
+    "new": "if o.Present {"
+  },
+  "mutations": [
+    {
+      "name": "brief ruling lane disconnected from the PR lane",
+      "file": "decisiongatehold.go",
+      "old": "return decisionGateAgainst(top, repo, mergeBase, true)",
+      "new": "return decisionGateAgainst(top, repo, mergeBase, false)"
+    },
+    {
+      "name": "decision-issue binding disabled (a link to another issue is resolved)",
+      "file": "briefruling.go",
+      "old": "if link.Issue != h.DecisionIssue {",
+      "new": "if false {"
+    },
+    {
+      "name": "no decision issue recorded is let through",
+      "file": "briefruling.go",
+      "old": "if h.DecisionIssue == 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "unchanged ruling link re-resolved (same-board-id comparison disabled)",
+      "file": "briefruling.go",
+      "old": "return !(briefRulingSingle(b) && sameBriefRuling(b, h))",
+      "new": "return true"
+    },
+    {
+      "name": "renumbered brief's ruling link read as new",
+      "file": "briefruling.go",
+      "old": "if (head[k] == nil || head[k].Path == \"\") && briefRulingSingle(d) && sameBriefRuling(d, h) {",
+      "new": "if false && (head[k] == nil || head[k].Path == \"\") && briefRulingSingle(d) && sameBriefRuling(d, h) {"
+    },
+    {
+      "name": "ruling link added to an ambiguous board id let through",
+      "file": "briefruling.go",
+      "old": "if !had[link] {",
+      "new": "if false && !had[link] {"
+    },
+    {
+      "name": "renumber exemption ignores whether the base brief left the board (a copied link read as old)",
+      "file": "briefruling.go",
+      "old": "if (head[k] == nil || head[k].Path == \"\") && briefRulingSingle(d)",
+      "new": "if briefRulingSingle(d)"
+    },
+    {
+      "name": "a decision-issue-only change read as unchanged",
+      "file": "briefruling.go",
+      "old": "return a.Ruling == b.Ruling && a.DecisionIssue == b.DecisionIssue",
+      "new": "return a.Ruling == b.Ruling"
+    },
+    {
+      "name": "unparseable changed brief let through",
+      "file": "briefruling.go",
+      "old": "if h.FMErr {",
+      "new": "if false {"
+    },
+    {
+      "name": "README-row-only move of an unparseable brief refused",
+      "file": "briefruling.go",
+      "old": "if briefRulingFileRecords(b) == briefRulingFileRecords(h) {",
+      "new": "if false {"
+    },
+    {
+      "name": "no repository let through",
+      "file": "briefruling.go",
+      "old": "if repo == \"\" {",
+      "new": "if false {"
+    },
+    {
+      "name": "staged step pre-filter back to findings only",
+      "file": "../ci/staged-workflows/assay-statusgen.yml",
+      "old": "if [ -z \"$changed\" ] && [ -z \"$ruled\" ]; then",
+      "new": "if [ -z \"$(git diff --name-only HEAD^1 HEAD -- docs/streams/findings/)\" ]; then"
+    }
+  ]
+}

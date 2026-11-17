@@ -121,6 +121,17 @@ type outcomeRecord struct {
 	Name   string // outcomeRecordName's basename for this record's bytes
 	Source string // "record:<path>" or "legacy:<path>", diagnostics only
 	Digest string
+	// Path is a per-file record's repo-relative slash path (outcomeRecordsDir/<stream>/<file>),
+	// the place it was READ from; empty for a legacy log line.
+	Path string
+}
+
+// outcomeSkipped is a legacy log line readVerifyOutcomeRecordsSkips dropped under the legacy
+// tolerance (a malformed line, or one with no computable record name such as an unparseable
+// ts). A reader that may not inherit that tolerance — verifyflip's gate — judges these itself.
+type outcomeSkipped struct {
+	Source string
+	Line   []byte
 }
 
 // parseOutcomeRecord parses one verify-outcome record's raw bytes and returns it with Raw
@@ -207,14 +218,22 @@ func outcomeRecordName(recordBytes []byte) (string, error) {
 // file is an error (could-not-check), never a skipped record — the legacy log keeps its
 // pre-existing tolerance for a malformed LINE (skipped) but not for an unreadable FILE.
 func readVerifyOutcomeRecords(root string) ([]outcomeRecord, error) {
+	records, _, err := readVerifyOutcomeRecordsSkips(root)
+	return records, err
+}
+
+// readVerifyOutcomeRecordsSkips is readVerifyOutcomeRecords that also returns every legacy log
+// line the legacy tolerance skipped, so a gate can refuse to read past one (#6734).
+func readVerifyOutcomeRecordsSkips(root string) ([]outcomeRecord, []outcomeSkipped, error) {
 	var records []outcomeRecord
+	var skipped []outcomeSkipped
 	seen := map[string]bool{}
 
 	recordsDir := filepath.Join(root, filepath.FromSlash(outcomeRecordsDir))
 	streamDirs, err := os.ReadDir(recordsDir)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			return nil, fmt.Errorf("could-not-check: cannot read %s: %w", recordsDir, err)
+			return nil, nil, fmt.Errorf("could-not-check: cannot read %s: %w", recordsDir, err)
 		}
 		streamDirs = nil
 	}
@@ -226,7 +245,7 @@ func readVerifyOutcomeRecords(root string) ([]outcomeRecord, error) {
 		streamDir := filepath.Join(recordsDir, sd.Name())
 		files, ferr := os.ReadDir(streamDir)
 		if ferr != nil {
-			return nil, fmt.Errorf("could-not-check: cannot read %s: %w", streamDir, ferr)
+			return nil, nil, fmt.Errorf("could-not-check: cannot read %s: %w", streamDir, ferr)
 		}
 		names := make([]string, 0, len(files))
 		for _, f := range files {
@@ -239,14 +258,15 @@ func readVerifyOutcomeRecords(root string) ([]outcomeRecord, error) {
 			p := filepath.Join(streamDir, name)
 			raw, rerr := os.ReadFile(p)
 			if rerr != nil {
-				return nil, fmt.Errorf("could-not-check: cannot read record %s: %w", p, rerr)
+				return nil, nil, fmt.Errorf("could-not-check: cannot read record %s: %w", p, rerr)
 			}
 			rec, perr := parseOutcomeRecord(raw)
 			if perr != nil {
-				return nil, fmt.Errorf("could-not-check: malformed verify-outcome record %s: %w", p, perr)
+				return nil, nil, fmt.Errorf("could-not-check: malformed verify-outcome record %s: %w", p, perr)
 			}
 			rec.Name = name
 			rec.Source = "record:" + filepath.ToSlash(p)
+			rec.Path = path.Join(outcomeRecordsDir, sd.Name(), name)
 			if !seen[rec.Digest] {
 				seen[rec.Digest] = true
 				records = append(records, rec)
@@ -256,7 +276,7 @@ func readVerifyOutcomeRecords(root string) ([]outcomeRecord, error) {
 
 	matches, gerr := verifyOutcomesShardPaths(root)
 	if gerr != nil {
-		return nil, gerr
+		return nil, nil, gerr
 	}
 	for _, p := range matches {
 		raw, rerr := os.ReadFile(p)
@@ -264,7 +284,7 @@ func readVerifyOutcomeRecords(root string) ([]outcomeRecord, error) {
 			if os.IsNotExist(rerr) {
 				continue
 			}
-			return nil, fmt.Errorf("could-not-check: cannot read %s: %w", p, rerr)
+			return nil, nil, fmt.Errorf("could-not-check: cannot read %s: %w", p, rerr)
 		}
 		for _, line := range bytes.Split(raw, []byte("\n")) {
 			line = bytes.TrimSpace(line)
@@ -273,11 +293,14 @@ func readVerifyOutcomeRecords(root string) ([]outcomeRecord, error) {
 			}
 			rec, perr := parseOutcomeRecord(line)
 			if perr != nil {
-				continue // legacy tolerance: a malformed line is skipped, never fatal
+				// legacy tolerance: a malformed line is skipped, never fatal
+				skipped = append(skipped, outcomeSkipped{Source: "legacy:" + filepath.ToSlash(p), Line: append([]byte{}, line...)})
+				continue
 			}
 			if name, nerr := outcomeRecordName(line); nerr == nil {
 				rec.Name = filepath.Base(name)
 			} else {
+				skipped = append(skipped, outcomeSkipped{Source: "legacy:" + filepath.ToSlash(p), Line: append([]byte{}, line...)})
 				continue
 			}
 			rec.Source = "legacy:" + filepath.ToSlash(p)
@@ -288,7 +311,7 @@ func readVerifyOutcomeRecords(root string) ([]outcomeRecord, error) {
 		}
 	}
 
-	return records, nil
+	return records, skipped, nil
 }
 
 // maxClockSkew mirrors deskkit.MaxClockSkew (#1803 SR-1803-2) — kept in sync by hand, like every

@@ -33,6 +33,7 @@ package main
 // read here.
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path"
@@ -60,7 +61,7 @@ func isBriefFile(p string) bool {
 // land), against before when the file already exists. Exit 0 → closureAccepted
 // (landable), 1 → closureNotAccepted (the stdout reason is returned), anything
 // else or a run that could not start → could-not-check.
-func evidenceVerdictCheckAt(root, briefPath string, before, after []byte, hasBefore bool, verdict string) (closureVerdict, string, error) {
+func evidenceVerdictCheckAt(root, briefPath string, before, after []byte, hasBefore bool, verdict string, options childOptions) (closureVerdict, string, error) {
 	if _, err := exec.LookPath("statusgen"); err != nil {
 		return closureCouldNotErr, "", deskkit.Unverifiable(
 			"statusgen is not on PATH — cannot check whether this run's verdict may be appended to "+briefPath+"'s Evidence", err)
@@ -69,7 +70,7 @@ func evidenceVerdictCheckAt(root, briefPath string, before, after []byte, hasBef
 	if aerr != nil {
 		return closureCouldNotErr, "", deskkit.Unverifiable("cannot resolve an absolute path for the landing root "+root, aerr)
 	}
-	args := []string{"evidenceverdict", "--root", absRoot, "--brief-path", briefPath}
+	args := []string{"--brief-path", briefPath}
 	if verdict != "" {
 		args = append(args, "--verdict", verdict)
 	} else {
@@ -91,7 +92,7 @@ func evidenceVerdictCheckAt(root, briefPath string, before, after []byte, hasBef
 			args = append(args, "--before", beforePath)
 		}
 	}
-	cmd := exec.Command("statusgen", acceptanceArgs(args...)...)
+	cmd := statusgenAudit(context.Background(), auditVerdict, absRoot, options, args...)
 	cmd.Dir = os.TempDir()
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
@@ -123,24 +124,24 @@ func evidenceVerdictCheckAt(root, briefPath string, before, after []byte, hasBef
 // tip (the target branch's board files) over root, asks statusgen, and puts
 // every touched file back. TestVerdictCheckOnlyAtTip holds that to one call
 // site, so no reader can ask the question against the home's stale board.
-func evidenceVerdictAtTip(root string, tip []boardEdit, briefPath string, before, after []byte, hasBefore bool, verdict string) (closureVerdict, string, error) {
+func evidenceVerdictAtTip(root string, tip []boardEdit, briefPath string, before, after []byte, hasBefore bool, verdict string, options childOptions) (closureVerdict, string, error) {
 	restore, err := stageBoardEdits(root, tip)
 	if err != nil {
 		return closureCouldNotErr, "", err
 	}
 	defer restore()
-	return evidenceVerdictCheckFn(root, briefPath, before, after, hasBefore, verdict)
+	return evidenceVerdictCheckFn(root, briefPath, before, after, hasBefore, verdict, options)
 }
 
 // gateNonDecisiveVerdict refuses an Evidence landing on a brief file whose board
 // status (at the target branch tip, tip staged over root) is verified or done
 // when the landing's latest recorded verdict is any verdict other than PASS or
 // FAIL. It is a no-op for any other target.
-func gateNonDecisiveVerdict(targetRepoPath, root string, tip []boardEdit, before, after []byte, exists bool) error {
+func gateNonDecisiveVerdict(targetRepoPath, root string, tip []boardEdit, before, after []byte, exists bool, options childOptions) error {
 	if !isBriefFile(targetRepoPath) {
 		return nil
 	}
-	verdict, reason, err := evidenceVerdictAtTip(root, tip, targetRepoPath, before, after, exists, "")
+	verdict, reason, err := evidenceVerdictAtTip(root, tip, targetRepoPath, before, after, exists, "", options)
 	if err != nil {
 		return err
 	}

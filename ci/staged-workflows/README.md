@@ -113,8 +113,8 @@ reviewable artifact, not a run.
   live** — a maintainer promotes it to `.github/workflows/loopadmin.yml`. Until then `ci.yml`'s
   build-test job still builds and vets the module (it discovers every `go.mod`) but runs no tests.
 - `workspace.yml` — the shared workspace contract module's job (`spec/cell-workspaces-v1.md`):
-  `gofmt`, `go vet`, `go test` and the mutation gate (`muhar -spec mutations.json`, harness built
-  from `tools/desk`) from `workspace/`, on path triggers for the module, its spec, its schema and
+  `gofmt`, `go vet`, `go test` and the mutation gates (`muhar -spec mutations.json` and
+  `muhar -spec local/mutations.json`, harness built from `tools/desk`) from `workspace/`, on path triggers for the module, its spec, its schema and
   `docs/workspace-callers.md`. **Staged, not live** — a maintainer promotes it to
   `.github/workflows/workspace.yml`. Until then `ci.yml` builds and vets the module, and the desk
   suite runs its tests on every change (`TestWorkspaceModuleSuite` in
@@ -178,9 +178,11 @@ reviewable artifact, not a run.
   git push
   ```
 - `assay-statusgen.yml` — sign-off digest part: the hourly `reconcile` job gains a read-only
-  step, before its compute step, that runs `statusgen --signoff-digest` on the fresh clone of
-  main and writes the digest to the tick's job summary. It holds no token, posts no issue or
-  comment, and a could-not-check digest warns without failing the tick. The same step is in the
+  step, before its compute step, that runs `statusgen --signoff-digest --acceptance-forge` on
+  the fresh clone of main and writes the digest to the tick's job summary. Its only credential
+  is the job's own read-only `github.token` (as `GITHUB_TOKEN`, for `--acceptance-forge`), never
+  an App token. It posts no issue or comment, and a could-not-check digest warns without failing
+  the tick. The same step is in the
   live file and this copy; `TestReconcileSignoffDigestStep` and
   `TestReconcileSignoffDigestStepRuns` in `statusgen` pin and execute it on both.
 - `winparity.yml` — the Windows-build ↔ Makefile target-parity gate (#665). Runs

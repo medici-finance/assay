@@ -222,37 +222,49 @@ func writeDownStop(dir string) error {
 	return errors.Join(err, f.Close())
 }
 
-// clearDownStop removes the role's STOP file when, and only when, its body is downStopReason.
-// The caller holds the role lease, so no supervisor of the role is reading it. The file is read
-// through a no-follow open, and removed only while the path still names that same, unchanged
-// file. It reports whether a STOP was removed.
-func clearDownStop(dir string) (bool, error) {
-	p := filepath.Join(dir, "STOP")
+// readDownStop reports whether the STOP file at p is the one writeDownStop writes: a regular file
+// whose body, read through a no-follow open of that same file, is exactly downStopReason. opened
+// is the file it read, for a caller that acts on it only while the path still names it. A STOP
+// that is absent reads false with no error.
+func readDownStop(p string) (opened os.FileInfo, ok bool, err error) {
 	st, err := os.Lstat(p)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		return nil, false, nil
 	}
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 	if !st.Mode().IsRegular() || st.Size() != int64(len(downStopReason)) {
-		return false, nil
+		return nil, false, nil
 	}
 	f, err := os.OpenFile(p, os.O_RDONLY|oNoFollow, 0)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 	defer f.Close()
-	opened, err := f.Stat()
+	opened, err = f.Stat()
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 	b, err := io.ReadAll(io.LimitReader(f, int64(len(downStopReason))+1))
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 	if string(b) != downStopReason || !os.SameFile(st, opened) {
-		return false, nil
+		return nil, false, nil
+	}
+	return opened, true, nil
+}
+
+// clearDownStop removes the role's STOP file when, and only when, its body is downStopReason
+// (readDownStop). The caller holds the role lease, so no supervisor of the role is reading it. The
+// file is removed only while the path still names that same, unchanged file. It reports whether a
+// STOP was removed.
+func clearDownStop(dir string) (bool, error) {
+	p := filepath.Join(dir, "STOP")
+	opened, ok, err := readDownStop(p)
+	if err != nil || !ok {
+		return false, err
 	}
 	again, err := os.Lstat(p)
 	if err != nil || !os.SameFile(again, opened) || again.Size() != opened.Size() || !again.ModTime().Equal(opened.ModTime()) {

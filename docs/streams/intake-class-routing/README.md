@@ -34,11 +34,11 @@ review and the decisions the landing merge rules follow the board sections, from
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Record and publish a handoff for every judged issue](brief-01-record-and-publish-a-handoff-for-every-judged-issue.md) | 0 | M | todo | — | — |
+| 01 | [Record and publish a handoff for every judged issue](brief-01-record-and-publish-a-handoff-for-every-judged-issue.md) | 0 | M | implemented | — | — |
 | 02 | [The scan publishes recorded handoffs and land stops a judged exit without one](brief-02-the-scan-publishes-recorded-handoffs-and-land-stops-a-judged-exit-without-one.md) | 0 | M | todo | — | — |
-| 03 | [Give intake replay its own bound](brief-03-give-intake-replay-its-own-bound.md) | 0 | S | todo | — | — |
-| 04 | [Work the owed batch by class](brief-04-work-the-owed-batch-by-class.md) | 0 | M | todo | — | — |
-| 05 | [New cells pin the intake role to a strong tier](brief-05-new-cells-pin-the-intake-role-to-a-strong-tier.md) | 0 | M | todo | — | — |
+| 03 | [Give intake replay its own bound](brief-03-give-intake-replay-its-own-bound.md) | 0 | S | implemented | — | — |
+| 04 | [Work the owed batch by class](brief-04-work-the-owed-batch-by-class.md) | 0 | M | implemented | — | — |
+| 05 | [New cells pin the intake role to a strong tier](brief-05-new-cells-pin-the-intake-role-to-a-strong-tier.md) | 0 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

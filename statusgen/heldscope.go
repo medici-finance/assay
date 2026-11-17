@@ -224,6 +224,21 @@ import (
 //     with no row, marker or verdict included, is not read: the witness row
 //     carries its state.
 //
+//  7. Double-quoted output, flip read only (#4721). A verifier records what a
+//     row's command printed — a mutated test's failure message, a diagnostic
+//     — in double quotes as often as in inline code. On the flip read
+//     (latestRun: verifyflip and the reconcile fold) an occurrence wholly
+//     inside a double-quoted span of its cell is not read (heldQuotedOutput:
+//     ASCII quotes paired in order, an odd count or an escaped quote in the
+//     cell pairing nothing, a span holding only the marker word kept, no
+//     struck span on the line). Those callers go on to require a passing
+//     execution witness for every Verify row in the run they credit
+//     (closureRunWitnesses), so a row that really held cannot flip on its
+//     quoted words being skipped. The verify-gate card, close-verify, the
+//     sign-off act and autoflip run no witness check and read the occurrence
+//     as before. An occurrence outside every quoted span on the same line is
+//     read as always.
+//
 // The hygiene (fences, blockquotes, struck and inline code), the routing rule
 // and the negation rule in unroutedHeldLine apply unchanged to what is read.
 type heldLineRead struct {
@@ -1417,6 +1432,189 @@ func heldObservedOutput(line, clean string, read heldLineRead, h []int) bool {
 	return false
 }
 
+// heldWitnessLines marks each source line of evidence that rule 7 must never
+// skip: a line behind a row the witness check reads as a verifyrun witness
+// row. The witness check reads rows only after stripRowComments removes the
+// complete HTML comments (parseEvidenceRows), so membership is decided on
+// that stripped text and mapped back to every source line the stripped row
+// came from (flipStrippedSpans). A comment can then neither hide a witness
+// shape from the line it sits on nor join two source lines into a witness
+// row the scan did not see. The flip path strips the run twice (its run is
+// already stripped, then parseEvidenceRows strips it again); when the second
+// strip changes the text, or the mapping cannot be rebuilt, the two views
+// can differ, so every line is marked: rule 7 is off, fail-closed.
+func heldWitnessLines(evidence string) []bool {
+	marks := make([]bool, strings.Count(evidence, "\n")+1)
+	stripped, _ := stripRowComments(evidence)
+	spans, ok := flipStrippedSpans(evidence)
+	if again, _ := stripRowComments(stripped); !ok || again != stripped {
+		for i := range marks {
+			marks[i] = true
+		}
+		return marks
+	}
+	for k, row := range strings.Split(stripped, "\n") {
+		if isWitnessRow(row) {
+			for i := spans[k][0]; i <= spans[k][1]; i++ {
+				marks[i] = true
+			}
+		}
+	}
+	return marks
+}
+
+// heldQuotedOutput reports whether the occurrence at clean[h[0]:h[1]] sits
+// inside a double-quoted span (rule 7, #4721). clean is the line as the scan
+// reads it: inline code already masked, struck spans cut (the caller passes
+// only a line with none). row is true for an aligned results-table data row
+// (heldLineRead.key set); alone is true when no other line of the line's
+// paragraph (its run of non-blank lines) holds a '"'. The span is read
+// FAIL-CLOSED, over every region a renderer could pair the quotes in:
+//   - On an aligned results row the region is the cell: the text between the
+//     unescaped "|" on either side of the occurrence, or the line's ends, so
+//     a span never joins two cells. A table row does not wrap.
+//   - On any other line the scan cannot tell a table row from prose holding
+//     a "|", so the occurrence must read as inside a span both over the
+//     whole line and over its cell. And a paragraph's quotes pair across its
+//     soft-wrapped lines: a line that is not alone in its paragraph has no
+//     span.
+//   - heldQuotedIn reads one region: ASCII quotes only, an escaped or odd
+//     quote pairs nothing, flanking, the bare marker word.
+//   - A line inlineCodeScan does not mask (a possible link reference
+//     definition, whose quoted title is not rendered text; a bare carriage
+//     return, which a renderer splits) has no span.
+func heldQuotedOutput(clean string, h []int, row, alone bool) bool {
+	if hasBareCR(clean) || linkDefLine(clean) {
+		return false
+	}
+	lo, hi := 0, len(clean)
+	for i := 0; i < len(clean); i++ {
+		if clean[i] == '\\' {
+			i++
+			continue
+		}
+		if clean[i] != '|' {
+			continue
+		}
+		if i < h[0] {
+			lo = i + 1
+		} else if i >= h[1] {
+			hi = i
+			break
+		}
+	}
+	if row {
+		return heldQuotedIn(clean, h, lo, hi)
+	}
+	return alone && heldQuotedIn(clean, h, lo, hi) && heldQuotedIn(clean, h, 0, len(clean))
+}
+
+// heldQuotedIn reports whether the occurrence h lies inside a double-quoted
+// span of clean[lo:hi], read fail-closed:
+//   - Only the ASCII double quote '"' delimits. A quote inside masked inline
+//     code is gone already. Any backslash-escaped quote in the region, or an
+//     odd number of quotes in it, leaves the pairing uncertain: no span.
+//   - Markup or a character a renderer may not show as a quotation mark
+//     leaves it uncertain too: a "<" or "&" or link or image syntax ("](")
+//     anywhere in the region, a non-ASCII byte beside a quote, or a quote
+//     with white space (CommonMark's set, or the region's edge) on both
+//     sides.
+//   - Quotes pair in order, first with second, third with fourth. An opening
+//     quote right after a letter or digit, or a closing quote right before
+//     one (an inch mark: 5"), is not a quotation mark: no span.
+//   - The occurrence must lie wholly inside one pair.
+//   - A span holding nothing but the marker word (heldBareTokenRe: "HELD",
+//     "**could-not-check:**") is the verifier's own status token in quotes,
+//     not output, and is not a span here.
+func heldQuotedIn(clean string, h []int, lo, hi int) bool {
+	var quotes []int
+	for i := lo; i < hi; i++ {
+		if clean[i] == '\\' && i+1 < hi && clean[i+1] == '"' {
+			return false
+		}
+		if clean[i] == '"' {
+			quotes = append(quotes, i)
+		}
+	}
+	if len(quotes)%2 != 0 {
+		return false
+	}
+	// Markup can hide or supply a quote the source pairs: a "<" (an HTML
+	// comment or tag around a quote) or a "&" (a character reference such
+	// as &quot;) in the region leaves the pairing uncertain, as a "<"
+	// leaves inlineCodeScan's.
+	if strings.ContainsAny(clean[lo:hi], "<&") {
+		return false
+	}
+	// Link or image syntax hides a quote too: a title in a link or image
+	// ("[a](/u '\"')") or a bare destination ("[a](/u/\")") is not rendered
+	// as text, so "](" in the region leaves the pairing uncertain.
+	if strings.Contains(clean[lo:hi], "](") {
+		return false
+	}
+	// White space is CommonMark's set: a form feed or vertical tab renders
+	// as a space, so it flanks a mark as a space does.
+	space := func(i int) bool {
+		return i < lo || i >= hi || strings.IndexByte(" \t\n\v\f\r", clean[i]) >= 0
+	}
+	for _, q := range quotes {
+		// A quote beside a non-ASCII byte (a no-break or other Unicode
+		// space, a curly quote) or with white space on both sides (a spaced
+		// ditto or inch mark) may not render as a quotation mark.
+		if q > lo && clean[q-1] >= 0x80 || q+1 < hi && clean[q+1] >= 0x80 || space(q-1) && space(q+1) {
+			return false
+		}
+	}
+	alnum := func(i int) bool {
+		if i < lo || i >= hi {
+			return false
+		}
+		c := clean[i]
+		return c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+	}
+	inside := false
+	for k := 0; k < len(quotes); k += 2 {
+		open, closeAt := quotes[k], quotes[k+1]
+		if alnum(open-1) || alnum(closeAt+1) {
+			return false
+		}
+		if h[0] > open && h[1] <= closeAt {
+			inside = !heldBareTokenRe.MatchString(clean[open+1 : closeAt])
+		}
+	}
+	return inside
+}
+
+// heldQuoteNeighbours reports, for each line, whether another line of its
+// paragraph (its run of lines that are not blank after trimming) holds an
+// ASCII double quote. The raw line is read, code spans and fences included:
+// a quote it counts that a renderer would not only withholds a span
+// (heldQuotedOutput), so the count errs toward reading the occurrence.
+func heldQuoteNeighbours(lines []string) []bool {
+	out := make([]bool, len(lines))
+	for i := 0; i < len(lines); {
+		if strings.TrimSpace(lines[i]) == "" {
+			i++
+			continue
+		}
+		j, n := i, 0
+		for ; j < len(lines) && strings.TrimSpace(lines[j]) != ""; j++ {
+			if strings.Contains(lines[j], `"`) {
+				n++
+			}
+		}
+		for k := i; k < j; k++ {
+			own := 0
+			if strings.Contains(lines[k], `"`) {
+				own = 1
+			}
+			out[k] = n-own > 0
+		}
+		i = j
+	}
+	return out
+}
+
 // heldSeparatorRow reports whether line is a table's header separator.
 func heldSeparatorRow(line string) bool {
 	t := strings.Trim(strings.TrimSpace(line), "|")
@@ -2103,11 +2301,12 @@ var (
 	// output (hashOutput), never caller text.
 	heldDigestRe = regexp.MustCompile(`^sha256:[0-9a-f]{12}$`)
 	// heldBaseCellRe is the Base cell a fail-first verifyrun run writes for
-	// every witness row (failFirstCell): the merge-base SHA or "-", the base
-	// run's state (an exit code only after red or green), and the head tree
-	// as treeSHA renders it. It records the run at the merge-base, never the
+	// every witness row (failFirstCell): the base SHA or "-", the base run's
+	// state (an exit code only after red or green), the head tree as treeSHA
+	// renders it and, after red or green, the delivering commit when the run
+	// named one (#2721). It records the run at the merge-base, never the
 	// head outcome, and none of it is caller text.
-	heldBaseCellRe = regexp.MustCompile(`^base=(?:[0-9a-f]{7,40}|-) (?:(?:red|green) rc=(?:-|[0-9]+) · head=(?:[0-9a-f]{7,40}(?:\+dirty|\+unknown)?|no-git)(?: output=sha256:[0-9a-f]{64} log=row-[0-9]{6}\.log)?|(?:unproven|not-selected) · head=(?:[0-9a-f]{7,40}(?:\+dirty|\+unknown)?|no-git))$`)
+	heldBaseCellRe = regexp.MustCompile(`^base=(?:[0-9a-f]{7,40}|-) (?:(?:red|green) rc=(?:-|[0-9]+) · head=(?:[0-9a-f]{7,40}(?:\+dirty|\+unknown)?|no-git)(?: · delivering=[0-9a-f]{7,40})?(?: output=sha256:[0-9a-f]{64} log=row-[0-9]{6}\.log)?|(?:unproven|not-selected) · head=(?:[0-9a-f]{7,40}(?:\+dirty|\+unknown)?|no-git))$`)
 	// heldStrikeRe is a struck span as GFM renders one: the text between the
 	// tildes neither starts nor ends with a space. "~~ HELD ~~" is not a
 	// strike on GitHub, so the cover keeps it.

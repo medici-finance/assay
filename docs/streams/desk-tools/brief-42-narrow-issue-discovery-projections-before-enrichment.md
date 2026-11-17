@@ -24,6 +24,8 @@ domain: complicated
 gate-why: Review/issue observations can expose scoped operational facts; implemented coverage and authority boundaries require the existing human acceptance.
 decision-trigger: spec
 design: DR-issue-projections
+decision-issue: 5179
+ruling: "https://github.com/medici-finance/assay/issues/5179#issuecomment-6567218820"
 consumers:
   - "tools/desk/internal/deskclient/: follow-up graph-execution/27"
   - "plugins/assay/skills/worker-desk/SKILL.md: fixed-here"
@@ -127,6 +129,10 @@ Options:
 3. **Revise**: name the missing coverage or authority boundary; a follow-up change fixes it before acceptance.
 
 Default if no answer: none — blocks until answered.
+
+Ruled 2 November 2026 on decision issue #5179: option 1, accept the delivered
+implementation; the perf-v4 before/after measurement is a separate follow-up
+after desktools-v2/68 (tracked in #5278). The holds listed above still apply.
 
 ## Read first
 

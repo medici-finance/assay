@@ -197,12 +197,15 @@ func mintInstallationToken(owner string) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+jwt)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := deskkit.BoundedHTTPClient().Do(req)
 	if err != nil {
 		return "", deskkit.Unverifiable("POST access_tokens failed", err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, rerr := deskkit.ReadForgeBody(resp, "POST access_tokens", true)
+	if rerr != nil {
+		return "", rerr
+	}
 	if resp.StatusCode != http.StatusCreated {
 		return "", deskkit.Unverifiable(fmt.Sprintf("access_tokens HTTP %d", resp.StatusCode), nil)
 	}
@@ -220,7 +223,7 @@ func mintInstallationToken(owner string) (string, error) {
 
 // init installs deskpost's own, already-tested App-token mint (mintInstallationToken,
 // above) as the GitHub custody minter deskkit.ForgeFor calls, instead of ForgeFor's
-// default (RoleTokenForRepo, which shells to the `desktoken` binary). deskpost is always
+// default (RoleTokenForRepo, which runs the role-credential provider in process). deskpost is always
 // the reviewer App regardless of which loop invoked it (isReviewerBot, above) — the role
 // deskkit's hook signature carries is not consulted here — so this always mints the SAME
 // identity mintInstallationToken always minted.
@@ -273,7 +276,7 @@ func newGHClient(owner, repo string) (*ghClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ghClient{owner: owner, repo: repo, token: tok, http: http.DefaultClient}, nil
+	return &ghClient{owner: owner, repo: repo, token: tok, http: deskkit.BoundedHTTPClient()}, nil
 }
 
 // requireGitHubForge refuses, BEFORE any GitHub App token is minted, when the repo's resolved
@@ -406,7 +409,10 @@ func (c *ghClient) doJSONRetry(method, path string, in, out any, allowRemint boo
 		return deskkit.Unverifiable(fmt.Sprintf("%s %s failed", method, path), err)
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
+	raw, rerr := deskkit.ReadForgeBody(resp, method+" "+path, out != nil)
+	if rerr != nil {
+		return rerr
+	}
 
 	if resp.StatusCode == http.StatusUnauthorized && allowRemint {
 		tok, merr := mintInstallationToken(c.owner)

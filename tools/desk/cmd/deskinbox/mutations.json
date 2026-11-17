@@ -1,0 +1,35 @@
+{
+  "test": "go test ./cmd/deskinbox/ -count=1 -timeout 120s -run 'TestComments|TestParityHTMLLoginShapes'",
+  "control": {
+    "name": "CONTROL — stop normalising a REST App login (comment authors keep the [bot] suffix)",
+    "file": "cmd/deskinbox/detail.go",
+    "old": "\treturn strings.TrimSuffix(restLogin, \"[bot]\")",
+    "new": "\treturn strings.TrimSuffix(restLogin, \"[app]\")"
+  },
+  "mutations": [
+    {
+      "name": "drop the comments deadline (a stalled forge hangs the inbox indefinitely)",
+      "file": "cmd/deskinbox/detail.go",
+      "old": "\treturn &http.Client{Timeout: commentsTimeout}",
+      "new": "\treturn &http.Client{}"
+    },
+    {
+      "name": "go back to http.DefaultClient for the comments read",
+      "file": "cmd/deskinbox/detail.go",
+      "old": "\t\tresp, derr := commentsClient().Do(req)",
+      "new": "\t\tresp, derr := http.DefaultClient.Do(req)"
+    },
+    {
+      "name": "the documented default bound is not in force (zero = no deadline)",
+      "file": "cmd/deskinbox/detail.go",
+      "old": "var commentsTimeout = commentsRequestTimeout",
+      "new": "var commentsTimeout time.Duration"
+    },
+    {
+      "name": "ignore a body read error (a cut-off 200 reads as an empty comment list)",
+      "file": "cmd/deskinbox/detail.go",
+      "old": "\t\tif rerr != nil {\n\t\t\t// A body cut off mid-read",
+      "new": "\t\tif false && rerr != nil {\n\t\t\t// A body cut off mid-read"
+    }
+  ]
+}

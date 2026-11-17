@@ -439,11 +439,20 @@ func noDeskdDiff(cell string) deliberateDiff {
 
 const whyLabels = "#6127: a house cell's install ensures the forge label set and check reports it; with no roster role bound in the fixture world, new prints NOT ENSURED with its finish command and check adds one could-not-check row"
 
-// labelsNotEnsured is the line `new --kind house` adds after the scaffold line on the fixture
-// world, whose cell roster binds no role yet.
+// labelExpectation is shared by the frozen shell oracle and pre-migration Go
+// transcript adapters. It is expected output, independent of the implementation.
+func labelExpectation(name, repo string) string {
+	b, err := os.ReadFile(filepath.Join("../../../cellctl/testdata/parity", name+".txt"))
+	if err != nil {
+		panic(err)
+	}
+	return strings.ReplaceAll(string(b), "<repo>", repo)
+}
+
+// labelsNotEnsured is the line `new --kind house` adds after the scaffold line on
+// the fixture world, whose cell roster binds no role yet.
 func labelsNotEnsured(repo string) string {
-	return "[new] labels: NOT ENSURED on " + repo + " — the cell's roster binds no role yet, so the to:<role> / raised-by:<role> rows cannot be derived (write the roster first); " +
-		"finish with: deskfleet labels --forge github --repo " + repo + " --roles <the roster's role= names, comma-separated> --token-file <FILE holding an operator credential that can write labels>\n"
+	return labelExpectation("labels-new", repo)
 }
 
 func labelsNewDiff(cell string) deliberateDiff {
@@ -453,10 +462,12 @@ func labelsNewDiff(cell string) deliberateDiff {
 }
 
 func labelsCheckDiff() deliberateDiff {
-	row := "  MISS  root example-org/example-repo carries docs/streams/\n"
-	cnc := "  ?     could-not-check: labels: the cell's roster binds no role, so the to:<role> / raised-by:<role> set cannot be derived (fix the roster row above)\n"
-	return deliberateDiff{code: 1, stdoutReplace: func() []string { return []string{row, row + cnc} },
-		stderrReplace: []string{"", ""}, why: whyLabels}
+	return deliberateDiff{code: 1, stdoutReplace: func() []string {
+		// The map is initialized in every helper subprocess too, from arbitrary cwd.
+		// Read shared fixture bytes only when the transcript comparison needs them.
+		row := "  MISS  root example-org/example-repo carries docs/streams/\n"
+		return []string{row, row + labelExpectation("labels-check", "")}
+	}, stderrReplace: []string{"", ""}, why: whyLabels}
 }
 
 const whyIntakePin = "a freshly scaffolded cell pins the intake role to a strong tier (DESK_MODEL_intake_desk=opus), so show reports that one role line from the new pin instead of the default"
@@ -516,8 +527,8 @@ var deliberateDiffs = map[string]deliberateDiff{
 	"kind-whole-line/1": noDeskdDiff("example"),
 	"kind-whole-line/9": noDeskdDiff("scrub"),
 	"desk-scrubbed/2": {code: 0, stdoutReplace: func() []string {
-		return []string{bashQuote(`Invoke the "assay:worker-desk" skill now.`), bashQuote(codexStandingPrompt("worker-desk", codexSupervisionPrompt(`Invoke the "assay:worker-desk" skill now.`)))}
-	}, stderrReplace: []string{"", ""}, why: "#2696, #3324: scrubbed Codex argv carries native admission and shared supervision guidance; all other bytes remain equal"},
+		return []string{bashQuote(`Invoke the "assay:worker-desk" skill now.`), bashQuote(codexStandingPrompt("worker-desk", codexSupervisionPrompt(`Invoke the "assay:worker-desk" skill now.`+codexStampPrompt)))}
+	}, stderrReplace: []string{"", ""}, why: "#2696, #3324, #6706: scrubbed Codex argv carries native admission, the mode-split stamp reminder and shared supervision guidance; all other bytes remain equal"},
 
 	// Maintenance adds wipe to cache diagnostics; all other transcript bytes stay identical.
 	"cache-enabled/0": {code: 3, why: "cache wipe is now supported", stderrReplace: []string{"status|clean|recover", "status|clean|wipe|recover"}},

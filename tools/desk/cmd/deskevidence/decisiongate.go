@@ -2,12 +2,15 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -63,7 +66,7 @@ var decisionGateReplacedBaseFn = replacedBaseCommit
 // board is the target branch's version of every board file it changed since the home's
 // commit (decisionGateBranchBoard): applied to the base and to the worktree of both
 // runs, so the judge reads the board the write lands on, not the home's older one.
-func decisionGateDiffAt(root, targetRepoPath string, replaced []byte, replacedExists bool, newContent []byte, board []boardEdit) (introduced []string, err error) {
+func decisionGateDiffAt(root, targetRepoPath string, replaced []byte, replacedExists bool, newContent []byte, board []boardEdit, options childOptions) (introduced []string, err error) {
 	base, err := decisionGateReplacedBaseFn(root, targetRepoPath, replaced, replacedExists, board)
 	if err != nil {
 		return nil, err
@@ -108,14 +111,14 @@ func decisionGateDiffAt(root, targetRepoPath string, replaced []byte, replacedEx
 	} else if rmerr := os.Remove(abs); rmerr != nil && !os.IsNotExist(rmerr) {
 		return nil, deskkit.Unverifiable("cannot clear "+abs+" to stage the decision-gate check", rmerr)
 	}
-	before, err := statusgenDecisionGateFn(root, base)
+	before, err := statusgenDecisionGateFn(root, base, options)
 	if err != nil {
 		return nil, err
 	}
 	if werr := os.WriteFile(abs, newContent, 0o644); werr != nil {
 		return nil, deskkit.Unverifiable("cannot stage the decision-gate check at "+abs, werr)
 	}
-	after, aerr := statusgenDecisionGateFn(root, base)
+	after, aerr := statusgenDecisionGateFn(root, base, options)
 	if aerr != nil {
 		return nil, aerr
 	}
@@ -161,7 +164,7 @@ func replacedBaseCommit(root, targetRepoPath string, replaced []byte, replacedEx
 		out, cerr := cmd.Output()
 		return strings.TrimSpace(string(out)), cerr
 	}
-	head, err := git(nil, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
+	head, err := landingHead(root)
 	if err != nil || head == "" {
 		return fail("HEAD does not resolve", err)
 	}
@@ -270,10 +273,7 @@ func sameCommit(a, b string) bool {
 // shown complete (or a forge that serves no compare), or a changed board file that
 // cannot be read at the branch tip is could-not-check, never a pass.
 func decisionGateBranchBoard(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branch, targetRepoPath string) ([]boardEdit, error) {
-	cmd := exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}")
-	cmd.Dir = os.TempDir()
-	out, err := cmd.Output()
-	head := strings.TrimSpace(string(out))
+	head, err := landingHead(root)
 	if err != nil || head == "" {
 		return nil, deskkit.Unverifiable("cannot resolve the landing home's HEAD in "+root+" to compare it with "+branch+" (decision-gate hold, lifecycle-v1 §4.5)", err)
 	}
@@ -294,26 +294,37 @@ func decisionGateBranchBoard(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branc
 	if sameCommit(head, tip) {
 		return nil, nil
 	}
+	var files []deskkit.ChangedFile
 	cmp, err := fg.CompareRefs(fr, head, tip)
-	if err != nil {
+	switch {
+	case err != nil && deskkit.DescendantDiffServed(fg):
+		// GitLab serves no CompareRefs (#6610): the branch lane is judged by the narrow,
+		// exact read instead, and only an Evidence-only branch is admitted.
+		files, err = gitlabEvidenceOnlyBranch(fg, fr, head, branch, tip, targetRepoPath)
+		if err != nil {
+			return nil, err
+		}
+	case err != nil:
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot compare the landing home's HEAD %s with %s (%s) on %s, so the board the write lands on cannot be shown to match the one judged (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug()), err)
-	}
-	if cmp == nil || !cmp.CommitsComplete || len(cmp.Files) >= decisionGateCompareFileCap {
-		return nil, deskkit.Unverifiable(fmt.Sprintf("the forge's compare of the landing home's HEAD %s with %s (%s) on %s cannot be shown complete, so a board change on the branch cannot be ruled out (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug()), nil)
-	}
-	// The compare lists what the branch changed since the commits' merge base. Only when
-	// the home's HEAD is an ancestor of the tip is that every difference between the board
-	// judged and the board landed on; a home carrying commits the branch lacks would keep
-	// its own board edits in the judge.
-	if cmp.BehindBy != 0 || (cmp.Status != "ahead" && cmp.Status != "identical") {
-		return nil, deskkit.Unverifiable(fmt.Sprintf("the landing home's HEAD %s is not an ancestor of %s (%s) on %s (compare status %q, behind by %d), so the board judged cannot be shown to be the board the write lands on (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug(), cmp.Status, cmp.BehindBy), nil)
+	default:
+		if cmp == nil || !cmp.CommitsComplete || len(cmp.Files) >= decisionGateCompareFileCap {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("the forge's compare of the landing home's HEAD %s with %s (%s) on %s cannot be shown complete, so a board change on the branch cannot be ruled out (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug()), nil)
+		}
+		// The compare lists what the branch changed since the commits' merge base. Only when
+		// the home's HEAD is an ancestor of the tip is that every difference between the board
+		// judged and the board landed on; a home carrying commits the branch lacks would keep
+		// its own board edits in the judge.
+		if cmp.BehindBy != 0 || (cmp.Status != "ahead" && cmp.Status != "identical") {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("the landing home's HEAD %s is not an ancestor of %s (%s) on %s (compare status %q, behind by %d), so the board judged cannot be shown to be the board the write lands on (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug(), cmp.Status, cmp.BehindBy), nil)
+		}
+		files = cmp.Files
 	}
 	isBoard := func(p string) bool {
 		return p != "" && p != targetRepoPath && decisionGateBoardRe.MatchString(p) && !decisionGateRegisterRe.MatchString(p)
 	}
 	var edits []boardEdit
 	seen := map[string]bool{}
-	for _, f := range cmp.Files {
+	for _, f := range files {
 		// A previous name is gone from the branch only when the file was renamed; a copy
 		// keeps it.
 		if f.Status == "renamed" && isBoard(f.PreviousFilename) && !seen[f.PreviousFilename] {
@@ -351,6 +362,46 @@ func decisionGateBranchBoard(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branc
 		edits = append(edits, boardEdit{Path: f.Filename, Content: fc.Content})
 	}
 	return edits, nil
+}
+
+// gitlabEvidenceOnlyBranch is the GitLab branch lane of the board-match hold (#6610). GitLab
+// serves no CompareRefs, so no divergence count or status word is read or guessed. The one
+// shape admitted is the benign one the Evidence-branch lane produces: the branch tip
+// DESCENDS from the landing home's HEAD (an exact ancestry fact, deskkit.ReadDescendantDiff)
+// AND every file the tip differs in from that HEAD is an Evidence path, added or modified
+// (this landing's target, or evidenceLandingPath). Anything else — unrelated or diverged history, a timed-out compare, a
+// listing at the cap, a non-Evidence path, a removal or a rename — stays could-not-check
+// (exit 6). The admitted files still go through the same board read as a GitHub compare's: a
+// changed brief is read at the tip and applied to the judge, never skipped.
+func gitlabEvidenceOnlyBranch(fg deskkit.Forge, fr deskkit.ForgeRepo, head, branch, tip, target string) ([]deskkit.ChangedFile, error) {
+	hold := fmt.Sprintf("the landing home's HEAD %s and %s (%s) on %s", head, branch, tip, fr.Slug())
+	files, err := deskkit.ReadDescendantDiff(fg, fr, head, tip)
+	if err != nil {
+		return nil, deskkit.Unverifiable("cannot compare "+hold+" on the GitLab branch lane, so the board the write lands on cannot be shown to match the one judged (decision-gate hold, lifecycle-v1 §4.5)", err)
+	}
+	if len(files) >= decisionGateCompareFileCap {
+		return nil, deskkit.Unverifiable("the GitLab compare of "+hold+" cannot be shown complete, so a board change on the branch cannot be ruled out (decision-gate hold, lifecycle-v1 §4.5)", nil)
+	}
+	for _, f := range files {
+		if (f.Status != "added" && f.Status != "modified") || (f.Filename != target && !evidenceLandingPath(f.Filename)) {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("could-not-check: %s differs between %s as %s, which is not an Evidence path added or modified; on GitLab only an Evidence-only branch descending from the home is admitted (decision-gate hold, lifecycle-v1 §4.5)", f.Filename, hold, f.Status), nil)
+		}
+	}
+	return files, nil
+}
+
+// evidenceLandingPath reports whether p is a path an Evidence landing writes: a brief file
+// under docs/streams (isBriefFile, the Evidence section's home) or a per-file verify-outcome
+// record under docs/streams/verify-outcomes/. The test is on the cleaned, slash-separated path
+// and refuses any path that cleaning would change (a "..", "." or doubled separator).
+func evidenceLandingPath(p string) bool {
+	if p == "" || path.Clean(p) != p || strings.HasPrefix(p, "/") {
+		return false
+	}
+	if isBriefFile(p) {
+		return true
+	}
+	return strings.HasPrefix(p, "docs/streams/verify-outcomes/") && strings.HasSuffix(p, ".json")
 }
 
 // stageBoardEdits applies edits to the working tree at root and returns the function
@@ -543,15 +594,40 @@ const decisionGateWholeChange = "(board)" + decisionGateRefusedMark
 //   - exit 1 with ≥1 REFUSED line → those lines.
 //   - anything else (exit 1 with no REFUSED line, exit 2, an unknown flag from a
 //     statusgen that predates the hold) → could-not-check.
-func statusgenDecisionGateAt(root, base string) ([]string, error) {
+func statusgenDecisionGateAt(root, base string, options childOptions) ([]string, error) {
 	if _, err := exec.LookPath("statusgen"); err != nil {
 		return nil, deskkit.Unverifiable("statusgen is not on PATH — cannot run the decision-gate check (lifecycle-v1 §4.5) on this landing", err)
 	}
-	cmd := exec.Command("statusgen", "--root", root, "--decision-gate", "--decision-gate-base", base)
+	limit := decisionGateDeadline()
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	defer cancel()
+	cmd := statusgenAudit(ctx, auditDecision, root, options, "--decision-gate-base", base)
 	cmd.Dir = os.TempDir()
+	// After the kill, stop waiting on output pipes a grandchild may still hold open.
+	cmd.WaitDelay = decisionGateWaitDelay()
 	out, cerr := cmd.CombinedOutput()
+	if ctx.Err() != nil {
+		// Checked BEFORE the output is read: a killed run's partial REFUSED lines (or their
+		// absence) are not the gate's answer.
+		return nil, deskkit.Unverifiable(fmt.Sprintf("statusgen --decision-gate at %s did not finish within %s and was killed — could-not-check", root, limit), ctx.Err())
+	}
 	return parseDecisionGateRun(root, string(out), cerr)
 }
+
+// decisionGateWaitDelay bounds how long a killed decision-gate child's output pipes are
+// drained after the kill: 2s, or an eighth of lockWait when that is shorter, so the drain
+// never takes most of the child's share of the window.
+func decisionGateWaitDelay() time.Duration { return min(2*time.Second, lockWait/8) }
+
+// decisionGateDeadline is how long ONE `statusgen --decision-gate` child may run before it is
+// killed. The child runs during preparation, while this run holds the per-root preparation
+// lock that other landings wait on for at most lockWait — a check allowed to outlive that
+// bound would turn every waiter's wait into a stale-lock refusal. decisionGateDiffAt runs the
+// child TWICE (before and after), so each child's whole span — its deadline PLUS the
+// post-kill drain (decisionGateWaitDelay) — is at most HALF of lockWait, and the pair together
+// stays inside it. The audit itself is a single diff walk (well under a second on a full
+// checkout), so the bound is still wide.
+func decisionGateDeadline() time.Duration { return lockWait/2 - decisionGateWaitDelay() }
 
 // parseDecisionGateRun reads one `statusgen --decision-gate` run (split out so the
 // exit/line reading is testable without a statusgen binary).

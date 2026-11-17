@@ -4,9 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -134,7 +132,7 @@ func harness(t *testing.T, f *fakeStore) (rc func(args ...string) int, stdout, s
 	t.Helper()
 	var so, se bytes.Buffer
 	oldBuild, oldOut, oldErr := buildStore, out, errOut
-	buildStore = func(_, _ string) (deskkit.ClaimStore, error) { return f, nil }
+	buildStore = func(_, _ string, _ func() (string, error)) (deskkit.ClaimStore, error) { return f, nil }
 	out = &so
 	errOut = &se
 	t.Cleanup(func() { buildStore, out, errOut = oldBuild, oldOut, oldErr })
@@ -433,7 +431,7 @@ func TestProgressRefusedWhenClaimMovedUnderHolder(t *testing.T) {
 	// Wrap read so that after the tool reads the current sha, the store's sha is rotated,
 	// forcing UpdateFrom's CAS to reject.
 	moving := &movingStore{fakeStore: f}
-	buildStore = func(_, _ string) (deskkit.ClaimStore, error) { return moving, nil }
+	buildStore = func(_, _ string, _ func() (string, error)) (deskkit.ClaimStore, error) { return moving, nil }
 	if rc := run("progress", "at--stream--07", "--repo", "medici-finance/assay", "--owner", "owner-1", "--branch", "feat/x"); rc != exitRefused {
 		t.Fatalf("raced progress rc = %d, want 5 (refused); err=%s", rc, se.String())
 	}
@@ -608,62 +606,6 @@ func TestGogitStoreRejectedCreateRecordsServerRefusal(t *testing.T) {
 	}
 }
 
-// The origin read must fall back to a direct parse of the common .git/config when go-git cannot
-// read the checkout — the worktreeConfig case that made every claim verb exit 6 on a
-// self-hosted GitLab (#727). This drives the config-file parser directly (the no-git
-// fallback), which needs neither go-git's extension support nor a git binary.
-func TestConfigFileOriginURLReadsCommonConfig(t *testing.T) {
-	dir := t.TempDir()
-	gitDir := filepath.Join(dir, ".git")
-	if err := os.MkdirAll(gitDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	// A worktreeConfig-enabled config — exactly the shape go-git refuses to read.
-	cfg := "[core]\n\trepositoryformatversion = 1\n" +
-		"[extensions]\n\tworktreeConfig = true\n" +
-		"[remote \"origin\"]\n\turl = https://gitlab.example.com/group/repo.git\n" +
-		"\tfetch = +refs/heads/*:refs/remotes/origin/*\n"
-	if err := os.WriteFile(filepath.Join(gitDir, "config"), []byte(cfg), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	want := "https://gitlab.example.com/group/repo.git"
-	if got := configFileOriginURL(dir); got != want {
-		t.Fatalf("configFileOriginURL = %q, want %q", got, want)
-	}
-}
-
-// The linked-worktree case: the checkout's `.git` is a FILE pointing at
-// `<main>/.git/worktrees/<name>`, and the remotes live in the COMMON config one level up (where
-// the `commondir` file points) — not in the per-worktree config go-git reads (which is why
-// go-git returns "remote not found" with zero remotes here). The parser must follow the pointer.
-func TestConfigFileOriginURLResolvesLinkedWorktreeCommondir(t *testing.T) {
-	root := t.TempDir()
-	mainGit := filepath.Join(root, "main", ".git")
-	wtGitDir := filepath.Join(mainGit, "worktrees", "wt1")
-	if err := os.MkdirAll(wtGitDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	cfg := "[remote \"origin\"]\n\turl = git@gitlab.example.com:group/repo.git\n"
-	if err := os.WriteFile(filepath.Join(mainGit, "config"), []byte(cfg), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	wtCheckout := filepath.Join(root, "wt1")
-	if err := os.MkdirAll(wtCheckout, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(wtCheckout, ".git"), []byte("gitdir: "+wtGitDir+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	// git writes a `commondir` in the worktree gitdir pointing back to the main .git.
-	if err := os.WriteFile(filepath.Join(wtGitDir, "commondir"), []byte("../..\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	want := "git@gitlab.example.com:group/repo.git"
-	if got := configFileOriginURL(wtCheckout); got != want {
-		t.Fatalf("linked-worktree origin = %q, want %q", got, want)
-	}
-}
-
 // The exit codes this port emits ARE the deskkit contract deskdispatch passes through
 // untouched — pin the mapping so a future edit cannot silently repoint one.
 func TestExitCodesAreTheDeskkitContract(t *testing.T) {
@@ -677,13 +619,13 @@ func TestExitCodesAreTheDeskkitContract(t *testing.T) {
 
 // An scp-like origin with an SSH config Host alias (`git@work-github:acme/widgets.git`, where
 // work-github is a Host block mapping to a real forge host) must resolve the alias to a real
-// host before ForgeKindFromSlugAndHost ever sees it — parseRemote takes the literal host
+// host before ForgeKindFromSlugAndHost ever sees it — HostOfRemote takes the literal host
 // segment, and resolveHostAlias is the step that turns that alias into a dialable host. The
 // resolver is stubbed so this never shells a real `ssh` or depends on a real ~/.ssh/config.
 func TestParseRemoteScpLikeAliasThenResolveHostAlias(t *testing.T) {
-	host, slug := parseRemote("git@work-github:acme/widgets.git")
-	if host != "work-github" || slug != "acme/widgets" {
-		t.Fatalf("parseRemote = (%q, %q), want (work-github, acme/widgets)", host, slug)
+	host, err := deskkit.HostOfRemote("git@work-github:acme/widgets.git")
+	if err != nil || host != "work-github" {
+		t.Fatalf("HostOfRemote = %q, %v; want work-github", host, err)
 	}
 
 	old := sshConfigHostname

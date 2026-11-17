@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // verifyrun --rows (desktools-v2/74): a run executes and records only the named
@@ -122,11 +125,52 @@ func checkUnrestrictedGolden(t *testing.T) {
 	}
 	golden := witnessHeader
 	for _, id := range []string{"1", "2", "3", "4"} {
-		golden += fmt.Sprintf("\n| %s | `touch %s` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-22 | human:fixture @ %s %s (git-config) |", id, f.marker(id), tree, rowReadSetToken())
+		golden += fmt.Sprintf("\n| %s | `touch %s` | pass exit=0 | sha256:e3b0c44298fc | 2026-10-22 | human:fixture @ %s %s (git-config) |", id, f.marker(id), tree, goldenReadsToken(t, f.brief, id))
 	}
 	if want := strings.Replace(before, "## Evidence\n", "## Evidence\n\n"+golden+"\n", 1); getFile(t, f.brief) != want {
 		t.Fatalf("an unrestricted run is not byte-identical to the pre-change output:\n--- got\n%s\n--- want\n%s", getFile(t, f.brief), want)
 	}
+}
+
+// goldenReadsToken is the read-set token the golden expects on row id. Where
+// the recorder cannot run it is exactly rowReadSetToken(). On Linux with a
+// working recorder the row records a content-addressed read set, whose digest
+// the golden cannot know in advance: the token is accepted only when the brief
+// carries it on that row AND a file of that name sits in the recorder's state
+// directory under the git dir with content hashing to it. Anything else yields the
+// no-recorder token, so the byte comparison fails.
+func goldenReadsToken(t *testing.T, brief, id string) string {
+	t.Helper()
+	want := rowReadSetToken()
+	if runtime.GOOS != "linux" {
+		return want
+	}
+	re := regexp.MustCompile(`(?m)^\| ` + regexp.QuoteMeta(id) + ` \| .* \(reads sha256:([0-9a-f]{64})\) \(git-config\) \|$`)
+	m := re.FindStringSubmatch(getFile(t, brief))
+	if m == nil {
+		return want
+	}
+	content, err := os.ReadFile(readSetStatePath(gitDirOf(t, filepath.Dir(brief)), m[1]))
+	if err != nil || evaluation.ReadSetDigest(content) != m[1] {
+		t.Errorf("row %s carries read-set token %s with no matching read-set file: %v", id, m[1], err)
+		return want
+	}
+	return evaluation.ReadSetCellToken(m[1], "")
+}
+
+// gitDirOf is root's own absolute git dir, symlink-free: where the recorder
+// writes read-set files (readSetStatePath).
+func gitDirOf(t *testing.T, root string) string {
+	t.Helper()
+	out, err := exec.Command("git", "-C", root, "rev-parse", "--absolute-git-dir").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := filepath.EvalSymlinks(strings.TrimSpace(string(out)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return d
 }
 
 // regression: #4247
@@ -794,6 +838,12 @@ func TestVerifyrunRowsTransitionSplitRunsDoNotClose(t *testing.T) {
 func TestVerifyrunRowsFailFirstScope(t *testing.T) {
 	f := newRowsFixture(t, "| # | Command | Expect |\n|---|---|---|\n| 1 | `true` | exit 0 (live) |\n| 2 | `true` | exit 0 |\n")
 	base := mustGitOut(t, f.root, "rev-parse", "HEAD")
+	// The base must be the merge-base itself, and an unresolvable merge-base
+	// is refused (ruling A, medici-finance/assay#5544): pin origin/main here.
+	mustGitOut(t, f.root, "update-ref", remoteMainRef, base)
+	// A base equal to HEAD is refused (a red there is not a red without the
+	// change), so HEAD moves one commit past the merge-base.
+	mustGitOut(t, f.root, "-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "next")
 	// Selecting the risk-bearing row 1 prints no notice (its exit is the
 	// fail-first verdict: green at base is non-discriminating).
 	for _, c := range []struct {

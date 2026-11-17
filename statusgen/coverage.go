@@ -151,6 +151,12 @@ type observedBrief struct {
 // evaluateCoverageObserved is evaluateCoverage that also returns the
 // observations it judged, keyed by brief id.
 func evaluateCoverageObserved(root string, streams []*Stream, opts coverageOptions) (map[string]Coverage, map[string]observedBrief) {
+	// CLI coverage and direct consumers do not enter run(). Give those calls
+	// the same bounded Git reader, while retaining an existing caller owner.
+	// Repository authority and history metadata are still checked per read.
+	if activeGitReads == nil {
+		defer beginGitReadSession()()
+	}
 	observed := map[string]observedBrief{}
 	crossSources := map[string]*crossCoverage{}
 	revision := opts.Revision

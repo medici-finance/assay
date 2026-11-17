@@ -121,7 +121,7 @@ func TestPlan_CouldNotCheckHoldsFreshLane(t *testing.T) {
 func TestRepresentedSourceFor_ReducesPRListOnce(t *testing.T) {
 	calls := 0
 	orig := representedPRs
-	representedPRs = func(repo string) ([]deskkit.PRRef, error) {
+	representedPRs = func(repo string) ([]deskkit.PRRef, bool, error) {
 		calls++
 		if repo != "example-org/example-repo" {
 			t.Fatalf("unexpected repo %q", repo)
@@ -130,11 +130,11 @@ func TestRepresentedSourceFor_ReducesPRListOnce(t *testing.T) {
 			{Number: 700, State: "MERGED", Body: "Fixes it.\n\nBrief: stale/07\n"},
 			{Number: 303, State: "OPEN", Body: "WIP.\n\nBrief: wip/03\n"},
 			{Number: 12, State: "CLOSED", Body: "Abandoned.\n\nBrief: dead/02\n"}, // closed-unmerged: represents nothing
-		}, nil
+		}, false, nil
 	}
 	defer func() { representedPRs = orig }()
 
-	src := representedSourceFor("example-org/example-repo", nil)
+	src := representedSourceFor("example-org/example-repo", nil, nil)
 	m, err := src()
 	if err != nil {
 		t.Fatalf("representedSourceFor: %v", err)

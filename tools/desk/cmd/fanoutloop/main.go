@@ -57,6 +57,8 @@ func main() {
 		// wires its own recorded transport), while the real binary reconciles against the repo's
 		// open+merged changes read through the typed Forge seam.
 		representedPRs = liveRepresentedPRs
+		// The per-brief lookup past an incomplete window (#5853), wired beside it.
+		briefChangeLookup = liveBriefChangeLookup
 		// The briefs-authoring exemption's file transport (#1339), wired beside it for the same reason.
 		representedPRFiles = liveRepresentedPRFiles
 		representedPRBatchFiles = liveRepresentedPRBatchFiles
@@ -133,7 +135,7 @@ func cmdPlan(args []string) error {
 	// before.
 	if representedPRs != nil {
 		if resolved, rerr := resolveRepoForPlan(*root, *repo); rerr == nil {
-			f.Represented = representedSourceFor(resolved, f.candidateBriefIDs)
+			f.Represented = representedSourceFor(resolved, f.candidateBriefIDs, f.declaredPartials)
 		} else {
 			heldErr := rerr
 			f.Represented = func() (map[string]deskkit.RepresentedPR, error) { return nil, heldErr }
@@ -158,6 +160,12 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 	if held := f.freshHoldReason(); held != "" {
 		fmt.Fprintf(out, "FRESH LANE HELD: %s\n", held)
 	}
+	landed, unchecked := splitUnchecked(f.landedUnreconciledRows())
+	// The COULD-NOT-CHECK count is stated up front too (#5853): a plan with few items and many
+	// unchecked rows must not read as idle at a glance. The rows themselves are listed below.
+	if len(unchecked) > 0 {
+		fmt.Fprintf(out, "COULD-NOT-CHECK: %d row(s) NOT dispatched — representing PR unknown (listed below)\n", len(unchecked))
+	}
 	for _, it := range items {
 		tier, terr := f.TierPolicy(it)
 		if terr != nil {
@@ -176,10 +184,20 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 	// worker dispatched to one returns nothing. They are listed here with the merged PR number, under
 	// their own heading, and are DELIBERATELY absent from the DISPATCH list above. The cell is
 	// reconciled by `statusgen reconcile --backfill --apply` (a separate lane), never by this planner.
-	if landed := f.landedUnreconciledRows(); len(landed) > 0 {
+	// A row whose reconcile flip statusgen's lint would HOLD names the missing frontmatter key instead
+	// (#5853): suggesting the reconcile there only sends the reader into a red lint.
+	if len(landed) > 0 {
 		fmt.Fprintf(out, "\n=== LANDED-UNRECONCILED: %d row(s) — merged, board cell not yet reconciled; NOT dispatched (#1339) ===\n", len(landed))
 		for _, l := range landed {
-			fmt.Fprintf(out, "  %s — merged PR #%d (run `statusgen reconcile --backfill --apply` to flip the board cell)\n", l.briefID, l.pr)
+			fmt.Fprintf(out, "  %s — merged PR #%d (%s)\n", l.briefID, l.pr, landedNextStep(f.Root, l.briefID))
+		}
+	}
+	// COULD-NOT-CHECK (#5853): rows whose representing PR could not be determined — the PR list was a
+	// bounded window and the per-brief `Brief:` lookup failed. Never dispatched, never called landed.
+	if len(unchecked) > 0 {
+		fmt.Fprintf(out, "\n=== COULD-NOT-CHECK: %d row(s) — representing PR unknown; NOT dispatched (#5853) ===\n", len(unchecked))
+		for _, l := range unchecked {
+			fmt.Fprintf(out, "  %s — %s\n", l.briefID, l.unchecked)
 		}
 	}
 

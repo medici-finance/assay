@@ -1,6 +1,7 @@
 package deskkit
 
 import (
+	"fmt"
 	"net/http"
 )
 
@@ -152,13 +153,26 @@ func (e *evidenceLandingForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*Wr
 		return g.writeEvidenceFile(repo, in, e.gitlab.project, e.prior, true)
 	}
 	if e.snapshot == nil || repo != e.repo || in.File != e.file || in.Branch != e.branch || in.StartBranch != "" {
-		// GitLab retains its native write path, but every update must remain
-		// conditional on the destination the shared validators actually saw.
-		if repo == e.repo && in.File == e.file && (in.Branch == e.branch || in.StartBranch == e.branch) && e.prior != nil && e.prior.Exists {
-			if err := expectedSHAPrecondition(in, true, e.prior.SHA); err != nil {
-				return nil, err
+		// GitLab retains its native write path, but every write must remain
+		// conditional on the destination the shared validators actually saw: an update
+		// on the revision they read, and a create only while the file is still absent.
+		// The native write re-reads the destination, so without ExpectAbsent a file
+		// created after the validators' read would be updated in place, unrefused.
+		if repo == e.repo && in.File == e.file && (in.Branch == e.branch || in.StartBranch == e.branch) {
+			switch {
+			case e.prior != nil && e.prior.Exists:
+				if err := expectedSHAPrecondition(in, true, e.prior.SHA); err != nil {
+					return nil, err
+				}
+				in.ExpectedSHA = e.prior.SHA
+			case e.absent:
+				if in.ExpectedSHA != "" {
+					return nil, Refused(fmt.Sprintf(
+						"refusing a write to %s on %s conditional on content id %s: the validators read no file there",
+						in.File, in.Branch, in.ExpectedSHA))
+				}
+				in.ExpectAbsent = true
 			}
-			in.ExpectedSHA = e.prior.SHA
 		}
 		return e.Forge.WriteFile(repo, in)
 	}
