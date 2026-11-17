@@ -20,7 +20,8 @@ package main
 // installed, so a read that needs a desk-tools verb on PATH would fail there for
 // the same reason `gh` did.
 //
-// Credential: GH_TOKEN, then GITHUB_TOKEN (what a workflow step passes).
+// Credential: GH_TOKEN, then GITHUB_TOKEN (what a workflow step passes);
+// inside an admitted verifyrun or Verify row, only the run's read-only one.
 // Stored CLI logins are never consulted, even outside verification. Missing
 // explicit credentials are a named could-not-check before any provider request.
 // An endpoint guessed from the origin host (a GitHub Enterprise Server) gets
@@ -36,6 +37,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -64,17 +66,41 @@ var githubDecayClient = &http.Client{Timeout: 30 * time.Second}
 // An endpoint derived from an origin host receives only GH_ENTERPRISE_TOKEN
 // then GITHUB_ENTERPRISE_TOKEN. github.com and an explicitly configured operator
 // endpoint receive GH_TOKEN then GITHUB_TOKEN. No stored-login source is used.
+//
+// Inside an admitted verifyrun or an admitted Verify row the credential comes
+// from the same choke point as every other forge read (admittedReadCredential):
+// the verifier's run-scoped read-only credential, or none. The forge variables
+// are not read there, and the run credential, issued for github.com, is never
+// sent to a derived enterprise endpoint (#6746).
 func githubDecayToken(endpoint string, derived bool) (token, source string, vars []string) {
+	token, source, vars, _ = githubDecayCredential(endpoint, derived)
+	return token, source, vars
+}
+
+// githubDecayCredential is githubDecayToken plus, inside an admitted context
+// with no usable credential, the could-not-check that says why.
+func githubDecayCredential(endpoint string, derived bool) (token, source string, vars []string, refused string) {
 	vars = []string{"GH_TOKEN", "GITHUB_TOKEN"}
 	if derived {
 		vars = []string{"GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}
 	}
+	if secret, why, admitted := admittedReadCredential(); admitted {
+		ignored := " (" + strings.Join(vars, " and ") + " are not read there)"
+		switch {
+		case why != "":
+			return "", "", vars, "could-not-check: " + why + ignored
+		case derived:
+			return "", "", vars, "could-not-check: the verifier's run-scoped read-only credential is issued for github.com and is never sent to " +
+				githubCredentialHost(endpoint) + ignored
+		}
+		return secret, "the verifier's run-scoped read-only credential", vars, ""
+	}
 	for _, env := range vars {
 		if v := strings.TrimSpace(os.Getenv(env)); v != "" {
-			return v, env, vars
+			return v, env, vars, ""
 		}
 	}
-	return "", "", vars
+	return "", "", vars, ""
 }
 
 // githubCredentialHost is the host a credential for endpoint is issued for:
@@ -155,7 +181,10 @@ type githubBranchPageInfo struct {
 // the page number, so it is never read as an empty page.
 func githubBranchPRPages(root string) ([]byte, error) {
 	endpoint, derived := githubDecayEndpoint(root)
-	token, source, vars := githubDecayToken(endpoint, derived)
+	token, source, vars, refused := githubDecayCredential(endpoint, derived)
+	if refused != "" {
+		return nil, errors.New(refused)
+	}
 	if token == "" {
 		if derived {
 			host := githubCredentialHost(endpoint)

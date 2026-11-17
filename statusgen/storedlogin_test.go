@@ -402,13 +402,28 @@ func TestStoredLoginGhGuard(t *testing.T) {
 			t.Fatal("the stub gh was started")
 		}
 	})
+	// Since #6746 an inherited GH_TOKEN in an admitted row is ignored too: with
+	// no run credential handed to the row the launch is refused, and with one
+	// it is the only credential the CLI sees.
 	t.Run("refused-with-token", func(t *testing.T) {
 		slAdmittedRow(t)
 		t.Setenv("GH_TOKEN", "fixture-gh_token")
 		t.Setenv("CELLCTL_GH_AMBIENT", "fixture-ambient")
+		t.Setenv(runCredentialEnv, "")
+		cmd := ghGuard(exec.Command("gh", "auth", "token"))
+		if cmd.Err == nil || !strings.Contains(cmd.Err.Error(), "could-not-check") {
+			t.Fatalf("err %v env:\n%s", cmd.Err, strings.Join(cmd.Env, "\n"))
+		}
+	})
+	t.Run("row-run-credential", func(t *testing.T) {
+		slAdmittedRow(t)
+		t.Setenv("GH_TOKEN", "fixture-gh_token")
+		t.Setenv("CELLCTL_GH_AMBIENT", "fixture-ambient")
+		t.Setenv(runCredentialEnv, rcCredFile(t, rcRead))
 		cmd := ghGuard(exec.Command("gh", "auth", "token"))
 		env := strings.Join(cmd.Env, "\n")
-		if cmd.Err != nil || strings.Contains(env, "CELLCTL_GH_AMBIENT=") || !strings.Contains(env, "GH_ENTERPRISE_TOKEN="+storedLoginPlaceholder) || !strings.Contains(env, "GH_TOKEN=fixture-gh_token") {
+		if cmd.Err != nil || strings.Contains(env, "CELLCTL_GH_AMBIENT=") || strings.Contains(env, "fixture-gh_token") ||
+			!strings.Contains(env, "GH_ENTERPRISE_TOKEN="+storedLoginPlaceholder) || !strings.Contains(env, "GH_TOKEN="+rcMinted) {
 			t.Fatalf("err %v env:\n%s", cmd.Err, env)
 		}
 	})
