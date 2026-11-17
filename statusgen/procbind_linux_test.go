@@ -51,7 +51,7 @@ func sgProcBindChildRun() {
 	runtime.LockOSThread()
 	say := func(m string) { os.Stdout.WriteString("PROCBIND: " + m + "\n") }
 	if err := syscall.Mount("", "/", "", syscall.MS_REC|syscall.MS_PRIVATE, ""); err != nil {
-		say("unavailable: make-private: " + err.Error())
+		say("unavailable: mount propagation: " + err.Error())
 		return
 	}
 	comm := "/proc/thread-self/comm"
