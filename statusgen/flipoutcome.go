@@ -205,7 +205,7 @@ func flipOutcomeCommitted(root, key string) error {
 func flipOutcomeHeadBytes(root string, read gitCoreRead, stream string) error {
 	files, err := read.repo.Files("HEAD")
 	if err != nil {
-		return fmt.Errorf("outcome record: git ls-tree HEAD: %v", err)
+		return fmt.Errorf("outcome record: reading the HEAD tree: %v", err)
 	}
 	dir, glob := outcomeScope(stream)
 	for _, f := range files {
