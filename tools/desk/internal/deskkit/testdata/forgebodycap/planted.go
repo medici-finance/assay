@@ -52,3 +52,23 @@ func bodyAliasRead(resp *http.Response) ([]byte, error) {
 	r := resp.Body
 	return stdio.ReadAll(r)
 }
+
+// permitThenRead drains a status probe (the read a permit may cover) and then reads the body
+// whole — a second read the drain's permit must not cover.
+func permitThenRead(resp *http.Response) ([]byte, error) {
+	_, _ = stdio.Copy(stdio.Discard, resp.Body)
+	return stdio.ReadAll(resp.Body)
+}
+
+func truncatedCapped(resp *http.Response) ([]byte, error) {
+	return deskkit.ReadForgeBodyUpTo(stdio.LimitReader(resp.Body, 1<<20), "GET /example", 1<<20)
+}
+
+func truncatedAliasCapped(resp *http.Response) ([]byte, error) {
+	lr := stdio.LimitReader(resp.Body, 1<<20)
+	return deskkit.ReadCappedForgeBody(lr, "GET /example")
+}
+
+func truncatedLimitedCapped(resp *http.Response) ([]byte, error) {
+	return deskkit.ReadCappedForgeBody(&stdio.LimitedReader{R: resp.Body, N: 1 << 20}, "GET /example")
+}
