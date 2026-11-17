@@ -329,8 +329,8 @@ func TestRunnerDockerfileWritesBakedRoots(t *testing.T) {
 	df := string(raw)
 	// The image copies the source's own manifest (#4683) to the path verifyrun
 	// reads, and downloads modules for exactly the roots it lists.
-	if !strings.Contains(df, "COPY "+moduleRootsManifest+" "+bakedModuleRootsFile+"\n") {
-		t.Fatalf("the Dockerfile does not copy %s to %s", moduleRootsManifest, bakedModuleRootsFile)
+	if !strings.Contains(df, moduleRootsCopyLine()) {
+		t.Fatalf("the Dockerfile does not copy %s to %s with `%s`", moduleRootsManifest, bakedModuleRootsFile, moduleRootsCopyMode)
 	}
 	listed, ok := bakedModuleRoots(filepath.Join("..", filepath.FromSlash(moduleRootsManifest)))
 	if !ok {
