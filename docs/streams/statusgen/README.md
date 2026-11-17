@@ -77,7 +77,7 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 41 | [Objective projection over the board view: critical path and ranked moves](brief-41-objective-projection-over-the-board-view-critical-path-and-ranked-moves.md) | 3 | M | todo | — | — |
 | 42 | [Queue projections from one board load: next-up, awaiting and brief info](brief-42-queue-projections-from-one-board-load-next-up-awaiting-and-brief-info.md) | 3 | L | todo | — | — |
 | 43 | [Desk read-side consumers call the board library in-process](brief-43-desk-read-side-consumers-call-the-board-library-in-process.md) | 4 | M | todo | — | — |
-| 44 | [Hydration budget: profile a real tree and remove the dominant cost](brief-44-hydration-budget-profile-a-real-tree-and-remove-the-dominant-cost.md) | 1 | M | todo | — | — |
+| 44 | [Hydration budget: profile a real tree and remove the dominant cost](brief-44-hydration-budget-profile-a-real-tree-and-remove-the-dominant-cost.md) | 1 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

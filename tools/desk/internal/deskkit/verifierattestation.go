@@ -97,7 +97,7 @@ func verifierGitBytes(root string, args ...string) ([]byte, error) {
 func verifierGit(root string, args ...string) (string, error) {
 	out, err := verifierGitBytes(root, args...)
 	if err != nil {
-		return "", Unverifiable("cannot establish verifier source: git "+strings.Join(args, " "), err)
+		return "", Unverifiable("cannot establish verifier source: git "+RedactRemoteArgv(args), err)
 	}
 	for _, arg := range args {
 		if arg == "-z" {

@@ -55,8 +55,10 @@ func (c *Cell) printCachePolicy() {
 
 // cacheAdmission performs bounded preparation and never falls through into a
 // cache walk itself. Dirty or corrupt accounting requires explicit
-// maintenance; a missing or stale measurement is re-measured once by the
-// caller's prepareLaunchOnce, never here.
+// maintenance; a missing, unstamped or future-dated measurement, one past the
+// policy's freshness bound, or a stale one another check refused is
+// re-measured once by the caller's prepareLaunchOnce, never here. A
+// measurement that is only stale admits, reported stale with its age.
 func (c *Cell) cacheAdmission() error {
 	p, err := c.cachePolicy()
 	if err != nil {
@@ -73,8 +75,9 @@ func (c *Cell) cacheAdmission() error {
 
 // upPrepareLaunch is prepareLaunch for `cellctl up`. When bounded admission
 // defers on a refusal one clean can clear (the recorded size or free-space
-// margin, or an aged, unstamped, future-dated, missing or overtaken
-// measurement), it runs that clean once and prepares again; a second deferral
+// margin, or an unstamped, future-dated, missing or overtaken measurement, or
+// one past the policy's freshness bound), it runs that clean once and prepares
+// again; a measurement that is only stale admits with no clean; a second deferral
 // refuses exactly as before. Every other refusal (ownership, domain, corrupt or
 // dirty accounting) is returned untouched and stays with the operator.
 func (c *Cell) upPrepareLaunch() (bool, error) {
@@ -83,7 +86,9 @@ func (c *Cell) upPrepareLaunch() (bool, error) {
 
 // launchPrepareLaunch is prepareLaunch for `cellctl desk` and scratch
 // launches. It re-measures only when the refusal is that the recorded
-// measurement is aged, unstamped, future-dated or missing (#6593): one Check,
+// measurement is unstamped, future-dated, missing or past the policy's
+// freshness bound, or is older than five minutes and another check refused it
+// (#6593); a measurement that is only stale admits with no re-measure. One Check,
 // then one more bounded preparation that admits or refuses on the fresh
 // numbers. Size or free-space pressure on a fresh measurement, and every
 // operator-only refusal, are returned untouched: on a fresh measurement those

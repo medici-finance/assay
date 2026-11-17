@@ -22,31 +22,51 @@ import (
 // re-open the closed forge surface (internal/forgeban; TestNoForgeCLIShellout). The forge is
 // resolved through productionForgeResolver — the session's own role, no ambient-credential
 // fallback — exactly as the claim-release sink resolves its forge.
-func liveRepresentedPRs(repo string) ([]deskkit.PRRef, error) {
+func liveRepresentedPRs(repo string) ([]deskkit.PRRef, bool, error) {
 	owner, name, ok := strings.Cut(strings.TrimSpace(repo), "/")
 	if !ok || owner == "" || name == "" {
-		return nil, fmt.Errorf("represented-PR read: target repo %q is not owner/name", repo)
+		return nil, false, fmt.Errorf("represented-PR read: target repo %q is not owner/name", repo)
 	}
 	fg, ferr := productionForgeResolver(deskkit.ForgeRepo{Owner: owner, Name: name})
 	if ferr != nil {
-		return nil, ferr
+		return nil, false, ferr
 	}
 	refs, incomplete, rerr := deskkit.RepresentedPRRefs(fg, deskkit.ForgeRepo{Owner: owner, Name: name})
 	if rerr != nil {
-		return nil, rerr
+		return nil, false, rerr
 	}
 	if incomplete {
 		// The seam read the most-recently-updated window up to its page ceiling and the repo holds
-		// more open+merged changes than that. Reported, not swallowed: the window is ordered so a
-		// currently-queued brief's representing PR (open, or merged-but-row-not-reconciled) is
-		// within it, so `plan` reconciles against the recent window rather than HOLDING the whole
-		// fresh lane on a repo whose lifetime PR count exceeds the ceiling. A transport ERROR
-		// (above) still holds the fresh lane — could-not-check is not no-PR-exists.
+		// more open+merged changes than that. The flag is RETURNED, not just reported: a queued
+		// brief whose delivering PR is older than the window is absent from it, and absence from an
+		// incomplete list is could-not-check (#5853). representedSourceFor looks each candidate the
+		// window missed up by its `Brief:` trailer rather than offering it as IMPLEMENT.
 		fmt.Fprintf(os.Stderr, "fanoutloop: NOTICE — %s has more open+merged changes than the "+
-			"represented-PR read's recent-window ceiling; plan reconciled against the most-recently-"+
-			"updated window and a representing PR older than that window would not be seen\n", repo)
+			"represented-PR read's recent-window ceiling; candidates the window did not represent "+
+			"are looked up by their `Brief:` trailer\n", repo)
 	}
-	return refs, nil
+	return refs, incomplete, nil
+}
+
+// liveBriefChangeLookup is briefChangeLookup's shipped transport: deskkit.ChangesByBriefReader over
+// the session's own forge (productionForgeResolver), the same complete body-marker search the
+// decision-gate discovery uses. A backend without that search is an error, which the caller turns
+// into could-not-check for the brief, never "no PR".
+func liveBriefChangeLookup(repo, briefID string) ([]deskkit.PRRef, error) {
+	owner, name, ok := strings.Cut(strings.TrimSpace(repo), "/")
+	if !ok || owner == "" || name == "" {
+		return nil, fmt.Errorf("brief-trailer lookup: target repo %q is not owner/name", repo)
+	}
+	fr := deskkit.ForgeRepo{Owner: owner, Name: name}
+	fg, ferr := productionForgeResolver(fr)
+	if ferr != nil {
+		return nil, ferr
+	}
+	lookup := deskkit.ChangesByBriefReader(fg)
+	if lookup == nil {
+		return nil, fmt.Errorf("this forge backend has no `Brief:` trailer search")
+	}
+	return lookup(fr, briefID)
 }
 
 // liveRepresentedPRFiles is representedPRFiles' shipped transport: one PR's changed-file list, read

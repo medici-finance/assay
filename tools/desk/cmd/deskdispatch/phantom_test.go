@@ -13,6 +13,16 @@ import (
 // (example-*): a shipped test file naming a real withheld stream would publish a map to it.
 func withRepresentedPRs(t *testing.T, fn func(repo string) ([]deskkit.PRRef, error)) {
 	t.Helper()
+	withRepresentedWindow(t, func(repo string) ([]deskkit.PRRef, bool, error) {
+		prs, err := fn(repo)
+		return prs, false, err
+	})
+}
+
+// withRepresentedWindow is withRepresentedPRs with the window's completeness under the test's
+// control: incomplete=true is the recorded truncated window the per-brief lookup exists for.
+func withRepresentedWindow(t *testing.T, fn func(repo string) ([]deskkit.PRRef, bool, error)) {
+	t.Helper()
 	old := listRepresentedPRs
 	listRepresentedPRs = fn
 	t.Cleanup(func() { listRepresentedPRs = old })

@@ -18,6 +18,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -42,6 +43,14 @@ const (
 	// repository set. A repository-narrowed token is a different credential with a different
 	// cache key, and is refused rather than silently widened to the installation.
 	ScopeInstallation = "installation"
+
+	// ScopeReadOnly is the run-scoped READ-ONLY grant: a fresh installation token narrowed,
+	// at the forge, to ReadOnlyPermissions on one named repository. It is never cached and
+	// never touches the role's installation-scope cache: it is written once to a caller-named
+	// path that must not exist yet, and a grant the forge returns wider than read is refused,
+	// revoked, and never written. One caller: an admitted verifier run reading an acceptance
+	// approval (statusgen verifyrun, through desktoken --read-only-out).
+	ScopeReadOnly = "read-only"
 
 	// ReuseWindow is the threshold for reusing a cached installation token. GitHub App
 	// installation tokens live ~60 min; a cache is reused while it is younger than 50. It is
@@ -81,8 +90,11 @@ type GitHubRequest struct {
 	TokenPath string
 	// Paths is the App-credential search path (install-id caches, probe, default cache dir).
 	Paths Paths
-	// Scope is the grant scope: "" or ScopeInstallation.
+	// Scope is the grant scope: "", ScopeInstallation or ScopeReadOnly.
 	Scope string
+	// Repository is the one repository (name only, under Owner) a ScopeReadOnly credential is
+	// narrowed to. Required with ScopeReadOnly, refused with any other scope.
+	Repository string
 	// Fresh drops the cache and its sidecars and bypasses the install-id caches.
 	Fresh bool
 	// PathOnly resolves the cache path and returns it without reading or minting (--ttl).
@@ -159,9 +171,17 @@ func admitGitHub(req GitHubRequest) *Error {
 	if strings.TrimSpace(req.AppID) == "" {
 		return refused(fmt.Sprintf("credential provider: no App ID for App %q", req.AppName))
 	}
-	if req.Scope != "" && req.Scope != ScopeInstallation {
+	if req.Scope != "" && req.Scope != ScopeInstallation && req.Scope != ScopeReadOnly {
 		return refused(fmt.Sprintf("credential provider: scope %q is not admitted — this arm mints only the App "+
-			"installation's own grant (%q); a narrowed or widened token is a different credential", req.Scope, ScopeInstallation))
+			"installation's own grant (%q) or the run-scoped read-only grant (%q); any other narrowed or widened "+
+			"token is a different credential", req.Scope, ScopeInstallation, ScopeReadOnly))
+	}
+	if req.Scope == ScopeReadOnly {
+		if e := admitReadOnly(req); e != nil {
+			return e
+		}
+	} else if req.Repository != "" {
+		return refused("credential provider: a repository narrowing is admitted only with the " + ScopeReadOnly + " scope")
 	}
 	if req.InstallID != "" && !allDigits(req.InstallID) {
 		return refused(fmt.Sprintf("credential provider: installation id %q is not an installation id (digits only)", req.InstallID))
@@ -212,6 +232,12 @@ func githubOperation(req GitHubRequest, ad Adapters) (cred Credential, detail st
 		installID = resolvedID
 		// Record the answer so the NEXT cold token cache costs no installations call.
 		writeInstallIDCache(req.Paths, appName, owner, installID)
+	}
+
+	// The read-only arm shares only the installation resolution above (WHICH installation);
+	// it never reads, reuses or writes the role cache below.
+	if req.Scope == ScopeReadOnly {
+		return githubReadOnly(req, ad, installID, prebuiltJWT)
 	}
 
 	// Per-install token cache path, written to the head of the App-credential search path
@@ -438,9 +464,21 @@ func CheckPrivateKeyMode(pemPath string, mode os.FileMode) *Error {
 // --- GitHub API ---------------------------------------------------------------------------
 
 func githubGET(c *http.Client, method, url, jwt string) (int, []byte, error) {
-	req, err := http.NewRequest(method, url, nil)
+	return githubDo(c, method, url, jwt, nil)
+}
+
+// githubDo is githubGET with an optional JSON request body.
+func githubDo(c *http.Client, method, url, jwt string, payload []byte) (int, []byte, error) {
+	var reqBody io.Reader
+	if payload != nil {
+		reqBody = strings.NewReader(string(payload))
+	}
+	req, err := http.NewRequest(method, url, reqBody)
 	if err != nil {
 		return 0, nil, fmt.Errorf("create request: %w", err)
+	}
+	if payload != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set("Authorization", "Bearer "+jwt)
 	req.Header.Set("Accept", "application/vnd.github+json")
@@ -485,11 +523,17 @@ func resolveInstallID(c *http.Client, jwt, owner string) (string, error) {
 // ExchangeJWT POSTs the signed JWT to the installation access_tokens endpoint. The token
 // value is the response's `token` field; it is cached and never printed.
 func ExchangeJWT(c *http.Client, jwt, installID string) (*TokenResult, error) {
+	return exchangeJWTBody(c, jwt, installID, nil)
+}
+
+// exchangeJWTBody is ExchangeJWT with an access_tokens request body: the forge-side narrowing
+// (repositories, permissions) a ScopeReadOnly mint asks for.
+func exchangeJWTBody(c *http.Client, jwt, installID string, payload []byte) (*TokenResult, error) {
 	if c == nil {
 		return nil, errors.New("no HTTP transport wired")
 	}
 	url := fmt.Sprintf("%s/app/installations/%s/access_tokens", GitHubAPIBase, installID)
-	status, body, err := githubGET(c, "POST", url, jwt)
+	status, body, err := githubDo(c, "POST", url, jwt, payload)
 	if err != nil {
 		if status == 0 {
 			return nil, fmt.Errorf("POST access_tokens: %w", err)

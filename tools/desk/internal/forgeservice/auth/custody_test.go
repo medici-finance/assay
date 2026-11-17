@@ -3,6 +3,8 @@ package auth_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -16,6 +18,66 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/forgeservice/auth/testfixture"
 )
 
+// custodyFailure is the fatal message for a failed custody step. It keeps the
+// step's fixed text first (the mutation driver matches on it), then the error
+// value and, once a producer exists, the producer's own state. An intermittent
+// failure can then be read from one log line.
+func custodyFailure(step string, err error, producer string) string {
+	msg := step
+	if err != nil {
+		msg += ": " + err.Error()
+	}
+	if producer != "" {
+		msg += " [producer: " + producer + "]"
+	}
+	return msg
+}
+
+// regression: #6717
+func TestCustodyFailureNamesStepAndCause(t *testing.T) {
+	cause := errors.New("example cause")
+	if got, want := custodyFailure("operator initialize failed", cause, `fixture-stage="gate-acquired"; read-back version=0 ready=false`), `operator initialize failed: example cause [producer: fixture-stage="gate-acquired"; read-back version=0 ready=false]`; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	if got, want := custodyFailure("closed component creation failed producer", cause, ""), "closed component creation failed producer: example cause"; got != want {
+		t.Fatalf("got %q, want %q", got, want)
+	}
+	witness := "independent role escaped signer/control/other-launch containment"
+	if got := custodyFailure(witness, nil, "state"); !strings.HasPrefix(got, witness) {
+		t.Fatalf("witness text no longer leads the message: %q", got)
+	}
+}
+
+// errorDroppingFatals lists each t.Fatal that is the first statement under an
+// "!= nil {" check yet does not report through custodyFailure, so drops the error.
+func errorDroppingFatals(src string) []string {
+	var bad []string
+	lines := strings.Split(src, "\n")
+	for i := 1; i < len(lines); i++ {
+		prev, cur := strings.TrimSpace(lines[i-1]), strings.TrimSpace(lines[i])
+		if strings.HasSuffix(prev, "!= nil {") && strings.HasPrefix(cur, "t.Fatal") && !strings.Contains(cur, "custodyFailure(") {
+			bad = append(bad, fmt.Sprintf("line %d: %s", i+1, cur))
+		}
+	}
+	return bad
+}
+
+// regression: #6717
+func TestCustodyFatalsCarryTheError(t *testing.T) {
+	src, e := os.ReadFile("custody_test.go")
+	if e != nil {
+		t.Fatal(custodyFailure("custody test source unreadable", e, ""))
+	}
+	if bad := errorDroppingFatals(string(src)); len(bad) != 0 {
+		t.Fatalf("custody fatals drop the step's error; report through custodyFailure:\n%s", strings.Join(bad, "\n"))
+	}
+	// Positive control: one planted error-dropping fatal must be flagged.
+	plant := "\tif _, e = exampleStep(); e != nil {\n\t\tt.Fatal(\"example step failed\")\n\t}\n"
+	if got := errorDroppingFatals(plant); len(got) != 1 {
+		t.Fatalf("guard no longer flags a planted error-dropping fatal: %q", got)
+	}
+}
+
 // TestForgeLocalAuthorityCustody requires the explicit owned source-bound image
 // packet. No default engine, registry, image, credential or live endpoint exists.
 // A SKIP is UNQUALIFIED; only an actual named PASS qualifies this fixture.
@@ -27,10 +89,10 @@ func TestForgeLocalAuthorityCustody(t *testing.T) {
 	var input struct{ DockerBinary, DockerConfig, Host, Engine, Image, Platform, Owner, Cell string }
 	b, e := os.ReadFile(path)
 	if e != nil {
-		t.Fatal("fixture input unavailable")
+		t.Fatal(custodyFailure("fixture input unavailable", e, ""))
 	}
-	if json.Unmarshal(b, &input) != nil {
-		t.Fatal("fixture input invalid")
+	if e = json.Unmarshal(b, &input); e != nil {
+		t.Fatal(custodyFailure("fixture input invalid", e, ""))
 	}
 	// This fixture is explicitly local and cannot be redirected to a remote engine.
 	if !strings.HasPrefix(input.Host, "unix:///") || !strings.HasPrefix(input.Owner, "auth57-") || !strings.HasPrefix(input.Cell, "auth57-") {
@@ -47,6 +109,40 @@ func TestForgeLocalAuthorityCustody(t *testing.T) {
 	all := []instance{}
 	var producer *cellcontainer.AuthorityRuntime
 	prepared := false
+	fatal := func(step string, e error) {
+		t.Helper()
+		t.Fatal(custodyFailure(step, e, ""))
+	}
+	// producerState reads the producer's fixture stage and the operator
+	// read-back for a failure message. It is diagnostic only and bounded.
+	producerState := func(h *cellcontainer.AuthorityHandle, l *auth.Launcher) string {
+		diag, c := context.WithTimeout(ctx, 10*time.Second)
+		defer c()
+		state := "probe unavailable"
+		raw, _ := json.Marshal(testfixture.ProbeCall{OtherSlot: 1})
+		if out, e := producer.Probe(diag, h, raw); e != nil {
+			state = "probe failed: " + e.Error()
+		} else {
+			var r testfixture.ProbeResult
+			if json.Unmarshal(out, &r) != nil {
+				state = "probe invalid"
+			} else {
+				state = fmt.Sprintf("fixture-stage=%q control-socket=%t gate=%t", r.FixtureStage, r.ControlSocketPresent, r.GatePresent)
+			}
+		}
+		if l == nil {
+			return state
+		}
+		r, e := l.ReadControl(diag)
+		if e != nil {
+			return state + "; read-back failed: " + e.Error()
+		}
+		return state + fmt.Sprintf("; read-back version=%d ready=%t", r.Version, r.Ready)
+	}
+	fatalProducer := func(step string, e error, h *cellcontainer.AuthorityHandle, l *auth.Launcher) {
+		t.Helper()
+		t.Fatal(custodyFailure(step, e, producerState(h, l)))
+	}
 	t.Cleanup(func() {
 		cleanup, c := context.WithTimeout(context.Background(), time.Minute)
 		defer c()
@@ -68,23 +164,23 @@ func TestForgeLocalAuthorityCustody(t *testing.T) {
 		cfg := cellcontainer.AuthorityConfig{Schema: cellcontainer.AuthorityProfileSchema, Host: input.Host, Engine: input.Engine, DockerBinary: input.DockerBinary, DockerConfig: input.DockerConfig, Image: input.Image, Platform: input.Platform, Owner: input.Owner, Cell: input.Cell, LaunchID: id, Role: role, Kind: kind, Volumes: volumes, Limits: limits}
 		p, e := cellcontainer.NewAuthorityPlan(cfg)
 		if e != nil {
-			t.Fatal("closed plan invalid", kind)
+			fatal(fmt.Sprint("closed plan invalid ", kind), e)
 		}
 		r, e := cellcontainer.NewAuthorityRuntime(p)
 		if e != nil {
-			t.Fatal("closed runtime invalid", kind)
+			fatal(fmt.Sprint("closed runtime invalid ", kind), e)
 		}
 		if kind == celllaunch.AuthorityProducer {
 			producer = r
 			prepared = true
 			if e = r.PrepareVolumes(ctx); e != nil {
-				t.Fatal("owned volume preparation failed")
+				fatal("owned volume preparation failed", e)
 			}
 		}
 		h, e := r.Create(ctx)
 		all = append(all, instance{r, h})
 		if e != nil {
-			t.Fatal("closed component creation failed", kind)
+			fatal(fmt.Sprint("closed component creation failed ", kind), e)
 		}
 		return instance{r, h}
 	}
@@ -100,7 +196,7 @@ func TestForgeLocalAuthorityCustody(t *testing.T) {
 	cfg := auth.ProducerConfig{Schema: auth.Schema, Profile: auth.Profile, Issuer: "fixture-issuer", Audience: "fixture-audience", MaxGrantLease: time.Minute, ClockSkew: time.Second, CurrentReadLease: 100 * time.Millisecond, MaxRevocationBound: 100 * time.Millisecond, IOTimeout: time.Second, MaxFrameBytes: 64 * 1024, MaxGrants: 8, MaxConnections: 4}
 	launcher, e := auth.NewLauncher(ctx, p.runtime, p.handle, cfg, []auth.LauncherRoute{{Runtime: a.runtime, Handle: a.handle, Scope: scope("caller-a")}, {Runtime: bCaller.runtime, Handle: bCaller.handle, Scope: scope("caller-b")}})
 	if e != nil {
-		t.Fatal("fresh protected launcher composition failed")
+		fatalProducer("fresh protected launcher composition failed", e, p.handle, nil)
 	}
 	run, stop := context.WithCancel(ctx)
 	done := make(chan error, 1)
@@ -119,28 +215,28 @@ func TestForgeLocalAuthorityCustody(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatal("actual producer private channel unavailable")
+			fatalProducer("actual producer private channel unavailable", e, p.handle, nil)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	if _, e = launcher.Initialize(ctx); e != nil {
-		t.Fatal("operator initialize failed")
+		fatalProducer("operator initialize failed", e, p.handle, launcher)
 	}
 	if _, e = launcher.Register(ctx, "caller-a", time.Minute); e != nil {
-		t.Fatal("fresh caller-a registration failed")
+		fatalProducer("fresh caller-a registration failed", e, p.handle, launcher)
 	}
 	if _, e = launcher.Register(ctx, "caller-b", time.Minute); e != nil {
-		t.Fatal("fresh caller-b registration failed")
+		fatalProducer("fresh caller-b registration failed", e, p.handle, launcher)
 	}
 	grant := func(x instance) auth.SignedGrant {
 		t.Helper()
 		raw, e := x.runtime.ReadGrant(ctx, x.handle)
 		if e != nil {
-			t.Fatal("predetermined grant channel unavailable")
+			fatal("predetermined grant channel unavailable", e)
 		}
 		g, e := auth.DecodeGrant(raw, cfg.MaxFrameBytes)
 		if e != nil {
-			t.Fatal("grant envelope invalid")
+			fatal("grant envelope invalid", e)
 		}
 		return g
 	}
@@ -150,11 +246,11 @@ func TestForgeLocalAuthorityCustody(t *testing.T) {
 		raw, _ := json.Marshal(testfixture.VerifyCall{LaunchID: id, Grant: g, Scope: sc, Delay: delay})
 		out, e := q.runtime.Verify(ctx, q.handle, raw)
 		if e != nil {
-			t.Fatal("independent query helper failed")
+			fatal("independent query helper failed", e)
 		}
 		var r testfixture.VerifyResult
-		if json.Unmarshal(out, &r) != nil {
-			t.Fatal("query result invalid")
+		if e = json.Unmarshal(out, &r); e != nil {
+			fatal("query result invalid", e)
 		}
 		return r
 	}
@@ -181,11 +277,11 @@ func TestForgeLocalAuthorityCustody(t *testing.T) {
 		raw, _ := json.Marshal(testfixture.ProbeCall{ProducerPID: p.handle.HostPID(), OtherSlot: 1, OtherLaunchID: "caller-b"})
 		out, e := x.runtime.Probe(ctx, x.handle, raw)
 		if e != nil {
-			t.Fatal("containment witness unavailable")
+			fatal("containment witness unavailable", e)
 		}
 		var r testfixture.ProbeResult
-		if json.Unmarshal(out, &r) != nil {
-			t.Fatal("containment witness invalid")
+		if e = json.Unmarshal(out, &r); e != nil {
+			fatal("containment witness invalid", e)
 		}
 		return r
 	}
@@ -208,47 +304,47 @@ func TestForgeLocalAuthorityCustody(t *testing.T) {
 		t.Fatal("sibling received an authority channel")
 	}
 	var claims auth.GrantClaims
-	if json.Unmarshal(ga.Payload, &claims) != nil {
-		t.Fatal("fixture grant payload invalid")
+	if e = json.Unmarshal(ga.Payload, &claims); e != nil {
+		fatal("fixture grant payload invalid", e)
 	}
 	if _, e = launcher.Revoke(ctx, claims.GrantID); e != nil {
-		t.Fatal("protected revocation failed")
+		fatalProducer("protected revocation failed", e, p.handle, launcher)
 	}
 	held(verify("caller-a", ga, scope("caller-a").Scope, 0))
 	if _, e = launcher.Rotate(ctx); e != nil {
-		t.Fatal("protected rotation failed")
+		fatalProducer("protected rotation failed", e, p.handle, launcher)
 	}
 	held(verify("caller-b", gb, scope("caller-b").Scope, 0))
 	if _, e = launcher.Register(ctx, "caller-a", time.Minute); e != nil {
-		t.Fatal("post-rotation fresh registration failed")
+		fatalProducer("post-rotation fresh registration failed", e, p.handle, launcher)
 	}
 	if !verify("caller-a", grant(a), scope("caller-a").Scope, 0).Allowed {
 		t.Fatal("post-rotation current proof failed")
 	}
 	fresh := grant(a)
 	var priorClaims auth.GrantClaims
-	if json.Unmarshal(fresh.Payload, &priorClaims) != nil {
-		t.Fatal("prior actual grant invalid")
+	if e = json.Unmarshal(fresh.Payload, &priorClaims); e != nil {
+		fatal("prior actual grant invalid", e)
 	}
 	if _, e = launcher.Stop(ctx); e != nil {
-		t.Fatal("protected stop failed")
+		fatalProducer("protected stop failed", e, p.handle, launcher)
 	}
 	held(verify("caller-a", fresh, scope("caller-a").Scope, 0))
 	// A real producer process/container restart keeps the exact owned channel
 	// volumes. Records and sockets on those volumes must not restore authority.
 	stop()
-	if p.runtime.CloseOwned(ctx, p.handle) != nil {
-		t.Fatal("actual old producer removal failed")
+	if e = p.runtime.CloseOwned(ctx, p.handle); e != nil {
+		fatal("actual old producer removal failed", e)
 	}
 	all[0].handle = nil
 	restarted, e := p.runtime.Create(ctx)
 	all = append(all, instance{p.runtime, restarted})
 	if e != nil {
-		t.Fatal("actual producer restart failed")
+		fatal("actual producer restart failed", e)
 	}
 	launcher2, e := auth.NewLauncher(ctx, p.runtime, restarted, cfg, []auth.LauncherRoute{{Runtime: a.runtime, Handle: a.handle, Scope: scope("caller-a")}, {Runtime: bCaller.runtime, Handle: bCaller.handle, Scope: scope("caller-b")}})
 	if e != nil {
-		t.Fatal("restarted protected launcher failed")
+		fatalProducer("restarted protected launcher failed", e, restarted, nil)
 	}
 	run2, stop2 := context.WithCancel(ctx)
 	done2 := make(chan error, 1)
@@ -271,21 +367,17 @@ func TestForgeLocalAuthorityCustody(t *testing.T) {
 			break
 		}
 		if time.Now().After(deadline) {
-			raw, _ := json.Marshal(testfixture.ProbeCall{OtherSlot: 1})
-			if diagnostic, e := p.runtime.Probe(ctx, restarted, raw); e == nil {
-				t.Logf("actual restarted producer fixture diagnostic: %s", diagnostic)
-			}
-			t.Fatal("retained-volume restart private channel unavailable")
+			fatalProducer("retained-volume restart private channel unavailable", e, restarted, nil)
 		}
 		time.Sleep(20 * time.Millisecond)
 	}
 	held(verify("caller-a", fresh, scope("caller-a").Scope, 0))
 	if _, e = launcher2.Initialize(ctx); e != nil {
-		t.Fatal("fresh restart incarnation initialization failed")
+		fatalProducer("fresh restart incarnation initialization failed", e, restarted, launcher2)
 	}
 	held(verify("caller-a", fresh, scope("caller-a").Scope, 0))
 	if _, e = launcher2.Register(ctx, "caller-a", time.Minute); e != nil {
-		t.Fatal("fresh restart registration failed")
+		fatalProducer("fresh restart registration failed", e, restarted, launcher2)
 	}
 	restartedGrant := grant(a)
 	var nextClaims auth.GrantClaims

@@ -629,7 +629,7 @@ func (o bootOpts) resolveRepo() (string, error) {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: origin %q does not parse to an owner/name — pass --repo <owner/name> rather than "+
 				"letting the mint default to an installation nobody chose.",
-			stepTokenMint, r.stdout), nil)
+			stepTokenMint, deskkit.RedactRemoteUserinfo(r.stdout)), nil)
 	}
 	return slug, nil
 }

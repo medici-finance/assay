@@ -66,6 +66,7 @@ USAGE:
   desktoken <role> [--repo <slug>] [--ttl]           # GitHub: mint/reuse App token
   desktoken --forge gitlab <role>                     # GitLab: rotate PAT in place
   desktoken --no-rotate <role> --repo <slug>          # read-only: print custody PATH, rotate nothing
+  desktoken <role> --repo <o/n> --read-only-out <p>   # GitHub: run-scoped read-only, uncached
   desktoken coverage <role> [--repo <slug>] [--json]  # GitHub: list repos the role's App sees
   desktoken <role> --cross-role "<reason>" ...        # audited: another loop's role
   desktoken --version
@@ -117,6 +118,17 @@ rotation it never uses, and a parallel sweep of reads would otherwise drive one
 rotation per call. On the GitHub path it has no effect: mint-or-reuse is
 already non-destructive, and the flag is accepted so a caller that does not yet
 know which forge serves a repo can ask for read-only custody either way.
+
+--read-only-out <abs path> mints a RUN-SCOPED READ-ONLY GitHub credential for one
+caller's run, separate from the role's cached one. The mint asks the forge to
+narrow it to the one --repo owner/name and to issues, metadata and pull_requests
+at read. It refuses any grant the forge answers with that holds more than read,
+revokes that credential, and writes nothing. It never reads or writes the role
+cache. It writes the credential once, 0600, to the named path. The path must not
+exist and its directory must be private (0700). A <path>.perms sidecar records
+the granted map. --ttl, --fresh and a GitLab forge are refused with it. The
+caller owns the lifetime: statusgen verifyrun mints one per admitted run that
+reads an approval, and revokes it and removes its directory when the run ends.
 It does NOT weaken rotate-on-mint: at most one credential per role is still
 ever valid and it still dies at the next rotation.
 

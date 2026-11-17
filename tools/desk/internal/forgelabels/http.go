@@ -26,7 +26,8 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// maxResponseBytes bounds one forge response read; no label answer is near it.
+// maxResponseBytes bounds one forge response read; no label answer is near it. An answer over
+// it is refused (deskkit.ReadForgeBodyUpTo), never read as its first 4 MiB.
 const maxResponseBytes = 4 << 20
 
 // requestTimeout bounds one forge request, response body included, when the caller's client
@@ -152,7 +153,12 @@ func (t *httpTransport) Do(method, path string, body any) (Response, error) {
 		return Response{}, fmt.Errorf("%s %s: %v", method, path, causeOf(err))
 	}
 	defer resp.Body.Close()
-	b, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	b, err := deskkit.ReadForgeBodyUpTo(resp.Body, method+" "+path, maxResponseBytes)
+	if deskkit.IsForgeBodyOverCap(err) {
+		// Over the bound: no answer at all. A prefix such as `[]` would decode as a complete,
+		// empty label list. The refusal is Unverifiable and names method and path only.
+		return Response{Status: resp.StatusCode}, err
+	}
 	if err != nil {
 		return Response{Status: resp.StatusCode}, fmt.Errorf("%s %s: read response: %v", method, path, err)
 	}

@@ -226,16 +226,28 @@ func TestCellCacheEnrollmentBounded(t *testing.T) {
 	must(t, err)
 	must(t, l.Finish(true))
 	// Empty cold directories may be re-accounted with bounded reads; all other
-	// enrollment preserves the full report. A stale report must always refuse.
+	// enrollment preserves the full report. An unstamped report always
+	// refuses; a stale one refuses when the policy asks for a freshness bound
+	// (age alone admits: TestCacheStaleAdmits).
 	var rep cellcache.Report
 	must(t, json.Unmarshal(before, &rep))
 	rep.After.At = time.Now().Add(-time.Hour)
 	raw, err := json.Marshal(rep)
 	must(t, err)
 	must(t, os.WriteFile(p.ReportPath(), raw, 0600))
+	bounded := *p
+	bounded.MeasurementMaxAge = 60
+	if l, err = cellcache.Acquire(bounded.Env()); err == nil {
+		l.Finish(true)
+		t.Fatal("stale accounting admitted a child past the freshness bound")
+	}
+	rep.After.At = time.Time{}
+	raw, err = json.Marshal(rep)
+	must(t, err)
+	must(t, os.WriteFile(p.ReportPath(), raw, 0600))
 	if l, err = cellcache.Acquire(p.Env()); err == nil {
 		l.Finish(true)
-		t.Fatal("stale accounting admitted a child")
+		t.Fatal("unstamped accounting admitted a child")
 	}
 	for _, body := range [][]byte{[]byte("corrupt"), nil} {
 		must(t, os.WriteFile(p.ReportPath(), body, 0600))

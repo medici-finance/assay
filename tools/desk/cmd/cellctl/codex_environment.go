@@ -135,9 +135,20 @@ func codexRolePrompt(role, goos, bash string) string {
 	} else {
 		prompt += "\nUse the native Windows command shell with profile loading disabled; do not require Bash, zsh, or WSL."
 	}
-	prompt += "\nEvery deskdispatch that will post a model-attested result must include --model with the actual selected worker model. Check the dispatch receipt for a successful model stamp before spending work on that dispatch; a skipped stamp is not a successful review admission."
-	return codexSupervisionPrompt(prompt)
+	return codexSupervisionPrompt(prompt + codexStampPrompt)
 }
+
+// codexStampPrompt is the dispatch-admission reminder both Codex launch paths
+// (host and scrubbed) carry. It names each supported dispatch mode's stamp
+// timing rather than one rule for all: reviews, verifier admission, explicit
+// --attest-worker and any existing-PR stamp require a successful read-back
+// stamp before work, while a fresh worker proceeds on PENDING and the
+// coordinator stamps its PR after it opens (#6706). The wording only routes
+// the session to the timing the verbs already enforce; it relaxes no check.
+const codexStampPrompt = "\nEvery deskdispatch that will post a model-attested result must include --model with the actual selected model and keep its dispatch receipt. " +
+	"Admission by dispatch mode: a review dispatch, verifier admission, an explicit --attest-worker dispatch, and any stamp on an existing PR (--pr, including --stamp-only) require a successful, read-back model stamp in the receipt before spending work on that dispatch; a skipped, PENDING, failed, mismatched or unreadable stamp is not a successful admission. " +
+	"A fresh worker dispatch (worker kit, no --pr, no --attest-worker) may start while its receipt reports the stamp PENDING; PENDING is not attested and is never reported as attested, and --attest-worker is opt-in, not a precondition for it. " +
+	"After that worker's draft PR opens, the coordinator desk runs the receipt's --stamp-only command with the actual selected model and tier and reads the stamp back before any downstream step relies on model-attested authoring."
 
 // Both host and scrubbed launches use the same reminder without changing their
 // shell/environment composition or native Goal admission.
