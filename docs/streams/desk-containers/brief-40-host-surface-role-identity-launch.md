@@ -208,11 +208,11 @@ Default if no answer: option 3 (hold). A host credential path is never opened by
    password-free elevation for the negative case. Unset, both tests skip, and a skip fails
    their Verify rows. Each test builds the cellctl binary and runs it against a scratch cell
    under a temporary cells root; no output may contain the fixture contents.
-   - `TestRoleSecretLaunchFlow`: the compiled cellctl checks a scratch cell that declares
+   - `TestRoleSecretLaunchFlow` (planned): the compiled cellctl checks a scratch cell that declares
      the host surface with the provisioned identities, launches a worker window whose
      dispatched child sees only the path variable, then refuses the same cell once the
      fixture file is made group-readable.
-   - `TestRoleSecretReadDenyFlow`: the compiled cellctl launches the reviewer and worker
+   - `TestRoleSecretReadDenyFlow` (planned): the compiled cellctl launches the reviewer and worker
      windows from the scratch cell's own identity map. A child of the reviewer window fails to
      open the fixture by its path with a permission error, and a child of the worker window
      opens it. A second scratch cell whose map puts the reviewer on the worker's identity is
