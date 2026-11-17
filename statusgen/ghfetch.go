@@ -51,7 +51,19 @@ const githubAPIBase = "https://api.github.com"
 // newGHClient builds a client with a bounded-timeout http.Client. token may be
 // empty (an unauthenticated call still reaches the API; a private repo then 404s,
 // which surfaces as a could-not-check, not a clean board).
+//
+// Inside an admitted verifyrun or an admitted Verify row, token is ignored:
+// the client carries only the verifier's run-scoped read-only credential, or
+// refuses every request when there is none (admittedReadCredential, #6746).
+// Every REST reader is built here, so no caller can pass an inherited
+// credential into an admitted context.
 func newGHClient(token string) *ghClient {
+	if secret, why, admitted := admittedReadCredential(); admitted {
+		if why != "" {
+			return &ghClient{doer: runCredentialDoer{why}, base: githubAPIBase}
+		}
+		token = secret
+	}
 	return &ghClient{
 		doer:  ciForgeReadDoer(&http.Client{Timeout: 30 * time.Second}),
 		base:  githubAPIBase,

@@ -55,7 +55,7 @@ func CheckoutGitRead(root, expectedRepo, role string) (gitcore.ListOpts, error) 
 	if err != nil {
 		return gitcore.ListOpts{}, err
 	}
-	if err := validateGitHost(host, target); err != nil {
+	if err := validateGitHost(host, target.Slug()); err != nil {
 		return gitcore.ListOpts{}, err
 	}
 	expectedPort := "443"
@@ -75,7 +75,8 @@ func CheckoutGitRead(root, expectedRepo, role string) (gitcore.ListOpts, error) 
 	if port != expectedPort {
 		return gitcore.ListOpts{}, Refused("git read origin port differs from the credential's forge port")
 	}
-	if !strings.EqualFold(u.Hostname(), host) {
+	originHost, err := NormalizeForgeHost(u.Hostname())
+	if err != nil || originHost != host {
 		return gitcore.ListOpts{}, Refused(fmt.Sprintf("git read origin host differs from the credential's forge host for %s", slug))
 	}
 	cred, err := ResolveRoleCredential(role, target, urls[0])

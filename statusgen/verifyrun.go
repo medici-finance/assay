@@ -644,6 +644,10 @@ type shellPlan struct {
 	// readSet, when set, records each row's read set (build-less-brittle/15,
 	// Linux only); runWitnessesSandboxed narrows it to the row.
 	readSet *readSetTarget
+	// readCred is an admitted host run's run-scoped read-only credential
+	// (runcredential.go). Only a row that reads the forge gets its file path.
+	// nil leaves every row as it was.
+	readCred *runReadCredential
 }
 
 // rowEnv is the environment every Verify row of the run executes in: the
@@ -882,6 +886,18 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	if mv := unsubstitutedMetavars(command); len(mv) > 0 {
 		return runResult{exit: -1, couldNotRun: true,
 			reason: "unsubstituted placeholder(s) " + strings.Join(mv, ", ") + " — the row cannot run as written"}
+	}
+	// A row of an admitted run that reads the forge gets the run's read-only
+	// credential's PATH, and only that row. This copy of plan is the row's own.
+	// A credential that cannot be had makes the row could-not-run. It never
+	// runs without one and is never scored.
+	if plan.readCred != nil && rowReadsForge(command) {
+		credPath, _, err := plan.readCred.ensure()
+		if err != nil {
+			return runResult{exit: -1, couldNotRun: true,
+				reason: "could-not-check: the row reads the forge, and the verifier's run-scoped read-only credential is unavailable: " + err.Error()}
+		}
+		plan.env = append(slices.Clip(plan.rowEnv()), runCredentialEnv+"="+credPath)
 	}
 	// Resolve the concrete interpreter argv for the row's declared shell (issue
 	// #1424). For `sh` this is the bash plan resolved and PROBED once for this run
@@ -2606,6 +2622,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	defer verifyrunAdmission.Store(prevAdmission)
 	attestation, admittedHome, containerTree := "", "", ""
 	var container containerAdmit
+	var runCred *runReadCredential
 	if *sandbox == sandboxContainerNetns && !*checkMode {
 		// Inside a --network none container admission is never run: the host's
 		// receipt is read instead, and the host closes the bracket afterwards.
@@ -2650,6 +2667,18 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 				fmt.Fprintln(stderr, "statusgen verifyrun:", why)
 				return verifyrunExitCouldNot
 			}
+		}
+		// An admitted host run reads the forge only with the verifier's own
+		// run-scoped read-only credential (runcredential.go). It is prepared
+		// here, before any acceptance read, and minted on first use. It is
+		// revoked and removed when the run returns.
+		if attestation != "" {
+			runCred = newRunReadCredential(attestation)
+			currentRunCredential.Store(runCred)
+			defer func() {
+				currentRunCredential.Store(nil)
+				runCred.close(stderr)
+			}()
 		}
 		verifyrunAdmission.Store(admissionState(attestation))
 	}
@@ -2816,6 +2845,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	plan.stop = stop
 	if attestation != "" {
 		plan.env = admittedRowEnv(os.Environ())
+		plan.readCred = runCred
 	}
 	// Fail-first (verify-integrity/03): the base run comes FIRST, on its own
 	// checkout, so the head run below is the ordinary run, unchanged.
