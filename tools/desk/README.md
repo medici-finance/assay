@@ -3645,15 +3645,19 @@ The provider imports nothing from the desk module; `deskkit` hands it the contro
 | **Install id** | `<PREFIX>_INSTALL_ID` is trimmed and must be digits only; anything else is refused before a JWT is signed. |
 | **GitLab** | Rotation stays an explicit `desktoken <role> --forge gitlab` act, serialized per role by the rotation lock. A read-only lookup (`--no-rotate`) never rotates, takes no lock and contacts no forge. The rotation and its self-check never follow a redirect. |
 
-**Callers that still run `desktoken` as a child.** These verbs mint by running `desktoken`
-directly rather than through `RoleTokenForOwner`. They keep the CLI's guard, audit and expiry
-rules, because the CLI is an adapter over the same provider; moving them in process is
-deferred to their own changes:
+**Callsite inventory.** Where each production credential reader stands. No write verb runs
+`desktoken` as a child any more; the only sites that still name the program are probes of the
+installed binary, which keep it on purpose. `desktokenExecAllow` in
+`internal/deskkit/roletokenguard_test.go` is the closed list of those sites, and
+`TestWriteVerbsReadCredential` (`internal/deskkit/writeverbguard_test.go`) fails if a write verb
+names `desktoken` again:
 
 | Site | Status |
 |---|---|
-| `cmd/deskclose/forge.go`, `cmd/deskrestamp/forge.go`, `cmd/deskpr/exec.go`, `cmd/deskfile/github.go`, `cmd/desklabel/forge.go`, `cmd/deskevidence/github.go`, `cmd/deskboot/boot.go`, `cmd/repohardenguard/forge.go`, `cmd/deskdisposition/forge.go`, `cmd/deskpathguard/forge.go`, `cmd/deskreply/exec.go` | deferred: direct `desktoken` child |
-| `cmd/deskrelease/github.go`, the `desktoken` lookup in `internal/deskkit/preflight.go` | out of scope: they check the installed binary itself |
+| `cmd/deskclose/forge.go`, `cmd/deskdisposition/forge.go`, `cmd/deskevidence/github.go`, `cmd/deskfile/github.go`, `cmd/desklabel/forge.go`, `cmd/deskpathguard/forge.go`, `cmd/deskpr/exec.go`, `cmd/deskreply/exec.go`, `cmd/deskrestamp/forge.go` | migrated: in process through `deskkit.WriteVerbRoleCredential`, which reads GitLab custody read-only and never rotates |
+| `cmd/repohardenguard/forge.go` | migrated: in process through `deskkit.GitHubRoleToken` (the `auditor` role) |
+| `cmd/deskboot/boot.go` (`stepMint`), the `desktoken` lookup in `internal/deskkit/preflight.go` (`coldMintProbe`) | out of scope: each proves the installed binary mints from a shell, so the child is the thing under test |
+| `cmd/deskrelease/github.go` (`resolveDeskTokenPath`) | out of scope: pins the `desktoken` installed beside `deskrelease` |
 | `deskkit`'s own GitLab custody read (`gitlabCustody`) and `desktoken coverage` | separate: unchanged by this change |
 | `internal/deskkit/roletoken.go` (`tokenMinter`) | migrated: runs the provider in process |
 
