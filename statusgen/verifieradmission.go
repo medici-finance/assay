@@ -123,7 +123,8 @@ func sameDirectory(a, b string) bool {
 // found), DESK_LOOP (the role a minter resolves), every GH_* variable
 // (GH_CONFIG_DIR, the forge CLI's config directory, and that CLI's token
 // variables among them), every ASSAY_* variable (the methodology's own
-// configuration, role key paths included), CELLCTL_GH_AMBIENT (a cell's copy
+// configuration, role key paths included) except the two named delivery
+// coordinates when they hold a commit id (admittedRowInput), CELLCTL_GH_AMBIENT (a cell's copy
 // of the stored login) and the GITHUB_* token variables (admittedRowForgeToken).
 // An inherited row-read socket variable is removed as well: the run names its
 // own socket after this function, and no other. The caller gives each row a
@@ -164,6 +165,8 @@ func admittedRowEnv(environ []string) []string {
 	for _, kv := range environ {
 		key, _, _ := strings.Cut(kv, "=")
 		switch {
+		case admittedRowInput(kv):
+			env = append(env, kv)
 		case admittedRowShellStartup(key):
 		case admittedRowForgeToken(key):
 		case admittedRowCredential(key):
@@ -199,6 +202,22 @@ func admittedRowCredential(key string) bool {
 	key = strings.ToUpper(key)
 	return strings.HasPrefix(key, "GH_") || strings.HasPrefix(key, "ASSAY_") ||
 		slices.Contains([]string{"HOME", "XDG_CONFIG_HOME", "DESK_LOOP", "CELLCTL_GH_AMBIENT"}, key)
+}
+
+// admittedRowInputs are the only ASSAY_* variables an admitted row still
+// receives: the delivery coordinates the container verify runner
+// (images/verify-runner/witness.sh) exports from its own argv before it starts
+// an admitted run, which delivery-coordinate Verify rows read. They are commit
+// ids, not credentials. Each is named exactly: no prefix, no other case.
+var admittedRowInputs = []string{"ASSAY_DELIVERY_SHA", "ASSAY_DELIVERY_BASE_SHA"}
+
+// admittedRowInput reports whether an inherited variable is one of the named
+// row inputs (admittedRowInputs) holding a full commit id, the shape the runner
+// itself accepts. Any other value under one of those names is scrubbed with the
+// rest of the ASSAY_* family, so no other value rides through under the name.
+func admittedRowInput(kv string) bool {
+	key, value, _ := strings.Cut(kv, "=")
+	return slices.Contains(admittedRowInputs, key) && fullObjectIDRe.MatchString(value)
 }
 
 // admittedRowDirs makes one admitted row's own HOME and TMPDIR: fresh, empty

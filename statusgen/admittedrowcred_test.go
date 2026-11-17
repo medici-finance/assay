@@ -17,7 +17,8 @@ const rowCredMarker = "planted-stored-login-marker"
 // holds the marker, the variables that point at that config (GH_CONFIG_DIR,
 // XDG_CONFIG_HOME), a role key file named by an ASSAY_* variable, the verify
 // loop's DESK_LOOP, a cell's CELLCTL_GH_AMBIENT copy of the login, and the
-// marker itself in an ASSAY_* and a GH_* variable. Stub `gh` and `desktoken`
+// marker itself in an ASSAY_* and a GH_* variable, and in a row input that
+// passes the scrub by name only when it holds a commit id. Stub `gh` and `desktoken`
 // on PATH answer with the marker whenever their inputs lead them to it. It
 // returns the planted home.
 func rowCredPlant(t *testing.T) string {
@@ -56,6 +57,7 @@ func rowCredPlant(t *testing.T) string {
 	t.Setenv("ASSAY_FIXTURE_LOGIN", rowCredMarker)
 	t.Setenv("GH_FIXTURE_LOGIN", rowCredMarker)
 	t.Setenv("CELLCTL_GH_AMBIENT", rowCredMarker)
+	t.Setenv("ASSAY_DELIVERY_BASE_SHA", rowCredMarker)
 	return home
 }
 
@@ -145,6 +147,64 @@ func TestAdmittedEnvScrubsCred(t *testing.T) {
 		if !slices.Contains(env, kv) {
 			t.Errorf("admitted row environment dropped %s", kv)
 		}
+	}
+}
+
+// rowInputSHA and rowInputBase are delivery coordinates of the shape the
+// container verify runner exports for an admitted run.
+const (
+	rowInputSHA  = "0123456789abcdef0123456789abcdef01234567"
+	rowInputBase = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210"
+)
+
+// regression: F5
+// TestAdmittedRowInputsPass: the two named delivery coordinates reach an
+// admitted row, by exact name and only with a full commit id as the value.
+// Every other ASSAY_* variable is still dropped: one that only extends or
+// shortens an allowed name, a lower-case copy, a database DSN, a cell API
+// setting, a role key path, and an allowed name carrying any other value.
+func TestAdmittedRowInputsPass(t *testing.T) {
+	kept := []string{"ASSAY_DELIVERY_SHA=" + rowInputSHA, "ASSAY_DELIVERY_BASE_SHA=" + rowInputBase}
+	for _, kv := range kept {
+		if !slices.Contains(admittedRowEnv([]string{kv}), kv) {
+			t.Errorf("admitted row environment dropped the named row input %s", kv)
+		}
+	}
+	gone := []string{"ASSAY_DELIVERY_SHA_EXTRA=" + rowInputSHA, "ASSAY_DELIVERY=" + rowInputSHA,
+		"ASSAY_DELIVERY_REF=" + rowInputSHA, "assay_delivery_sha=" + rowInputSHA, "Assay_Delivery_Base_Sha=" + rowInputSHA,
+		"ASSAY_TEST_POSTGRES_DSN=postgres://example.invalid/db", "ASSAY_CELL_API_URL=https://example.invalid",
+		"ASSAY_ROLE_KEY_FILE=/k", "ASSAY_DELIVERY_SHA=" + rowCredMarker, "ASSAY_DELIVERY_SHA=" + rowInputSHA[:12],
+		"ASSAY_DELIVERY_BASE_SHA=" + strings.ToUpper(rowInputSHA), "ASSAY_DELIVERY_BASE_SHA=" + rowInputSHA + "\nx"}
+	for _, kv := range gone {
+		if slices.Contains(admittedRowEnv([]string{kv}), kv) {
+			t.Errorf("admitted row environment carries %q, which is outside the named row inputs", kv)
+		}
+	}
+}
+
+// regression: F5
+// TestAdmittedRowSeesDelivery: end to end through verifyrun, an admitted row
+// reads the delivery coordinates the runner exported, while a scrubbed ASSAY_*
+// credential pointer and a database DSN stay gone. The unadmitted control
+// proves the plant lands: there the row sees the DSN too.
+func TestAdmittedRowSeesDelivery(t *testing.T) {
+	row := `test "$ASSAY_DELIVERY_SHA" = ` + rowInputSHA + ` && test "$ASSAY_DELIVERY_BASE_SHA" = ` + rowInputBase +
+		` && test -z "${ASSAY_ROLE_KEY_FILE+x}${ASSAY_TEST_POSTGRES_DSN+x}"`
+	for _, admit := range []bool{true, false} {
+		t.Run(map[bool]string{true: "admitted", false: "control"}[admit], func(t *testing.T) {
+			root, _ := admittedFixture(t, admit)
+			t.Setenv("ASSAY_DELIVERY_SHA", rowInputSHA)
+			t.Setenv("ASSAY_DELIVERY_BASE_SHA", rowInputBase)
+			t.Setenv("ASSAY_ROLE_KEY_FILE", "/inherited/role.key")
+			t.Setenv("ASSAY_TEST_POSTGRES_DSN", "postgres://example.invalid/db")
+			code := verifyrunRow(t, root, row)
+			if admit && code != verifyrunExitPass {
+				t.Fatalf("admitted row lost a delivery coordinate or kept a scrubbed ASSAY_* variable (exit %d)", code)
+			}
+			if !admit && code != verifyrunExitFail {
+				t.Fatalf("plant did not land: the unadmitted row did not see the DSN (exit %d)", code)
+			}
+		})
 	}
 }
 

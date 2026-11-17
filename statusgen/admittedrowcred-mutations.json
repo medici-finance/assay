@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred)$' -count=1 -timeout 600s",
+  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred|TestAdmittedRowInputsPass|TestAdmittedRowSeesDelivery)$' -count=1 -timeout 600s",
   "control": {
     "name": "admitted rows keep every credential pointer",
     "file": "verifieradmission.go",
@@ -120,6 +120,30 @@
       "file": "verifyrun.go",
       "old": "\t\tplan.readCred = runCred\n",
       "new": ""
+    },
+    {
+      "name": "the named delivery coordinates are scrubbed with the ASSAY_* family",
+      "file": "verifieradmission.go",
+      "old": "\t\tcase admittedRowInput(kv):\n\t\t\tenv = append(env, kv)\n",
+      "new": ""
+    },
+    {
+      "name": "the row-input allowlist widens to a name prefix",
+      "file": "verifieradmission.go",
+      "old": "\treturn slices.Contains(admittedRowInputs, key) && fullObjectIDRe.MatchString(value)\n",
+      "new": "\treturn strings.HasPrefix(key, \"ASSAY_DELIVERY\") && fullObjectIDRe.MatchString(value)\n"
+    },
+    {
+      "name": "the row-input names match whatever their case",
+      "file": "verifieradmission.go",
+      "old": "\treturn slices.Contains(admittedRowInputs, key) && fullObjectIDRe.MatchString(value)\n",
+      "new": "\treturn slices.ContainsFunc(admittedRowInputs, func(n string) bool { return strings.EqualFold(n, key) }) && fullObjectIDRe.MatchString(value)\n"
+    },
+    {
+      "name": "any value rides under a named row input",
+      "file": "verifieradmission.go",
+      "old": "\treturn slices.Contains(admittedRowInputs, key) && fullObjectIDRe.MatchString(value)\n",
+      "new": "\treturn slices.Contains(admittedRowInputs, key) && value != \"\"\n"
     }
   ]
 }
