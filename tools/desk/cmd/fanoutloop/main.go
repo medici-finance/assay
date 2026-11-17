@@ -160,6 +160,12 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 	if held := f.freshHoldReason(); held != "" {
 		fmt.Fprintf(out, "FRESH LANE HELD: %s\n", held)
 	}
+	landed, unchecked := splitUnchecked(f.landedUnreconciledRows())
+	// The COULD-NOT-CHECK count is stated up front too (#5853): a plan with few items and many
+	// unchecked rows must not read as idle at a glance. The rows themselves are listed below.
+	if len(unchecked) > 0 {
+		fmt.Fprintf(out, "COULD-NOT-CHECK: %d row(s) NOT dispatched — representing PR unknown (listed below)\n", len(unchecked))
+	}
 	for _, it := range items {
 		tier, terr := f.TierPolicy(it)
 		if terr != nil {
@@ -180,7 +186,6 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 	// reconciled by `statusgen reconcile --backfill --apply` (a separate lane), never by this planner.
 	// A row whose reconcile flip statusgen's lint would HOLD names the missing frontmatter key instead
 	// (#5853): suggesting the reconcile there only sends the reader into a red lint.
-	landed, unchecked := splitUnchecked(f.landedUnreconciledRows())
 	if len(landed) > 0 {
 		fmt.Fprintf(out, "\n=== LANDED-UNRECONCILED: %d row(s) — merged, board cell not yet reconciled; NOT dispatched (#1339) ===\n", len(landed))
 		for _, l := range landed {

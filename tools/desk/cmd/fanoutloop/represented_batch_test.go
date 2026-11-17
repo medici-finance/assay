@@ -40,8 +40,8 @@ func TestRepresentedBatchLazyFrontier(t *testing.T) {
 		}
 		return out
 	})
-	got, err := representedSourceFor("example-org/example-repo", func() (map[string]bool, error) {
-		return map[string]bool{"example-port/11": true, "example-port/12": true}, nil
+	got, err := representedSourceFor("example-org/example-repo", func() ([]string, error) {
+		return []string{"example-port/11", "example-port/12"}, nil
 	})()
 	if err != nil {
 		t.Fatal(err)
@@ -64,8 +64,8 @@ func TestRepresentedBatchUncertainty(t *testing.T) {
 	withBatchFiles(t, func(string, []int) map[int]deskkit.PendingChangeObservation {
 		return map[int]deskkit.PendingChangeObservation{11: {Err: errors.New("partial metadata"), Files: planAuthoringFiles()}, 13: {Files: []deskkit.ChangedFile{{Filename: "docs/streams/example-port/brief-13-test.md", Status: "removed"}}}}
 	})
-	got, err := representedSourceFor("example-org/example-repo", func() (map[string]bool, error) {
-		return map[string]bool{"example-port/11": true, "example-port/12": true, "example-port/13": true}, nil
+	got, err := representedSourceFor("example-org/example-repo", func() ([]string, error) {
+		return []string{"example-port/11", "example-port/12", "example-port/13"}, nil
 	})()
 	if err != nil || len(got) != 3 {
 		t.Fatalf("uncertainty/deletion became exemption: %+v %v", got, err)

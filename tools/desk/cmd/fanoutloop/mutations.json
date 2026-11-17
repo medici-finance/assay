@@ -54,6 +54,30 @@
       "file": "cmd/fanoutloop/represented.go",
       "old": "\t\tprs, incomplete, err := representedPRs(repo)\n",
       "new": "\t\tprs, _, err := representedPRs(repo)\n\t\tincomplete := true\n"
+    },
+    {
+      "name": "#5853 look candidates up ALPHABETICALLY instead of in queue priority order: a rate limit then holds the same alphabetical tail every run. TestPlan_LookupPriorityOrder must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\tfor i, id := range ids {\n\t\tif briefChangeLookup == nil {",
+      "new": "\tsort.Strings(ids)\n\tfor i, id := range ids {\n\t\tif briefChangeLookup == nil {"
+    },
+    {
+      "name": "#5853 KEEP searching after a rate-limit answer: every remaining candidate spends another refused search. TestPlan_RateLimitStopsLookups must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\t\tif deskkit.IsForgeRateLimited(err) {",
+      "new": "\t\t\tif false && deskkit.IsForgeRateLimited(err) {"
+    },
+    {
+      "name": "#5853 DROP the could-not-check mark for an unwired lookup over an incomplete window: the row is offered as IMPLEMENT on absence alone. TestPlan_NilLookupUnchecked must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\t\tout[id] = deskkit.RepresentedPR{Unchecked: \"the PR list is a bounded window and no per-brief lookup is wired\"}\n",
+      "new": ""
+    },
+    {
+      "name": "#5853 take the OLDEST lookup hit (search order) instead of the newest: an old merged PR outranks a newer open follow-up. TestPlan_LookupNewestHitWins must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\tlist := deskkit.RepresentingPRsByBrief(newestFirst)[id]",
+      "new": "\t\tlist := deskkit.RepresentingPRsByBrief(hits)[id]\n\t\t_ = newestFirst"
     }
   ]
 }

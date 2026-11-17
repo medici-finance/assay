@@ -74,7 +74,7 @@ var representedPRBatchFiles func(repo string, numbers []int) map[int]deskkit.Pen
 // the representing one — the pre-exemption answer, a row NOT dispatched — and says so on stderr:
 // could-not-check is never rounded to "authoring". nil candidates (or no file transport) applies no
 // exemption and reduces first-wins exactly as before.
-func representedSourceFor(repo string, candidates func() (map[string]bool, error)) func() (map[string]deskkit.RepresentedPR, error) {
+func representedSourceFor(repo string, candidates func() ([]string, error)) func() (map[string]deskkit.RepresentedPR, error) {
 	return func() (map[string]deskkit.RepresentedPR, error) {
 		if representedPRs == nil {
 			return nil, nil
@@ -91,9 +91,13 @@ func representedSourceFor(repo string, candidates func() (map[string]bool, error
 			// whole read is could-not-check (the fresh-lane HOLD), never a window taken as complete.
 			return nil, fmt.Errorf("the open+merged PR list for %s is a bounded window and no candidate set was supplied to look past it", repo)
 		}
-		cands, cerr := candidates()
+		order, cerr := candidates()
 		if cerr != nil {
 			return nil, cerr
+		}
+		cands := make(map[string]bool, len(order))
+		for _, id := range order {
+			cands[id] = true
 		}
 		var out map[string]deskkit.RepresentedPR
 		if representedPRFiles == nil {
@@ -102,7 +106,7 @@ func representedSourceFor(repo string, candidates func() (map[string]bool, error
 			out = representedWithAuthoring(repo, prs, cands)
 		}
 		if incomplete {
-			lookUpPastWindow(repo, cands, out)
+			lookUpPastWindow(repo, order, out)
 		}
 		return out, nil
 	}
@@ -116,16 +120,28 @@ func representedSourceFor(repo string, candidates func() (map[string]bool, error
 // lists it under COULD-NOT-CHECK and never offers it as IMPLEMENT. A complete lookup with no
 // representing hit leaves the brief absent: genuinely fresh. `issue-<NN>` placeholders carry an
 // `Issue:` link, never a `Brief:` one, so they are not looked up.
-func lookUpPastWindow(repo string, cands map[string]bool, out map[string]deskkit.RepresentedPR) {
-	ids := make([]string, 0, len(cands))
-	for id := range cands {
+//
+// THE SEARCH BUDGET. Each lookup is one forge search, and a run can have more candidates than the
+// forge's per-minute search allowance. So the lookups run in QUEUE PRIORITY order (order, as
+// candidateBriefIDs builds it: the order SelectQueue would offer the rows), never alphabetically —
+// the rows the plan would dispatch first are the ones checked first. The FIRST rate-limit answer
+// ends the walk: every candidate not yet looked up is marked Unchecked without another request, so
+// a run never keeps spending a budget the forge already refused (and that other searches share).
+// Any other lookup error is that one brief's could-not-check and the walk continues.
+func lookUpPastWindow(repo string, order []string, out map[string]deskkit.RepresentedPR) {
+	ids := make([]string, 0, len(order))
+	seen := make(map[string]bool, len(order))
+	for _, id := range order {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
 		if _, ok := out[id]; ok || strings.HasPrefix(id[strings.LastIndex(id, "/")+1:], "issue-") {
 			continue
 		}
 		ids = append(ids, id)
 	}
-	sort.Strings(ids)
-	for _, id := range ids {
+	for i, id := range ids {
 		if briefChangeLookup == nil {
 			out[id] = deskkit.RepresentedPR{Unchecked: "the PR list is a bounded window and no per-brief lookup is wired"}
 			continue
@@ -133,9 +149,22 @@ func lookUpPastWindow(repo string, cands map[string]bool, out map[string]deskkit
 		hits, err := briefChangeLookup(repo, id)
 		if err != nil {
 			out[id] = deskkit.RepresentedPR{Unchecked: fmt.Sprintf("the PR list is a bounded window and the `Brief:` lookup failed (%v)", err)}
+			if deskkit.IsForgeRateLimited(err) {
+				for _, rest := range ids[i+1:] {
+					out[rest] = deskkit.RepresentedPR{Unchecked: fmt.Sprintf("the PR list is a bounded window and the `Brief:` lookup was not run: an earlier lookup this run was rate-limited (%v)", err)}
+				}
+				return
+			}
 			continue
 		}
-		list := deskkit.RepresentingPRsByBrief(hits)[id]
+		// The search returns hits oldest-created first; the window is most-recently-updated first.
+		// Walk the hits newest first so a newer open follow-up outranks an old merged PR, as it
+		// would in the window.
+		newestFirst := make([]deskkit.PRRef, len(hits))
+		for k, h := range hits {
+			newestFirst[len(hits)-1-k] = h
+		}
+		list := deskkit.RepresentingPRsByBrief(newestFirst)[id]
 		if len(list) == 0 {
 			continue
 		}
@@ -232,9 +261,12 @@ func authoringPR(repo, briefID string, rp deskkit.RepresentedPR, files []deskkit
 
 // candidateBriefIDs is the candidate set cmdPlan hands representedSourceFor: the lower-cased brief
 // ids of this run's Next-up and awaiting-rework rows — the only rows the represented map is consulted
-// for, so the only briefs whose representing PRs are worth a file read.
-func (f *FanoutLoop) candidateBriefIDs() (map[string]bool, error) {
-	out := map[string]bool{}
+// for, so the only briefs whose representing PRs are worth a file read. It is returned in QUEUE
+// PRIORITY order, the order SelectQueue offers the rows: Next-up rows addressed to this desk first,
+// then awaiting-rework rows, then the remaining Next-up rows in board order (another loop's dispatch
+// tokens last — SelectQueue never offers them). lookUpPastWindow spends its search budget in this
+// order, so a rate limit holds the lowest-priority rows, never the same alphabetical tail (#5853).
+func (f *FanoutLoop) candidateBriefIDs() ([]string, error) {
 	rows, err := f.boardSource()
 	if err != nil {
 		return nil, err
@@ -243,8 +275,28 @@ func (f *FanoutLoop) candidateBriefIDs() (map[string]bool, error) {
 	if err != nil {
 		return nil, err
 	}
-	for _, r := range append(rows, rework...) {
-		out[strings.ToLower(r.Stream+"/"+r.Num)] = true
+	inbox := f.inboxRole()
+	var addressed, fresh, foreign []BoardRow
+	for _, r := range rows {
+		switch {
+		case isForeignDispatchToken(r):
+			foreign = append(foreign, r)
+		case inbox != "" && addressedToRole(r, inbox):
+			addressed = append(addressed, r)
+		default:
+			fresh = append(fresh, r)
+		}
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, lane := range [][]BoardRow{addressed, rework, fresh, foreign} {
+		for _, r := range lane {
+			id := strings.ToLower(r.Stream + "/" + r.Num)
+			if !seen[id] {
+				seen[id] = true
+				out = append(out, id)
+			}
+		}
 	}
 	return out, nil
 }
