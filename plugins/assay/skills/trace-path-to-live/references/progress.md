@@ -12,8 +12,12 @@ across the seven daily readings, from the same history reader as the chart. Coun
 changes**: pull or merge requests merged into the scoped roots' default branches inside the
 same seven days. Take the count from the forge's merged list. Where that cannot be read, count
 first-parent commits and leave out every generated commit: status regenerations, reconcile
-and rollup commits, and Evidence or outcome-record landings. A generated commit is activity
-nobody merged. Say on the page which method was used and how many commits were left out. When
+and rollup commits, and Evidence or outcome-record landings. A generated commit is one whose
+author is the automation identity that produces it and which is not the merge of a pull or
+merge request. Identify it by that identity and shape, never by its subject line, which
+anyone can write. A merged request counts under both methods, whoever authored it; the
+exclusions apply only to commits that landed without one. Say on the page which method was
+used and how many commits were left out. When
 recorded stage changes are two or fewer and merged changes are twenty or more,
 open the page with a short stall statement above the monthly chart. The chart stays the first
 chart. State both thresholds on the page, and say so if you change them.
@@ -50,6 +54,10 @@ Rules for the three groups:
   change that fails either test is an unreadable source: the group is **Unknown**. Name the
   head revision and say which of the two the list came from. Only the default-branch commit
   feeds **Shared obstacles**.
+- Check the default-branch commit the same way. Read it only when it is on the default
+  branch's first-parent history and is either authored by the job's own identity or is the
+  merge of the job's fixed-branch change from the same repository. A commit that merely
+  carries a held-rows block in its body is not that source.
 - The job commits only when a board row changes, so the latest reconcile commit can be older
   than the captured revision. Give its date beside the captured revision; when it is older,
   the held list is a lower bound. With no such commit to read, `statusgen reconcile --root <dir> --repo <owner/name>` without `--apply`
