@@ -71,6 +71,11 @@ Default if no answer: none — blocks until answered.
 
 Hold the change.
 
+Ruled 16 November 2026 on decision issue #4393: option 1, approve the concrete
+implementation delivered in #4392 after independent verification; the ruling grants no
+workflow activation or additional write scope. Independent verification still owns
+acceptance Evidence and every later lifecycle step.
+
 ## Task
 
 1. Extend the existing admission/preflight result with a run-bound prerequisite record: selected root/main revision, the declared sibling revisions actually needed, applicable pinned tool versions/digests, supported runtime and required App capability evidence.

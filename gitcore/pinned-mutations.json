@@ -1,0 +1,35 @@
+{
+  "test": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -count=1 -timeout=120s -run '^TestPinnedURL' .",
+  "control": {
+    "name": "CONTROL the explicit reset shape is refused too",
+    "file": "refread.go",
+    "old": "if len(values) != 2 || values[0] != \"\" || values[1] == \"\" {",
+    "new": "if len(values) != 3 || values[0] != \"\" || values[1] == \"\" {"
+  },
+  "mutations": [
+    {
+      "name": "a valueless url key is treated as the reset (#6736)",
+      "file": "refread.go",
+      "old": "if slices.Contains(blanks, true) {",
+      "new": "if slices.Contains(blanks, true) && len(blanks) < 0 {"
+    },
+    {
+      "name": "the read-back matches the url key case-sensitively",
+      "file": "refread.go",
+      "old": "strings.EqualFold(k, \"url\")",
+      "new": "k == \"url\""
+    },
+    {
+      "name": "the read-back matches the remote section case-sensitively",
+      "file": "refread.go",
+      "old": "strings.EqualFold(s, \"remote\")",
+      "new": "s == \"remote\""
+    },
+    {
+      "name": "the read-back records every entry as written with a value",
+      "file": "refread.go",
+      "old": "blanks = append(blanks, blank)",
+      "new": "blanks = append(blanks, false)"
+    }
+  ]
+}

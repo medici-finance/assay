@@ -51,7 +51,7 @@ func planWithRows(rows []BoardRow) *FanoutLoop {
 		Rework: noRework,
 		Emit:   io.Discard,
 	}
-	f.Represented = representedSourceFor("example-org/example-repo", f.candidateBriefIDs)
+	f.Represented = representedSourceFor("example-org/example-repo", f.candidateBriefIDs, f.declaredPartials)
 	return f
 }
 
@@ -168,7 +168,7 @@ func TestRepresentedSource_AuthorsTrailerNeverRepresents(t *testing.T) {
 	withPlanTransports(t,
 		[]deskkit.PRRef{{Number: 1439, State: "MERGED", Body: "Authors: example-port/11, example-port/12"}},
 		nil)
-	m, err := representedSourceFor("example-org/example-repo", nil)()
+	m, err := representedSourceFor("example-org/example-repo", nil, nil)()
 	if err != nil {
 		t.Fatalf("Represented: %v", err)
 	}

@@ -40,13 +40,11 @@ var remoteURLAllowList = map[string]struct {
 	reason string
 }{
 	"tools/desk/cmd/deskclaim-ref/gogit.go": {1, "assessed #1623; shared adapter since #3281 — supplies " +
-		"the host hint and default slug only; claim transport builds a canonical URL from " +
-		"ForgeKindFromSlugAndHost. No git verb resolves origin after the read."},
-	// #6606 moved deskwt's currentRepo, deskreply's preflight, deskkit's OriginRepoSlug and
-	// preflight's deriveRepoSlug onto deskkit.SlugRemoteURL, which refuses when worktree-scope or
-	// include config could change origin; their entries are removed.
-	"tools/desk/cmd/deskpushguard/main.go": {1, "fallback only when the pre-push hook received no URL " +
-		"argument; the normal path takes the URL git itself hands the hook."},
+		"the host hint only (the default slug goes through deskkit.OriginRepoSlug); claim transport " +
+		"builds a canonical URL from ForgeKindFromSlugAndHost. No git verb resolves origin after the read."},
+	// #6606 moved deskwt's currentRepo, deskreply's preflight, deskkit's OriginRepoSlug,
+	// preflight's deriveRepoSlug and deskpushguard's deriveRepo onto deskkit.SlugRemoteURL, which
+	// refuses when worktree-scope or include config could change origin; their entries are removed.
 	"tools/desk/internal/deskkit/preflight.go": {1, "the landing probe reads the remote only as a " +
 		"forge-KIND hint (well-known host table, roster first) and lists the kind's canonical URL " +
 		"in-process — no git verb resolves the remote after it."},
