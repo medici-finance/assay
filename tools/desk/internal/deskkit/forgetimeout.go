@@ -2,7 +2,6 @@ package deskkit
 
 import (
 	"fmt"
-	"io"
 	"net/http"
 	"time"
 )
@@ -65,7 +64,12 @@ func boundedTimeout(base *http.Client) time.Duration {
 // what names the request for the error ("GET /repos/..."). A non-2xx body is returned as read;
 // the caller's own status handling decides what it means.
 func ReadForgeBody(resp *http.Response, what string, want bool) ([]byte, error) {
-	raw, err := io.ReadAll(resp.Body)
+	// Through the forge body cap: an over-cap body is refused with no bytes (its own
+	// Unverifiable, carrying *ForgeBodyCapError), never read whole or handed on as a prefix.
+	raw, err := ReadCappedForgeBody(resp.Body, what)
+	if IsForgeBodyOverCap(err) {
+		return nil, err
+	}
 	if err != nil {
 		return nil, Unverifiable(fmt.Sprintf("%s: response body not read in full", what), err)
 	}
