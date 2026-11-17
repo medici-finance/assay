@@ -90,6 +90,12 @@
       "file": "internal/deskkit/forgebodycap_guard_test.go",
       "old": "\t\t\t\tcase strict && !isCappedReadCall(x) && anyArg(x, isBody):",
       "new": "\t\t\t\tcase false && strict && !isCappedReadCall(x) && anyArg(x, isBody):"
+    },
+    {
+      "name": "list a tree whose reads are all capped as a known gap (the ratchet must refuse a gap that shows no hit)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\"cmd/deskinstall\",\n}",
+      "new": "\t\"cmd/deskinstall\",\n\t\"cmd/desktoken\",\n}"
     }
   ]
 }
