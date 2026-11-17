@@ -5,8 +5,8 @@ package main
 //
 // THE GAP IT CLOSES. verifyflip takes its verdict from the latest strict
 // `**VERIFY: PASS**` in Evidence. The same verify run also writes a
-// verify-outcome record (docs/streams/verify-outcomes/<stream>/<NN>-*.json),
-// and the two can disagree: an Evidence entry can read PASS while the run's
+// verify-outcome record (one file per run under outcomeRecordsDir), and the
+// two can disagree: an Evidence entry can read PASS while the run's
 // own record says `blocked`. Without this check the flip acted on the
 // Evidence alone.
 //

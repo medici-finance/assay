@@ -256,6 +256,8 @@ func TestAcceptanceTransition(t *testing.T) {
 			if err = os.WriteFile(readme, []byte(pending), 0644); err != nil {
 				t.Fatal(err)
 			}
+			// #6734: the flip needs an agreeing outcome record at the flipped revision.
+			vfOutcome(t, f.root, "verified", f.amendment, "2026-08-14T12:00:00Z")
 			resetReadMemo()
 			_, err = planVerifyFlip(f.root, "vf/01", f.amendment, vfRunner)
 			if (err == nil) != want {
