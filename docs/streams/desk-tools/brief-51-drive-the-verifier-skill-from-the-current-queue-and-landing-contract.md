@@ -40,7 +40,7 @@ consumers:
 
 ## Context
 
-files: tools/desk/cmd/verifyloop/repair.go, plugins/assay/skills/verify-desk/SKILL.md, tools/desk/cmd/deskdispatch/references/verifier-prompt.md, tools/desk/cmd/verifyloop/main.go, tools/desk/README.md, tools/desk/internal/deskkit/citrigger_test.go, changelog/verifier-lane-actions.md, tools/desk/cmd/verifyloop/flow_51_test.go
+files: tools/desk/cmd/verifyloop/repair.go, plugins/assay/skills/verify-desk/SKILL.md, tools/desk/cmd/deskdispatch/references/verifier-prompt.md, tools/desk/cmd/verifyloop/main.go, tools/desk/README.md, tools/desk/internal/deskkit/citrigger_test.go, changelog/verifier-lane-actions.md, tools/desk/cmd/verifyloop/flow_51_test.go, tools/desk/internal/deskclient/ (verify-role binding only when graph-execution/27 has delivered it)
 facts:
 - The current skill already documents one-file Evidence landing, a PR-required lane and the separately gated verdict-transcription future. Preserve those permissions.
 - The plan already has explicit wait and Evidence-only states. No unconditional rule that all human/risk items are model-flippable is valid.
@@ -125,12 +125,20 @@ a `feathers:` ordering notice, and its planner-parity row reports the verify rol
 while this brief's prose adapter is absent. This brief's own Verify table is unchanged, and row 4
 still does not depend on that driver.
 
-Added obligation: register the verify role's prose adapter with the role binding
-graph-execution/27 declares, when that binding exists at pickup. Registration makes that brief's
-`TestDeskPlannerParity` (planned) compare the verify role for real, and its mutation fails a tree that
-registers the adapter while still reporting the role unavailable. If graph-execution/27 has not
-delivered at pickup, record the registration as owed in this brief's hand-off; that brief's
-row then covers the verify role when it lands.
+graph-execution/27 owns the registration and keys it on presence, not on anything this brief
+records: its planner-parity test reads this brief's declared path,
+tools/desk/cmd/verifyloop/flow_51_test.go declaring `TestVerifyDriverPlan`, and a tree that
+holds that path without the verify role registered and compared fails that test.
+
+- If graph-execution/27 has delivered at pickup, `TestDeskPlannerParity` is already on main
+  and fails this brief's change as soon as the declared path lands. Register the verify role's
+  prose adapter in that brief's binding in the same change, so the test compares the verify
+  role and passes. The binding under tools/desk/internal/deskclient/ is in this brief's scope
+  for that one registration and nothing else.
+- If graph-execution/27 has not delivered at pickup, nothing is owed here. That brief's
+  implementer registers the present adapter, and its row 10 fails otherwise.
+
+Either way a check enforces it; a hand-off note does not discharge it.
 
 ### Existing task obligations
 
