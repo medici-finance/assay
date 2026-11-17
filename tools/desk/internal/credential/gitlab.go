@@ -310,12 +310,20 @@ func acquireGitLabRotateLock(lk Locker, wait time.Duration, role, tokenPath stri
 
 // --- GitLab API ----------------------------------------------------------------------------
 
+// RequestTimeout bounds one GitLab custody request when the caller's client sets no deadline.
+// It equals deskkit.ForgeRequestTimeout (this package cannot import deskkit; a deskkit test
+// pins the two equal): a mint can run while a desk write verb holds the shared audit lock.
+const RequestTimeout = 30 * time.Second
+
 // noRedirect copies c and refuses every redirect (SEC-1): both GitLab calls send
 // PRIVATE-TOKEN, a custom header net/http forwards across hosts on a followed redirect.
 func noRedirect(c *http.Client) *http.Client {
-	cp := http.Client{}
+	cp := http.Client{Timeout: RequestTimeout}
 	if c != nil {
 		cp = *c
+	}
+	if cp.Timeout <= 0 {
+		cp.Timeout = RequestTimeout
 	}
 	cp.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &cp
