@@ -293,10 +293,13 @@ list of role identities to deny, because the verifier cannot learn every role id
   neither a role identity nor the launcher identity can change the pin;
   `DR-desk-containers-35` names which. On a container cell an install file reaches only the
   verifier container, as a read-only file mount at a fixed in-container path, checked as the
-  record mount is. The verifier and the launcher (brief 37) read the same source, built from
-  one definition or opened at that one path, so the two can never hold two pins or two
-  allow-lists that disagree. A pin that cannot be read from that source, or an install file
-  that fails these checks, refuses: the verifier admits no record and the launcher writes none.
+  record mount is. Neither the pin nor the install file's path is ever read from a variable.
+  The verifier and the launcher (brief 37) read the same source, built from one definition or
+  opened at that one path. Two binaries built apart can still carry different compiled-in
+  values; a disagreement fails closed, because each side refuses what its own pin or list
+  refuses and the verifier admits only a record it accepts itself. A pin that cannot be read
+  from that source, or an install file that fails these checks, refuses: the verifier admits
+  no record and the launcher writes none.
 
 ## Definition of Done
 
@@ -352,8 +355,12 @@ Named tests must execute; zero matches or a skip fails independent verification.
   `DR-desk-containers-35` records; a wrong pin is review-only.
 - A role identity edits the pin or the filesystem allow-list, or the launcher and the verifier
   hold copies that disagree: the pin storage rule (Interface contract) keeps one source that no
-  role identity can write; enforced by brief 36 row 3 and brief 37 row 8 (an unreadable pin
-  source refuses).
+  role identity can write, and a disagreement fails closed; enforced by brief 36 row 3 and
+  brief 37 row 8. Both rows refuse an unreadable pin source and never read a pin or its path
+  from a variable; where `DR-desk-containers-35` picks the install file, both also refuse one
+  with the wrong owner (the launcher identity included), one another identity can write, one
+  that is a symlink, one under an untrusted directory, one on a filesystem kind off the
+  allow-list and, on a container cell, one that is not a read-only file mount.
 - A digest of a one-line file lets a reader guess a short value: the nonce line and the
   8-character floor, Task 1.
 - A production value or role secret lands in the dev-env file: no row; review-only, row 7 and
