@@ -240,7 +240,11 @@ import (
 //     read as always.
 //
 // The hygiene (fences, blockquotes, struck and inline code), the routing rule
-// and the negation rule in unroutedHeldLine apply unchanged to what is read.
+// and the negation rule in unroutedHeldLine apply unchanged to what is read,
+// with one exception on the flip read: a fenced line behind a row the witness
+// check reads as a verifyrun witness row (heldWitnessLines) is read whole. The
+// witness check reads table rows inside fenced code (parseEvidenceRows) and
+// credits such a row by its first state word, so a hold on it is read too.
 type heldLineRead struct {
 	skip  bool     // the line is outside the scan's read scope
 	prose bool     // a line outside every table, in an entry with a results table (rule 2)
@@ -1483,8 +1487,15 @@ func heldWitnessLines(evidence string) []bool {
 //   - A line inlineCodeScan does not mask (a possible link reference
 //     definition, whose quoted title is not rendered text; a bare carriage
 //     return, which a renderer splits) has no span.
+//   - A line holding HTML comment syntax outside inline code anywhere, an
+//     opener's "<" or a "-->" closer, has no span: a comment that opens in
+//     one cell, or on an earlier line, and closes inside the region hides a
+//     quote the region's own "<" check cannot see.
 func heldQuotedOutput(clean string, h []int, row, alone bool) bool {
 	if hasBareCR(clean) || linkDefLine(clean) {
+		return false
+	}
+	if strings.Contains(clean, "<") || strings.Contains(clean, "-->") {
 		return false
 	}
 	lo, hi := 0, len(clean)
@@ -1516,9 +1527,9 @@ func heldQuotedOutput(clean string, h []int, row, alone bool) bool {
 //     odd number of quotes in it, leaves the pairing uncertain: no span.
 //   - Markup or a character a renderer may not show as a quotation mark
 //     leaves it uncertain too: a "<" or "&" or link or image syntax ("](")
-//     anywhere in the region, a non-ASCII byte beside a quote, or a quote
-//     with white space (CommonMark's set, or the region's edge) on both
-//     sides.
+//     anywhere in the region, a non-ASCII or control byte beside a quote,
+//     or a quote with white space (CommonMark's set, or the region's edge)
+//     on both sides.
 //   - Quotes pair in order, first with second, third with fourth. An opening
 //     quote right after a letter or digit, or a closing quote right before
 //     one (an inch mark: 5"), is not a quotation mark: no span.
@@ -1557,11 +1568,20 @@ func heldQuotedIn(clean string, h []int, lo, hi int) bool {
 	space := func(i int) bool {
 		return i < lo || i >= hi || strings.IndexByte(" \t\n\v\f\r", clean[i]) >= 0
 	}
+	// A control byte outside that set (C0 or DEL) renders as nothing, so a
+	// quote beside one is read as if it stood beside the byte past it: 5\x01"
+	// is an inch mark the alnum rule below would not see.
+	ctrl := func(i int) bool {
+		return i >= lo && i < hi && (clean[i] < 0x20 || clean[i] == 0x7f) && !space(i)
+	}
 	for _, q := range quotes {
 		// A quote beside a non-ASCII byte (a no-break or other Unicode
 		// space, a curly quote) or with white space on both sides (a spaced
 		// ditto or inch mark) may not render as a quotation mark.
 		if q > lo && clean[q-1] >= 0x80 || q+1 < hi && clean[q+1] >= 0x80 || space(q-1) && space(q+1) {
+			return false
+		}
+		if ctrl(q-1) || ctrl(q+1) {
 			return false
 		}
 	}

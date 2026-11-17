@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction|TestHeldLatest|TestHeldCarryElement|TestHeldContainerFence|TestVerifyflip|TestHeldWitnessNonZero|TestHeldNonZero|TestHeldProse' -count=1 -timeout 300s",
+  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction|TestHeldLatest|TestHeldCarryElement|TestHeldContainerFence|TestVerifyflip|TestHeldWitnessNonZero|TestHeldNonZero|TestHeldProse|TestHeldQuoted' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — supersession drops every earlier hold (the S1 defect)",
     "file": "heldscope.go",
@@ -1656,6 +1656,54 @@
       "file": "heldscope.go",
       "old": "(?: output=sha256:[0-9a-f]{64} log=row-[0-9]{6}\\.log)?",
       "new": ""
+    },
+    {
+      "name": "S4: a joined witness row marks only its last source line",
+      "file": "heldscope.go",
+      "old": "for i := spans[k][0]; i <= spans[k][1]; i++ {",
+      "new": "for i := spans[k][1]; i <= spans[k][1]; i++ {"
+    },
+    {
+      "name": "S5: HTML comment syntax elsewhere on the line no longer voids the span",
+      "file": "heldscope.go",
+      "old": "\tif strings.Contains(clean, \"<\") || strings.Contains(clean, \"-->\") {\n\t\treturn false\n\t}\n",
+      "new": ""
+    },
+    {
+      "name": "S5: a lone comment closer on the line no longer voids the span",
+      "file": "heldscope.go",
+      "old": "strings.Contains(clean, \"<\") || strings.Contains(clean, \"-->\")",
+      "new": "strings.Contains(clean, \"<\")"
+    },
+    {
+      "name": "S6: a control byte beside a quote no longer voids the span",
+      "file": "heldscope.go",
+      "old": "return i >= lo && i < hi && (clean[i] < 0x20 || clean[i] == 0x7f) && !space(i)",
+      "new": "return false"
+    },
+    {
+      "name": "S6: DEL is not read as a control byte",
+      "file": "heldscope.go",
+      "old": "(clean[i] < 0x20 || clean[i] == 0x7f)",
+      "new": "clean[i] < 0x20"
+    },
+    {
+      "name": "S6: only the byte before a quote is checked for a control byte",
+      "file": "heldscope.go",
+      "old": "if ctrl(q-1) || ctrl(q+1) {",
+      "new": "if ctrl(q-1) {"
+    },
+    {
+      "name": "P1: a fenced witness row is skipped on the flip read",
+      "file": "verifyissues.go",
+      "old": "\t\t\tif latestRun && witnessLine[i] && heldOrCouldNotCheckRe.MatchString(line) {\n\t\t\t\thits, quotes = append(hits, i), append(quotes, trimmed)\n\t\t\t}\n",
+      "new": ""
+    },
+    {
+      "name": "P1: every fenced line is read on the flip read",
+      "file": "verifyissues.go",
+      "old": "if latestRun && witnessLine[i] && heldOrCouldNotCheckRe.MatchString(line) {",
+      "new": "if latestRun && heldOrCouldNotCheckRe.MatchString(line) {"
     }
   ]
 }

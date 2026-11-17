@@ -274,3 +274,115 @@ func TestHeldQuotedNBSPSide(t *testing.T) {
 			heldEv("printed \"row 3 could-not-check, no grant\" on rerun"), true},
 	}, map[string]bool{"space before the open quote": true})
 }
+
+// TestHeldQuotedWitnessFirst: a comment that joins two source lines into one
+// witness row marks every joined line, the first included. Here the hold
+// sits on the first line and the comment opens after the digest, inside
+// inline code: the page shows the opener as code, so the scan's line holds
+// no comment syntax, while the comment strip the witness check reads joins
+// the two lines into a passing witness row. A mark on the last joined line
+// alone would let the flip skip the hold.
+// regression: #4721
+func TestHeldQuotedWitnessFirst(t *testing.T) {
+	base := witEntry("Run 1", witTable(2, "", witPass, ""), "", "**VERIFY: PASS** — 2/2 rows")
+	row2 := "| 2 | `tool check 2` | pass exit=0 | sha256:0123456789ab | 2026-10-22 | fixture-verifier[bot] @ 0123456789ab |"
+	if !strings.Contains(base, row2) {
+		t.Fatalf("fixture: row 2 not found")
+	}
+	ev := strings.Replace(base, row2,
+		"| 2 | `tool check 2` | \"tenant b: HELD, no grant\" pass exit=0 | sha256:0123456789ab `<!--` | x | y |\n"+
+			"--> | 2026-10-22 | fixture-verifier[bot] @ 0123456789ab |", 1)
+	run, _ := stripRowComments(ev)
+	rows := parseEvidenceRows(run)["2"]
+	if len(rows) == 0 || witnessStateOf(rows[len(rows)-1].Text) != statePass {
+		t.Fatalf("fixture: stripped row 2 is not a passing witness")
+	}
+	runHeldScanCasesFlip(t, []heldScanCase{{"hold on the first joined line", ev, true}}, nil)
+}
+
+// TestHeldQuotedCrossCell: an HTML comment that opens in one cell, or on an
+// earlier line, and closes in the cell holding the quoted hold hides a quote
+// the cell's own "<" check never sees. HTML comment syntax anywhere on the
+// line gives no span: every read refuses.
+// regression: #4721
+func TestHeldQuotedCrossCell(t *testing.T) {
+	hdr := "**VERIFY: PASS** (model) — row 1 green.\n\n" +
+		"| # | Command | Exit | Result | Date | Runner |\n" +
+		"|---|---------|------|--------|------|--------|\n"
+	runHeldScanCasesFlip(t, []heldScanCase{
+		{"comment from the Command cell",
+			hdr + "| 2 | `grantcheck --all` <!-- | 0 | --> \"tenant b: could-not-check, no grant\" | 2026-10-03 | fixture-verifier |\n", true},
+		{"comment from the line above",
+			hdr + "| 1 | `go test ./...` | 0 | ok | 2026-10-03 | fixture-verifier | <!--\n" +
+				"| 2 | `grantcheck --all` | 0 | --> \"tenant b: could-not-check, no grant\" | 2026-10-03 | fixture-verifier |\n", true},
+		{"closer alone before the span",
+			hdr + "| 2 | `grantcheck --all` | 0 | a --> \"tenant b: could-not-check, no grant\" | 2026-10-03 | fixture-verifier |\n", true},
+		{"no comment: quoted output",
+			hdr + "| 2 | `grantcheck --all` | 0 | \"tenant b: could-not-check, no grant\" | 2026-10-03 | fixture-verifier |\n", true},
+	}, map[string]bool{"no comment: quoted output": true})
+}
+
+// TestHeldQuotedCtrlInch: a C0 control or DEL byte renders as nothing, so a
+// quote right after "5\x01" is an inch mark the letter-or-digit rule cannot
+// see. A control byte beside a quote gives no span, in prose and in a Result
+// cell: every read refuses.
+// regression: #4721
+func TestHeldQuotedCtrlInch(t *testing.T) {
+	runHeldScanCasesFlip(t, []heldScanCase{
+		{"C0 byte before inch marks",
+			heldEv("ok") + "\nMeasured a 3\x01\" gap; row 3 HELD pending the 5\x01\" retest.\n", true},
+		{"DEL byte before inch marks",
+			heldEv("ok") + "\nMeasured a 3\x7f\" gap; row 3 HELD pending the 5\x7f\" retest.\n", true},
+		{"C0 byte after a close quote",
+			heldEv("ok") + "\nRow 2 printed \"tenant b: HELD\"\x01x on rerun.\n", true},
+		{"C0 inch marks in a Result cell",
+			heldEv("3\x01\" gap; row 3 could-not-check, 5\x01\" retest"), true},
+	}, nil)
+}
+
+// TestHeldQuotedFencedWit: the witness check reads table rows inside fenced
+// code (parseEvidenceRows), so a fenced verifyrun witness row is credited by
+// its first state word while the held scan skipped the fence. On the flip
+// read a fenced witness row is read whole: a hold on it refuses, quoted or
+// not. The card and close-verify run no witness check and keep skipping it.
+// regression: #4721
+func TestHeldQuotedFencedWit(t *testing.T) {
+	row2 := "| 2 | `tool check 2` | pass exit=0 |"
+	fenced := func(fence, result string) string {
+		table := strings.Replace(witTable(2, "", witPass, ""), row2, "| 2 | `tool check 2` | "+result+" |", 1)
+		if !strings.Contains(table, result) {
+			t.Fatalf("fixture: row 2 not rewritten")
+		}
+		ev := witEntry("Run 1", fence+"\n"+table+fence+"\n", "", "**VERIFY: PASS** — 2/2 rows")
+		p, err := flipLatestPass(ev)
+		if err != nil {
+			t.Fatalf("fixture: %v", err)
+		}
+		if rows := parseEvidenceRows(p.Run)["2"]; len(rows) == 0 || witnessStateOf(rows[len(rows)-1].Text) != statePass {
+			t.Fatalf("fixture: fenced row 2 is not a passing witness")
+		}
+		return ev
+	}
+	for _, tc := range []struct {
+		name   string
+		ev     string
+		wantFl bool
+	}{
+		{"fenced hold before the state", fenced("```", "HELD pass exit=0"), true},
+		{"tilde-fenced hold", fenced("~~~", "HELD pass exit=0"), true},
+		{"fenced quoted hold", fenced("```", `"tenant b: could-not-check, no grant" pass exit=0`), true},
+		{"fenced row with no hold", fenced("```", "pass exit=0"), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if held, why := verifyPassHeldContradiction(tc.ev); held {
+				t.Errorf("verifyPassHeldContradiction held, want not (why=%q)", why)
+			}
+			if err := closeVerifyHeldRefusal("ic/01", "verified", tc.ev); err != nil {
+				t.Errorf("closeVerifyHeldRefusal err=%v, want none", err)
+			}
+			if err := flipHeldRefusal("ic/01", "verified", tc.ev); (err != nil) != tc.wantFl {
+				t.Errorf("flipHeldRefusal err=%v, want refusal=%v", err, tc.wantFl)
+			}
+		})
+	}
+}

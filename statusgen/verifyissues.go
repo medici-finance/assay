@@ -970,6 +970,16 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 			continue
 		}
 		if inFence {
+			// On the flip read, a fenced line behind a verifyrun witness
+			// row is read whole: the witness check reads table rows inside
+			// fenced code (parseEvidenceRows) and credits the row by its
+			// first state word, so a hold the fence hides from this scan
+			// would flip as a pass (heldScanScope's hygiene exception). Any
+			// marker on the line is read, with no negation or quoting
+			// excuse: the shape is rare and the read errs toward refusing.
+			if latestRun && witnessLine[i] && heldOrCouldNotCheckRe.MatchString(line) {
+				hits, quotes = append(hits, i), append(quotes, trimmed)
+			}
 			continue
 		}
 		if trimmed == "" {
