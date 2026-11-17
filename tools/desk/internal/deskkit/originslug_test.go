@@ -69,6 +69,25 @@ func TestOriginSlugScopeRefused(t *testing.T) {
 			{"config", "--add", "remote.origin.url", "https://github.com/owner/repo.git"}}, pinArgs...)},
 		{"pin other host", true, false, pinTo("https://steer.example.invalid:443/owner/repo.git")},
 		{"pin longer path", true, false, pinTo("https://github.com:443/steer/owner/repo.git")},
+		// Hosts that fold onto an ASCII host only under Unicode case mapping (U+0130, U+212A).
+		{"pin lookalike host", true, false, pinTo("https://g\u0130thub.com:443/owner/repo.git")},
+		{"pin lookalike, ssh origin", true, false, append([][]string{
+			{"remote", "set-url", "origin", "git@github.com:owner/repo.git"}},
+			pinTo("https://G\u0130THUB.com/owner/repo.git")...)},
+		{"pin Kelvin-sign host", true, false, append([][]string{
+			{"remote", "set-url", "origin", "https://bitbucket.org/owner/repo.git"}},
+			pinTo("https://bitbuc\u212aet.org/owner/repo.git")...)},
+		{"pin lookalike scp host", true, false, pinTo("git@g\u0130thub.com:owner/repo")},
+		// An ssh alias stands for a network host; a pin with no host is not that host.
+		{"alias pin without host", true, false, append([][]string{
+			{"remote", "set-url", "origin", "example-alias:owner/repo"}},
+			pinTo("file:///owner/repo.git")...)},
+		{"alias pin local path", true, false, append([][]string{
+			{"remote", "set-url", "origin", "example-alias:owner/repo"}},
+			pinTo("/owner/repo.git")...)},
+		// A pin may move ssh to https; it may not move to a cleartext transport.
+		{"pin cleartext http", true, false, pinTo("http://github.com/owner/repo.git")},
+		{"pin git protocol", true, false, pinTo("git://github.com/owner/repo.git")},
 		{"include", false, true, [][]string{{"config", "include.path", "steer.cfg"}}},
 		{"includeIf", false, false, [][]string{{"config", "includeIf.gitdir:/.path", "steer.cfg"}}},
 		{"activation grammar", false, true, [][]string{{"config", "extensions.worktreeConfig", "maybe"}}},

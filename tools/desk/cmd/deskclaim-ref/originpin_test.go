@@ -55,13 +55,21 @@ func pinnedOrigin(t *testing.T, pin string) {
 //
 // regression: #6606
 func TestResolveRepoPinRefused(t *testing.T) {
-	pinnedOrigin(t, "https://github.com:443/example-other/example-repo.git")
-	repo, err := resolveRepo("")
-	if !errors.Is(err, gitcore.ErrRemoteScopeUnmerged) || repo != "" {
-		t.Fatalf("resolveRepo = %q, %v; want a refusal wrapping ErrRemoteScopeUnmerged", repo, err)
-	}
-	if strings.Contains(err.Error(), "example-other") {
-		t.Fatalf("refusal echoes the configured value: %v", err)
+	for _, pin := range []string{
+		"https://github.com:443/example-other/example-repo.git",
+		// A host that folds onto github.com only under Unicode case mapping (U+0130).
+		"https://g\u0130thub.com:443/example-org/example-repo.git",
+	} {
+		t.Run(pin, func(t *testing.T) {
+			pinnedOrigin(t, pin)
+			repo, err := resolveRepo("")
+			if !errors.Is(err, gitcore.ErrRemoteScopeUnmerged) || repo != "" {
+				t.Fatalf("resolveRepo = %q, %v; want a refusal wrapping ErrRemoteScopeUnmerged", repo, err)
+			}
+			if strings.Contains(err.Error(), "example-other") || strings.Contains(err.Error(), "\u0130") {
+				t.Fatalf("refusal echoes the configured value: %v", err)
+			}
+		})
 	}
 }
 

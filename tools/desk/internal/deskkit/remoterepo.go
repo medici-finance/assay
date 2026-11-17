@@ -166,31 +166,37 @@ func SlugRemoteURL(repo *gitcore.Repo, name string) (string, error) {
 }
 
 // samePinLocation reports whether pinned reaches the same repository as local: the same
-// full path and the same host, compared without userinfo, port, case of the host, or a
-// trailing ".git". An ssh host that is not a well-known forge host may be a ~/.ssh/config
-// alias, which only ssh can resolve to the https host a pin names; for that one shape the
-// path alone is compared.
+// full path and the same host, compared byte for byte after an ASCII-only case fold, without
+// userinfo, port or a trailing ".git". A host with a non-ASCII byte never matches: Unicode
+// case mapping folds some non-ASCII capitals onto ASCII letters that DNS treats as another
+// name. The pin may change transport (ssh to https) but never to a cleartext scheme (http,
+// git://). The port is not compared: a pin moves ssh's port 22 to https's 443 on the same
+// host, so ports only differ across the transports the pin exists to switch. An ssh host that
+// is not a well-known forge host may be a ~/.ssh/config alias, which only ssh can resolve to
+// the network host a pin names; for that one shape the path alone is compared, and the pin
+// must still name a network host.
 func samePinLocation(local, pinned string) bool {
-	lh, lp, lok := remoteLocation(local)
-	ph, pp, pok := remoteLocation(pinned)
-	if !lok || !pok || lp != pp || pp == "" {
+	ls, lh, lp, lok := remoteLocation(local)
+	ps, ph, pp, pok := remoteLocation(pinned)
+	if !lok || !pok || lp != pp || pp == "" || (ps != ls && (ps == "http" || ps == "git")) {
 		return false
 	}
-	return lh == ph || (IsSSHTransport(local) && lh != "" && !IsWellKnownForgeHost(lh))
+	return lh == ph || (IsSSHTransport(local) && lh != "" && ph != "" && !IsWellKnownForgeHost(lh))
 }
 
-// remoteLocation splits a remote URL into the host git connects to (lower-cased, without
-// userinfo or port; "" for a local path) and its path without surrounding slashes or a
-// trailing ".git". ok is false for a scheme URL net/url cannot parse.
-func remoteLocation(raw string) (host, path string, ok bool) {
+// remoteLocation splits a remote URL into its lower-cased scheme ("" for scp-like or a local
+// path), the host git connects to (ASCII lower-cased, without userinfo or port; "" for a local
+// path) and its path without surrounding slashes or a trailing ".git". ok is false for a
+// scheme URL net/url cannot parse, and for a host with any byte >= 0x80.
+func remoteLocation(raw string) (scheme, host, path string, ok bool) {
 	s := strings.TrimSpace(raw)
 	switch slash := strings.IndexByte(s, '/'); {
 	case strings.Contains(s, "://"):
 		u, err := url.Parse(s)
 		if err != nil {
-			return "", "", false
+			return "", "", "", false
 		}
-		host, path = u.Hostname(), u.Path
+		scheme, host, path = u.Scheme, u.Hostname(), u.Path
 	case strings.IndexByte(s, ':') >= 0 && (slash < 0 || strings.IndexByte(s, ':') < slash):
 		host, path, _ = strings.Cut(s, ":")
 		if at := strings.LastIndexByte(host, '@'); at >= 0 {
@@ -199,7 +205,16 @@ func remoteLocation(raw string) (host, path string, ok bool) {
 	default:
 		path = s
 	}
-	return strings.ToLower(host), strings.TrimSuffix(strings.Trim(path, "/"), ".git"), true
+	b := []byte(host)
+	for i, c := range b {
+		if c >= 0x80 {
+			return "", "", "", false
+		}
+		if 'A' <= c && c <= 'Z' {
+			b[i] = c + ('a' - 'A')
+		}
+	}
+	return strings.ToLower(scheme), string(b), strings.TrimSuffix(strings.Trim(path, "/"), ".git"), true
 }
 
 // OriginRepoSlug reads dir's `origin` URL through SlugRemoteURL and parses it to
