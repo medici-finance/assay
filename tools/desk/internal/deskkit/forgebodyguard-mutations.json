@@ -92,10 +92,46 @@
       "new": "\t\t\t\tcase false && strict && !isCappedReadCall(x) && anyArg(x, isBody):"
     },
     {
-      "name": "list a tree whose reads are all capped as a known gap (the ratchet must refuse a gap that shows no hit)",
+      "name": "list a guard root as a known gap (the inventory must refuse an entry it never scans)",
       "file": "internal/deskkit/forgebodycap_guard_test.go",
-      "old": "\t\"cmd/deskinstall\",\n}",
-      "new": "\t\"cmd/deskinstall\",\n\t\"cmd/desktoken\",\n}"
+      "old": "\t\"cmd/deskinstall\": {",
+      "new": "\t\"cmd/desktoken\": {},\n\t\"cmd/deskinstall\": {"
+    },
+    {
+      "name": "ignore the label lookup that switches strict mode on (the pairedversions root is scanned non-strict)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t_, strict := forgeBodyNoTransportCap[label]\n",
+      "new": "\t_, strict := forgeBodyNoTransportCap[label]\n\tstrict = false\n"
+    },
+    {
+      "name": "drop the pairedversions root from the strict roots (its handoffs go unseen)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\"../pairedversions\": \"its http.Client is a plain client with a timeout; every read is a direct readCapped call\",\n",
+      "new": ""
+    },
+    {
+      "name": "un-list a gap that still reads bodies uncapped (cmd/deskinstall)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\"cmd/deskinstall\": {\n\t\t\"install.go:httpGet uncapped-body-read\",\n\t},\n",
+      "new": ""
+    },
+    {
+      "name": "list a tree that is not a forge reader as a gap as well (deskd/internal/serve, with its exact hits)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\"cmd/deskinstall\": {",
+      "new": "\t\"../../deskd/internal/serve\": {\n\t\t\"v1_actions.go:decodeActionBody uncapped-body-read\",\n\t\t\"v1_actions.go:peekIntent discarded-read-error\",\n\t\t\"v1_actions.go:peekIntent uncapped-body-read\",\n\t\t\"v1_overrides.go:Overrides.handlePost uncapped-body-decode\",\n\t\t\"v1_terminal_actions.go:decodeStrict uncapped-body-decode\",\n\t},\n\t\"cmd/deskinstall\": {"
+    },
+    {
+      "name": "pin a gap's hit set without one of its reads (a read in a listed gap goes unreported)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\t\"readonly.go:drainBody uncapped-body-read\",\n",
+      "new": ""
+    },
+    {
+      "name": "stop scanning a parent's trees (the inventory sees nothing under cmd)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\"cmd\",\n\t\"internal\",\n\t\"../../deskd/cmd\",",
+      "new": "\t\"internal\",\n\t\"../../deskd/cmd\","
     }
   ]
 }

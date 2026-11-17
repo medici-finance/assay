@@ -17,6 +17,7 @@ package deskkit
 // recognises", never "every body read in the tree is capped".
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -49,10 +50,16 @@ var forgeBodyGuardRoots = []string{
 	"../pairedversions",
 }
 
-// forgeBodyNoTransportCap are the roots whose HTTP client has no transport-level body cap, so
-// the guard's one blind spot there (a body handed to a helper that takes a plain io.Reader)
-// is bounded by nothing. In these roots every response body handed to any call other than a
-// capped reader is a hit (uncapped-body-handoff).
+// forgeBodyNoTransportCap are the roots scanned in strict mode: every response body handed to
+// any call other than a capped reader is a hit there (uncapped-body-handoff). It is NOT the
+// list of roots without a transport-level body cap. Several other roots also build a plain
+// http.Client with a timeout and no transport cap — for example cmd/deskadvisory,
+// cmd/deskinbox (detail.go), cmd/deskfleet (main.go), cmd/deskapps, cmd/deskgitlab,
+// internal/credential (gitlab.go) and internal/deskkit (hotfix.go, hotfixseam.go,
+// compositionsource.go). Strict mode is off there because the handoff shape matches by name
+// and also reports Body fields of already-capped answers. Every body on those paths goes
+// through a capped reader today, but a body handed to a plain io.Reader helper there would be
+// neither seen by this guard nor bounded by a transport cap.
 var forgeBodyNoTransportCap = map[string]string{
 	"../pairedversions": "its http.Client is a plain client with a timeout; every read is a direct readCapped call",
 }
@@ -235,60 +242,230 @@ func TestForgeBodyGuardSeesGaps(t *testing.T) {
 	}
 }
 
+// The strict mode is switched on by the root's label, the way TestForgeBodyReadsCapped scans
+// the real roots: the handoff fixture scanned under the pairedversions root's label must report
+// the handoff, and under any other label must not.
+//
 // regression: #6775
 func TestForgeBodyHandoffStrict(t *testing.T) {
 	dir := filepath.Join("testdata", "forgebodyhandoff")
-	hits, err := scanForgeBodyReadsIn(dir, "handoff", true)
+	const root = "../pairedversions"
+	if !slicesContains(forgeBodyGuardRoots, root) {
+		t.Fatalf("%s is no longer a guard root", root)
+	}
+	hits, err := scanForgeBodyReads(dir, root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "handoff/handoff.go:handedOff uncapped-body-handoff"
+	want := root + "/handoff.go:handedOff uncapped-body-handoff"
 	if strings.Join(hits, "\n") != want {
-		t.Errorf("strict handoff hits:\n%s\nwant:\n%s", strings.Join(hits, "\n"), want)
+		t.Errorf("handoff hits under the %s label:\n%s\nwant:\n%s — the root is not scanned strict",
+			root, strings.Join(hits, "\n"), want)
 	}
-	// Outside a no-transport-cap root the handoff shape is off.
-	if hits, err := scanForgeBodyReadsIn(dir, "handoff", false); err != nil || len(hits) != 0 {
+	// Outside a strict root the handoff shape is off.
+	if hits, err := scanForgeBodyReads(dir, "handoff"); err != nil || len(hits) != 0 {
 		t.Errorf("non-strict handoff hits = %v, %v; want none", hits, err)
 	}
-	for root := range forgeBodyNoTransportCap {
-		if !slicesContains(forgeBodyGuardRoots, root) {
-			t.Errorf("forgeBodyNoTransportCap names %s, which is not a guard root", root)
+	for r := range forgeBodyNoTransportCap {
+		if !slicesContains(forgeBodyGuardRoots, r) {
+			t.Errorf("forgeBodyNoTransportCap names %s, which is not a guard root", r)
 		}
 	}
+}
+
+// forgeBodyInventoryParents are the directories, relative to deskTreeRoot, whose children
+// TestForgeBodyOutsideRoots scans: each child directory (with its subdirectories) and each
+// shipped .go file directly under a parent is one tree. A child that is a guard root, or is
+// itself a parent, is skipped.
+var forgeBodyInventoryParents = []string{
+	".",
+	"cmd",
+	"internal",
+	"../../deskd/cmd",
+	"../../deskd/internal",
+	"../../statusgen",
 }
 
 // forgeBodyGuardGaps are trees, relative to deskTreeRoot, that read forge response bodies but
 // are NOT guard roots: their reads are not held to the cap by this guard. Each is kept out by
 // decision — widening a root to a client with no transport cap means rewriting its reads
-// first — and listed so the gap is visible. TestForgeBodyGapsStillOpen fails when one no longer
-// shows a hit, so a gap that has been closed moves into forgeBodyGuardRoots instead of staying
-// listed here.
-var forgeBodyGuardGaps = []string{
-	"../../deskd/internal/adapter",
-	"../../deskd/internal/answer",
-	"../../deskd/internal/comment",
-	"../../deskd/internal/contract",
-	"../../deskd/internal/identity",
-	"../../deskd/internal/mcp",
-	"../../statusgen/ghfetch.go",
-	"../../statusgen/claimdecay_github.go",
-	"../../statusgen/claimdecay_gitlab.go",
-	"cmd/deskinstall",
+// first — and listed so the gap is visible. Each entry pins the tree's exact hit set
+// ("<file>:<func> <kind>", relative to the tree). Some of those hits are not forge response
+// reads (a server's own request body, for one); they are pinned all the same. A tree whose
+// hits change fails TestForgeBodyOutsideRoots: a new read is reported, a fixed read forces
+// the entry to be updated, and a gap with no hit left moves into forgeBodyGuardRoots.
+var forgeBodyGuardGaps = map[string][]string{
+	"../../deskd/internal/adapter": {
+		"github.go:Client.conditionalGet uncapped-body-read",
+		"github.go:Client.graphQL uncapped-body-read",
+		"permission.go:PermissionRouter.Permission uncapped-body-read",
+		"permission.go:PermissionRouter.RepoPrivate uncapped-body-read",
+		"readonly.go:drainBody uncapped-body-read",
+	},
+	"../../deskd/internal/answer": {
+		"github.go:HumanWriter.CurrentState uncapped-body-read",
+		"github.go:HumanWriter.mutate discarded-read-error",
+		"github.go:HumanWriter.mutate uncapped-body-read",
+	},
+	"../../deskd/internal/comment": {
+		"github.go:UserWriter.Comment discarded-read-error",
+		"github.go:UserWriter.Comment uncapped-body-read",
+	},
+	"../../deskd/internal/contract": {
+		"client.go:Client.get uncapped-body-read",
+		"client.go:Client.openStream discarded-read-error",
+		"client.go:Client.openStream uncapped-body-read",
+		"client.go:Client.postAction uncapped-body-read",
+		"client.go:Client.postNoCred discarded-read-error",
+		"client.go:Client.postNoCred uncapped-body-read",
+		"client.go:Client.viewerAction uncapped-body-read",
+	},
+	"../../deskd/internal/identity": {
+		"auth.go:Validator.check uncapped-body-decode",
+		"oauth.go:Auth.currentLogin uncapped-body-read",
+		"oauth.go:Auth.exchange uncapped-body-read",
+	},
+	"../../deskd/internal/mcp": {
+		"github_filer.go:GitHubFiler.doRecord uncapped-body-read",
+		"github_filer.go:GitHubFiler.post uncapped-body-read",
+		"mcp.go:Server.Handler uncapped-body-decode",
+	},
+	"../../statusgen/claimdecay_github.go": {
+		"claimdecay_github.go:githubGraphQLPost uncapped-body-read",
+	},
+	"../../statusgen/claimdecay_gitlab.go": {
+		"claimdecay_gitlab.go:gitlabAPI.getMRPage uncapped-body-read",
+	},
+	"../../statusgen/ghfetch.go": {
+		"ghfetch.go:ghClient.get uncapped-body-read",
+	},
+	"cmd/deskinstall": {
+		"install.go:httpGet uncapped-body-read",
+	},
 }
 
+// forgeBodyNotForge are trees outside the roots whose hits are not forge response reads, or
+// are reads that keep their own bound. They are not gaps, but their hit sets are pinned the
+// same way, so a new read in one of them is still reported.
+var forgeBodyNotForge = map[string]struct {
+	why  string
+	hits []string
+}{
+	"../../deskd/internal/chat": {"a model backend's answer, not a forge response", []string{
+		"httpbackend.go:HTTPBackend.Complete uncapped-body-read",
+	}},
+	"../../deskd/internal/serve": {"the local server's own request bodies", []string{
+		"v1_actions.go:decodeActionBody uncapped-body-read",
+		"v1_actions.go:peekIntent discarded-read-error",
+		"v1_actions.go:peekIntent uncapped-body-read",
+		"v1_overrides.go:Overrides.handlePost uncapped-body-decode",
+		"v1_terminal_actions.go:decodeStrict uncapped-body-decode",
+	}},
+	"../../statusgen/modcachepublic.go": {"reads limit+1 and refuses a body over its limit", []string{
+		"modcachepublic.go:provePublicAssay uncapped-body-read",
+	}},
+	"../../statusgen/telemetry.go": {"drains a telemetry endpoint's answer, never read as data", []string{
+		"telemetry.go:sendTelemetry uncapped-body-copy",
+	}},
+	"cmd/deskboard": {"a cache transport that reads limit+1 and hands an oversized body on whole", []string{
+		"readcost.go:boardTransport.RoundTrip uncapped-body-copy",
+		"readcost.go:boardTransport.RoundTrip uncapped-body-read",
+	}},
+	"internal/kubecompat": {"a test fixture server reading its own request bodies", []string{
+		"testfixture/server.go:Server.serve uncapped-body-decode",
+	}},
+	"internal/reviewtest": {"a test helper transport", []string{
+		"http.go:Transport.RoundTrip discarded-read-error",
+		"http.go:Transport.RoundTrip uncapped-body-read",
+	}},
+}
+
+// Every tree outside the roots that the inventory reaches must show exactly the hits its
+// forgeBodyGuardGaps or forgeBodyNotForge entry pins: an unlisted tree with a hit, a listed
+// tree whose hits changed, and a listed tree the inventory never reaches all fail.
+//
 // regression: #6775
-func TestForgeBodyGapsStillOpen(t *testing.T) {
-	for _, g := range forgeBodyGuardGaps {
-		hits, err := scanForgeBodyReads(filepath.Join(deskTreeRoot, g), g)
-		if err != nil {
-			t.Errorf("the forge-body guard could not scan gap %s: %v — could-not-check", g, err)
+func TestForgeBodyOutsideRoots(t *testing.T) {
+	listed := map[string][]string{}
+	for tree, hits := range forgeBodyGuardGaps {
+		listed[tree] = hits
+	}
+	for tree, nf := range forgeBodyNotForge {
+		if _, dup := listed[tree]; dup {
+			t.Errorf("%s is listed both as a gap and as not a forge reader", tree)
+		}
+		if nf.why == "" {
+			t.Errorf("forgeBodyNotForge entry %s gives no reason", tree)
+		}
+		listed[tree] = nf.hits
+	}
+	scanned := map[string]bool{}
+	for _, tree := range forgeBodyInventory(t) {
+		hits, err := scanForgeBodyReads(filepath.Join(deskTreeRoot, tree), tree)
+		if errors.Is(err, errNoGoSource) {
 			continue
 		}
-		if len(hits) == 0 {
-			t.Errorf("gap %s shows no uncapped body read any more — move it into forgeBodyGuardRoots "+
-				"and drop it from forgeBodyGuardGaps", g)
+		if err != nil {
+			t.Errorf("the forge-body guard could not scan %s: %v — could-not-check, NOT clean", tree, err)
+			continue
+		}
+		scanned[tree] = true
+		got := make([]string, 0, len(hits))
+		for _, h := range hits {
+			got = append(got, strings.TrimPrefix(h, tree+"/"))
+		}
+		sort.Strings(got)
+		want := append([]string(nil), listed[tree]...)
+		sort.Strings(want)
+		if strings.Join(got, "\n") == strings.Join(want, "\n") {
+			continue
+		}
+		switch {
+		case listed[tree] == nil:
+			t.Errorf("%s reads response bodies outside every guard root and is not listed — move it into "+
+				"forgeBodyGuardRoots, or list it in forgeBodyGuardGaps (or forgeBodyNotForge, with a reason):\n%s",
+				tree, strings.Join(got, "\n"))
+		case len(got) == 0:
+			t.Errorf("%s shows no uncapped body read any more — move it into forgeBodyGuardRoots and drop "+
+				"its entry", tree)
+		default:
+			t.Errorf("%s hits changed:\n%s\nlisted:\n%s", tree, strings.Join(got, "\n"), strings.Join(want, "\n"))
 		}
 	}
+	for tree := range listed {
+		if !scanned[tree] {
+			t.Errorf("%s is listed outside the roots, but the inventory never scans it (a guard root, gone, or "+
+				"not under forgeBodyInventoryParents) — drop or move its entry", tree)
+		}
+	}
+}
+
+// forgeBodyInventory lists the trees under forgeBodyInventoryParents, guard roots excluded.
+func forgeBodyInventory(t *testing.T) []string {
+	t.Helper()
+	var trees []string
+	for _, parent := range forgeBodyInventoryParents {
+		ents, err := os.ReadDir(filepath.Join(deskTreeRoot, parent))
+		if err != nil {
+			t.Fatalf("the forge-body inventory could not read %s: %v — could-not-check", parent, err)
+		}
+		for _, e := range ents {
+			name := e.Name()
+			tree := filepath.ToSlash(filepath.Join(parent, name))
+			switch {
+			case strings.HasPrefix(name, "."), name == "testdata":
+			case slicesContains(forgeBodyGuardRoots, tree), slicesContains(forgeBodyInventoryParents, tree):
+			case e.IsDir():
+				trees = append(trees, tree)
+			case strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go"):
+				trees = append(trees, tree)
+			}
+		}
+	}
+	if len(trees) == 0 {
+		t.Fatal("the forge-body inventory found no trees — could-not-check, NOT clean")
+	}
+	return trees
 }
 
 func slicesContains(s []string, v string) bool {
@@ -325,13 +502,18 @@ func slicesContains(s []string, v string) bool {
 // helper's name matches any call of that name in its package. That can only add hits, so it
 // errs toward failing the build, and it is kept that way by decision.
 //
-// A body handed to a helper that takes a plain io.Reader is out of its sight in the other
-// roots. The forge library's GitHub and GitLab clients bound those reads with their transport
-// cap (forgebodytransport.go, guarded by TestForgeClientsCapped).
+// A body handed to a helper that takes a plain io.Reader is out of its sight in the roots
+// that are not strict. Where such a root reads through the forge library's GitHub and GitLab
+// clients, their transport cap bounds the body (forgebodytransport.go, guarded by
+// TestForgeClientsCapped); a root on a plain client has no such bound (see
+// forgeBodyNoTransportCap).
 func scanForgeBodyReads(path, label string) ([]string, error) {
 	_, strict := forgeBodyNoTransportCap[label]
 	return scanForgeBodyReadsIn(path, label, strict)
 }
+
+// errNoGoSource is the scan error for a path that holds no shipped Go file.
+var errNoGoSource = errors.New("no Go source")
 
 // scanForgeBodyReadsIn is scanForgeBodyReads with the handoff shape switched on or off.
 func scanForgeBodyReadsIn(path, label string, strict bool) ([]string, error) {
@@ -385,7 +567,7 @@ func scanForgeBodyReadsIn(path, label string, strict bool) ([]string, error) {
 		return nil, err
 	}
 	if files == 0 {
-		return nil, fmt.Errorf("no Go source under %s — a guard that scans nothing certifies nothing", path)
+		return nil, fmt.Errorf("%w under %s — a guard that scans nothing certifies nothing", errNoGoSource, path)
 	}
 	var out []string
 	for _, d := range dirs {
