@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -275,4 +276,70 @@ func TestForgeLocalAuthorityControlCapacity(t *testing.T) {
 	}
 	read, e := f.verifier.Authorize(context.Background(), f.grant, claims.Scope.Scope)
 	assertHeld(t, read, e)
+}
+
+// closeOrder records whether conn was closed while its slot was still held.
+type closeOrder struct {
+	net.Conn
+	slots chan struct{}
+	early atomic.Bool
+}
+
+func (c *closeOrder) Close() error {
+	if len(c.slots) != 0 {
+		c.early.Store(true)
+	}
+	return c.Conn.Close()
+}
+
+// A client's call ends at the server's close (it reads to EOF), so the slot
+// must already be free then. Otherwise a back-to-back call on the one-slot
+// control channel is refused as busy by the caller's own finished call.
+// regression: #6302
+func TestReplyFreesSlotBeforeClose(t *testing.T) {
+	dir, e := os.MkdirTemp("/tmp", "a57-")
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	l, e := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(dir, "s.sock"), Net: "unix"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer l.Close()
+	client, e := net.DialUnix("unix", nil, l.Addr().(*net.UnixAddr))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer client.Close()
+	server, e := l.AcceptUnix()
+	if e != nil {
+		t.Fatal(e)
+	}
+	const frame = 32 * 1024
+	c := &Controller{config: ProducerConfig{IOTimeout: time.Second, MaxFrameBytes: frame}}
+	slots := make(chan struct{}, 1)
+	slots <- struct{}{} // taken by the accept loop for this connection
+	conn := &closeOrder{Conn: server, slots: slots}
+	b, e := encode(wireRequest{Schema: Schema, Operation: "control", Readback: true}, frame)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = client.Write(b); e != nil || client.CloseWrite() != nil {
+		t.Fatal("request", e)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		c.answer(context.Background(), conn, slots, func(context.Context, wireRequest) wireResponse { return heldResponse() })
+	}()
+	var r wireResponse
+	if e = readFrame(client, frame, &r); e != nil || r.Error != "held" {
+		t.Fatal("framed reply", e)
+	}
+	held := len(slots)
+	<-done
+	if conn.early.Load() || held != 0 {
+		t.Fatalf("connection closed before its slot was freed (closed early %v, held at client EOF %d)", conn.early.Load(), held)
+	}
 }
