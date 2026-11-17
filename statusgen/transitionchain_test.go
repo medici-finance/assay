@@ -19,9 +19,16 @@ type chainFixture struct {
 	issue                                        string
 	reads                                        int
 	offline                                      bool
+	extra, issues                                map[int]string
 }
 
 func chainFixtureAt(t *testing.T, shape string) *chainFixture {
+	t.Helper()
+	return chainFixtureWith(t, shape, nil)
+}
+
+// chainFixtureWith runs between after link 1, before link 2 (#6616).
+func chainFixtureWith(t *testing.T, shape string, between func(*chainFixture)) *chainFixture {
 	t.Helper()
 	o := vfDefaults()
 	o.evidence = ""
@@ -58,6 +65,11 @@ func chainFixtureAt(t *testing.T, shape string) *chainFixture {
 	f.write(t, strings.Replace(body, "## Evidence\n", "## Evidence\nHistorical result retained.\n", 1))
 	vfCommit(t, root, vfMailWorker)
 	f.delivery = vfRev(t, root, "HEAD")
+	if shape == "repair" {
+		// An independent run records its table after delivery (#6616).
+		f.write(t, strings.Replace(f.body, "Historical result retained.\n", "Historical result retained.\n"+repairDelivered, 1))
+		vfCommit(t, root, vfMailWorker)
+	}
 	first := f.body
 	ids := []int{1, 2, 3, 4, 6}
 	if shape == "repeat" {
@@ -69,6 +81,9 @@ func chainFixtureAt(t *testing.T, shape string) *chainFixture {
 		named = append(named, fmt.Sprintf("%d:Command", id))
 	}
 	f.amend(t, first, strings.Join(named, ","), true)
+	if between != nil {
+		between(f)
+	}
 	second := f.body
 	if shape == "repeat" {
 		second = strings.Replace(second, "| 12 | `true && true` |", "| 12 | `true && true && true` |", 1)
@@ -135,7 +150,12 @@ func (f *chainFixture) bind(t *testing.T) {
 			}
 			body := f.issue
 			status := http.StatusOK
-			if strings.Contains(r.URL.Path, "/comments/") {
+			if n, e := strconv.Atoi(filepath.Base(r.URL.Path)); e == nil && f.issues[n] != "" && !strings.Contains(r.URL.Path, "/comments/") {
+				body = f.issues[n]
+			}
+			if n, e := strconv.Atoi(filepath.Base(r.URL.Path)); e == nil && f.extra[n] != "" && strings.Contains(r.URL.Path, "/comments/") {
+				body = f.extra[n]
+			} else if strings.Contains(r.URL.Path, "/comments/") {
 				n, e := strconv.Atoi(filepath.Base(r.URL.Path))
 				if e != nil {
 					t.Fatal(e)
