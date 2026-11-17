@@ -1,0 +1,6 @@
+### Fixed
+- A worktree pin of `origin` must now name the same host and the same full path as the repository-local URL, not only the same last two path segments, before a slug reader accepts it. A pin to another host, or to a longer path ending in the same `owner/repo`, refuses. An ssh host that is not a well-known forge host may be an ssh alias, so for that shape only the path is compared.
+- `deskclaim-ref` without `--repo` decides the claim's repository through the same fail-closed origin reader the other slug readers use, and exits 6 naming the reason when unmerged config could change the URL git uses.
+- `deskpushguard`'s no-URL fallback reads the pushed remote through that reader, so it never checks the PR state of a repository git would not push to. Its parse errors and its could-not-derive line now redact a URL's userinfo.
+- `ParseRemoteRepo`'s trailing-pair error no longer prints the pair when the remote carries userinfo, so a password holding `:` cannot land in the owner slot unredacted.
+- The `deskpr`, `deskwt` and `deskgit` URL redactors now delegate to the shared per-segment redactor, so a password in an scp-like or `ssh://` remote no longer reaches a message.

@@ -175,7 +175,7 @@ func run(args []string, stdin io.Reader, stderr io.Writer) int {
 	var blocked []blockedRef
 	repo, err := deriveRepo(remoteURL, remoteName)
 	if err != nil {
-		fmt.Fprintf(stderr, "deskpushguard: cannot derive repo from remote %q: %v — skipping PR-state check (fail-open)\n", remoteURL, err)
+		fmt.Fprintf(stderr, "deskpushguard: cannot derive repo from remote %q: %v — skipping PR-state check (fail-open)\n", deskkit.RedactRemoteUserinfo(remoteURL), err)
 	} else {
 		// Check each ref.
 		for _, ref := range refs {
@@ -416,7 +416,9 @@ func deriveRepo(remoteURL, remoteName string) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("cannot get %s URL: %w", remoteName, err)
 		}
-		url, err := repo.RemoteURL(remoteName)
+		// SlugRemoteURL refuses when config this reader does not merge could change the
+		// URL git pushes to, so the PR-state check never reads another repository's PRs.
+		url, err := deskkit.SlugRemoteURL(repo, remoteName)
 		if err != nil {
 			return "", fmt.Errorf("cannot get %s URL: %w", remoteName, err)
 		}
@@ -460,7 +462,7 @@ func parseRepo(url string) (string, error) {
 			return path, nil
 		}
 	}
-	return "", fmt.Errorf("cannot parse repo from URL: %s", url)
+	return "", fmt.Errorf("cannot parse repo from URL: %s", deskkit.RedactRemoteUserinfo(url))
 }
 
 // fetchPR returns the PR info for a branch, or nil if no PR exists.
