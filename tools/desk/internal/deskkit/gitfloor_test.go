@@ -38,6 +38,9 @@ const (
 	gitFloorScriptPath  = fixtureRepoRoot + "/containers/scripts/git-floor-check.sh"
 	baseDockerfilePath  = fixtureRepoRoot + "/containers/base/Dockerfile"
 	gitFloorScriptInImg = "/usr/local/bin/git-floor-check"
+	// gitFloorCopyMode is the mode the check script is installed with; a COPY
+	// without it ships whatever mode the checkout gave the script (#6788).
+	gitFloorCopyMode = "--chmod=0755"
 )
 
 // gitFloorTools resolves sh and the real git, skipping off-POSIX hosts and
@@ -588,8 +591,10 @@ func finalStageFloorProblem(ins []dfInstr, lastFrom int) string {
 			return "the final stage apt-installs git (bookworm's is 2.39.5, below the floor)"
 		case in.op == "COPY" && hasWord(in.args, "--from=gitbuild"):
 			gitIn = i
-		case in.op == "COPY" && len(in.args) == 2 && in.args[0] == "containers/scripts/git-floor-check.sh" && in.args[1] == gitFloorScriptInImg:
+		case in.op == "COPY" && len(in.args) == 3 && in.args[0] == gitFloorCopyMode && in.args[1] == "containers/scripts/git-floor-check.sh" && in.args[2] == gitFloorScriptInImg:
 			copyCheck = i
+		case in.op == "COPY" && hasWord(in.args, "containers/scripts/git-floor-check.sh"):
+			return "the final stage copies containers/scripts/git-floor-check.sh without `" + gitFloorCopyMode + "`, so the checkout's mode ships"
 		case in.op == "RUN" && (hasWord(in.args, "git-floor-check") || hasWord(in.args, gitFloorScriptInImg)):
 			runCheck = i
 		case in.op == "ENV" && runCheck >= 0 && (hasWord(in.args, "PATH") || strings.Contains(" "+strings.Join(in.args, " "), " PATH=")):
@@ -640,7 +645,7 @@ func TestBaseImageRunsGitFloor(t *testing.T) {
 	}
 
 	gitCopy := "COPY --from=gitbuild /out/usr/local/ /usr/local/\n"
-	checkCopy := "COPY containers/scripts/git-floor-check.sh " + gitFloorScriptInImg + "\n"
+	checkCopy := "COPY " + gitFloorCopyMode + " containers/scripts/git-floor-check.sh " + gitFloorScriptInImg + "\n"
 	runTail := "    fi; \\\n    git-floor-check\n"
 	shaLine := `    echo "${GIT_TARBALL_SHA256}  /tmp/git.txz" | sha256sum -c -; \` + "\n"
 	tarLine := "    tar -C /tmp -xJf /tmp/git.txz; \\\n"
@@ -670,6 +675,8 @@ func TestBaseImageRunsGitFloor(t *testing.T) {
 	mutants := map[string]string{
 		"run step dropped":             strings.Replace(text, runTail, "    fi\n", 1),
 		"check copy dropped":           strings.Replace(text, checkCopy, "", 1),
+		"check copied without mode":    strings.Replace(text, checkCopy, strings.Replace(checkCopy, gitFloorCopyMode+" ", "", 1), 1),
+		"check copied group-writable":  strings.Replace(text, checkCopy, strings.Replace(checkCopy, gitFloorCopyMode, "--chmod=0775", 1), 1),
 		"git copy dropped":             strings.Replace(text, gitCopy, "", 1),
 		"sha256 check dropped":         strings.Replace(text, shaLine, "", 1),
 		"apt git reinstated":           strings.Replace(text, aptAnchor, "        git \\\n"+aptAnchor, 1),
