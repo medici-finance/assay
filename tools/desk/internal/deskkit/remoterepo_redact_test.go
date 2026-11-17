@@ -76,6 +76,44 @@ func TestRedactSlashInPassword(t *testing.T) {
 }
 
 // regression: #6696
+// A quote, bracket, backtick or "://" INSIDE a password must not cut the masked span short:
+// no prefix of the password (here "pre") survives, while an opening quote that begins the
+// token and a real scheme stay visible.
+func TestRedactPunctInPassword(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"https://user:pre'tail@example.invalid/o/r", "https://<redacted>@example.invalid/o/r"},
+		{"https://user:pre(tail@example.invalid/o/r", "https://<redacted>@example.invalid/o/r"},
+		{"https://user:pre[tail@example.invalid/o/r", "https://<redacted>@example.invalid/o/r"},
+		{"https://user:pre`tail@example.invalid/o/r", "https://<redacted>@example.invalid/o/r"},
+		{"https://user:pre<tail@example.invalid/o/r", "https://<redacted>@example.invalid/o/r"},
+		{"https://user:pre://tail@example.invalid/o/r", "https://<redacted>@example.invalid/o/r"},
+		{"user:pre://tail@example.invalid:o/r", "<redacted>@example.invalid:o/r"},
+		{"user:pre'tail@example.invalid:o/r", "<redacted>@example.invalid:o/r"},
+		{"'user:pre(tail@example.invalid:o/r'", "'<redacted>@example.invalid:o/r'"},
+		{"remote=https://pretail@example.invalid/o/r", "remote=https://<redacted>@example.invalid/o/r"},
+		{"(https://pretail@example.invalid/o/r)", "(https://<redacted>@example.invalid/o/r)"},
+	}
+	for _, c := range cases {
+		got := RedactRemoteUserinfo(c.in)
+		if got != c.want || strings.Contains(got, "pre") {
+			t.Errorf("RedactRemoteUserinfo(%q)\n got %q\nwant %q", c.in, got, c.want)
+		}
+	}
+	keys := map[string]string{
+		"url.https://user:pre'tail@example.invalid/.insteadof": "url.https://<redacted>@example.invalid/.insteadof",
+		"url.user:pretail@example.invalid:.pushinsteadof":      "url.<redacted>@example.invalid:.pushinsteadof",
+		"url.ssh://git@example.invalid/.insteadof":             "url.ssh://git@example.invalid/.insteadof",
+		"url.ssh://pretail@example.invalid/.insteadof":         "url.ssh://<redacted>@example.invalid/.insteadof",
+		"remote.origin.pushurl":                                "remote.origin.pushurl",
+	}
+	for in, want := range keys {
+		if got := RedactRemoteConfigKey(in); got != want {
+			t.Errorf("RedactRemoteConfigKey(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// regression: #6696
 func TestRedactArgvAndKeepGit(t *testing.T) {
 	got := RedactRemoteArgv([]string{"ls-remote", "--refs", "https://u:secret@example.invalid/o/r.git", "refs/heads/x"})
 	if want := "ls-remote --refs https://<redacted>@example.invalid/o/r.git refs/heads/x"; got != want {
@@ -88,8 +126,8 @@ func TestRedactArgvAndKeepGit(t *testing.T) {
 		"ssh://git-sec@github.com/o/r.git":  "ssh://<redacted>@github.com/o/r.git",
 		"https://u:secret@example.invalid/": "https://<redacted>@example.invalid/",
 	} {
-		if got := showURL(in); got != want {
-			t.Errorf("showURL(%q) = %q, want %q", in, got, want)
+		if got := RedactRemoteURL(in); got != want {
+			t.Errorf("RedactRemoteURL(%q) = %q, want %q", in, got, want)
 		}
 	}
 }

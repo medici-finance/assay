@@ -174,9 +174,9 @@ func CheckPushTransport(in PushTransportInput) error {
 			// No rewrite involved (or none this code can attribute): the configured value is
 			// itself SSH, and pointing the push url at https is the remedy — unless an insteadOf
 			// rule would rewrite that https url straight back to SSH (pushURLRemedy checks).
-			shown := showURL(u)
+			shown := RedactRemoteURL(u)
 			if !containsString(configured, u) {
-				from := showURL(strings.Join(configured, ", "))
+				from := RedactRemoteURL(strings.Join(configured, ", "))
 				if from == "" {
 					// Nothing under remote.<name>.url / .pushurl in `git config --list` — e.g. a
 					// legacy .git/remotes file. Say so rather than print an empty value.
@@ -184,7 +184,7 @@ func CheckPushTransport(in PushTransportInput) error {
 				}
 				shown = fmt.Sprintf("%s, which git resolves to %s through a url rewrite this gate could not "+
 					"attribute — run `git -C %s config --show-origin --get-regexp '^url\\.'` to find it",
-					from, showURL(u), orDot(in.Dir))
+					from, RedactRemoteURL(u), orDot(in.Dir))
 			}
 			target := u
 			if len(configured) == 1 && isSSHTransport(configured[0]) {
@@ -210,7 +210,7 @@ func CheckPushTransport(in PushTransportInput) error {
 				"forge records the HUMAN as the branch author and the App's permission envelope is bypassed, "+
 				"however the commits are authored. Fetch over SSH stays allowed; only the push transport is "+
 				"gated. Remedy: %s\n  (find where the rule is set: git -C %s config --show-origin --get-all %s)",
-			who, remote, key, showURL(rw.from), showRule(rw.ruleKey), showURL(rw.prefix), showURL(u), role, loopEnv, loop,
+			who, remote, key, RedactRemoteURL(rw.from), showRule(rw.ruleKey), RedactRemoteURL(rw.prefix), RedactRemoteURL(u), role, loopEnv, loop,
 			rw.remedy(cfg, in.Dir, remote, u, role), orDot(in.Dir), showRule(rw.ruleKey)))
 	}
 
@@ -243,29 +243,25 @@ func CheckPushTransport(in PushTransportInput) error {
 		"configured in %s (credential.helper: %s) — the push will authenticate with whatever ambient "+
 		"credential this machine holds, which may not be the %s App. That is could-not-check, not a pass: "+
 		"configure the %s App's credential helper for this URL, or confirm the one in place is it.\n",
-		who, remote, showURL(strings.Join(urls, ", ")), orDot(in.Dir), shown, role, role)
+		who, remote, RedactRemoteURL(strings.Join(urls, ", ")), orDot(in.Dir), shown, role, role)
 	return nil
 }
 
-// showURL renders a configured, resolved or rewrite-rule URL for this gate's messages with its
-// userinfo masked by RedactRemoteUserinfo: the NOTICE, both SSH refusals and the remedy's
-// set-url line all quote values read from git config, and a credential embedded in one (an
+// RedactRemoteURL renders a configured, resolved or rewrite-rule URL for a message with its
+// userinfo masked by RedactRemoteUserinfo's engine. This gate's NOTICE, both SSH refusals and
+// the remedy's set-url line, and deskwt's transport refusals, all quote values read from git
+// config, and a credential embedded in one (an
 // https remote carrying user:secret, or a rewrite that carries it into an SSH path) must not
 // reach stderr or a transcript. The one userinfo kept is the bare SSH account name "git": it
 // is never a credential, and masking it would make every rewrite rule this gate attributes
 // (url.git@host:.insteadOf, url.ssh://git@host/.pushInsteadOf) unrecognisable.
-func showURL(s string) string { return redactUserinfo(s, isSSHAccountName) }
+func RedactRemoteURL(s string) string { return redactUserinfo(s, isSSHAccountName) }
 
 func isSSHAccountName(userinfo string) bool { return userinfo == "git" }
 
-// showRule renders a url.<base>.insteadOf / .pushInsteadOf key with its base shown as showURL
-// shows it.
-func showRule(key string) string {
-	if rest, ok := strings.CutPrefix(key, "url."); ok {
-		return "url." + showURL(rest)
-	}
-	return showURL(key)
-}
+// showRule renders a url.<base>.insteadOf / .pushInsteadOf key with its base shown as RedactRemoteURL
+// shows it: RedactRemoteConfigKey, the one config-key renderer every desk verb shares.
+func showRule(key string) string { return RedactRemoteConfigKey(key) }
 
 // splitURLLines splits `git remote get-url --push --all` output into its URLs, one per
 // non-blank line.
@@ -364,7 +360,7 @@ func pushURLRemedy(cfg map[string][]string, dir, remote, target, replace, role, 
 			"https push url does NOT escape it — git applies insteadOf to pushurl values too, and it would "+
 			"rewrite %s into %s — so `remote set-url --push` alone would leave this refusal standing "+
 			"(find it: git -C %s config --show-origin --get-all %s).",
-			showRule(ruleKey), showURL(prefix), showURL(target), showURL(out), orDot(dir), showRule(ruleKey))
+			showRule(ruleKey), RedactRemoteURL(prefix), RedactRemoteURL(target), RedactRemoteURL(out), orDot(dir), showRule(ruleKey))
 		if ruleAlone {
 			return msg
 		}
@@ -386,7 +382,7 @@ func pushURLRemedy(cfg map[string][]string, dir, remote, target, replace, role, 
 // the value to replace is not one of the configured ones, the only runnable form resets the
 // list first.
 func setPushURLCommand(cfg map[string][]string, dir, remote, target, replace string) string {
-	cmd := fmt.Sprintf("git -C %s remote set-url --push %s %s", orDot(dir), remote, showURL(target))
+	cmd := fmt.Sprintf("git -C %s remote set-url --push %s %s", orDot(dir), remote, RedactRemoteURL(target))
 	pushurls := cfg["remote."+remote+".pushurl"]
 	if len(pushurls) < 2 {
 		return cmd
@@ -394,7 +390,7 @@ func setPushURLCommand(cfg map[string][]string, dir, remote, target, replace str
 	if replace != "" && containsString(pushurls, replace) {
 		// A value carrying userinfo is quoted masked: the pattern then matches nothing and git
 		// changes nothing, which is safer than printing the credential into a command line.
-		return cmd + " " + shellSingleQuote("^"+regexp.QuoteMeta(showURL(replace))+"$")
+		return cmd + " " + shellSingleQuote("^"+regexp.QuoteMeta(RedactRemoteURL(replace))+"$")
 	}
 	return fmt.Sprintf("git -C %s config --unset-all remote.%s.pushurl && %s", orDot(dir), remote, cmd)
 }

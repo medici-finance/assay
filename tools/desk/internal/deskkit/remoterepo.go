@@ -97,23 +97,32 @@ func ParseRemoteRepo(raw string) (owner, repo string, err error) {
 }
 
 // RedactRemoteUserinfo renders a remote string for an error or log line with every userinfo
-// span replaced by "<redacted>". For each '@', the masked span runs back from it to the
-// nearest preceding boundary: the end of a "://" scheme separator, whitespace, an opening
-// quote or bracket, or the start of the string. A '/' is NOT a boundary, so a malformed
-// password holding an unencoded '/' is masked whole (https://user:pa/ss@host/... keeps no part
-// of it), and a list of remotes joined by ", " or newlines is masked remote by remote. That
-// covers the URL authority (https://user:secret@host/...), the scp-like and bare forms
-// (user:secret@host:path), and the scp segment a hybrid rewrite embeds in a path, which is
-// masked back to the scheme together with the host before it. The scheme, the host after the
-// '@', the port and the path stay visible, so the message still shows the remote's shape; a
-// string with no '@' is returned unchanged. Every error ParseRemoteRepo returns names the
-// remote through it, so callers surface the parser's error rather than re-echoing the raw
-// string.
+// span replaced by "<redacted>". For each '@', the masked span is the rest of the
+// whitespace-delimited token before it: it runs back to the nearest preceding whitespace (or
+// the start of the string), and stops short of that only to keep an opening quote or bracket
+// that begins the token and a URL scheme ("https://", at most behind prose ending in an
+// opening quote, bracket or '='). Nothing else inside the token is a boundary: a '/', a quote,
+// a bracket, a backtick or a "://" that falls inside a userinfo is masked with it, so a
+// malformed password holding any of them keeps no part of itself visible, and a list of
+// remotes joined by ", " or newlines is masked remote by remote. That covers the URL authority
+// (https://user:secret@host/...), a userinfo that is a credential alone
+// (https://secret@host/...), the scp-like and bare forms (user:secret@host:path), and the scp
+// segment a hybrid rewrite embeds in a path, which is masked back to the scheme together with
+// the host before it. The scheme, the host after the '@', the port and the path stay visible,
+// so the message still shows the remote's shape; a string with no '@' is returned unchanged.
+// Every error ParseRemoteRepo returns names the remote through it, so callers surface the
+// parser's error rather than re-echoing the raw string. Prose glued to a remote with no
+// whitespace between them is masked with the userinfo: over-redaction is the accepted
+// failure direction.
+//
+// It is the ONE userinfo redactor of the desk tools: redactguard_test.go fails on a second
+// definition. A caller rendering a child process's stderr passes it through StripControl
+// first, so a terminal escape sequence inside a userinfo cannot move the span.
 //
 // It redacts USERINFO only. A credential carried anywhere else is out of its scope: in a query
 // string or fragment (https://host/o/r?access=<secret>), in a path with no '@', behind a
 // look-alike character that is not the ASCII '@' (a fullwidth at sign, say), or in the part of
-// a userinfo before an unencoded whitespace, quote or bracket character.
+// a userinfo before an unencoded whitespace character.
 func RedactRemoteUserinfo(raw string) string {
 	return redactUserinfo(raw, nil)
 }
@@ -161,23 +170,56 @@ func redactUserinfo(raw string, keep func(string) bool) string {
 	return b.String()
 }
 
-// userinfoStart is where the userinfo ending at s[at] == '@' begins: just past the nearest
-// boundary before at (see RedactRemoteUserinfo), or 0.
+// RedactRemoteConfigKey renders a git config key for an error or log line with every userinfo
+// span masked as RedactRemoteUserinfo masks it. A url.<base>.insteadOf / .pushInsteadOf key
+// carries a remote base INSIDE the key, so a listing of config keys is as much a credential
+// surface as a listing of their values. The "url." prefix stays visible, and so does a
+// userinfo that is exactly the bare SSH account name "git" (the push gate's RedactRemoteURL rule: it
+// names the transport's account and carries no credential), so a rule key still reads as the
+// rewrite it is.
+func RedactRemoteConfigKey(key string) string {
+	if rest, ok := strings.CutPrefix(key, "url."); ok {
+		return "url." + RedactRemoteURL(rest)
+	}
+	return RedactRemoteURL(key)
+}
+
+// userinfoStart is where the userinfo ending at s[at] == '@' begins (see
+// RedactRemoteUserinfo): the start of its whitespace-delimited token, moved past a leading
+// opening quote or bracket, and past a URL scheme when the token carries one.
 func userinfoStart(s string, at int) int {
 	head := s[:at]
 	start := 0
-	if k := strings.LastIndexFunc(head, isUserinfoBoundary); k >= 0 {
+	if k := strings.LastIndexFunc(head, unicode.IsSpace); k >= 0 {
 		_, size := utf8.DecodeRuneInString(head[k:])
 		start = k + size
 	}
-	if k := strings.LastIndex(head, "://"); k >= 0 && k+3 > start {
-		start = k + 3
+	for start < at && strings.IndexByte(tokenOpeners, head[start]) >= 0 {
+		start++
 	}
-	return start
+	tok := head[start:]
+	k := strings.Index(tok, "://")
+	if k < 0 {
+		return start
+	}
+	// The text before the FIRST "://" must be a scheme, at most behind prose ending in an
+	// opener or '='. Anything else ("user:pa://ss@host") puts the "://" inside the userinfo,
+	// and the whole token is masked.
+	j := k
+	for j > 0 && isSchemeByte(tok[j-1]) {
+		j--
+	}
+	if j == k || (j > 0 && strings.IndexByte(tokenOpeners+"=", tok[j-1]) < 0) {
+		return start
+	}
+	return start + k + 3
 }
 
-func isUserinfoBoundary(r rune) bool {
-	return unicode.IsSpace(r) || strings.ContainsRune("'\"`(<[", r)
+// tokenOpeners are the characters that may open a quoted or bracketed remote.
+const tokenOpeners = "'\"`(<["
+
+func isSchemeByte(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '+' || c == '-' || c == '.'
 }
 
 // RemoteRepoSlug is ParseRemoteRepo returning the combined "owner/repo" slug — the form the

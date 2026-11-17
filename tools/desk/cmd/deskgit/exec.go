@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // execCommand is the single seam through which every git invocation flows. Production
@@ -87,13 +89,11 @@ func runGitWithEnv(dir string, env []string, args ...string) (string, error) {
 	err := cmd.Run()
 	stdout := strings.TrimSpace(out.String())
 	if err != nil {
-		// An argument can be a remote URL, so each is shown with its userinfo removed.
-		shown := make([]string, len(args))
-		for i, a := range args {
-			shown[i] = redactURL(a)
-		}
-		return stdout, fmt.Errorf("git %s: %w (%s)", strings.Join(shown, " "),
-			err, strings.TrimSpace(errb.String()))
+		// An argument can be a remote URL, and git's stderr quotes the remote it failed on
+		// ("unable to access '<url>'"), so both are shown with every userinfo masked; the
+		// stderr is stripped of control sequences first, so an escape cannot shift the span.
+		return stdout, fmt.Errorf("git %s: %w (%s)", deskkit.RedactRemoteArgv(args),
+			err, deskkit.RedactRemoteUserinfo(deskkit.StripControl(strings.TrimSpace(errb.String()))))
 	}
 	return stdout, nil
 }

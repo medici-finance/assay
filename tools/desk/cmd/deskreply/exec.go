@@ -143,7 +143,7 @@ func runCmd(dir, name string, args ...string) (string, error) {
 	stdout := strings.TrimSpace(out.String())
 	if err != nil {
 		return stdout, fmt.Errorf("%s %s: %w (%s)", name, deskkit.RedactRemoteArgv(args),
-			err, deskkit.RedactRemoteUserinfo(strings.TrimSpace(errb.String())))
+			err, deskkit.RedactRemoteUserinfo(deskkit.StripControl(strings.TrimSpace(errb.String()))))
 	}
 	return stdout, nil
 }
