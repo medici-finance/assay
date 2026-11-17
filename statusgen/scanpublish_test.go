@@ -680,7 +680,7 @@ func TestPublicCoverageShape(t *testing.T) {
 // TestPublicCoverageEmbeddedTags plants one embedded struct per json tag shape and requires the
 // coverage walk to name its field at the path encoding/json writes it to: promoted for no tag or an
 // options-only tag, nested under the name for a named tag. A walk that skips any of them is fail-open.
-// regression: 6362-a6
+// regression: 6362-a8
 func TestPublicCoverageEmbeddedTags(t *testing.T) {
 	type plain struct {
 		A string `json:"a"`
@@ -735,5 +735,46 @@ func TestPublicCoverageEmbeddedTags(t *testing.T) {
 				t.Fatalf("encoding/json wrote %s, want %s: the probe does not match the walk's path", b, want)
 			}
 		})
+	}
+}
+
+// covMarshalBlob has no exported field, but encoding/json writes whatever its MarshalJSON returns.
+type covMarshalBlob struct{ text string }
+
+func (b covMarshalBlob) MarshalJSON() ([]byte, error) { return json.Marshal(b.text) }
+
+// covTextLevel is an int kind that encoding/json writes as text, through MarshalText.
+type covTextLevel int
+
+func (covTextLevel) MarshalText() ([]byte, error) { return []byte("PROSE"), nil }
+
+// TestPublicCoverageMarshaler plants a field whose type marshals itself (a struct with only
+// unexported fields and a MarshalJSON, and an int kind with a MarshalText) and requires the coverage
+// walk to report it with the shape "marshaler": unlisted, and listed as the kind it looks like.
+// regression: security advisory A7 on this change (a self-marshalling type escaped the walk).
+func TestPublicCoverageMarshaler(t *testing.T) {
+	type probe struct {
+		Schema string         `json:"schema"`
+		Blob   covMarshalBlob `json:"blob"`
+		Level  covTextLevel   `json:"level"`
+		Levels []covTextLevel `json:"levels"`
+		At     time.Time      `json:"at"`
+	}
+	covered := map[string]string{"schema": "string", "level": "int", "levels": "[]int", "at": "time"}
+	got := strings.Join(uncoveredFields(reflect.TypeOf(probe{}), "", covered), ",")
+	want := "blob,level (shape marshaler, listed as int),levels (shape []marshaler, listed as []int)"
+	if got != want {
+		t.Fatalf("uncovered = %q, want %q", got, want)
+	}
+	// The probe's own control: encoding/json writes the planted text through each marshaler.
+	b, err := json.Marshal(probe{Blob: covMarshalBlob{"PROSE"}, Level: 1, Levels: []covTextLevel{1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(b), "PROSE") != 3 {
+		t.Fatalf("encoding/json wrote %s, want PROSE three times: the probe does not marshal itself", b)
+	}
+	if u := publicUncovered(); len(u) > 0 {
+		t.Fatalf("the judgment record has fields the public allowlist does not cover: %v", u)
 	}
 }

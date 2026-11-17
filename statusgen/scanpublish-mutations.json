@@ -1,5 +1,5 @@
 {
-  "test": "go test . -count=1 -timeout 300s -run '^TestPublic(CoverageEmbeddedTags|CoverageShape|UncoveredFields)$'",
+  "test": "go test . -count=1 -timeout 300s -run '^TestPublic(CoverageEmbeddedTags|CoverageMarshaler|CoverageShape|UncoveredFields)$'",
   "control": {
     "name": "coverage walk drops the shape comparison",
     "file": "scanpublish.go",
@@ -18,6 +18,12 @@
       "file": "scanpublish.go",
       "old": "f.Anonymous && nested && name == \"\" {",
       "new": "f.Anonymous && nested && name+tag == \"\" {"
+    },
+    {
+      "name": "coverage walk walks a self-marshalling type field by field",
+      "file": "scanpublish.go",
+      "old": "func marshalsItself(t reflect.Type) bool {\n\tif t == reflect.TypeOf(time.Time{}) {",
+      "new": "func marshalsItself(t reflect.Type) bool {\n\tif true || t == reflect.TypeOf(time.Time{}) {"
     }
   ]
 }

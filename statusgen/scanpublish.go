@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"encoding"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -123,7 +124,7 @@ var publicUncovered = sync.OnceValue(func() []string {
 })
 
 // uncoveredFields walks the fields encoding/json reads from t by JSON path, into nested structs,
-// pointers to them and embedded structs (a time is a leaf), and returns each leaf path covered does
+// pointers to them and embedded structs (a time, and any type that marshals itself, is a leaf), and returns each leaf path covered does
 // not list, or lists with a shape other than the field's own. It skips exactly the fields
 // encoding/json skips (an unexported field that is not an embedded struct, a "-" tag), so an
 // embedded struct is walked whatever its tag: promoted when the tag names no field (none, or
@@ -136,7 +137,7 @@ func uncoveredFields(t reflect.Type, prefix string, covered map[string]string) [
 		if ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
-		nested := ft.Kind() == reflect.Struct && ft != reflect.TypeOf(time.Time{})
+		nested := ft.Kind() == reflect.Struct && ft != reflect.TypeOf(time.Time{}) && !marshalsItself(ft)
 		tag := f.Tag.Get("json")
 		if tag == "-" || (!f.IsExported() && !(f.Anonymous && ft.Kind() == reflect.Struct)) {
 			continue
@@ -161,14 +162,17 @@ func uncoveredFields(t reflect.Type, prefix string, covered map[string]string) [
 }
 
 // leafShape names a leaf field's type by kind: "string" for any string type, "time" for a time,
-// "[]" plus the element's shape for a list, "map[k]v" for a map, and the kind's name otherwise
-// ("interface" for an any).
+// "marshaler" for any other type that marshals itself, "[]" plus the element's shape for a list,
+// "map[k]v" for a map, and the kind's name otherwise ("interface" for an any).
 func leafShape(t reflect.Type) string {
 	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	if t == reflect.TypeOf(time.Time{}) {
 		return "time"
+	}
+	if marshalsItself(t) {
+		return "marshaler"
 	}
 	switch t.Kind() {
 	case reflect.Slice, reflect.Array:
@@ -177,6 +181,22 @@ func leafShape(t reflect.Type) string {
 		return "map[" + leafShape(t.Key()) + "]" + leafShape(t.Elem())
 	}
 	return t.Kind().String()
+}
+
+// marshalsItself reports whether encoding/json writes t through its own method (json.Marshaler or
+// encoding.TextMarshaler, on the value or its pointer) rather than field by field. Such a type can
+// write any text whatever its fields or kind, so the walk treats it as a leaf of its own shape. A
+// time is excluded: it is the "time" shape, checked as RFC 3339.
+func marshalsItself(t reflect.Type) bool {
+	if t == reflect.TypeOf(time.Time{}) {
+		return false
+	}
+	for _, x := range []reflect.Type{t, reflect.PointerTo(t)} {
+		if x.Implements(reflect.TypeFor[json.Marshaler]()) || x.Implements(reflect.TypeFor[encoding.TextMarshaler]()) {
+			return true
+		}
+	}
+	return false
 }
 
 // jsonFieldName is the name encoding/json gives f.
