@@ -238,7 +238,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 58 | [Benchmark compile-once mutation execution](brief-58-benchmark-compile-once-mutation-execution.md) | 1 | M | todo | — | — |
 | 59 | [Remove incidental prune mutation fixture work](brief-59-remove-incidental-prune-mutation-fixture-work.md) | 1 | M | implemented | — | — |
 | 60 | [Operate is human, and the gate ladder — what an agent fleet owns, what a human owns, and the written condition under which a human gate may ever widen (every threshold recorded as not set)](brief-60-operate-is-human-and-the-gate-ladder.md) | 1 | S | todo | — | — |
-| 61 | [Declare the secret scan's benign shapes in one registry, each entry bounded by a refusal it must keep](brief-61-benign-shape-registry.md) | 1 | L | implemented | — | — |
+| 61 | [Declare the secret scan's benign shapes in one registry, each entry bounded by a refusal it must keep](brief-61-benign-shape-registry.md) | 1 | L | todo | — | — |
 | 62 | [Name the file, line and side of a branch-diff secret-scan refusal, not its line in the stripped diff](brief-62-diff-finding-file-line.md) | 1 | M | implemented | — | — |
 | 63 | [Admit the open false-positive shapes as registry entries, each with the refusals that bound it, and cap word-shaped admission](brief-63-registry-acceptance-shapes.md) | 2 | L | todo | — | — |
 | 64 | [Decide which lines of a branch diff the secret scan reads, and pin the answer](brief-64-diff-scan-scope.md) | 2 | M | todo | — | — |
