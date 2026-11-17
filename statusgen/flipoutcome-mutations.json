@@ -66,6 +66,42 @@
       "file": "flipoutcome.go",
       "old": "\tif c.PathID == \"\" || len(c.Parents) > 1 {",
       "new": "\tif c.PathID == \"\" {"
+    },
+    {
+      "name": "future-dated record ignored: the reduction's excluded future record no longer makes the latest unknown",
+      "file": "flipoutcome.go",
+      "old": "\tif future[key] {",
+      "new": "\tif future[key] && false {"
+    },
+    {
+      "name": "no adding commit read as agreeing: a record no non-merge commit adds passes the author check",
+      "file": "flipoutcome.go",
+      "old": "\tif len(commits) == 0 {",
+      "new": "\tif len(commits) == 0 && false {"
+    },
+    {
+      "name": "deciding legacy line read as agreeing: a legacy log line decides with no author judged",
+      "file": "flipoutcome.go",
+      "old": "\t\treturn fmt.Errorf(\"outcome record: the deciding record for %s is a legacy log line (%s), which has no adding commit of its own to judge\", rec.Brief, rec.Source)",
+      "new": "\t\treturn nil"
+    },
+    {
+      "name": "typed-reader decline ignored: a declined repository is read as if supported",
+      "file": "flipoutcome.go",
+      "old": "\tif read.native != \"\" {",
+      "new": "\tif read.native != \"\" && false {"
+    },
+    {
+      "name": "adding-commit walk error swallowed: a partial walk's adders are judged",
+      "file": "flipoutcome.go",
+      "old": "\treturn commits, err\n",
+      "new": "\t_ = err\n\treturn commits, nil\n"
+    },
+    {
+      "name": "record files not compared against HEAD by content (the typed status read's cached metadata decides)",
+      "file": "flipoutcome.go",
+      "old": "\treturn flipOutcomeHeadBytes(root, read, stream)\n",
+      "new": "\treturn nil\n"
     }
   ]
 }

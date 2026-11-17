@@ -51,7 +51,16 @@ package main
 // Both reads (the clean check and the adding-commit walk) go through the
 // run's typed reader (gitCoreFor), never a native git launch: a repository
 // the typed reader declines is could-not-check, and so is a history it
-// cannot read in full.
+// cannot read in full. The typed status read trusts the index's cached file
+// metadata, so every tracked record file in scope is also compared by content
+// against its HEAD blob.
+//
+// Known differences from native `git status`, each failing closed (a refused
+// legitimate flip, never a passed one): the typed read does not honour
+// `.git/info/exclude` or a `core.excludesFile` (repo or global), so an
+// untracked file ignored only there refuses; it does not honour
+// `core.fileMode=false`, so an exec-bit change on a record refuses; and a
+// split index is could-not-check.
 //
 // KNOWN LIMIT. A record DELETED in an earlier commit by someone other than
 // the verifier leaves no file to judge; the history walk flipProvenance does
@@ -68,7 +77,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -183,7 +194,46 @@ func flipOutcomeCommitted(root, key string) error {
 	if dirty := outcomeStatusLines(status, read.prefix, stream); len(dirty) > 0 {
 		return refuseFlip("outcome record: uncommitted verify-outcome record changes for %s (%s) — an uncommitted record has no author to judge; commit it as the verifier or discard it", key, dirty[0])
 	}
+	return flipOutcomeHeadBytes(root, read, stream)
+}
+
+// flipOutcomeHeadBytes compares every tracked record file in scope (the
+// brief's stream record directory and the legacy logs) against its HEAD blob
+// by content, as flipProvenance compares Evidence against HEAD. The typed
+// status read decides "unchanged" from the index's cached file metadata, so
+// this content comparison is what binds the files the check reads to HEAD.
+func flipOutcomeHeadBytes(root string, read gitCoreRead, stream string) error {
+	files, err := read.repo.Files("HEAD")
+	if err != nil {
+		return fmt.Errorf("outcome record: git ls-tree HEAD: %v", err)
+	}
+	dir, glob := outcomeScope(stream)
+	for _, f := range files {
+		rel, ok := strings.CutPrefix(f, read.prefix)
+		if !ok || !outcomeInScope(rel, dir, glob) {
+			continue
+		}
+		head, err := read.repo.FileAt("HEAD", f)
+		if err != nil {
+			return fmt.Errorf("outcome record: git show HEAD:%s: %v", f, err)
+		}
+		work, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil || strings.ReplaceAll(string(work), "\r\n", "\n") != strings.ReplaceAll(head, "\r\n", "\n") {
+			return refuseFlip("outcome record: uncommitted verify-outcome record changes (%s differs from HEAD) — an uncommitted record has no author to judge; commit it as the verifier or discard it", rel)
+		}
+	}
 	return nil
+}
+
+// outcomeScope is the brief's stream record directory and the legacy-log
+// pathspec glob, both relative to root.
+func outcomeScope(stream string) (string, *regexp.Regexp) {
+	return path.Join(outcomeRecordsDir, stream), outcomePathspecGlob(path.Join("docs/streams", verifyOutcomesGlob))
+}
+
+// outcomeInScope reports whether rel falls under dir or matches glob.
+func outcomeInScope(rel, dir string, glob *regexp.Regexp) bool {
+	return rel == dir || strings.HasPrefix(rel, dir+"/") || glob.MatchString(rel)
 }
 
 // flipOutcomeRepo opens root through the run's typed reader. The record checks
@@ -207,8 +257,7 @@ func flipOutcomeRepo(root string) (gitCoreRead, error) {
 // docs/streams/<verifyOutcomesGlob>, matched as a Git pathspec glob, where a
 // wildcard also matches '/'.
 func outcomeStatusLines(porcelain, prefix, stream string) []string {
-	dir := path.Join(outcomeRecordsDir, stream)
-	glob := outcomePathspecGlob(path.Join("docs/streams", verifyOutcomesGlob))
+	dir, glob := outcomeScope(stream)
 	var keep []string
 	for _, line := range strings.Split(porcelain, "\n") {
 		if len(line) < 4 {
@@ -219,7 +268,7 @@ func outcomeStatusLines(porcelain, prefix, stream string) []string {
 			if !ok {
 				continue
 			}
-			if rel == dir || strings.HasPrefix(rel, dir+"/") || glob.MatchString(rel) {
+			if outcomeInScope(rel, dir, glob) {
 				keep = append(keep, line)
 				break
 			}
