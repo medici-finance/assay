@@ -39,9 +39,6 @@ var remoteURLAllowList = map[string]struct {
 	calls  int
 	reason string
 }{
-	"tools/desk/cmd/deskclaim-ref/gogit.go": {1, "assessed #1623; shared adapter since #3281 — supplies " +
-		"the host hint only (the default slug goes through deskkit.OriginRepoSlug); claim transport " +
-		"builds a canonical URL from ForgeKindFromSlugAndHost. No git verb resolves origin after the read."},
 	// #6606 moved deskwt's currentRepo, deskreply's preflight, deskkit's OriginRepoSlug,
 	// preflight's deriveRepoSlug and deskpushguard's deriveRepo onto deskkit.SlugRemoteURL, which
 	// refuses when worktree-scope or include config could change origin; their entries are removed.

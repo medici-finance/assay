@@ -62,7 +62,7 @@ func TestResolveRepoPinRefused(t *testing.T) {
 	} {
 		t.Run(pin, func(t *testing.T) {
 			pinnedOrigin(t, pin)
-			repo, err := resolveRepo("")
+			repo, err := resolveRepo("", func() (string, error) { return checkedOriginURL(".") })
 			if !errors.Is(err, gitcore.ErrRemoteScopeUnmerged) || repo != "" {
 				t.Fatalf("resolveRepo = %q, %v; want a refusal wrapping ErrRemoteScopeUnmerged", repo, err)
 			}
@@ -78,12 +78,74 @@ func TestResolveRepoPinAccepted(t *testing.T) {
 	for _, pin := range []string{"", "https://github.com:443/example-org/example-repo.git"} {
 		t.Run("pin="+pin, func(t *testing.T) {
 			pinnedOrigin(t, pin)
-			if repo, err := resolveRepo(""); err != nil || repo != "example-org/example-repo" {
+			if repo, err := resolveRepo("", func() (string, error) { return checkedOriginURL(".") }); err != nil || repo != "example-org/example-repo" {
 				t.Fatalf("resolveRepo = %q, %v; want example-org/example-repo", repo, err)
 			}
 		})
 	}
-	if repo, err := resolveRepo(" example-org/flag "); err != nil || repo != "example-org/flag" {
+	if repo, err := resolveRepo(" example-org/flag ", nil); err != nil || repo != "example-org/flag" {
 		t.Fatalf("resolveRepo(--repo) = %q, %v", repo, err)
+	}
+}
+
+// regression: #6735
+func TestClaimStoreOriginChecked(t *testing.T) {
+	for _, tc := range []struct{ name, pin string }{
+		{"different-repository", "https://github.com/example-org/other.git"},
+		{"command-config", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			pinnedOrigin(t, tc.pin)
+			if tc.pin == "" {
+				t.Setenv("GIT_CONFIG_COUNT", "1")
+				t.Setenv("GIT_CONFIG_KEY_0", "grep.patternType")
+				t.Setenv("GIT_CONFIG_VALUE_0", "default")
+			}
+			// Both routes must stop before opening this credential file.
+			tokenFile := filepath.Join(t.TempDir(), "absent")
+			readOrigin := func() (string, error) { return checkedOriginURL(".") }
+			for _, flag := range []string{"", "example-org/selected"} {
+				repo, err := resolveRepo(flag, readOrigin)
+				if flag != "" {
+					if err != nil || repo != flag {
+						t.Fatalf("explicit repo = %q, %v", repo, err)
+					}
+					_, err = newForgeStore(repo, tokenFile, readOrigin)
+				}
+				if !errors.Is(err, gitcore.ErrRemoteScopeUnmerged) {
+					t.Errorf("repo flag %q: want checked origin refusal, got %v", flag, err)
+				}
+			}
+		})
+	}
+}
+
+// regression: #6735
+func TestResolveHostAliasChecksResolvedHost(t *testing.T) {
+	old := sshConfigHostname
+	t.Cleanup(func() { sshConfigHostname = old })
+	sshConfigHostname = func(string) (string, error) { return "forgé.example", nil }
+	if got, err := resolveHostAlias("fixture"); err == nil || got != "" {
+		t.Fatalf("alias resolved to %q, %v; want ASCII hostname refusal", got, err)
+	}
+}
+
+// regression: #6735
+func TestClaimStoreKeepsExplicitTarget(t *testing.T) {
+	pinnedOrigin(t, "https://github.com:443/example-org/example-repo.git")
+	const target = "example-org/selected"
+	readOrigin := func() (string, error) { return checkedOriginURL(".") }
+	repo, err := resolveRepo(target, readOrigin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only construct the store. No transport operation uses this fixture value.
+	t.Setenv("GH_TOKEN", "offline-fixture")
+	store, err := newForgeStore(repo, "", readOrigin)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := store.(*gogitStore).url; got != "https://github.com/example-org/selected.git" {
+		t.Fatalf("claim endpoint = %q, want explicit target on github.com", got)
 	}
 }
