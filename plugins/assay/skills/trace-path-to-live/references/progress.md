@@ -12,8 +12,12 @@ across the seven daily readings, from the same history reader as the chart. Coun
 changes**: pull or merge requests merged into the scoped roots' default branches inside the
 same seven days. Take the count from the forge's merged list. Where that cannot be read, count
 first-parent commits and leave out every generated commit: status regenerations, reconcile
-and rollup commits, and Evidence or outcome-record landings. A generated commit is activity
-nobody merged. Say on the page which method was used and how many commits were left out. When
+and rollup commits, and Evidence or outcome-record landings. A generated commit is one whose
+author is the automation identity that produces it and which is not the merge of a pull or
+merge request. Identify it by that identity and shape, never by its subject line, which
+anyone can write. A merged request counts under both methods, whoever authored it; the
+exclusions apply only to commits that landed without one. Say on the page which method was
+used and how many commits were left out. When
 recorded stage changes are two or fewer and merged changes are twenty or more,
 open the page with a short stall statement above the monthly chart. The chart stays the first
 chart. State both thresholds on the page, and say so if you change them.
@@ -36,7 +40,7 @@ a path weight. Each brief appears in at most one group, chosen by its recorded s
 
 | Group | Recorded stage | Evidence required | Source |
 |-------|----------------|-------------------|--------|
-| **Delivered; board row held** | `todo` or `in-progress` | the board reconcile lists the row as held and names the merged delivering change | the body of the latest reconcile commit on the default branch, or on the reconcile job's own open change when it passes the check below |
+| **Delivered; board row held** | `todo` or `in-progress` | the board reconcile lists the row as held and names the merged delivering change | the body of the reconcile job's own latest commit: on the default branch that is the second parent of the merge that landed the job's change (the merge's own body may be only the request title), else the head of the job's open change. Both must pass the checks below |
 | **Passed; record or sign-off held** | `implemented` | the latest retained non-implementer outcome record passed every Verify row, and its recorded outcome is not `verified` | the brief's newest record in the `docs/streams/verify-outcomes/` register, newest by the record's own `ts` and read through the register's reader, which also unions any legacy `verify-outcomes*.jsonl` lines |
 | **Verified; completion refused** | `verified` | the completion reader lists the brief as refused or could-not-check | `statusgen --root <dir> --auto-flip-model --dry-run` in a scratch clone pinned to the captured revision, or the output of the latest default-branch run of the same reader |
 
@@ -50,6 +54,13 @@ Rules for the three groups:
   change that fails either test is an unreadable source: the group is **Unknown**. Name the
   head revision and say which of the two the list came from. Only the default-branch commit
   feeds **Shared obstacles**.
+- Check the default-branch source too, and read the job's own commit, never a merge commit's
+  body. Find the latest first-parent merge that the forge confirms merged the job's
+  fixed-branch change from the same repository. Read the held list from that merge's second
+  parent, which must be authored by the job's own identity. A single-parent commit on the
+  first-parent history counts only when the forge ties it to the job's own run: an author
+  name alone proves nothing, because a rebased or squashed contributor commit can carry any
+  author. Anything else is an unreadable source, and the group is **Unknown**.
 - The job commits only when a board row changes, so the latest reconcile commit can be older
   than the captured revision. Give its date beside the captured revision; when it is older,
   the held list is a lower bound. With no such commit to read, `statusgen reconcile --root <dir> --repo <owner/name>` without `--apply`

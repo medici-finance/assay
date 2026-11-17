@@ -3,7 +3,6 @@ package deskkit
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 )
@@ -245,7 +244,7 @@ func (f *HTTPRepoInfoFetcher) RepoVisibility(owner, repo string) (string, error)
 		return "", fmt.Errorf("GET %s returned HTTP %d", url, resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := ReadCappedForgeBody(resp.Body, "GET "+url)
 	if err != nil {
 		return "", err
 	}

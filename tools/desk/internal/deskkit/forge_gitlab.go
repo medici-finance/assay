@@ -157,7 +157,9 @@ func (g *GitLabForge) client() (*gitlab.Client, error) {
 	// first so the counting copy keeps the refusal (SEC-1: a GitLab credential never follows a redirect).
 	hc := countingClient(gitlabNoRedirectClient(g.Client))
 	hc.Transport = observedTransport(hc.Transport, g.Observer, "provider", true)
-	opts = append(opts, gitlab.WithHTTPClient(hc))
+	// Outermost: every body the client reads, error bodies included, is capped
+	// (forgebodytransport.go).
+	opts = append(opts, gitlab.WithHTTPClient(cappedForgeClient(hc)))
 	cl, err := gitlab.NewClient(g.Token, opts...)
 	if err != nil {
 		return nil, Unverifiable("cannot build GitLab API client", err)
@@ -4547,7 +4549,7 @@ func (g *GitLabForge) triggerClient() (*gitlab.Client, error) {
 	// transport sees every round-trip: perf forgeCalls means the same on both backends.
 	// countingClient copies, never mutates, the client it is handed; the no-redirect copy goes in
 	// first so the counting copy keeps the refusal (SEC-1: a GitLab credential never follows a redirect).
-	opts = append(opts, gitlab.WithHTTPClient(countingClient(gitlabNoRedirectClient(g.Client))))
+	opts = append(opts, gitlab.WithHTTPClient(cappedForgeClient(countingClient(gitlabNoRedirectClient(g.Client)))))
 	cl, err := gitlab.NewAuthSourceClient(gitlab.Unauthenticated{}, opts...)
 	if err != nil {
 		return nil, Unverifiable("cannot build GitLab trigger client", err)
@@ -4802,7 +4804,10 @@ func (g *GitLabForge) runLog(repo ForgeRepo, run RunRef, lim runLogBounds) ([]Ru
 	kept := 0
 	for _, j := range jobs {
 		rel := fmt.Sprintf("projects/%s/jobs/%d/trace", g.projectPath(repo), j.ID)
-		req, rerr := cl.NewRequest(http.MethodGet, rel, nil, nil)
+		// The trace keeps its own bound (runLogSink); the transport cap is raised to one byte
+		// past it so the sink's refusal is the one that fires.
+		req, rerr := cl.NewRequest(http.MethodGet, rel, nil,
+			[]gitlab.RequestOptionFunc{gitlab.WithContext(withForgeBodyLimit(context.Background(), lim.readCap+1))})
 		if rerr != nil {
 			return nil, Unverifiable(fmt.Sprintf("could-not-check: GET /%s could not be built", rel), rerr)
 		}
