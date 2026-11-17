@@ -18,6 +18,12 @@ package main
 // path, never an anonymous or
 // ambient-authenticated read. Where none of storedLoginRefusal's signals holds,
 // nothing changes.
+//
+// Inside an admitted verifyrun or an admitted Verify row, every forge read
+// goes further: the token variables are ignored too, and a read uses only the
+// verifier's run-scoped read-only credential (runcredential.go). Both read
+// paths share one choke point, admittedReadCredential: newGHClient for every
+// REST reader and ghGuard for every CLI launch.
 
 import (
 	"fmt"
@@ -158,6 +164,17 @@ func ghGuard(cmd *exec.Cmd, githubToken ...string) *exec.Cmd {
 		cmd.Env = append(kept, "GH_TOKEN="+githubToken[0], "GH_HOST=github.com",
 			"GH_ENTERPRISE_TOKEN="+storedLoginPlaceholder)
 		return cmd
+	}
+	// Inside an admitted verifyrun or an admitted Verify row, the CLI is handed
+	// only the verifier's run-scoped read-only credential, the same one the REST
+	// reader uses. An inherited token variable is never used, and with no run
+	// credential the command never starts (runcredential.go, #6746).
+	if secret, refused, admitted := admittedReadCredential(); admitted {
+		if refused != "" {
+			cmd.Err = fmt.Errorf("could-not-check: %s", refused)
+			return cmd
+		}
+		return ghGuard(cmd, secret)
 	}
 	if cmd.Env == nil && os.Getenv("GITHUB_ACTIONS") == "true" {
 		cmd.Env = os.Environ()

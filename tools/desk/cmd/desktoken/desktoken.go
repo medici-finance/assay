@@ -541,6 +541,7 @@ func cmdTokenMeasured(args []string, measurement *perfrec.Session, sinks ...func
 	fresh := fs.Bool("fresh", false, "delete any cached token and its .perms/.owner sidecars before minting, and bypass the install-id caches — forces a fresh mint after a GitHub-App permission change (the cached token otherwise carries the old grant for up to the ~50-min reuse window)")
 	crossRole := fs.String("cross-role", "", "take a role's credential from a window whose loop acts as another role (#6069). The value is the reason, and the audit log records it with the loop and role on every use, a cache reuse included")
 	noRotate := fs.Bool("no-rotate", false, "read-only credential lookup: verify the role's existing custody and print its PATH without performing a destructive rotation. GitLab: skips the self-rotation (and its network contact) entirely — the shape a read-only or dry-run verb asks for. GitHub: no effect, the App mint is cached and non-destructive already, so the flag is accepted for callers that do not know the forge before they ask")
+	readOnlyOut := fs.String("read-only-out", "", "GitHub only: mint a RUN-SCOPED READ-ONLY credential instead of the role's cached one — narrowed at the forge to read permissions on the one --repo (owner/name), never cached, written once to this absolute path (which must not exist, in a private 0700 directory) with a .perms sidecar holding the granted map; a grant wider than read is refused and revoked. The caller owns its lifetime (statusgen verifyrun revokes it and removes the directory when the run ends)")
 
 	positionals, perr := parseInterspersed(fs, args)
 	selected()
@@ -585,6 +586,22 @@ func cmdTokenMeasured(args []string, measurement *perfrec.Session, sinks ...func
 	// makes stay byte-identical to the rotating one — a read verb that accepted custody the
 	// write verb would refuse is a difference an operator would only discover at the moment
 	// it mattered. On the GitHub path it is a no-op: mint-or-reuse is already non-destructive.
+	//
+	// --read-only-out is the run-scoped read-only GitHub credential (credential.ScopeReadOnly).
+	// It names exactly one repository, so --repo must be owner/name; it is never cached, so
+	// --ttl and --fresh do not apply; and it has no GitLab arm, so a GitLab forge refuses it
+	// rather than handing back the role's rotating PAT under a read-only name.
+	if *readOnlyOut != "" {
+		if strings.Count(*repo, "/") != 1 || strings.HasPrefix(*repo, "/") || strings.HasSuffix(*repo, "/") {
+			return deskkit.Refused("--read-only-out narrows the credential to one repository: --repo owner/name is required")
+		}
+		if *ttl || *fresh {
+			return deskkit.Refused("--read-only-out mints a credential that is never cached: --ttl and --fresh do not apply")
+		}
+		if f := strings.ToLower(strings.TrimSpace(*forge)); f == "gitlab" || (f == "" && gitlabRepoResolved(*repo)) {
+			return deskkit.Refused("--read-only-out has no GitLab arm: a read-only run-scoped credential is minted for GitHub only")
+		}
+	}
 	switch strings.ToLower(strings.TrimSpace(*forge)) {
 	case "":
 		if gitlabRepoResolved(*repo) {
@@ -627,6 +644,11 @@ func cmdTokenMeasured(args []string, measurement *perfrec.Session, sinks ...func
 	req.Fresh = *fresh
 	req.PathOnly = *ttl
 	req.BeforeRename = beforeTokenCacheRename
+	if *readOnlyOut != "" {
+		req.Scope = credential.ScopeReadOnly
+		req.Repository = (*repo)[strings.Index(*repo, "/")+1:]
+		req.TokenPath = *readOnlyOut
+	}
 
 	cred, gerr := credential.GitHub(req, ac.adapters(authHTTP([]*http.Client{authClient})))
 	if gerr != nil {
