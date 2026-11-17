@@ -264,7 +264,7 @@ func TestAdmittedScrubbedInputCouldNotRun(t *testing.T) {
 	}
 }
 
-// regression: could-not-run is never green
+// regression: #6773
 // TestScrubbedRowNeverGreen: a row's own text can make it could-not-run under
 // admission, so could-not-run must never clear anything. The verdict is
 // could-not-run even when the row's recorded exit equals the expected one,
