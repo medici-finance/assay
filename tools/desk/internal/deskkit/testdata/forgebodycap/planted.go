@@ -3,6 +3,7 @@
 package planted
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/json"
 	"net/http"
@@ -60,6 +61,12 @@ func permitThenRead(resp *http.Response) ([]byte, error) {
 	return stdio.ReadAll(resp.Body)
 }
 
+// permitTwice drains the body twice: one permit covers the first drain, never the second.
+func permitTwice(resp *http.Response) {
+	_, _ = stdio.Copy(stdio.Discard, resp.Body)
+	_, _ = stdio.Copy(stdio.Discard, resp.Body)
+}
+
 func truncatedCapped(resp *http.Response) ([]byte, error) {
 	return deskkit.ReadForgeBodyUpTo(stdio.LimitReader(resp.Body, 1<<20), "GET /example", 1<<20)
 }
@@ -71,4 +78,28 @@ func truncatedAliasCapped(resp *http.Response) ([]byte, error) {
 
 func truncatedLimitedCapped(resp *http.Response) ([]byte, error) {
 	return deskkit.ReadCappedForgeBody(&stdio.LimitedReader{R: resp.Body, N: 1 << 20}, "GET /example")
+}
+
+func wrappedTruncCapped(resp *http.Response) ([]byte, error) {
+	return deskkit.ReadCappedForgeBody(bufio.NewReader(stdio.LimitReader(resp.Body, 1<<20)), "GET /example")
+}
+
+func teeTruncCapped(resp *http.Response, w stdio.Writer) ([]byte, error) {
+	return deskkit.ReadCappedForgeBody(stdio.TeeReader(stdio.LimitReader(resp.Body, 1<<20), w), "GET /example")
+}
+
+func wrappedAliasCapped(resp *http.Response) ([]byte, error) {
+	br := bufio.NewReader(stdio.LimitReader(resp.Body, 1<<20))
+	return deskkit.ReadCappedForgeBody(br, "GET /example")
+}
+
+func reassignedCapped(resp *http.Response) ([]byte, error) {
+	var r stdio.Reader = resp.Body
+	r = stdio.LimitReader(r, 1<<20)
+	return deskkit.ReadCappedForgeBody(r, "GET /example")
+}
+
+// wrappedCapped buffers the body with no bound of its own; the guard must not report it.
+func wrappedCapped(resp *http.Response) ([]byte, error) {
+	return deskkit.ReadCappedForgeBody(bufio.NewReader(resp.Body), "GET /example")
 }

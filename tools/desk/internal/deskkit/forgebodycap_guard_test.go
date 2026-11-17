@@ -5,9 +5,15 @@ package deskkit
 // io.LimitReader that silently truncates) instead of ReadCappedForgeBody / ReadForgeBodyUpTo,
 // or that DISCARDS the error of a body read, fails the build. The planted fixture proves the
 // scanner sees both shapes, so a scanner that sees nothing cannot certify everything. A
-// truncating reader (io.LimitReader, io.LimitedReader) handed to one of the capped readers is
-// a third shape: the capped reader then sees a body that already ends at the wrapper's bound,
-// so its over-cap refusal can never fire.
+// truncating reader handed to one of the capped readers is a third shape: the capped reader
+// then sees a body that already ends at the wrapper's bound, so its over-cap refusal can never
+// fire. The truncating forms it sees are exactly these, as the capped reader's reader argument:
+//   - an io.LimitReader(...) call or an io.LimitedReader literal (or its address), whether it
+//     is the whole argument or sits anywhere inside it (bufio.NewReader(io.LimitReader(...)),
+//     io.TeeReader(io.LimitReader(...), w));
+//   - a local name assigned such an expression in the same function, by :=, var, or a plain =
+//     (a reassignment such as r = io.LimitReader(r, n) included), named alone or inside the
+//     argument the same way.
 
 import (
 	"fmt"
@@ -44,8 +50,8 @@ var forgeBodyGuardRoots = []string{
 
 // forgeBodyReadPermits are the readers that keep their own, narrower bound AND refuse an
 // over-bound body (they read limit+1 and check). Key: "<root>/<file>:<func> <kind>" — the
-// hit kind is part of the key, so a permit covers the one read it was granted for and a
-// second read of another kind added to the same function is still reported.
+// hit kind is part of the key, and a permit covers ONE hit: a second read added to the same
+// function is still reported, whether it is of another kind or of the permitted kind.
 var forgeBodyReadPermits = map[string]string{
 	"internal/deskkit/compositionsource.go:httpFetchBounded uncapped-body-read": "reads limit+1 and refuses a body over its own limit",
 	"internal/deskkit/forge_github.go:runLog uncapped-body-copy": "streams into runLogSink, which refuses an archive past runLogArchiveCap; " +
@@ -83,12 +89,12 @@ func TestForgeBodyReadsCapped(t *testing.T) {
 }
 
 // unpermittedBodyReads splits the guard's hits into the ones no permit covers and the permits
-// no hit used. A permit covers exactly one "<file>:<func> <kind>" hit — never every hit in
-// the function.
+// no hit used. A permit covers exactly one "<file>:<func> <kind>" hit — the first; every
+// further hit with the same key is reported, so two same-kind reads under one permit fail.
 func unpermittedBodyReads(hits []string, permits map[string]string) (bad, unused []string) {
 	used := map[string]bool{}
 	for _, h := range hits {
-		if _, ok := permits[h]; ok {
+		if _, ok := permits[h]; ok && !used[h] {
 			used[h] = true
 			continue
 		}
@@ -133,7 +139,33 @@ func TestForgeBodyPermitIsPerKind(t *testing.T) {
 	}
 }
 
-// The planted fixture holds one of each shape the guard must catch, and one it must not.
+// A permit covers ONE hit: planted.go's permitTwice drains the body twice under one permit,
+// and the second drain must still be reported.
+//
+// regression: #6755
+func TestForgeBodyPermitCoversOne(t *testing.T) {
+	hits, err := scanForgeBodyReads(filepath.Join("testdata", "forgebodycap"), "planted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const key = "planted/planted.go:permitTwice uncapped-body-copy"
+	bad, unused := unpermittedBodyReads(hits, map[string]string{key: "one drain"})
+	if len(unused) != 0 {
+		t.Fatalf("the permit matched no hit: %v", unused)
+	}
+	n := 0
+	for _, h := range bad {
+		if h == key {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("permitTwice's two drains under one permit reported %d times, want 1 (the second drain)", n)
+	}
+}
+
+// The planted fixture holds one of each shape the guard must catch, and two it must not
+// (cappedRead, wrappedCapped).
 //
 // regression: #6730
 func TestForgeBodyGuardSeesPlanted(t *testing.T) {
@@ -151,10 +183,16 @@ func TestForgeBodyGuardSeesPlanted(t *testing.T) {
 		"planted/planted.go:discardedRead uncapped-body-read",
 		"planted/planted.go:permitThenRead uncapped-body-copy",
 		"planted/planted.go:permitThenRead uncapped-body-read",
+		"planted/planted.go:permitTwice uncapped-body-copy",
+		"planted/planted.go:permitTwice uncapped-body-copy",
+		"planted/planted.go:reassignedCapped truncated-capped-read",
+		"planted/planted.go:teeTruncCapped truncated-capped-read",
 		"planted/planted.go:truncatedAliasCapped truncated-capped-read",
 		"planted/planted.go:truncatedCapped truncated-capped-read",
 		"planted/planted.go:truncatedLimitedCapped truncated-capped-read",
 		"planted/planted.go:truncatingRead uncapped-body-read",
+		"planted/planted.go:wrappedAliasCapped truncated-capped-read",
+		"planted/planted.go:wrappedTruncCapped truncated-capped-read",
 		"planted/sub/nested.go:nestedRead uncapped-body-read",
 	}
 	sort.Strings(hits)
@@ -220,13 +258,7 @@ func scanBodyReadFile(f *ast.File, label string) []string {
 		where := fmt.Sprintf("%s:%s", label, fn.Name.Name)
 		aliases := bodyAliases(fn.Body)
 		truncating := truncatingAliases(fn.Body, ioName)
-		isTruncating := func(e ast.Expr) bool {
-			if truncatingReader(e, ioName) {
-				return true
-			}
-			id, ok := e.(*ast.Ident)
-			return ok && truncating[id.Name]
-		}
+		isTruncating := func(e ast.Expr) bool { return buildsTruncating(e, ioName, truncating) }
 		isBody := func(e ast.Expr) bool {
 			if mentionsBody(e) {
 				return true
@@ -315,7 +347,35 @@ func truncatingReader(e ast.Expr, ioName string) bool {
 	return false
 }
 
-// truncatingAliases: local names assigned a truncating reader (lr := io.LimitReader(...)).
+// buildsTruncating reports whether e is, or holds anywhere inside it, a truncating reader
+// (truncatingReader) or a name in aliases. The Sel of a selector is a field or method name,
+// never a local, so only its X is searched.
+func buildsTruncating(e ast.Expr, ioName string, aliases map[string]bool) bool {
+	seen := false
+	ast.Inspect(e, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case nil:
+			return false
+		case *ast.SelectorExpr:
+			seen = seen || buildsTruncating(x.X, ioName, aliases)
+			return false
+		case *ast.Ident:
+			if aliases[x.Name] {
+				seen = true
+			}
+		case ast.Expr:
+			if truncatingReader(x, ioName) {
+				seen = true
+			}
+		}
+		return !seen
+	})
+	return seen
+}
+
+// truncatingAliases: local names assigned an expression that is or holds a truncating reader
+// (lr := io.LimitReader(...), br := bufio.NewReader(io.LimitReader(...))). One hop: a name
+// assigned another such name is not followed.
 func truncatingAliases(body *ast.BlockStmt, ioName string) map[string]bool {
 	out := map[string]bool{}
 	ast.Inspect(body, func(n ast.Node) bool {
@@ -323,7 +383,7 @@ func truncatingAliases(body *ast.BlockStmt, ioName string) map[string]bool {
 		case *ast.AssignStmt:
 			if len(x.Lhs) == len(x.Rhs) {
 				for i, r := range x.Rhs {
-					if id, ok := x.Lhs[i].(*ast.Ident); ok && truncatingReader(r, ioName) {
+					if id, ok := x.Lhs[i].(*ast.Ident); ok && buildsTruncating(r, ioName, nil) {
 						out[id.Name] = true
 					}
 				}
@@ -331,7 +391,7 @@ func truncatingAliases(body *ast.BlockStmt, ioName string) map[string]bool {
 		case *ast.ValueSpec:
 			if len(x.Names) == len(x.Values) {
 				for i, v := range x.Values {
-					if truncatingReader(v, ioName) {
+					if buildsTruncating(v, ioName, nil) {
 						out[x.Names[i].Name] = true
 					}
 				}
