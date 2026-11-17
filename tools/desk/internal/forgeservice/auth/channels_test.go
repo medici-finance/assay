@@ -239,6 +239,7 @@ func TestForgeLocalAuthorityChannelRestart(t *testing.T) {
 	})
 }
 
+// regression: #6668
 func TestForgeLocalAuthorityControlCapacity(t *testing.T) {
 	f := newAuthorityFixture(t, nil)
 	var connections []net.Conn
