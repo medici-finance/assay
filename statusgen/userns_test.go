@@ -95,11 +95,10 @@ var sgOwnerReaders = map[string]string{
 }
 
 // regression: #6768
-// TestStatusgenOwnerReadersKnown: any new file that reads a file owner's uid (a Stat_t and
-// its Uid) fails here until it is listed in sgOwnerReaders with its reason, so a new
+// TestStatusgenOwnerReadersKnown: any new file that reads a file owner's uid (a Stat_t or
+// Statx_t and its Uid) fails here until it is listed in sgOwnerReaders with its reason, so a new
 // root-owner check cannot land without the namespace gate being considered.
 func TestStatusgenOwnerReadersKnown(t *testing.T) {
-	uid := regexp.MustCompile(`\.Uid\b`)
 	seen := map[string]bool{}
 	err := filepath.WalkDir(".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -118,7 +117,7 @@ func TestStatusgenOwnerReadersKnown(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		if !strings.Contains(string(b), "Stat_t") || !uid.Match(b) {
+		if !sgReadsOwnerUID(b) {
 			return nil
 		}
 		seen[filepath.ToSlash(p)] = true
@@ -133,6 +132,35 @@ func TestStatusgenOwnerReadersKnown(t *testing.T) {
 	for f := range sgOwnerReaders {
 		if !seen[f] {
 			t.Errorf("sgOwnerReaders lists %s, which no longer reads a file owner: drop it", f)
+		}
+	}
+}
+
+// sgOwnerStatType matches each stat struct that carries a file owner: Stat_t (syscall or unix) and
+// unix.Statx_t, whose name does not contain Stat_t.
+var sgOwnerStatType = regexp.MustCompile(`Statx?_t\b`)
+
+// sgOwnerUIDField matches a read of a Uid field.
+var sgOwnerUIDField = regexp.MustCompile(`\.Uid\b`)
+
+// sgReadsOwnerUID: the source names a stat struct that carries a file owner and reads a Uid field.
+func sgReadsOwnerUID(src []byte) bool {
+	return sgOwnerStatType.Match(src) && sgOwnerUIDField.Match(src)
+}
+
+// regression: #6781
+// TestStatusgenOwnerScanStatx: the owner-reader scan sees a file owner read through either stat struct,
+// so a root-owner check written against unix.Statx_t cannot pass the scan unlisted.
+func TestStatusgenOwnerScanStatx(t *testing.T) {
+	for src, want := range map[string]bool{
+		"func f(st *syscall.Stat_t) bool { return st.Uid == 0 }": true,
+		"func f(st *unix.Stat_t) bool { return st.Uid == 0 }":    true,
+		"func f(st *unix.Statx_t) bool { return st.Uid == 0 }":   true,
+		"func f(u *user.User) bool { return u.Uid == \"0\" }":    false,
+		"func f(st *unix.Statx_t) bool { return st.Ino == 1 }":   false,
+	} {
+		if got := sgReadsOwnerUID([]byte(src)); got != want {
+			t.Errorf("sgReadsOwnerUID(%q) = %v, want %v", src, got, want)
 		}
 	}
 }
