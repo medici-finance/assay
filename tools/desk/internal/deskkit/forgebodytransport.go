@@ -60,14 +60,14 @@ func capForgeBodies(rt http.RoundTripper) http.RoundTripper {
 }
 
 // cappedForgeClient returns a copy of c whose transport caps every response body. c is
-// never mutated.
+// never mutated; a nil c starts from BoundedHTTPClient, so the copy keeps a deadline.
 func cappedForgeClient(c *http.Client) *http.Client {
-	cp := &http.Client{}
-	if c != nil {
-		*cp = *c
+	if c == nil {
+		c = BoundedHTTPClient()
 	}
+	cp := *c
 	cp.Transport = capForgeBodies(cp.Transport)
-	return cp
+	return &cp
 }
 
 func forgeBodyOverCap(req *http.Request, limit int64) error {
