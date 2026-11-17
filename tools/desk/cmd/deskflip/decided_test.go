@@ -297,3 +297,31 @@ func TestFlipUndeclaredFindingPostedDuringChecksIsCaught(t *testing.T) {
 		t.Errorf("the reviews were read %d time(s) — the pre-mutation re-read is what closes this race", reads)
 	}
 }
+
+// TestFlipNoneVerdictFlips pins issue #4870 at the verb: an approval at head whose body says
+// `Undeclared-desk-decision: none` (bare, or with an explanation after a separator) flips,
+// while a value that only starts with "none" still refuses.
+// regression: #4870
+func TestFlipNoneVerdictFlips(t *testing.T) {
+	for _, c := range []struct {
+		value string
+		flips bool
+	}{
+		{"none", true},
+		{"none. The two recorded entries are accurate.", true},
+		{"none found — nothing reversible was chosen", true},
+		{"none of the above, but a retry default was chosen", false},
+	} {
+		s := newStub()
+		s.install(t)
+		s.reviews = approvalAtHead(t, headSHA)
+		s.reviews[0].Body = "looks correct\nUndeclared-desk-decision: " + c.value
+		rc := run([]string{"7", "--repo", privateCIRepo})
+		if c.flips && (rc != deskkit.ExitOK || !s.flipped()) {
+			t.Errorf("%q: rc = %d, flipped = %v; want a flip", c.value, rc, s.flipped())
+		}
+		if !c.flips && (rc != deskkit.ExitRefused || len(s.mutated()) != 0) {
+			t.Errorf("%q: rc = %d, mutations = %v; want refused", c.value, rc, s.mutated())
+		}
+	}
+}

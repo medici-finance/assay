@@ -13,6 +13,8 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"go/parser"
 	"go/token"
@@ -381,14 +383,143 @@ func (t *readSetTarget) finish(l traceLog) string {
 	if t.env.StateDir == "" {
 		return evaluation.ReadSetCellToken("", "the read-set file could not be written")
 	}
-	dst := readSetStatePath(t.env.StateDir, digest)
-	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
-		return evaluation.ReadSetCellToken("", "the read-set file could not be written")
-	}
-	if err := os.WriteFile(dst, content, 0o644); err != nil {
+	if err := writeReadSetFile(t.env.StateDir, digest, content, randomTempSuffix); err != nil {
 		return evaluation.ReadSetCellToken("", "the read-set file could not be written")
 	}
 	return evaluation.ReadSetCellToken(digest, "")
+}
+
+// Retention for the state directory: a read-set file waits there only until
+// the landing copies it beside its brief, so pruneReadSets keeps files
+// younger than readSetMaxAge (a file exactly that old goes) and, of those,
+// the newest readSetMaxFiles.
+const (
+	readSetMaxAge   = 30 * 24 * time.Hour
+	readSetMaxFiles = 256
+)
+
+// writeReadSetFile writes content as the read-set file named digest under
+// stateDir (readSetStatePath), then prunes the directory (pruneReadSets).
+// It never follows a link: the state directory must be a real directory
+// (Lstat), a non-regular entry at the file's name (a planted symlink) is
+// refused, and the bytes go to a fresh temp file opened
+// O_CREATE|O_EXCL|O_NOFOLLOW and renamed into place, so an existing file is
+// replaced, never rewritten in place, and a reader sees the old file or the
+// whole new one. suffix names each temp-file attempt; the caller passes
+// randomTempSuffix, and a test passes a fixed name to plant an entry there.
+func writeReadSetFile(stateDir, digest string, content []byte, suffix func() (string, error)) error {
+	dst := readSetStatePath(stateDir, digest)
+	dir := filepath.Dir(dst)
+	if err := os.Mkdir(dir, 0o755); err != nil && !os.IsExist(err) {
+		return err
+	}
+	if fi, err := os.Lstat(dir); err != nil {
+		return err
+	} else if !fi.IsDir() {
+		return fmt.Errorf("read-set state directory %s is not a directory (%s)", dir, fi.Mode().Type())
+	}
+	if fi, err := os.Lstat(dst); err == nil && !fi.Mode().IsRegular() {
+		return fmt.Errorf("read-set file %s is not a regular file (%s)", dst, fi.Mode().Type())
+	}
+	f, tmp, err := createReadSetTemp(dir, digest, suffix)
+	if err != nil {
+		return err
+	}
+	_, werr := f.Write(content)
+	if cerr := f.Close(); werr == nil {
+		werr = cerr
+	}
+	if werr == nil {
+		werr = os.Rename(tmp, dst)
+	}
+	if werr != nil {
+		_ = os.Remove(tmp)
+		return werr
+	}
+	pruneReadSets(dir, digest, time.Now())
+	return nil
+}
+
+// randomTempSuffix is the production temp-name source: 64 random bits.
+func randomTempSuffix() (string, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b[:]), nil
+}
+
+// createReadSetTemp opens a new temp file beside the read-set file, never
+// one that already exists and never through a link.
+func createReadSetTemp(dir, digest string, suffix func() (string, error)) (*os.File, string, error) {
+	var err error
+	for i := 0; i < 16; i++ {
+		var sfx string
+		if sfx, err = suffix(); err != nil {
+			return nil, "", err
+		}
+		p := filepath.Join(dir, "."+digest+"."+sfx+".tmp")
+		f, oerr := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL|readSetNoFollow, 0o644)
+		if oerr == nil {
+			return f, p, nil
+		}
+		if err = oerr; !os.IsExist(oerr) {
+			break
+		}
+	}
+	return nil, "", err
+}
+
+// pruneReadSets bounds the state directory dir: it removes every read-set
+// file (a 64-hex name) or leftover temp file aged readSetMaxAge or more, then
+// the oldest read-set files beyond readSetMaxFiles. The file named keep, just
+// written, always stays. Any other entry is left alone. Best effort: a file
+// it cannot stat or remove is skipped.
+func pruneReadSets(dir, keep string, now time.Time) {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	type aged struct {
+		name string
+		mod  time.Time
+	}
+	var fresh []aged
+	for _, e := range ents {
+		n := e.Name()
+		isSet, isTmp := isReadSetName(n), strings.HasPrefix(n, ".") && strings.HasSuffix(n, ".tmp")
+		if n == keep || (!isSet && !isTmp) || !e.Type().IsRegular() {
+			continue
+		}
+		fi, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if now.Sub(fi.ModTime()) >= readSetMaxAge {
+			_ = os.Remove(filepath.Join(dir, n))
+		} else if isSet {
+			fresh = append(fresh, aged{n, fi.ModTime()})
+		}
+	}
+	sort.Slice(fresh, func(i, j int) bool { return fresh[i].mod.After(fresh[j].mod) })
+	for i, a := range fresh {
+		if i+1 >= readSetMaxFiles { // keep occupies one slot
+			_ = os.Remove(filepath.Join(dir, a.name))
+		}
+	}
+}
+
+// isReadSetName reports whether n is a read-set file name: 64 lowercase hex.
+func isReadSetName(n string) bool {
+	if len(n) != 64 {
+		return false
+	}
+	for _, c := range n {
+		if !('0' <= c && c <= '9' || 'a' <= c && c <= 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // newRecordEnv observes the session context once: the tree's toplevel, git

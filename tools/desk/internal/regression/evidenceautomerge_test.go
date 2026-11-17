@@ -55,7 +55,7 @@ func TestEvidenceCompletionCanonicalReaders(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX workflow adapter runs in the Linux floor")
 	}
-	bodies := []string{"Security-Review: pass", "Security-Review: fail", "Verdict: approve", "Verdict: request-changes", "Undeclared-desk-decision: pending", "ordinary note"}
+	bodies := []string{"Security-Review: pass", "Security-Review: fail", "Verdict: approve", "Verdict: request-changes", "Undeclared-desk-decision: pending", "Undeclared-desk-decision: none", "Undeclared-desk-decision: none observed \u2014 checked", "Undeclared-desk-decision: none of the above but X", "Undeclared-desk-decision: nonexistent", "Undeclared-desk-decision:", "Undeclared-desk-decision: none\u00a0", "ordinary note"}
 	var cases []map[string]any
 	for _, body := range bodies {
 		for _, form := range []string{body, "**" + body + "**", "`" + body + "`", "> " + body, "* " + body, "```text\n" + body + "\n```", "~~~\n" + body + "\n~~~", "| " + body + " |", strings.ReplaceAll(body, "pass", "pa*ss"), strings.ToUpper(body), strings.ReplaceAll(body, "i", "\u0131"), strings.ReplaceAll(body, "i", "\u0130"), strings.ReplaceAll(body, "s", "\u017f")} {
@@ -102,6 +102,15 @@ func TestEvidenceCompletionCanonicalReaders(t *testing.T) {
 			timelines = append(timelines, map[string]any{"reviews": reviews, "head": head, "clear": deskkit.DeskDecidedRefusal(1, nil, "", reviews, "assay-reviewer-app[bot]", head) == ""})
 		}
 	}
+	// A none value on the approving verdict is no hold in either reader (#4870); the
+	// workflow's own hold site, not only the adapter helper, must agree.
+	for _, line := range []string{"none", "none — checked", "none of these but X", ""} {
+		reviews := []deskkit.DeskDecidedReview{
+			{Login: "assay-reviewer-app[bot]", State: "COMMENTED", CommitID: head, Body: "Security-Review: pass"},
+			{Login: "assay-reviewer-app[bot]", State: "APPROVED", CommitID: head, Body: "Verdict: approve\nUndeclared-desk-decision: " + line},
+		}
+		timelines = append(timelines, map[string]any{"reviews": reviews, "head": head, "clear": deskkit.DeskDecidedRefusal(1, nil, "", reviews, "assay-reviewer-app[bot]", head) == ""})
+	}
 	raw, err := json.Marshal(map[string]any{"markers": cases, "declarations": declarations, "timelines": timelines})
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +125,7 @@ import merge_clean as m
 for case in json.load(sys.stdin)["markers"]:
  body=case["body"]
  values=m.marker_values(body,r"Verdict:[ \t]*(approve|request-changes)",True)
- actual={"pass":bool(m.marker_values(body,r"Security-Review:[ \t]*pass",True)),"fail":bool(m.marker_values(body,r"Security-Review:[ \t]*fail")),"hold":bool(m.marker_values(body,r"Undeclared-desk-decision:[ \t]*(.+)")),"correctness":"CHANGES_REQUESTED" if m.marker_values(body,r"Verdict:[ \t]*request-changes") else "APPROVED" if any(value.lower()=="approve" for value in values) else ""}
+ actual={"pass":bool(m.marker_values(body,r"Security-Review:[ \t]*pass",True)),"fail":bool(m.marker_values(body,r"Security-Review:[ \t]*fail")),"hold":bool(m.undeclared_values(body)),"correctness":"CHANGES_REQUESTED" if m.marker_values(body,r"Verdict:[ \t]*request-changes") else "APPROVED" if any(value.lower()=="approve" for value in values) else ""}
  for key,value in actual.items():
   assert value==case[key],(body,key,value,case[key])
 `

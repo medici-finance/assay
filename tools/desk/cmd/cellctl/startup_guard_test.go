@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -46,9 +47,10 @@ func startupWalkSites(name string, src []byte) ([]string, error) {
 							bad = append(bad, name+":"+fn.Name.Name)
 						}
 					case "Check":
-						// upCacheClean is `up`'s one clean after a reclaimable
-						// deferral (#6117); its only caller is pinned below.
-						if fn.Name.Name != "cmdCache" && fn.Name.Name != "resetCell" && fn.Name.Name != "upCacheClean" {
+						// launchCacheClean is a launch's one clean after a
+						// reclaimable (#6117) or stale (#6593) deferral; its
+						// callers are pinned below.
+						if fn.Name.Name != "cmdCache" && fn.Name.Name != "resetCell" && fn.Name.Name != "launchCacheClean" {
 							bad = append(bad, name+":"+fn.Name.Name)
 						}
 					case "CheckRecorded", "Admit", "AdmitRecorded", "Wipe":
@@ -64,11 +66,20 @@ func startupWalkSites(name string, src []byte) ([]string, error) {
 	return bad, nil
 }
 
-// upCleanPins maps each step of `up`'s one cache clean (#6117) to the only
-// function allowed to name it: the clean belongs to up's preparation, and
-// that preparation to cmdUp. Any reference counts, not only a call, so a
-// method value handed to another launch path is caught too.
-var upCleanPins = map[string]string{"upCacheClean": "upPrepareLaunch", "upPrepareLaunch": "cmdUp"}
+// upCleanPins maps each step of a launch's one cache clean to the only
+// functions allowed to name it. The clean belongs to the once-only retry; the
+// reclaimable retry (#6117) to cmdUp alone, and the stale-measurement retry
+// (#6593) to the desk and scratch launch owners. Any reference counts, not
+// only a call, so a method value handed to another launch path is caught too.
+var upCleanPins = map[string][]string{
+	// Every launch owner prepares through the once-only retry, so a new one
+	// cannot refuse on a stale measurement without re-measuring (#6593).
+	"prepareLaunch":       {"prepareLaunchOnce"},
+	"launchCacheClean":    {"prepareLaunchOnce"},
+	"prepareLaunchOnce":   {"upPrepareLaunch", "launchPrepareLaunch"},
+	"upPrepareLaunch":     {"cmdUp"},
+	"launchPrepareLaunch": {"deskLaunch", "beginScratch"},
+}
 
 func upCleanSites(name string, src []byte) ([]string, error) {
 	f, err := parser.ParseFile(token.NewFileSet(), name, src, 0)
@@ -86,7 +97,7 @@ func upCleanSites(name string, src []byte) ([]string, error) {
 			if !ok {
 				return true
 			}
-			if owner, pinned := upCleanPins[sel.Sel.Name]; pinned && fn.Name.Name != owner {
+			if owners, pinned := upCleanPins[sel.Sel.Name]; pinned && !slices.Contains(owners, fn.Name.Name) {
 				bad = append(bad, name+":"+fn.Name.Name+"->"+sel.Sel.Name)
 			}
 			return true
@@ -96,10 +107,10 @@ func upCleanSites(name string, src []byte) ([]string, error) {
 }
 
 func startupWalkGuard(t *testing.T) {
-	pinned, err := upCleanSites("second.go", []byte("package main;func deskLaunch(){c.upCacheClean(\"x\")};func scratchLaunch(){f := c.upPrepareLaunch;f()};func upPrepareLaunch(){c.upCacheClean(\"x\")};func cmdUp(){c.upPrepareLaunch()}"))
+	pinned, err := upCleanSites("second.go", []byte("package main;func deskLaunch(){c.launchCacheClean(\"x\",\"y\")};func scratchLaunch(){f := c.upPrepareLaunch;f()};func dispatch(){c.launchPrepareLaunch()};func prepareLaunchOnce(){c.launchCacheClean(\"x\",\"y\")};func upPrepareLaunch(){c.prepareLaunchOnce()};func cmdUp(){c.upPrepareLaunch()};func beginScratch(){c.launchPrepareLaunch()};func newLaunch(){c.prepareLaunch()};func prepareLaunchOnce(){c.prepareLaunch()}"))
 	must(t, err)
-	if len(pinned) != 2 || pinned[0] != "second.go:deskLaunch->upCacheClean" || pinned[1] != "second.go:scratchLaunch->upPrepareLaunch" {
-		t.Fatal("planted second up-clean caller escaped", pinned)
+	if len(pinned) != 4 || pinned[0] != "second.go:deskLaunch->launchCacheClean" || pinned[1] != "second.go:scratchLaunch->upPrepareLaunch" || pinned[2] != "second.go:dispatch->launchPrepareLaunch" || pinned[3] != "second.go:newLaunch->prepareLaunch" {
+		t.Fatal("planted second launch-clean caller escaped", pinned)
 	}
 	planted, err := startupWalkSites("second.go", []byte("package main;import cache \"github.com/medici-finance/assay/tools/desk/internal/cellcache\";func secondStartup(){s.Sweep(p,true)};func secondCacheStartup(){cache.Check(p,true)};func secondMaintainStartup(){cache.Maintain(ctx,p)};func secondPeriodic(){s.SweepIfDue(p,i,true)}"))
 	must(t, err)
@@ -122,7 +133,7 @@ func startupWalkGuard(t *testing.T) {
 		bad, err = upCleanSites(entry.Name(), src)
 		must(t, err)
 		if len(bad) > 0 {
-			t.Fatalf("up's cache clean reached from outside cmdUp: %v", bad)
+			t.Fatalf("launch preparation or its one cache clean reached from outside its pinned owners: %v", bad)
 		}
 	}
 }

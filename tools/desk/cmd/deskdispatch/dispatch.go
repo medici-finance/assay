@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -2038,18 +2039,31 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			stepModelStamp, repo, o.pr, forge, firstLine(eerr.Error())), eerr)
 	}
 	tl := deskkit.StampTimeline{Present: change.Labels, Events: events}
+	// A family alias (`opus`) over a standing full id of that family (`claude-opus-5-5`) keeps
+	// the full id, so two spellings of one model never replace each other. Only when NO
+	// attestation is named: a bound run stamps exactly the selection the record binds, so a
+	// settlement never replaces an attestation that is already bound. The receipt says so.
+	settled := ""
+	if bound == "" {
+		asked := labels
+		labels = stampKind.SettleRequest(tl, labels, deskkit.IsStampAuthorityLogin)
+		if !slices.Equal(asked, labels) {
+			settled = fmt.Sprintf(" (SETTLED: requested %s kept as the standing %s, the full id of that model family)",
+				asked[0], labels[0])
+		}
+	}
 	// Only labels of THIS kit's pair are read, removed or verified: an authoring re-stamp
 	// never removes a review session's dispatched-* pair, and the reverse (#2760).
 	stale := stampKind.ReStampRemovals(tl, labels, deskkit.IsStampAuthorityLogin)
 	if o.dryRun {
-		return fmt.Sprintf("PLAN: repo=%s pr=%d role=%s model=%s tier=%s remove=%v apply=%v (%s)%s; nothing written or verified", repo, o.pr, stampRole, o.model, o.tier, stale, labels, forge, bound), nil
+		return fmt.Sprintf("PLAN: repo=%s pr=%d role=%s model=%s tier=%s remove=%v apply=%v (%s)%s; nothing written or verified", repo, o.pr, stampRole, o.model, o.tier, stale, labels, forge, bound+settled), nil
 	}
 	if len(stale) == 0 && labelsPresent(change.Labels, labels) {
 		// An IDENTICAL stamp already standing under the dispatcher is a no-op: nothing is
 		// removed and nothing is re-applied, so a re-dispatch neither churns the label
 		// history nor leaves the PR briefly unstamped.
 		return fmt.Sprintf("OK: verified %s already standing on %s#%d under accepted stamp authority (%s)%s — an identical stamp is a no-op, nothing was written",
-			strings.Join(labels, " + "), repo, o.pr, forge, bound), nil
+			strings.Join(labels, " + "), repo, o.pr, forge, bound+settled), nil
 	}
 	if err := deskkit.ApplyVerifiedStamp(fg, fr, o.pr, deskkit.TargetChange, stampKind, labels, deskkit.IsStampAuthorityLogin); err != nil {
 		return "", err
@@ -2066,10 +2080,10 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	if stampKind == deskkit.StampAuthored {
 		return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App — the authoring attestation; "+
 			"no dispatched-* label was read or written, and the capability floor does not read this pair (%s)%s%s",
-			strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped, bound), nil
+			strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped, bound+settled), nil
 	}
-	return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App, the identity the capability floor accepts (%s)%s",
-		strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped), nil
+	return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App, the identity the capability floor accepts (%s)%s%s",
+		strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped, settled), nil
 }
 
 // labelsPresent reports whether every wanted label is already on the change, by the same

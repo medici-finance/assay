@@ -258,6 +258,14 @@ type rulingIssue struct {
 type rulingIssueBinding struct {
 	what  string
 	rules func(iss rulingIssue, link rulingLink) bool
+	// allowPull admits a pull-request conversation comment. Only an
+	// Evidence-Repair approval sets it (#6616); every decision record still
+	// refuses a pull request.
+	allowPull bool
+	// comment, when set, is a further rule on the comment body, run after it
+	// names the record; a non-empty result refuses with that detail. Only an
+	// Evidence-Repair approval sets it (#6616).
+	comment func(body string) string
 }
 
 // resolveRulingOn is resolveRuling with condition 6 supplied by the caller. Every
@@ -362,6 +370,17 @@ func resolveRulingOn(c *ghClient, prRepo string, rec decisionRecordStamp, humanL
 	if strings.EqualFold(cm.User.Type, "Bot") || strings.HasSuffix(strings.ToLower(cm.User.Login), "[bot]") {
 		return refuse(rulingBotAuthor, "comment %d is authored by %s (type %q) — a bot account is not a human allowed to decide", link.CommentID, cm.User.Login, cm.User.Type)
 	}
+	// 3b. Only a personal account rules: the forge's account type must read
+	// User. A type the payload leaves out could not be checked (never read as
+	// User); any other type — an organization, a mannequin, one the forge adds
+	// later — is refused as a non-human author, whatever the map says about its
+	// login.
+	if strings.TrimSpace(cm.User.Type) == "" {
+		return refuse(rulingUnresolvable, "comment %d on %s: the payload names no account type for %s — whether a personal account wrote it could not be checked", link.CommentID, link.Repo, cm.User.Login)
+	}
+	if !strings.EqualFold(cm.User.Type, "User") {
+		return refuse(rulingBotAuthor, "comment %d is authored by %s (type %q) — only a personal account of type User can rule", link.CommentID, cm.User.Login, cm.User.Type)
+	}
 
 	// 4. The author maps to a human allowed to decide — and to THE human the stamp
 	// names, when it names one.
@@ -399,6 +418,11 @@ func resolveRulingOn(c *ghClient, prRepo string, rec decisionRecordStamp, humanL
 	if !commentNamesRecord(cm.Body, rec.ID) {
 		return refuse(rulingRecordNotNamed, "comment %d on %s does not name the record %s — the ruling comment must name the record it rules on", link.CommentID, link.Repo, rec.ID)
 	}
+	if binding.comment != nil {
+		if why := binding.comment(cm.Body); why != "" {
+			return refuse(rulingRecordNotNamed, "comment %d on %s %s", link.CommentID, link.Repo, why)
+		}
+	}
 
 	// 6. The issue is a decision issue for THIS record.
 	ibody, istatus, ierr := c.GetIssue(link.Repo, link.Issue)
@@ -415,7 +439,7 @@ func resolveRulingOn(c *ghClient, prRepo string, rec decisionRecordStamp, humanL
 	if jerr := json.Unmarshal(ibody, &iss); jerr != nil {
 		return refuse(rulingUnresolvable, "issue %s#%d: HTTP 200 but the payload did not parse", link.Repo, link.Issue)
 	}
-	if len(iss.PullRequest) > 0 && string(iss.PullRequest) != "null" {
+	if !binding.allowPull && len(iss.PullRequest) > 0 && string(iss.PullRequest) != "null" {
 		return refuse(rulingUnrelatedIssue, "%s#%d is a pull request, not a decision issue", link.Repo, link.Issue)
 	}
 	if !binding.rules(rulingIssue{Body: iss.Body}, link) {
