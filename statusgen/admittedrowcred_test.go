@@ -208,6 +208,56 @@ func TestAdmittedRowSeesDelivery(t *testing.T) {
 	}
 }
 
+// regression: F6
+// TestAdmittedScrubbedInputCouldNotRun: under admission, a row that reads an
+// ASSAY_* input the scrub removes is could-not-run, with a note naming the
+// variable, never fail: it cannot run as written there (desk decisions 10 and
+// 11). Each quoting form a row guards with is covered. The unadmitted control,
+// with the same inputs set, runs and passes each row.
+func TestAdmittedScrubbedInputCouldNotRun(t *testing.T) {
+	rows := map[string]string{
+		"ASSAY_TEST_POSTGRES_DSN":     `test -n "$ASSAY_TEST_POSTGRES_DSN"`,
+		"ASSAY_TEST_PERF_DSN":         `[ -n "${ASSAY_TEST_PERF_DSN}" ]`,
+		"ASSAY_CELL_API_PROFILE":      `test -n "${ASSAY_CELL_API_PROFILE:-}"`,
+		"ASSAY_OPERATOR_TEST_IMAGE":   `test "${#ASSAY_OPERATOR_TEST_IMAGE}" -gt 0`,
+		"ASSAY_DISPOSABLE_KUBECONFIG": `test -n "${ASSAY_DELIVERY_SHA}" && test "${ASSAY_DISPOSABLE_KUBECONFIG+set}" = set`,
+	}
+	for name, row := range rows {
+		for _, admit := range []bool{true, false} {
+			t.Run(name+map[bool]string{true: "/admitted", false: "/control"}[admit], func(t *testing.T) {
+				root, _ := admittedFixture(t, admit)
+				for _, kv := range []string{"ASSAY_TEST_POSTGRES_DSN=postgres://example.invalid/db",
+					"ASSAY_TEST_PERF_DSN=postgres://example.invalid/perf", "ASSAY_CELL_API_PROFILE=fixture",
+					"ASSAY_OPERATOR_TEST_IMAGE=example.invalid/op:1", "ASSAY_DISPOSABLE_KUBECONFIG=/k",
+					"ASSAY_DELIVERY_SHA=" + rowInputSHA} {
+					k, v, _ := strings.Cut(kv, "=")
+					t.Setenv(k, v)
+				}
+				tick := string(rune(96))
+				brief := filepath.Join(t.TempDir(), "brief.md")
+				body := "# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | " + tick + row + tick + " | exit 0 |\n\n## Evidence\n\n"
+				if err := os.WriteFile(brief, []byte(body), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				got, out := captureVerifyrunOut(t, []string{"--brief", brief, "--root", root, "--dry-run"})
+				if !admit {
+					if got.code != verifyrunExitPass {
+						t.Fatalf("plant did not land: the unadmitted row did not pass (exit %d):\n%s", got.code, out)
+					}
+					return
+				}
+				if got.code != verifyrunExitCouldNot {
+					t.Fatalf("admitted row that reads the scrubbed %s gave exit %d, want could-not-run (exit %d):\n%s",
+						name, got.code, verifyrunExitCouldNot, out)
+				}
+				if !strings.Contains(out, name) || !strings.Contains(out, "outside admission") {
+					t.Fatalf("could-not-run note does not name %s and say to run outside admission:\n%s", name, out)
+				}
+			})
+		}
+	}
+}
+
 // TestRowreadBrokerClosed: the run's row-read socket answers only the rowread
 // verb's own closed set (a write verb is refused before any reader starts),
 // and a row whose run cannot be reached gets a could-not-check, never an
