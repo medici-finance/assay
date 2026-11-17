@@ -591,7 +591,14 @@ type runResult struct {
 	output      []byte
 	couldNotRun bool
 	reason      string
+	reads       string // the read-set cell the recorder gave this row, if any
 }
+
+// rowExitError is a traced row's non-zero exit: the recorder reaps the row
+// itself, so there is no *exec.ExitError. code is -1 for a signal.
+type rowExitError struct{ code int }
+
+func (e rowExitError) Error() string { return "exit status " + strconv.Itoa(e.code) }
 
 // ---------------------------------------------------------------------------
 // Shell selection — resolved ONCE per run, before any row executes
@@ -634,6 +641,9 @@ type shellPlan struct {
 	// captureOutput is an opt-in base-run sink. It sees primary bytes only for
 	// commands that ran; a failed write stops later rows and prevents a witness.
 	captureOutput func(string, []byte) error
+	// readSet, when set, records each row's read set (build-less-brittle/15,
+	// Linux only); runWitnessesSandboxed narrows it to the row.
+	readSet *readSetTarget
 }
 
 // rowEnv is the environment every Verify row of the run executes in: the
@@ -913,6 +923,33 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	// `\|`-unescaping is a MARKDOWN-table convention, so it applies to every shell.
 	argv := append(append([]string{}, wrapper...), shellArgv...)
 	argv = append(argv, unescapePipes(command))
+	// The read-set recorder (build-less-brittle/15) traces an `sh` row on
+	// Linux when the run names a target; it reaps the row itself, so it runs
+	// the command its own way. A host that refuses the tracer runs the row
+	// below as ever, its token saying why no read set was recorded.
+	var reads string
+	if plan.readSet != nil && posixShell {
+		tr, handled := traceRow(ctx, newRowCmd(ctx, root, argv, plan, shell), plan.readSet, len(wrapper) > 0)
+		if handled {
+			res := classifyRowRun(plan, ctx, timeout, posixShell, tr.output, tr.err)
+			if !res.couldNotRun {
+				res.reads = tr.reads
+			}
+			return res
+		}
+		reads = tr.reads
+	}
+	out, err := runRowCmd(ctx, newRowCmd(ctx, root, argv, plan, shell))
+	res := classifyRowRun(plan, ctx, timeout, posixShell, out, err)
+	if !res.couldNotRun {
+		res.reads = reads
+	}
+	return res
+}
+
+// newRowCmd builds one row's process: its own process group, the run's row
+// environment, no stdin.
+func newRowCmd(ctx context.Context, root string, argv []string, plan shellPlan, shell string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	// Keep the unchanged row deadline effective for ordinary descendants too:
 	// killing only the shell leaves children holding the output pipe, so a
@@ -941,7 +978,12 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	// blocks on input would hang to the timeout and report could-not-run for a
 	// reason that has nothing to do with the check.
 	cmd.Stdin = nil
+	return cmd
+}
 
+// runRowCmd runs an untraced row to completion and returns its combined
+// output and wait error.
+func runRowCmd(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
 	// One buffer for both streams, as CombinedOutput gives: exec shares a
 	// single pipe when Stdout and Stderr are the same writer.
 	var combined bytes.Buffer
@@ -954,7 +996,12 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 		err = cmd.Wait()
 		stopGroupKill()
 	}
-	out := combined.Bytes()
+	return combined.Bytes(), err
+}
+
+// classifyRowRun turns a finished row's output and wait error into its
+// result.
+func classifyRowRun(plan shellPlan, ctx context.Context, timeout time.Duration, posixShell bool, out []byte, err error) runResult {
 	// A stop signal is checked first: its cancellation is not a deadline, and
 	// a row it killed must never fall through to a pass/fail verdict.
 	if why := plan.interruption(); why != "" {
@@ -966,11 +1013,15 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 			reason: fmt.Sprintf("timed out after %s — no verdict was produced", timeout)}
 	}
 	var exitErr *exec.ExitError
+	var tracedExit rowExitError
 	switch {
 	case err == nil:
 		return runResult{exit: 0, output: out}
-	case errors.As(err, &exitErr):
-		code := exitErr.ExitCode()
+	case errors.As(err, &exitErr), errors.As(err, &tracedExit):
+		code := tracedExit.code
+		if exitErr != nil {
+			code = exitErr.ExitCode()
+		}
 		// 127 = command not found, 126 = found but not executable. These are
 		// the shell saying it never ran the check, and they are the only two
 		// "did not run" signals a POSIX shell reports distinctly. cmd/PowerShell
@@ -1671,6 +1722,10 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 			continue
 		}
 		var res runResult
+		// The recorder target, when the run has one, is narrowed to this row:
+		// its read set names the row's ID and command digest.
+		rowPlan := plan
+		rowPlan.readSet = plan.readSet.forRow(r.ID, r.Command)
 		// rowSandbox is the sandbox this row's network-off guarantee rests on:
 		// a check:ci row's own wrapper, or — in container-netns mode — the
 		// prechecked container every row runs in.
@@ -1685,15 +1740,15 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 			res = runResult{exit: -1, couldNotRun: true, reason: refused}
 		case sandbox == sandboxContainerNetns:
 			rowSandbox = sandbox
-			res = runVerifyCommandWith(root, r.Command, timeout, nil, plan, r.Shell)
+			res = runVerifyCommandWith(root, r.Command, timeout, nil, rowPlan, r.Shell)
 			if why, ok := modGapReclass(res, gaps); ok {
 				res.couldNotRun, res.reason = true, why
 			}
 		case r.Class == classCheckCI:
 			rowSandbox = sandboxUnshare
-			res = runHermeticallyWith(root, r.Command, timeout, plan, r.Shell)
+			res = runHermeticallyWith(root, r.Command, timeout, rowPlan, r.Shell)
 		default:
-			res = runVerifyCommandWith(root, r.Command, timeout, nil, plan, r.Shell)
+			res = runVerifyCommandWith(root, r.Command, timeout, nil, rowPlan, r.Shell)
 		}
 		state, note := parseExpect(r.Expect).verdict(res)
 		captureFailed := false
@@ -1739,10 +1794,14 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 
 // rowReads is an executed row's read-set token. A fail-first run (no tree)
 // and a row that never started carry none; every other row carries the
-// recorder's token, which off Linux is always a could-not-check.
+// recorder's token: the one the traced run wrote, else a could-not-check
+// (always so off Linux).
 func rowReads(tree string, res runResult) string {
 	if tree == "" || res.couldNotRun {
 		return ""
+	}
+	if res.reads != "" {
+		return res.reads
 	}
 	return rowReadSetToken()
 }
@@ -2068,7 +2127,12 @@ Flags:
                     line plus one legacy or an ordered chain of Acceptance-Transition
                     lines is a transition,
                     which needs --acceptance-forge on the host and executes the
-                    canonical original-plus-approved obligation plan. Open and
+                    canonical original-plus-approved obligation plan. A transition
+                    may end with Evidence-Repair: commit=<sha> approval=<url> lines:
+                    the driver's unedited comment sanctions an editorial
+                    repair (Date/Runner split, added principal) that touched no
+                    Verify row and no other cell; the byte-prefix check then
+                    starts from the Evidence at that commit. Open and
                     close use the same record; the container executes the receipt's
                     exact planned table, requires --root and refuses --acceptance-forge
                     and --fail-first (baseline history is outside this plan).
@@ -2866,6 +2930,13 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		if gaps := runModuleCacheGap(root); len(gaps) > 0 {
 			fmt.Fprintln(stderr, modCacheGapNotice(gaps))
 		}
+	}
+	// The read-set recorder (build-less-brittle/15) runs for the head run
+	// only, after any fail-first base run. It is off for a dry run, which
+	// writes nothing, and inside the container lane, whose mounted home must
+	// end the rows byte-identical; there every row records could-not-check.
+	if !*dryRun && !netnsContainer {
+		plan.readSet = newReadSetTarget(root, path, plan.rowEnv())
 	}
 	ws := runWitnessesSandboxed(plan, *sandbox, root, rows, runner, runnerSource, executionTree, nowFunc().Format("2006-01-02"), *timeout, *ci)
 	if ff != nil {

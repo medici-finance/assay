@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -76,11 +77,61 @@ func guardVerifiedOutcomes(root, landedRoot, target string, before, after []byte
 		if err != nil {
 			return err
 		}
-		if len(problems) > 0 {
-			return deskkit.Refused("verified outcome requires a lint-valid closure tree:\n" + strings.Join(problems, "\n"))
+		own, foreign := splitClosureProblems(problems, seen)
+		for _, p := range foreign {
+			fmt.Fprintf(stderr, "deskevidence: notice: %s — names a brief this record does not close; it is that brief's to fix, not this outcome's to block\n", p)
+		}
+		if len(own) > 0 {
+			return deskkit.Refused("verified outcome requires a lint-valid closure tree:\n" + strings.Join(own, "\n"))
 		}
 	}
 	return nil
+}
+
+// problemKeyRe is the `<stream>/<NN>` brief key statusgen leads a brief's PROBLEM with.
+var problemKeyRe = regexp.MustCompile(`^([a-z0-9][a-z0-9-]*)/0*([0-9]+[a-z]?)$`)
+
+// briefKey normalises a `<stream>/<NN>` key (leading zeros dropped, so a board's
+// "07" and a file's "7" agree), or returns "" when k is not one. The one parser
+// the closure gate and the landing and flip diffs (lintdiff.go) attribute by.
+func briefKey(k string) string {
+	m := problemKeyRe.FindStringSubmatch(strings.TrimSpace(k))
+	if m == nil {
+		return ""
+	}
+	return m[1] + "/" + m[2]
+}
+
+// problemBriefKey is the normalised brief key a PROBLEM line leads with, and the
+// text after it; key is "" when the leading segment is not a brief key (a path,
+// a stream, a register, a summary line).
+func problemBriefKey(p string) (key, rest string) {
+	lead, rest, _ := strings.Cut(strings.TrimSpace(strings.TrimPrefix(p, "PROBLEM:")), ":")
+	return briefKey(lead), strings.TrimSpace(rest)
+}
+
+// splitClosureProblems separates the lint PROBLEMs that name a brief this record
+// does not close (foreign) from the rest (own). The closure gate refuses on own
+// only, the same scoping the landing and flip gates apply through their
+// before/after diff (#4823). It fails closed: a PROBLEM naming a closed brief,
+// and any PROBLEM whose leading segment is not a parseable brief key (a path, a
+// stream, a register, a summary line), stays own and still refuses.
+func splitClosureProblems(problems []string, closed map[string]bool) (own, foreign []string) {
+	closedKeys := map[string]bool{}
+	for k := range closed {
+		if key := briefKey(k); key != "" {
+			closedKeys[key] = true
+		}
+	}
+	for _, p := range problems {
+		key, _ := problemBriefKey(p)
+		if key == "" || closedKeys[key] {
+			own = append(own, p)
+			continue
+		}
+		foreign = append(foreign, p)
+	}
+	return own, foreign
 }
 
 func checkVerifiedClosure(root, key string, options childOptions) (string, error) {

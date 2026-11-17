@@ -15,7 +15,7 @@ tools/desk/
   internal/deskkit/   ← shared safety plumbing (brief 01)
   cmd/<tool>/         ← one binary per workflow verb (deskpr = brief 04; 02/03/05/07 pending)
   dist/               ← desk-build output (unprivileged, git-ignored)
-  MANIFEST.sha256     ← written by `sudo make desk-install`; LOCAL, not committed
+                        (MANIFEST.sha256 is written into the INSTALL dir, never here; see Build & install)
 ```
 
 **New here?** The table below is the whole surface, one line per binary; then
@@ -1583,7 +1583,9 @@ desk decision; that is the reviewer's question, and the reviewer kit (`cmd/deskd
 references/review-prompt.md` §15) asks it on every review. A reviewer who judges that the
 diff took an undeclared reversible default names it in the verdict with the fixed line
 `Undeclared-desk-decision: <one line>`, and the flip refuses while that line stands at the
-CURRENT head — cleared by `deskpr edit --body-file <the PR's current body> --decided F`
+CURRENT head (a value of `none`, `none found`, `none observed` or `none identified`, any case,
+optionally followed by a separator and an explanation, records a clean check and holds
+nothing; an empty value holds) — cleared by `deskpr edit --body-file <the PR's current body> --decided F`
 and a fresh DECISIVE verdict (APPROVE or REQUEST_CHANGES) at the same head, in the same
 lane, that omits the line; no new commit required. The two review lanes are read separately, because the correctness and security
 verdicts are posted by the same reviewer App in parallel: a `Security-Review:` verdict never
@@ -2338,9 +2340,19 @@ sudo make desk-install   # HUMAN ONLY — see below
 each `cmd/*` binary to `/opt/desk-tools/bin/<tool>`, **root-owned 0755** — the sudo
 password is the manual permission gate; agents cannot write there. It stamps each
 binary with `-ldflags "-X …/deskkit.SourceSHA=<sha> -X …/deskkit.BuiltAt=<ts>"` and
-writes `tools/desk/MANIFEST.sha256` for drift verification. That manifest is a
-**local, generated artifact — it is NOT committed** (`git ls-tree origin/main tools/desk/`
-lists no such file); it describes only what is installed on this machine.
+writes `/opt/desk-tools/bin/MANIFEST.sha256` **beside the installed binaries** for drift
+verification. That manifest describes only what is installed on this machine, and it lives with
+those bytes, in the same `<sha256>  <path>` shape as the `MANIFEST.sha256` release tarballs
+carry at their root once the release workflow's manifest step (#6604) has cut a release; no
+release published before that step ships one, so after extracting such a tarball over the dir,
+rerun `sudo make desk-manifest` or install with `deskinstall` to rewrite the manifest. `deskinstall` writes one from the bytes it
+places, and lists only those: a binary installed into the same dir by another route (a
+standalone `statusgen`, say) is reported as present but not listed by
+`python3 -B -m tools.release.desk_manifest check`, though `sha256sum -c` passes. The older location,
+`tools/desk/MANIFEST.sha256` in the source tree, outlived every reinstall and went on describing a
+build that was no longer installed (#6604); `desk-manifest` now deletes it. Which file hashes which
+release artifact (`checksums.txt` versus the tarball manifest) is set out in
+[distribution.md](../../docs/distribution.md#the-umbrella-version).
 
 The install target builds as the invoking user (`$SUDO_USER`) and then installs the
 result as root, so the module cache is not written as root. Both `desk-build` and
@@ -3499,21 +3511,29 @@ sudo make desk-install   # HUMAN ONLY
    skipped, and foreign hooks are **refused** unless invoked with `FORCE=1` (`-Force` in
    PowerShell). Standalone hook installation requires `desk-build` first; an absent
    built guard refuses without changing hooks. No static-copy fallback remains.
-4. Runs `desk-manifest`: writes `tools/desk/MANIFEST.sha256` from the installed binaries.
+4. Runs `desk-manifest`: writes `/opt/desk-tools/bin/MANIFEST.sha256` from the installed
+   files (every regular file in the dir except the manifest), and deletes the obsolete
+   `tools/desk/MANIFEST.sha256`.
 
 `/opt/desk-tools/bin` is deliberately **not on `PATH`** — every desk tool is invoked by its
 absolute path, which is what makes the `Bash(/opt/desk-tools/bin/<tool> …)` allow rules
 anchor on a specific installed binary rather than on whatever a name resolves to.
 
-**Post-install drift check.** `desk-manifest` generates the manifest with
-`( cd /opt/desk-tools/bin && shasum -a 256 * )`, so its entries are **bare basenames** and
-`shasum -c` resolves them against the **current directory**. It must therefore be run from
-the install dir, against an absolute manifest path — running it from the repo root makes
-`shasum` look for `deskboard` in the repo root and fail to open every entry:
+**Post-install drift check.** The manifest's entries are **bare basenames** and `shasum -c`
+resolves them against the **current directory**, so run it from the install dir:
 
 ```bash
-( cd /opt/desk-tools/bin && shasum -a 256 -c /path/to/assay/tools/desk/MANIFEST.sha256 )
+( cd /opt/desk-tools/bin && shasum -a 256 -c MANIFEST.sha256 )
 ```
+
+It holds the hashes of the bytes the last install placed there — `make desk-install`,
+`deskinstall`, or a release tarball's own manifest when the tarball was extracted over the dir.
+A `deskinstall` older than #6604 flattens the tarball to base names and also places the
+tarball's manifest, whose `hooks/pre-push` line then names a path the flattened dir does not
+have, so the check fails on that line (`check` exits 1). Reinstall with a current `deskinstall`,
+or rerun `sudo make desk-manifest`, to rewrite it from what landed.
+Copying binaries in by any other route leaves it describing the previous bytes: rerun
+`sudo make desk-manifest` after such a copy, or expect those entries to fail.
 
 ### App credentials (`desktoken`, `deskpost`, `deskevidence`)
 
@@ -5394,16 +5414,56 @@ invocations each read a budget below the cap and both committed; measured, seedi
 `RateLimitPerPRPerHour-1` charged entries and holding one invocation inside its PUT produced
 **two commits and 11 charged writes against a 10 cap**.
 
+**The window is the write, not the run** (#5023). The lock is taken by
+`ac.enterWriteWindow` immediately before the budget read and held through the conditional
+forge write and the audit append; preparation (admission, remote snapshot, closure and
+decision-gate reads, the statusgen PROBLEM-diff) runs before it, so one landing's lint no
+longer holds the lock every other desk writer waits on. The remote target stays protected by
+the write itself, which is conditional on the blob preparation read: a target changed after
+preparation refuses with no write (`TestEvidenceSnapshotConcurrentFileEditRefuses`,
+`cmd/deskevidence/snapshot_test.go:122`), and an unrelated commit on the branch is still
+accepted (`TestEvidenceSnapshotUnrelatedCommitDoesNotConflict`, `snapshot_test.go:138`).
+Capability preflight (`RefuseIfTreeV2BelowV1`) reads only the local tree and the tool version,
+so it runs under the preparation lock; its refusal row is appended under the audit lock.
+Preparation stages content
+into the landing root, so it keeps its own exclusion: a per-root lock
+(`~/.config/assay/evidence-prep-<hash>.lock`) that serialises two landings on the SAME root and
+never two on different roots. The lock is keyed on the PARSED `--root` (either spelling the
+flag package accepts; a repeated `--root` is refused) and on the root admission names for the
+staged gates, each made canonical (absolute, symlinks resolved, then the directory's device and
+inode, or a case-folded path where those are unavailable), so two spellings of one directory
+take one lock (`TestDashRootTakesPrepLock`, `TestRecasedRootTakesPrepLock`,
+`TestRepeatedRootRefused`). A preparation lock that stays busy is contention, the same class
+as a busy audit lock (#6227): it is neither charged to the budget nor counted by the circuit
+breaker (`TestPrepBusyIsContended`).
+
+**The write window re-reads what preparation read.** Preparation holds no audit lock, so the
+write does not trust its reads: in `enterWriteWindow`, after the audit lock and before the
+budget, every input the write relies on is re-read through the uncached forge and a change
+refuses with nothing written. These are the admission (attestation, trust, labels, the home and
+tracking checkouts), the local evidence input (pinned by SHA-256 at preparation), visibility,
+the on-behalf-of principal, the board and the decision-gate verdict; on the outcome path, the
+record bytes, the join facts and their redaction, visibility, the principal and (for a
+branch-tip binding) the Evidence and observation bindings. The expensive staged gates (the
+statusgen PROBLEM-diff, verdict and sidecar checks) stay in preparation, their inputs pinned
+by those re-reads (`prepwindow_test.go`). A run that ends before its write window (refusal, noop, dry-run)
+takes the audit lock only for its one audit append. `TestBudgetOnlyInWriteWindow` fails any
+budget spend or audit-lock acquisition outside that window. The two locks share ONE 60s wait
+budget per run, so a refusal never waits twice: a run whose write-window lock (or preparation
+lock) stayed busy makes a single attempt at the audit lock for its refusal row and, failing
+that, appends it unlocked. `TestAuditWaitIsBounded` and `TestPrepRefusalWaitsOnce` pin the
+upper bound.
+
 Two details are load-bearing and easy to undo:
 
-- **Defer order.** `lock.release()` is registered BEFORE the deferred audit append, so
+- **Defer order.** `ac.releaseAuditLock()` is registered BEFORE the deferred audit append, so
   (Go runs defers LIFO) it runs after it. Swapping them puts the append outside the
   critical section, which is the exact window the lock exists to close. Guarded at source
   by `TestDeferOrderIsSourceGuarded` — the swap is not observable from a behavioural test
   (the gap is microseconds), so a source guard is the only thing that catches the refactor.
 - **It is a lock, not a retry.** The second caller does not lose a race and try again; it
   waits, then re-reads the ledger the first caller actually wrote. A lock it cannot get
-  inside 60s is Unverifiable (exit 6) — never "assume free" (C-10). A retry loop would
+  inside 60s of waiting in total (one budget across the preparation and audit locks) is Unverifiable (exit 6) — never "assume free" (C-10). A retry loop would
   only make the double-spend rarer. `TestContendedLockTimesOutUnverifiable` holds the lock
   from a second file description and pins both halves: it waits, and it then refuses.
 
@@ -5413,8 +5473,8 @@ Two limits, so the guarantee is not read as more than it is:
   do not serialise against each other. Each also writes its own `~/.config/assay/
   audit.jsonl`, so the rate-limit ledger they are protecting is per-host too — the lock is
   exactly as wide as the thing it guards, and no wider.
-- **The holder is bounded by an HTTP timeout, not by the lock.** Every network call runs
-  inside the critical section, so `httpClient` carries a 30s per-request `Timeout`
+- **The holder is bounded by an HTTP timeout, not by the lock.** The forge write and the
+  attribution read run inside the critical section, so `httpClient` carries a 30s per-request `Timeout`
   (`cmd/deskevidence/github.go`). Without it a hung connection would pin the *shared*
   `audit.lock` and starve `deskpost` and `deskrelease` with it. `deskpost` and
   `deskrelease` still use `http.DefaultClient` and do not have this bound. The timeout is
@@ -5422,8 +5482,8 @@ Two limits, so the guarantee is not read as more than it is:
   replaces `httpClient` with one wired to the fake, so the production declaration is never
   exercised and reverting it to `http.DefaultClient` used to survive the suite green.
 - **Failure mode: refuse, never proceed.** A lock that cannot be acquired — for any reason,
-  including the 60s deadline — returns `Unverifiable` from `runOutward` before
-  `cmdEvidence` is called, so nothing outward happens and exactly one audit line is
+  including the run's single 60s wait budget — returns `Unverifiable` from `enterWriteWindow` before the
+  budget is read, so nothing outward happens and exactly one audit line is
   written. There is no arm that degrades to "proceed unserialised", which would be worse
   than no lock because it would report success.
   `TestLockFailureStillWritesOneAuditLine` and `TestContendedLockTimesOutUnverifiable` both

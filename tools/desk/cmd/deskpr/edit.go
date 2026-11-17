@@ -60,7 +60,7 @@ func cmdEdit(args []string) (err error) {
 	bodyFile := fs.String("body-file", "", "path to a file holding the replacement PR body (required)")
 	title := fs.String("title", "", "replacement PR title (optional; the title is left alone when empty)")
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
-	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
+	applyOverride, scanOverride := deskkit.RegisterOutboundOverride(fs, "deskpr", "edit")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	decided := fs.String("decided", "", "path to a file declaring desk-taken decisions (decision:/alternative:/cost: triples, one item per numbered line) — writes/replaces the `## Desk-decided` block in the replacement body and applies the desk-decided label")
 	prNum := fs.Int("pr", 0, "edit THIS open PR instead of the one whose head branch is this worktree's branch: admitted when this checkout is the PR's own (its branch is the PR's head branch, or its HEAD commit is exactly the PR's head commit — #1901), or, from any other feature branch or detached HEAD, when the PR's head branch is in this repository and its current body already carries a link trailer (#2085)")
@@ -90,6 +90,11 @@ func cmdEdit(args []string) (err error) {
 		if verr := deskkit.ValidateScanOverride(*scanOverride); verr != nil {
 			return verr
 		}
+	}
+	// #5914: hand the reason to the process outbound context too, so the checking Forge's
+	// own scan of every write this verb makes honours the override this verb records.
+	if aerr := applyOverride(); aerr != nil {
+		return aerr
 	}
 	// --body-file only, deliberately: `create`'s --body-min exists so a one-line body can be
 	// opened without a temp file, and a CORRECTION that fits on one line is not the case this
