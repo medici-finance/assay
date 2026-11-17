@@ -241,10 +241,12 @@ import (
 //
 // The hygiene (fences, blockquotes, struck and inline code), the routing rule
 // and the negation rule in unroutedHeldLine apply unchanged to what is read,
-// with one exception on the flip read: a fenced line behind a row the witness
-// check reads as a verifyrun witness row (heldWitnessLines) is read whole. The
-// witness check reads table rows inside fenced code (parseEvidenceRows) and
-// credits such a row by its first state word, so a hold on it is read too.
+// with one exception on the flip read: a line the scan would skip (a fence or
+// fence toggle, a blockquote, a line outside this scope) that sits behind a
+// row the witness check reads as a verifyrun witness row (heldWitnessLines) is
+// read whole. The witness check reads rows on the comment-stripped text,
+// inside fenced code and past that markup (parseEvidenceRows), and credits
+// such a row by its first state word, so a hold on it is read too.
 type heldLineRead struct {
 	skip  bool     // the line is outside the scan's read scope
 	prose bool     // a line outside every table, in an entry with a results table (rule 2)
@@ -1491,6 +1493,11 @@ func heldWitnessLines(evidence string) []bool {
 //     opener's "<" or a "-->" closer, has no span: a comment that opens in
 //     one cell, or on an earlier line, and closes inside the region hides a
 //     quote the region's own "<" check cannot see.
+//   - The caller gives no span to a line that starts with its paragraph's
+//     markup state open (inlineCodeScan: an unclosed tag, attribute,
+//     declaration, processing instruction, CDATA section or code span from
+//     an earlier line): its closer, a ">", "?>", "]]>" or backtick, can hide
+//     the quote the line opens with.
 func heldQuotedOutput(clean string, h []int, row, alone bool) bool {
 	if hasBareCR(clean) || linkDefLine(clean) {
 		return false

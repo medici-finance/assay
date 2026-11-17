@@ -964,22 +964,30 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 	}
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
+		// On the flip read, a line this scan skips but the witness check
+		// reads as a verifyrun witness row is read whole: the witness check
+		// reads rows on the comment-stripped text, inside fences and past
+		// the markup that makes this scan skip a line (a fence toggle, a
+		// blockquote ">", a header row heldScanScope leaves out), and
+		// credits the row by its first state word, so a hold the skip hides
+		// would flip as a pass (heldScanScope's hygiene exception). Any
+		// marker on the line is read, with no negation or quoting excuse:
+		// the shape is rare and the read errs toward refusing. Every skip
+		// branch below calls it before it continues.
+		witnessHold := latestRun && witnessLine[i] && heldOrCouldNotCheckRe.MatchString(line)
+		skipWitness := func() {
+			if witnessHold {
+				hits, quotes = append(hits, i), append(quotes, trimmed)
+			}
+		}
 		if strings.HasPrefix(trimmed, "```") || strings.HasPrefix(trimmed, "~~~") {
 			inFence = !inFence
 			codeScan.fenceLine(line)
+			skipWitness()
 			continue
 		}
 		if inFence {
-			// On the flip read, a fenced line behind a verifyrun witness
-			// row is read whole: the witness check reads table rows inside
-			// fenced code (parseEvidenceRows) and credits the row by its
-			// first state word, so a hold the fence hides from this scan
-			// would flip as a pass (heldScanScope's hygiene exception). Any
-			// marker on the line is read, with no negation or quoting
-			// excuse: the shape is rare and the read errs toward refusing.
-			if latestRun && witnessLine[i] && heldOrCouldNotCheckRe.MatchString(line) {
-				hits, quotes = append(hits, i), append(quotes, trimmed)
-			}
+			skipWitness()
 			continue
 		}
 		if trimmed == "" {
@@ -996,9 +1004,19 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 		// blockquote line is not scanned but still passes through the
 		// masker, so a backtick or "<" in it leaves the scan as uncertain as
 		// it is in the rendered text.
+		// Markup a renderer may still hold open from an earlier line of this
+		// paragraph (an HTML tag or attribute, a declaration, a processing
+		// instruction, CDATA, a code span) can close on this line and hide
+		// a quote it opens with: rule 7 reads no span on such a line.
+		openAtStart := codeScan.paraOpen || codeScan.htmlEnd != ""
 		masked := codeScan.mask(line)
 		read := scope.lines[i]
-		if strings.HasPrefix(trimmed, ">") || read.skip {
+		if strings.HasPrefix(trimmed, ">") {
+			skipWitness()
+			continue
+		}
+		if read.skip {
+			skipWitness()
 			continue
 		}
 		// A results-table row is read in its result cells only: the
@@ -1083,7 +1101,7 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 			// be credited as that state. Witness membership is read on the
 			// comment-stripped text the witness check reads
 			// (heldWitnessLines), never on the source line alone.
-			if latestRun && cuts == nil && !witnessLine[i] &&
+			if latestRun && cuts == nil && !witnessLine[i] && !openAtStart &&
 				heldQuotedOutput(clean, h, read.key != "", !quoteNear[i]) {
 				continue
 			}

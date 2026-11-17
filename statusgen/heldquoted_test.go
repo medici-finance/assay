@@ -387,3 +387,103 @@ func TestHeldQuotedFencedWit(t *testing.T) {
 		})
 	}
 }
+
+// heldWitCredited reports whether the witness check, reading the run the flip
+// credits, takes a row whose text holds HELD as a passing witness row: the
+// shape every skip-branch case below must reach for its refusal to matter.
+func heldWitCredited(t *testing.T, ev string) bool {
+	t.Helper()
+	p, err := flipLatestPass(ev)
+	if err != nil {
+		t.Fatalf("fixture: %v", err)
+	}
+	for _, rows := range parseEvidenceRows(p.Run) {
+		last := rows[len(rows)-1].Text
+		if strings.Contains(last, "HELD") && witnessStateOf(last) == statePass {
+			return true
+		}
+	}
+	return false
+}
+
+// TestHeldQuotedSkipWit: every branch of the held scan that skips a line
+// (a fence toggle, a blockquote, a line heldScanScope reads as outside its
+// scope) must still read a line the witness check credits as a verifyrun
+// witness row. A comment the witness check strips can turn each of them
+// into a passing witness row whose Result cell reads HELD. On the flip read
+// such a line refuses; one with no hold does not.
+// regression: #4721
+func TestHeldQuotedSkipWit(t *testing.T) {
+	row2 := "| 2 | `tool check 2` | pass exit=0 | sha256:0123456789ab | 2026-10-22 | fixture-verifier[bot] @ 0123456789ab |"
+	wit := func(result string) string {
+		return "| 2 | `tool check 2` | " + result + " | sha256:0123456789ab | 2026-10-22 | fixture-verifier[bot] @ 0123456789ab |"
+	}
+	swap := func(lead string) func(string) string {
+		return func(result string) string {
+			table := witTable(2, "", witPass, "")
+			if !strings.Contains(table, row2) {
+				t.Fatalf("fixture: row 2 not found")
+			}
+			table = strings.Replace(table, row2, lead+wit(result), 1)
+			return witEntry("Run 1", table, "", "**VERIFY: PASS** — 2/2 rows")
+		}
+	}
+	header := func(result string) string {
+		table := witTable(2, "", witPass, "") + "\n" +
+			"| # | `tool check 1` | " + result + " | sha256:0123456789ab | 2026-10-22 | fixture-verifier[bot] @ 0123456789ab |<!--\n" +
+			"|---|---|---|---|---|---|\n-->\n"
+		return witEntry("Run 1", table, "", "**VERIFY: PASS** — 2/2 rows")
+	}
+	for _, tc := range []struct {
+		name string
+		ev   func(string) string
+	}{
+		{"fence toggle closing a comment", swap("<!--\n```-->")},
+		{"tilde toggle closing a comment", swap("<!--\n~~~-->")},
+		{"info-string toggle closing", swap("<!--\n```text -->")},
+		{"indented toggle closing", swap("<!--\n    ```-->")},
+		{"blockquote closing a comment", swap("<!--\n>-->")},
+		{"header row before a comment", header},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			held := tc.ev("HELD pass exit=0")
+			if !heldWitCredited(t, held) {
+				t.Fatalf("fixture: no HELD row is credited as a passing witness")
+			}
+			if err := flipHeldRefusal("ic/01", "verified", held); err == nil {
+				t.Errorf("flipHeldRefusal err=<nil>, want refusal=true")
+			}
+			if err := flipHeldRefusal("ic/01", "verified", tc.ev("pass exit=0")); err != nil {
+				t.Errorf("no hold: flipHeldRefusal err=%v, want none", err)
+			}
+		})
+	}
+}
+
+// TestHeldQuotedOpenPara: inline markup opened on an earlier line of the same
+// paragraph (an HTML attribute, a declaration, a processing instruction, a
+// CDATA section, a code span) and closed on the scanned line hides the
+// quote that line opens with, so the hold after it renders unquoted. A line
+// that starts with the paragraph's markup state open has no span: every
+// read refuses.
+// regression: #4721
+func TestHeldQuotedOpenPara(t *testing.T) {
+	runHeldScanCasesFlip(t, []heldScanCase{
+		{"attribute opened on the line above",
+			heldEv("ok") + "\nNote <abbr title='\n\"'>HELD, no grant\" on rerun.\n", true},
+		{"attribute after a blank line",
+			heldEv("ok") + "\n\nNote <abbr title='\n\"'>HELD, no grant\" on rerun.\n", true},
+		{"declaration opened above",
+			heldEv("ok") + "\n\n<!X\n\"> HELD, no grant\" on rerun.\n", true},
+		{"processing instruction above",
+			heldEv("ok") + "\n\n<?x\n\"?> HELD, no grant\" on rerun.\n", true},
+		{"instruction across a blank line",
+			heldEv("ok") + "\n\n<?x\n\n\"?> HELD, no grant\" on rerun.\n", true},
+		{"CDATA opened above",
+			heldEv("ok") + "\n\n<![CDATA[\n\"]]> HELD, no grant\" on rerun.\n", true},
+		{"code span opened above",
+			heldEv("ok") + "\n\nNote `x\n\"` HELD, no grant\" on rerun.\n", true},
+		{"closed markup above: quoted",
+			heldEv("ok") + "\n\nNote <abbr title='x'>y</abbr> ok.\n\nRow 2 printed \"tenant b: HELD, no grant\" on rerun.\n", true},
+	}, map[string]bool{"closed markup above: quoted": true})
+}

@@ -1696,14 +1696,50 @@
     {
       "name": "P1: a fenced witness row is skipped on the flip read",
       "file": "verifyissues.go",
-      "old": "\t\t\tif latestRun && witnessLine[i] && heldOrCouldNotCheckRe.MatchString(line) {\n\t\t\t\thits, quotes = append(hits, i), append(quotes, trimmed)\n\t\t\t}\n",
-      "new": ""
+      "old": "\t\tif inFence {\n\t\t\tskipWitness()\n\t\t\tcontinue\n",
+      "new": "\t\tif inFence {\n\t\t\tcontinue\n"
     },
     {
-      "name": "P1: every fenced line is read on the flip read",
+      "name": "P1: every skipped line is read on the flip read, witness row or not",
       "file": "verifyissues.go",
-      "old": "if latestRun && witnessLine[i] && heldOrCouldNotCheckRe.MatchString(line) {",
-      "new": "if latestRun && heldOrCouldNotCheckRe.MatchString(line) {"
+      "old": "witnessHold := latestRun && witnessLine[i] && heldOrCouldNotCheckRe.MatchString(line)",
+      "new": "witnessHold := latestRun && heldOrCouldNotCheckRe.MatchString(line)"
+    },
+    {
+      "name": "P1: a fence-toggle line behind a witness row is skipped on the flip read",
+      "file": "verifyissues.go",
+      "old": "\t\t\tcodeScan.fenceLine(line)\n\t\t\tskipWitness()\n",
+      "new": "\t\t\tcodeScan.fenceLine(line)\n"
+    },
+    {
+      "name": "P1: a blockquote line behind a witness row is skipped on the flip read",
+      "file": "verifyissues.go",
+      "old": "\t\tif strings.HasPrefix(trimmed, \">\") {\n\t\t\tskipWitness()\n",
+      "new": "\t\tif strings.HasPrefix(trimmed, \">\") {\n"
+    },
+    {
+      "name": "P1: an out-of-scope line behind a witness row is skipped on the flip read",
+      "file": "verifyissues.go",
+      "old": "\t\tif read.skip {\n\t\t\tskipWitness()\n",
+      "new": "\t\tif read.skip {\n"
+    },
+    {
+      "name": "S5: markup open at the line's start no longer voids the span",
+      "file": "verifyissues.go",
+      "old": "!witnessLine[i] && !openAtStart &&",
+      "new": "!witnessLine[i] &&"
+    },
+    {
+      "name": "S5: an open HTML block no longer counts as open markup",
+      "file": "verifyissues.go",
+      "old": "openAtStart := codeScan.paraOpen || codeScan.htmlEnd != \"\"",
+      "new": "openAtStart := codeScan.paraOpen"
+    },
+    {
+      "name": "S5: an open paragraph no longer counts as open markup",
+      "file": "verifyissues.go",
+      "old": "openAtStart := codeScan.paraOpen || codeScan.htmlEnd != \"\"",
+      "new": "openAtStart := codeScan.htmlEnd != \"\""
     }
   ]
 }
