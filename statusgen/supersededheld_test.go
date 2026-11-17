@@ -57,9 +57,10 @@ func shEvidence(handQuals, note, extra string) string {
 var (
 	// A restatement row with a note after its clean outcome.
 	shNoteShape = shEvidence(shHandQuals, "; the condition of #12 is unchanged", "")
-	// A one-line RISK-VALUE bullet whose prose holds a "|".
+	// A one-line RISK-VALUE bullet whose prose holds a bare "|", outside any
+	// code span (a pipe inside one never reaches the bullet read).
 	shItemShape = shEvidence(shHandQuals, "",
-		"- RISK-VALUE: DERIVED — forbidden name runes = `<>:\"|?*` @ x.go:1 — the platform's set.\n\n")
+		"- RISK-VALUE: DERIVED — the name check also rejects <>:\"|?* @ x.go:1 — the platform's set.\n\n")
 )
 
 func shOpts(evidence string) vfOpts {
