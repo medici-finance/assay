@@ -370,6 +370,17 @@ func resolveRulingOn(c *ghClient, prRepo string, rec decisionRecordStamp, humanL
 	if strings.EqualFold(cm.User.Type, "Bot") || strings.HasSuffix(strings.ToLower(cm.User.Login), "[bot]") {
 		return refuse(rulingBotAuthor, "comment %d is authored by %s (type %q) — a bot account is not a human allowed to decide", link.CommentID, cm.User.Login, cm.User.Type)
 	}
+	// 3b. Only a personal account rules: the forge's account type must read
+	// User. A type the payload leaves out could not be checked (never read as
+	// User); any other type — an organization, a mannequin, one the forge adds
+	// later — is refused as a non-human author, whatever the map says about its
+	// login.
+	if strings.TrimSpace(cm.User.Type) == "" {
+		return refuse(rulingUnresolvable, "comment %d on %s: the payload names no account type for %s — whether a personal account wrote it could not be checked", link.CommentID, link.Repo, cm.User.Login)
+	}
+	if !strings.EqualFold(cm.User.Type, "User") {
+		return refuse(rulingBotAuthor, "comment %d is authored by %s (type %q) — only a personal account of type User can rule", link.CommentID, cm.User.Login, cm.User.Type)
+	}
 
 	// 4. The author maps to a human allowed to decide — and to THE human the stamp
 	// names, when it names one.
