@@ -297,6 +297,10 @@ func dispatch(o dispatchOpts) error {
 		// Step 2 records the run key worktree-locally on a real dispatch; name it here so an
 		// operator can see which STOP.run.<key> would stop this run before launching it.
 		fmt.Printf("  run key (recorded at step %s as assay.runKey): %s\n", stepWorktreeCreate, plan.claimKey)
+		if plan.gateHuman {
+			fmt.Printf("  %s: would ensure the decision issue in %s (the repo that tracks the brief); not run in a "+
+				"dry run\n", stepDecisionGate, plan.decision.repo)
+		}
 		if o.rework {
 			// The phantom check is a forge read and a dry run makes none, so it cannot say whether this
 			// rework row's PR is merged. State that, rather than let the branch above read as final.
@@ -617,7 +621,9 @@ func dispatch(o dispatchOpts) error {
 	// pre-claim and is carried on the plan.
 	// The script child runs under the credential the claim step resolved (auth.scriptEnv), never
 	// the ambient login — issue 1146.
-	gate, gerr := stepDecision(plan.gateOpts(o), plan.gateHuman, repo, plan.decisionTool, plan.ruling, auth)
+	// It ensures the issue in the brief's TRACKING repo (plan.decision), not the deliverable repo
+	// the claim was taken in — #5525.
+	gate, gerr := stepDecision(plan.gateOpts(o), plan.gateHuman, plan.decision, plan.decisionTool, plan.ruling, auth)
 	if gerr != nil {
 		return held.settle(gerr)
 	}
@@ -779,6 +785,9 @@ type dispatchPlan struct {
 	// presence check and the invocation cannot drift onto two different tools; stepDecision
 	// tells the two apart by that bare name.
 	decisionTool string
+	// decision is where the decision gate ensures its issue: the brief's TRACKING repo, resolved
+	// pre-claim by deliverable.decisionTarget, set only for a human-gated item (#5525).
+	decision decisionTarget
 	// ruling is the brief's RECORDED ruling (#2079, recordedruling.go) — a `**Ruling (<date>):
 	// option <N>.**` line transcribed as a decision record — parsed offline before the claim;
 	// nil when the brief records none, and the decision gate then runs the script as before.
@@ -1225,6 +1234,21 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		plan.gateHuman = true
 	}
 	if plan.gateHuman {
+		// The decision issue belongs to the repo that TRACKS the brief, not the one its deliverable
+		// lands in (#5525): the helper's dedupe reads only the repo it is given, so a homed-in or
+		// --cross-repo dispatch keyed on the deliverable missed the existing issue and filed (or
+		// failed on) a second one there. An unknown tracking repo refuses here, before the claim,
+		// rather than fall through to the deliverable.
+		target, known := plan.dl.decisionTarget(o.root, plan.repo)
+		if !known {
+			return plan, deskkit.Unverifiable(fmt.Sprintf(
+				"step %s: this human-gated item is tracked under alias %q, which the registry at %s reserves but "+
+					"does not publish, so the repo its decision issue lives in cannot be resolved (could-not-check). "+
+					"The gate never falls back to the deliverable repo %s. Point --claim-root at a tracking "+
+					"checkout whose registry publishes %q. Nothing was claimed.",
+				stepDecisionGate, plan.dl.homeAlias, plan.dl.registryPath, plan.repo, plan.dl.homeAlias), nil)
+		}
+		plan.decision = target
 		// The decision helper resolves in the claim tool's order (issue 6131): its pure-Go PATH
 		// port goDecisionBinary FIRST, then tools/decision-issue.sh under the same resolved root as
 		// the claim script (--claim-root when given, else --root). Only when NEITHER is available
@@ -1869,9 +1893,15 @@ func stepRoster(o dispatchOpts, repo string) string {
 // ruling as a decision record (recordedruling.go), the record's ruling is corroborated through
 // statusgen under the SAME handed-over credential, and on a pass no decision issue is ensured —
 // the decision it would ask for is already made. A ruling that does not corroborate REFUSES.
-func stepDecision(o dispatchOpts, gateHuman bool, repo, script string, ruling *recordedRuling, auth claimAuth) (string, error) {
+func stepDecision(o dispatchOpts, gateHuman bool, target decisionTarget, script string, ruling *recordedRuling, auth claimAuth) (string, error) {
 	if !gateHuman {
 		return "SKIPPED: item is not human-gated", nil
+	}
+	repo := target.repo
+	if strings.TrimSpace(repo) == "" {
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: no decision repo was resolved for %s, so the gate cannot say where its issue lives. NOT run.",
+			stepDecisionGate, o.brief), nil)
 	}
 	// The PATH port resolves the dispatching role's own credential itself and reads none from
 	// its environment, so only an environment-authenticated child — the script, or the ruling
