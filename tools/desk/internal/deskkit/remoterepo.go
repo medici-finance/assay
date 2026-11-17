@@ -296,7 +296,7 @@ func samePinLocation(local, pinned string) bool {
 // path) and its path without surrounding slashes or a trailing ".git". ok is false for a
 // scheme URL net/url cannot parse, and for a host with any byte >= 0x80.
 func remoteLocation(raw string) (scheme, host, path string, ok bool) {
-	s := strings.TrimSpace(raw)
+	s := strings.Trim(raw, " \t\r\n")
 	switch slash := strings.IndexByte(s, '/'); {
 	case strings.Contains(s, "://"):
 		u, err := url.Parse(s)
@@ -312,16 +312,11 @@ func remoteLocation(raw string) (scheme, host, path string, ok bool) {
 	default:
 		path = s
 	}
-	b := []byte(host)
-	for i, c := range b {
-		if c >= 0x80 {
-			return "", "", "", false
-		}
-		if 'A' <= c && c <= 'Z' {
-			b[i] = c + ('a' - 'A')
-		}
+	host, err := NormalizeForgeHost(host)
+	if err != nil {
+		return "", "", "", false
 	}
-	return strings.ToLower(scheme), string(b), strings.TrimSuffix(strings.Trim(path, "/"), ".git"), true
+	return strings.ToLower(scheme), host, strings.TrimSuffix(strings.Trim(path, "/"), ".git"), true
 }
 
 // OriginRepoSlug reads dir's `origin` URL through SlugRemoteURL and parses it to

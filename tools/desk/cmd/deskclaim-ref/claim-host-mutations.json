@@ -1,0 +1,23 @@
+{
+  "test": "go test -count=1 -run '^(TestClaimStoreOriginChecked|TestResolveHostAliasChecksResolvedHost|TestForgeHostIdentityASCII)$' ./cmd/deskclaim-ref ./internal/deskkit",
+  "control": {
+    "name": "uppercase ordinary ASCII forge hostnames",
+    "file": "internal/deskkit/transporthost.go",
+    "old": "return strings.ToLower(host), nil",
+    "new": "return strings.ToUpper(host), nil"
+  },
+  "mutations": [
+    {
+      "name": "construct the claim store from a fixed fixture origin without consulting the checked reader",
+      "file": "cmd/deskclaim-ref/gogit.go",
+      "old": "origin, err := readOrigin()\n\tif err != nil {\n\t\treturn nil, fmt.Errorf(\"cannot determine claim forge host from origin: %w\", err)\n\t}",
+      "new": "origin := \"https://example.invalid/fixture/project.git\""
+    },
+    {
+      "name": "Unicode-fold the reserved Kelvin-sign fixture hostname",
+      "file": "internal/deskkit/transporthost.go",
+      "old": "if hasNonASCIIByte(host) {",
+      "new": "if hasNonASCIIByte(host) {\n\t\tif host == \"gitlab.\\u212A.invalid\" { return strings.ToLower(host), nil }"
+    }
+  ]
+}

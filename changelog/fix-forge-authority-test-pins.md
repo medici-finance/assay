@@ -1,0 +1,2 @@
+### Changed
+- Forge-local authority tests now pin both halves of the slot-release fix. A new test fails if a handler's deadline expiry closes its connection instead of expiring it. The test fixture now fails at the first startup attempt that abandons a handler still holding a slot, rather than letting a later successful attempt hide it. Protocol assertions that used to report a refused exchange as changed authority now report the refusal separately.

@@ -30,7 +30,7 @@ func TestGitDirFixtureIsolation(t *testing.T) {
 
 func reg727(t *testing.T) {
 	// A caller's GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE would point both the fixture's git
-	// children and originRemoteURL's readers at the caller's repository.
+	// children and the origin reader at the caller's repository.
 	regression.IsolateGit(t)
 	dir := t.TempDir()
 	main := filepath.Join(dir, "main")
@@ -78,7 +78,7 @@ func reg727(t *testing.T) {
 		}
 	})
 	t.Setenv("PATH", t.TempDir()) // fixture setup complete: no executable fallback
-	if got := originRemoteURL(); got != origin {
-		t.Fatalf("linked worktree origin=%q, want %q; never guess a SaaS host", got, origin)
+	if got, err := checkedOriginURL("."); err != nil || got != origin {
+		t.Fatalf("linked worktree origin=%q, err=%v, want %q", got, err, origin)
 	}
 }

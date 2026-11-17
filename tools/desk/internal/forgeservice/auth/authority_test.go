@@ -150,7 +150,7 @@ func newAuthorityFixture(t *testing.T, change func(*ProducerConfig)) *authorityF
 	ready, stopReady := context.WithTimeout(ctx, 2*time.Second)
 	defer stopReady()
 	var state ControlReceipt
-	waitAuthorityRead(t, ready, "control", func(call context.Context) error {
+	waitAuthorityRead(t, c, ready, "control", func(call context.Context) error {
 		state, e = RequestControl(call, filepath.Join(r.Private.Name(), "control.sock"), cfg.MaxFrameBytes, cfg.IOTimeout, nil)
 		return e
 	})
@@ -158,11 +158,11 @@ func newAuthorityFixture(t *testing.T, change func(*ProducerConfig)) *authorityF
 		t.Fatal("control readiness changed registry version")
 	}
 	var g SignedGrant
-	waitAuthorityRead(t, ready, "grant", func(call context.Context) error {
+	waitAuthorityRead(t, c, ready, "grant", func(call context.Context) error {
 		g, e = ReadGrant(call, filepath.Join(r.Grants[cfg.Launches[0].ID].Name(), "grant.sock"), cfg.MaxFrameBytes, cfg.IOTimeout)
 		return e
 	})
-	waitAuthorityRead(t, ready, "current", func(call context.Context) error {
+	waitAuthorityRead(t, c, ready, "current", func(call context.Context) error {
 		_, e := v.Authorize(call, g, cfg.Launches[0].Scope.Scope)
 		return e
 	})
@@ -175,7 +175,7 @@ func newAuthorityFixture(t *testing.T, change func(*ProducerConfig)) *authorityF
 // and every client reads to EOF, so once a client holds a complete response
 // its slot is already free: every fixture returns an idle pool, and a test
 // that fills a pool never races the fixture's own startup reads.
-func assertIdleSlots(t *testing.T, c *Controller, after string) {
+func assertIdleSlots(t testing.TB, c *Controller, after string) {
 	t.Helper()
 	if n := len(c.dataSlots); n != 0 {
 		t.Fatalf("%d data slots still held after %s", n, after)
@@ -187,19 +187,38 @@ func assertIdleSlots(t *testing.T, c *Controller, after string) {
 
 // Only fixture startup reads retry, under the same absolute context deadline.
 // The canonical clients own the channel framing, bounds and cancellation.
-func waitAuthorityRead(t *testing.T, ctx context.Context, channel string, read func(context.Context) error) {
+// A failed attempt is retried only once no handler holds a slot, so a retry
+// never runs over an exchange its client abandoned.
+func waitAuthorityRead(t testing.TB, c *Controller, ctx context.Context, channel string, read func(context.Context) error) {
 	t.Helper()
 	for {
-		if e := read(ctx); e == nil {
+		e := read(ctx)
+		if e == nil {
 			return
-		} else if ctx.Err() != nil {
+		}
+		if ctx.Err() != nil {
 			t.Fatalf("%s channel did not complete a framed startup read: %v", channel, e)
 		}
+		assertNoAbandoned(t, c, channel)
 		select {
 		case <-ctx.Done():
 			t.Fatalf("%s channel startup deadline: %v", channel, ctx.Err())
 		case <-time.After(time.Millisecond):
 		}
+	}
+}
+
+// assertNoAbandoned fails a startup attempt that gave up while its handler
+// still held a slot. A handler that answers, even with a refusal, gives its
+// slot back before its client can see the end of the response, and a refused
+// dial or a full pool takes no slot; so after any failed attempt the pools
+// are idle unless the client stopped waiting on a live handler. Checking here
+// rather than only after the last attempt means a later success cannot hide
+// the abandoned handler, and the fixture never waits one out.
+func assertNoAbandoned(t testing.TB, c *Controller, channel string) {
+	t.Helper()
+	if n := len(c.dataSlots) + len(c.controlSlots); n != 0 {
+		t.Fatalf("a failed %s startup attempt abandoned %d handler(s) still holding a slot", channel, n)
 	}
 }
 
@@ -664,8 +683,11 @@ func TestLocalAuthorityPrivateControlProtocol(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(f.resources.Private.Name(), "control.sock")
 	state, e := RequestControl(ctx, path, f.config.MaxFrameBytes, f.config.IOTimeout, nil)
-	if e != nil || !state.Ready || state.Version != f.version {
-		t.Fatal("private readback", e)
+	if e != nil {
+		t.Fatalf("first private readback refused: %v", e)
+	}
+	if !state.Ready || state.Version != f.version {
+		t.Fatal("private readback did not report the registered version")
 	}
 	if n := len(f.controller.controlSlots); n != 0 {
 		t.Fatalf("control slot still held after the readback returned: %d", n)
@@ -693,8 +715,11 @@ func TestLocalAuthorityPrivateControlProtocol(t *testing.T) {
 		t.Fatal(e)
 	}
 	result, e := RequestControl(ctx, path, f.config.MaxFrameBytes, f.config.IOTimeout, &OperatorCommand{Operation: Revoke, ExpectedVersion: state.Version, GrantID: claims.GrantID})
-	if e != nil || result.Version != state.Version+1 {
-		t.Fatal("operator revoke", e)
+	if e != nil {
+		t.Fatalf("operator revoke refused: %v", e)
+	}
+	if result.Version != state.Version+1 {
+		t.Fatalf("operator revoke moved version %d to %d", state.Version, result.Version)
 	}
 	r, e := f.verifier.Authorize(ctx, f.grant, claims.Scope.Scope)
 	assertHeld(t, r, e)
@@ -761,7 +786,10 @@ func TestForgeLocalAuthorityRegistrationBudget(t *testing.T) {
 				t.Fatalf("existing registration refusal class: %v", e)
 			}
 			state, e := f.controller.ControlState(ctx)
-			if e != nil || state.Version != f.version {
+			if e != nil {
+				t.Fatalf("control state read refused: %v", e)
+			}
+			if state.Version != f.version {
 				t.Fatal("refusal changed control version")
 			}
 			claims, e := decodeClaims(f.grant, f.config.MaxFrameBytes)

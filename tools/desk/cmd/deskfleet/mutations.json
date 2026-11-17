@@ -384,6 +384,12 @@
       "file": "cmd/deskfleet/pushrotate.go",
       "old": "why == \"\" && rec.ID == r.newID && ",
       "new": "(why == \"\" || true) && "
+    },
+    {
+      "name": "read the answer truncated (an over-cap body is parsed as its first 4 MiB — a `[]` prefix reads as a complete, empty answer)",
+      "file": "cmd/deskfleet/client.go",
+      "old": "b, err := deskkit.ReadForgeBodyUpTo(resp.Body, method+\" \"+path, maxResponseBytes)",
+      "new": "b, err := deskkit.ReadForgeBodyUpTo(io.LimitReader(resp.Body, maxResponseBytes), method+\" \"+path, maxResponseBytes)"
     }
   ]
 }

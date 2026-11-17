@@ -126,14 +126,19 @@ func sameDirectory(a, b string) bool {
 // configuration, role key paths included), CELLCTL_GH_AMBIENT (a cell's copy
 // of the stored login) and the GITHUB_* token variables (admittedRowForgeToken).
 // The caller puts HOME back as a fresh, empty directory of the run's own
-// (admittedRowHome). The invoking process keeps all of them: its own forge
-// reads (the acceptance-approval read) happen there, from os.Getenv, and this
-// function only builds the rows' copy. A row reads forge state through the
-// run's own read-only lane (statusgen rowread, which the run answers from its
-// own process: rowreadbroker.go), never with a credential of its own. With no
-// token variable set, neither the invoking process nor a statusgen started
-// inside a row falls back to a stored forge login (storedLoginRefusal,
-// forgecredential.go): such a read is a could-not-check.
+// (admittedRowHome). This function only builds the rows' copy. A row reads
+// forge state through the run's own read-only lanes: statusgen rowread, which
+// the run answers from its own process (rowreadbroker.go), or the run's
+// read-only credential file for a row that passes --acceptance-forge. It never
+// reads with a credential of its own.
+// The invoking process keeps them in its own environment but no longer
+// reads them while admitted: its forge reads and those of a statusgen
+// started inside a row use only the verifier's run-scoped read-only
+// credential (runcredential.go), never a variable and never a stored forge
+// login (storedLoginRefusal, forgecredential.go). Without that credential
+// such a read is a could-not-check. An inherited runCredentialEnv is
+// removed too (it is an ASSAY_* variable): the run hands its own
+// credential path to the one row that needs it, after this function.
 //
 // Out of scope, stated so it is not overclaimed: PATH (which git and which
 // tools a row runs), SSH_AUTH_SOCK (an agent a row's git can authenticate
@@ -158,6 +163,7 @@ func admittedRowEnv(environ []string) []string {
 		case admittedRowShellStartup(key):
 		case admittedRowForgeToken(key):
 		case admittedRowCredential(key):
+		case strings.EqualFold(key, runCredentialEnv):
 		case strings.HasPrefix(strings.ToUpper(key), "GIT_") && !admittedRowGlobal(kv):
 		default:
 			env = append(env, kv)

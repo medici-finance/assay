@@ -137,8 +137,10 @@ func TestAdmittedRowEnvShape(t *testing.T) {
 // (sgFallbackEnv: it only reaches the pinned install replacing a refused hotfix and only
 // ever removes DESK_HOTFIX_FALLBACK; when the refused hotfix is the check:ci network-off
 // helper, that pinned install runs the row with the row's own inherited environment, less
-// that one variable).
-var rowEnvAllowed = []string{"rowEnv", "runVerifyrun", "runNetnsHelper", "runInContainer", "historyGitEnv", "ghGuard", "sgFallbackEnv"}
+// that one variable) and the run credential's minter (execRunCredentialMint: it
+// only runs the desktoken it resolved itself, which starts no Verify row, with
+// the forge credential variables and runCredentialEnv removed).
+var rowEnvAllowed = []string{"rowEnv", "runVerifyrun", "runNetnsHelper", "runInContainer", "historyGitEnv", "ghGuard", "sgFallbackEnv", "execRunCredentialMint"}
 
 // rowLaunchShells are the programs a Verify row's command text runs under.
 var rowLaunchShells = []string{"sh", "bash", "pwsh", "powershell", "cmd"}
