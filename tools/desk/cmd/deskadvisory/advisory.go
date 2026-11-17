@@ -15,6 +15,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -168,7 +169,24 @@ func ghToken() (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+// ghAPIRequestTimeout bounds one GitHub API request, response body included. The forge
+// answers an API request in seconds, so a request still open after 30s is stalled, not slow;
+// without a bound a stalled connection hangs the advisory check indefinitely.
+const ghAPIRequestTimeout = 30 * time.Second
+
+// ghAPITimeout is the deadline ghAPIClient applies. It is a var only so a test can shorten
+// it; production code never changes it.
+var ghAPITimeout = ghAPIRequestTimeout
+
+// ghAPIClient is the client every ghAPI call goes through: the default transport, with an
+// overall per-request deadline that http.DefaultClient does not carry.
+func ghAPIClient() *http.Client {
+	return &http.Client{Timeout: ghAPITimeout}
+}
+
 // ghAPI performs an authenticated GET to the GitHub API base + <path> and returns the body.
+// A 2xx answer with an empty body is an error, never an empty success: every caller expects
+// a JSON document.
 func ghAPI(path string) ([]byte, error) {
 	token, err := ghToken()
 	if err != nil {
@@ -181,17 +199,20 @@ func ghAPI(path string) ([]byte, error) {
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	resp, derr := http.DefaultClient.Do(req)
+	resp, derr := ghAPIClient().Do(req)
 	if derr != nil {
 		return nil, derr
 	}
 	defer resp.Body.Close()
 	body, rerr := io.ReadAll(resp.Body)
 	if rerr != nil {
-		return nil, rerr
+		return nil, fmt.Errorf("GitHub API %s: read response: %w", path, rerr)
 	}
 	if resp.StatusCode >= 400 {
 		return nil, &ghAPIError{StatusCode: resp.StatusCode, Body: string(body), Path: path}
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return nil, fmt.Errorf("GitHub API %s returned %d with an empty body", path, resp.StatusCode)
 	}
 	return body, nil
 }
