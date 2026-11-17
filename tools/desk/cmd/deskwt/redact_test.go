@@ -24,17 +24,17 @@ func TestCurrentRepoRedactsOrigin(t *testing.T) {
 // regression: #6606
 func TestRedactURLAllShapes(t *testing.T) {
 	for _, in := range []string{
-		"https://user:secret@example.invalid/o/r",
-		"ssh://user:secret@example.invalid/o/r",
-		"user:secret@example.invalid:o/r",
-		"git:secret@example.invalid:o/r",
-		"ssh://git@x:secret@example.invalid/o/r",
+		"https://user:secret@github.com/o/r",
+		"ssh://secret@github.com/o/r",
+		"user:secret@github.com:o/r",
+		"git:secret@github.com:o/r",
+		"git@github.com:secret@github.com:o/r",
 	} {
-		if got := redactURL(in); strings.Contains(got, "secret") || !strings.Contains(got, "<redacted>@example.invalid") {
+		if got := redactURL(in); strings.Contains(got, "secret") || !strings.Contains(got, "<redacted>@github.com") {
 			t.Errorf("redactURL(%q) = %q, want the userinfo redacted and the host kept", in, got)
 		}
 	}
-	for _, in := range []string{"ssh://git@example.invalid/o/r", "git@example.invalid:o/r"} {
+	for _, in := range []string{"ssh://git@github.com/o/r", "git@github.com:o/r"} {
 		if got := redactURL(in); got != in {
 			t.Errorf("redactURL(%q) = %q, want the conventional git login kept", in, got)
 		}

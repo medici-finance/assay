@@ -106,7 +106,7 @@ func TestOriginSlugPinAccepted(t *testing.T) {
 		{"https origin pinned", pinArgs},
 		{"ssh origin pinned", append([][]string{{"remote", "set-url", "origin", "git@github.com:owner/repo.git"}}, pinArgs...)},
 		// An ssh alias only ssh resolves: the pin's host cannot be compared, its path still is.
-		{"ssh alias pinned", append([][]string{{"remote", "set-url", "origin", "example-alias:owner/repo.git"}}, pinArgs...)},
+		{"ssh alias pinned", append([][]string{{"remote", "set-url", "origin", "example-alias:owner/repo"}}, pinArgs...)},
 		{"identity only", nil},
 	}
 	for _, tc := range cases {
