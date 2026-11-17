@@ -695,6 +695,7 @@ func TestMathTextsBarIsNoBracket(t *testing.T) {
 }
 
 // regression: #4102
+// regression: #6693
 // TestHiddenReadingsStopAtBudget: a text holding many hidden elements builds no more of its
 // hidden readings once the limit is spent, whether the text itself spends it or the first few
 // of its hidden readings do.
