@@ -606,6 +606,12 @@
       "file": "cmd/deskevidence/decisiongate.go",
       "old": "path.Clean(p) != p ||",
       "new": "path.Clean(p) == \"\" ||"
+    },
+    {
+      "name": "#6738: every lock acquisition is granted a full lockWait (the waits are per attempt, not one budget per run)",
+      "file": "cmd/deskevidence/writeflow.go",
+      "old": "\tif left := lockWait - a.lockWaited; left > 0 {",
+      "new": "\tif left := lockWait; left > 0 {"
     }
   ]
 }
