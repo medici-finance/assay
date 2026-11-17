@@ -126,7 +126,7 @@ func transportHost(raw string) (host string, networked bool, err error) {
 	if strings.HasPrefix(lower, "https://") || strings.HasPrefix(lower, "http://") {
 		u, perr := url.Parse(s)
 		if perr != nil {
-			return "", true, fmt.Errorf("cannot parse the HTTP(S) origin %s", redactURL(s))
+			return "", true, fmt.Errorf("cannot parse the HTTP(S) origin %s", deskkit.RedactRemoteURL(s))
 		}
 		if strings.HasSuffix(u.Host, ":") {
 			return "", true, fmt.Errorf("an empty HTTP(S) service port is unsupported; origin left unchanged")
@@ -137,7 +137,7 @@ func transportHost(raw string) (host string, networked bool, err error) {
 	}
 	h, herr := deskkit.HostOfRemote(s)
 	if herr != nil || h == "" {
-		return "", true, fmt.Errorf("the origin URL %s names no host", redactURL(s))
+		return "", true, fmt.Errorf("the origin URL %s names no host", deskkit.RedactRemoteURL(s))
 	}
 	if deskkit.IsSSHTransport(s) && !deskkit.IsWellKnownForgeHost(h) {
 		// An SSH host is often an ALIAS (a ~/.ssh/config Host block carrying the key), which
@@ -156,21 +156,6 @@ func transportHost(raw string) (host string, networked bool, err error) {
 			"URL can reach (an SSH alias with no HostName, or a local name)", h)
 	}
 	return h, true, nil
-}
-
-// redactURL drops any userinfo from a remote URL before it is quoted in a message: an https
-// origin can carry a credential in it, and so can an ssh or scp-like one. Each '/'-segment
-// goes through deskkit.RedactRemoteUserinfo, except one whose whole userinfo is the
-// conventional SSH login `git`, which is not a secret and is kept so the message names the
-// URL git actually resolved.
-func redactURL(u string) string {
-	segs := strings.Split(strings.TrimSpace(u), "/")
-	for i, seg := range segs {
-		if !strings.HasPrefix(seg, "git@") || strings.Count(seg, "@") != 1 {
-			segs[i] = deskkit.RedactRemoteUserinfo(seg)
-		}
-	}
-	return strings.Join(segs, "/")
 }
 
 // transportRefusal is the ONE refusal shape for a role worktree whose App transport could not
@@ -213,7 +198,7 @@ func wireRoleTransport(target, role, repo string) (detail string, err error) {
 		for _, u := range push {
 			if deskkit.IsSSHTransport(u) {
 				return "", transportRefusal(target, role, "origin fetches over git's local transport but pushes to "+
-					redactURL(u)+" over SSH, and there is no https host to replace it with")
+					deskkit.RedactRemoteURL(u)+" over SSH, and there is no https host to replace it with")
 			}
 		}
 		if werr := wireRoleCredential(target, role, repo, roleCredUser(role)); werr != nil {
@@ -277,7 +262,7 @@ func wireRoleTransport(target, role, repo string) (detail string, err error) {
 		if len(got) != 1 || got[0] != httpsURL {
 			shown := make([]string, len(got))
 			for i, u := range got {
-				shown[i] = redactURL(u)
+				shown[i] = deskkit.RedactRemoteURL(u)
 			}
 			return "", transportRefusal(target, role, fmt.Sprintf(
 				"after writing a worktree-scoped %s list reset plus %s, git still resolves the %s URL(s) of "+

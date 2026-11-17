@@ -11,11 +11,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
+
+// maxConversionBytes bounds the conversion answer (one App's credentials, a few KiB). An
+// answer over it is refused, never parsed as its first 1 MiB.
+const maxConversionBytes = 1 << 20
 
 // githubAPIBase is a test hook: production talks to the real GitHub API; tests point it at
 // an httptest.Server that fakes the conversions endpoint. Never contacted for --dry-run.
@@ -66,7 +71,8 @@ func convertCode(code string) (*conversionResult, error) {
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	// Over 1 MiB is refused with no bytes, never parsed as the first 1 MiB.
+	body, err := deskkit.ReadForgeBodyUpTo(resp.Body, "POST app-manifest conversion", maxConversionBytes)
 	if err != nil {
 		return nil, err
 	}

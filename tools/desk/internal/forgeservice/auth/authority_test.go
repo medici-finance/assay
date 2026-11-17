@@ -10,6 +10,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -656,6 +658,7 @@ func TestForgeLocalAuthorityClosedCodec(t *testing.T) {
 	}
 }
 
+// regression: #6302
 func TestLocalAuthorityPrivateControlProtocol(t *testing.T) {
 	f := newAuthorityFixture(t, nil)
 	ctx := context.Background()
@@ -663,6 +666,9 @@ func TestLocalAuthorityPrivateControlProtocol(t *testing.T) {
 	state, e := RequestControl(ctx, path, f.config.MaxFrameBytes, f.config.IOTimeout, nil)
 	if e != nil || !state.Ready || state.Version != f.version {
 		t.Fatal("private readback", e)
+	}
+	if n := len(f.controller.controlSlots); n != 0 {
+		t.Fatalf("control slot still held after the readback returned: %d", n)
 	}
 	currentPath := filepath.Join(f.resources.Current.Name(), "current.sock")
 	if _, e = RequestControl(ctx, currentPath, f.config.MaxFrameBytes, f.config.IOTimeout, nil); e == nil {
@@ -673,8 +679,11 @@ func TestLocalAuthorityPrivateControlProtocol(t *testing.T) {
 		t.Fatal("grant channel exposed control")
 	}
 	after, e := RequestControl(ctx, path, f.config.MaxFrameBytes, f.config.IOTimeout, nil)
-	if e != nil || !same(state, after) {
-		t.Fatal("data channel modified authority")
+	if e != nil {
+		t.Fatal("private readback after data-channel probes refused", e)
+	}
+	if d := receiptDiff(state, after); len(d) != 0 {
+		t.Fatalf("data channel modified authority: %v differ\nbefore %+v\nafter  %+v", d, state, after)
 	}
 	if _, e = RequestControl(ctx, path, f.config.MaxFrameBytes, f.config.IOTimeout, &OperatorCommand{Operation: "sign", ExpectedVersion: state.Version}); e == nil {
 		t.Fatal("generic sign operation exposed")
@@ -689,6 +698,49 @@ func TestLocalAuthorityPrivateControlProtocol(t *testing.T) {
 	}
 	r, e := f.verifier.Authorize(ctx, f.grant, claims.Scope.Scope)
 	assertHeld(t, r, e)
+}
+
+// receiptDiff names every ControlReceipt field whose value differs, so a
+// changed readback says which part of the authority state moved.
+func receiptDiff(a, b ControlReceipt) []string {
+	var d []string
+	va, vb := reflect.ValueOf(a), reflect.ValueOf(b)
+	for i := range va.NumField() {
+		if !reflect.DeepEqual(va.Field(i).Interface(), vb.Field(i).Interface()) {
+			d = append(d, va.Type().Field(i).Name)
+		}
+	}
+	return d
+}
+
+// A genuine authority change between two private readbacks must still be
+// named field by field, so the split readback check above stays able to fail.
+func TestReceiptDiffNamesChange(t *testing.T) {
+	f := newAuthorityFixture(t, nil)
+	ctx := context.Background()
+	path := filepath.Join(f.resources.Private.Name(), "control.sock")
+	state, e := RequestControl(ctx, path, f.config.MaxFrameBytes, f.config.IOTimeout, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if d := receiptDiff(state, state); len(d) != 0 || !same(state, state) {
+		t.Fatal("identical readbacks reported a difference", d)
+	}
+	claims, e := decodeClaims(f.grant, f.config.MaxFrameBytes)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = f.controller.ApplyControl(ctx, ControlCommand{Operation: Revoke, ExpectedVersion: state.Version, GrantID: claims.GrantID}); e != nil {
+		t.Fatal(e)
+	}
+	after, e := RequestControl(ctx, path, f.config.MaxFrameBytes, f.config.IOTimeout, nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	want := []string{"Version", "TupleDigest", "OperationDigest"}
+	if d := receiptDiff(state, after); !slices.Equal(d, want) || same(state, after) {
+		t.Fatalf("authority change named %v, want %v", d, want)
+	}
 }
 
 // regression: F-local-authority-registration
