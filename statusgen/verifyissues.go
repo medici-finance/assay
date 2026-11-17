@@ -924,6 +924,43 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 	return unroutedHeldLine(evidence, false)
 }
 
+// verifyPassHeldWitnessed is the model autoflip's held read (#6767). It is
+// verifyPassHeldContradiction, except that a hold found only before the
+// latest PASS run is dropped when that run is one verifyflip would credit:
+// the run verifyflip selects (flipLatestPass) carries a passing execution
+// witness for every Verify row of the brief at path (closureRunWitnesses, the
+// check verifyflip and the reconcile fold run), and the flip-side read
+// (unroutedHeldLine with latestRun true, which adds rule 3c) then finds no
+// hold. So a superseded HELD or could-not-check line no longer stops the
+// autoflip after a later full PASS: the autoflip drops it on verifyflip's
+// held reading and witness check of the same run. It does not run
+// verifyflip's other checks of that run (the expected sha and runner, the
+// close-verify FAIL read, the git provenance of the run's lines), so its
+// drop set is not a subset of verifyflip's by construction; the autoflip
+// never ran those checks before this read either, and its candidates are
+// already verified. Anything that cannot be read (no path, the brief
+// unreadable, no selectable run, a witness refusal or a missing or failed
+// row) keeps the plain read's answer.
+func verifyPassHeldWitnessed(evidence, path string) (bool, string) {
+	held, why := verifyPassHeldContradiction(evidence)
+	if !held || path == "" {
+		return held, why
+	}
+	p, err := flipLatestPass(evidence)
+	if err != nil {
+		return held, why
+	}
+	verify, _, err := briefSections(path)
+	if err != nil {
+		return held, why
+	}
+	findings, refusal := closureRunWitnesses(verify, evidence, p.Run, path)
+	if refusal != "" || len(findings) == 0 || checkExitCode(findings) != verifyrunExitPass {
+		return held, why
+	}
+	return unroutedHeldLine(evidence, true)
+}
+
 // unroutedHeldLine is verifyPassHeldContradiction's line scan WITHOUT the
 // strict-PASS precondition: it reports the first line that says HELD or
 // could-not-check on an occurrence not genuinely routed to a follow-up AND
@@ -1203,8 +1240,14 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 // Rows are read by flipDateRunnerRows: Date and Runner counted from the RIGHT
 // of each data row (a command's unescaped | cannot shift them), past any
 // column the header places after Runner (a fail-first table's Base), in
-// tables whose header names Date and Runner. The Runner cell is taken whole,
-// qualifiers included.
+// tables whose header names Date and Runner. On a run flipReadRun reads, the
+// runner is the run's agreed reading (flipPass.Cell: `<login> @ <sha>` plus
+// the tail runnerCellsAgree returns, the principal kept), never row 0's cell:
+// rows may differ in descriptive qualifiers and in whether they carry the
+// identity source, so row 0 does not speak for the run, and this stamp never
+// claims more than verifyflip's (#6767). Only the date is row 0's, and every
+// row of such a run carries the same date. A loose run's Runner cell is taken
+// whole, qualifiers included, as flipReadLooseRun reads one cell for every row.
 func evidenceVerifierInfo(evidence string) (date, runner string) {
 	lines, start, end, err := latestPassSpan(evidence)
 	if err != nil {
@@ -1213,7 +1256,7 @@ func evidenceVerifierInfo(evidence string) (date, runner string) {
 	if _, err := latestPassRunFrom(lines, start, end, func(from int) error {
 		if p, err := flipReadRun(lines, start, from, end, nil); err == nil {
 			rows, _ := flipDateRunnerRows(strings.Split(p.Run, "\n"))
-			date, runner = rows[0][0], rows[0][1]
+			date, runner = rows[0][0], p.Cell
 			return nil
 		}
 		d, r, err := flipReadLooseRun(lines, from, end)

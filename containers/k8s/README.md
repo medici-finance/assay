@@ -99,9 +99,12 @@ sh containers/k8s/check.sh --source-secrets --self-test
 
 Required installed tools: Kustomize **v5.8.3**, kubeconform **v0.8.0**, gitleaks
 **8.30.1** (the existing repository scanner pin), Python 3.9+ and the repository's
-Go toolchain with its existing `gopkg.in/yaml.v3 v3.0.1` module cached. No tool is
-installed by the checker. The small Go YAML-to-JSON adapter runs from the existing
-desk module; Python's standard library performs the package assertions. No new
+Go toolchain with its existing `gopkg.in/yaml.v3 v3.0.1` module cached. Self-tests
+also require the Python bytecode inventory of both checker import roots, this
+package and `tools/release`, to remain unchanged. The checker disables bytecode
+writes before importing package fixtures or the image-record contract in every mode.
+No tool is installed by the checker. The small Go YAML-to-JSON adapter runs from
+the existing desk module; Python's standard library performs the package assertions. No new
 parser or package dependency is introduced. The scanner uses the repository's
 existing `.gitleaks.toml`, redacts output, ignores inline allow directives and
 also scans decoded Secret.data. Its staged positive controls prove that an
