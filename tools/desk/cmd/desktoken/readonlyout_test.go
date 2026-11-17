@@ -14,6 +14,9 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
+// roMinted is the fake forge's minted value: a placeholder, shaped like no real credential.
+const roMinted = "example-readonly-minted"
+
 // roForge is a fake forge for the --read-only-out mint: it records every access_tokens body and
 // every revocation, and grants whatever permission map the test sets.
 type roForge struct {
@@ -35,7 +38,7 @@ func (f *roForge) server(t *testing.T) *httptest.Server {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(201)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"token": "ghs_example_readonly", "expires_at": "2124-01-01T00:00:00Z", "permissions": grant,
+			"token": roMinted, "expires_at": "2124-01-01T00:00:00Z", "permissions": grant,
 		})
 	})
 	mux.HandleFunc("DELETE /installation/token", func(w http.ResponseWriter, r *http.Request) {
@@ -81,14 +84,14 @@ func TestReadOnlyOutMintsNarrow(t *testing.T) {
 	if strings.TrimSpace(stdout) != out {
 		t.Errorf("stdout = %q, want exactly the out path %q", stdout, out)
 	}
-	if strings.Contains(stdout+stderr, "ghs_example_readonly") {
+	if strings.Contains(stdout+stderr, roMinted) {
 		t.Fatal("the credential value reached stdout/stderr")
 	}
 	fi, err := os.Stat(out)
 	if err != nil || fi.Mode().Perm() != 0o600 {
 		t.Fatalf("out file: %v mode %v, want 0600", err, fi)
 	}
-	if b, _ := os.ReadFile(out); string(b) != "ghs_example_readonly" {
+	if b, _ := os.ReadFile(out); string(b) != roMinted {
 		t.Errorf("out holds %q", b)
 	}
 	if b, _ := os.ReadFile(out + ".perms"); !strings.Contains(string(b), `"pull_requests":"read"`) {
@@ -138,7 +141,7 @@ func TestReadOnlyOutWideGrantRefused(t *testing.T) {
 	if f.revokes != 1 {
 		t.Errorf("revocations = %d, want 1 — a refused wider grant is ended at once", f.revokes)
 	}
-	if strings.Contains(stdout+stderr, "ghs_example_readonly") {
+	if strings.Contains(stdout+stderr, roMinted) {
 		t.Fatal("the credential value reached stdout/stderr")
 	}
 }
