@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -35,6 +36,13 @@ type ScanFinding struct {
 	// "…", plus a character-class summary (hex, digits, digits+/, base64). It NEVER
 	// contains the span itself.
 	Shape string
+	// Path and Side are set only when a diff-surface caller has mapped Line back to the file
+	// it came from (deskpr's branch diff, #3196): Line is then the line in Path at
+	// Side — the head file for added and context lines, the base file for removed lines —
+	// and 0 when the diff does not number it. Both empty means Line is a line of the
+	// scanned surface itself.
+	Path string
+	Side string
 }
 
 // Error lets *ScanFinding satisfy the error interface, which is what makes it a legal
@@ -46,6 +54,22 @@ func (f *ScanFinding) Error() string { return f.Explain() }
 // Explain renders the finding as the single line the desk verbs print under --explain. It
 // names the rule and the location and carries only the redacted shape.
 func (f *ScanFinding) Explain() string {
+	if f.Path != "" || f.Side != "" {
+		line := "unknown"
+		if f.Line > 0 {
+			line = strconv.Itoa(f.Line)
+		}
+		path := DisplayPath(f.Path)
+		if path == "" {
+			path = "unknown"
+		}
+		side := f.Side
+		if side == "" {
+			side = "unknown"
+		}
+		return fmt.Sprintf("scan-explain: rule=%s line=%s path=%s side=%s length=%d shape=%s",
+			f.Rule, line, path, side, f.Length, f.Shape)
+	}
 	return fmt.Sprintf("scan-explain: rule=%s line=%d length=%d shape=%s",
 		f.Rule, f.Line, f.Length, f.Shape)
 }
@@ -108,4 +132,16 @@ func redactShape(run string) string {
 		return "… (" + class + ")"
 	}
 	return run[:2] + "…" + run[len(run)-2:] + " (" + class + ")"
+}
+
+// DisplayPath renders a file path for a console line. A path whose every rune is graphic
+// (strconv.IsGraphic) prints as it is. Any other path prints Go-quoted, as
+// strconv.QuoteToGraphic writes it, so control and bidi characters in a path show as
+// escapes and cannot reorder or rewrite the line they are printed on. A path is author
+// text: it reaches the console from a diff header, not from the tool.
+func DisplayPath(p string) string {
+	if q := strconv.QuoteToGraphic(p); q != `"`+p+`"` {
+		return q
+	}
+	return p
 }

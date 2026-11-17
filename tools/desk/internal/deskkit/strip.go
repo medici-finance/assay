@@ -7,8 +7,12 @@ import "regexp"
 //
 //   - a CSI escape sequence (ESC '[' ... final byte) — colour, cursor moves, and the
 //     erase/scroll codes that let a crafted PR title rewrite lines ABOVE it;
-//   - any other C0/C1 control character except tab and newline, including a bare ESC,
-//     carriage return (line-overwrite) and DEL.
+//   - any other C0 control character (U+0000-U+001F) except tab and newline, including a
+//     bare ESC and carriage return (line-overwrite), and DEL.
+//
+// The character class stops at DEL (U+007F): a C1 control (U+0080-U+009F) is NOT removed,
+// and neither is a bidi format character. Text that may carry either is
+// quoted for display instead (DisplayPath).
 //
 // Tab and newline are kept: the renderers use them for layout and neither can move the
 // cursor backwards.
