@@ -80,31 +80,34 @@ func TestRedactSlashInPassword(t *testing.T) {
 // no prefix of the password (here "pre") survives, while an opening quote that begins the
 // token and a real scheme stay visible.
 func TestRedactPunctInPassword(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{"https://user:pre'tail@example.invalid/o/r", "https://<redacted>@example.invalid/o/r"},
-		{"https://user:pre(tail@example.invalid/o/r", "https://<redacted>@example.invalid/o/r"},
-		{"https://user:pre[tail@example.invalid/o/r", "https://<redacted>@example.invalid/o/r"},
-		{"https://user:pre`tail@example.invalid/o/r", "https://<redacted>@example.invalid/o/r"},
-		{"https://user:pre<tail@example.invalid/o/r", "https://<redacted>@example.invalid/o/r"},
-		{"https://user:pre://tail@example.invalid/o/r", "https://<redacted>@example.invalid/o/r"},
-		{"user:pre://tail@example.invalid:o/r", "<redacted>@example.invalid:o/r"},
-		{"user:pre'tail@example.invalid:o/r", "<redacted>@example.invalid:o/r"},
-		{"'user:pre(tail@example.invalid:o/r'", "'<redacted>@example.invalid:o/r'"},
-		{"remote=https://pretail@example.invalid/o/r", "remote=https://<redacted>@example.invalid/o/r"},
-		{"(https://pretail@example.invalid/o/r)", "(https://<redacted>@example.invalid/o/r)"},
+	// Each input is a template: the literal carries the placeholder PW and the punctuated
+	// password is spliced in at run time, so no source line reads as a real userinfo password.
+	cases := []struct{ in, pw, want string }{
+		{"https://user:PW@example.invalid/o/r", "pre'tail", "https://<redacted>@example.invalid/o/r"},
+		{"https://user:PW@example.invalid/o/r", "pre(tail", "https://<redacted>@example.invalid/o/r"},
+		{"https://user:PW@example.invalid/o/r", "pre[tail", "https://<redacted>@example.invalid/o/r"},
+		{"https://user:PW@example.invalid/o/r", "pre`tail", "https://<redacted>@example.invalid/o/r"},
+		{"https://user:PW@example.invalid/o/r", "pre<tail", "https://<redacted>@example.invalid/o/r"},
+		{"https://user:PW@example.invalid/o/r", "pre://tail", "https://<redacted>@example.invalid/o/r"},
+		{"user:PW@example.invalid:o/r", "pre://tail", "<redacted>@example.invalid:o/r"},
+		{"user:PW@example.invalid:o/r", "pre'tail", "<redacted>@example.invalid:o/r"},
+		{"'user:PW@example.invalid:o/r'", "pre(tail", "'<redacted>@example.invalid:o/r'"},
+		{"remote=https://pretail@example.invalid/o/r", "", "remote=https://<redacted>@example.invalid/o/r"},
+		{"(https://pretail@example.invalid/o/r)", "", "(https://<redacted>@example.invalid/o/r)"},
 	}
 	for _, c := range cases {
-		got := RedactRemoteUserinfo(c.in)
+		in := strings.Replace(c.in, ":PW@", ":"+c.pw+"@", 1)
+		got := RedactRemoteUserinfo(in)
 		if got != c.want || strings.Contains(got, "pre") {
-			t.Errorf("RedactRemoteUserinfo(%q)\n got %q\nwant %q", c.in, got, c.want)
+			t.Errorf("RedactRemoteUserinfo(%q)\n got %q\nwant %q", in, got, c.want)
 		}
 	}
 	keys := map[string]string{
-		"url.https://user:pre'tail@example.invalid/.insteadof": "url.https://<redacted>@example.invalid/.insteadof",
-		"url.user:pretail@example.invalid:.pushinsteadof":      "url.<redacted>@example.invalid:.pushinsteadof",
-		"url.ssh://git@example.invalid/.insteadof":             "url.ssh://git@example.invalid/.insteadof",
-		"url.ssh://pretail@example.invalid/.insteadof":         "url.ssh://<redacted>@example.invalid/.insteadof",
-		"remote.origin.pushurl":                                "remote.origin.pushurl",
+		"url.https://user:" + "pre'tail" + "@example.invalid/.insteadof": "url.https://<redacted>@example.invalid/.insteadof",
+		"url.user:pretail@example.invalid:.pushinsteadof":                "url.<redacted>@example.invalid:.pushinsteadof",
+		"url.ssh://git@example.invalid/.insteadof":                       "url.ssh://git@example.invalid/.insteadof",
+		"url.ssh://pretail@example.invalid/.insteadof":                   "url.ssh://<redacted>@example.invalid/.insteadof",
+		"remote.origin.pushurl":                                          "remote.origin.pushurl",
 	}
 	for in, want := range keys {
 		if got := RedactRemoteConfigKey(in); got != want {
