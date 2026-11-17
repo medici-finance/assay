@@ -67,6 +67,9 @@ const (
 	HotfixReasonUnstamped    = "unstamped binary in hotfix overlay"
 	HotfixReasonIneligible   = "hotfix-ineligible"
 	HotfixReasonNoPin        = "hotfix could-not-check: no pin resolves"
+	// HotfixReasonOwnerUnverified: the owner check could not run (outside the initial user
+	// namespace, or its mapping unreadable), so no file was found not root-owned.
+	HotfixReasonOwnerUnverified = "hotfix could-not-check: file owners unverifiable"
 )
 
 // HotfixOverlayDir is the overlay directory the environment names, else the default.
@@ -260,7 +263,7 @@ func ValidateHotfix(overlay, tool, pin string, now time.Time, owner HotfixOwnerC
 		return HotfixEntry{}, hotfixErr(6, HotfixReasonNotRootOwned, "overlay %s unreadable: %v", overlay, err)
 	}
 	if err := owner(overlay); err != nil {
-		return HotfixEntry{}, hotfixErr(6, HotfixReasonNotRootOwned, "%v", err)
+		return HotfixEntry{}, hotfixErr(6, HotfixOwnerReason(err), "%v", err)
 	}
 	mpath := HotfixManifestPath(overlay)
 	if _, err := os.Lstat(mpath); err != nil {
@@ -273,7 +276,7 @@ func ValidateHotfix(overlay, tool, pin string, now time.Time, owner HotfixOwnerC
 		return HotfixEntry{}, hotfixErr(6, HotfixReasonTampered, "manifest %s unreadable: %v", mpath, err)
 	}
 	if err := owner(mpath); err != nil {
-		return HotfixEntry{}, hotfixErr(6, HotfixReasonNotRootOwned, "%v", err)
+		return HotfixEntry{}, hotfixErr(6, HotfixOwnerReason(err), "%v", err)
 	}
 	m, err := ReadHotfixManifest(overlay)
 	if err != nil {
@@ -290,7 +293,7 @@ func ValidateHotfix(overlay, tool, pin string, now time.Time, owner HotfixOwnerC
 		return e, hotfixErr(1, HotfixReasonTampered, "manifest entry for %s but no binary at %s", tool, bin)
 	}
 	if err := owner(bin); err != nil {
-		return e, hotfixErr(6, HotfixReasonNotRootOwned, "%v", err)
+		return e, hotfixErr(6, HotfixOwnerReason(err), "%v", err)
 	}
 	sum, err := FileSHA256(bin)
 	if err != nil {

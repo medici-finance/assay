@@ -23,7 +23,7 @@ decision-trigger: creation
 issues: [6615]
 decision-issue: 6615
 schema: brief-v2
-version: 3
+version: 4
 authored: 2026-11-16 by assay-worker-app (issue #6615)
 sources:
   - "Issue #6615: cell dev environment, one dev-env file per cell, admitted to Verify rows by declared name."
@@ -215,7 +215,8 @@ amendment and the answer to this question, and the driver approves it by name.
      takes; DR-desk-containers-34 forbids hashing a bare secret for that reason);
    - the proof that only the coordinator can write, per surface, as `## Human decision` rules,
      how the verifier learns the coordinator's identity, and the launcher record's anchor and
-     the launcher identity pinned with it (Interface contract);
+     the launcher identity pinned with it, and where that pin and the filesystem allow-list
+     are kept, one source for the verifier and the launcher (Interface contract);
    - under option 1, the file and its path reach only windows that can open no role secret, and
      a row that declares names is admitted only in such a window; removing role-secret
      variables from a row is not that separation.
@@ -283,6 +284,23 @@ list of role identities to deny, because the verifier cannot learn every role id
 - **Container cell.** The launcher binds that one record file read-only into each verifier
   container at a fixed in-container path and into no other container; the verifier checks
   that mount as it checks its own dev-env mount, in place of an owner check.
+- **Pin storage, one source.** The pin (the launcher identity and the anchor path) and the
+  filesystem allow-list (brief 36 Task 4) are each kept in exactly one place that no role
+  identity can write. The allow-list is compiled in. The pin is either compiled in, or kept in
+  one install file at a fixed absolute path that the system administrator owns and that is
+  writable only by its owner, on an allow-listed filesystem kind, with every directory on its
+  path owned by the system administrator, writable only by its owner, not a symlink and on an
+  allow-listed filesystem kind, so neither a role identity nor the launcher identity can change
+  the pin;
+  `DR-desk-containers-35` names which. On a container cell an install file reaches only the
+  verifier container, as a read-only file mount at a fixed in-container path, checked as the
+  record mount is. Neither the pin nor the install file's path is ever read from a variable.
+  The verifier and the launcher (brief 37) read the same source, built from one definition or
+  opened at that one path. Two binaries built apart can still carry different compiled-in
+  values; a disagreement fails closed, because each side refuses what its own pin or list
+  refuses and the verifier admits only a record it accepts itself. A pin that cannot be read
+  from that source, or an install file that fails these checks, refuses: the verifier admits
+  no record and the launcher writes none.
 
 ## Definition of Done
 
@@ -336,6 +354,22 @@ Named tests must execute; zero matches or a skip fails independent verification.
   verifier refuses the record (brief 36 row 3) and the launcher writes none (brief 37 row 8).
   Which identity is pinned, and the anchor path, are install-time facts that
   `DR-desk-containers-35` records; a wrong pin is review-only.
+- A role identity edits the pin, or the launcher and the verifier hold copies that disagree:
+  the pin storage rule (Interface contract) keeps one source that no role identity can write,
+  and a disagreement fails closed; enforced by brief 36 row 3 and brief 37 row 8. Both rows
+  refuse an unreadable pin source and never read a pin, its path or an extra filesystem kind
+  from a variable. Where `DR-desk-containers-35` picks the install file, both also refuse one
+  owned by any identity but the system administrator (planted: a role identity, the launcher
+  identity and `example-operator`); one another identity can write by a group or other write
+  bit, a write ACL entry, or an ACL right only to append, to change permissions or to change
+  owner; one that is a symlink; one under a directory the administrator does not own, that
+  another identity can write by a group or other write bit or by an ACL right only to delete,
+  to add an entry, to change permissions or to change owner, that is a symlink, or that sits
+  on a filesystem kind off the allow-list or mounted to ignore ownership, one such directory
+  two levels up included; one itself on either of those kinds; and, on a container cell, one
+  that is not a read-only file mount.
+- A role identity edits the filesystem allow-list: it is compiled in, so a change to it is a
+  reviewed code change; review-only, beyond the never-read variable case above.
 - A digest of a one-line file lets a reader guess a short value: the nonce line and the
   8-character floor, Task 1.
 - A production value or role secret lands in the dev-env file: no row; review-only, row 7 and

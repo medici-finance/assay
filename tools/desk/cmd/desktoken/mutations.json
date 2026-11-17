@@ -288,6 +288,18 @@
       "file": "cmd/desktoken/gitlab.go",
       "old": "\tfmt.Fprintln(os.Stderr, gitlabCustodyNotice(rotate))",
       "new": "\t_ = gitlabCustodyNotice"
+    },
+    {
+      "name": "read the POST answer uncapped (the access_tokens mint, incl. the read-only one, reads an over-cap body to its end while GET keeps the cap, #6780)",
+      "file": "internal/credential/github.go",
+      "old": "\tbody, err := readCappedResponse(resp.Body)",
+      "new": "\tread := readCappedResponse\n\tif method == \"POST\" {\n\t\tread = io.ReadAll\n\t}\n\tbody, err := read(resp.Body)"
+    },
+    {
+      "name": "read the DELETE answer uncapped (the revoke reads an over-cap body to its end while GET keeps the cap, #6780)",
+      "file": "internal/credential/github.go",
+      "old": "\tbody, err := readCappedResponse(resp.Body)",
+      "new": "\tread := readCappedResponse\n\tif method == \"DELETE\" {\n\t\tread = io.ReadAll\n\t}\n\tbody, err := read(resp.Body)"
     }
   ]
 }
