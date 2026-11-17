@@ -181,7 +181,7 @@ func TestAdmittedEnvPassList(t *testing.T) {
 	gone := []string{"SSH_AUTH_SOCK=/tmp/agent", "SSH_ASKPASS=/bin/ask", "XDG_RUNTIME_DIR=/run/user/1",
 		"DOCKER_CONFIG=/h/.docker", "KUBECONFIG=/h/.kube/config", "EXAMPLE_TOOL_CONFIG_DIR=/h/tool",
 		"OTHERFORGE_LOGIN=x", "ACTIONS_RUNTIME_URL=https://example.invalid", "CI_EXAMPLE_LOGIN=x",
-		"PATHEXTRA=x", "GOAUTH=git", "GOENV=/h/go.env", "APPDATA=C:\\Users\\u\\AppData", "USERPROFILE=C:\\Users\\u",
+		"PATHEXTRA=x", "GOAUTH=git", "GOENV=/h/go.env", "APPDATA=D:\\prof\\AppData", "USERPROFILE=D:\\prof",
 		"LCX=x", "HTTPS_PROXY=http://fixture@proxy.example.invalid:3128", "GOPROXY=https://fixture@mod.example.invalid"}
 	for _, kv := range kept {
 		if !slices.Contains(admittedRowEnv([]string{kv}), kv) {
