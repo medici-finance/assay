@@ -21,6 +21,14 @@ var pinArgs = [][]string{
 	{"config", "--worktree", "--replace-all", "credential.helper", ""},
 }
 
+// pinTo is the worktree pin shape with url in place of the repair's own URL.
+func pinTo(url string) [][]string {
+	return [][]string{
+		{"config", "--worktree", "--replace-all", "remote.origin.url", ""},
+		{"config", "--worktree", "--add", "remote.origin.url", url},
+	}
+}
+
 func gitAll(t *testing.T, dir string, cmds [][]string) {
 	t.Helper()
 	for _, args := range cmds {
@@ -57,6 +65,10 @@ func TestOriginSlugScopeRefused(t *testing.T) {
 		{"pin plus insteadOf", true, false, append(append([][]string{}, pinArgs...),
 			wt("url.https://github.com/other/.insteadOf", "https://github.com:443/owner/"))},
 		{"pin plus include", true, false, append(append([][]string{}, pinArgs...), wt("include.path", "steer.cfg"))},
+		{"pin over two local urls", true, false, append([][]string{
+			{"config", "--add", "remote.origin.url", "https://github.com/owner/repo.git"}}, pinArgs...)},
+		{"pin other host", true, false, pinTo("https://steer.example.invalid:443/owner/repo.git")},
+		{"pin longer path", true, false, pinTo("https://github.com:443/steer/owner/repo.git")},
 		{"include", false, true, [][]string{{"config", "include.path", "steer.cfg"}}},
 		{"includeIf", false, false, [][]string{{"config", "includeIf.gitdir:/.path", "steer.cfg"}}},
 		{"activation grammar", false, true, [][]string{{"config", "extensions.worktreeConfig", "maybe"}}},
@@ -93,6 +105,8 @@ func TestOriginSlugPinAccepted(t *testing.T) {
 	}{
 		{"https origin pinned", pinArgs},
 		{"ssh origin pinned", append([][]string{{"remote", "set-url", "origin", "git@github.com:owner/repo.git"}}, pinArgs...)},
+		// An ssh alias only ssh resolves: the pin's host cannot be compared, its path still is.
+		{"ssh alias pinned", append([][]string{{"remote", "set-url", "origin", "example-alias:owner/repo.git"}}, pinArgs...)},
 		{"identity only", nil},
 	}
 	for _, tc := range cases {
