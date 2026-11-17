@@ -499,7 +499,7 @@ func TestProtectedRerunConsumers(t *testing.T) {
 				t.Fatal(err)
 			}
 			// #6734: the flip needs an agreeing outcome record at the flipped revision.
-			vfOutcome(t, root, "verified", delivery, "2026-08-14T12:00:00Z")
+			vfOutcomeCommitted(t, root, "verified", delivery, "2026-08-14T12:00:00Z")
 			code, out, diag := runVF(t, root, "--sha", delivery)
 			if (code == verifyflipExitOK) != c.pass {
 				t.Errorf("actual flip pass=%v: code=%d out=%s diag=%s", c.pass, code, out, diag)

@@ -97,23 +97,41 @@ func vfFixture(t *testing.T, o vfOpts) (root, readme string) {
 // result, the revision the run observed (source_sha) and its ts.
 func vfOutcome(t *testing.T, root, outcome, sourceSHA, ts string) {
 	t.Helper()
-	vfOutcomeRaw(t, root, fmt.Sprintf(`{"brief":"vf/01","ts":%q,"outcome":%q,"sha":"0000000000aa","source_sha":%q}`, ts, outcome, sourceSHA))
+	_ = vfOutcomeRaw(t, root, fmt.Sprintf(`{"brief":"vf/01","ts":%q,"outcome":%q,"sha":"0000000000aa","source_sha":%q}`, ts, outcome, sourceSHA))
 }
 
-// vfOutcomeRaw writes one verify-outcome record line at its canonical path.
-func vfOutcomeRaw(t *testing.T, root, line string) {
+// vfOutcomeRaw writes one verify-outcome record line at its canonical path
+// and returns that repo-relative path.
+func vfOutcomeRaw(t *testing.T, root, line string) string {
 	t.Helper()
 	name, err := outcomeRecordName([]byte(line))
 	if err != nil {
 		t.Fatal(err)
 	}
-	p := filepath.Join(root, filepath.FromSlash(name))
+	vfWriteAt(t, root, name, outcomeCanonicalBytes([]byte(line)))
+	return name
+}
+
+// vfWriteAt writes body at the repo-relative slash path rel under root.
+func vfWriteAt(t *testing.T, root, rel string, body []byte) {
+	t.Helper()
+	p := filepath.Join(root, filepath.FromSlash(rel))
 	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, outcomeCanonicalBytes([]byte(line)), 0o644); err != nil {
+	if err := os.WriteFile(p, body, 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// vfOutcomeCommitted writes an agreeing-shape record (vfOutcome) and commits
+// only that file as the verifier (#6734: the deciding record must be committed
+// and the verifier's).
+func vfOutcomeCommitted(t *testing.T, root, outcome, sourceSHA, ts string) {
+	t.Helper()
+	rel := vfOutcomeRaw(t, root, fmt.Sprintf(`{"brief":"vf/01","ts":%q,"outcome":%q,"sha":"0000000000aa","source_sha":%q}`, ts, outcome, sourceSHA))
+	vfGit(t, root, vfMailVerifier, "add", "--", filepath.FromSlash(rel))
+	vfGit(t, root, vfMailVerifier, "commit", "-q", "-m", "outcome record", "--", filepath.FromSlash(rel))
 }
 
 // vfGit runs git in root with author and committer pinned to mail.

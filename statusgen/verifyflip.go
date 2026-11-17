@@ -46,9 +46,12 @@ package main
 //     left unanswered, and every Verify row has a passing execution witness
 //     inside the PASS run itself.
 //   - Outcome record (#6734, flipoutcome.go): the brief's latest
-//     verify-outcome record names the flipped revision and says verified.
-//     Absent, another revision or another result refuses, naming which; an
-//     unreadable record is could-not-check.
+//     verify-outcome record names the flipped revision and says verified,
+//     is committed, and was added by the bound verifier or a roster human.
+//     Absent, another revision, another result, uncommitted, or another
+//     author refuses, naming which; an unreadable record, one whose ts is not
+//     RFC 3339, one not at its own record name, or a skipped legacy line
+//     naming the brief is could-not-check.
 //
 // WHAT IT WRITES — exactly two cells of one README row: Status → `verified`
 // and Verified → `<date> <runner>`, both from the recorded run. An
@@ -100,10 +103,14 @@ by anyone else that changed Evidence after the PASS was recorded (a merge that
 dropped Evidence one side added included), uncommitted Evidence changes, an
 unrouted HELD row, a Verify row without a passing witness in the PASS run, a
 latest verify-outcome record for the brief that is absent, names another
-revision than --sha, or does not say verified, or a README that is not a regular
-file. Exit 2 is could-not-check (including an ambiguous brief file, no roster, a
-shallow clone, a brief moved or removed since the PASS was recorded, an
-unreadable verify-outcome record).
+revision than --sha (its source_sha; an older record without one is read by its
+sha, which is usually the Evidence landing commit, so re-run the verify), does
+not say verified, is uncommitted, or was not added by the bound verifier or a
+roster human, or a README that is not a regular file. Exit 2 is could-not-check
+(including an ambiguous brief file, no roster, a shallow clone, a brief moved or
+removed since the PASS was recorded, an unreadable verify-outcome record, one
+whose ts is not RFC 3339, one not at its own record name, a skipped legacy line
+naming the brief, or a deciding legacy line).
 
 Flags:
   --brief <stream>/<NN>   the brief key (required)
