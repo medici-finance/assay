@@ -66,7 +66,8 @@ var representedPRBatchFiles func(repo string, numbers []int) map[int]deskkit.Pen
 // THE AUTHORING EXEMPTION (#1339). A MERGED docs-only PR that only WROTE a brief used to carry that
 // brief's `Brief:` trailer, so the brief it authored read as landed-unreconciled and was never
 // offered — the same collision deskdispatch's phantom check had (its authoring.go). For each brief
-// that is a CANDIDATE this run (candidates: the plan's Next-up and awaiting-rework rows), every PR
+// that is a CANDIDATE this run (candidates: the plan's Next-up and awaiting-rework rows that are not
+// withheld by status), every PR
 // naming it is checked in list order with deskkit.BriefAuthoringOnly, and the first PR that is not
 // authoring-only represents the brief; a brief whose only representing PRs are authoring PRs is not
 // represented at all. File reads are therefore bounded by the PRs naming a queued brief, never the
@@ -149,8 +150,10 @@ func firstOfEach(all map[string][]deskkit.RepresentedPR) map[string]deskkit.Repr
 //
 // THE SEARCH BUDGET. Each lookup is one forge search, and a run can have more candidates than the
 // forge's per-minute search allowance. So the lookups run in QUEUE PRIORITY order (order, as
-// candidateBriefIDs builds it: the order SelectQueue would offer the rows), never alphabetically —
-// the rows the plan would dispatch first are the ones checked first. The FIRST rate-limit answer
+// candidateBriefIDs builds it: the lanes in the order SelectQueue reads them, with every row
+// statusWithheld will withhold already left out), never alphabetically — the rows the plan could
+// dispatch first are the ones checked first, and no lookup is spent on a row it never offers. The
+// FIRST rate-limit answer
 // ends the walk: every candidate not yet looked up is marked Unchecked without another request, so
 // a run never keeps spending a budget the forge already refused (and that other searches share).
 // Any other lookup error is that one brief's could-not-check and the walk continues.
@@ -361,12 +364,15 @@ func authoringPR(repo, briefID string, rp deskkit.RepresentedPR, files []deskkit
 }
 
 // candidateBriefIDs is the candidate set cmdPlan hands representedSourceFor: the lower-cased brief
-// ids of this run's Next-up and awaiting-rework rows — the only rows the represented map is consulted
-// for, so the only briefs whose representing PRs are worth a file read. It is returned in QUEUE
-// PRIORITY order, the order SelectQueue offers the rows: Next-up rows addressed to this desk first,
-// then awaiting-rework rows, then the remaining Next-up rows in board order (another loop's dispatch
-// tokens last — SelectQueue never offers them). lookUpPastWindow spends its search budget in this
-// order, so a rate limit holds the lowest-priority rows, never the same alphabetical tail (#5853).
+// ids of this run's Next-up and awaiting-rework rows that statusWithheld does NOT withhold. A row
+// whose known Status is not `todo`/`in-progress` (withheldByStatus, the predicate statusWithheld
+// itself applies) is left out: SelectQueue withholds it before it reads the represented map, so a
+// file read or a lookup spent on it is wasted, and past an incomplete window it would spend the
+// search budget ahead of the rows the plan could dispatch (#5853). The ids are returned in the
+// order SelectQueue reads the lanes: Next-up rows addressed to this desk first, then awaiting-rework
+// rows, then the remaining Next-up rows in board order (another loop's dispatch tokens last —
+// SelectQueue never offers them). lookUpPastWindow spends its search budget in this order, so a
+// rate limit holds the lowest-priority rows, never the same alphabetical tail (#5853).
 func (f *FanoutLoop) candidateBriefIDs() ([]string, error) {
 	rows, err := f.boardSource()
 	if err != nil {
@@ -392,6 +398,9 @@ func (f *FanoutLoop) candidateBriefIDs() ([]string, error) {
 	seen := map[string]bool{}
 	for _, lane := range [][]BoardRow{addressed, rework, fresh, foreign} {
 		for _, r := range lane {
+			if withheldByStatus(r) {
+				continue
+			}
 			id := strings.ToLower(r.Stream + "/" + r.Num)
 			if !seen[id] {
 				seen[id] = true

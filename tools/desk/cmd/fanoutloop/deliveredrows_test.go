@@ -223,3 +223,40 @@ func TestRepollResetsWithheld(t *testing.T) {
 		t.Fatalf("second poll reported a stale run's rows: %d withheld, %d awaiting rework", w, r)
 	}
 }
+
+// A row statusWithheld will withhold must never spend a per-brief lookup past an incomplete
+// window: the search budget belongs to the rows the plan could dispatch. The withheld rows (a
+// `verified` rework row and a `done` Next-up row) sit ahead of the `todo` row in queue priority,
+// and every lookup but the `todo` row's answers with a rate limit. Asking for a withheld row first
+// would mark the `todo` row COULD-NOT-CHECK and leave it undispatched.
+//
+// regression: F-withheld-rows-spend-lookup-budget
+func TestWithheldRowsSkipLookup(t *testing.T) {
+	setupDeskHome(t)
+	asked := recordLookups(t, func(_ int, id string) ([]deskkit.PRRef, error) {
+		if id == "example-zeta/01" {
+			return nil, nil
+		}
+		return nil, &deskkit.ForgeAPIError{Status: 429, Method: "GET", Path: "search/issues"}
+	})
+	row := func(stream, num, status string) BoardRow {
+		r := briefRow(stream, num, "M", "", "model", false)
+		r.Status = status
+		return r
+	}
+	f := planWithRows([]BoardRow{row("example-done", "02", "done"), row("example-zeta", "01", "todo")})
+	f.Rework = func() ([]BoardRow, error) { return []BoardRow{row("example-mid", "03", "verified")}, nil }
+	s := renderWindowPlan(t, f)
+	if want := "example-zeta/01"; strings.Join(*asked, ",") != want {
+		t.Errorf("lookups asked %v, want only %s: a withheld row spent the search budget", *asked, want)
+	}
+	if !strings.Contains(s, "=== DISPATCH example-zeta/01") {
+		t.Errorf("the todo row was not dispatched:\n%s", s)
+	}
+	if strings.Contains(s, "COULD-NOT-CHECK") {
+		t.Errorf("a row went COULD-NOT-CHECK although only withheld rows were rate-limited:\n%s", s)
+	}
+	if !strings.Contains(s, "example-mid/03 — status verified") {
+		t.Errorf("the withheld rework row is not listed under AWAITING REWORK:\n%s", s)
+	}
+}

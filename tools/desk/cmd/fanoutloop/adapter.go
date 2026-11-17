@@ -156,9 +156,11 @@ type FanoutLoop struct {
 // at implemented/verified goes to AWAITING REWORK (owner worker, with its cited blocker); any other
 // withheld row goes to WITHHELD BY STATUS. An unknown Status ("") is could-not-check and is never
 // rounded to delivered, so it stays dispatchable. Durable repair obligations are not brief rows and
-// do not pass through here.
+// do not pass through here. Whether a row is withheld is decided by withheldByStatus alone, the
+// side-effect-free predicate candidateBriefIDs shares, so the rows this withholds are exactly the
+// rows never looked up past an incomplete window.
 func (f *FanoutLoop) statusWithheld(r BoardRow, reworkLane bool) bool {
-	if strings.TrimSpace(r.Status) == "" || isDispatchableStatus(r.Status) {
+	if !withheldByStatus(r) {
 		return false
 	}
 	f.mu.Lock()
@@ -169,6 +171,13 @@ func (f *FanoutLoop) statusWithheld(r BoardRow, reworkLane bool) bool {
 	}
 	f.mu.Unlock()
 	return true
+}
+
+// withheldByStatus reports whether statusWithheld withholds r: its Status is known and is not
+// `todo`/`in-progress`. It records nothing, so the candidate set (candidateBriefIDs) can apply the
+// same test before any lookup is spent (#5853).
+func withheldByStatus(r BoardRow) bool {
+	return strings.TrimSpace(r.Status) != "" && !isDispatchableStatus(r.Status)
 }
 
 // awaitingReworkRows returns the rework-lane rows the last SelectQueue listed as AWAITING REWORK.

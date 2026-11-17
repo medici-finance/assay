@@ -40,8 +40,8 @@
     {
       "name": "#5853 \u2014 DISABLE the statusWithheld choke point so a brief row whose known status is not todo/in-progress falls through to IMPLEMENT dispatch exactly as before the fix; TestPlanImplementedGoesRework, TestPlanVerifiedGoesRework and TestQueueRoutesInjectedDone must go red",
       "file": "cmd/fanoutloop/adapter.go",
-      "old": "\tif strings.TrimSpace(r.Status) == \"\" || isDispatchableStatus(r.Status) {",
-      "new": "\tif true || strings.TrimSpace(r.Status) == \"\" || isDispatchableStatus(r.Status) {"
+      "old": "\tif !withheldByStatus(r) {\n\t\treturn false",
+      "new": "\tif true || !withheldByStatus(r) {\n\t\treturn false"
     },
     {
       "name": "#5853 \u2014 DROP the rework section's own Status fallback so a rework row whose README cannot be read carries no status and is offered as IMPLEMENT again; TestReworkFallsBackToSection must go red",
@@ -120,6 +120,12 @@
       "file": "cmd/fanoutloop/represented.go",
       "old": "\tvar aliases *deskkit.DeliveryAliases\n\tfor _, r := range append(rows, rework...) {",
       "new": "\tvar aliases *deskkit.DeliveryAliases\n\t_ = rework\n\tfor _, r := range rows {"
+    },
+    {
+      "name": "#5853 SPEND lookups on withheld rows again: candidateBriefIDs stops leaving out the rows statusWithheld withholds, so a delivered rework row is looked up ahead of the todo rows and a rate limit on it holds them COULD-NOT-CHECK. TestWithheldRowsSkipLookup must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\t\tif withheldByStatus(r) {\n\t\t\t\tcontinue",
+      "new": "\t\t\tif false && withheldByStatus(r) {\n\t\t\t\tcontinue"
     }
   ]
 }
