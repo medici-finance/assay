@@ -223,7 +223,7 @@ func phantomCheckFor(o dispatchOpts, repo string, dl deliverable) (phantomFollow
 				n = m // the newest merged PR is the one a follow-up follows
 			}
 		}
-		if false && o.rework {
+		if o.rework {
 			return phantomFollowUp{pr: n}, nil
 		}
 		short := deskkit.RepoShortLabel(repo)
