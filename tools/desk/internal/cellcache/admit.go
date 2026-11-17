@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"time"
 )
@@ -12,7 +13,8 @@ import (
 // pre-check to lean on it. Explicit maintenance records a fresh report;
 // launch enrollment never refreshes a historical measurement. An older or
 // future-dated estimate is not trusted. Admit may run a full check; bounded
-// launch Prepare/Acquire refuse and request explicit maintenance instead.
+// launch Prepare/Acquire refuse and request explicit maintenance instead, and
+// mark the refusal stale so a cellctl launch may re-measure once (#6593).
 const AdmitMaxAge = 5 * time.Minute
 
 // AdmitMtimeSlack is how far before the recorded measurement a top-level
@@ -133,15 +135,31 @@ func cheapClean(p Policy, dry bool, env admitEnv) (Report, string) {
 	return r, why
 }
 
-// precheck is cheapClean plus whether the refusal is one a single clean can
-// clear: the size or free-space margin, an aged measurement, or a top-level
-// change since it. Every other refusal is not reclaimable.
-func precheck(p Policy, dry bool, env admitEnv) (Report, string, bool) {
-	no := func(format string, a ...any) (Report, string, bool) {
-		return Report{}, fmt.Sprintf(format, a...), false
+// refusal classifies why the lock-free pre-check could not admit.
+type refusal uint8
+
+const (
+	// refuseOperator: ownership, domain, corrupt or dirty accounting. No
+	// clean is run for it; it stays with the operator.
+	refuseOperator refusal = iota
+	// refuseReclaim: the size or free-space margin, or a top-level change
+	// since the measurement. One clean may clear it; only `cellctl up` runs it.
+	refuseReclaim
+	// refuseStale: the recorded measurement is aged, unstamped, future-dated
+	// or missing. One fresh measurement decides; every launch may take it.
+	refuseStale
+)
+
+// precheck is cheapClean plus the class of its refusal (see refusal).
+func precheck(p Policy, dry bool, env admitEnv) (Report, string, refusal) {
+	no := func(format string, a ...any) (Report, string, refusal) {
+		return Report{}, fmt.Sprintf(format, a...), refuseOperator
 	}
-	reclaim := func(format string, a ...any) (Report, string, bool) {
-		return Report{}, fmt.Sprintf(format, a...), true
+	reclaim := func(format string, a ...any) (Report, string, refusal) {
+		return Report{}, fmt.Sprintf(format, a...), refuseReclaim
+	}
+	stale := func(format string, a ...any) (Report, string, refusal) {
+		return Report{}, fmt.Sprintf(format, a...), refuseStale
 	}
 	if err := p.Validate(); err != nil {
 		return no("policy: %v", err)
@@ -164,6 +182,11 @@ func precheck(p Policy, dry bool, env admitEnv) (Report, string, bool) {
 		return no("cache ownership not proven")
 	}
 	b, err := readMetaBounded(r, dev, "report.json", 64<<10)
+	if errors.Is(err, fs.ErrNotExist) {
+		// An owned root with no report yet: nothing is wrong with it that a
+		// fresh measurement does not settle.
+		return stale("no readable recorded measurement: %v", err)
+	}
 	if err != nil {
 		return no("no readable recorded measurement: %v", err)
 	}
@@ -184,10 +207,7 @@ func precheck(p Policy, dry bool, env admitEnv) (Report, string, bool) {
 	now := env.now().UTC()
 	age := now.Sub(rep.After.At)
 	if rep.After.At.IsZero() || age < 0 || age > AdmitMaxAge {
-		if rep.After.At.IsZero() || age < 0 {
-			return no("recorded measurement is stale or future-dated")
-		}
-		return reclaim("recorded measurement is stale or future-dated")
+		return stale("recorded measurement is stale or future-dated")
 	}
 	for _, name := range []string{"build", "mod"} {
 		st, err := r.Lstat(name)
@@ -227,5 +247,5 @@ func precheck(p Policy, dry bool, env admitEnv) (Report, string, bool) {
 		DryRun: dry, Admission: "precheck",
 		Before: Measurement{At: at, LogicalBytes: &size, AvailableBytes: &free},
 		After:  Measurement{At: at, LogicalBytes: &size, AvailableBytes: &free},
-	}, "", false
+	}, "", refuseOperator
 }

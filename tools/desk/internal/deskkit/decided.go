@@ -280,11 +280,35 @@ func ParseDeskDecidedBlockInBody(body string) (items []DecidedItem, found bool, 
 // `Undeclared-desk-decision: <one line>`. It is a BLOCK-direction marker — like
 // `Security-Review: fail` and the correctness `Verdict: request-changes` line — so it is
 // read with ReadFenced: a finding must not be hideable inside a code fence.
-var undeclaredDeskDecisionRe = regexp.MustCompile(`(?im)^[ \t]*Undeclared-desk-decision:[ \t]*(.+?)[ \t\r]*$`)
+var undeclaredDeskDecisionRe = regexp.MustCompile(`(?im)^[ \t]*Undeclared-desk-decision:[ \t]*(.*?)[ \t\r]*$`)
+
+// undeclaredNoneRe matches a marker VALUE that records the reviewer looked and found
+// nothing: `none`, `none found`, `none observed` or `none identified`, case-insensitive,
+// either alone or followed by a separator (`.` `,` `;` `:` `(` `…` an em or en dash, or a
+// hyphen with a space after it) and free explanation. Anything else names a decision:
+// `none of the above, but X was chosen` and `nonexistent-default` do not match, because
+// the word after `none` is not a separator.
+var undeclaredNoneRe = regexp.MustCompile(`(?i)^none(?:[ \t]+(?:found|observed|identified))?(?:[ \t]*(?:[.,;:(…—–]|-[ \t]).*)?$`)
+
+// UndeclaredEmptyValue stands in for a marker line with no value. An empty value is
+// ambiguous, so it holds the gate like a named decision does.
+const UndeclaredEmptyValue = "(empty value)"
 
 // UndeclaredDeskDecisionLines returns every `Undeclared-desk-decision: <one line>` value a
-// review body carries, fence- and emphasis-handled through the same shared reduction every
-// other verdict marker uses (VerdictMarkerValues) — never a second hand-rolled scan.
+// review body carries that NAMES a decision, fence- and emphasis-handled through the same
+// shared reduction every other verdict marker uses (VerdictMarkerValues) — never a second
+// hand-rolled scan. A value matching undeclaredNoneRe records the absence of a finding and
+// is dropped. An empty value is returned as UndeclaredEmptyValue, so it still holds.
 func UndeclaredDeskDecisionLines(body string) []string {
-	return VerdictMarkerValues(body, undeclaredDeskDecisionRe, ReadFenced)
+	var out []string
+	for _, v := range VerdictMarkerValues(body, undeclaredDeskDecisionRe, ReadFenced) {
+		switch {
+		case v == "":
+			out = append(out, UndeclaredEmptyValue)
+		case undeclaredNoneRe.MatchString(v):
+		default:
+			out = append(out, v)
+		}
+	}
+	return out
 }

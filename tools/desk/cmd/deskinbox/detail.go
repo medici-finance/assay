@@ -18,6 +18,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -67,6 +68,22 @@ func fetchComments(repo deskkit.ForgeRepo, number int) ([]comment, error) {
 	return listIssueComments(tok, repo, number)
 }
 
+// commentsRequestTimeout bounds one comments-page request, response body included. The
+// forge answers an API request in seconds, so a page still open after 30s is stalled, not
+// slow; without a bound one stalled connection hangs the whole inbox render indefinitely.
+// The bound is per page, not per walk.
+const commentsRequestTimeout = 30 * time.Second
+
+// commentsTimeout is the deadline commentsClient applies. It is a var only so a test can
+// shorten it; production code never changes it.
+var commentsTimeout = commentsRequestTimeout
+
+// commentsClient is the client every comments page goes through: the default transport,
+// with an overall per-request deadline that http.DefaultClient does not carry.
+func commentsClient() *http.Client {
+	return &http.Client{Timeout: commentsTimeout}
+}
+
 // listIssueComments walks GET /issues/{n}/comments to exhaustion.
 func listIssueComments(token string, repo deskkit.ForgeRepo, number int) ([]comment, error) {
 	var out []comment
@@ -85,12 +102,17 @@ func listIssueComments(token string, repo deskkit.ForgeRepo, number int) ([]comm
 		}
 		req.Header.Set("Authorization", "token "+token)
 		req.Header.Set("Accept", "application/vnd.github+json")
-		resp, derr := http.DefaultClient.Do(req)
+		resp, derr := commentsClient().Do(req)
 		if derr != nil {
 			return nil, deskkit.Unverifiable("GET issues/comments failed", derr)
 		}
-		raw, _ := io.ReadAll(resp.Body)
+		raw, rerr := io.ReadAll(resp.Body)
 		resp.Body.Close()
+		if rerr != nil {
+			// A body cut off mid-read (a stall past the deadline, a dropped connection) is
+			// not a page: what arrived before the cut can be a complete-looking "[]".
+			return nil, deskkit.Unverifiable("cannot read issues/comments response", rerr)
+		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			return nil, deskkit.Unverifiable(fmt.Sprintf("GET issues/comments returned HTTP %d", resp.StatusCode), nil)
 		}

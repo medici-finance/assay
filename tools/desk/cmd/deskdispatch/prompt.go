@@ -258,8 +258,9 @@ func kitRole(kit string) (role string, ok bool) {
 //   - A FOURTH shape reaches the worker/verifier-less default lane and is not about a branch
 //     OR a directory: `deskwt add` resolves the checkout's own origin repo (currentRepo,
 //     called before any branch logic even runs) and that resolution can fail on its own —
-//     `cannot parse origin repo from <url>` (a scp-style or otherwise unsupported remote
-//     shape) or the inner `cannot parse owner/repo from "<path>"`. Before this fix that
+//     `cannot parse origin repo: cannot parse owner/repo from remote "<url>"` (a scp-style
+//     or otherwise unsupported remote shape; the parser names the url with any userinfo
+//     redacted). Before this fix that
 //     message fell through to the generic "branch already existing" sentence below (it names
 //     no branch and contains no "already exists" substring the earlier cases test for, but
 //     the OLD code applied that sentence unconditionally to everything the earlier cases did

@@ -410,6 +410,10 @@ const (
 	chainForge = "PROBLEM: example-other/54: acceptance transition: link 1: could-not-check human authority: --acceptance-forge is required"
 	chainRepo  = "PROBLEM: example-third/37: acceptance transition: link 2: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
 	chainHuman = "PROBLEM: example-third/37: acceptance transition: link 12: could-not-check human authority: example detail"
+	// The Evidence-repair approval read, inside either form, named by its repair
+	// commit's first 12 hex digits.
+	repairChain  = "PROBLEM: example-other/54: acceptance transition: link 2: evidence repair 0123456789ab: could-not-check human authority: example detail"
+	repairLegacy = "PROBLEM: example-third/37: protected table: acceptance transition: evidence repair 0123456789ab: could-not-check human authority: example detail"
 )
 
 // An unchanged brief's could-not-check that only the after run printed is not this
@@ -428,6 +432,7 @@ func TestUntouchedCouldNotCheck(t *testing.T) {
 		{"docs/streams/verify-outcomes/example-outcome/24-20261116T013825Z-bbe7ddc7f052.json",
 			[]string{otherInclude}, []string{otherForge, thirdForge}},
 		{"docs/streams/example-stream/brief-12-example.md", nil, []string{chainForge, chainRepo, chainHuman}},
+		{"docs/streams/example-stream/brief-12-example.md", nil, []string{repairChain, repairLegacy}},
 	} {
 		stubStatusgenLint(t, tc.before, tc.after)
 		notices := captureLintDiffNotices(t)
@@ -465,6 +470,7 @@ func TestIntroducedStillRefused(t *testing.T) {
 	rowDrift := "PROBLEM: example-other/54: protected table: original row x: could-not-check y differs from its delivered definition; a changed original row needs an Acceptance-Transition record and its approval"
 	rowState := "PROBLEM: example-other/54: protected acceptance row x: could-not-check y: fail"
 	rowNumbered := "PROBLEM: example-other/54: protected acceptance row 2: could-not-check y: fail"
+	ownRepair := "PROBLEM: example-stream/12: acceptance transition: link 1: evidence repair 0123456789ab: could-not-check human authority: example detail"
 	outcome := "docs/streams/verify-outcomes/example-outcome/24-20261116T013825Z-bbe7ddc7f052.json"
 	for _, tc := range []struct {
 		target string
@@ -483,6 +489,7 @@ func TestIntroducedStillRefused(t *testing.T) {
 		{"docs/streams/example-stream/brief-12-example.md", []string{rowNumbered}, []string{rowNumbered}},
 		{"docs/streams/example-stream/notes.md", []string{otherInclude}, []string{otherInclude}},
 		{"docs/README.md", []string{otherInclude}, []string{otherInclude}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{ownRepair}, []string{ownRepair}},
 	} {
 		stubStatusgenLint(t, nil, tc.after)
 		captureLintDiffNotices(t)
@@ -492,6 +499,45 @@ func TestIntroducedStillRefused(t *testing.T) {
 		}
 		if strings.Join(introduced, "\n") != strings.Join(tc.want, "\n") {
 			t.Errorf("%s: introduced = %v, want %v", tc.target, introduced, tc.want)
+		}
+	}
+}
+
+// Each tightening of the known-producer allow-list refuses a near miss on a brief the
+// write does not touch: the start anchor (a producer prefix quoted mid-line, or as a
+// protected acceptance row's id), the authority tail (an unlisted could-not-check
+// reason), the link number (non-numeric, zero, zero-padded), and the repair commit id
+// (too short, too long, upper case, missing).
+//
+// regression: #6581
+func TestCouldNotCheckAllowListExact(t *testing.T) {
+	target := "docs/streams/example-stream/brief-12-example.md"
+	for _, p := range []string{
+		// anchor
+		"PROBLEM: example-other/54: Evidence row #2: cell reads \"acceptance transition: link 1: could-not-check human authority: x\"",
+		"PROBLEM: example-other/54: Evidence row #2: cell reads \"protected table: acceptance transition: evidence repair 0123456789ab: could-not-check human authority: x\"",
+		"PROBLEM: example-other/54: protected acceptance row acceptance transition: link 1: could-not-check human authority: x: fail",
+		// authority tail
+		"PROBLEM: example-other/54: acceptance transition: link 1: could-not-check history: x",
+		"PROBLEM: example-other/54: protected table: acceptance transition: evidence repair 0123456789ab: could-not-check approval text: x",
+		// link number
+		"PROBLEM: example-other/54: acceptance transition: link x: could-not-check human authority: x",
+		"PROBLEM: example-other/54: acceptance transition: link 0: could-not-check human authority: x",
+		"PROBLEM: example-other/54: acceptance transition: link 01: could-not-check human authority: x",
+		// repair commit id
+		"PROBLEM: example-other/54: acceptance transition: link 1: evidence repair 0123456789a: could-not-check human authority: x",
+		"PROBLEM: example-other/54: acceptance transition: link 1: evidence repair 0123456789abc: could-not-check human authority: x",
+		"PROBLEM: example-other/54: acceptance transition: link 1: evidence repair 0123456789AB: could-not-check human authority: x",
+		"PROBLEM: example-other/54: acceptance transition: link 1: evidence repair: could-not-check human authority: x",
+	} {
+		stubStatusgenLint(t, nil, []string{p})
+		captureLintDiffNotices(t)
+		introduced, err := lintDiffAt(t.TempDir(), target, []byte("x\n"), childOptions{})
+		if err != nil {
+			t.Fatalf("lintDiffAt: %v", err)
+		}
+		if len(introduced) != 1 || introduced[0] != p {
+			t.Errorf("not refused: %s (introduced = %v)", p, introduced)
 		}
 	}
 }

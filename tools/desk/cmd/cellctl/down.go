@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -146,33 +145,6 @@ func (c *Cell) upRoles(noTheDesk bool) []string {
 		roles = strings.ReplaceAll(roles, "the-desk", "")
 	}
 	return strings.Fields(roles)
-}
-
-// herdrTabIDForLabel is the tab_id `herdr tab list` reports for this label, or "". `herdr tab
-// close` takes a positional <tab_id> — it advertises no `--label` at all — so closing "the tab
-// labelled <cell>-<role>" is a list-then-match, not a one-shot flag.
-func herdrTabIDForLabel(label string) string {
-	out, err := exec.Command("herdr", "tab", "list").Output()
-	if err != nil {
-		return ""
-	}
-	var d struct {
-		Result struct {
-			Tabs []struct {
-				Label string `json:"label"`
-				TabID string `json:"tab_id"`
-			} `json:"tabs"`
-		} `json:"result"`
-	}
-	if json.Unmarshal(out, &d) != nil {
-		return ""
-	}
-	for _, t := range d.Result.Tabs {
-		if t.Label == label {
-			return t.TabID
-		}
-	}
-	return ""
 }
 
 func (c *Cell) downHerdr() {
