@@ -152,7 +152,7 @@ _Held by per-stream caps: 20 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: d78849b7d 2026-11-17T17:40:47Z_
+_last regen: efd79369f 2026-11-17T17:55:21Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +173,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: d78849b7d 2026-11-17T17:40:47Z_
+_last regen: efd79369f 2026-11-17T17:55:21Z_
 
 **Progress:** 36/100 brief items done.
 
@@ -463,7 +463,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 50 [exec:strong] | implemented | 13000 | 22 | 2h | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 40 [exec:strong] | implemented | 11000 | 20 | 2h | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 41 [exec:strong] | implemented | 11000 | 20 | 2h | verify-desk | triage, then re-bucket | — | — |
-| desk-tools | 42 [exec:strong] | implemented | 10510 | 19 | 44h | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 42 [exec:strong] | implemented | 10510 | 19 | 45h | verify-desk | triage, then re-bucket | — | — |
 | milestone-support | 08 [exec:strong] | implemented | 4000 | 6 | 2h | verify-desk | triage, then re-bucket | — | — |
 | milestone-support | 07 [exec:strong] | implemented | 3500 | 5 | 2h | verify-desk | triage, then re-bucket | — | — |
 | statusgen | 44 [exec:strong] | implemented | 3500 | 5 | 2h | verify-desk | dispatch one judge | — | — |
