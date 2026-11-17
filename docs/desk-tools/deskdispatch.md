@@ -52,7 +52,9 @@ vendor, suffix or version word never settles. That is the only case where an exi
 shapes the stamp, and it narrows the model without changing it. The full id over a standing
 alias still replaces it, and a foreign or partial stamp is never kept. A run bound to a
 worker attestation, and the shared stamp writer every attestation record uses, write exactly
-the selected pair. Read failures stop before writes. After a write it
+the selected pair. An alias cannot correct a stale versioned stamp of the same family: opus
+over a standing claude-opus-4-1 keeps claude-opus-4-1, so correcting a versioned stamp needs
+the full id. Read failures stop before writes. After a write it
 re-reads labels AND timeline with the applier-aware reader for the kit's pair; only the
 exact accepted pair returns an applied-and-verified receipt. Unverified writes exit 6, never success. An open
 change is required for --stamp-only. Its --dry-run reads and prints the removal/application
