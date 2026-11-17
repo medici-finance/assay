@@ -244,7 +244,7 @@
     {
       "name": "invalid treated as stale: launch admits an unstamped or future-dated measurement",
       "file": "internal/cellcache/admit.go",
-      "old": "\treturn no(\"recorded measurement is unstamped or future-dated\")\n\t}",
+      "old": "\treturn stale(\"recorded measurement is unstamped or future-dated\")\n\t}",
       "new": "\tage = AdmitMaxAge + 1\n\t}"
     },
     {

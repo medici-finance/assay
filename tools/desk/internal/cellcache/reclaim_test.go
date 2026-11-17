@@ -19,20 +19,34 @@ func reclaimableRefusal(err error) bool {
 	return errors.As(err, &d) && d.Report.Reclaimable()
 }
 
+// staleRefusal reports whether err is a bounded launch deferral whose only
+// reason is that the recorded measurement cannot be leaned on.
+func staleRefusal(err error) bool {
+	var d *Deferred
+	return errors.As(err, &d) && d.Report.Stale()
+}
+
 // Prepare marks a bounded refusal reclaimable only when the recorded size or
-// free-space margin, a measurement past the policy's freshness bound, or a
-// top-level change since it is the reason. Missing, corrupt, dirty,
-// future-dated, unstamped, foreign and empty-cache-short refusals are never reclaimable: those stay with the operator.
+// free-space margin, an unstamped, future-dated or missing measurement, one
+// older than the policy's freshness bound, or a top-level change since it is
+// the reason. Corrupt, dirty, foreign and empty-cache-short refusals are never
+// reclaimable: those stay with the operator. Only the measurement-validity
+// reasons (past the bound, unstamped, future-dated, missing) are also marked
+// stale, the one mark a desk or scratch launch re-measures on. A measurement
+// only older than five minutes, with no bound, admits (TestCacheStaleAdmits).
 //
 // regression: #6117
+// regression: #6593
 func TestCacheReclaimableRefusals(t *testing.T) {
 	cases := []struct {
-		kind string
-		want bool
+		kind  string
+		want  bool
+		stale bool
 	}{
-		{"size", true}, {"stale-bound", true}, {"changed", true}, {"space", true},
-		{"missing", false}, {"corrupt", false}, {"future", false}, {"dirty-pass", false},
-		{"domain", false}, {"empty-space", false},
+		{"size", true, false}, {"stale-bound", true, true}, {"changed", true, false}, {"space", true, false},
+		{"missing", true, true}, {"future", true, true}, {"zero", true, true},
+		{"corrupt", false, false}, {"dirty-pass", false, false},
+		{"domain", false, false}, {"empty-space", false, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.kind, func(t *testing.T) {
@@ -104,6 +118,8 @@ func TestCacheReclaimableRefusals(t *testing.T) {
 				}
 			case "future":
 				rewrite(func(r *Report) { r.After.At = time.Now().Add(time.Hour) })
+			case "zero":
+				rewrite(func(r *Report) { r.After.At = time.Time{} })
 			case "dirty-pass":
 				rewrite(func(r *Report) { r.Outcome = "storage-deferred" })
 			case "domain":
@@ -119,16 +135,19 @@ func TestCacheReclaimableRefusals(t *testing.T) {
 			if tc.want && r.Reclaimable() != tc.want {
 				t.Fatalf("%s: returned report disagrees with its deferral", tc.kind)
 			}
+			if got := staleRefusal(err); got != tc.stale || r.Stale() != tc.stale {
+				t.Fatalf("%s: stale=%v report=%v, want %v (%v)", tc.kind, got, r.Stale(), tc.stale, err)
+			}
 			// The mark is in-process only: the report's form is unchanged.
 			b, _ := json.Marshal(r)
-			if strings.Contains(string(b), `"reclaimable"`) {
-				t.Fatalf("reclaimable leaked into the report: %s", b)
+			if strings.Contains(string(b), `"reclaimable"`) || strings.Contains(string(b), `"stale"`) {
+				t.Fatalf("an in-process mark leaked into the report: %s", b)
 			}
 		})
 	}
 	// A clean admission is not a refusal of any kind.
 	p := fixture(t)
-	if r, err := Prepare(p); err != nil || r.Reclaimable() {
+	if r, err := Prepare(p); err != nil || r.Reclaimable() || r.Stale() {
 		t.Fatalf("clean admission: %+v %v", r, err)
 	}
 	if _, err := os.Stat(filepath.Join(p.Root, "build")); err != nil {

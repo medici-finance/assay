@@ -138,16 +138,15 @@ func TestCacheUpStillOverBudgetRefuses(t *testing.T) {
 }
 
 // A refusal no clean can clear is returned untouched: no Check runs, no
-// report is written, and the operator instruction stands.
+// report is written, and the operator instruction stands. A missing report is
+// no longer one of these: it is re-measured like a stale one (#6593).
 //
 // regression: #6117
 func TestCacheUpLeavesOtherRefusalsToTheOperator(t *testing.T) {
-	for _, kind := range []string{"missing", "corrupt", "dirty-pass"} {
+	for _, kind := range []string{"corrupt", "dirty-pass"} {
 		t.Run(kind, func(t *testing.T) {
 			c, p := admissionCell(t)
 			switch kind {
-			case "missing":
-				must(t, os.Remove(p.ReportPath()))
 			case "corrupt":
 				must(t, os.WriteFile(p.ReportPath(), []byte("broken"), 0600))
 			case "dirty-pass":

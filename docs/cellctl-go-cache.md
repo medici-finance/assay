@@ -258,7 +258,8 @@ The bounded preparation report (`storage-admission`) says the same, with
 launch owner that wants a freshness bound asks for one in the policy
 (`measurement_max_age_seconds` in the `ASSAY_GO_CACHE_POLICY` JSON).
 Preparation and enrollment then refuse a measurement older than that bound,
-and one clean clears the refusal. No cell setting writes the bound today: a
+and one clean clears the refusal: `cellctl up`, `cellctl desk` and scratch
+launches run it themselves, once (next two sections). No cell setting writes the bound today: a
 cell launch takes the default, which is no bound.
 
 One case admits without a prior measurement: a cache root that does not exist
@@ -297,15 +298,17 @@ and can retry at its next interval.
 
 ### `cellctl up` cleans once on a reclaimable deferral
 
-Bounded launch preparation never walks the cache. `cellctl up` is the one
-exception, and it is narrow. When up's preparation defers for one of these
+Bounded launch preparation never walks the cache. There are two narrow
+exceptions: `cellctl up`, described here, and the stale-measurement re-measure
+that `cellctl desk` and scratch launches take (next section). When up's preparation defers for one of these
 reasons, up runs the same clean as `cellctl cache <cell> clean`, once, and then
 prepares again:
 
 - the recorded size is over three quarters of the budget;
 - the free-space margin above the floor is short;
-- the recorded measurement is older than the policy's freshness bound (only
-  when the policy sets one; age alone is not a deferral);
+- the recorded measurement carries no timestamp, is dated in the future, is
+  missing, or is older than the policy's freshness bound (only when the policy
+  sets one; age alone is not a deferral);
 - a top-level `build` or `mod` directory changed after it.
 
 The clean is a full, not-dry `Check` under the same lock and maintenance entry
@@ -322,14 +325,40 @@ cannot finish, up refuses as before: `up preparation: storage-deferred: …; no
 windows launched`. Up never cleans twice or loops. Every other refusal goes
 back to the operator untouched:
 
-- missing, corrupt, unstamped or future-dated accounting;
+- corrupt accounting;
 - a last pass that was dirty, partial or storage-deferred;
 - a foreign owner or domain;
 - a new empty cache short of space.
 
-`wipe` and `recover --confirm-stopped` stay manual. `cellctl desk`, scratch
-launches, `deskdispatch` and consumer enrollment keep the bounded refusal and
-never clean.
+`wipe` and `recover --confirm-stopped` stay manual. Consumer enrollment keeps
+the bounded refusal and never cleans. `deskdispatch` admits through `Admit`:
+when the lock-free pre-check cannot admit, it runs the full locked check, which
+on a real (not dry-run) dispatch may trim or remove inactive roots under
+pressure, as described above.
+
+### Desk and scratch launches re-measure a stale measurement once
+
+`cellctl desk` and scratch launches take a narrower form of the same step. When
+the only refusal is that the recorded measurement carries no timestamp, is
+dated in the future, is missing, or is older than the policy's freshness bound
+(when the policy sets one), the launch runs the
+same clean once to record a fresh measurement, then prepares again and admits or
+refuses on the fresh numbers. It prints one line in the same form:
+
+```text
+launch cache re-measure: recorded measurement is unstamped or future-dated; logical bytes before 0, after 0, reclaimed 0; outcome checked-clean
+```
+
+A measurement that is only stale, with no bound set, needs no re-measure: it
+admits as described under "Consumer enrollment and the recorded measurement".
+Consumer enrollment and `cellctl cache-run` still refuse an invalid measurement,
+or one past the bound, and leave the clean to the operator. These launches never clean for size or
+free-space pressure on a fresh measurement, never re-measure twice and never
+loop. The re-measure is not a read-only measurement, though: it is the full
+clean. If its fresh walk finds the cache past its high-water mark or under
+pressure, it trims the compiler cache, or removes the roots whole when no
+consumer is live, before the launch admits or refuses. Every refusal `up` leaves
+to the operator is left to the operator here too.
 
 ```sh
 cellctl cache example status
@@ -433,6 +462,6 @@ Maintenance inventory streams directory entries, with a limit of 262,144 entries
 
 For an inventory wider than the default, explicitly raise the maintenance-only budget, for example `ASSAY_MAINTENANCE_ENTRY_LIMIT=524288 cellctl cache house clean` (or the existing scratch sweep command). Values must be 1 through 1,048,576. Invalid values and exhausted budgets fail closed; there is no unlimited fallback. This setting does not change retained-data protections, per-role authority or launch pressure policy. Trees beyond the finite ceiling or depth limit remain incomplete and require owner-assisted layout correction.
 
-The existing cadence supervisor triggers this cache maintenance between completed passes and again at the due boundary when accounting is dirty, stale or otherwise cannot be proved clean. It retains the same owner’s finite inventory and reclamation checks. Interactive mode (`--cadence off`) and initial bounded startup still require operator `cache clean` when accounting refuses, except that `cellctl up` runs that clean itself once on a size, free-space or freshness-bound deferral (see "`cellctl up` cleans once on a reclaimable deferral"). Scratch diagnostic retention remains operator-triggered; no new background service is installed.
+The existing cadence supervisor triggers this cache maintenance between completed passes and again at the due boundary when accounting is dirty, stale or otherwise cannot be proved clean. It retains the same owner’s finite inventory and reclamation checks. Interactive mode (`--cadence off`) and initial bounded startup still require operator `cache clean` when accounting refuses, except that `cellctl up` runs that clean itself once on a size, free-space or measurement deferral (see "`cellctl up` cleans once on a reclaimable deferral"), and desk and scratch launches run it once on an unstamped, future-dated or missing measurement, or one past the policy's freshness bound, only (see "Desk and scratch launches re-measure a stale measurement once"). Scratch diagnostic retention remains operator-triggered; no new background service is installed.
 
 The default entry budget covers the representative fixture with 150,000 compiler-cache entries and 75,000 module-cache entries. The override remains finite; it is a maintenance resource budget, not a launch-policy or retention override.

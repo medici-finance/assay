@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"time"
 )
@@ -15,8 +16,9 @@ import (
 // estimate. Bounded launch Prepare/Acquire admit on a measurement whose only
 // defect is age, report it stale with its age, and refuse it only when the
 // policy carries a freshness bound it exceeds (Policy.MeasurementMaxAge). An
-// unstamped or future-dated measurement is invalid, not stale: it is never
-// trusted on either path.
+// unstamped, future-dated or missing measurement is invalid, not stale: it is
+// never leaned on. Both refusals are marked stale so a cellctl launch may
+// re-measure once (#6593); enrollment alone never re-measures.
 const AdmitMaxAge = 5 * time.Minute
 
 // AdmitMtimeSlack is how far before the recorded measurement a top-level
@@ -137,20 +139,37 @@ func cheapClean(p Policy, dry bool, env admitEnv) (Report, string) {
 	return r, why
 }
 
-// precheck is cheapClean plus whether the refusal is one a single clean can
-// clear: the size or free-space margin, a measurement older than bound, or a
-// top-level change since it. Every other refusal is not reclaimable.
+// refusal classifies why the lock-free pre-check could not admit.
+type refusal uint8
+
+const (
+	// refuseOperator: ownership, domain, corrupt or dirty accounting. No
+	// clean is run for it; it stays with the operator.
+	refuseOperator refusal = iota
+	// refuseReclaim: the size or free-space margin, or a top-level change
+	// since the measurement. One clean may clear it; only `cellctl up` runs it.
+	refuseReclaim
+	// refuseStale: the recorded measurement is unstamped, future-dated,
+	// missing, or older than the caller's freshness bound. One fresh
+	// measurement decides; every launch may take it.
+	refuseStale
+)
+
+// precheck is cheapClean plus the class of its refusal (see refusal).
 //
 // bound is the freshness the caller asks for; zero asks for none. A
 // measurement past AdmitMaxAge but inside bound (or with no bound) is stale,
 // not invalid: it admits on the remaining checks, with the free-space margin
 // read now, and the report says it is stale and how old it is.
-func precheck(p Policy, dry bool, env admitEnv, bound time.Duration) (Report, string, bool) {
-	no := func(format string, a ...any) (Report, string, bool) {
-		return Report{}, fmt.Sprintf(format, a...), false
+func precheck(p Policy, dry bool, env admitEnv, bound time.Duration) (Report, string, refusal) {
+	no := func(format string, a ...any) (Report, string, refusal) {
+		return Report{}, fmt.Sprintf(format, a...), refuseOperator
 	}
-	reclaim := func(format string, a ...any) (Report, string, bool) {
-		return Report{}, fmt.Sprintf(format, a...), true
+	reclaim := func(format string, a ...any) (Report, string, refusal) {
+		return Report{}, fmt.Sprintf(format, a...), refuseReclaim
+	}
+	stale := func(format string, a ...any) (Report, string, refusal) {
+		return Report{}, fmt.Sprintf(format, a...), refuseStale
 	}
 	if err := p.Validate(); err != nil {
 		return no("policy: %v", err)
@@ -173,6 +192,11 @@ func precheck(p Policy, dry bool, env admitEnv, bound time.Duration) (Report, st
 		return no("cache ownership not proven")
 	}
 	b, err := readMetaBounded(r, dev, "report.json", 64<<10)
+	if errors.Is(err, fs.ErrNotExist) {
+		// An owned root with no report yet: nothing is wrong with it that a
+		// fresh measurement does not settle.
+		return stale("no readable recorded measurement: %v", err)
+	}
 	if err != nil {
 		return no("no readable recorded measurement: %v", err)
 	}
@@ -193,10 +217,10 @@ func precheck(p Policy, dry bool, env admitEnv, bound time.Duration) (Report, st
 	now := env.now().UTC()
 	age := now.Sub(rep.After.At)
 	if rep.After.At.IsZero() || age < 0 {
-		return no("recorded measurement is unstamped or future-dated")
+		return stale("recorded measurement is unstamped or future-dated")
 	}
 	if bound > 0 && age > bound {
-		return reclaim("recorded measurement is stale: %s old, over the freshness bound %s", age.Round(time.Second), bound)
+		return stale("recorded measurement is stale: %s old, over the freshness bound %s", age.Round(time.Second), bound)
 	}
 	for _, name := range []string{"build", "mod"} {
 		st, err := r.Lstat(name)
@@ -243,5 +267,5 @@ func precheck(p Policy, dry bool, env admitEnv, bound time.Duration) (Report, st
 		DryRun: dry, Admission: admission, Reason: reason,
 		Before: Measurement{At: at, LogicalBytes: &size, AvailableBytes: &free},
 		After:  Measurement{At: at, LogicalBytes: &size, AvailableBytes: &free},
-	}, "", false
+	}, "", refuseOperator
 }

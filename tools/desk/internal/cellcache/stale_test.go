@@ -98,7 +98,9 @@ func TestCacheStaleAdmits(t *testing.T) {
 // regression: #6723
 //
 // An unstamped or future-dated measurement is invalid, not stale: both entry
-// points still refuse it, and no clean is offered as its cure.
+// points still refuse it. Preparation marks the refusal as one fresh
+// measurement decides (a cellctl launch re-measures once, #6593); enrollment
+// never re-measures.
 func TestCacheInvalidRefuses(t *testing.T) {
 	for _, kind := range []string{"zero", "future"} {
 		t.Run(kind, func(t *testing.T) {
@@ -110,7 +112,7 @@ func TestCacheInvalidRefuses(t *testing.T) {
 			recordAt(t, p, at)
 			_, err := Prepare(p)
 			var d *Deferred
-			if !errors.As(err, &d) || d.Report.Reclaimable() || !strings.Contains(err.Error(), "unstamped or future-dated") {
+			if !errors.As(err, &d) || !d.Report.Stale() || !strings.Contains(err.Error(), "unstamped or future-dated") {
 				t.Fatalf("preparation on a %s measurement: %v", kind, err)
 			}
 			if l, e := Acquire(p.Env()); e == nil {
@@ -124,15 +126,16 @@ func TestCacheInvalidRefuses(t *testing.T) {
 // regression: #6723
 //
 // A caller that asks for a freshness bound gets one: a measurement older than
-// the policy's bound refuses at both entry points, as a reclaimable deferral
-// (one clean records a fresh measurement), and one inside it admits.
+// the policy's bound refuses at both entry points, as a stale deferral (one
+// fresh measurement decides; a cellctl launch re-measures once), and one
+// inside it admits.
 func TestCacheStaleBoundRefuses(t *testing.T) {
 	p := measured(t)
 	recordAt(t, p, time.Now().Add(-time.Hour))
 	p.MeasurementMaxAge = int64((10 * time.Minute) / time.Second)
 	_, err := Prepare(p)
 	var d *Deferred
-	if !errors.As(err, &d) || !d.Report.Reclaimable() || !strings.Contains(err.Error(), "over the freshness bound 10m0s") {
+	if !errors.As(err, &d) || !d.Report.Stale() || !strings.Contains(err.Error(), "over the freshness bound 10m0s") {
 		t.Fatalf("bounded preparation on an hour-old measurement: %v", err)
 	}
 	if l, e := Acquire(p.Env()); e == nil || !strings.Contains(e.Error(), "freshness bound") {
