@@ -176,6 +176,8 @@ func TestBriefRulingMovedFile(t *testing.T) {
 
 // A brief renumbered with its ruling link and decision issue unchanged carries
 // no new link.
+//
+// regression: #2595
 func TestBriefRulingRenumbered(t *testing.T) {
 	base := map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
@@ -192,6 +194,8 @@ func TestBriefRulingRenumbered(t *testing.T) {
 
 // A ruling link added to one file of a board id that resolves to more than one
 // record cannot be bound to a single decision issue: refused, never skipped.
+//
+// regression: #2595
 func TestBriefRulingAmbiguous(t *testing.T) {
 	head := map[string]string{"docs/streams/" + dhStream + "/done/brief-18.md": dhFM("", dhRuledLines())}
 	rs := brPR(t, nil, brBase(), head)

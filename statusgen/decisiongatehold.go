@@ -1127,7 +1127,7 @@ func judgeDecisionGate(base, head gateSnapshot) []gateFault {
 		if baseHuman && h.Gate != gateHumanValue {
 			f.Relabel = true
 		}
-		if false && (f.Move || f.Relabel) {
+		if f.Move || f.Relabel {
 			faults = append(faults, f)
 		}
 	}
