@@ -195,6 +195,28 @@ func TestPlan_PartialReworkRowOffered(t *testing.T) {
 	t.Errorf("a rework row whose only merged PR is declared partial must reach the rework lane: %+v", items)
 }
 
+// TestPlan_LookupPartialOffered: the partial set-aside also binds a PR found by the per-brief lookup
+// past an INCOMPLETE window (#5853). The window here holds only an unrelated PR, so the brief's one
+// merged PR is found by the lookup; it is declared `covers: partial`, so the row is offered, not
+// listed LANDED-UNRECONCILED.
+//
+// regression: #6751
+func TestPlan_LookupPartialOffered(t *testing.T) {
+	setupDeskHome(t)
+	withWindow(t, recentWindow, true, func(_, id string) ([]deskkit.PRRef, error) {
+		if id != "example-partial/15" {
+			return nil, nil
+		}
+		return []deskkit.PRRef{{Number: 5127, State: "MERGED", Body: "First slice.\n\nBrief: example-partial/15"}}, nil
+	})
+	f := planWithRows([]BoardRow{briefRow("example-partial", "15", "L", "", "model", false)})
+	f.Root = partialRoot(t, partialBrief(partialA))
+	s := renderWindowPlan(t, f)
+	if strings.Contains(s, "LANDED-UNRECONCILED") || !strings.Contains(s, "=== DISPATCH example-partial/15") {
+		t.Errorf("a declared partial delivery found past the window must leave the row offered (#6751):\n%s", s)
+	}
+}
+
 // TestPlan_PartialMismatchLands: the brief file at the row's path whose own `brief:` id names a
 // different brief is no evidence about this row, so its partial claim sets nothing aside and the
 // merged PR still lands the row (could-not-check, the pre-#6751 answer).
