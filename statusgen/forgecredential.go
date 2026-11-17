@@ -21,9 +21,10 @@ package main
 //
 // Inside an admitted verifyrun or an admitted Verify row, every forge read
 // goes further: the token variables are ignored too, and a read uses only the
-// verifier's run-scoped read-only credential (runcredential.go). Both read
-// paths share one choke point, admittedReadCredential: newGHClient for every
-// REST reader and ghGuard for every CLI launch.
+// verifier's run-scoped read-only credential (runcredential.go). Every read
+// path shares one choke point, admittedReadCredential: newGHClient for every
+// REST reader, ghGuard for every CLI launch (checked before any credential its
+// caller passes), and githubDecayCredential for the claim-decay GraphQL read.
 
 import (
 	"fmt"
@@ -147,34 +148,23 @@ const storedLoginPlaceholder = "stored-login-refused"
 // CI snapshots the effective environment here, its existing single source, so
 // retries use the same credential. Outside CI an allowed command is unchanged
 // unless the caller already resolved a credential for the GitHub.com REST reader.
+//
+// The admitted check runs FIRST, before a caller-supplied credential is
+// honoured: inside an admitted verifyrun or an admitted Verify row, the CLI is
+// handed only the verifier's run-scoped read-only credential, the same one the
+// REST reader uses, whatever the caller passed. An inherited token variable is
+// never used, even when a caller passes it explicitly, and with no run
+// credential the command never starts (runcredential.go, #6746).
 func ghGuard(cmd *exec.Cmd, githubToken ...string) *exec.Cmd {
-	if len(githubToken) > 0 && githubToken[0] != "" {
-		// Keep the selected credential on this launch only. Clear alternate
-		// credential sources and pin the same host as the REST reader.
-		var kept []string
-		for _, kv := range cmd.Environ() {
-			key, _, _ := strings.Cut(kv, "=")
-			switch strings.ToUpper(key) {
-			case "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
-				"CELLCTL_GH_AMBIENT", "GH_HOST", "GH_REPO":
-				continue
-			}
-			kept = append(kept, kv)
-		}
-		cmd.Env = append(kept, "GH_TOKEN="+githubToken[0], "GH_HOST=github.com",
-			"GH_ENTERPRISE_TOKEN="+storedLoginPlaceholder)
-		return cmd
-	}
-	// Inside an admitted verifyrun or an admitted Verify row, the CLI is handed
-	// only the verifier's run-scoped read-only credential, the same one the REST
-	// reader uses. An inherited token variable is never used, and with no run
-	// credential the command never starts (runcredential.go, #6746).
 	if secret, refused, admitted := admittedReadCredential(); admitted {
 		if refused != "" {
 			cmd.Err = fmt.Errorf("could-not-check: %s", refused)
 			return cmd
 		}
-		return ghGuard(cmd, secret)
+		return ghPinCredential(cmd, secret)
+	}
+	if len(githubToken) > 0 && githubToken[0] != "" {
+		return ghPinCredential(cmd, githubToken[0])
 	}
 	if cmd.Env == nil && os.Getenv("GITHUB_ACTIONS") == "true" {
 		cmd.Env = os.Environ()
@@ -200,6 +190,25 @@ func ghGuard(cmd *exec.Cmd, githubToken ...string) *exec.Cmd {
 		kept = append(kept, kv)
 	}
 	cmd.Env = append(kept, add...)
+	return cmd
+}
+
+// ghPinCredential keeps one selected credential on this launch only. It clears
+// the alternate credential sources and pins the same host as the REST reader.
+// Only ghGuard calls it, after the admitted check has chosen the credential.
+func ghPinCredential(cmd *exec.Cmd, credential string) *exec.Cmd {
+	var kept []string
+	for _, kv := range cmd.Environ() {
+		key, _, _ := strings.Cut(kv, "=")
+		switch strings.ToUpper(key) {
+		case "GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN",
+			"CELLCTL_GH_AMBIENT", "GH_HOST", "GH_REPO":
+			continue
+		}
+		kept = append(kept, kv)
+	}
+	cmd.Env = append(kept, "GH_TOKEN="+credential, "GH_HOST=github.com",
+		"GH_ENTERPRISE_TOKEN="+storedLoginPlaceholder)
 	return cmd
 }
 

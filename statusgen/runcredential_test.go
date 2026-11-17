@@ -195,7 +195,9 @@ func TestRunCredMintedRead(t *testing.T) {
 // regression: #6746
 // TestRunCredUnavailable: (b) every way the minted credential can be missing
 // is a could-not-check, never a pass, and no ambient credential is sent
-// in its place.
+// in its place. A credential that was minted but fails statusgen's own file
+// check (the write grant) is revoked, not left to expire: the revocation is
+// the only request the forge may see.
 func TestRunCredUnavailable(t *testing.T) {
 	for _, mode := range []string{"fail", "write", "elsewhere", ""} {
 		t.Run(map[string]string{"": "stubbed"}[mode]+mode, func(t *testing.T) {
@@ -203,8 +205,24 @@ func TestRunCredUnavailable(t *testing.T) {
 			if res.code == verifyrunExitPass || !strings.Contains(out, "could-not-check") || !strings.Contains(out, "inside an admitted verifyrun") {
 				t.Errorf("exit %d, want a could-not-check refusal:\n%s", res.code, out)
 			}
-			if len(rt.auths) > 0 {
-				t.Errorf("%d forge request(s) made without the minted credential: %q", len(rt.auths), calls.seen)
+			revoke := "DELETE /installation/token Bearer " + rcMinted
+			var reads []string
+			revoked := false
+			for _, s := range calls.seen {
+				if s == revoke {
+					revoked = true
+					continue
+				}
+				reads = append(reads, s)
+			}
+			if want := map[bool]int{true: 1}[revoked]; len(reads) > 0 || len(rt.auths) != want {
+				t.Errorf("%d forge request(s) made without the minted credential: %q (forge saw %q)", len(reads), reads, rt.auths)
+			}
+			if mode == "write" && !revoked {
+				t.Errorf("a minted credential that failed the file check was not revoked: %q", calls.seen)
+			}
+			if mode != "write" && revoked {
+				t.Errorf("a revocation was sent where nothing was minted: %q", calls.seen)
 			}
 			if strings.Contains(out, rcMinted) {
 				t.Error("the credential value reached the run's output")
@@ -431,29 +449,87 @@ func TestRunCredPlantedRest(t *testing.T) {
 // regression: #6746
 // TestRunCredPlantedCli: the same class on the forge CLI path. A planted
 // gh launch inside an admitted run sees only the run credential, and with
-// none it never starts.
+// none it never starts. That holds whether the planted site passes no
+// credential or passes the inherited one explicitly as ghGuard's argument:
+// the admitted check runs before the caller's credential is honoured. A stub
+// gh is on PATH, so the result never depends on the runner having one.
 func TestRunCredPlantedCli(t *testing.T) {
+	for _, explicit := range []bool{false, true} {
+		launch := func() *exec.Cmd {
+			cmd := exec.Command("gh", "api", "example")
+			if explicit {
+				return ghGuard(cmd, os.Getenv("GH_TOKEN"))
+			}
+			return ghGuard(cmd)
+		}
+		suffix := map[bool]string{false: "", true: "-explicit"}[explicit]
+		t.Run("minted"+suffix, func(t *testing.T) {
+			slStubGH(t)
+			rcAdmittedWith(t, true)
+			cmd := launch()
+			if cmd.Err != nil {
+				t.Fatalf("refused with a run credential: %v", cmd.Err)
+			}
+			var got []string
+			for _, kv := range cmd.Env {
+				if strings.HasPrefix(kv, "GH_TOKEN=") || strings.HasPrefix(kv, "GITHUB_TOKEN=") {
+					got = append(got, kv)
+				}
+			}
+			if len(got) != 1 || got[0] != "GH_TOKEN="+rcMinted {
+				t.Fatalf("planted CLI launch sees %q, want only the run credential", got)
+			}
+		})
+		t.Run("none"+suffix, func(t *testing.T) {
+			slStubGH(t)
+			rcAdmittedWith(t, false)
+			cmd := launch()
+			if cmd.Err == nil || !strings.Contains(cmd.Err.Error(), "could-not-check") {
+				t.Fatalf("planted CLI launch was not refused: %v", cmd.Err)
+			}
+			for _, kv := range cmd.Env {
+				if strings.Contains(kv, rcDecoy) {
+					t.Fatalf("a refused launch still carries the inherited credential: %q", kv)
+				}
+			}
+		})
+	}
+}
+
+// regression: #6746
+// TestRunCredDecayToken: the claim-decay GraphQL reader's credential goes
+// through the same choke point. Inside an admitted run it is the run
+// credential or nothing, never the inherited GH_TOKEN, and an enterprise
+// endpoint never receives the github.com run credential. Outside an
+// admitted context it is unchanged.
+func TestRunCredDecayToken(t *testing.T) {
+	const dotcom, ghes = "https://api.github.com/graphql", "https://github.example.invalid/api/graphql"
 	t.Run("minted", func(t *testing.T) {
 		rcAdmittedWith(t, true)
-		cmd := ghGuard(exec.Command("gh", "api", "example"))
-		if cmd.Err != nil {
-			t.Fatalf("refused with a run credential: %v", cmd.Err)
+		if tok, _, _ := githubDecayToken(dotcom, false); tok != rcMinted {
+			t.Fatalf("decay credential %q, want the run credential", tok)
 		}
-		var got []string
-		for _, kv := range cmd.Env {
-			if strings.HasPrefix(kv, "GH_TOKEN=") || strings.HasPrefix(kv, "GITHUB_TOKEN=") {
-				got = append(got, kv)
-			}
-		}
-		if len(got) != 1 || got[0] != "GH_TOKEN="+rcMinted {
-			t.Fatalf("planted CLI launch sees %q, want only the run credential", got)
+		t.Setenv("GH_ENTERPRISE_TOKEN", rcDecoy)
+		if tok, _, _ := githubDecayToken(ghes, true); tok != "" {
+			t.Fatalf("enterprise endpoint got %q, want none", tok)
 		}
 	})
 	t.Run("none", func(t *testing.T) {
 		rcAdmittedWith(t, false)
-		cmd := ghGuard(exec.Command("gh", "api", "example"))
-		if cmd.Err == nil || !strings.Contains(cmd.Err.Error(), "could-not-check") {
-			t.Fatalf("planted CLI launch was not refused: %v", cmd.Err)
+		if tok, _, _ := githubDecayToken(dotcom, false); tok != "" {
+			t.Fatalf("decay credential %q, want none", tok)
+		}
+		if _, _, _, why := githubDecayCredential(dotcom, false); !strings.Contains(why, "could-not-check") {
+			t.Fatalf("no run credential: refusal %q, want could-not-check", why)
+		}
+	})
+	t.Run("outside", func(t *testing.T) {
+		t.Setenv("GH_TOKEN", rcDecoy)
+		prev := verifyrunAdmission.Load()
+		t.Cleanup(func() { verifyrunAdmission.Store(prev) })
+		verifyrunAdmission.Store(verifyrunOutside)
+		if tok, _, _ := githubDecayToken(dotcom, false); tok != rcDecoy {
+			t.Fatalf("outside an admitted context the credential changed to %q", tok)
 		}
 	})
 }

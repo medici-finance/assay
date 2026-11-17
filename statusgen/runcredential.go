@@ -27,6 +27,11 @@ package main
 // runCredentialEnv, set to the credential file's PATH. The value is never in
 // any row's environment. Every other row gets nothing new. The value is never
 // printed, logged or written to a witness.
+// That row scoping is hygiene, not containment: rowReadsForge matches the
+// row's own text, and the file sits in a directory the invoking user owns, so
+// a later row run as that user can read the value once it is minted. The
+// bound is the credential itself: read-only, one repository, revoked at run
+// end.
 
 import (
 	"context"
@@ -117,13 +122,37 @@ func (c *runReadCredential) mint() (string, string, error) {
 		return "", "", fmt.Errorf("the %s mint failed: %v", runCredentialRole, err)
 	}
 	if strings.TrimSpace(printed) != out {
+		revokeUnusedRunCredential(out)
 		return "", "", fmt.Errorf("the %s mint printed a path other than the one asked for", runCredentialRole)
 	}
 	secret, err := readRunCredentialFile(out)
 	if err != nil {
+		revokeUnusedRunCredential(out)
 		return "", "", err
 	}
 	return out, secret, nil
+}
+
+// revokeUnusedRunCredential revokes, best effort, a credential the minter
+// wrote to out that this run then refused (a wrong printed path, or a file or
+// grant that failed its checks). It is never used for a read: the value is
+// read only to end it at the forge, so a refused credential does not live on
+// until its own expiry. A missing, non-regular or garbled file revokes
+// nothing. The run's directory is removed at run end as usual.
+func revokeUnusedRunCredential(out string) {
+	fi, err := os.Lstat(out)
+	if err != nil || !fi.Mode().IsRegular() {
+		return
+	}
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		return
+	}
+	secret := strings.TrimSpace(string(raw))
+	if secret == "" || strings.ContainsAny(secret, " \t\r\n") {
+		return
+	}
+	_ = revokeRunCredential(secret)
 }
 
 // close revokes a minted credential and removes the run's directory. A
@@ -147,14 +176,17 @@ func (c *runReadCredential) close(w io.Writer) {
 // execRunCredentialMint runs the verifier's minter. Its environment is this
 // process's own minus the forge credential variables. The minter does not
 // need them, and this keeps the mint from depending on one.
+//
+// The executable is the literal name "desktoken", resolved on PATH by
+// exec.CommandContext itself, so the launch inventory (internal/gitlaunch)
+// can see from the source that this construction never names Git.
 func execRunCredentialMint(repo, out string) (string, error) {
-	bin, err := exec.LookPath("desktoken")
-	if err != nil {
+	if _, err := exec.LookPath("desktoken"); err != nil {
 		return "", errors.New("no desktoken on PATH to mint it with")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), runCredentialMintTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, runCredentialRole, "--repo", repo, "--read-only-out", out)
+	cmd := exec.CommandContext(ctx, "desktoken", runCredentialRole, "--repo", repo, "--read-only-out", out)
 	cmd.Env = runCredentialMintEnv(os.Environ())
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
