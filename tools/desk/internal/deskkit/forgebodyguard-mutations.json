@@ -1,0 +1,137 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -run '^TestForgeBody' -timeout=120s",
+  "control": {
+    "name": "CONTROL \u2014 disarm the bare io.ReadAll(body) shape (every planted ReadAll read scans clean)",
+    "file": "internal/deskkit/forgebodycap_guard_test.go",
+    "old": "\t\t\t\tcase ioName != \"\" && isPkgCall(x, ioName, \"ReadAll\") && len(x.Args) == 1 && isBody(x.Args[0]):",
+    "new": "\t\t\t\tcase false && ioName != \"\" && isPkgCall(x, ioName, \"ReadAll\") && len(x.Args) == 1 && isBody(x.Args[0]):"
+  },
+  "mutations": [
+    {
+      "name": "key a permit by file and function only (a second read of another kind in a permitted function passes under the first read's permit)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\tif _, ok := permits[h]; ok && !used[h] {",
+      "new": "\t\tif _, ok := permits[h]; (ok && !used[h]) || permits[h[:strings.LastIndex(h, \" \")]+\" uncapped-body-copy\"] != \"\" {"
+    },
+    {
+      "name": "let a permit cover every hit with its key (two same-kind reads under one permit both pass)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\tif _, ok := permits[h]; ok && !used[h] {",
+      "new": "\t\tif _, ok := permits[h]; ok {"
+    },
+    {
+      "name": "stop seeing a truncating reader handed to a capped reader (ReadForgeBodyUpTo(io.LimitReader(resp.Body, n), ...) scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\t\t\tcase isCappedReadCall(x) && len(x.Args) >= 1 && isTruncating(x.Args[0]):",
+      "new": "\t\t\t\tcase false && isCappedReadCall(x) && len(x.Args) >= 1 && isTruncating(x.Args[0]):"
+    },
+    {
+      "name": "stop following a local alias of a truncating reader (lr := io.LimitReader(...); ReadCappedForgeBody(lr, ...) scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\t\tif aliases[x.Name] {",
+      "new": "\t\t\tif false && aliases[x.Name] {"
+    },
+    {
+      "name": "stop seeing an io.LimitedReader literal as a truncating reader",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "if ioName == \"\" || !ok || sel.Sel.Name != \"LimitedReader\" {",
+      "new": "if ioName == \"\" || !ok || sel.Sel.Name != \"LimitedReaderX\" {"
+    },
+    {
+      "name": "look only at the capped reader's argument itself, not inside it (bufio.NewReader(io.LimitReader(...)) scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\treturn !seen\n\t})\n\treturn seen\n}\n\n// selectorKey",
+      "new": "\t\treturn false\n\t})\n\treturn seen\n}\n\n// selectorKey"
+    },
+    {
+      "name": "stop following a helper that returns a truncating reader (ReadCappedForgeBody(limitBody(resp), ...) scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\tcase *ast.Ident:\n\t\t\treturn helpers[f.Name]",
+      "new": "\t\tcase *ast.Ident:\n\t\t\treturn false && helpers[f.Name]"
+    },
+    {
+      "name": "find helpers in one pass only (a helper returning another helper's call, declared before it, scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\t\t\t\t\t\t\tout[name] = true\n\t\t\t\t\t\t\t\tgrew = true",
+      "new": "\t\t\t\t\t\t\t\tout[name] = true"
+    },
+    {
+      "name": "follow one alias hop only (lr := io.LimitReader(...); r2 := lr; ReadCappedForgeBody(r2, ...) scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "buildsTruncating(v, ioName, out, helpers)",
+      "new": "buildsTruncating(v, ioName, nil, helpers)"
+    },
+    {
+      "name": "find aliases in one pass only (an alias assigned before its source in source order scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\t\t\tout[k] = true\n\t\t\t\tgrew = true",
+      "new": "\t\t\t\tout[k] = true"
+    },
+    {
+      "name": "stop seeing a field path reassigned a truncating reader (resp.Body = io.NopCloser(io.LimitReader(resp.Body, n)) scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "if k := selectorKey(x); k != \"\" && aliases[k] {",
+      "new": "if k := selectorKey(x); false && k != \"\" && aliases[k] {"
+    },
+    {
+      "name": "skip function literals outside every function declaration (var f = func(...) { io.ReadAll(resp.Body) } scans clean)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\t\t\t\t\tyield(name, lit.Body)",
+      "new": "\t\t\t\t\t\t_, _ = name, lit"
+    },
+    {
+      "name": "name a method without its receiver type (two same-named methods share one key)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\treturn id.Name + \".\" + fn.Name.Name",
+      "new": "\t\treturn id.Name[:0] + fn.Name.Name"
+    },
+    {
+      "name": "stop seeing a body handed to a plain io.Reader helper in a root with no transport cap",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\t\t\tcase strict && !isCappedReadCall(x) && anyArg(x, isBody):",
+      "new": "\t\t\t\tcase false && strict && !isCappedReadCall(x) && anyArg(x, isBody):"
+    },
+    {
+      "name": "list a guard root as a known gap (the inventory must refuse an entry it never scans)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\"cmd/deskinstall\": {",
+      "new": "\t\"cmd/desktoken\": {},\n\t\"cmd/deskinstall\": {"
+    },
+    {
+      "name": "ignore the label lookup that switches strict mode on (the pairedversions root is scanned non-strict)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t_, strict := forgeBodyNoTransportCap[label]\n",
+      "new": "\t_, strict := forgeBodyNoTransportCap[label]\n\tstrict = false\n"
+    },
+    {
+      "name": "drop the pairedversions root from the strict roots (its handoffs go unseen)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\"../pairedversions\": \"its http.Client is a plain client with a timeout; every read is a direct readCapped call\",\n",
+      "new": ""
+    },
+    {
+      "name": "un-list a gap that still reads bodies uncapped (cmd/deskinstall)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\"cmd/deskinstall\": {\n\t\t\"install.go:httpGet uncapped-body-read\",\n\t},\n",
+      "new": ""
+    },
+    {
+      "name": "list a tree that is not a forge reader as a gap as well (deskd/internal/serve, with its exact hits)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\"cmd/deskinstall\": {",
+      "new": "\t\"../../deskd/internal/serve\": {\n\t\t\"v1_actions.go:decodeActionBody uncapped-body-read\",\n\t\t\"v1_actions.go:peekIntent discarded-read-error\",\n\t\t\"v1_actions.go:peekIntent uncapped-body-read\",\n\t\t\"v1_overrides.go:Overrides.handlePost uncapped-body-decode\",\n\t\t\"v1_terminal_actions.go:decodeStrict uncapped-body-decode\",\n\t},\n\t\"cmd/deskinstall\": {"
+    },
+    {
+      "name": "pin a gap's hit set without one of its reads (a read in a listed gap goes unreported)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\t\"readonly.go:drainBody uncapped-body-read\",\n",
+      "new": ""
+    },
+    {
+      "name": "stop scanning a parent's trees (the inventory sees nothing under cmd)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\"cmd\",\n\t\"internal\",\n\t\"../../deskd/cmd\",",
+      "new": "\t\"internal\",\n\t\"../../deskd/cmd\","
+    }
+  ]
+}

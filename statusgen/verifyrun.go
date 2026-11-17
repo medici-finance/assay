@@ -93,6 +93,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
@@ -644,6 +645,28 @@ type shellPlan struct {
 	// readSet, when set, records each row's read set (build-less-brittle/15,
 	// Linux only); runWitnessesSandboxed narrows it to the row.
 	readSet *readSetTarget
+	// readCred is an admitted host run's run-scoped read-only credential
+	// (runcredential.go). Only a row that reads the forge gets its file path.
+	// nil leaves every row as it was.
+	readCred *runReadCredential
+	// rowScratch, when set (an admitted run), is the directory under which
+	// each row gets its own fresh HOME and TMPDIR, removed when the row ends.
+	rowScratch string
+}
+
+// removeRowScratch removes an admitted run's row scratch, first making
+// writable any directory a row left read-only.
+func removeRowScratch(dir string) {
+	if os.RemoveAll(dir) == nil {
+		return
+	}
+	filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && d.IsDir() {
+			os.Chmod(p, 0o700)
+		}
+		return nil
+	})
+	os.RemoveAll(dir)
 }
 
 // rowEnv is the environment every Verify row of the run executes in: the
@@ -882,6 +905,37 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	if mv := unsubstitutedMetavars(command); len(mv) > 0 {
 		return runResult{exit: -1, couldNotRun: true,
 			reason: "unsubstituted placeholder(s) " + strings.Join(mv, ", ") + " — the row cannot run as written"}
+	}
+	// A row of an admitted run that reads the forge gets the run's read-only
+	// credential's PATH, and only that row. This copy of plan is the row's own.
+	// A credential that cannot be had makes the row could-not-run. It never
+	// runs without one and is never scored.
+	if plan.readCred != nil && rowReadsForge(command) {
+		credPath, _, err := plan.readCred.ensure()
+		if err != nil {
+			return runResult{exit: -1, couldNotRun: true,
+				reason: "could-not-check: the row reads the forge, and the verifier's run-scoped read-only credential is unavailable: " + err.Error()}
+		}
+		plan.env = append(slices.Clip(plan.rowEnv()), runCredentialEnv+"="+credPath)
+	}
+	// A row of an admitted run gets a HOME and a TMPDIR of its own, so it
+	// finds nothing an earlier row of the run left there.
+	if plan.rowScratch != "" {
+		// A row that reads an ASSAY_* input the scrub removed cannot run as
+		// written under admission. It is could-not-run, never a fail: its own
+		// guard on the missing value would otherwise read as a regression.
+		if names := admittedRowScrubbedRefs(command, plan.rowEnv()); len(names) > 0 {
+			return runResult{exit: -1, couldNotRun: true,
+				reason: "the row reads " + strings.Join(names, ", ") +
+					", which an admitted run removes from every row's environment: run it outside admission"}
+		}
+		dir, vars, err := admittedRowDirs(plan.rowScratch)
+		if err != nil {
+			return runResult{exit: -1, couldNotRun: true,
+				reason: "could-not-check: cannot make the row's own HOME: " + err.Error()}
+		}
+		defer removeRowScratch(dir)
+		plan.env = withRowVars(plan.rowEnv(), vars...)
 	}
 	// Resolve the concrete interpreter argv for the row's declared shell (issue
 	// #1424). For `sh` this is the bash plan resolved and PROBED once for this run
@@ -2606,6 +2660,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	defer verifyrunAdmission.Store(prevAdmission)
 	attestation, admittedHome, containerTree := "", "", ""
 	var container containerAdmit
+	var runCred *runReadCredential
 	if *sandbox == sandboxContainerNetns && !*checkMode {
 		// Inside a --network none container admission is never run: the host's
 		// receipt is read instead, and the host closes the bracket afterwards.
@@ -2650,6 +2705,18 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 				fmt.Fprintln(stderr, "statusgen verifyrun:", why)
 				return verifyrunExitCouldNot
 			}
+		}
+		// An admitted host run reads the forge only with the verifier's own
+		// run-scoped read-only credential (runcredential.go). It is prepared
+		// here, before any acceptance read, and minted on first use. It is
+		// revoked and removed when the run returns.
+		if attestation != "" {
+			runCred = newRunReadCredential(attestation)
+			currentRunCredential.Store(runCred)
+			defer func() {
+				currentRunCredential.Store(nil)
+				runCred.close(stderr)
+			}()
 		}
 		verifyrunAdmission.Store(admissionState(attestation))
 	}
@@ -2815,7 +2882,29 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	defer releaseInterrupt()
 	plan.stop = stop
 	if attestation != "" {
-		plan.env = admittedRowEnv(os.Environ())
+		// An admitted run's rows get the scrubbed environment and the run's
+		// row-read socket. Each row also gets a fresh, empty HOME and TMPDIR of
+		// its own (runVerifyCommandWith). All of it sits under one 0700
+		// scratch directory, removed when the run returns.
+		environ := os.Environ()
+		scratch, err := os.MkdirTemp("", "verifyrun-row-")
+		if err != nil {
+			fmt.Fprintln(stderr, "statusgen verifyrun: cannot make the rows' scratch:", err)
+			return verifyrunExitCouldNot
+		}
+		defer removeRowScratch(scratch)
+		plan.env = append(admittedRowEnv(environ), admittedRowGo(environ)...)
+		plan.rowScratch = scratch
+		if sock, sockDir, err := rowreadSocketPath(scratch); err == nil {
+			if sockDir != "" {
+				defer removeRowScratch(sockDir)
+			}
+			if stopBroker, err := serveRowread(sock, rowreadReaderEnv(environ)); err == nil {
+				defer stopBroker()
+				plan.env = append(plan.env, rowreadSocketVar+"="+sock)
+			}
+		}
+		plan.readCred = runCred
 	}
 	// Fail-first (verify-integrity/03): the base run comes FIRST, on its own
 	// checkout, so the head run below is the ordinary run, unchanged.

@@ -26,7 +26,7 @@ decision-trigger: creation
 issues: [6615]
 decision-issue: 6615
 schema: brief-v2
-version: 1
+version: 4
 authored: 2026-11-16 by assay-worker-app (issue #6615)
 sources:
   - "Issue #6615 and the driver's ruling on it (cited in `## Human decision`)."
@@ -84,10 +84,11 @@ Amended 2026-11-16, by the driver in their own login:
 https://github.com/medici-finance/assay/issues/6615#issuecomment-6922038844
 
 Open, and not this brief's to answer: brief 35's question of how a surface proves the
-coordinator is the only writer. This brief depends on brief 35 (`depends:` above) and does not
-presuppose that answer. Tasks 2 and 4 and Verify rows 3 and 16 are written for brief 35's
-option 1, the recommended one, and apply only if `DR-desk-containers-35` chooses it; if it
-chooses another option, they are re-derived from that record before this brief leaves `todo`.
+coordinator is the only writer, and how the file stays clear of role-secret holders. This
+brief depends on brief 35 (`depends:` above) and does not presuppose that answer. Tasks 2
+and 4 and Verify rows 3 and 16 are written for brief 35's option 1, the recommended one, and
+apply only if `DR-desk-containers-35` chooses it; if it chooses another option, they are
+re-derived from that record before this brief leaves `todo`.
 Brief 35's option 2 conflicts with DR-desk-containers-34 and cannot be implemented from this
 brief without that record amending it. Brief 35's
 default is hold, and under hold no cell binds a file, so every row that declares names stays
@@ -119,14 +120,18 @@ This brief leaves `todo` only once `DR-desk-containers-35` (brief 35) is approve
    dev-env names is admitted only when both hold:
    - the launcher's record for this window (brief 37 Task 2) states that it binds no role
      secret;
-   - for every role-secret file path that record lists for the cell, an open for read from the
-     row's environment (its identity, its mounts) fails.
+   - for every role-secret file path the whole record lists, for every window of every cell
+     the launcher starts, an open for read from the row's environment (its identity, its
+     mounts) fails.
+   The probe never depends on which entry the verifier reads as its own window's, so an entry
+   key that names the wrong window or cell cannot narrow it (brief 35 Interface contract,
+   record location). Each probe open is non-blocking and reads no byte; it is closed at once.
    An open that succeeds, a record that lists a role secret for this window, or a record that
-   is missing or unreadable makes the row could-not-check, naming the service and never a path's
-   contents. As defence in depth, the row also runs with every `ASSAY_ROLE_SECRET_*` variable
-   removed; that removal is not the separation and no check relies on it. A row that needs both
-   a role secret and a dev-env value stays could-not-check; `DR-desk-containers-35` may revisit
-   that, this brief does not.
+   is missing or unreadable makes the row could-not-check, naming the service and never a
+   path's contents. As defence in depth, the row also runs with every
+   `ASSAY_ROLE_SECRET_*` variable removed; that removal is not the separation and no check
+   relies on it. A row that needs both a role secret and a dev-env value stays could-not-check;
+   `DR-desk-containers-35` may revisit that, this brief does not.
 3. **Fail closed.** The row is could-not-check, never pass, with a reason naming the variable
    but never a value and never quoting a file line, when: the path variable is unset or empty;
    the file is missing or unreadable; a line is malformed or unparseable; a name appears on
@@ -137,25 +142,64 @@ This brief leaves `todo` only once `DR-desk-containers-35` (brief 35) is approve
    following a symlink, then run every check on the opened descriptor (`fstat`, and the
    access-control list read through the descriptor), never on the path, and read the contents
    from that same descriptor, so the file cannot change between check and read. The file is
-   refused for every row in the run unless all of these hold:
+   refused for every row in the run unless all of these hold. Throughout this brief and brief
+   37, *writable only by its owner* means no identity but the owner holds, by a group or other
+   mode bit or by any access-control entry, a right that can write, replace, rename or remove
+   an entry: write, append, delete, delete-child, add-file, add-subdirectory, write-security
+   (permissions) or change-owner. A walk of *every directory on its path, opened without
+   following a symlink* is a descriptor chain: open the filesystem root, then each component
+   no-follow relative to its already-checked parent's descriptor, and open the leaf from the
+   last checked descriptor.
    - it is a regular file, not a symlink;
    - it lies outside every git checkout and worktree (walk up from the file, as cellctl does for
      role secrets);
    - on a host cell: its owner is the coordinator role's identity, read from the launcher's
      record of the cell's identity map (brief 37 Task 2), so a file owned by the worker,
-     reviewer, verifier, intake or any other identity refuses; it has no group or other write;
-     no access-control list entry grants write to any identity but the coordinator's; and its
-     parent directory, opened and checked the same way, is not writable by any other role's
-     identity by mode, ownership or access-control list, so no other role can rename or replace
-     the file;
+     reviewer, verifier, intake or any other identity refuses; it is writable only by its owner
+     as defined above, so a group or other write bit, or any right in that list that an
+     access-control entry gives another identity, refuses; and every
+     directory on its path, from the filesystem root down, opened without following a symlink
+     and checked the same way, is owned by the system administrator, the launcher identity
+     (brief 35 Interface contract) or the coordinator, and is writable only by its owner by mode
+     and access-control list, so no other identity can rename or replace the file or a
+     directory above it. There is no sticky-bit exception: a sticky-bit directory that another
+     identity can write refuses like any other, as brief 37 Task 2's launcher check does;
    - on a container cell: the verifier's own mount of the file is read-only, and the launcher's
      mount record (brief 37 Task 2) states that only the coordinator container mounts it
      read-write. The verifier's own mount says nothing about the other roles' mounts, so where
      only that mount is visible and the cell gives no such record, the file refuses.
+   - the launcher's record itself (brief 37 Task 2) is trusted only through the anchor in brief
+     35's Interface contract: an allow-list naming the one identity that may own it, never a
+     list of role identities to deny. The verifier opens it only at the fixed name in the
+     launcher anchor directory, never at a path from the record, `cell.env`, the cells root or
+     a variable a window can set. The launcher identity is pinned when the verifier is built or
+     installed, together with the anchor path (`DR-desk-containers-35`), never derived at run
+     time from who owns the anchor; the anchor's owner must equal that pinned identity (brief
+     35 Interface contract, launcher identity). The verifier reads the pin and the anchor path
+     only from the one source that contract's pin storage bullet names, the source brief 37's
+     launcher reads; a pin it cannot read from there refuses.
+     On a host cell it refuses unless all of these hold: the record's owner and the anchor
+     directory's owner are both the pinned launcher identity; that identity is
+     neither the coordinator identity the record names nor the verifier's own; the record is
+     writable only by its owner as defined above; it is not a symlink; and every component of the
+     anchor path, from the
+     filesystem root down, opened without following a symlink, is owned by the system
+     administrator or the launcher identity and writable only by its owner. On a container
+     cell it refuses unless the record is the verifier container's own read-only file mount at
+     the fixed in-container path, checked as the dev-env mount is. Every check runs on opened
+     descriptors, as above.
    - Anything the check cannot determine refuses as could-not-check, never falls through to
      admit: a failed open, `fstat` or access-control query; a filesystem that cannot report
-     access-control lists; a missing or unreadable identity or mount record; a surface kind the
-     cell does not declare or the verifier does not know.
+     access-control lists; a filesystem that is not on an allow-list of known local filesystem
+     kinds whose reported owner and mode reflect who can write them, so an unknown kind
+     refuses, and an allow-listed kind mounted to ignore ownership refuses too; a missing or
+     unreadable identity or mount record; a surface kind the cell does not declare or the
+     verifier does not know. The allow-list is fixed in the verifier's code and grows only by
+     a reviewed change; brief 37's launcher builds from the same definition (brief 35
+     Interface contract, pin storage). Network and user-space filesystem kinds are not on it:
+     their reported owner and mode need not reflect who can write them. These rules apply to
+     the dev-env file, the launcher record, the anchor and every directory above either, and,
+     where the pin is kept in an install file, to that file and every directory above it.
 5. **Attest.** The run's attestation and the row record carry the declared names and the file's
    sha256, never a value. The digest is over the file bytes as read, nonce line included.
 6. **Redact.** Before a row's output is hashed, passed to `captureOutput`, or written anywhere,
@@ -172,14 +216,15 @@ The attestation gains two fields, the declared names (sorted) and the dev-env fi
 Readers that do not know them ignore them; brief 38's verify-desk text cites them. Under
 option 1, admission reads the coordinator identity, the container mount record and each
 window's role-secret reach only from what brief 37's launcher records, per brief 35's Interface
-contract.
+contract, and trusts that record only through the launcher anchor that contract defines.
 
 ## Definition of Done
 
 Every Verify row below passes. A row that declared names runs with exactly those names from
-the file, only in a window that cannot open any role-secret file the cell binds (row 16), and
-no record produced by the run contains a fixture value in its literal form. Encoded forms of a
-value are outside this guarantee (threat model).
+the file, only in a window that cannot open any role-secret file the whole launcher record
+lists, for every window of every cell (row 16), and no record produced by the run contains a
+fixture value in its literal form. Encoded forms of a value are outside this guarantee (threat
+model).
 
 ## Verify
 
@@ -192,7 +237,7 @@ matches or a skip fails independent verification. Rows 3 and 16 apply under brie
 |---|---|---|---|---|
 | 1 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvAdmitsDeclared$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvAdmitsDeclared ' "$o")` | Named PASS; a row declaring two `DEVENV_` names sees exactly those from the file; an inherited value under a declared name is replaced; an undeclared file name is absent. |
 | 2 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvMissingIsCNC$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvMissingIsCNC ' "$o")` | Named PASS; unset path, missing file, a malformed line, a name on two lines of the file, a declared name absent from the file and a declared value of 7 characters each yield could-not-check, never pass, and no reason contains a fixture value or a file line. |
-| 3 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvTrustRefusal$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvTrustRefusal ' "$o")` | Named PASS; each of these refuses: a symlink; a file inside a worktree; a file the verifier can write; a group-writable file; a file owned by a non-coordinator role's identity with mode 0644; a parent directory another role's identity can write; ownership or access-control state that cannot be determined (a failing stat or ACL query stub); a host cell with no identity record, and a host cell whose identity record is unreadable; an unknown surface kind; a container cell with no mount record. A file swapped after the check is not read: checks and read use one descriptor. |
+| 3 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvTrustRefusal$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvTrustRefusal ' "$o")` | Named PASS; each of these refuses: a symlink; a file inside a worktree; a file the verifier can write; a group-writable file; a file owned by a non-coordinator role's identity with mode 0644; a parent or higher directory writable by an identity other than its owner, or owned by `example-operator` (neither administrator, launcher nor coordinator); a sticky-bit parent directory writable by other identities, even where the next component is owned by the coordinator; ownership or access-control state that cannot be determined (a failing stat or ACL query stub); a host cell with no identity record, and a host cell whose identity record is unreadable; planted bypass records, each refused: one owned by `example-operator`, an identity the record names as no role, which a role-identity deny-list admits; one owned by the coordinator identity; one at the right path whose anchor directory's parent another identity can write; one at the right path whose anchor directory itself another identity can write, by a group or other write bit or an ACL entry; one with an ACL entry granting write to `example-operator`; one that is a symlink; and an anchor owned by the coordinator or by the verifier's own identity; a directory above the anchor owned by the coordinator identity and writable only by its owner; an anchor and record both owned by `example-operator`, which is not the pinned launcher identity; a parent directory whose only grant to another identity is an ACL right to delete, or to add an entry; a directory above the dev-env file, and a directory above the anchor, whose only grant to another identity is an ACL right to change permissions, and each whose only such grant is an ACL right to change owner; a dev-env file, and a record, whose only grant to another identity is an ACL right to append, to change permissions or to change owner; a file on a filesystem whose kind a stub reports as outside the allow-list of known local kinds, and one on an allow-listed kind mounted to ignore ownership, and a record, an anchor, a directory above the dev-env file and a directory above the anchor on each of those two; an anchor directory whose only grant to another identity is an ACL right to delete, one whose only such grant is an ACL right to add an entry, one whose only such grant is an ACL right to change permissions, and one whose only such grant is an ACL right to change owner; a pin source the verifier cannot read; a pin, and an install-file path, offered through a variable, which are never read, so a record only that pin would admit is refused; an extra filesystem kind offered through a variable, which is never read, so a dev-env file on that kind still refuses; a record offered at another path through a variable, which is never opened; a container cell whose record is not a read-only file mount at the fixed in-container path; an unknown surface kind; a container cell with no mount record. Every case above holds whichever pin source `DR-desk-containers-35` picks. Only where it picks the install file, each of these install files also refuses, so no record is admitted: one owned by a role identity, one owned by the launcher identity, and one owned by `example-operator`, which is not the system administrator and which a deny-list of role and launcher identities admits; one with a group or other write bit; one with an ACL entry granting write to another identity; one whose only grant to another identity is an ACL right to append, one whose only such grant is an ACL right to change permissions, and one whose only such grant is an ACL right to change owner; one that is a symlink; one under a directory the system administrator does not own, one under a group-writable directory, one under an other-writable directory, and one under a directory that is a symlink; one under a directory whose only grant to another identity is an ACL right to delete, one whose only such grant is an ACL right to add an entry, one whose only such grant is an ACL right to change permissions, and one whose only such grant is an ACL right to change owner; one whose parent is clean but whose directory two levels up is owned by `example-operator`; one on a filesystem whose kind a stub reports as outside the allow-list, one on an allow-listed kind mounted to ignore ownership, and one under a directory on either of those two kinds; and, on a container cell, one that is not a read-only file mount at the fixed in-container path. A record owned by the pinned launcher identity `example-launcher`, at the fixed name, with a clean anchor path (and, under the install file, a clean install file), is accepted. A file swapped after the check is not read: checks and read use one descriptor. |
 | 4 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvAttestsDigest$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvAttestsDigest ' "$o")` | Named PASS; the attestation carries the sorted names and the file sha256 and no fixture value. |
 | 5 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvRedactsOutput$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvRedactsOutput ' "$o")` | Named PASS; a row that prints an admitted value leaves `[redacted:<NAME>]` in the captured output and the output hash equals the hash of the redacted bytes; with two admitted values where one is a substring of the other, no part of either is left in the output. |
 | 6 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestAdmitted' > "$o" 2>&1 && grep -F -- '--- PASS: TestAdmittedRowEnvShape ' "$o" && ! grep -F -- '--- FAIL' "$o")` | The existing admission tests (`TestAdmitted*`) still pass, none fails. |
@@ -205,19 +250,25 @@ matches or a skip fails independent verification. Rows 3 and 16 apply under brie
 | 13 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvAllowList$/^toolconfig$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvAllowList/toolconfig ' "$o")` | Named PASS; `GH_CONFIG_DIR`, `GH_TOKEN`, a `GIT_*` name or `BASH_ENV` is could-not-check naming the tool-configuration class. |
 | 14 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvAllowList$/^socket$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvAllowList/socket ' "$o")` | Named PASS; `SSH_AUTH_SOCK` is could-not-check naming the agent-socket class. |
 | 15 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvAllowList$/^assay$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvAllowList/assay ' "$o")` | Named PASS; an `ASSAY_ROLE_SECRET_*` name, `ASSAY_CELL_DEV_ENV_FILE` or any other `ASSAY_*` name is could-not-check naming the Assay class; a name outside every class and outside `DEVENV_` is still could-not-check (deny by default). |
-| 16 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvNoSecretReach$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvNoSecretReach ' "$o")` | Named PASS; a row that declares names is could-not-check when every `ASSAY_ROLE_SECRET_*` variable is already removed but a fixture role-secret file the launcher record lists is still openable from the row's environment (strip-only does not admit); when the record lists a role secret for this window; and when the record is missing or unreadable. It is admitted only when the record lists none for the window and an open of every listed role-secret path fails. No reason contains a fixture value. |
+| 16 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C statusgen test -count=1 -v . -run '^TestDevEnvNoSecretReach$' > "$o" 2>&1 && grep -F -- '--- PASS: TestDevEnvNoSecretReach ' "$o")` | Named PASS; a row that declares names is could-not-check when every `ASSAY_ROLE_SECRET_*` variable is already removed but a fixture role-secret file the launcher record lists is still openable from the row's environment (strip-only does not admit); when the record lists a role secret for this window; when the record is missing or unreadable; and when a role-secret path the record lists only under another window's or another cell's entry is still openable from the row's environment. A listed path that is a named pipe does not stall the probe, and no probe reads a byte. It is admitted only when the record lists none for the window and an open of every role-secret path the whole record lists fails. No reason contains a fixture value. |
 
 ## Threat model / pre-mortem
 
 - An implementer-side window writes the file so a row passes: rows 3 (refusal, including a file
-  a non-coordinator role owns and a directory another role can write) and 4 (digest recorded, so
-  a change is visible).
+  a non-coordinator role owns and a directory on its path another identity can write) and 4
+  (digest recorded, so a change is visible).
 - The coordinator, a non-holding role, steers what a holding window executes or reads as
   configuration through a declared name: rows 10 to 15 (allow-list at admission).
 - A row declares a `DEVENV_` host, reads a role secret by its literal path and sends it there,
   so the coordinator, a non-holder, picks where a holder's secret goes: row 16. The row is
   admitted only in a window that cannot open any role-secret file; removing the variables
   (row 9) would leave the file openable and is not relied on.
+- A forged launcher record, owned by an identity the record does not name as a role, marks a
+  holding window as binding none or empties the role-secret probe: row 3. The owner must be
+  the launcher identity pinned at install with the anchor path, outside the record (brief 35
+  Interface contract), so an owner the record leaves out is refused rather than missed.
+- A window steers which record entry the verifier reads as its own, to narrow the role-secret
+  probe to paths it cannot open: Task 2 probes every path the whole record lists; row 16.
 - A file swapped between the check and the read: Task 4's single descriptor, row 3.
 - A trust state the verifier cannot read lets the file through: row 3's undeterminable and
   unknown-surface cases refuse.

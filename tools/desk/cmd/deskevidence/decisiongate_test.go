@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -996,5 +997,77 @@ func TestStageRemovesCreatedDirs(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(filepath.Join(root, readme)); string(b) != "LOCAL\n" {
 		t.Fatalf("the home's own file changed: %q", b)
+	}
+}
+
+// A decision-gate child that never finishes is killed at the write-window bound and reported
+// could-not-check — never awaited for as long as it runs while this run holds the
+// preparation lock other landings wait on. The fake prints a clean-looking line first, then
+// sleeps in a grandchild that keeps the output pipe open.
+//
+// regression: #6730
+func TestStatusgenDecisionGateAtDeadline(t *testing.T) {
+	prev := lockWait
+	lockWait = 300 * time.Millisecond
+	t.Cleanup(func() { lockWait = prev })
+	// Two children run per landing (before and after): together they stay inside lockWait.
+	if 2*decisionGateDeadline() > lockWait || decisionGateDeadline() <= 0 {
+		t.Fatalf("decisionGateDeadline() = %s; the two runs per landing must fit the write window lockWait (%s)", decisionGateDeadline(), lockWait)
+	}
+	fakeStatusgenOnPath(t, `echo "no gate: human brief moved, relabelled or dropped — clean"
+sleep 30`)
+	type result struct {
+		refused []string
+		err     error
+	}
+	done := make(chan result, 1)
+	start := time.Now()
+	go func() {
+		r, err := statusgenDecisionGateAt(t.TempDir(), "HEAD", childOptions{})
+		done <- result{r, err}
+	}()
+	select {
+	case r := <-done:
+		if r.err == nil {
+			t.Fatalf("a decision-gate child killed at its deadline read as clean (refused=%v)", r.refused)
+		}
+		wantUnverifiable(t, r.err)
+		// The deadline branch's own wording, not a "signal: killed" that a parse of the
+		// killed run's partial output could also carry.
+		if !strings.Contains(r.err.Error(), "did not finish within") || !strings.Contains(r.err.Error(), "was killed") {
+			t.Errorf("the refusal is not the deadline refusal: %v", r.err)
+		}
+		if el := time.Since(start); el > 10*time.Second {
+			t.Errorf("returned after %s; the deadline is %s", el, lockWait)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatalf("statusgenDecisionGateAt still blocked after 15s on a child that never finishes (deadline %s)", lockWait)
+	}
+}
+
+// One decision-gate child's WHOLE span — its deadline plus the post-kill drain of output
+// pipes a grandchild still holds — fits half of lockWait, so the before/after pair cannot
+// hold the preparation lock past lockWait. The fake leaves a grandchild holding the pipe, so
+// the run lasts the deadline AND the drain.
+//
+// regression: #6755
+func TestDecisionGateSpanFitsHalf(t *testing.T) {
+	prev := lockWait
+	lockWait = 4 * time.Second
+	t.Cleanup(func() { lockWait = prev })
+	if span := decisionGateDeadline() + decisionGateWaitDelay(); 2*span > lockWait || decisionGateDeadline() <= 0 {
+		t.Fatalf("deadline %s + drain %s per child: the before/after pair must fit lockWait (%s)", decisionGateDeadline(), decisionGateWaitDelay(), lockWait)
+	}
+	fakeStatusgenOnPath(t, `sleep 30`)
+	start := time.Now()
+	_, err := statusgenDecisionGateAt(t.TempDir(), "HEAD", childOptions{})
+	el := time.Since(start)
+	if err == nil {
+		t.Fatal("a decision-gate child killed at its deadline read as clean")
+	}
+	// Half the window plus 1s of slack for process start and scheduling; a drain outside
+	// the deadline puts one child at lockWait/2 + 2s.
+	if limit := lockWait/2 + time.Second; el > limit {
+		t.Fatalf("one decision-gate child held the caller for %s; its whole span must fit half of lockWait (%s) — two would hold the preparation lock past lockWait", el, lockWait/2)
 	}
 }

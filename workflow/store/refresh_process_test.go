@@ -55,7 +55,7 @@ func TestPGRefreshProcess(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if e = os.WriteFile(p.Acquired, b, 0600); e != nil {
+	if e = publishFile(p.Acquired, b); e != nil {
 		t.Fatal(e)
 	}
 	waitPath(t, p.Finish)
@@ -94,6 +94,59 @@ func TestPGRefreshProcess(t *testing.T) {
 	}
 	fmt.Println("REFRESH_PROCESS completed")
 }
+
+// publishFile makes b appear at path all at once. The parent waits for a
+// content file with waitPath, which returns as soon as the path exists, so a
+// plain os.WriteFile (create, then write) lets it read an empty or partial
+// file. Writing a temp file in the same directory and renaming it over path
+// means the path never exists with anything but the whole content.
+func publishFile(path string, b []byte) error {
+	tmp := path + ".tmp"
+	if e := os.WriteFile(tmp, b, 0600); e != nil {
+		return e
+	}
+	return os.Rename(tmp, path)
+}
+
+// regression: #6737
+func TestPublishFileWhole(t *testing.T) {
+	payload, e := json.Marshal(map[string]string{"pad": strings.Repeat("x", 4<<20)})
+	if e != nil {
+		t.Fatal(e)
+	}
+	dir := t.TempDir()
+	for i := range 50 {
+		path := filepath.Join(dir, fmt.Sprint("ticket", i))
+		done := make(chan error, 1)
+		go func() { done <- publishFile(path, payload) }()
+		// Spin without sleeping: the read must land inside any window in
+		// which the path exists before its content is whole.
+		for {
+			if _, e := os.Stat(path); e == nil {
+				break
+			}
+			select {
+			case e := <-done:
+				if e != nil {
+					t.Fatal(e)
+				}
+				done <- nil
+			default:
+			}
+		}
+		raw, e := os.ReadFile(path)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if !json.Valid(raw) {
+			t.Fatalf("round %d: read %d of %d bytes", i, len(raw), len(payload))
+		}
+		if e = <-done; e != nil {
+			t.Fatal(e)
+		}
+	}
+}
+
 func refreshProcessCommand(t *testing.T, p refreshProcessPacket) *exec.Cmd {
 	t.Helper()
 	raw, e := json.Marshal(p)
@@ -150,8 +203,8 @@ func TestPGRefreshGateProcesses(t *testing.T) {
 					t.Fatal(e)
 				}
 				var ticket refresh.Ticket
-				if json.Unmarshal(raw, &ticket) != nil {
-					t.Fatal("ticket decode")
+				if e := json.Unmarshal(raw, &ticket); e != nil {
+					t.Fatalf("ticket decode (%d bytes): %v", len(raw), e)
 				}
 				if ticket.Owner {
 					owners++

@@ -83,7 +83,10 @@ type FanoutLoop struct {
 	// live one; tests inject fixtures). The source builds the map with deskkit.RepresentedBriefPRs
 	// over the repo's open+merged PRs — keyed on each PR's `Brief:` trailer, NEVER a branch name (a
 	// branch spelled differently from the derived pattern is exactly the phantom this reconciliation
-	// exists to catch).
+	// exists to catch). A MERGED PR the brief's own `delivery:` list declares `covers: partial` is
+	// work in progress, not the delivery, so the live source sets it aside before routing (#6751,
+	// represented.go): a brief whose only merged PRs are declared partials is not represented and
+	// its row is offered, as statusgen offers it.
 	//
 	// It governs FRESH Next-up rows AND `### Awaiting implementer rework` STATUS.md rows
 	// (#1028: a rework row whose deliverable already merged is a phantom this lane used to
@@ -137,6 +140,58 @@ type FanoutLoop struct {
 	// under mu, so a re-poll never reports a stale run's diagnostics.
 	landedUnreconciled []landedRow
 	freshHeld          string
+	// awaitingRework and withheld are the two #5853 plan diagnostics statusWithheld writes.
+	// awaitingRework lists the `### Awaiting implementer rework` rows at implemented/verified: a
+	// verification already FAILED them with a cited blocker, so they are WORKER-owned and listed with
+	// that blocker (BoardRow.NextAct). withheld lists every other brief row whose known Status is not
+	// `todo`/`in-progress` (implemented, verified, done, blocked, or malformed). Neither is dispatched.
+	awaitingRework []BoardRow
+	withheld       []BoardRow
+}
+
+// statusWithheld is the single choke point that keeps a brief row whose work is not open out of
+// IMPLEMENT (#5853): a row whose live Status is KNOWN and not `todo`/`in-progress` is recorded for
+// one of renderPlan's two headings and reported as withheld. Every brief lane (fresh Next-up and the
+// STATUS.md rework section) passes through it, whatever source produced the row. A rework-lane row
+// at implemented/verified goes to AWAITING REWORK (owner worker, with its cited blocker); any other
+// withheld row goes to WITHHELD BY STATUS. An unknown Status ("") is could-not-check and is never
+// rounded to delivered, so it stays dispatchable. Durable repair obligations are not brief rows and
+// do not pass through here. Whether a row is withheld is decided by withheldByStatus alone, the
+// side-effect-free predicate candidateBriefIDs shares, so the rows this withholds are exactly the
+// rows never looked up past an incomplete window.
+func (f *FanoutLoop) statusWithheld(r BoardRow, reworkLane bool) bool {
+	if !withheldByStatus(r) {
+		return false
+	}
+	f.mu.Lock()
+	if reworkLane && dispatchableAsRework(r.Status) {
+		f.awaitingRework = append(f.awaitingRework, r)
+	} else {
+		f.withheld = append(f.withheld, r)
+	}
+	f.mu.Unlock()
+	return true
+}
+
+// withheldByStatus reports whether statusWithheld withholds r: its Status is known and is not
+// `todo`/`in-progress`. It records nothing, so the candidate set (candidateBriefIDs) can apply the
+// same test before any lookup is spent (#5853).
+func withheldByStatus(r BoardRow) bool {
+	return strings.TrimSpace(r.Status) != "" && !isDispatchableStatus(r.Status)
+}
+
+// awaitingReworkRows returns the rework-lane rows the last SelectQueue listed as AWAITING REWORK.
+func (f *FanoutLoop) awaitingReworkRows() []BoardRow {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]BoardRow(nil), f.awaitingRework...)
+}
+
+// withheldRows returns the other rows the last SelectQueue withheld by status.
+func (f *FanoutLoop) withheldRows() []BoardRow {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]BoardRow(nil), f.withheld...)
 }
 
 // landedRow is one fresh Next-up row whose brief already has a MERGED PR: its board cell simply never
@@ -144,15 +199,20 @@ type FanoutLoop struct {
 type landedRow struct {
 	briefID string // `<stream>/<NN>`
 	pr      int    // the merged PR's number
+	// unchecked, when non-empty, marks a COULD-NOT-CHECK row instead (#5853): its representing PR
+	// could not be determined (pr is 0) and renderPlan lists it under its own heading with this reason.
+	unchecked string
 }
 
 func (f *FanoutLoop) Name() string { return "worker-desk" }
 
 // SelectQueue is the deterministic board read. A fresh row addressed to THIS desk
 // (`to:worker`) is a DIRECTED message and LEADS the whole queue;
-// after the addressed lead it returns ORPHAN RESUMES, then
-// AWAITING-IMPLEMENTER-REWORK rows (both outrank ordinary fresh dispatch — worker-desk SKILL.md §Sources
-// of work rows 3 and 5: "resuming started work outranks a fresh brief"), then the Next-up rows
+// after the addressed lead it returns ORPHAN RESUMES, then the rework class — durable repair
+// obligations, plus an Awaiting-implementer-rework row ONLY when its Status could not be read
+// (both outrank ordinary fresh dispatch — worker-desk SKILL.md §Sources of work rows 3, 5 and 5b:
+// "resuming started work outranks a fresh brief"). A rework row whose Status is known is withheld and
+// listed under the plan's AWAITING REWORK heading instead (statusWithheld, #5853). Then the Next-up rows
 // in board order, each already priority/staleness/cap/dep-filtered by statusgen — so every fresh
 // row it sees is already `todo` and unclaimed. It INCLUDES `issue-<NN>` placeholder rows: those
 // ARE this loop's work (worker-desk dispatch spec, Procedure 2 — "INCLUDE issue-placeholders —
@@ -163,6 +223,8 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	// Reset the plan diagnostics up front so a re-poll never reports a stale run's landed/held state.
 	f.mu.Lock()
 	f.landedUnreconciled = nil
+	f.awaitingRework = nil
+	f.withheld = nil
 	f.freshHeld = ""
 	f.mu.Unlock()
 
@@ -215,16 +277,22 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	// OPEN or MERGED PR is a phantom this lane used to skip. Held on could-not-check. The DURABLE repair
 	// obligations (step 2b) stay EXEMPT: a repair obligation legitimately reworks a MERGED original via a
 	// fresh follow-up branch (§Sources of work row 5b), so a representing PR is expected there.
+	// A row at implemented/verified — by construction every row of that section, whose own Status
+	// column reads implemented/verified — failed verification with a cited blocker: statusWithheld lists
+	// it under AWAITING REWORK (owner worker, with that blocker) and it is never offered as IMPLEMENT
+	// (#5853). The owed work is the cited blocker, not a re-run of the delivered brief. Only a row whose
+	// Status could not be read at all ("") still reaches reworkItems.
 	rework, err := f.reworkSource()
 	if err != nil {
 		return nil, err
 	}
 	if !held {
 		for _, r := range rework {
-			if f.isHandled(r.ID()) {
+			if f.isHandled(r.ID()) || f.statusWithheld(r, true) {
 				continue
 			}
-			if _, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
+			if rp, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
+				f.noteUnchecked(r, rp)
 				continue
 			}
 			reworkItems = append(reworkItems, r.toReworkItem(f.TargetSHA))
@@ -251,7 +319,8 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	// landed-unreconciled (its board cell just never flipped after the merge) and is recorded for the
 	// plan's own heading, never dispatched; an OPEN PR → the row is started work, routed to the RESUME
 	// lane (deduped against an orphan already covering that PR); no PR → fresh dispatch. The match is on
-	// the brief id keyed against the PR's `Brief:` trailer, never a branch name.
+	// the brief id keyed against the PR's `Brief:` trailer, never a branch name. A merged PR the brief
+	// declares `covers: partial` never reaches this map (#6751): the source set it aside.
 	rows, err := f.boardSource()
 	if err != nil {
 		return nil, err
@@ -264,10 +333,13 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 				// NOT dropped here — they ARE this loop's work (Procedure 2) and flow through below.
 				continue
 			}
-			if f.isHandled(r.ID()) {
+			if f.isHandled(r.ID()) || f.statusWithheld(r, false) {
 				continue
 			}
 			if rp, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
+				if f.noteUnchecked(r, rp) {
+					continue
+				}
 				if rp.Merged {
 					// Landed-unreconciled: the deliverable merged, the board row just never reconciled.
 					// A plan diagnostic, never a dispatch — recorded for renderPlan's own heading.
@@ -313,6 +385,18 @@ func (f *FanoutLoop) landedUnreconciledRows() []landedRow {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]landedRow(nil), f.landedUnreconciled...)
+}
+
+// noteUnchecked records a row whose representing PR could not be determined (#5853) under the plan's
+// COULD-NOT-CHECK heading and reports true; such a row is never dispatched and never landed.
+func (f *FanoutLoop) noteUnchecked(r BoardRow, rp deskkit.RepresentedPR) bool {
+	if rp.Unchecked == "" {
+		return false
+	}
+	f.mu.Lock()
+	f.landedUnreconciled = append(f.landedUnreconciled, landedRow{briefID: r.Stream + "/" + r.Num, unchecked: rp.Unchecked})
+	f.mu.Unlock()
+	return true
 }
 
 // freshHoldReason returns the reason the last SelectQueue HELD the fresh lane (a could-not-check

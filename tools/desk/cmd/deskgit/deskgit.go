@@ -254,13 +254,13 @@ func gateDestinations(repo string, dests []string, push bool) error {
 		got, err := parseRepo(d)
 		if err != nil {
 			return deskkit.Refused(fmt.Sprintf("refused: cannot parse %s destination %d of %d (%s): %s",
-				kind, i+1, len(dests), redactURL(d), err.Error()))
+				kind, i+1, len(dests), deskkit.RedactRemoteUserinfo(d), err.Error()))
 		}
 		if got != repo {
 			return deskkit.Refused(fmt.Sprintf(
 				"refused: %s destination %d of %d (%s) is %s, not the origin repo %s — no credential is "+
 					"offered to a destination the origin gate did not decide on",
-				kind, i+1, len(dests), redactURL(d), got, repo))
+				kind, i+1, len(dests), deskkit.RedactRemoteUserinfo(d), got, repo))
 		}
 	}
 	return nil
@@ -517,7 +517,7 @@ func cmdFetch(args []string) (err error) {
 		// the same audit bucket as network faults is the very confusion transportexec.go
 		// argues against for the named guard (correctness review).
 		return deskkit.Refused("refused: cannot parse origin repo from " +
-			redactURL(originURL) + ": " + rerr.Error())
+			deskkit.RedactRemoteUserinfo(originURL) + ": " + rerr.Error())
 	}
 	ac.repo = repo
 	if !deskkit.IsAllowedRepo(repo) {
@@ -604,7 +604,7 @@ func cmdFetch(args []string) (err error) {
 	// args, which are the same in all three). While residual 2 is open this is the one
 	// compensating control available: it does not gate anything, but it makes the smuggle
 	// DETECTABLE after the fact instead of invisible.
-	ac.detail = detail + " [origin " + redactURL(originURL) + "]"
+	ac.detail = detail + " [origin " + deskkit.RedactRemoteUserinfo(originURL) + "]"
 	return nil
 }
 
@@ -707,7 +707,7 @@ func cmdPush(args []string) (err error) {
 	repo, rerr := parseRepo(originURL)
 	if rerr != nil {
 		return deskkit.Refused("refused: cannot parse origin repo from " +
-			redactURL(originURL) + ": " + rerr.Error())
+			deskkit.RedactRemoteUserinfo(originURL) + ": " + rerr.Error())
 	}
 	ac.repo = repo
 	if !deskkit.IsAllowedRepo(repo) {
@@ -750,15 +750,15 @@ func cmdPush(args []string) (err error) {
 		return deskkit.Unverifiable("git push failed", perr)
 	}
 	// Audit records role/repo/branch and the effective origin URL — never the token or its
-	// path's contents. redactURL strips any userinfo from the echoed URL.
+	// path's contents. deskkit.RedactRemoteUserinfo masks any userinfo in the echoed URL.
 	ac.detail = "pushed " + branch + " -> origin/" + branch + " as " + *asRole +
-		" [origin " + redactURL(originURL) + "]"
+		" [origin " + deskkit.RedactRemoteUserinfo(originURL) + "]"
 	if !pushMovedRef(out) {
 		// git exits 0 on "Everything up-to-date": nothing changed on the forge, so the row is
 		// a noop, never progress that renews the HEARTBEAT lease (#6510).
 		ac.successResult = deskkit.ResultNoop
 		ac.detail = "up to date: " + branch + " already at origin/" + branch + " as " + *asRole +
-			" [origin " + redactURL(originURL) + "]"
+			" [origin " + deskkit.RedactRemoteUserinfo(originURL) + "]"
 	}
 	if out != "" {
 		fmt.Fprintln(os.Stderr, out)
@@ -798,35 +798,6 @@ func bestEffortOriginRepo(dir string) string {
 		return ""
 	}
 	return repo
-}
-
-// redactURL strips any userinfo from a remote URL before it reaches an audit line or a
-// refusal message. An https remote can legitimately carry `user:token@`, and the audit
-// ledger is a durable artifact — recording the effective URL (security review) must not
-// turn the audit ledger into a credential store. Only the userinfo is removed; host and path, the parts
-// that make the line useful for detecting a smuggled destination, are preserved verbatim.
-//
-// Deliberately string-level and total: it must never fail or panic on the hostile URLs it
-// exists to log, so it does not go through net/url (which rejects many shapes git accepts).
-func redactURL(raw string) string {
-	u := strings.TrimSpace(raw)
-	if i := strings.Index(u, "://"); i >= 0 {
-		scheme, rest := u[:i+3], u[i+3:]
-		if at := strings.LastIndexByte(rest[:authorityEnd(rest)], '@'); at >= 0 {
-			return scheme + "<redacted>@" + rest[at+1:]
-		}
-		return u
-	}
-	// scp-like [user@]host:path — a user component here is a username, not a secret, but
-	// redact it for consistency so no shape leaks a token through a different branch.
-	if colon := strings.IndexByte(u, ':'); colon >= 0 {
-		if slash := strings.IndexByte(u, '/'); slash < 0 || colon < slash {
-			if at := strings.LastIndexByte(u[:colon], '@'); at >= 0 {
-				return "<redacted>@" + u[at+1:]
-			}
-		}
-	}
-	return u
 }
 
 // remoteHelperRe matches a git remote-helper transport form `<helper>::<address>`

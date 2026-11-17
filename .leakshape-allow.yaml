@@ -319,14 +319,12 @@ allow:
     shape: ssh-host-alias
     sha256:
       - 5079c0845b8eaab1d4e9a81b1a14a680a4b690ec5c4dceaaf09f995d110ffebc
-      - 57020b936a9fe035afd6e8ca9be7cbb55f7eb0aabb1b3cbf0029e205c0df0d86
     reason: *fx-ssh
   - path: tools/desk/cmd/deskclaim-ref/gogit.go
     shape: ssh-host-alias
     sha256:
       - 2d4b0f22da4fd9466d5473b0eb71c32d1d2dcd7e7131d76c758f387c12069e4f
       - 5079c0845b8eaab1d4e9a81b1a14a680a4b690ec5c4dceaaf09f995d110ffebc
-      - 5d488afdbb0ec4818ebc69aeedd5abfb3dde7dc322b6a63f6798a45f61808a76
     reason: *doc-ssh
   - path: tools/desk/cmd/deskdispatch/stampworktreeidentity_test.go
     shape: noreply-id-email

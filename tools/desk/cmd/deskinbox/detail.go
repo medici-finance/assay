@@ -15,7 +15,6 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -84,10 +83,19 @@ func commentsClient() *http.Client {
 	return &http.Client{Timeout: commentsTimeout}
 }
 
+// maxCommentPages bounds one comments walk: 100 pages of 100 is far beyond any real thread,
+// and a forge that keeps answering full pages past it is refused, never walked forever. A var
+// only so a test can lower it.
+var maxCommentPages = 100
+
 // listIssueComments walks GET /issues/{n}/comments to exhaustion.
 func listIssueComments(token string, repo deskkit.ForgeRepo, number int) ([]comment, error) {
 	var out []comment
 	for page := 1; ; page++ {
+		if page > maxCommentPages {
+			return nil, deskkit.Unverifiable(fmt.Sprintf("GET issues/comments still has pages after %d — "+
+				"refusing to read a partial thread as the whole one", maxCommentPages), nil)
+		}
 		var chunk []struct {
 			User struct {
 				Login string `json:"login"`
@@ -106,7 +114,7 @@ func listIssueComments(token string, repo deskkit.ForgeRepo, number int) ([]comm
 		if derr != nil {
 			return nil, deskkit.Unverifiable("GET issues/comments failed", derr)
 		}
-		raw, rerr := io.ReadAll(resp.Body)
+		raw, rerr := deskkit.ReadCappedForgeBody(resp.Body, "GET issues/comments")
 		resp.Body.Close()
 		if rerr != nil {
 			// A body cut off mid-read (a stall past the deadline, a dropped connection) is

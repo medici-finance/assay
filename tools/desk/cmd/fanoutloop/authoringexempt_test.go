@@ -18,7 +18,7 @@ import (
 func withPlanTransports(t *testing.T, prs []deskkit.PRRef, files func(repo string, n int) ([]deskkit.ChangedFile, error)) {
 	t.Helper()
 	oldPRs, oldFiles := representedPRs, representedPRFiles
-	representedPRs = func(string) ([]deskkit.PRRef, error) { return prs, nil }
+	representedPRs = func(string) ([]deskkit.PRRef, bool, error) { return prs, false, nil }
 	representedPRFiles = files
 	t.Cleanup(func() { representedPRs, representedPRFiles = oldPRs, oldFiles })
 }
@@ -51,7 +51,7 @@ func planWithRows(rows []BoardRow) *FanoutLoop {
 		Rework: noRework,
 		Emit:   io.Discard,
 	}
-	f.Represented = representedSourceFor("example-org/example-repo", f.candidateBriefIDs)
+	f.Represented = representedSourceFor("example-org/example-repo", f.candidateBriefIDs, f.declaredPartials)
 	return f
 }
 
@@ -168,7 +168,7 @@ func TestRepresentedSource_AuthorsTrailerNeverRepresents(t *testing.T) {
 	withPlanTransports(t,
 		[]deskkit.PRRef{{Number: 1439, State: "MERGED", Body: "Authors: example-port/11, example-port/12"}},
 		nil)
-	m, err := representedSourceFor("example-org/example-repo", nil)()
+	m, err := representedSourceFor("example-org/example-repo", nil, nil)()
 	if err != nil {
 		t.Fatalf("Represented: %v", err)
 	}

@@ -22,8 +22,8 @@
     {
       "name": "restore walking cache enrollment",
       "file": "internal/cellcache/cache.go",
-      "old": "if _, err = m.launchCheck(); err != nil {",
-      "new": "if _, err = finish(m,m.check(false)); err != nil {"
+      "old": "admitted, err := m.launchCheck()",
+      "new": "admitted, err := finish(m,m.check(false))"
     },
     {
       "name": "plant independent startup walker",

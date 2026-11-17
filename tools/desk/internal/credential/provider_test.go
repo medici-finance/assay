@@ -360,6 +360,13 @@ func TestProviderLowerCustodyBoundary(t *testing.T) {
 			setup: func(_ *testing.T, _ string, r *credential.GitHubRequest, _ *credential.Adapters) {
 				r.Scope = "repository"
 			}},
+		// regression: #6746 — a repository narrowing rides only on the read-only
+		// scope; an installation-scope mint naming one is refused, not minted wide.
+		{name: "repository without read-only scope", class: credential.ClassRefused,
+			want: "a repository narrowing is admitted only with the " + credential.ScopeReadOnly + " scope",
+			setup: func(_ *testing.T, _ string, r *credential.GitHubRequest, _ *credential.Adapters) {
+				r.Repository = "example-repo"
+			}},
 		{name: "missing private key", class: credential.ClassUnverifiable, want: "private key not found",
 			setup: func(t *testing.T, cfg string, _ *credential.GitHubRequest, _ *credential.Adapters) {
 				if err := os.Remove(filepath.Join(cfg, "worker-app.pem")); err != nil {

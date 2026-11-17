@@ -1,0 +1,77 @@
+{
+  "test": "go test ./cmd/muhar -run '^(TestLeadingCd|TestBuildFollowsLeadingCd|TestBuildRefusesCompoundCd)$' -count=1 -timeout=300s",
+  "control": {
+    "name": "CONTROL: a leading cd is never followed",
+    "file": "cmd/muhar/runner.go",
+    "old": "\treturn target, rest, true\n",
+    "new": "\treturn \"\", \"\", false\n"
+  },
+  "mutations": [
+    {
+      "name": "build runs from the spec root, not the followed directory",
+      "file": "cmd/muhar/runner.go",
+      "old": "path, base, dir, specTest = abs, cdDir, cdDir, rest",
+      "new": "path, base, dir, specTest = abs, cdDir, root, rest"
+    },
+    {
+      "name": "absolute directory accepted",
+      "file": "cmd/muhar/runner.go",
+      "old": " || strings.HasPrefix(m[1], \"/\") {",
+      "new": " {"
+    },
+    {
+      "name": "directory alphabet admits shell syntax",
+      "file": "cmd/muhar/runner.go",
+      "old": "cdDirWord = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)",
+      "new": "cdDirWord = regexp.MustCompile(`^.+$`)"
+    },
+    {
+      "name": "command after cd need not be go test",
+      "file": "cmd/muhar/runner.go",
+      "old": "if i+1 >= len(words) || words[i] != \"go\" || words[i+1] != \"test\" {",
+      "new": "if i+1 >= len(words) {"
+    },
+    {
+      "name": "checkout containment dropped",
+      "file": "cmd/muhar/runner.go",
+      "old": "|| !within(bound, resolved) {",
+      "new": "|| bound == \"\" {"
+    },
+    {
+      "name": "non-directory accepted",
+      "file": "cmd/muhar/runner.go",
+      "old": "|| !info.IsDir() ||",
+      "new": "|| info == nil ||"
+    },
+    {
+      "name": "containment checked lexically, a symlink escapes",
+      "file": "cmd/muhar/runner.go",
+      "old": "resolved, err := filepath.EvalSymlinks(target)",
+      "new": "resolved, err := target, error(nil)"
+    },
+    {
+      "name": "no checkout found: bound is the spec root only",
+      "file": "cmd/muhar/runner.go",
+      "old": "if _, err := os.Lstat(filepath.Join(d, \".git\")); err == nil {",
+      "new": "if _, err := os.Lstat(filepath.Join(d, \".git\")); err != nil && false {"
+    },
+    {
+      "name": "semicolon chains a second command",
+      "file": "cmd/muhar/runner.go",
+      "old": "strings.IndexByte(\";&|<>\", c)",
+      "new": "strings.IndexByte(\"&|<>\", c)"
+    },
+    {
+      "name": "backtick substitution allowed",
+      "file": "cmd/muhar/runner.go",
+      "old": "case c == '`' || c == '\\n':",
+      "new": "case c == '\\n':"
+    },
+    {
+      "name": "bare subshell parenthesis allowed",
+      "file": "cmd/muhar/runner.go",
+      "old": "\t\tcase c == '(':\n\t\t\tif depth == 0 {\n\t\t\t\treturn nil, false\n\t\t\t}\n",
+      "new": "\t\tcase c == '(':\n"
+    }
+  ]
+}

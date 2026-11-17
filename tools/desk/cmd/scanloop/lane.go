@@ -158,7 +158,7 @@ func RealExec(dir, name string, args ...string) (string, error) {
 	cmd.Dir = dir
 	b, err := cmd.CombinedOutput()
 	if err != nil {
-		return string(b), fmt.Errorf("%s %s: %w: %s", name, strings.Join(args, " "), err, strings.TrimSpace(string(b)))
+		return string(b), fmt.Errorf("%s %s: %w: %s", name, deskkit.RedactRemoteArgv(args), err, deskkit.RedactRemoteUserinfo(strings.TrimSpace(string(b))))
 	}
 	return string(b), nil
 }

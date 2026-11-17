@@ -145,8 +145,8 @@ func TestRowreadHoldsNoToken(t *testing.T) {
 	f := newRowreadForge(t, `"triage done (fixture triage)"`)
 	t.Setenv("PATH", filepath.Dir(sg)+string(os.PathListSeparator)+os.Getenv("PATH"))
 	// The invoking environment may carry credential-shaped variables that
-	// admittedRowEnv leaves in place by design (its out-of-scope note: only the
-	// four forge variables are removed). Clear them, so the scan below asserts
+	// admittedRowEnv leaves in place by design (its out-of-scope note names
+	// the families it does not remove). Clear them, so the scan below asserts
 	// what this lane adds and nothing the caller brought.
 	for _, kv := range os.Environ() {
 		if k, v, _ := strings.Cut(kv, "="); rowreadTokenShape.MatchString(v) {
@@ -160,10 +160,12 @@ func TestRowreadHoldsNoToken(t *testing.T) {
 		secrets = append(secrets, v)
 		t.Setenv(name, v)
 	}
-	rowHome, rowTmp := t.TempDir(), t.TempDir()
-	t.Setenv("HOME", rowHome)
-	t.Setenv("TMPDIR", rowTmp)
-	row := `statusgen rowread comments --issue example-org/one#7 --body-contains '(fixture triage)' > "$TMPDIR/out" && env > "$TMPDIR/rowenv" && test -s "$TMPDIR/out"`
+	// The row gets a HOME and TMPDIR of its own, removed when it ends, so it
+	// copies both to rec for the scans below.
+	rec := t.TempDir()
+	rowHome, rowTmp := filepath.Join(rec, "home"), filepath.Join(rec, "tmp")
+	row := `statusgen rowread comments --issue example-org/one#7 --body-contains '(fixture triage)' > "$TMPDIR/out" && env > "$TMPDIR/rowenv" && test -s "$TMPDIR/out"` +
+		` && cp -R "$HOME" '` + rowHome + `' && cp -R "$TMPDIR" '` + rowTmp + `'`
 	if code := verifyrunRow(t, root, row); code != verifyrunExitPass {
 		t.Fatalf("admitted rowread row exit %d, want pass", code)
 	}
@@ -194,6 +196,13 @@ func TestRowreadHoldsNoToken(t *testing.T) {
 		rowreadAssertClean(t, secrets, "reader "+name, b)
 	}
 	rowreadAssertClean(t, secrets, "row environment", rowenv)
+	// The read ran with the run's read role, which the row itself never held.
+	if readerEnv, _ := os.ReadFile(filepath.Join(f.rec, "env")); !strings.Contains(string(readerEnv), "DESK_LOOP=verify-desk") {
+		t.Error("the reader did not run with the run's own read role")
+	}
+	if strings.Contains(string(rowenv), "DESK_LOOP=") {
+		t.Error("the row's environment names a read role")
+	}
 	rowreadAssertTree(t, secrets, rowHome)
 	rowreadAssertTree(t, secrets, rowTmp)
 }

@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // The read scope of the held/could-not-check scan (#1894).
@@ -92,7 +93,9 @@ import (
 //     a blockquote, or in HTML; a one-line paragraph that GFM can never read
 //     as a table row (heldOneLineProse: column 0, no container marker, not
 //     led by "|", blank lines on both sides) is prose, not such a line
-//     (#4294) — or a non-blank line right after a results
+//     (#4294), and on rule 3c's read of the last entry so is a one-line
+//     bullet item whose neighbours are blank or one-line bullet items
+//     (#6767) — or a non-blank line right after a results
 //     table, which GFM may read as one more row of it. One earlier key the
 //     last entry did not cover, one earlier row that cannot be aligned or
 //     keyed, one such table line, or earlier entries with no keyed row at all
@@ -155,9 +158,15 @@ import (
 //     Whether the run re-ran EVERY Verify row is not this scan's question:
 //     verifyflip asks it of the run it credits (closureRunWitnesses), so 3c
 //     applies only where that check runs. Only verifyflip and the reconcile
-//     fold read it (flipHeldRefusal, latestRun true); close-verify, the
-//     verify-gate card, the sign-off act and autoflip run no witness check
-//     and read rules 3a and 3b alone. And 3c needs every Date/Runner row of
+//     fold read it (flipHeldRefusal, latestRun true), and the model autoflip
+//     once that same check has passed on the same run
+//     (verifyPassHeldWitnessed, #6767); close-verify, the verify-gate card
+//     and the sign-off act run no witness check and read rules 3a and 3b
+//     alone. On this read only, a results row of the last entry whose
+//     outcome cell opens on a clean outcome and carries a note reads clean
+//     when a tool-written witness row of the same key in the same entry
+//     already reads clean (heldCorroboratedNote, #6767): a verifier's
+//     restatement of a witnessed row does not undo it. And 3c needs every Date/Runner row of
 //     the run verifyflip credits to lie after the last entry heading
 //     (heldWitnessInLatest), so the run it stops reading at is the run the
 //     witness check reads. The last
@@ -234,9 +243,10 @@ import (
 //     struck span on the line). Those callers go on to require a passing
 //     execution witness for every Verify row in the run they credit
 //     (closureRunWitnesses), so a row that really held cannot flip on its
-//     quoted words being skipped. The verify-gate card, close-verify, the
-//     sign-off act and autoflip run no witness check and read the occurrence
-//     as before. An occurrence outside every quoted span on the same line is
+//     quoted words being skipped; the model autoflip reads it so only after
+//     that check passes (verifyPassHeldWitnessed). The verify-gate card,
+//     close-verify and the sign-off act run no witness check and read the
+//     occurrence as before. An occurrence outside every quoted span on the same line is
 //     read as always.
 //
 // The hygiene (fences, blockquotes, struck and inline code), the routing rule
@@ -773,15 +783,44 @@ func heldPipeOutsideCode(line string) bool {
 // delimiter row on adjacent lines and ends at a blank line, so such a line is
 // neither a header nor a delimiter nor a body row; its "|" is prose. A line
 // with no line before or after it in the Evidence is not exempt.
-func heldOneLineProse(lines []string, inFence []bool, i int) bool {
+//
+// A one-line bullet item is the same (#6767): a line at column 0 opened by
+// "-", "*" or "+" and one space (heldOneLineItem), whose neighbours are each
+// blank or another such item line. Each item is its own container, a table
+// needs two adjacent lines inside one container, and a list marker starts a
+// new item, so no table can hold the line. No item text on the line or a
+// neighbour may read as a delimiter row (only "|", ":", "-" and spaces), so
+// the marker never has to be told from a delimiter. The item exemption is
+// read only where items is set: the last entry on the latest-run read (rule
+// 3c), whose rows the witness check and heldLatestClean read again. Every
+// other read keeps a bullet holding "|" as a line it cannot key (#4294).
+func heldOneLineProse(lines []string, inFence []bool, i int, items bool) bool {
 	if i == 0 || i+1 >= len(lines) || inFence[i] {
 		return false
 	}
 	l := lines[i]
+	if items && heldOneLineItem(l) {
+		near := func(n string) bool { return strings.Trim(n, " \t") == "" || heldOneLineItem(n) }
+		return !inFence[i-1] && !inFence[i+1] && near(lines[i-1]) && near(lines[i+1])
+	}
 	if l == "" || strings.ContainsRune(l, '\r') || l[0] == '|' || heldContainerStrip(l) != l {
 		return false
 	}
 	return strings.Trim(lines[i-1], " \t") == "" && strings.Trim(lines[i+1], " \t") == ""
+}
+
+// heldDelimiterishRe is text a GFM delimiter row could be: only "|", ":",
+// "-" and spaces.
+var heldDelimiterishRe = regexp.MustCompile(`^[|: \t-]*$`)
+
+// heldOneLineItem reports whether l is a bullet item line at column 0 ("- ",
+// "* " or "+ " then text) whose text cannot read as a delimiter row and that
+// holds no carriage return (heldOneLineProse).
+func heldOneLineItem(l string) bool {
+	if len(l) < 3 || strings.IndexByte("-*+", l[0]) < 0 || l[1] != ' ' || strings.ContainsRune(l, '\r') {
+		return false
+	}
+	return !heldDelimiterishRe.MatchString(l[2:])
 }
 
 // heldCloseRun returns where a backtick run of exactly n starts in line at or
@@ -1432,6 +1471,37 @@ func heldObservedOutput(line, clean string, read heldLineRead, h []int) bool {
 	return false
 }
 
+// heldWitnessLines marks each source line of evidence that rule 7 must never
+// skip: a line behind a row the witness check reads as a verifyrun witness
+// row. The witness check reads rows only after stripRowComments removes the
+// complete HTML comments (parseEvidenceRows), so membership is decided on
+// that stripped text and mapped back to every source line the stripped row
+// came from (flipStrippedSpans). A comment can then neither hide a witness
+// shape from the line it sits on nor join two source lines into a witness
+// row the scan did not see. The flip path strips the run twice (its run is
+// already stripped, then parseEvidenceRows strips it again); when the second
+// strip changes the text, or the mapping cannot be rebuilt, the two views
+// can differ, so every line is marked: rule 7 is off, fail-closed.
+func heldWitnessLines(evidence string) []bool {
+	marks := make([]bool, strings.Count(evidence, "\n")+1)
+	stripped, _ := stripRowComments(evidence)
+	spans, ok := flipStrippedSpans(evidence)
+	if again, _ := stripRowComments(stripped); !ok || again != stripped {
+		for i := range marks {
+			marks[i] = true
+		}
+		return marks
+	}
+	for k, row := range strings.Split(stripped, "\n") {
+		if isWitnessRow(row) {
+			for i := spans[k][0]; i <= spans[k][1]; i++ {
+				marks[i] = true
+			}
+		}
+	}
+	return marks
+}
+
 // heldQuotedOutput reports whether the occurrence at clean[h[0]:h[1]] sits
 // inside a double-quoted span (rule 7, #4721). clean is the line as the scan
 // reads it: inline code already masked, struck spans cut (the caller passes
@@ -1483,6 +1553,11 @@ func heldQuotedOutput(clean string, h []int, row, alone bool) bool {
 //   - Only the ASCII double quote '"' delimits. A quote inside masked inline
 //     code is gone already. Any backslash-escaped quote in the region, or an
 //     odd number of quotes in it, leaves the pairing uncertain: no span.
+//   - Markup or a character a renderer may not show as a quotation mark
+//     leaves it uncertain too: a "<" or "&" or link or image syntax ("](")
+//     anywhere in the region, a non-ASCII byte beside a quote, or a quote
+//     with white space (CommonMark's set, or the region's edge) on both
+//     sides.
 //   - Quotes pair in order, first with second, third with fourth. An opening
 //     quote right after a letter or digit, or a closing quote right before
 //     one (an inch mark: 5"), is not a quotation mark: no span.
@@ -1502,6 +1577,39 @@ func heldQuotedIn(clean string, h []int, lo, hi int) bool {
 	}
 	if len(quotes)%2 != 0 {
 		return false
+	}
+	// Markup can hide or supply a quote the source pairs: a "<" (an HTML
+	// comment or tag around a quote) or a "&" (a character reference such
+	// as &quot;) in the region leaves the pairing uncertain, as a "<"
+	// leaves inlineCodeScan's.
+	if strings.ContainsAny(clean[lo:hi], "<&") {
+		return false
+	}
+	// Link or image syntax hides a quote too: a title in a link or image
+	// ("[a](/u '\"')") or a bare destination ("[a](/u/\")") is not rendered
+	// as text, so "](" in the region leaves the pairing uncertain.
+	if strings.Contains(clean[lo:hi], "](") {
+		return false
+	}
+	// White space is CommonMark's set: a form feed or vertical tab renders
+	// as a space, so it flanks a mark as a space does.
+	space := func(i int) bool {
+		return i < lo || i >= hi || strings.IndexByte(" \t\n\v\f\r", clean[i]) >= 0
+	}
+	for _, q := range quotes {
+		// A quote beside a non-ASCII byte (a no-break or other Unicode
+		// space, a curly quote) or with white space on both sides (a spaced
+		// ditto or inch mark) may not render as a quotation mark.
+		if q > lo && clean[q-1] >= 0x80 || q+1 < hi && clean[q+1] >= 0x80 || space(q-1) && space(q+1) {
+			return false
+		}
+		// An emphasis delimiter beside a quote renders as nothing: in
+		// **5**" the quote follows a digit on the page, an inch mark, though
+		// the source shows it after "*". A quote beside "*" or "_" gives no
+		// span.
+		if q > lo && strings.IndexByte("*_", clean[q-1]) >= 0 || q+1 < hi && strings.IndexByte("*_", clean[q+1]) >= 0 {
+			return false
+		}
 	}
 	alnum := func(i int) bool {
 		if i < lo || i >= hi {
@@ -1723,7 +1831,7 @@ func heldScanScope(evidence string, latestRun bool) heldScope {
 			// An HTML table renders live in any cell, header and keyed rows
 			// included; only a results table's own pipes are exempt.
 			tableish := heldHTMLTableRe.MatchString(lines[i])
-			if !out[i].skip && out[i].key == "" && !heldOneLineProse(lines, inFence, i) {
+			if !out[i].skip && out[i].key == "" && !heldOneLineProse(lines, inFence, i, latestRun && e == len(starts)-1) {
 				tableish = tableish || heldPipeOutsideCode(lines[i])
 			}
 			if !inFence[i] && tableish {
@@ -2073,7 +2181,7 @@ func heldCovered(lines []string, live []bool, out []heldLineRead, tables []heldT
 // row it cannot align, is not a run that answers everything before it
 // (rule 3c).
 func heldLatestClean(lines []string, live []bool, out []heldLineRead, tables []heldTable, last int) bool {
-	clean, bad, ok := heldCoverRows(lines, live, out, tables, last)
+	clean, bad, ok := heldCoverRowsAs(lines, live, out, tables, last, true)
 	if !ok || len(clean) == 0 || len(bad) > 0 {
 		return false
 	}
@@ -2097,7 +2205,25 @@ var heldLatestKeyHoldRe = regexp.MustCompile(`(?i)\b(?:held|hold\w*|could-not-\w
 // the keys that re-ran clean and the keys some row of which did not
 // (heldCovered). ok is false when a row cannot be aligned.
 func heldCoverRows(lines []string, live []bool, out []heldLineRead, tables []heldTable, last int) (clean, bad map[string]bool, ok bool) {
+	return heldCoverRowsAs(lines, live, out, tables, last, false)
+}
+
+// heldCoverRowsAs is heldCoverRows; corroborate is true only for rule 3c
+// (heldLatestClean), which reads a noted row as clean when a tool-written
+// witness row of the same key, in the same entry, already reads clean
+// (heldCorroboratedNote, #6767). Rules 3a and 3b never pass it.
+func heldCoverRowsAs(lines []string, live []bool, out []heldLineRead, tables []heldTable, last int, corroborate bool) (clean, bad map[string]bool, ok bool) {
 	clean, bad = map[string]bool{}, map[string]bool{}
+	// witnessed: the keys with a clean row whose Result cell is the whole
+	// tool-written pass (heldWitnessPassRe) and whose other outcome cells
+	// read clean, in a table the page surely draws.
+	witnessed := map[string]bool{}
+	type noted struct {
+		key  string
+		ok   bool // drawn surely, and every outcome cell is empty, clean or a corroborable note
+		seen bool // at least one such cell opens on a clean outcome
+	}
+	var notes []noted
 	for _, tb := range tables {
 		if tb.header <= last {
 			continue
@@ -2115,7 +2241,8 @@ func heldCoverRows(lines []string, live []bool, out []heldLineRead, tables []hel
 				return nil, nil, false // a row that cannot be aligned (fail closed)
 			}
 			cells := heldCellRanges(lines[r])
-			ran, other := false, false
+			ran, other, tool := false, false, false
+			nt := noted{key: out[r].key, ok: verified}
 			for c, rg := range cells {
 				if tb.notResult[c] {
 					continue
@@ -2127,25 +2254,89 @@ func heldCoverRows(lines []string, live []bool, out []heldLineRead, tables []hel
 				if heldFailFirstBase(lines[tb.header][header[c][0]:header[c][1]], lines[r][rg[0]:rg[1]]) {
 					continue
 				}
-				st := heldOutcome(lines[r][rg[0]:rg[1]], role == heldColExit)
+				cell := lines[r][rg[0]:rg[1]]
+				st := heldOutcome(cell, role == heldColExit)
 				if role == heldColOther && st != heldCellEmpty {
 					st = heldCellOther
 				}
 				switch st {
 				case heldCellPass:
-					ran = true
+					ran, nt.seen = true, true
+					if role == heldColResult && heldWitnessPassRe.MatchString(strings.TrimSpace(cell)) {
+						tool = true
+					}
 				case heldCellOther:
 					other = true
+					if role == heldColOther || !heldCorroboratedNote(cell) {
+						nt.ok = false
+					} else {
+						nt.seen = true
+					}
 				}
 			}
 			if verified && ran && !other {
 				clean[out[r].key] = true
+				if tool {
+					witnessed[out[r].key] = true
+				}
 			} else {
 				bad[out[r].key] = true
+				notes = append(notes, nt)
 			}
 		}
 	}
+	if !corroborate {
+		return clean, bad, true
+	}
+	// A bad key turns clean only when every bad row of it is a corroborated
+	// note and the same key has a clean tool-written witness row.
+	fixed := map[string]bool{}
+	for _, nt := range notes {
+		if _, done := fixed[nt.key]; !done {
+			fixed[nt.key] = true
+		}
+		fixed[nt.key] = fixed[nt.key] && nt.ok && nt.seen && witnessed[nt.key]
+	}
+	for k, v := range fixed {
+		if v {
+			delete(bad, k)
+			clean[k] = true
+		}
+	}
 	return clean, bad, true
+}
+
+// heldNoteContrastRe is a word in a noted outcome cell that reads as a
+// failure, a doubt or a contrast (heldCorroboratedNote), beside
+// heldObserveHoldRe's hold words and heldLatestKeyHoldRe's markers.
+var heldNoteContrastRe = regexp.MustCompile(`(?i)\b(?:errors?|err|wrong|mismatch\w*|broken|break\w*|panic\w*|timeouts?|timed|regress\w*|missing|absent|differ\w*|unexpected\w*|flak\w*|but|however|except\w*|although|though|yet|not|no|never|none|without|only|instead|unless|warn\w*|refused|denied|crash\w*|abort\w*|exit[ \t]*[:=]?[ \t]*[1-9][0-9]*|rc[ \t]*[:=]?[ \t]*[1-9][0-9]*)\b|❌|✗|✘|⚠`)
+
+// heldCorroboratedNote reports whether cell, an outcome cell the closed
+// grammar (heldOutcome) reads as other, is a clean outcome with a note that
+// rule 3c may read as clean once a tool-written witness row of the same key
+// in the same entry reads clean (heldCoverRowsAs; #6767). A verifier's
+// hand-written restatement of a witness row ("pass exit=0, prints --- PASS:
+// TestX (sha256:…)") then no longer turns the run it restates into one that
+// answers nothing. The cell must open on a recognised clean outcome
+// (heldOutcomeRe) and hold no hold or fail word (heldObserveHoldRe,
+// heldLatestKeyHoldRe, heldNoteContrastRe), no markup, entity, escape,
+// strike or tilde that could render as something else or hide text, and no
+// control or format character. A note column (heldColOther) is never read
+// this way: it must stay empty, as rule 3a reads it.
+func heldCorroboratedNote(cell string) bool {
+	if strings.ContainsAny(cell, "<>&\\~") {
+		return false
+	}
+	for _, r := range cell {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return false
+		}
+	}
+	n := strings.Trim(heldNorm(cell), "`*_ ")
+	if heldOutcomeRe.FindString(n) == "" {
+		return false
+	}
+	return !heldObserveHoldRe.MatchString(n) && !heldLatestKeyHoldRe.MatchString(n) && !heldNoteContrastRe.MatchString(n)
 }
 
 // heldColRole is what a result column of a covering table holds
