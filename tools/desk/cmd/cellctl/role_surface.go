@@ -35,7 +35,7 @@ type surfaceReceipt struct {
 	Runtime   string `json:"runtime,omitempty"`   // orca: the runtime id
 	Surface   string `json:"surface"`             // tmux window id, herdr tab id, orca terminal handle
 	Pane      string `json:"pane,omitempty"`      // herdr: the tab's root pane
-	Name      string `json:"name"`                // <cell>-<role>
+	Name      string `json:"name"`                // surfaceLabel: <role> on herdr, else <cell>-<role>
 	// HarnessPID / HarnessStart are the role-lease holder: the process `cellctl desk` runs as in
 	// the window, which supervises the harness (and, interactive, its child).
 	HarnessPID   int          `json:"harness_pid"`
@@ -52,6 +52,30 @@ type helperProc struct {
 func surfaceReceiptPath(dir string) string { return filepath.Join(dir, "surface.json") }
 
 func surfaceName(cell, role string) string { return cell + "-" + role }
+
+// herdrTabLabel is a herdr tab's label: the bare window name. The tab sits in the cell's own
+// workspace, which herdr's agents window already shows by the cell's name, so a cell-qualified
+// label printed the cell twice (`<cell> - <cell>-<role>`).
+func herdrTabLabel(window string) string { return window }
+
+// surfaceLabel is the name role's surface carries in cockpit: the bare role on herdr, and the
+// cell-qualified surfaceName on tmux (one server holds several cells' windows) and orca.
+func surfaceLabel(cockpit, cell, role string) string {
+	if cockpit == "herdr" {
+		return herdrTabLabel(role)
+	}
+	return surfaceName(cell, role)
+}
+
+// receiptNameOK reports whether rec names this cell's surface for its role. A herdr receipt
+// written before tab labels went bare names <cell>-<role>, and still matches, so a cell brought
+// up then can be found and taken down; the live tab is then held to that same recorded name.
+func receiptNameOK(rec surfaceReceipt, cell string) bool {
+	if rec.Name == surfaceLabel(rec.Cockpit, cell, rec.Role) {
+		return true
+	}
+	return rec.Cockpit == "herdr" && rec.Name == surfaceName(cell, rec.Role)
+}
 
 func surfaceKind(cockpit string) string {
 	switch cockpit {
@@ -128,7 +152,7 @@ func (c *Cell) noteSurface(role string, rec surfaceReceipt) {
 	if c.pendingSurfaces == nil {
 		c.pendingSurfaces = map[string]surfaceReceipt{}
 	}
-	rec.Cell, rec.Role, rec.Name = c.Name, role, surfaceName(c.Name, role)
+	rec.Cell, rec.Role, rec.Name = c.Name, role, surfaceLabel(rec.Cockpit, c.Name, role)
 	c.pendingSurfaces[role] = rec
 }
 
@@ -420,7 +444,7 @@ func (l *interimLifecycle) verifySurface(c *Cell, rec surfaceReceipt, harnessMay
 	mismatch := func(format string, a ...any) error {
 		return refuseWith(cellop.ReasonSurfaceIdentityMismatch, "%s: %s", rec.Role, fmt.Sprintf(format, a...))
 	}
-	if rec.Cell != c.Name || !valueIn(rec.Role, knownRoles) || rec.Name != surfaceName(c.Name, rec.Role) {
+	if rec.Cell != c.Name || !valueIn(rec.Role, knownRoles) || !receiptNameOK(rec, c.Name) {
 		return mismatch("the receipt names %s/%s %q, not this cell's role", rec.Cell, rec.Role, rec.Name)
 	}
 	if rec.Cockpit == "tmux" && rec.Session != c.Session {

@@ -1,2 +1,0 @@
-### Fixed
-- `statusgen reconcile` no longer counts a PR that only revises a brief as that brief's delivery. A merged PR whose changes are only the brief's own file, its stream board README and changelog fragments is set aside by both the `Brief:` trailer fold and the `--backfill` match, so it can no longer flip a row to `implemented` with none of the brief's deliverables built. The dispatcher's authoring rule is unchanged.

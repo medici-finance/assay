@@ -1,2 +1,0 @@
-### Fixed
-- `deskclose` receipts now name a GitLab merge request as `owner/repo!N` instead of `owner/repo#N`, so a receipt transcribed as evidence no longer names the issue that shares the merge request's number. Every lane's receipt (closed, dry-run, noop, proposed, disputed, refired, and the manifest's per-row lines) spells its item through one forge-aware formatter; GitHub receipts are unchanged (`#N` for issues and pull requests alike).

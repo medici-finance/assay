@@ -12,10 +12,7 @@ import (
 // Callers must use this only for their existing read surface.
 func WithForgeReadContext(f Forge, ctx context.Context) Forge {
 	copyClient := func(base *http.Client) *http.Client {
-		c := &http.Client{}
-		if base != nil {
-			*c = *base
-		}
+		c := boundedCopy(base)
 		rt := c.Transport
 		if rt == nil {
 			rt = http.DefaultTransport
