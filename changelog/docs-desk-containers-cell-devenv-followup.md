@@ -1,0 +1,2 @@
+### Changed
+- Planning briefs desk-containers/35, 36 and 37 now say where the launcher pin and the filesystem allow-list live: compiled in, or (the pin only) in one install file that only the system administrator owns and can write, read by the verifier and the launcher from that one source so the two cannot disagree. The Verify rows gain directory cases for change-permissions and change-owner grants, filesystem cases for the launcher record and anchor, and an unreadable-pin case; network and user-space filesystem kinds are named as outside the allow-list.
