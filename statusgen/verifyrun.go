@@ -921,6 +921,14 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	// A row of an admitted run gets a HOME and a TMPDIR of its own, so it
 	// finds nothing an earlier row of the run left there.
 	if plan.rowScratch != "" {
+		// A row that reads an ASSAY_* input the scrub removed cannot run as
+		// written under admission. It is could-not-run, never a fail: its own
+		// guard on the missing value would otherwise read as a regression.
+		if names := admittedRowScrubbedRefs(command, plan.rowEnv()); len(names) > 0 {
+			return runResult{exit: -1, couldNotRun: true,
+				reason: "the row reads " + strings.Join(names, ", ") +
+					", which an admitted run removes from every row's environment: run it outside admission"}
+		}
 		dir, vars, err := admittedRowDirs(plan.rowScratch)
 		if err != nil {
 			return runResult{exit: -1, couldNotRun: true,

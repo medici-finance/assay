@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred|TestAdmittedRowInputsPass|TestAdmittedRowSeesDelivery)$' -count=1 -timeout 600s",
+  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred|TestAdmittedRowInputsPass|TestAdmittedRowSeesDelivery|TestAdmittedScrubbedInputCouldNotRun|TestAdmittedRowScrubbedRefs)$' -count=1 -timeout 600s",
   "control": {
     "name": "admitted rows keep every credential pointer",
     "file": "verifieradmission.go",
@@ -144,6 +144,30 @@
       "file": "verifieradmission.go",
       "old": "\treturn slices.Contains(admittedRowInputs, key) && fullObjectIDRe.MatchString(value)\n",
       "new": "\treturn slices.Contains(admittedRowInputs, key) && value != \"\"\n"
+    },
+    {
+      "name": "an admitted row that reads a scrubbed ASSAY_* input runs and records fail",
+      "file": "verifyrun.go",
+      "old": "\t\tif names := admittedRowScrubbedRefs(command, plan.rowEnv()); len(names) > 0 {\n\t\t\treturn runResult{exit: -1, couldNotRun: true,\n\t\t\t\treason: \"the row reads \" + strings.Join(names, \", \") +\n\t\t\t\t\t\", which an admitted run removes from every row's environment: run it outside admission\"}\n\t\t}\n",
+      "new": ""
+    },
+    {
+      "name": "the scrubbed-input rule misses the ${NAME...} forms",
+      "file": "verifieradmission.go",
+      "old": "|\\$\\{?[#!]?([A-Za-z_][A-Za-z0-9_]*)|",
+      "new": "|\\$([A-Za-z_][A-Za-z0-9_]*)|"
+    },
+    {
+      "name": "the delivery coordinates count as scrubbed inputs",
+      "file": "verifieradmission.go",
+      "old": "\t\tif !slices.Contains(admittedRowEnv([]string{probe}), probe) {\n",
+      "new": "\t\tif !slices.Contains(admittedRowEnv([]string{probe}), probe) || probe != \"\" {\n"
+    },
+    {
+      "name": "a name the run sets after the scrub still counts as scrubbed",
+      "file": "verifieradmission.go",
+      "old": "\t\t\treturn strings.EqualFold(key, name)\n",
+      "new": "\t\t\treturn strings.EqualFold(key, name) && false\n"
     }
   ]
 }

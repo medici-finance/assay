@@ -186,10 +186,12 @@ func TestAdmittedRowInputsPass(t *testing.T) {
 // TestAdmittedRowSeesDelivery: end to end through verifyrun, an admitted row
 // reads the delivery coordinates the runner exported, while a scrubbed ASSAY_*
 // credential pointer and a database DSN stay gone. The unadmitted control
-// proves the plant lands: there the row sees the DSN too.
+// proves the plant lands: there the row sees the DSN too. The row asks for the
+// scrubbed names with printenv, not $NAME: a $NAME read of a scrubbed name
+// makes an admitted row could-not-run (TestAdmittedScrubbedInputCouldNotRun).
 func TestAdmittedRowSeesDelivery(t *testing.T) {
 	row := `test "$ASSAY_DELIVERY_SHA" = ` + rowInputSHA + ` && test "$ASSAY_DELIVERY_BASE_SHA" = ` + rowInputBase +
-		` && test -z "${ASSAY_ROLE_KEY_FILE+x}${ASSAY_TEST_POSTGRES_DSN+x}"`
+		` && ! printenv ASSAY_ROLE_KEY_FILE && ! printenv ASSAY_TEST_POSTGRES_DSN`
 	for _, admit := range []bool{true, false} {
 		t.Run(map[bool]string{true: "admitted", false: "control"}[admit], func(t *testing.T) {
 			root, _ := admittedFixture(t, admit)
@@ -254,6 +256,40 @@ func TestAdmittedScrubbedInputCouldNotRun(t *testing.T) {
 					t.Fatalf("could-not-run note does not name %s and say to run outside admission:\n%s", name, out)
 				}
 			})
+		}
+	}
+}
+
+// regression: F6
+// TestAdmittedRowScrubbedRefs pins the rule's boundary. A read counts when it
+// is written as $NAME, ${NAME...}, $env:NAME or %NAME% of an ASSAY_* name the
+// scrub drops whatever its value, wherever it sits in the text. The delivery
+// coordinates, a name the run set after the scrub, other families and a name
+// read without that syntax do not count.
+func TestAdmittedRowScrubbedRefs(t *testing.T) {
+	cred := runCredentialEnv + "=/run/cred"
+	cases := []struct {
+		command string
+		env     []string
+		want    []string
+	}{
+		{`test -n "$ASSAY_TEST_POSTGRES_DSN" && go test ./x`, nil, []string{"ASSAY_TEST_POSTGRES_DSN"}},
+		{`[ -n "${ASSAY_TEST_PERF_DSN}" ]`, nil, []string{"ASSAY_TEST_PERF_DSN"}},
+		{`x=${ASSAY_CELL_API_CONTEXT:-default}; y=${#ASSAY_COHORT_REPLAY}; z=${!ASSAY_CELL}`, nil,
+			[]string{"ASSAY_CELL_API_CONTEXT", "ASSAY_COHORT_REPLAY", "ASSAY_CELL"}},
+		{`echo '$ASSAY_OPERATOR_TEST_IMAGE' # $ASSAY_OPERATOR_TEST_IMAGE`, nil, []string{"ASSAY_OPERATOR_TEST_IMAGE"}},
+		{`echo $assay_lower_copy`, nil, []string{"assay_lower_copy"}},
+		{`if ($env:Assay_Test_Postgres_Dsn) { exit 0 }`, nil, []string{"Assay_Test_Postgres_Dsn"}},
+		{`if defined ASSAY_X (echo %ASSAY_DISPOSABLE_CONTEXT%)`, nil, []string{"ASSAY_DISPOSABLE_CONTEXT"}},
+		{`test -n "$ASSAY_DELIVERY_SHA" && test -n "${ASSAY_DELIVERY_BASE_SHA}"`, nil, nil},
+		{`cat "$` + runCredentialEnv + `"`, []string{cred}, nil},
+		{`cat "$` + runCredentialEnv + `"`, nil, []string{runCredentialEnv}},
+		{`test -n "$HOME" && test -z "$GH_TOKEN" && echo "$DESK_LOOP" "$GIT_DIR"`, nil, nil},
+		{`printenv ASSAY_TEST_POSTGRES_DSN; grep -c ASSAY_TEST_POSTGRES_DSN f`, nil, nil},
+	}
+	for _, c := range cases {
+		if got := admittedRowScrubbedRefs(c.command, c.env); !slices.Equal(got, c.want) {
+			t.Errorf("admittedRowScrubbedRefs(%q) = %q, want %q", c.command, got, c.want)
 		}
 	}
 }
@@ -347,7 +383,7 @@ func TestAdmittedRunCredAfterScrub(t *testing.T) {
 	plan.env = admittedRowEnv(os.Environ())
 	plan.readCred = cred
 	plan.rowScratch = t.TempDir()
-	show := `printf 'cred=%s\nkey=%s\nhome=%s\n' "${` + runCredentialEnv + `:-none}" "${ASSAY_ROLE_KEY_FILE:-none}" "$HOME"`
+	show := `printf 'cred=%s\nkey=%s\nhome=%s\n' "$(printenv ` + runCredentialEnv + ` || echo none)" "$(printenv ASSAY_ROLE_KEY_FILE || echo none)" "$HOME"`
 	for command, want := range map[string]string{
 		show + " # --acceptance-forge": "cred=" + path + "\nkey=none\nhome=" + plan.rowScratch,
 		show:                           "cred=none\nkey=none\nhome=" + plan.rowScratch,

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -218,6 +219,48 @@ var admittedRowInputs = []string{"ASSAY_DELIVERY_SHA", "ASSAY_DELIVERY_BASE_SHA"
 func admittedRowInput(kv string) bool {
 	key, value, _ := strings.Cut(kv, "=")
 	return slices.Contains(admittedRowInputs, key) && fullObjectIDRe.MatchString(value)
+}
+
+// admittedRowRefRe matches a row command's reads of a variable by name:
+// $env:NAME (pwsh, whatever its case), $NAME, ${NAME}, ${NAME...} (a default,
+// a length or an indirection: ${NAME:-x}, ${#NAME}, ${!NAME}) and %NAME% (cmd).
+// The pwsh form comes first so $env is not read as a name of its own.
+var admittedRowRefRe = regexp.MustCompile(`(?i:\$env:)([A-Za-z_][A-Za-z0-9_]*)|\$\{?[#!]?([A-Za-z_][A-Za-z0-9_]*)|%([A-Za-z_][A-Za-z0-9_]*)%`)
+
+// admittedRowScrubbedRefs returns, in the order first read, the ASSAY_*
+// variables a row's command reads that its admitted environment env cannot
+// carry, so the row cannot run as written under admission (desk decisions 10
+// and 11 on #6773). A name counts only when admittedRowEnv itself drops it,
+// whatever its value: it is probed with a full commit id, the one value a named
+// row input (admittedRowInputs) keeps, so the delivery coordinates never count,
+// and an abbreviated coordinate still gets the row's own failure. A name the
+// run sets after the scrub (its run credential path, for a forge row) is in env
+// and does not count.
+//
+// The rule reads the command's text, not the shell's parse. Any $NAME, ${NAME
+// or %NAME% counts, wherever it sits: inside single quotes, in an echo or
+// comment, in a grep pattern. That errs to could-not-run. A read written
+// without that syntax (printenv NAME, env | grep NAME, or a program the row
+// starts reading the variable itself) does not count, and the row runs as before.
+func admittedRowScrubbedRefs(command string, env []string) []string {
+	var names []string
+	for _, m := range admittedRowRefRe.FindAllStringSubmatch(command, -1) {
+		name := m[1] + m[2] + m[3]
+		if !strings.HasPrefix(strings.ToUpper(name), "ASSAY_") || slices.Contains(names, name) {
+			continue
+		}
+		if slices.ContainsFunc(env, func(kv string) bool {
+			key, _, _ := strings.Cut(kv, "=")
+			return strings.EqualFold(key, name)
+		}) {
+			continue
+		}
+		probe := name + "=" + strings.Repeat("0", 40)
+		if !slices.Contains(admittedRowEnv([]string{probe}), probe) {
+			names = append(names, name)
+		}
+	}
+	return names
 }
 
 // admittedRowDirs makes one admitted row's own HOME and TMPDIR: fresh, empty
