@@ -19,6 +19,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -113,6 +114,14 @@ func TestMain(m *testing.M) {
 	// TestDeskLoopCleared pins this line.
 	if err := os.Unsetenv("DESK_LOOP"); err != nil {
 		panic("cannot clear DESK_LOOP for the test binary: " + err.Error())
+	}
+	// No test reaches a real credential minter either. An admitted run mints
+	// the verifier's read-only credential through the desktoken on PATH
+	// (runcredential.go), which on a desk host is the real one. A test that
+	// exercises the exec path restores execRunCredentialMint with a fake
+	// desktoken on PATH; TestRunCredMintStubbed pins this line.
+	runReadCredentialMint = func(string, string) (string, error) {
+		return "", errors.New("no credential minter in the test binary")
 	}
 	// No test inherits the runner's GITHUB_ACTIONS either. reconcile picks its
 	// roster class from it, so on an Actions runner every reconcile test would

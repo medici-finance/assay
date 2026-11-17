@@ -72,7 +72,7 @@ func effectiveOriginURL(dir string) (string, error) {
 		fmt.Fprintf(&b, "refused: origin resolves to %d fetch URLs (a multi-valued remote.origin.url list), "+
 			"so no single URL names the repo this PR belongs to — set exactly one:\n", len(urls))
 		for i, u := range urls {
-			fmt.Fprintf(&b, "  %d. %s\n", i+1, redactURL(u))
+			fmt.Fprintf(&b, "  %d. %s\n", i+1, deskkit.RedactRemoteUserinfo(u))
 		}
 		b.WriteString(originConfigSources(dir))
 		return "", deskkit.Refused(strings.TrimRight(b.String(), "\n"))
@@ -181,13 +181,6 @@ func urlHost(u string) string {
 	return strings.ToLower(rest)
 }
 
-// redactURL strips userinfo from a URL before it reaches a message: an https remote can carry
-// `user:token@`. Only the userinfo goes; host and path stay, so the line still says where.
-// It is deskkit.RedactRemoteUserinfo, the one redactor every remote shape goes through.
-func redactURL(raw string) string {
-	return deskkit.RedactRemoteUserinfo(strings.TrimSpace(raw))
-}
-
 // pushDestinationGate is the push-destination gate for create and update. It runs after
 // preflight (which decided repo from the fetch URL) and before the token mint, so a
 // mis-configured remote costs no network round trip. It is not wired into `edit`, which pushes
@@ -235,7 +228,7 @@ func pushDestinationGate(dir, verb, repo, fetchURL string) error {
 		"resolved push URL list for origin must be exactly one https URL naming %s.\n", verb, reason, repo)
 	b.WriteString("  git would push to:\n")
 	for i, d := range dests {
-		fmt.Fprintf(&b, "    %d. %s — %s\n", i+1, redactURL(d), kinds[i])
+		fmt.Fprintf(&b, "    %d. %s — %s\n", i+1, deskkit.RedactRemoteUserinfo(d), kinds[i])
 	}
 	b.WriteString(originConfigSources(dir))
 	b.WriteString(pushRemedy(dir, repo, fetchURL))
@@ -247,12 +240,17 @@ func pushDestinationGate(dir, verb, repo, fetchURL string) error {
 // each came from, so the refusal says which key to fix and where. One read (`git config
 // --show-scope --show-origin --get-regexp`). It is a diagnostic inside a refusal that has
 // already been decided; a failed read is reported as itself, never as "nothing set".
+//
+// Every part of the listing that can carry a remote is redacted: the VALUE, the KEY (a
+// url.<base>.insteadOf key holds a remote base inside it), a line that does not split into
+// scope/file/entry, and the error text of a failed read.
 func originConfigSources(dir string) string {
 	out, err := git(dir, "config", "--show-scope", "--show-origin", "--get-regexp",
 		`^remote\.origin\.(push)?url$|^url\..*\.(push)?insteadof$`)
 	if err != nil {
 		if strings.TrimSpace(out) == "" {
-			return "  where git reads it from: COULD NOT BE READ (" + err.Error() + ")\n"
+			return "  where git reads it from: COULD NOT BE READ (" +
+				deskkit.RedactRemoteUserinfo(deskkit.StripControl(err.Error())) + ")\n"
 		}
 	}
 	var b strings.Builder
@@ -263,16 +261,16 @@ func originConfigSources(dir string) string {
 		}
 		parts := strings.SplitN(line, "\t", 3)
 		if len(parts) != 3 {
-			fmt.Fprintf(&b, "    %s\n", line)
+			fmt.Fprintf(&b, "    %s\n", deskkit.RedactRemoteUserinfo(deskkit.StripControl(line)))
 			continue
 		}
 		scope, origin, kv := parts[0], parts[1], parts[2]
 		key, val, _ := strings.Cut(kv, " ")
-		shown := redactURL(val)
+		shown := deskkit.RedactRemoteUserinfo(val)
 		if val == "" {
 			shown = "(empty — resets the list inherited from the scopes above)"
 		}
-		fmt.Fprintf(&b, "    %-8s %s = %s   (%s)\n", scope, key, shown, origin)
+		fmt.Fprintf(&b, "    %-8s %s = %s   (%s)\n", scope, deskkit.RedactRemoteConfigKey(key), shown, origin)
 	}
 	return b.String()
 }
@@ -300,7 +298,7 @@ func pushRemedy(dir, repo, fetchURL string) string {
 		if strings.HasPrefix(target, p) {
 			fmt.Fprintf(&b, "  NOTE: a url.<base>.insteadOf rule rewrites URLs starting %q, which includes that "+
 				"URL — git would still not push to it as written. Use a spelling the rule does not match, or "+
-				"remove the rule.\n", p)
+				"remove the rule.\n", deskkit.RedactRemoteUserinfo(p))
 		}
 	}
 	return b.String()
@@ -310,7 +308,7 @@ func pushRemedy(dir, repo, fetchURL string) string {
 // already https, else the https URL on the fetch URL's host, else a shaped placeholder (an ssh
 // host alias is not a web host, so it is not guessed at).
 func suggestHTTPSURL(repo, fetchURL string) string {
-	if classifyPushDest(fetchURL) == pushHTTPS && !strings.Contains(redactURL(fetchURL), "<redacted>") {
+	if classifyPushDest(fetchURL) == pushHTTPS && deskkit.RedactRemoteUserinfo(fetchURL) == fetchURL {
 		if slug, err := parseRepo(fetchURL); err == nil && slug == repo {
 			return fetchURL
 		}

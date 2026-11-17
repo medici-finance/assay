@@ -71,7 +71,9 @@ import (
 // the repository at dir. It returns (true, detail, nil) only when every credential source git
 // consults for that URL is the App token helper. An error is could-not-check.
 func credTransportMatchesApp(dir, rawURL, appTokenPath string) (bool, string, error) {
-	shown := redactURLCredential(rawURL)
+	// Every userinfo is masked, a user half alone included: a credential-only userinfo
+	// (https://<credential>@host) carries the credential in the user half.
+	shown := RedactRemoteUserinfo(rawURL)
 	lower := strings.ToLower(rawURL)
 	if !strings.HasPrefix(lower, "https://") && !strings.HasPrefix(lower, "http://") {
 		return false, "the push URL " + shown + " is not an http(s) URL, so git never consults a credential " +
@@ -709,33 +711,6 @@ func asciiEqualFold(a, b string) bool {
 		}
 	}
 	return true
-}
-
-// redactURLCredential renders a URL with any embedded password removed, for a detail line.
-func redactURLCredential(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil {
-		// Unparseable: drop any userinfo by hand, since it may carry a password.
-		if i := strings.Index(raw, "://"); i >= 0 {
-			rest := raw[i+3:]
-			end := strings.IndexAny(rest, "/?#")
-			if end < 0 {
-				end = len(rest)
-			}
-			if at := strings.LastIndex(rest[:end], "@"); at >= 0 {
-				return raw[:i+3] + "<redacted>@" + rest[at+1:]
-			}
-		}
-		return raw
-	}
-	if u.User == nil {
-		return raw
-	}
-	if _, has := u.User.Password(); has {
-		u.User = url.User(u.User.Username())
-		return u.String()
-	}
-	return raw
 }
 
 func gitErrText(err error) string {

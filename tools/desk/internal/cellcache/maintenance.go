@@ -12,7 +12,7 @@ func Maintain(ctx context.Context, p Policy) (Report, error) {
 	if err := ctx.Err(); err != nil {
 		return Report{}, err
 	}
-	if r, why := cheapClean(p, false, admitEnv{free: diskFree, now: time.Now}); why == "" {
+	if r, why := cheapClean(p, false, admitEnv{free: diskFree, now: time.Now}, AdmitMaxAge); why == "" {
 		return r, nil
 	}
 	// A just-finished build can have a filesystem timestamp inside the

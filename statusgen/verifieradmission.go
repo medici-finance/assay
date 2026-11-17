@@ -118,12 +118,14 @@ func sameDirectory(a, b string) bool {
 // since they can set any of the above before the row's own command runs.
 // Forge credential variables are removed (admittedRowForgeToken), so a row no
 // longer inherits one from the invoking environment. That is hygiene against
-// ambient inheritance, not containment. The invoking process keeps them: its
-// own forge reads (the acceptance-approval read) happen there, from
-// os.Getenv, and this function only builds the rows' copy. With none of them
-// set, neither the invoking process nor a statusgen started inside a row
-// falls back to a stored forge login (storedLoginRefusal, forgecredential.go):
-// such a read is a could-not-check.
+// ambient inheritance, not containment. The invoking process keeps them in its
+// own environment but no longer reads them while admitted: its forge reads (the
+// acceptance-approval read) and those of a statusgen started inside a row use
+// only the verifier's run-scoped read-only credential (runcredential.go), never
+// a variable and never a stored forge login (storedLoginRefusal,
+// forgecredential.go). Without that credential such a read is a
+// could-not-check. An inherited runCredentialEnv is removed too: the run hands
+// its own credential path to the one row that needs it, after this function.
 //
 // Out of scope, stated so it is not overclaimed: PATH (which git and which
 // tools a row runs), HOME and XDG_CONFIG_HOME (where git finds the user's own
@@ -156,6 +158,7 @@ func admittedRowEnv(environ []string) []string {
 		switch {
 		case admittedRowShellStartup(key):
 		case admittedRowForgeToken(key):
+		case strings.EqualFold(key, runCredentialEnv):
 		case strings.HasPrefix(strings.ToUpper(key), "GIT_") && !admittedRowGlobal(kv, home):
 		default:
 			env = append(env, kv)

@@ -50,6 +50,19 @@ type Policy struct {
 	// exports no GOFLAGS, so a consumer launched by an older cellctl still
 	// matches its own policy.
 	GoFlags string `json:"goflags,omitempty"`
+	// MeasurementMaxAge, in seconds, is a freshness bound a launch owner may
+	// ask for: bounded launch preparation and enrollment refuse a recorded
+	// measurement older than it (reclaimable, one clean clears it). Zero, the
+	// default, asks for none: a measurement whose only defect is age admits
+	// and is reported stale with its age. omitempty keeps a policy that never
+	// set it serialized byte-identically to one written before it existed.
+	MeasurementMaxAge int64 `json:"measurement_max_age_seconds,omitempty"`
+}
+
+// MeasurementBound is the freshness bound the policy asks bounded launch
+// admission for, or zero for none.
+func (p Policy) MeasurementBound() time.Duration {
+	return time.Duration(p.MeasurementMaxAge) * time.Second
 }
 
 // TrimpathFlag is the flag a managed cache's consumers build with by default.
@@ -216,6 +229,9 @@ func (p Policy) Validate() error {
 	// trim could take an entry a running build looked up moments earlier.
 	if p.TrimMinAge != 0 && (p.TrimMinAge < int64(MinTrimMinAge/time.Second) || p.TrimMinAge > int64(math.MaxInt64/int64(time.Second))) {
 		return fmt.Errorf("cache trim safety floor must be at least %s", MinTrimMinAge)
+	}
+	if p.MeasurementMaxAge < 0 || p.MeasurementMaxAge > int64(math.MaxInt64/int64(time.Second)) {
+		return fmt.Errorf("cache measurement freshness bound must be a nonnegative number of seconds")
 	}
 	return validatePath(p.Root)
 }

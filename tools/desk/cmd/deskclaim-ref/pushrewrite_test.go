@@ -28,8 +28,8 @@ func TestClaimOriginPushRewrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, path := range []string{dir, subdir} {
-		if got := gogitOriginURL(path); got != target {
-			t.Fatalf("gogitOriginURL = %q; want %q", got, target)
+		if got, err := checkedOriginURL(path); err != nil || got != target {
+			t.Fatalf("checkedOriginURL = %q, %v; want %q", got, err, target)
 		}
 	}
 }

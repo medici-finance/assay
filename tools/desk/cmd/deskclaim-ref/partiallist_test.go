@@ -47,7 +47,7 @@ func blindHarness(t *testing.T, s deskkit.ClaimStore) func() (int, string, strin
 	f := newStore()
 	run, so, se := harness(t, f)
 	old := buildStore
-	buildStore = func(_, _ string) (deskkit.ClaimStore, error) { return s, nil }
+	buildStore = func(_, _ string, _ func() (string, error)) (deskkit.ClaimStore, error) { return s, nil }
 	t.Cleanup(func() { buildStore = old })
 	return func() (int, string, string) {
 		rc := run("list", "--repo", "medici-finance/assay")
@@ -123,7 +123,7 @@ func TestListMissingTagObjectE2E(t *testing.T) {
 
 	run, so, se := harness(t, newStore())
 	old := buildStore
-	buildStore = func(_, _ string) (deskkit.ClaimStore, error) { return g, nil }
+	buildStore = func(_, _ string, _ func() (string, error)) (deskkit.ClaimStore, error) { return g, nil }
 	t.Cleanup(func() { buildStore = old })
 
 	rc := run("list", "--repo", "medici-finance/assay")

@@ -5,6 +5,8 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/medici-finance/assay/gitcore"
 )
@@ -102,24 +104,129 @@ func ParseRemoteRepo(raw string) (owner, repo string, err error) {
 }
 
 // RedactRemoteUserinfo renders a remote string for an error or log line with every userinfo
-// span replaced by "<redacted>": in each '/'-delimited segment, everything up to and including
-// the last '@' becomes "<redacted>@". That covers the URL authority
-// (https://user:secret@host/...), the scp-like and bare forms (user:secret@host:path), and
-// the scp segment a hybrid rewrite embeds in a path. The scheme, host, port and path stay
-// visible, so the message still shows the remote's shape; a string with no '@' is returned
-// unchanged. Every error ParseRemoteRepo returns names the remote through it, so callers
-// surface the parser's error rather than re-echoing the raw string.
+// span replaced by "<redacted>". For each '@', the masked span is the rest of the
+// whitespace-delimited token before it: it runs back to the nearest preceding whitespace (or
+// the start of the string), and stops short of that only to keep an opening quote or bracket
+// that begins the token and a URL scheme ("https://", at most behind prose ending in an
+// opening quote, bracket or '='). Nothing else inside the token is a boundary: a '/', a quote,
+// a bracket, a backtick or a "://" that falls inside a userinfo is masked with it, so a
+// malformed password holding any of them keeps no part of itself visible, and a list of
+// remotes joined by ", " or newlines is masked remote by remote. That covers the URL authority
+// (https://user:secret@host/...), a userinfo that is a credential alone
+// (https://secret@host/...), the scp-like and bare forms (user:secret@host:path), and the scp
+// segment a hybrid rewrite embeds in a path, which is masked back to the scheme together with
+// the host before it. The scheme, the host after the '@', the port and the path stay visible,
+// so the message still shows the remote's shape; a string with no '@' is returned unchanged.
+// Every error ParseRemoteRepo returns names the remote through it, so callers surface the
+// parser's error rather than re-echoing the raw string. Prose glued to a remote with no
+// whitespace between them is masked with the userinfo: over-redaction is the accepted
+// failure direction.
+//
+// It is the ONE userinfo redactor of the desk tools: redactguard_test.go fails on a second
+// definition. A caller rendering a child process's stderr passes it through StripControl
+// first, so a terminal escape sequence inside a userinfo cannot move the span.
+//
+// It redacts USERINFO only. A credential carried anywhere else is out of its scope: in a query
+// string or fragment (https://host/o/r?access=<secret>), in a path with no '@', behind a
+// look-alike character that is not the ASCII '@' (a fullwidth at sign, say), or in the part of
+// a userinfo before an unencoded whitespace character.
 func RedactRemoteUserinfo(raw string) string {
+	return redactUserinfo(raw, nil)
+}
+
+// RedactRemoteArgv joins argv with spaces for an error line, each argument passed through
+// RedactRemoteUserinfo, so a remote URL handed to git as an argument (ls-remote, set-url) is
+// never echoed with its userinfo when the command fails.
+func RedactRemoteArgv(argv []string) string {
+	shown := make([]string, len(argv))
+	for i, a := range argv {
+		shown[i] = RedactRemoteUserinfo(a)
+	}
+	return strings.Join(shown, " ")
+}
+
+// redactUserinfo is RedactRemoteUserinfo with one exception hook: a userinfo span for which
+// keep returns true stays visible. A nil keep masks every span.
+func redactUserinfo(raw string, keep func(string) bool) string {
 	if !strings.Contains(raw, "@") {
 		return raw
 	}
-	segs := strings.Split(raw, "/")
-	for i, seg := range segs {
-		if at := strings.LastIndexByte(seg, '@'); at >= 0 {
-			segs[i] = "<redacted>" + seg[at:]
+	mask := make([]bool, len(raw))
+	for at := 0; at < len(raw); at++ {
+		if raw[at] != '@' {
+			continue
+		}
+		start := userinfoStart(raw, at)
+		if start == at || (keep != nil && keep(raw[start:at])) {
+			continue
+		}
+		for j := start; j < at; j++ {
+			mask[j] = true
 		}
 	}
-	return strings.Join(segs, "/")
+	var b strings.Builder
+	for i := 0; i < len(raw); i++ {
+		if !mask[i] {
+			b.WriteByte(raw[i])
+			continue
+		}
+		if i == 0 || !mask[i-1] {
+			b.WriteString("<redacted>")
+		}
+	}
+	return b.String()
+}
+
+// RedactRemoteConfigKey renders a git config key for an error or log line with every userinfo
+// span masked as RedactRemoteUserinfo masks it. A url.<base>.insteadOf / .pushInsteadOf key
+// carries a remote base INSIDE the key, so a listing of config keys is as much a credential
+// surface as a listing of their values. The "url." prefix stays visible, and so does a
+// userinfo that is exactly the bare SSH account name "git" (the push gate's RedactRemoteURL rule: it
+// names the transport's account and carries no credential), so a rule key still reads as the
+// rewrite it is.
+func RedactRemoteConfigKey(key string) string {
+	if rest, ok := strings.CutPrefix(key, "url."); ok {
+		return "url." + RedactRemoteURL(rest)
+	}
+	return RedactRemoteURL(key)
+}
+
+// userinfoStart is where the userinfo ending at s[at] == '@' begins (see
+// RedactRemoteUserinfo): the start of its whitespace-delimited token, moved past a leading
+// opening quote or bracket, and past a URL scheme when the token carries one.
+func userinfoStart(s string, at int) int {
+	head := s[:at]
+	start := 0
+	if k := strings.LastIndexFunc(head, unicode.IsSpace); k >= 0 {
+		_, size := utf8.DecodeRuneInString(head[k:])
+		start = k + size
+	}
+	for start < at && strings.IndexByte(tokenOpeners, head[start]) >= 0 {
+		start++
+	}
+	tok := head[start:]
+	k := strings.Index(tok, "://")
+	if k < 0 {
+		return start
+	}
+	// The text before the FIRST "://" must be a scheme, at most behind prose ending in an
+	// opener or '='. Anything else ("user:pa://ss@host") puts the "://" inside the userinfo,
+	// and the whole token is masked.
+	j := k
+	for j > 0 && isSchemeByte(tok[j-1]) {
+		j--
+	}
+	if j == k || (j > 0 && strings.IndexByte(tokenOpeners+"=", tok[j-1]) < 0) {
+		return start
+	}
+	return start + k + 3
+}
+
+// tokenOpeners are the characters that may open a quoted or bracketed remote.
+const tokenOpeners = "'\"`(<["
+
+func isSchemeByte(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '+' || c == '-' || c == '.'
 }
 
 // RemoteRepoSlug is ParseRemoteRepo returning the combined "owner/repo" slug — the form the
@@ -189,7 +296,7 @@ func samePinLocation(local, pinned string) bool {
 // path) and its path without surrounding slashes or a trailing ".git". ok is false for a
 // scheme URL net/url cannot parse, and for a host with any byte >= 0x80.
 func remoteLocation(raw string) (scheme, host, path string, ok bool) {
-	s := strings.TrimSpace(raw)
+	s := strings.Trim(raw, " \t\r\n")
 	switch slash := strings.IndexByte(s, '/'); {
 	case strings.Contains(s, "://"):
 		u, err := url.Parse(s)
@@ -205,16 +312,11 @@ func remoteLocation(raw string) (scheme, host, path string, ok bool) {
 	default:
 		path = s
 	}
-	b := []byte(host)
-	for i, c := range b {
-		if c >= 0x80 {
-			return "", "", "", false
-		}
-		if 'A' <= c && c <= 'Z' {
-			b[i] = c + ('a' - 'A')
-		}
+	host, err := NormalizeForgeHost(host)
+	if err != nil {
+		return "", "", "", false
 	}
-	return strings.ToLower(scheme), string(b), strings.TrimSuffix(strings.Trim(path, "/"), ".git"), true
+	return strings.ToLower(scheme), host, strings.TrimSuffix(strings.Trim(path, "/"), ".git"), true
 }
 
 // OriginRepoSlug reads dir's `origin` URL through SlugRemoteURL and parses it to
