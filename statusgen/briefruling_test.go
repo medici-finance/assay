@@ -218,6 +218,92 @@ func TestBriefRulingChanged(t *testing.T) {
 	brWantRefused(t, brPR(t, f, base, brRuled()), rulingBotAuthor)
 }
 
+// A ruling link copied onto a new brief from a brief that stays on the board
+// is new for the new brief: the renumber exemption covers only a base brief
+// the change removes, so the copy is resolved and refused (its comment names
+// the other brief).
+//
+// regression: F-br-copied-ruling
+func TestBriefRulingCopied(t *testing.T) {
+	base := map[string]string{
+		dhReadmePath: dhReadme(dhRow("18", "todo")),
+		dhBriefPath:  dhFM("", dhRuledLines()),
+	}
+	head := map[string]string{"docs/streams/" + dhStream + "/brief-19.md": dhFM("", dhRuledLines())}
+	brWantRefused(t, brPR(t, dhForge(brRulingText), base, head), rulingRecordNotNamed)
+}
+
+// A change to the decision-issue: alone, the ruling link unchanged, is a
+// changed link: it is judged, and refused when the link sits on another issue.
+//
+// regression: F-br-issue-only-change
+func TestBriefRulingIssueOnly(t *testing.T) {
+	base := map[string]string{
+		dhReadmePath: dhReadme(dhRow("18", "todo")),
+		dhBriefPath:  dhFM("", dhRuledLines()),
+	}
+	head := map[string]string{dhBriefPath: dhFM("", "decision-issue: 42\nruling: "+dhRuling+"\n")}
+	brWantRefused(t, brPR(t, nil, base, head), rulingUnrelatedIssue)
+}
+
+// brLane runs the lane alone over base and the change, for repo.
+func brLane(t *testing.T, repo string, base, head map[string]string) []decisionGateResult {
+	t.Helper()
+	dhSeams(t, nil)
+	root := dhFixture(t, base)
+	dhWrite(t, root, head)
+	bs, err := gateSnapshotAtRev(root, "refs/remotes/origin/main")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return briefRulingLane(root, repo, "refs/remotes/origin/main", bs, gateSnapshotOnDisk(root))
+}
+
+// brBadFM is a brief-18 file whose frontmatter does not parse.
+const brBadFM = "---\nbrief: sdlc/18\ntitle: [unclosed\n---\n\n# Brief 18\n"
+
+// A change that leaves a brief's frontmatter unparseable cannot be judged for
+// an added ruling link: refused, never skipped.
+//
+// regression: N-fmerr-scope
+func TestBriefRulingFMErr(t *testing.T) {
+	rs := brLane(t, rlRepo, brBase(), map[string]string{dhBriefPath: brBadFM})
+	for _, r := range rs {
+		if r.Refused && strings.Contains(r.Detail, "frontmatter does not parse") {
+			return
+		}
+	}
+	t.Fatalf("an unparseable changed brief was not refused: %+v", rs)
+}
+
+// A README-row move of a brief whose unparseable file the change does not
+// touch adds no ruling link: the lane leaves it (the hold judges the move).
+//
+// regression: N-fmerr-scope
+func TestBriefRulingFMErrRowOnly(t *testing.T) {
+	base := map[string]string{
+		dhReadmePath: dhReadme(dhRow("18", "todo")),
+		dhBriefPath:  brBadFM,
+	}
+	head := map[string]string{dhReadmePath: dhReadme(dhRow("18", "in-progress"))}
+	if rs := brLane(t, rlRepo, base, head); len(rs) != 0 {
+		t.Fatalf("a row-only move of an untouched unparseable brief was refused: %+v", rs)
+	}
+}
+
+// An added ruling link with no repository to resolve it in is refused.
+//
+// regression: N-norepo
+func TestBriefRulingNoRepo(t *testing.T) {
+	rs := brLane(t, "", brBase(), brRuled())
+	for _, r := range rs {
+		if r.Refused && strings.Contains(r.Detail, string(rulingUnresolvable)) {
+			return
+		}
+	}
+	t.Fatalf("an added ruling link with no repository was not refused: %+v", rs)
+}
+
 // ---- the staged workflow's corroborate step -------------------------------------
 
 // brCorroborateStep is the corroborate job's --corroborate step from the

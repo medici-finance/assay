@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -60,6 +61,23 @@ func briefRulingRecordLinks(gb *gateBrief) map[string]bool {
 	return out
 }
 
+// briefRulingFileRecords is the board id's brief-file records, order-independent
+// (its README rows left out): two snapshots carry the same brief files, read the
+// same way, exactly when these match.
+func briefRulingFileRecords(gb *gateBrief) string {
+	if gb == nil {
+		return ""
+	}
+	var rs []string
+	for _, r := range gb.Records {
+		if !strings.HasPrefix(r, "row ") {
+			rs = append(rs, r)
+		}
+	}
+	sort.Strings(rs)
+	return strings.Join(rs, "\n")
+}
+
 // briefRulingIsNew reports whether the brief h, after the change, cites a
 // ruling link the base did not already carry for it. The same board id with
 // the same link and decision issue is unchanged (a move into done/ keeps the
@@ -106,6 +124,9 @@ func briefRulingLane(root, repo, base string, baseSnap, headSnap gateSnapshot) [
 			continue // no brief file of this board id changed a field the lane reads
 		}
 		if h.FMErr {
+			if briefRulingFileRecords(b) == briefRulingFileRecords(h) {
+				continue // only a README row changed: no brief file of this board id did
+			}
 			refuse(h, "the brief's frontmatter does not parse, so whether this change adds a ruling link cannot be judged — fail-closed")
 			continue
 		}

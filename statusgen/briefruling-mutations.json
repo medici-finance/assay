@@ -44,6 +44,36 @@
       "new": "if false && !had[link] {"
     },
     {
+      "name": "renumber exemption ignores whether the base brief left the board (a copied link read as old)",
+      "file": "briefruling.go",
+      "old": "if (head[k] == nil || head[k].Path == \"\") && briefRulingSingle(d)",
+      "new": "if briefRulingSingle(d)"
+    },
+    {
+      "name": "a decision-issue-only change read as unchanged",
+      "file": "briefruling.go",
+      "old": "return a.Ruling == b.Ruling && a.DecisionIssue == b.DecisionIssue",
+      "new": "return a.Ruling == b.Ruling"
+    },
+    {
+      "name": "unparseable changed brief let through",
+      "file": "briefruling.go",
+      "old": "if h.FMErr {",
+      "new": "if false {"
+    },
+    {
+      "name": "README-row-only move of an unparseable brief refused",
+      "file": "briefruling.go",
+      "old": "if briefRulingFileRecords(b) == briefRulingFileRecords(h) {",
+      "new": "if false {"
+    },
+    {
+      "name": "no repository let through",
+      "file": "briefruling.go",
+      "old": "if repo == \"\" {",
+      "new": "if false {"
+    },
+    {
       "name": "staged step pre-filter back to findings only",
       "file": "../ci/staged-workflows/assay-statusgen.yml",
       "old": "if [ -z \"$changed\" ] && [ -z \"$ruled\" ]; then",
