@@ -1660,8 +1660,8 @@
     {
       "name": "S4: a joined witness row marks only its last source line",
       "file": "heldscope.go",
-      "old": "for i := spans[k][0]; i <= spans[k][1]; i++ {",
-      "new": "for i := spans[k][1]; i <= spans[k][1]; i++ {"
+      "old": "if isWitnessRow(row) {\n\t\t\tfor i := spans[k][0]; i <= spans[k][1]; i++ {",
+      "new": "if isWitnessRow(row) {\n\t\t\tfor i := spans[k][1]; i <= spans[k][1]; i++ {"
     },
     {
       "name": "S5: HTML comment syntax elsewhere on the line no longer voids the span",
@@ -1740,6 +1740,36 @@
       "file": "verifyissues.go",
       "old": "openAtStart := codeScan.paraOpen || codeScan.htmlEnd != \"\"",
       "new": "openAtStart := codeScan.htmlEnd != \"\""
+    },
+    {
+      "name": "S-split-marker: a marker a stripped comment joins is no longer read",
+      "file": "verifyissues.go",
+      "old": "if latestRun && witnessJoined[i] {",
+      "new": "if latestRun && witnessJoined[i] && i < 0 {"
+    },
+    {
+      "name": "S-split-marker: no match counts as running across a removed comment",
+      "file": "verifyissues.go",
+      "old": "if j > h[0] && j < h[1] {",
+      "new": "if j > h[0] && j < h[0] {"
+    },
+    {
+      "name": "S-split-marker: the joined-marker rows are not mapped to source lines",
+      "file": "heldscope.go",
+      "old": "if k < len(spans) && k < len(all) && isWitnessRow(all[k]) {",
+      "new": "if k < len(spans) && k < len(all) && isWitnessRow(all[k]) && k < 0 {"
+    },
+    {
+      "name": "S-ref-label: a bracket in the region no longer voids the span",
+      "file": "heldscope.go",
+      "old": "if strings.Contains(clean[lo:hi], \"](\") || strings.IndexByte(clean[lo:hi], '[') >= 0 {",
+      "new": "if strings.Contains(clean[lo:hi], \"](\") {"
+    },
+    {
+      "name": "S-math: a dollar sign in the region no longer voids the span",
+      "file": "heldscope.go",
+      "old": "if strings.IndexByte(clean[lo:hi], '$') >= 0 {",
+      "new": "if strings.IndexByte(clean[lo:hi], '$') < -1 {"
     }
   ]
 }

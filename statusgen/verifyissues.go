@@ -958,9 +958,22 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 	var quotes []string
 	lines := strings.Split(evidence, "\n")
 	quoteNear := heldQuoteNeighbours(lines)
-	var witnessLine []bool
+	var witnessLine, witnessJoined []bool
 	if latestRun {
 		witnessLine = heldWitnessLines(evidence)
+		// A HELD or could-not-check marker that only a stripped comment
+		// forms (a match running across a removed comment) on a witness row.
+		stripped, joins := heldCommentJoins(evidence)
+		var rows []int
+		for _, h := range heldOrCouldNotCheckRe.FindAllStringIndex(stripped, -1) {
+			for _, j := range joins {
+				if j > h[0] && j < h[1] {
+					rows = append(rows, strings.Count(stripped[:h[0]], "\n"))
+					break
+				}
+			}
+		}
+		witnessJoined = heldJoinedWitnessLines(evidence, stripped, rows)
 	}
 	for i, line := range lines {
 		trimmed := strings.TrimSpace(line)
@@ -973,8 +986,13 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 		// would flip as a pass (heldScanScope's hygiene exception). Any
 		// marker on the line is read, with no negation or quoting excuse:
 		// the shape is rare and the read errs toward refusing. Every skip
-		// branch below calls it before it continues.
+		// branch below calls it before it continues. A marker a stripped
+		// comment joins (heldJoinedWitnessLines) is read the same way on every
+		// line, skipped or not: the masked line shows only its pieces.
 		witnessHold := latestRun && witnessLine[i] && heldOrCouldNotCheckRe.MatchString(line)
+		if latestRun && witnessJoined[i] {
+			hits, quotes = append(hits, i), append(quotes, trimmed)
+		}
 		skipWitness := func() {
 			if witnessHold {
 				hits, quotes = append(hits, i), append(quotes, trimmed)

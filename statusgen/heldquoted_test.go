@@ -389,8 +389,9 @@ func TestHeldQuotedFencedWit(t *testing.T) {
 }
 
 // heldWitCredited reports whether the witness check, reading the run the flip
-// credits, takes a row whose text holds HELD as a passing witness row: the
-// shape every skip-branch case below must reach for its refusal to matter.
+// credits, takes a row whose text holds a HELD or could-not-check marker as a
+// passing witness row: the shape every skip-branch case below must reach for
+// its refusal to matter.
 func heldWitCredited(t *testing.T, ev string) bool {
 	t.Helper()
 	p, err := flipLatestPass(ev)
@@ -399,7 +400,7 @@ func heldWitCredited(t *testing.T, ev string) bool {
 	}
 	for _, rows := range parseEvidenceRows(p.Run) {
 		last := rows[len(rows)-1].Text
-		if strings.Contains(last, "HELD") && witnessStateOf(last) == statePass {
+		if heldOrCouldNotCheckRe.MatchString(last) && witnessStateOf(last) == statePass {
 			return true
 		}
 	}
@@ -486,4 +487,108 @@ func TestHeldQuotedOpenPara(t *testing.T) {
 		{"closed markup above: quoted",
 			heldEv("ok") + "\n\nNote <abbr title='x'>y</abbr> ok.\n\nRow 2 printed \"tenant b: HELD, no grant\" on rerun.\n", true},
 	}, map[string]bool{"closed markup above: quoted": true})
+}
+
+// TestHeldQuotedSplitMark: the witness check reads a row after complete HTML
+// comments are stripped, the held scan reads the source line with them
+// masked. A comment inside a marker word in a witness row's Result cell
+// shows the scan only the word's pieces, while the stripped row holds the
+// whole word after a passing state, which the witness check credits as a
+// pass. On the flip read such a row refuses, on a plain row and behind every
+// skip branch; a comment that joins no marker does not.
+// regression: #4721
+func TestHeldQuotedSplitMark(t *testing.T) {
+	row2 := "| 2 | `tool check 2` | pass exit=0 | sha256:0123456789ab | 2026-10-22 | fixture-verifier[bot] @ 0123456789ab |"
+	wit := func(result string) string {
+		return "| 2 | `tool check 2` | " + result + " | sha256:0123456789ab | 2026-10-22 | fixture-verifier[bot] @ 0123456789ab |"
+	}
+	swap := func(lead string) func(string) string {
+		return func(result string) string {
+			table := witTable(2, "", witPass, "")
+			if !strings.Contains(table, row2) {
+				t.Fatalf("fixture: row 2 not found")
+			}
+			table = strings.Replace(table, row2, lead+wit(result), 1)
+			return witEntry("Run 1", table, "", "**VERIFY: PASS** — 2/2 rows")
+		}
+	}
+	header := func(result string) string {
+		table := witTable(2, "", witPass, "") + "\n" +
+			"| # | `tool check 1` | " + result + " | sha256:0123456789ab | 2026-10-22 | fixture-verifier[bot] @ 0123456789ab |<!--\n" +
+			"|---|---|---|---|---|---|\n-->\n"
+		return witEntry("Run 1", table, "", "**VERIFY: PASS** — 2/2 rows")
+	}
+	for _, tc := range []struct {
+		name   string
+		ev     func(string) string
+		result string
+	}{
+		{"empty comment, trailing", swap(""), "pass exit=0 HE<!---->LD"},
+		{"text comment, trailing", swap(""), "pass exit=0 HE<!-- x -->LD"},
+		{"empty comment, leading", swap(""), "HE<!---->LD pass exit=0"},
+		{"hyphenated marker", swap(""), "pass exit=0 could-not-<!---->check"},
+		{"comment across a line break", swap(""), "pass exit=0 HE<!--\n-->LD"},
+		{"behind a fence toggle", swap("<!--\n```-->"), "pass exit=0 HE<!---->LD"},
+		{"inside a fence", swap("```\n"), "pass exit=0 HE<!---->LD"},
+		{"behind a blockquote", swap("<!--\n>-->"), "pass exit=0 HE<!---->LD"},
+		{"header row before a comment", header, "pass exit=0 HE<!---->LD"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			held := tc.ev(tc.result)
+			if tc.name == "inside a fence" {
+				held = strings.Replace(held, wit(tc.result), wit(tc.result)+"\n```", 1)
+			}
+			if !heldWitCredited(t, held) {
+				t.Fatalf("fixture: no HELD row is credited as a passing witness")
+			}
+			if err := flipHeldRefusal("ic/01", "verified", held); err == nil {
+				t.Errorf("flipHeldRefusal err=<nil>, want refusal=true")
+			}
+			plain := strings.Replace(held, tc.result, "pass exit=0 <!-- x -->", 1)
+			if err := flipHeldRefusal("ic/01", "verified", plain); err != nil {
+				t.Errorf("no joined marker: flipHeldRefusal err=%v, want none", err)
+			}
+		})
+	}
+}
+
+// TestHeldQuotedRefLabel: a reference label is not rendered as text. A full
+// reference or a footnote reference whose definition sits in another
+// paragraph renders as a link or a number, so a quote inside its label pairs
+// in the source with a later one around a hold the page shows unquoted. Any
+// "[" in the region gives no span, in prose, in a Result cell and in a
+// passing-witness entry.
+// regression: #4721
+func TestHeldQuotedRefLabel(t *testing.T) {
+	refDef := "\n\n[\"a]: /u\n"
+	noteDef := "\n\n[^\"a]: n\n"
+	wit := witEntry("Run 1", witTable(2, "", witPass, ""),
+		"Row 2 printed [x][\"a] HELD, no grant\" on rerun."+refDef, "**VERIFY: PASS** — 2/2 rows")
+	runHeldScanCasesFlip(t, []heldScanCase{
+		{"full reference label",
+			heldEv("ok") + "\nRow 2 printed [x][\"a] HELD, no grant\" on rerun." + refDef, true},
+		{"footnote label",
+			heldEv("ok") + "\nRow 2 printed note[^\"a] HELD, no grant\" on rerun." + noteDef, true},
+		{"full reference in a Result cell",
+			heldEv("ok [x][\"a] could-not-check, no grant\"") + refDef, true},
+		{"footnote in a Result cell",
+			heldEv("ok note[^\"a] could-not-check, no grant\"") + noteDef, true},
+		{"label in a passing-witness entry", wit, true},
+	}, nil)
+}
+
+// TestHeldQuotedMathSpan: a math span renders as typeset math, so a quote
+// inside one is not a quotation mark and pairs in the source with a later
+// one around a hold the page shows unquoted. Any "$" in the region gives no
+// span, in prose and in a Result cell.
+// regression: #4721
+func TestHeldQuotedMathSpan(t *testing.T) {
+	runHeldScanCasesFlip(t, []heldScanCase{
+		{"inline math in prose",
+			heldEv("ok") + "\nRow 2 printed $\"$ HELD, no grant\" on rerun.\n", true},
+		{"display math in prose",
+			heldEv("ok") + "\nRow 2 printed $$\"$$ HELD, no grant\" on rerun.\n", true},
+		{"inline math in a Result cell",
+			heldEv("ok $\"$ could-not-check, no grant\""), true},
+	}, nil)
 }

@@ -1469,6 +1469,53 @@ func heldWitnessLines(evidence string) []bool {
 	return marks
 }
 
+// heldCommentJoins returns evidence with its complete HTML comments removed,
+// as the witness check reads it (stripRowComments), and the offsets in that
+// stripped text where a comment was removed: the points at which two pieces
+// of text the held scan reads apart are joined.
+func heldCommentJoins(evidence string) (stripped string, joins []int) {
+	var b strings.Builder
+	at := 0
+	for _, m := range htmlCommentClosedRe.FindAllStringIndex(evidence, -1) {
+		b.WriteString(evidence[at:m[0]])
+		joins = append(joins, b.Len())
+		at = m[1]
+	}
+	b.WriteString(evidence[at:])
+	return b.String(), joins
+}
+
+// heldJoinedWitnessLines marks each source line behind a stripped row (an
+// index into stripped's lines, from heldCommentJoins) that the witness check
+// reads as a verifyrun witness row. The held scan reads the source line with
+// comments masked, so it sees a marker a comment splits only as pieces; the
+// witness check reads the stripped row and credits it by its first state
+// word, so the joined marker after a passing word reads as a pass. When the
+// stripped rows cannot be mapped back to source lines (flipStrippedSpans),
+// every line is marked, fail-closed.
+func heldJoinedWitnessLines(evidence, stripped string, rows []int) []bool {
+	marks := make([]bool, strings.Count(evidence, "\n")+1)
+	if len(rows) == 0 {
+		return marks
+	}
+	spans, ok := flipStrippedSpans(evidence)
+	if !ok {
+		for i := range marks {
+			marks[i] = true
+		}
+		return marks
+	}
+	all := strings.Split(stripped, "\n")
+	for _, k := range rows {
+		if k < len(spans) && k < len(all) && isWitnessRow(all[k]) {
+			for i := spans[k][0]; i <= spans[k][1]; i++ {
+				marks[i] = true
+			}
+		}
+	}
+	return marks
+}
+
 // heldQuotedOutput reports whether the occurrence at clean[h[0]:h[1]] sits
 // inside a double-quoted span (rule 7, #4721). clean is the line as the scan
 // reads it: inline code already masked, struck spans cut (the caller passes
@@ -1566,8 +1613,18 @@ func heldQuotedIn(clean string, h []int, lo, hi int) bool {
 	}
 	// Link or image syntax hides a quote too: a title in a link or image
 	// ("[a](/u '\"')") or a bare destination ("[a](/u/\")") is not rendered
-	// as text, so "](" in the region leaves the pairing uncertain.
-	if strings.Contains(clean[lo:hi], "](") {
+	// as text, so "](" in the region leaves the pairing uncertain. A label
+	// is not rendered either: a full or collapsed reference, or a footnote
+	// reference, whose definition sits in another paragraph, renders its
+	// label as a link or a number, so any "[" in the region leaves the
+	// pairing uncertain as well.
+	if strings.Contains(clean[lo:hi], "](") || strings.IndexByte(clean[lo:hi], '[') >= 0 {
+		return false
+	}
+	// A math span ("$...$" or "$$...$$") renders as typeset math, not text,
+	// so a quote inside one is not a quotation mark: any "$" in the region
+	// leaves the pairing uncertain.
+	if strings.IndexByte(clean[lo:hi], '$') >= 0 {
 		return false
 	}
 	// White space is CommonMark's set: a form feed or vertical tab renders
