@@ -18,12 +18,12 @@ import (
 )
 
 // The exact deskwt wording for the two shapes `currentRepo`/`parseRepo` can fail with
-// (tools/desk/cmd/deskwt/deskwt.go: currentRepo wraps parseRepo's error, and parseRepo's own
-// normRepoPath error is the inner one), kept here verbatim so a change to either message
+// (tools/desk/cmd/deskwt/deskwt.go: currentRepo wraps parseRepo's error, which names the
+// remote with its userinfo redacted), kept here verbatim so a change to either message
 // breaks this test rather than silently re-merging this class into the branch-exists one.
 const (
-	deskwtOriginParseSaid = "cannot parse origin repo from git@example-host:only-one-segment: " +
-		"cannot parse owner/repo from \"only-one-segment\""
+	deskwtOriginParseSaid = "cannot parse origin repo: cannot parse owner/repo from remote " +
+		"\"<redacted>@example-host:only-one-segment\": expected a trailing <owner>/<repo>"
 	// A message that names neither a branch nor the origin-parse pattern — the residual
 	// "anything else" class this fix must stop guessing a branch story for.
 	deskwtUnknownSaid = "refused: origin example-org/other-repo is not in the desk-tools repo set"

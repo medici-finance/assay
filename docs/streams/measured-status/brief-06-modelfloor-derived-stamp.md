@@ -106,12 +106,14 @@ Default if no answer: none — blocks until answered (this changes a trust bound
    un-derivable actor is refused (and, if a re-stamp verb is added, a re-stamped label is then accepted).
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestModelStamp' -count=1` | exit 0; output contains "ok" |
-| 2 | `cd tools/desk && go test ./internal/deskkit/ -run 'TestModelStamp.*Actor' -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (the accepted-stamp and refused-actor cases both ran and passed) |
-| 3 | `cd tools/desk && go test ./internal/deskkit/ -count=1` | exit 0 (the whole deskkit suite is green) |
-| 4 | `cd tools/desk && go vet ./internal/deskkit/` | exit 0 |
+| # | Class | Env | Command | Expect |
+|---|-------|-----|---------|--------|
+| 1 | check:ci | tree | `cd tools/desk && go test ./internal/deskkit/ -run 'TestModelStamp' -count=1` | exit 0; output contains "ok" |
+| 2 | check:ci | tree | `cd tools/desk && go test ./internal/deskkit/ -run 'TestModelStamp.*Actor' -count=1 -v 2>&1 \| grep -q 'PASS'` | exit 0 (the accepted-stamp and refused-actor cases both ran and passed) |
+| 3 | check:ci | tree | `cd tools/desk && go test ./internal/deskkit/ -count=1` | exit 0 (the whole deskkit suite is green) |
+| 4 | check:ci | tree | `cd tools/desk && go vet ./internal/deskkit/` | exit 0 |
+| 5 | check | host | `bash docs/streams/measured-status/verify.d/06-allowance-backlog.sh` | exit 0, and every output line is `examined <N> PRs in <owner>/<repo>`: the allowance backlog has cleared. The script reads the repository set from the deployment's `ASSAY_ALLOWED_REPOS`, the write set where the floor admits verdicts (read from the environment, so the set stays out of this tree; an `owner/*` entry is enumerated from the forge). It prints one `examined` line per repository, and a `PR <owner>/<repo>#<n> <label>` line for each open PR whose `dispatched-*` label (matched case-insensitively, as the floor matches it) still stands under a non-App account. Any `PR` line makes it exit 1 after every repository is examined: the backlog remains, and the row fails. `ASSAY_ALLOWED_REPOS` unset, empty, naming no repository, or holding a malformed entry exits 2 with a `could-not-check:` line; that, and any other non-zero exit with no `PR` line (a forge or tool failure), mean could-not-check, never a pass. The row needs forge read access to every repository in the set, so it is classed `check` / `host`: a witness runs it on a machine holding that access and that configuration, and the scheduled CI re-run skips it. Row 6 tests this script offline. When it passes, the allowance can expire (see DR-independence-gate, "Expiry of the allowance"), and removing the roster entry is the driver's act. |
+| 6 | check:ci | tree | `bash docs/streams/measured-status/verify.d/06-allowance-backlog.test.sh` | exit 0; output is `ok: allowance-backlog check` (row 5's script, run against a stub `gh` serving planted label timelines: a user-standing stamp exits 1 and names its PR, a cleared set exits 0 with only `examined` lines, a case-variant stamp counts, an `owner/*` entry is enumerated, and a malformed set or a forge failure never exits 0) |
 
 ## Evidence
 <!-- appended at implementation time by a non-implementer -->

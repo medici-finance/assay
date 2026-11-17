@@ -20,7 +20,10 @@ import (
 // so a row with one comes out exactly as the same row without it. The
 // recorder slice flips it, once it also supplies what the judge then needs:
 // a landing-identity binding on autoflip, a declared compile step for every
-// go row, and the kind of each listed child.
+// go row, and the kind of each listed child. It flips only with the known
+// limit brief 15 Task step 2 states accepted: the tracer reads clone3's
+// clone_args and path arguments from tracee memory while sibling threads
+// run, so an adversarial multi-threaded row can race those reads.
 const readSetRecorderShipped = false
 
 // honourReadSets is what coverageOptionsFor reads. It is

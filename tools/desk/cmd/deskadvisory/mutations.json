@@ -1,0 +1,41 @@
+{
+  "test": "go test ./cmd/deskadvisory/ -count=1 -timeout 120s -run 'TestGhAPI|TestIs404'",
+  "control": {
+    "name": "CONTROL — is404 stops recognising a 404 answer",
+    "file": "cmd/deskadvisory/advisory.go",
+    "old": "strings.Contains(err.Error(), \"returned 404\")",
+    "new": "strings.Contains(err.Error(), \"returned 405\")"
+  },
+  "mutations": [
+    {
+      "name": "drop the ghAPI deadline (a stalled forge hangs the advisory check indefinitely)",
+      "file": "cmd/deskadvisory/advisory.go",
+      "old": "\treturn &http.Client{Timeout: ghAPITimeout}",
+      "new": "\treturn &http.Client{}"
+    },
+    {
+      "name": "go back to http.DefaultClient for ghAPI",
+      "file": "cmd/deskadvisory/advisory.go",
+      "old": "\tresp, derr := ghAPIClient().Do(req)",
+      "new": "\tresp, derr := http.DefaultClient.Do(req)"
+    },
+    {
+      "name": "the documented default bound is not in force (zero = no deadline)",
+      "file": "cmd/deskadvisory/advisory.go",
+      "old": "var ghAPITimeout = ghAPIRequestTimeout",
+      "new": "var ghAPITimeout time.Duration"
+    },
+    {
+      "name": "ignore a body read error (a cut-off 200 reads as a complete answer)",
+      "file": "cmd/deskadvisory/advisory.go",
+      "old": "\tif rerr != nil {\n\t\treturn nil, fmt.Errorf(\"GitHub API %s: read response",
+      "new": "\tif false && rerr != nil {\n\t\treturn nil, fmt.Errorf(\"GitHub API %s: read response"
+    },
+    {
+      "name": "accept an empty 2xx body as an answer",
+      "file": "cmd/deskadvisory/advisory.go",
+      "old": "\tif len(bytes.TrimSpace(body)) == 0 {",
+      "new": "\tif false && len(bytes.TrimSpace(body)) == 0 {"
+    }
+  ]
+}

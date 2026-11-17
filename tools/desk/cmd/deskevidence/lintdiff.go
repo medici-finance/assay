@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -98,19 +102,168 @@ func lintDiffAt(root, targetRepoPath string, newContent []byte, options childOpt
 		return nil, aerr
 	}
 
-	beforeSet := make(map[string]bool, len(before))
-	for _, p := range before {
-		beforeSet[p] = true
-	}
-	seen := map[string]bool{}
-	for _, p := range after {
-		if seen[p] || beforeSet[p] {
-			continue
-		}
-		seen[p] = true
-		introduced = append(introduced, p)
+	introduced, excused := attributeIntroduced(before, after, landingScopeOf(targetRepoPath))
+	printExcused(lintDiffStderr, targetRepoPath, excused)
+	if len(introduced) > 0 {
+		printBeforeSet(targetRepoPath, before, introduced)
 	}
 	return introduced, nil
+}
+
+// printBeforeSet writes the before-landing PROBLEM set to lintDiffStderr beside the lines
+// counted as introduced, so a refusal shows the whole delta: an introduced line whose
+// brief also has a differently worded line before is visible as a change, not only as an
+// addition (#6581).
+func printBeforeSet(targetRepoPath string, before, introduced []string) {
+	var b strings.Builder
+	fmt.Fprintf(&b, "deskevidence: lint delta for %s: %d PROBLEM line(s) before this landing, %d introduced\n",
+		targetRepoPath, len(before), len(introduced))
+	if len(before) == 0 {
+		b.WriteString("  before: (none)\n")
+	}
+	for _, p := range before {
+		b.WriteString("  before: " + p + "\n")
+	}
+	for _, p := range introduced {
+		b.WriteString("  introduced: " + p + "\n")
+	}
+	fmt.Fprint(lintDiffStderr, b.String())
+}
+
+// lintDiffStderr receives the NOTICE lines for after-only could-not-check PROBLEMs that
+// lintDiffAt does not count (#6581). A seam so tests can read them.
+var lintDiffStderr io.Writer = os.Stderr
+
+// A could-not-check PROBLEM says statusgen could not read something (an origin's authority,
+// a forge it was not given) — not that the tree is wrong. Its wording follows the reader's
+// environment, so the before and after runs need not print the same line for the same
+// unchanged brief: #6581 saw one brief's could-not-check in the after run only, and three
+// briefs' "--acceptance-forge is required" in the after run of an outcome record for a
+// fourth. So every new-PROBLEM gate (the Evidence and outcome-record landings through
+// lintDiffAt, and the flip) attributes after-only lines by brief key, with the parser the
+// closure gate's splitClosureProblems uses (outcome.go): an after-only could-not-check from
+// a KNOWN producer (couldNotCheckRe) on a brief OUTSIDE what the write touches is reported,
+// not refused. Everything else still refuses — any line in scope (the write's own brief, or
+// every brief of a stream whose README it writes), any finding that is not a known
+// producer's could-not-check wherever it lands, every
+// line when the write names no brief or stream, and every line while either run reports a
+// stream whose frontmatter name differs from its directory (statusgen keys lines by the
+// frontmatter name, the scope by the directory, so they could not be matched).
+
+// landingScope is what a write touches, in statusgen's keys: whole briefs, and whole
+// streams (a README is an input of every brief on its board).
+type landingScope struct {
+	briefs, streams map[string]bool
+}
+
+func (s landingScope) named() bool { return len(s.briefs)+len(s.streams) > 0 }
+
+func (s landingScope) owns(key string) bool {
+	stream, _, _ := strings.Cut(key, "/")
+	return s.briefs[key] || s.streams[stream]
+}
+
+func (s *landingScope) addBrief(key string) {
+	if k := briefKey(key); k != "" {
+		if s.briefs == nil {
+			s.briefs = map[string]bool{}
+		}
+		s.briefs[k] = true
+	}
+}
+
+func (s *landingScope) addStream(stream string) {
+	if k := briefKey(stream + "/0"); k != "" {
+		if s.streams == nil {
+			s.streams = map[string]bool{}
+		}
+		s.streams[stream] = true
+	}
+}
+
+var (
+	briefFileName   = regexp.MustCompile(`^brief-([0-9]+[a-z]?)-[^/]*\.md$`)
+	outcomeFileName = regexp.MustCompile(`^([0-9]+[a-z]?)-[^/]*\.json$`)
+)
+
+// landingScopeOf names what a landing at targetRepoPath touches: the brief of a brief file
+// docs/streams/<stream>/brief-<num>-*.md or of a per-file outcome record
+// <deskkit.OutcomeRecordsDir>/<stream>/<num>-*.json, or the whole stream of a board
+// docs/streams/<stream>/README.md. Any other path names nothing, and nothing is excused.
+func landingScopeOf(targetRepoPath string) landingScope {
+	var s landingScope
+	cleaned := path.Clean(targetRepoPath)
+	dir, file := path.Dir(cleaned), path.Base(cleaned)
+	stream := path.Base(dir)
+	switch {
+	case path.Dir(dir) == deskkit.OutcomeRecordsDir:
+		if m := outcomeFileName.FindStringSubmatch(file); m != nil {
+			s.addBrief(stream + "/" + m[1])
+		}
+	case path.Dir(dir) != "docs/streams" || stream == path.Base(deskkit.OutcomeRecordsDir):
+	case file == "README.md":
+		s.addStream(stream)
+	default:
+		if m := briefFileName.FindStringSubmatch(file); m != nil {
+			s.addBrief(stream + "/" + m[1])
+		}
+	}
+	return s
+}
+
+// couldNotCheckRe is an allow-list of the KNOWN could-not-check producers, matched from
+// the start of the text after the brief key: statusgen's acceptance-transition authority
+// reads (statusgen/acceptancetransition.go acceptanceStep), in the legacy form the closure
+// lint wraps as "protected table: acceptance transition: " and the chained form it returns
+// unwrapped as "acceptance transition: link <n>: " (statusgen/protectedclosure.go); and,
+// inside either form, the Evidence-repair approval read, which names its repair commit as
+// "evidence repair <12 hex>: " (statusgen/evidencerepair.go corroborateEvidenceRepairs).
+// It is not a lexical match on the marker: a line excuses only when it starts with one of
+// these exact producer prefixes. A producer not listed here, including a new one, is
+// refused until it is added to this list.
+var couldNotCheckRe = regexp.MustCompile(`^(?:protected table: acceptance transition|acceptance transition: link [1-9][0-9]*)(?:: evidence repair [0-9a-f]{12})?: could-not-check (?:repository|human) authority: `)
+
+// streamDirMismatch reports whether a lint run names a stream whose frontmatter name
+// differs from its directory (statusgen/checks.go).
+var streamDirMismatch = regexp.MustCompile(`: frontmatter stream "[^"]*" != directory name "`)
+
+// attributeIntroduced is after minus before, by exact line, except that an after-only
+// could-not-check on a brief outside scope is returned as excused rather than introduced.
+func attributeIntroduced(before, after []string, scope landingScope) (introduced, excused []string) {
+	had := make(map[string]bool, len(before))
+	attribute := scope.named()
+	for _, p := range before {
+		had[p] = true
+		attribute = attribute && !streamDirMismatch.MatchString(p)
+	}
+	for _, p := range after {
+		attribute = attribute && !streamDirMismatch.MatchString(p)
+	}
+	for _, p := range after {
+		if had[p] {
+			continue
+		}
+		had[p] = true
+		if attribute && foreignCouldNotCheck(p, scope) {
+			excused = append(excused, p)
+			continue
+		}
+		introduced = append(introduced, p)
+	}
+	return introduced, excused
+}
+
+func foreignCouldNotCheck(problem string, scope landingScope) bool {
+	key, rest := problemBriefKey(problem)
+	return key != "" && !scope.owns(key) && couldNotCheckRe.MatchString(rest)
+}
+
+// printExcused writes one NOTICE per excused line: reported, never silently dropped.
+func printExcused(w io.Writer, target string, excused []string) {
+	for _, p := range excused {
+		fmt.Fprintln(w, "deskevidence: NOTICE: not counted as introduced by "+target+
+			" (could-not-check on a brief this write does not touch): "+p)
+	}
 }
 
 // statusgenLintAt shells `statusgen --root <root> --lint` from a neutral working directory
