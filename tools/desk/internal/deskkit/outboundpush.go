@@ -21,6 +21,7 @@ package deskkit
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -261,4 +262,157 @@ func hunkNewStart(h string) int {
 		return 0
 	}
 	return n
+}
+
+// hunkOldStart reads a from "@@ -a,b +c,d @@".
+func hunkOldStart(h string) int {
+	i := strings.Index(h, " -")
+	if i < 0 {
+		return 0
+	}
+	rest := h[i+2:]
+	end := strings.IndexAny(rest, ", ")
+	if end < 0 {
+		end = len(rest)
+	}
+	n, err := strconv.Atoi(rest[:end])
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// DiffSide says which version of a file a diff line belongs to: an added or context line
+// lives in the new (head) file, a removed line in the old (base) file.
+type DiffSide string
+
+const (
+	DiffSideAdded   DiffSide = "added"
+	DiffSideRemoved DiffSide = "removed"
+	DiffSideContext DiffSide = "context"
+)
+
+// DiffLineRef locates one line of DiffLineIndex's stripped text in the file it came from.
+// Path is the new-side path for added and context lines and the old-side path for removed
+// lines (so a deleted file's lines name the file that was deleted). FileLine is the 1-based
+// line in that side's file, or 0 when it is not known: a hunk header, a line under a
+// malformed hunk header, a line past maxPlacedLine, a "\ No newline" marker, or text outside
+// any file. A 0 is reported as unknown and never guessed. Side is empty for a line that is
+// not file content.
+type DiffLineRef struct {
+	Path     string
+	Side     DiffSide
+	FileLine int
+}
+
+// reHunkHeader matches the deterministic RANGE part of a unified-diff hunk header —
+// `@@ -27,5 +27,5 @@` — and nothing after it. Group 1 is the part that is kept; whatever
+// follows on the line is git's funcname. Written to be strict: if a line does not match,
+// it is kept WHOLE and scanned, so a malformed or unfamiliar header can only ever cause
+// MORE scanning, never less.
+var reHunkHeader = regexp.MustCompile(`^(@@ -[0-9]+(?:,[0-9]+)? \+[0-9]+(?:,[0-9]+)? @@)`)
+
+// DiffLineIndex strips git-GENERATED text from a unified diff and, in the same pass, records
+// where every kept line came from. refs[i] describes line i+1 of stripped, so a scan finding
+// on stripped text maps to a file, a line in it and a side by one lookup.
+//
+// The strip is deskpr's branch-diff surface: header mode (entered at `^diff --git `) drops
+// every line until the first `^@@ `; a well-formed hunk header keeps only its range (the
+// funcname tail is a truncated copy of a file line, #328); every content line keeps its
+// text with the one-character unified-diff marker removed (#781). Text that never presents
+// a `diff --git ` line is not git output and passes through whole.
+func DiffLineIndex(diff string) (stripped string, refs []DiffLineRef) {
+	lines := strings.Split(diff, "\n")
+	kept := make([]string, 0, len(lines))
+	refs = make([]DiffLineRef, 0, len(lines))
+	inHeader, isGitOutput := false, false
+	oldPath, newPath := "", ""
+	oldLine, newLine := 0, 0 // 0: not known (no well-formed hunk header for this file yet)
+	mk := func(side DiffSide, path string, n int) DiffLineRef {
+		if n < 1 || n > maxPlacedLine {
+			n = 0
+		}
+		return DiffLineRef{Path: path, Side: side, FileLine: n}
+	}
+	for _, ln := range lines {
+		if strings.HasPrefix(ln, "diff --git ") {
+			inHeader, isGitOutput = true, true
+			oldPath, newPath, oldLine, newLine = "", "", 0, 0
+			continue
+		}
+		if inHeader && strings.HasPrefix(ln, "@@ ") {
+			inHeader = false
+		}
+		if inHeader {
+			switch {
+			case strings.HasPrefix(ln, "--- "):
+				oldPath = diffSidePath(strings.TrimPrefix(ln, "--- "), "a/")
+			case strings.HasPrefix(ln, "+++ "):
+				newPath = diffSidePath(strings.TrimPrefix(ln, "+++ "), "b/")
+			}
+			continue
+		}
+		ref := DiffLineRef{}
+		if isGitOutput {
+			if m := reHunkHeader.FindStringSubmatch(ln); m != nil {
+				ln = m[1]
+				// A side that starts at 0 ("-0,0" for a new file, "+0,0" for a deleted one)
+				// has no lines, and a 0 counter never numbers one.
+				oldLine, newLine = hunkOldStart(ln), hunkNewStart(ln)
+				ref = DiffLineRef{Path: newPath}
+			} else if strings.HasPrefix(ln, "@@ ") {
+				// A malformed hunk header: kept whole, and nothing after it is numbered.
+				oldLine, newLine = 0, 0
+				ref = DiffLineRef{Path: newPath}
+			} else if len(ln) > 0 && (ln[0] == '+' || ln[0] == '-' || ln[0] == ' ') {
+				removedPath := oldPath
+				if removedPath == "" {
+					removedPath = newPath
+				}
+				addedPath := newPath
+				if addedPath == "" {
+					addedPath = oldPath
+				}
+				switch ln[0] {
+				case '+':
+					ref = mk(DiffSideAdded, addedPath, newLine)
+					newLine = advanceDiffLine(newLine)
+				case '-':
+					ref = mk(DiffSideRemoved, removedPath, oldLine)
+					oldLine = advanceDiffLine(oldLine)
+				default:
+					ref = mk(DiffSideContext, addedPath, newLine)
+					oldLine, newLine = advanceDiffLine(oldLine), advanceDiffLine(newLine)
+				}
+				ln = ln[1:]
+			} else if newPath != "" || oldPath != "" {
+				p := newPath
+				if p == "" {
+					p = oldPath
+				}
+				ref = DiffLineRef{Path: p}
+			}
+		}
+		kept = append(kept, ln)
+		refs = append(refs, ref)
+	}
+	return strings.Join(kept, "\n"), refs
+}
+
+// advanceDiffLine moves a hunk line counter past one line; a counter that is not known (0)
+// stays 0, so no line under it is ever numbered.
+func advanceDiffLine(n int) int {
+	if n > 0 {
+		return n + 1
+	}
+	return n
+}
+
+// diffSidePath reads the path from a `--- ` / `+++ ` header value: "/dev/null" is no path,
+// and git's a/ or b/ prefix is dropped (the same reading AddedLinesByFile makes of +++).
+func diffSidePath(v, prefix string) string {
+	if v == "/dev/null" {
+		return ""
+	}
+	return strings.TrimPrefix(v, prefix)
 }

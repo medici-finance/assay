@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -35,6 +36,13 @@ type ScanFinding struct {
 	// "…", plus a character-class summary (hex, digits, digits+/, base64). It NEVER
 	// contains the span itself.
 	Shape string
+	// Path and Side are set only when a diff-surface caller has mapped Line back to the file
+	// it came from (deskpr's branch diff, desk-tools/62): Line is then the line in Path at
+	// Side — the head file for added and context lines, the base file for removed lines —
+	// and 0 when the diff does not number it. Both empty means Line is a line of the
+	// scanned surface itself.
+	Path string
+	Side string
 }
 
 // Error lets *ScanFinding satisfy the error interface, which is what makes it a legal
@@ -46,6 +54,22 @@ func (f *ScanFinding) Error() string { return f.Explain() }
 // Explain renders the finding as the single line the desk verbs print under --explain. It
 // names the rule and the location and carries only the redacted shape.
 func (f *ScanFinding) Explain() string {
+	if f.Path != "" || f.Side != "" {
+		line := "unknown"
+		if f.Line > 0 {
+			line = strconv.Itoa(f.Line)
+		}
+		path := f.Path
+		if path == "" {
+			path = "unknown"
+		}
+		side := f.Side
+		if side == "" {
+			side = "unknown"
+		}
+		return fmt.Sprintf("scan-explain: rule=%s line=%s path=%s side=%s length=%d shape=%s",
+			f.Rule, line, path, side, f.Length, f.Shape)
+	}
 	return fmt.Sprintf("scan-explain: rule=%s line=%d length=%d shape=%s",
 		f.Rule, f.Line, f.Length, f.Shape)
 }
