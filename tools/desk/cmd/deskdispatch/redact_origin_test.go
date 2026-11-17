@@ -45,3 +45,10 @@ func TestResolveRepoRedactsOrigin(t *testing.T) {
 	_, err := dispatchOpts{root: redactFixtureRepo(t, "https://example-user:"+plantedOriginSecret+"@example.invalid")}.resolveRepo()
 	assertNoOriginSecret(t, err)
 }
+
+// regression: #6696
+func TestRootOriginRedacts(t *testing.T) {
+	d := &deliverable{alias: "example", repo: "example-org/example-repo"}
+	root := redactFixtureRepo(t, "https://example-user:"+plantedOriginSecret+"@example.invalid")
+	assertNoOriginSecret(t, d.checkRootOrigin(dispatchOpts{root: root}))
+}

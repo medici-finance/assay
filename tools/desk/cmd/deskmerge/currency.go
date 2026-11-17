@@ -216,7 +216,7 @@ func resolveRepoRoot(repo, override string) (string, error) {
 		return "", deskkit.Refused(fmt.Sprintf(
 			"refused: %s's origin is %s, which does not name %s — deskmerge will not compute a merge "+
 				"in one project's checkout and push it to another's",
-			abs, deskkit.StripControl(url), deskkit.StripControl(repo)))
+			abs, deskkit.RedactRemoteUserinfo(deskkit.StripControl(url)), deskkit.StripControl(repo)))
 	}
 	return abs, nil
 }

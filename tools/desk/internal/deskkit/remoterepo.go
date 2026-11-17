@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/medici-finance/assay/gitcore"
 )
@@ -95,24 +97,87 @@ func ParseRemoteRepo(raw string) (owner, repo string, err error) {
 }
 
 // RedactRemoteUserinfo renders a remote string for an error or log line with every userinfo
-// span replaced by "<redacted>": in each '/'-delimited segment, everything up to and including
-// the last '@' becomes "<redacted>@". That covers the URL authority
-// (https://user:secret@host/...), the scp-like and bare forms (user:secret@host:path), and
-// the scp segment a hybrid rewrite embeds in a path. The scheme, host, port and path stay
-// visible, so the message still shows the remote's shape; a string with no '@' is returned
-// unchanged. Every error ParseRemoteRepo returns names the remote through it, so callers
-// surface the parser's error rather than re-echoing the raw string.
+// span replaced by "<redacted>". For each '@', the masked span runs back from it to the
+// nearest preceding boundary: the end of a "://" scheme separator, whitespace, an opening
+// quote or bracket, or the start of the string. A '/' is NOT a boundary, so a malformed
+// password holding an unencoded '/' is masked whole (https://user:pa/ss@host/... keeps no part
+// of it), and a list of remotes joined by ", " or newlines is masked remote by remote. That
+// covers the URL authority (https://user:secret@host/...), the scp-like and bare forms
+// (user:secret@host:path), and the scp segment a hybrid rewrite embeds in a path, which is
+// masked back to the scheme together with the host before it. The scheme, the host after the
+// '@', the port and the path stay visible, so the message still shows the remote's shape; a
+// string with no '@' is returned unchanged. Every error ParseRemoteRepo returns names the
+// remote through it, so callers surface the parser's error rather than re-echoing the raw
+// string.
+//
+// It redacts USERINFO only. A credential carried anywhere else is out of its scope: in a query
+// string or fragment (https://host/o/r?access=<secret>), in a path with no '@', behind a
+// look-alike character that is not the ASCII '@' (a fullwidth at sign, say), or in the part of
+// a userinfo before an unencoded whitespace, quote or bracket character.
 func RedactRemoteUserinfo(raw string) string {
+	return redactUserinfo(raw, nil)
+}
+
+// RedactRemoteArgv joins argv with spaces for an error line, each argument passed through
+// RedactRemoteUserinfo, so a remote URL handed to git as an argument (ls-remote, set-url) is
+// never echoed with its userinfo when the command fails.
+func RedactRemoteArgv(argv []string) string {
+	shown := make([]string, len(argv))
+	for i, a := range argv {
+		shown[i] = RedactRemoteUserinfo(a)
+	}
+	return strings.Join(shown, " ")
+}
+
+// redactUserinfo is RedactRemoteUserinfo with one exception hook: a userinfo span for which
+// keep returns true stays visible. A nil keep masks every span.
+func redactUserinfo(raw string, keep func(string) bool) string {
 	if !strings.Contains(raw, "@") {
 		return raw
 	}
-	segs := strings.Split(raw, "/")
-	for i, seg := range segs {
-		if at := strings.LastIndexByte(seg, '@'); at >= 0 {
-			segs[i] = "<redacted>" + seg[at:]
+	mask := make([]bool, len(raw))
+	for at := 0; at < len(raw); at++ {
+		if raw[at] != '@' {
+			continue
+		}
+		start := userinfoStart(raw, at)
+		if start == at || (keep != nil && keep(raw[start:at])) {
+			continue
+		}
+		for j := start; j < at; j++ {
+			mask[j] = true
 		}
 	}
-	return strings.Join(segs, "/")
+	var b strings.Builder
+	for i := 0; i < len(raw); i++ {
+		if !mask[i] {
+			b.WriteByte(raw[i])
+			continue
+		}
+		if i == 0 || !mask[i-1] {
+			b.WriteString("<redacted>")
+		}
+	}
+	return b.String()
+}
+
+// userinfoStart is where the userinfo ending at s[at] == '@' begins: just past the nearest
+// boundary before at (see RedactRemoteUserinfo), or 0.
+func userinfoStart(s string, at int) int {
+	head := s[:at]
+	start := 0
+	if k := strings.LastIndexFunc(head, isUserinfoBoundary); k >= 0 {
+		_, size := utf8.DecodeRuneInString(head[k:])
+		start = k + size
+	}
+	if k := strings.LastIndex(head, "://"); k >= 0 && k+3 > start {
+		start = k + 3
+	}
+	return start
+}
+
+func isUserinfoBoundary(r rune) bool {
+	return unicode.IsSpace(r) || strings.ContainsRune("'\"`(<[", r)
 }
 
 // RemoteRepoSlug is ParseRemoteRepo returning the combined "owner/repo" slug — the form the

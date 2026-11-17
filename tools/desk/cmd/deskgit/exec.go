@@ -87,7 +87,12 @@ func runGitWithEnv(dir string, env []string, args ...string) (string, error) {
 	err := cmd.Run()
 	stdout := strings.TrimSpace(out.String())
 	if err != nil {
-		return stdout, fmt.Errorf("git %s: %w (%s)", strings.Join(args, " "),
+		// An argument can be a remote URL, so each is shown with its userinfo removed.
+		shown := make([]string, len(args))
+		for i, a := range args {
+			shown[i] = redactURL(a)
+		}
+		return stdout, fmt.Errorf("git %s: %w (%s)", strings.Join(shown, " "),
 			err, strings.TrimSpace(errb.String()))
 	}
 	return stdout, nil
