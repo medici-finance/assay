@@ -30,6 +30,10 @@ func TestStampOnlyAliasNoFlip(t *testing.T) {
 		if strings.Contains(out, "RE-STAMPED") || !strings.Contains(out, "authored-model:claude-opus-5-5") {
 			t.Fatalf("run %d (%s) receipt does not name the standing stamp: %s", i, model, out)
 		}
+		// A settled request is recorded in the receipt, so the record says what was asked.
+		if settled := strings.Contains(out, "SETTLED: requested authored-model:opus"); settled != (model == "opus") {
+			t.Fatalf("run %d (%s) receipt settlement note=%v: %s", i, model, settled, out)
+		}
 		for _, r := range gh.requests[n:] {
 			if r.Method != "GET" {
 				t.Fatalf("run %d (%s) wrote to the change: %s %s %s", i, model, r.Method, r.Path, r.Body)
@@ -66,5 +70,33 @@ func TestStampOnlyFullIDWins(t *testing.T) {
 	got, st := deskkit.StampAuthored.AttestedStampOf(deskkit.StampTimeline{Present: gh.labels, Events: ghEvents(gh)}, deskkit.IsStampAuthorityLogin)
 	if st != deskkit.ModelStamped || got.Model != "claude-opus-5-5" {
 		t.Fatalf("authored stamp = %+v %v", got, st)
+	}
+}
+
+// regression: #6695
+// A stamp-only run bound to a worker attestation stamps exactly the model the record binds.
+// An alias attestation over a standing full id from an earlier cycle must end with the attested
+// alias standing: settlement never replaces an attestation that is already bound.
+func TestStampOnlyAttestedAliasStands(t *testing.T) {
+	s := &stub{}
+	s.install(t)
+	t.Setenv("DESK_LOOP", "the-desk")
+	gh := installGHStamp(t)
+	if rc := run(onlyArgs("claude-opus-5-5")); rc != 0 {
+		t.Fatalf("earlier-cycle stamp rc=%d", rc)
+	}
+	gh.prBody = "Summary\n\nWorker-Attestation: " + allowedRepo + "#41 run=" + workerRun
+	stubWorkerRead(t, workerReceiptFixture("opus"), nil)
+	out := captureStdout(t, func() {
+		if rc := run(onlyArgs("opus")); rc != 0 {
+			t.Fatalf("bound alias stamp rc=%d", rc)
+		}
+	})
+	got, st := deskkit.StampAuthored.AttestedStampOf(deskkit.StampTimeline{Present: gh.labels, Events: ghEvents(gh)}, deskkit.IsStampAuthorityLogin)
+	if st != deskkit.ModelStamped || got.Model != "opus" {
+		t.Fatalf("authored stamp = %+v %v, want the attested opus; receipt: %s", got, st, out)
+	}
+	if strings.Contains(out, "SETTLED") || !strings.Contains(out, "authored-model:opus") {
+		t.Fatalf("bound receipt does not name the attested slug: %s", out)
 	}
 }

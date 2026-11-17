@@ -43,12 +43,16 @@ actually selected by the harness, never a guessed provider/model mapping.
 The shared stamp step reads current labels and their standing appliers, repairs partial,
 conflicting or foreign/unattributed stamps using the explicitly selected pair, and leaves
 an identical accepted stamp unchanged. One settlement keeps two spellings of one model from
-replacing each other: when the selected model is an unversioned family alias (letters only,
-such as opus) and the accepted standing stamp's slug has that alias as one of its -/.
-separated words (such as claude-opus-5-5), the standing slug is kept and only the tier is
-taken from the selection. That is the only case where an existing label shapes the stamp,
-and it narrows the model without changing it. The full id over a standing alias still
-replaces it, and a foreign or partial stamp is never kept. Read failures stop before writes. After a write it
+replacing each other, and only when no worker attestation is named: when the selected model
+is an unversioned family alias (letters only, such as opus) and it is the family word of the
+accepted standing stamp's slug (the -/. separated word directly before the first
+digit-bearing word, never the first word: opus in claude-opus-5-5), the standing slug is
+kept, only the tier is taken from the selection, and the receipt reports the settlement. A
+vendor, suffix or version word never settles. That is the only case where an existing label
+shapes the stamp, and it narrows the model without changing it. The full id over a standing
+alias still replaces it, and a foreign or partial stamp is never kept. A run bound to a
+worker attestation, and the shared stamp writer every attestation record uses, write exactly
+the selected pair. Read failures stop before writes. After a write it
 re-reads labels AND timeline with the applier-aware reader for the kit's pair; only the
 exact accepted pair returns an applied-and-verified receipt. Unverified writes exit 6, never success. An open
 change is required for --stamp-only. Its --dry-run reads and prints the removal/application

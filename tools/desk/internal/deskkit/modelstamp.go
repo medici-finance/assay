@@ -739,10 +739,10 @@ func (k StampKind) ReStampRemovals(tl StampTimeline, want []string, isDispatcher
 
 // SettleRequest returns the label pair a stamp of this kind should leave on the change when it
 // is asked to apply `want`. It is `want` itself, except in one case: the requested model is an
-// unversioned family alias (a single word with no digit, such as `opus`) and the change already
-// carries a complete stamp of this kind, standing under accepted authority, whose model slug
-// names that alias as one of its `-`/`.` separated words (such as `claude-opus-5-5`). Then the
-// standing, more specific slug is kept and only the tier comes from the request.
+// unversioned family alias (such as `opus`), the change already carries a complete
+// stamp of this kind standing under accepted authority, and the requested alias is that standing
+// slug's FAMILY word (see familyWord: `opus` in `claude-opus-5-5`). Then the standing, more
+// specific slug is kept and only the tier comes from the request.
 //
 // WHY. The same launched model reaches the stamp writer under two spellings: the family alias
 // and the full id. Each is a valid slug, so the reader saw two different stamps, and every run
@@ -754,15 +754,22 @@ func (k StampKind) ReStampRemovals(tl StampTimeline, want []string, isDispatcher
 //
 // It never widens trust: a stamp that is foreign, unattributable, incomplete or conflicting does
 // not read Stamped under `authority`, so it is never kept and the ordinary re-stamp replaces it.
-// Every writer of a stamp goes through ApplyVerifiedStamp, which calls this, so no writer can
-// re-introduce the flip.
+// Only the family word settles: a vendor word (`claude`), a suffix word (`sol` in `gpt-6-1-sol`)
+// or a version word (`5`) names no family and is written as asked.
+//
+// It is NOT applied by the shared writer ApplyVerifiedStamp, which writes exactly what it is
+// asked. Its one caller is the unattested stamp step: a run bound to an attestation record, and
+// every record writer, stamps exactly the selection the record binds.
 func (k StampKind) SettleRequest(tl StampTimeline, want []string, authority func(string) bool) []string {
 	req, st := k.StampOf(want)
-	if st != ModelStamped || !isFamilyAlias(req.Model) {
+	if st != ModelStamped {
 		return want
 	}
 	cur, cst := k.AttestedStampOf(tl, authority)
-	if cst != ModelStamped || cur.Model == req.Model || !slugHasWord(cur.Model, req.Model) {
+	if cst != ModelStamped || cur.Model == req.Model {
+		return want
+	}
+	if fam, ok := familyWord(cur.Model); !ok || fam != req.Model {
 		return want
 	}
 	out := make([]string, 0, len(want))
@@ -776,27 +783,23 @@ func (k StampKind) SettleRequest(tl StampTimeline, want []string, authority func
 	return out
 }
 
-// isFamilyAlias reports a slug that names a model family and no version: letters only.
-func isFamilyAlias(slug string) bool {
-	if slug == "" {
-		return false
-	}
-	for _, r := range slug {
-		if r < 'a' || r > 'z' {
-			return false
+// familyWord returns the family word of a versioned slug: the `-`/`.` separated word directly
+// before its first digit-bearing word, when that is not the slug's first (vendor) word.
+// `claude-opus-5-5` gives `opus`; `gpt-6-1-sol` and `opus` give none. The word carries no digit
+// by construction, so a version word (`5`) is never a family; a request is validated to
+// [a-z0-9.-] before it reaches SettleRequest, so a match is letters only.
+func familyWord(slug string) (string, bool) {
+	words := strings.FieldsFunc(slug, func(r rune) bool { return r == '-' || r == '.' })
+	for i, w := range words {
+		if !strings.ContainsAny(w, "0123456789") {
+			continue
 		}
-	}
-	return true
-}
-
-// slugHasWord reports whether word is one of slug's `-`/`.` separated words.
-func slugHasWord(slug, word string) bool {
-	for _, w := range strings.FieldsFunc(slug, func(r rune) bool { return r == '-' || r == '.' }) {
-		if w == word {
-			return true
+		if i < 2 {
+			return "", false
 		}
+		return words[i-1], true
 	}
-	return false
+	return "", false
 }
 
 // DispatcherRole is the desk ROLE whose App identity is the dispatcher — the ONE declared
