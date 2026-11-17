@@ -183,13 +183,30 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 		}
 	}
 
-	// ROUTED TO VERIFY (#5853): brief rows whose own README Status is past `in-progress`. The work is
-	// delivered; what it owes is verification (or, for a failed verification, a durable repair
-	// obligation), never a fresh IMPLEMENT. Listed here and DELIBERATELY absent from DISPATCH above.
-	if routed := f.awaitingVerifyRows(); len(routed) > 0 {
-		fmt.Fprintf(out, "\n=== ROUTED TO VERIFY: %d row(s) — README status past in-progress; NOT dispatched as IMPLEMENT (#5853) ===\n", len(routed))
-		for _, r := range routed {
-			fmt.Fprintf(out, "  %s — README status %s (verify-desk queue)\n", r.ID(), r.Status)
+	// AWAITING REWORK (#5853): `### Awaiting implementer rework` rows at implemented/verified. A
+	// verification already FAILED each one with a cited blocker, so the owner is a worker and the owed
+	// work is that blocker — never a re-run of the delivered brief as IMPLEMENT. Each row carries the
+	// section's own Next act (`fix, cite <ref>`) so the blocker is not lost. DELIBERATELY absent from
+	// DISPATCH above.
+	if rework := f.awaitingReworkRows(); len(rework) > 0 {
+		fmt.Fprintf(out, "\n=== AWAITING REWORK, owner worker: %d row(s) — verification failed with a cited blocker; NOT dispatched as IMPLEMENT (#5853) ===\n", len(rework))
+		for _, r := range rework {
+			act := r.NextAct
+			if act == "" || act == "—" {
+				act = "could-not-check (the board row names no next act)"
+			}
+			fmt.Fprintf(out, "  %s — status %s; next act: %s\n", r.ID(), r.Status, act)
+		}
+	}
+
+	// WITHHELD BY STATUS (#5853): every other brief row whose own Status is known and is not
+	// `todo`/`in-progress`. implemented/verified rows are delivered and await verification; a `done`
+	// row owes nothing; any other status (blocked, malformed) is held at that status. None is
+	// dispatched as IMPLEMENT, and each line says which of those it is.
+	if withheld := f.withheldRows(); len(withheld) > 0 {
+		fmt.Fprintf(out, "\n=== WITHHELD BY STATUS: %d row(s) — status is not todo/in-progress; NOT dispatched as IMPLEMENT (#5853) ===\n", len(withheld))
+		for _, r := range withheld {
+			fmt.Fprintf(out, "  %s — status %s (%s)\n", r.ID(), r.Status, withheldReason(r.Status))
 		}
 	}
 
@@ -213,8 +230,9 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 }
 
 // classOf returns the per-class RESERVATION bucket an item belongs to (example-stream/05):
-// "resume" (an orphan-PR resume item), "rework" (an Awaiting-implementer-rework row), or
-// "fresh" (everything else — the Next-up board's ordinary rows). It is a pure read of the kind
+// "resume" (an orphan-PR resume item), "rework" (a durable repair obligation, or an
+// Awaiting-implementer-rework row whose Status could not be read — a known-status rework row is
+// never queued, #5853), or "fresh" (everything else — the Next-up board's ordinary rows). It is a pure read of the kind
 // tag SelectQueue already stamps onto Payload — no new classification pass, no new state.
 func classOf(it loopengine.Item) string {
 	switch it.Payload["kind"] {
@@ -280,12 +298,14 @@ USAGE:
   fanoutloop --version
 
 'plan' prints the deterministic scheduler output: the dispatch queue (a to:worker desk-inbox item —
-a directed message to this desk — leads, then orphan resumes, then Awaiting-implementer-rework rows,
-then the Next-up board in board order — issue-<NN> placeholders INCLUDED, only a different loop's
+a directed message to this desk — leads, then orphan resumes, then the rework class (durable repair
+obligations, and an Awaiting-implementer-rework row only when its status could not be read), then
+the Next-up board in board order — issue-<NN> placeholders INCLUDED, only a different loop's
 review-request dispatch tokens skipped), each item's tier, and the exact dispatch instruction. It
-spawns nothing and writes nothing. A brief row whose own README status is past in-progress
-(implemented, verified, done) is delivered work: it is listed under 'ROUTED TO VERIFY' and never
-offered as IMPLEMENT (#5853). The already-represented reconciliation (#1339) routes a fresh row
+spawns nothing and writes nothing. No brief row whose own status is known and is not todo/in-progress
+is offered as IMPLEMENT (#5853): an Awaiting-implementer-rework row is listed under 'AWAITING REWORK,
+owner worker' with its cited blocker (the section's 'fix, cite <ref>' next act), and any other such
+row under 'WITHHELD BY STATUS' with what it waits on. The already-represented reconciliation (#1339) routes a fresh row
 whose brief already has a MERGED PR to the LANDED-UNRECONCILED listing (its board cell just never
 reconciled) and never dispatches it, routes one with an OPEN PR to the resume lane, and dispatches
 only unrepresented rows. A PR that only AUTHORED the queued brief (a docs-only PR adding its brief

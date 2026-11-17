@@ -38,10 +38,28 @@
       "new": "\tif false && deskkit.BriefAuthoringOnly(briefID, files) {"
     },
     {
-      "name": "#5853 \u2014 DISABLE the routedToVerify choke point so a brief row whose README status is past in-progress falls through to IMPLEMENT dispatch exactly as before the fix; TestPlanImplementedGoesVerify, TestPlanVerifiedRowGoesVerify and TestQueueRoutesInjectedDone must go red",
+      "name": "#5853 \u2014 DISABLE the statusWithheld choke point so a brief row whose known status is not todo/in-progress falls through to IMPLEMENT dispatch exactly as before the fix; TestPlanImplementedGoesRework, TestPlanVerifiedGoesRework and TestQueueRoutesInjectedDone must go red",
       "file": "cmd/fanoutloop/adapter.go",
       "old": "\tif strings.TrimSpace(r.Status) == \"\" || isDispatchableStatus(r.Status) {",
       "new": "\tif true || strings.TrimSpace(r.Status) == \"\" || isDispatchableStatus(r.Status) {"
+    },
+    {
+      "name": "#5853 \u2014 DROP the rework section's own Status fallback so a rework row whose README cannot be read carries no status and is offered as IMPLEMENT again; TestReworkFallsBackToSection must go red",
+      "file": "cmd/fanoutloop/board.go",
+      "old": "\t\tbr := BoardRow{Stream: stream, Num: num, Status: strings.TrimSpace(cells[\"status\"]), NextAct: strings.TrimSpace(cells[\"next act\"])}",
+      "new": "\t\tbr := BoardRow{Stream: stream, Num: num, NextAct: strings.TrimSpace(cells[\"next act\"])}"
+    },
+    {
+      "name": "#5853 \u2014 DROP the per-poll reset of the WITHHELD BY STATUS listing so a re-poll reports the previous run's rows; TestRepollResetsWithheld must go red",
+      "file": "cmd/fanoutloop/adapter.go",
+      "old": "\tf.withheld = nil\n",
+      "new": "\n"
+    },
+    {
+      "name": "#5853 \u2014 DROP the per-poll reset of the AWAITING REWORK listing so a re-poll reports the previous run's rows; TestRepollResetsWithheld must go red",
+      "file": "cmd/fanoutloop/adapter.go",
+      "old": "\tf.awaitingRework = nil\n",
+      "new": "\n"
     }
   ]
 }

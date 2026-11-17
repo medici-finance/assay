@@ -137,32 +137,49 @@ type FanoutLoop struct {
 	// under mu, so a re-poll never reports a stale run's diagnostics.
 	landedUnreconciled []landedRow
 	freshHeld          string
-	// awaitingVerify lists every brief row (fresh or rework lane) whose live Status is past
-	// `in-progress` — delivered work, routed to the verify listing and never dispatched (#5853).
-	awaitingVerify []BoardRow
+	// awaitingRework and withheld are the two #5853 plan diagnostics statusWithheld writes.
+	// awaitingRework lists the `### Awaiting implementer rework` rows at implemented/verified: a
+	// verification already FAILED them with a cited blocker, so they are WORKER-owned and listed with
+	// that blocker (BoardRow.NextAct). withheld lists every other brief row whose known Status is not
+	// `todo`/`in-progress` (implemented, verified, done, blocked, or malformed). Neither is dispatched.
+	awaitingRework []BoardRow
+	withheld       []BoardRow
 }
 
-// routedToVerify is the single choke point that keeps delivered work out of IMPLEMENT (#5853): a
-// brief row whose live Status is KNOWN and past `in-progress` (implemented, verified, done, …) is
-// recorded for renderPlan's ROUTED TO VERIFY heading and reported as routed. Every brief lane
-// (fresh Next-up and the STATUS.md rework section) passes through it, whatever source produced the
-// row. An unknown Status ("") is could-not-check and is never rounded to delivered. Durable repair
-// obligations are not brief rows and stay the dispatchable rework source.
-func (f *FanoutLoop) routedToVerify(r BoardRow) bool {
+// statusWithheld is the single choke point that keeps a brief row whose work is not open out of
+// IMPLEMENT (#5853): a row whose live Status is KNOWN and not `todo`/`in-progress` is recorded for
+// one of renderPlan's two headings and reported as withheld. Every brief lane (fresh Next-up and the
+// STATUS.md rework section) passes through it, whatever source produced the row. A rework-lane row
+// at implemented/verified goes to AWAITING REWORK (owner worker, with its cited blocker); any other
+// withheld row goes to WITHHELD BY STATUS. An unknown Status ("") is could-not-check and is never
+// rounded to delivered, so it stays dispatchable. Durable repair obligations are not brief rows and
+// do not pass through here.
+func (f *FanoutLoop) statusWithheld(r BoardRow, reworkLane bool) bool {
 	if strings.TrimSpace(r.Status) == "" || isDispatchableStatus(r.Status) {
 		return false
 	}
 	f.mu.Lock()
-	f.awaitingVerify = append(f.awaitingVerify, r)
+	if reworkLane && dispatchableAsRework(r.Status) {
+		f.awaitingRework = append(f.awaitingRework, r)
+	} else {
+		f.withheld = append(f.withheld, r)
+	}
 	f.mu.Unlock()
 	return true
 }
 
-// awaitingVerifyRows returns the rows the last SelectQueue routed to the verify listing.
-func (f *FanoutLoop) awaitingVerifyRows() []BoardRow {
+// awaitingReworkRows returns the rework-lane rows the last SelectQueue listed as AWAITING REWORK.
+func (f *FanoutLoop) awaitingReworkRows() []BoardRow {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]BoardRow(nil), f.awaitingVerify...)
+	return append([]BoardRow(nil), f.awaitingRework...)
+}
+
+// withheldRows returns the other rows the last SelectQueue withheld by status.
+func (f *FanoutLoop) withheldRows() []BoardRow {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]BoardRow(nil), f.withheld...)
 }
 
 // landedRow is one fresh Next-up row whose brief already has a MERGED PR: its board cell simply never
@@ -176,9 +193,11 @@ func (f *FanoutLoop) Name() string { return "worker-desk" }
 
 // SelectQueue is the deterministic board read. A fresh row addressed to THIS desk
 // (`to:worker`) is a DIRECTED message and LEADS the whole queue;
-// after the addressed lead it returns ORPHAN RESUMES, then
-// AWAITING-IMPLEMENTER-REWORK rows (both outrank ordinary fresh dispatch — worker-desk SKILL.md §Sources
-// of work rows 3 and 5: "resuming started work outranks a fresh brief"), then the Next-up rows
+// after the addressed lead it returns ORPHAN RESUMES, then the rework class — durable repair
+// obligations, plus an Awaiting-implementer-rework row ONLY when its Status could not be read
+// (both outrank ordinary fresh dispatch — worker-desk SKILL.md §Sources of work rows 3, 5 and 5b:
+// "resuming started work outranks a fresh brief"). A rework row whose Status is known is withheld and
+// listed under the plan's AWAITING REWORK heading instead (statusWithheld, #5853). Then the Next-up rows
 // in board order, each already priority/staleness/cap/dep-filtered by statusgen — so every fresh
 // row it sees is already `todo` and unclaimed. It INCLUDES `issue-<NN>` placeholder rows: those
 // ARE this loop's work (worker-desk dispatch spec, Procedure 2 — "INCLUDE issue-placeholders —
@@ -189,7 +208,8 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	// Reset the plan diagnostics up front so a re-poll never reports a stale run's landed/held state.
 	f.mu.Lock()
 	f.landedUnreconciled = nil
-	f.awaitingVerify = nil
+	f.awaitingRework = nil
+	f.withheld = nil
 	f.freshHeld = ""
 	f.mu.Unlock()
 
@@ -242,17 +262,18 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	// OPEN or MERGED PR is a phantom this lane used to skip. Held on could-not-check. The DURABLE repair
 	// obligations (step 2b) stay EXEMPT: a repair obligation legitimately reworks a MERGED original via a
 	// fresh follow-up branch (§Sources of work row 5b), so a representing PR is expected there.
-	// A row whose Status is past `in-progress` — by construction every row of that section, whose own
-	// Status column reads implemented/verified — is delivered work: routedToVerify lists it for
-	// verification and it is never offered as IMPLEMENT (#5853). Owed implementation rework reaches a
-	// worker as a durable repair obligation (2b), whose prompt carries the failed verification.
+	// A row at implemented/verified — by construction every row of that section, whose own Status
+	// column reads implemented/verified — failed verification with a cited blocker: statusWithheld lists
+	// it under AWAITING REWORK (owner worker, with that blocker) and it is never offered as IMPLEMENT
+	// (#5853). The owed work is the cited blocker, not a re-run of the delivered brief. Only a row whose
+	// Status could not be read at all ("") still reaches reworkItems.
 	rework, err := f.reworkSource()
 	if err != nil {
 		return nil, err
 	}
 	if !held {
 		for _, r := range rework {
-			if f.isHandled(r.ID()) || f.routedToVerify(r) {
+			if f.isHandled(r.ID()) || f.statusWithheld(r, true) {
 				continue
 			}
 			if _, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
@@ -295,7 +316,7 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 				// NOT dropped here — they ARE this loop's work (Procedure 2) and flow through below.
 				continue
 			}
-			if f.isHandled(r.ID()) || f.routedToVerify(r) {
+			if f.isHandled(r.ID()) || f.statusWithheld(r, false) {
 				continue
 			}
 			if rp, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {

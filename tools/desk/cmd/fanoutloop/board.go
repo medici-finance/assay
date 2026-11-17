@@ -41,10 +41,14 @@ type BoardRow struct {
 	// no label column, so rows it produces leave this nil and fall back to the title convention.
 	Labels []string
 	// Status is the row's live lifecycle cell (its own stream README Status cell, or the board's
-	// own Status column when the README cannot be read). "" is could-not-check. SelectQueue routes a
-	// row whose Status is known and past `in-progress` to the verify listing, never to IMPLEMENT
-	// (#5853): delivered work is never re-dispatched as fresh implementation.
+	// own Status column when the README cannot be read). "" is could-not-check. SelectQueue never
+	// offers a row whose Status is known and not `todo`/`in-progress` as IMPLEMENT (#5853): it is
+	// listed under its own plan heading instead (statusWithheld).
 	Status string
+	// NextAct is the `### Awaiting implementer rework` section's own Next act cell — statusgen's
+	// `fix, cite <ref>`, naming the blocker the failed verification recorded. Only the rework reader
+	// sets it; "" elsewhere. `plan` prints it beside the row so the cited blocker is never lost.
+	NextAct string
 }
 
 // ID is the claim key / stable item ID for a board row. In the multi-repo live wiring it is
@@ -308,8 +312,22 @@ func isDispatchableStatus(status string) bool {
 	}
 }
 
+// withheldReason names what a WITHHELD BY STATUS row is waiting on, by its status (#5853).
+func withheldReason(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "implemented", "verified":
+		return "delivered: verify-desk queue"
+	case "done":
+		return "done: nothing owed"
+	default:
+		return "held at this status"
+	}
+}
+
 // dispatchableAsRework reports whether a bare lifecycle token is one the `Awaiting implementer
-// rework` lane may still offer for RESUME. It is exactly the two statuses statusgen's own
+// rework` lane still treats as AWAITING REWORK. Despite the historical name, such a row is not
+// offered for dispatch: SelectQueue lists it under the plan's AWAITING REWORK heading (owner worker,
+// with its cited blocker) and never renders it as IMPLEMENT (#5853). It is exactly the two statuses statusgen's own
 // bucketAwaiting operates on — `implemented` and `verified` — because a brief awaiting implementer
 // rework is one whose deliverable is implemented (or verified) but whose LAST verification verdict
 // was FAIL with an implementation/check-definition blocker naming an issue (statusgen/awaiting_bucket.go
@@ -395,7 +413,7 @@ func readAwaitingRework(root string) ([]BoardRow, error) {
 				stream, num, live)
 			continue
 		}
-		br := BoardRow{Stream: stream, Num: num, Status: strings.TrimSpace(cells["status"])}
+		br := BoardRow{Stream: stream, Num: num, Status: strings.TrimSpace(cells["status"]), NextAct: strings.TrimSpace(cells["next act"])}
 		if live, ok := liveStatus(stream, num); ok {
 			br.Status = live
 		}

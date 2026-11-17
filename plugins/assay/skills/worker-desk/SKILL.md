@@ -111,7 +111,8 @@ slots, and a sweep proving nothing eligible exists (§HARD GATE).
     default) and file it. Ignorance never widens a pool.
 - **The reservation is the code-enforced form of the next two rules** (desk-supervision/05):
   `deskroster width --role worker-desk --reserve resume=N,rework=M` floors N/M slots for orphan
-  resumes and `Awaiting implementer rework` rows, riding the same entry as the width and decaying
+  resumes and the `rework` class (durable repair obligations, row 5b, and an `Awaiting implementer
+  rework` row only when its status could not be read), riding the same entry as the width and decaying
   with it. `fanoutloop plan` classifies its queue and states the floor whenever a reserved class
   is actually waiting (`fresh capped at <k> by reservation`) — **it never idles a slot** for a
   class with nothing queued, which is what keeps this a floor and not a second cap. worker-desk
@@ -146,8 +147,9 @@ slots, and a sweep proving nothing eligible exists (§HARD GATE).
   window neither ends nor asks the driver what to do next (§Liveness contract).
 - **Concurrency (N) is DECOUPLED from the span-of-control display cap (20)**, which bounds what the
   board SHOWS. The 4-per-stream cap is an anti-monopoly guard that must **never idle a slot**: fill
-  under-N cycles with WIP-draining work first — orphan resumes, `Awaiting implementer rework` rows,
-  `CONFLICTING` PRs, red checks — then un-briefed issues, before leaving one empty.
+  under-N cycles with WIP-draining work first — orphan resumes, the cited blockers of
+  `Awaiting implementer rework` rows (row 5), `CONFLICTING` PRs, red checks — then un-briefed
+  issues, before leaving one empty.
 - **Scan the active PR queue on every tick** for dispatched PRs owing a worker action
   (`CHANGES_REQUESTED` at head, `CONFLICTING`, a stale draft); **resuming started work outranks a
   fresh brief** (mm/10). Distinct from pr-review-desk's *review* monitor; both run.
@@ -164,7 +166,7 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 | 2 | Rows **held back** by the 4-per-stream cap, the span cap, or the drive worker floor | `deskboard dispatch` — it reports the held-back decomposition (N by per-stream caps, M by span, K by the drive worker floor) plus per-root claim degradation, so an EMPTY queue is distinguishable from a THROTTLED one |
 | 3 | Orphan PRs owing a worker action, `CONFLICTING` PRs, red checks | the per-slug PR + disposition reads in [`references/dispatch-runbook.md`](references/dispatch-runbook.md) §The tick sweep, with the disposition read FIRST |
 | 4 | Stale drafts (reviewer verdict `CHANGES_REQUESTED` at head, author silent) | `deskboard stalled [--min-age-hours N]` — the purpose-built detector; its disposition column is advisory (shepherd / close-candidate / reconcile) |
-| 5 | `Awaiting implementer rework` board rows | `fanoutloop plan --root <root>` (desk-supervision/05: read per root from `refs/remotes/origin/main:STATUS.md`, the SAME offline ref read row 1 uses — no separate sweep). A row whose README status is past `in-progress` is delivered work: `plan` lists it under `ROUTED TO VERIFY` and never offers it as IMPLEMENT; owed rework reaches a worker as a row-5b repair obligation |
+| 5 | `Awaiting implementer rework` board rows | `fanoutloop plan --root <root>` (desk-supervision/05: read per root from `refs/remotes/origin/main:STATUS.md`, the SAME offline ref read row 1 uses — no separate sweep). A verification already FAILED each such row with a cited blocker, so it is worker-owned: `plan` lists it under `AWAITING REWORK, owner worker` with the section's next act (`fix, cite <ref>`) and never offers the delivered brief as IMPLEMENT. The owed work is that cited blocker, worked as its own item (row 6 when it is a trusted work-ready issue). Only a row whose status could not be read at all is still offered. Any other brief row whose status is not `todo`/`in-progress` is listed under `WITHHELD BY STATUS` with what it waits on (implemented or verified: the verify-desk queue) |
 | 5b | **Durable repair obligations** — a failed/blocked verification's actionable, still-unresolved obligation (desk-supervision/17) | `fanoutloop plan --root <root>` reads the reconciled obligations across the configured roots' `docs/streams/repair-obligations.jsonl` and surfaces the ASSIGNABLE ones (actionable, unresolved, awaiting-assignment or dead-lease) in the SAME rework lane as row 5. The item's ID is the IMMUTABLE obligation key, so a replacement worker resumes the SAME obligation after a dead lease — never a duplicate |
 | 6 | Un-briefed trusted work-ready issues (§Un-briefed issues) | `issueboard issues --projection work-ready` — fail-closed |
 | 7 | A red default branch on a watched repo | `deskboard health` — three-state (green / RED / COULD-NOT-CHECK) |
@@ -405,11 +407,14 @@ carrying its tier and its exact dispatch instruction. It spawns nothing, writes 
 no network** — the chained fetch is the freshness guarantee. Exits 3 disabled · 5 refused · 6
 unverifiable · 7 author==runner: none of them is an empty queue.
 
-**`plan` is not the whole queue, and a zero from it is not an idle claim.** It carries no
-`Awaiting implementer rework` row and no held-back row; run `deskboard dispatch` beside it every tick
-for the held-back decomposition, and read the rework section off each root's board (§Sources of work
-rows 2 and 5). Where the two disagree, the wider reading wins and the narrower one is a defect to
-file, never a queue to route around.
+**`plan` is not the whole queue, and a zero from it is not an idle claim.** It dispatches no
+`Awaiting implementer rework` row — it LISTS each under `AWAITING REWORK, owner worker` with its
+cited blocker, and that blocker is the work to start — and it carries no held-back row; run
+`deskboard dispatch` beside it every tick for the held-back decomposition, and compare the
+`AWAITING REWORK` listing with the rework section on each root's board (§Sources of work rows 2 and
+5). Where the two disagree on which rows await rework, the wider reading wins and the narrower one
+is a defect to file, never a queue to route around. Neither reading licenses dispatching the
+delivered brief itself as IMPLEMENT.
 
 **The drive worker floor is the one exception: for drive work, the FLOORED reading wins.** While a
 drive is active, drive work takes at most 6 of 8 workers (statusgen's `driveWorkerCap`; the tool's
@@ -452,7 +457,8 @@ the one state in which this desk has nothing new to START, and it is never a sta
 window stops, hands back, or asks the driver for direction.
 
 1. **Drain WIP before pulling more.** In this state the desk works the WIP-draining sources FIRST and
-   in this order: orphan resumes (§Sources of work row 3), `Awaiting implementer rework` rows (row 5),
+   in this order: orphan resumes (§Sources of work row 3), the cited blockers of `Awaiting implementer
+   rework` rows (row 5) and durable repair obligations (row 5b),
    `CONFLICTING` PRs and red checks on PRs this desk dispatched, stalled drafts (row 4). Only when
    those are genuinely clear does a fresh start go into a free slot. The board's own overflow line
    says the same thing — a persistently overflowing Next-up is an alarm about load, and refilling to 8
