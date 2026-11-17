@@ -210,11 +210,18 @@ func buildMutation(root string, m Mutation, specBuild, specTest string, env []st
 	// build must too: from base, a mutant in another module is "outside main
 	// module" and even the positive control fails to build (#4117).
 	dir := root
-	if cdDir, rest, ok := leadingCd(base, specTest); ok {
+	if cdDir, rest, ok := leadingCd(base, specTest, env); ok {
+		// cdDir is symlink-free, so the mutated file's directory is resolved
+		// the same way before the two are compared.
 		abs, err := filepath.Abs(path)
 		if err != nil {
 			return CommandResult{Err: err}
 		}
+		fileDir, err := filepath.EvalSymlinks(filepath.Dir(abs))
+		if err != nil {
+			return CommandResult{Err: err}
+		}
+		abs = filepath.Join(fileDir, filepath.Base(abs))
 		path, base, dir, specTest = abs, cdDir, cdDir, rest
 	}
 	rel, err := filepath.Rel(base, filepath.Dir(path))
@@ -243,16 +250,25 @@ var (
 // leadingCd recognises a suite command that is exactly `cd <dir> && <cmd>`,
 // where <dir> is a plain relative path and <cmd> is one simple command that
 // starts, after plain NAME=value assignments, with `go test`. It returns the
-// directory, absolute and resolved against base, and <cmd>. It refuses — and
-// the build runs from base exactly as before — when <dir> is absolute, carries
-// any shell syntax, does not exist, or resolves (symlinks included) outside the
-// git checkout enclosing base (outside base itself when there is none, as in a
-// parallel worker's copy); and when <cmd> chains or redirects anything further.
-// <dir> is never handed to a shell: it only becomes the build's working
-// directory.
-func leadingCd(base, test string) (string, string, bool) {
+// directory, absolute, resolved against base with every symlink resolved, and
+// <cmd>. It refuses — and the build runs from base exactly as before — when
+// <dir> is not an operand the suite's shell resolves by joining it to base
+// (see cdOperandIsPlain), carries any shell syntax, does not exist, or
+// resolves (symlinks included) outside the git checkout enclosing base
+// (outside base itself when there is none, as in a parallel worker's copy or
+// an archive export); and when <cmd> chains or redirects anything further.
+// env is the environment the suite runs with. <dir> is never handed to a
+// shell: it only becomes the build's working directory.
+//
+// The resolved path is returned, not the joined one, so the containment check
+// and the build use the same directory: a symlink on the joined path swapped
+// after the check cannot move the build outside the bound. The build differs
+// from the suite only in naming that directory physically rather than through
+// the symlink, and the build's shell already sees the physical path, because
+// the PWD it inherits names muhar's directory, not this one.
+func leadingCd(base, test string, env []string) (string, string, bool) {
 	m := cdPrefix.FindStringSubmatch(test)
-	if m == nil || !cdDirWord.MatchString(m[1]) || strings.HasPrefix(m[1], "/") {
+	if m == nil || !cdDirWord.MatchString(m[1]) || !cdOperandIsPlain(m[1], env) {
 		return "", "", false
 	}
 	rest := m[2]
@@ -285,11 +301,40 @@ func leadingCd(base, test string) (string, string, bool) {
 	if info, err := os.Stat(resolved); err != nil || !info.IsDir() || !within(bound, resolved) {
 		return "", "", false
 	}
-	return target, rest, true
+	return resolved, rest, true
+}
+
+// cdOperandIsPlain reports whether the POSIX shell's `cd word` lands in
+// base/word, the only directory leadingCd can follow. It does not when word is
+// absolute; when it starts with `-`, which the shell reads as the previous
+// directory (`-`), the end of options (`--`, then the home directory) or an
+// option (`-L`, `-P`); or when the suite's environment sets a non-empty CDPATH
+// and word's first component is not `.` or `..`, so the shell searches CDPATH
+// before base.
+func cdOperandIsPlain(word string, env []string) bool {
+	if strings.HasPrefix(word, "/") || strings.HasPrefix(word, "-") {
+		return false
+	}
+	first, _, _ := strings.Cut(word, "/")
+	return first == "." || first == ".." || envValue(env, "CDPATH") == ""
+}
+
+// envValue is name's value in env as a child process sees it: the last entry
+// wins, and an absent name is empty.
+func envValue(env []string, name string) string {
+	value := ""
+	for _, e := range env {
+		if v, ok := strings.CutPrefix(e, name+"="); ok {
+			value = v
+		}
+	}
+	return value
 }
 
 // checkoutRoot is the nearest directory at or above dir holding a .git entry,
-// or dir itself when none does.
+// or dir itself when none does. The fallback is fail-closed: in a source
+// archive or export with no .git above it, a cd out of dir is not followed,
+// and a mutant outside dir's module then cannot build there.
 func checkoutRoot(dir string) string {
 	for d := filepath.Clean(dir); ; {
 		if _, err := os.Lstat(filepath.Join(d, ".git")); err == nil {

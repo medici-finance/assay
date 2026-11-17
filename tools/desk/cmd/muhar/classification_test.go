@@ -417,7 +417,7 @@ func TestLeadingCd(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(repo, "escape")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
-	other := filepath.Join(repo, "other")
+	other := realPath(t, filepath.Join(repo, "other"))
 	escapeRel, err := filepath.Rel(base, outside)
 	if err != nil {
 		t.Fatal(err)
@@ -426,17 +426,17 @@ func TestLeadingCd(t *testing.T) {
 	for _, tc := range []struct{ test, dir, rest string }{
 		{"cd ../other && go test ./...", other, "go test ./..."},
 		{"cd\t../other\t&&\tgo test .", other, "go test ."},
-		{"cd sub && A=1 B='x y' go test -run '^(X|Y)$' ./...", filepath.Join(base, "sub"), "A=1 B='x y' go test -run '^(X|Y)$' ./..."},
+		{"cd sub && A=1 B='x y' go test -run '^(X|Y)$' ./...", realPath(t, filepath.Join(base, "sub")), "A=1 B='x y' go test -run '^(X|Y)$' ./..."},
 		{"cd ../other && HOME=$(mktemp -d) go test .", other, "HOME=$(mktemp -d) go test ."},
-		{"cd . && go test ./...", base, "go test ./..."},
+		{"cd . && go test ./...", realPath(t, base), "go test ./..."},
 	} {
-		dir, rest, ok := leadingCd(base, tc.test)
+		dir, rest, ok := leadingCd(base, tc.test, nil)
 		if !ok || dir != tc.dir || rest != tc.rest {
 			t.Errorf("leadingCd(%q) = %q, %q, %v; want %q, %q", tc.test, dir, rest, ok, tc.dir, tc.rest)
 		}
 	}
 	// The derived build keeps the suite's own environment and flags.
-	if _, rest, ok := leadingCd(base, "cd ../other && GOWORK=off go test -tags=t1 ./... -count=1"); !ok {
+	if _, rest, ok := leadingCd(base, "cd ../other && GOWORK=off go test -tags=t1 ./... -count=1", nil); !ok {
 		t.Fatal("cd with an environment prefix was refused")
 	} else if got, ok := goBuildFromTest(rest, "."); !ok || got != "GOWORK='off' 'go' 'test' '-vet=off' '-c' '-o' "+shellQuote(os.DevNull)+" '-tags=t1' '.'" {
 		t.Errorf("derived build after cd = %q, %v", got, ok)
@@ -486,7 +486,7 @@ func TestLeadingCd(t *testing.T) {
 		"cd ../other\n&& go test ./...",         // newline
 		"cd ../other && \"go\" test ./...",      // quoted command word
 	) {
-		if dir, rest, ok := leadingCd(base, test); ok {
+		if dir, rest, ok := leadingCd(base, test, nil); ok {
 			t.Errorf("leadingCd(%q) = %q, %q; want refused", test, dir, rest)
 		}
 	}
@@ -499,12 +499,145 @@ func TestLeadingCd(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(bare, "sibling"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, ok := leadingCd(filepath.Join(bare, "root"), "cd in && go test ."); !ok {
+	if _, _, ok := leadingCd(filepath.Join(bare, "root"), "cd in && go test .", nil); !ok {
 		t.Error("cd into the root's own subdirectory was refused")
 	}
 	if checkoutRoot(bare) == bare {
-		if _, _, ok := leadingCd(filepath.Join(bare, "root"), "cd ../sibling && go test ."); ok {
+		if _, _, ok := leadingCd(filepath.Join(bare, "root"), "cd ../sibling && go test .", nil); ok {
 			t.Error("cd out of a root with no checkout above it was followed")
 		}
+	}
+}
+
+func realPath(t *testing.T, path string) string {
+	t.Helper()
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return resolved
+}
+
+// A cd word starting with `-` is the previous directory, the end of options
+// or an option to the shell, never base/word, even when a directory of that
+// literal name exists.
+//
+// regression: #6793
+func TestLeadingCdRefusesDash(t *testing.T) {
+	_, base := cdFixture(t)
+	for _, name := range []string{"-", "--", "-L", "-P", "-sub"} {
+		if err := os.MkdirAll(filepath.Join(base, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if dir, _, ok := leadingCd(base, "cd "+name+" && go test .", nil); ok {
+			t.Errorf("cd %s was followed to %q; the shell does not go there", name, dir)
+		}
+	}
+	if _, _, ok := leadingCd(base, "cd ./-sub && go test .", nil); !ok {
+		t.Error("cd ./-sub was refused; the shell does go there")
+	}
+}
+
+// With a non-empty CDPATH the shell searches it before base for a word whose
+// first component is not `.` or `..`, so such a word is not followed.
+//
+// regression: #6793
+func TestLeadingCdRefusesCdpath(t *testing.T) {
+	repo, base := cdFixture(t)
+	for _, name := range []string{"sub", ".hidden"} {
+		if err := os.MkdirAll(filepath.Join(base, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	cdpath := []string{"CDPATH=" + repo}
+	for _, test := range []string{"cd sub && go test .", "cd .hidden && go test ."} {
+		if dir, _, ok := leadingCd(base, test, cdpath); ok {
+			t.Errorf("%q followed to %q under CDPATH", test, dir)
+		}
+	}
+	for _, test := range []string{"cd ./sub && go test .", "cd ../other && go test .", "cd . && go test ."} {
+		if _, _, ok := leadingCd(base, test, cdpath); !ok {
+			t.Errorf("%q refused under CDPATH; CDPATH is not searched for it", test)
+		}
+	}
+	for _, env := range [][]string{nil, {"CDPATH="}, {"CDPATH=" + repo, "CDPATH="}} {
+		if _, _, ok := leadingCd(base, "cd sub && go test .", env); !ok {
+			t.Errorf("cd sub refused with env %q; no CDPATH applies", env)
+		}
+	}
+}
+
+// With no .git above the spec root (a source archive or export), a cd out of
+// the root is not followed: the cross-module control cannot build and the run
+// is HARNESS BROKEN. A .git at the export root makes the same spec pass.
+//
+// regression: #6793
+func TestBuildNoCheckoutFailsClosed(t *testing.T) {
+	needGo(t)
+	repo, root := cdFixture(t)
+	if err := os.Remove(filepath.Join(repo, ".git")); err != nil {
+		t.Fatal(err)
+	}
+	if got := checkoutRoot(root); got != root {
+		t.Skipf("a .git above the temporary directory (%s) bounds the fixture", got)
+	}
+	test := "cd ../other && go test -count=1 ."
+	out, code := runCdSpec(t, root, test)
+	if code != 2 || !strings.Contains(out, "positive control could not be validated") {
+		t.Fatalf("a cd out of a root with no checkout was followed (exit %d)\n%s", code, out)
+	}
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if out, code := runCdSpec(t, root, test); code != 0 || !strings.Contains(out, "Totals: 1 caught, 0 NOT CAUGHT, 1 could-not-mutate.") {
+		t.Fatalf("with a .git at the export root the cd was not followed (exit %d)\n%s", code, out)
+	}
+}
+
+// The followed directory is returned resolved, so swapping a symlink on the
+// joined path after the containment check cannot move the build outside the
+// checkout.
+//
+// regression: #6793
+func TestLeadingCdReturnsResolved(t *testing.T) {
+	repo, base := cdFixture(t)
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(filepath.Join(repo, "other"), link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	dir, _, ok := leadingCd(base, "cd link && go test .", nil)
+	if !ok {
+		t.Fatal("cd through a symlink inside the checkout was refused")
+	}
+	outside := t.TempDir()
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	now, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !within(realPath(t, repo), now) {
+		t.Fatalf("after the swap the build directory %q names %q, outside the checkout", dir, now)
+	}
+}
+
+// The followed directory is resolved, so the mutated file is too: a spec root
+// reached through a symlink still builds each mutant in its own package.
+//
+// regression: #6793
+func TestBuildCdUnderSymlinkRoot(t *testing.T) {
+	needGo(t)
+	repo, _ := cdFixture(t)
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(repo, alias); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	out, code := runCdSpec(t, filepath.Join(alias, "desk"), "cd ../other && go test -count=1 .")
+	if code != 0 || !strings.Contains(out, "COULD_NOT_MUTATE bad-build") || !strings.Contains(out, "Totals: 1 caught, 0 NOT CAUGHT, 1 could-not-mutate.") {
+		t.Fatalf("a root reached through a symlink did not build the followed mutant (exit %d)\n%s", code, out)
 	}
 }

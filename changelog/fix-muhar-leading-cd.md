@@ -1,0 +1,4 @@
+### Fixed
+- `muhar` no longer follows a leading `cd <dir> &&` that the shell resolves elsewhere: a `<dir>` starting with `-` (`cd -`, `cd --`, `cd -L`) is never followed, and with a non-empty `CDPATH` in the environment a `<dir>` whose first component is not `.` or `..` is not followed either. The derived build then runs from the spec root, as for any other unfollowed form.
+- A followed directory is used with its symlinks resolved, the same path the containment check approved, so a symlink swapped during the run cannot move a mutant's build outside the checkout.
+- The `muhar` README now documents the leading-`cd` rule, including that following it needs a git checkout: with no `.git` above the spec root, as in a source archive, a `cd` out of the root is not followed and a cross-module run reports `HARNESS BROKEN`.

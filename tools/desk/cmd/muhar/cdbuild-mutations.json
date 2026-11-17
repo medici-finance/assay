@@ -1,9 +1,9 @@
 {
-  "test": "go test ./cmd/muhar -run '^(TestLeadingCd|TestBuildFollowsLeadingCd|TestBuildRefusesCompoundCd)$' -count=1 -timeout=300s",
+  "test": "go test ./cmd/muhar -run '^(TestLeadingCd|TestLeadingCdRefusesDash|TestLeadingCdRefusesCdpath|TestLeadingCdReturnsResolved|TestBuildFollowsLeadingCd|TestBuildRefusesCompoundCd|TestBuildNoCheckoutFailsClosed|TestBuildCdUnderSymlinkRoot)$' -count=1 -timeout=600s",
   "control": {
     "name": "CONTROL: a leading cd is never followed",
     "file": "cmd/muhar/runner.go",
-    "old": "\treturn target, rest, true\n",
+    "old": "\treturn resolved, rest, true\n",
     "new": "\treturn \"\", \"\", false\n"
   },
   "mutations": [
@@ -16,8 +16,8 @@
     {
       "name": "absolute directory accepted",
       "file": "cmd/muhar/runner.go",
-      "old": " || strings.HasPrefix(m[1], \"/\") {",
-      "new": " {"
+      "old": "strings.HasPrefix(word, \"/\") || ",
+      "new": ""
     },
     {
       "name": "directory alphabet admits shell syntax",
@@ -72,6 +72,48 @@
       "file": "cmd/muhar/runner.go",
       "old": "\t\tcase c == '(':\n\t\t\tif depth == 0 {\n\t\t\t\treturn nil, false\n\t\t\t}\n",
       "new": "\t\tcase c == '(':\n"
+    },
+    {
+      "name": "leading dash accepted",
+      "file": "cmd/muhar/runner.go",
+      "old": " || strings.HasPrefix(word, \"-\") {",
+      "new": " {"
+    },
+    {
+      "name": "CDPATH ignored",
+      "file": "cmd/muhar/runner.go",
+      "old": " || envValue(env, \"CDPATH\") == \"\"",
+      "new": " || true"
+    },
+    {
+      "name": "CDPATH searched even for a ./ or ../ word",
+      "file": "cmd/muhar/runner.go",
+      "old": "first == \".\" || first == \"..\" || ",
+      "new": ""
+    },
+    {
+      "name": "the first CDPATH entry wins, not the last",
+      "file": "cmd/muhar/runner.go",
+      "old": "\t\t\tvalue = v\n",
+      "new": "\t\t\tif value == \"\" {\n\t\t\t\tvalue = v\n\t\t\t}\n"
+    },
+    {
+      "name": "unresolved directory returned, a swapped symlink moves the build",
+      "file": "cmd/muhar/runner.go",
+      "old": "\treturn resolved, rest, true\n",
+      "new": "\treturn target, rest, true\n"
+    },
+    {
+      "name": "mutated file not resolved like the directory",
+      "file": "cmd/muhar/runner.go",
+      "old": "\t\tabs = filepath.Join(fileDir, filepath.Base(abs))\n",
+      "new": "\t\t_ = fileDir\n"
+    },
+    {
+      "name": "no checkout found: bound widened to the filesystem root",
+      "file": "cmd/muhar/runner.go",
+      "old": "\t\t\treturn filepath.Clean(dir)\n",
+      "new": "\t\t\treturn d\n"
     }
   ]
 }
