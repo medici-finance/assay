@@ -135,19 +135,29 @@ func TestRetainedAdditionRejected(t *testing.T) {
 // staged, or only in the working tree.
 // regression: #2813
 func TestRetainedChangedRejected(t *testing.T) {
-	for _, where := range []string{"committed", "staged", "working tree"} {
-		t.Run(where, func(t *testing.T) {
+	for _, tc := range []struct{ where, reason string }{
+		{"committed", "changed"},
+		// The PR diff carries the commit even though the index and the working
+		// tree were put back: only the HEAD comparison sees it.
+		{"committed, tree reverted", "changed since the merge-base (committed)"},
+		{"staged", "changed since the merge-base (staged)"},
+		{"working tree", "changed since the merge-base (working tree)"},
+	} {
+		t.Run(tc.where, func(t *testing.T) {
 			dir := retainedRepo(t, map[string]int{metricsPath: sixMiB})
 			writeIncompressible(t, filepath.Join(dir, filepath.FromSlash(metricsPath)), sixMiB)
-			switch where {
+			switch tc.where {
 			case "committed":
 				gitIn(t, dir, "commit", "-q", "-a", "-m", "edit the baseline")
+			case "committed, tree reverted":
+				gitIn(t, dir, "commit", "-q", "-a", "-m", "edit the baseline")
+				gitIn(t, dir, "checkout", "-q", defaultBase, "--", metricsPath)
 			case "staged":
 				gitIn(t, dir, "add", metricsPath)
 			}
 			c := runJunkOversize(dir, realTools())
-			if c.state != deskkit.CheckedFailed || !strings.Contains(c.detail, metricsPath+" (retained baseline changed") {
-				t.Fatalf("a %s change must be rejected, got %v (%s)", where, c.state, c.detail)
+			if c.state != deskkit.CheckedFailed || !strings.Contains(c.detail, metricsPath+" (retained baseline "+tc.reason) {
+				t.Fatalf("a %s change must be rejected, got %v (%s)", tc.where, c.state, c.detail)
 			}
 		})
 	}
