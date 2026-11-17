@@ -47,7 +47,7 @@ func TestStatusgenProcRootChecked(t *testing.T) {
 	if d := sgFixIno1Root(); d != "" {
 		roots["inode 1, not procfs"] = d
 	} else {
-		t.Log("no non-procfs root with inode 1 here: the filesystem-type half is pinned only by the planted root")
+		t.Log("no non-procfs root with inode 1 here, so the filesystem-type half of the check is not pinned on this host")
 	}
 	for name, root := range roots {
 		b, err := sgReadProcIn(root, sgProcUIDMap)
