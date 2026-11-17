@@ -9,8 +9,12 @@ from the same captured revisions as the rest of the page.
 
 Count **recorded stage changes**: forward changes of recorded status among the scoped briefs
 across the seven daily readings, from the same history reader as the chart. Count **merged
-changes**: first-parent commits on the scoped roots' default branches inside the same seven
-days. When recorded stage changes are two or fewer and merged changes are twenty or more,
+changes**: pull or merge requests merged into the scoped roots' default branches inside the
+same seven days. Take the count from the forge's merged list. Where that cannot be read, count
+first-parent commits and leave out every generated commit: status regenerations, reconcile
+and rollup commits, and Evidence or outcome-record landings. A generated commit is activity
+nobody merged. Say on the page which method was used and how many commits were left out. When
+recorded stage changes are two or fewer and merged changes are twenty or more,
 open the page with a short stall statement above the monthly chart. The chart stays the first
 chart. State both thresholds on the page, and say so if you change them.
 
@@ -26,14 +30,14 @@ boards already show it.
 
 ## Banked, not recorded
 
-Show this view beside the six-line chart. It counts scoped briefs whose evidence is ahead of
+Show this view directly after the six-line chart. It counts scoped briefs whose evidence is ahead of
 their recorded status. It never changes a recorded status, a chart line, a remaining count or
 a path weight. Each brief appears in at most one group, chosen by its recorded stage.
 
 | Group | Recorded stage | Evidence required | Source |
 |-------|----------------|-------------------|--------|
-| **Delivered; board row held** | `todo` or `in-progress` | the board reconcile lists the row as held and names the merged delivering change | the body of the latest reconcile commit on the default branch or on the reconcile job's open change |
-| **Passed; record or sign-off held** | `implemented` | the latest retained non-implementer outcome record passed every Verify row, and its recorded outcome is not `verified` | the brief's newest record under `docs/streams/verify-outcomes/` |
+| **Delivered; board row held** | `todo` or `in-progress` | the board reconcile lists the row as held and names the merged delivering change | the body of the latest reconcile commit on the default branch, or on the reconcile job's own open change when it passes the check below |
+| **Passed; record or sign-off held** | `implemented` | the latest retained non-implementer outcome record passed every Verify row, and its recorded outcome is not `verified` | the brief's newest record in the `docs/streams/verify-outcomes/` register, newest by the record's own `ts` and read through the register's reader, which also unions any legacy `verify-outcomes*.jsonl` lines |
 | **Verified; completion refused** | `verified` | the completion reader lists the brief as refused or could-not-check | `statusgen --root <dir> --auto-flip-model --dry-run` in a scratch clone pinned to the captured revision, or the output of the latest default-branch run of the same reader |
 
 Rules for the three groups:
@@ -41,13 +45,21 @@ Rules for the three groups:
 - Use the newest record or run only. A later failing or blocked-with-failing-rows result
   removes a brief from the second group; an older pass does not count.
 - A reconcile commit on an open change is an observation at that change's head, not merged
-  state. Name the head revision and say which of the two the list came from. With no such
-  commit to read, `statusgen reconcile --root <dir> --repo <owner/name>` without `--apply`
+  state. Read it only when the change's head branch is the job's fixed branch in the same
+  repository, never a fork, and its head commit is authored by the job's own identity. A
+  change that fails either test is an unreadable source: the group is **Unknown**. Name the
+  head revision and say which of the two the list came from. Only the default-branch commit
+  feeds **Shared obstacles**.
+- The job commits only when a board row changes, so the latest reconcile commit can be older
+  than the captured revision. Give its date beside the captured revision; when it is older,
+  the held list is a lower bound. With no such commit to read, `statusgen reconcile --root <dir> --repo <owner/name>` without `--apply`
   reports witnessed rows that differ from the board, but not why a write is held: label
   those **Delivered; row differs, hold reason not read**.
 - The completion reader needs repository history, which an archive tree lacks. Use a scratch
   clone at the captured revision; never run it in a shared checkout and never without
-  `--dry-run`.
+  `--dry-run`. It considers `gate: model` briefs only. A `verified` `gate: human` brief that
+  awaits sign-off never appears in the third group; it stays under **What is holding
+  progress**. Say so beside the count.
 - Group each list by the stated reason and keep the reason text and the cited issue. These
   reasons feed **Shared obstacles**.
 - Link every count to its source revision, record or run. A source that could not be read
@@ -92,8 +104,9 @@ touches. For each obstacle show:
 
 - the scoped briefs it holds, deduplicated, and how many of them lie on a critical path;
 - its age: the earliest date a scoped brief's record cited it, with that record as the source;
-- the owning role, read from the issue's routing label or assignee; when none is recorded
-  write **No owner recorded**;
+- the owning role, read from the issue's routing label. An assignee is an account, not a
+  role: name the account beside the role, and with an assignee but no routing label give the
+  account and write **Role not recorded**. With neither, write **No owner recorded**;
 - the count of Evidence changes citing it since that earliest date, merged and open counted
   separately. This is activity spent against the obstacle, not progress;
 - the reference's current state, any recorded ruling on it, and whether a hold citing it has
@@ -105,7 +118,7 @@ An obstacle that holds three or more scoped briefs and is seven or more days old
 text label and an edge to each brief it holds. It is not a brief: leave it out of total work,
 remaining work, path weights and every chart. In **What to do next**, list standing obstacles
 before critical-path brief moves, ordered by scoped briefs held on a critical path, then
-briefs held, then age. The move's owning role is the obstacle's recorded owner; with no owner
+briefs held, then age. The move's owning role is the obstacle's recorded role; with no role
 recorded, the move is the desk's: assign one. Place each brief move that would meet a
 standing obstacle under that obstacle, because repeating it adds activity and releases
 nothing. Holds that cite no reference, or one that could not be read, stay ungrouped under
