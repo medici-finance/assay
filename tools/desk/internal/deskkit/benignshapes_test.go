@@ -32,7 +32,7 @@ func benignRand(name, alphabet string, n int) string {
 const (
 	benignLowerHex = "0123456789abcdef"
 	benignUpperHex = "0123456789ABCDEF"
-	benignBase62   = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+	benignBase62   = "ABCDEFGHIJKLMNOPQRSTUVWXYZ" + "abcdefghijklmnopqrstuvwxyz" + "0123456789"
 )
 
 // benignAdmitCases are the in-test examples an entry admits: clean under the production

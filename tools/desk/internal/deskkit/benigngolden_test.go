@@ -53,9 +53,9 @@ const (
 
 // goldenAlphabets are the three alphabets the generated runs are drawn from.
 var goldenAlphabets = []string{
-	"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/",
+	"ABCDEFGHIJKLMNOPQRSTUVWXYZ" + "abcdefghijklmnopqrstuvwxyz" + "0123456789+/",
 	"0123456789abcdef",
-	"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+	"ABCDEFGHIJKLMNOPQRSTUVWXYZ" + "abcdefghijklmnopqrstuvwxyz" + "0123456789",
 }
 
 // goldenPositions are the four places a generated run is put into a payload line. When
