@@ -6,15 +6,26 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
 )
 
 // HotfixOwnedBy returns the owner check for owner uid: path (symlinks resolved) must be owned
 // by uid and not group- or world-writable, and every parent directory must be owned by uid
 // or root and not group- or world-writable unless sticky. Production passes uid 0
-// (HotfixRootOwned); only a test seam passes the test user's uid.
+// (HotfixRootOwned); only a test seam passes the test user's uid. It trusts no owner outside
+// the initial user namespace (userNSIdentity): there every path is could-not-check.
 func HotfixOwnedBy(uid uint32) HotfixOwnerCheck {
+	return hotfixOwnedByNS(uid, readProcFile, runtime.GOOS)
+}
+
+// hotfixOwnedByNS is HotfixOwnedBy over an explicit /proc reader and platform, so a test feeds
+// it a mapping. The namespace gate runs before any owner is read, on every path.
+func hotfixOwnedByNS(uid uint32, read func(string) ([]byte, error), goos string) HotfixOwnerCheck {
 	return func(path string) error {
+		if err := userNSIdentity(read, goos); err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
 		real, err := filepath.EvalSymlinks(path)
 		if err != nil {
 			return fmt.Errorf("%s: %v", path, err)

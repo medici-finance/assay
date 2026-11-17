@@ -1,5 +1,5 @@
 {
-  "test": "go test . -count=1 -timeout 300s -run '^(TestStatusgenHotfixSelf|TestStatusgenHotfixParity|TestStatusgenHotfixReaders|TestStatusgenHotfixNetnsRoot|TestStatusgenHotfixPinReader)$'",
+  "test": "go test . -count=1 -timeout 300s -run '^(TestStatusgenHotfixSelf|TestStatusgenHotfixParity|TestStatusgenHotfixReaders|TestStatusgenHotfixNetnsRoot|TestStatusgenHotfixPinReader|TestStatusgenOwnerUserNS|TestStatusgenOwnerGateFirst|TestStatusgenUserNSIdentity|TestStatusgenOwnerInGated|TestStatusgenOwnerReasonDistinct|TestStatusgenOwnerReadersKnown)$'",
   "control": {
     "name": "CONTROL: invert the valid-proceeds assertion in TestStatusgenHotfixSelf",
     "file": "hotfixself_test.go",
@@ -8,40 +8,10 @@
   },
   "mutations": [
     {
-      "name": "F1 PRE-FIX: the network-off helper checks ownership by uid 0, as every other invocation does (TestStatusgenHotfixNetnsRoot)",
+      "name": "helper argv selects an owner check without the namespace gate (TestStatusgenHotfixNetnsRoot)",
       "file": "hotfixself.go",
-      "old": "\tif len(args) >= 2 && args[1] == netnsHelperArg {",
-      "new": "\tif false && len(args) >= 2 && args[1] == netnsHelperArg {"
-    },
-    {
-      "name": "F1: the namespace owner check applies to every invocation, not only the helper (ordinary invocation must stay on uid 0)",
-      "file": "hotfixself.go",
-      "old": "\tif len(args) >= 2 && args[1] == netnsHelperArg {",
-      "new": "\tif len(args) >= 2 {"
-    },
-    {
-      "name": "F1: in the helper a uid-0 parent (the mapped caller) is still accepted as root",
-      "file": "hotfixowner_unix.go",
-      "old": "func sgHotfixOwnedByRoot(root uint32) func(string) error { return sgHotfixOwnedByIn(root, root) }",
-      "new": "func sgHotfixOwnedByRoot(root uint32) func(string) error { return sgHotfixOwnedByIn(root, 0) }"
-    },
-    {
-      "name": "F1: a mapped overflow uid is not treated as ambiguous",
-      "file": "hotfixself.go",
-      "old": "\t\tif ov >= e.inside && ov < e.inside+e.count {",
-      "new": "\t\tif false && ov >= e.inside && ov < e.inside+e.count {"
-    },
-    {
-      "name": "F1: a line mapping outside uid 0 is ignored (root always read as the overflow uid)",
-      "file": "hotfixself.go",
-      "old": "\t\tif e.outside == 0 {",
-      "new": "\t\tif false && e.outside == 0 {"
-    },
-    {
-      "name": "F1: a zero-length extent is accepted",
-      "file": "hotfixself.go",
-      "old": "err != nil || e.count == 0 {",
-      "new": "err != nil {"
+      "old": "\treturn sgHotfixOwnedByNS(0, read, runtime.GOOS)",
+      "new": "\tif len(args) >= 2 && args[1] == netnsHelperArg {\n\t\treturn sgHotfixOwnedByIn(0, 0)\n\t}\n\treturn sgHotfixOwnedByNS(0, read, runtime.GOOS)"
     },
     {
       "name": "A3: a pin line matches its name without the literal space (tab-separated lines resolve)",
@@ -124,14 +94,56 @@
     {
       "name": "TestStatusgenHotfixParity: a statusgen refusal phrase drifts from deskkit's",
       "file": "hotfixself.go",
-      "old": "\tsgReasonNoPin        = \"hotfix could-not-check: no pin resolves\"",
-      "new": "\tsgReasonNoPin        = \"hotfix could-not-check: no pin resolved\""
+      "old": "\tsgReasonNoPin           = \"hotfix could-not-check: no pin resolves\"",
+      "new": "\tsgReasonNoPin           = \"hotfix could-not-check: no pin resolved\""
     },
     {
       "name": "TestStatusgenHotfixReaders: the version gate no longer strips a +hotfix suffix",
       "file": "versiongate.go",
       "old": "\tif i := strings.IndexByte(tag, '+'); i >= 0 {",
       "new": "\tif i := strings.IndexByte(tag, '+'); i >= 0 && false {"
+    },
+    {
+      "name": "user namespace gate: the gate is skipped before the uid-0 owner check (TestStatusgenOwnerUserNS)",
+      "file": "hotfixowner_unix.go",
+      "old": "\t\tif err := sgUserNSIdentity(read, goos); err != nil {",
+      "new": "\t\tif err := sgUserNSIdentity(read, goos); err != nil && false {"
+    },
+    {
+      "name": "user namespace gate: a non-identity mapping is accepted",
+      "file": "userns.go",
+      "old": "\t\tif !sgIsIdentityIDMap(string(b)) {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "user namespace gate: gid_map is not read",
+      "file": "userns.go",
+      "old": "\tfor _, p := range []string{sgProcUIDMap, sgProcGIDMap} {",
+      "new": "\tfor _, p := range []string{sgProcUIDMap} {"
+    },
+    {
+      "name": "user namespace gate: an absent mapping on Linux is accepted",
+      "file": "userns.go",
+      "old": "\t\t\tif goos != \"linux\" && errors.Is(err, fs.ErrNotExist) {",
+      "new": "\t\t\tif errors.Is(err, fs.ErrNotExist) {"
+    },
+    {
+      "name": "user namespace gate: the ordinary invocation takes the ungated uid-0 check",
+      "file": "hotfixself.go",
+      "old": "\treturn sgHotfixOwnedByNS(0, read, runtime.GOOS)",
+      "new": "\treturn sgHotfixOwnedByIn(0, 0)"
+    },
+    {
+      "name": "a namespace-gate refusal is reported as not root-owned (TestStatusgenOwnerReasonDistinct)",
+      "file": "userns.go",
+      "old": "\tif errors.Is(err, sgErrOwnerUnverified) {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "the owner check drops the gate's error chain, so its refusal reads as not root-owned (TestStatusgenOwnerReasonDistinct)",
+      "file": "hotfixowner_unix.go",
+      "old": "\t\t\treturn fmt.Errorf(\"%s: %w\", path, err)",
+      "new": "\t\t\treturn fmt.Errorf(\"%s: %v\", path, err)"
     }
   ]
 }
