@@ -9,7 +9,7 @@ alternatives:
 accepted:
   - "Proposed record of the chosen option. Under option 1, the bounded change is accepted with its stated compatibility, and it grants no new credential, role, endpoint or deployment authority (option 1 as worded in the brief and on #3734). No additional credential holder or universal broker is allowed (the brief's `## Human decision`)."
   - "Proposed record of the chosen option. The acceptance packet posted on #3734 on 2026-11-03 records a process-boundary change that option 1 must consciously accept: a consumer that mints now reads the App signing key and holds the installation token in its own process, under the existing OS user, where previously the signing key was handled inside a short-lived desktoken child."
-  - "Proposed record of the chosen option. The same packet records that not every minter subprocess was retired: eleven direct CLI callers were explicitly deferred and still use the same provider through the CLI adapter, and the release/preflight executable checks and shell or non-Go consumers keep their intentional boundaries (the brief's `consumers:` list marks the preflight probe, the release minter, cellctl and shell consumers and statusgen out of scope)."
+  - "Proposed record of the chosen option. The same packet records that not every minter subprocess was retired: eleven direct CLI callers were explicitly deferred and, as of that 2026-11-03 packet, still used the same provider through the CLI adapter, and the release/preflight executable checks and shell or non-Go consumers keep their intentional boundaries (the brief's `consumers:` list marks the preflight probe, the release minter, cellctl and shell consumers and statusgen out of scope). Since then ten of the eleven have moved in process by later changes: `repohardenguard` under #1573, and the nine write verbs under #5457, each tracked on its own issue. Only the boot mint check still starts the CLI, as a probe of the installed binary. The `tools/desk/README.md` callsite inventory records the current state."
   - "Under either option, approval grants no new identity or deployment (the brief's `## Review`), and independent verification of the brief's Verify table stays a separate act; this record supplies neither."
 ---
 
@@ -23,7 +23,10 @@ has chosen an option: an unedited comment from the driver's own account on
 [issue #3734](https://github.com/medici-finance/assay/issues/3734#issuecomment-6923693852),
 posted 2026-11-16, names `desktools-v2/58` and option 1, accepting the implementation delivered
 in #4408 and its stated compatibility, with no new credential, role, endpoint or deployment
-authority. The brief's `ruling:` key cites that comment. The comment does not name
+authority. That choice covers the implementation in #4408 only. The later in-process moves of
+the remaining direct callers (`repohardenguard` under #1573, the nine write verbs under #5457)
+were separate changes tracked on their own issues, and the #3734 comment does not rule on them.
+The brief's `ruling:` key cites that comment. The comment does not name
 `DR-desktools-v2-58`, and `statusgen --corroborate` requires the comment's own text to name the
 record, so this record stays `placeholder-unratified` until the driver posts a comment that
 names `DR-desktools-v2-58`.

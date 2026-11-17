@@ -223,7 +223,7 @@ func mintInstallationToken(owner string) (string, error) {
 
 // init installs deskpost's own, already-tested App-token mint (mintInstallationToken,
 // above) as the GitHub custody minter deskkit.ForgeFor calls, instead of ForgeFor's
-// default (RoleTokenForRepo, which shells to the `desktoken` binary). deskpost is always
+// default (RoleTokenForRepo, which runs the role-credential provider in process). deskpost is always
 // the reviewer App regardless of which loop invoked it (isReviewerBot, above) — the role
 // deskkit's hook signature carries is not consulted here — so this always mints the SAME
 // identity mintInstallationToken always minted.

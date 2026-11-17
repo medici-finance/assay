@@ -3544,8 +3544,10 @@ its scope limits are documented once, under
 [Where the App credentials live — the #794 ruling](#where-the-app-credentials-live--the-794-ruling).
 
 Worth stating here because it is the half that is easy to miss: `deskpost` and `deskevidence`
-do **not** shell out to `desktoken`. Each signs its own JWT and mints its own installation
-token, so fixing the resolution in `desktoken` alone left both of them reading from a
+do **not** shell out to `desktoken`. `deskpost` signs its own JWT and mints its own installation
+token; `deskevidence` reads the verifier credential in process through
+`deskkit.WriteVerbRoleCredential`. When both still signed their own JWTs, fixing the resolution
+in `desktoken` alone left both of them reading from a
 hardcoded `~/.config/assay` — a deployment provisioning elsewhere still could not post a
 review or write an Evidence commit from a cold shell, with the App **ID** resolving fine off
 the search path, so the failure read as a broken key rather than a wrong directory.
@@ -3645,21 +3647,26 @@ The provider imports nothing from the desk module; `deskkit` hands it the contro
 | **Install id** | `<PREFIX>_INSTALL_ID` is trimmed and must be digits only; anything else is refused before a JWT is signed. |
 | **GitLab** | Rotation stays an explicit `desktoken <role> --forge gitlab` act, serialized per role by the rotation lock. A read-only lookup (`--no-rotate`) never rotates, takes no lock and contacts no forge. The rotation and its self-check never follow a redirect. |
 
-**Callsite inventory.** Where each production credential reader stands. No write verb runs
-`desktoken` as a child any more; the only sites that still name the program are probes of the
+**Callsite inventory.** Where each production role-credential reader in `tools/desk` stands,
+and which processes hand a credential they already hold to a child. No write verb runs
+`desktoken` as a child any more; the only sites that still start the program are probes of the
 installed binary, which keep it on purpose. `desktokenExecAllow` in
-`internal/deskkit/roletokenguard_test.go` is the closed list of those sites, and
-`TestWriteVerbsReadCredential` (`internal/deskkit/writeverbguard_test.go`) fails if a write verb
-names `desktoken` again:
+`internal/deskkit/roletokenguard_test.go` is the closed list of every place outside the minter's
+own package that may name the program: those probe sites, plus three entries that name it only
+as audit-row data and start nothing. `TestWriteVerbsReadCredential`
+(`internal/deskkit/writeverbguard_test.go`) fails if a write verb names `desktoken` again:
 
 | Site | Status |
 |---|---|
-| `cmd/deskclose/forge.go`, `cmd/deskdisposition/forge.go`, `cmd/deskevidence/github.go`, `cmd/deskfile/github.go`, `cmd/desklabel/forge.go`, `cmd/deskpathguard/forge.go`, `cmd/deskpr/exec.go`, `cmd/deskreply/exec.go`, `cmd/deskrestamp/forge.go` | migrated: in process through `deskkit.WriteVerbRoleCredential`, which reads GitLab custody read-only and never rotates |
-| `cmd/repohardenguard/forge.go` | migrated: in process through `deskkit.GitHubRoleToken` (the `auditor` role) |
+| `cmd/deskclose/forge.go`, `cmd/deskdisposition/forge.go`, `cmd/deskevidence/github.go`, `cmd/deskfile/github.go`, `cmd/desklabel/forge.go`, `cmd/deskpathguard/forge.go`, `cmd/deskpr/exec.go`, `cmd/deskreply/exec.go`, `cmd/deskrestamp/forge.go` | migrated (#5457): in process through `deskkit.WriteVerbRoleCredential`, which reads GitLab custody read-only and never rotates. Each reads only its own loop's role, except the two verbs whose posting identity is fixed: `deskreply` (`worker`) and `deskevidence` (`verifier`) admit an audited cross-role read from another window (#6069; see [Role separation](#role-separation-a-loop-takes-only-its-own-role-6069)) |
+| `cmd/repohardenguard/forge.go` | migrated (#1573): in process through `deskkit.GitHubRoleToken` (the `auditor` role) |
+| `internal/deskkit/roletoken.go` (`tokenMinter`), and every caller of the shared resolver: `RoleTokenForOwner`, `RoleTokenForRepo` or `GitHubRoleToken` in `cellctl` (`deskd.go`), `deskautolane`, `deskboard`, `deskdispatch`, `deskflip`, `deskgit`, `deskinbox`, `deskmerge`, `deskmonitor`, `deskread`, `deskroster`, `deskrun`, `issueboard` and `scanloop`, and every `ForgeFor` caller that installs no custody minter of its own | migrated: runs the provider in process |
+| `cmd/deskpost/github.go` (`mintInstallationToken`, installed by `init` as the resolver's GitHub custody minter through `deskkit.SetGitHubCustodyMinter`) | separate, not moved onto the provider: `deskpost` reads the reviewer App key, signs its own JWT and exchanges it for an installation token in process, with no `desktoken` child. It mints fresh on every run and writes no token cache. Its tests are in `cmd/deskpost/token_test.go` (`TestMintTokenSuccess` and the refusal cases) |
+| `deskkit`'s own GitLab custody read (`gitlabCustody`) and `desktoken coverage` | separate: unchanged by this change |
 | `cmd/deskboot/boot.go` (`stepMint`), the `desktoken` lookup in `internal/deskkit/preflight.go` (`coldMintProbe`) | out of scope: each proves the installed binary mints from a shell, so the child is the thing under test |
 | `cmd/deskrelease/github.go` (`resolveDeskTokenPath`) | out of scope: pins the `desktoken` installed beside `deskrelease` |
-| `deskkit`'s own GitLab custody read (`gitlabCustody`) and `desktoken coverage` | separate: unchanged by this change |
-| `internal/deskkit/roletoken.go` (`tokenMinter`) | migrated: runs the provider in process |
+| `cmd/deskdispatch/dispatch.go` (`resolveClaimAuth`, `resolveClaimAuthGitLab`) | forwards; the child mints nothing: the role credential `deskdispatch` already holds goes to the claim tool, as `--token-file` for the Go binary and in the environment for the legacy script (`GH_TOKEN`, plus `GITLAB_TOKEN` on GitLab) |
+| `cmd/deskevidence/statusgen.go` (`statusgenAudit`) | forwards; the child mints nothing: for a host audit (`--acceptance-forge`) the verifier credential `deskevidence` already holds goes to the `statusgen` child as `GH_TOKEN`. Every other `statusgen` child has the forge credential variables stripped and a non-credential refusal marker in their place. `statusgen` has no credential authority of its own, but in this one case it runs holding the verifier's token |
 
 `TestCredentialImportConfinement` (internal/credential) holds the boundary: only `deskkit` and
 `cmd/desktoken` may import the provider, only three named functions may run an operation, and
