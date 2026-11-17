@@ -20,9 +20,12 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// maxResponseBytes bounds a forge response read; nothing this verb reads is near it.
+// maxResponseBytes bounds a forge response read; nothing this verb reads is near it. An answer
+// over it is refused (deskkit.ReadForgeBodyUpTo), never read as its first 4 MiB.
 const maxResponseBytes = 4 << 20
 
 type apiClient struct {
@@ -107,7 +110,12 @@ func (c *apiClient) send(method, path, contentType string, rdr io.Reader) (apiRe
 		return apiResponse{}, fmt.Errorf("%s %s: %v", method, path, redactURLError(err))
 	}
 	defer resp.Body.Close()
-	b, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	b, err := deskkit.ReadForgeBodyUpTo(resp.Body, method+" "+path, maxResponseBytes)
+	if deskkit.IsForgeBodyOverCap(err) {
+		// Over the bound: no answer at all. A prefix such as `[]` would decode as a complete,
+		// empty result. The refusal is Unverifiable and names method and path only.
+		return apiResponse{Status: resp.StatusCode}, err
+	}
 	if err != nil {
 		return apiResponse{Status: resp.StatusCode}, fmt.Errorf("%s %s: read response: %v", method, path, err)
 	}

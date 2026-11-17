@@ -66,7 +66,7 @@ FAULTS = [
     fault("retained-channel-framed-reply", "channels.go", 'func heldResponse() wireResponse { return wireResponse{Schema: Schema, Error: "held"} }', 'func heldResponse() wireResponse { return wireResponse{Schema: Schema} }', "ChannelRestart/retained-socket", "rebound current channel did not return typed held"),
     fault("reserved-control-capacity", "control.go", '"control.sock", c.controlSlots,', '"control.sock", c.dataSlots,', "ControlCapacity", "slow data slots blocked private revocation"),
     # The handler is descheduled between its close and its slot release; the sleep makes that delay certain.
-    fault("slot-release-before-close", "channels.go", "\t\t\tdefer conn.Close()\n\t\t\tdefer func() { <-slots }()\n", "\t\t\tdefer func() { time.Sleep(5 * time.Millisecond); <-slots }()\n\t\t\tdefer conn.Close()\n", "Slots", "slots still held after"),
+    fault("slot-release-before-close", "channels.go", "\tdefer conn.Close()\n\tdefer func() { <-slots }()\n", "\tdefer func() { time.Sleep(5 * time.Millisecond); <-slots }()\n\tdefer conn.Close()\n", "Slots", "slots still held after"),
     # Holding the controller lock parks a handler past its IOTimeout; closing instead of expiring answers its client while it still holds its slot.
     fault("expiry-keeps-connection", "channels.go", "stop := context.AfterFunc(call, func() { conn.SetDeadline(expiredDeadline) })", "stop := context.AfterFunc(call, func() { conn.Close() })", "Expiry", "answered while its handler held a slot"),
     # The fixture's own startup check: a retry over an abandoned handler must fail, not be absorbed by a later success.

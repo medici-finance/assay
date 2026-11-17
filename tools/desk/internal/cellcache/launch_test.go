@@ -83,7 +83,7 @@ func TestCacheScanAdmission(t *testing.T) {
 
 // regression: #3353
 func TestCacheAdmissionFences(t *testing.T) {
-	for _, kind := range []string{"missing", "corrupt", "stale", "dirty", "space", "domain"} {
+	for _, kind := range []string{"missing", "corrupt", "stale-bound", "dirty", "space", "domain"} {
 		t.Run(kind, func(t *testing.T) {
 			p := fixture(t)
 			_, err := Prepare(p)
@@ -107,7 +107,10 @@ func TestCacheAdmissionFences(t *testing.T) {
 				if err = os.WriteFile(p.ReportPath(), []byte("broken"), 0600); err != nil {
 					t.Fatal(err)
 				}
-			case "stale":
+			case "stale-bound":
+				// Stale alone admits (TestCacheStaleAdmits); a freshness
+				// bound the policy asks for is a fence.
+				p.MeasurementMaxAge = 600
 				report.After.At = time.Now().Add(-time.Hour)
 				b, _ = json.Marshal(report)
 				if err = os.WriteFile(p.ReportPath(), b, 0600); err != nil {
@@ -212,13 +215,16 @@ func TestCacheMaintenanceRecovery(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(p.Root, "report.json"), b, 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Acquire(p.Env()); err == nil || !strings.Contains(err.Error(), "stale") {
-		t.Fatalf("aged accounting did not explicitly refuse: %v", err)
+	// Age alone admits; a policy that asks for a freshness bound refuses it.
+	bounded := p
+	bounded.MeasurementMaxAge = int64(AdmitMaxAge / time.Second)
+	if _, err := Acquire(bounded.Env()); err == nil || !strings.Contains(err.Error(), "freshness bound") {
+		t.Fatalf("aged accounting did not explicitly refuse under a freshness bound: %v", err)
 	}
 	if _, err := Check(p, false); err != nil {
 		t.Fatal(err)
 	}
-	lease, err = Acquire(p.Env())
+	lease, err = Acquire(bounded.Env())
 	if err != nil {
 		t.Fatalf("aged-report explicit maintenance did not recover: %v", err)
 	}

@@ -21,8 +21,8 @@ package deskkit
 //  2. CUSTODY. ForgeFor obtains the resolved role's already-minted token from the
 //     existing custody path for that forge and hands it to the backend it constructs.
 //     It never mints a credential itself (GitHub: it either calls the installed
-//     GitHubCustodyMinter hook — see below — or shells to the existing `desktoken`
-//     mint-or-reuse path via RoleTokenForRepo; GitLab: it only READS the file a prior
+//     GitHubCustodyMinter hook — see below — or runs the role-credential provider's
+//     mint-or-reuse path in process via RoleTokenForRepo; GitLab: it only READS the file a prior
 //     `desktoken --forge gitlab <role>` rotation produced — it never rotates). It never
 //     falls back to an ambient CLI credential. A missing or insecurely-permissioned
 //     custody file is Refused (exit 5) naming the remedy: this is a deployment
@@ -108,7 +108,7 @@ func hostOfRemote(raw string) (string, error) {
 	if strings.Contains(raw, "://") {
 		u, err := url.Parse(raw)
 		if err != nil || u.Hostname() == "" {
-			return "", fmt.Errorf("cannot parse remote URL %q", raw)
+			return "", fmt.Errorf("cannot parse remote URL %q", RedactRemoteUserinfo(raw))
 		}
 		return strings.ToLower(u.Hostname()), nil
 	}
@@ -117,7 +117,7 @@ func hostOfRemote(raw string) (string, error) {
 	if at >= 0 && colon > at {
 		return strings.ToLower(raw[at+1 : colon]), nil
 	}
-	return "", fmt.Errorf("cannot determine a host from remote URL %q", raw)
+	return "", fmt.Errorf("cannot determine a host from remote URL %q", RedactRemoteUserinfo(raw))
 }
 
 // knownForgeHostsList renders wellKnownForgeHosts for a refusal message, sorted so the
@@ -274,8 +274,8 @@ func ForgeKindFromSlugAndHost(slug, host string) (ForgeKind, string, error) {
 type GitHubCustodyMinterFunc func(role string, repo ForgeRepo) (token, baseURL string, err error)
 
 // githubCustodyMinter is the installable seam ForgeFor's GitHub branch calls instead of
-// its default (RoleTokenForRepo, which shells to the `desktoken` binary's mint-or-reuse
-// path). A caller that already mints its OWN GitHub App installation tokens in-process —
+// its default (RoleTokenForRepo, which runs the role-credential provider's mint-or-reuse
+// path in process). A caller that already mints its OWN GitHub App installation tokens in-process —
 // deskpost, extracted from the live behavior this package's golden corpus pins — installs
 // its existing, tested minter here (cmd/deskpost/github.go's init) instead of this
 // package growing a SECOND JWT-signing implementation, and instead of deskpost losing the

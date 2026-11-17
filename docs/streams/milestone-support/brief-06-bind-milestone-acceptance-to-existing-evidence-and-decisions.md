@@ -149,6 +149,30 @@ Admission-Bracket: run=fefd505e208225dda27cfdb32feef94a17f1130c68295998698ffeaa7
 
 **VERIFY: PASS** — rows 1-2 pass in one closed container bracket (verdict=match), each red at base a7e2f320f8a7 and green at head 612750a12406, and 27 of 27 mutations were caught. gate: human, so this does not sign the brief off.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestMilestoneAcceptSubject$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestMilestoneAcceptSubject ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-16 | assay-verifier-app[bot] @ 35ddd8767418 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestMilestoneRevocation$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestMilestoneRevocation ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-16 | assay-verifier-app[bot] @ 35ddd8767418 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:7b25a82e60b2ed09e9210cf077f324fbe6939323cdedc7c03995e0a9db9da673
+Container-Image: sha256:4630f26744337be5eb0f661056e4569c92162534306b461fcffef03c8d26a680
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6657 run=86a15ef6b390f6d62d6da9325bd8c12d99498335aa885ee60ed1c25584777887 source=35ddd87674183019817c5f99f7340d44b586c24d brief=docs/streams/milestone-support/brief-06-bind-milestone-acceptance-to-existing-evidence-and-decisions.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=86a15ef6b390f6d62d6da9325bd8c12d99498335aa885ee60ed1c25584777887 source=35ddd87674183019817c5f99f7340d44b586c24d tree=sha256:7b25a82e60b2ed09e9210cf077f324fbe6939323cdedc7c03995e0a9db9da673 witness=sha256:26616ccd1f109d86bc60d98fcb873d13525c71c32b965b3453da862c381c10bc opened=2026-11-16T18:09:57Z closed=2026-11-16T18:27:25Z before=receipt after=check-verifier
+
+Fail-first (rows 1 and 2, risk-bearing because the brief declares sensitive-data: yes): could-not-run. Post-merge, the merge-base of HEAD and origin/main is HEAD itself (35ddd8767418). Attempt 1 (container-netns bracket, --fail-first at the default base) reported both rows green at base 35ddd8767418 and pass at head, so non-discriminating; it was discarded and superseded. An older base (a7e2f320f8a7, first parent of the PR 5911 merge 8aedd1b42291) is refused by the close gate unless a delivering commit is recorded, and the pinned statusgen v1.0.85 verifyrun has no --delivering-commit flag, so no admissible fail-first witness can be produced with this tool pin.
+
+Supplemental, not witness credit, host darwin-arm64, Go 1.27.4, GOPROXY=off, KUBECONFIG=/dev/null, on scratch exports outside the home:
+- S1: at a7e2f320f8a7 (the pre-delivery tree) each named test is absent: go test exits 0 with "no tests to run", and the row's PASS-line grep exits 1, so each row command would exit nonzero there.
+- S2: the brief's mutation manifest (06-mutate.py, 27 cases) on a snapshot of 35ddd8767418: rc=0, baseline named PASS for both tests, 27 of 27 mutations CAUGHT by a named test failure, sources restored.
+
+RISK-VALUE: DERIVED — acceptance authority = d.Actor.Kind == "human" && slices.Contains(in.Policy.Humans, d.Actor.ID) @ statusgen/domain/milestone.go:489, actor built as Kind "human", ID "human:" + outcome.Name @ statusgen/milestoneacceptance.go:158 — spec/milestone-v1.md:492-500 grants authority only through the policy's named humans.
+RISK-VALUE: DERIVED — SeparateAcceptor required; DecisionIssue < 1 and empty Humans refused @ statusgen/domain/milestone.go:356 — spec/milestone-v1.md:496 mandatory separate acceptor.
+RISK-VALUE: DERIVED — criterionRE = ^C[0-9]{2,}$ @ statusgen/domain/milestone.go:26, equal to milestoneCritRe @ statusgen/milestones.go:166 — spec/milestone-v1.md:118 stable criterion IDs.
+RISK-VALUE: DERIVED — ValidUntil required, no default TTL @ statusgen/domain/milestone.go:285, enforced @ statusgen/domain/milestone.go:599 — spec/milestone-v1.md:534 no freshness duration is defaulted.
+RISK-VALUE: DERIVED — bot exclusion = User.Type equal-fold "Bot" or login suffix "[bot]" @ statusgen/decisionruling.go:341, same test as the existing refusal @ statusgen/decisionruling.go:362.
+
+**VERIFY: BLOCKED** — rows 1 and 2 pass at 35ddd8767418 in a closed container-netns admission bracket (bracket-digest verdict=match), but both rows are risk-bearing and their fail-first witness is could-not-run: post-merge the merge-base is HEAD, and the pinned v1.0.85 verifyrun cannot record a delivering commit. Needs a tool pin with --delivering-commit (or a desk ruling on the fail-first obligation). gate: human; the sign-off stays owed on decision issue medici-finance/assay#5705.
+
 ## Review
 
 Gate: human, derived from the declared risks. Independent review checks compatibility and consumer-flow evidence. No reviewer/worker stamp, release permission or acceptance receipt is created by this authoring change.

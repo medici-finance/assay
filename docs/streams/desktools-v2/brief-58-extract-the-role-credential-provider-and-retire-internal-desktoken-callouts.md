@@ -7,6 +7,7 @@ depends: []
 unblocks: ["desktools-v2/59", "desktools-v2/62", "desktools-v2/33", "forge-neutral/40", "desktools-v2/75", "desktools-v2/77"]
 effort: L
 gate: human
+design: DR-desktools-v2-58
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2
@@ -36,7 +37,7 @@ consumers:
   - "tools/desk/internal/deskkit/preflight.go: out-of-scope (coldMintProbe deliberately proves a fresh executable and cold environment; retain its subprocess)"
   - "tools/desk/cmd/deskrelease/: out-of-scope (release minter selection is a separate deployment boundary; inventory and retain its explicit executable contract)"
   - "tools/desk/cmd/cellctl and shell/non-Go consumers: out-of-scope (retain CLI compatibility and their credential/process boundaries)"
-  - "statusgen/: out-of-scope (credential-free process; online reads stay on deskread and benefit inside that existing role-owned child)"
+  - "statusgen/: out-of-scope (mints nothing and holds no role custody; a credential reaches it only from its caller, as when deskevidence forwards the verifier token for a host audit)"
   - "tools/desk/internal/forgeexecutor/: follow-up forge-neutral/40"
   - "docs/library-first.md, docs/contracts.md and tools/desk/README.md: follow-up desktools-v2/58"
 ---
