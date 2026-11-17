@@ -454,7 +454,10 @@ should have declared one" by itself. That question is yours. On every review:
   verdict with the fixed line `Undeclared-desk-decision: <one line>` (one line, no code fence
   around it: the ready gate reads this as a BLOCK-direction marker, the same shape as
   `Security-Review: fail`, and a fenced marker still counts there). The ready-flip refuses
-  while this line stands at the current head.
+  while this line stands at the current head. To record that you checked and found none,
+  omit the line or write `Undeclared-desk-decision: none` (`none found` and `none observed`
+  read the same); an explanation may follow after a separator such as `.` or `—`. Any other
+  value, an empty one included, holds the flip.
 <!-- lane:correctness:begin -->
 - **Which verdict carries it.** Carry the line on your CORRECTNESS verdict. When the
   undeclared decision is the only thing holding the PR, post APPROVE carrying the line — it is
