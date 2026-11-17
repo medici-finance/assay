@@ -240,6 +240,37 @@ func TestForgeLocalAuthorityChannelRestart(t *testing.T) {
 	})
 }
 
+// regression: #6756
+// A strictly sequential client on any channel is never refused on the
+// full-pool branch: each complete response leaves its slot already free.
+func TestForgeLocalAuthoritySlots(t *testing.T) {
+	f := newAuthorityFixture(t, nil)
+	ctx := context.Background()
+	control := filepath.Join(f.resources.Private.Name(), "control.sock")
+	grant := filepath.Join(f.resources.Grants[f.config.Launches[0].ID].Name(), "grant.sock")
+	scope := f.config.Launches[0].Scope.Scope
+	for i := range 50 {
+		state, e := RequestControl(ctx, control, f.config.MaxFrameBytes, f.config.IOTimeout, nil)
+		if e != nil || state.Version != f.version {
+			t.Fatalf("sequential control readback %d refused: %v", i, e)
+		}
+		assertIdleSlots(t, f.controller, "a control readback")
+		g, e := ReadGrant(ctx, grant, f.config.MaxFrameBytes, f.config.IOTimeout)
+		if e != nil || !same(g, f.grant) {
+			t.Fatalf("sequential grant read %d refused: %v", i, e)
+		}
+		assertIdleSlots(t, f.controller, "a grant read")
+		r, e := f.verifier.Authorize(ctx, f.grant, scope)
+		if e != nil {
+			t.Fatalf("sequential current read %d refused: %v", i, e)
+		}
+		if e = f.verifier.CheckRelease(ctx, r); e != nil {
+			t.Fatal(e)
+		}
+		assertIdleSlots(t, f.controller, "a current read")
+	}
+}
+
 // regression: #6668
 func TestForgeLocalAuthorityControlCapacity(t *testing.T) {
 	f := newAuthorityFixture(t, nil)

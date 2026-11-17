@@ -166,9 +166,23 @@ func newAuthorityFixture(t *testing.T, change func(*ProducerConfig)) *authorityF
 		_, e := v.Authorize(call, g, cfg.Launches[0].Scope.Scope)
 		return e
 	})
-	// Every pool is idle here without a wait: each handler frees its slot
-	// before the close that ends the client's read (Controller.answer).
+	assertIdleSlots(t, c, "fixture startup reads")
 	return &authorityFixture{controller: c, config: cfg, resources: r, clock: wall, grant: g, verifier: v, verifierConfig: vc, client: client, version: registered.Version}
+}
+
+// assertIdleSlots checks, without waiting, that no handler holds a data or
+// control slot. A handler gives its slot back before it closes the connection
+// and every client reads to EOF, so once a client holds a complete response
+// its slot is already free: every fixture returns an idle pool, and a test
+// that fills a pool never races the fixture's own startup reads.
+func assertIdleSlots(t *testing.T, c *Controller, after string) {
+	t.Helper()
+	if n := len(c.dataSlots); n != 0 {
+		t.Fatalf("%d data slots still held after %s", n, after)
+	}
+	if n := len(c.controlSlots); n != 0 {
+		t.Fatalf("%d control slots still held after %s", n, after)
+	}
 }
 
 // Only fixture startup reads retry, under the same absolute context deadline.

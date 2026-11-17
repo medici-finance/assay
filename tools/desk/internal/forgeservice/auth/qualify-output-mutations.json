@@ -1,0 +1,77 @@
+{
+  "test": "go test ./internal/forgeservice/auth/ -count=1 -run 'TestQualifyFixtureShowsOutput|TestMutationsShowNestedOutput|TestForgeLocalAuthorityCI'",
+  "control": {
+    "name": "CONTROL — the nonzero-exit branch raises without printing anything",
+    "file": "internal/forgeservice/auth/testdata/qualify_fixture.py",
+    "old": "            show_output(label, \"exit %d\" % result.returncode, result.stdout, result.stderr)\n",
+    "new": ""
+  },
+  "mutations": [
+    {
+      "name": "the timeout branch raises without printing the output it captured",
+      "file": "internal/forgeservice/auth/testdata/qualify_fixture.py",
+      "old": "            show_output(label, \"timeout after %ss\" % timeout, expired.stdout, expired.stderr)\n",
+      "new": ""
+    },
+    {
+      "name": "the failed call's stdout is never printed",
+      "file": "internal/forgeservice/auth/testdata/qualify_fixture.py",
+      "old": "(\"stderr\", stderr), (\"stdout\", stdout)",
+      "new": "(\"stderr\", stderr),"
+    },
+    {
+      "name": "the failed call's stderr is never printed",
+      "file": "internal/forgeservice/auth/testdata/qualify_fixture.py",
+      "old": "(\"stderr\", stderr), (\"stdout\", stdout)",
+      "new": "(\"stdout\", stdout),"
+    },
+    {
+      "name": "the printed output is no longer bounded to its tail",
+      "file": "internal/forgeservice/auth/testdata/qualify_fixture.py",
+      "old": "shown = lines[-TAIL_LINES:]",
+      "new": "shown = lines"
+    },
+    {
+      "name": "the exit code is dropped from the failure line",
+      "file": "internal/forgeservice/auth/testdata/qualify_fixture.py",
+      "old": "\"exit %d\" % result.returncode",
+      "new": "\"failed\""
+    },
+    {
+      "name": "a failed baseline exits without printing the nested go test output",
+      "file": "internal/forgeservice/auth/testdata/local_authority_mutations.py",
+      "old": "            show_tail(label, \"exit %d\" % code, baseline)\n",
+      "new": ""
+    },
+    {
+      "name": "an uncaught mutant raises without printing the nested go test output",
+      "file": "internal/forgeservice/auth/testdata/local_authority_mutations.py",
+      "old": "                show_tail(label, \"exit %d\" % code, mutated)\n",
+      "new": ""
+    },
+    {
+      "name": "a failed restored run exits without printing the nested go test output",
+      "file": "internal/forgeservice/auth/testdata/local_authority_mutations.py",
+      "old": "            show_tail(label, \"exit %d\" % code, restored)\n",
+      "new": ""
+    },
+    {
+      "name": "a timed-out nested go test raises without printing its partial output",
+      "file": "internal/forgeservice/auth/testdata/local_authority_mutations.py",
+      "old": "            show_tail(label, \"timeout after %ss\" % expired.timeout, text)\n",
+      "new": ""
+    },
+    {
+      "name": "the nested go test output is no longer bounded to its tail",
+      "file": "internal/forgeservice/auth/testdata/local_authority_mutations.py",
+      "old": "tail = lines[-TAIL_LINES:]",
+      "new": "tail = lines"
+    },
+    {
+      "name": "the nested tail no longer fits inside the qualification call's own 200-line tail",
+      "file": "internal/forgeservice/auth/testdata/local_authority_mutations.py",
+      "old": "TAIL_LINES = 150",
+      "new": "TAIL_LINES = 200"
+    }
+  ]
+}

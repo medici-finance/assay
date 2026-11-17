@@ -23,9 +23,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// maxResponseBytes bounds a response read; nothing this command reads is near it.
+// maxResponseBytes bounds a response read; nothing this command reads is near it. An answer
+// over it is refused (no answer, could-not-check), never read as its first 4 MiB.
 const maxResponseBytes = 4 << 20
 
 // transportFailed is the status a request that got no HTTP answer reports.
@@ -41,6 +44,10 @@ type apiClient struct {
 	base  string // ends in /api/v4, no trailing slash
 	http  *http.Client
 	token string // NEVER formatted into any output, error, URL or argv
+
+	// unreadable is the first answer whose body could not be read whole (a read error, over
+	// maxResponseBytes, or an empty GET result). Its text names method and path only.
+	unreadable error
 }
 
 // newAPIClient returns a client for the instance at gitlabURL, authenticating as token.
@@ -93,8 +100,35 @@ func (c *apiClient) send(method, path, contentType string, rdr io.Reader) (strin
 		return transportFailed, nil
 	}
 	defer resp.Body.Close()
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	b, rerr := deskkit.ReadForgeBodyUpTo(resp.Body, method+" "+path, maxResponseBytes)
+	if rerr == nil && method == http.MethodGet && emptyAnswer(resp.StatusCode, b) {
+		rerr = deskkit.Unverifiable(fmt.Sprintf("%s %s answered HTTP %d with an empty body where a result is expected", method, path, resp.StatusCode), nil)
+	}
+	if rerr != nil {
+		// A body cut off mid-read, over the bound, or empty where a GET's result belongs is no
+		// answer: the step sees "000" (never the 2xx with a partial or empty body, which
+		// decodes as a complete-looking "[]" or "{}"), and the run ends could-not-check.
+		c.noteUnreadable(deskkit.Unverifiable(fmt.Sprintf("%s %s: response body not read in full", method, path), rerr))
+		return transportFailed, nil
+	}
 	return strconv.Itoa(resp.StatusCode), b
+}
+
+// emptyAnswer reports a 2xx answer (other than 204/205, which carry no body by definition)
+// whose body is empty or only whitespace.
+func emptyAnswer(status int, b []byte) bool {
+	if status < 200 || status > 299 || status == http.StatusNoContent || status == http.StatusResetContent {
+		return false
+	}
+	return len(bytes.TrimSpace(b)) == 0
+}
+
+// noteUnreadable keeps the FIRST unreadable answer this client met; provision turns a run
+// that met one into exit 6 (could-not-check).
+func (c *apiClient) noteUnreadable(err error) {
+	if c.unreadable == nil {
+		c.unreadable = err
+	}
 }
 
 // fetchIcon downloads one public role icon. Unlike the API client it follows redirects (the
@@ -109,7 +143,7 @@ func fetchIcon(rawURL string) []byte {
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return nil
 	}
-	b, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	b, err := deskkit.ReadForgeBodyUpTo(resp.Body, "GET icon", maxResponseBytes)
 	if err != nil || len(b) == 0 {
 		return nil
 	}

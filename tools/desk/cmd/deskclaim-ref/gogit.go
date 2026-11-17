@@ -240,14 +240,19 @@ func findRef(refs []*plumbing.Reference, name string) (string, bool) {
 
 // --- repo / token resolution ------------------------------------------------
 
-// resolveRepo returns owner/name: --repo when given, else the cwd's origin remote (read
-// in-process via go-git, never by shelling git or gh).
-func resolveRepo(repoFlag string) string {
+// resolveRepo returns owner/name: --repo when given, else the cwd's origin remote, read
+// in-process through deskkit.OriginRepoSlug (never by shelling git or gh). That reader
+// refuses when config it does not merge could change the URL git resolves, so the claim
+// never lands in a repository git would not use; the error names the reason.
+func resolveRepo(repoFlag string) (string, error) {
 	if s := strings.TrimSpace(repoFlag); s != "" {
-		return s
+		return s, nil
 	}
-	_, slug := parseRemote(originRemoteURL())
-	return slug
+	top, err := gitcore.Toplevel(".")
+	if err != nil {
+		return "", err
+	}
+	return deskkit.OriginRepoSlug(top)
 }
 
 // originRemoteURL reads the "origin" remote URL from the current directory's checkout, trying

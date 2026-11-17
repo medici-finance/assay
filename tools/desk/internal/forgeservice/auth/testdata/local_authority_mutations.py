@@ -10,12 +10,27 @@ import io
 import json
 import os
 import subprocess
+import sys
 import tarfile
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[6]
 MODULE = ROOT / "tools/desk"
 OWNER = Path("internal/forgeservice/auth")
+# Stays well under qualify_fixture.py's own 200-line stderr tail, which this
+# block and the traceback after it must fit inside to reach the job log.
+TAIL_LINES = 150
+
+def show_tail(label, outcome, text):
+    """Print a bounded, labelled tail of a nested go test run's output to stderr."""
+    lines = text.splitlines()
+    tail = lines[-TAIL_LINES:]
+    sys.stderr.write("UNQUALIFIED call %s: %s\n" % (label, outcome))
+    sys.stderr.write("----- begin %s.log (last %d of %d lines) -----\n" % (label, len(tail), len(lines)))
+    for line in tail:
+        sys.stderr.write(line + "\n")
+    sys.stderr.write("----- end %s.log -----\n" % label)
+    sys.stderr.flush()
 
 def command(args, cwd=ROOT):
     return subprocess.check_output(args, cwd=cwd, text=True).strip()
@@ -50,6 +65,8 @@ FAULTS = [
     fault("retained-channel-rebind", "channels.go", "if c.claimChannel(ctx, root, name) != nil {", "if false {", "ChannelRestart/retained-socket", "retained fixed channel refused after exclusive owner acquisition"),
     fault("retained-channel-framed-reply", "channels.go", 'func heldResponse() wireResponse { return wireResponse{Schema: Schema, Error: "held"} }', 'func heldResponse() wireResponse { return wireResponse{Schema: Schema} }', "ChannelRestart/retained-socket", "rebound current channel did not return typed held"),
     fault("reserved-control-capacity", "control.go", '"control.sock", c.controlSlots,', '"control.sock", c.dataSlots,', "ControlCapacity", "slow data slots blocked private revocation"),
+    # The handler is descheduled between its close and its slot release; the sleep makes that delay certain.
+    fault("slot-release-before-close", "channels.go", "\tdefer conn.Close()\n\tdefer func() { <-slots }()\n", "\tdefer func() { time.Sleep(5 * time.Millisecond); <-slots }()\n\tdefer conn.Close()\n", "Slots", "slots still held after"),
     ("channel-live-gate", [("channels.go", "if ctx.Err() != nil || !c.liveGate() {", "if ctx.Err() != nil {"), ("channels.go", " || !c.liveGate() {", " {")], "ChannelRestart/changed-gate", "changed gate unlinked retained channel"),
     fault("channel-duplicate", "channels.go", "if c.channels[key] {", "if false {", "ChannelRestart/duplicate", "duplicate"),
     fault("private-volume-leak", "../../cellcontainer/authority_profile.go", 'mounts = []Mount{{"volume", c.Volumes.Current, "/authority-current", true}, {"volume", c.Volumes.Bootstrap, "/authority-bootstrap", true}}', 'mounts = []Mount{{"volume", c.Volumes.Current, "/authority-current", true}, {"volume", c.Volumes.Bootstrap, "/authority-bootstrap", true}, {"volume", c.Volumes.Private, "/authority-control", true}}', "Custody", "independent role escaped signer/control/other-launch containment"),
@@ -74,14 +91,21 @@ def main():
     receipts = []
     def run(test, label):
         selector = "^TestForgeLocalAuthority" + test + "$"
-        result = subprocess.run(["go", "test", "-count=1", "-timeout=5m", "-v", "-run", selector, "./internal/forgeservice/auth"], cwd=module, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=330)
+        try:
+            result = subprocess.run(["go", "test", "-count=1", "-timeout=5m", "-v", "-run", selector, "./internal/forgeservice/auth"], cwd=module, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=330)
+        except subprocess.TimeoutExpired as expired:
+            text = (expired.stdout or b"").decode(errors="replace")
+            (out / (label + ".log")).write_text(text)
+            show_tail(label, "timeout after %ss" % expired.timeout, text)
+            raise
         text = result.stdout.decode(errors="replace")
         (out / (label + ".log")).write_text(text)
-        return result.returncode, text
+        return result.returncode, text, label
     for name, edits, test, witness in FAULTS:
-        code, baseline = run(test, name + "-baseline")
+        code, baseline, label = run(test, name + "-baseline")
         parent = "TestForgeLocalAuthority" + test.split("/")[0]
         if code != 0 or "--- PASS: " + parent + " " not in baseline or "--- SKIP:" in baseline:
+            show_tail(label, "exit %d" % code, baseline)
             raise SystemExit("UNQUALIFIED baseline: " + name)
         originals = {}
         try:
@@ -96,16 +120,18 @@ def main():
                 if text.count(before) != expected:
                     raise RuntimeError("fault anchor drift: " + name)
                 path.write_text(text.replace(before, after))
-            code, mutated = run(test, name + "-mutant")
+            code, mutated, label = run(test, name + "-mutant")
             if code == 0 or "[build failed]" in mutated or "--- SKIP:" in mutated or "--- FAIL: " + parent not in mutated or witness not in mutated:
+                show_tail(label, "exit %d" % code, mutated)
                 raise RuntimeError("NOT CAUGHT by independent compiling witness: " + name)
         finally:
             for path, data in originals.items():
                 path.write_bytes(data)
                 if path.read_bytes() != data:
                     raise RuntimeError("exact restoration failed")
-        code, restored = run(test, name + "-restored")
+        code, restored, label = run(test, name + "-restored")
         if code != 0 or "--- PASS: " + parent + " " not in restored or "--- SKIP:" in restored:
+            show_tail(label, "exit %d" % code, restored)
             raise SystemExit("restored baseline failed: " + name)
         receipts.append({"control": name, "caught": True, "restored": True, "originals": {str(p.relative_to(module)): hashlib.sha256(b).hexdigest() for p, b in originals.items()}})
         print("CAUGHT and restored: " + name, flush=True)

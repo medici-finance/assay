@@ -228,7 +228,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 47 | [Resume interrupted Evidence landing through the existing sanctioned paths](brief-47-resume-interrupted-evidence-landing-through-the-existing-sanctioned-paths.md) | 4 | M | todo | — | — |
 | 48 | [Report remaining landing capacity from the enforced budget owners](brief-48-report-remaining-landing-capacity-from-the-enforced-budget-owners.md) | 2 | M | todo | — | — |
 | 49 | [Deduplicate verifier filings by their canonical work identity](brief-49-deduplicate-verifier-filings-by-their-canonical-work-identity.md) | 1 | M | todo | — | — |
-| 50 | [Bind verifier environment evidence to the run admission](brief-50-bind-verifier-environment-evidence-to-the-run-admission.md) | 1 | M | todo | — | — |
+| 50 | [Bind verifier environment evidence to the run admission](brief-50-bind-verifier-environment-evidence-to-the-run-admission.md) | 1 | M | implemented | — | — |
 | 51 | [Drive the verifier skill from the current queue and landing contract](brief-51-drive-the-verifier-skill-from-the-current-queue-and-landing-contract.md) | 5 | M | todo | — | — |
 | 52 | [Link decision and verification cards without conflating their authority](brief-52-link-decision-and-verification-cards-without-conflating-their-authority.md) | 1 | M | todo | — | — |
 | 53 | [Rename pr-review-desk to review-desk without breaking live windows or adopters](brief-53-rename-pr-review-desk-to-review-desk.md) | 1 | L | todo | — | — |
@@ -464,8 +464,9 @@ No new brief IDs or generated status changes. Both prose and discrete clients co
 same role-qualified plan; graph-execution/27 composes all five existing role evaluators.
 
 Critical path stays /37 -> /39 -> /40 -> /43 -> /44 for the review bridge. All-five-role
-runtime parity in graph-execution/27 also waits on /42, /45 and the actual prose adapters
-from /43 and /51, including /51’s existing human gate. Those edges are reciprocal; R6
+runtime parity in graph-execution/27 also waits on /42, /45 and the actual prose adapter
+from /43. Those edges are reciprocal. From 16 November 2026 /51 is an ordering notice there,
+not a hold: verify-role parity is reported unavailable until /51’s prose adapter lands; R6
 cross-window reuse follows its own route.
 Completed Evidence remains intact. A modified active assignment is rebound only through its
 owner checkpoint; authoring this amendment does not replace its current contract.

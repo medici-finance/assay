@@ -15,6 +15,8 @@ var redactFixtures = []struct{ name, in, keep string }{
 	{"scp-like", "user:secret@example.invalid:repo", "example.invalid:repo"},
 	{"bare userinfo", "user:secret@example.invalid/repo", "example.invalid/repo"},
 	{"hybrid owner slot", "https://example.invalid/user:secret@alias:repo.git", "alias:repo.git"},
+	// A password holding ':' splits into the owner slot with no '@' left in that slot.
+	{"password in owner slot", "user:secret:x@example.invalid", "example.invalid"},
 }
 
 // regression: #6621 (security review A2)
