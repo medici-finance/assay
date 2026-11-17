@@ -1,0 +1,41 @@
+{
+  "test": "go test ./internal/forgeservice/auth/ -count=1 -run 'TestQualifyFixtureShowsOutput|TestForgeLocalAuthorityCI'",
+  "control": {
+    "name": "CONTROL — the nonzero-exit branch raises without printing anything",
+    "file": "internal/forgeservice/auth/testdata/qualify_fixture.py",
+    "old": "            show_output(label, \"exit %d\" % result.returncode, result.stdout, result.stderr)\n",
+    "new": ""
+  },
+  "mutations": [
+    {
+      "name": "the timeout branch raises without printing the output it captured",
+      "file": "internal/forgeservice/auth/testdata/qualify_fixture.py",
+      "old": "            show_output(label, \"timeout after %ss\" % timeout, expired.stdout, expired.stderr)\n",
+      "new": ""
+    },
+    {
+      "name": "the failed call's stdout is never printed",
+      "file": "internal/forgeservice/auth/testdata/qualify_fixture.py",
+      "old": "(\"stderr\", stderr), (\"stdout\", stdout)",
+      "new": "(\"stderr\", stderr),"
+    },
+    {
+      "name": "the failed call's stderr is never printed",
+      "file": "internal/forgeservice/auth/testdata/qualify_fixture.py",
+      "old": "(\"stderr\", stderr), (\"stdout\", stdout)",
+      "new": "(\"stdout\", stdout),"
+    },
+    {
+      "name": "the printed output is no longer bounded to its tail",
+      "file": "internal/forgeservice/auth/testdata/qualify_fixture.py",
+      "old": "shown = lines[-TAIL_LINES:]",
+      "new": "shown = lines"
+    },
+    {
+      "name": "the exit code is dropped from the failure line",
+      "file": "internal/forgeservice/auth/testdata/qualify_fixture.py",
+      "old": "\"exit %d\" % result.returncode",
+      "new": "\"failed\""
+    }
+  ]
+}
