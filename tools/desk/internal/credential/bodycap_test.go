@@ -88,3 +88,99 @@ func TestRotateGitLabOverCapBody(t *testing.T) {
 		t.Errorf("the current credential appeared in the error")
 	}
 }
+
+// countingBody counts the bytes the caller pulled out of a response body.
+type countingBody struct {
+	io.ReadCloser
+	n *int64
+}
+
+func (b countingBody) Read(p []byte) (int, error) {
+	k, err := b.ReadCloser.Read(p)
+	*b.n += int64(k)
+	return k, err
+}
+
+// toServer sends every request to the offline test server in place of the forge host and
+// counts the response-body bytes the caller reads.
+type toServer struct {
+	srv    *httptest.Server
+	read   *int64
+	method *string
+	path   *string
+}
+
+func (t toServer) RoundTrip(r *http.Request) (*http.Response, error) {
+	*t.method, *t.path = r.Method, r.URL.Path
+	r = r.Clone(r.Context())
+	r.URL.Scheme, r.URL.Host, r.Host = "http", strings.TrimPrefix(t.srv.URL, "http://"), ""
+	resp, err := t.srv.Client().Transport.RoundTrip(r)
+	if err != nil {
+		return nil, err
+	}
+	resp.Body = countingBody{ReadCloser: resp.Body, n: t.read}
+	return resp, nil
+}
+
+// overCapClient answers every request with status and a body far longer than the lowered cap,
+// and reports the method, path and response-body bytes the caller read.
+func overCapClient(t *testing.T, status int, body string) (c *http.Client, method, path *string, read *int64) {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, body+strings.Repeat(" ", 64<<10))
+	}))
+	t.Cleanup(srv.Close)
+	method, path, read = new(string), new(string), new(int64)
+	return &http.Client{Transport: toServer{srv: srv, read: read, method: method, path: path}}, method, path, read
+}
+
+// assertCapRefusal: the call failed closed with the cap error, having read at most cap+1 bytes.
+func assertCapRefusal(t *testing.T, err error, read, limit int64) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("an over-cap body read as success")
+	}
+	if !strings.Contains(err.Error(), "-byte cap") {
+		t.Errorf("error = %q; want the response-body cap refusal", err)
+	}
+	if read > limit+1 {
+		t.Errorf("read %d response-body bytes; want at most cap+1 (%d)", read, limit+1)
+	}
+}
+
+// The POST path through githubDo (the read-only mint's access_tokens exchange, with a request
+// body) goes through the cap.
+//
+// regression: #6780
+func TestExchangeJWTBodyOverCapBody(t *testing.T) {
+	const limit = 64
+	lowCap(t, limit)
+	c, method, path, read := overCapClient(t, http.StatusCreated,
+		`{"token":"example-minted","expires_at":"2099-01-01T00:00:00Z"}`)
+	res, err := exchangeJWTBody(c, "example-jwt", "42", []byte(`{"repositories":["example-repo"]}`))
+	if *method != "POST" || *path != "/app/installations/42/access_tokens" {
+		t.Fatalf("request = %s %s; want POST /app/installations/42/access_tokens", *method, *path)
+	}
+	if res != nil {
+		t.Errorf("an over-cap mint answer returned a result: %+v", res)
+	}
+	assertCapRefusal(t, err, *read, limit)
+}
+
+// The DELETE path through githubDo (revoking an installation credential) goes through the cap.
+//
+// regression: #6780
+func TestRevokeInstallationTokenOverCapBody(t *testing.T) {
+	const limit = 64
+	lowCap(t, limit)
+	c, method, path, read := overCapClient(t, http.StatusOK, `{}`)
+	err := RevokeInstallationToken(c, "example-installation-credential")
+	if *method != "DELETE" || *path != "/installation/token" {
+		t.Fatalf("request = %s %s; want DELETE /installation/token", *method, *path)
+	}
+	assertCapRefusal(t, err, *read, limit)
+	if err != nil && strings.Contains(err.Error(), "example-installation-credential") {
+		t.Errorf("the revoked credential appeared in the error")
+	}
+}

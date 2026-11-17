@@ -152,7 +152,7 @@ _Held by per-stream caps: 20 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 970261f02 2026-11-17T16:37:55Z_
+_last regen: 1064901dd 2026-11-17T18:01:04Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +173,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 970261f02 2026-11-17T16:37:55Z_
+_last regen: 1064901dd 2026-11-17T18:01:04Z_
 
 **Progress:** 36/100 brief items done.
 
@@ -285,7 +285,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 10 [exec:strong] | implemented | 1510 | 1 | 2d | driver | close the sign-off card | — | — |
 | forge-gitlab | 11 [exec:strong] | implemented | 1510 | 1 | 2d | driver | human action, cite medici-finance/assay#1794 | — | — |
 | desk-containers | 30 [exec:strong] | implemented | 1010 | 0 | 2d | driver | human action, cite medici-finance/assay#5794 | — | — |
-| desk-containers | 34 [exec:strong] | implemented | 1010 | 0 | 47h | driver | human action, cite medici-finance/assay#6301 | — | — |
+| desk-containers | 34 [exec:strong] | implemented | 1010 | 0 | 2d | driver | human action, cite medici-finance/assay#6301 | — | — |
 | desk-supervision | 09 [exec:strong] | implemented | 1010 | 0 | 2d | driver | human action, cite medici-finance/assay#6658 | — | — |
 | desk-supervision | 20 [exec:strong] | implemented | 1010 | 0 | 2d | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3765 | — | — |
 | desk-supervision | 21 [exec:strong] | implemented | 1010 | 0 | 2d | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3764 | — | — |
@@ -463,7 +463,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 50 [exec:strong] | implemented | 13000 | 22 | 2h | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 40 [exec:strong] | implemented | 11000 | 20 | 2h | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 41 [exec:strong] | implemented | 11000 | 20 | 2h | verify-desk | triage, then re-bucket | — | — |
-| desk-tools | 42 [exec:strong] | implemented | 10510 | 19 | 44h | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 42 [exec:strong] | implemented | 10510 | 19 | 45h | verify-desk | triage, then re-bucket | — | — |
 | milestone-support | 08 [exec:strong] | implemented | 4000 | 6 | 2h | verify-desk | triage, then re-bucket | — | — |
 | milestone-support | 07 [exec:strong] | implemented | 3500 | 5 | 2h | verify-desk | triage, then re-bucket | — | — |
 | statusgen | 44 [exec:strong] | implemented | 3500 | 5 | 2h | verify-desk | dispatch one judge | — | — |
@@ -477,7 +477,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 17 [exec:strong] | implemented | 2010 | 0 | 2d | verify-desk | triage, then re-bucket | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2010 | 2 | 2d | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 48 [exec:strong] | implemented | 2000 | 2 | 2h | verify-desk | triage, then re-bucket | — | — |
-| desk-tools | 50 [exec:strong] | implemented | 2000 | 2 | 5h | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 50 [exec:strong] | implemented | 2000 | 2 | 6h | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 62 [exec:strong] | implemented | 2000 | 2 | 2h | verify-desk | triage, then re-bucket | — | — |
 | desktools-v2 | 71 [exec:strong] | implemented | 1010 | 0 | 2d | verify-desk | dispatch one judge | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1010 | 0 | 2d | verify-desk | triage, then re-bucket | — | — |

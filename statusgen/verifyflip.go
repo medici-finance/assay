@@ -121,13 +121,23 @@ Flags:
 `
 
 // flipRefusal is a refusal (exit 1): the tree was read and does not license the
-// flip. Any other error is could-not-check (exit 2).
-type flipRefusal struct{ msg string }
+// flip. Any other error is could-not-check (exit 2). runner marks a refusal
+// runnerCellsAgree made: the run's Runner cells all read `<login> @ <sha>` but
+// do not name one runner (latestPassRunnerRefusal reads it).
+type flipRefusal struct {
+	msg    string
+	runner bool
+}
 
 func (e *flipRefusal) Error() string { return e.msg }
 
 func refuseFlip(format string, a ...any) error {
-	return &flipRefusal{fmt.Sprintf("refusing: "+format, a...)}
+	return &flipRefusal{msg: fmt.Sprintf("refusing: "+format, a...)}
+}
+
+// refuseRunner is refuseFlip for a Runner-agreement refusal (runnerCellsAgree).
+func refuseRunner(format string, a ...any) error {
+	return &flipRefusal{msg: fmt.Sprintf("refusing: "+format, a...), runner: true}
 }
 
 // verifyFlipPlan is the result of a successful plan: what would be written.
@@ -285,10 +295,10 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 		return verifyFlipPlan{}, err
 	}
 	if err := flipHeldRefusal(key, row.Status, bf.Evidence); err != nil {
-		return verifyFlipPlan{}, &flipRefusal{err.Error()}
+		return verifyFlipPlan{}, &flipRefusal{msg: err.Error()}
 	}
 	if err := closeVerifyFailRefusal(key, row.Status, bf.Evidence); err != nil {
-		return verifyFlipPlan{}, &flipRefusal{err.Error()}
+		return verifyFlipPlan{}, &flipRefusal{msg: err.Error()}
 	}
 
 	// Witness: every Verify row carries a passing execution witness INSIDE the
@@ -478,6 +488,10 @@ type flipPass struct {
 	StampErr error
 	Runner   string
 	SHA      string
+	// Cell is the run's agreed Runner reading, `<login> @ <sha>` plus the tail
+	// runnerCellsAgree returns, principal kept (flipStamp drops it): what the
+	// human close stamps (evidenceVerifierInfo), never one row's text.
+	Cell     string
 	Run      string // comment-removed selected text; closureRunWitnesses preserves full-record classification
 	Marks    []int
 	RunStart int
@@ -503,6 +517,14 @@ func latestCoveragePass(evidence string, coverage Coverage) (flipPass, error) {
 }
 
 func selectLatestPass(evidence string, coverage *Coverage) (flipPass, error) {
+	return selectLatestPassSeen(evidence, coverage, nil)
+}
+
+// selectLatestPassSeen is selectLatestPass; seen, when set, is handed every
+// refusal a read of the run returned, in the order the reads were made, so a
+// caller can ask why the selector credited no run without selecting one of
+// its own (latestPassRunnerRefusal, #6767).
+func selectLatestPassSeen(evidence string, coverage *Coverage, seen func(error)) (flipPass, error) {
 	lines, start, end, err := latestPassSpan(evidence)
 	if err != nil {
 		return flipPass{}, err
@@ -520,6 +542,8 @@ func selectLatestPass(evidence string, coverage *Coverage) (flipPass, error) {
 		q, err := flipReadRun(lines, start, from, end, coverage)
 		if err == nil {
 			p = q
+		} else if seen != nil {
+			seen(err)
 		}
 		return err
 	}); err != nil {
@@ -718,43 +742,28 @@ func flipReadRun(lines []string, start, from, end int, coverage *Coverage) (flip
 	if today := flipToday(); date > today {
 		return flipPass{}, refuseFlip("bad date: the latest PASS is dated %s, after today (%s UTC)", date, today)
 	}
-	m0 := flipRunnerRe.FindStringSubmatch(runner)
-	// One run, one sha (#4299): a container bracket records the receipt's
-	// 12-hex tree token while a host transition run records the 40-hex HEAD.
-	// The run's sha is its longest form; every row's sha must be that sha or
-	// an exact prefix of it at least treeSHALen long (flipSHAAgree).
-	sha := ""
-	for _, r := range rows {
-		if m := flipRunnerRe.FindStringSubmatch(r[1]); m != nil && len(m[2]) > len(sha) {
-			sha = m[2]
-		}
-	}
+	cells := make([]string, 0, len(rows))
 	for _, r := range rows {
 		if !flipRowDated(r) {
 			return flipPass{}, refuseFlip("runner mismatch: a row of the latest PASS has no Date or Runner")
 		}
-		m := flipRunnerRe.FindStringSubmatch(r[1])
-		if m == nil {
+		if !flipRunnerRe.MatchString(r[1]) {
 			return flipPass{}, refuseFlip("sha mismatch: runner %q does not read <login> @ <sha>", r[1])
 		}
 		if r[0] != date {
 			return flipPass{}, refuseFlip("date mismatch: rows of the latest PASS carry %q and %q", date, r[0])
 		}
-		if m[1] != m0[1] {
-			return flipPass{}, refuseFlip("runner mismatch: rows of the latest PASS name %q and %q", m0[1], m[1])
-		}
-		if !flipSHAAgree(strings.ToLower(m[2]), strings.ToLower(sha)) {
-			return flipPass{}, refuseFlip("sha mismatch: rows of the latest PASS name %s and %s", sha, m[2])
-		}
-		// Login, sha form and every qualifier after it (+dirty, on-behalf-of,
-		// the identity source) must read the same; only the sha's length may
-		// differ, and only as an exact prefix.
-		if m[3] != m0[3] || !flipSHAAgree(m[2], sha) {
-			return flipPass{}, refuseFlip("runner mismatch: rows of the latest PASS read %q and %q", runner, r[1])
-		}
+		cells = append(cells, r[1])
 	}
-	p := flipPass{Runner: m0[1], SHA: sha, Run: strings.Join(lines[from:end], "\n"), RunStart: start}
-	p.Stamp, p.StampErr = flipStamp(date, []string{m0[0], m0[1], sha, m0[3]})
+	// One run, one runner, one sha (#4299, #6767): runnerCellsAgree is the
+	// one reading of the run's Runner cells that `brief --check-verified`
+	// shares (latestPassRunnerRefusal).
+	login, sha, tail, err := runnerCellsAgree(cells)
+	if err != nil {
+		return flipPass{}, err
+	}
+	p := flipPass{Runner: login, SHA: sha, Cell: login + " @ " + sha + tail, Run: strings.Join(lines[from:end], "\n"), RunStart: start}
+	p.Stamp, p.StampErr = flipStamp(date, []string{runner, login, sha, tail})
 	for _, i := range at {
 		p.Marks = append(p.Marks, from+i)
 	}
