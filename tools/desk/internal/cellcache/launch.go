@@ -17,8 +17,11 @@ const admissionWait = 2 * time.Second
 // measurement and pressure reclamation remain with explicit Check maintenance.
 // It is idempotent for a compatible owned root and policy; no returned report
 // is a lease or authority to start a child. Acquire revalidates independently.
+// The lock-free pass applies the policy's freshness bound when it is tighter
+// than AdmitMaxAge, so preparation never admits what enrollment would refuse
+// on age.
 func Prepare(p Policy) (Report, error) {
-	if r, why := cheapClean(p, false, admitEnv{free: diskFree, now: time.Now}); why == "" {
+	if r, why := cheapClean(p, false, admitEnv{free: diskFree, now: time.Now}, p.MeasurementBound()); why == "" {
 		return r, nil
 	}
 	m, err := openWithWait(p, true, admissionWait)

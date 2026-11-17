@@ -248,6 +248,18 @@
       "new": "\tage = AdmitMaxAge + 1\n\t}"
     },
     {
+      "name": "stale reclaim refusal kept a plain reclaim: launch skips the re-measure",
+      "file": "internal/cellcache/admit.go",
+      "old": "\t\tif age > AdmitMaxAge {\n\t\t\treturn Report{}, fmt.Sprintf(format+",
+      "new": "\t\tif false {\n\t\t\treturn Report{}, fmt.Sprintf(format+"
+    },
+    {
+      "name": "preparation ignores a freshness bound tighter than five minutes",
+      "file": "internal/cellcache/admit.go",
+      "old": "if bound <= 0 || bound > AdmitMaxAge {",
+      "new": "if true {"
+    },
+    {
       "name": "admission admits when the free-space read fails",
       "file": "internal/cellcache/admit.go",
       "old": "\tif err != nil {\n\t\treturn no(\"available bytes: %v\", err)\n\t}",

@@ -260,7 +260,7 @@ func TestCacheAdmitTakesLock(t *testing.T) {
 			if c.env != nil {
 				c.env(&env)
 			}
-			if _, why := cheapClean(p, false, env); !strings.Contains(why, c.want) {
+			if _, why := cheapClean(p, false, env, AdmitMaxAge); !strings.Contains(why, c.want) {
 				t.Fatalf("cheap test verdict %q, want it to say %q", why, c.want)
 			}
 			r, err := admit(p, false, env)
@@ -273,7 +273,7 @@ func TestCacheAdmitTakesLock(t *testing.T) {
 	p := warmed(t)
 	p.Floor = 1 << 30
 	calls := 0
-	if r, why := cheapClean(p, false, envWith(1<<30+admitBudget/4, &calls)); why != "" || r.Admission != "precheck" {
+	if r, why := cheapClean(p, false, envWith(1<<30+admitBudget/4, &calls), AdmitMaxAge); why != "" || r.Admission != "precheck" {
 		t.Fatalf("exact margin not admitted: %q", why)
 	}
 }

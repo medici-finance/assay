@@ -119,7 +119,7 @@ func admitRecorded(root string, dry bool, env admitEnv) (Report, error) {
 }
 
 func admit(p Policy, dry bool, env admitEnv) (Report, error) {
-	r, why := cheapClean(p, dry, env)
+	r, why := cheapClean(p, dry, env, AdmitMaxAge)
 	if why == "" {
 		return r, nil
 	}
@@ -133,9 +133,14 @@ func admit(p Policy, dry bool, env admitEnv) (Report, error) {
 }
 
 // cheapClean returns a checked-clean report and "" when the lock-free test
-// clears the cache, or a zero report and the reason it could not.
-func cheapClean(p Policy, dry bool, env admitEnv) (Report, string) {
-	r, why, _ := precheck(p, dry, env, AdmitMaxAge)
+// clears the cache, or a zero report and the reason it could not. It leans
+// only on a measurement within AdmitMaxAge, or within bound when bound is
+// tighter (a policy freshness bound under five minutes).
+func cheapClean(p Policy, dry bool, env admitEnv, bound time.Duration) (Report, string) {
+	if bound <= 0 || bound > AdmitMaxAge {
+		bound = AdmitMaxAge
+	}
+	r, why, _ := precheck(p, dry, env, bound)
 	return r, why
 }
 
@@ -147,11 +152,13 @@ const (
 	// clean is run for it; it stays with the operator.
 	refuseOperator refusal = iota
 	// refuseReclaim: the size or free-space margin, or a top-level change
-	// since the measurement. One clean may clear it; only `cellctl up` runs it.
+	// since the measurement, on a measurement no older than AdmitMaxAge. One
+	// clean may clear it; only `cellctl up` runs it.
 	refuseReclaim
 	// refuseStale: the recorded measurement is unstamped, future-dated,
-	// missing, or older than the caller's freshness bound. One fresh
-	// measurement decides; every launch may take it.
+	// missing, or older than the caller's freshness bound, or it is older than
+	// AdmitMaxAge and a reclaim check refused it. One fresh measurement
+	// decides; every launch may take it.
 	refuseStale
 )
 
@@ -160,13 +167,11 @@ const (
 // bound is the freshness the caller asks for; zero asks for none. A
 // measurement past AdmitMaxAge but inside bound (or with no bound) is stale,
 // not invalid: it admits on the remaining checks, with the free-space margin
-// read now, and the report says it is stale and how old it is.
+// read now, and the report says it is stale and how old it is. When one of
+// those checks refuses it, the refusal is marked stale (see reclaim below).
 func precheck(p Policy, dry bool, env admitEnv, bound time.Duration) (Report, string, refusal) {
 	no := func(format string, a ...any) (Report, string, refusal) {
 		return Report{}, fmt.Sprintf(format, a...), refuseOperator
-	}
-	reclaim := func(format string, a ...any) (Report, string, refusal) {
-		return Report{}, fmt.Sprintf(format, a...), refuseReclaim
 	}
 	stale := func(format string, a ...any) (Report, string, refusal) {
 		return Report{}, fmt.Sprintf(format, a...), refuseStale
@@ -221,6 +226,16 @@ func precheck(p Policy, dry bool, env admitEnv, bound time.Duration) (Report, st
 	}
 	if bound > 0 && age > bound {
 		return stale("recorded measurement is stale: %s old, over the freshness bound %s", age.Round(time.Second), bound)
+	}
+	// A reclaim-check refusal on a stale measurement is a refusal of the stale
+	// estimate: one fresh measurement decides, so it is marked stale and a
+	// cellctl launch re-measures once (#6593). Only a fresh measurement's
+	// reclaim refusal stays a plain reclaim.
+	reclaim := func(format string, a ...any) (Report, string, refusal) {
+		if age > AdmitMaxAge {
+			return Report{}, fmt.Sprintf(format+" (recorded measurement is stale: %s old)", append(a, age.Round(time.Second))...), refuseStale
+		}
+		return Report{}, fmt.Sprintf(format, a...), refuseReclaim
 	}
 	for _, name := range []string{"build", "mod"} {
 		st, err := r.Lstat(name)

@@ -327,8 +327,9 @@ Two launch owners run that clean themselves, once, then prepare again: `cellctl 
 when the refusal is the size or free-space margin or the measurement
 ([Managed Go caches](cellctl-go-cache.md#cellctl-up-cleans-once-on-a-reclaimable-deferral)),
 and `cellctl desk` and scratch launches, only when the measurement is unstamped,
-future-dated, missing or past a freshness bound
-([Managed Go caches](cellctl-go-cache.md#desk-and-scratch-launches-re-measure-a-stale-measurement-once)). A newly created empty owned root is initialized with
+future-dated, missing or past a freshness bound, or older than five minutes
+and refused by another check
+([Managed Go caches](cellctl-go-cache.md#desk-and-scratch-launches-re-measure-once)). A newly created empty owned root is initialized with
 bounded metadata reads. Maintenance inventory releases admission custody while walking,
 then reacquires it and revalidates consumer enrollment and current free space before
 cleanup. A consumer admitted during inventory invalidates that pass even if it exits

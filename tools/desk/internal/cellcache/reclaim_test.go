@@ -32,8 +32,10 @@ func staleRefusal(err error) bool {
 // the reason. Corrupt, dirty, foreign and empty-cache-short refusals are never
 // reclaimable: those stay with the operator. Only the measurement-validity
 // reasons (past the bound, unstamped, future-dated, missing) are also marked
-// stale, the one mark a desk or scratch launch re-measures on. A measurement
-// only older than five minutes, with no bound, admits (TestCacheStaleAdmits).
+// stale, the one mark a desk or scratch launch re-measures on, as is any
+// reclaim refusal of a measurement older than five minutes
+// (TestCacheStaleReclaimIsStale). A measurement only older than five minutes,
+// with no bound, admits (TestCacheStaleAdmits).
 //
 // regression: #6117
 // regression: #6593

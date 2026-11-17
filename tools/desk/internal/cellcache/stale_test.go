@@ -147,3 +147,64 @@ func TestCacheStaleBoundRefuses(t *testing.T) {
 		t.Fatalf("a measurement inside the bound refused: %v", err)
 	}
 }
+
+// regression: #6723
+//
+// A stale measurement that also fails a reclaim check (a top-level change
+// since it, or the size margin) is a refusal of the stale estimate, not of the
+// cache: preparation marks it stale as well as reclaimable, so a cellctl
+// launch re-measures once and the fresh numbers decide (#6593). A fresh
+// measurement keeps the plain reclaim class (TestCacheReclaimableRefusals).
+func TestCacheStaleReclaimIsStale(t *testing.T) {
+	for _, kind := range []string{"changed", "size"} {
+		t.Run(kind, func(t *testing.T) {
+			p := measured(t)
+			recordAt(t, p, time.Now().Add(-time.Hour))
+			switch kind {
+			case "changed":
+				half := time.Now().Add(-30 * time.Minute)
+				if err := os.Chtimes(filepath.Join(p.Root, "build"), half, half); err != nil {
+					t.Fatal(err)
+				}
+			case "size":
+				b, err := os.ReadFile(p.ReportPath())
+				if err != nil {
+					t.Fatal(err)
+				}
+				var r Report
+				if err = json.Unmarshal(b, &r); err != nil {
+					t.Fatal(err)
+				}
+				big := p.Budget
+				r.After.LogicalBytes = &big
+				if b, err = json.Marshal(r); err != nil {
+					t.Fatal(err)
+				}
+				if err = os.WriteFile(p.ReportPath(), b, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			_, err := Prepare(p)
+			var d *Deferred
+			if !errors.As(err, &d) || !d.Report.Stale() || !d.Report.Reclaimable() {
+				t.Fatalf("stale measurement with a %s refusal is not stale-class: %v", kind, err)
+			}
+		})
+	}
+}
+
+// regression: #6723
+//
+// A freshness bound under five minutes is applied by preparation, not only by
+// enrollment: preparation refuses a measurement past it as stale-class, so a
+// cellctl launch re-measures before any child reaches enrollment.
+func TestCacheShortBoundPrepare(t *testing.T) {
+	p := measured(t)
+	recordAt(t, p, time.Now().Add(-2*time.Minute))
+	p.MeasurementMaxAge = 60
+	_, err := Prepare(p)
+	var d *Deferred
+	if !errors.As(err, &d) || !d.Report.Stale() || !strings.Contains(err.Error(), "over the freshness bound 1m0s") {
+		t.Fatalf("preparation under a 60s bound on a 2m-old measurement: %v", err)
+	}
+}

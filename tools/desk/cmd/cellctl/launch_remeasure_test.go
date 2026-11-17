@@ -153,3 +153,48 @@ func TestLaunchKeepsOtherRefusals(t *testing.T) {
 		})
 	}
 }
+
+// regression: #6723
+//
+// A stale measurement that also fails a reclaim check is still re-measured
+// once at a desk or scratch launch (#6593), and the fresh numbers decide.
+// drift: build/ changed half an hour after an hour-old measurement, the cache
+// small, so the launch admits after its one re-measure. margin: the cache
+// really is near its budget, so the launch refuses after its one re-measure.
+func TestLaunchRemeasuresStaleDrift(t *testing.T) {
+	for _, kind := range []string{"drift", "margin"} {
+		t.Run(kind, func(t *testing.T) {
+			c, p := admissionCell(t)
+			if kind == "margin" {
+				nearBudget(t, p)
+			} else {
+				must(t, os.MkdirAll(filepath.Join(p.Root, "build"), 0700))
+				must(t, os.WriteFile(filepath.Join(p.Root, "build", "example-output"), []byte("example"), 0600))
+			}
+			old := time.Now().Add(-2 * time.Hour)
+			for _, name := range []string{"build", "mod"} {
+				if err := os.Chtimes(filepath.Join(p.Root, name), old, old); err != nil && !errors.Is(err, os.ErrNotExist) {
+					t.Fatal(err)
+				}
+			}
+			_, err := cellcache.Check(p, false)
+			must(t, err)
+			staleReport(t, p, "stale")
+			if kind == "drift" {
+				half := time.Now().Add(-30 * time.Minute)
+				must(t, os.Chtimes(filepath.Join(p.Root, "build"), half, half))
+			}
+			stderr := captureStderrOf(t, func() { _, err = c.launchPrepareLaunch() })
+			if lines := remeasureLines(stderr); len(lines) != 1 {
+				t.Fatalf("%s: want exactly one re-measure of the stale measurement, got %d:\n%s\n%v", kind, len(lines), stderr, err)
+			}
+			var d *cellcache.Deferred
+			if kind == "drift" && err != nil {
+				t.Fatalf("drift: launch did not admit after re-measuring: %v\n%s", err, stderr)
+			}
+			if kind == "margin" && !errors.As(err, &d) {
+				t.Fatalf("margin: launch admitted a cache still over its margin: %v\n%s", err, stderr)
+			}
+		})
+	}
+}
