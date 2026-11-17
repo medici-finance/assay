@@ -152,7 +152,7 @@ _Held by per-stream caps: 20 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: a821e1f23 2026-11-17T18:06:41Z_
+_last regen: 86e11fcbe 2026-11-17T18:39:41Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +173,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: a821e1f23 2026-11-17T18:06:41Z_
+_last regen: 86e11fcbe 2026-11-17T18:39:41Z_
 
 **Progress:** 36/100 brief items done.
 
@@ -347,7 +347,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 28 [exec:strong] | implemented | 1010 | 0 | 2d | worker | fix, cite medici-finance/assay#1735 | — | — |
 | desk-tools | 31 [exec:strong] | implemented | 1010 | 0 | 2d | worker | fix, cite medici-finance/assay#1927 | — | — |
 | desk-tools | 36 [exec:strong] | implemented | 1010 | 0 | 2d | worker | fix, cite #2688 | — | — |
-| desk-tools | 56 [exec:strong] | implemented | 1010 | 0 | 47h | worker | fix, cite medici-finance/assay#6659 | — | — |
+| desk-tools | 56 [exec:strong] | implemented | 1010 | 0 | 2d | worker | fix, cite medici-finance/assay#6659 | — | — |
 | desktools-v2 | 74 [exec:strong] | implemented | 1010 | 0 | 2d | worker | fix, cite medici-finance/assay#2715 | — | — |
 | forge-gitlab | 18 [exec:strong] | implemented | 1010 | 0 | 2d | worker | fix, cite medici-finance/assay#5782 | — | — |
 | harness-portability | 15 [exec:strong] | implemented | 1010 | 0 | 2d | worker | fix, cite medici-finance/assay#1927 | — | — |
@@ -463,7 +463,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 50 [exec:strong] | implemented | 13000 | 22 | 3h | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 40 [exec:strong] | implemented | 11000 | 20 | 3h | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 41 [exec:strong] | implemented | 11000 | 20 | 3h | verify-desk | triage, then re-bucket | — | — |
-| desk-tools | 42 [exec:strong] | implemented | 10510 | 19 | 45h | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 42 [exec:strong] | implemented | 10510 | 19 | 46h | verify-desk | triage, then re-bucket | — | — |
 | milestone-support | 08 [exec:strong] | implemented | 4000 | 6 | 3h | verify-desk | triage, then re-bucket | — | — |
 | milestone-support | 07 [exec:strong] | implemented | 3500 | 5 | 3h | verify-desk | triage, then re-bucket | — | — |
 | statusgen | 44 [exec:strong] | implemented | 3500 | 5 | 3h | verify-desk | dispatch one judge | — | — |
