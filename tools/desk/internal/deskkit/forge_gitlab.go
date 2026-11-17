@@ -184,6 +184,9 @@ func gitlabNoRedirectClient(base *http.Client) *http.Client {
 		c = &cp
 	}
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	// A zero Timeout is no deadline; every GitLab call is bounded like the GitHub backend's
+	// (ForgeRequestTimeout), so a stalled forge cannot hold a desk write verb's audit lock.
+	c.Timeout = boundedTimeout(c)
 	return c
 }
 

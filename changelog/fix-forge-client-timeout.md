@@ -1,0 +1,2 @@
+### Fixed
+- Every forge request the desk tools send now gives up after 30 seconds (`deskkit.ForgeRequestTimeout`). The GitHub REST client, its diff read, the GitLab client and the clients that used to fall back to `http.DefaultClient` (`deskpost`, `deskrelease`, `desktoken`, the in-process credential minter, the repo-visibility and account-liveness readers) all carry the bound, so a stalled forge can no longer hold the shared desk audit lock indefinitely. A source guard fails the build if a deadline-free client comes back in the forge library or a lock-holding tool.

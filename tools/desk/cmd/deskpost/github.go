@@ -197,7 +197,7 @@ func mintInstallationToken(owner string) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+jwt)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := deskkit.BoundedHTTPClient().Do(req)
 	if err != nil {
 		return "", deskkit.Unverifiable("POST access_tokens failed", err)
 	}
@@ -273,7 +273,7 @@ func newGHClient(owner, repo string) (*ghClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ghClient{owner: owner, repo: repo, token: tok, http: http.DefaultClient}, nil
+	return &ghClient{owner: owner, repo: repo, token: tok, http: deskkit.BoundedHTTPClient()}, nil
 }
 
 // requireGitHubForge refuses, BEFORE any GitHub App token is minted, when the repo's resolved

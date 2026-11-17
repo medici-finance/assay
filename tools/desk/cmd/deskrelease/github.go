@@ -143,7 +143,7 @@ func newGHClient(slug string) (*ghClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &ghClient{owner: owner, repo: name, token: tok, http: http.DefaultClient}, nil
+	return &ghClient{owner: owner, repo: name, token: tok, http: deskkit.BoundedHTTPClient()}, nil
 }
 
 // do performs one REST call. A 2xx body is decoded into out; a 404 is reported via the
