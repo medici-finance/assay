@@ -102,6 +102,9 @@ RISK-VALUE: DERIVED — stateSchema = 1 @ tools/desk/cmd/muhar/state.go:25 — t
 RISK-VALUE: DERIVED — group/world-writable mask = 0o022 @ tools/desk/cmd/muhar/state.go:81 — the state file is trusted verdict input (muhar README), so a file other users can write could plant reusable CAUGHT verdicts. Refusing the group and world write bits (0o020|0o002) is exactly that exclusion, and it pairs with the owner-only 0o600 create mode at state.go:94.
 
 **VERIFY: PASS** — 3/3 rows pass (rows 1-2 in a closed container-netns bracket, row 3 on the host); no defect found.
+Verdict correction for the run above (same run, same witness rows, nothing re-run). The verdict line above recorded the three rows' exit codes, not the run's closure verdict. The outcome record this run wrote (`docs/streams/verify-outcomes/desk-tools/56-20261116T181937Z-a347e9581b5e.json`) is blocked: rows 1 and 2 are credited; row 3 met its Expect, but its consumer command pins `--base` without `--delivery`, which the closure lint does not admit for closure (check-definition, deferred to #6659). No closure is claimed, and the status stays implemented. The witness rows above are unchanged.
+
+**VERIFY: BLOCKED** — check-definition: rows 1-2 credited, row 3 deferred to #6659; status stays implemented.
 
 ## Failure map
 - A changed tree reuses an old verdict: TestStateRejectsNewTree fails.
