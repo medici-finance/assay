@@ -979,6 +979,16 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 		// witness row, or the strip does not settle, every line is read as
 		// joined, with no negation or quoting excuse (fail-closed).
 		texts, settled := heldRestrips(stripped)
+		// The witness check re-strips only the latest PASS run, which
+		// flipLatestPass cuts from the once-stripped text, so a leftover
+		// opener before the run can pair one way in the whole text and
+		// another way in the run alone. Read the run's own re-strips too.
+		// With no run selected the witness check credits nothing, so there
+		// is no run text to read.
+		if p, err := flipLatestPass(evidence); err == nil {
+			runTexts, runSettled := heldRestrips(p.Run)
+			texts, settled = append(texts, runTexts...), settled && runSettled
+		}
 		restripHold := !settled
 		for _, text := range texts {
 			for _, row := range strings.Split(text, "\n") {

@@ -607,6 +607,54 @@ func TestHeldQuotedTwiceSplit(t *testing.T) {
 	}
 }
 
+// TestHeldQuotedRunRestrip: the witness check re-strips only the latest PASS
+// run, so text before the run (a leftover opener that only the first strip
+// forms) can change how the whole-text second strip pairs the run's
+// comments. The run's own re-strip joins the marker; the whole text's does
+// not. The re-strip read covers the run as the witness check reads it.
+// regression: #4721
+func TestHeldQuotedRunRestrip(t *testing.T) {
+	row2 := "| 2 | `tool check 2` | pass exit=0 | sha256:0123456789ab | 2026-10-22 | fixture-verifier[bot] @ 0123456789ab |"
+	ev := func(prior, result string) string {
+		table := witTable(2, "", witPass, "")
+		if !strings.Contains(table, row2) {
+			t.Fatalf("fixture: row 2 not found")
+		}
+		table = strings.Replace(table, row2, "| 2 | `tool check 2` | "+result+
+			" | sha256:0123456789ab | 2026-10-22 | fixture-verifier[bot] @ 0123456789ab |", 1)
+		return prior + witEntry("Run 1", table, "", "**VERIFY: PASS** — 2/2 rows")
+	}
+	nest := func(a, b string) string { return a + "<!-" + "<!-- x -->" + "- y -->" + b }
+	// lone is an opener that only the first strip forms.
+	lone := "<!-" + "<!-- z -->" + "-"
+	failProse := "### Run 0\n\nnote " + lone + " here\n\n**VERIFY: FAIL** — 0/2 rows\n\n"
+	failVerdict := "### Run 0\n\n**VERIFY: FAIL** — 0/2 rows " + lone + "\n\n"
+	passProse := "### Run 0\n\nnote " + lone + " here\n\n**VERIFY: PASS** — 2/2 rows\n\n"
+	tableEntry := witEntry("Run 0", witTable(2, "", witPass, ""), "note "+lone, "**VERIFY: FAIL** — 1/2 rows")
+	for _, tc := range []struct{ name, prior, result string }{
+		{"opener in an earlier FAIL entry", failProse, "pass exit=0 " + nest("HE", "LD")},
+		{"opener on an earlier verdict line", failVerdict, "pass exit=0 " + nest("HE", "LD")},
+		{"hyphenated marker", failProse, "pass exit=0 " + nest("could-not-", "check")},
+		{"leading marker", failProse, nest("HE", "LD") + " pass exit=0"},
+		{"opener in an earlier PASS entry", passProse, "pass exit=0 " + nest("HE", "LD")},
+		{"opener in an earlier table entry", tableEntry, "pass exit=0 " + nest("HE", "LD")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			held := ev(tc.prior, tc.result)
+			if !heldWitCredited(t, held) {
+				t.Fatalf("fixture: no HELD row is credited as a passing witness")
+			}
+			if err := flipHeldRefusal("ic/01", "verified", held); err == nil {
+				t.Errorf("flipHeldRefusal err=<nil>, want refusal=true")
+			}
+		})
+	}
+	plain := ev(failProse, "pass exit=0 "+nest("ok", "ay"))
+	if err := flipHeldRefusal("ic/01", "verified", plain); err != nil {
+		t.Errorf("no joined marker: flipHeldRefusal err=%v, want none", err)
+	}
+}
+
 // TestHeldQuotedRefLabel: a reference label is not rendered as text. A full
 // reference or a footnote reference whose definition sits in another
 // paragraph renders as a link or a number, so a quote inside its label pairs

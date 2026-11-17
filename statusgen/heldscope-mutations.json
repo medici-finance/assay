@@ -1788,6 +1788,12 @@
       "file": "heldscope.go",
       "old": "\treturn texts, false\n}",
       "new": "\treturn texts, true\n}"
+    },
+    {
+      "name": "S-restrip-scope: the latest run's own re-strips are no longer read",
+      "file": "verifyissues.go",
+      "old": "texts, settled = append(texts, runTexts...), settled && runSettled",
+      "new": "_, _ = runTexts, runSettled"
     }
   ]
 }
