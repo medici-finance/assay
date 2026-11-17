@@ -1,3 +1,0 @@
-- Read two canonical decision-gate HEAD lookups through the existing gitcore library, preserving native capability profiles and the full shared audit write window.
-- Isolate explicit acceptance-read permission per invocation so concurrent callers cannot grant it to an offline caller or lose their own opt-in.
-- Select the native HEAD read only for Git environment variables that can change which commit HEAD names; an unrelated variable such as GIT_EDITOR stays on the library path, and the deskevidence tests clear inherited GIT_* so their result does not depend on the caller.
