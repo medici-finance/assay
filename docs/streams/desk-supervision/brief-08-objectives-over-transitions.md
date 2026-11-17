@@ -635,6 +635,49 @@ Findings:
 Status stays implemented.
 
 **VERIFY: FAIL** — row 7: the report has no adopt-candidate or reject decision line, because the stored arms carry no observer log (#2816).
+### Verifier re-run — 2026-11-16 (desk-supervision/08, source 0240956217eb)
+
+Execution witness: statusgen verifyrun v1.0.85, all ten rows selected (--rows 1,2,3,4,5,6,7,8,9,10), host run in the admitted home at 0240956217eb1a624609e37d675d2beaf443dfe9 (darwin-arm64). Every row is class `check` (none is `check:ci`), so no container bracket applies. Admission: deskdispatch --check-verifier rc=0 before the rows and again after them, home tree digest unchanged. Witness bytes as printed by verifyrun:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --kits` | pass exit=0 | sha256:62a34e5296d6 | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `bash -o pipefail -c 'cd tools/desk && GOWORK=off GOPROXY=off go run ./cmd/deskdispatch assay/desk-supervision/08 --dry-run --kit worker-objective --root ../.. \| grep -F "KUBECONFIG=/dev/null" >/dev/null'` | pass exit=0 | sha256:7074582c173c | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk/cmd/deskdispatch/references && awk '/<!-- common-clauses:begin -->/,/<!-- common-clauses:end -->/' worker-prompt-objective.md \| diff - common-clauses.md` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `ls tools/skillbench/fixtures/worker-kit/ \| wc -l` | pass exit=0 | sha256:30179a803d48 | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `bash docs/streams/desk-supervision/verify.d/08-reduction.sh` | pass exit=0 | sha256:5469ef86ed17 | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `for a in with-overlay without-overlay; do ls docs/streams/desk-supervision/08-arms/$a \| wc -l; done` | pass exit=0 | sha256:9be9b418f3b8 | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -E -e '^decision: adopt-candidate — ' -e '^decision: reject — ' docs/streams/desk-supervision/08-report.md` | fail exit=1 | sha256:e3b0c44298fc | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `grep -c 'wedges' docs/streams/desk-supervision/08-report.md` | fail exit=0 | sha256:06e9d52c1720 | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 9 | `python3 docs/streams/desk-supervision/verify.d/08-consumers.py` | pass exit=0 | sha256:5cffef493b51 | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 10 | `python3 docs/streams/desk-supervision/verify.d/08-mutations.py` | pass exit=0 | sha256:fe939745f9de | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6644 run=c3b39467ea6991ddd91d5a0af337c589ec0f98f43d8a318886c984c352b8ab77 source=0240956217eb1a624609e37d675d2beaf443dfe9 brief=docs/streams/desk-supervision/brief-08-objectives-over-transitions.md model=claude-opus-5-5 tier=strong
+
+Row accounting against the brief's Expect cells (observed key output from a second host pass of the same commands, labelled supplemental; it carries no acceptance credit and the witness above is the record):
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --kits` | exit 0; output contains worker-objective | exit 0; kit list includes the line worker-objective | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (model verifier) (on-behalf-of human:ian) |
+| 2 | `bash -o pipefail -c 'cd tools/desk && GOWORK=off GOPROXY=off go run ./cmd/deskdispatch assay/desk-supervision/08 --dry-run --kit worker-objective --root ../.. \| grep -F "KUBECONFIG=/dev/null" >/dev/null'` | exit 0 | exit 0 under pipefail | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (model verifier) (on-behalf-of human:ian) |
+| 3 | `cd tools/desk/cmd/deskdispatch/references && awk '/<!-- common-clauses:begin -->/,/<!-- common-clauses:end -->/' worker-prompt-objective.md \| diff - common-clauses.md` | exit 0, byte-identical | exit 0, empty diff output | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (model verifier) (on-behalf-of human:ian) |
+| 4 | `ls tools/skillbench/fixtures/worker-kit/ \| wc -l` | output is 5 | 5 | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (model verifier) (on-behalf-of human:ian) |
+| 5 | `bash docs/streams/desk-supervision/verify.d/08-reduction.sh` | exit 0; Safety floor held | exit 0; "- Safety floor (task-check pass rate): held — with-overlay pass rate 100% >= without-overlay 100%" | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (model verifier) (on-behalf-of human:ian) |
+| 6 | `for a in with-overlay without-overlay; do ls docs/streams/desk-supervision/08-arms/$a \| wc -l; done` | each line 15 or more | 15 and 15 | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (model verifier) (on-behalf-of human:ian) |
+| 7 | `grep -E -e '^decision: adopt-candidate — ' -e '^decision: reject — ' docs/streams/desk-supervision/08-report.md` | exit 0; exactly one line | FAILED: exit 1, no matching line. The report's only decision line (08-report.md line 96) reads "decision: could-not-check — check_pass_rate 100%/15 vs 100%/15; wedges could-not-check in both arms (observer logs absent)" | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (model verifier) (on-behalf-of human:ian) |
+| 8 | `grep -c 'wedges' docs/streams/desk-supervision/08-report.md` | output is 1 or more | exit 0, output 6, which meets the Expect cell. The verifyrun witness marks this row fail because its Expect reader required an output line equal to "1"; see defects | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (model verifier) (on-behalf-of human:ian) |
+| 9 | `python3 docs/streams/desk-supervision/verify.d/08-consumers.py` | exit 0; CORROBORATED: 3 consumer routes | exit 0; "CORROBORATED: 3 consumer routes; common-clause change is markers only; no guard prose changed" | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (model verifier) (on-behalf-of human:ian) |
+| 10 | `python3 docs/streams/desk-supervision/verify.d/08-mutations.py` | exit 0; 2 planted defects rejected | exit 0; "rejected planted failed task result", "rejected planted additional consumer route", "2 planted defects rejected" | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (model verifier) (on-behalf-of human:ian) |
+
+Totals: 10 required rows, 10 run, 0 could-not-run. 8 rows meet their Expect (1, 2, 3, 4, 5, 6, 9, 10). Row 7 fails its obligation. Row 8 meets its Expect on observed output, but the witness records it as fail (an instrument defect, not a delivery defect). The brief's own Rework boundary says row 7 stays red until observer-based runs exist (tracked in medici-finance/assay#2816).
+
+Risk-bearing value: frontmatter risk is present and all-no, irreversible: no. Enumeration over the delivery diff badd7b58c (kits.go, main.go usage line, common-clauses markers, worker-prompt-objective.md, fixtures, report) and the rework 75e338ca0 (verify.d scripts, report, brief):
+
+- RISK-VALUE: DERIVED — kitFile["worker-objective"] = "references/worker-prompt-objective.md" @ tools/desk/cmd/deskdispatch/kits.go:53 — the new kit is registered only by name, and the dispatcher default stays str("kit", "worker", ...) @ tools/desk/cmd/deskdispatch/cli.go:73, which matches the brief's fact that --kit worker stays the default. Reversible by edit.
+- RISK-VALUE: DERIVED — grep -Fc '100% (n=15/15)' must equal 2 @ docs/streams/desk-supervision/verify.d/08-reduction.sh:11 — 5 fixture tasks times 3 runs gives 15 runs per arm, and two arms give two pass-rate lines, consistent with rows 4 and 6 (5 fixtures; 15 and 15 runs). Reversible.
+- RISK-VALUE: NAMED, NOT DERIVED — HeartbeatGap = 20 * time.Minute @ tools/desk/internal/loopengine/liveness.go:92 — the report cites it as the wedge threshold, but no observer log exists for either arm, so no wedge count derives from it (the row 7 failure). Not introduced by this diff. Reversible.
+- Ranked last and not derived (operational knobs): --date 2026-09-17 @ 08-reduction.sh:9 (fixed report date for determinism); subprocess timeouts 20 @ 08-consumers.py:22 and 08-mutations.py:17,19,34, and 90 @ 08-mutations.py:25.
+
+**VERIFY: FAIL** — row 7: exit 1, the report carries no decision: adopt-candidate or decision: reject line (decision: could-not-check at 08-report.md line 96); 9 of 10 rows meet Expect, 0 could-not-run.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.

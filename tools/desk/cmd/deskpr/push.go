@@ -195,7 +195,7 @@ func pushEndpoint(s pushSpec) (string, gitcore.ListOpts, error) {
 	case pushHTTPS:
 		slug, perr := parseRepo(dest)
 		if perr != nil || slug != s.repo {
-			return "", gitcore.ListOpts{}, deskkit.Refused("refused: origin's push destination " + redactURL(dest) + " does not name " + s.repo)
+			return "", gitcore.ListOpts{}, deskkit.Refused("refused: origin's push destination " + deskkit.RedactRemoteUserinfo(dest) + " does not name " + s.repo)
 		}
 		ep, eerr := endpointFn(s.repo, s.originURL)
 		if eerr != nil {
@@ -203,7 +203,7 @@ func pushEndpoint(s pushSpec) (string, gitcore.ListOpts, error) {
 		}
 		endpoint = ep.Opts
 	default:
-		return "", gitcore.ListOpts{}, deskkit.Refused("refused: origin's push destination " + redactURL(dest) + " is not an https URL or a local repository")
+		return "", gitcore.ListOpts{}, deskkit.Refused("refused: origin's push destination " + deskkit.RedactRemoteUserinfo(dest) + " is not an https URL or a local repository")
 	}
 
 	return dest, endpoint, nil

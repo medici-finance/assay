@@ -62,10 +62,58 @@
       "new": "\n"
     },
     {
+      "name": "#5853 SKIP the per-brief lookup past an incomplete window, as before the fix: a todo row whose merged PR is older than the window is offered as IMPLEMENT again. TestPlan_WindowMissLookupLands must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\tif incomplete {\n\t\t\tlookUpPastWindow(",
+      "new": "\t\tif false && incomplete {\n\t\t\tlookUpPastWindow("
+    },
+    {
+      "name": "#5853 ROUND a failed lookup to not-found: the row falls through to IMPLEMENT instead of could-not-check. TestPlan_LookupErrorUnchecked must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\tif err != nil {\n\t\t\tout[id] = deskkit.RepresentedPR{Unchecked:",
+      "new": "\t\tif err != nil {\n\t\t\tcontinue\n\t\t\tout[id] = deskkit.RepresentedPR{Unchecked:"
+    },
+    {
+      "name": "#5853 ALWAYS run the per-brief lookup, even over a complete window: one search per queued brief every plan. TestPlan_CompleteWindowNoLookup must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\tprs, incomplete, err := representedPRs(repo)\n",
+      "new": "\t\tprs, _, err := representedPRs(repo)\n\t\tincomplete := true\n"
+    },
+    {
+      "name": "#5853 look candidates up ALPHABETICALLY instead of in queue priority order: a rate limit then holds the same alphabetical tail every run. TestPlan_LookupPriorityOrder must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\tfor i, id := range ids {\n\t\tif briefChangeLookup == nil {",
+      "new": "\tsort.Strings(ids)\n\tfor i, id := range ids {\n\t\tif briefChangeLookup == nil {"
+    },
+    {
+      "name": "#5853 KEEP searching after a rate-limit answer: every remaining candidate spends another refused search. TestPlan_RateLimitStopsLookups must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\t\tif deskkit.IsForgeRateLimited(err) {",
+      "new": "\t\t\tif false && deskkit.IsForgeRateLimited(err) {"
+    },
+    {
+      "name": "#5853 DROP the could-not-check mark for an unwired lookup over an incomplete window: the row is offered as IMPLEMENT on absence alone. TestPlan_NilLookupUnchecked must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\t\tout[id] = deskkit.RepresentedPR{Unchecked: \"the PR list is a bounded window and no per-brief lookup is wired\"}\n",
+      "new": ""
+    },
+    {
+      "name": "#5853 take the OLDEST lookup hit (search order) instead of the newest: an old merged PR outranks a newer open follow-up. TestPlan_LookupNewestHitWins must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\tbyBrief := deskkit.RepresentingPRsByBrief(newestFirst)\n",
+      "new": "\t\tbyBrief := deskkit.RepresentingPRsByBrief(hits)\n\t\t_ = newestFirst\n"
+    },
+    {
       "name": "#6751 declared partial deliveries \u2014 DISABLE the set-aside so a MERGED PR the brief's own delivery: list declares covers: partial represents the brief first-wins again, as before the fix: the row reads landed-unreconciled and is never offered while statusgen offers it. TestPlan_PartialMergeDispatches must go red.",
       "file": "cmd/fanoutloop/represented.go",
-      "old": "\t\tif partials != nil {\n\t\t\tdropDeclaredPartials(repo, all, partials(repo))",
-      "new": "\t\tif false && partials != nil {\n\t\t\tdropDeclaredPartials(repo, all, partials(repo))"
+      "old": "\t\tif partials != nil {\n\t\t\tpartial = partials(repo)\n\t\t\tdropDeclaredPartials(repo, all, partial)",
+      "new": "\t\tif false && partials != nil {\n\t\t\tpartial = partials(repo)\n\t\t\tdropDeclaredPartials(repo, all, partial)"
+    },
+    {
+      "name": "#6751 x #5853 SKIP the partial set-aside on a lookup hit past an incomplete window: a declared partial delivery older than the window lands the row again. TestPlan_LookupPartialOffered must go red.",
+      "file": "cmd/fanoutloop/represented.go",
+      "old": "\t\tif nums := partial[id]; nums != nil {",
+      "new": "\t\tif nums := partial[id]; false && nums != nil {"
     },
     {
       "name": "#6751 rework rows' delivery: \u2014 read only the Next-up rows for declared partials, not the awaiting-rework rows, so a rework row whose only merged PR is declared covers: partial is dropped as represented again. TestPlan_PartialReworkRowOffered must go red.",

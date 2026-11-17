@@ -190,6 +190,9 @@ func (f *FanoutLoop) withheldRows() []BoardRow {
 type landedRow struct {
 	briefID string // `<stream>/<NN>`
 	pr      int    // the merged PR's number
+	// unchecked, when non-empty, marks a COULD-NOT-CHECK row instead (#5853): its representing PR
+	// could not be determined (pr is 0) and renderPlan lists it under its own heading with this reason.
+	unchecked string
 }
 
 func (f *FanoutLoop) Name() string { return "worker-desk" }
@@ -279,7 +282,8 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 			if f.isHandled(r.ID()) || f.statusWithheld(r, true) {
 				continue
 			}
-			if _, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
+			if rp, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
+				f.noteUnchecked(r, rp)
 				continue
 			}
 			reworkItems = append(reworkItems, r.toReworkItem(f.TargetSHA))
@@ -324,6 +328,9 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 				continue
 			}
 			if rp, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
+				if f.noteUnchecked(r, rp) {
+					continue
+				}
 				if rp.Merged {
 					// Landed-unreconciled: the deliverable merged, the board row just never reconciled.
 					// A plan diagnostic, never a dispatch — recorded for renderPlan's own heading.
@@ -369,6 +376,18 @@ func (f *FanoutLoop) landedUnreconciledRows() []landedRow {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]landedRow(nil), f.landedUnreconciled...)
+}
+
+// noteUnchecked records a row whose representing PR could not be determined (#5853) under the plan's
+// COULD-NOT-CHECK heading and reports true; such a row is never dispatched and never landed.
+func (f *FanoutLoop) noteUnchecked(r BoardRow, rp deskkit.RepresentedPR) bool {
+	if rp.Unchecked == "" {
+		return false
+	}
+	f.mu.Lock()
+	f.landedUnreconciled = append(f.landedUnreconciled, landedRow{briefID: r.Stream + "/" + r.Num, unchecked: rp.Unchecked})
+	f.mu.Unlock()
+	return true
 }
 
 // freshHoldReason returns the reason the last SelectQueue HELD the fresh lane (a could-not-check
