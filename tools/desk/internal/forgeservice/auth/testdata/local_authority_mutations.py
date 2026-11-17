@@ -67,6 +67,10 @@ FAULTS = [
     fault("reserved-control-capacity", "control.go", '"control.sock", c.controlSlots,', '"control.sock", c.dataSlots,', "ControlCapacity", "slow data slots blocked private revocation"),
     # The handler is descheduled between its close and its slot release; the sleep makes that delay certain.
     fault("slot-release-before-close", "channels.go", "\t\t\tdefer conn.Close()\n\t\t\tdefer func() { <-slots }()\n", "\t\t\tdefer func() { time.Sleep(5 * time.Millisecond); <-slots }()\n\t\t\tdefer conn.Close()\n", "Slots", "slots still held after"),
+    # Holding the controller lock parks a handler past its IOTimeout; closing instead of expiring answers its client while it still holds its slot.
+    fault("expiry-keeps-connection", "channels.go", "stop := context.AfterFunc(call, func() { conn.SetDeadline(expiredDeadline) })", "stop := context.AfterFunc(call, func() { conn.Close() })", "Expiry", "answered while its handler held a slot"),
+    # The fixture's own startup check: a retry over an abandoned handler must fail, not be absorbed by a later success.
+    fault("startup-abandon-check", "authority_test.go", "\t\tassertNoAbandoned(t, c, channel)\n", "", "Abandon", "abandoned handler not reported"),
     ("channel-live-gate", [("channels.go", "if ctx.Err() != nil || !c.liveGate() {", "if ctx.Err() != nil {"), ("channels.go", " || !c.liveGate() {", " {")], "ChannelRestart/changed-gate", "changed gate unlinked retained channel"),
     fault("channel-duplicate", "channels.go", "if c.channels[key] {", "if false {", "ChannelRestart/duplicate", "duplicate"),
     fault("private-volume-leak", "../../cellcontainer/authority_profile.go", 'mounts = []Mount{{"volume", c.Volumes.Current, "/authority-current", true}, {"volume", c.Volumes.Bootstrap, "/authority-bootstrap", true}}', 'mounts = []Mount{{"volume", c.Volumes.Current, "/authority-current", true}, {"volume", c.Volumes.Bootstrap, "/authority-bootstrap", true}, {"volume", c.Volumes.Private, "/authority-control", true}}', "Custody", "independent role escaped signer/control/other-launch containment"),
