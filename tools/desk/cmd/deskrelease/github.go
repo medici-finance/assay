@@ -174,7 +174,10 @@ func (c *ghClient) do(method, path string, in, out any) (found bool, err error) 
 		return false, deskkit.Unverifiable(fmt.Sprintf("%s %s failed", method, path), derr)
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
+	raw, rerr := deskkit.ReadForgeBody(resp, method+" "+path, out != nil)
+	if rerr != nil {
+		return false, rerr
+	}
 
 	if resp.StatusCode == http.StatusNotFound {
 		return false, nil

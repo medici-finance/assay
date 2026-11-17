@@ -23,6 +23,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/credential"
 )
 
 var timeoutTestRepo = ForgeRepo{Owner: "example-org", Name: "example-repo"}
@@ -163,8 +165,10 @@ var unboundedClientRoots = []string{
 
 // unboundedClientSites returns every site in root's shipped Go files that sends, or builds a
 // client that sends, with no request deadline: a reference to http.DefaultClient, a call of
-// net/http's package-level Get/Head/Post/PostForm (which use it), and a go-gh ClientOptions
-// literal with no Timeout key.
+// net/http's package-level Get/Head/Post/PostForm (which use it), and an http.Client or go-gh
+// ClientOptions literal with no Timeout key (copies go through boundedCopy instead). It also
+// reports `x, _ := io.ReadAll(...)`: once a deadline can cut a body short, a discarded read
+// error turns a truncated page into a complete-looking answer (use ReadForgeBody).
 func unboundedClientSites(root string) (sites []string, files int, err error) {
 	fset := token.NewFileSet()
 	err = filepath.WalkDir(root, func(path string, d fs.DirEntry, werr error) error {
@@ -197,8 +201,28 @@ func unboundedClientSites(root string) (sites []string, files int, err error) {
 						what = "http." + x.Sel.Name + " (uses http.DefaultClient)"
 					}
 				}
+			case *ast.AssignStmt:
+				// raw, _ := io.ReadAll(...) — a body cut off by the deadline read as complete.
+				if len(x.Lhs) == 2 && len(x.Rhs) == 1 {
+					if b, ok := x.Lhs[1].(*ast.Ident); ok && b.Name == "_" {
+						if call, ok := x.Rhs[0].(*ast.CallExpr); ok {
+							if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == "ReadAll" {
+								if id, ok := sel.X.(*ast.Ident); ok && id.Name == "io" {
+									what = "io.ReadAll error discarded"
+								}
+							}
+						}
+					}
+				}
 			case *ast.CompositeLit:
-				if sel, ok := x.Type.(*ast.SelectorExpr); ok && sel.Sel.Name == "ClientOptions" {
+				sel, isSel := x.Type.(*ast.SelectorExpr)
+				httpClient := false
+				if isSel && sel.Sel.Name == "Client" {
+					if id, ok := sel.X.(*ast.Ident); ok && id.Name == "http" {
+						httpClient = true
+					}
+				}
+				if isSel && (httpClient || sel.Sel.Name == "ClientOptions") {
 					has := false
 					for _, e := range x.Elts {
 						if kv, ok := e.(*ast.KeyValueExpr); ok {
@@ -208,7 +232,10 @@ func unboundedClientSites(root string) (sites []string, files int, err error) {
 						}
 					}
 					if !has {
-						what = "ClientOptions literal with no Timeout"
+						what = sel.Sel.Name + " literal with no Timeout"
+						if httpClient {
+							what = "http.Client literal with no Timeout"
+						}
 					}
 				}
 			}
@@ -246,7 +273,7 @@ func TestNoUnboundedForgeClient(t *testing.T) {
 }
 
 // TestUnboundedGuardSeesPlant is the positive control: the planted fixture holds one instance
-// of each shape, and the guard must report all three.
+// of each shape, and the guard must report all five.
 func TestUnboundedGuardSeesPlant(t *testing.T) {
 	dir := filepath.Join("testdata", "unboundedclient")
 	if _, err := os.Stat(filepath.Join(dir, "planted.go")); err != nil {
@@ -256,7 +283,8 @@ func TestUnboundedGuardSeesPlant(t *testing.T) {
 	if err != nil {
 		t.Fatalf("scan the planted fixture: %v", err)
 	}
-	for _, want := range []string{"http.DefaultClient", "http.Get (uses http.DefaultClient)", "ClientOptions literal with no Timeout"} {
+	for _, want := range []string{"http.DefaultClient", "http.Get (uses http.DefaultClient)", "ClientOptions literal with no Timeout",
+		"http.Client literal with no Timeout", "io.ReadAll error discarded"} {
 		found := false
 		for _, s := range sites {
 			if strings.HasSuffix(s, ": "+want) {
@@ -265,6 +293,25 @@ func TestUnboundedGuardSeesPlant(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("guard missed the planted %q; it reported: %v", want, sites)
+		}
+	}
+}
+
+// regression: #6718
+func TestCredentialBoundMatches(t *testing.T) {
+	// The credential package cannot import this one, so it carries its own copy of the bound.
+	if credential.RequestTimeout != ForgeRequestTimeout {
+		t.Fatalf("credential.RequestTimeout = %v, want deskkit.ForgeRequestTimeout %v", credential.RequestTimeout, ForgeRequestTimeout)
+	}
+	for name, base := range map[string]*http.Client{"nil": nil, "zero": {}} {
+		if got := boundedCopy(base).Timeout; got != ForgeRequestTimeout {
+			t.Errorf("boundedCopy(%s).Timeout = %v, want %v", name, got, ForgeRequestTimeout)
+		}
+		if got := countingClient(base).Timeout; got != ForgeRequestTimeout {
+			t.Errorf("countingClient(%s).Timeout = %v, want %v", name, got, ForgeRequestTimeout)
+		}
+		if got := mirrorResponseClient(base).Timeout; got != ForgeRequestTimeout {
+			t.Errorf("mirrorResponseClient(%s).Timeout = %v, want %v", name, got, ForgeRequestTimeout)
 		}
 	}
 }

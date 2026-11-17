@@ -178,15 +178,10 @@ func (g *GitLabForge) client() (*gitlab.Client, error) {
 // naming the status. The copy leaves the caller's client untouched.
 // forge_redirect_test.go pins it over the wire; gitlabcredsites_test.go lists every site.
 func gitlabNoRedirectClient(base *http.Client) *http.Client {
-	c := &http.Client{}
-	if base != nil {
-		cp := *base
-		c = &cp
-	}
+	// boundedCopy: a zero Timeout is no deadline, so every GitLab call is bounded like the GitHub
+	// backend's (ForgeRequestTimeout) and a stalled forge cannot hold a desk write verb's audit lock.
+	c := boundedCopy(base)
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	// A zero Timeout is no deadline; every GitLab call is bounded like the GitHub backend's
-	// (ForgeRequestTimeout), so a stalled forge cannot hold a desk write verb's audit lock.
-	c.Timeout = boundedTimeout(c)
 	return c
 }
 

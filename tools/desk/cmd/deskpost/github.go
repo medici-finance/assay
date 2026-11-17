@@ -202,7 +202,10 @@ func mintInstallationToken(owner string) (string, error) {
 		return "", deskkit.Unverifiable("POST access_tokens failed", err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
+	body, rerr := deskkit.ReadForgeBody(resp, "POST access_tokens", true)
+	if rerr != nil {
+		return "", rerr
+	}
 	if resp.StatusCode != http.StatusCreated {
 		return "", deskkit.Unverifiable(fmt.Sprintf("access_tokens HTTP %d", resp.StatusCode), nil)
 	}
@@ -406,7 +409,10 @@ func (c *ghClient) doJSONRetry(method, path string, in, out any, allowRemint boo
 		return deskkit.Unverifiable(fmt.Sprintf("%s %s failed", method, path), err)
 	}
 	defer resp.Body.Close()
-	raw, _ := io.ReadAll(resp.Body)
+	raw, rerr := deskkit.ReadForgeBody(resp, method+" "+path, out != nil)
+	if rerr != nil {
+		return rerr
+	}
 
 	if resp.StatusCode == http.StatusUnauthorized && allowRemint {
 		tok, merr := mintInstallationToken(c.owner)
