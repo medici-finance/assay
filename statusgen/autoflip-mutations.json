@@ -348,6 +348,18 @@
       "file": "evidenceshape.go",
       "old": "return !strings.Contains(p, \"\\\\\") && pathpkg.Clean(p) == p",
       "new": "return pathpkg.Clean(p) == p"
+    },
+    {
+      "name": "#6767 autoflip: a witness refusal or a failed row no longer keeps the hold (falls through to the rule 3c read)",
+      "file": "verifyissues.go",
+      "old": "\tif refusal != \"\" || len(findings) == 0 || checkExitCode(findings) != verifyrunExitPass {\n\t\treturn held, why\n\t}",
+      "new": "\tif false && (refusal != \"\" || len(findings) == 0 || checkExitCode(findings) != verifyrunExitPass) {\n\t\treturn held, why\n\t}"
+    },
+    {
+      "name": "#6767 autoflip: the held read is the bare rule 3c read, with no witness check",
+      "file": "autoflip.go",
+      "old": "\tif held, why := verifyPassHeldWitnessed(evidence, path); held {",
+      "new": "\tif held, why := unroutedHeldLine(evidence, true); held {"
     }
   ]
 }

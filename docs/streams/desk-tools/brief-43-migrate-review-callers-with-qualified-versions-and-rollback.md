@@ -24,6 +24,7 @@ exec-tier-why: Semantic extraction, cost coverage and cross-caller failure behav
 domain: complicated
 gate-why: Review/issue observations can expose scoped operational facts; implemented coverage and authority boundaries require the existing human acceptance.
 decision-trigger: spec
+decision-issue: 6709
 consumers:
   - "plugins/assay/skills/pr-review-desk/SKILL.md: fixed-here"
   - "plugins/assay/skills/the-desk/SKILL.md: fixed-here"
@@ -58,6 +59,50 @@ design-fit:
   retires: duplicate work only after the applicable caller and equivalence acceptance
   weight: verbs +0, flags +1 optional throughput observation handoff, refusals +0, rule-text reduced through shared procedure references
   why-add: reuse existing contracts/runner/typed reads; a complete observation is required before removing the second read, and a new cache would preserve that duplication
+
+## Human decision
+
+Accept or hold the delivered review-caller migration as this brief's implementation.
+Accepting lets the brief move to `implemented` and go to independent verification. The
+source specification's approval is already recorded (`## Review`); this decision covers
+implementation coverage and authority boundaries only. This section was written after
+implementation, under the ruling on #5145; the matching proposed record is
+`DR-desk-tools-43`. The decision issue is #6709: the ruling is a comment there, from the
+driver's own account, naming `desk-tools/43`, `DR-desk-tools-43` and the chosen option.
+
+What is delivered on main by #4311 (source-qualified, not independently verified):
+
+- `pr-monitor.sh` gains an explicitly selected classified mode. It collects one complete
+  review observation, plans through the shared candidate-plus-priority planner, and derives
+  PR events from that same observation. The default legacy mode is unchanged and is the
+  rollback.
+- `deskboard throughput --review-observation` is one optional flag. It validates the
+  collector's local policy digest, requested scope and five-minute cutoff; a failure blinds
+  review depth and never launches a second review scan. The coordinator and inbox flows
+  forward an applicable observation to it; their standalone legacy reads stay supported.
+- Incomplete, quarantined, stale or incompatible inputs hold the whole cycle visibly,
+  invalidate reusable outputs and keep event baselines. No in-cycle fallback scan runs.
+- Claims, trust, lane admission and fresh consequential checks keep their existing owners.
+  No service, cache, new credential, executor switch, release, pin change or activation is
+  added. The compatibility matrix and consumer routing are in
+  `docs/review-efficiency-compatibility.md`.
+- On a matched local three-PR fixture, event inventory, planning and review-depth reporting
+  fall from 14 to 7 provider HTTP requests. Cold work stays O(R+P); no CPU, elapsed-time or
+  live-fleet saving is inferred.
+
+These holds stay in place whichever option is chosen:
+
+- Broader cost qualification and last-consumer retirement stay with desk-tools/44.
+- The source adapters stay opt-in until installed tools and plugin are paired and the
+  existing caller and adopter gates accept them; releases, pin changes, collection consent
+  and activation stay separate gates.
+
+Options:
+1. **Accept the delivered implementation**: the brief moves to `implemented` and verification proceeds under the holds above.
+2. **Hold**: the brief stays `in-progress` until the condition the driver names is met.
+3. **Revise**: name the missing coverage or authority boundary; a follow-up change fixes it before acceptance.
+
+Default if no answer: none — blocks until answered.
 
 ## Read first
 

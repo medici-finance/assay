@@ -208,15 +208,7 @@ func TestRoleInitRunsPreflightAgainstTheWorktree(t *testing.T) {
 	}
 	target := filepath.Join(tmpBaseDir, "tracker-verify-desk-pf")
 
-	oldStdout := os.Stdout
-	r, w, _ := os.Pipe()
-	os.Stdout = w
-	rc, stderr := runCapErr(t, []string{"role-init", "--role", "verifier", "--session", "pf", "--no-fetch"})
-	_ = w.Close()
-	os.Stdout = oldStdout
-	outb := make([]byte, 4096)
-	n, _ := r.Read(outb)
-	stdout := string(outb[:n])
+	rc, stdout, stderr := runCapBoth(t, []string{"role-init", "--role", "verifier", "--session", "pf", "--no-fetch"})
 
 	if rc != deskkit.ExitUnverifiable {
 		t.Fatalf("role-init with a red preflight rc = %d, want 6; stderr: %s", rc, stderr)

@@ -92,3 +92,64 @@ func TestMalformedHolderRecord(t *testing.T) {
 		}
 	}
 }
+
+// fakeWait is a clock that only moves when the wait under test sleeps. It fails
+// the test the moment the wait sleeps past its grant, or asks to sleep again
+// once the grant is spent, so an unbounded wait reddens instead of hanging.
+type fakeWait struct {
+	t      *testing.T
+	at     time.Time
+	grant  time.Duration
+	slept  time.Duration
+	sleeps int
+}
+
+func (c *fakeWait) clock() *waitClock {
+	return &waitClock{now: func() time.Time { return c.at }, sleep: c.sleep}
+}
+
+func (c *fakeWait) sleep(d time.Duration) {
+	c.t.Helper()
+	c.sleeps++
+	if c.slept >= c.grant {
+		c.t.Fatalf("sleep %d (%s) after the %s grant was already spent: the wait has no ceiling", c.sleeps, d, c.grant)
+	}
+	if c.slept+d > c.grant {
+		c.t.Fatalf("sleep %d (%s) takes the wait to %s, past its %s grant", c.sleeps, d, c.slept+d, c.grant)
+	}
+	c.slept += d
+	c.at = c.at.Add(d)
+}
+
+// A lock that never frees is waited on for exactly the granted Wait — not one
+// backoff step longer — and the caller gets the busy refusal, never a held lock.
+//
+// regression: F-overwait-ceiling-dropped
+func TestLockWaitStopsAtGrant(t *testing.T) {
+	dir := t.TempDir()
+	r, sibling := openLockFixture(t, dir)
+	if err := TryLockExclusive(sibling); err != nil {
+		t.Fatal(err)
+	}
+	defer sibling.Close()
+	_, f := openLockFixture(t, dir)
+	// Not a sum of backoff steps (10ms doubling to 500ms), so the last sleep has
+	// to be cut short for the wait to end at the grant.
+	const grant = 1300 * time.Millisecond
+	c := &fakeWait{t: t, at: time.Unix(1_700_000_000, 0), grant: grant}
+	h, err := AcquireHeld(r, "owner.lock", f, LockSpec{Name: "role lease", Wait: grant, clock: c.clock()})
+	if h != nil {
+		h.Release()
+		t.Fatal("took a lock its sibling never released")
+	}
+	var busy *BusyError
+	if !errors.As(err, &busy) || !errors.Is(err, ErrLockBusy) {
+		t.Fatalf("want the busy refusal (*BusyError wrapping ErrLockBusy), got %v", err)
+	}
+	if c.slept != grant {
+		t.Fatalf("slept %s in total, want exactly the %s grant", c.slept, grant)
+	}
+	if busy.Waited != grant {
+		t.Fatalf("busy error reports a %s wait, want the %s grant", busy.Waited, grant)
+	}
+}

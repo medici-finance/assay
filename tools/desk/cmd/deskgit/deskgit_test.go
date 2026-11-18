@@ -1037,13 +1037,13 @@ func TestRedactURL(t *testing.T) {
 		{"https://github.com/o/r", "https://github.com/o/r"},
 		{"/srv/local/o/r", "/srv/local/o/r"},
 	} {
-		if got := redactURL(c.in); got != c.want {
-			t.Errorf("redactURL(%q) = %q, want %q", c.in, got, c.want)
+		if got := deskkit.RedactRemoteUserinfo(c.in); got != c.want {
+			t.Errorf("RedactRemoteUserinfo(%q) = %q, want %q", c.in, got, c.want)
 		}
 	}
 	// Total on hostile input: it exists to log exactly these, so it must never panic.
 	for _, u := range []string{"", "://", "@", ":", "a://@", "ext::sh -c x", "https://"} {
-		_ = redactURL(u)
+		_ = deskkit.RedactRemoteUserinfo(u)
 	}
 }
 

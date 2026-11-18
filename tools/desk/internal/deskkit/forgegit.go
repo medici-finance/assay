@@ -116,7 +116,7 @@ func forgeGitEndpoint(repoSlug, role, kindHost string) (ForgeGitEndpoint, error)
 	if herr != nil {
 		return ForgeGitEndpoint{}, herr
 	}
-	if verr := validateGitHost(host, repo); verr != nil {
+	if verr := validateGitHost(host, repo.Slug()); verr != nil {
 		return ForgeGitEndpoint{}, verr
 	}
 
@@ -146,9 +146,13 @@ func forgeGitEndpoint(repoSlug, role, kindHost string) (ForgeGitEndpoint, error)
 //     default: defaulting an unconfigured instance to gitlab.com would present a self-hosted
 //     adopter's PAT to the public host (the #727 crossing). Unconfigured is could-not-check.
 func gitHostForKind(kind ForgeKind, custodyBaseURL string, repo ForgeRepo) (string, error) {
+	h, err := hostOfBaseURL(custodyBaseURL)
+	if err != nil {
+		return "", Unverifiable(fmt.Sprintf("invalid custody instance host for %s", repo.Slug()), err)
+	}
 	switch kind {
 	case ForgeGitHub:
-		switch h := hostOfBaseURL(custodyBaseURL); {
+		switch {
 		case h == "" || h == "github.com" || h == "api.github.com":
 			return "github.com", nil
 		default:
@@ -157,7 +161,6 @@ func gitHostForKind(kind ForgeKind, custodyBaseURL string, repo ForgeRepo) (stri
 			return strings.TrimPrefix(h, "api."), nil
 		}
 	case ForgeGitLab:
-		h := hostOfBaseURL(custodyBaseURL)
 		if h == "" {
 			return "", Unverifiable(fmt.Sprintf(
 				"cannot list %s: its forge resolves to GitLab but no instance host is configured "+
@@ -177,19 +180,16 @@ func gitHostForKind(kind ForgeKind, custodyBaseURL string, repo ForgeRepo) (stri
 // (lowercased) so validateGitHost — not this parser — is the one gate that rejects a malformed
 // value; url.Parse would silently swallow an scp-like `user@a@evil.test` into a clean hostname,
 // which is exactly the authority-injection validateGitHost must still catch.
-func hostOfBaseURL(base string) string {
-	base = strings.TrimSpace(base)
-	if base == "" {
-		return ""
-	}
+func hostOfBaseURL(base string) (string, error) {
+	base = strings.Trim(base, " \t\r\n")
 	if !strings.Contains(base, "://") {
-		return strings.ToLower(base)
+		return NormalizeForgeHost(base)
 	}
 	u, err := url.Parse(base)
 	if err != nil || u.Hostname() == "" {
-		return strings.ToLower(strings.TrimPrefix(base, "https://"))
+		return "", fmt.Errorf("cannot parse custody instance hostname")
 	}
-	return strings.ToLower(u.Hostname())
+	return NormalizeForgeHost(u.Hostname())
 }
 
 // validateGitHost rejects a host that is not a bare hostname — anything carrying a userinfo
@@ -199,16 +199,12 @@ func hostOfBaseURL(base string) string {
 // it (#1197 security review S2). The kind-canonical derivation above already keeps an unrelated
 // checkout's origin out of the host, so this is defense in depth on the remaining
 // operator-configured input (GITLAB_API_BASE) and any future host source.
-func validateGitHost(host string, repo ForgeRepo) error {
+func validateGitHost(host, repoSlug string) error {
 	if strings.TrimSpace(host) == "" {
-		return Unverifiable(fmt.Sprintf("no git host resolved for %s", repo.Slug()), nil)
+		return Unverifiable(fmt.Sprintf("no git host resolved for %s", repoSlug), nil)
 	}
-	if strings.ContainsAny(host, "@/\\:?# \t\r\n") {
-		return Unverifiable(fmt.Sprintf(
-			"refusing to dial %q for %s: a git host must be a bare hostname, not a URL authority "+
-				"(no @, /, \\, :, ?, # or whitespace) — a credential must never be presented to a host "+
-				"parsed out of an untrusted or malformed source (#1197 security review S2)",
-			host, repo.Slug()), nil)
+	if !IsBareGitHost(host) {
+		return Unverifiable(fmt.Sprintf("refusing to dial the git host for %s: it must be a bare hostname", repoSlug), nil)
 	}
 	return nil
 }

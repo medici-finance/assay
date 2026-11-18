@@ -112,6 +112,16 @@ func verifierPrivatePromptDestination(file string) error {
 	}
 }
 
+// verifierTrackingRepo supplies the same tracking identity to the preview and
+// the fresh attestation check. Return the checkout spelling used by the publisher.
+func verifierTrackingRepo(o dispatchOpts, dl deliverable) (string, error) {
+	actual, err := deskkit.OriginRepoSlug(o.claimRoot)
+	if err != nil || !dl.crossRepo(o.root) || dl.trackingRepo == "" || !strings.EqualFold(actual, dl.trackingRepo) || !vpWithin(o.claimRoot, o.brief) {
+		return "", deskkit.Refused("cross-repository verifier requires the resolved tracking repository and its brief under --claim-root")
+	}
+	return actual, nil
+}
+
 func attestVerifierDispatch(o dispatchOpts, repo, home string) (string, error) {
 	brief := o.brief
 	if filepath.IsAbs(brief) && vpWithin(o.root, brief) {
@@ -126,9 +136,8 @@ func attestVerifierDispatch(o dispatchOpts, repo, home string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		actual, err := deskkit.OriginRepoSlug(o.claimRoot)
-		if err != nil || !dl.crossRepo(o.root) || dl.trackingRepo == "" || !strings.EqualFold(actual, dl.trackingRepo) || !vpWithin(o.claimRoot, brief) {
-			return "", deskkit.Refused("cross-repository verifier requires the resolved tracking repository and its brief under --claim-root")
+		if _, err := verifierTrackingRepo(o, dl); err != nil {
+			return "", err
 		}
 	}
 	if err := deskkit.PrepareVerifierAttestation(home, repo, brief, o.model, o.tier); err != nil {

@@ -1,0 +1,2 @@
+### Changed
+- The derived-board rollout brief (`derived-board/07`) is re-scoped to this repository: its own rollout is recorded as delivered, each consumer repository's rollout moves to that repository's own board, the overlay re-stage is retired as not applicable, and `statusgen reconcile --backfill` is kept because the desk-side reconcile verb passes it. Its Verify table now checks what this repository delivers.

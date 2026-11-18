@@ -276,9 +276,11 @@ CLI keeps its flags, exit classes, TTL and `--fresh` behavior.
 The provider cannot import `deskkit`, because `deskkit` imports it. The controls therefore
 arrive as adapters: `deskkit.CredentialAdapters` hands over the same guard, audit, custody and
 lock functions the CLI used, and a missing adapter refuses. The package stays internal and
-outside statusgen's reach; this is not an SDK. The verbs that still run `desktoken` as a
-child are listed in `tools/desk/README.md` and keep the CLI's rules. Moving them in process
-is deferred to their own changes.
+outside statusgen's reach; this is not an SDK. No desk verb runs `desktoken` as a child to
+obtain a credential any more: the write verbs read it in process (#5457). The only sites that
+still start the CLI are the probes that test the installed binary itself (the boot mint check,
+the preflight cold-mint probe and the release path's binary pin). The callsite inventory in
+`tools/desk/README.md` lists every reader and where it stands.
 
 ## Shared work-reference core — milestone-support/01
 
@@ -322,8 +324,8 @@ brief records beside an ignored index. Explicit Evidence source reads use the sa
 record checker through the filesystem adapter, rooted in the admitted receipt, independent
 of discovery paths. Remote and final write bytes are separately admitted. Diagnostics
 are bounded/escaped in the shared result; authority and effects stay with the host.
-Evidence commit capability refusal is adapted inside its existing audit lock, before
-landing reads or credentials; refusal appends one audit row when the sink is writable, and append failures are reported.
+Evidence commit capability refusal is adapted under the per-landing-root preparation lock, before
+landing reads or credentials (the refusal row itself is appended under the audit lock); refusal appends one audit row when the sink is writable, and append failures are reported.
 
 `readercaps/record` decides presence only after `briefdoc.ParseMapping` validates one
 document and its keys, then retains `ParseFields` policy validation for opted-in records; `readercaps/tree` is

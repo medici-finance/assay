@@ -130,6 +130,10 @@ type flipOpts struct {
 	root   string
 	quiet  bool
 	dryRun bool
+	// flipped, when non-nil, is set true once the ready mutation itself has succeeded. It is
+	// what lets audit tell a real flip from the success paths that write nothing (a dry run,
+	// an already-ready PR), because only a real flip renews the HEARTBEAT lease (#6510).
+	flipped *bool
 }
 
 func cmdFlip(args []string) error {
@@ -158,7 +162,8 @@ func cmdFlip(args []string) error {
 		return deskkit.Refused("deskflip: unexpected extra arguments after <N>: " + strings.Join(fs.Args(), " "))
 	}
 
-	o := flipOpts{pr: n, repo: *repo, root: *root, quiet: *quiet, dryRun: *dryRun}
+	var flipped bool
+	o := flipOpts{pr: n, repo: *repo, root: *root, quiet: *quiet, dryRun: *dryRun, flipped: &flipped}
 	ferr := flip(o)
 	audit(o, ferr)
 	return ferr
@@ -588,6 +593,9 @@ func flip(o flipOpts) error {
 			return deskkit.Refused(msg)
 		}
 		return deskkit.Unverifiable(msg, err)
+	}
+	if o.flipped != nil {
+		*o.flipped = true
 	}
 	// The post-flip backstop (#6242): ready means mergeable per the forge. A revert returns
 	// here, before the queue label moves to the merge queue.
@@ -1714,7 +1722,7 @@ func (o flipOpts) resolveRepo() (string, error) {
 	slug := repoSlugFromURL(r.stdout)
 	if slug == "" {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
-			"origin %q does not parse to an owner/name — pass --repo <owner/name>.", r.stdout), nil)
+			"origin %q does not parse to an owner/name — pass --repo <owner/name>.", deskkit.RedactRemoteUserinfo(r.stdout)), nil)
 	}
 	return slug, nil
 }
@@ -2268,6 +2276,12 @@ func checksIn(entries []rollupEntry, want ciState, none string) []string {
 	return out
 }
 
+// renewsLease reports whether this invocation's audit row records a ready mutation the forge
+// confirmed: no error, not a dry run, and the mutation itself ran (o.flipped).
+func renewsLease(o flipOpts, err error) bool {
+	return err == nil && !o.dryRun && o.flipped != nil && *o.flipped
+}
+
 func audit(o flipOpts, err error) {
 	result := deskkit.ResultOK
 	detail := fmt.Sprintf("flipped PR #%d", o.pr)
@@ -2283,7 +2297,14 @@ func audit(o flipOpts, err error) {
 		}
 		detail = firstLine(err.Error())
 	}
-	if lerr := deskkit.Log(deskkit.Entry{
+	// A real ready flip is an outward mutating act and renews a fresh HEARTBEAT lease on
+	// success (#6510). A dry run and an already-ready PR are also logged ResultOK here but
+	// made no ready mutation, so they go through plain Log: only a flip that happened renews.
+	logRow := deskkit.Log
+	if renewsLease(o, err) {
+		logRow = deskkit.LogOutwardAct
+	}
+	if lerr := logRow(deskkit.Entry{
 		Tool:   toolName,
 		Verb:   "flip",
 		Result: result,

@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/cellctl -count=1 -timeout 300s -run '^(TestLifecycleTransitions|TestResumeLeavesForeignStops|TestRecordedResumeNotExecuted|TestPerRoleDownClosesOneSurface|TestIdleSignalPerMode|TestDrainWaitsForInFlight|TestDrainTimeoutDoesNotStop|TestInterimMappingPinned|TestDrainEmitsCellOpV1|TestPauseResumeDrainRefuseOffTTY|TestDrainNowInteractiveOnly|TestPerRoleDownRefusesUnpausedRole|TestLiftAfterStopUsesAppliedStops|TestPlanActionRoleChecked)$'",
+  "test": "go test ./cmd/cellctl -count=1 -timeout 300s -run '^(TestLifecycleTransitions|TestResumeLeavesForeignStops|TestRecordedResumeNotExecuted|TestPerRoleDownClosesOneSurface|TestIdleSignalPerMode|TestDrainWaitsForInFlight|TestDrainTimeoutDoesNotStop|TestInterimMappingPinned|TestDrainEmitsCellOpV1|TestPauseResumeDrainRefuseOffTTY|TestDrainNowInteractiveOnly|TestPerRoleDownRefusesUnpausedRole|TestLiftAfterStopUsesAppliedStops|TestPlanActionRoleChecked|TestSurfaceLabelPerCockpit|TestReceiptNameOldHerdrLabel|TestHerdrDownNewLabel|TestHerdrDownOldLabel|TestHerdrDownForeignLabel)$'",
   "control": {
     "name": "invert the one-close assertion",
     "file": "cmd/cellctl/lifecycle_test.go",
@@ -7,6 +7,24 @@
     "new": "if got := w.closes(); len(got) == 1 && got[0] == c.close {"
   },
   "mutations": [
+    {
+      "name": "1e per-role-close: old herdr label not recognised",
+      "file": "cmd/cellctl/role_surface.go",
+      "old": "\treturn rec.Cockpit == \"herdr\" && rec.Name == surfaceName(cell, rec.Role)",
+      "new": "\treturn false"
+    },
+    {
+      "name": "1e per-role-close: old label accepted on every cockpit",
+      "file": "cmd/cellctl/role_surface.go",
+      "old": "\treturn rec.Cockpit == \"herdr\" && rec.Name == surfaceName(cell, rec.Role)",
+      "new": "\treturn rec.Name == surfaceName(cell, rec.Role) || rec.Name == rec.Role"
+    },
+    {
+      "name": "1e per-role-close: herdr tab label repeats the cell",
+      "file": "cmd/cellctl/role_surface.go",
+      "old": "func herdrTabLabel(window string) string { return window }",
+      "new": "func herdrTabLabel(window string) string { return \"sample-\" + window }"
+    },
     {
       "name": "1 lifecycle-states: stop from running",
       "file": "cmd/cellctl/lifecycle.go",

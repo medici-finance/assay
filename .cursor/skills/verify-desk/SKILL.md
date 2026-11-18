@@ -30,9 +30,9 @@ hand-edits a board cell, and the board follows the witness.
 > Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
 
 
-> The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
+> The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache, every carried hold naming its source on the same line and re-checked at the next fresh sweep (lifted only when its own lift condition is met or the identity that set it releases it; a hold whose source cannot be read, or cannot be found, is kept and reported, never dropped) — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
-> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, and how it is reconciled and marked read are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
+> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, how it is reconciled and marked read, and how each hold it carries is re-checked against its source are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
 
 > Procedure every desk role shares — liveness, supervision and context, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 
@@ -267,6 +267,9 @@ With `--acceptance-record`, execute the protected host rows in **one** host invo
 clean committed source, before inserting uncommitted Evidence. Include every supplemental
 row so the producer records `author-added; no acceptance credit`. Select these host rows
 with `--rows`; use `--acceptance-forge` when the descriptor names an approved transition.
+An admitted run reads that approval only with a read-only verifier credential it mints for
+itself through `desktoken` on `PATH`, and revokes when the run ends. It ignores `GH_TOKEN` and
+the stored login, and with no such credential the read is could-not-check.
 A chain descriptor carries `Acceptance-Transition: link=<k> amendment=<sha> approval=<url>`
 for each contiguous link after the one `Verification-Table:` line. Draft each link's
 exact v2 payload for the driver; never post an approval. Link 1 alone may retain a v1
@@ -533,32 +536,37 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
   gains a `Base` column (`base=<sha> red|green|unproven · head=<sha>`) as its LAST column. A row
   green at base and at head is **non-discriminating**: it passes with or without the change, so
   it proves nothing about it.
-  **Name the base.** The default base is the merge-base of HEAD and `origin/main`. In this
-  desk's flow the change is already merged, so the default base already CONTAINS the change and
-  every row would be green. Pass `--base <the parent of the delivering merge>`. Resolve it from
-  the forge, not from memory: `gh pr view <N> --json mergeCommit --jq .mergeCommit.oid` names the
-  delivering commit on main, and `<that oid>^` is the parent, which is the commit before it on
-  main for a squash merge and the first parent for a merge commit. Pass
-  `--base "<oid>^"` after resolving it to an object id with `git rev-parse`.
-  **What the check does not prove.** The runner and the lint accept only the merge-base or an
-  ancestor of it that already holds the brief file at its current path; a base on the branch, HEAD
-  itself, an object this clone does not hold, or a base older than the brief (the root commit, say)
-  is refused. A brief created or renamed on the branch has no such ancestor, so only the merge-base
-  itself is accepted for it. The
-  lint does NOT check WHICH ancestor you chose: any ancestor from the brief's creation up to the
-  merge-base passes. That the base is the tree without this change is your attestation, and the
-  Base cell is self-attested Evidence text like every witness cell. So take the parent of the
-  delivering merge, never a convenient old commit, and if you cannot resolve the delivering
-  change, record the row `unproven` rather than guess. Only the LATEST witness for a row counts,
-  and it must be for the row's current command: a later plain run, or an edited command, drops
-  the fail-first record.
+  **Name the delivering commit.** The default base is the merge-base of HEAD and `origin/main`.
+  In this desk's flow the change is already merged, so the default base already CONTAINS the
+  change and every row would be green. Pass `--delivering-commit <oid>`, where `<oid>` is the
+  commit that delivered the change on main. Resolve it from the forge, not from memory:
+  `gh pr view <N> --json mergeCommit --jq .mergeCommit.oid` names it, for a merge commit or a squash
+  merge. The runner checks that it is HEAD or an ancestor of HEAD, is on main's history (the
+  merge-base or an ancestor of it), and has a parent, runs the base
+  at its first parent, and records `· delivering=<sha>` in the Base cell. A `--base` passed beside
+  it must name that same parent.
+  **What the check does not prove.** With no delivering commit, the runner and the lint accept only
+  the merge-base itself; an older ancestor, a base on the branch, HEAD and an object this clone does
+  not hold are refused (after a merge the merge-base is HEAD, so the default base is refused too).
+  An Evidence branch cut after the merge has a merge-base that holds the change but is not HEAD:
+  the code accepts that base, so naming the delivering commit after a merge is YOUR step, not
+  the lint's. With one, the base must be exactly the delivering commit's first parent, and
+  the base or the delivering commit must hold the brief file at its current path, so a brief the
+  delivering change added stays closable while a commit from before the brief is refused. When only
+  the delivering commit holds the brief, the base is the pre-brief tree; that is accepted, so a
+  wrong `delivering=` there is caught only by a reviewer reading it against the PR. The lint
+  does NOT check that the delivering commit you named is the one that delivered THIS change: that
+  is your attestation, and the Base cell is self-attested Evidence text like every witness cell.
+  So take the pull request's own merge or squash commit, never a convenient one, and if you cannot
+  resolve the delivering change, record the row `unproven` rather than guess. Only the LATEST
+  witness for a row counts, and it must be for the row's current command: a later plain run, or an
+  edited command, drops the fail-first record.
   Exit 1 means at least one risk-bearing row is non-discriminating. That is a VERIFY: FAIL on the
   row, not on the code: route it back to the implementer to strengthen the row
   (`docs/verify-row-strength.md`). Never land a closure on it. Exit 2 means a row could not run at
   base, which is could-not-check, not a pass. The lint refuses a new closure whose risk-bearing row
-  has no current fail-first witness, is non-discriminating, or names a base that is not the
-  merge-base or an ancestor of it that already holds the brief at its current path (for a brief
-  created or renamed on the branch, only the merge-base itself).
+  has no current fail-first witness, is non-discriminating, or names a base that is neither the
+  merge-base nor the parent of a recorded delivering commit on the default branch's history.
   **Side effects run twice.** A live, mutating or end-to-end row is executed once more at base,
   so read each such row for side effects before running fail-first; a row that cannot safely run
   twice is recorded `unproven` with its reason, never skipped silently.
@@ -736,7 +744,8 @@ admission; with `--root`, `deskevidence` refuses a relative or in-home `--outcom
 `attempts`: one entry per run of the Verify table in the dispatch, as the verifier reported them (window,
 `rows_run`, disposition and reason; a discarded run keeps its entry). `deskperf reruns` counts them. On PASS write the same row's shape with `"outcome":"verified"` only AFTER
 the Evidence, execution witnesses, Status `verified` (or `done`), and dated Verified stamp have
-landed on the target branch and `statusgen --lint` accepts that same tree. Before writing,
+landed on the target branch and `statusgen --lint --acceptance-forge` accepts that same tree
+on the host. Before writing,
 refresh only the brief in the verifier home from the target branch
 (`git -C <home> fetch origin <branch>`, then `git -C <home> show FETCH_HEAD:<path> > <home>/<path>`).
 Use the full `git -C <home> rev-parse FETCH_HEAD` as the record's Evidence commit SHA.
@@ -804,6 +813,25 @@ where admission is checked. The admitted forms are:
 - Evidence rows: `--brief-path <brief> --evidence-file <absolute fragment path>`, with the fragment written to the desk's own scratch OUTSIDE the home (a fragment inside the home is an untracked file and refuses admission).
 - Stream-index flip: edit the home's tracked `README.md` row, then `--evidence-file docs/streams/<stream>/README.md --row <NN>`.
 - Outcome record: `--outcome-record <absolute file outside the home>`.
+For GitHub, all three forms and `deskevidence flip` pass `--acceptance-forge` explicitly
+on the host. The full landed closure lint may need fresh corroboration of an approved
+transition; the emitted outcome command carries that permission too. An outcome record
+refuses on a lint PROBLEM naming the brief it closes or naming no brief; a PROBLEM naming
+another brief prints as a notice and is that brief's to fix, never this record's to block.
+It supplies no approval or acceptance credit and does not alter authored Verify commands
+or network-off execution. Unknown repository authority, an unavailable approval read and
+a refuted approval still hold or refuse the landing. Keep the diagnostic and route the
+missing capability; never retry by stripping Git configuration, changing the origin or
+borrowing a stored human login. Diagnose the run environment separately from the missing
+opt-in, because the flag cannot resolve an authority-bearing Git include.
+Opted-in approval audits and recorded human rulings use the landing invocation's own
+minted GitHub verifier credential; missing, foreign or unknown forge custody is withheld
+before the child starts. Without opt-in, audits receive only a noncredential refusal marker
+that closes stored-login fallback; a decision gate requiring a recorded ruling remains held
+because it cannot authenticate. Local flip corroboration
+requires the existing verifier session's own authority and a proven authorized origin,
+and never changes a worker's role.
+Other forges retain the ordinary landing path; unsupported GitHub approval reads remain held.
 Release the home only after the last landing for its run.
 
 **Leave Runner cells unannotated; `deskevidence` owns the on-behalf-of principal.** Never type an
@@ -1126,8 +1154,21 @@ staging deployment) — its `Env` cell names `service:<name>`, or its command pl
 NOT the Phase-0 class above. That class covers a credential **only the implementer can hold**. A
 project secret is held by the project, so a non-implementer can hold it, and the implementer's own
 report of the run (a pasted output, a "passed locally", a record in the PR body) is never this row's
-Evidence. Until a channel exists that brings project secrets to dispatched verifier windows (the
-`desk-containers/34` brief, `gate: human`), this desk:
+Evidence.
+
+A channel that brings a project secret to a verifier window now exists on one surface only. A native
+container cell can bind a project role secret into worker and verifier containers as a read-only file
+named by `ASSAY_ROLE_SECRET_<SERVICE>_FILE` (`containers/secrets.md` §4.4). It changes who can hold the
+environment, not the rule below. Until the signed verdict lane is enacted, a `service:` row still goes
+through the Environment-blocked queue. A verifier window that holds the path for the row's service is
+one place the queue's operator can run the row: the operator is the queue's human owner, never this
+desk and never a dispatched agent, so a run inside a holding window by an agent is a run report, not
+Evidence. The operator runs the row verbatim, on merged main, never on a PR head. Only the row's
+command reads the file, and its value never reaches Evidence, a comment or a log. A window holding
+such a path cannot hand the row to a dispatched child: `deskdispatch` refuses there every
+dispatch it cannot show to be trusted from forge data, and in this release that includes every
+brief-keyed and verifier-kit dispatch. On every surface, holding window or not, this desk follows the
+steps below:
 
 1. **Records the row could-not-check with the EXACT command** and the environment it needs, never a
    bare "needs creds". That places the brief in the board's **Environment-blocked** queue

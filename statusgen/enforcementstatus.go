@@ -141,7 +141,7 @@ var lintRuleRegistry = []LintRule{
 	// Fail-first closure gate (failfirst.go, witnessgate.go, verify-integrity/03):
 	// fatal only for a closure the branch makes (verified/done, and not so at the
 	// merge-base); a missing origin/main degrades it to a NOTICE.
-	{"fail-first-closure", "a risk-bearing Verify row of a closure this branch makes (verified/done, and not so at the merge-base) has no current fail-first witness, is unproven or non-discriminating, was run for an earlier command, or names a base that is not the merge-base or an ancestor of it that already holds the brief at its current path (only the merge-base itself when the brief was created or renamed on the branch) (docs/verify-row-strength.md)", StatusFatal},
+	{"fail-first-closure", "a risk-bearing Verify row of a closure this branch makes (verified/done, and not so at the merge-base) has no current fail-first witness, is unproven or non-discriminating, was run for an earlier command, or names a base that is neither the merge-base nor the first parent of a recorded delivering commit on the default branch's history (with one recorded, the base or the delivering commit must hold the brief at its current path) (docs/verify-row-strength.md)", StatusFatal},
 	{"verify-unplaced-rows", "a closure this branch makes whose `## Verify` section holds text `statusgen verifyrun` cannot place and that looks like Verify rows: a numbered row that lost its table header (a prose paragraph split the table), a table headed `Expect` with no `Command` column, or a row too short to reach `Command`. A `Failure mode | Caught by` map, a mutation map or a legend is not Verify-shaped and is not reported", StatusFatal},
 
 	// consumers: routed-consumer lint (consumers.go). One class is fatal.
@@ -157,7 +157,7 @@ var lintRuleRegistry = []LintRule{
 	// Stream WIP cap + parked lane (attention-budget/04). Differential: a full lint
 	// only NOTICEs; the PR-diff gate makes each a PROBLEM, so both are fatal.
 	{"stream-cap", "a change that adds an active stream past the per-root active-stream cap (ASSAY_STREAM_CAP) with no offsetting park — no net new streams past the cap", StatusFatal},
-	{"stream-source", "a change that adds an active stream README citing no `spec:`, or a `spec:` whose header is not `**Status:** approved` — a stream is scaffolded only from an approved spec", StatusFatal},
+	{"stream-source", "a newly active stream must cite a readable `spec:` with an `approved` or `routed` lifecycle header", StatusFatal},
 
 	// Eligibility evaluator could-not-check surface (eligibilitycli.go,
 	// graph-execution/01). Advisory: the underlying hold already excludes the

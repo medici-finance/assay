@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -24,7 +25,7 @@ func stubDecisionGateRuns(t *testing.T, before, after []string, seen *[]string) 
 	t.Cleanup(func() { statusgenDecisionGateFn = old; decisionGateReplacedBaseFn = oldBase })
 	decisionGateReplacedBaseFn = func(string, string, []byte, bool, []boardEdit) (string, error) { return "BASE", nil }
 	calls := 0
-	statusgenDecisionGateFn = func(root, _ string) ([]string, error) {
+	statusgenDecisionGateFn = func(root, _ string, _ childOptions) ([]string, error) {
 		calls++
 		if seen != nil {
 			b, _ := os.ReadFile(filepath.Join(root, "docs/streams/x/README.md"))
@@ -54,12 +55,12 @@ func TestDecisionGateDiffJudgesAgainstTheReplacedContent(t *testing.T) {
 		return "SYNTHETIC", nil
 	}
 	var runs []string
-	statusgenDecisionGateFn = func(r, base string) ([]string, error) {
+	statusgenDecisionGateFn = func(r, base string, _ childOptions) ([]string, error) {
 		b, _ := os.ReadFile(filepath.Join(r, rel))
 		runs = append(runs, base+"|"+string(b))
 		return nil, nil
 	}
-	if _, err := decisionGateDiffAt(root, rel, []byte("REPLACED\n"), true, []byte("NEW\n"), nil); err != nil {
+	if _, err := decisionGateDiffAt(root, rel, []byte("REPLACED\n"), true, []byte("NEW\n"), nil, childOptions{}); err != nil {
 		t.Fatalf("decisionGateDiffAt: %v", err)
 	}
 	if len(builtFrom) != 1 || builtFrom[0] != rel+"=REPLACED\n" {
@@ -89,7 +90,7 @@ func TestDecisionGateDiffIntroducedOnly(t *testing.T) {
 	var seen []string
 	pre := "other/02 REFUSED — no decision issue is recorded"
 	stubDecisionGateRuns(t, []string{pre}, []string{pre, dgeLine}, &seen)
-	got, err := decisionGateDiffAt(root, "docs/streams/x/README.md", []byte("old\n"), true, []byte("new\n"), nil)
+	got, err := decisionGateDiffAt(root, "docs/streams/x/README.md", []byte("old\n"), true, []byte("new\n"), nil, childOptions{})
 	if err != nil {
 		t.Fatalf("decisionGateDiffAt: %v", err)
 	}
@@ -108,7 +109,7 @@ func TestDecisionGateDiffIntroducedOnly(t *testing.T) {
 func TestDecisionGateDiffRemovesNewFile(t *testing.T) {
 	root := t.TempDir()
 	stubDecisionGateRuns(t, nil, []string{dgeLine}, nil)
-	got, err := decisionGateDiffAt(root, "docs/streams/x/README.md", []byte("old\n"), true, []byte("new\n"), nil)
+	got, err := decisionGateDiffAt(root, "docs/streams/x/README.md", []byte("old\n"), true, []byte("new\n"), nil, childOptions{})
 	if err != nil || len(got) != 1 {
 		t.Fatalf("got %v, %v; want one introduced line", got, err)
 	}
@@ -126,14 +127,14 @@ func TestDecisionGateDiffCouldNotCheckPropagates(t *testing.T) {
 	t.Cleanup(func() { statusgenDecisionGateFn = old; decisionGateReplacedBaseFn = oldBase })
 	decisionGateReplacedBaseFn = func(string, string, []byte, bool, []boardEdit) (string, error) { return "BASE", nil }
 	calls := 0
-	statusgenDecisionGateFn = func(string, string) ([]string, error) {
+	statusgenDecisionGateFn = func(string, string, childOptions) ([]string, error) {
 		calls++
 		if calls == 2 {
 			return nil, deskkit.Unverifiable("boom", nil)
 		}
 		return nil, nil
 	}
-	_, err := decisionGateDiffAt(root, "docs/streams/x/README.md", []byte("old\n"), true, []byte("new\n"), nil)
+	_, err := decisionGateDiffAt(root, "docs/streams/x/README.md", []byte("old\n"), true, []byte("new\n"), nil, childOptions{})
 	wantUnverifiable(t, err)
 	if b, _ := os.ReadFile(filepath.Join(root, "docs/streams/x/README.md")); string(b) != "old\n" {
 		t.Fatalf("stage not reverted after could-not-check: %q", b)
@@ -142,7 +143,7 @@ func TestDecisionGateDiffCouldNotCheckPropagates(t *testing.T) {
 
 func TestStatusgenDecisionGateAtNotOnPathIsUnverifiable(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
-	_, err := statusgenDecisionGateAt(t.TempDir(), "HEAD")
+	_, err := statusgenDecisionGateAt(t.TempDir(), "HEAD", childOptions{})
 	wantUnverifiable(t, err)
 }
 
@@ -157,7 +158,7 @@ echo "# decision-gate hold (lifecycle-v1 §4.5)"
 echo "a/01 RULED — ruled by someone (https://example.invalid)"
 echo "`+dgeLine+`"
 exit 1`)
-	got, err := statusgenDecisionGateAt(root, "HEAD")
+	got, err := statusgenDecisionGateAt(root, "HEAD", childOptions{})
 	if err != nil {
 		t.Fatalf("statusgenDecisionGateAt: %v", err)
 	}
@@ -169,7 +170,7 @@ exit 1`)
 func TestStatusgenDecisionGateAtCleanExit(t *testing.T) {
 	fakeStatusgenOnPath(t, `echo "no gate: human brief moved, relabelled or dropped — clean"
 exit 0`)
-	got, err := statusgenDecisionGateAt(t.TempDir(), "HEAD")
+	got, err := statusgenDecisionGateAt(t.TempDir(), "HEAD", childOptions{})
 	if err != nil || len(got) != 0 {
 		t.Fatalf("got %v, %v; want clean", got, err)
 	}
@@ -180,7 +181,7 @@ exit 0`)
 func TestStatusgenDecisionGateAtOldBinaryIsUnverifiable(t *testing.T) {
 	fakeStatusgenOnPath(t, `echo "flag provided but not defined: -decision-gate" >&2
 exit 2`)
-	_, err := statusgenDecisionGateAt(t.TempDir(), "HEAD")
+	_, err := statusgenDecisionGateAt(t.TempDir(), "HEAD", childOptions{})
 	wantUnverifiable(t, err)
 	if !strings.Contains(err.Error(), "predates the decision-gate hold") {
 		t.Fatalf("old-binary error does not name the upgrade: %v", err)
@@ -192,7 +193,7 @@ exit 2`)
 func TestStatusgenDecisionGateAtNoRefusedLineIsUnverifiable(t *testing.T) {
 	fakeStatusgenOnPath(t, `echo "statusgen: something broke" >&2
 exit 1`)
-	_, err := statusgenDecisionGateAt(t.TempDir(), "HEAD")
+	_, err := statusgenDecisionGateAt(t.TempDir(), "HEAD", childOptions{})
 	wantUnverifiable(t, err)
 }
 
@@ -202,7 +203,7 @@ exit 1`)
 func TestStatusgenDecisionGateAtWholeChangeIsUnverifiable(t *testing.T) {
 	fakeStatusgenOnPath(t, `echo "(board) REFUSED — the base \"HEAD\" does not resolve to a commit"
 exit 1`)
-	_, err := statusgenDecisionGateAt(t.TempDir(), "HEAD")
+	_, err := statusgenDecisionGateAt(t.TempDir(), "HEAD", childOptions{})
 	wantUnverifiable(t, err)
 }
 
@@ -211,7 +212,7 @@ exit 1`)
 func TestDecisionGateLandingRefused(t *testing.T) {
 	f, _ := setupFake(t)
 	var gotRoot, gotTarget string
-	decisionGateDiffFn = func(r, target string, _ []byte, _ bool, _ []byte, _ []boardEdit) ([]string, error) {
+	decisionGateDiffFn = func(r, target string, _ []byte, _ bool, _ []byte, _ []boardEdit, _ childOptions) ([]string, error) {
 		gotRoot, gotTarget = r, target
 		return []string{dgeLine}, nil
 	}
@@ -237,7 +238,7 @@ func TestDecisionGateLandingRefused(t *testing.T) {
 // no write.
 func TestDecisionGateLandingCouldNotCheck(t *testing.T) {
 	f, _ := setupFake(t)
-	decisionGateDiffFn = func(string, string, []byte, bool, []byte, []boardEdit) ([]string, error) {
+	decisionGateDiffFn = func(string, string, []byte, bool, []byte, []boardEdit, childOptions) ([]string, error) {
 		return nil, deskkit.Unverifiable("statusgen is not on PATH", nil)
 	}
 	evidencePath := "docs/streams/x/brief.md"
@@ -349,7 +350,7 @@ func (g realGate) readReadme(t *testing.T) string {
 // -short (it compiles statusgen).
 func TestDecisionGateDiffRealStatusgen(t *testing.T) {
 	g := realGateFixture(t, false)
-	got, err := decisionGateDiffAt(g.root, g.readme, []byte(g.board("todo")), true, []byte(g.board("implemented")), nil)
+	got, err := decisionGateDiffAt(g.root, g.readme, []byte(g.board("todo")), true, []byte(g.board("implemented")), nil, childOptions{})
 	if err != nil {
 		t.Fatalf("decisionGateDiffAt against the real statusgen: %v", err)
 	}
@@ -360,7 +361,7 @@ func TestDecisionGateDiffRealStatusgen(t *testing.T) {
 		t.Fatalf("stage not reverted: %q", b)
 	}
 	// The same write with the cell left alone introduces nothing.
-	got, err = decisionGateDiffAt(g.root, g.readme, []byte(g.board("todo")), true, []byte(g.board("todo")), nil)
+	got, err = decisionGateDiffAt(g.root, g.readme, []byte(g.board("todo")), true, []byte(g.board("todo")), nil, childOptions{})
 	if err != nil || len(got) != 0 {
 		t.Fatalf("unchanged board: got %v, %v; want nothing introduced", got, err)
 	}
@@ -380,7 +381,7 @@ func TestDecisionGateDiffWorktreeAlreadyHoldsTheEdit(t *testing.T) {
 			if shape == "committed" {
 				g.git("commit", "-q", "-am", "local edit")
 			}
-			got, err := decisionGateDiffAt(g.root, g.readme, []byte(g.board("todo")), true, []byte(g.board("implemented")), nil)
+			got, err := decisionGateDiffAt(g.root, g.readme, []byte(g.board("todo")), true, []byte(g.board("implemented")), nil, childOptions{})
 			if err != nil {
 				t.Fatalf("decisionGateDiffAt: %v", err)
 			}
@@ -391,7 +392,7 @@ func TestDecisionGateDiffWorktreeAlreadyHoldsTheEdit(t *testing.T) {
 				t.Fatalf("worktree not restored: %q", b)
 			}
 			// Control: the landing leaves the cell where the remote has it.
-			got, err = decisionGateDiffAt(g.root, g.readme, []byte(g.board("todo")), true, []byte(g.board("todo")), nil)
+			got, err = decisionGateDiffAt(g.root, g.readme, []byte(g.board("todo")), true, []byte(g.board("todo")), nil, childOptions{})
 			if err != nil || len(got) != 0 {
 				t.Fatalf("control: got %v, %v; want nothing introduced", got, err)
 			}
@@ -705,12 +706,12 @@ func TestDecisionGateDiffAtJudgesBranchBoard(t *testing.T) {
 	g.git("commit", "-q", "-am", "attested commit: brief is gate: model")
 	todo, impl := []byte(g.board("todo")), []byte(g.board("implemented"))
 
-	got, err := decisionGateDiffAt(g.root, g.readme, todo, true, impl, nil)
+	got, err := decisionGateDiffAt(g.root, g.readme, todo, true, impl, nil, childOptions{})
 	if err != nil || len(got) != 0 {
 		t.Fatalf("home-only judge got %v, %v; want it to see nothing", got, err)
 	}
 	edits := []boardEdit{{Path: "docs/streams/sdlc/brief-18.md", Content: []byte(briefOf("human", ""))}}
-	got, err = decisionGateDiffAt(g.root, g.readme, todo, true, impl, edits)
+	got, err = decisionGateDiffAt(g.root, g.readme, todo, true, impl, edits, childOptions{})
 	if err != nil {
 		t.Fatalf("judge with the branch's board: %v", err)
 	}
@@ -721,7 +722,7 @@ func TestDecisionGateDiffAtJudgesBranchBoard(t *testing.T) {
 		t.Fatalf("the branch's brief was left in the worktree: %q", b)
 	}
 	// A board file the branch removed is removed for the judge too, then put back.
-	if _, err := decisionGateDiffAt(g.root, g.readme, todo, true, impl, []boardEdit{{Path: "docs/streams/sdlc/brief-18.md", Delete: true}}); err != nil {
+	if _, err := decisionGateDiffAt(g.root, g.readme, todo, true, impl, []boardEdit{{Path: "docs/streams/sdlc/brief-18.md", Delete: true}}, childOptions{}); err != nil {
 		t.Fatalf("judge with a removed brief: %v", err)
 	}
 	if b, _ := os.ReadFile(briefPath); string(b) != briefOf("model", "") {
@@ -915,12 +916,12 @@ func TestStageRefusesHomeLink(t *testing.T) {
 			var seen []string
 			stubDecisionGateRuns(t, nil, nil, nil)
 			old := statusgenDecisionGateFn
-			statusgenDecisionGateFn = func(r, b string) ([]string, error) {
+			statusgenDecisionGateFn = func(r, b string, options childOptions) ([]string, error) {
 				v, _ := os.ReadFile(victim)
 				seen = append(seen, string(v))
-				return old(r, b)
+				return old(r, b, options)
 			}
-			_, err := decisionGateDiffAt(root, readme, []byte("R\n"), true, []byte("N\n"), c.board)
+			_, err := decisionGateDiffAt(root, readme, []byte("R\n"), true, []byte("N\n"), c.board, childOptions{})
 			if err == nil || !deskkit.IsUnverifiable(err) {
 				t.Fatalf("got %v, want could-not-check", err)
 			}
@@ -986,7 +987,7 @@ func TestStageRemovesCreatedDirs(t *testing.T) {
 	root := rootWithFile(t, readme, "LOCAL\n")
 	stubDecisionGateRuns(t, nil, nil, nil)
 	board := []boardEdit{{Path: "docs/streams/new/deep/brief-1.md", Content: []byte("B\n")}}
-	if _, err := decisionGateDiffAt(root, "docs/archive/x/README.md", nil, false, []byte("N\n"), board); err != nil {
+	if _, err := decisionGateDiffAt(root, "docs/archive/x/README.md", nil, false, []byte("N\n"), board, childOptions{}); err != nil {
 		t.Fatalf("judge: %v", err)
 	}
 	for _, d := range []string{"docs/streams/new", "docs/archive"} {
@@ -996,5 +997,77 @@ func TestStageRemovesCreatedDirs(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(filepath.Join(root, readme)); string(b) != "LOCAL\n" {
 		t.Fatalf("the home's own file changed: %q", b)
+	}
+}
+
+// A decision-gate child that never finishes is killed at the write-window bound and reported
+// could-not-check — never awaited for as long as it runs while this run holds the
+// preparation lock other landings wait on. The fake prints a clean-looking line first, then
+// sleeps in a grandchild that keeps the output pipe open.
+//
+// regression: #6730
+func TestStatusgenDecisionGateAtDeadline(t *testing.T) {
+	prev := lockWait
+	lockWait = 300 * time.Millisecond
+	t.Cleanup(func() { lockWait = prev })
+	// Two children run per landing (before and after): together they stay inside lockWait.
+	if 2*decisionGateDeadline() > lockWait || decisionGateDeadline() <= 0 {
+		t.Fatalf("decisionGateDeadline() = %s; the two runs per landing must fit the write window lockWait (%s)", decisionGateDeadline(), lockWait)
+	}
+	fakeStatusgenOnPath(t, `echo "no gate: human brief moved, relabelled or dropped — clean"
+sleep 30`)
+	type result struct {
+		refused []string
+		err     error
+	}
+	done := make(chan result, 1)
+	start := time.Now()
+	go func() {
+		r, err := statusgenDecisionGateAt(t.TempDir(), "HEAD", childOptions{})
+		done <- result{r, err}
+	}()
+	select {
+	case r := <-done:
+		if r.err == nil {
+			t.Fatalf("a decision-gate child killed at its deadline read as clean (refused=%v)", r.refused)
+		}
+		wantUnverifiable(t, r.err)
+		// The deadline branch's own wording, not a "signal: killed" that a parse of the
+		// killed run's partial output could also carry.
+		if !strings.Contains(r.err.Error(), "did not finish within") || !strings.Contains(r.err.Error(), "was killed") {
+			t.Errorf("the refusal is not the deadline refusal: %v", r.err)
+		}
+		if el := time.Since(start); el > 10*time.Second {
+			t.Errorf("returned after %s; the deadline is %s", el, lockWait)
+		}
+	case <-time.After(15 * time.Second):
+		t.Fatalf("statusgenDecisionGateAt still blocked after 15s on a child that never finishes (deadline %s)", lockWait)
+	}
+}
+
+// One decision-gate child's WHOLE span — its deadline plus the post-kill drain of output
+// pipes a grandchild still holds — fits half of lockWait, so the before/after pair cannot
+// hold the preparation lock past lockWait. The fake leaves a grandchild holding the pipe, so
+// the run lasts the deadline AND the drain.
+//
+// regression: #6755
+func TestDecisionGateSpanFitsHalf(t *testing.T) {
+	prev := lockWait
+	lockWait = 4 * time.Second
+	t.Cleanup(func() { lockWait = prev })
+	if span := decisionGateDeadline() + decisionGateWaitDelay(); 2*span > lockWait || decisionGateDeadline() <= 0 {
+		t.Fatalf("deadline %s + drain %s per child: the before/after pair must fit lockWait (%s)", decisionGateDeadline(), decisionGateWaitDelay(), lockWait)
+	}
+	fakeStatusgenOnPath(t, `sleep 30`)
+	start := time.Now()
+	_, err := statusgenDecisionGateAt(t.TempDir(), "HEAD", childOptions{})
+	el := time.Since(start)
+	if err == nil {
+		t.Fatal("a decision-gate child killed at its deadline read as clean")
+	}
+	// Half the window plus 1s of slack for process start and scheduling; a drain outside
+	// the deadline puts one child at lockWait/2 + 2s.
+	if limit := lockWait/2 + time.Second; el > limit {
+		t.Fatalf("one decision-gate child held the caller for %s; its whole span must fit half of lockWait (%s) — two would hold the preparation lock past lockWait", el, lockWait/2)
 	}
 }

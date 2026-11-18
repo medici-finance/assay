@@ -58,6 +58,12 @@ type couplingVectors struct {
 		Roster          map[string]string `json:"roster"`
 		ProblemContains string            `json:"problemContains"`
 	} `json:"rejectedRosters"`
+	UnknownKeyRosters []struct {
+		Why                      string            `json:"why"`
+		Roster                   map[string]string `json:"roster"`
+		DeskkitNoticeContains    string            `json:"deskkitNoticeContains"`
+		StatusgenProblemContains string            `json:"statusgenProblemContains"`
+	} `json:"unknownKeyRosters"`
 }
 
 // scanWithRoster installs an explicit roster into a private config home for one
@@ -114,12 +120,14 @@ func scanExampleRoster() map[string]string {
 // TestRosterKeySchemaCoupling binds this binary's ASSAY_-namespace known-key set
 // to the DECLARED schema in the shared vector file, in BOTH directions.
 //
-// WHAT IT PREVENTS. statusgen and the desk tools read the SAME roster.env and both
-// REFUSE the whole configuration on an ASSAY_ key they do not recognise. That is
-// the right failure for a typo and the wrong one for a sibling's key: a key one
-// binary knows and the other does not turns a roster that is valid and REQUIRED
-// for one tool into a total refusal for the other, and no roster edit satisfies
-// both. It is not hypothetical — the desk verbs' forge-resolution key was added to
+// WHAT IT PREVENTS. statusgen and the desk tools read the SAME roster.env. On an
+// ASSAY_ key it does not recognise, statusgen REFUSES the whole configuration and the
+// desk tools print a NOTICE and do not apply the key (#1261). That is the right
+// failure for a typo and the wrong one for a sibling's key: a key the desk tools know
+// and statusgen does not turns a roster that is valid and REQUIRED for one tool into a
+// total refusal for the other, and no roster edit satisfies both; the reverse (a
+// statusgen key the desk tools do not know) draws a NOTICE on every desk-tool run. It
+// is not hypothetical — the desk verbs' forge-resolution key was added to
 // the roster, statusgen did not recognise it, and the whole --scan-issues intake
 // lane refused fail-closed on every scan repo.
 //
@@ -193,9 +201,9 @@ func TestRosterKeySchemaCoupling(t *testing.T) {
 	}
 	if len(extra) > 0 {
 		t.Errorf("statusgen recognises %d roster key(s) the shared schema does not declare: %s.\n"+
-			"The desk tools read the same roster.env and will refuse the whole configuration on "+
-			"each of them. Declare them in %s's knownRosterKeys AND teach deskkit's "+
-			"knownRosterKeys() to recognise them",
+			"The desk tools read the same roster.env and print an unknown-key NOTICE on every run "+
+			"for each of them (they do not refuse, #1261). Declare them in %s's knownRosterKeys "+
+			"AND teach deskkit's knownRosterKeys() to recognise them",
 			len(extra), strings.Join(extra, ", "), couplingVectorPath)
 	}
 }
@@ -805,6 +813,26 @@ func TestCouplingRepoRolesAndRejections(t *testing.T) {
 		if !strings.Contains(joined, rr.ProblemContains) {
 			t.Errorf("the refusal does not name %q — %s\n  problems: %s",
 				rr.ProblemContains, rr.Why, joined)
+		}
+	}
+
+	// statusgen's reader still REFUSES an unknown ASSAY_ key (its --lint refusal, #3057); the
+	// desk-tools reader records a NOTICE instead (#1261). Pinned here so the divergence is
+	// deliberate, never drift.
+	if len(vec.UnknownKeyRosters) == 0 {
+		t.Fatalf("%s carries no unknownKeyRosters — an empty section is a vacuous pass", couplingVectorPath)
+	}
+	for _, ur := range vec.UnknownKeyRosters {
+		scanWithRoster(t, ur.Roster)
+		c := scanEffectiveConfig()
+		if c.Configured() {
+			t.Errorf("statusgen loaded a roster with an unknown ASSAY_ key as configured — %s\n  roster: %v",
+				ur.Why, ur.Roster)
+			continue
+		}
+		if joined := strings.Join(c.Problems, "\n"); !strings.Contains(joined, ur.StatusgenProblemContains) {
+			t.Errorf("the refusal does not name %q — %s\n  problems: %s",
+				ur.StatusgenProblemContains, ur.Why, joined)
 		}
 	}
 }

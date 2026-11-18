@@ -151,7 +151,7 @@ func (c *Cell) forgeEndpointExportBase() (string, error) {
 func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, provider string, prov Provider, deskRoots string, persist bool, persistKVs []string, policyRes *PolicyResolution, cockpit cockpitResolution, performance ...perfrec.Context) {
 	// Refuse storage-heavy boot work before fetch/worktree creation as well as
 	// atomically rechecking at child enrollment in the process supervisor.
-	if err := launchStep("launch-storage-admission", func() error { _, err := c.prepareLaunch(); return err }); err != nil {
+	if err := launchStep("launch-storage-admission", func() error { _, err := c.launchPrepareLaunch(); return err }); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		exitWith(6)
 	}
@@ -200,6 +200,9 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	// session. Re-locking an already-locked tree is a no-op here, not a failure.
 	_ = c.git(c.Repo, "worktree", "lock", "--reason", "cellctl "+c.Name+"/"+role+" live session", wt)
 	fmt.Printf("[worktree] %s @ %s (locked)\n", wt, short8(sha))
+	if deskRoots != "" && c.wantsSessionRoots(role) {
+		launchStepV("launch-session-roots", func() { deskRoots = c.prepareSessionRoots(deskRoots) })
+	}
 
 	if c.Deskd == "1" && !c.deskdUp() {
 		fmt.Fprintf(os.Stderr, "NOTICE: cell deskd is NOT up on %s — in your shell: CELL_ATTENDED=1 cellctl deskd %s\n", c.DeskdAddr, c.Name)
@@ -236,7 +239,9 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	fmt.Printf("[launch] %s/%s kind=%s model=%s effort=%s provider=%s harness=%s session=%s config=%s cwd=%s desk_roots=%s (desk verbs → HOME=%s)\n",
 		c.Name, role, c.Kind, modelDisp, effortDisp, orDefault(providerDisp, "anthropic"), harness, session, cfg, wt, orDefault(deskRoots, "unset"), c.Home)
 
-	env := c.muharBudgetEnv(c.telemetryEnv(c.cacheEnv(os.Environ())))
+	// A host window binds no role secret (rolesecret.go): a path variable the launching shell
+	// carried is removed, so no host window looks like, or is, a holding window.
+	env := unsetRoleSecretEnv(c.muharBudgetEnv(c.telemetryEnv(c.cacheEnv(os.Environ()))))
 	if len(performance) > 0 {
 		child := deskkit.PerfAgentContext(performance[0], perfDeskFunction(role), nil, nil)
 		env = deskkit.PerfContextEnv(env, child, false)

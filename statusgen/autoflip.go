@@ -609,8 +609,10 @@ func decideModelFlip(root string, s *Stream, path string, briefID string, eviden
 	// HELD or could-not-check. Checked first and cheaply, ahead of any
 	// reviewer-App fetch, exactly like the verify-gate card (verifyissues.go)
 	// and closeVerify refuse on the same predicate: verifyPassHeldContradiction,
-	// one wording, not three.
-	if held, why := verifyPassHeldContradiction(evidence); held {
+	// one wording, not three. A hold only before a latest PASS run that
+	// verifyflip would credit is dropped here as verifyflip drops it
+	// (verifyPassHeldWitnessed, #6767).
+	if held, why := verifyPassHeldWitnessed(evidence, path); held {
 		res.Outcome = flipRefused // the check WAS made (against this brief's own Evidence) and it failed
 		res.Reason = fmt.Sprintf("Evidence reads %q on a row not marked deferred — a **VERIFY: PASS** marker is not a flip signal while a non-deferred row still says HELD/could-not-check; this brief's `verified` cell needs a re-run or an explicit deferral before the model autoflip will close it", why)
 		return res

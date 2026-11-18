@@ -38,6 +38,9 @@ var knownToolTarballs = map[string]map[string]toolTarball{
 	}, "1.27.3": {
 		amd64: "65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40",
 		arm64: "a06e99309dbcbdca1a8ccd2282c3ee146e55930886e26b4f1193269587165f49",
+	}, "1.27.4": {
+		amd64: "7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840",
+		arm64: "3392582988a273a87ab5043ee1b2c9c17a2c3c00580bf9326c47a2e0aaaeac92",
 	}},
 	"GH": {"2.63.2": {
 		amd64: "912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00",
@@ -554,7 +557,7 @@ func TestBaseImagePinsTarballs(t *testing.T) {
 	}
 	// The class guard: a new unpinned fetch planted at a site this change does
 	// not touch must go red too, not just the four pinned downloads.
-	plugin := "COPY plugins/assay/ /opt/assay/plugin/\n"
+	plugin := "COPY --chmod=u=rwX,go=rX plugins/assay/ /opt/assay/plugin/\n"
 	for name, plant := range map[string]string{
 		"new unchecked curl":         "RUN set -eux; curl -fsSL https://example.com/t.tgz -o /tmp/t.tgz; tar -C /tmp -xzf /tmp/t.tgz\n",
 		"curl piped to sh":           "RUN curl -fsSL https://example.com/i.sh | sh\n",
@@ -584,7 +587,14 @@ func TestBaseImagePinsTarballs(t *testing.T) {
 	}
 	// A plain curl that writes the one file its stage may fetch, chained after
 	// an unchecked one: the last `-o` names an allowed file, the first does not.
-	gitShaArg := once("ARG GIT_TARBALL_SHA256=" + knownGitTarballs["2.56.0"] + "\n")
+	// The git pin the Dockerfile carries, never a hard-coded release: the next
+	// bump must not leave this anchor behind (it did once, at 2.56.0).
+	gitVer := dockerfileToolVersion(text, "GIT")
+	gitSha, ok := knownGitTarballs[gitVer]
+	if !ok {
+		t.Fatalf("containers/base/Dockerfile pins GIT_VERSION=%q, which is not a reviewed row in knownGitTarballs", gitVer)
+	}
+	gitShaArg := once("ARG GIT_TARBALL_SHA256=" + gitSha + "\n")
 	mutants["class: curl chained before an allowed one"] = swap(gitShaArg, gitShaArg+
 		"RUN set -eux; curl -fsSL https://example.com/t.tgz -o /tmp/t.tgz && curl -fsSL "+gitCurlHTTPSOnly+" https://example.com/g.txz -o /tmp/git.txz\n")
 	// The gitbuild download is held to the same exact curl shape and the same

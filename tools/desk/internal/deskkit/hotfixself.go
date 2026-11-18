@@ -146,14 +146,14 @@ func selfIntegrity(in hotfixSelfInput, tool string) string {
 	}
 	for _, p := range []string{in.Overlay, filepath.Join(in.Overlay, "bin"), in.Exe} {
 		if err := in.Owner(p); err != nil {
-			return HotfixReasonNotRootOwned + ": " + err.Error()
+			return HotfixOwnerReason(err) + ": " + err.Error()
 		}
 	}
 	if isHotfixStagingFile(in) {
 		return ""
 	}
 	if err := in.Owner(HotfixManifestPath(in.Overlay)); err != nil {
-		return HotfixReasonNotRootOwned + ": " + err.Error()
+		return HotfixOwnerReason(err) + ": " + err.Error()
 	}
 	m, err := ReadHotfixManifest(in.Overlay)
 	if err != nil {

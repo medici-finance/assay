@@ -2,11 +2,13 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -151,6 +153,140 @@ func TestCodexSupervisionAcrossLaunchPaths(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// stampModeProblems reads a Codex launch prompt's dispatch-admission reminder
+// sentence by sentence and names every mode whose stamp timing is wrong. It is
+// the oracle the launch-path test and the mutants below share.
+func stampModeProblems(prompt string) []string {
+	var problems []string
+	if strings.Contains(prompt, "Check the dispatch receipt for a successful model stamp before spending work on that dispatch") {
+		problems = append(problems, "unconditional pre-work stamp requirement survives")
+	}
+	var strict, fresh, postOpen []string
+	for _, line := range strings.Split(prompt, "\n") {
+		for _, s := range strings.Split(line, ". ") {
+			switch {
+			case strings.HasPrefix(s, "Admission by dispatch mode:"):
+				strict = append(strict, s)
+			case strings.HasPrefix(s, "A fresh worker dispatch"):
+				fresh = append(fresh, s)
+			case strings.HasPrefix(s, "After that worker's draft PR opens"):
+				postOpen = append(postOpen, s)
+			}
+		}
+	}
+	if !strings.Contains(prompt, "must include --model with the actual selected model and keep its dispatch receipt") {
+		problems = append(problems, "every dispatch: actual --model and retained receipt not required")
+	}
+	if len(strict) != 1 || len(fresh) != 1 || len(postOpen) != 1 {
+		return append(problems, fmt.Sprintf("want one sentence per mode group, got strict=%d fresh=%d post-open=%d", len(strict), len(fresh), len(postOpen)))
+	}
+	// Review, verifier, explicit --attest-worker and existing-PR stamps keep the readback.
+	for mode, word := range map[string]string{
+		"review":          "a review dispatch",
+		"verifier":        "verifier admission",
+		"attest-worker":   "an explicit --attest-worker dispatch",
+		"existing PR":     "any stamp on an existing PR (--pr, including --stamp-only)",
+		"readback":        "require a successful, read-back model stamp in the receipt before spending work",
+		"pending refused": "PENDING",
+		"failure refused": "failed, mismatched or unreadable stamp is not a successful admission",
+		"skipped refused": "a skipped",
+	} {
+		if !strings.Contains(strict[0], word) {
+			problems = append(problems, mode+": strict-mode readback lost "+strconv.Quote(word))
+		}
+	}
+	// A fresh worker proceeds on PENDING, never called attested, never asked for the readback.
+	for _, word := range []string{"may start while its receipt reports the stamp PENDING", "PENDING is not attested and is never reported as attested", "--attest-worker is opt-in"} {
+		if !strings.Contains(fresh[0], word) {
+			problems = append(problems, "fresh worker: lost "+strconv.Quote(word))
+		}
+	}
+	for _, word := range []string{"successful", "read-back", "readback", "before spending work", "requires", "must"} {
+		if strings.Contains(fresh[0], word) {
+			problems = append(problems, "fresh worker: demands a pre-work stamp ("+strconv.Quote(word)+")")
+		}
+	}
+	// The coordinator stamps the actual selection post-open and reads it back.
+	for _, word := range []string{"the coordinator desk runs the receipt's --stamp-only command", "with the actual selected model and tier", "reads the stamp back before any downstream step relies on model-attested authoring"} {
+		if !strings.Contains(postOpen[0], word) {
+			problems = append(problems, "post-open: lost "+strconv.Quote(word))
+		}
+	}
+	return problems
+}
+
+// regression: #6706
+// The host and scrubbed launch prompts each split stamp timing by dispatch mode:
+// fresh worker, existing PR, review, verifier, pending and failure results.
+func TestCodexStampModesAcrossPaths(t *testing.T) {
+	scrubbed := harnessArgv("codex", "worker-desk", "selected-model", "session", "/wt")
+	prompts := map[string]string{
+		"host-unix":    codexRolePrompt("worker-desk", "darwin", "/bin/bash"),
+		"host-windows": codexRolePrompt("worker-desk", "windows", ""),
+		"scrubbed":     scrubbed[len(scrubbed)-1],
+	}
+	for _, role := range []string{"the-desk", "pr-review-desk", "verify-desk", "intake-desk"} {
+		prompts["host-"+role] = codexRolePrompt(role, "linux", "/bin/bash")
+		argv := harnessArgv("codex", role, "selected-model", "session", "/wt")
+		prompts["scrubbed-"+role] = argv[len(argv)-1]
+	}
+	for name, prompt := range prompts {
+		t.Run(name, func(t *testing.T) {
+			if n := strings.Count(prompt, codexStampPrompt); n != 1 {
+				t.Errorf("launch must carry the stamp reminder exactly once, got %d", n)
+			}
+			for _, p := range stampModeProblems(prompt) {
+				t.Error(p)
+			}
+		})
+	}
+}
+
+// regression: #6706
+// Each mutant re-breaks one mode of the split; the oracle must catch every one,
+// so a green TestCodexStampModesAcrossPaths is not a vacuous pass.
+func TestCodexStampModeMutants(t *testing.T) {
+	good := codexRolePrompt("worker-desk", "darwin", "/bin/bash")
+	if p := stampModeProblems(good); len(p) != 0 {
+		t.Fatalf("baseline must be clean: %v", p)
+	}
+	for name, mutate := range map[string]func(string) string{
+		"fresh worker demands readback again": func(s string) string {
+			return strings.Replace(s, "may start while its receipt reports the stamp PENDING", "requires a successful, read-back model stamp before spending work; it may start while its receipt reports the stamp PENDING", 1)
+		},
+		"review drops readback":   func(s string) string { return strings.Replace(s, "a review dispatch, ", "", 1) },
+		"verifier drops readback": func(s string) string { return strings.Replace(s, "verifier admission, ", "", 1) },
+		"attest-worker drops readback": func(s string) string {
+			return strings.Replace(s, "an explicit --attest-worker dispatch, ", "", 1)
+		},
+		"existing PR drops readback": func(s string) string {
+			return strings.Replace(s, ", and any stamp on an existing PR (--pr, including --stamp-only)", "", 1)
+		},
+		"pending admits strict modes": func(s string) string { return strings.Replace(s, "a skipped, PENDING, failed", "a skipped, failed", 1) },
+		"failure admits strict modes": func(s string) string {
+			return strings.Replace(s, "failed, mismatched or unreadable stamp is not a successful admission", "skipped stamp is not a successful admission", 1)
+		},
+		"pending called attested": func(s string) string {
+			return strings.Replace(s, "PENDING is not attested and is never reported as attested", "PENDING counts as attested", 1)
+		},
+		"post-open readback dropped": func(s string) string {
+			return strings.Replace(s, " and reads the stamp back before any downstream step relies on model-attested authoring", "", 1)
+		},
+		"pre-fix unconditional line": func(s string) string {
+			return strings.Replace(s, codexStampPrompt, "\nEvery deskdispatch that will post a model-attested result must include --model with the actual selected worker model. Check the dispatch receipt for a successful model stamp before spending work on that dispatch; a skipped stamp is not a successful review admission.", 1)
+		},
+	} {
+		mutant := mutate(good)
+		if mutant == good {
+			t.Errorf("%s: mutation did not apply", name)
+			continue
+		}
+		if len(stampModeProblems(mutant)) == 0 {
+			t.Errorf("%s: mutant survived", name)
+		}
 	}
 }
 

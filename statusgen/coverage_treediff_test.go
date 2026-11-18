@@ -252,7 +252,7 @@ func TestTreeDiffItemUnresolvable(t *testing.T) {
 func TestNoAncestryWitnessJudge(t *testing.T) {
 	allow := map[string]string{ // file -> why; each entry argued in review
 		"consumerdelivery.go":   "explicit consumer DELIVERY provenance (#1915), not witness applicability: require the caller-named immutable delivery to be landed in this checkout before inspecting its own first-parent diff and delivered routing claims. This does not read or certify execution witnesses; witnessTreeApplies retains content comparison across squash merges",
-		"failfirst_ancestry.go": "fail-first BASE provenance (verify-integrity/03), not witness applicability: the closure gate and the runner ask whether the base a row was shown red on is the merge-base of HEAD and the default branch or an ancestor of it (compared as resolved object ids), because a red on a sibling, branch or stale tree proves nothing about this change. Closures already on main are grandfathered by closedAtBase before the question is asked. Applicability stays witnessTreeApplies' tree comparison",
+		"failfirst_ancestry.go": "fail-first BASE provenance (verify-integrity/03), not witness applicability: the closure gate and the runner ask whether the base a row was shown red on is the merge-base of HEAD and the default branch, or the first parent of a recorded delivering commit that is HEAD or an ancestor of HEAD (compared as resolved object ids, #2721), because a red on a sibling, branch or stale tree proves nothing about this change. Closures already on main are grandfathered by closedAtBase before the question is asked. Applicability stays witnessTreeApplies' tree comparison",
 	}
 	var files []string
 	for _, pat := range []string{"*.go", "evaluation/*.go"} {

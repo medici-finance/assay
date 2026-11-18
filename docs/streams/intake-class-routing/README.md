@@ -34,11 +34,11 @@ review and the decisions the landing merge rules follow the board sections, from
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Record and publish a handoff for every judged issue](brief-01-record-and-publish-a-handoff-for-every-judged-issue.md) | 0 | M | todo | — | — |
+| 01 | [Record and publish a handoff for every judged issue](brief-01-record-and-publish-a-handoff-for-every-judged-issue.md) | 0 | M | implemented | — | — |
 | 02 | [The scan publishes recorded handoffs and land stops a judged exit without one](brief-02-the-scan-publishes-recorded-handoffs-and-land-stops-a-judged-exit-without-one.md) | 0 | M | todo | — | — |
-| 03 | [Give intake replay its own bound](brief-03-give-intake-replay-its-own-bound.md) | 0 | S | todo | — | — |
-| 04 | [Work the owed batch by class](brief-04-work-the-owed-batch-by-class.md) | 0 | M | todo | — | — |
-| 05 | [New cells pin the intake role to a strong tier](brief-05-new-cells-pin-the-intake-role-to-a-strong-tier.md) | 0 | M | todo | — | — |
+| 03 | [Give intake replay its own bound](brief-03-give-intake-replay-its-own-bound.md) | 0 | S | implemented | — | — |
+| 04 | [Work the owed batch by class](brief-04-work-the-owed-batch-by-class.md) | 0 | M | implemented | — | — |
+| 05 | [New cells pin the intake role to a strong tier](brief-05-new-cells-pin-the-intake-role-to-a-strong-tier.md) | 0 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -265,8 +265,11 @@ removes; and a Verify row that fails on a planted second instance. These are exi
 
 **4.5 Failure and partial success.** A refused or unreadable handoff write leaves the item
 owed and is reported as could-not-check, never as an empty queue. A judgment recorded but not
-published leaves the placeholder `classification-needed`; the next pass shows it still owed. A
-class brief authored without its members' judgments is incomplete, and the members stay owed.
+published leaves the placeholder `classification-needed` and out of dispatch, but the next pass
+does not show it as owed: the local history already counts it as settled and the scan does not
+read the published pointer, so nothing reports it until the read-back is made. Publish it, and
+read it back, in the same session that recorded it. A class brief authored without its members'
+judgments is incomplete, and the members stay owed.
 An intake session below strong tier records `repair`, `duplicate` and external judgments only
 and queues the rest; the writer already refuses a `needs-scoping` judgment from such a session.
 

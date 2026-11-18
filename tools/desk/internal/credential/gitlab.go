@@ -38,7 +38,6 @@ package credential
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -310,12 +309,20 @@ func acquireGitLabRotateLock(lk Locker, wait time.Duration, role, tokenPath stri
 
 // --- GitLab API ----------------------------------------------------------------------------
 
+// RequestTimeout bounds one GitLab custody request when the caller's client sets no deadline.
+// It equals deskkit.ForgeRequestTimeout (this package cannot import deskkit; a deskkit test
+// pins the two equal): a mint can run while a desk write verb holds the shared audit lock.
+const RequestTimeout = 30 * time.Second
+
 // noRedirect copies c and refuses every redirect (SEC-1): both GitLab calls send
 // PRIVATE-TOKEN, a custom header net/http forwards across hosts on a followed redirect.
 func noRedirect(c *http.Client) *http.Client {
-	cp := http.Client{}
+	cp := http.Client{Timeout: RequestTimeout}
 	if c != nil {
 		cp = *c
+	}
+	if cp.Timeout <= 0 {
+		cp.Timeout = RequestTimeout
 	}
 	cp.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &cp
@@ -338,7 +345,7 @@ func RotateGitLabToken(c *http.Client, base, current string) (*GitLabRotateResul
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := readCappedResponse(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("read rotate response: %w", err)
 	}
@@ -372,8 +379,8 @@ func GitLabSelfCheck(c *http.Client, base, token string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("GET %s: %w", GitLabSelfCheckPath, err)
 	}
-	defer resp.Body.Close()
-	_, _ = io.Copy(io.Discard, resp.Body)
+	// Closed unread: the status is the whole answer, so no byte of the body is taken.
+	_ = resp.Body.Close()
 	return resp.StatusCode, nil
 }
 

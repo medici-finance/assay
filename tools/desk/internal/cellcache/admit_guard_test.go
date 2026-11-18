@@ -81,9 +81,10 @@ func TestCacheLaunchPathsUseAdmit(t *testing.T) {
 		}
 		allow := allowed
 		if path == filepath.Join(module, "cmd", "cellctl", "cache.go") {
-			// `cellctl up`'s one clean after a reclaimable deferral (#6117),
-			// in this file only; cellctl's startup guard pins its caller.
-			allow = map[string]bool{"cmdCache": true, "upCacheClean": true}
+			// A launch's one clean after a reclaimable (#6117) or stale
+			// (#6593) deferral, in this file only; cellctl's startup guard
+			// pins its callers.
+			allow = map[string]bool{"cmdCache": true, "launchCacheClean": true}
 		}
 		found = append(found, checkCallers(t, path, b, allow)...)
 		return nil

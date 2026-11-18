@@ -43,7 +43,7 @@ func TestClaimToolConfiguredStoreThatDoesNotResolveNeverBuildsTheForgeStore(t *t
 			f := newStore()
 			run, so, se := harness(t, f)
 			built := 0
-			buildStore = func(_, _ string) (deskkit.ClaimStore, error) { built++; return f, nil }
+			buildStore = func(_, _ string, _ func() (string, error)) (deskkit.ClaimStore, error) { built++; return f, nil }
 
 			if rc := run("acquire", "at--stream--07", "--repo", "medici-finance/assay"); rc != exitUnverifiable {
 				t.Fatalf("rc = %d, want 6; out=%s err=%s", rc, so.String(), se.String())
@@ -75,7 +75,7 @@ func TestClaimToolUnshippedFallback(t *testing.T) {
 			f := newStore()
 			run, so, se := harness(t, f)
 			built := 0
-			buildStore = func(_, _ string) (deskkit.ClaimStore, error) { built++; return f, nil }
+			buildStore = func(_, _ string, _ func() (string, error)) (deskkit.ClaimStore, error) { built++; return f, nil }
 
 			if rc := run("acquire", "at--stream--07", "--repo", "medici-finance/assay"); rc != exitOK {
 				t.Fatalf("rc = %d, want 0 (an unshipped store is ignored); out=%s err=%s", rc, so.String(), se.String())

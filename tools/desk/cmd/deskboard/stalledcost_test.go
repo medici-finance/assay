@@ -38,6 +38,25 @@ func TestStalledCostFixture(t *testing.T) {
 				return
 			}
 			if !strings.Contains(request.Query, "pullRequests(states:OPEN") {
+				if _, batch := request.Variables["use0"]; batch {
+					aliases := map[string]any{}
+					for slot := 0; slot < 5; slot++ {
+						if request.Variables[fmt.Sprintf("use%d", slot)] != true {
+							continue
+						}
+						n := int(request.Variables[fmt.Sprintf("n%d", slot)].(float64))
+						if n != 1 && n != 5 {
+							t.Errorf("comment read ahead for ineligible PR %d", n)
+						}
+						comments := []any{}
+						if n == 5 {
+							comments = append(comments, map[string]any{"createdAt": "2099-01-01T00:00:00Z", "author": map[string]any{"login": "ada", "databaseId": 2001, "__typename": "User"}})
+						}
+						aliases[fmt.Sprintf("a%d", slot)] = map[string]any{"number": n, "comments": map[string]any{"nodes": comments}}
+					}
+					json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"repository": aliases}})
+					return
+				}
 				var comments []any
 				if request.Variables["number"] == float64(5) {
 					comments = []any{map[string]any{"id": "comment5", "databaseId": 5, "author": map[string]any{"login": "ada", "databaseId": 2001, "__typename": "User"}, "createdAt": "2099-01-01T00:00:00Z", "body": "reply"}}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -55,7 +56,8 @@ func (a *auditCtx) log(result, detail string) {
 		h := a.head
 		headp = &h
 	}
-	_ = deskkit.Log(deskkit.Entry{
+	// A reply is an outward comment post: success renews a fresh HEARTBEAT lease (#6510).
+	_ = deskkit.LogOutwardAct(deskkit.Entry{
 		Tool:       "deskreply",
 		Verb:       "reply",
 		Result:     result,
@@ -394,13 +396,16 @@ func preflight(dir string) (*gitFacts, error) {
 	if herr != nil {
 		return nil, deskkit.Unverifiable("cannot resolve HEAD commit", herr)
 	}
-	originURL, oerr := gitRepo.RemoteURL("origin")
+	originURL, oerr := deskkit.SlugRemoteURL(gitRepo, "origin")
+	if errors.Is(oerr, gitcore.ErrRemoteScopeUnmerged) {
+		return nil, deskkit.Unverifiable("origin could be changed by worktree-scope or include config", oerr)
+	}
 	if oerr != nil {
 		return nil, deskkit.Unverifiable("cannot read remote.origin.url", oerr)
 	}
 	repo, rerr := parseRepo(originURL)
 	if rerr != nil {
-		return nil, deskkit.Unverifiable("cannot parse origin repo from "+originURL, rerr)
+		return nil, deskkit.Unverifiable("cannot parse origin repo", rerr)
 	}
 	if !deskkit.IsAllowedRepo(repo) {
 		return nil, deskkit.Refused("refused: origin " + repo + " is not in the desk-tools repo set")

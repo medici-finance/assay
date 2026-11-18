@@ -37,9 +37,9 @@
 // The opt-in is a per-SHELL export an operator makes deliberately, the same
 // shape as the writeguard shared-checkout token. A desk window, a dispatched
 // worker, or a script one of them runs must never export it. It is declared in
-// deskkit only so that recording it in the shared roster.env cannot collapse
-// the roster (see deskkit.EnvAllowCluster); recording it there does not grant
-// it.
+// deskkit only so that recording it in the shared roster.env draws no unknown-key
+// NOTICE on every desk run (see deskkit.EnvAllowCluster); recording it there does
+// not grant it.
 //
 // STOP FLAGS ONLY TIGHTEN. deskkit.Guard() is called before any verdict, but an
 // armed flag is itself a refusal (exit 3). This guard deliberately does NOT

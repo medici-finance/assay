@@ -42,6 +42,7 @@ type landingFixture struct {
 	errBuf  *bytes.Buffer
 	mints   int
 	mintErr error
+	readmit []apiCall // the write window's re-admission requests from the last land
 }
 
 // newLandingFixture builds the fixture with every part of the landing's identity path REAL:
@@ -95,13 +96,13 @@ func newLandingFixture(t *testing.T) *landingFixture {
 	oldBase := forgeAPIBase
 	forgeAPIBase = srv.URL
 	t.Cleanup(func() { forgeAPIBase = oldBase })
-	mintTokenFn = func(string) error {
+	mintTokenFn = func(string) (deskkit.RoleCredential, error) {
 		lf.mints++
 		if lf.mintErr != nil {
-			return lf.mintErr
+			return deskkit.RoleCredential{}, lf.mintErr
 		}
 		ghToken = fakeVerifierToken
-		return nil
+		return deskkit.RoleCredential{Token: ghToken, Resolution: deskkit.ForgeResolution{Kind: deskkit.ForgeGitHub}}, nil
 	}
 
 	lf.api.files = map[string]string{fixtureBrief: fixturePlan}
@@ -136,8 +137,35 @@ func (lf *landingFixture) land(t *testing.T, args ...string) (int, []apiCall) {
 	lf.errBuf.Reset()
 	lf.mints = 0
 	before := len(lf.api.calls)
+	// The write window re-runs admission (prepwindow_test.go). Its requests are tagged
+	// "readmit" and returned in lf.readmit, so the pins below stay on the preparation and write
+	// requests; TestEvidenceReceiptRequests pins that the re-admission comes before the commit.
+	lf.readmit = nil
+	admit := verifierEvidenceAdmissionFn
+	admissions := 0
+	verifierEvidenceAdmissionFn = func(root, repo, target string, fg deskkit.Forge) (deskkit.VerifierReceipt, error) {
+		admissions++
+		if admissions == 1 {
+			return admit(root, repo, target, fg)
+		}
+		start := len(lf.api.calls)
+		r, err := admit(root, repo, target, fg)
+		for i := start; i < len(lf.api.calls); i++ {
+			lf.api.calls[i].Operation = "readmit"
+		}
+		return r, err
+	}
+	defer func() { verifierEvidenceAdmissionFn = admit }()
 	code := run(append([]string{fixtureRepo, "main"}, args...))
-	return code, append([]apiCall(nil), lf.api.calls[before:]...)
+	var calls []apiCall
+	for _, c := range lf.api.calls[before:] {
+		if c.Operation == "readmit" {
+			lf.readmit = append(lf.readmit, c)
+			continue
+		}
+		calls = append(calls, c)
+	}
+	return code, calls
 }
 
 // assertOneMintedIdentity fails unless every request carried the minted verifier token.
@@ -368,10 +396,10 @@ func TestLandingUsesOneForgeForAdmissionAndWrite(t *testing.T) {
 			f, errBuf := setupFake(t)
 			var steps []string
 			var resolved, admitted deskkit.Forge
-			mintTokenFn = func(string) error {
+			mintTokenFn = func(string) (deskkit.RoleCredential, error) {
 				steps = append(steps, "mint")
 				ghToken = fakeVerifierToken
-				return nil
+				return deskkit.RoleCredential{Token: ghToken, Resolution: deskkit.ForgeResolution{Kind: deskkit.ForgeGitHub}}, nil
 			}
 			forgeForFn = func(owner, name string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 				steps = append(steps, "forge")
@@ -380,6 +408,13 @@ func TestLandingUsesOneForgeForAdmissionAndWrite(t *testing.T) {
 			}
 			verifierEvidenceAdmissionFn = func(_, _, target string, fg deskkit.Forge) (deskkit.VerifierReceipt, error) {
 				steps = append(steps, "admission")
+				if admitted != nil {
+					// The write window's re-admission (prepwindow_test.go): same forge, before the write.
+					if fg != admitted || f.putCalls != 0 {
+						t.Errorf("re-admission was not on the landing's forge before the write")
+					}
+					return stubAdmittedReceipt(target), nil
+				}
 				admitted = fg
 				if len(f.hits) != 0 {
 					t.Errorf("the landing reached the forge before admission: %v", f.hits)
@@ -392,8 +427,8 @@ func TestLandingUsesOneForgeForAdmissionAndWrite(t *testing.T) {
 			if code := run(append([]string{fixtureRepo, "main", "--root", root}, args...)); code != deskkit.ExitOK {
 				t.Fatalf("landing exit = %d: %s", code, errBuf)
 			}
-			if got := strings.Join(steps, " "); got != "mint forge admission" {
-				t.Fatalf("landing ran %q, want exactly one mint, one forge resolution, then admission", got)
+			if got := strings.Join(steps, " "); got != "mint forge admission admission" {
+				t.Fatalf("landing ran %q, want exactly one mint, one forge resolution, admission, then the write window's re-admission", got)
 			}
 			if admitted == nil || admitted != resolved {
 				t.Fatal("admission was not handed the forge the landing resolved")
@@ -443,10 +478,10 @@ func TestPreMintRefusalsNeverMint(t *testing.T) {
 				t.Setenv("VERIFIER_MAIN_OK", tc.mainOK)
 			}
 			var steps []string
-			mintTokenFn = func(string) error {
+			mintTokenFn = func(string) (deskkit.RoleCredential, error) {
 				steps = append(steps, "mint")
 				ghToken = fakeVerifierToken
-				return nil
+				return deskkit.RoleCredential{Token: ghToken, Resolution: deskkit.ForgeResolution{Kind: deskkit.ForgeGitHub}}, nil
 			}
 			forgeForFn = func(string, string) (deskkit.Forge, deskkit.ForgeRepo, error) {
 				steps = append(steps, "forge")

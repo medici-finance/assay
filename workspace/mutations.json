@@ -1,10 +1,10 @@
 {
-  "test": "go test . -count=1 -timeout 60s -run '^(TestWorkspaceContractRoundTrip|TestWorkspaceSchemaCoverage|TestWireUnicode|TestWireOtherDecoders|TestWireTruncated|TestPathByteLimit)$'",
+  "test": "go test . -count=1 -timeout 60s -run '^(TestWorkspaceContractRoundTrip|TestWorkspaceSchemaCoverage|TestWireUnicode|TestWireOtherDecoders|TestWireTruncated|TestPathByteLimit|TestStoreMappingSchema)$'",
   "control": {
     "name": "CONTROL \u2014 accept unknown schema: a cell-workspace/v2 (or schema-less) document is read as v1",
     "file": "contract.go",
-    "old": "func checkSchema(s string) error {\n\tif s != Schema {",
-    "new": "func checkSchema(s string) error {\n\tif false && s != Schema {"
+    "old": "func checkSchemaIs(s, want string) error {\n\tif s != want {",
+    "new": "func checkSchemaIs(s, want string) error {\n\tif false && s != want {"
   },
   "mutations": [
     {
@@ -198,6 +198,18 @@
       "file": "contract.go",
       "old": "err != nil || low < 0xdc00 ||",
       "new": "err != nil ||"
+    },
+    {
+      "name": "the store mapping is stamped with the workspace v1 schema string instead of cell-repository/v1",
+      "file": "repository.go",
+      "old": "next := StoreMapping{Schema: StoreSchema,",
+      "new": "next := StoreMapping{Schema: Schema,"
+    },
+    {
+      "name": "a store mapping stamped with the workspace v1 schema string is accepted",
+      "file": "repository.go",
+      "old": "decodeAs(data, &m, StoreSchema)",
+      "new": "decodeAs(data, &m, Schema)"
     }
   ]
 }

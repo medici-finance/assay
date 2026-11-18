@@ -36,7 +36,7 @@
 # pinned by DIGEST (a tag is mutable at a registry). assay's sibling
 # `images/ci-tools/Dockerfile` pins by tag, not digest, so these are STANDALONE
 # digest pins with no sibling to keep them in lockstep; bump them deliberately
-# (they are the linux/amd64 golang:1.27.3-bookworm and debian:bookworm-slim
+# (they are the linux/amd64 golang:1.27.4-bookworm and debian:bookworm-slim
 # artifacts as of this image's addition). See the PR body's base-digest note.
 #
 # TARGET PLATFORM is linux/amd64 (the ARC runner convention).
@@ -47,7 +47,7 @@
 # --platform=$BUILDPLATFORM keeps the Go toolchain on the builder's arch and
 # cross-compiles to linux/amd64 rather than running under qemu emulation.
 ARG BINARY_STAGE=gobuild
-FROM --platform=$BUILDPLATFORM golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5 AS gobuild
+FROM --platform=$BUILDPLATFORM golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea AS gobuild
 
 # GOWORK=off is load-bearing: the repo root carries no go.work, and statusgen/
 # and tools/desk are self-contained modules (only external dep is
@@ -93,6 +93,7 @@ COPY gitquiet/ /src/gitquiet/
 COPY gitcore/ /src/gitcore/
 COPY deskcore /src/deskcore/
 COPY workflow/ /src/workflow/
+COPY workspace/ /src/workspace/
 
 # statusgen — its own module, stamped with main.statusgenVersion.
 WORKDIR /src/statusgen
@@ -126,8 +127,29 @@ RUN DESK_LD="-s -w"; \
 # ---------------------------------------------------------------------------
 # Release CI reuses the same binaries it publishes as Linux assets.
 FROM scratch AS released
-COPY .release-images/harness/ /out/
+COPY --chmod=0755 .release-images/harness/ /out/
 FROM ${BINARY_STAGE} AS toolkit
+
+# Git release archive verified against the upstream maintainer signature.
+# Keep the version and checksum together when upgrading.
+FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241 AS gitbuild
+USER root
+ARG GIT_VERSION=2.56.1
+ARG GIT_TARBALL_SHA256=f0b0bf89264b9bd2e1c640363e7529643989da76281600473c50745cd34a607f
+RUN set -eux; \
+    apt-get update; \
+    apt-get install -y --no-install-recommends ca-certificates curl gcc libc6-dev libcurl4-gnutls-dev libexpat1-dev libpcre2-dev make xz-utils zlib1g-dev; \
+    rm -rf /var/lib/apt/lists/*
+RUN set -eux; \
+    curl -fsSL --proto '=https' --proto-redir '=https' \
+        "https://www.kernel.org/pub/software/scm/git/git-${GIT_VERSION}.tar.xz" -o /tmp/git.txz; \
+    echo "${GIT_TARBALL_SHA256}  /tmp/git.txz" | sha256sum -c -; \
+    tar -C /tmp -xJf /tmp/git.txz; \
+    cd "/tmp/git-${GIT_VERSION}"; \
+    opts="prefix=/usr gitexecdir=/usr/lib/git-core NO_OPENSSL=YesPlease NO_RUST=YesPlease NO_GETTEXT=YesPlease NO_TCLTK=YesPlease NO_PERL=YesPlease NO_PYTHON=YesPlease USE_LIBPCRE2=YesPlease"; \
+    make -j"$(nproc)" $opts all; \
+    make $opts DESTDIR=/out install; \
+    test "$(/out/usr/bin/git version)" = "git version ${GIT_VERSION}"
 
 FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
 
@@ -139,9 +161,18 @@ FROM debian:bookworm-slim@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates \
-      git \
+      libcurl3-gnutls libexpat1 libpcre2-8-0 zlib1g \
       tini \
  && rm -rf /var/lib/apt/lists/*
+
+# Replace the distro executable and helpers together; assert the runtime copy.
+COPY --from=gitbuild /out/usr/ /usr/
+RUN set -eu; \
+    test "$(/usr/bin/git version)" = "git version 2.56.1"; \
+    test -x /usr/lib/git-core/git-remote-https; \
+    ldd /usr/lib/git-core/git-remote-https > /tmp/git-ldd; \
+    if grep 'not found' /tmp/git-ldd; then exit 1; fi; \
+    rm /tmp/git-ldd
 
 # The toolkit binaries, from stage 1. statusgen + every desk-tools command land
 # on PATH at /usr/local/bin — this is the container-channel equivalent of the
@@ -151,9 +182,10 @@ COPY --from=toolkit /out/ /usr/local/bin/
 # The assay plugin, pre-seeded at BUILD time. CLAUDE_CODE_PLUGIN_SEED_DIR
 # pre-populates marketplaces+plugins read-only with no runtime clone — the
 # headless install path. Loose skill copies do not install in a container; the
-# plugin is what does.
-COPY .claude-plugin/ /opt/assay/plugin-seed/assay/.claude-plugin/
-COPY plugins/        /opt/assay/plugin-seed/assay/plugins/
+# plugin is what does. The symbolic mode keeps each hook and script executable
+# and every file writable by root alone, whatever mode the checkout gave it.
+COPY --chmod=u=rwX,go=rX .claude-plugin/ /opt/assay/plugin-seed/assay/.claude-plugin/
+COPY --chmod=u=rwX,go=rX plugins/        /opt/assay/plugin-seed/assay/plugins/
 ENV CLAUDE_CODE_PLUGIN_SEED_DIR=/opt/assay/plugin-seed
 
 # Provenance labels. The repo URL comes from a build ARG the workflow fills from
@@ -170,7 +202,23 @@ LABEL org.opencontainers.image.title="assay-harness" \
 
 # Non-root by construction: a worker Job is ephemeral and clones into HOME; the
 # uid is fixed so a securityContext can pin runAsUser without reading the image.
-RUN useradd --create-home --uid 10001 --shell /usr/sbin/nologin harness
+# The same RUN is the install-mode gate, and the last layer-writing step: every
+# path installed on PATH or under the plugin seed is root:root, carries no
+# set-id bit and is writable by root alone (no bit of mode 6022). A COPY from
+# the build context keeps the checkout's mode unless it names --chmod, so a
+# checkout made under umask 002 would otherwise ship group-writable binaries and
+# hooks. A symlink fails too: its own mode says nothing about the file it points
+# at. Each root is tested to exist first: find on a missing root only writes to
+# stderr, the pipeline's status is grep's, and the gate would pass on a tree it
+# never read.
+RUN set -eu; \
+    test -d /usr/local/bin; \
+    test -d /opt/assay; \
+    if find /usr/local/bin /opt/assay -xdev \( -type l -o -perm /6022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "an installed path is a symlink, is set-id, is not root:root, or is writable by its group or others" >&2; \
+        exit 1; \
+    fi; \
+    useradd --create-home --uid 10001 --shell /usr/sbin/nologin harness
 USER 10001
 ENV HOME=/home/harness \
     GIT_TERMINAL_PROMPT=0

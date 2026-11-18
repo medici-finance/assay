@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 )
@@ -116,47 +117,63 @@ func sameDirectory(a, b string) bool {
 // a form that narrows what git reads (admittedRowGlobal). Variables the row's
 // shell would run or act on at startup are removed (admittedRowShellStartup),
 // since they can set any of the above before the row's own command runs.
-// Forge credential variables are removed (admittedRowForgeToken), so a row no
-// longer inherits one from the invoking environment. That is hygiene against
-// ambient inheritance, not containment. The invoking process keeps them: its
-// own forge reads (the acceptance-approval read) happen there, from
-// os.Getenv, and this function only builds the rows' copy. With none of them
-// set, neither the invoking process nor a statusgen started inside a row
-// falls back to a stored forge login (storedLoginRefusal, forgecredential.go):
-// such a read is a could-not-check.
+//
+// Every variable that leads a row to a stored credential is removed too
+// (admittedRowCredential): HOME and XDG_CONFIG_HOME (where the forge CLI keeps
+// its stored login, a git credential helper is configured and a role key is
+// found), DESK_LOOP (the role a minter resolves), every GH_* variable
+// (GH_CONFIG_DIR, the forge CLI's config directory, and that CLI's token
+// variables among them), every ASSAY_* variable (the methodology's own
+// configuration, role key paths included) except the two named delivery
+// coordinates when they hold a commit id (admittedRowInput), CELLCTL_GH_AMBIENT (a cell's copy
+// of the stored login) and the GITHUB_* token variables (admittedRowForgeToken).
+// An inherited row-read socket variable is removed as well: the run names its
+// own socket after this function, and no other. The caller gives each row a
+// fresh, empty HOME and TMPDIR of its own (admittedRowDirs, withRowVars). This
+// function only builds the rows' copy. A row reads
+// forge state through the run's own read-only lanes: statusgen rowread, which
+// the run answers from its own process (rowreadbroker.go), or the run's
+// read-only credential file for a row that passes --acceptance-forge. It never
+// reads with a credential of its own.
+// The invoking process keeps them in its own environment but no longer
+// reads them while admitted: its forge reads and those of a statusgen
+// started inside a row use only the verifier's run-scoped read-only
+// credential (runcredential.go), never a variable and never a stored forge
+// login (storedLoginRefusal, forgecredential.go). Without that credential
+// such a read is a could-not-check. An inherited runCredentialEnv is
+// removed too (it is an ASSAY_* variable): the run hands its own
+// credential path to the one row that needs it, after this function.
 //
 // Out of scope, stated so it is not overclaimed: PATH (which git and which
-// tools a row runs), HOME and XDG_CONFIG_HOME (where git finds the user's own
-// config, exactly as admission does, and where a forge CLI or a git
-// credential helper keeps its stored login), GH_CONFIG_DIR (the forge CLI's
-// config directory, which holds that login), SSH_AUTH_SOCK (an agent a row's
-// git can authenticate through) and SSH_ASKPASS pass through unchanged, as do
-// forge credential variables other than the four above, such as the GitLab
-// ones this repository reads (STATUSGEN_GITLAB_TOKEN, GITLAB_TOKEN,
-// CI_JOB_TOKEN). The invoking process's own environment also stays reachable:
-// a row runs as the same user, and a same-user process can generally read
-// another's startup environment (ps -E on macOS, /proc/<pid>/environ on
-// Linux), which keeps the forge credential variables. A row that looks for a
-// credential can therefore still find one; this removal does not stop it.
-// Nor does the stored-login refusal above: it governs statusgen's own reads,
-// its markers live in a row's environment and working tree, where the row
-// can remove them, and a row that runs the forge CLI itself still finds the
-// stored login. Containment is a runner that holds no credential but the
-// verifier's own. An unadmitted run keeps the caller's environment.
+// tools a row runs), SSH_AUTH_SOCK (an agent a row's git can authenticate
+// through), SSH_ASKPASS, the Windows profile variables, and credential
+// variables outside the families above, such as other forges' and other
+// tools', pass through unchanged. The scrub removes the
+// pointers, not the files: a row runs as the same user and can still open a
+// stored login or a key file by an absolute path it already knows. Two more
+// paths stay reachable without any variable: a credential helper configured in
+// the checkout's own git config, and a home that a tool resolves from the
+// user's account record rather than from HOME (ssh resolves ~ that way). The
+// invoking process's own environment also stays reachable: a same-user
+// process can generally read another's startup environment (ps -E on macOS,
+// /proc/<pid>/environ on Linux), which keeps every variable removed here. A
+// row that looks for a credential on purpose can therefore still find one;
+// this removal stops one being found by default. Containment is a runner that
+// holds no credential but the verifier's own. An unadmitted run keeps the
+// caller's environment.
 func admittedRowEnv(environ []string) []string {
-	home := ""
-	for _, kv := range environ {
-		if v, ok := strings.CutPrefix(kv, "HOME="); ok {
-			home = v
-		}
-	}
 	var env []string
 	for _, kv := range environ {
 		key, _, _ := strings.Cut(kv, "=")
 		switch {
+		case admittedRowInput(kv):
+			env = append(env, kv)
 		case admittedRowShellStartup(key):
 		case admittedRowForgeToken(key):
-		case strings.HasPrefix(strings.ToUpper(key), "GIT_") && !admittedRowGlobal(kv, home):
+		case admittedRowCredential(key):
+		case strings.EqualFold(key, runCredentialEnv):
+		case strings.EqualFold(key, rowreadSocketVar):
+		case strings.HasPrefix(strings.ToUpper(key), "GIT_") && !admittedRowGlobal(kv):
 		default:
 			env = append(env, kv)
 		}
@@ -170,12 +187,141 @@ func admittedRowEnv(environ []string) []string {
 }
 
 // admittedRowGlobal reports whether an inherited GIT_* variable is a global
-// config setting that only narrows what a row's git reads: the home's own
-// ~/.gitconfig (git then skips the XDG one) or none. Any other value (one that
-// points git at another file) is removed with the rest.
-func admittedRowGlobal(kv, home string) bool {
+// config setting that only narrows what a row's git reads: none at all. Any
+// other value (the invoking home's own ~/.gitconfig, which can name a
+// credential helper, or another file) is removed with the rest.
+func admittedRowGlobal(kv string) bool {
 	key, value, _ := strings.Cut(kv, "=")
-	return key == "GIT_CONFIG_GLOBAL" && (value == os.DevNull || (filepath.IsAbs(home) && filepath.Clean(value) == filepath.Join(home, ".gitconfig")))
+	return key == "GIT_CONFIG_GLOBAL" && value == os.DevNull
+}
+
+// admittedRowCredential reports whether a variable leads a row to a stored
+// credential or names the role one is minted for: HOME, XDG_CONFIG_HOME,
+// DESK_LOOP, CELLCTL_GH_AMBIENT and every GH_* and ASSAY_* variable. Matched
+// whatever its case.
+func admittedRowCredential(key string) bool {
+	key = strings.ToUpper(key)
+	return strings.HasPrefix(key, "GH_") || strings.HasPrefix(key, "ASSAY_") ||
+		slices.Contains([]string{"HOME", "XDG_CONFIG_HOME", "DESK_LOOP", "CELLCTL_GH_AMBIENT"}, key)
+}
+
+// admittedRowInputs are the only ASSAY_* variables an admitted row still
+// receives: the delivery coordinates the container verify runner
+// (images/verify-runner/witness.sh) exports from its own argv before it starts
+// an admitted run, which delivery-coordinate Verify rows read. They are commit
+// ids, not credentials. Each is named exactly: no prefix, no other case.
+var admittedRowInputs = []string{"ASSAY_DELIVERY_SHA", "ASSAY_DELIVERY_BASE_SHA"}
+
+// admittedRowInput reports whether an inherited variable is one of the named
+// row inputs (admittedRowInputs) holding a full commit id, the shape the runner
+// itself accepts. Any other value under one of those names is scrubbed with the
+// rest of the ASSAY_* family, so no other value rides through under the name.
+func admittedRowInput(kv string) bool {
+	key, value, _ := strings.Cut(kv, "=")
+	return slices.Contains(admittedRowInputs, key) && fullObjectIDRe.MatchString(value)
+}
+
+// admittedRowRefRe matches a row command's reads of a variable by name:
+// $env:NAME (pwsh, whatever its case), $NAME, ${NAME}, ${NAME...} (a default,
+// a length or an indirection: ${NAME:-x}, ${#NAME}, ${!NAME}) and %NAME% (cmd).
+// The pwsh form comes first so $env is not read as a name of its own.
+var admittedRowRefRe = regexp.MustCompile(`(?i:\$env:)([A-Za-z_][A-Za-z0-9_]*)|\$\{?[#!]?([A-Za-z_][A-Za-z0-9_]*)|%([A-Za-z_][A-Za-z0-9_]*)%`)
+
+// admittedRowScrubbedRefs returns, in the order first read, the ASSAY_*
+// variables a row's command reads that its admitted environment env cannot
+// carry, so the row cannot run as written under admission (desk decisions 10
+// and 11 on #6773). A name counts only when admittedRowEnv itself drops it,
+// whatever its value: it is probed with a full commit id, the one value a named
+// row input (admittedRowInputs) keeps, so the delivery coordinates never count,
+// and an abbreviated coordinate still gets the row's own failure. A name the
+// run sets after the scrub (its run credential path, for a forge row) is in env
+// and does not count.
+//
+// The rule reads the command's text, not the shell's parse. Any $NAME, ${NAME
+// or %NAME% counts, wherever it sits: inside single quotes, in an echo or
+// comment, in a grep pattern. That errs to could-not-run. A read written
+// without that syntax (printenv NAME, env | grep NAME, or a program the row
+// starts reading the variable itself) does not count, and the row runs as before.
+func admittedRowScrubbedRefs(command string, env []string) []string {
+	var names []string
+	for _, m := range admittedRowRefRe.FindAllStringSubmatch(command, -1) {
+		name := m[1] + m[2] + m[3]
+		if !strings.HasPrefix(strings.ToUpper(name), "ASSAY_") || slices.Contains(names, name) {
+			continue
+		}
+		if slices.ContainsFunc(env, func(kv string) bool {
+			key, _, _ := strings.Cut(kv, "=")
+			return strings.EqualFold(key, name)
+		}) {
+			continue
+		}
+		probe := name + "=" + strings.Repeat("0", 40)
+		if !slices.Contains(admittedRowEnv([]string{probe}), probe) {
+			names = append(names, name)
+		}
+	}
+	return names
+}
+
+// admittedRowDirs makes one admitted row's own HOME and TMPDIR: fresh, empty
+// 0700 directories under a new directory in the run's scratch, so a row's git
+// and tools find no user config and no stored login there, and nothing an
+// earlier row of the same run left behind. It returns that directory, which
+// the caller removes when the row ends, and the two variables to set.
+func admittedRowDirs(scratch string) (string, []string, error) {
+	dir, err := os.MkdirTemp(scratch, "row-")
+	if err != nil {
+		return "", nil, err
+	}
+	home, tmp := filepath.Join(dir, "home"), filepath.Join(dir, "tmp")
+	for _, d := range []string{home, tmp} {
+		if err := os.Mkdir(d, 0o700); err != nil {
+			removeRowScratch(dir)
+			return "", nil, err
+		}
+	}
+	return dir, []string{"HOME=" + home, "TMPDIR=" + tmp}, nil
+}
+
+// withRowVars returns env with each of vars set, replacing any entry of the
+// same name, whatever its case.
+func withRowVars(env []string, vars ...string) []string {
+	out := make([]string, 0, len(env)+len(vars))
+	for _, kv := range env {
+		key, _, _ := strings.Cut(kv, "=")
+		if !slices.ContainsFunc(vars, func(v string) bool {
+			k, _, _ := strings.Cut(v, "=")
+			return strings.EqualFold(k, key)
+		}) {
+			out = append(out, kv)
+		}
+	}
+	return append(out, vars...)
+}
+
+// admittedRowGo pins the Go toolchain's build cache and module path where the
+// invoking user's already are (unless the caller set them), so a row that
+// builds or tests Go code neither starts cold nor downloads modules into its
+// own HOME, where their read-only files would outlive the row. Both are
+// resolved in the invoking process, which still holds the original HOME. They
+// name a directory under that HOME, so a row can learn its path; a row runs as
+// the same user, and PATH usually names it too.
+func admittedRowGo(environ []string) []string {
+	var add []string
+	set := func(key string) bool {
+		return slices.ContainsFunc(environ, func(kv string) bool { return strings.HasPrefix(kv, key+"=") })
+	}
+	if !set("GOCACHE") {
+		if dir, err := os.UserCacheDir(); err == nil {
+			add = append(add, "GOCACHE="+filepath.Join(dir, "go-build"))
+		}
+	}
+	if !set("GOPATH") {
+		if dir, err := os.UserHomeDir(); err == nil {
+			add = append(add, "GOPATH="+filepath.Join(dir, "go"))
+		}
+	}
+	return add
 }
 
 // admittedRowShellStartup reports whether a variable is one a row's shell runs
@@ -189,8 +335,9 @@ func admittedRowShellStartup(key string) bool {
 
 // admittedRowForgeToken reports whether a variable is one the forge CLI reads
 // as a credential: GH_TOKEN and GITHUB_TOKEN for github.com, GH_ENTERPRISE_TOKEN
-// and GITHUB_ENTERPRISE_TOKEN for an enterprise host. Matched whatever its case,
-// as the GIT_* and shell startup variables are.
+// and GITHUB_ENTERPRISE_TOKEN for an enterprise host (the two GH_* ones are
+// also covered by admittedRowCredential). Matched whatever its case, as the
+// GIT_* and shell startup variables are.
 func admittedRowForgeToken(key string) bool {
 	return slices.Contains([]string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"}, strings.ToUpper(key))
 }

@@ -86,6 +86,17 @@ var itemRefShortRe = regexp.MustCompile(`^(?:([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+))?
 // only reader of them.
 var itemRefURLRe = regexp.MustCompile(`^(https?)://([^/]+)/(.+?)/(-/)?(issues|pull|pulls|merge_requests)/([0-9]+)/?$`)
 
+// itemURLHostRe is the host an item web URL may carry: a DNS name (letters, digits, dots
+// and hyphens, starting and ending alphanumeric) with an optional numeric port. itemRefURLRe
+// captures the host as anything up to the first `/`, so this is what keeps user info,
+// whitespace, mention or Markdown syntax out of a URL that is otherwise read as a reference.
+var itemURLHostRe = regexp.MustCompile(`^[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(:[0-9]{1,5})?$`)
+
+// itemURLSegRe is the charset of one project-path segment — the same characters the short
+// form's `owner/repo` accepts, so a URL cannot carry into ItemRef.Repo a value the short form
+// would refuse.
+var itemURLSegRe = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+
 // itemURL is one web URL read by itemRefURLRe: the parsed reference plus the URL facts a
 // caller that has to tell the forges apart needs (the comment-permalink parser).
 type itemURL struct {
@@ -104,6 +115,22 @@ func parseItemURL(s string) (itemURL, bool, error) {
 	if m == nil {
 		return itemURL{}, false, nil
 	}
+	// The host and every project-path segment are checked BEFORE anything else reads the
+	// URL, and a failure does not repeat the value: text that is not a host name or a path
+	// segment is exactly the text no refusal, receipt or comment should carry onward.
+	if !itemURLHostRe.MatchString(m[2]) {
+		return itemURL{}, true, Refused("refused: an item web URL's host must be a plain host name " +
+			"(letters, digits, dots and hyphens, optionally :port); this one is not, and the value is not " +
+			"repeated here — " + TypedRefForms())
+	}
+	segs := strings.Split(strings.Trim(m[3], "/"), "/")
+	for _, seg := range segs {
+		if !itemURLSegRe.MatchString(seg) {
+			return itemURL{}, true, Refused("refused: an item web URL's project path may hold only letters, " +
+				"digits, `_`, `.` and `-` in each segment; this one does not, and the value is not repeated " +
+				"here — " + TypedRefForms())
+		}
+	}
 	n, err := parseItemRefNumber(s, m[6])
 	if err != nil {
 		return itemURL{}, true, err
@@ -117,7 +144,6 @@ func parseItemURL(s string) (itemURL, bool, error) {
 	// group deep does not, and picking two of its segments would address a DIFFERENT
 	// project that may well exist — so it is a refusal naming the shortfall rather than a
 	// silent re-target.
-	segs := strings.Split(strings.Trim(m[3], "/"), "/")
 	if len(segs) != 2 {
 		return itemURL{}, true, Refused(fmt.Sprintf(
 			"refused: cannot read an owner/repo coordinate out of %s — its project path is %q, which is "+
@@ -215,10 +241,11 @@ func sigilFor(kind TargetKind) string {
 
 // parseItemRefNumber turns the digits out of a reference into a positive number. Zero is
 // refused: no forge numbers an object 0, so a `#0` is a malformed reference rather than an
-// object nobody has filed yet.
+// object nobody has filed yet. A leading zero is refused too: no forge writes `#040`, and
+// reading it as `#40` would accept a spelling that is not the reference it renders as.
 func parseItemRefNumber(ref, digits string) (int, error) {
 	n, err := strconv.Atoi(digits)
-	if err != nil || n <= 0 {
+	if err != nil || n <= 0 || strings.HasPrefix(digits, "0") {
 		return 0, Refused(fmt.Sprintf(
 			"refused: %s names item number %q, which is not a positive number",
 			StripControl(ref), StripControl(digits)))

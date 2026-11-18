@@ -62,7 +62,7 @@
 # ---- Reused binary suite --------------------------------------------------
 # Pin the already-published desk-tools image; its static binaries (desk-tools
 # suite + statusgen) are copied into the final stage rather than recompiled.
-ARG DESK_TOOLS_IMAGE=ghcr.io/medici-finance/assay/desk-tools:v1.0.79@sha256:c8e80b75647e6c960e12dd52bc72c6378c88e85863a6fe7ba2b6dfbd5c3c7e19
+ARG DESK_TOOLS_IMAGE=ghcr.io/medici-finance/assay/desk-tools:v1.0.85@sha256:35964d325cb4dc0b6c515201b7d1b9a8bb26c561f91631e8aaaa2fd6a16e938c
 FROM ${DESK_TOOLS_IMAGE} AS desktools
 
 # ---- git, built from a pinned upstream release ---------------------------
@@ -77,8 +77,8 @@ FROM ${DESK_TOOLS_IMAGE} AS desktools
 # tools/desk/internal/deskkit/gitfloor_test.go, and set the same two ARGs in
 # images/verify-runner/Dockerfile (a test requires the two pairs to match).
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587 AS gitbuild
-ARG GIT_VERSION=2.56.0
-ARG GIT_TARBALL_SHA256=26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
+ARG GIT_VERSION=2.56.1
+ARG GIT_TARBALL_SHA256=f0b0bf89264b9bd2e1c640363e7529643989da76281600473c50745cd34a607f
 ENV DEBIAN_FRONTEND=noninteractive
 RUN set -eux; \
     apt-get update; \
@@ -127,9 +127,9 @@ ARG TARGETARCH=amd64
 #   NODE_VERSION — Node LTS; the runtime the interactive agent CLI installs onto.
 #                 Checksums: https://nodejs.org/dist/v<version>/SHASUMS256.txt
 #                 (signed by the Node release keys: SHASUMS256.txt.asc)
-ARG GO_VERSION=1.27.3
-ARG GO_SHA256_AMD64=65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40
-ARG GO_SHA256_ARM64=a06e99309dbcbdca1a8ccd2282c3ee146e55930886e26b4f1193269587165f49
+ARG GO_VERSION=1.27.4
+ARG GO_SHA256_AMD64=7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840
+ARG GO_SHA256_ARM64=3392582988a273a87ab5043ee1b2c9c17a2c3c00580bf9326c47a2e0aaaeac92
 ARG GH_VERSION=2.63.2
 ARG GH_SHA256_AMD64=912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00
 ARG GH_SHA256_ARM64=0f31e2a8549c64b5c1679f0b99ce5e0dac7c91da9e86f6246adb8805b0f0b4bb
@@ -169,7 +169,7 @@ RUN set -eux; \
 # home can re-check itself. The floor is proven by the LAST RUN of this stage
 # (GIT FLOOR CHECK below), so no later layer can bring in a git unchecked.
 COPY --from=gitbuild /out/usr/local/ /usr/local/
-COPY containers/scripts/git-floor-check.sh /usr/local/bin/git-floor-check
+COPY --chmod=0755 containers/scripts/git-floor-check.sh /usr/local/bin/git-floor-check
 
 # Go toolchain, pinned, from the official distribution tarball, checked against
 # its pinned sha256 before it is unpacked.
@@ -230,13 +230,14 @@ RUN set -eux; \
 COPY --from=desktools /usr/local/bin/ /usr/local/bin/
 
 # The assay plugin baked from this repo: skills, commands, hooks. A desk session
-# finds its skill by public desk name under /opt/assay/plugin/skills.
-COPY plugins/assay/ /opt/assay/plugin/
+# finds its skill by public desk name under /opt/assay/plugin/skills. The
+# symbolic mode keeps each hook and script executable and every file writable by
+# root alone, whatever mode the checkout gave it.
+COPY --chmod=u=rwX,go=rX plugins/assay/ /opt/assay/plugin/
 
 # Bounded compatibility launcher; existing shell defaults and credential preflight stay.
-COPY containers/k8s/compatibility/desk-session.sh /usr/local/bin/desk-session
-COPY containers/k8s/compatibility/desk-session.py /usr/local/lib/assay/desk-session.py
-RUN chmod 0755 /usr/local/bin/desk-session /usr/local/lib/assay/desk-session.py
+COPY --chmod=0755 containers/k8s/compatibility/desk-session.sh /usr/local/bin/desk-session
+COPY --chmod=0755 containers/k8s/compatibility/desk-session.py /usr/local/lib/assay/desk-session.py
 
 # Non-root user. Home is routed onto the persistent volume (see ENV below) so
 # the parts of $HOME that must survive a container restart live on /work.
@@ -301,8 +302,19 @@ RUN set -eux; \
 # missing binary fail (ldd alone would print its error to stderr and let the
 # grep pass); the ldd check catches a shared library the apt list above stopped
 # providing (git-remote-http carries the libcurl link). /usr/local must be
-# root-owned throughout, since git now lives there.
+# root-owned throughout, since git now lives there. Nothing installed under
+# /usr/local or /opt/assay may be set-id or writable by its group or others (no
+# bit of mode 6022): a COPY from the build context keeps the checkout's mode
+# unless it names --chmod, so a checkout made under umask 002 would otherwise
+# ship group-writable files on PATH. Both roots are tested to exist first: find
+# on a missing root only writes to stderr, the pipeline's status is grep's, and
+# the gate would pass on a tree it never read. Any symlink under /opt/assay
+# fails, since its own mode says nothing about its target. /usr/local holds
+# legitimate in-root links (the node archive's npm, npx and corepack, and
+# base-files' /usr/local/man), so there a link fails only if it dangles or
+# resolves outside /usr/local, whose files the first find already checks.
 RUN set -eux; \
+    test "$(/usr/local/bin/git version)" = "git version 2.56.1"; \
     test -x /usr/local/bin/git; \
     test -x /usr/local/libexec/git-core/git-remote-http; \
     if ldd /usr/local/bin/git /usr/local/libexec/git-core/git-remote-http | grep 'not found'; then \
@@ -311,6 +323,24 @@ RUN set -eux; \
     fi; \
     if find /usr/local -xdev \( ! -user 0 -o ! -group 0 \) -print | grep .; then \
         echo "/usr/local holds files not owned by root:root" >&2; \
+        exit 1; \
+    fi; \
+    test -d /usr/local; \
+    test -d /opt/assay; \
+    if find /usr/local -xdev ! -type l \( -perm /6022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "an installed file is set-id, is not root:root, or is writable by its group or others" >&2; \
+        exit 1; \
+    fi; \
+    if find /usr/local -xdev -xtype l -print | grep .; then \
+        echo "a symlink under /usr/local dangles" >&2; \
+        exit 1; \
+    fi; \
+    if find /usr/local -xdev -type l -exec realpath -m {} + | grep -v '^/usr/local/'; then \
+        echo "a symlink under /usr/local resolves outside it" >&2; \
+        exit 1; \
+    fi; \
+    if find /opt/assay -xdev \( -type l -o -perm /6022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "a path under /opt/assay is a symlink, is set-id, is not root:root, or is writable by its group or others" >&2; \
         exit 1; \
     fi; \
     git-floor-check

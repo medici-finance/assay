@@ -40,3 +40,19 @@ Compiled fake-deskread parent (20 recorded samples; each checked against a recor
 Parent process CPU ms p50/p95 14.000 / 18.000.
 
 Coverage limits: synthetic local corpora, no providers or live permissions, no controlled OS-cold disk, no installed fleet baseline. Context discovery does not run inside these four modes: no context index reuse or savings is claimed.
+
+## Hydration budget, before and after (statusgen/44)
+
+The `real-shape` corpus is a git repository (4 streams, 8 briefs each, 24 first-parent
+merges on `origin/main`, every brief implemented with a recorded FAIL). The plain
+corpora above have no git history and no FAIL evidence, so they never reached the
+history-backed stale-FAIL notice that dominated the hydrated load. 5 samples per row,
+host load average about 16, so read the ratio, not the milliseconds.
+
+| Corpus | Mode | Before: replay cold wall ms p50 | After | Before: compiled CLI wall ms p50 | After |
+|---|---|---|---|---|---|
+| large (12 × 20) | gate-scores | 37.0 | 38.6 | 34 | 34 |
+| real-shape (4 × 8) | gate-scores | 2502 | 11.3 | 1629 | 9 |
+
+On this repository's own tree (623 briefs, 40 waiting on a FAIL), `--gate-scores`
+takes 15.4 s and 15.9 s before and 0.39 s and 0.46 s after; see `hydration-profile.md`.

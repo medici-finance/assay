@@ -235,6 +235,88 @@ func TestUndeclaredDeskDecisionLines(t *testing.T) {
 	}
 }
 
+// TestUndeclaredNoneForms pins issue #4870: a marker whose value records that the reviewer
+// found nothing names no decision, while every other value, including one that only starts
+// with the letters "none", still holds.
+// regression: #4870
+func TestUndeclaredNoneForms(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want []string
+	}{
+		{name: "bare none", body: "Undeclared-desk-decision: none\n"},
+		{name: "upper case", body: "Undeclared-desk-decision: NONE\n"},
+		{name: "none with sentence", body: "Undeclared-desk-decision: none. The two recorded entries are accurate.\n"},
+		{name: "none found", body: "Undeclared-desk-decision: none found\n"},
+		{name: "none found ellipsis", body: "Undeclared-desk-decision: None found…\n"},
+		{name: "none observed", body: "Undeclared-desk-decision: none observed; the default is declared\n"},
+		{name: "none em dash", body: "Undeclared-desk-decision: none — the narrowed scope is declared in the body.\n"},
+		{name: "none hyphen", body: "Undeclared-desk-decision: none - declared above\n"},
+		{name: "none paren", body: "Undeclared-desk-decision: none (checked the diff)\n"},
+		{name: "none emphasised", body: "**Undeclared-desk-decision: none**\n"},
+		{
+			name: "none is only a prefix of a phrase",
+			body: "Undeclared-desk-decision: none of the above, but the retry default was decided\n",
+			want: []string{"none of the above, but the retry default was decided"},
+		},
+		{
+			name: "none is only a prefix of a word",
+			body: "Undeclared-desk-decision: nonexistent-default chosen\n",
+			want: []string{"nonexistent-default chosen"},
+		},
+		{
+			name: "none joined by a bare hyphen",
+			body: "Undeclared-desk-decision: none-the-less chose a timeout\n",
+			want: []string{"none-the-less chose a timeout"},
+		},
+		{
+			name: "none line beside a declaring line",
+			body: "Undeclared-desk-decision: none\nUndeclared-desk-decision: chose a default for the retry backoff\n",
+			want: []string{"chose a default for the retry backoff"},
+		},
+		{name: "empty value", body: "Undeclared-desk-decision:\n", want: []string{UndeclaredEmptyValue}},
+		{name: "blank value", body: "Undeclared-desk-decision:   \n", want: []string{UndeclaredEmptyValue}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := UndeclaredDeskDecisionLines(c.body)
+			if len(got) != len(c.want) {
+				t.Fatalf("got %q, want %q", got, c.want)
+			}
+			for i := range c.want {
+				if got[i] != c.want[i] {
+					t.Errorf("line %d = %q, want %q", i, got[i], c.want[i])
+				}
+			}
+		})
+	}
+}
+
+// TestDeskDecidedGateNoneVerdict pins issue #4870 at the shared gate both ready-flip verbs
+// call: an APPROVED verdict at head carrying a none line clears, a declaring line refuses.
+// regression: #4870
+func TestDeskDecidedGateNoneVerdict(t *testing.T) {
+	const bot, head = "assay-reviewer-app[bot]", "abc123"
+	for _, c := range []struct {
+		line   string
+		refuse bool
+	}{
+		{"Undeclared-desk-decision: none", false},
+		{"Undeclared-desk-decision: none. The two recorded entries are accurate.", false},
+		{"Undeclared-desk-decision: none found — nothing reversible was chosen", false},
+		{"Undeclared-desk-decision: none of these, but a timeout default was chosen", true},
+		{"Undeclared-desk-decision:", true},
+		{"Undeclared-desk-decision: none\nUndeclared-desk-decision: chose a timeout", true},
+	} {
+		reviews := []DeskDecidedReview{{Login: bot, State: "APPROVED", CommitID: head, Body: "Verdict: approve\n" + c.line}}
+		got := DeskDecidedRefusal(1, nil, "", reviews, bot, head)
+		if (got != "") != c.refuse {
+			t.Errorf("%q: refusal = %q, want refuse=%v", c.line, got, c.refuse)
+		}
+	}
+}
+
 // TestDeskDecidedSectionIgnoresFencedExamples pins review advisory N1 on this brief's PR: a PR
 // body that QUOTES an example block — `## Desk-decided` on its own line inside a code fence —
 // is documentation, not a declaration. Read as a real block it made `create --decided` refuse

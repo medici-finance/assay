@@ -609,13 +609,21 @@ type PushOpts struct {
 // convention the caller has to remember. Returns nil on success, including when the
 // remote was already up to date.
 func (r *Repo) Push(opts PushOpts) error {
+	_, err := r.PushUpdated(opts)
+	return err
+}
+
+// PushUpdated is Push that also reports whether the remote moved a ref. updated is false
+// when every refspec was already up to date (go-git's NoErrAlreadyUpToDate, which Push
+// folds into success), so a caller can tell a push that changed nothing from one that did.
+func (r *Repo) PushUpdated(opts PushOpts) (updated bool, err error) {
 	specs, err := buildRefSpecs(opts.RefSpecs, opts.Force)
 	if err != nil {
-		return err
+		return false, err
 	}
 	requires, err := buildRefSpecs(opts.RequireRemoteRefs, false)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	remote := git.NewRemote(r.repo.Storer, &config.RemoteConfig{
@@ -628,10 +636,13 @@ func (r *Repo) Push(opts PushOpts) error {
 		Force:             opts.Force,
 		RequireRemoteRefs: requires,
 	})
-	if err != nil && err != git.NoErrAlreadyUpToDate {
-		return fmt.Errorf("gitcore: push: %w", err)
+	if err == git.NoErrAlreadyUpToDate {
+		return false, nil
 	}
-	return nil
+	if err != nil {
+		return false, fmt.Errorf("gitcore: push: %w", err)
+	}
+	return true, nil
 }
 
 // ListOpts configures an in-process remote List (`git ls-remote` / the transport

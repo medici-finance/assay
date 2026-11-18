@@ -31,11 +31,15 @@ var productionAdmission = verifierEvidenceAdmissionFn
 // carried, which is what lets a test say WHICH token reached the forge and in
 // what order admission and the landing read it.
 type attestationAPI struct {
-	commit             func(string, string) string
-	head               string
-	branch             string
-	snapshotChange     func(map[string]any)
-	afterSnapshot      func()
+	commit         func(string, string) string
+	head           string
+	branch         string
+	snapshotChange func(map[string]any)
+	afterSnapshot  func()
+	// blobChange edits a git/blobs answer before it is served: body is the
+	// blob the fixture holds under oid (nil when it holds none), and a nil
+	// return answers 404.
+	blobChange         func(oid string, body map[string]any) map[string]any
 	loseCommitAck      bool
 	mu                 sync.Mutex
 	title, body, state string
@@ -64,6 +68,43 @@ const contentsPrefix = "/repos/example-org/tracker/contents/"
 func blobID(content string) string {
 	sum := sha1.Sum(append([]byte(fmt.Sprintf("blob %d\x00", len(content))), []byte(content)...))
 	return hex.EncodeToString(sum[:])
+}
+
+// blobsPrefix is the git blobs API path of the fixture repository.
+const blobsPrefix = "/repos/example-org/tracker/git/blobs/"
+
+// ghBlob is a git blobs API answer for content as GitHub serves it: base64,
+// wrapped at 60 columns with a trailing newline.
+func ghBlob(content string) map[string]any {
+	enc := base64.StdEncoding.EncodeToString([]byte(content))
+	var b strings.Builder
+	for len(enc) > 60 {
+		b.WriteString(enc[:60] + "\n")
+		enc = enc[60:]
+	}
+	b.WriteString(enc + "\n")
+	return map[string]any{"sha": blobID(content), "size": len(content), "encoding": "base64", "content": b.String()}
+}
+
+// serveBlob answers a git blobs API read for oid from the branch content.
+func (a *attestationAPI) serveBlob(w http.ResponseWriter, oid string) {
+	a.calls[len(a.calls)-1].Operation = "blob-read"
+	var body map[string]any
+	for _, content := range a.files {
+		if blobID(content) == oid {
+			body = ghBlob(content)
+			break
+		}
+	}
+	if a.blobChange != nil {
+		body = a.blobChange(oid, body)
+	}
+	if body == nil {
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]any{"message": "Not Found"})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(body)
 }
 
 // serveContents answers a Contents-API read or write for file.
@@ -146,6 +187,8 @@ func (a *attestationAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		a.calls[len(a.calls)-1].Operation = "receipt"
 		enc(map[string]any{"sha": sha, "author": map[string]any{"login": "assay-verifier-app[bot]"}})
+	case r.Method == http.MethodGet && strings.Contains(p, blobsPrefix):
+		a.serveBlob(w, p[strings.Index(p, blobsPrefix)+len(blobsPrefix):])
 	case strings.Contains(p, contentsPrefix):
 		a.serveContents(w, r, p[strings.Index(p, contentsPrefix)+len(contentsPrefix):])
 	case r.Method == http.MethodPost && strings.HasSuffix(p, "/repos/example-org/tracker/issues"):

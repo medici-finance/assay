@@ -46,6 +46,14 @@ var flagNameConsts = map[string]string{
 	"deskkit.ScanOverrideFlag": deskkit.ScanOverrideFlag,
 }
 
+// flagRegistrars maps a helper that is handed a flag set to the flags it registers on it.
+// deskkit.RegisterOutboundOverride is the one way a deskpr verb registers
+// --force-scan-override (#5914), so the scan attributes that flag to the verb instead of
+// reporting the call as invisible.
+var flagRegistrars = map[string][]string{
+	"deskkit.RegisterOutboundOverride": {deskkit.ScanOverrideFlag},
+}
+
 // verbFlagsInSource parses one Go source and returns, per verb, the flags registered on the
 // flag set created by flag.NewFlagSet("<verb>", ...) inside a function, whether bound by
 // `fs := ...`, `fs = ...` or `var fs = ...`. It returns an error string (never a silent
@@ -122,6 +130,12 @@ func verbFlagsInSource(name, src string) (map[string]map[string]bool, []string) 
 			pos := fset.Position(call.Pos()).String()
 			for _, a := range call.Args {
 				if id, ok := a.(*ast.Ident); ok && sets[id.Name] != "" {
+					if names, known := flagRegistrars[exprString(call.Fun)]; known {
+						for _, v := range names {
+							out[sets[id.Name]][v] = true
+						}
+						continue
+					}
 					problems = append(problems, pos+": flag set "+id.Name+" passed to "+exprString(call.Fun)+" — registrations there are invisible to this scan")
 				}
 			}

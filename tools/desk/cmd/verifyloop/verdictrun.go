@@ -48,10 +48,13 @@ import (
 type rowExec func(root, command string) (exit int, output string)
 
 // shellExec is the default rowExec: run the command via `sh -c` from the repo root, exactly
-// as a human running the Verify row would. The exit code is the verdict.
+// as a human running the Verify row would. The exit code is the verdict. The row runs under
+// the declared verifier Git environment (deskkit.VerifierGitEnv): the operator's global and
+// system Git configuration never reach a verifier row.
 func shellExec(root, command string) (int, string) {
 	cmd := exec.Command("sh", "-c", command)
 	cmd.Dir = root
+	cmd.Env = deskkit.VerifierGitEnv(os.Environ())
 	out, err := cmd.CombinedOutput()
 	return exitCodeOf(err), string(out)
 }
@@ -529,7 +532,9 @@ func expandHomePath(p string) string {
 // deriveRepo returns owner/name from the git origin URL of root, or "" when it cannot be
 // determined (the payload then carries an empty repo, which a consumer treats as a refuse).
 func deriveRepo(root string) string {
-	out, err := exec.Command("git", "-C", root, "config", "--get", "remote.origin.url").CombinedOutput()
+	cmd := exec.Command("git", "-C", root, "config", "--get", "remote.origin.url")
+	cmd.Env = deskkit.VerifierGitEnv(os.Environ())
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return ""
 	}
@@ -552,7 +557,9 @@ func repoFromRemote(url string) string {
 
 // deriveHead returns the current git HEAD SHA of root, or "" when unavailable.
 func deriveHead(root string) string {
-	out, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").CombinedOutput()
+	cmd := exec.Command("git", "-C", root, "rev-parse", "HEAD")
+	cmd.Env = deskkit.VerifierGitEnv(os.Environ())
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return ""
 	}

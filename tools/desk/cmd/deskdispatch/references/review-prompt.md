@@ -96,8 +96,11 @@ report. Record the check could-not-check, name the environment it needs, and let
 rest on it. Never ask for the secret, and never run a PR head with one in its environment. The
 Verify row is witnessed after merge: the verifier records it could-not-check with its exact
 command, which places the brief in the board's Environment-blocked queue, where an operator who
-holds that environment, never the implementer, runs it. A Verify row whose `Env` cell names
-anything but `tree` while classed `check:ci` is a finding; `statusgen --lint` reddens it.
+holds that environment, never the implementer, runs it. For a `service:` row, only the
+verifier's signed outcome for that row is ever evidence, and never a run report. Until the
+signed verdict lane is enacted there is none, and the row stays could-not-check. A Verify row
+whose `Env` cell names anything but `tree` while classed `check:ci` is a finding;
+`statusgen --lint` reddens it.
 
 **Read what an instrument printed, not only its exit code.** Two read-only runs report
 through their output:
@@ -421,6 +424,8 @@ review-finding record doc).
 - **Resolve at the current head, with current-head evidence.** A resolution whose evidence
   was gathered at a stale head does not clear the finding, and an approval at an old head is
   never carried across a change.
+  Record the head in the finding's `evidenceHead` (the full head you reviewed): v1 has no
+  other head field, and a field the schema does not define refuses the whole block.
 - **Distinguish a shared external prerequisite (a red shared-CI leg) from a code/content
   defect.** A shared prerequisite is ONE shared repair cited across the PRs that hit it, not
   a per-PR correctness defect — but it still blocks a ready-flip until the applicable checks
@@ -449,7 +454,10 @@ should have declared one" by itself. That question is yours. On every review:
   verdict with the fixed line `Undeclared-desk-decision: <one line>` (one line, no code fence
   around it: the ready gate reads this as a BLOCK-direction marker, the same shape as
   `Security-Review: fail`, and a fenced marker still counts there). The ready-flip refuses
-  while this line stands at the current head.
+  while this line stands at the current head. To record that you checked and found none,
+  omit the line or write `Undeclared-desk-decision: none` (`none found` and `none observed`
+  read the same); an explanation may follow after a separator such as `.` or `—`. Any other
+  value, an empty one included, holds the flip.
 <!-- lane:correctness:begin -->
 - **Which verdict carries it.** Carry the line on your CORRECTNESS verdict. When the
   undeclared decision is the only thing holding the PR, post APPROVE carrying the line — it is
