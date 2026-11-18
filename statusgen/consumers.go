@@ -603,9 +603,23 @@ func consumersRun(root, base, briefFilter string, derive bool) int {
 	// The instrument says COULD-NOT-CHECK instead,
 	// and names the base that would work.
 	if briefFilter != "" {
+		// On the derived path (no --base, no --delivery) the brief counts as
+		// "in the diff" only when a COMMITTED change puts it there. The
+		// working-tree union exists so a pre-commit local loop is honest; it
+		// must not let the verifier's own uncommitted Evidence insertion turn a
+		// could-not-check into a vacuous exit 0 (issue #5479).
+		inDiff := changedSet
+		if derive {
+			inDiff = map[string]bool{}
+			if committed, cerr := committedPathsSince(root, base); cerr == nil {
+				for _, p := range committed {
+					inDiff[p] = true
+				}
+			}
+		}
 		for _, bf := range briefs {
 			rel, err := filepath.Rel(root, bf.Path)
-			if err != nil || changedSet[filepath.ToSlash(rel)] {
+			if err != nil || inDiff[filepath.ToSlash(rel)] {
 				continue
 			}
 			if derive {
@@ -1099,15 +1113,9 @@ var pinConsumerBase = func(root, base string) (string, error) {
 
 // A package-level var so tests can substitute a diff without a git fixture.
 var changedPathsSince = func(root, base string) ([]string, error) {
-	out, err := historyGitEnv(exec.Command("git", "-C", root, "diff", "--name-only", base+"...HEAD")).CombinedOutput()
+	paths, err := committedPathsSince(root, base)
 	if err != nil {
-		return nil, fmt.Errorf("git diff --name-only %s...HEAD: %v: %s", base, err, strings.TrimSpace(string(out)))
-	}
-	var paths []string
-	for _, line := range strings.Split(string(out), "\n") {
-		if p := strings.TrimSpace(line); p != "" {
-			paths = append(paths, p)
-		}
+		return nil, err
 	}
 	// Working-tree state: `--porcelain` prefixes each path with a two-column
 	// status code; renames render as "old -> new" and both halves count as
@@ -1122,6 +1130,22 @@ var changedPathsSince = func(root, base string) ([]string, error) {
 					paths = append(paths, p)
 				}
 			}
+		}
+	}
+	return paths, nil
+}
+
+// committedPathsSince is the committed half of changedPathsSince: the
+// three-dot diff alone, with no working-tree state.
+func committedPathsSince(root, base string) ([]string, error) {
+	out, err := historyGitEnv(exec.Command("git", "-C", root, "diff", "--name-only", base+"...HEAD")).CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("git diff --name-only %s...HEAD: %v: %s", base, err, strings.TrimSpace(string(out)))
+	}
+	var paths []string
+	for _, line := range strings.Split(string(out), "\n") {
+		if p := strings.TrimSpace(line); p != "" {
+			paths = append(paths, p)
 		}
 	}
 	return paths, nil
