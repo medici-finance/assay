@@ -644,6 +644,7 @@ type sweepCtx struct {
 	mainTip    string
 	ancestry   map[ancestryQuery]bool
 	admins     *worktreeAdminIndex
+	claims     *claimListing // the sweep's one dispatch-claim listing, read lazily (claimfree.go)
 
 	// mainAncestors is nil when the set could not be built; ancestorErr then says why.
 	mainAncestors map[string]struct{}
@@ -1011,7 +1012,8 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 
 		if opts.reapDeadSessions && !protected && admHold == "" && idleHold == "" {
 			mt, haveMtime := reapMtimes[rt]
-			v := judgeReap(sc, rt, reason, isLocked, mt, haveMtime, opts.lockTTL, reapRoster, reapNow)
+			v := judgeReap(sc, rt, reason, isLocked, mt, haveMtime, opts.lockTTL, reapRoster, reapNow,
+				sc.claimFor(guard, dir, rt))
 			if v.reap {
 				// --dry-run stops here exactly as the ordinary arm does: count the
 				// would-be reap, record the plan row, delete nothing and unlock nothing.
@@ -1063,6 +1065,13 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 		// in use is held whatever its content would prove.
 		if idleHold != "" {
 			res.skips = append(res.skips, skipEntry{rt, idleHold})
+			continue
+		}
+		// Claim gate: a dispatched home whose dispatch claim is held (or unreadable) is a
+		// live run's, whatever its content would prove (claimfree.go). A tree recording no
+		// run key passes untouched, and its listing is never read.
+		if c := sc.claimFor(guard, dir, rt); c.holds() {
+			res.skips = append(res.skips, skipEntry{rt, "held: " + c.why})
 			continue
 		}
 

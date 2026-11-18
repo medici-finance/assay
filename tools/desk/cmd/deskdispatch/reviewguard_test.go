@@ -203,6 +203,10 @@ func guardSafeCommand(args []ast.Expr, i int) bool {
 		return guardSafeGit(args, i+1)
 	case "deskroster":
 		return guardLiteral(args, i+1) == "set"
+	case "deskwt":
+		// `deskwt remove <home>` allocates nothing: it deletes one worktree only past
+		// deskwt's own gates (abortHome). Exactly one operand, so no flag can ride along.
+		return len(args) == i+3 && guardLiteral(args, i+1) == "remove"
 	}
 	return false
 }

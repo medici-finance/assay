@@ -1,0 +1,5 @@
+### Fixed
+- `deskwt prune --reap-dead-sessions` now reaps a dispatched home whose dispatch claim has been released, even if its agent left a bare `git worktree lock` on it. Before, no roster beacon could ever prove such a lock stale, so these homes piled up without bound. The existing safety gates still decide: the tree must be clean (untracked files included), every commit must be on the remote, and the tree must be idle past `--min-idle` (#6847).
+- A dispatched home whose claim is still held, or whose claim listing cannot be read, is now held by every `deskwt prune` arm and refused by `deskwt remove`, locked or not. An unlocked home of a live run no longer reads as unowned (#6847).
+- `deskwt remove` accepts a bare-locked home whose claim has been released. Its clean and pushed checks still apply (#6847).
+- `deskdispatch` now removes the home it just created when a later step aborts and the claim release succeeds. It does this through `deskwt remove`, so all of that verb's gates apply. A resumed worker's home, a verifier's home and a home whose attestation failed are kept (#6847).
