@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitcore/testenv"
 	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitquiet"
@@ -149,6 +150,8 @@ func withEnv(t *testing.T, work string) *[][]string {
 	t.Helper()
 	fixtureHome := t.TempDir()
 	t.Setenv("HOME", fixtureHome)
+	t.Setenv("USERPROFILE", fixtureHome)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(fixtureHome, ".config"))
 	plantFixtureRoster(t, fixtureHome)
 	t.Setenv("DESK_TOOLS_DISABLED", "")
 	t.Setenv("CLAUDE_SESSION_ID", "test")
@@ -309,6 +312,7 @@ func assertOnlyCommentWrites(t *testing.T, rec *forgeRecorder) {
 // public repo not authorized by a listed :public allowed-repos entry), and asserts ZERO
 // write calls were made.
 func TestPublicRepoGateWired(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 
@@ -371,6 +375,7 @@ func assertPresentedWorkerCred(t *testing.T, rec *forgeRecorder, owner string) {
 // --- tests ----------------------------------------------------------------------
 
 func TestReplySuccessPostsOnlyOneComment(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	body := bodyFileWith(t, "Addressed in abc1234: the check is now re-verified in-tool.")
@@ -388,6 +393,7 @@ func TestReplySuccessPostsOnlyOneComment(t *testing.T) {
 }
 
 func TestReplyMintsWorkerToken(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	body := bodyFileWith(t, "posted as the worker App")
@@ -408,6 +414,7 @@ func TestReplyMintsWorkerToken(t *testing.T) {
 // (Before #5457 that meant forwarding --repo to a forked `desktoken worker`; it now means the
 // owner deskkit.WriteVerbRoleCredential resolves from the repo slug.)
 func TestReplyMintsWorkerTokenScopedToOwnRepo(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	body := bodyFileWith(t, "the credential read must be told which repo it is for")
@@ -433,6 +440,7 @@ func TestReplyMintsWorkerTokenScopedToOwnRepo(t *testing.T) {
 // same way on the pre-fix code path (proved by reverting the fix locally) and passes
 // once --repo is forwarded.
 func TestReplyMediciFinanceRepoSucceeds(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newMediciFixture(t)
 	withEnv(t, work)
 	t.Setenv("FAKEGH_PR_REPO", "medici-finance/assay")
@@ -449,6 +457,7 @@ func TestReplyMediciFinanceRepoSucceeds(t *testing.T) {
 }
 
 func TestReplyIdempotentNoopSameBodySameHead(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	body := bodyFileWith(t, "same body, same head")
@@ -466,6 +475,7 @@ func TestReplyIdempotentNoopSameBodySameHead(t *testing.T) {
 }
 
 func TestReplyNotMyOwnBranchRefuses(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	t.Setenv("FAKEGH_PR_HEAD", "someone-elses-branch") // PR head != this worktree's branch
@@ -479,6 +489,7 @@ func TestReplyNotMyOwnBranchRefuses(t *testing.T) {
 }
 
 func TestReplyPRNotOpenRefuses(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	t.Setenv("FAKEGH_PR_STATE", "MERGED")
@@ -492,6 +503,7 @@ func TestReplyPRNotOpenRefuses(t *testing.T) {
 }
 
 func TestReplyOriginMismatchRefuses(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	body := bodyFileWith(t, "replying on a different (allowed) repo than my origin")
@@ -505,6 +517,7 @@ func TestReplyOriginMismatchRefuses(t *testing.T) {
 }
 
 func TestReplyRepoNotAllowedRefuses(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	body := bodyFileWith(t, "x")
@@ -519,6 +532,7 @@ func TestReplyRepoNotAllowedRefuses(t *testing.T) {
 }
 
 func TestReplyOversizeBodyRefusesNoCall(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	body := bodyFileWith(t, strings.Repeat("a", maxBodyBytes+1))
@@ -533,6 +547,7 @@ func TestReplyOversizeBodyRefusesNoCall(t *testing.T) {
 }
 
 func TestReplySecretInBodyRefusesNoCall(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	body := bodyFileWith(t, "here is the token ghp_"+strings.Repeat("a", 36))
@@ -547,6 +562,7 @@ func TestReplySecretInBodyRefusesNoCall(t *testing.T) {
 }
 
 func TestReplyGitSHAInBodyPasses(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	// A 40-char lowercase-hex git SHA must NOT trip the secret scan.
@@ -558,6 +574,7 @@ func TestReplyGitSHAInBodyPasses(t *testing.T) {
 }
 
 func TestReplyMissingBodyFileRefuses(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	if rc := run([]string{"example-org/tracker", "7"}); rc != deskkit.ExitRefused {
@@ -566,6 +583,7 @@ func TestReplyMissingBodyFileRefuses(t *testing.T) {
 }
 
 func TestReplyKillSwitchDisabled(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	t.Setenv("DESK_TOOLS_DISABLED", "1")
@@ -581,6 +599,7 @@ func TestReplyKillSwitchDisabled(t *testing.T) {
 }
 
 func TestReplyRateLimitedNoCall(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	seedAudit(t, deskkit.RateLimitPerPRPerHour, 7) // PR 7's budget already spent this hour
@@ -712,6 +731,7 @@ func TestGateSeamIsRealInProduction(t *testing.T) {
 // elsewhere cannot check it out. The guard's intent survives: a different branch at a
 // different commit, and any merged/closed PR, still refuse.
 func TestReplyOwnPRByHeadCommit(t *testing.T) {
+	isolateReplyFixture(t)
 	cases := []struct {
 		name   string
 		setup  func(t *testing.T, work string) // reshapes the worktree
@@ -809,4 +829,32 @@ func TestReplyOwnPRByHeadCommit(t *testing.T) {
 			}
 		})
 	}
+}
+
+func isolateReplyFixture(t *testing.T) {
+	t.Helper()
+	tools := map[string]string{}
+	for _, name := range []string{"git", "go", "sh"} {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			if name == "sh" {
+				continue
+			}
+			t.Fatal(err)
+		}
+		path, err = filepath.Abs(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tools[name] = path
+	}
+	vars := map[string]string{"GOPROXY": "off", "GOSUMDB": "off", "GOTOOLCHAIN": "local", "GOENV": "off", "GOWORK": "off"}
+	for _, key := range []string{"GOCACHE", "GOMODCACHE", "GOPATH", "GOROOT"} {
+		if value, ok := os.LookupEnv(key); ok {
+			vars[key] = value
+		}
+	}
+	t.Cleanup(deskkit.ReloadConfig)
+	fixture := testenv.Install(t, testenv.Options{Tools: tools, Vars: vars})
+	plantFixtureRoster(t, fixture.Home)
 }

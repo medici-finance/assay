@@ -30,6 +30,7 @@ func helpAuditBytes(t *testing.T) []byte {
 // row. The control keeps genuine misuse refused AND recorded: the fix is about help screens,
 // not about going quiet on bad flags.
 func TestTierTwoHelpNoRow(t *testing.T) {
+	isolateReplyFixture(t)
 	for _, args := range [][]string{
 		{"example-org/tracker", "1", "--help"},
 		{"example-org/tracker", "1", "-h"},
