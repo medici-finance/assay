@@ -32,6 +32,7 @@ func auditBytes(t *testing.T) []byte {
 // port), and a real domain refusal still refuses AND still appends its row, so going quiet on
 // misuse fails the test too.
 func TestHelpWritesNoAuditRow(t *testing.T) {
+	installWorktreeFixture(t)
 	for _, c := range []struct {
 		name string
 		args []string

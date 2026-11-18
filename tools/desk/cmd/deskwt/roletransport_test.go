@@ -78,6 +78,7 @@ func appTokenHelperShape(user, path string) string {
 }
 
 func TestAddRoleWiresAppTransportOverSSHOriginAndSentinel(t *testing.T) {
+	installWorktreeFixture(t)
 	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
@@ -141,6 +142,7 @@ func TestAddRoleWiresAppTransportOverSSHOriginAndSentinel(t *testing.T) {
 // An SSH host ALIAS (a ~/.ssh/config Host block) is resolved the way ssh resolves it, so the
 // https URL names the real host rather than an alias no https client can reach.
 func TestAddRoleResolvesSSHHostAlias(t *testing.T) {
+	installWorktreeFixture(t)
 	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
@@ -165,6 +167,7 @@ func TestAddRoleResolvesSSHHostAlias(t *testing.T) {
 // An alias that resolves to no qualified host cannot be given an https transport: REFUSED,
 // named, and the worktree rolled back — never handed out on the inherited SSH transport.
 func TestAddRoleRefusesUnresolvableAlias(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	sshOperatorCheckout(t, work, "git@corp-alias:example-org/tracker.git")
@@ -190,6 +193,7 @@ func TestAddRoleRefusesUnresolvableAlias(t *testing.T) {
 // here a global insteadOf that rewrites the :443 URL itself back to SSH — the add is refused and
 // rolled back rather than trusting that the config write took.
 func TestAddRoleRefusesWhenGitResolvesAnotherTransport(t *testing.T) {
+	installWorktreeFixture(t)
 	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
@@ -211,6 +215,7 @@ func TestAddRoleRefusesWhenGitResolvesAnotherTransport(t *testing.T) {
 
 // A local-path fetch url carries no key, but it does not make an SSH pushurl safe.
 func TestAddRoleRefusesSSHPushBehindLocalFetch(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	mustGit(t, work, "config", "remote.origin.pushurl", sharedSSHOrigin)
@@ -229,6 +234,7 @@ func TestAddRoleRefusesSSHPushBehindLocalFetch(t *testing.T) {
 // checkout outright; with --role the worktree gets the verifier App's https transport instead
 // and the add succeeds.
 func TestAddRoleReplacesInheritedSSHPushUnderBotLoop(t *testing.T) {
+	installWorktreeFixture(t)
 	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)

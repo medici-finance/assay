@@ -52,6 +52,7 @@ func cliHelpForms() [][]string {
 
 // regression: #2111
 func TestCLIHelpOffline(t *testing.T) {
+	installWorktreeFixture(t)
 	bin := cliBuildBinary(t)
 	for _, cfg := range clicontract.MalformedConfigs {
 		t.Run(cfg.Name, func(t *testing.T) {
@@ -656,6 +657,7 @@ func TestCLILegacyForms(t *testing.T) {
 //
 // regression: #2111
 func TestCLILifecycleParity(t *testing.T) {
+	installWorktreeFixture(t)
 	gitDirNames := func(t *testing.T, work string) []string {
 		t.Helper()
 		ents, err := os.ReadDir(filepath.Join(work, ".git"))

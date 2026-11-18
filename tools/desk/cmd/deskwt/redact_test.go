@@ -9,6 +9,7 @@ import (
 
 // regression: #6621 (security review A2)
 func TestCurrentRepoRedactsOrigin(t *testing.T) {
+	installWorktreeFixture(t)
 	work := t.TempDir()
 	mustGit(t, "", "init", "-b", "main", work)
 	mustGit(t, work, "remote", "add", "origin", "https://user:secret@example.invalid/repo.git")

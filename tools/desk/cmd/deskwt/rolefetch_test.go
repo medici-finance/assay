@@ -11,6 +11,7 @@ import (
 )
 
 func TestRoleInitRefreshesCredentialBeforeItsFirstFetch(t *testing.T) {
+	installWorktreeFixture(t)
 	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
@@ -44,6 +45,7 @@ func TestRoleInitRefreshesCredentialBeforeItsFirstFetch(t *testing.T) {
 }
 
 func TestRoleFetchRefreshesBeforeFetchAndOverridesSourceCredentials(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	giveOriginHost(t, work)
@@ -113,6 +115,7 @@ func TestRoleFetchRefreshesBeforeFetchAndOverridesSourceCredentials(t *testing.T
 }
 
 func TestRoleFetchMintRefusalStopsBeforeNetwork(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	giveOriginHost(t, work)
@@ -133,6 +136,7 @@ func TestRoleFetchMintRefusalStopsBeforeNetwork(t *testing.T) {
 }
 
 func TestRoleFetchRejectsUnsafeTransportBeforeCredentialResolution(t *testing.T) {
+	installWorktreeFixture(t)
 	for _, origin := range []string{
 		"http://github.com/example-org/tracker.git",
 		"https://embedded@example.invalid/example-org/tracker.git",
@@ -160,6 +164,7 @@ func TestRoleFetchRejectsUnsafeTransportBeforeCredentialResolution(t *testing.T)
 }
 
 func TestRoleFetchSupportedOrigins(t *testing.T) {
+	installWorktreeFixture(t)
 	for _, origin := range []string{"git@github.com:example-org/tracker.git", "ssh://git@github.com/example-org/tracker.git", "https://github.com/example-org/tracker.git"} {
 		t.Run(origin, func(t *testing.T) {
 			work := newRepo(t)
@@ -199,6 +204,7 @@ func TestRoleFetchSupportedOrigins(t *testing.T) {
 // Every Git path-valued TLS option keeps its original meaning, including scoped
 // keys and repeated values. Non-path TLS strings must not be path-expanded.
 func TestRoleFetchTLSPathContext(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	giveOriginHost(t, work)

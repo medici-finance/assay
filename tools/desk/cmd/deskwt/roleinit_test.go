@@ -21,6 +21,7 @@ const verifierBotEmail = "300000005+assay-verifier-app[bot]@users.noreply.github
 // linked worktree inherits, which is how concurrent worker/reviewer/verifier sessions were
 // observed clobbering each other's commit identity.
 func TestRoleInitProvisionsLockedWorktreeWithScopedIdentity(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 
@@ -77,6 +78,7 @@ func TestRoleInitProvisionsLockedWorktreeWithScopedIdentity(t *testing.T) {
 // persisted config — the worktree-scoped identity role-init sets is defense-in-depth, but the
 // inline override is what makes the commit race-proof by construction.
 func TestPerCommitIdentityOverrideBeatsAnyRacedConfig(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	if rc, stderr := runCapErr(t, []string{"role-init", "--role", "verifier", "--session", "race"}); rc != deskkit.ExitOK {
@@ -106,6 +108,7 @@ func TestPerCommitIdentityOverrideBeatsAnyRacedConfig(t *testing.T) {
 // TestRoleInitIsIdempotent — a second role-init for the same role+session reuses the existing
 // worktree as a NOOP rather than clobbering or erroring, and re-applies the identity/lock.
 func TestRoleInitIsIdempotent(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 
@@ -138,6 +141,7 @@ func TestRoleInitIsIdempotent(t *testing.T) {
 // is refused, and nothing on disk is touched. This is the fail-closed half of the origin
 // identity guard.
 func TestRoleInitRefusesStrayTargetWithoutClobbering(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 
@@ -155,6 +159,7 @@ func TestRoleInitRefusesStrayTargetWithoutClobbering(t *testing.T) {
 // UNLOCKING it first so the admin entry can be pruned (a locked entry is skipped by prune,
 // which would leave it registered after the directory is gone).
 func TestRoleCleanUnlocksAndRemoves(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 
@@ -184,6 +189,7 @@ func TestRoleCleanUnlocksAndRemoves(t *testing.T) {
 // TestRoleCleanNoopWhenAbsent — role-clean with nothing to remove is a clean noop, not an
 // error (idempotent teardown).
 func TestRoleCleanNoopWhenAbsent(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	rc, stderr := runCapErr(t, []string{"role-clean", "--role", "verifier", "--session", "absent"})
@@ -194,6 +200,7 @@ func TestRoleCleanNoopWhenAbsent(t *testing.T) {
 
 // TestRoleInitBadArgs — an unknown role and a missing session both refuse (exit 5).
 func TestRoleInitBadArgs(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	// Clear BOTH session sources so no session can be resolved for the missing-session case:
@@ -216,6 +223,7 @@ func TestRoleInitBadArgs(t *testing.T) {
 // the #638 class the roster-sourced identity exists over. The refusal names the env var and
 // the config path, and nothing is provisioned (the check sits before the working-dir read).
 func TestRoleInitRefusesWhenRoleIdentityUnbound(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 
@@ -254,6 +262,7 @@ func TestRoleInitRefusesWhenRoleIdentityUnbound(t *testing.T) {
 // role) and this test's rc==0 assertion fails. The GitHub identity for each is stamped
 // worktree-scoped from the fixture roster.
 func TestRoleInitSupportsAllDeskRoles(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 
@@ -291,6 +300,7 @@ func TestRoleInitSupportsAllDeskRoles(t *testing.T) {
 // desk / worker / reviewer / verifier / issue-loop / intake-loop), so no roster-bound role
 // is left with no way to isolate. It fails pre-fix because only the verifier is mapped.
 func TestRoleWorktreeConfigMatchesLoopTokenRoles(t *testing.T) {
+	installWorktreeFixture(t)
 	loopRoles := deskkit.LoopTokenRoles() // map[loop]tokenRole
 	for loop, role := range loopRoles {
 		cfg, ok := roleWorktreeConfig[role]
@@ -386,6 +396,7 @@ var roleSpellingCases = []struct {
 // `intake-loop` refuse (exit 5) and there is no --repo-root, so the loop-name command
 // deskboot prints is one the tool then refuses.
 func TestRoleInitEveryRoleEverySpelling(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	// cwd is an unrelated, non-git directory: --repo-root must carry the checkout.
@@ -426,6 +437,7 @@ func TestRoleInitEveryRoleEverySpelling(t *testing.T) {
 // nor a loop name refuses (exit 5) naming both accepted vocabularies; naming the role twice
 // with two different values refuses rather than picking one; nothing is provisioned.
 func TestRoleInitRefusesUnknownRoleAndDoubleRole(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 
@@ -462,6 +474,7 @@ func TestRoleInitRefusesUnknownRoleAndDoubleRole(t *testing.T) {
 // masked, the base .git/config is BYTE-EQUAL before and after — the identity strings never
 // appear in it — and the index is byte-equal unmasked.
 func TestRoleInitLeavesSharedCheckoutConfigAndIndexUntouched(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	cfgPath := filepath.Join(work, ".git", "config")
@@ -528,6 +541,7 @@ func TestRoleInitLeavesSharedCheckoutConfigAndIndexUntouched(t *testing.T) {
 // and role-init's fresh fetch picks the new tip up. With --no-fetch the stale ref is used
 // as-is (the explicit, never-default opt-out).
 func TestRoleInitCutsFromFreshOriginMain(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	stale := mustGit(t, work, "rev-parse", "origin/main")
@@ -583,6 +597,7 @@ func TestRoleInitCutsFromFreshOriginMain(t *testing.T) {
 // unreachable), role-init is could-not-check (exit 6), never a worktree quietly cut from a
 // possibly-stale base; the message names --no-fetch as the explicit opt-out.
 func TestRoleInitUnfetchableOriginIsUnverifiable(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	mustGit(t, work, "remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone", "example-org", "tracker.git"))
@@ -602,6 +617,7 @@ func TestRoleInitUnfetchableOriginIsUnverifiable(t *testing.T) {
 // TestRoleInitRepoRootMustBeACheckout — an explicit --repo-root is authoritative: one that
 // is not a git worktree is could-not-check (exit 6), never a silent fall-back to the cwd.
 func TestRoleInitRepoRootMustBeACheckout(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work) // cwd IS a valid checkout — the fall-back that must not happen
 	rc, stderr := runCapErr(t, []string{"role-init", "worker-desk", "--repo-root", t.TempDir(), "--session", "rr"})
@@ -639,6 +655,7 @@ func gitLabRoster(t *testing.T, sessionEmails string) {
 // refuse, and it NEVER falls back to the GitHub noreply shape. Pre-fix, role-init hits the
 // hard GitLab refuse (exit 5), so this test's rc==0 assertion fails.
 func TestRoleInitStampsGitLabSessionIdentity(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	const glEmail = "service_account_group_9619193_ab12cd@noreply.gitlab.example.com"
@@ -666,6 +683,7 @@ func TestRoleInitStampsGitLabSessionIdentity(t *testing.T) {
 // the refusal names ASSAY_GITLAB_SESSION_EMAILS, and it neither emits nor stamps a GitHub
 // noreply address. Nothing is provisioned.
 func TestRoleInitRefusesGitLabWithoutSessionEmail(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	gitLabRoster(t, "") // GitLab identity, but no ASSAY_GITLAB_SESSION_EMAILS

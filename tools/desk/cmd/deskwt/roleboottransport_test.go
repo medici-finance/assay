@@ -14,6 +14,7 @@ import (
 // Exercise the boot entry point with real Git, including its reused-worktree arm.
 // A stubbed preflight still observes the actual URLs at the instant it is called.
 func TestRoleInitAppTransport(t *testing.T) {
+	installWorktreeFixture(t)
 	requireGitListReset(t)
 	for _, reuse := range []bool{false, true} {
 		t.Run(fmt.Sprintf("reuse=%v", reuse), func(t *testing.T) {
@@ -88,6 +89,7 @@ func TestRoleInitAppTransport(t *testing.T) {
 // the inherited helper chain is cleared before any URL is written (no ambient credential
 // answers for the App URL even if the restore did not happen).
 func TestRoleInitPartialProvision(t *testing.T) {
+	installWorktreeFixture(t)
 	requireGitListReset(t)
 	const ambient = "AMBIENT-FIXTURE-SECRET"
 	for _, fail := range []string{"credential", "readback"} {
@@ -142,6 +144,7 @@ func TestRoleInitPartialProvision(t *testing.T) {
 }
 
 func TestRoleInitBadTransport(t *testing.T) {
+	installWorktreeFixture(t)
 	requireGitListReset(t)
 	for _, reuse := range []bool{false, true} {
 		t.Run(fmt.Sprintf("reuse=%v", reuse), func(t *testing.T) {

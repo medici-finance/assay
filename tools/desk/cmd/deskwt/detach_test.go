@@ -19,6 +19,7 @@ import (
 )
 
 func TestAddDetachCutsDetachedHeadAndTouchesNoBranch(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 
@@ -69,6 +70,7 @@ func TestAddDetachCutsDetachedHeadAndTouchesNoBranch(t *testing.T) {
 }
 
 func TestAddDetachAndBranchAreMutuallyExclusive(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	rc, stderr := runCapErr(t, []string{"add", "x", "--detach", "--branch", "feat/x"})

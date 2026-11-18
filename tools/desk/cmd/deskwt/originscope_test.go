@@ -11,6 +11,7 @@ import (
 
 // regression: #6606
 func TestCurrentRepoOriginScope(t *testing.T) {
+	installWorktreeFixture(t)
 	fixture := func(cmds ...[]string) string {
 		t.Helper()
 		base := t.TempDir()

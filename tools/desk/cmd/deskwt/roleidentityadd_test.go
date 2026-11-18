@@ -20,6 +20,7 @@ import (
 // effective user.name read back "Test", and the commit SUCCEEDED under it. That inherited
 // identity is exactly the misattribution this closes.
 func TestAddWithoutRoleClearsIdentitySoItNeverInherits(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t) // sets shared user.name=Test, user.email=t@e.st
 	withEnv(t, work)
 
@@ -56,6 +57,7 @@ func TestAddWithoutRoleClearsIdentitySoItNeverInherits(t *testing.T) {
 // FAIL-FIRST: before the fix `--role` did not exist, so the flag was refused (exit 5) and no
 // identity was ever stamped.
 func TestAddWithRoleStampsThatRolesIdentity(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 
@@ -82,6 +84,7 @@ func TestAddWithRoleStampsThatRolesIdentity(t *testing.T) {
 // roster entry has no derivable commit identity is refused (exit 5) BEFORE any worktree is
 // created, naming the roster key — never a worktree left inheriting an unrelated identity.
 func TestAddWithUnboundRoleRefusesBeforeCreating(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 

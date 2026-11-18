@@ -42,6 +42,7 @@ func assertDeregistered(t *testing.T, work, home string) {
 
 // regression: #4272
 func TestRemoveFromInsideHome(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	home := addedHome(t, "selfremove")
@@ -59,6 +60,7 @@ func TestRemoveFromInsideHome(t *testing.T) {
 //
 // regression: #4272
 func TestRemoveFromHomeSubdir(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	home := addedHome(t, "subremove")
@@ -80,6 +82,7 @@ func TestRemoveFromHomeSubdir(t *testing.T) {
 //
 // regression: #4272
 func TestDeregisterFromDeletedDir(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	home := addedHome(t, "chokepoint")

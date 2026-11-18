@@ -50,6 +50,7 @@ func pruneOK(t *testing.T, args ...string) string {
 
 // regression: #2830
 func TestPruneHoldsAdmittedHome(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	home := verifierHome(t, work, "vhome")
@@ -68,6 +69,7 @@ func TestPruneHoldsAdmittedHome(t *testing.T) {
 
 // regression: #2830
 func TestReapHoldsAdmittedHome(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	// The reap arm's headline shape (TestReapLockedByDeadSession reaps it), now admitted.
@@ -92,6 +94,7 @@ func TestReapHoldsAdmittedHome(t *testing.T) {
 
 // The hold is bounded: an admission past the window, or a released one, drains as usual.
 func TestPruneDrainsStaleAdmission(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	expired := verifierHome(t, work, "vexpired")
@@ -111,6 +114,7 @@ func TestPruneDrainsStaleAdmission(t *testing.T) {
 
 // regression: #2830
 func TestPruneHoldsFutureAdmission(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	home := verifierHome(t, work, "vfuture")
@@ -127,6 +131,7 @@ func TestPruneHoldsFutureAdmission(t *testing.T) {
 //
 // regression: #2830
 func TestPruneHoldsUnreadableRecord(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	home := verifierHome(t, work, "vloop")
@@ -147,6 +152,7 @@ func TestPruneHoldsUnreadableRecord(t *testing.T) {
 //
 // regression: #2830
 func TestPruneAdmissionUnattributed(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	home := verifierHome(t, work, "vplain")
@@ -208,6 +214,7 @@ func TestAdmissionHoldReasonWindow(t *testing.T) {
 //
 // regression: #2830
 func TestPruneAdmittedAndActiveBothHold(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	home := verifierHome(t, work, "vboth")
@@ -256,6 +263,7 @@ func TestPruneAdmittedAndActiveBothHold(t *testing.T) {
 //
 // regression: #2830
 func TestReapAdmittedAndActiveBothHold(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target, branch := openPRWorktree(t, work, "vreapboth")

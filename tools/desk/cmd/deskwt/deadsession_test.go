@@ -74,6 +74,7 @@ func lockAs(t *testing.T, work, target, session string) {
 // worktree anyway because its branch is unmerged. Only a rule that asks a different question
 // — is anything LIVE still entitled to this tree, and is deleting it lossless — reaches it.
 func TestReapLockedByDeadSession(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	target, branch := openPRWorktree(t, work, "deadopenpr")
@@ -131,6 +132,7 @@ func TestReapLockedByDeadSession(t *testing.T) {
 // The arm is a new destructive capability, so a sweep that was not asked for it must behave
 // exactly as it always has — including under the strongest flags the tool had before.
 func TestDeadSessionOpenPRHeldWithoutOptIn(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target, branch := openPRWorktree(t, work, "noopt")
@@ -158,6 +160,7 @@ func TestDeadSessionOpenPRHeldWithoutOptIn(t *testing.T) {
 // age test stale, so the hold is proof the live-session evidence won — and the tree is
 // otherwise perfectly reapable (clean and pushed), so ONLY the liveness evidence holds it.
 func TestReapHoldsLiveSession(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target, branch := openPRWorktree(t, work, "livesess")
@@ -184,6 +187,7 @@ func TestReapHoldsLiveSession(t *testing.T) {
 // --- 3. unlocked and DIRTY → KEPT, with the reason ------------------------------
 
 func TestReapHoldsUnlockedDirtyTracked(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target, branch := openPRWorktree(t, work, "dirtytracked")
@@ -217,6 +221,7 @@ func TestReapHoldsUnlockedDirtyTracked(t *testing.T) {
 // sweep's tracked-only gate: an untracked file is reachable from no commit, so this
 // directory is the only copy of it. The tracked-only gate calls such a tree clean.
 func TestReapHoldsUnlockedUntrackedOnly(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target, _ := openPRWorktree(t, work, "untrackedonly")
@@ -238,6 +243,7 @@ func TestReapHoldsUnlockedUntrackedOnly(t *testing.T) {
 // --- 4. unlocked and UNPUSHED → KEPT, with the reason ---------------------------
 
 func TestReapHoldsUnlockedUnpushed(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "unpushed")
@@ -268,6 +274,7 @@ func TestReapHoldsUnlockedUnpushed(t *testing.T) {
 // The branch carries nothing the remote does not already hold — HEAD is strictly behind the
 // upstream ref — so both the tree and the ref are pure leftovers.
 func TestReapCleanBehindUpstreamDeletesBranch(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	target, branch := openPRWorktree(t, work, "behind")
@@ -308,6 +315,7 @@ func TestReapCleanBehindUpstreamDeletesBranch(t *testing.T) {
 // A plan an operator signs off before arming an unattended supervisor is worth only as much
 // as the guarantee that producing it changed nothing: not the tree, not the lock, not the ref.
 func TestReapDryRunIsReadOnly(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	target, branch := openPRWorktree(t, work, "dryrun")
@@ -350,6 +358,7 @@ func TestReapDryRunIsReadOnly(t *testing.T) {
 // --- 7. an inert knob is refused, never silently accepted -----------------------
 
 func TestLockTTLAcceptedWithReapOptIn(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 
@@ -365,6 +374,7 @@ func TestLockTTLAcceptedWithReapOptIn(t *testing.T) {
 // Squashing preserves the patch in main but not the review commit's ancestry.
 // The existing opt-in reaper should accept the same remote proof as remove.
 func TestReapDetachedSquashReview(t *testing.T) {
+	installWorktreeFixture(t)
 	for _, variant := range []string{"safe", "dry-run", "combined-gc", "combined-gc-dry-run", "reclaim", "reclaim-dry-run", "no-opt-in", "live", "unlocked", "anonymous-lock", "evidence", "ignored-evidence", "ignored-whitespace", "unpushed", "remote-gone"} {
 		t.Run(variant, func(t *testing.T) {
 			work := newRepo(t)
@@ -466,6 +476,7 @@ func TestReapDetachedSquashReview(t *testing.T) {
 }
 
 func TestIgnoredReviewFilesIgnoresInheritedGitRouting(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target, _ := openPRWorktree(t, work, "ignored-routing")
@@ -486,6 +497,7 @@ func TestIgnoredReviewFilesIgnoresInheritedGitRouting(t *testing.T) {
 }
 
 func TestReapDetachedReviewPreservesSubmodule(t *testing.T) {
+	installWorktreeFixture(t)
 	for _, variant := range []string{"clean", "tracked", "untracked", "ignored", "uninitialized"} {
 		t.Run(variant, func(t *testing.T) {
 			work := newRepo(t)
