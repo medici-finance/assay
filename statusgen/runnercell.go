@@ -36,9 +36,14 @@ import (
 //     state, an unknown note), which must be the same list, in the same order,
 //     on every row.
 //
-// A tail that is not a clean qualifier list must equal every other tail
-// exactly. The stamp then carries only what every row says: a qualifier of the
-// first row that every row carries verbatim. A source only some rows carry is
+// A tree suffix written directly after the sha (+dirty, +unknown) is not a
+// qualifier: it is read apart, ahead of the list, and must be the same text on
+// every row (#5530), so rows on one dirty tree that differ only in a
+// description or a source read as one runner, while +dirty against a bare sha
+// or against +unknown still refuses. A tail that is not a clean qualifier list
+// after its tree suffix must equal every other tail exactly. The stamp then
+// carries the shared tree suffix and only what every row says: a qualifier of
+// the first row that every row carries verbatim. A source only some rows carry is
 // left out, so a hand-written row never lends its run an identity source it
 // did not record, and the stamp never claims more than the weakest row.
 
@@ -48,8 +53,9 @@ var runnerDescQualRe = regexp.MustCompile(`^(?:model verifier(?: [a-z0-9][a-z0-9
 // runnerCellRead is one Runner cell as runnerCellsAgree reads it.
 type runnerCellRead struct {
 	login, sha, tail string
+	tree             string   // the tree suffix after the sha (+dirty, +unknown), or ""
 	quals            []string // the parenthesised qualifiers; nil when tail is not a clean list
-	clean            bool     // tail is a clean qualifier list (or empty)
+	clean            bool     // tail after tree is a clean qualifier list (or empty)
 }
 
 func readRunnerCell(cell string) (runnerCellRead, bool) {
@@ -58,7 +64,8 @@ func readRunnerCell(cell string) (runnerCellRead, bool) {
 		return runnerCellRead{}, false
 	}
 	r := runnerCellRead{login: m[1], sha: m[2], tail: m[3], clean: true}
-	for t := m[3]; t != ""; {
+	r.tree = runnerTreeRe.FindString(m[3])
+	for t := m[3][len(r.tree):]; t != ""; {
 		q := flipQualRe.FindStringSubmatch(t)
 		if q == nil {
 			if strings.TrimSpace(t) != "" {
@@ -71,6 +78,11 @@ func readRunnerCell(cell string) (runnerCellRead, bool) {
 	}
 	return r, true
 }
+
+// runnerTreeRe is the tree suffix verifyrun writes directly after the sha
+// (sha + "+dirty", the container receipt's +unknown): the text before the
+// first space or parenthesis.
+var runnerTreeRe = regexp.MustCompile(`^[^()\s]*`)
 
 func runnerSourceQual(q string) bool {
 	return q == runnerSourceForge || q == runnerSourceCIEnv || q == runnerSourceGitConfig
@@ -123,7 +135,7 @@ func runnerCellsAgree(cells []string) (login, sha, tail string, err error) {
 		}
 		if r.tail != r0.tail {
 			same = false
-			if !r.clean || !r0.clean {
+			if !r.clean || !r0.clean || r.tree != r0.tree {
 				return "", "", "", refuseRunner("runner mismatch: rows of the latest PASS read %q and %q", cells[0], cells[i])
 			}
 		}
@@ -151,6 +163,7 @@ func runnerCellsAgree(cells []string) (login, sha, tail string, err error) {
 			}
 		}
 	}
+	tail = r0.tree
 	for _, q := range r0.quals {
 		if every[q] == len(reads) {
 			tail += " (" + q + ")"
