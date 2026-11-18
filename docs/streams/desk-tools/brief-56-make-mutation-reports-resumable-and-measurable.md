@@ -143,7 +143,7 @@ Risk-bearing value enumeration (delivering diff 7d119c295ffd..1e55fa42a2f4, muha
 RISK-VALUE: DERIVED — stateSchema = 1 @ tools/desk/cmd/muhar/state.go:25 — first version of a new on-disk contract, hashed into the header identity (state.go:323), so a later schema change refuses an older file rather than misreading it.
 RISK-VALUE: DERIVED — group/world-writable mask = 0o022 @ tools/desk/cmd/muhar/state.go:81 — the state file is trusted verdict input, so a file other users can write could plant reusable CAUGHT verdicts; refusing the group and world write bits is exactly that exclusion, paired with the owner-only 0o600 create mode at state.go:94.
 
-**VERIFY: BLOCKED** — check-definition: rows 1-2 credited, row 3 met its Expect but is held on consumer-delivery-range (medici-finance/assay#6659); status stays implemented.
+**VERIFY: BLOCKED** — check-definition: rows 1-2 passed in a matching closed bracket (credit was could-not-check before landing), row 3 met its Expect but is held on consumer-delivery-range (medici-finance/assay#6659); status stays implemented.
 
 ## Failure map
 - A changed tree reuses an old verdict: TestStateRejectsNewTree fails.
