@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/deskcore/issueflow"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -163,11 +164,19 @@ func checkHandoffSuccessor(h issueflow.IntakeHandoff, sourceRepo string) error {
 			return deskkit.Unverifiable("cannot read handoff successor", err)
 		}
 		if issue.State != "open" {
-			return deskkit.Refused("successor is not open; retain successor-owed work")
+			// The closed source can own qualification of an already delivered repair.
+			// A closed issue on its own still provides no evidence of delivery.
+			sameSource := strings.EqualFold(h.Item, fr.Slug()+"#"+strconv.Itoa(number))
+			if issue.State != "closed" || !sameSource || h.Disposition != issueflow.Repair || !h.Delivered || h.Route != "qualification" {
+				return deskkit.Refused("successor is not open; retain successor-owed work")
+			}
 		}
 		admission := admitOne(Inbound{Repo: repo, Number: number}, forgeTrustProbe(nil))
 		if !admission.Admitted() {
 			return deskkit.Unverifiable("successor trust is not admitted", nil)
+		}
+		if issue.State == "closed" {
+			return checkMergedRepair(f, fr, number, h.Evidence)
 		}
 		return nil
 	}
@@ -218,4 +227,89 @@ func checkHandoffSuccessor(h issueflow.IntakeHandoff, sourceRepo string) error {
 		return deskkit.Refused("successor authoring brief does not declare strong execution")
 	}
 	return nil
+}
+
+// checkMergedRepair binds a qualification judgment to the source issue through
+// a cited change's merge state and work trailer, or the forge's own closing links.
+func checkMergedRepair(f deskkit.Forge, source deskkit.ForgeRepo, issue int, evidence string) error {
+	evidence = strings.TrimSpace(evidence)
+	ref, parseErr := deskkit.ParseItemRef(evidence)
+	isURL := strings.Contains(evidence, "://")
+	if parseErr != nil && (isURL || (len(strings.Fields(evidence)) == 1 && strings.ContainsAny(evidence, "#!"))) {
+		return deskkit.Refused("cannot identify the cited repair; provide its change reference or canonical change URL")
+	}
+	if parseErr == nil && (ref.Kind == deskkit.TargetIssue || (ref.Repo != "" && !strings.EqualFold(ref.Repo, source.Slug()))) {
+		return deskkit.Refused("the cited repair must name a change in the source repository")
+	}
+
+	history, err := f.IssueStateEvents(source, issue)
+	if err != nil || history == nil || !history.Complete {
+		return deskkit.Unverifiable("cannot establish the closed source issue's full change history", err)
+	}
+	latestReopen, err := latestRepairReopen(history.Events)
+	if err != nil {
+		return err
+	}
+	if parseErr != nil { // Prose relies on the forge's own closing-change relation.
+		if !latestReopen.IsZero() {
+			return deskkit.Unverifiable("closing links have no merge time; cite the change that delivered the repair after the latest reopen", nil)
+		}
+		for _, change := range history.ClosingChanges {
+			if change.Merged && change.Number > 0 && change.Repo != "" {
+				return nil
+			}
+		}
+		return deskkit.Refused("no merged closing change; cite the merged repair in the source repository")
+	}
+
+	change, err := f.GetPullRequest(source, ref.Number)
+	if err != nil {
+		return deskkit.Unverifiable("cannot read merged repair for qualification", err)
+	}
+	if change == nil || change.Number != ref.Number {
+		return deskkit.Unverifiable("cannot identify the cited repair change", nil)
+	}
+	if isURL && strings.TrimSuffix(evidence, "/") != strings.TrimSuffix(change.URL, "/") {
+		return deskkit.Unverifiable("the source forge did not confirm the cited change URL", nil)
+	}
+	merged := change.Merged || change.MergedAt != ""
+	switch {
+	case change.State != "open" && change.State != "closed":
+		return deskkit.Unverifiable("the cited repair has no recognized change state", nil)
+	case change.State == "open" && merged:
+		return deskkit.Unverifiable("the cited repair is open but carries a merge signal", nil)
+	case !merged:
+		return deskkit.Refused("the cited repair change has not merged; retain successor-owed work")
+	}
+	if !latestReopen.IsZero() || change.MergedAt != "" {
+		mergedAt, err := time.Parse(time.RFC3339, change.MergedAt)
+		if err != nil || !mergedAt.After(latestReopen) {
+			return deskkit.Unverifiable("cannot place the cited repair's merge in the current issue cycle", err)
+		}
+	}
+	links, err := deskkit.ParseTrailers([]byte(change.Body))
+	if err != nil || len(links) != 1 || links[0].Kind != deskkit.TrailerIssue ||
+		links[0].Value != strconv.Itoa(issue) || (links[0].Repo != "" && !strings.EqualFold(links[0].Repo, source.Slug())) {
+		return deskkit.Refused("the merged repair must name the closed source issue in its work trailer; retain successor-owed work")
+	}
+	return nil
+}
+
+// Closers have no merge timestamp. Preserve that uncertainty when an issue
+// reopened, even if the forge returned its state events out of order.
+func latestRepairReopen(events []deskkit.IssueStateEvent) (time.Time, error) {
+	var latest time.Time
+	for _, event := range events {
+		if event.Kind != deskkit.IssueEventReopened {
+			continue
+		}
+		at, err := time.Parse(time.RFC3339, event.CreatedAt)
+		if err != nil || at.IsZero() {
+			return time.Time{}, deskkit.Unverifiable("cannot determine when the source issue reopened", err)
+		}
+		if at.After(latest) {
+			latest = at
+		}
+	}
+	return latest, nil
 }
