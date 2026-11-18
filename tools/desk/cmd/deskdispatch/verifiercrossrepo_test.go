@@ -88,6 +88,7 @@ func TestCrossRepoDispatchExecution(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX row executor; core association checks are portable")
 	}
+	realAllocatorFixtureEnvironment(t, "touch", "bash")
 	bin := filepath.Join(t.TempDir(), "statusgen")
 	build := exec.Command("go", "build", "-o", bin, ".")
 	build.Dir = "../../../../statusgen"

@@ -34,6 +34,7 @@ func finishedHome(t *testing.T, r realResume) string {
 
 // regression: #4272
 func TestReworkAdoptsSameHome(t *testing.T) {
+	realAllocatorFixtureEnvironment(t)
 	r := newRealResume(t)
 	home := finishedHome(t, r)
 
@@ -48,6 +49,7 @@ func TestReworkAdoptsSameHome(t *testing.T) {
 
 // regression: #4272
 func TestReworkAdoptsEarlierHome(t *testing.T) {
+	realAllocatorFixtureEnvironment(t)
 	r := newRealResume(t)
 	home := finishedHome(t, r)
 
@@ -65,6 +67,7 @@ func TestReworkAdoptsEarlierHome(t *testing.T) {
 // A home with anything in it that is not on the forge is never adopted: the refusal stays,
 // names the clause, and the file is left exactly where it was.
 func TestReworkRefusesDirtyHome(t *testing.T) {
+	realAllocatorFixtureEnvironment(t)
 	r := newRealResume(t)
 	home := finishedHome(t, r)
 	stray := filepath.Join(home, "notes.txt")
@@ -89,6 +92,7 @@ func TestReworkRefusesDirtyHome(t *testing.T) {
 
 // A home stamped for a DIFFERENT run is somebody else's, whatever it holds.
 func TestReworkRefusesForeignRun(t *testing.T) {
+	realAllocatorFixtureEnvironment(t)
 	r := newRealResume(t)
 	home := finishedHome(t, r)
 	r.git(home, "config", "--worktree", "assay.runKey", "assay--issue-7")
