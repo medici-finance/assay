@@ -725,6 +725,89 @@ RISK-VALUE: DERIVED — recorder lock wait = 2 * time.Second @ tools/desk/intern
 
 Next actor: verify-desk. Re-run rows 1–9 in a container-netns bracket once an open step completes its module download, either when proxy load is lower or once the image's cache covers main's go.mod (#4683). Row 1's image causes (b)–(d) of 2026-11-12 are still open in #4683 as well. Status remains implemented.
 
+### Non-implementer verification — 2026-11-18
+
+This re-run is at merged main 9c845402c8c0 (delivery: squash ccc4318c397d, #2423), under desk tools v1.0.87 with a fresh admission (attestation #6956). Since the 2026-11-14 source 876ca4bca37c, the delivered record writer, its tests, its mutation manifest, outboundforge.go, the ci-check-v1 schema doc, deskflip's cicheck_test.go and the changelog fragment are byte-identical. Only forgeresolve.go and its test changed among the delivered files: forge-host normalisation and redacted remote-parse refusals (#6754), with no change to ResolveForge's single construction site. The databaseId selections the attempt key reads are still in both rollup queries (forge_github.go:858, :890), and the rollup mapping still routes them through checkRunID (:1119).
+
+Runner class: container-netns. The pinned verify-runner v1.0.87 image (sha256:c67baa7a3c8b…, the image.lock pin) ran natively on linux/arm64 with statusgen v1.0.87, go 1.27.4, git 2.56.1 and jq 1.6. The container ran with these settings:
+
+- network: --network none
+- filesystem: read-only root, with a 20 GiB tmpfs at /tmp carrying TMPDIR and GOCACHE
+- privileges: all capabilities dropped, no-new-privileges, private IPC, an init process, uid 501
+- Go: GOPROXY=off, GOTOOLCHAIN=local and GOFLAGS=-mod=readonly
+- module cache: the fresh one the open step downloaded against the home's go.sum for every listed module root, mounted read-only at /go/pkg/mod (Module-Cache line below)
+- mounts: the verified tree and its git dir, read-only
+
+The run added these inputs, disclosed here:
+
+- a read-only /etc/passwd and /etc/group: the image's own files plus one entry for uid 501
+- a writable scratch HOME outside the home, holding a copy of the desk's roster file
+
+No git configuration was injected. The container runs as the uid that owns the mounted tree, so git accepts it without a safe.directory entry.
+
+The open step's module download completed this time, on its first try. The bracket opened at 17:09:56Z and closed at 17:28:36Z, and the bracket digest reports verdict=match. The container run covered the whole table, rows 1–10, in one attempt (17:17:40Z–17:28:08Z).
+
+- Rows 2–9 pass in the container.
+- Row 1 reached verifyrun's default 10-minute row limit and is could-not-run. No verdict was produced.
+- Row 10 in the container exited 2. It reads the desk host's own record file, which the container does not hold, so that cell reflects the instrument, not the deliverable. The host run of row 10 below is its later witness.
+
+Container witness, rows 1–10, verbatim:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./internal/deskkit/... ./cmd/...` | could-not-run exit=- sandbox=container-netns — timed out after 10m0s — no verdict was produced | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCICheckHistory_RecordsBothKinds$' -v > "${TMPDIR:-/tmp}/b31-kinds.out" 2>&1 && grep -F -e '--- PASS: TestCICheckHistory_RecordsBothKinds' "${TMPDIR:-/tmp}/b31-kinds.out"` | pass exit=0 sandbox=container-netns | sha256:82ff82e2c8dc | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCICheckHistory_Dedupe$' -v > "${TMPDIR:-/tmp}/b31-dedupe.out" 2>&1 && grep -F -e '--- PASS: TestCICheckHistory_Dedupe' "${TMPDIR:-/tmp}/b31-dedupe.out"` | pass exit=0 sandbox=container-netns | sha256:c14d30247d7d | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCICheckHistory_NoExtraForgeReads$' -v > "${TMPDIR:-/tmp}/b31-reads.out" 2>&1 && grep -F -e '--- PASS: TestCICheckHistory_NoExtraForgeReads' "${TMPDIR:-/tmp}/b31-reads.out"` | pass exit=0 sandbox=container-netns | sha256:934d5afc7a4c | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCICheckHistory_ReadUnchangedOnRecorderFailure$' -v > "${TMPDIR:-/tmp}/b31-fail.out" 2>&1 && grep -F -e '--- PASS: TestCICheckHistory_ReadUnchangedOnRecorderFailure' "${TMPDIR:-/tmp}/b31-fail.out"` | pass exit=0 sandbox=container-netns | sha256:8e43614e6a50 | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/deskflip/ -run '^TestFlip_LeavesCICheckRecords$' -v > "${TMPDIR:-/tmp}/b31-flow.out" 2>&1 && grep -F -e '--- PASS: TestFlip_LeavesCICheckRecords' "${TMPDIR:-/tmp}/b31-flow.out"` | pass exit=0 sandbox=container-netns | sha256:665ad72ae4fc | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestCICheckRecord_NoFreeTextFields$' -v > "${TMPDIR:-/tmp}/b31-fields.out" 2>&1 && grep -F -e '--- PASS: TestCICheckRecord_NoFreeTextFields' "${TMPDIR:-/tmp}/b31-fields.out"` | pass exit=0 sandbox=container-netns | sha256:dfedeac01d9e | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestForgeSingleConstructionSite$' -v > "${TMPDIR:-/tmp}/b31-site.out" 2>&1 && grep -F -e '--- PASS: TestForgeSingleConstructionSite' "${TMPDIR:-/tmp}/b31-site.out"` | pass exit=0 sandbox=container-netns | sha256:4c684aab7a9d | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --consumers --root .` | pass exit=0 sandbox=container-netns | sha256:be257d45aef2 | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 10 | `jq -r 'select(.kind=="check-run" and (.attempt\|test("^[0-9]+$"))) \| "\(.repo) \(.attempt) \(.conclusion)"' ~/.config/assay/ci-checks.jsonl` | fail exit=2 sandbox=container-netns | sha256:e81bc9cd3039 | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:2ded1bc2b15c8ec9dd8a3fa08a545caa03889f4360b13d60c31e628b8a9b2715
+Container-Image: sha256:c67baa7a3c8ba3d514128f31340489146525a50c29ebb641a68899c650d354a1
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6956 run=a45e59a5c62ed65acacf00c1e98ed5d4fbad31c0382014a818fb525408a2ddc6 source=9c845402c8c00d7c14bda75cd5222fff907fd05d brief=docs/streams/desk-supervision/brief-31-ci-check-history.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=a45e59a5c62ed65acacf00c1e98ed5d4fbad31c0382014a818fb525408a2ddc6 source=9c845402c8c00d7c14bda75cd5222fff907fd05d tree=sha256:2ded1bc2b15c8ec9dd8a3fa08a545caa03889f4360b13d60c31e628b8a9b2715 witness=sha256:259cb9885cde46d43deca12a4eefb44b8da3f672499ea935e5b23be4c1707e82 opened=2026-11-18T17:09:56Z closed=2026-11-18T17:28:36Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 10 | `jq -r 'select(.kind=="check-run" and (.attempt\|test("^[0-9]+$"))) \| "\(.repo) \(.attempt) \(.conclusion)"' ~/.config/assay/ci-checks.jsonl` | fail exit=2 | sha256:16b42c4db76a | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6956 run=a45e59a5c62ed65acacf00c1e98ed5d4fbad31c0382014a818fb525408a2ddc6 source=9c845402c8c00d7c14bda75cd5222fff907fd05d brief=docs/streams/desk-supervision/brief-31-ci-check-history.md model=claude-opus-5-5 tier=strong
+
+The host witness of row 10 above is from the same admitted attempt (17:29:38Z–17:29:42Z). It ran after the bracket closed, from the home's root, under the desk host's own account. It also exited 2, and the cause is the instrument again, not the deliverable. Since #6773 (statusgen v1.0.87), every admitted row gets its own fresh, empty HOME and TMPDIR. Row 10's Command reads its input from `~/.config/assay/ci-checks.jsonl`. Under the row's own HOME that path does not exist, so jq stops before it reads a record. The desk host's record file was live while the row ran: it held 5371 records, 5227 of them check-runs with a numeric attempt, from all four recording tools, and the newest was observed at 17:29:15Z. The verifier did not change the row's environment to point it at that file. The forge dereference in row 10's Expect was not run, because no admitted read of the record file exists to compare against. Row 10 is therefore could-not-run on this source. Making it runnable takes either a Verify-row amendment that names the record file through an input the admitted environment carries, or a sanctioned lane for host-state rows. Both are outside this verifier's remit.
+
+Risk literals: tools/desk/internal/deskkit/cicheckhistory.go is byte-identical to 876ca4bca37c, so the enumeration of 2026-11-14 stands unchanged:
+
+- CICheckSchema = "ci-check-v1" (line 47)
+- ciMaxWriteLine = 64 << 10 (61)
+- ciMaxReadLine = 1 << 20 (64)
+- key separator "\x1f" (97)
+- ciLockWait = 2 * time.Second (104)
+- directory mode 0o700 (375)
+- file mode 0o600 (426) and lock-file mode 0o600 (470)
+- group/other mask 0o077 (449–450)
+- lock poll 10 * time.Millisecond (488)
+
+The ranking is unchanged:
+
+1. The privacy modes and the mask, because a disclosure cannot be undone.
+2. The bounded lock wait, because it bounds latency on the flip and board read paths.
+3. The schema, key and size literals. These are analysis-integrity identifiers whose vocabulary the Task defines.
+4. The poll interval.
+
+The brief's risk block is all "no", and no row's Command or Expect carries a risk-bearing keyword. So no fail-first witness is owed, and none was run.
+
+RISK-VALUE: DERIVED — state-directory mode = 0o700 @ tools/desk/internal/deskkit/cicheckhistory.go:375 — Task 5 fixes the directory at 0700, so only the owning account can list, create or traverse record files.
+RISK-VALUE: DERIVED — record-file mode = 0o600 @ tools/desk/internal/deskkit/cicheckhistory.go:426 — Task 5 fixes the file at 0600, so only the owner can read or append records; the lock file uses the same 0o600 at line 470.
+RISK-VALUE: DERIVED — group/other permission mask = 0o077 @ tools/desk/internal/deskkit/cicheckhistory.go:449 — octal 077 is exactly the group and other rwx bits; clearing them at line 450 narrows a pre-existing wider file to owner-only without adding owner permissions.
+RISK-VALUE: DERIVED — recorder lock wait = 2 * time.Second @ tools/desk/internal/deskkit/cicheckhistory.go:104 — Task 4 bounds the lock wait at ≤ 2 s before the batch is dropped, so a busy lock adds at most 2 s to a flip or board read.
+
+**VERIFY: BLOCKED** — 8 of 10 rows pass the container-netns bracket witness (2–9), and the bracket digest matches. Row 1 could not run: it reached verifyrun's 10-minute row limit in the container, and no verdict was produced. Row 10 could not run: its Command reads a path under HOME, and v1.0.87's admitted rows get their own empty HOME (#6773), so the row never read the record file, in the container or on the host. No acceptance obligation was observed failing in the deliverable. Blocker attached to #4683.
+
+Next actor: verify-desk. Re-run row 1 in a container-netns bracket on a less-loaded host, or once the runner's row limit fits the full tools/desk suite (#4683). Row 10 needs a driver-approved Verify-row amendment or a sanctioned lane for host-state rows before it can run under admission. Status remains implemented.
+
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.
