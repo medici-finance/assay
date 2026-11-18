@@ -18,7 +18,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "Driver request 2026-10-14: a `drain <cell>` that drains the loops first and then shuts down, with a handoff note; the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge): these are runner-lifecycle states/transitions; cellctl verbs are adapters; today's STOP-flag/cadence mechanism is the interim first implementation, not the design"
@@ -132,10 +132,10 @@ facts:
 | 4 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainNowInteractiveOnly' -count=1 -v` | `--- PASS` — `drain --now` off a TTY is refused `not-interactive`; on a pseudo-terminal with the right confirm code, the result lists every abandoned claim as an unknown outcome |
 | 5 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestInterimMappingPinned' -count=1 -v` | `--- PASS` — the single test that names the interim mechanism (cell flag, cadence checkpoint, handoff file) passes, and no other test references the flag path |
 | 6 | check +dereference | `grep -l 'references/handoff-note.md' plugins/assay/skills/the-desk/SKILL.md plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/verify-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md plugins/assay/skills/intake-desk/SKILL.md \| wc -l` | 5 |
-| 7 | gate:model +flow +dereference | On a disposable house cell with stub desks holding one fixture claim: `cellctl drain <cell> --timeout 2m` while the claim releases after 30s | the claim releases; a handoff record exists per role; the cell is stopped (every targeted role's surface is closed and its receipt removed, no role harness pid from the receipts is alive, and `cellctl cadence <cell> status` reports no `unfinished`); `cellctl cadence <cell> status` shows no `unfinished`; a following `cellctl up <cell>` exits 0 with every role `up` and each desk reports reading its record |
+| 7 | gate:human +flow +dereference | On a disposable house cell with stub desks holding one fixture claim: `cellctl drain <cell> --timeout 2m` while the claim releases after 30s | Operator row: run and witnessed by the driver at an interactive terminal, never by a dispatched verifier. The claim releases; a handoff record exists per role; the cell is stopped (every targeted role's surface is closed and its receipt removed, no role harness pid from the receipts is alive, and `cellctl cadence <cell> status` reports no `unfinished`); `cellctl cadence <cell> status` shows no `unfinished`; a following `cellctl up <cell>` exits 0 with every role `up` and each desk reports reading its record |
 | 8j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainEmitsCellOpV1' -count=1 -v` | `--- PASS` — `drain --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
-| 8 | check | `statusgen --root . --lint` | exit 0 |
-| 8a | check | `statusgen --root . --consumers --brief desk-containers/18` | exit 0 — the `consumers:` routing holds against the branch diff |
+| 8 | check | `statusgen --root . --lint --acceptance-forge` | exit 0 |
+| 8a | check | `statusgen --root . --consumers --brief desk-containers/18 --delivery 2cbd6178f8400bcb95faae97047a4f38e08be490 --base 560daf9068b8631d945400bf1aa714d0add889f9` | exit 0 — the `consumers:` routing holds against the branch diff |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
