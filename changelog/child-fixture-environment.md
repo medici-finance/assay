@@ -1,0 +1,1 @@
+Test fixtures can construct an isolated child environment with `testenv.New` without changing their parent process. Process-scoped installation shares the same constructor and retains its cleanup behavior.
