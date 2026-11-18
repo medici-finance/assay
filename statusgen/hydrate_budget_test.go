@@ -16,20 +16,19 @@ import (
 // 614-brief tree whose bare load takes well under 0.2 s and whose synthetic
 // benchmark corpus (no git history, no FAIL evidence) never showed it.
 
-// The brief proposes hydrated <= 10x bare. Measured in-process, the floor of
-// hydration is one open, stat, read and YAML parse per brief file (~100 us each),
-// while the bare load only reads the boards, so the two sit at 7x to 13x on this
-// synthetic corpus even with the history queries gone (10.3x, 10.8x, 11.4x, 12.6x
-// in four consecutive runs on a loaded host). A 10x bound would flake on the fix
-// itself, so the ratio bounds are 20x (synthetic) and 100x (real tree: 623 briefs,
-// bare ~9 ms, hydrated ~0.2 s, 27x). Both still sit ~50x under the 1000x the history
-// queries cost, and the count guard (zero history queries, one parse per brief) is
-// the primary, host-independent assertion. Both bounds are declared reversible
-// defaults in the PR.
+// The budget is the brief's: hydrated <= 10x bare, best of N, on both the
+// synthetic corpus and a real tree. Once the history queries were gone, what was
+// left was one open, read and parse per brief file, done one file after another;
+// that held hydration at 10x to 13x (synthetic) and 24x to 32x (real tree), so
+// the budgets were loosened to 20x and 100x, which the brief does not allow
+// (issue #6900). The files are now read and parsed concurrently
+// (parseBriefFilesAhead) and a cold read costs one path lookup instead of three
+// (readFileMemo). The count guard (zero history queries, one parse per brief)
+// stays the primary, host-independent assertion.
 const (
-	hydrateRatioBudget    = 20.0
-	hydrateRealTreeBudget = 100.0
-	hydrateRuns           = 3
+	hydrateRatioBudget    = 10.0
+	hydrateRealTreeBudget = 10.0
+	hydrateRuns           = 9 // best of nine; the brief requires at least three
 	hydrateSynthRuns      = 9 // cheap (ms each), so more than the required three
 )
 
