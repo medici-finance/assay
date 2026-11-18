@@ -100,6 +100,7 @@ func plantGitLabCustody(t *testing.T, role, value string) string {
 }
 
 func TestRoleInitGitLabReadsCustodyNeverGitHubMinter(t *testing.T) {
+	installWorktreeFixture(t)
 	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
@@ -139,6 +140,7 @@ func TestRoleInitGitLabReadsCustodyNeverGitHubMinter(t *testing.T) {
 }
 
 func TestRoleInitGitLabMissingCustodyFailsClosed(t *testing.T) {
+	installWorktreeFixture(t)
 	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
@@ -169,6 +171,7 @@ func TestRoleInitGitLabMissingCustodyFailsClosed(t *testing.T) {
 }
 
 func TestRoleInitGitHubStillUsesAppMinter(t *testing.T) {
+	installWorktreeFixture(t)
 	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
@@ -210,6 +213,7 @@ func TestRoleInitGitHubStillUsesAppMinter(t *testing.T) {
 // the roster silent (the unresolved default) or naming the forge "github", such an origin is
 // REFUSED (exit 5) before the GitHub minter runs, and no helper is wired.
 func TestRoleInitNonGitHubOriginHostRefusedBeforeMint(t *testing.T) {
+	installWorktreeFixture(t)
 	requireGitListReset(t)
 	for i, tc := range []struct{ rosterForge, origin string }{
 		{"", "https://" + gitlabFixtureHost + "/example-org/tracker.git"},
@@ -263,6 +267,7 @@ func TestRoleInitNonGitHubOriginHostRefusedBeforeMint(t *testing.T) {
 // resolves nothing either: the GitHub minter never runs, and the forge-aware resolver's refusal
 // of an origin with no host is never reached, so a local clone still provisions (rc 0).
 func TestRoleInitHostlessOriginResolvesNoCredential(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t) // origin is a local bare PATH, no host
 	withEnv(t, work)
 	t.Setenv(deskkit.EnvConfigHome, "")

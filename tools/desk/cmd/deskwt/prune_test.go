@@ -39,6 +39,7 @@ func addWorktree(t *testing.T, name string) string {
 // the performance fixtures retain their independent scale and concurrency gates.
 // regression: F-prune-walk
 func TestPruneWalksMainOnce(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	first := addWorktree(t, "walk-first")
@@ -83,6 +84,7 @@ func TestPruneWalksMainOnce(t *testing.T) {
 // --- prune: merged+clean worktree is removed --------------------------------------
 
 func TestPruneRemovesMergedCleanWorktree(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	target := addWorktree(t, "merged")
@@ -129,6 +131,7 @@ func TestPruneRemovesMergedCleanWorktree(t *testing.T) {
 // the fix both gates spell `refs/remotes/origin/main`, which the decoy cannot shadow, so the
 // worktree is correctly recognised as merged-below-tip and removed.
 func TestPruneResolvesRealTipNotStrayDecoy(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	// Add the worktree at the CURRENT tip BEFORE planting the decoy — add's own ambiguity
@@ -178,6 +181,7 @@ func TestPruneResolvesRealTipNotStrayDecoy(t *testing.T) {
 // --- prune: dirty tracked tree is skipped -----------------------------------------
 
 func TestPruneSkipsDirtyTracked(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "dirty")
@@ -206,6 +210,7 @@ func TestPruneSkipsDirtyTracked(t *testing.T) {
 // merged" and would be wrongly removed. The fresh-worktree guard (headAtOriginMainTip)
 // skips it. This test covers the exact scenario the reviewer flagged.
 func TestPruneSkipsFreshAtMainWorktreeWithUntrackedFile(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "fresh")
@@ -229,6 +234,7 @@ func TestPruneSkipsFreshAtMainWorktreeWithUntrackedFile(t *testing.T) {
 // --- prune: unpushed commit is skipped --------------------------------------------
 
 func TestPruneSkipsUnpushedCommit(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "ahead")
@@ -251,6 +257,7 @@ func TestPruneSkipsUnpushedCommit(t *testing.T) {
 // This is the most important case: an open PR in flight (commits pushed to the branch's
 // own upstream but NOT yet merged to origin/main) must be LEFT untouched.
 func TestPruneSkipsCleanUnmergedBranch(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "feature")
@@ -291,6 +298,7 @@ func TestPruneSkipsCleanUnmergedBranch(t *testing.T) {
 // FIRST: the worktree survives on disk, stays registered, and is reported with a lock reason
 // that surfaces git's lock message — never a content heuristic and never a delete.
 func TestPruneSkipsLockedWorktree(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	target := addWorktree(t, "locked")
@@ -335,6 +343,7 @@ func TestPruneSkipsLockedWorktree(t *testing.T) {
 // TestPruneSkipsLockedWorktreeNoReason covers a worktree locked with no `--reason`: the
 // porcelain block carries a bare `locked` line, and the skip reads simply "locked".
 func TestPruneSkipsLockedWorktreeNoReason(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "locked-bare")
@@ -363,6 +372,7 @@ func TestPruneSkipsLockedWorktreeNoReason(t *testing.T) {
 // --- prune: the current worktree is never removed ---------------------------------
 
 func TestPruneSkipsCurrentWorktree(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	// Add a worktree and make the tool RUN FROM it (cwd == that worktree). It is merged
 	// and clean, so ONLY the current-worktree guard can keep it.
@@ -384,6 +394,7 @@ func TestPruneSkipsCurrentWorktree(t *testing.T) {
 // --- prune: the shared checkout is refused by identity, never removed -------------
 
 func TestPruneRefusesSharedCheckout(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	mustGit(t, work, "branch", "--set-upstream-to=origin/main", "main")
 	calls := withEnv(t, work)
@@ -407,6 +418,7 @@ func TestPruneRefusesSharedCheckout(t *testing.T) {
 // --- prune: flag parsing --------------------------------------------------------
 
 func TestPruneBadIntervalRefuses(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	for _, bad := range []string{"nope", "-5m", "0"} {
@@ -417,6 +429,7 @@ func TestPruneBadIntervalRefuses(t *testing.T) {
 }
 
 func TestPrunePositionalRefuses(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	if rc := run([]string{"prune", "stray"}); rc != 2 {
@@ -431,6 +444,7 @@ func TestPrunePositionalRefuses(t *testing.T) {
 // worktree), prints one tick line to stdout, then the stop wins the select → clean exit 0.
 // No real sleep occurs (the ticker never fires within the test).
 func TestPruneIntervalSingleTickThenStop(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "tick")
@@ -473,6 +487,7 @@ func TestPruneIntervalSingleTickThenStop(t *testing.T) {
 // ticks: with STOP armed, Guard fires on the first iteration → the loop halts before any
 // sweep, returning the exit-3 Disabled error (never a silent continue).
 func TestPruneIntervalHaltsOnStopFlag(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "halted")

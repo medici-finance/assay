@@ -45,6 +45,7 @@ func touchNow(t *testing.T, path string) {
 // content gate — and is still HELD while git shows recent activity in it. Once that
 // activity is older than --min-idle the ordinary rules remove it.
 func TestPruneActivityGateHoldsRecentWorktree(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "active-merged")
@@ -74,6 +75,7 @@ func TestPruneActivityGateHoldsRecentWorktree(t *testing.T) {
 
 // Each piece of evidence holds on its own: HEAD, logs/HEAD and the worktree root.
 func TestPruneActivityGateEachSignal(t *testing.T) {
+	installWorktreeFixture(t)
 	for _, c := range []struct {
 		name  string
 		touch func(admin, target string) string
@@ -125,6 +127,7 @@ func TestPruneActivityGateUnreadableHolds(t *testing.T) {
 // The dead-session arm respects the gate: an unowned, clean, pushed worktree it would reap
 // is KEPT while recently active, and reaped once idle.
 func TestReapRespectsActivityGate(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target, _ := openPRWorktree(t, work, "reap-active")
@@ -157,6 +160,7 @@ func TestReapRespectsActivityGate(t *testing.T) {
 // --min-idle tunes the gate and can never switch it off; with --branches-only (no worktree
 // arm) it is refused as inert.
 func TestPruneMinIdleFlagRefusals(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	for _, args := range [][]string{
@@ -173,6 +177,7 @@ func TestPruneMinIdleFlagRefusals(t *testing.T) {
 
 // The compiled default arms the gate on every sweep that names no --min-idle.
 func TestPruneActivityGateDefaultOn(t *testing.T) {
+	installWorktreeFixture(t)
 	compiled := defaultMinIdle
 	if compiled != time.Hour {
 		t.Fatalf("compiled --min-idle default = %v, want 1h", compiled)
@@ -216,6 +221,7 @@ func lockReasonOf(t *testing.T, work, target string) (string, bool) {
 // lifecycle judges it like any role-init lock: held while the session's beacon is fresh,
 // reclaimable once it is stale.
 func TestAddLockSession(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	const name = "locked-one"
@@ -254,6 +260,7 @@ func TestAddLockSession(t *testing.T) {
 // A session id that could not parse back out of the lock reason — or could traverse the
 // roster directory — is refused before anything is created.
 func TestAddLockSessionRefusesUnsafeID(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	const name = "unsafe"
@@ -375,6 +382,7 @@ func assertAddRolledBack(t *testing.T, work, target string) {
 // A `git worktree lock` that FAILS rolls the new worktree back: the caller asked for a
 // session lock, and an unlocked tree is not what it asked for.
 func TestAddLockSessionRollsBackWhenLockFails(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	old := worktreeLockFn
@@ -394,6 +402,7 @@ func TestAddLockSessionRollsBackWhenLockFails(t *testing.T) {
 // A lock that REPORTS success but is not there when read back is refused the same way:
 // git's exit status alone is never taken as proof, and the tree is rolled back.
 func TestAddLockSessionReadsTheLockBack(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	old := worktreeLockFn

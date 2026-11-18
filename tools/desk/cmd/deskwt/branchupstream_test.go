@@ -56,6 +56,7 @@ func plantPushedBranch(t *testing.T, work, br, upstream string, extra int) strin
 // (b) A local branch that EQUALS its own remote counterpart is a leftover ref, however far
 // ahead of the mainline it is — it is reclaimed, never refused.
 func TestCollisionAgainstTheBranchesOwnRemoteCounterpart(t *testing.T) {
+	installWorktreeFixture(t)
 	cases := []struct {
 		name     string
 		upstream string
@@ -109,6 +110,7 @@ func TestCollisionAgainstTheBranchesOwnRemoteCounterpart(t *testing.T) {
 // (c) UNCHANGED: a local branch carrying commits beyond its own remote counterpart is real
 // unpushed work and is still refused — now naming that counterpart, not the mainline.
 func TestCollisionStillRefusesWorkBeyondTheBranchesOwnRemoteCounterpart(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	const name = "collide"

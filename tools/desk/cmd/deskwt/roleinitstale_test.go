@@ -53,6 +53,7 @@ func worktreeBlock(t *testing.T, work, path string) string {
 
 // regression: #6115
 func TestRoleInitClearsOwnStaleLock(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	target := sweptRoleWorktree(t, "boot1")
@@ -93,6 +94,7 @@ func TestRoleInitClearsOwnStaleLock(t *testing.T) {
 
 // regression: #6115
 func TestRoleInitKeepsForeignStale(t *testing.T) {
+	installWorktreeFixture(t)
 	cases := []struct {
 		name   string
 		reason string // "" = leave the registration unlocked
@@ -146,6 +148,7 @@ func ownLockReason(session string) string {
 //
 // regression: #6115
 func TestRoleInitKeepsUnrecoverableHead(t *testing.T) {
+	installWorktreeFixture(t)
 	cases := []struct {
 		name   string
 		strand func(t *testing.T, work, target string) // runs while the directory still exists
@@ -207,6 +210,7 @@ func TestRoleInitKeepsUnrecoverableHead(t *testing.T) {
 //
 // regression: #6115
 func TestRoleInitRestoresLockOnFailedClear(t *testing.T) {
+	installWorktreeFixture(t)
 	cases := []struct {
 		name       string
 		removeArgv []string // what the `git worktree remove` launch runs instead
@@ -275,6 +279,7 @@ func TestRoleInitRestoresLockOnFailedClear(t *testing.T) {
 //
 // regression: #6115
 func TestRoleInitReusesLeftBranch(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	if rc, stderr := runCapErr(t, []string{"role-init", "--role", "verifier", "--session", "left"}); rc != deskkit.ExitOK {
@@ -311,6 +316,7 @@ func TestRoleInitReusesLeftBranch(t *testing.T) {
 //
 // regression: #6115
 func TestGitFailCarriesFatalLine(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := sweptRoleWorktree(t, "said")
@@ -344,6 +350,7 @@ func TestGitFailCarriesFatalLine(t *testing.T) {
 //
 // regression: #6115
 func TestAddFailCarriesFatalLine(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	const name = "planted"

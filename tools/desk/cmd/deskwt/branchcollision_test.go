@@ -48,6 +48,7 @@ func branchHeld(t *testing.T, work, br string) string {
 }
 
 func TestAddResolvesALocalBranchCollisionByName(t *testing.T) {
+	installWorktreeFixture(t)
 	cases := []struct {
 		name string
 		// plant returns the worktree path expected to be NAMED in the message, if any.
@@ -144,6 +145,7 @@ func TestAddResolvesALocalBranchCollisionByName(t *testing.T) {
 // The compare-and-delete is what makes the reclaim safe under a race: the ref is deleted
 // only if it still points where the 0-ahead proof was taken.
 func TestReclaimDeletesTheBranchWithACompareAndDelete(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	branchStale(t, work, "cad")
@@ -215,6 +217,7 @@ func plantPrunableHolder(t *testing.T, work, br string) string {
 // live one, so a sticky attribute would wrongly skip the live holder — the exact reading that
 // would delete a branch out from under a live worktree.
 func TestBranchHoldersSkipsPrunableEntry(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	plantPrunableHolder(t, work, "ghost") // listed first
@@ -236,6 +239,7 @@ func TestBranchHoldersSkipsPrunableEntry(t *testing.T) {
 // naming the path. A prunable entry is listed BEFORE the live one, so this also proves the
 // prunable attribute does not leak forward and skip the live holder.
 func TestAddStillRefusesLiveHolder(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	plantPrunableHolder(t, work, "ghost") // listed before the live holder below
@@ -262,6 +266,7 @@ func TestAddStillRefusesLiveHolder(t *testing.T) {
 // must still refuse (5) naming the count, and the branch must survive. A "prunable ⇒ reclaim"
 // implementation that dropped the proof along with the holder would delete unfinished work.
 func TestAddStillRefusesAheadBranchEvenWhenPrunable(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	dead := filepath.Join(t.TempDir(), "dead-collide")
@@ -294,6 +299,7 @@ func TestAddStillRefusesAheadBranchEvenWhenPrunable(t *testing.T) {
 // MEASURABLE — against --base. Without the fallback such a branch would be unmeasurable,
 // and an unmeasurable branch is a permanently stuck dispatch.
 func TestComparisonRefFallsBackToBaseWhenTheUpstreamIsGone(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	branchStale(t, work, "lostup")

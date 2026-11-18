@@ -72,6 +72,7 @@ func advanceMain(t *testing.T, work, marker string) {
 // count matches when one worktree was wrongly spared and another wrongly deleted.
 
 func TestPruneRemovalSetUnchanged(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 
@@ -128,6 +129,7 @@ func TestPruneRemovalSetUnchanged(t *testing.T) {
 // read every worktree as unmerged today and, one refactor later, as merged.
 
 func TestPruneHoldsAllNoAncestorSet(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "would-be-removable")
@@ -160,6 +162,7 @@ func TestPruneHoldsAllNoAncestorSet(t *testing.T) {
 // a small fixture.
 
 func TestMergeGateBeforeStatus(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 
@@ -211,6 +214,7 @@ func TestMergeGateBeforeStatus(t *testing.T) {
 // must still be REPORTED.
 
 func TestPruneDryRunIsReadOnly(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 
@@ -265,6 +269,7 @@ func TestPruneDryRunIsReadOnly(t *testing.T) {
 // git argv: one prune for the whole sweep, however many trees came out.
 
 func TestPruneBatchesRemoval(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 
@@ -322,6 +327,7 @@ func TestPruneBatchesRemoval(t *testing.T) {
 // A path that is still registered after the batched deregistration is DEMOTED: not counted
 // as removed, and named. Batching must not turn a per-path verdict into a blanket one.
 func TestPruneBatchDemotesStrandedPath(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	good := addWorktree(t, "demote-good")
@@ -367,6 +373,7 @@ func TestPruneBatchDemotesStrandedPath(t *testing.T) {
 // an empty ancestor set as an answer — today that marks everything unmerged, which is
 // accidentally safe, and one refactor later marks everything merged, which is not.
 func TestPruneHoldsAllWhenTheMainlineWalkFails(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "walk-fails-candidate")

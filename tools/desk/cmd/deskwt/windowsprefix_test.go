@@ -58,6 +58,7 @@ func TestWorktreeTargetChoosesPrefixPerOS(t *testing.T) {
 // codepath: the worktree is created under `<repo-root>/.claude/worktrees/`, passes the
 // sanctioned-prefix guard (rc 0), and is NOT placed under the tmp prefix.
 func TestAddOnWindowsCreatesUnderPortablePrefix(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	setGOOS(t, "windows")
@@ -84,6 +85,7 @@ func TestAddOnWindowsCreatesUnderPortablePrefix(t *testing.T) {
 // TestRoleInitOnWindowsUsesPortablePrefix: role-init must also land under the portable
 // prefix on Windows, and role-clean must resolve the SAME prefix to tear it down.
 func TestRoleInitOnWindowsUsesPortablePrefix(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	setGOOS(t, "windows")

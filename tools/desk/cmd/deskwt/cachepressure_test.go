@@ -78,6 +78,7 @@ func withCellsRoot(t *testing.T) string {
 // A sweep over a cache within its policy is SILENT: the summary carries no
 // cache segment at all (the noise-floor contract), and the cache is untouched.
 func TestPruneCachePassSilentWhenClean(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	cells := withCellsRoot(t)
@@ -99,6 +100,7 @@ func TestPruneCachePassSilentWhenClean(t *testing.T) {
 // Over the byte budget with no active consumer, the sweep reclaims — and SAYS
 // so, with the count.
 func TestPruneCachePassReclaimsUnderPressure(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	cells := withCellsRoot(t)
@@ -126,6 +128,7 @@ func TestPruneCachePassReclaimsUnderPressure(t *testing.T) {
 // entries older than the policy's trim age would be trimmed regardless, but this
 // fixture's material is fresh, so nothing qualifies.
 func TestPruneCachePassDefersToActiveLease(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	cells := withCellsRoot(t)
@@ -153,6 +156,7 @@ func TestPruneCachePassDefersToActiveLease(t *testing.T) {
 
 // --no-cache skips the pass entirely: no reclaim under pressure, no segment.
 func TestPruneCachePassNoCacheFlag(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	cells := withCellsRoot(t)
@@ -174,6 +178,7 @@ func TestPruneCachePassNoCacheFlag(t *testing.T) {
 // A dry run prints the would-act row and changes nothing — no removal, and
 // the package's own dry mode does not even rewrite the root's report.
 func TestPruneCachePassDryRun(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	cells := withCellsRoot(t)
@@ -206,6 +211,7 @@ func TestPruneCachePassDryRun(t *testing.T) {
 // A marked root whose recorded policy is unreadable is a could-not-check
 // warning, never a silently invented default policy.
 func TestPruneCachePassMarkedRootWithoutReport(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	cells := withCellsRoot(t)
@@ -227,6 +233,7 @@ func TestPruneCachePassMarkedRootWithoutReport(t *testing.T) {
 // owning directory reaps the root too — the sweep's own gates are the proof
 // no consumer can launch again, and the root holds no lease.
 func TestPruneCachePassReapsOrphanedRoot(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "cellbox")
@@ -264,6 +271,7 @@ func TestPruneCachePassReapsOrphanedRoot(t *testing.T) {
 // The same root with an ACTIVE lease is refused even when its owner is gone:
 // the lease set, read at act time, outranks the sweep's judgement.
 func TestPruneCachePassOrphanReapHonoursLease(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "cellbox")
@@ -304,6 +312,7 @@ func TestPruneCachePassOrphanReapHonoursLease(t *testing.T) {
 // The cache knobs refuse the pairings in which they would be silently inert —
 // the same discipline as --lock-ttl's.
 func TestPruneCacheFlagRefusals(t *testing.T) {
+	installWorktreeFixture(t)
 	for _, args := range [][]string{
 		{"prune", "--no-cache", "--cells-root", "/tmp/x"},
 		{"prune", "--branches-only", "--no-cache"},
@@ -323,6 +332,7 @@ func TestPruneCacheFlagRefusals(t *testing.T) {
 // A nested cell (team/demo) is a supported cell name; its default marked root
 // lives at <cells-root>/team/demo/go-cache and the sweep must reach it.
 func TestPruneCachePassNestedCell(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	cells := withCellsRoot(t)
@@ -344,6 +354,7 @@ func TestPruneCachePassNestedCell(t *testing.T) {
 // An invalid candidate is could-not-check for THAT cell and nothing else: the
 // sweep names it and still reaches every later candidate.
 func TestPruneCachePassContinuesPastInvalidCandidate(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	cells := withCellsRoot(t)
@@ -378,6 +389,7 @@ func TestPruneCachePassContinuesPastInvalidCandidate(t *testing.T) {
 // skips its remaining siblings. The symlink itself is probed (it may BE a
 // cell) but never followed.
 func TestPruneCachePassSymlinkDoesNotHideLaterCells(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	cells := withCellsRoot(t)
@@ -406,6 +418,7 @@ func TestPruneCachePassSymlinkDoesNotHideLaterCells(t *testing.T) {
 // sweep canonicalizes the root first; the descendant no-follow boundary is
 // unchanged.
 func TestPruneCachePassSymlinkedCellsRoot(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	cells := withCellsRoot(t)
@@ -432,6 +445,7 @@ func TestPruneCachePassSymlinkedCellsRoot(t *testing.T) {
 // before discovery, or the recorded-policy root comparison could never hold
 // and no cache would be checked.
 func TestPruneCachePassRelativeCellsRoot(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	base := t.TempDir()

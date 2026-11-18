@@ -28,6 +28,7 @@ func plantHooks(t *testing.T, body string) {
 // worktree and clobbers identity" is caught here (deskwt add never reuses a path, so a
 // second add of the same name refuses before any hook runs).
 func TestAfterCreateRunsOnceForNewPath(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 
@@ -59,6 +60,7 @@ func TestAfterCreateRunsOnceForNewPath(t *testing.T) {
 // TestAfterCreateFailureRollsBackWorktree: a fatal after_create failure ABORTS creation —
 // the worktree it just made is rolled back rather than left half-provisioned.
 func TestAfterCreateFailureRollsBackWorktree(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	plantHooks(t, "after_create: exit 1\n")
@@ -80,6 +82,7 @@ func TestAfterCreateFailureRollsBackWorktree(t *testing.T) {
 // logged, and the deletion PROCEEDS — a cleanup hook must never strand a worktree the caller
 // asked to remove.
 func TestBeforeRemoveFailureStillRemoves(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 
@@ -106,6 +109,7 @@ func TestBeforeRemoveFailureStillRemoves(t *testing.T) {
 // TestDeskwtAddDryRunTouchesNothing: --dry-run reports the after_create hook plan and
 // creates no worktree.
 func TestDeskwtAddDryRunTouchesNothing(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	plantHooks(t, "after_create: true\n")

@@ -81,6 +81,7 @@ func assertLocked(t *testing.T, work, target string, want bool) {
 // line was structurally zero however many entries a sweep dropped — the one number an
 // operator would use to tell a draining repo from a stuck one.
 func TestPruneCleansMissingPathEntry(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "vanished")
@@ -111,6 +112,7 @@ func TestPruneCleansMissingPathEntry(t *testing.T) {
 // Without the opt-in it stays (that is the pre-existing, safe behaviour); with it, the lock
 // is reclaimed and the entry finally drops.
 func TestReclaimUnblocksMissingPath(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "vanished-locked")
@@ -164,6 +166,7 @@ func staleLockFixture(t *testing.T, name, session string) (work, target string, 
 }
 
 func TestStaleLockHeldWithoutOptIn(t *testing.T) {
+	installWorktreeFixture(t)
 	work, target, _ := staleLockFixture(t, "held", "dead-1")
 
 	rc, errout := runCapErr(t, []string{"prune"})
@@ -181,6 +184,7 @@ func TestStaleLockHeldWithoutOptIn(t *testing.T) {
 }
 
 func TestStaleLockReclaimedOnOptIn(t *testing.T) {
+	installWorktreeFixture(t)
 	work, target, calls := staleLockFixture(t, "reclaimed", "dead-2")
 	_ = work
 
@@ -221,6 +225,7 @@ func TestStaleLockReclaimedOnOptIn(t *testing.T) {
 // guard catches it. This pins that net: the reclaim may unlock, but the at-tip worktree —
 // which may hold untracked files — must survive the sweep.
 func TestReclaimedAtTipWithUntrackedHeldByFreshGuard(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "attip") // origin/main NOT advanced: worktree HEAD == tip
@@ -257,6 +262,7 @@ func TestReclaimedAtTipWithUntrackedHeldByFreshGuard(t *testing.T) {
 // alive, and it outranks the age test: --lock-ttl 1ns here would reclaim ANY lock that fell
 // through to it, so the hold is proof the live-session evidence won.
 func TestPruneHoldsLockOfLiveSession(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "livesession")
@@ -282,6 +288,7 @@ func TestPruneHoldsLockOfLiveSession(t *testing.T) {
 // --- the age fallback: a lock naming no session ------------------
 
 func TestUnattributedLockByTTL(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "ancient")
@@ -323,6 +330,7 @@ func TestUnattributedLockByTTL(t *testing.T) {
 // would delete.
 
 func TestDirtyHeldAfterReclaim(t *testing.T) {
+	installWorktreeFixture(t)
 	work, target, _ := staleLockFixture(t, "dirty-after", "dead-3")
 	writeFile(t, filepath.Join(target, "README.md"), "seed\nuncommitted tracked change\n")
 
@@ -345,6 +353,7 @@ func TestDirtyHeldAfterReclaim(t *testing.T) {
 }
 
 func TestUnmergedHeldAfterReclaim(t *testing.T) {
+	installWorktreeFixture(t)
 	work, target, _ := staleLockFixture(t, "unmerged-after", "dead-4")
 	// Work committed on the branch and pushed to its OWN upstream, but never merged to
 	// origin/main: an open PR in flight. The active-worker guard must still hold it.
@@ -376,6 +385,7 @@ func TestUnmergedHeldAfterReclaim(t *testing.T) {
 // would be a pure loss of somebody else's state. The lock stays even with every staleness
 // test armed (dead session AND a 1ns TTL).
 func TestNoReclaimOutsidePrefix(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	outside := filepath.Join(t.TempDir(), "outside-wt")
@@ -397,6 +407,7 @@ func TestNoReclaimOutsidePrefix(t *testing.T) {
 // --- flags ------------------
 
 func TestLockTTLRequiresOptIn(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	if rc := run([]string{"prune", "--lock-ttl", "24h"}); rc != deskkit.ExitRefused {
