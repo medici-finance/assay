@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitcore/testenv"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -78,6 +79,15 @@ func TestDeskdCustodyOverridesCachedOperatorRosterAndRestores(t *testing.T) {
 }
 
 func TestDeskdCoordinateUsesCellOriginNotCallerDirectory(t *testing.T) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	git, err = filepath.Abs(git)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testenv.Install(t, testenv.Options{Tools: map[string]string{"git": git}})
 	repo := t.TempDir()
 	for _, args := range [][]string{{"init", repo}, {"-C", repo, "remote", "add", "origin", "git@github.com:example-org/actual-project.git"}} {
 		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
@@ -97,6 +107,13 @@ func TestDeskdCoordinateUsesCellOriginNotCallerDirectory(t *testing.T) {
 	c.Env = envWith(nil)
 	c.Repo = t.TempDir()
 	assertDies(t, "missing origin", func() { c.deskdRepo() })
+	// Isolation owns fixture setup; a deliberately injected configuration still
+	// reaches the production authority refusal after setup has completed.
+	c.Repo = repo
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "remote.origin.url")
+	t.Setenv("GIT_CONFIG_VALUE_0", "https://github.com/foreign/project.git")
+	assertDies(t, "injected origin configuration", func() { c.deskdRepo() })
 }
 
 func TestDeskdMintUsesCellCustodyAndFailsClosed(t *testing.T) {
