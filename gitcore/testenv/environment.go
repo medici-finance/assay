@@ -14,7 +14,7 @@ import (
 )
 
 // Options declares every executable and environment value a fixture needs.
-// Resolve approved executables before Install; Tools never searches PATH.
+// Resolve approved executables before New or Install; Tools never searches PATH.
 type Options struct {
 	Tools map[string]string
 	Vars  map[string]string
@@ -43,10 +43,11 @@ func reserved(key string) bool {
 	return false
 }
 
-// Install replaces the test process environment until cleanup. Like t.Setenv,
-// it cannot be used by parallel tests. Explicit hostile controls belong AFTER
-// installation, so setup never erases the input an authority test must reject.
-func Install(t testing.TB, opts Options) *Fixture {
+// New creates an owned fixture without changing the process environment and may
+// be used by parallel tests. Launch children with Env and an approved absolute
+// executable or a path inside Bin: exec.Command resolves bare names using the
+// process PATH before the child's environment is applied.
+func New(t testing.TB, opts Options) *Fixture {
 	t.Helper()
 	root := t.TempDir()
 	f := &Fixture{Home: filepath.Join(root, "home"), Bin: filepath.Join(root, "bin"), t: t}
@@ -72,6 +73,12 @@ func Install(t testing.TB, opts Options) *Fixture {
 		"GIT_CONFIG_GLOBAL": global, "GIT_CONFIG_SYSTEM": system, "GIT_CONFIG_NOSYSTEM": "1",
 		"GIT_TEMPLATE_DIR": gitquiet.TemplateDir(t), "GIT_TERMINAL_PROMPT": "0",
 		"KUBECONFIG": os.DevNull, "LC_ALL": "C", "TZ": "UTC",
+	}
+	// CI controls existing test requirements (for example, failing rather than
+	// skipping when a required tool is missing). Keep that declared test-runtime
+	// input while removing undeclared operator configuration and credentials.
+	if value, present := os.LookupEnv("CI"); present {
+		f.base["CI"] = value
 	}
 	if runtime.GOOS == "windows" {
 		for _, key := range []string{"SystemRoot", "WINDIR", "COMSPEC", "PATHEXT"} {
@@ -128,6 +135,15 @@ func Install(t testing.TB, opts Options) *Fixture {
 		seen[canonical] = true
 		f.overlay(f.base, key, opts.Vars[key])
 	}
+	return f
+}
+
+// Install replaces the test process environment until cleanup. Like t.Setenv,
+// it cannot be used by parallel tests. Explicit hostile controls belong AFTER
+// installation, so setup never erases the input an authority test must reject.
+func Install(t testing.TB, opts Options) *Fixture {
+	t.Helper()
+	f := New(t, opts)
 	// Clear all undeclared inputs, not just today's known Git/token variables.
 	// Register both presence and value restoration through testing's own cleanup.
 	for _, entry := range os.Environ() {
