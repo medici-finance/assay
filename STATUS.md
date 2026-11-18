@@ -121,14 +121,13 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **COULD NOT CHECK — main-red arm could not check — no `--main-health` input was supplied, so whether main is red is unknown here (statusgen does not read live CI). A main-red fix cannot be lifted into the critical tier on this run; this is not a reading that main is green.**
 
-_Next-up: 20 of 44 eligible — 24 held back (13 by per-stream caps, 11 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 20 of 43 eligible — 23 held back (13 by per-stream caps, 10 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
 _Held by per-stream caps: 13 brief(s) across 1 stream(s) — top: desktools-v2. By stream: desktools-v2 (13). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | graph-execution | 26 — Shared loop-admin launch supervision for desks and workflows [exec:strong] | 6 | 22030 |
-| graph-execution | 36 — Canonical PostgreSQL foundation for read-only consumers [exec:strong] | 0 | 21030 |
 | desk-tools | 49 — Deduplicate verifier filings by their canonical work identity [exec:strong] | 1 | 4530 |
 | tool-refactoring | 01 — Bind operation subjects to explicit tracking, delivery and evidence repositories [exec:strong] | 0 | 4520 |
 | comms-core | 02 — Extract the comms server over the existing file backend [exec:strong] | 1 | 4030 |
@@ -147,12 +146,13 @@ _Held by per-stream caps: 13 brief(s) across 1 stream(s) — top: desktools-v2. 
 | derived-board | 07 — this repo's rollout — brief-v2 migration, scheduled reconcile, historical backfill as a drift-report PR; --backfill kept for the reconcile verb | 4 | 2030 |
 | desk-tools | 52 — Link decision and verification cards without conflating their authority [exec:strong] | 1 | 2030 |
 | intake-class-routing | 02 — The scan publishes recorded handoffs and land stops a judged exit without one [exec:strong] | 0 | 2030 |
+| statusgen | 32 — Connect board drift notices to the existing reconciliation owners [exec:strong] | 1 | 2030 |
 
 ## Drive: `build-less-brittle`
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: ce29482c4 2026-11-18T22:53:12Z_
+_last regen: b78acbc82 2026-11-18T22:59:31Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +173,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: ce29482c4 2026-11-18T22:53:12Z_
+_last regen: b78acbc82 2026-11-18T22:59:31Z_
 
 **Progress:** 36/100 brief items done.
 
@@ -237,7 +237,7 @@ _last regen: ce29482c4 2026-11-18T22:53:12Z_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (11 for the desk · 56 for the driver · 50 for workers · 51 for an operator · 48 runner-pending — of 219 total; 3 could-not-check)
+## Awaiting verification / review (12 for the desk · 56 for the driver · 50 for workers · 51 for an operator · 48 runner-pending — of 220 total; 3 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
@@ -316,7 +316,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 39 [exec:strong] | implemented | 12030 | 20 | 3d | worker | fix, cite medici-finance/assay#4560 | — | — |
 | desk-tools | 40 [exec:strong] | implemented | 11010 | 20 | 31h | worker | fix, cite medici-finance/assay#4560 | — | — |
 | desk-tools | 41 [exec:strong] | implemented | 11010 | 20 | 31h | worker | fix, cite medici-finance/assay#4560 | — | — |
-| desktools-v2 | 58 [exec:strong] | implemented | 11000 | 20 | 22h | worker | fix, cite medici-finance/assay#6099 | — | — |
+| desktools-v2 | 58 [exec:strong] | implemented | 11000 | 20 | 23h | worker | fix, cite medici-finance/assay#6099 | — | — |
 | forge-neutral | 55 [exec:strong] | implemented | 10030 | 16 | 3d | worker | fix, cite medici-finance/assay#5752 | — | — |
 | forge-neutral | 57 [exec:strong] | implemented | 10030 | 16 | 3d | worker | fix, cite medici-finance/assay#5817 | — | — |
 | desk-containers | 16 [exec:strong] | implemented | 8030 | 14 | 3d | worker | fix, cite #4560 | — | — |
@@ -468,10 +468,11 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | quality | 19 [exec:strong] | verified | 1030 | 0 | 3d | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 3add8a9ae315 (claude-opus-5-5) | — |
 | statusgen | 21 [exec:strong] | verified | 1030 | 0 | 3d | CI auto-flip | none; stuck after one main run → file | 2026-11-11 assay-verifier-app[bot] @ b856f281f758 (claude-opus-5-5) | — |
 
-### Desk-actionable (11)
+### Desk-actionable (12)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
+| graph-execution | 36 [exec:strong] | implemented | 21030 | 38 | — | verify-desk | triage, then re-bucket | — | — |
 | milestone-support | 07 [exec:strong] | implemented | 3510 | 5 | 31h | verify-desk | triage, then re-bucket | — | — |
 | composability | 02 | implemented | 2530 | 3 | 3d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2530 | 1 | 3d | verify-desk | triage, then re-bucket | — | — |
@@ -981,7 +982,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 32 Investigate criterion-level evidence freshness — verified (wave 0)
 - 34 Signal input, signal classes and decision options in the workflow-pattern schema — implemented (wave 1)
 - 35 Runtime gate for signal patterns - admission refusal, class routes and the liveness hold — todo (wave 2)
-- 36 Canonical PostgreSQL foundation for read-only consumers — todo (wave 0)
+- 36 Canonical PostgreSQL foundation for read-only consumers — implemented (wave 0)
 - 40 Extract the shared process runner with launch custody intact — implemented (wave 1)
 - 41 Persist loop-admin journal and recovery in PostgreSQL — todo (wave 2)
 - 42 Supervise bounded invocations through the durable journal — todo (wave 6)
