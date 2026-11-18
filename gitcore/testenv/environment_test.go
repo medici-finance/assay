@@ -9,9 +9,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/gitquiet"
 )
+
+func TestMain(m *testing.M) { os.Exit(gitquiet.Run(m)) }
 
 func gitTool(t *testing.T) string {
 	t.Helper()
@@ -96,7 +101,7 @@ func asMap(env []string) map[string]string {
 	m := map[string]string{}
 	for _, entry := range env {
 		key, value, _ := strings.Cut(entry, "=")
-		m[key] = value
+		m[keyFor(key, runtime.GOOS)] = value
 	}
 	return m
 }
