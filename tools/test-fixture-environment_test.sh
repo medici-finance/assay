@@ -4,7 +4,7 @@ root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$root/tools/test-fixture-environment.sh"
 scratch="$(mktemp -d "${TMPDIR:-/tmp}/fixture-environment-controls.XXXXXX")"
 trap 'rm -rf -- "$scratch"' EXIT
-git_bin="$(command -v git)"; python_bin="$(command -v python3)"
+git_bin="$(command -v git)"; python_bin="$(command -v python3)"; bash_bin="$(command -v bash)"
 mkdir -p "$scratch/repo/statusgen" "$scratch/repo/tools/desk"
 
 for mode in healthy git-global git-repo installed-tool suite-failure absent-execution; do
@@ -22,6 +22,10 @@ test "\${GIT_NO_REPLACE_OBJECTS:-}" = 1
 test "\${GH_TOKEN+x}" != x
 test "\${GITHUB_TOKEN+x}" != x
 test "\${GITLAB_TOKEN+x}" != x
+test "\${CI:-}" = true
+case "\$PATH" in */bin:/usr/bin:/bin:/usr/sbin:/sbin) ;; *) exit 1 ;; esac
+bash -c 'test "\${BASH_VERSINFO[0]}" -ge 4'
+python3 -c 'import sys; assert sys.version_info.major == 3'
 printf '%s\\n' "\${PWD##*/}" >> '$case_root/invocations'
 case '$mode' in
   git-global) git config --global fixture.leaked yes ;;
@@ -68,6 +72,18 @@ fi
 env -i "${fixture_env[@]}" 'GH_TOKEN=synthetic-fixture-value' /bin/sh -c 'test "$GH_TOKEN" = synthetic-fixture-value'
 echo 'PASS: explicit credential presence and absence'
 
+# Missing required tools remain failures under the same CI marker used by
+# statusgen's requireTool, rather than succeeding through an artificial skip.
+missing_tool_control='if command -v fixture-required-missing-tool >/dev/null 2>&1; then exit 0; fi; if [ -n "${CI:-}" ]; then exit 42; fi; exit 0'
+if env -i "${fixture_env[@]}" /bin/sh -c "$missing_tool_control"; then
+  echo 'required missing tool was accepted in CI' >&2; exit 1
+fi
+# Withholding CI would turn that same missing capability into a skipped success.
+env -i "${fixture_env[@]}" CI= /bin/sh -c "$missing_tool_control"
+env -i "${fixture_env[@]}" bash -c 'test "${BASH_VERSINFO[0]}" -ge 4'
+env -i "${fixture_env[@]}" python3 -c 'import sys; assert sys.version_info.major == 3'
+echo 'PASS: explicit compatible interpreters and CI tool strictness'
+
 # The actual public entry point must still launch the second complete module
 # after a first-module failure. The fake only substitutes Go; no runner branch
 # or selected-package flag exists for this control.
@@ -75,6 +91,7 @@ entry="$scratch/entry"
 mkdir -p "$entry/bin" "$entry/cache" "$entry/modcache" "$entry/gopath"
 ln -s "$git_bin" "$entry/bin/git"
 ln -s "$python_bin" "$entry/bin/python3"
+ln -s "$bash_bin" "$entry/bin/bash"
 cat > "$entry/bin/go" <<SH
 #!/bin/bash
 set -eu
@@ -89,6 +106,7 @@ if [ "\$1" = env ]; then
 fi
 test "\$*" = 'test -json -count=1 -timeout=20m ./...'
 test "\${GH_TOKEN+x}" != x
+test "\${CI:-}" = true
 printf '%s\\n' "\${PWD##*/}" >> '$entry/invocations'
 exit 8
 SH

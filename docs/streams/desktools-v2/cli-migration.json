@@ -8,6 +8,11 @@
   "exclusion_rules": [
     {
       "class": "test",
+      "pattern": "tools/test-fixture-environment.sh",
+      "reason": "test-fixture-isolation/04 source-only offline caller-environment regression launcher for full statusgen and desk module tests; invoked by CI and developer checks, never installed or released as an operator CLI"
+    },
+    {
+      "class": "test",
       "pattern": "statusgen/scripts/count-git-launch.sh",
       "reason": "desktools-v2/76 source-only offline Git-launch ratchet invoked by its original Verify row 4; no arguments, never installed, packaged or released as an operator CLI"
     },

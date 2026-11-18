@@ -24,12 +24,28 @@ fixture_prepare() {
   fixture_scratch="$(cd -- "$2" && pwd -P)"
   fixture_go=$3 fixture_git=$4 fixture_python=$5
   local cache=$6 modcache=$7 gopath=$8 baseline=${9:-}
+  local approved_bash=${10:-$(command -v bash)}
+  if [[ "$approved_bash" != /* || ! -x "$approved_bash" ]] ||
+      ! "$approved_bash" -c 'test "${BASH_VERSINFO[0]}" -ge 4'; then
+    echo 'ERROR: fixture suites require a pre-resolved compatible Bash (4 or later)' >&2
+    return 2
+  fi
+  if [[ "$fixture_python" != /* || ! -x "$fixture_python" ]] ||
+      ! "$fixture_python" -c 'import sys; assert sys.version_info.major == 3'; then
+    echo 'ERROR: fixture suites require a pre-resolved Python 3' >&2
+    return 2
+  fi
   mkdir -p "$fixture_scratch/home" "$fixture_scratch/home/.config" "$fixture_scratch/bin" "$fixture_scratch/tmp"
   printf '[fixture]\n\tcaller = unchanged\n' > "$fixture_scratch/global"
   : > "$fixture_scratch/system"
   cp "$fixture_scratch/global" "$fixture_scratch/global.before"
   ln -s "$fixture_go" "$fixture_scratch/bin/go"
   ln -s "$fixture_git" "$fixture_scratch/bin/git"
+  ln -s "$approved_bash" "$fixture_scratch/bin/bash"
+  ln -s "$fixture_python" "$fixture_scratch/bin/python3"
+  # Approved interpreters override the fixed OS dependency directories below;
+  # no caller PATH tail (or installed desk/forge tool directory) is inherited.
+  # CI=true makes requireTool refuse missing required tools instead of skipping.
   local tool
   for tool in deskdecision deskdispatch desktoken gh glab; do
     "$fixture_python" - "$fixture_scratch/bin/$tool" "$fixture_scratch/decoys" "$tool" <<'PY'
@@ -39,7 +55,7 @@ PY
     chmod +x "$fixture_scratch/bin/$tool"
   done
   fixture_env=(
-    "PATH=$fixture_scratch/bin:/usr/bin:/bin:/usr/sbin:/sbin" "HOME=$fixture_scratch/home"
+    "PATH=$fixture_scratch/bin:/usr/bin:/bin:/usr/sbin:/sbin" "HOME=$fixture_scratch/home" "CI=true"
     "USERPROFILE=$fixture_scratch/home" "XDG_CONFIG_HOME=$fixture_scratch/home/.config"
     "TMPDIR=$fixture_scratch/tmp" "TMP=$fixture_scratch/tmp" "TEMP=$fixture_scratch/tmp"
     "GOCACHE=$cache" "GOMODCACHE=$modcache" "GOPATH=$gopath" "GOWORK=off"
@@ -109,10 +125,10 @@ PY
 
 fixture_main() (
   if [ "$#" -ne 0 ]; then echo 'usage: bash tools/test-fixture-environment.sh' >&2; return 2; fi
-  local root go_bin git_bin python_bin scratch cache modcache gopath baseline=${SG_OLD_BIN:-} failed=0
+  local root go_bin git_bin python_bin bash_bin scratch cache modcache gopath baseline=${SG_OLD_BIN:-} failed=0
   root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
-  go_bin="$(command -v go)"; git_bin="$(command -v git)"; python_bin="$(command -v python3)"
-  for executable in "$go_bin" "$git_bin" "$python_bin"; do
+  go_bin="$(command -v go)"; git_bin="$(command -v git)"; python_bin="$(command -v python3)"; bash_bin="$(command -v bash)"
+  for executable in "$go_bin" "$git_bin" "$python_bin" "$bash_bin"; do
     case "$executable" in /*) test -x "$executable" ;; *) echo 'ERROR: tools must resolve to absolute executable paths' >&2; return 2 ;; esac
   done
   cache="$("$go_bin" env GOCACHE)"; modcache="$("$go_bin" env GOMODCACHE)"; gopath="$("$go_bin" env GOPATH)"
@@ -125,7 +141,7 @@ fixture_main() (
   trap 'rm -rf -- "$scratch"' EXIT
   trap 'exit 130' INT
   trap 'exit 143' TERM
-  fixture_prepare "$root" "$scratch" "$go_bin" "$git_bin" "$python_bin" "$cache" "$modcache" "$gopath" "$baseline"
+  fixture_prepare "$root" "$scratch" "$go_bin" "$git_bin" "$python_bin" "$cache" "$modcache" "$gopath" "$baseline" "$bash_bin"
   # No early-success path: both complete module invocations are owed even when
   # the first fails. env -i withholds every ambient forge credential. Fixtures
   # requiring credential presence declare their own synthetic value in tests.

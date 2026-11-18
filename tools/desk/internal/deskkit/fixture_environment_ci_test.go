@@ -152,7 +152,7 @@ func TestFixtureEnvironmentCIRunner(t *testing.T) {
 	if profileValues == 0 {
 		t.Fatal("actual admitted Git profile was not inspected")
 	}
-	for _, required := range []string{"fixture_run_module statusgen", "fixture_run_module tools/desk", "test -json -count=1 -timeout=20m ./...", "GIT_CONFIG_COUNT=2", "GIT_NO_REPLACE_OBJECTS=1", `env -i "${fixture_env[@]}"`, "fixture_unchanged"} {
+	for _, required := range []string{"fixture_run_module statusgen", "fixture_run_module tools/desk", "test -json -count=1 -timeout=20m ./...", "GIT_CONFIG_COUNT=2", "GIT_NO_REPLACE_OBJECTS=1", "CI=true", `"PATH=$fixture_scratch/bin:/usr/bin:/bin:/usr/sbin:/sbin"`, `env -i "${fixture_env[@]}"`, "fixture_unchanged"} {
 		if !strings.Contains(string(runner), required) {
 			t.Errorf("full-suite launcher missing %q", required)
 		}
@@ -172,7 +172,7 @@ func TestFixtureEnvironmentCIRunner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("launcher controls: %v: %s", err, out)
 	}
-	for _, control := range []string{"healthy", "git-global", "git-repo", "installed-tool", "suite-failure", "absent-execution", "explicit credential presence and absence", "physical owned scratch paths", "public entry executes both complete modules after failure"} {
+	for _, control := range []string{"healthy", "git-global", "git-repo", "installed-tool", "suite-failure", "absent-execution", "explicit credential presence and absence", "physical owned scratch paths", "explicit compatible interpreters and CI tool strictness", "public entry executes both complete modules after failure"} {
 		if !strings.Contains(string(out), fmt.Sprintf("PASS: %s", control)) {
 			t.Errorf("missing actual launcher control %s", control)
 		}
