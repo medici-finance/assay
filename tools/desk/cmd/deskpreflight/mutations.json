@@ -1,10 +1,10 @@
 {
   "test": "go test ./cmd/deskpreflight/... -count=1",
   "control": {
-    "name": "CONTROL — loosen the oversize comparison (a file of exactly the threshold is reported)",
+    "name": "CONTROL \u2014 loosen the oversize comparison (a file of exactly the threshold is reported)",
     "file": "cmd/deskpreflight/main.go",
-    "old": "\t\tif isJunkName(filepath.Base(f.rel)) || f.size > oversizeBytes {",
-    "new": "\t\tif isJunkName(filepath.Base(f.rel)) || f.size >= oversizeBytes {"
+    "old": "\t\tif f.size <= oversizeBytes {",
+    "new": "\t\tif f.size < oversizeBytes {"
   },
   "mutations": [
     {
@@ -64,8 +64,50 @@
     {
       "name": "drop the junk-NAME half of the check (only size is left; a stray .orig rides in)",
       "file": "cmd/deskpreflight/main.go",
-      "old": "\t\tif isJunkName(filepath.Base(f.rel)) || f.size > oversizeBytes {",
-      "new": "\t\tif f.size > oversizeBytes {"
+      "old": "\t\tif isJunkName(filepath.Base(f.rel)) {",
+      "new": "\t\tif false && isJunkName(filepath.Base(f.rel)) {"
+    },
+    {
+      "name": "exempt any oversize file, allowlisted or not (an accidental large addition rides in)",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\t\te, inList := findRetained(allow, repoRel)\n\t\tif !inList {",
+      "new": "\t\te, inList := findRetained(allow, repoRel)\n\t\tif false && !inList {"
+    },
+    {
+      "name": "drop the pinned size bound (an allowlisted baseline may grow without limit)",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\tif f.size > e.maxBytes {",
+      "new": "\tif false && f.size > e.maxBytes {"
+    },
+    {
+      "name": "accept an allowlisted path absent at the merge-base (a new oversize file added under an allowlisted name passes)",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\tif !present {\n\t\treturn retainedRejected, \"allowlisted path is not present at the merge-base",
+      "new": "\tif false && !present {\n\t\treturn retainedRejected, \"allowlisted path is not present at the merge-base"
+    },
+    {
+      "name": "skip the committed-content comparison (a baseline edited in a branch commit passes)",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\tif !present || headBlob != baseBlob {",
+      "new": "\tif !present || false && headBlob != baseBlob {"
+    },
+    {
+      "name": "skip the working-tree comparison (an uncommitted edit to a baseline passes)",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\tif strings.TrimSpace(string(wt)) != baseBlob {",
+      "new": "\tif false && strings.TrimSpace(string(wt)) != baseBlob {"
+    },
+    {
+      "name": "read an unreadable baseline as unchanged (could-not-check collapses into an exemption)",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\tif !ran || code != 0 {\n\t\treturn retainedUncheckable, \"could not read \" + f.rel",
+      "new": "\tif !ran || code != 0 {\n\t\treturn retainedOK, \"could not read \" + f.rel"
+    },
+    {
+      "name": "read a missing merge-base as an exemption-ready context (unverifiable provenance passes)",
+      "file": "cmd/deskpreflight/main.go",
+      "old": "\tif !ran || code != 0 || mergeBase == \"\" {",
+      "new": "\tif !ran || false && (code != 0 || mergeBase == \"\") {"
     }
   ]
 }
