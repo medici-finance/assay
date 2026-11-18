@@ -1,0 +1,1 @@
+- Bind the desk-tools/39 consumer check to the three deliveries that introduced its adapters and selection contract.

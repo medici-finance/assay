@@ -234,7 +234,7 @@ func lifecycleLintChecks(root string, streams []*Stream) (problems, notices []st
 		}
 		// §8.3: approved/routed MUST carry a `**Routes-to:**` destination. Presence
 		// is the control; whether the destination is a GOOD stream stays review.
-		if (h.State == lifecycleApproved || h.State == lifecycleRouted) && !h.Routes {
+		if h.hasApproval() && !h.Routes {
 			problems = append(problems, fmt.Sprintf("%s: **Status:** %s but no **Routes-to:** destination — an approved/routed document MUST name the stream directory the work routes into (spec/lifecycle-v1.md §8.3) [%s]", h.Rel, h.State, tagLifecycleRoutesTo))
 		}
 		// §8.5: an approved document that no brief cites has authoring OWED. Only

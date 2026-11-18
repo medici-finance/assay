@@ -7087,7 +7087,9 @@ under `--claim-root` when given, else under `--root`, and only when their port i
 a repo that keeps the scripts but runs without the ports points `--claim-root` at the checkout
 that carries them while `--root` stays the item's own repo — the worktree is always cut from
 `--root`, and the claim itself is a ref in the target repo (`--repo`) regardless of where the
-script file sits.
+script file sits — except for a cross-repository VERIFIER dispatch, whose claim (with its
+admission lease and occupancy count) is taken, released and inspected in the TRACKING repo,
+`--claim-root`'s origin, where the brief, its Evidence and its outcome record land (#5999).
 
 **Cross-repo items resolve through the alias registry, and a mismatch is a hard fail.** An item
 may name the repo its deliverable lands in by ALIAS — the brief's `deliverable_repo: <alias>` or

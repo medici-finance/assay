@@ -61,7 +61,7 @@ var cellctlSuiteRunners = map[string][]string{
 	"gen-shims-gh-token.test.sh": {"tools/desk/internal/regression:TestReg1145ShimCredential"},
 	"harness.test.sh":            {"tools/desk/internal/regression:TestReg6175HarnessSuite", "tools/desk/cmd/cellctl:TestHarnessShellSuite"},
 	"parity.test.sh":             {"tools/desk/cmd/cellctl:TestShellOracleParity"},
-	"provider.test.sh":           {"tools/desk/internal/regression:TestReg6175ProviderSuite"},
+	"provider.test.sh":           {"tools/desk/internal/regression:TestReg6175ProviderSuite", "tools/desk/cmd/cellctl:TestProviderShellSuite"},
 	"role-context.test.sh":       {"tools/desk/cmd/cellctl:TestRoleContextShellSuite"},
 	"scrubbed-cell.test.sh":      {"tools/desk/cmd/cellctl:TestScrubbedCellShellSuite"},
 }

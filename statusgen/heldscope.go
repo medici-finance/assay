@@ -1603,6 +1603,13 @@ func heldQuotedIn(clean string, h []int, lo, hi int) bool {
 		if q > lo && clean[q-1] >= 0x80 || q+1 < hi && clean[q+1] >= 0x80 || space(q-1) && space(q+1) {
 			return false
 		}
+		// An emphasis delimiter beside a quote renders as nothing: in
+		// **5**" the quote follows a digit on the page, an inch mark, though
+		// the source shows it after "*". A quote beside "*" or "_" gives no
+		// span.
+		if q > lo && strings.IndexByte("*_", clean[q-1]) >= 0 || q+1 < hi && strings.IndexByte("*_", clean[q+1]) >= 0 {
+			return false
+		}
 	}
 	alnum := func(i int) bool {
 		if i < lo || i >= hi {
