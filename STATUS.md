@@ -113,7 +113,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-17 |
 | [review-profiles](docs/streams/review-profiles/README.md) | P2 | 0/6 | 2026-10-29 |
 | [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-10-20 |
-| [tool-refactoring](docs/streams/tool-refactoring/README.md) | P1 | 0/11 | 2026-11-16 |
+| [tool-refactoring](docs/streams/tool-refactoring/README.md) | P1 | 0/11 | 2026-11-18 |
 
 ## Next up
 
@@ -151,7 +151,7 @@ _Held by per-stream caps: 20 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 9ce5d3974 2026-11-18T04:29:58Z_
+_last regen: c205bbf9e 2026-11-18T04:36:19Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -172,7 +172,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 9ce5d3974 2026-11-18T04:29:58Z_
+_last regen: c205bbf9e 2026-11-18T04:36:19Z_
 
 **Progress:** 36/100 brief items done.
 
@@ -478,7 +478,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 17 [exec:strong] | implemented | 2020 | 0 | 2d | verify-desk | triage, then re-bucket | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2020 | 2 | 2d | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 48 [exec:strong] | implemented | 2000 | 2 | 13h | verify-desk | triage, then re-bucket | — | — |
-| desk-tools | 50 [exec:strong] | implemented | 2000 | 2 | 16h | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 50 [exec:strong] | implemented | 2000 | 2 | 17h | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 62 [exec:strong] | implemented | 2000 | 2 | 13h | verify-desk | triage, then re-bucket | — | — |
 | desktools-v2 | 71 [exec:strong] | implemented | 1020 | 0 | 2d | verify-desk | dispatch one judge | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1020 | 0 | 2d | verify-desk | triage, then re-bucket | — | — |
