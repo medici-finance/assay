@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"strings"
 	"sync"
@@ -41,6 +42,13 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 		rest = rest[1:]
 	}
 	for i := 0; i < len(rest); i++ {
+		// The `--flag=value` spelling of the five claim flags is the same flag with the value
+		// attached, so a value that starts with "-" (a branchless `--branch=-`) cannot be
+		// mistaken for a flag. Any other `--x=y` falls through to the unknown-flag refusal.
+		if name, value, ok := strings.Cut(rest[i], "="); ok && claimValueFlag[name] {
+			rest = append(rest[:i+1:i+1], append([]string{value}, rest[i+1:]...)...)
+			rest[i] = name
+		}
 		switch rest[i] {
 		case "--repo":
 			repoFlag, i = next(rest, i)
@@ -77,29 +85,36 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 	var selected *subjectClaimStore
 	if id != "" && workClaimInput(id) {
 		catalog, peers, complete, err := loadClaimWork(repo)
-		if err != nil {
+		// A progress write to a plain physical key needs no catalog: it only advances a
+		// claim that already exists, and a claim holding a negotiated subject is still
+		// refused below (legacySubjectHold). Without a published owning root there is
+		// nothing to select, so the work-reference step is skipped for exactly that case.
+		skipSelect := verb == "progress" && validID(id) && errors.Is(err, deskkit.ErrNoPublishedOwningRoot)
+		if err != nil && !skipSelect {
 			errf("unverifiable: work reference source: %v", err)
 			return exitUnverifiable
 		}
-		work, err := catalog.Select(id)
-		if err != nil {
-			errf("work reference: %v", err)
-			return deskkit.ExitCodeOf(err)
+		if !skipSelect {
+			work, err := catalog.Select(id)
+			if err != nil {
+				errf("work reference: %v", err)
+				return deskkit.ExitCodeOf(err)
+			}
+			if err := work.Validate(); err != nil {
+				errf("work reference: %v", err)
+				return deskkit.ExitCodeOf(err)
+			}
+			if err := deskkit.CheckWorkOperation("claim", peers, complete); err != nil {
+				errf("work reference: %v", err)
+				return deskkit.ExitCodeOf(err)
+			}
+			if verb == "release" || verb == "steal" {
+				errf("refused: resolving a work reference does not authorize release or takeover; use the existing explicit physical-key operation")
+				return exitRefused
+			}
+			selected = &subjectClaimStore{selected: work, peers: peers, complete: complete, repository: repo}
+			id = work.ClaimKey
 		}
-		if err := work.Validate(); err != nil {
-			errf("work reference: %v", err)
-			return deskkit.ExitCodeOf(err)
-		}
-		if err := deskkit.CheckWorkOperation("claim", peers, complete); err != nil {
-			errf("work reference: %v", err)
-			return deskkit.ExitCodeOf(err)
-		}
-		if verb == "release" || verb == "steal" {
-			errf("refused: resolving a work reference does not authorize release or takeover; use the existing explicit physical-key operation")
-			return exitRefused
-		}
-		selected = &subjectClaimStore{selected: work, peers: peers, complete: complete, repository: repo}
-		id = work.ClaimKey
 	}
 	// The store is the RESOLVER's answer, never this tool's choice: there is no flag that
 	// selects one. The forge-ref opener is installed so that, should the resolver resolve to
@@ -161,6 +176,9 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 	errf("refused: unknown verb %s", verb)
 	return dieUsage()
 }
+
+// claimValueFlag names the flags that take a value and so accept the `--flag=value` spelling.
+var claimValueFlag = map[string]bool{"--repo": true, "--owner": true, "--branch": true, "--reason": true, "--token-file": true}
 
 // next returns the value after flag position i and the advanced index. A missing value
 // yields "" (the bash `${2:-}`), which the verb-level checks then refuse where required.

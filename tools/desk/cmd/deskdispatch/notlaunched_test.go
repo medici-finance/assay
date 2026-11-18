@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -83,5 +85,27 @@ func TestRefusedDispatchPrintsNoNotLaunchedLine(t *testing.T) {
 	}
 	if strings.Contains(stderr, "NOT LAUNCHED") {
 		t.Errorf("a refused dispatch printed a NOT LAUNCHED line:\n%s", stderr)
+	}
+}
+
+// A run with no branch (a detached review/verify home) prints `--branch -`. The claim tool
+// accepts that vector as printed (TestPrintedBranchlessProgressRuns in cmd/deskclaim-ref runs
+// `progress <key> --repo R --branch -`); this pins the printed side of the contract.
+// regression: #6896
+func TestNotLaunchedBranchlessProgressShape(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	old := os.Stderr
+	os.Stderr = w
+	dispatchOpts{item: "stream--b-08"}.notLaunched(dispatchPlan{claimKey: "assay-console--stream--b-08", claimReleaseHint: goClaimBinary}, "medici-finance/assay", "/home/x")
+	_ = w.Close()
+	os.Stderr = old
+	var buf bytes.Buffer
+	_, _ = buf.ReadFrom(r)
+	want := `progress "assay-console--stream--b-08" --repo medici-finance/assay --branch - --token-file`
+	if !strings.Contains(buf.String(), want) {
+		t.Fatalf("printed progress command lost its branchless shape %q:\n%s", want, buf.String())
 	}
 }

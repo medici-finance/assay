@@ -14,6 +14,17 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// ErrNoPublishedOwningRoot is the cause of the refusal a work-source read gives when the
+// repository's graph registry publishes no owning root for it. It is the one cause a
+// caller that does not need a catalog (a progress write to a claim that carries no
+// negotiated subject) may set aside; every other work-source failure stays fail-closed.
+var ErrNoPublishedOwningRoot = errors.New("source repository has no published owning root")
+
+// NoPublishedOwningRoot is the unverifiable refusal carrying ErrNoPublishedOwningRoot.
+func NoPublishedOwningRoot() *DeskError {
+	return Unverifiable("work source registry", ErrNoPublishedOwningRoot)
+}
+
 // LocalWorkCatalog reads one immutable checked-out commit, using the existing
 // in-process git adapter (gitcore). It performs no network/credential lookup and never
 // treats an edited file, origin basename or fuzzy filename match as owning-root evidence.
@@ -87,7 +98,7 @@ func LocalWorkCatalog(root, repository string) (WorkCatalog, error) {
 		}
 	}
 	if declaring.Repo == "" {
-		return WorkCatalog{}, Unverifiable("source repository has no published owning root", nil)
+		return WorkCatalog{}, NoPublishedOwningRoot()
 	}
 	var records []WorkRecord
 	var bindings []workref.Binding
