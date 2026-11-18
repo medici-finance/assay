@@ -100,5 +100,40 @@ Failure modes mapped: an example record the shipped code would not accept → ro
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
+Non-implementer verification on merged main c5df2f7f09bb355c9fcd4aad94994a781112c191 (delivered by b3bbb256df36, first parent 340714fa6cfb). Gate: model; all four risk answers no. Tool: installed statusgen v1.0.87. Admission: `deskdispatch --check-verifier` exit 0 before the rows and again before this edit. All five rows are `check:ci` rows. The host is darwin and cannot sandbox them with `unshare --net`, so they ran in a closed container-netns admission bracket (`--network none`, read-only tree, read-only module cache, `GOPROXY=off`, `GOTOOLCHAIN=local`) on the release-pinned verify-runner v1.0.87 image. `--bracket-digest` reports `verdict=match`. The witness file's bytes follow verbatim.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestClassPassExamples$' ./cmd/scanloop > "$o" && grep -q -- '--- PASS: TestClassPassExamples ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ c5df2f7f09bb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestClassPassFlagsPlant$' ./cmd/scanloop > "$o" && grep -q -- '--- PASS: TestClassPassFlagsPlant ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ c5df2f7f09bb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `test "$(wc -l < plugins/assay/skills/intake-desk/SKILL.md)" -le 712 && grep -c 'references/intake-class-pass.md' plugins/assay/skills/intake-desk/SKILL.md` | pass exit=0 sandbox=container-netns | sha256:4355a46b19d3 | 2026-11-18 | assay-verifier-app[bot] @ c5df2f7f09bb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd tools/skillslint && GOWORK=off go test -count=1 ./...)` | pass exit=0 sandbox=container-netns | sha256:232d6bddd06c | 2026-11-18 | assay-verifier-app[bot] @ c5df2f7f09bb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `statusgen --consumers --brief assay:assay:intake-class-routing:04` | fail exit=2 sandbox=container-netns | sha256:aa3bcf73e0c9 | 2026-11-18 | assay-verifier-app[bot] @ c5df2f7f09bb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:7c7e183bae944b0f117d30fa67dcb4c314e684db1bf5f58d432e001ea5a208ec
+Container-Image: sha256:c67baa7a3c8ba3d514128f31340489146525a50c29ebb641a68899c650d354a1
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7059 run=971cd42382815abdc592f7555187b5b63c9d7399d1aaf5821584b9b41cbb3fdd source=c5df2f7f09bb355c9fcd4aad94994a781112c191 brief=docs/streams/intake-class-routing/brief-04-work-the-owed-batch-by-class.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=971cd42382815abdc592f7555187b5b63c9d7399d1aaf5821584b9b41cbb3fdd source=c5df2f7f09bb355c9fcd4aad94994a781112c191 tree=sha256:7c7e183bae944b0f117d30fa67dcb4c314e684db1bf5f58d432e001ea5a208ec witness=sha256:66aa345bd699d673ba46c31490c1c5b8d78cbab92a6c9fa85fb3eeb778c3a9c1 opened=2026-11-18T21:10:39Z closed=2026-11-18T21:12:13Z before=receipt after=check-verifier
+
+Row 5 is could-not-check, not a disproved claim. Its witness cell reads `fail exit=2`; `statusgen --consumers` exit 2 means "the diff could not be taken", not exit 1 (a claim DISPROVED). In the container the tool printed `COULD-NOT-CHECK: git diff --name-only refs/remotes/origin/main...HEAD: exit status 128: fatal: gitfile does not point to a valid repository: /work/.git`. The admitted home is a linked worktree whose gitdir is not mounted in the bracket. A supplemental host probe of the same command (no acceptance credit) also exited 2: `COULD-NOT-CHECK: assay:assay:intake-class-routing:04 is not in the diff against c5df2f7f09bb355c9fcd4aad94994a781112c191, and the brief's delivery could not be derived: the committed Evidence has no Verification-Table marker naming the delivery, and the history cannot be searched through the library read path (native discovery/config/shallow environment profile)`. On merged main HEAD equals origin/main, so the row as authored has no diff to read and no recorded delivery to fall back on. It needs either a committed delivery marker or an explicit delivery and base, which is a reviewed row-definition repair and needs fresh admission.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 5 | `statusgen --consumers --brief assay:assay:intake-class-routing:04` | exit 0; output contains "0 disproved" | could-not-run as admitted: exit 2, COULD-NOT-CHECK in the container (gitdir of the linked-worktree home not mounted) and on the host (empty diff at merged main; no committed Verification-Table marker; history read path unavailable). No claim corroborated or disproved by the row as written. | 2026-11-18 | assay-verifier-app[bot] @ c5df2f7f09bb (claude-opus-5-5) (on-behalf-of human:ian) |
+
+Supplemental host probe, labelled diagnostic, no acceptance credit: `statusgen --consumers --brief assay:assay:intake-class-routing:04 --delivery b3bbb256df36b1bfeec8911040c079d7652fe72b --base 340714fa6cfbc3ddde81dc16df6fa84bc0b295a4` exited 0 with `summary: 3 corroborated, 0 disproved, 1 unchecked` (the three fixed-here consumers CORROBORATED; the author-brief out-of-scope entry UNCHECKED as a reviewer judgement).
+
+Row notes. Rows 1 and 2 discriminate: the test reads every expect line and its record in the reference, decodes and assesses each with the shipped issueflow code, requires every outcome group, and the plant test plus nine named mutations each must be reported. Row 3: the skill was 710 lines at the delivery's base and 711 after it (the bound 712 is base plus two); it is 655 lines at this head after later edits and still carries the pointer.
+
+Risk-bearing value. Risk metadata is present with all four answers no, the item is not irreversible, and the delivery touches only a skill, its generated copy and digest, a reference, a test, a test fixture and a changelog fragment. Enumeration over the delivered diff b3bbb256df36 and the Deliverables:
+- Verify row 3 line bound = 712 @ brief line 93 — reversible (a doc-size guard; edit and re-run).
+- design-fit weight "skill rule-text lines +2 at most" @ brief line 58 — reversible.
+- minimum expect lines = 4 (`n < 4`) @ class_examples_test.go line 173 — reversible test floor; it matches the brief's four required outcomes.
+- design-owed trigger = 3 counted instances / second merged fix @ intake-class-pass.md line 90 — restated, not changed (the brief forbids changing it); it is the shipped class decision's value, intake-desk SKILL.md line 353.
+
+RISK-VALUE: DERIVED — design-owed trigger = 3 counted instances @ plugins/assay/references/intake-class-pass.md:90 — it restates the existing class decision (intake-desk SKILL.md:353) unchanged, as the brief's ground rules require; the reference introduces no new threshold. The other entries are reversible documentation and test bounds, ranked last and needing no derivation.
+
+**VERIFY: BLOCKED** — rows 1-4 pass in the closed container bracket (verdict=match); row 5 could-not-run as admitted (consumers instrument COULD-NOT-CHECK at merged main); no obligation observed failed.
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.
