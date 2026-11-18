@@ -163,11 +163,19 @@ func checkHandoffSuccessor(h issueflow.IntakeHandoff, sourceRepo string) error {
 			return deskkit.Unverifiable("cannot read handoff successor", err)
 		}
 		if issue.State != "open" {
-			return deskkit.Refused("successor is not open; retain successor-owed work")
+			// The closed source can own qualification of an already delivered repair.
+			// A closed issue on its own still provides no evidence of delivery.
+			sameSource := strings.EqualFold(h.Item, fr.Slug()+"#"+strconv.Itoa(number))
+			if issue.State != "closed" || !sameSource || h.Disposition != issueflow.Repair || !h.Delivered || h.Route != "qualification" {
+				return deskkit.Refused("successor is not open; retain successor-owed work")
+			}
 		}
 		admission := admitOne(Inbound{Repo: repo, Number: number}, forgeTrustProbe(nil))
 		if !admission.Admitted() {
 			return deskkit.Unverifiable("successor trust is not admitted", nil)
+		}
+		if issue.State == "closed" {
+			return checkMergedRepair(f, fr, number, h.Evidence)
 		}
 		return nil
 	}
@@ -216,6 +224,43 @@ func checkHandoffSuccessor(h issueflow.IntakeHandoff, sourceRepo string) error {
 	}
 	if h.Disposition == issueflow.NeedsScoping && fields.ExecTier != "strong" {
 		return deskkit.Refused("successor authoring brief does not declare strong execution")
+	}
+	return nil
+}
+
+// checkMergedRepair binds a qualification judgment to the source issue through
+// a cited change's merge state and work trailer, or the forge's own closing links.
+func checkMergedRepair(f deskkit.Forge, source deskkit.ForgeRepo, issue int, evidence string) error {
+	ref, err := deskkit.ParseBlockerRef(evidence, source.Owner, source.Name)
+	if err != nil || ref.Kind != "numbered" {
+		history, err := f.IssueStateEvents(source, issue)
+		if err != nil || history == nil || !history.Complete {
+			return deskkit.Unverifiable("cannot establish the closed source issue's full change history", err)
+		}
+		for _, change := range history.ClosingChanges {
+			if change.Merged && change.Number > 0 && change.Repo != "" {
+				return nil
+			}
+		}
+		return deskkit.Refused("no merged closing change; cite the merged repair as #N or owner/repo#N in the source repository")
+	}
+	if ref.Number <= 0 || !strings.EqualFold(ref.Repo().Slug(), source.Slug()) {
+		return deskkit.Refused("the cited repair must be in the source repository; retain successor-owed work")
+	}
+	change, err := f.GetPullRequest(source, ref.Number)
+	if err != nil {
+		return deskkit.Unverifiable("cannot read merged repair for qualification", err)
+	}
+	if change == nil || change.Number != ref.Number {
+		return deskkit.Unverifiable("cannot identify the cited repair change", nil)
+	}
+	if !change.Merged && change.MergedAt == "" {
+		return deskkit.Refused("the cited repair change has not merged; retain successor-owed work")
+	}
+	links, err := deskkit.ParseTrailers([]byte(change.Body))
+	if err != nil || len(links) != 1 || links[0].Kind != deskkit.TrailerIssue ||
+		links[0].Value != strconv.Itoa(issue) || (links[0].Repo != "" && !strings.EqualFold(links[0].Repo, source.Slug())) {
+		return deskkit.Refused("the merged repair must name the closed source issue in its work trailer; retain successor-owed work")
 	}
 	return nil
 }
