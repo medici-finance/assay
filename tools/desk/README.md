@@ -7810,6 +7810,16 @@ gather Evidence for such a brief — its member line reads `Evidence-only (never
 but never flips it; the Evidence-only lane in `Land` writes Evidence with no status flip and the
 human's merge of the checkpoint PR is the flip.
 
+**One outcome protocol for the writer and its readers**. The outcome words, the
+row-result reduction and the record codec the verifier writes and the queue reads are defined once in
+`statusgen/evaluation/outcome.go`; `deskkit` keeps only the adapters. Consequences an operator can see:
+`--outcome-record` lands only the exact canonical words (`verified`, `verify-fail`, `fail`, `blocked`,
+`needs-context`, `needs_context`) and refuses a record that names no `outcome`, so the writer cannot
+create a record the readers would classify differently or not at all; the verified-closure guard and the
+sidecar gate count `Verified` or ` verified ` as the pass a reader counts, so a case or whitespace
+variant no longer skips the closure check; and a `verified` record that holds or fails rows is refused at
+the writer. The record layout, the numeric exit codes and the wake-receipt schema are unchanged.
+
 **`plan` does not re-run an unchanged failure — wake receipts** (`verify-wake-v1`;
 `docs/streams/example-stream/verify-wake-v1.md`). A `verify-fail`/`blocked` verifier run lands a
 WAKE RECEIPT on the verify-outcome record: since #882, one NEW file per outcome under

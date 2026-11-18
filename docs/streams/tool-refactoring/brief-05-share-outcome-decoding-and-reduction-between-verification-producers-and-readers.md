@@ -7,6 +7,7 @@ depends: []
 unblocks: ["tool-refactoring/10", "tool-refactoring/11"]
 effort: M
 gate: human
+decision-issue: 7061
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2

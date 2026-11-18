@@ -27,6 +27,7 @@ var verifyOutcomesChokePointAllowList = map[string]string{
 	"verifyoutcomes.go":          "the reader/name choke point itself, plus the pre-existing legacy shard-glob union reader",
 	"verifyclosure.go":           "prose describing what deskevidence's verified-outcome sidecar gate is for — no file I/O",
 	"briefdoc/registers.go":      "the shared reserved-register name declaration in briefdoc (a string key), moved from load.go — no file I/O",
+	"evaluation/outcome.go":      "statusgen/evaluation: the shared verification-outcome protocol — the ONE codec and reader for the records, over an io/fs port (it opens no file by path itself; the root adapter in verifyoutcomes.go supplies the fs.FS)",
 	"evaluation/coverage_api.go": "statusgen/evaluation: the bookkeeping-path pattern the pure coverage evaluator exempts from stamping — a string constant, no file I/O (the evaluator opens nothing)",
 	"main.go":                    "prose describing the `outcomes` subcommand dispatch and the verifyclosure gate — no file I/O",
 }

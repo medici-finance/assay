@@ -130,6 +130,10 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if jerr != nil {
 		return jerr
 	}
+	// The outcome word must be one every reader classifies identically (evaluation vocabulary).
+	if oerr := deskkit.CheckOutcomeField(join); oerr != nil {
+		return oerr
+	}
 	var submitted deskkit.WakeReceipt
 	if uerr := json.Unmarshal(rec.Raw, &submitted); uerr != nil {
 		return deskkit.Refused("refused: invalid --outcome-record JSON: " + uerr.Error())

@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // flipoutcome_typed_test.go — the two record reads of verifyflip's outcome
@@ -50,7 +52,7 @@ func TestOutcomeStatusParity(t *testing.T) {
 	vfWriteAt(t, root, "docs/streams/other.md", []byte("y\n"))
 
 	out, err := historyGit(root, "status", "--porcelain=v1", "--untracked-files=all", "--",
-		path.Join(outcomeRecordsDir, "vf"), path.Join("docs/streams", verifyOutcomesGlob)).Output()
+		path.Join(evaluation.OutcomeRecordsDir, "vf"), path.Join("docs/streams", verifyOutcomesGlob)).Output()
 	if err != nil {
 		t.Fatal(err)
 	}
