@@ -192,6 +192,56 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 
 <!-- Independent verifier appends one row per Verify command after implementation. -->
 
+### Independent verification — 2026-11-18 (source 1a259b85f7b5, statusgen v1.0.87)
+
+Observed source: merged main 1a259b85f7b59b39d2d6663c7965a9cc0b1c5e6c, in a detached verifier home admitted by `deskdispatch --check-verifier` (rc 0, attestation medici-finance/assay#6926). The verifier is not this brief's implementer. Delivery: merged PR medici-finance/assay#3541 (two-parent merge a92fea2720a5, first parent 2f44050f8a70), with the same-seam follow-ups medici-finance/assay#3584 (merge 4affbe8c1409) and medici-finance/assay#3931 (merge af92fe827146). Row 3's Command was amended after delivery by merged PR medici-finance/assay#4417 (merge 50cf440cbf00), which pinned `--delivery` and `--base`. Rows 1 and 2 are unchanged from the delivered table.
+
+The brief's risk line answers `sensitive-data: yes`, so every row is risk-bearing and owes a fail-first witness.
+
+Rows 1 and 2 (container lane, fail-first). The table directly below is the execution witness: `statusgen verifyrun` v1.0.87, non-dry, `--sandbox=container-netns --rows 1,2 --fail-first --delivering-commit a92fea2720a5d2fab84bc5a47c827413adaf762b`, with the admitted history pack imported for the baseline checkout. It ran in the release-pinned verify-runner image with `--network none`, inside a closed admission bracket, with a fresh module cache downloaded at the open step and mounted read-only (`GOPROXY=off`, `GOTOOLCHAIN=local`). The bracket was opened on the host at 2026-11-18T16:31:21Z and closed on the host at 16:36:26Z. `statusgen verifyrun --bracket-digest` on the closed witness reports `verdict=match` and `span-lines=tree-digest:1,container-image:1,attestation:1`. The witness bytes, including the `Admission-Bracket:` line, follow unchanged.
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestIssueProjectionFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestIssueProjectionFlow ' "$o")` | pass exit=0 sandbox=container-netns | sha256:30ea558f836f | 2026-11-18 | assay-verifier-app[bot] @ 1a259b85f7b5 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=2f44050f8a70 unproven · head=1a259b85f7b5 |
+| 2 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestIssueProjectionFaults$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestIssueProjectionFaults ' "$o")` | pass exit=0 sandbox=container-netns | sha256:19dc8fd8cc3e | 2026-11-18 | assay-verifier-app[bot] @ 1a259b85f7b5 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=2f44050f8a70 unproven · head=1a259b85f7b5 |
+Tree-Digest: sha256:19179b2cba9b5a822c9cfdb867bd8fcbf7ae470db462e893cb8805b79cbe1453
+Container-Image: sha256:c67baa7a3c8ba3d514128f31340489146525a50c29ebb641a68899c650d354a1
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6926 run=1e2a1d660090bfff790d0e0cc5929d6e066863155a18a84b7bd70ab37cbdb2c7 source=1a259b85f7b59b39d2d6663c7965a9cc0b1c5e6c brief=docs/streams/desk-tools/brief-42-narrow-issue-discovery-projections-before-enrichment.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=1e2a1d660090bfff790d0e0cc5929d6e066863155a18a84b7bd70ab37cbdb2c7 source=1a259b85f7b59b39d2d6663c7965a9cc0b1c5e6c tree=sha256:19179b2cba9b5a822c9cfdb867bd8fcbf7ae470db462e893cb8805b79cbe1453 witness=sha256:b5d7ef4b77b830b389f96bb3c61d8fbf697fc3437454f3139d6ee9df9fc1b154 opened=2026-11-18T16:31:21Z closed=2026-11-18T16:36:26Z before=receipt after=check-verifier
+
+Both rows pass at head with the exact named `--- PASS:` line. At base 2f44050f8a70 both are `unproven`: the runner could not execute them there, so neither row has been shown to fail without the change. The base log directory is empty because each row redirects its own output. Two facts read from the admitted history explain the base result. First, neither named test exists at base. Second, the base `tools/desk/go.mod` and `go.sum` differ from head (207 insertions, 31 deletions), and the open step downloads modules for the head tree only, so an offline base build cannot resolve its modules. This is an environment gap in the fail-first lane (related: medici-finance/assay#4683). It is not a defect in the rows.
+
+Row 3 (host lane). Row 3 reads git history (`--delivery` and `--base`). The verifier home is a linked worktree, and its git metadata lies outside the mounted home, so the container cannot run this row; the history pack is accepted only for baseline checkouts under `--fail-first`. Row 3 was run on the host instead with `statusgen verifyrun --rows 3` (v1.0.87, non-dry), in the declared verifier Git environment. On this darwin host the check:ci network-off sandbox (`unshare --net`) does not exist, so verifyrun recorded the row as could-not-run before executing it (medici-finance/assay#1800). The witness it appended follows unchanged.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 3 | `statusgen --root . --consumers --brief desk-tools/42 --delivery a92fea2720a5d2fab84bc5a47c827413adaf762b --base 2f44050f8a706d0865e1a95ca3cd8709abe1bd2f` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ 1a259b85f7b5 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6926 run=1e2a1d660090bfff790d0e0cc5929d6e066863155a18a84b7bd70ab37cbdb2c7 source=1a259b85f7b59b39d2d6663c7965a9cc0b1c5e6c brief=docs/streams/desk-tools/brief-42-narrow-issue-discovery-projections-before-enrichment.md model=claude-opus-5-5 tier=strong
+
+Supplemental host probe (no acceptance credit). This diagnoses the row 3 blocker only. It discharges no Verify row. The row 3 command, as written, was run directly on the host, without the network-off sandbox, in the declared verifier Git environment, at the same source.
+
+| Probe | Command | Exit | Key output | Date | Runner |
+|-------|---------|------|------------|------|--------|
+| S3 (supplemental, no acceptance credit) | Verify row 3 command, as written, run directly on the host | 0 | `consumers corroboration — base 2f44050f8a706d0865e1a95ca3cd8709abe1bd2f..a92fea2720a5d2fab84bc5a47c827413adaf762b (immutable delivered snapshot)`; `summary: 5 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing`; the one UNCHECKED entry is the deskboard out-of-scope route (a reviewer judgement); output sha256 de1a2ffb4f87 | 2026-11-18 | assay-verifier-app[bot] (claude-opus-5-5 verifier; supplemental, no acceptance credit) (on-behalf-of human:ian) |
+
+Held obligations that this run does not clear:
+
+- Rows 1 and 2 have no fail-first discharge: their base runs are `unproven` (base modules absent from the offline cache; related medici-finance/assay#4683). They need a base run whose module cache covers the base tree.
+
+- Row 3 has no admissible witness. The host has no network-off sandbox (medici-finance/assay#1800), and the container lane cannot read git history for a linked-worktree home outside a fail-first run. The row needs a Linux runner that provides `unshare --net`, or a container route that supplies history to ordinary rows.
+- Row 3's current Command is the post-delivery amendment from medici-finance/assay#4417. The brief's Human decision says this change counts only through its own human-approved acceptance transition at verification time. This verifier found no `Acceptance-Transition` record for this brief at the observed source. Closure of row 3 also needs either that approval or a witness of the delivered command.
+- The prerequisite desk-tools/38 is still `implemented` on the board at the observed source. Its independent verification is a completion hold for this brief.
+- The brief is risk-flagged (sensitive-data), so a model cannot sign it off. It stays at its current lifecycle state for the human gate.
+
+Risk-bearing values. Enumerated over the literals the delivery and its same-seam follow-ups introduce, plus the bounds the brief's Human decision names. Both entries are reversible read-batching knobs: a wrong value changes request count or response size and is undone by an edit and a release. Correctness does not depend on either one, because every batch refuses the whole sweep on a malformed or partial response and never falls back.
+
+- RISK-VALUE: DERIVED — IssueCommentBatchSize = 5 @ tools/desk/internal/deskkit/issuecomments.go:17 — five aliases at the retained first:100 comment selection keep one GraphQL page to at most 500 comment nodes, which is the repo's stated bound; each thread keeps its own 20-page limit, so the batch size changes lookahead only, never a thread's history.
+- RISK-VALUE: NAMED, NOT DERIVED — IssueStateBatchSize = 20 @ forgeread/adapters/github/issuestates.go:12 (used as PositiveIssueStateBatchSize @ tools/desk/internal/deskkit/issuestates.go:15) — the repo states it as a per-observation bound but gives no cost derivation; the perf-v4 before/after measurement that would justify the size is still pending (medici-finance/assay#5278). Correctness is independent of the size: every alias must return its exact number, a known state and a title, or the sweep refuses.
+
+**VERIFY: BLOCKED** — rows 1 and 2 pass at head in the network-off container witness at source 1a259b85f7b5, inside a closed admission bracket (`verdict=match`), but their fail-first base runs are `unproven` (base modules absent from the offline cache). Row 3 is could-not-run: the darwin host has no network-off sandbox (medici-finance/assay#1800), and the container lane has no git history for head rows in this home. No row was observed to fail. The row 3 acceptance transition and the desk-tools/38 prerequisite remain holds. 2 of 3 rows pass at head; 0 of 3 rows are discharged under fail-first.
+
+
 ## Review
 
 Retain the derived frontmatter gate. Approval of the source spec is recorded; this brief
