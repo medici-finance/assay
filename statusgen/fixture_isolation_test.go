@@ -69,19 +69,6 @@ func installStatusgenFixture(t *testing.T, overlays ...testenv.Options) *testenv
 	// previous process environment and its config home.
 	t.Cleanup(scanReloadConfig)
 	f := testenv.Install(t, opts)
-	// Go keeps tombstones for unset Unix environment entries. Repeated fixture
-	// lifetimes must not make os.Environ allocate for every deleted slot. The
-	// logical environment is identical; Install already owns the Setenv guard.
-	if runtime.GOOS != "windows" {
-		live := os.Environ()
-		os.Clearenv()
-		for _, entry := range live {
-			key, value, _ := strings.Cut(entry, "=")
-			if err := os.Setenv(key, value); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
 	config := filepath.Join(f.Home, ".config", "assay")
 	if err := os.MkdirAll(config, 0700); err != nil {
 		t.Fatal(err)
