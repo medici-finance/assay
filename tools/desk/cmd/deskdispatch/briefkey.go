@@ -118,8 +118,8 @@ func absOr(p string) string {
 	return p
 }
 
-// gateOpts is o as the human-gate steps read it: with the key-named brief standing in for an empty
-// --brief. Every other step keeps o.
+// gateOpts is o as the human-gate steps and the phantom check's `delivery:` set-aside (#6751) read
+// it: with the key-named brief standing in for an empty --brief. Every other step keeps o.
 func (p dispatchPlan) gateOpts(o dispatchOpts) dispatchOpts {
 	if p.keyBrief != "" {
 		o.brief, o.briefShown = p.keyBrief, p.keyBriefShown

@@ -231,6 +231,45 @@ func TestHeldScopeWitnessAnchors(t *testing.T) {
 		"header with a trailing space", "header with a leading space")
 }
 
+// TestHeldScopeSandboxDefault: a clean Result cell that names either sandbox
+// mode as a detail reads as clean, the default mode (unshare) as much as the
+// container one. The cells here are outside verifyrun's own passing shape
+// (heldWitnessPassRe: lower-case "pass exit=N sandbox=..."), so only the
+// sandbox detail in heldDetailRes admits them: dropping unshare from that
+// closed set turns the default mode into an unrecognised note, and a later
+// clean run under unshare would stop covering an earlier hold.
+// regression: #6790
+func TestHeldScopeSandboxDefault(t *testing.T) {
+	for _, mode := range []string{sandboxUnshare, sandboxContainerNetns} {
+		for _, cell := range []string{"PASS exit=0 sandbox=" + mode, "ok, sandbox=" + mode, "exit 0; sandbox=" + mode} {
+			if got := heldOutcome(cell, false); got != heldCellPass {
+				t.Errorf("heldOutcome(%q) = %v, want pass", cell, got)
+			}
+		}
+	}
+	// The sandbox detail is still one whole closed-set word.
+	for _, cell := range []string{"PASS exit=0 sandbox=unshare-ok", "PASS exit=0 sandbox=other"} {
+		if got := heldOutcome(cell, false); got != heldCellOther {
+			t.Errorf("heldOutcome(%q) = %v, want other", cell, got)
+		}
+	}
+	// End to end: a later clean run whose hand-typed Result cells name the
+	// sandbox mode covers the earlier held row 3.
+	upper := func(mode string) string {
+		return witOldRow + witEntry("Run 2", strings.ReplaceAll(witTable(4, mode, witPass, witAttest),
+			"| pass exit=0 sandbox="+mode+" |", "| PASS exit=0 sandbox="+mode+" |"), "", "**VERIFY: PASS**")
+	}
+	for _, mode := range []string{sandboxUnshare, sandboxContainerNetns} {
+		if !strings.Contains(upper(mode), "| PASS exit=0 sandbox="+mode+" |") {
+			t.Fatalf("fixture for %s did not rewrite the Result cells", mode)
+		}
+	}
+	runHeldRowCases(t, []heldScanCase{
+		{"later PASS under unshare", upper(sandboxUnshare), false},
+		{"later PASS under container-netns", upper(sandboxContainerNetns), false},
+	})
+}
+
 // witTableFF renders a fail-first verifyrun witness table for rows 1..n
 // through the production table renderer (witnessTable), so the header is
 // witnessHeaderFailFirst and every row carries the Base cell failFirstCell

@@ -412,7 +412,7 @@ func ensureHotfixOverlay(overlay string, owner deskkit.HotfixOwnerCheck) error {
 			_ = chownRoot(d)
 		}
 		if err := owner(d); err != nil {
-			return &deskkit.HotfixError{Reason: deskkit.HotfixReasonNotRootOwned, Detail: err.Error(), Code: hotfixExitRefused}
+			return &deskkit.HotfixError{Reason: deskkit.HotfixOwnerReason(err), Detail: err.Error(), Code: hotfixExitRefused}
 		}
 	}
 	return nil
@@ -802,7 +802,7 @@ func hotfixClear(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	if err := hotfixOwner()(overlay); err != nil {
-		fmt.Fprintf(stderr, "cellctl: hotfix clear: %s: %v\n", deskkit.HotfixReasonNotRootOwned, err)
+		fmt.Fprintf(stderr, "cellctl: hotfix clear: %s: %v\n", deskkit.HotfixOwnerReason(err), err)
 		return hotfixExitRefused
 	}
 	targets := args

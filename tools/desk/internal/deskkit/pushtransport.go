@@ -174,9 +174,9 @@ func CheckPushTransport(in PushTransportInput) error {
 			// No rewrite involved (or none this code can attribute): the configured value is
 			// itself SSH, and pointing the push url at https is the remedy — unless an insteadOf
 			// rule would rewrite that https url straight back to SSH (pushURLRemedy checks).
-			shown := u
+			shown := RedactRemoteURL(u)
 			if !containsString(configured, u) {
-				from := strings.Join(configured, ", ")
+				from := RedactRemoteURL(strings.Join(configured, ", "))
 				if from == "" {
 					// Nothing under remote.<name>.url / .pushurl in `git config --list` — e.g. a
 					// legacy .git/remotes file. Say so rather than print an empty value.
@@ -184,7 +184,7 @@ func CheckPushTransport(in PushTransportInput) error {
 				}
 				shown = fmt.Sprintf("%s, which git resolves to %s through a url rewrite this gate could not "+
 					"attribute — run `git -C %s config --show-origin --get-regexp '^url\\.'` to find it",
-					from, u, orDot(in.Dir))
+					from, RedactRemoteURL(u), orDot(in.Dir))
 			}
 			target := u
 			if len(configured) == 1 && isSSHTransport(configured[0]) {
@@ -210,8 +210,8 @@ func CheckPushTransport(in PushTransportInput) error {
 				"forge records the HUMAN as the branch author and the App's permission envelope is bypassed, "+
 				"however the commits are authored. Fetch over SSH stays allowed; only the push transport is "+
 				"gated. Remedy: %s\n  (find where the rule is set: git -C %s config --show-origin --get-all %s)",
-			who, remote, key, rw.from, rw.ruleKey, rw.prefix, u, role, loopEnv, loop,
-			rw.remedy(cfg, in.Dir, remote, u, role), orDot(in.Dir), rw.ruleKey))
+			who, remote, key, RedactRemoteURL(rw.from), showRule(rw.ruleKey), RedactRemoteURL(rw.prefix), RedactRemoteURL(u), role, loopEnv, loop,
+			rw.remedy(cfg, in.Dir, remote, u, role), orDot(in.Dir), showRule(rw.ruleKey)))
 	}
 
 	// 5. Not SSH. An https push is the sanctioned transport — but it only carries the App's
@@ -243,9 +243,25 @@ func CheckPushTransport(in PushTransportInput) error {
 		"configured in %s (credential.helper: %s) — the push will authenticate with whatever ambient "+
 		"credential this machine holds, which may not be the %s App. That is could-not-check, not a pass: "+
 		"configure the %s App's credential helper for this URL, or confirm the one in place is it.\n",
-		who, remote, strings.Join(urls, ", "), orDot(in.Dir), shown, role, role)
+		who, remote, RedactRemoteURL(strings.Join(urls, ", ")), orDot(in.Dir), shown, role, role)
 	return nil
 }
+
+// RedactRemoteURL renders a configured, resolved or rewrite-rule URL for a message with its
+// userinfo masked by RedactRemoteUserinfo's engine. This gate's NOTICE, both SSH refusals and
+// the remedy's set-url line, and deskwt's transport refusals, all quote values read from git
+// config, and a credential embedded in one (an
+// https remote carrying user:secret, or a rewrite that carries it into an SSH path) must not
+// reach stderr or a transcript. The one userinfo kept is the bare SSH account name "git": it
+// is never a credential, and masking it would make every rewrite rule this gate attributes
+// (url.git@host:.insteadOf, url.ssh://git@host/.pushInsteadOf) unrecognisable.
+func RedactRemoteURL(s string) string { return redactUserinfo(s, isSSHAccountName) }
+
+func isSSHAccountName(userinfo string) bool { return userinfo == "git" }
+
+// showRule renders a url.<base>.insteadOf / .pushInsteadOf key with its base shown as RedactRemoteURL
+// shows it: RedactRemoteConfigKey, the one config-key renderer every desk verb shares.
+func showRule(key string) string { return RedactRemoteConfigKey(key) }
 
 // splitURLLines splits `git remote get-url --push --all` output into its URLs, one per
 // non-blank line.
@@ -344,7 +360,7 @@ func pushURLRemedy(cfg map[string][]string, dir, remote, target, replace, role, 
 			"https push url does NOT escape it — git applies insteadOf to pushurl values too, and it would "+
 			"rewrite %s into %s — so `remote set-url --push` alone would leave this refusal standing "+
 			"(find it: git -C %s config --show-origin --get-all %s).",
-			ruleKey, prefix, target, out, orDot(dir), ruleKey)
+			showRule(ruleKey), RedactRemoteURL(prefix), RedactRemoteURL(target), RedactRemoteURL(out), orDot(dir), showRule(ruleKey))
 		if ruleAlone {
 			return msg
 		}
@@ -366,13 +382,15 @@ func pushURLRemedy(cfg map[string][]string, dir, remote, target, replace, role, 
 // the value to replace is not one of the configured ones, the only runnable form resets the
 // list first.
 func setPushURLCommand(cfg map[string][]string, dir, remote, target, replace string) string {
-	cmd := fmt.Sprintf("git -C %s remote set-url --push %s %s", orDot(dir), remote, target)
+	cmd := fmt.Sprintf("git -C %s remote set-url --push %s %s", orDot(dir), remote, RedactRemoteURL(target))
 	pushurls := cfg["remote."+remote+".pushurl"]
 	if len(pushurls) < 2 {
 		return cmd
 	}
 	if replace != "" && containsString(pushurls, replace) {
-		return cmd + " " + shellSingleQuote("^"+regexp.QuoteMeta(replace)+"$")
+		// A value carrying userinfo is quoted masked: the pattern then matches nothing and git
+		// changes nothing, which is safer than printing the credential into a command line.
+		return cmd + " " + shellSingleQuote("^"+regexp.QuoteMeta(RedactRemoteURL(replace))+"$")
 	}
 	return fmt.Sprintf("git -C %s config --unset-all remote.%s.pushurl && %s", orDot(dir), remote, cmd)
 }

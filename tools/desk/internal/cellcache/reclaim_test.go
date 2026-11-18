@@ -27,12 +27,15 @@ func staleRefusal(err error) bool {
 }
 
 // Prepare marks a bounded refusal reclaimable only when the recorded size or
-// free-space margin, an aged, unstamped, future-dated or missing measurement,
-// or a top-level change since it is the reason. Corrupt, dirty, foreign and
-// empty-cache-short refusals are never reclaimable: those stay with the
-// operator. Only the measurement-validity reasons (aged, unstamped,
-// future-dated, missing) are also marked stale, the one mark a desk or
-// scratch launch re-measures on.
+// free-space margin, an unstamped, future-dated or missing measurement, one
+// older than the policy's freshness bound, or a top-level change since it is
+// the reason. Corrupt, dirty, foreign and empty-cache-short refusals are never
+// reclaimable: those stay with the operator. Only the measurement-validity
+// reasons (past the bound, unstamped, future-dated, missing) are also marked
+// stale, the one mark a desk or scratch launch re-measures on, as is any
+// reclaim refusal of a measurement older than five minutes
+// (TestCacheStaleReclaimIsStale). A measurement only older than five minutes,
+// with no bound, admits (TestCacheStaleAdmits).
 //
 // regression: #6117
 // regression: #6593
@@ -42,7 +45,7 @@ func TestCacheReclaimableRefusals(t *testing.T) {
 		want  bool
 		stale bool
 	}{
-		{"size", true, false}, {"stale", true, true}, {"changed", true, false}, {"space", true, false},
+		{"size", true, false}, {"stale-bound", true, true}, {"changed", true, false}, {"space", true, false},
 		{"missing", true, true}, {"future", true, true}, {"zero", true, true},
 		{"corrupt", false, false}, {"dirty-pass", false, false},
 		{"domain", false, false}, {"empty-space", false, false},
@@ -93,7 +96,9 @@ func TestCacheReclaimableRefusals(t *testing.T) {
 				if _, err := Check(p, false); err != nil {
 					t.Fatal(err)
 				}
-			case "stale":
+			case "stale-bound":
+				// Age alone admits; only a freshness bound refuses it.
+				p.MeasurementMaxAge = 600
 				rewrite(func(r *Report) { r.After.At = time.Now().Add(-time.Hour) })
 			case "changed":
 				material(t, p, "build/new", 1)

@@ -117,7 +117,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 55 | [Port the go-analysis adapter entrypoints](brief-55-port-the-go-analysis-adapter-entrypoints.md) | 3 | M | todo | — | — |
 | 56 | [Migrate deskperf and qualify deskusage on the shared CLI](brief-56-migrate-deskperf-to-cobra-and-viper.md) | 3 | M | todo | — | — |
 | 57 | [Migrate intake-eval to Cobra and Viper](brief-57-migrate-intake-eval-to-cobra-and-viper.md) | 3 | S | todo | — | — |
-| 58 | [Extract the role credential provider and retire internal desktoken callouts](brief-58-extract-the-role-credential-provider-and-retire-internal-desktoken-callouts.md) | 1 | L | todo | — | — |
+| 58 | [Extract the role credential provider and retire internal desktoken callouts](brief-58-extract-the-role-credential-provider-and-retire-internal-desktoken-callouts.md) | 1 | L | implemented | — | — |
 | 59 | [Share concurrent credential lookups and bound reuse by credential expiry](brief-59-share-concurrent-credential-lookups-and-bound-reuse-by-credential-expiry.md) | 2 | M | todo | — | — |
 | 60 | [Bound component activation discovery and reuse validated manifest snapshots](brief-60-bound-component-activation-discovery-and-reuse-validated-manifest-snapshots.md) | 1 | M | implemented | — | — |
 | 61 | [Version shared performance boundaries and keep legacy reports comparable](brief-61-version-shared-performance-boundaries-and-keep-legacy-reports-comparable.md) | 1 | M | verified | 2026-10-19 assay-verifier-app[bot] @ 0e661b6e15de (claude-opus-5-5) | — |
@@ -142,6 +142,7 @@ is the one contract; /15–/17 own its foundation, rollout and completion.
 | 80 | [Port the release spec-header stamp script](brief-80-port-the-release-spec-header-stamp-script.md) | 4 | S | todo | — | — |
 | 81 | [Run acceptance-transition rows inside a closed container-netns bracket](brief-81-run-acceptance-transition-rows-inside-a-closed-container-netns-bracket.md) | 1 | M | implemented | — | — |
 | 82 | [Port the desk-tools tarball manifest script](brief-82-port-the-desk-tools-tarball-manifest-script.md) | 4 | S | todo | — | — |
+| 83 | [Admit acceptance transitions for cross-repository briefs](brief-83-admit-acceptance-transitions-for-cross-repository-briefs.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

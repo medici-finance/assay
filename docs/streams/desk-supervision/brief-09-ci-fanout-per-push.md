@@ -1049,6 +1049,58 @@ gate: model; status stays implemented.
 
 **VERIFY: BLOCKED** — 3 MET, 0 FAIL, 9 could-not-check. Rows 1, 2, 4, 5, 7 and 8 wait on the human workflows copy (medici-finance/assay#1185, open), and three of the staged copies need a refresh first (medici-finance/assay#1187, open). Rows 2 and 7 carry the open row-definition defect medici-finance/assay#1922, and row 1's witness cannot land (medici-finance/assay#5796). Row 3b is prose-led and was left out of the bracket. Row 10's status is red from three other briefs (medici-finance/assay#4823), and row 11's grep id is stale (medici-finance/assay#4682). The next actor is a human landing the refreshed copy; after that, rows 1, 2, 4, 5, 7 and 8 are re-run.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 3 | `python3 tools/ci-load/pathsemantics.py` | pass exit=0 sandbox=container-netns | sha256:f5c45e25a327 | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/deskboard/ -run TestWouldFire -count=1 && go test ./cmd/deskboard/ -run TestZeroCI -count=1` | pass exit=0 sandbox=container-netns | sha256:1151aa17209f | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 9 | `for f in tools/ci-load/activation/*.yml; do python3 -c "import yaml,sys; d=yaml.safe_load(open(sys.argv[1])); print(sys.argv[1], d.get(True) or d.get('on'), d.get('concurrency')); sys.exit(0 if (d.get(True) or d.get('on')) and d.get('jobs') else 1)" "$f" \|\| exit 1; done` | pass exit=0 sandbox=container-netns | sha256:dcdf6fc44656 | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd statusgen && go run . --root .. --lint; echo $?` | pass exit=0 sandbox=container-netns | sha256:0f685e643205 | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd statusgen && go run . --root .. --consumers 2>&1 \| grep -A6 'desk-supervision/09'` | fail exit=1 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:8af1148d8ff5d2e48ca78180e3087720d09cf24e03e6f2af6cdabb464dca75b1
+Container-Image: sha256:271d9b171d01592693dc055717f2aa22661bae2ed2e6d59d6e50ecfc0fa5943a
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6649 run=e20e8bc0abb78041e148953790e204e7b2b403b0898469329806dd4a4bbd1952 source=0240956217eb1a624609e37d675d2beaf443dfe9 brief=docs/streams/desk-supervision/brief-09-ci-fanout-per-push.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=e20e8bc0abb78041e148953790e204e7b2b403b0898469329806dd4a4bbd1952 source=0240956217eb1a624609e37d675d2beaf443dfe9 tree=sha256:8af1148d8ff5d2e48ca78180e3087720d09cf24e03e6f2af6cdabb464dca75b1 witness=sha256:1101a6dcfd5198c21ed5696f2d562b8d3ebe32e38ea55df4a414578acea6db15 opened=2026-11-16T17:59:10Z closed=2026-11-16T18:03:49Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 2 | `H=$(gh pr view "$PR" --repo medici-finance/assay --json headRefOid --jq .headRefOid); gh api "repos/medici-finance/assay/commits/$H/status" --jq '[.statuses[].context]'; gh api repos/medici-finance/assay/rulesets --jq '[.[].name]'` | pass exit=0 | sha256:6f1be414c64f | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 3b | `skipped()` | could-not-run exit=- — prose-led-command: not executed; the first span skipped() is a code identifier, not a command. Mark the command with a cmd: code span | sha256: | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (on-behalf-of human:ian) (forge-identity) |
+| 4 | `L=$(git log -1 --format=%H -- .github/workflows/ci.yml); git diff --stat "$L^" HEAD -- .github/workflows/leaksweep-control.yml .github/workflows/leaksweep-pattern.yml` | pass exit=0 | sha256:3565f49ead51 | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -n 'cancel-in-progress' .github/workflows/*.yml` | pass exit=0 | sha256:38696ede0d37 | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `gh pr view "$PR" --repo medici-finance/assay --json statusCheckRollup --jq '.statusCheckRollup\|length'` | fail exit=1 | sha256:52d48f40d9e3 | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `for f in ci plugin-drift assay-statusgen assay-qualgen evidence-automerge; do diff -q "tools/ci-load/activation/$f.yml" ".github/workflows/$f.yml" \|\| exit 1; done` | fail exit=1 | sha256:2ccc6a4a8bc0 | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6649 run=e20e8bc0abb78041e148953790e204e7b2b403b0898469329806dd4a4bbd1952 source=0240956217eb1a624609e37d675d2beaf443dfe9 brief=docs/streams/desk-supervision/brief-09-ci-fanout-per-push.md model=claude-opus-5-5 tier=strong
+
+Per-row disposition. Attempt 1 is the container bracket (2026-11-16T17:58:25Z to 18:03:49Z). Attempt 2 is the host dry-run (2026-11-16T18:04:03Z to 18:04:12Z). Supplemental forge reads were made at 2026-11-16T18:03:10Z and carry no credit.
+
+| # | Disposition | Basis | Date | Runner |
+|---|-------------|-------|------|--------|
+| 1 | could-not-check | Not run through verifyrun. The run stopped on a writeguard refusal of a host re-read first, and deskevidence refuses a witness whose Command names an App login (medici-finance/assay#5796). A supplemental read of PR 6620 shows the pre-activation run set: ci/pull_request and plugin-drift/pull_request are present and ci/push is absent. | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (on-behalf-of human:ian) |
+| 2 | could-not-check | The witness exit=0 does not discriminate, because `$PR` is set only in row 1 (medici-finance/assay#1922). A supplemental read meets the Expect: statuses [leak-sweep], and the leak-sweep ruleset requires leak-sweep, build-test and changelog. | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (on-behalf-of human:ian) |
+| 3 | MET | Witness pass exit=0, container bracket | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (on-behalf-of human:ian) |
+| 3b | could-not-run | Prose-led command with no cmd: span. The mutation probe was not run. | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (on-behalf-of human:ian) |
+| 4 | could-not-check | The derived anchor is 1f8b93cdb (the Go 1.27.4 merge), not an activation landing. | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (on-behalf-of human:ian) |
+| 5 | could-not-check | The grep exit is the only check. Live assay-statusgen.yml:96 and assay-qualgen.yml:55 still read cancel-in-progress: false. | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (on-behalf-of human:ian) |
+| 6 | MET | Witness pass exit=0, container bracket | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (on-behalf-of human:ian) |
+| 7 | could-not-check | Empty `$PR` (medici-finance/assay#1922). Supplemental statusCheckRollup length is 23. | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (on-behalf-of human:ian) |
+| 8 | could-not-check | No staged copy has been landed (medici-finance/assay#1185). The staged copies are stale (medici-finance/assay#1187). | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (on-behalf-of human:ian) |
+| 9 | MET | Witness pass exit=0, container bracket | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (on-behalf-of human:ian) |
+| 10 | could-not-check | Vacuous, because the command ends in `echo $?`. The lint is red on main (medici-finance/assay#4823). | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (on-behalf-of human:ian) |
+| 11 | could-not-check | Empty output. The consumer grep id is stale (medici-finance/assay#4682). | 2026-11-16 | assay-verifier-app[bot] @ 0240956217eb (on-behalf-of human:ian) |
+
+Fail-first: all four risk answers are no and no Verify row carries a risk-bearing tag, so the selection is empty. Row 3b's mutation is the brief's own fail-first, and it did not run.
+
+RISK-VALUE: NAMED, NOT DERIVED — paths-ignore = ["docs/**", "changelog/**", "CHANGELOG.md", "STATUS.md"] @ tools/ci-load/activation/ci.yml:56,62 — the live leak-sweep ruleset requires build-test and changelog, so a docs-only PR skipped by this filter would leave required checks unreported; the activation README now says not to copy this ci.yml.
+RISK-VALUE: DERIVED — paths-ignore (same four entries) @ tools/ci-load/activation/plugin-drift.yml:46 — pull_request leg only; the push-main leg (:52) still runs, and plugin-drift is not a required check.
+RISK-VALUE: DERIVED — cancel-in-progress = ${{ github.event_name == 'pull_request' }} @ tools/ci-load/activation/ci.yml:75, tools/ci-load/activation/assay-qualgen.yml:62 — groups are keyed on github.ref, so main runs are never cancelled.
+RISK-VALUE: NAMED, NOT DERIVED — cancel-in-progress conditioned with group statusgen-board-${{ github.ref }} @ tools/ci-load/activation/assay-statusgen.yml:60-61 — the staged copy is 813 diff lines from live (medici-finance/assay#1187), so the value that would land is not the reviewed one.
+RISK-VALUE: DERIVED — EVIDENCE_AUTHOR = assay-verifier-app[bot] @ tools/ci-load/activation/evidence-automerge.yml:89,187 — matches the Evidence lane's PR author (PR 6620).
+
+Tally: 12 rows. 3 MET (3, 6, 9), 0 FAIL, 8 could-not-check (1, 2, 4, 5, 7, 8, 10, 11), 1 could-not-run (3b). gate: model; status stays implemented.
+
+**VERIFY: BLOCKED** — 3 MET, 0 FAIL, 9 not credited. The rows that depend on activation wait on a human workflows copy that has not landed (medici-finance/assay#1185). Row-definition defects are tracked in medici-finance/assay#1922, medici-finance/assay#4682, medici-finance/assay#4823 and medici-finance/assay#5796.
+
 ## Review
 
 Gate: model (from frontmatter; all four risk answers are `no`). Reviewer records verdict +

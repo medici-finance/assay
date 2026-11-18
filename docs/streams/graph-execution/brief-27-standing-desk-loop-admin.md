@@ -49,7 +49,7 @@ consumers:
 - 'workflow/controller: out-of-scope (separate caller delivered by graph-execution/21)'
 - 'plugins/assay/skills/worker-desk/SKILL.md desk-supervision/34 usage-record step: follow-up graph-execution/27 (this brief; for an enrolled worker role the step is skipped because the /26 journal records that run''s usage; flips to fixed-here when the implementation edits the path)'
 - 'tools/desk/cmd/deskusage/ record path (desk-supervision/34''s verb; the enrolled-worker skip): follow-up graph-execution/27 (this brief; `deskusage record` writes nothing for an enrolled worker role, Verify row 5; flips to fixed-here when the implementation edits the path)'
-version: 12
+version: 13
 id: af7e88a8-b411-40f9-b205-6b93f04ebed8
 ---
 
@@ -209,7 +209,7 @@ Existing custody, rollout, legacy rollback and human gates remain unchanged.
 | 7 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestStandingDeskUnchangedWaitNoModel$' ./... > "$o" && grep -F -- '--- PASS: TestStandingDeskUnchangedWaitNoModel ' "$o")` | exit 0; named PASS. All five production role adapters with Codex and Claude fixtures perform due non-model checks but start zero model jobs for unchanged queues, pending CI, repeated errors/events and viewer attach. A changed eligible item starts exactly once and a freed slot refills. Mutation: invoke a model on an unchanged queue/CI tick; the named test fails. |
 | 8 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestStandingDeskBoundedJobsAndUsage$' ./... > "$o" && grep -F -- '--- PASS: TestStandingDeskBoundedJobsAndUsage ' "$o")` | exit 0; named PASS. Actual role/adapter flow keeps unrelated item histories separate, preserves prior findings and independent lanes, attributes supervisor plus child usage once, and keeps missing telemetry unknown. Mutation: hide child usage or carry an unrelated completed-item conversation into the next assignment; the named test fails. |
 | 9 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestStandingDeskQualifiedLoopRetirement$' ./... > "$o" && grep -F -- '--- PASS: TestStandingDeskQualifiedLoopRetirement ' "$o")` | exit 0; named PASS. Enrolled review mode uses code-owned progression and exactly one routine watcher while non-enrolled mode remains compatible; independent final reads and held unknown-stop rollback remain. Mutation: leave the legacy model conductor active beside the enrolled client; the named test fails. |
-| 10 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestDeskPlannerParity$' ./... > "$o" && grep -F -- '--- PASS: TestDeskPlannerParity ' "$o")` | exit 0; named PASS. The coordinator, intake, worker and review role bindings give equal ranked/selected/held results to prose and discrete clients on identical observations and policy; pure refill/reprioritization adds zero GH attempts. The verify role is compared the same way whenever the desk-tools/51 prose adapter is present on the tree under test. Presence is read from the path that brief declares, `tools/desk/cmd/verifyloop/flow_51_test.go` (planned) declaring `TestVerifyDriverPlan`, and this brief's binding registers a present adapter itself. Only when that path is absent does the test report verify-role parity `unavailable` and pass on the other four. Mutations, each of which must fail the named test: the adapter present and the verify role reported `unavailable`; the adapter present and left out of the binding; the adapter absent and the verify role reported compared; the verify role reported equal from a mocked adapter. Second-root, capped, unmapped, duplicate, key-order and denied fixtures plus moved-head admission discriminate a copied ranker, repeated collection or omitted source. |
+| 10 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestDeskPlannerParity$' ./... > "$o" && grep -F -- '--- PASS: TestDeskPlannerParity ' "$o")` | exit 0; named PASS. The coordinator, intake, worker and review role bindings give equal ranked/selected/held results to prose and discrete clients on identical observations and policy; pure refill/reprioritization adds zero GH attempts. The verify role is compared the same way whenever the desk-tools/51 prose adapter is present on the tree under test. Presence is read from the declaration that brief delivers, a `TestVerifyDriverPlan` (planned) test function anywhere in the `tools/desk/cmd/verifyloop` package, whatever file holds it, and this brief's binding registers a present adapter itself. Only when the package was read in full and holds no such declaration does the test report verify-role parity `unavailable` and pass on the other four. A package that could not be read or parsed is could-not-check and fails the named test; it is never read as absent. Mutations, each of which must fail the named test: the adapter present and the verify role reported `unavailable`; the adapter present and left out of the binding; the declaration moved to another file in the package and the role reported `unavailable`; the package unreadable and the role reported `unavailable`; the adapter absent and the verify role reported compared; the verify role reported equal from a mocked adapter. Second-root, capped, unmapped, duplicate, key-order and denied fixtures plus moved-head admission discriminate a copied ranker, repeated collection or omitted source. |
 | I1 | check +flow +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && cd tools/desk && GOWORK=off go test -count=1 -v ./cmd/cellctl/... -run '^TestStandingDeskInstances$' > "$o" 2>&1 && grep -F -- '--- PASS: TestStandingDeskInstances ' "$o")` | Named test executes (zero matching tests is not a pass); Two workers and three reviewers with mixed qualified profiles divide tasks/lanes, preserve a paused peer and produce one usage record per invocation; singleton duplicate role still refuses. Bypass upper selection: conflicting claim cannot launch. Mutation: prefix work claims with instance or retain a legacy conductor makes the test fail. |
 
 ## Pre-mortem and dispatch checks
@@ -253,8 +253,9 @@ From version 12:
   Only when the adapter is absent does the test report that role's parity `unavailable`, under
   the existing rule that an unqualified role stays explicitly unavailable and five-role parity
   is never claimed from mocks.
-- This brief owns the registration. Presence is read from the path desk-tools/51 declares
-  (row 10 names it), never from whether anything registered the adapter. The verify role's
+- This brief owns the registration. Presence is read from the declaration desk-tools/51
+  delivers (row 10 names it), never from a file name and never from whether anything
+  registered the adapter. A read or parse failure is could-not-check and fails the row. The verify role's
   binding under tools/desk/internal/deskclient registers a present adapter, and a tree that
   holds the adapter without registering and comparing it fails row 10. If desk-tools/51 has
   delivered when this brief is picked up, its implementer registers the adapter and row 10
@@ -266,11 +267,15 @@ From version 12:
 
 The follow-on holds in either landing order. If desk-tools/51 lands first, this brief's
 implementer meets a present adapter and row 10 fails until it is registered and compared. If
-desk-tools/51 lands second, its change adds the declared path, and `TestDeskPlannerParity`
-(planned), already on main, fails on that change until the verify role is registered and
+desk-tools/51 lands second, its change adds the declaration, and
+`TestDeskPlannerParity` (planned), already on main, fails on that change until the verify role is registered and
 compared. So the role cannot stay `unavailable` once the adapter is on the tree, and no
 hand-off note stands in for the check. desk-tools/51 records its side of this in its own
 follow-on section. Rows 1 to 9 and I1, the gate and the earlier amendments are unchanged.
+
+Version 13 (17 November 2026) tightens the same row and changes nothing else: presence is
+keyed on the declaration, so moving it to another file cannot read as absent, and a read
+failure fails closed.
 
 ## Interactive Kubernetes consumer — 20 October 2026
 

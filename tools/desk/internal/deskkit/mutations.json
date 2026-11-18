@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestRefusalNamesCallerForm|TestDeskprRefusalNamesFlag|TestPushGuard|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject|TestContractConformance|TestDirectProvider|TestPerfProcessCoverage|TestGitHubMinter|TestDesktokenExec|TestGitLabCred|TestGitLabCreateDraft|TestGitLabIsTransient|TestGLCreateMR|TestUnknownAssayKeyNotice|TestUnknownKeyKnownRefusals|TestWriteVerb|TestLandingCreateRace|TestCreateOnlyPrecondition|TestSettle|TestApplyStampWritesAsAsked'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestRefusalNamesCallerForm|TestDeskprRefusalNamesFlag|TestPushGuard|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject|TestContractConformance|TestDirectProvider|TestPerfProcessCoverage|TestGitHubMinter|TestDesktokenExec|TestGitLabCred|TestGitLabCreateDraft|TestGitLabIsTransient|TestGLCreateMR|TestUnknownAssayKeyNotice|TestUnknownKeyKnownRefusals|TestWriteVerb|TestLandingCreateRace|TestCreateOnlyPrecondition|TestSettle|TestApplyStampWritesAsAsked|TestDeclaredPartialDeliveries|TestPartialBriefIDBound|TestLockWaitStopsAtGrant'",
   "schemata": true,
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
@@ -1051,6 +1051,30 @@
       "file": "internal/deskkit/stampapply.go",
       "old": "\tgot, state := sk.AttestedStampOf(tl, authority)\n\tif state == ModelStamped && got == expected {\n\t\treturn nil\n\t}",
       "new": "\tlabels = sk.SettleRequest(tl, labels, authority)\n\texpected, _ = sk.StampOf(labels)\n\tgot, state := sk.AttestedStampOf(tl, authority)\n\tif state == ModelStamped && got == expected {\n\t\treturn nil\n\t}"
+    },
+    {
+      "name": "#6751 unknown covers \u2014 DROP the skip so a delivery: entry whose covers word is neither full nor partial (a typo such as Partial) is read as partial and its merged PR set aside, where statusgen counts it as delivery. TestDeclaredPartialDeliveries must go red.",
+      "file": "internal/deskkit/partialdelivery.go",
+      "old": "\t\tif cov != \"full\" && cov != \"partial\" {\n\t\t\tcontinue // not a claim statusgen acts on either\n\t\t}",
+      "new": "\t\tif false && cov != \"full\" && cov != \"partial\" {\n\t\t\tcontinue // not a claim statusgen acts on either\n\t\t}"
+    },
+    {
+      "name": "#6751 brief id binding \u2014 DROP the frontmatter brief: id comparison, so a brief file's delivery: list is applied to whatever item the caller names. TestPartialBriefIDBound must go red.",
+      "file": "internal/deskkit/partialdelivery.go",
+      "old": "\tif why := briefFileNames(values, briefID); why != \"\" {",
+      "new": "\tif why := briefFileNames(values, briefID); false && why != \"\" {"
+    },
+    {
+      "name": "F-overwait-ceiling-dropped: the last backoff sleep is no longer cut to the time left, so a busy lock is waited on past the granted Wait",
+      "file": "internal/deskkit/lockholder.go",
+      "old": "\t\tif rest := deadline.Sub(now); sleep > rest {\n\t\t\tsleep = rest\n\t\t}\n",
+      "new": ""
+    },
+    {
+      "name": "F-overwait-ceiling-dropped: the deadline check reads the start time instead of the current time, so the wait never ends at the granted Wait",
+      "file": "internal/deskkit/lockholder.go",
+      "old": "\t\tif !now.Before(deadline) {",
+      "new": "\t\tif !began.Before(deadline) {"
     }
   ],
   "_not_mutated": {

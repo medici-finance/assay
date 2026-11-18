@@ -57,6 +57,8 @@ func main() {
 		// wires its own recorded transport), while the real binary reconciles against the repo's
 		// open+merged changes read through the typed Forge seam.
 		representedPRs = liveRepresentedPRs
+		// The per-brief lookup past an incomplete window (#5853), wired beside it.
+		briefChangeLookup = liveBriefChangeLookup
 		// The briefs-authoring exemption's file transport (#1339), wired beside it for the same reason.
 		representedPRFiles = liveRepresentedPRFiles
 		representedPRBatchFiles = liveRepresentedPRBatchFiles
@@ -133,7 +135,7 @@ func cmdPlan(args []string) error {
 	// before.
 	if representedPRs != nil {
 		if resolved, rerr := resolveRepoForPlan(*root, *repo); rerr == nil {
-			f.Represented = representedSourceFor(resolved, f.candidateBriefIDs)
+			f.Represented = representedSourceFor(resolved, f.candidateBriefIDs, f.declaredPartials)
 		} else {
 			heldErr := rerr
 			f.Represented = func() (map[string]deskkit.RepresentedPR, error) { return nil, heldErr }
@@ -158,6 +160,12 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 	if held := f.freshHoldReason(); held != "" {
 		fmt.Fprintf(out, "FRESH LANE HELD: %s\n", held)
 	}
+	landed, unchecked := splitUnchecked(f.landedUnreconciledRows())
+	// The COULD-NOT-CHECK count is stated up front too (#5853): a plan with few items and many
+	// unchecked rows must not read as idle at a glance. The rows themselves are listed below.
+	if len(unchecked) > 0 {
+		fmt.Fprintf(out, "COULD-NOT-CHECK: %d row(s) NOT dispatched — representing PR unknown (listed below)\n", len(unchecked))
+	}
 	for _, it := range items {
 		tier, terr := f.TierPolicy(it)
 		if terr != nil {
@@ -176,10 +184,47 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 	// worker dispatched to one returns nothing. They are listed here with the merged PR number, under
 	// their own heading, and are DELIBERATELY absent from the DISPATCH list above. The cell is
 	// reconciled by `statusgen reconcile --backfill --apply` (a separate lane), never by this planner.
-	if landed := f.landedUnreconciledRows(); len(landed) > 0 {
+	// A row whose reconcile flip statusgen's lint would HOLD names the missing frontmatter key instead
+	// (#5853): suggesting the reconcile there only sends the reader into a red lint.
+	if len(landed) > 0 {
 		fmt.Fprintf(out, "\n=== LANDED-UNRECONCILED: %d row(s) — merged, board cell not yet reconciled; NOT dispatched (#1339) ===\n", len(landed))
 		for _, l := range landed {
-			fmt.Fprintf(out, "  %s — merged PR #%d (run `statusgen reconcile --backfill --apply` to flip the board cell)\n", l.briefID, l.pr)
+			fmt.Fprintf(out, "  %s — merged PR #%d (%s)\n", l.briefID, l.pr, landedNextStep(f.Root, l.briefID))
+		}
+	}
+	// COULD-NOT-CHECK (#5853): rows whose representing PR could not be determined — the PR list was a
+	// bounded window and the per-brief `Brief:` lookup failed. Never dispatched, never called landed.
+	if len(unchecked) > 0 {
+		fmt.Fprintf(out, "\n=== COULD-NOT-CHECK: %d row(s) — representing PR unknown; NOT dispatched (#5853) ===\n", len(unchecked))
+		for _, l := range unchecked {
+			fmt.Fprintf(out, "  %s — %s\n", l.briefID, l.unchecked)
+		}
+	}
+
+	// AWAITING REWORK (#5853): `### Awaiting implementer rework` rows at implemented/verified. A
+	// verification already FAILED each one with a cited blocker, so the owner is a worker and the owed
+	// work is that blocker — never a re-run of the delivered brief as IMPLEMENT. Each row carries the
+	// section's own Next act (`fix, cite <ref>`) so the blocker is not lost. DELIBERATELY absent from
+	// DISPATCH above.
+	if rework := f.awaitingReworkRows(); len(rework) > 0 {
+		fmt.Fprintf(out, "\n=== AWAITING REWORK, owner worker: %d row(s) — verification failed with a cited blocker; NOT dispatched as IMPLEMENT (#5853) ===\n", len(rework))
+		for _, r := range rework {
+			act := r.NextAct
+			if act == "" || act == "—" {
+				act = "could-not-check (the board row names no next act)"
+			}
+			fmt.Fprintf(out, "  %s — status %s; next act: %s\n", r.ID(), r.Status, act)
+		}
+	}
+
+	// WITHHELD BY STATUS (#5853): every other brief row whose own Status is known and is not
+	// `todo`/`in-progress`. implemented/verified rows are delivered and await verification; a `done`
+	// row owes nothing; any other status (blocked, malformed) is held at that status. None is
+	// dispatched as IMPLEMENT, and each line says which of those it is.
+	if withheld := f.withheldRows(); len(withheld) > 0 {
+		fmt.Fprintf(out, "\n=== WITHHELD BY STATUS: %d row(s) — status is not todo/in-progress; NOT dispatched as IMPLEMENT (#5853) ===\n", len(withheld))
+		for _, r := range withheld {
+			fmt.Fprintf(out, "  %s — status %s (%s)\n", r.ID(), r.Status, withheldReason(r.Status))
 		}
 	}
 
@@ -203,8 +248,9 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 }
 
 // classOf returns the per-class RESERVATION bucket an item belongs to (example-stream/05):
-// "resume" (an orphan-PR resume item), "rework" (an Awaiting-implementer-rework row), or
-// "fresh" (everything else — the Next-up board's ordinary rows). It is a pure read of the kind
+// "resume" (an orphan-PR resume item), "rework" (a durable repair obligation, or an
+// Awaiting-implementer-rework row whose Status could not be read — a known-status rework row is
+// never queued, #5853), or "fresh" (everything else — the Next-up board's ordinary rows). It is a pure read of the kind
 // tag SelectQueue already stamps onto Payload — no new classification pass, no new state.
 func classOf(it loopengine.Item) string {
 	switch it.Payload["kind"] {
@@ -270,10 +316,14 @@ USAGE:
   fanoutloop --version
 
 'plan' prints the deterministic scheduler output: the dispatch queue (a to:worker desk-inbox item —
-a directed message to this desk — leads, then orphan resumes, then Awaiting-implementer-rework rows,
-then the Next-up board in board order — issue-<NN> placeholders INCLUDED, only a different loop's
+a directed message to this desk — leads, then orphan resumes, then the rework class (durable repair
+obligations, and an Awaiting-implementer-rework row only when its status could not be read), then
+the Next-up board in board order — issue-<NN> placeholders INCLUDED, only a different loop's
 review-request dispatch tokens skipped), each item's tier, and the exact dispatch instruction. It
-spawns nothing and writes nothing. The already-represented reconciliation (#1339) routes a fresh row
+spawns nothing and writes nothing. No brief row whose own status is known and is not todo/in-progress
+is offered as IMPLEMENT (#5853): an Awaiting-implementer-rework row is listed under 'AWAITING REWORK,
+owner worker' with its cited blocker (the section's 'fix, cite <ref>' next act), and any other such
+row under 'WITHHELD BY STATUS' with what it waits on. The already-represented reconciliation (#1339) routes a fresh row
 whose brief already has a MERGED PR to the LANDED-UNRECONCILED listing (its board cell just never
 reconciled) and never dispatches it, routes one with an OPEN PR to the resume lane, and dispatches
 only unrepresented rows. A PR that only AUTHORED the queued brief (a docs-only PR adding its brief

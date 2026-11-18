@@ -62,6 +62,24 @@ companion carries a verification observation, the writer checks that
 observation's consistency only. That check is not a source observation, and no
 reader may reuse it as corroboration.
 
+A repair already delivered before intake can name the closed source issue itself
+as its qualification successor (`delivered: true`, `route: qualification`). For a
+manual close, cite the merged change in `evidence` as `#N`, `!N`, a
+repository-qualified form, or the change’s canonical web URL. The writer reads
+that exact change in the source repository. Its state must be closed, the forge
+must report a merge, and its work trailer must identify the source issue. For a
+web URL the forge must also return the cited address. An issue or run URL
+cannot corroborate a repair.
+
+The writer checks the complete issue history for reopens. After a reopen,
+supply a change whose merge timestamp falls strictly after the latest reopen.
+If the timestamp is unavailable or cannot distinguish the order, qualification
+remains pending. A prose reference can rely on a forge-linked merged closer
+when the issue has never reopened. An
+ordinary implementation successor still needs to be open. Recording the
+qualification judgment schedules no second implementation and grants no credit
+for testing or deployment.
+
 The original exit remains immutable. A companion can refine a mechanical exit
 without changing it. Local `intake-handoffs-v1.jsonl` is append-only under the
 existing audit lock: exact retries are idempotent, conflicting revisions refuse,

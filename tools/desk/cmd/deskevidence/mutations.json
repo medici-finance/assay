@@ -606,6 +606,24 @@
       "file": "cmd/deskevidence/decisiongate.go",
       "old": "path.Clean(p) != p ||",
       "new": "path.Clean(p) == \"\" ||"
+    },
+    {
+      "name": "the decision-gate deadline check is dropped (a killed child's partial output is parsed as the gate's answer, never refused as did-not-finish)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\tif ctx.Err() != nil {\n\t\t// Checked BEFORE the output is read",
+      "new": "\tif false && ctx.Err() != nil {\n\t\t// Checked BEFORE the output is read"
+    },
+    {
+      "name": "the decision-gate drain sits outside the halved deadline (each child can run lockWait/2 plus the drain, so the before/after pair holds the preparation lock past lockWait)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "func decisionGateDeadline() time.Duration { return lockWait/2 - decisionGateWaitDelay() }",
+      "new": "func decisionGateDeadline() time.Duration { return lockWait / 2 }"
+    },
+    {
+      "name": "#6738: every lock acquisition is granted a full lockWait (the waits are per attempt, not one budget per run)",
+      "file": "cmd/deskevidence/writeflow.go",
+      "old": "\tif left := lockWait - a.lockWaited; left > 0 {",
+      "new": "\tif left := lockWait; left > 0 {"
     }
   ]
 }

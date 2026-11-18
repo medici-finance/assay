@@ -3,8 +3,9 @@ package main
 // `statusgen rowread` — the read-only forge lane for a Verify row (#4700).
 //
 // An admitted verifyrun row carries no forge credential: admittedRowEnv
-// strips GH_TOKEN, GITHUB_TOKEN, GH_ENTERPRISE_TOKEN and GITHUB_ENTERPRISE_TOKEN
-// before the row's shell starts, so a row that pipes `gh api` reads nothing.
+// strips the forge token variables, HOME, DESK_LOOP and every GH_* and ASSAY_*
+// variable before the row's shell starts, so a row that pipes `gh api` reads
+// nothing.
 // The ruling on #4700 settles how such a row reads forge state anyway: through
 // a read-only verb that mints the credential and holds it inside its own
 // process, so nothing the row can see — env, argv, a file, its output — ever
@@ -15,7 +16,9 @@ package main
 // deskreadReader.readItem (forgeread.go), the same seam the trust gate and the
 // un-block lane already use, which runs the desk-tools `deskread` verb. deskread
 // resolves its role from DESK_LOOP and mints under that role's App custody,
-// in-process; it never reads an ambient login. What this file adds is:
+// in-process; it never reads an ambient login. Inside an admitted row, which
+// holds no role, the verb forwards its arguments to the run, which reads in
+// its own process (rowreadbroker.go). What this file adds is:
 //
 //   - a CLOSED allowlist of read kinds. Anything else — a write verb, another
 //     read kind, an unknown flag (`--ci-workflow-token` included) — is refused
@@ -35,6 +38,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -86,6 +90,16 @@ type rowreadMatch struct {
 }
 
 func runRowread(args []string, stdout, stderr io.Writer) int {
+	if sock := os.Getenv(rowreadSocketVar); sock != "" {
+		return rowreadForward(sock, args, stdout, stderr)
+	}
+	return runRowreadWith(args, newDeskreadReader(), stdout, stderr)
+}
+
+// runRowreadWith is the verb itself, reading through reader. runRowread calls
+// it in a process that holds its own read role; the row-read broker calls it
+// inside an admitted verifyrun, for a row that holds none.
+func runRowreadWith(args []string, reader deskreadReader, stdout, stderr io.Writer) int {
 	usage := "usage: statusgen rowread comments --issue owner/name#N [--issue ...] [--body-contains TEXT]"
 	if len(args) == 0 {
 		fmt.Fprintln(stderr, usage)
@@ -120,7 +134,6 @@ func runRowread(args []string, stdout, stderr io.Writer) int {
 	// answer as a pass.
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
-	reader := newDeskreadReader()
 	for _, is := range issues {
 		cs, err := reader.IssueComments(is.repo, is.number)
 		if err != nil {

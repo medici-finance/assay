@@ -1,8 +1,14 @@
 # Tool refactoring — class-level scope
 
-**Status:** draft proposal, 2026-11-12. **Routes-to:** this parked stream.
-This is an authoring deliverable. It authorizes no implementation dispatch,
-acceptance-policy change, release, permission change or infrastructure activation.
+**Status:** routed — the maintainer’s merge of the activation PR routes this scope to the eleven existing briefs under lifecycle §8.4.
+**Routes-to:** docs/streams/tool-refactoring/
+
+The activation covers briefs 01 through 11 and their existing dependency waves.
+Each brief retains its human start decision, Verify contract and independent
+acceptance. Implementation dispatch, acceptance-policy changes, releases, permission
+changes and infrastructure activation each retain their existing authorization requirements.
+The first real portability qualification targets a Kubernetes-hosted
+desk. See the [activation and qualification sequence](README.md#activation-and-qualification).
 
 ## Outcome and evidence
 
@@ -143,9 +149,9 @@ the upper planner. The joined check /11 tests actual migrated consumers.
 
 Each unit is M except /07's L real-binary/oracle harness cohort. The refactors touch repository binding, verification admission/outcomes, role
 process ownership or publication authority; all eleven are human-gated with
-self-contained start decisions. The stream is parked: pending
-implementation decisions do not prevent reviewing these concrete drafts, and the
-proposal does not acquire veto authority over existing approved work.
+self-contained start decisions. A maintainer merge activates the full stream;
+each owning brief records its own adoption decision. Existing approved work
+continues under its owning stream.
 
 At pickup/resume/publication, refresh affected source, issue/PR and claim state,
 check current approved target/contract revisions and record continue/adapt/hold.

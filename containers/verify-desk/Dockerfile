@@ -36,9 +36,10 @@ ENV ASSAY_DESK=verify-desk
 
 # The shared interactive boot: fail-closed credential preflight, then the desk
 # identity + skill pointer, then the interactive session. One script, identical
-# across all five desks (containers/entrypoint.sh). Its 0755 mode is carried
-# from git, so this works with or without BuildKit.
-COPY containers/entrypoint.sh /usr/local/bin/desk-entrypoint
+# across all five desks (containers/entrypoint.sh). Its 0755 mode is set here,
+# never carried from the checkout, so a checkout made under umask 002 cannot
+# ship it group-writable. --chmod needs BuildKit, as the base image already does.
+COPY --chmod=0755 containers/entrypoint.sh /usr/local/bin/desk-entrypoint
 
 ENTRYPOINT ["/usr/local/bin/desk-entrypoint"]
 # Default command the entrypoint execs into: an interactive shell from which the

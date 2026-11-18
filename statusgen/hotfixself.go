@@ -23,9 +23,8 @@ import (
 // asset: the pin is statusgen's own `.assay-versions` line (the bare `statusgen` line, else this
 // platform's `statusgen-<os>-<arch>` line), never the desk-tools line; and it never asks the
 // pinned install for its `--version`, so outside a checkout that pins statusgen a statusgen
-// hotfix is could-not-check. In the check:ci network-off helper the ownership check reads
-// root's uid as the helper's user namespace maps it (sgActiveOwnerFor); everywhere else it is
-// uid 0.
+// hotfix is could-not-check. The ownership check is uid 0 on every invocation, the check:ci
+// network-off helper included, behind the initial-user-namespace gate (sgActiveOwnerFor).
 //
 // A release build outside the overlay directories skips it entirely (no `+hotfix-` stamp, not
 // under the overlay the environment names nor the compiled-in one). ANY binary under either
@@ -64,14 +63,15 @@ const (
 
 // The refusal phrases, equal to deskkit's so every layer prints the same words.
 const (
-	sgReasonNotRootOwned = "hotfix overlay not root-owned"
-	sgReasonTampered     = "hotfix tampered"
-	sgReasonOutlived     = "hotfix outlived its pin"
-	sgReasonExpired      = "hotfix expired"
-	sgReasonCeiling      = "hotfix exceeds the ruled ceiling"
-	sgReasonSourceRule   = "hotfix source rule not the ruled one"
-	sgReasonUnstamped    = "unstamped binary in hotfix overlay"
-	sgReasonNoPin        = "hotfix could-not-check: no pin resolves"
+	sgReasonNotRootOwned    = "hotfix overlay not root-owned"
+	sgReasonTampered        = "hotfix tampered"
+	sgReasonOutlived        = "hotfix outlived its pin"
+	sgReasonExpired         = "hotfix expired"
+	sgReasonCeiling         = "hotfix exceeds the ruled ceiling"
+	sgReasonSourceRule      = "hotfix source rule not the ruled one"
+	sgReasonUnstamped       = "unstamped binary in hotfix overlay"
+	sgReasonNoPin           = "hotfix could-not-check: no pin resolves"
+	sgReasonOwnerUnverified = "hotfix could-not-check: file owners unverifiable"
 )
 
 // sgPinTagPattern is a release pin tag: bare vX.Y.Z, optionally behind an artifact prefix.
@@ -239,7 +239,7 @@ func sgSelfIntegrity(in sgHotfixInput) string {
 	}
 	for _, p := range []string{in.Overlay, filepath.Join(in.Overlay, "bin"), in.Exe} {
 		if err := in.Owner(p); err != nil {
-			return sgReasonNotRootOwned + ": " + err.Error()
+			return sgOwnerReason(err) + ": " + err.Error()
 		}
 	}
 	if sgIsStagingFile(in) {
@@ -247,7 +247,7 @@ func sgSelfIntegrity(in sgHotfixInput) string {
 	}
 	mpath := filepath.Join(in.Overlay, sgHotfixManifestName)
 	if err := in.Owner(mpath); err != nil {
-		return sgReasonNotRootOwned + ": " + err.Error()
+		return sgOwnerReason(err) + ": " + err.Error()
 	}
 	b, err := os.ReadFile(mpath)
 	if err != nil {
@@ -375,94 +375,28 @@ func sgHotfixApplies(tag, exe, overlay, defaultOverlay string) bool {
 }
 
 // sgActiveOwner is root's ownership check, unless a hotfixseam build names another uid.
-func sgActiveOwner() func(string) error { return sgActiveOwnerFor(os.Args, os.ReadFile) }
+func sgActiveOwner() func(string) error { return sgActiveOwnerFor(os.Args, sgReadProc) }
 
-// The two kernel files the network-off helper reads to find root's uid inside its namespace.
-const (
-	sgProcUIDMap      = "/proc/self/uid_map"
-	sgProcOverflowUID = "/proc/sys/kernel/overflowuid"
-)
+// sgProcUIDMap is this process's uid mapping, the first file the namespace gate reads.
+const sgProcUIDMap = "/proc/self/uid_map"
 
 // sgActiveOwnerFor is sgActiveOwner over an explicit argv and file reader, so a test drives
-// it without a user namespace. Every invocation checks ownership by uid 0, except one: the
-// check:ci network-off helper (argv[1] == netnsHelperArg, started by netnsWrapperArgv under
-// `unshare --net --map-root-user`). In that user namespace the parent namespace's root is
-// not uid 0: the caller's own uid is mapped to 0, and an unmapped uid, root's included,
-// reads as the kernel's overflow uid. So the helper checks ownership by the uid the parent
-// namespace's root carries there (sgNamespaceRootUID), for the file and every parent
-// directory alike. A caller-owned overlay, which reads as uid 0 in there, is refused. When
-// the mapping cannot be read or is ambiguous, the helper checks uid 0, as before.
-//
-// Inside the helper this rule is weaker than uid 0: every unmapped host uid reads as the
-// overflow uid, so there "owned by root" means "owned by anyone but the caller". The helper's
-// check is sound only because of the parent's. The helper is this same executable
-// (os.Executable in networkOffWrapper), and the parent, an ordinary invocation, has already
-// checked it, its overlay, its manifest and every parent directory by uid 0 before it starts
-// `unshare`. A file owned by any other host user is refused there ("ordinary invocation" in
-// TestStatusgenHotfixNetnsRoot), and a root-owned file cannot be re-owned between the two
-// checks without root. Only a direct `__verifyrun-netns` invocation skips the parent, and
-// that runs as the caller in the caller's own namespace.
+// it without a user namespace. Every invocation checks ownership by uid 0 behind the namespace
+// gate (sgUserNSIdentity), and argv selects nothing: the check:ci network-off helper
+// (netnsHelperArg, started by netnsWrapperArgv under `unshare --net --map-root-user`) is
+// checked exactly like any other invocation. In its user namespace the gate refuses as
+// could-not-check, so a hotfix in the helper runs the pinned fallback with a NOTICE, or exits
+// 6 and networkOffWrapper's probe makes the row could-not-run. No rule read from inside a
+// non-initial namespace can stand in for the gate: that namespace's parents are not visible
+// from it, so a caller under a nested mapping could make its own file read as owned by
+// whichever uid such a rule trusts.
 func sgActiveOwnerFor(args []string, read func(string) ([]byte, error)) func(string) error {
 	if v := strings.TrimSpace(sgHotfixSeamGet(sgHotfixSeamRootUID)); v != "" {
 		if uid, err := strconv.ParseUint(v, 10, 32); err == nil {
 			return sgHotfixOwnedBy(uint32(uid))
 		}
 	}
-	if len(args) >= 2 && args[1] == netnsHelperArg {
-		uidMap, err1 := read(sgProcUIDMap)
-		overflow, err2 := read(sgProcOverflowUID)
-		if err1 == nil && err2 == nil {
-			if root, ok := sgNamespaceRootUID(string(uidMap), string(overflow)); ok {
-				return sgHotfixOwnedByRoot(root)
-			}
-		}
-	}
-	return sgHotfixOwnedBy(0)
-}
-
-// sgNamespaceRootUID is the uid that the parent user namespace's root (uid 0) carries in this
-// process's user namespace, read from /proc/self/uid_map (lines of `inside outside count`) and
-// the kernel overflow uid. In the initial namespace the map is `0 0 4294967295` and the answer
-// is 0. When some line maps outside uid 0, the answer is that line's inside uid. When none
-// does, root is unmapped and reads as the overflow uid, which is the answer, unless the
-// overflow uid is itself a mapped inside uid: then the two cannot be told apart and ok is
-// false. A map or overflow value that does not parse is ok == false.
-func sgNamespaceRootUID(uidMap, overflow string) (uint32, bool) {
-	type extent struct{ inside, outside, count uint64 }
-	var exts []extent
-	for _, line := range strings.Split(strings.TrimSpace(uidMap), "\n") {
-		f := strings.Fields(line)
-		if len(f) != 3 {
-			return 0, false
-		}
-		var e extent
-		var err error
-		if e.inside, err = strconv.ParseUint(f[0], 10, 32); err != nil {
-			return 0, false
-		}
-		if e.outside, err = strconv.ParseUint(f[1], 10, 32); err != nil {
-			return 0, false
-		}
-		if e.count, err = strconv.ParseUint(f[2], 10, 33); err != nil || e.count == 0 {
-			return 0, false
-		}
-		exts = append(exts, e)
-	}
-	for _, e := range exts {
-		if e.outside == 0 {
-			return uint32(e.inside), true
-		}
-	}
-	ov, err := strconv.ParseUint(strings.TrimSpace(overflow), 10, 32)
-	if err != nil {
-		return 0, false
-	}
-	for _, e := range exts {
-		if ov >= e.inside && ov < e.inside+e.count {
-			return 0, false
-		}
-	}
-	return uint32(ov), true
+	return sgHotfixOwnedByNS(0, read, runtime.GOOS)
 }
 
 func init() { sgRunHotfixSelfCheck() }

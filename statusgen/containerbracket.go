@@ -843,7 +843,7 @@ func containerRowRunnerProblem(rows []string, want string) string {
 		// removed (review S21): any other token-shaped text stays in the cell
 		// and refuses the close, so the tree and principal readers, which read
 		// the whole cell, see what this check compared.
-		if cell := stripWriterReadSetToken(strings.TrimSpace(cells[witnessCellRunner])); cell != want {
+		if cell := stripLeadingReadSetToken(strings.TrimSpace(cells[witnessCellRunner]), containerReadsAtRe); cell != want {
 			return fmt.Sprintf("row %s's Runner cell %q is not the cell the host derived and recorded at the open step, %q", strings.TrimSpace(cells[0]), cell, want)
 		}
 	}

@@ -13,7 +13,7 @@ ruling: "https://github.com/medici-finance/assay/issues/4521#issuecomment-661560
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: 2026-10-17 by statusgen newbrief
 sources:
   - "Planning amendment 2026-10-23; source checked on App-fetched main 9c4307a19a190964db084104ecc1f7bd62cba433; candidate-plus-priority parity and GH-call audit"
@@ -125,7 +125,7 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 |---|-------|---------|--------|
 | 1 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewContractFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestReviewContractFlow ' "$o")` | exit 0; named PASS. Existing and extracted production classifiers/planners match independent oracle across heads/body/reviews/checks/lanes/order/holds/uncapped depths. Mutation of one applicability or idle input fails. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewBoundary$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestReviewBoundary ' "$o")` | exit 0; named PASS. Root contract/planner runs with provider effects and credentials forbidden; schema rejects wrong versions, missing scope and incomplete-as-empty. Cross-module import probe cannot consume desk internal packages. |
-| 3 | check:ci +dereference | `statusgen --root . --consumers --brief desk-tools/39` | exit 0; implementation consumer routing is corroborated against the actual diff. Out-of-scope judgments remain review obligations. |
+| 3 | check:ci +dereference | `git grep -qF PlanCandidates HEAD -- spec/review-observation-v1.md && routes=$(statusgen --root . --consumers --brief desk-tools/39 --delivery 790003516c1fb4ea99d0a6d5eb6e67e9123b3c2a --base 4b7f4847f7f3531185fdfb23fbf978ae9551a242) && h=$(mktemp) && trap 'rm -f "$h"' 0 && git cat-file blob c488296801fcdc542108c955d92e85e63d16067a > "$h" && sh "$h" "$routes"` | exit 0; implementation consumer routing is corroborated against the actual diff. Out-of-scope judgments remain review obligations. |
 | 4 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewPriorityJoin$' ./... > "$o" && grep -F -- '--- PASS: TestReviewPriorityJoin ' "$o")` | exit 0; named PASS. the extracted pure contract matches an independent oracle for identical observation/policy/time/capacity, selected head/lane/order and held/unknown sets. Actual driver integration is accepted downstream in /43 and graph-execution/27; it is not a prerequisite here. Permute identity keys against rank, include unmapped and capped candidates, change policy only and deny provider/process/file reads; a second sorter or any provider call fails. |
 
 ## Pre-mortem and detection
@@ -237,3 +237,25 @@ substitute consumer routing for delivery qualification.
 All four original Verify rows, Evidence and the existing human gate are unchanged. Named tests were inspected as source, not run as
 independent verification. Runtime collection/adoption remains with the declared
 follow-on briefs, and final human acceptance stays separate.
+
+
+## Proposed command amendment for Verify row 3
+
+Version 3 binds the routing check to the three implementation ranges above. The
+row reads the selection contract from the subject tree, runs the native historical
+consumer report on #3593 and executes the pinned Git blob of
+`verify.d/39-consumer-routes.sh`. The helper checks added adapter calls at #3570
+and #3593 and the four selection sites added at #4235. It also checks the native
+report names both implemented adapters and both deferred routes. #5404 recorded
+the delivery mapping. #5780 recorded the blocked independent run.
+
+The three #3570 self-routes establish no implementation. At #3593 the report
+counts four corroborated declarations, including two follow-up references. At
+#4235 the raw report counts six corroborated and two disproved because that diff
+does not touch the inherited adapters. Each adapter is assessed at the delivery
+where its code changed. Runtime collection, dispatch preparation and caller
+adoption remain with /40, /41, /43 and graph-execution/27. The original Expect
+continues to reserve out-of-scope judgments for review.
+
+Applying the amended Command requires the exact post-merge human approval for
+row 3 and fresh independent verification under the protected-table procedure.

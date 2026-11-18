@@ -196,8 +196,8 @@
     {
       "name": "review SEC-1 — the trigger client follows redirects (a 307 re-sends the trigger token in the body)",
       "file": "internal/deskkit/forge_gitlab.go",
-      "old": "\topts = append(opts, gitlab.WithHTTPClient(countingClient(gitlabNoRedirectClient(g.Client))))\n\tcl, err := gitlab.NewAuthSourceClient(",
-      "new": "\topts = append(opts, gitlab.WithHTTPClient(countingClient(g.Client)))\n\tcl, err := gitlab.NewAuthSourceClient("
+      "old": "\topts = append(opts, gitlab.WithHTTPClient(cappedForgeClient(countingClient(gitlabNoRedirectClient(g.Client)))))\n\tcl, err := gitlab.NewAuthSourceClient(",
+      "new": "\topts = append(opts, gitlab.WithHTTPClient(cappedForgeClient(countingClient(g.Client))))\n\tcl, err := gitlab.NewAuthSourceClient("
     },
     {
       "name": "review SEC-1 sibling — the liveness fetcher uses an injected client as given (follows redirects with PRIVATE-TOKEN)",
