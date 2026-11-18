@@ -5,9 +5,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/regression"
 )
 
 func TestMaintenanceHookPolicy(t *testing.T) {
@@ -161,5 +164,66 @@ func TestMaintenanceHookChangeAfterInventory(t *testing.T) {
 	_, err := maintenanceRun(t, "--repo", work, "--apply")
 	if err == nil || maintenanceWrites(*calls) != 0 {
 		t.Fatalf("changed hook inventory accepted: %v", err)
+	}
+}
+
+// regression: #6389, #6300
+func TestMaintenanceFixtureGlobalVictim(t *testing.T) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	victim := t.TempDir()
+	home := filepath.Join(victim, "home")
+	if err := os.Mkdir(home, 0700); err != nil {
+		t.Fatal(err)
+	}
+	global := filepath.Join(home, ".gitconfig")
+	const original = "[fixture]\n\towner = caller\n"
+	if err := os.WriteFile(global, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	// Build the victim independently, with a literal environment rather than
+	// the isolation helper whose adoption this control is meant to detect.
+	victimGit := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command(git, args...)
+		cmd.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + home,
+			"GIT_CONFIG_GLOBAL=" + global, "GIT_CONFIG_SYSTEM=" + os.DevNull,
+			"GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0"}
+		if root := os.Getenv("SYSTEMROOT"); root != "" {
+			cmd.Env = append(cmd.Env, "SYSTEMROOT="+root)
+		}
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("victim setup: %v: %s", err, out)
+		}
+	}
+	repo := filepath.Join(victim, "repo")
+	victimGit("-c", "maintenance.auto=false", "-c", "gc.auto=0", "init", "-b", "main", repo)
+	victimGit("-C", repo, "-c", "maintenance.auto=false", "-c", "gc.auto=0",
+		"-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid",
+		"-c", "commit.gpgsign=false", "commit", "--allow-empty", "-m", "victim")
+	victimGit("config", "--global", "fixture.probe", "inherited-control")
+	if got, err := os.ReadFile(global); err != nil || string(got) == original {
+		t.Fatal("positive control did not modify the disposable inherited config")
+	}
+	if err := os.WriteFile(global, []byte(original), 0600); err != nil {
+		t.Fatal(err)
+	}
+	before := regression.SnapshotTree(t, victim)
+	t.Setenv("GIT_CONFIG_GLOBAL", global)
+	t.Setenv("GIT_CONFIG_COUNT", "2")
+	t.Setenv("GIT_CONFIG_KEY_0", "grep.patternType")
+	t.Setenv("GIT_CONFIG_VALUE_0", "basic")
+	t.Setenv("GIT_CONFIG_KEY_1", "grep.extendedRegexp")
+	t.Setenv("GIT_CONFIG_VALUE_1", "false")
+	t.Setenv("GIT_NO_REPLACE_OBJECTS", "1")
+	work, _ := maintenanceFixture(t)
+	mustGit(t, work, "config", "--global", "fixture.probe", "fixture-owned")
+	if got := mustGit(t, work, "config", "--global", "fixture.probe"); got != "fixture-owned" {
+		t.Fatalf("fixture global config was not writable: %q", got)
+	}
+	if after := regression.SnapshotTree(t, victim); !reflect.DeepEqual(before, after) {
+		t.Fatal("fixture modified the caller config or victim repository")
 	}
 }
