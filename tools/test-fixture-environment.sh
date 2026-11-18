@@ -43,6 +43,19 @@ fixture_prepare() {
   ln -s "$fixture_git" "$fixture_scratch/bin/git"
   ln -s "$approved_bash" "$fixture_scratch/bin/bash"
   ln -s "$fixture_python" "$fixture_scratch/bin/python3"
+  # Preserve installed fixture capabilities before narrowing PATH. These
+  # explicit runtime tools may live outside the fixed OS directories; omitting
+  # them would manufacture missing-tool skips on a capable developer host.
+  local optional_tool approved_tool
+  for optional_tool in tmux shellcheck jq perl curl lsof; do
+    if approved_tool="$(command -v "$optional_tool")"; then
+      if [[ "$approved_tool" != /* || ! -x "$approved_tool" ]]; then
+        echo "ERROR: fixture tool $optional_tool must resolve to an absolute executable" >&2
+        return 2
+      fi
+      ln -s "$approved_tool" "$fixture_scratch/bin/$optional_tool"
+    fi
+  done
   # Approved interpreters override the fixed OS dependency directories below;
   # no caller PATH tail (or installed desk/forge tool directory) is inherited.
   # CI=true makes requireTool refuse missing required tools instead of skipping.

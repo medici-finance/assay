@@ -84,6 +84,24 @@ env -i "${fixture_env[@]}" bash -c 'test "${BASH_VERSINFO[0]}" -ge 4'
 env -i "${fixture_env[@]}" python3 -c 'import sys; assert sys.version_info.major == 3'
 echo 'PASS: explicit compatible interpreters and CI tool strictness'
 
+# Installed optional capabilities outside the OS directories must remain
+# available through their declared paths, without inheriting a PATH tail.
+optional_bin="$scratch/optional-parent"
+mkdir -p "$optional_bin"
+for tool in tmux shellcheck jq perl curl lsof; do
+  printf '#!/bin/sh\nprintf "approved-fixture-tool\\n"\n' > "$optional_bin/$tool"
+  chmod +x "$optional_bin/$tool"
+done
+case_root="$scratch/optional-capabilities"
+mkdir -p "$case_root"
+PATH="$optional_bin:$PATH" fixture_prepare "$scratch/repo" "$case_root" /bin/true "$git_bin" "$python_bin" "$case_root/cache" "$case_root/modcache" "$case_root/gopath"
+for tool in tmux shellcheck jq perl curl lsof; do
+  if [ "$(env -i "${fixture_env[@]}" "$tool" --version)" != approved-fixture-tool ]; then
+    echo "installed optional tool was replaced or hidden: $tool" >&2; exit 1
+  fi
+done
+echo 'PASS: declared optional capabilities survive parent PATH restriction'
+
 # The actual public entry point must still launch the second complete module
 # after a first-module failure. The fake only substitutes Go; no runner branch
 # or selected-package flag exists for this control.
