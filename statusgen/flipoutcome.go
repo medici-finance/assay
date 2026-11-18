@@ -85,6 +85,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/gitcore"
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // flipOutcomeCheck cross-checks the brief's latest verify-outcome record under
@@ -131,7 +132,7 @@ func flipOutcomeCheck(root, key, wantSHA string) error {
 		}
 		return refuseFlip("outcome record revision mismatch: the latest verify-outcome record for %s (%s) names %s, the flip is at %s", key, rec.Source, rev, wantSHA)
 	}
-	if classifyOutcome(o.Outcome) != outcomePass {
+	if evaluation.ParseVerificationOutcome(o.Outcome) != evaluation.OutcomeVerified {
 		return refuseFlip("outcome record result mismatch: the latest verify-outcome record for %s (%s) says outcome %q, the flip requests verified", key, rec.Source, o.Outcome)
 	}
 	return flipOutcomeAuthor(root, rec)
