@@ -151,11 +151,14 @@ func (cc *creditContext) placeWitness(witness string) creditVerdict {
 	if err != nil {
 		return creditCouldNot("cannot resolve the repository toplevel: %v", err)
 	}
-	rel, err := filepath.Rel(toplevel, resolved)
-	if err != nil || !filepath.IsLocal(rel) {
+	// Use the same repository coordinate as container admission. A relative
+	// witness can stay relative after EvalSymlinks even when Git returns an
+	// absolute worktree root. Both inputs above must already exist.
+	rel, inside := relWithin(toplevel, resolved)
+	if !inside {
 		return creditCouldNot("cannot place %s inside its repository", witness)
 	}
-	cc.rel = filepath.ToSlash(rel)
+	cc.rel = rel
 	return creditOK()
 }
 
