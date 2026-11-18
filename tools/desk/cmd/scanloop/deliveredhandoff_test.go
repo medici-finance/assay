@@ -93,3 +93,69 @@ func TestDeliveredRepairHandoff(t *testing.T) {
 		})
 	}
 }
+
+type repairEvidenceForge struct {
+	deskkit.Forge
+	change  deskkit.PullRequest
+	history deskkit.IssueStateHistory
+}
+
+func (f *repairEvidenceForge) IssueStateEvents(deskkit.ForgeRepo, int) (*deskkit.IssueStateHistory, error) {
+	return &f.history, nil
+}
+
+func (f *repairEvidenceForge) GetPullRequest(_ deskkit.ForgeRepo, number int) (*deskkit.PullRequest, error) {
+	if number != f.change.Number {
+		return nil, deskkit.Unverifiable("missing change", nil)
+	}
+	return &f.change, nil
+}
+
+// regression: #6507
+func TestRepairEvidenceIdentityAndLatestReopen(t *testing.T) {
+	source := deskkit.ForgeRepo{Owner: "example-org", Name: "tracker"}
+	const (
+		prURL  = "https://github.com/example-org/tracker/pull/88"
+		before = "2026-08-24T10:00:00Z"
+		reopen = "2026-08-24T11:00:00Z"
+		after  = "2026-08-24T12:00:00Z"
+	)
+	for _, tc := range []struct {
+		name, evidence, state, mergedAt string
+		reopened, want                  bool
+	}{
+		{"explicit PR URL", prURL, "closed", after, false, true},
+		{"wrong PR URL with another merged closer", "https://github.com/example-org/tracker/pull/89", "closed", after, false, false},
+		{"foreign PR URL", "https://github.com/example-org/other/pull/88", "closed", after, false, false},
+		{"other forge same PR coordinates", "https://another.example/example-org/tracker/pull/88", "closed", after, false, false},
+		{"issue URL with same number", "https://github.com/example-org/tracker/issues/88", "closed", after, false, false},
+		{"run URL with merged closer", "https://github.com/example-org/tracker/actions/runs/88", "closed", after, false, false},
+		{"wrong typed change", "example-org/tracker!89", "closed", after, false, false},
+		{"typed merge request", "example-org/tracker!88", "closed", after, false, true},
+		{"open with merge signals", "#88", "open", after, false, false},
+		{"missing state with merge flag", "#88", "", "", false, false},
+		{"reopen with undated closer", "closed by the repair", "closed", after, true, false},
+		{"previous repair after reopening", "#88", "closed", before, true, false},
+		{"unreadable merge timestamp", "#88", "closed", "unreadable", true, false},
+		{"same second as reopen", "#88", "closed", reopen, true, false},
+		{"undated repair after reopening", "#88", "closed", "", true, false},
+		{"dated repair after reopening", "#88", "closed", after, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := &repairEvidenceForge{
+				change:  deskkit.PullRequest{Number: 88, URL: prURL, Body: "Issue: #77", State: tc.state, Merged: true, MergedAt: tc.mergedAt},
+				history: deskkit.IssueStateHistory{Complete: true, ClosingChanges: []deskkit.ClosingChange{{Repo: source.Slug(), Number: 88, Merged: true}}},
+			}
+			if tc.reopened {
+				f.history.Events = []deskkit.IssueStateEvent{
+					{Kind: deskkit.IssueEventReopened, CreatedAt: reopen},
+					{Kind: deskkit.IssueEventReopened, CreatedAt: before},
+				}
+			}
+			err := checkMergedRepair(f, source, 77, tc.evidence)
+			if (err == nil) != tc.want {
+				t.Errorf("accepted=%v, want %v; error=%v", err == nil, tc.want, err)
+			}
+		})
+	}
+}

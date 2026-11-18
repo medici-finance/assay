@@ -64,10 +64,18 @@ reader may reuse it as corroboration.
 
 A repair already delivered before intake can name the closed source issue itself
 as its qualification successor (`delivered: true`, `route: qualification`). For a
-manual close, cite the merged change as `#N` or `owner/repo#N` in `evidence`.
-The writer reads that change in the source repository and checks its issue
-trailer against the source. With a prose evidence reference, it reads the
-forge's complete closing-change history and requires a merged closer. An
+manual close, cite the merged change in `evidence` as `#N`, `!N`, a
+repository-qualified form, or the change’s canonical web URL. The writer reads
+that exact change in the source repository. Its state must be closed, the forge
+must report a merge, and its work trailer must identify the source issue. For a
+web URL the forge must also return the cited address. An issue or run URL
+cannot corroborate a repair.
+
+The writer checks the complete issue history for reopens. After a reopen,
+supply a change whose merge timestamp falls strictly after the latest reopen.
+If the timestamp is unavailable or cannot distinguish the order, qualification
+remains pending. A prose reference can rely on a forge-linked merged closer
+when the issue has never reopened. An
 ordinary implementation successor still needs to be open. Recording the
 qualification judgment schedules no second implementation and grants no credit
 for testing or deployment.
