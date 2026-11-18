@@ -15,9 +15,11 @@ depends: []
 unblocks: []
 effort: M
 gate: human
-risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
+risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: >-
-  It decides who may waive a required check. Granting an automation identity label-write and
+  It changes a security and authorization control: who may waive a required check (sensitive-data
+  is answered yes for that reason, as the trust-boundary briefs answer it). It decides who may
+  waive a required check. Granting an automation identity label-write and
   letting its label count is the widening the workflow header says this repository refuses, and
   the adopter install would carry that widening to every adopter. Only the human can weigh the
   saved maintainer clicks against it.
@@ -177,29 +179,37 @@ safer fallback if the human will not hand label-write to the desk.
 9. Record the ruling as the human's own comment on the decision issue, in the README row.
 
 ## Verify (executable — no prose-only DoD items)
+The risk answer is yes, so every row is fail-first: each names the red it shows at the base commit
+(the parent of the delivering merge) and the green it shows after delivery. The verifier records
+each with `verifyrun --fail-first` against that parent. Rows 2, 3 and 4 are negative: they pass
+only when the check stays red.
+
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check +flow | `test -f tools/changelog/labeler_test.sh && bash tools/changelog/labeler_test.sh` | exit 0; an allowed applier greens, a denied login, an unreadable event and an unset list keep the check red, and the desk's App is waived only on a briefs-only PR |
-| 2 | check +neighbour | `bash tools/changelog/check_test.sh && bash tools/changelog/reconcile_test.sh` | exit 0; the existing fragment, proxy, Unreleased and board-reconciliation cases still pass |
-| 3 | check +mutation | `O=$(mktemp) && trap 'rm -f "$O"' 0 && test -f tools/changelog/labeler-mutations.json && cd tools/desk && go run ./cmd/muhar -spec ../changelog/labeler-mutations.json > "$O" 2>&1 && grep -F -e 'Totals: 4 caught, 0 NOT CAUGHT, 0 could-not-mutate.' "$O"` | exit 0; all four mutants caught |
-| 4 | check +dereference | `a=$(sed -n '/^on:/,$p' .github/workflows/changelog-check.yml) && b=$(sed -n '/^on:/,$p' tools/changelog/changelog-check.yml) && test "$a" = "$b" && ! grep -rn -e 'applied by the desk or a human' plugins/assay/skills tools/desk/cmd/deskdispatch/references/worker-prompt.md` | exit 0; the staged copy matches the live workflow body and no skill text keeps the contradicting sentence |
-| 5 | check +flow | `grep -F -e 'ASSAY_CHANGELOG_SKIP_APPLIERS' docs/adopting-assay.md .github/workflows/changelog-check.yml tools/changelog/changelog-check.yml` | exit 0; the variable name appears in the install doc and in both workflow copies |
-| 6 | check +flow +dereference | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$(git rev-parse HEAD)" = "$DELIVERY_HEAD" && git merge-base --is-ancestor "$DELIVERY_BASE" "$DELIVERY_HEAD" && ! grep -q -e '[:] follow-up ' docs/streams/desk-tools/brief-66-changelog-skip-labeler-allow-list.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/66 --delivery "$DELIVERY_HEAD" --base "$DELIVERY_BASE" > "$o" 2>&1 && grep -F -e '0 disproved, 0 unchecked' "$o"` | exit 0; every consumer listed in the frontmatter is in the delivering diff |
+| 1 | check:ci +flow | `test -f tools/changelog/labeler_test.sh && bash tools/changelog/labeler_test.sh allowed-applier briefs-only-desk` | exit 0. Red at base: the script does not exist. Green after delivery: a label applied by an allow-listed login greens the check, and so does the desk App's label on a briefs-only PR |
+| 2 | check:ci +flow | `test -f tools/changelog/labeler_test.sh && bash tools/changelog/labeler_test.sh denied-applier unset-list` | exit 0 only when the check stays RED in both cases. Red at base: the script does not exist (and the old gate would green on the label alone). Green after delivery: an applier not on the allow-list stays red, and an unset list leaves only a repository maintainer's label counting |
+| 3 | check:ci +flow | `test -f tools/changelog/labeler_test.sh && bash tools/changelog/labeler_test.sh desk-not-briefs-only desk-workflow-file` | exit 0 only when the check stays RED in both cases. Red at base: the script does not exist (and the old gate would green on the label alone). Green after delivery: the desk App's label on a PR that also changes code or a workflow file stays red |
+| 4 | check:ci +flow | `test -f tools/changelog/labeler_test.sh && bash tools/changelog/labeler_test.sh unreadable-event unreadable-files` | exit 0 only when the check stays RED in both cases. Red at base: the script does not exist. Green after delivery: an applier or file list that cannot be read is could-not-check and the label does not count |
+| 5 | check:ci +neighbour | `test -f tools/changelog/labeler_test.sh && bash tools/changelog/check_test.sh && bash tools/changelog/reconcile_test.sh` | exit 0. Red at base: the first test cannot pass because the script does not exist. Green after delivery: the existing fragment, proxy, Unreleased and board-reconciliation cases still pass |
+| 6 | check:ci +mutation | `O=$(mktemp) && trap 'rm -f "$O"' 0 && test -f tools/changelog/labeler-mutations.json && cd tools/desk && go run ./cmd/muhar -spec ../changelog/labeler-mutations.json > "$O" 2>&1 && grep -F -e 'Totals: 4 caught, 0 NOT CAUGHT, 0 could-not-mutate.' "$O"` | exit 0. Red at base: no mutation spec. Green after delivery: all four mutants are caught, rows 2 to 4 pairing with the applier, fail-open and path-set mutants |
+| 7 | check +dereference | `a=$(sed -n '/^on:/,$p' .github/workflows/changelog-check.yml) && b=$(sed -n '/^on:/,$p' tools/changelog/changelog-check.yml) && test "$a" = "$b" && ! grep -rn -e 'applied by the desk or a human' plugins/assay/skills tools/desk/cmd/deskdispatch/references/worker-prompt.md` | exit 0. Red at base: the skill bodies and worker kit still say "applied by the desk or a human". Green after delivery: the staged copy matches the live workflow body and no text keeps that sentence |
+| 8 | check +flow | `grep -F -e 'ASSAY_CHANGELOG_SKIP_APPLIERS' docs/adopting-assay.md .github/workflows/changelog-check.yml tools/changelog/changelog-check.yml` | exit 0. Red at base: the variable appears nowhere. Green after delivery: it appears in the install doc and both workflow copies |
+| 9 | check +flow +dereference | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$(git rev-parse HEAD)" = "$DELIVERY_HEAD" && git merge-base --is-ancestor "$DELIVERY_BASE" "$DELIVERY_HEAD" && ! grep -q -e '[:] follow-up ' docs/streams/desk-tools/brief-66-changelog-skip-labeler-allow-list.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/66 --delivery "$DELIVERY_HEAD" --base "$DELIVERY_BASE" > "$o" 2>&1 && grep -F -e '0 disproved, 0 unchecked' "$o"` | exit 0. Red at base: the consumers are not in a delivering diff. Green after delivery: every consumer in the frontmatter is in the delivering diff |
 
-Row 4 compares the live and staged workflow bodies, and expects the live and staged copies to match after their banners. If the two files
-differ today in more than the banner, step 5 states the difference in the PR and the row is
-amended by the human, not loosened by the implementer.
+Row 7 compares the live and staged workflow bodies, and expects them to match after their banners.
+If the two files differ today in more than the banner, step 5 states the difference in the PR and
+the row is amended by the human, not loosened by the implementer.
 
 ## Threat model and detection
 
 | Failure mode | Caught by |
 |---|---|
-| Any label writer still waives the check | row 1 (denied login); row 3 (applier-check mutant) |
-| An unreadable event is treated as allowed | row 1 (unreadable event); row 3 (fail-open mutant) |
-| The desk's App waives a PR that also changes code or a workflow | row 1 (mixed-PR case); row 3 (path-set mutants) |
-| The Unreleased guard or the fragment rule is weakened | row 2 |
-| The staged copy or a skill body keeps the old rule | row 4 |
-| Adopters install without the variable and read the gate as open | row 5; unset means maintainer-only |
+| Any label writer still waives the check | row 2 (denied login); row 6 (applier-check mutant) |
+| An unreadable event is treated as allowed | row 4 (unreadable event and file list); row 6 (fail-open mutant) |
+| The desk's App waives a PR that also changes code or a workflow | row 3 (non-briefs-only and workflow-file cases); row 6 (path-set mutants) |
+| The Unreleased guard or the fragment rule is weakened | row 5 |
+| The staged copy or a skill body keeps the old rule | row 7 |
+| Adopters install without the variable and read the gate as open | row 8 and row 2 (unset list); unset means maintainer-only |
 | The desk's App holds label-write and is misused outside briefs | No row; it is the threat option 1 accepts. Review-only: the PR names it, and the briefs-only test bounds the label's effect to PRs with no code |
 
 ## Evidence
@@ -208,4 +218,5 @@ amended by the human, not loosened by the implementer.
 ## Review
 Gate: human. The ruling picks one of the four options and is recorded as the human's own comment on
 the decision issue. The implementation PR touches a required check and an adopter install default,
-so it needs the usual reviewer verdict at its head before any ready flip.
+so it needs a `Security-Review: pass` at its head before any ready flip. Every Verify row is
+risk-bearing and fail-first, recorded with `verifyrun --fail-first` against the parent of the delivering merge.
