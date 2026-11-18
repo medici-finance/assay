@@ -210,19 +210,17 @@ func buildMutation(root string, m Mutation, specBuild, specTest string, env []st
 	// build must too: from base, a mutant in another module is "outside main
 	// module" and even the positive control fails to build (#4117).
 	dir := root
-	if cdDir, rest, ok := leadingCd(base, specTest, env); ok {
-		// cdDir is symlink-free, so the mutated file's directory is resolved
-		// the same way before the two are compared.
+	if cdDir, joined, rest, ok := leadingCd(base, specTest, env); ok {
+		// The package path is taken lexically, from the joined directory the
+		// suite's shell names, so a package directory that is itself a
+		// symlink keeps its place in the module. Resolving either side would
+		// turn it into a path outside the module. Only the build's working
+		// directory is the resolved one.
 		abs, err := filepath.Abs(path)
 		if err != nil {
 			return CommandResult{Err: err}
 		}
-		fileDir, err := filepath.EvalSymlinks(filepath.Dir(abs))
-		if err != nil {
-			return CommandResult{Err: err}
-		}
-		abs = filepath.Join(fileDir, filepath.Base(abs))
-		path, base, dir, specTest = abs, cdDir, cdDir, rest
+		path, base, dir, specTest = abs, joined, cdDir, rest
 	}
 	rel, err := filepath.Rel(base, filepath.Dir(path))
 	if err != nil {
@@ -250,8 +248,9 @@ var (
 // leadingCd recognises a suite command that is exactly `cd <dir> && <cmd>`,
 // where <dir> is a plain relative path and <cmd> is one simple command that
 // starts, after plain NAME=value assignments, with `go test`. It returns the
-// directory, absolute, resolved against base with every symlink resolved, and
-// <cmd>. It refuses — and the build runs from base exactly as before — when
+// directory, absolute, resolved against base with every symlink resolved; the
+// same directory joined to the absolute base without resolving anything, as
+// the suite's shell names it; and <cmd>. It refuses — and the build runs from base exactly as before — when
 // <dir> is not an operand the suite's shell resolves by joining it to base
 // (see cdOperandIsPlain), carries any shell syntax, does not exist, or
 // resolves (symlinks included) outside the git checkout enclosing base
@@ -265,16 +264,17 @@ var (
 // after the check cannot move the build outside the bound. The build differs
 // from the suite only in naming that directory physically rather than through
 // the symlink, and the build's shell already sees the physical path, because
-// the PWD it inherits names muhar's directory, not this one.
-func leadingCd(base, test string, env []string) (string, string, bool) {
+// the PWD it inherits names muhar's directory, not this one. The joined path
+// is only ever compared lexically, never opened.
+func leadingCd(base, test string, env []string) (string, string, string, bool) {
 	m := cdPrefix.FindStringSubmatch(test)
 	if m == nil || !cdDirWord.MatchString(m[1]) || !cdOperandIsPlain(m[1], env) {
-		return "", "", false
+		return "", "", "", false
 	}
 	rest := m[2]
 	words, ok := simpleCommandWords(rest)
 	if !ok {
-		return "", "", false
+		return "", "", "", false
 	}
 	i := 0
 	for ; i < len(words); i++ {
@@ -283,25 +283,25 @@ func leadingCd(base, test string, env []string) (string, string, bool) {
 		}
 	}
 	if i+1 >= len(words) || words[i] != "go" || words[i+1] != "test" {
-		return "", "", false
+		return "", "", "", false
 	}
 	absBase, err := filepath.Abs(base)
 	if err != nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	target := filepath.Join(absBase, filepath.FromSlash(m[1]))
 	bound, err := filepath.EvalSymlinks(checkoutRoot(absBase))
 	if err != nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	resolved, err := filepath.EvalSymlinks(target)
 	if err != nil {
-		return "", "", false
+		return "", "", "", false
 	}
 	if info, err := os.Stat(resolved); err != nil || !info.IsDir() || !within(bound, resolved) {
-		return "", "", false
+		return "", "", "", false
 	}
-	return resolved, rest, true
+	return resolved, target, rest, true
 }
 
 // cdOperandIsPlain reports whether the POSIX shell's `cd word` lands in
