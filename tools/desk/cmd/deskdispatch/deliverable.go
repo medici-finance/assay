@@ -697,7 +697,8 @@ func mismatch(d deliverable, what, actual, hint string) error {
 	return deskkit.Refused(fmt.Sprintf(
 		"step %s: HARD FAIL — alias %q (from %s) resolves to %s via %s, but %s is %s. The deliverable "+
 			"lands in %s, so dispatching from this checkout would cut the worker's worktree in the wrong "+
-			"repo. Nothing was claimed and no worktree was cut. Re-run with --root at a checkout of %s "+
-			"(and --claim-root at the tracking checkout that carries the registry).%s",
-		stepClaimAcquire, d.alias, d.source, d.repo, d.registryPath, what, actual, d.repo, d.repo, hint))
+			"repo. Nothing was claimed and no worktree was cut. Re-run with --repo %s, --root at a checkout "+
+			"of %s, and --claim-root at the tracking checkout that carries the registry and the brief "+
+			"(a verifier's claim, Evidence and outcome record still land in the tracking repo).%s",
+		stepClaimAcquire, d.alias, d.source, d.repo, d.registryPath, what, actual, d.repo, d.repo, d.repo, hint))
 }

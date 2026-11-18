@@ -43,6 +43,7 @@ func TestCloseBracketReadSetForge(t *testing.T) {
 		"token principal":     "human:fixture @ " + hostTree + " (reads could-not-check: on-behalf-of human:mallory) (git-config)",
 		"token after source":  "human:fixture @ " + hostTree + " (git-config) " + tok,
 		"free-text reason":    "human:fixture @ " + hostTree + " (reads could-not-check: anything) (git-config)",
+		"external host brief": "human:fixture @ " + hostTree + " (reads could-not-check: the brief is outside the checkout being verified) (git-config)",
 		"short digest":        "human:fixture @ " + hostTree + " (reads sha256:abc) (git-config)",
 		"two tokens":          "human:fixture @ " + hostTree + " " + tok + " " + tok + " (git-config)",
 	} {
@@ -78,6 +79,7 @@ func TestFlipRunnerReadSetStrip(t *testing.T) {
 		"writer token":      {"v @ abc " + tok + " (git-config)", "v @ abc (git-config)"},
 		"other host's goos": {"v @ abc " + readSetOffLinuxToken("plan9") + " (git-config)", "v @ abc (git-config)"},
 		"container token":   {"v @ abc (reads could-not-check: no read-set recorder in this build)", "v @ abc"},
+		"external brief":    {"v @ abc (reads could-not-check: the brief is outside the checkout being verified) (git-config)", "v @ abc (git-config)"},
 		"digest token":      {"v @ abc " + sha + " (git-config)", "v @ abc (git-config)"},
 		"goos with space":   {"v @ abc (reads could-not-check: recorder is Linux-only (a b))", "v @ abc (reads could-not-check: recorder is Linux-only (a b))"},
 		"no token":          {"v @ abc (git-config)", "v @ abc (git-config)"},
