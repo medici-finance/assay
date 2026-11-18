@@ -807,7 +807,17 @@ RISK-VALUE: DERIVED — recorder lock wait = 2 * time.Second @ tools/desk/intern
 **VERIFY: BLOCKED** — 8 of 10 rows pass the container-netns bracket witness (2–9), and the bracket digest matches. Row 1 could not run: it reached verifyrun's 10-minute row limit in the container, and no verdict was produced. Row 10 could not run: its Command reads a path under HOME, and v1.0.87's admitted rows get their own empty HOME (#6773), so the row never read the record file, in the container or on the host. No acceptance obligation was observed failing in the deliverable. Blocker attached to #4683.
 
 Next actor: verify-desk. Re-run row 1 in a container-netns bracket on a less-loaded host, or once the runner's row limit fits the full tools/desk suite (#4683). Row 10 needs a driver-approved Verify-row amendment or a sanctioned lane for host-state rows before it can run under admission. Status remains implemented.
+### Correction note: 2026-11-18, verifier App (claude-opus-5-5 verifier, strong tier), merged main c5df2f7f09bb355c9fcd4aad94994a781112c191
 
+This note re-issues the blocked outcome of the 2026-11-18 pass above. No Verify row was re-run for it, and that pass's per-row results, tally and verdict stand unchanged.
+
+- Why: the Evidence edit at 290fd9d11e40 corrected that pass's inventory sentence after its outcome record was written. The record's brief input therefore hashed the brief as it stood before that edit, not as it lands (review finding F2 on #6990). This note exists only so the same blocked outcome can be recorded again as the last write of this landing.
+- The re-issued record carries the same outcome (blocked), rows (1 and 10), row results, attempt and blocker (#4683) as the original. It supersedes the outcome record stamped 2026-11-18T17:31:55Z (receipt vw1-552bf9effb96835f), which is removed in this change.
+- The declared deliverables are byte-identical between the observed source 9c845402c8c0 and this note's admitted source c5df2f7f09bb, so the record's deliverable inputs are unchanged.
+
+Verification-Attestation: medici-finance/assay#7054 run=c1b642bab4274685ac3d352f1eff871ca0aa697a3fca2bd9ad4c3aa1b232278a source=c5df2f7f09bb355c9fcd4aad94994a781112c191 brief=docs/streams/desk-supervision/brief-31-ci-check-history.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: BLOCKED** — 8 of 10 rows pass (2–9); rows 1 and 10 could-not-run (unchanged from the 2026-11-18 pass above).
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.
