@@ -178,6 +178,7 @@ func rosterWith(over map[string]string) map[string]string {
 }
 
 func TestBracketCreditPortableWitnessPaths(t *testing.T) {
+	installStatusgenFixture(t)
 	creditFakeDeskread(t)
 	fx := landed(t, vfMailVerifier, creditBaseAtt(41))
 	t.Chdir(fx.root)
