@@ -10,6 +10,7 @@ adopted unvalidated. GitHub Actions read permission is required.
 """
 import hashlib
 import contextlib
+from collections import Counter
 import io
 import json
 import os
@@ -42,22 +43,13 @@ def require(ok, reason):
         raise Miss(reason)
 
 
-def producer_jobs(jobs):
+def producer_job(run, jobs):
     # The monolithic workflow builds in release; the split producer builds in
     # artifacts. The final publisher has no cache receipt steps and is never a
     # candidate. Workflow/source identity and all receipt checks still apply.
-    return [job for job in jobs if job['name'] in ('release', 'artifacts') and
-            all(any(step['name'] == name for step in job['steps'])
-                for name in PRODUCER_STEPS)]
-
-
-def select_artifact(run, jobs, artifacts, log, repo, workflow_id, current_run):
-    require(run['id'] != current_run and run['workflow_id'] == workflow_id and
-            run['path'] == WORKFLOW and run['event'] == 'workflow_dispatch' and
-            run['head_branch'] == 'main' and run['repository']['full_name'] == repo and
-            run['head_repository']['full_name'] == repo and
-            run['status'] == 'completed' and run['conclusion'] == 'success', 'producer run')
-    producers = producer_jobs(jobs)
+    producers = [job for job in jobs if job['name'] in ('release', 'artifacts') and
+                 all(any(step['name'] == name for step in job['steps'])
+                     for name in PRODUCER_STEPS)]
     require(len(producers) == 1, 'producer job count')
     job = producers[0]
     require(job['run_id'] == run['id'] and job['run_attempt'] == run['run_attempt'] and
@@ -67,6 +59,20 @@ def select_artifact(run, jobs, artifacts, log, repo, workflow_id, current_run):
         steps = [s for s in job['steps'] if s['name'] == name]
         require(len(steps) == 1 and steps[0]['status'] == 'completed' and
                 steps[0]['conclusion'] == 'success', 'producer step')
+    return job
+
+
+def require_producer_run(run, repo, workflow_id, current_run):
+    require(run['id'] != current_run and run['workflow_id'] == workflow_id and
+            run['path'] == WORKFLOW and run['event'] == 'workflow_dispatch' and
+            run['head_branch'] == 'main' and run['repository']['full_name'] == repo and
+            run['head_repository']['full_name'] == repo and
+            run['status'] == 'completed' and run['conclusion'] == 'success', 'producer run')
+
+
+def select_artifact(run, jobs, artifacts, log, repo, workflow_id, current_run):
+    require_producer_run(run, repo, workflow_id, current_run)
+    producer_job(run, jobs)
     # Actual log output is timestamp-prefixed. Echoed shell source contains
     # variables, not decimal IDs, and cannot match this anchored receipt.
     receipts = re.findall(r'(?m)^\S+ ASSAY_RELEASE_CACHE_V1 ([1-9][0-9]*) '
@@ -226,34 +232,57 @@ def same_producer(source):
 def restore(root, key, env):
     api = API(env['GITHUB_REPOSITORY'],env['GH_TOKEN'])
     print('release Go cache: reading GitHub artifacts for ' + env['GITHUB_REPOSITORY'])
-    wf = api.json('/actions/workflows/release.yml')
-    require(wf['path'] == WORKFLOW and wf['state'] == 'active', 'workflow identity')
-    runs = api.json('/actions/workflows/release.yml/runs?branch=main&event=workflow_dispatch&status=success&per_page=5')['workflow_runs']
+    stage = 'workflow-identity'
+    try:
+        wf = api.json('/actions/workflows/release.yml')
+        require(wf['path'] == WORKFLOW and wf['state'] == 'active', 'workflow identity')
+        stage = 'candidate-list'
+        runs = api.json('/actions/workflows/release.yml/runs?branch=main&event=workflow_dispatch&status=success&per_page=5')['workflow_runs']
+    except Exception:
+        print('release Go cache: lookup failed at ' + stage)
+        raise
+    if not runs:
+        print('release Go cache: no candidate runs')
+    rejected = Counter()
+    restored = None
     for run in runs:
         try:
-            # Source and forge metadata checks precede any archive download.
+            stage = 'run-identity'
+            require_producer_run(run, env['GITHUB_REPOSITORY'], wf['id'], int(env['GITHUB_RUN_ID']))
+            stage = 'producer-source'
             same_producer(run['head_sha'])
+            stage = 'jobs-list'
             jobs = api.json('/actions/runs/%s/attempts/%s/jobs?per_page=100' %
                             (run['id'], run['run_attempt']))
             require(jobs['total_count'] == len(jobs['jobs']), 'jobs truncated')
-            producers = producer_jobs(jobs['jobs'])
-            require(len(producers) == 1, 'producer job count')
-            log = api.get('/actions/jobs/%s/logs' % producers[0]['id'],limit=16*1024**2).decode('utf-8')
+            # A successful dry run has both step names but skips the save and receipt.
+            stage = 'producer-job-and-steps'
+            job = producer_job(run, jobs['jobs'])
+            stage = 'job-log'
+            log = api.get('/actions/jobs/%s/logs' % job['id'],limit=16*1024**2).decode('utf-8')
+            stage = 'artifacts-list'
             artifacts = api.json('/actions/runs/%s/artifacts?per_page=100' % run['id'])
             require(artifacts['total_count'] == len(artifacts['artifacts']), 'artifacts truncated')
-            artifact = select_artifact(run,jobs['jobs'],artifacts['artifacts'],log,
-                                       env['GITHUB_REPOSITORY'],wf['id'],int(env['GITHUB_RUN_ID']))
+            stage = 'receipt-and-metadata'
+            artifact = select_artifact(run, jobs['jobs'], artifacts['artifacts'], log,
+                                       env['GITHUB_REPOSITORY'], wf['id'], int(env['GITHUB_RUN_ID']))
+            stage = 'archive-download'
             with tempfile.TemporaryDirectory(prefix='go-cache-download-',dir=root.parent) as tmp:
                 archive = Path(tmp)/'artifact.zip'
                 api.get('/actions/artifacts/%s/zip' % artifact['id'],MAX_ARCHIVE,archive)
+                stage = 'archive-validation'
                 unpack(archive,root,artifact['digest'].removeprefix('sha256:'),key)
-            print('release Go cache: restored run=%s artifact=%s' % (run['id'],artifact['id']))
-            return
+            restored = (run['id'], artifact['id'])
+            break
         except Exception:
-            # Any candidate failure (http.client.HTTPException included) is a
-            # miss for that candidate; validation is never relaxed to recover.
-            continue
-    raise Miss('no admissible cache artifact')
+            # Exception text may contain a signed URL, remote body or local path.
+            rejected[stage] += 1
+    if rejected:
+        print('release Go cache: rejected candidates by stage: ' +
+              ', '.join('%s=%d' % item for item in sorted(rejected.items())))
+    if restored is None:
+        raise Miss('no admissible cache artifact')
+    print('release Go cache: restored run=%s artifact=%s' % restored)
 
 
 def main(mode):

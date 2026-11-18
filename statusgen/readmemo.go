@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -74,9 +75,14 @@ func statStamp(path string) (fileStamp, bool) {
 	if err != nil {
 		return fileStamp{}, false
 	}
+	st := stampOf(fi)
+	return st, st.ok
+}
+
+func stampOf(fi os.FileInfo) fileStamp {
 	st := fileStamp{size: fi.Size(), mtime: fi.ModTime(), dir: fi.IsDir()}
 	st.ctime, st.ino, st.dev, st.ok = statCtime(fi)
-	return st, st.ok
+	return st
 }
 
 func (a fileStamp) equal(b fileStamp) bool {
@@ -135,28 +141,87 @@ func readMemoLookup(m map[string]readMemoEntry, path string, now fileStamp) (rea
 
 // readFileMemo returns the same bytes and error os.ReadFile(path) would. The
 // returned slice is the caller's own copy.
+//
+// The stat that validates an entry is a path stat, so it runs only when an entry
+// exists to validate. A read that goes to disk stamps the open descriptor
+// instead (fstat before and after the read), which is the stamp of exactly the
+// file whose bytes were read and costs no further path lookup. On a cold load,
+// where no entry exists yet, that is one path lookup per file instead of three;
+// statusgen/44 measured the two path stats and the open as most of what
+// hydration still cost (issue #6900).
 func readFileMemo(path string) ([]byte, error) {
-	before, ok := statStamp(path)
-	if ok && !before.dir {
-		if e, hit := readMemoLookup(readMemoFiles, path, before); hit {
-			return append([]byte(nil), e.data...), nil
+	readMemoMu.Lock()
+	_, have := readMemoFiles[path]
+	readMemoMu.Unlock()
+	if have {
+		if now, ok := statStamp(path); ok && !now.dir {
+			if e, hit := readMemoLookup(readMemoFiles, path, now); hit {
+				return append([]byte(nil), e.data...), nil
+			}
 		}
 	}
 	began := readMemoNow()
-	raw, err := os.ReadFile(path)
+	raw, before, after, err := readFileStamped(path)
 	readMemoMu.Lock()
 	readMemoDiskReads++
 	readMemoDiskFiles++
 	readMemoMu.Unlock()
-	if err != nil || !ok || before.dir {
+	if err != nil || !before.ok || before.dir {
 		return raw, err
 	}
-	if after, ok2 := statStamp(path); ok2 && after.equal(before) && before.settledBefore(began) {
+	if after.equal(before) && before.settledBefore(began) {
 		readMemoMu.Lock()
 		readMemoFiles[path] = readMemoEntry{stamp: before, began: began, data: append([]byte(nil), raw...)}
 		readMemoMu.Unlock()
 	}
 	return raw, nil
+}
+
+// readFileStamped returns what os.ReadFile(path) returns, plus the open file's
+// stamp taken before and after the read. A stamp is the zero fileStamp (ok false)
+// when the descriptor could not be stamped. A directory is handed to os.ReadFile
+// itself, so its error is exactly the one os.ReadFile gives.
+func readFileStamped(path string) (raw []byte, before, after fileStamp, err error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fileStamp{}, fileStamp{}, err
+	}
+	defer f.Close()
+	before = fdStamp(f)
+	if before.dir {
+		raw, err = os.ReadFile(path)
+		return raw, before, fileStamp{}, err
+	}
+	// The read loop is os.ReadFile's: size the buffer from the stat, then read
+	// until EOF, growing as needed.
+	size := 512
+	if before.size > 0 && int64(int(before.size)) == before.size {
+		size = int(before.size) + 1
+	}
+	raw = make([]byte, 0, size)
+	for {
+		n, rerr := f.Read(raw[len(raw):cap(raw)])
+		raw = raw[:len(raw)+n]
+		if rerr != nil {
+			if rerr == io.EOF {
+				break
+			}
+			return raw, before, fileStamp{}, rerr
+		}
+		if len(raw) >= cap(raw) {
+			raw = append(raw, 0)[:len(raw)]
+		}
+	}
+	return raw, before, fdStamp(f), nil
+}
+
+// fdStamp is statStamp for an open file.
+func fdStamp(f *os.File) fileStamp {
+	fi, err := f.Stat()
+	if err != nil {
+		return fileStamp{}
+	}
+	return stampOf(fi)
 }
 
 // readDirMemo returns the same entries and error os.ReadDir(path) would. A
