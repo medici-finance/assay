@@ -1,11 +1,13 @@
 # Tool refactoring — class-level scope
 
-**Status:** routed on maintainer merge of the scope-activation PR under lifecycle §8.4. The eleven citing briefs already exist.
+**Status:** routed — the maintainer’s merge of the activation PR routes this scope to the eleven existing briefs under lifecycle §8.4.
 **Routes-to:** docs/streams/tool-refactoring/
 
 The activation covers briefs 01 through 11 and their existing dependency waves.
 Each brief retains its human start decision, Verify contract and independent
-acceptance. The first real portability qualification targets a Kubernetes-hosted
+acceptance. Implementation dispatch, acceptance-policy changes, releases, permission
+changes and infrastructure activation each retain their existing authorization requirements.
+The first real portability qualification targets a Kubernetes-hosted
 desk. See the [activation and qualification sequence](README.md#activation-and-qualification).
 
 ## Outcome and evidence

@@ -18,7 +18,7 @@ routing](issue-routing.csv) identify the shared libraries and their consumers.
 
 ## Activation and qualification
 
-Land the lifecycle-reader correction in [PR 6874](https://github.com/medici-finance/assay/pull/6874) before activating the stream. An exact changed-path lint on the activation candidate exposed the old reader rejecting a routed source; the corrected reader accepts it and still refuses a draft. Consumers using a released binary need a version containing that correction for their own activation checks.
+The activation depends on a lifecycle reader that accepts a routed scope and still refuses a draft. The correction is in [PR 6874](https://github.com/medici-finance/assay/pull/6874). The maintainer’s merge of that correction into the default branch precedes the merge that activates this stream. Consumers running changed-path lint with a released binary need a version that includes the correction.
 
 Start with the four independent owners in wave 0. Obtain the brief's existing
 human decision before its gated adoption. A caller migrates when its public
