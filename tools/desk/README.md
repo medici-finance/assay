@@ -2333,7 +2333,7 @@ The **skill half** of this — the one-line-per-quiet-iteration console contract
 windows adopt, since no binary can gate what the model prints between tool calls — is the
 console noise floor, tracked in the desk-tools operator notes.
 
-## Cell lifecycle model — `internal/cellcadence/lifecycle.go` (tool-refactoring/06)
+## Cell lifecycle model — `internal/cellcadence/lifecycle.go`
 
 `cellctl up`, `reconcile`, `down` and the interactive-owner settle used to each decide, in their own
 code, whether a recorded role owner is the process now running and whether a checkpoint is the one
