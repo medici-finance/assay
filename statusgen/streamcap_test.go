@@ -204,9 +204,8 @@ func TestParkedTotals(t *testing.T) {
 	}
 }
 
-// TestStreamSourceRequiresApprovedSpec — the four fixture cases: an active stream
-// citing an approved spec is clean; citing a draft or nothing is a PROBLEM; a
-// parked stream citing a draft is clean (Verify row 7a).
+// TestStreamSourceRequiresApprovedSpec exercises the differential lint from a
+// newly activated stream. Both stages after approval can supply its source.
 func TestStreamSourceRequiresApprovedSpec(t *testing.T) {
 	root := t.TempDir()
 	mustWrite(t, filepath.Join(root, "docs/specs/approved.md"), "# Approved spec\n\n**Status:** approved\n\n## Body\n")
@@ -214,6 +213,11 @@ func TestStreamSourceRequiresApprovedSpec(t *testing.T) {
 
 	approvedRel := "docs/specs/approved.md"
 	draftRel := "docs/specs/draft.md"
+	routedRel := "docs/specs/routed.md"
+	unknownRel := "docs/specs/unknown.md"
+	mustWrite(t, filepath.Join(root, routedRel), "# Plan\n\n**Status:** routed — first brief landed\n**Routes-to:** docs/streams/s/\n")
+	mustWrite(t, filepath.Join(root, unknownRel), "# Plan\n\n**Status:** published\n")
+	setBaseActive(t)
 
 	cases := []struct {
 		name        string
@@ -222,6 +226,9 @@ func TestStreamSourceRequiresApprovedSpec(t *testing.T) {
 		wantProblem bool
 	}{
 		{"active-cites-approved", "active", approvedRel, false},
+		{"active-cites-routed", "active", routedRel, false},
+		{"active-cites-unknown-state", "active", unknownRel, true},
+		{"active-cites-missing-spec", "active", "docs/specs/absent.md", true},
 		{"active-cites-draft", "active", draftRel, true},
 		{"active-cites-nothing", "active", "", true},
 		{"parked-cites-draft", "parked", draftRel, false},
@@ -229,7 +236,8 @@ func TestStreamSourceRequiresApprovedSpec(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			s := &Stream{Name: "s", Status: c.status, Spec: c.spec}
-			got := streamSourceProblem(root, s)
+			problems, _ := streamSourceLint([]*Stream{s}, root, []string{"docs/streams/s/README.md"})
+			got := strings.Join(problems, "\n")
 			if c.wantProblem && got == "" {
 				t.Fatalf("%s: expected a stream-source PROBLEM, got none", c.name)
 			}

@@ -1,0 +1,335 @@
+{
+  "schema": "pirunner-results-v1",
+  "brief": "agent-execution/10",
+  "verdict": "UNKNOWN",
+  "reasons": [
+    "tuple-not-vetted",
+    "environment-not-approved",
+    "measurement-coverage-partial"
+  ],
+  "notes": [
+    "Evidence ran on a darwin-arm64 workstation, not the brief's network-off Linux verification environment.",
+    "The tuple awaits maintainer vetting on medici-finance/assay#6208.",
+    "Commit count is not exposed by Pi Durable 1.4.0 (entries are reported as a proxy); bridge RSS is sampled once after each run, not a continuous peak.",
+    "Pi usage has no unknown-cost value and the faux provider overwrites message usage with a text-length estimate; the adapter carries runner usage opaquely in the final answer and never reads Pi's usage as spend.",
+    "The adapter declares no Resume, CancelAck, Snapshot or ProfileDeclarer capability; the conformance kit's profile cases pass without exercising it.",
+    "npm 1.4.0 tarballs carry no gitHead; correspondence to the inspected Pi revision is by declared version and changelog only.",
+    "On 2026-11-17 the positive control was added to the negative-control map and TestPiPilotNegativeControls was re-run on the same darwin-arm64 workstation with Node v26.13.1, not the tuple's v26.13.0: the control and all five mutations were killed, and the other groups passed on the same re-run. The recorded measurements are from the original run.",
+    "On 2026-11-17 a timing race in the ReplayRechecks subtest was fixed on the same workstation: the bridge now reports a safe_probe execution only after its exec-check is answered, and the test reads the beforeTool count recorded at the replayed execution instead of the live total. The subtest passed 50 of 50 runs under -race (it failed 9 of 50 before), the full tagged suite was re-run, and the recorded measurements are still from the original run."
+  ],
+  "tuple": {
+    "pi_durable": "1.4.0",
+    "pi_ai": "1.4.0",
+    "chord": "1.4.0",
+    "typescript": "5.9.3",
+    "node": "v26.13.0 darwin-arm64",
+    "node_sha256": "64e4f47aef084a288c443ebe9a0091a34acba03ad176fb612b6e7d90784ff93d",
+    "lock_sha256": "2fd34fa6ba124725e664e008be27e54227374d5ceb4d72c0445b1a49a743584b"
+  },
+  "subject_hashes": {
+    "experiments/pirunner/adapter.go": "2e092aff8206baf1b82f191e4f40691020a7f87497b984b166848172567e14d5",
+    "experiments/pirunner/bridge.go": "b461c15057e855714f59c72ffcdbf32baa325c500bffb6318d2d09a4b4abf4b7",
+    "experiments/pirunner/ledger.go": "107e56fea8e371330e8d3f3565eda68056c5b017c330361ad0633a8ec9efd945",
+    "experiments/pirunner/helpers_test.go": "29a070acb59b7d7d593373ce26ce18afbe9802203eab3291fefde0b063fa8116",
+    "experiments/pirunner/contract_test.go": "d638085a6d97b94e5862622861cdfb49662d2b2861877c9b5facf65243dc943d",
+    "experiments/pirunner/recovery_test.go": "c836585eedd9cb63deb38b8fe7fc6651532205416e8dc2d48cc39fd08d4c08af",
+    "experiments/pirunner/negative_test.go": "d7e24141cb2a8245444c88a98e84be3616d16d901c48275b7f2c2d6865414820",
+    "experiments/pirunner/node/src/bridge.ts": "37953734836787d618a5ba0f16ad55e72ec5d8f8d214117c29de2f464f144159",
+    "experiments/pirunner/node/package.json": "c00112fa5a24c2ffcf493c8d2ffe4ac7c2b68a80d46287051004efbe2a4766db",
+    "experiments/pirunner/node/package-lock.json": "2fd34fa6ba124725e664e008be27e54227374d5ceb4d72c0445b1a49a743584b",
+    "experiments/pirunner/node/tsconfig.json": "aaf41d3e1321e9f4c7ecbfefa3512c2cf3bd2748bdae28c1f26a5a7aee4abc6e",
+    "testdata/pirunner/negative-controls.json": "bb4b71d4ae6d9521e3b4bf46a2ee01e6f55ce10c1b0e55a20f0b8b72e37dbcc2"
+  },
+  "environment": {
+    "os": "darwin",
+    "arch": "arm64",
+    "network_denied": false,
+    "approved_environment": false,
+    "kubeconfig": "/dev/null",
+    "provider_calls": 0,
+    "date": "2026-11-11"
+  },
+  "groups": [
+    {
+      "name": "TestPiPilotContract",
+      "command": "cd loopadmin && GOWORK=off go test -tags pirunner -count=1 -v -run \"^TestPiPilotContract$\" ./experiments/pirunner",
+      "exit": 0,
+      "status": "pass",
+      "cases": [
+        {
+          "name": "Kit",
+          "status": "pass"
+        },
+        {
+          "name": "NoProfileDecl",
+          "status": "pass"
+        },
+        {
+          "name": "UnsupportedRefused",
+          "status": "pass"
+        },
+        {
+          "name": "PinnedModelAndTools",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "name": "TestPiPilotRestart",
+      "command": "cd loopadmin && GOWORK=off go test -tags pirunner -count=1 -v -run \"^TestPiPilotRestart$\" ./experiments/pirunner",
+      "exit": 0,
+      "status": "pass",
+      "cases": [
+        {
+          "name": "KillMidTool",
+          "status": "pass"
+        },
+        {
+          "name": "CrashAfterIntent",
+          "status": "pass"
+        },
+        {
+          "name": "CrashAfterSubmit",
+          "status": "pass"
+        },
+        {
+          "name": "OneOwner",
+          "status": "pass"
+        },
+        {
+          "name": "Corpus",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "name": "TestPiPilotEffects",
+      "command": "cd loopadmin && GOWORK=off go test -tags pirunner -count=1 -v -run \"^TestPiPilotEffects$\" ./experiments/pirunner",
+      "exit": 0,
+      "status": "pass",
+      "cases": [
+        {
+          "name": "LostReply",
+          "status": "pass"
+        },
+        {
+          "name": "StableIdentity",
+          "status": "pass"
+        },
+        {
+          "name": "OutcomesSeparate",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "name": "TestPiPilotAuthority",
+      "command": "cd loopadmin && GOWORK=off go test -tags pirunner -count=1 -v -run \"^TestPiPilotAuthority$\" ./experiments/pirunner",
+      "exit": 0,
+      "status": "pass",
+      "cases": [
+        {
+          "name": "ReplayRechecks",
+          "status": "pass"
+        },
+        {
+          "name": "LedgerAlone",
+          "status": "pass"
+        },
+        {
+          "name": "UpperHookBlocks",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "name": "TestPiPilotStopAndObserve",
+      "command": "cd loopadmin && GOWORK=off go test -tags pirunner -count=1 -v -run \"^TestPiPilotStopAndObserve$\" ./experiments/pirunner",
+      "exit": 0,
+      "status": "pass",
+      "cases": [
+        {
+          "name": "AbortHoldsForChild",
+          "status": "pass"
+        },
+        {
+          "name": "IgnoredCancel",
+          "status": "pass"
+        },
+        {
+          "name": "ObserveReadOnly",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "name": "TestPiPilotAccounting",
+      "command": "cd loopadmin && GOWORK=off go test -tags pirunner -count=1 -v -run \"^TestPiPilotAccounting$\" ./experiments/pirunner",
+      "exit": 0,
+      "status": "pass",
+      "cases": [
+        {
+          "name": "PartialCostUnknown",
+          "status": "pass"
+        },
+        {
+          "name": "RunningUsageUnknown",
+          "status": "pass"
+        },
+        {
+          "name": "PauseSurvivesRestart",
+          "status": "pass"
+        },
+        {
+          "name": "ContinuityRefused",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "name": "TestPiPilotDecisionEvidence",
+      "command": "cd loopadmin && GOWORK=off go test -tags pirunner -count=1 -v -run \"^TestPiPilotDecisionEvidence$\" ./experiments/pirunner",
+      "exit": 0,
+      "status": "pass",
+      "cases": [
+        {
+          "name": "ManifestDereferences",
+          "status": "pass"
+        },
+        {
+          "name": "CasesMatchSource",
+          "status": "pass"
+        },
+        {
+          "name": "VerdictDerived",
+          "status": "pass"
+        },
+        {
+          "name": "FabricatedGORejected",
+          "status": "pass"
+        }
+      ]
+    },
+    {
+      "name": "TestPiPilotNegativeControls",
+      "command": "cd loopadmin && GOWORK=off go test -tags pirunner -count=1 -v -run \"^TestPiPilotNegativeControls$\" ./experiments/pirunner",
+      "exit": 0,
+      "status": "pass",
+      "cases": [
+        {
+          "name": "Classifier",
+          "status": "pass"
+        },
+        {
+          "name": "Mutations",
+          "status": "pass"
+        }
+      ]
+    }
+  ],
+  "negative_controls": [
+    {
+      "name": "no-start-dedupe",
+      "verdict": "killed"
+    },
+    {
+      "name": "no-exec-reauth",
+      "verdict": "killed"
+    },
+    {
+      "name": "unstable-effect-id",
+      "verdict": "killed"
+    },
+    {
+      "name": "no-unknown-stop-hold",
+      "verdict": "killed"
+    },
+    {
+      "name": "unknown-cost-zeroed",
+      "verdict": "killed"
+    },
+    {
+      "name": "positive-control-no-dedupe-guard",
+      "verdict": "killed"
+    }
+  ],
+  "measurements": [
+    {
+      "tool_results": 100,
+      "entries": 203,
+      "input_bytes": 5881,
+      "store_bytes": 327680,
+      "log_bytes": 4169472,
+      "commit_count": null,
+      "model_calls": 101,
+      "run_ms": 598,
+      "reopen_ms": 282,
+      "peak_rss_bytes": 58776968,
+      "peak_continuous": false
+    },
+    {
+      "tool_results": 1000,
+      "entries": 2003,
+      "input_bytes": 60781,
+      "store_bytes": 1912832,
+      "log_bytes": 4181832,
+      "commit_count": null,
+      "model_calls": 1001,
+      "run_ms": 2604,
+      "reopen_ms": 269,
+      "peak_rss_bytes": 132186576,
+      "peak_continuous": false
+    }
+  ],
+  "deletions": [
+    {
+      "candidate": "conversation transcript persistence, follow-up/steer inbox, compaction and stream normalization inside a Pi runner",
+      "paths": [
+        "docs/streams/graph-execution/brief-22-local-harness-adapter.md (planned adapter; no code present)"
+      ],
+      "disposition": "omit",
+      "offset_by_replacement": false
+    },
+    {
+      "candidate": "inner tool intent/result checkpointing, safe replay and nested-task ownership",
+      "paths": [
+        "@earendil-works/pi-durable dist/harness/tool.js (delegated)",
+        "loopadmin/experiments/pirunner/node/src/bridge.ts map store (added, smaller)"
+      ],
+      "disposition": "omit",
+      "offset_by_replacement": false
+    },
+    {
+      "candidate": "observer that wakes a session to display it",
+      "paths": [
+        "loopadmin/runner/client.go Observe (read-only path kept)"
+      ],
+      "disposition": "omit",
+      "offset_by_replacement": false
+    },
+    {
+      "candidate": "session wake/continuation and writer fencing",
+      "paths": [],
+      "disposition": "hold",
+      "offset_by_replacement": false
+    },
+    {
+      "candidate": "controller admission, ownership, outer launch journal, effect ledger, acceptance",
+      "paths": [
+        "docs/streams/graph-execution/brief-26-shared-loop-admin.md (planned journal)"
+      ],
+      "disposition": "keep",
+      "offset_by_replacement": false
+    },
+    {
+      "candidate": "process containment and standing launch consumers",
+      "paths": [
+        "loopadmin/process/run.go Runner",
+        "tools/desk/internal/cellrunner"
+      ],
+      "disposition": "keep",
+      "offset_by_replacement": false
+    }
+  ],
+  "adverse_findings": []
+}
