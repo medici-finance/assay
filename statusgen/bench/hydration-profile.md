@@ -35,3 +35,24 @@ The terms that remain after the change are the per-brief open, stat, read and YA
 ## Why the synthetic corpus missed it
 
 The old workload corpus is not a git repository, so `newestFailFix` returns before it queries anything, and none of its briefs carry a FAIL. The `real-shape` profile added to the workload (`testdata/perfworkload/sizes.json`) is a git repository with an `origin/main` ref, 24 first-parent merges and implemented briefs with a recorded FAIL. On it `--gate-scores` takes 2.5 s in-process (1.6 s compiled) before the change and 11 ms (9 ms compiled) after.
+
+## Second pass: the brief's 10x restored (issue #6900)
+
+base: 9c845402c8c0, the merged first pass, with the budgets loosened to 20x (synthetic) and 100x (real tree)
+host class: the same Apple M4 Max, 16 CPUs; load average 19 to 35 during the runs
+tree: this repository at that commit, 642 brief files
+
+With the history queries gone, a serial profile of hydration put 46% of its samples in the `open` system call itself: about 120 to 160 µs per brief file on this host, against about 3 µs for a `stat`. Each cold read also made two path stats around the open. Placeholder discovery listed every stream directory twice more with `filepath.Glob`. Three changes, none touching what is parsed or reported:
+
+1. `parseBriefFilesAhead` (`brieffile.go`) reads and parses every brief file of every stream concurrently (`GOMAXPROCS` workers) before `checkBriefFilesMode` walks the streams in their usual order. The walk consumes the results in place of its per-file `parseBriefFile` call, so notices, holds and could-not-checks come out in the same order as before.
+2. `readFileMemo` (`readmemo.go`) path-stats only when it holds an entry to validate. A read that goes to disk stamps the open descriptor (`fstat` before and after the read), so a cold read costs one path lookup instead of three. The stamp, the settle window and the before/after comparison are unchanged.
+3. `placeholderFilePaths` (`placeholder.go`) matches both placeholder globs against one `readDirMemo` listing, which `briefFilePaths` already reads, instead of two `filepath.Glob` directory scans per stream.
+
+Hydrated over bare, in-process (`TestHydrateBudget`: best of nine; `TestHydrateRealTree`: best of nine after this change, best of three before it):
+
+| Row | Before | After |
+|---|---|---|
+| synthetic corpus, 32 briefs | 12.4x, 12.5x | 4.9x to 7.3x |
+| real tree, 642 briefs | 24.1x, 33.4x | 7.2x to 8.2x |
+
+Worker count matters on this host: one worker gave 28x to 32x on the real tree, four gave 11x to 16x, and sixteen (`GOMAXPROCS`) gave the best results. Concurrent opens scale only about fourfold here, so the per-open cost, not the parse, is still the largest single term. It is the floor: hydration has to read every brief.

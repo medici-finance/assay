@@ -18,7 +18,7 @@ package main
 //     transition ("" if git info is unavailable, e.g. a non-git checkout).
 //
 // Single-writer discipline (mirrors STATUS.md exactly, see main.go's run()):
-// only mode == "record" appends, and that mode is wired into ONLY main's
+// --record and --write-and-record append. They belong only in main's
 // regen CI — the consumer repo's own regen workflow (the workflow path is the
 // consumer's, not fixed in this shared source), never the PR-side `--lint`
 // gate. A branch/PR cannot forge a transition — the log only grows from
@@ -340,10 +340,17 @@ func refuseHumanActBytes(b []byte) error {
 	return nil
 }
 
-// recordHistory is the single-writer append path: diff current brief status
-// against the log's last recorded state and append any transitions. Called
-// ONLY from run()'s mode == "record" branch, which main's status-regen CI
-// invokes after STATUS.md regenerates — never from --lint (see main.go).
+// recordHistorians appends status transitions first. DORA observations are
+// best effort and keep their own could-not-check diagnostics.
+func recordHistorians(root string, streams []*Stream) int {
+	if code := recordHistory(root, streams); code != 0 {
+		return code
+	}
+	recordDoraTiming(root, newHTTPDoraTimingSource(), nowFunc())
+	return 0
+}
+
+// recordHistory appends transitions from the current streams to the status log.
 func recordHistory(root string, streams []*Stream) int {
 	path := filepath.Join(root, filepath.FromSlash(historyRelPath))
 	existing, err := LoadHistory(path)

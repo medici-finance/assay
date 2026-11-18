@@ -82,7 +82,7 @@ var statusgenReadModes = map[string]bool{
 // "read" leaves behind is unclassified for publication. A probe whose side
 // effect is an unclassified file is not a read at any strength.
 var statusgenWriteModes = map[string]bool{
-	"--record": true, "--scan-issues": true, "--close-verify": true,
+	"--record": true, "--write-and-record": true, "--scan-issues": true, "--close-verify": true,
 	"--register-links": true, "--roadmap": true, "--export-evidence": true,
 	"--init": true, "--bottleneck": true,
 }
@@ -270,9 +270,10 @@ func splitFlag(a string, argv []string, i int, names map[string]bool) (string, s
 
 func guardStatusgen(argv []string) error {
 	for _, a := range argv[1:] {
-		name := a
-		if i := strings.IndexByte(a, '='); i >= 0 {
-			name = a[:i]
+		name, _, _ := strings.Cut(a, "=")
+		// Go accepts either one or two leading dashes for a write flag.
+		if strings.HasPrefix(name, "-") && !strings.HasPrefix(name, "--") {
+			name = "-" + name
 		}
 		if statusgenWriteModes[name] {
 			return fmt.Errorf("%w: statusgen %s writes", ErrRefused, name)

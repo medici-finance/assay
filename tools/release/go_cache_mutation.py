@@ -3,7 +3,7 @@ from pathlib import Path
 import tempfile, subprocess, os, json
 source=Path('tools/release/go_cache.py').read_text(); tests=Path('tools/release/go_cache_test.py').read_text()
 cases=[('wrong-workflow',"run['path'] == WORKFLOW",'True','test_producer'),
-       ('wrong-job',"j['name'] == 'release'",'True','test_producer'),
+       ('wrong-job',"job['name'] in ('release', 'artifacts')",'True','test_producer'),
        ('wrong-artifact-id',"a['id'] == int(artifact_id)",'True','test_producer'),
        ('expired',"artifact['expired'] is False",'True','test_producer'),
        ('wrong-digest','sha256(archive) == digest','True','test_bad_archives'),

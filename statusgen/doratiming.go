@@ -15,9 +15,9 @@ package main
 // logs share the same discipline — single-writer, append-only, idempotent,
 // format-stable — but never the same file.
 //
-//   - Single-writer. recordDoraTiming is called ONLY from run()'s mode=="record"
-//     branch (main's regen CI), the same single-writer pass as recordHistory —
-//     never from the PR-side --lint gate. A branch cannot forge a timing record;
+//   - Single-writer. Main's regen CI runs recordHistorians through --record or
+//     --write-and-record. It records status transitions before reading DORA
+//     timing; the PR-side --lint gate only reads the board. A branch cannot forge a timing record;
 //     the log only grows from what main's own CI observed.
 //   - Append-only + idempotent. Each record carries a natural id: failed_run_id
 //     for a restore episode, repo+pr for a lead time. A re-run that observes
@@ -464,7 +464,7 @@ func marshalRecord(v any) (string, error) {
 // --- the recorder entry point ----------------------------------------------
 
 // recordDoraTiming is the single-writer append path for the DORA-timing log,
-// called only from run()'s mode=="record" branch (never --lint). It is
+// called by recordHistorians after the status log succeeds. It is
 // best-effort and fail-open: a repo it cannot resolve, or any REST read that
 // fails, records NOTHING and prints a could-not-check line — it never fails the
 // record job and never fabricates an interval. Returns the number of records

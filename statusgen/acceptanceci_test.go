@@ -91,6 +91,11 @@ func TestAcceptanceCI(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			// Each combined board invocation replaces one write and one record.
+			// Both calls retain the same acceptance and credential obligations.
+			if path == regenRecordWorkflows[0] || path == regenRecordWorkflows[1] {
+				want -= strings.Count(jobBlock(string(raw), "  regen:"), regenRecordCmd+"\n")
+			}
 			problems, count := acceptanceCIProblems(parseWorkflow(t, raw, path))
 			if count != want {
 				t.Errorf("found %d acceptance calls, want %d", count, want)
