@@ -1005,6 +1005,7 @@ var templateDefaultProof = map[string]string{
 	"CLAUDE_CODE_AUTO_COMPACT_WINDOW": "shared constant: autoCompactWindowDefault, the value the claude launch falls back to",
 	"CELLCTL_DESKWT":                  "shared constant: deskwtDefault, the value worktreeViaDeskwt falls back to",
 	"CELL_FF_ROOTS":                   "by reading: the one read compares the value with 1, so 0 is every value that is not 1, unset included",
+	"CELL_VERIFY_SHARED_ROOTS":        "by reading: the one read compares the value with 1, so 0 is every value that is not 1, unset included",
 }
 
 // TestCellDefaultsTemplateNamesWhatItRefuses: every per-cell key is in the refused section with

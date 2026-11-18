@@ -36,7 +36,7 @@ profile. Later adoption, profile qualification and activation gates remain separ
 | 07 | [Evaluate governed harness refinement with isolated offline fixtures](brief-07-harness-refinement-evaluation.md) | 3 | M | todo | — | — |
 | 08 | [Qualify a Kubernetes verification runner through the existing supervisor](brief-08-qualify-a-kubernetes-verification-runner-through-the-existing-supervisor.md) | 12 | M | todo | — | — |
 | 09 | [Qualify interactive Kubernetes standing desks through the shared runner](brief-09-qualify-interactive-kubernetes-standing-desks-through-the-shared-runner.md) | 9 | M | todo | — | — |
-| 10 | [Evaluate a Pi Durable runner with offline recovery fixtures](brief-10-evaluate-a-pi-durable-runner-with-offline-recovery-fixtures.md) | 1 | M | todo | — | — |
+| 10 | [Evaluate a Pi Durable runner with offline recovery fixtures](brief-10-evaluate-a-pi-durable-runner-with-offline-recovery-fixtures.md) | 1 | M | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 The generator owns the table. All briefs are M-sized, strong-tier work. New tests and

@@ -195,6 +195,11 @@ func (c *Cell) cadenceGuard(role string) error {
 }
 
 func (c *Cell) executeCadencePass(ctx context.Context, role, harness string, args, env []string, wt string) (result cellcadence.Result) {
+	// A verify window's per-session roots are brought to origin/main before every pass; a root
+	// that cannot be is a pass that cannot check, never a sweep over a stale tree.
+	if err := c.refreshSessionRootsPass(); err != nil {
+		return cellcadence.Result{Outcome: "could-not-check", ExitCode: -1, Err: err}
+	}
 	scratch, env, scratchErr := c.beginScratch(role, env)
 	if scratchErr != nil {
 		return cellcadence.Result{Outcome: "could-not-check", ExitCode: -1, Err: scratchErr}

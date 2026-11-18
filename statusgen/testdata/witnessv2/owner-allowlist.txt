@@ -17,6 +17,7 @@ tools/desk/cmd/deskevidence/decisiongate.go | git-tree-read | decision-gate file
 tools/desk/cmd/deskevidence/outcome.go | git-tree-read | outcome record file listing; not a witness digest
 tools/desk/cmd/deskevidence/outcomerecord.go | git-tree-read | outcome record blob reads; not a witness digest
 tools/desk/cmd/deskpathguard/rederive.go | git-tree-read | path-guard tree read; unrelated to witnesses
+tools/desk/cmd/deskpreflight/main.go | git-tree-read | retained-baseline check hashes a working-tree file without -w to compare against the merge-base blob; unrelated to witnesses
 tools/desk/cmd/verifyloop/pending.go | git-tree-read | pending-queue tree listing; informational only, judged by statusgen
 tools/desk/internal/cellscratch/snapshot.go | git-tree-read | scratch snapshot; unrelated to witnesses
 tools/desk/internal/deskkit/verifiersource.go | git-tree-read | verifier source checkout reads; unrelated to witnesses
