@@ -35,7 +35,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [milestone-support](docs/streams/milestone-support/README.md) | P2 | active | 1/14 | 2026-11-17 |  |
 | [performance-collection](docs/streams/performance-collection/README.md) | P2 | active | 0/9 | 2026-11-02 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-11-02 |  |
-| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/44 | 2026-11-16 |  |
+| [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/44 | 2026-11-18 |  |
 | [tool-refactoring](docs/streams/tool-refactoring/README.md) | P1 | active | 0/11 | 2026-11-18 |  |
 | [verification-handoff](docs/streams/verification-handoff/README.md) | P2 | active | 0/6 | 2026-11-10 |  |
 | [windows-port](docs/streams/windows-port/README.md) | P2 | active | 9/18 | 2026-11-14 |  |
@@ -152,7 +152,7 @@ _Held by per-stream caps: 13 brief(s) across 1 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 1a259b85f 2026-11-18T15:27:13Z_
+_last regen: 25102b2e7 2026-11-18T16:37:29Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +173,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 1a259b85f 2026-11-18T15:27:13Z_
+_last regen: 25102b2e7 2026-11-18T16:37:29Z_
 
 **Progress:** 36/100 brief items done.
 
@@ -237,7 +237,7 @@ _last regen: 1a259b85f 2026-11-18T15:27:13Z_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (25 for the desk · 54 for the driver · 45 for workers · 43 for an operator · 49 runner-pending — of 219 total; 3 could-not-check)
+## Awaiting verification / review (24 for the desk · 54 for the driver · 46 for workers · 43 for an operator · 49 runner-pending — of 219 total; 3 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
@@ -302,7 +302,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 16 [exec:strong] | implemented | 1020 | 0 | 2d | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3398 | — | — |
 | windows-port | 10 [exec:strong] | implemented | 1020 | 0 | 2d | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
 
-### Awaiting implementer rework (45)
+### Awaiting implementer rework (46)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -324,6 +324,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | build-less-brittle | 12 [exec:strong] | implemented | 3520 | 1 | 2d | worker | fix, cite medici-finance/assay#4169 | — | — |
 | desk-containers | 26 | implemented | 3520 | 5 | 2d | worker | fix, cite medici-finance/assay#6455 | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3520 | 3 | 2d | worker | fix, cite medici-finance/assay#1281 | — | — |
+| statusgen | 44 [exec:strong] | implemented | 3510 | 5 | 25h | worker | fix, cite medici-finance/assay#6900 | — | — |
 | measured-status | 03 [exec:strong] | verified | 2220 | 0 | 2d | worker | fix, cite #1915 | 2026-10-22 assay-verifier-app[bot] @ 05dc9fbc88f2 (claude-opus-5-5) | — |
 | measured-status | 05 [exec:strong] | implemented | 2220 | 0 | 2d | worker | fix, cite #3038 | — | — |
 | desk-containers | 10 [exec:strong] | implemented | 2020 | 2 | 2d | worker | fix, cite medici-finance/assay#2142 | — | — |
@@ -454,7 +455,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | quality | 19 [exec:strong] | verified | 1020 | 0 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 3add8a9ae315 (claude-opus-5-5) | — |
 | statusgen | 21 [exec:strong] | verified | 1020 | 0 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-11-11 assay-verifier-app[bot] @ b856f281f758 (claude-opus-5-5) | — |
 
-### Desk-actionable (25)
+### Desk-actionable (24)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -468,7 +469,6 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 42 [exec:strong] | implemented | 10520 | 19 | 2d | verify-desk | triage, then re-bucket | — | — |
 | milestone-support | 08 [exec:strong] | implemented | 4010 | 6 | 25h | verify-desk | triage, then re-bucket | — | — |
 | milestone-support | 07 [exec:strong] | implemented | 3510 | 5 | 25h | verify-desk | triage, then re-bucket | — | — |
-| statusgen | 44 [exec:strong] | implemented | 3510 | 5 | 25h | verify-desk | dispatch one judge | — | — |
 | composability | 02 | implemented | 2520 | 3 | 2d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2520 | 1 | 2d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 06 | implemented | 2520 | 1 | 2d | verify-desk | dispatch one judge | — | — |
@@ -480,7 +480,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 14 [exec:strong] | implemented | 2020 | 2 | 2d | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 48 [exec:strong] | implemented | 2010 | 2 | 25h | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 50 [exec:strong] | implemented | 2010 | 2 | 29h | verify-desk | triage, then re-bucket | — | — |
-| desk-tools | 62 [exec:strong] | implemented | 2000 | 2 | 25h | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 62 [exec:strong] | implemented | 2010 | 2 | 25h | verify-desk | triage, then re-bucket | — | — |
 | desktools-v2 | 71 [exec:strong] | implemented | 1020 | 0 | 2d | verify-desk | dispatch one judge | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1020 | 0 | 2d | verify-desk | triage, then re-bucket | — | — |
 
