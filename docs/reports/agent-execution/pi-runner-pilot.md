@@ -62,11 +62,11 @@ Each group ran as `GOWORK=off go test -tags pirunner -count=1 -v -run "^<group>$
 
 | Mutation | Target | Killed by |
 |---|---|---|
-| `no-start-dedupe` | `bridge.ts` start reads no prior map record | `TestPiPilotRestart/CrashAfterSubmit`, "want exactly one launch" |
-| `no-exec-reauth` | `bridge.ts` `safe_probe` skips the execution-time ledger check | `TestPiPilotAuthority/ReplayRechecks` |
-| `unstable-effect-id` | `ledger.go` effect identity includes the tool-call ID | `TestPiPilotEffects/StableIdentity` |
-| `no-unknown-stop-hold` | `bridge.ts` aborted run reports stopped despite a live child | `TestPiPilotStopAndObserve/AbortHoldsForChild` |
-| `unknown-cost-zeroed` | `bridge.ts` missing cost becomes zero | `TestPiPilotAccounting/PartialCostUnknown` |
+| `no-start-dedupe` | `bridge.ts` start reads no prior map record | `TestPiPilotRestart`, subtest `CrashAfterSubmit`, "want exactly one launch" |
+| `no-exec-reauth` | `bridge.ts` `safe_probe` skips the execution-time ledger check | `TestPiPilotAuthority`, subtest `ReplayRechecks` |
+| `unstable-effect-id` | `ledger.go` effect identity includes the tool-call ID | `TestPiPilotEffects`, subtest `StableIdentity` |
+| `no-unknown-stop-hold` | `bridge.ts` aborted run reports stopped despite a live child | `TestPiPilotStopAndObserve`, subtest `AbortHoldsForChild` |
+| `unknown-cost-zeroed` | `bridge.ts` missing cost becomes zero | `TestPiPilotAccounting`, subtest `PartialCostUnknown` |
 
 ### Measurements
 
