@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"sort"
 	"strings"
 	"testing"
 
@@ -25,7 +27,11 @@ func installStatusgenFixture(t *testing.T, overlays ...testenv.Options) *testenv
 	opts := testenv.Options{Tools: map[string]string{}, Vars: map[string]string{
 		"GOPROXY": "off", "GOSUMDB": "off", "GOTOOLCHAIN": "local", "GOENV": "off",
 	}}
-	for _, name := range []string{"git", "go", "sh", "bash", "cat", "grep", "touch", "env", "tr", "sleep", "printenv", "sed", "awk", "wc", "mkdir", "mktemp", "rm", "date", "basename", "ls", "cut", "tee", "curl", "perl", "python3", "mkfifo", "jq", "sort", "mv", "cp"} {
+	toolNames := []string{"git", "go", "sh", "bash", "cat", "grep", "touch", "env", "tr", "sleep", "printenv", "sed", "awk", "wc", "mkdir", "mktemp", "rm", "date", "basename", "ls", "cut", "tee", "curl", "perl", "python3", "mkfifo", "jq", "sort", "mv", "cp"}
+	if runtime.GOOS == "linux" {
+		toolNames = append(toolNames, "stat", "unshare", "mount", "timeout")
+	}
+	for _, name := range toolNames {
 		path, err := exec.LookPath(name)
 		if err != nil {
 			if name == "git" || name == "go" {
@@ -63,6 +69,19 @@ func installStatusgenFixture(t *testing.T, overlays ...testenv.Options) *testenv
 	// previous process environment and its config home.
 	t.Cleanup(scanReloadConfig)
 	f := testenv.Install(t, opts)
+	// Go keeps tombstones for unset Unix environment entries. Repeated fixture
+	// lifetimes must not make os.Environ allocate for every deleted slot. The
+	// logical environment is identical; Install already owns the Setenv guard.
+	if runtime.GOOS != "windows" {
+		live := os.Environ()
+		os.Clearenv()
+		for _, entry := range live {
+			key, value, _ := strings.Cut(entry, "=")
+			if err := os.Setenv(key, value); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	config := filepath.Join(f.Home, ".config", "assay")
 	if err := os.MkdirAll(config, 0700); err != nil {
 		t.Fatal(err)
@@ -317,4 +336,23 @@ func TestFixtureCIControl08(t *testing.T) {
 	}
 	installStatusgenFixture(t)
 	requireTool(t, "fixture-tool-intentionally-absent")
+}
+
+// A module run creates hundreds of separate fixture lifetimes. Unix's deleted
+// environment slots must not make later real bounded-history tests allocate for
+// every past lifetime. Keep the existing export caps and allocation thresholds.
+func TestFixtureLifetimesKeepExportBounded08(t *testing.T) {
+	before := os.Environ()
+	for i := 0; i < 1000; i++ {
+		t.Run(fmt.Sprintf("lifetime-%d", i), func(t *testing.T) { installStatusgenFixture(t) })
+	}
+	after := os.Environ()
+	// Compare logical presence and values; ordering is not part of the process
+	// environment contract. The caller's hostile inputs still belong to it.
+	sort.Strings(before)
+	sort.Strings(after)
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("fixture lifetimes changed the caller environment")
+	}
+	t.Run("actual-export-cap", TestExportCapBeforeRead)
 }
