@@ -30,8 +30,8 @@ func bareLock(t *testing.T, work, target string) {
 // dispatcher acquires claims in. Offline, and visible to `git ls-remote origin`.
 func holdClaim(t *testing.T, work, key string) {
 	t.Helper()
-	mustGit(t, work, "push", "--quiet", "origin",
-		"refs/remotes/origin/main:"+deskkit.DispatchClaimActiveRefsPrefix+key)
+	src := mustGit(t, work, "rev-parse", "origin/main")
+	mustGit(t, work, "push", "--quiet", "origin", src+":"+deskkit.DispatchClaimActiveRefsPrefix+key)
 }
 
 // agedOut backdates a home's admin entry past the just-created safety window, so the
