@@ -22,7 +22,7 @@ ruling: "https://github.com/medici-finance/assay/issues/4401#issuecomment-639933
 design: DR-cell-stop-flags
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "Driver request 2026-10-14: a `drain <cell>` that drains the loops first and then shuts down; the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge): drain/pause/resume/restart/handoff are runner-lifecycle states and transitions, with today's STOP-flag/cadence mechanism labelled interim"
@@ -112,13 +112,13 @@ The ruling keeps the implementation already on main, delivered by medici-finance
 |---|-------|---------|--------|
 | 1 | check | `go -C tools/desk test ./internal/deskkit/ -run 'TestGuardCellStop' -count=1 -v` | `--- PASS` — with the marker `cell=a`: `STOP.cell.a` stops; `STOP.cell.a.worker-desk` stops worker-desk only; `STOP.cell.b` does not stop it; with no marker, no cell flag stops it |
 | 2 | check | `go -C tools/desk test ./internal/deskkit/ -run 'TestGuardCellStopNeverClears' -count=1 -v` | `--- PASS` — `STOP` present plus a cell marker for a different cell is still a stop |
-| 3 | check | `go -C tools/desk test ./internal/deskkit/ -run 'TestCellNameRejectsTraversal' -count=1 -v` | `--- PASS` — a marker value of `../x` or `a/b` is refused exit 6 and builds no path |
+| 3 | check | `go -C tools/desk test ./internal/deskkit/ -run 'TestCellNameRejectsTraversal' -count=1 -v` | `--- PASS` — a marker value of `../x` or `a/b` is refused `exit 6` and builds no path |
 | 4 | check +dereference | `grep -c 'STOP.cell.' plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/verify-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md` | every file ≥ 1 |
 | 4b | check | `go -C tools/desk test ./internal/deskkit/ -run 'TestSkillStopSnippetGuardBypassed' -count=1 -v` | `--- PASS` — the iteration-boundary snippet extracted from each of the three SKILL.md files, run in a temp HOME with the marker `cell=a`, `STOP.cell.a` present and no Guard on PATH, exits the loop and names the flag (the skill layer holds with the Guard layer absent) |
 | 4c | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestStampCellMarkerReplacesInherited\|TestCockpitLaunchCarriesNoMarker' -count=1 -v` | `--- PASS` for both — #2880's (PR #2884) tests: every launched process carries `ASSAY_CELL`, `ASSAY_CELL_DIR` and `ASSAY_CELL_ROLE` (an inherited marker is replaced), and a cockpit launch carries no marker. Both tests are on main since #2884 merged (2026-10-14) |
 | 5 | gate:model +flow | In a temp HOME: set the marker `cell=a`, touch `STOP.cell.a`, then run an outward verb such as `deskfile check` with `DESK_LOOP=worker-desk` | the Guard refuses with the stop exit code, naming `STOP.cell.a`. Remove the flag and the same command proceeds. With the skill-body check bypassed, the Guard alone still refuses. |
 | 6 | check | `statusgen --root . --lint` | exit 0 |
-| 6a | check | `statusgen --root . --consumers --brief desk-containers/16` | exit 0 — the `consumers:` routing holds against the branch diff |
+| 6a | check | `statusgen --root . --consumers --brief desk-containers/16 --delivery ab8c472905b1e57c1c6b89f9f13fbd08486c2a01 --base 06696f067b409a1fd40ddf8e9fe5b63481fb31a6` | exit 0 — the `consumers:` routing holds against the branch diff |
 | 6b | check +mutation | `go -C tools/desk run ./cmd/muhar -spec cmd/deskboard/cellstopbanner-mutations.json` | exit 0 — baseline GREEN, positive control CAUGHT, `Totals: 3 caught, 0 NOT CAUGHT, 0 could-not-mutate`. The three mutants are planted in `tools/desk/cmd/deskboard/main.go`'s stop banner and each reddens `TestBannerShowsCellStopFlags` (`go -C tools/desk test ./cmd/deskboard/ -run '^TestBannerShowsCellStopFlags$' -count=1 -v` is `--- PASS` unmutated): the INERT tag dropped (a flag that halts nothing reads as armed), the INERT tag inverted (a live `STOP.cell.<cell>[.<loop>]` flag reads as inert), and the banner's read of active flags switched off (a cell-scoped drain is invisible on every board read) |
 
 ## Evidence

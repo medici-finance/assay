@@ -66,6 +66,20 @@ func TestHarnessShellSuite(t *testing.T) {
 	}
 }
 
+// TestProviderShellSuite runs tools/cellctl/tests/provider.test.sh against the Go binary. The
+// suite asserted per-tier provider models (a glm flash variant for the mid tier, the
+// --model-top/mid/fast flags, CELL_TIER_MODEL_<TIER>) that only the shell oracle carried, so it ran
+// against the oracle alone. #6183 retired those from the oracle and the suite; a model per tier or
+// role is model policy's job, and this run keeps the binary on the same rows.
+//
+// regression: #6183
+func TestProviderShellSuite(t *testing.T) {
+	out := runCellctlSuite(t, "provider.test.sh", []string{"bash", "git"})
+	if n := strings.Count(out, "\n  ok    "); n < 60 {
+		t.Fatalf("provider.test.sh ran only %d assertions:\n%s", n, out)
+	}
+}
+
 // scrubbedCases maps every case of scrubbed-cell.test.sh to whether it needs the REAL tmux
 // binary: a scrubbed cell's `check` has a tmux row, and `desk` (dry run included), `lock`,
 // `status` and `down` drive a private-socket tmux server, which the suite never stubs because

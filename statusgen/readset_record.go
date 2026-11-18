@@ -349,6 +349,8 @@ type readSetTarget struct {
 	row      string
 	command  string
 	armExecs int // execs before the row's own shell (the network-off wrapper's)
+
+	unavailable string // known reason a host run cannot record this brief
 }
 
 // forRow is the target for one Verify row.

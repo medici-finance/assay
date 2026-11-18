@@ -130,8 +130,38 @@
     {
       "name": "stop scanning a parent's trees (the inventory sees nothing under cmd)",
       "file": "internal/deskkit/forgebodycap_guard_test.go",
-      "old": "\t\"cmd\",\n\t\"internal\",\n\t\"../../deskd/cmd\",",
-      "new": "\t\"internal\",\n\t\"../../deskd/cmd\","
+      "old": "\t\"cmd\",\n\t\"internal\",\n\t\"../../deskd\",\n",
+      "new": "\t\"internal\",\n\t\"../../deskd\",\n"
+    },
+    {
+      "name": "accept a forgeBodyGuardGaps entry that pins no hit (an empty entry for a tree with no hits passes)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\tif len(hits) == 0 {\n\t\t\tproblems = append(problems, fmt.Sprintf(\"forgeBodyGuardGaps entry",
+      "new": "\t\tif false && len(hits) == 0 {\n\t\t\tproblems = append(problems, fmt.Sprintf(\"forgeBodyGuardGaps entry"
+    },
+    {
+      "name": "accept a forgeBodyNotForge entry that pins no hit",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\tif len(nf.hits) == 0 {",
+      "new": "\t\tif false && len(nf.hits) == 0 {"
+    },
+    {
+      "name": "bound the inventory by the desk module again (the parents start at tools/desk, so a reader in another module is never inventoried)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\tforgeBodyRepoRoot,\n\t\"..\",\n\t\".\",\n",
+      "new": "\t\".\",\n"
+    },
+    {
+      "name": "stop checking that each inventory parent is a child of an earlier one",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\tif !slicesContains(parents[:i], up) {",
+      "new": "\t\tif false && !slicesContains(parents[:i], up) {"
+    },
+    {
+      "name": "label an inventory tree by the parent's spelling, not its path from the desk module (tools/desk is reached as ../../tools and scanned whole)",
+      "file": "internal/deskkit/forgebodycap_guard_test.go",
+      "old": "\t\t\ttree := filepath.ToSlash(rel)\n",
+      "new": "\t\t\ttree := filepath.ToSlash(filepath.Join(parent, name))\n\t\t\t_ = rel\n"
     }
   ]
 }

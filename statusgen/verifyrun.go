@@ -652,6 +652,19 @@ type shellPlan struct {
 	// rowScratch, when set (an admitted run), is the directory under which
 	// each row gets its own fresh HOME and TMPDIR, removed when the row ends.
 	rowScratch string
+	// rowRoster, when set (a container run under a roster receipt), is the
+	// verified roster copy each row's fresh HOME holds (rostercopy.go).
+	rowRoster []byte
+}
+
+// admittedScrubbedNote is the could-not-run note for an admitted row that
+// reads scrubbed ASSAY_* inputs. It names the inputs and says what running the
+// row outside admission takes, so the note never reads as permission to do it.
+func admittedScrubbedNote(names []string) string {
+	return "the row reads " + strings.Join(names, ", ") +
+		", which an admitted run removes from every row's environment, so it cannot run as written here." +
+		" This note is not permission to run it outside admission, where the row sees the full environment" +
+		" admission removes: do that only once the row itself has been reviewed for what it reads"
 }
 
 // removeRowScratch removes an admitted run's row scratch, first making
@@ -923,13 +936,15 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	if plan.rowScratch != "" {
 		// A row that reads an ASSAY_* input the scrub removed cannot run as
 		// written under admission. It is could-not-run, never a fail: its own
-		// guard on the missing value would otherwise read as a regression.
+		// guard on the missing value would otherwise read as a regression. Nor
+		// is it ever a pass: the row's text chooses this outcome, so it must
+		// not be one that clears anything. The note does not grant a run
+		// outside admission either, where the row sees everything the scrub
+		// removed.
 		if names := admittedRowScrubbedRefs(command, plan.rowEnv()); len(names) > 0 {
-			return runResult{exit: -1, couldNotRun: true,
-				reason: "the row reads " + strings.Join(names, ", ") +
-					", which an admitted run removes from every row's environment: run it outside admission"}
+			return runResult{exit: -1, couldNotRun: true, reason: admittedScrubbedNote(names)}
 		}
-		dir, vars, err := admittedRowDirs(plan.rowScratch)
+		dir, vars, err := admittedRowDirs(plan.rowScratch, plan.rowRoster)
 		if err != nil {
 			return runResult{exit: -1, couldNotRun: true,
 				reason: "could-not-check: cannot make the row's own HOME: " + err.Error()}
@@ -2227,6 +2242,17 @@ Flags:
                     GOTOOLCHAIN=local. The container run checks the mount,
                     the environment and the digest before any row, and its
                     witness records Module-Cache: <digest> (#4683).
+  --roster-copy <file>  with --open-bracket, read the host roster through the
+                    owner-checked loader and write only the keys statusgen
+                    reads (trusted identities, repository set, product keys;
+                    never a credential or any other key) to this new 0600 file
+                    outside the home, and record its digest in the receipt.
+                    The step prints the container flag that mounts the copy
+                    read-only at /run/assay-roster/roster.env. Before any row
+                    the container run checks the mount, the digest and that
+                    the copy loads, then gives each row's fresh HOME the copy
+                    as its config-home roster, so rows that run statusgen
+                    --lint load it (#6904).
   --history-pack <file>  with container-netns --fail-first, import that pack
                     into private scratch for baseline checkouts. Its source must
                     equal the admitted source. Head rows still run on --root.
@@ -2432,6 +2458,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	openOut := fs.String("out", "", "with --open-bracket: the receipt file to write, outside the home")
 	historyOut := fs.String("history-out", "", "with --open-bracket: export admitted HEAD history to a new Git object pack outside the home")
 	moduleCacheDir := fs.String("module-cache", "", "with --open-bracket: download the home's Go module roots into this new directory outside the home and record its digest in the receipt")
+	rosterCopy := fs.String("roster-copy", "", "with --open-bracket: write the host roster's statusgen keys to this new file outside the home for the container, and record its digest in the receipt")
 	historyPack := fs.String("history-pack", "", "container-netns --fail-first: read-only admitted-source Git object pack for isolated baseline checkouts")
 	closeBracket := fs.Bool("close-bracket", false, "host close step of a container run: re-check admission and the tree digest, then append Admission-Bracket to --witness")
 	witnessFile := fs.String("witness", "", "container-netns: the new file outside the home the witness is written to; with --close-bracket or --bracket-digest: that file")
@@ -2569,6 +2596,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		fmt.Fprintln(stderr, "statusgen verifyrun: --module-cache only applies to --open-bracket")
 		return verifyrunExitUsageError
 	}
+	if *rosterCopy != "" && !*openBracket {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --roster-copy only applies to --open-bracket")
+		return verifyrunExitUsageError
+	}
 	if *historyOut != "" && !*openBracket {
 		fmt.Fprintln(stderr, "statusgen verifyrun: --history-out only applies to --open-bracket")
 		return verifyrunExitUsageError
@@ -2601,7 +2632,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitUsageError
 		}
 		if *openBracket {
-			return runOpenAcceptance(*rootDir, path, *openOut, *moduleCacheDir, *historyOut, *transitionRecord, stdout, stderr)
+			return runOpenAcceptance(*rootDir, path, *openOut, *moduleCacheDir, *historyOut, *transitionRecord, *rosterCopy, stdout, stderr)
 		}
 		return runCloseBracket(*rootDir, path, *admissionReceipt, *witnessFile, stdout, stderr, *transitionRecord)
 	}
@@ -2895,6 +2926,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		defer removeRowScratch(scratch)
 		plan.env = append(admittedRowEnv(environ), admittedRowGo(environ)...)
 		plan.rowScratch = scratch
+		plan.rowRoster = container.roster
 		if sock, sockDir, err := rowreadSocketPath(scratch); err == nil {
 			if sockDir != "" {
 				defer removeRowScratch(sockDir)

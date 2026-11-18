@@ -340,6 +340,10 @@ existing grants.
    and writes nothing. **Do not hand-compute the queue** — the plan IS the worklist.
 2. **Dispatch what it prints**, one verifier per item, via `deskdispatch <item-key> --kit verifier --model <actual-model> --tier <selected-tier> --brief <path> --perf-work '{"kind":"brief","repo":"<owner/repo>","brief":"<qualified-brief-id>"}'`
    (claim → worktree → roster → decision gate → model stamp → prompt).
+   For a cross-repository item the plan prints the full `deskdispatch … --kit verifier --repo
+   <deliverable> --root <deliverable checkout> --claim-root <tracking checkout> --brief <path>`
+   line; dispatch exactly that (filling in model and tier, and adding the step's `--perf-work` ref). It claims in the tracking repo, runs
+   the rows against the deliverable, and lands Evidence and the outcome record in the tracking repo.
    `<qualified-brief-id>` is the brief file's frontmatter `brief:` value with the number's leading
    zeros dropped (deskkit `PerfBriefRef`): `assay:assay:desk-supervision:37`, or
    `assay:assay:graph-execution:2` for graph-execution/02. perfrec silently drops a work ref
