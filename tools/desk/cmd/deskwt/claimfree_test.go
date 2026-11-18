@@ -31,7 +31,8 @@ func bareLock(t *testing.T, work, target string) {
 func holdClaim(t *testing.T, work, key string) {
 	t.Helper()
 	src := mustGit(t, work, "rev-parse", "origin/main")
-	mustGit(t, work, "push", "--quiet", "origin", src+":"+deskkit.DispatchClaimActiveRefsPrefix+key)
+	dst := deskkit.DispatchClaimActiveRefsPrefix + key
+	mustGit(t, work, "push", "--quiet", "origin", src+":"+dst)
 }
 
 // agedOut backdates a home's admin entry past the just-created safety window, so the
