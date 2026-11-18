@@ -432,11 +432,14 @@ def compatibility_structured(docs, pins, custody):
              container.get('terminationMessagePolicy') == 'File', 'exact lower termination message required')
         env = container.get('env', [])
         by_name = {item.get('name'): item for item in env}
+        for name in ('ASSAY_COMPAT_LAUNCH_ID', 'ASSAY_COMPAT_INIT_ID'):
+            value = by_name.get(name, {}).get('value')
+            need(isinstance(value, str) and re.fullmatch('[a-f0-9]{64}', value),
+                 f'prepared launch identity missing or invalid for {role}: {name}. '
+                 "Use workload_env from that role's preparation handoff.")
         need(len(env) == 6 and len(by_name) == 6 and
              by_name.get('ASSAY_POD_UID') == {'name': 'ASSAY_POD_UID', 'valueFrom': {'fieldRef': {'fieldPath': 'metadata.uid'}}},
              'exact downward Pod UID and launch identity required')
-        for name in ['ASSAY_COMPAT_LAUNCH_ID', 'ASSAY_COMPAT_INIT_ID']:
-            need(re.fullmatch('[a-f0-9]{64}', by_name.get(name, {}).get('value', '')), 'prepared launch identity missing')
         need(spec['template']['metadata']['labels'].get('assay.dev/profile') == 'compatibility-cellctl', 'opt-in profile label missing')
         # Reuse the historical base assertions for every unchanged custody/isolation
         # constraint. These changes are in an in-memory comparison copy only.
@@ -497,6 +500,24 @@ def compatibility_mutations(docs, pins, custody):
             print('rejected: compatibility-' + name)
         else:
             raise Invalid('compatibility hostile fixture escaped: ' + name)
+    # Operators need the role and binding to correct a five-role manifest.
+    for name, value in [('ASSAY_COMPAT_LAUNCH_ID', None), ('ASSAY_COMPAT_INIT_ID', 2026)]:
+        changed = copy.deepcopy(docs)
+        workload = workloads(changed)[-1]
+        env = workload['spec']['template']['spec']['containers'][0]['env']
+        binding = next(entry for entry in env if entry['name'] == name)
+        if value is None:
+            env.remove(binding)
+        else:
+            binding['value'] = value
+        try:
+            compatibility_structured(changed, pins, custody)
+        except Invalid as err:
+            need(workload['metadata']['name'] in str(err) and name in str(err),
+                 'missing or malformed preparation binding must identify its role and name')
+            print(f'rejected: compatibility-preparation-binding-{name}')
+        else:
+            raise Invalid(f'invalid preparation binding accepted: {name}')
     changed = dict(custody); changed.pop('logs')
     try:
         compatibility_structured(docs, pins, changed)
