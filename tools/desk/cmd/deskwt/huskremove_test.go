@@ -185,9 +185,10 @@ func TestRemoveHuskProbeUnavailableIsCouldNotCheck(t *testing.T) {
 // Skipped where lsof is not installed — the unavailable case above pins that arm.
 // regression: #1905
 func TestLsofHoldersSeesCwdHolder(t *testing.T) {
-	if _, err := exec.LookPath("lsof"); err != nil {
+	if worktreeStartupLsof == "" {
 		t.Skip("lsof not installed")
 	}
+	installWorktreeFixture(t)
 	dir := t.TempDir()
 	if pids, err := lsofHolders(dir); err != nil || len(pids) != 0 {
 		t.Fatalf("idle dir: holders = %v, err = %v; want none", pids, err)

@@ -19,15 +19,34 @@ import (
 )
 
 // Capture only declared build inputs before TestMain relocates HOME for its
-// synthetic roster. No credential, Git selector or desk policy is retained.
+// synthetic roster. Windows home/config paths are query-only inputs: only the
+// resolved Go paths below reach the fixture. No credential or desk policy is retained.
 var worktreeBuildInputs = func() map[string]string {
 	out := map[string]string{}
-	for _, key := range []string{"HOME", "PATH", "GOCACHE", "GOMODCACHE", "GOPATH", "GOROOT", "SystemRoot"} {
+	for _, key := range []string{"HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "PATH", "GOCACHE", "GOMODCACHE", "GOPATH", "GOROOT", "SystemRoot"} {
 		if value, ok := os.LookupEnv(key); ok {
 			out[key] = value
 		}
 	}
 	return out
+}()
+
+// Resolve optional system tools before a fixture replaces PATH. A minimal caller
+// PATH may omit sbin even though the standard Unix utility is installed there.
+var worktreeStartupLsof = func() string {
+	if path, err := exec.LookPath("lsof"); err == nil {
+		if absolute, err := filepath.Abs(path); err == nil {
+			return absolute
+		}
+	}
+	if runtime.GOOS != "windows" {
+		for _, path := range []string{"/usr/sbin/lsof", "/usr/bin/lsof", "/sbin/lsof"} {
+			if info, err := os.Stat(path); err == nil && info.Mode().IsRegular() && info.Mode().Perm()&0111 != 0 {
+				return path
+			}
+		}
+	}
+	return ""
 }()
 var worktreeFixtureOnce sync.Once
 var worktreeFixtureTools map[string]string
@@ -54,12 +73,9 @@ func resolveWorktreeFixtureInputs() {
 		}
 		worktreeFixtureTools[name] = path
 	}
-	// Preserve the existing optional local-process custody control when available.
-	if path, err := exec.LookPath("lsof"); err == nil {
-		worktreeFixtureTools["lsof"], worktreeFixtureError = filepath.Abs(path)
-		if worktreeFixtureError != nil {
-			return
-		}
+	// Availability was captured before any scoped fixture could narrow PATH.
+	if worktreeStartupLsof != "" {
+		worktreeFixtureTools["lsof"] = worktreeStartupLsof
 	}
 	cmd := exec.Command(worktreeFixtureTools["go"], "env", "-json", "GOCACHE", "GOMODCACHE", "GOPATH", "GOROOT")
 	cmd.Env = []string{"GOENV=off", "GOTOOLCHAIN=local", "GOPROXY=off", "GOSUMDB=off"}
@@ -143,6 +159,14 @@ func TestFixtureSiblingParentIsolation06(t *testing.T) {
 	t.Setenv("GIT_WORK_TREE", repo)
 	t.Setenv("GIT_INDEX_FILE", filepath.Join(repo, ".git", "index"))
 	installWorktreeFixture(t)
+	if os.Getenv("USERPROFILE") != os.Getenv("HOME") {
+		t.Fatal("fixture profile does not belong to its owned home")
+	}
+	for _, key := range []string{"APPDATA", "LOCALAPPDATA"} {
+		if _, present := os.LookupEnv(key); present {
+			t.Fatalf("query-only startup input %s leaked into fixture environment", key)
+		}
+	}
 	work := newRepo(t)
 	withEnv(t, work)
 	if got, err := deskkit.OriginRepoSlug(work); err != nil || got != "example-org/tracker" {
