@@ -10,6 +10,7 @@ import (
 
 // regression: #3327
 func TestDeskClaimsNoFallback(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	initRepoAt(t, root, fixedDate)
 	runGit(t, root, "remote", "add", "origin", "https://github.com/example/project.git")
@@ -38,6 +39,7 @@ func TestDeskClaimsNoFallback(t *testing.T) {
 
 // regression: #3327
 func TestRoleClaimsPartial(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	initRepoAt(t, root, fixedDate)
 	runGit(t, root, "remote", "add", "origin", "https://github.com/example/project.git")

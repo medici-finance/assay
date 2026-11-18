@@ -78,6 +78,7 @@ func forgeReaderForRunConsumerCount(t *testing.T) int {
 // above: it must agree with an independent, argv-only (no shell interpolation) grep invocation,
 // so a bug in the Go-side counter cannot itself hide a drifted enumeration.
 func TestForgeReaderForRunConsumerCountMatchesGrep(t *testing.T) {
+	installStatusgenFixture(t)
 	dir, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("Getwd: %v", err)

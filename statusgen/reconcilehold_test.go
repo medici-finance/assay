@@ -71,6 +71,7 @@ func readFixtureReadme(t *testing.T, root string) string {
 // then failed on "has no design: record" — exactly the hourly job's own --lint
 // step failing on the tree it had just written.
 func TestApplyThenLintAddsNoProblem(t *testing.T) {
+	installStatusgenFixture(t)
 	root := copyDesignGateFixture(t)
 	before := lintProblemLines(t, root)
 
@@ -110,6 +111,7 @@ func TestApplyThenLintAddsNoProblem(t *testing.T) {
 // approved design record flips normally — no row is held merely for being
 // risk-gated, and no design record is ever invented by the writer.
 func TestApplyHoldClearsWhenTheRecordExists(t *testing.T) {
+	installStatusgenFixture(t)
 	root := copyDesignGateFixture(t)
 	bp := filepath.Join(root, "docs", "streams", "dg", "brief-05-todo.md")
 	b, err := os.ReadFile(bp)

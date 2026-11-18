@@ -10,6 +10,7 @@ import (
 
 // regression: #3461
 func TestVflipKitBlockedSequence(t *testing.T) {
+	installStatusgenFixture(t)
 	// Read the actual dispatched kit, not a hand-written verdict fixture: the
 	// writer's marker must both supersede and bound runs in the existing reader.
 	raw, err := os.ReadFile(filepath.Join("..", "tools", "desk", "cmd", "deskdispatch", "references", "verifier-prompt.md"))

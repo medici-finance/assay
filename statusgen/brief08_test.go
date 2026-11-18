@@ -219,6 +219,7 @@ func glAf01Source(notes []glNote) *fakeFlipSource {
 // pin (or with a note pinning a stale SHA) does not — the approval flag alone is not
 // an at-head verdict on CE.
 func TestAutoFlipGitLabCorroboration(t *testing.T) {
+	installStatusgenFixture(t)
 	// WITH a head-pinned note -> flips.
 	root, streams := loadAFStreams(t)
 	withPin := glAf01Source([]glNote{{Author: glReviewer, Body: "verified at head " + afHeadSHA}})
@@ -263,6 +264,7 @@ func TestAutoFlipGitLabCorroboration(t *testing.T) {
 // reported loudly. Without this row the brief could ship an auto-flip that advances
 // everything and still pass row 6.
 func TestAutoFlipUncorroboratedStaysVerified(t *testing.T) {
+	installStatusgenFixture(t)
 	// GitHub: an APPROVED review against a STALE commit (not the merged head).
 	ghRoot, ghStreams := loadAFStreams(t)
 	ghRes, err := autoFlipModel(ghRoot, ghStreams, afSource(), ghReviewer(afReviewer), afNow, false)

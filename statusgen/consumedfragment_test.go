@@ -80,6 +80,7 @@ func writeConsumedFragmentFixture(t *testing.T, initGit bool) (root, brief strin
 // pre-fix code all FOUR backticked paths PROBLEM (the consumed fragment among them);
 // with the fallback wired in exactly the three controls remain.
 func TestConsumedChangelogFragmentResolves(t *testing.T) {
+	installStatusgenFixture(t)
 	root, brief := writeConsumedFragmentFixture(t, true)
 	problems := linkProblems(root, []string{brief})
 
@@ -121,6 +122,7 @@ func TestConsumedChangelogFragmentResolves(t *testing.T) {
 // reported AS ITSELF — the PROBLEM still fires (never rounded up to a pass) and its message
 // says the exemption could not be evaluated (never rounded down to a clean verdict).
 func TestConsumedChangelogFragmentUnreadableHistoryIsCouldNotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	root, brief := writeConsumedFragmentFixture(t, false)
 	problems := linkProblems(root, []string{brief})
 
@@ -156,6 +158,7 @@ func TestConsumedChangelogFragmentUnreadableHistoryIsCouldNotCheck(t *testing.T)
 // TestConsumedFragmentGates exercises the helper's gates directly. Each is a way the
 // exemption could have been made too wide; each must answer "checked, not exempt".
 func TestConsumedFragmentGates(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := writeConsumedFragmentFixture(t, true)
 	ix := &consumedFragmentIndex{root: root}
 

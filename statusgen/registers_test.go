@@ -329,6 +329,7 @@ func gitRun(t *testing.T, root string, args ...string) {
 // is the fix for the false positive that blocked a register PR removing its own
 // branch-local duplicate.
 func TestDeletedFileIntegrityScopedToMain(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	fdir := filepath.Join(root, "docs", "streams", "findings")
@@ -371,6 +372,7 @@ func TestDeletedFileIntegrityScopedToMain(t *testing.T) {
 // missing a register file main gained after the merge-base — is not a tombstone
 // violation. Only deletion of files landed at the shared merge-base fires.
 func TestDeletedFileIntegrityBranchBehindMain(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	fdir := filepath.Join(root, "docs", "streams", "findings")
@@ -401,6 +403,7 @@ func TestDeletedFileIntegrityBranchBehindMain(t *testing.T) {
 // fires. It must NEVER fail open (silently allow a deletion) when it can't find the
 // merge-base.
 func TestDeletedFileIntegrityNoOriginFallsClosed(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	fdir := filepath.Join(root, "docs", "streams", "findings")
@@ -428,6 +431,7 @@ func TestDeletedFileIntegrityNoOriginFallsClosed(t *testing.T) {
 // COMMITTED deletion is not compared against itself there. The add is still in
 // HEAD's first-parent history and the file is gone from the tree, so it fires.
 func TestDeletedNoBaseCommittedFires(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	fdir := filepath.Join(root, "docs", "streams", "findings")
@@ -447,6 +451,7 @@ func TestDeletedNoBaseCommittedFires(t *testing.T) {
 // (same ID, new filename) must NOT leave its old path as a permanent false
 // tombstone. The old path is tracked by register ID, not by frozen path.
 func TestDeletedFileIntegrityRename(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	gitRun(t, root, "checkout", "-q", "-b", "base")
@@ -494,6 +499,7 @@ func TestDeletedFileIntegrityRename(t *testing.T) {
 // --first-parent the add+delete net to nothing along the merge's first-parent diff,
 // so the transient must NOT fire — while deleting a genuinely-landed file still must.
 func TestDeletedFileIntegrityNonSquashMergeTransient(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	gitRun(t, root, "checkout", "-q", "-b", "base") // deterministic branch name (init default varies)
@@ -807,6 +813,7 @@ const landedAckedFinding = "---\n" +
 // TestGuttedResolvedFlipUnauthorized: flipping resolved no->yes with no verified-
 // human anchor is a HARD lint problem.
 func TestGuttedResolvedFlipUnauthorized(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	gutted := strings.Replace(landedOpenFinding, "resolved: false", "resolved: true", 1)
 	if err := os.WriteFile(path, []byte(gutted), 0o644); err != nil {
@@ -822,6 +829,7 @@ func TestGuttedResolvedFlipUnauthorized(t *testing.T) {
 // under the designated frontmatter key (authorized-by: human:alex, mapped in
 // HumanLoginMap) passes.
 func TestGuttedResolvedFlipAuthorized(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	gutted := strings.Replace(landedOpenFinding, "resolved: false", "resolved: true\nauthorized-by: human:alex", 1)
 	if err := os.WriteFile(path, []byte(gutted), 0o644); err != nil {
@@ -835,6 +843,7 @@ func TestGuttedResolvedFlipAuthorized(t *testing.T) {
 // TestGuttedResolvedFlipUnknownNameNotAuthorized: a human:<name> whose name is not
 // in HumanLoginMap is an agent-written token, not a verified human — still fires.
 func TestGuttedResolvedFlipUnknownNameNotAuthorized(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	gutted := strings.Replace(landedOpenFinding, "resolved: false", "resolved: true\nauthorized-by: human:bot", 1)
 	if err := os.WriteFile(path, []byte(gutted), 0o644); err != nil {
@@ -848,6 +857,7 @@ func TestGuttedResolvedFlipUnknownNameNotAuthorized(t *testing.T) {
 // TestGuttedAffectsEmptied: emptying affects unblocks every brief it demoted — a
 // HARD problem without human auth.
 func TestGuttedAffectsEmptied(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	gutted := strings.Replace(landedOpenFinding,
 		"affects: [\"stream-y\", \"stream-z/brief-01\"]", "affects: []", 1)
@@ -863,6 +873,7 @@ func TestGuttedAffectsEmptied(t *testing.T) {
 // TestGuttedAffectsNarrowed: dropping one of several affects entries (partial
 // gutting) fires and names the dropped entry.
 func TestGuttedAffectsNarrowed(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	gutted := strings.Replace(landedOpenFinding,
 		"affects: [\"stream-y\", \"stream-z/brief-01\"]", "affects: [\"stream-y\"]", 1)
@@ -883,6 +894,7 @@ func TestGuttedAffectsNarrowed(t *testing.T) {
 // the malformed-ack check is guarded by `f.Ack != ""`, so CORRUPTING ack errors
 // but REMOVING it is silent.
 func TestGuttedAckRemoved(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedAckedFinding)
 	gutted := strings.Replace(landedAckedFinding, "ack: \"2026-07-18 desk\"\n", "", 1)
 	if err := os.WriteFile(path, []byte(gutted), 0o644); err != nil {
@@ -927,6 +939,7 @@ func TestGuttedAckRemovedDowngradesCheckSeverity(t *testing.T) {
 
 // TestGuttedAckAddedNotFlagged: ADDING an ack adds caution — never gutting.
 func TestGuttedAckAddedNotFlagged(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	widened := strings.Replace(landedOpenFinding, "resolved: false",
 		"ack: \"2026-07-18 desk\"\nresolved: false", 1)
@@ -941,6 +954,7 @@ func TestGuttedAckAddedNotFlagged(t *testing.T) {
 // TestGuttedWideningAffectsNotFlagged: WIDENING affects or re-opening a finding
 // adds caution — never gutting, never flagged.
 func TestGuttedWideningAffectsNotFlagged(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	widened := strings.Replace(landedOpenFinding,
 		"affects: [\"stream-y\", \"stream-z/brief-01\"]",
@@ -956,6 +970,7 @@ func TestGuttedWideningAffectsNotFlagged(t *testing.T) {
 // TestGuttedResolvedReopenNotFlagged: yes->no (re-opening) is the opposite of
 // gutting and must not fire. The landed entry here is resolved: true.
 func TestGuttedResolvedReopenNotFlagged(t *testing.T) {
+	installStatusgenFixture(t)
 	landedResolved := strings.Replace(landedOpenFinding, "resolved: false", "resolved: true", 1)
 	root, path := gutFixture(t, landedResolved)
 	reopened := strings.Replace(landedResolved, "resolved: true", "resolved: false", 1)
@@ -979,6 +994,7 @@ func TestGuttedResolvedReopenNotFlagged(t *testing.T) {
 // copy diffs to nothing, so the test passed either way. Mutation-tested: deleting
 // the skip in guttedRegisterFields must turn this test RED.
 func TestGuttedNewBranchLocalFindingNotFlagged(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := gutFixture(t, landedOpenFinding)
 	fdir := filepath.Join(root, "docs", "streams", "findings")
 	newPath := filepath.Join(fdir, "2026-07-18-branch-local.md")
@@ -996,6 +1012,7 @@ func TestGuttedNewBranchLocalFindingNotFlagged(t *testing.T) {
 // deletedRegisterFiles (tombstone-not-delete); the gutting guard must NOT
 // double-report it (it cannot read a deleted file).
 func TestGuttedDeletionPathUnchanged(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
@@ -1059,6 +1076,7 @@ func TestGuttedNoGitFixtureReturnsNil(t *testing.T) {
 // registerIntegrityProblems must surface a detected gutting, not just detect it.
 // Goes red if `guttedRegisterFields(root)` is ever unwired from `problems`.
 func TestRegisterIntegrityWiresGuttedFields(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 
 	// Clean baseline: the landed entry, untouched, produces no gutting problem —
@@ -1082,6 +1100,7 @@ func TestRegisterIntegrityWiresGuttedFields(t *testing.T) {
 // (M11): registerIntegrityProblems must surface a landed-file deletion. Goes red
 // if `deletedRegisterFiles(root)` is ever unwired from `problems`.
 func TestRegisterIntegrityWiresDeletedFiles(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 
 	// Clean baseline: nothing deleted, no tombstone problem via the wiring path.
@@ -1108,6 +1127,7 @@ func TestRegisterIntegrityWiresDeletedFiles(t *testing.T) {
 // append is severed to `_ = registerIntegrityProblems(root)` (or any clause
 // below it is unwired), which the clause-level tests above cannot catch.
 func TestRunLintWiresGuttedFields(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 
 	// Clean baseline: the untouched landed entry produces no gutting PROBLEM on
@@ -1136,6 +1156,7 @@ func TestRunLintWiresGuttedFields(t *testing.T) {
 // stderr. Goes red if the caller append (main.go) or the deletion clause is
 // unwired to warn-only.
 func TestRunLintWiresDeletedFiles(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 
 	// Clean baseline: nothing deleted, no tombstone PROBLEM via the real entry.
@@ -1177,6 +1198,7 @@ const bodyHumanStampFinding = "---\n" +
 // authorizedByVerifiedHuman ran humanStampRe over the entire raw file, so this
 // gutting produced zero problems.
 func TestGuttedBodyHumanStampDoesNotAuthorize(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, bodyHumanStampFinding)
 	gutted := strings.Replace(bodyHumanStampFinding, "resolved: false", "resolved: true", 1)
 	gutted = strings.Replace(gutted,
@@ -1197,6 +1219,7 @@ func TestGuttedBodyHumanStampDoesNotAuthorize(t *testing.T) {
 // an independent review). The fix resolves the landed counterpart by register
 // ID, so a rename+gut is still diffed against the original landed version.
 func TestGuttedRenameAndMutate(t *testing.T) {
+	installStatusgenFixture(t)
 	root, oldPath := gutFixture(t, landedOpenFinding)
 	fdir := filepath.Dir(oldPath)
 
@@ -1270,6 +1293,7 @@ func TestAuthorizedByVerifiedHumanScope(t *testing.T) {
 // no path, so the --changed gate can never scope it away; and the old degraded
 // NOTICE is gone (the case is no longer a NOTICE).
 func TestNoBaseRefusesTransitions(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	gitRun(t, root, "update-ref", "-d", "refs/remotes/origin/main")
 	if err := os.WriteFile(path, []byte(strings.Replace(landedOpenFinding,
@@ -1297,6 +1321,7 @@ func TestNoBaseRefusesTransitions(t *testing.T) {
 // resolves the ref exactly (mergeBaseExact), so it is still unresolved and still
 // refused, not compared with the PR's own commit.
 func TestNoBaseDecoyRefRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	gitRun(t, root, "update-ref", "-d", "refs/remotes/origin/main")
 	if err := os.WriteFile(path, []byte(strings.Replace(landedOpenFinding,
@@ -1315,6 +1340,7 @@ func TestNoBaseDecoyRefRefused(t *testing.T) {
 
 // TestNoBaseNoFindingsSilent: nothing to guard, nothing to refuse.
 func TestNoBaseNoFindingsSilent(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	mustMkdirAll(t, filepath.Join(root, "docs", "streams", "findings"))
@@ -1325,6 +1351,7 @@ func TestNoBaseNoFindingsSilent(t *testing.T) {
 
 // TestRegisterBaseFallbackNoticeSilentWhenResolved: the healthy path says nothing.
 func TestRegisterBaseFallbackNoticeSilentWhenResolved(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := gutFixture(t, landedOpenFinding)
 	if n := registerBaseFallbackNotices(root); len(n) != 0 {
 		t.Fatalf("resolvable origin/main must be silent; got %v", n)
@@ -1334,6 +1361,7 @@ func TestRegisterBaseFallbackNoticeSilentWhenResolved(t *testing.T) {
 // TestRegisterBaseFallbackNoticeSilentWithNoFindings: nothing to guard, nothing
 // to say — a repo with no per-entry findings register (this one) stays quiet.
 func TestRegisterBaseFallbackNoticeSilentWithNoFindings(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	mustMkdirAll(t, filepath.Join(root, "docs", "streams"))

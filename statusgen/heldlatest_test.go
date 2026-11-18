@@ -77,6 +77,7 @@ const vlBlockedBullet = "- BLOCKED. Rows 1-6 and 8 pass; row 7 could-not-check (
 // and Runner and closes on the strict PASS, flips.
 // regression: #4294
 func TestVerifyflipSupersededHeldRow(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vlOpts()
 	o.evidence = "### Non-implementer run — 2026-08-10\n\n" + vlOld(vfRow1, vlOldHeldRow) +
 		"\n\n**VERIFY: BLOCKED** — row 2 could not run.\n\n" + vlLatestRun()
@@ -87,6 +88,7 @@ func TestVerifyflipSupersededHeldRow(t *testing.T) {
 // bullet, then a later full PASS re-run, flips.
 // regression: #4294
 func TestVerifyflipSupersededBlockedBullet(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vlOpts()
 	o.evidence = "### Non-implementer run — 2026-08-10\n\n" + vlOld(vfRow1, vlRow2) +
 		"\n\n" + vlProbe + "\n\n" + vlBlockedBullet + "\n\nVERIFY: BLOCKED\n\n" + vlLatestRun()
@@ -99,6 +101,7 @@ func TestVerifyflipSupersededBlockedBullet(t *testing.T) {
 // is read from the latest entry heading on, and the PASS flips.
 // regression: #4294
 func TestVerifyflipVerdictFirstTail(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vlOpts()
 	o.evidence = "### Non-implementer run — VERIFY: BLOCKED — 2026-08-10\n\n" + vlOld(vfRow1, vlRow2) +
 		"\n\n" + vlLatestRun()
@@ -109,6 +112,7 @@ func TestVerifyflipVerdictFirstTail(t *testing.T) {
 // refuses, in either shape.
 // regression: #4294
 func TestVerifyflipLatestHoldRefuses(t *testing.T) {
+	installStatusgenFixture(t)
 	for name, ev := range map[string]string{
 		"held row": vlLatest + witnessTableFor(vfRow1, vlHeldRow) + "\n\n" + vfPass,
 		"blocked bullet": vlLatest + witnessTableFor(vfRow1, vlRow2) + "\n\n" + vlBlockedBullet +
@@ -134,6 +138,7 @@ func vlOldHeld() string {
 // strict bold VERIFY: PASS still refuses, older hold or not.
 // regression: #4294
 func TestVerifyflipLatestNotStrictRefuses(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vlOpts()
 	o.evidence = vlOldHeld() + vlLatest + witnessTableFor(vfRow1, vlRow2) + "\n\nVERIFY: PASS. Both rows green."
 	vfRefuses(t, o, "non-strict PASS")
@@ -144,6 +149,7 @@ func TestVerifyflipLatestNotStrictRefuses(t *testing.T) {
 // side of the same rule is TestHeldLatestScope's "undated" case).
 // regression: #4294
 func TestVerifyflipLatestUndatedRefuses(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vlOpts()
 	o.evidence = vlOldHeld() + vlLatest + witnessTableFor(vfRow1, strings.Replace(vlRow2, "| 2026-08-13 |", "|  |", 1)) +
 		"\n\n" + vfPass
@@ -154,6 +160,7 @@ func TestVerifyflipLatestUndatedRefuses(t *testing.T) {
 // no clean outcome, so the older hold stays read and refuses.
 // regression: #4294
 func TestVerifyflipLatestFailedRowRefuses(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vlOpts()
 	o.evidence = vlOldHeld() + vlLatest + witnessTableFor(vfRow1, strings.Replace(vlRow2, "pass exit=0", "fail exit=1", 1)) +
 		"\n\n" + vfPass
@@ -165,6 +172,7 @@ func TestVerifyflipLatestFailedRowRefuses(t *testing.T) {
 // the latest run, so the flip still refuses.
 // regression: #4294
 func TestVerifyflipLatestRunSkippedRow(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vlOpts()
 	o.evidence = vlOldHeld() + vlLatest + witnessTableFor(vfRow1) + "\n\n" + vfPass
 	vfRefuses(t, o, "passing execution witness")
@@ -176,6 +184,7 @@ func TestVerifyflipLatestRunSkippedRow(t *testing.T) {
 // drop its hold: the latest run re-ran row 1 only, and the flip refuses.
 // regression: #4294
 func TestVerifyflipSameRunBlockedRefuses(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []struct{ name, ev, want string }{
 		{"verdict-first BLOCKED heading", "### Non-implementer run — VERIFY: BLOCKED — 2026-08-13\n\n" +
 			witnessTableFor(vfRow1, vlRow2) + "\n\n" + vlBlockedBullet + "\n\n" +
@@ -199,6 +208,7 @@ func TestVerifyflipSameRunBlockedRefuses(t *testing.T) {
 // still refuses.
 // regression: #4294
 func TestVerifyflipSplitRunHoldRefuses(t *testing.T) {
+	installStatusgenFixture(t)
 	part1 := "### Non-implementer run part 1 — 2026-08-13\n\n" + witnessTableFor(vfRow1, vlRow2) + "\n\n"
 	part2 := "### Non-implementer run part 2 — 2026-08-13\n\n" + witnessTableFor(vfRow1) + "\n\n" + vfPass
 	for name, hold := range map[string]string{
@@ -219,6 +229,7 @@ func TestVerifyflipSplitRunHoldRefuses(t *testing.T) {
 // the original refusal stands.
 // regression: #4294
 func TestVerifyflipAmbiguousBoundaryRefuses(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, open := range []string{"<details>", "<s>"} {
 		t.Run("held "+open, func(t *testing.T) {
 			o := vlOpts()

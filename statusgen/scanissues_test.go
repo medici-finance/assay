@@ -265,6 +265,7 @@ func TestScanIssuesPlan(t *testing.T) {
 // brief-01 parser and checker (valid placeholder-v1, derived gate preserved), and
 // re-scanning is idempotent (a second run creates nothing).
 func TestScanIssuesEmittedFilesRoundTrip(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)
@@ -887,6 +888,7 @@ func TestBlockedPlaceholderUnblockDetection(t *testing.T) {
 
 // TestBlockedPlaceholderLintGreen — --lint stays green with a blocked placeholder present.
 func TestBlockedPlaceholderLintGreen(t *testing.T) {
+	installStatusgenFixture(t)
 	streams, root := placeholderRepo(t, map[string]string{
 		"issue-77.md": placeholderFile("alpha", 77, "bug"),
 		"issue-99.md": placeholderFile("alpha", 99, "bug",
@@ -1213,6 +1215,7 @@ func TestCloseOutDryRun(t *testing.T) {
 // TestCloseOutFileModificationRetire — applyCloseOut actually rewrites the
 // placeholder file: status → done, adds resolved: issue-close.
 func TestCloseOutFileModificationRetire(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)
@@ -1273,6 +1276,7 @@ func TestCloseOutFileModificationRetire(t *testing.T) {
 // TestCloseOutFileModificationReactivate — applyCloseOut rewrites a retired
 // placeholder back to todo and removes resolved.
 func TestCloseOutFileModificationReactivate(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)
@@ -1326,6 +1330,7 @@ func TestCloseOutFileModificationReactivate(t *testing.T) {
 // stream ROOT (a ghost) is swept into done/ by a scan, unchanged in content, with
 // the root copy removed and lint green (D3 — the backlog drain).
 func TestCloseOutSweepRootGhostToArchive(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)
@@ -1366,6 +1371,7 @@ func TestCloseOutSweepRootGhostToArchive(t *testing.T) {
 // REOPENS is reactivated (status: todo) AND moved back to the stream root
 // (D3 — reactivation checks done/ and moves the file back).
 func TestCloseOutReactivateFromArchive(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)
@@ -1546,6 +1552,7 @@ func TestCloseOutReactivateAfterLabelRemoved(t *testing.T) {
 // placeholder file for a retire-label action: status → done, resolved →
 // label-excluded (distinct from the issue-close marker).
 func TestCloseOutFileModificationRetireLabel(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)
@@ -1609,6 +1616,7 @@ func TestCloseOutFileModificationRetireLabel(t *testing.T) {
 // rewrites a label-excluded-retired placeholder back to todo and removes
 // resolved, same as an issue-close reactivate (symmetric half).
 func TestCloseOutFileModificationReactivateAfterLabelRemoved(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)

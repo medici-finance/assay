@@ -187,6 +187,7 @@ func TestInitScaffoldsGitLabCIForGitLabForge(t *testing.T) {
 // so driving the GitLab assertions green cannot be done by leaking the note into
 // the shared next-steps every GitHub adopter also sees.
 func TestInitNextStepsRunnerNoteIsGitLabOnly(t *testing.T) {
+	installStatusgenFixture(t)
 	dir := t.TempDir()
 	next := captureStdout(t, func() {
 		if code := runInitForge(dir, forgeGitHub, true, "", false); code != 0 {

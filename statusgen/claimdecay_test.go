@@ -479,6 +479,7 @@ func TestGHPRWindowMatchesQuery(t *testing.T) {
 // the open pull request is live, with nothing to report.
 // regression: #3023
 func TestDecayFullWindowIsNotDead(t *testing.T) {
+	installStatusgenFixture(t)
 	stubRemoteOriginURL(t, "https://github.com/example-org/board.git", nil)
 	run := func(t *testing.T, rows string) (map[string]bool, string) {
 		t.Helper()

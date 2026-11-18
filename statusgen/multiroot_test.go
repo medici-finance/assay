@@ -229,6 +229,7 @@ func TestMultiRootEmitsOnePerRootFiltered(t *testing.T) {
 // single-root pipeline directly. The board is consumed by humans and tools alike,
 // so "mostly the same" is not good enough.
 func TestSingleRootBackCompatByteEquivalence(t *testing.T) {
+	installStatusgenFixture(t)
 	direct := copyFixture(t, "testdata/goodrepo")
 	viaDriver := copyFixture(t, "testdata/goodrepo")
 
@@ -285,6 +286,7 @@ func captureBoth(t *testing.T, fn func()) (stdout, stderr string) {
 // two roots' own paths), must carry no root banner, and must still end with
 // exactly one verdict line.
 func TestSingleRootEmitsNoMultiRootDecoration(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"write", "lint", "check"} {
 		t.Run(mode, func(t *testing.T) {
 			direct := copyFixture(t, "testdata/goodrepo")
@@ -539,6 +541,7 @@ func TestResolveRoots(t *testing.T) {
 // the stream README, form-validated, and disagreement within one root rejected.
 // A field that parses but is never checked is dead metadata that rots (a dead-metadata hazard).
 func TestRepoFrontmatterParsedAndValidated(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("parsed off the README", func(t *testing.T) {
 		root := copyFixture(t, "testdata/goodrepo")
 		setFrontmatter(t, root, "alpha", "repo: example-org/example")
@@ -707,6 +710,7 @@ func TestSingleRootOnlySubcommand(t *testing.T) {
 // greps for. A fixture that silently rots makes every Verify row that leans on it
 // meaningless.
 func TestStubRootFixtureIsUsable(t *testing.T) {
+	installStatusgenFixture(t)
 	root := copyFixture(t, "testdata/stubroot")
 	if code := run(root, "lint", nil, nil, ""); code != 0 {
 		t.Fatalf("stub fixture root does not lint clean (exit %d)", code)

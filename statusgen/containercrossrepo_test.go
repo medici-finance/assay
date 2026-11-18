@@ -92,6 +92,7 @@ func crossLine(b attestation.Binding) string {
 // another home, or that returns a version-1 receipt, and a witness whose
 // line names another or the same repository, each append nothing.
 func TestCrossRepoBracket(t *testing.T) {
+	installStatusgenFixture(t)
 	fx, tracking := newCrossRepoFixture(t)
 	t.Setenv("DESK_LOOP", "")
 	clock := time.Date(2026, 10, 22, 12, 0, 0, 0, time.UTC)
@@ -193,6 +194,7 @@ func TestCrossRepoBracket(t *testing.T) {
 // step with no receipt written. The control proves the same receipt with
 // the full binding is admitted, so each refusal is the binding's.
 func TestCrossRepoBindingRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	fx, tracking := newCrossRepoFixture(t)
 	t.Setenv("DESK_LOOP", "verify-desk")
 	base := crossBinding(t, fx)

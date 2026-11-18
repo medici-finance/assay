@@ -157,6 +157,7 @@ func canonOf(data map[string][]forgeIssue, un []forgeUnavailable) canon {
 
 // regression: #2395
 func TestReaderSDKCLIParity(t *testing.T) {
+	installStatusgenFixture(t)
 	obs, exp, repos := loadSDKParity(t)
 	for provider, build := range map[string]func(adapters.Access) func(context.Context, string) ([]forgeread.Issue, error){
 		"github": func(a adapters.Access) func(context.Context, string) ([]forgeread.Issue, error) {
@@ -331,6 +332,7 @@ func TestReaderSDKUnavailable(t *testing.T) {
 
 // regression: #2395
 func TestReaderSDKAuthorityBoundary(t *testing.T) {
+	installStatusgenFixture(t)
 	// 1. No ambient fallback: with a token in the environment, a forge API address in the
 	// environment and a `gh` on PATH, a run where the verb cannot run reaches NOTHING — the
 	// answer is every repo unavailable, the `gh` stub is never executed and the API is never hit.
@@ -532,6 +534,7 @@ func buildConsumer(t *testing.T, proxy string) (string, error) {
 
 // regression: #2395
 func TestReaderSDKExternalConsumer(t *testing.T) {
+	installStatusgenFixture(t)
 	if testing.Short() {
 		t.Skip("builds modules")
 	}

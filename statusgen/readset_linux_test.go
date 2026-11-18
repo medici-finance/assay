@@ -235,6 +235,7 @@ func main() {
 // regression: #2026
 // TestVerifyrunRecordsReadSet — build-less-brittle/15 row 14.
 func TestVerifyrunRecordsReadSet(t *testing.T) {
+	installStatusgenFixture(t)
 	needRecorder(t)
 	files := map[string]string{
 		"data/child.txt":       "child\n",
@@ -298,6 +299,7 @@ func TestVerifyrunRecordsReadSet(t *testing.T) {
 // regression: #2026
 // TestVerifyrunUntraceableReadOmitsReadSet — build-less-brittle/15 row 16.
 func TestVerifyrunUntraceableReadOmitsReadSet(t *testing.T) {
+	installStatusgenFixtureInputs(t, "BLB15_MOUNTNS")
 	needRecorder(t)
 	if os.Getenv("BLB15_MOUNTNS") != "" {
 		// The re-run inside the private mount namespace: the planted cases only.
@@ -441,6 +443,7 @@ exec "$0" -test.run '^TestVerifyrunUntraceableReadOmitsReadSet$/^tree_tool_copie
 // regression: #2026
 // TestVerifyrunCachedGoTestRecordsFixtures — build-less-brittle/15 row 21.
 func TestVerifyrunCachedGoTestRecordsFixtures(t *testing.T) {
+	installStatusgenFixture(t)
 	needRecorder(t)
 	t.Setenv("GOCACHE", t.TempDir())
 	t.Setenv("GOFLAGS", "")
@@ -487,6 +490,7 @@ func TestFixture(t *testing.T) {
 // regression: #2026
 // TestVerifyrunHistoryReadInLinkedWorktree — build-less-brittle/15 row 23.
 func TestVerifyrunHistoryReadInLinkedWorktree(t *testing.T) {
+	installStatusgenFixture(t)
 	needRecorder(t)
 	row := "git log -1 --format=%H -- README.md && test -f README.md"
 	f := newRecFixture(t, map[string]string{"README.md": "readme\n"}, row)
@@ -512,6 +516,7 @@ func TestVerifyrunHistoryReadInLinkedWorktree(t *testing.T) {
 // regression: #2026
 // TestVerifyrunReadSetFilesAndDirty — build-less-brittle/15 row 25.
 func TestVerifyrunReadSetFilesAndDirty(t *testing.T) {
+	installStatusgenFixture(t)
 	needRecorder(t)
 	f := newRecFixture(t, map[string]string{"data/in.txt": "in\n", "other/brief.md": "# Other\n"}, "cat data/in.txt")
 	first := f.run(t, "1")["1"]

@@ -54,6 +54,7 @@ func gitlabRoster() map[string]string {
 // (D-3) reported as unbacked because the check could not recognise a GitLab identity.
 // The worker-committed twin beside it stays flagged, so this is not "everything backed".
 func TestEvidenceActorGitLabVerifier(t *testing.T) {
+	installStatusgenFixture(t)
 	scanWithRoster(t, gitlabRoster())
 
 	root := t.TempDir()
@@ -216,6 +217,7 @@ func TestEvidenceActorUnknownForgeIsCouldNotCheck(t *testing.T) {
 // so — on both forges. This is the D-9 fix: on GitLab the git identity is a service
 // account with no `[bot]`, which the host-derived path would stamp as human:<name>.
 func TestVerifyrunRunnerFromForgeIdentity(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Setenv("GITHUB_ACTIONS", "")
 	t.Setenv("GITHUB_ACTOR", "")
 
@@ -252,6 +254,7 @@ func TestVerifyrunRunnerFromForgeIdentity(t *testing.T) {
 // TestVerifyrunFallbackOrder (Verify row 7). With no bound forge identity the CI-env
 // path is used, and with neither the git-config path — each recording its own source.
 func TestVerifyrunFallbackOrder(t *testing.T) {
+	installStatusgenFixture(t)
 	scanWithRoster(t, scanExampleRoster())
 
 	// CI-env: GitHub Actions actor, with a git identity the roster does NOT know, so the
@@ -281,6 +284,7 @@ func TestVerifyrunFallbackOrder(t *testing.T) {
 // at all the tool still refuses to write a witness. Both pre-existing properties survive
 // the new forge-identity source.
 func TestVerifyrunStillRefusesSuppliedRunner(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, arg := range []string{"--runner=someone", "--as=x", "--identity=y", "--who=me"} {
 		out, errOut := captureVerifyrun(t, []string{arg, "--brief", "x.md"})
 		if out.code != verifyrunExitUsageError {

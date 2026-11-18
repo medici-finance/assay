@@ -108,6 +108,7 @@ func assertFlipHeld(t *testing.T, root, stream, num string, merged []mergedPR, w
 
 // regression: #4604
 func TestPlannerFlipHeldParity(t *testing.T) {
+	installStatusgenFixture(t)
 	dgMerged := []mergedPR{{Number: 7, Subject: "feat: dg/05 (#7)", Briefs: []string{"dg/05"}, Delivers: []string{"dg/05"}}}
 
 	t.Run("§4.4 risk-gated brief with no design: record", func(t *testing.T) {
@@ -308,6 +309,7 @@ func countFlipEvals(t *testing.T) *int {
 
 // regression: #4604
 func TestFlipVerdictsOncePerRun(t *testing.T) {
+	installStatusgenFixture(t)
 	dgMerged := []mergedPR{{Number: 7, Subject: "feat: dg/05 (#7)", Briefs: []string{"dg/05"}, Delivers: []string{"dg/05"}}}
 
 	t.Run("both planner callers share one evaluation inside a run", func(t *testing.T) {

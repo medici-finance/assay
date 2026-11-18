@@ -10,6 +10,7 @@ import (
 // The pre-flip check and the lint invoked by deskevidence flip must apply the
 // same fail-first policy, not independently maintained approximations.
 func TestBriefInfoFailFirstMatchesFlipLint(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, tc := range []struct {
 		name, kind, want string
 		wide, plain      bool

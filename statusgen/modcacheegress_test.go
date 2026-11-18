@@ -36,6 +36,7 @@ const plantSum = "golang.org/x/text v0.43.0 h1:fixture=\ngolang.org/x/text v0.43
 // operator marked private each refuse as could-not-check with no download and
 // no receipt; a require replaced by a directory sends nothing and passes.
 func TestModEgressScreened(t *testing.T) {
+	installStatusgenFixture(t)
 	head := "module example.com/desk\n\ngo 1.27.0\n\n"
 	for _, c := range []struct {
 		name, gomod, gosum, private, refused string
@@ -94,6 +95,7 @@ func TestModEgressScreened(t *testing.T) {
 // TestModEgressAnnouncedFirst: the open step names the proxy, the checksum
 // database and the manifest's roots on stdout before its first download.
 func TestModEgressAnnouncedFirst(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	t.Setenv("DESK_LOOP", "")
 	withModuleRoots(t, fx)
@@ -128,6 +130,7 @@ func TestModEgressAnnouncedFirst(t *testing.T) {
 // after the open step) is refused by the container run before any row and by
 // the close step with nothing appended; so is one downloaded for other roots.
 func TestModCacheReceiptRequired(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	t.Setenv("DESK_LOOP", "")
 	withModuleRoots(t, fx)
@@ -212,6 +215,7 @@ func TestModCacheReceiptRequired(t *testing.T) {
 // --mount option list, so a path that could add a mount option (a comma, a
 // quote, whitespace) is refused before any download.
 func TestModCachePathOptionChars(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	t.Setenv("DESK_LOOP", "")
 	withModuleRoots(t, fx)

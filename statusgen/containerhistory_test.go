@@ -12,6 +12,7 @@ import (
 // pointer like a host linked worktree mounted in a container. All Git objects
 // used by the baseline must come from the bundle, not an accessible host repo.
 func TestContainerHistoryFailFirst(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	clock := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
 	savedNow := nowFunc
@@ -76,6 +77,7 @@ func TestContainerHistoryFailFirst(t *testing.T) {
 }
 
 func TestHistoryRefusesInputs(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	head := gitOutT(t, fx.home, "rev-parse", "HEAD")
 	bundle := filepath.Join(t.TempDir(), "history.pack")
@@ -104,6 +106,7 @@ func TestHistoryRefusesInputs(t *testing.T) {
 }
 
 func TestHistoryBaselineGuards(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	beforeBrief := gitOutT(t, fx.home, "rev-list", "--max-parents=0", "HEAD")
 	// A later obligation must still reject a baseline predating the brief.
@@ -136,6 +139,7 @@ func TestHistoryBaselineGuards(t *testing.T) {
 }
 
 func TestHistoryNoHostConfig(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	head := gitOutT(t, fx.home, "rev-parse", "HEAD")
 	runGit(t, fx.home, "config", "credential.helper", "sensitive-host-helper")
@@ -165,6 +169,7 @@ func TestHistoryNoHostConfig(t *testing.T) {
 }
 
 func TestHistoryIncompleteBundle(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	putFile(t, filepath.Join(fx.home, "later.txt"), "later\n")
 	runGit(t, fx.home, "add", "later.txt")
@@ -190,6 +195,7 @@ func TestHistoryIncompleteBundle(t *testing.T) {
 }
 
 func TestHistoryImportStopsRows(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, kind := range []string{"corrupt", "missing", "inside-home"} {
 		t.Run(kind, func(t *testing.T) {
 			fx := newContainerFixture(t)

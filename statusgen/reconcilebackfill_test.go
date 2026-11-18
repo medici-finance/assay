@@ -218,6 +218,7 @@ func initHandSaidRepo(t *testing.T) string {
 }
 
 func TestHandSaidBeforeGeneration(t *testing.T) {
+	installStatusgenFixture(t)
 	dir := initHandSaidRepo(t)
 	state, sha, found := handSaidBeforeGeneration(dir, "demo", "01")
 	if !found {

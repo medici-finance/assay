@@ -155,6 +155,7 @@ func nextUpRows(t *testing.T, root string) []string {
 
 // regression: #4614
 func TestCrossRootPlannerHolds(t *testing.T) {
+	installStatusgenFixture(t)
 	rootA := siblingBriefTree(t, "")
 	gitCommitTree(t, rootA)
 	publishRoots(t, rootA, crossRootRepo, crossRootC)
@@ -183,6 +184,7 @@ func TestCrossRootPlannerHolds(t *testing.T) {
 // names the brief only in its subject (no `Brief:` trailer) is a lead, never
 // delivery — the row stays offered.
 func TestCrossRootMentionIsNoWitness(t *testing.T) {
+	installStatusgenFixture(t)
 	rootA := siblingBriefTree(t, "")
 	gitCommitTree(t, rootA)
 	publishRoots(t, rootA, crossRootRepo, crossRootC)
@@ -202,6 +204,7 @@ func TestCrossRootMentionIsNoWitness(t *testing.T) {
 // git checkout is could-not-check, and the row is not held on its say-so.
 // regression: #4614
 func TestCrossRootUnreadableRoot(t *testing.T) {
+	installStatusgenFixture(t)
 	rootA := siblingBriefTree(t, "")
 	gitCommitTree(t, rootA)
 	publishRoots(t, rootA, crossRootRepo, crossRootC)
@@ -222,6 +225,7 @@ func TestCrossRootUnreadableRoot(t *testing.T) {
 
 // regression: #4614
 func TestCrossRootReconcileWrites(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Setenv("GITHUB_TOKEN", "test-token")
 	rootA := copyDesignGateFixture(t)
 	publishRoots(t, rootA, crossRootRepo)
@@ -324,6 +328,7 @@ func reconcileDGPublishing(t *testing.T, published ...string) (applied []string,
 // that sits on a never-merged branch is no witness, for the planner or reconcile.
 // regression: #4614
 func TestCrossRootUnmergedHead(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("planner", func(t *testing.T) {
 		rootA := siblingBriefTree(t, "")
 		gitCommitTree(t, rootA)
@@ -345,6 +350,7 @@ func TestCrossRootUnmergedHead(t *testing.T) {
 // "read HEAD instead".
 // regression: #4614
 func TestCrossRootNoIntegrationRef(t *testing.T) {
+	installStatusgenFixture(t)
 	rootA := siblingBriefTree(t, "")
 	gitCommitTree(t, rootA)
 	publishRoots(t, rootA, crossRootRepo, crossRootC)
@@ -365,6 +371,7 @@ func TestCrossRootNoIntegrationRef(t *testing.T) {
 // The integration branch is what origin/HEAD names, not a fixed "main".
 // regression: #4614
 func TestCrossRootOriginHeadRef(t *testing.T) {
+	installStatusgenFixture(t)
 	rootA := siblingBriefTree(t, "")
 	gitCommitTree(t, rootA)
 	publishRoots(t, rootA, crossRootRepo, crossRootC)
@@ -382,6 +389,7 @@ func TestCrossRootOriginHeadRef(t *testing.T) {
 // PR->brief edge (the own-repo rule): it witnesses neither brief.
 // regression: #4614
 func TestCrossRootMultiLinkNoWitness(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("planner", func(t *testing.T) {
 		rootA := siblingBriefTree(t, "")
 		gitCommitTree(t, rootA)
@@ -421,6 +429,7 @@ func TestCrossRootMultiLinkNoWitness(t *testing.T) {
 // credited to none, and reported.
 // regression: #4614
 func TestCrossRootAmbiguousStream(t *testing.T) {
+	installStatusgenFixture(t)
 	const rootC = crossRootC
 	t.Run("planner", func(t *testing.T) {
 		rootA := siblingBriefTree(t, "")
@@ -471,6 +480,7 @@ func TestCrossRootAmbiguousStream(t *testing.T) {
 // A trailer naming a stream the MERGING root itself carries is that root's own
 // brief, not this board's.
 func TestCrossRootMergerOwns(t *testing.T) {
+	installStatusgenFixture(t)
 	rootA := siblingBriefTree(t, "")
 	gitCommitTree(t, rootA)
 	publishRoots(t, rootA, crossRootRepo, crossRootC)
@@ -488,6 +498,7 @@ func TestCrossRootMergerOwns(t *testing.T) {
 
 // The board's own root is never read as "another root", by repo or by path.
 func TestCrossRootOwnRootIsSkipped(t *testing.T) {
+	installStatusgenFixture(t)
 	boardWithMerge := func(t *testing.T) string {
 		rootA := siblingBriefTree(t, "")
 		gitCommitTree(t, rootA)
@@ -521,6 +532,7 @@ func TestCrossRootOwnRootIsSkipped(t *testing.T) {
 // merge in the brief's own repo.
 // regression: #4614
 func TestCrossRootDeclaredPartial(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Setenv("GITHUB_TOKEN", "test-token")
 	rootA := copyDesignGateFixture(t)
 	declareDelivery(t, rootA, "03", `{in: "xb#7", covers: partial, note: "skeleton"}`)
@@ -550,6 +562,7 @@ func TestCrossRootDeclaredPartial(t *testing.T) {
 // own repo's is the witness whatever the PR numbers (they are not comparable).
 // regression: #4614
 func TestCrossRootOwnRepoFirst(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Setenv("GITHUB_TOKEN", "test-token")
 	rootA := copyDesignGateFixture(t)
 	publishRoots(t, rootA, crossRootRepo)
@@ -590,6 +603,7 @@ func TestClassifyPRsOwnRepoFirst(t *testing.T) {
 // be read.
 // regression: #4614
 func TestCrossRootUnreadableCarrier(t *testing.T) {
+	installStatusgenFixture(t)
 	absentC := filepath.Join(t.TempDir(), "absent")
 	t.Run("planner", func(t *testing.T) {
 		rootA := siblingBriefTree(t, "")
@@ -636,6 +650,7 @@ func TestCrossRootUnreadableCarrier(t *testing.T) {
 // which sibling repos it is willing to name.
 // regression: #4614
 func TestCrossRootUnpublishedRoot(t *testing.T) {
+	installStatusgenFixture(t)
 	const slug = crossRootRepo
 	leaks := func(t *testing.T, where, text, path string) {
 		t.Helper()

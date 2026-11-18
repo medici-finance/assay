@@ -28,6 +28,7 @@ func TestWitnessAdapterFailureIsNotEmpty(t *testing.T) {
 // refs/replace/ ref over a tree changes neither the tree listing nor the
 // replaced-object listing's report that it exists.
 func TestWitnessAdapterIgnoresReplaceRefs(t *testing.T) {
+	installStatusgenFixture(t)
 	// The fixture must expose replacement objects to the unprotected control
 	// and to a broken adapter, including inside an admitted Verify row.
 	for _, entry := range os.Environ() {

@@ -67,6 +67,7 @@ func verifyrunRow(t *testing.T, root, row string) int {
 // unadmitted control proves the plant lands: the same row in the same
 // environment reads the changed tree there.
 func TestAdmittedRowsStripGitEnv(t *testing.T) {
+	installStatusgenFixture(t)
 	const row = "git grep -q TAMPERED; test $? -eq 1"
 	for _, admit := range []bool{true, false} {
 		t.Run(map[bool]string{true: "admitted", false: "control"}[admit], func(t *testing.T) {
@@ -89,6 +90,7 @@ func TestAdmittedRowsStripGitEnv(t *testing.T) {
 // change what an admitted row's git grep matches. The unadmitted control
 // proves the setting changes the match there.
 func TestAdmittedRowsPinGrep(t *testing.T) {
+	installStatusgenFixture(t)
 	const row = "git grep -q 'attested.source'"
 	for _, admit := range []bool{true, false} {
 		t.Run(map[bool]string{true: "admitted", false: "control"}[admit], func(t *testing.T) {
@@ -269,6 +271,7 @@ func TestRowEnvSingleSource(t *testing.T) {
 // admitted row's git at another tree. The unadmitted control proves each
 // plant lands.
 func TestAdmittedRowsShellEnv(t *testing.T) {
+	installStatusgenFixture(t)
 	const row = "git grep -q TAMPERED; test $? -eq 1"
 	for _, mode := range []string{"bash-env", "bash-func"} {
 		for _, admit := range []bool{true, false} {
@@ -304,6 +307,7 @@ func TestAdmittedRowsShellEnv(t *testing.T) {
 // name a credential helper): the row reads neither it nor the XDG config
 // beside it. The unadmitted control proves the widening plant lands.
 func TestAdmittedRowsKeepNarrowing(t *testing.T) {
+	installStatusgenFixture(t)
 	const pinned = `test "$GIT_CONFIG_NOSYSTEM" = 1 && test "$GIT_TERMINAL_PROMPT" = 0 && test "${GIT_ASKPASS-unset}" = ""`
 	for _, mode := range []string{"launch", "widened", "control"} {
 		t.Run(mode, func(t *testing.T) {
@@ -394,6 +398,7 @@ var forgeTokenVars = []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN",
 // row's own environment only; a same-user row can still read the invoking
 // process's environment (admittedRowEnv's out-of-scope list).
 func TestAdmittedRowsDropForgeTokens(t *testing.T) {
+	installStatusgenFixture(t)
 	row := "test -z \"${GH_TOKEN+x}${GITHUB_TOKEN+x}${GH_ENTERPRISE_TOKEN+x}${GITHUB_ENTERPRISE_TOKEN+x}\""
 	for _, admit := range []bool{true, false} {
 		t.Run(map[bool]string{true: "admitted", false: "control"}[admit], func(t *testing.T) {

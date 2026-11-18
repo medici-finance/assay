@@ -68,6 +68,7 @@ func perfFixtureRunIn(t *testing.T, bin string, on, git bool, args ...string) (p
 // Statusgen's record was perf-v1 with no phases, so its wall time had no breakdown.
 // regression: #3101
 func TestPerfV2PhasesInOrder(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := buildPerfBinary(t)
 	for _, c := range []struct {
 		name   string
@@ -137,6 +138,7 @@ func TestPerfV2PhasesInOrder(t *testing.T) {
 // The perf-v2 session must not change what a run prints, exits with or writes.
 // regression: #3101
 func TestPerfV2OutputUnchanged(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := buildPerfBinary(t)
 	for _, c := range []struct {
 		name string

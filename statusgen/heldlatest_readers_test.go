@@ -26,6 +26,7 @@ const (
 // heading, inside the run verifyflip credits, still refuses.
 // regression: #4294
 func TestVerifyflipCommentHiddenHeadingRefuses(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := map[string]string{
 		"split run, inline code": vlPart1 + witnessTableFor(vfRow1, vlRow2) + "\n\n" + vlHeldProse +
 			"The stub is described at `<!--` in the runbook.\n\n" + vlPart2 + "Closed by `-->`.\n\n" +
@@ -54,6 +55,7 @@ func TestVerifyflipCommentHiddenHeadingRefuses(t *testing.T) {
 // must stay off, and the hold beside them still refuses.
 // regression: #4294
 func TestVerifyflipLooseHeaderWitnessRefuses(t *testing.T) {
+	installStatusgenFixture(t)
 	older := strings.ReplaceAll(strings.ReplaceAll(vlUTCTable(vfRow1, vlRow2), vfSHA, vlOldSHA), "2026-08-13", "2026-08-10")
 	cases := map[string]string{
 		"split run": vlPart1 + vlUTCTable(vfRow1, vlRow2) + "\n\n" + vlHeldProse + vlPart2 +
@@ -108,6 +110,7 @@ func TestHeldLatestCreditedAboveProtected(t *testing.T) {
 // above the heading still refuses.
 // regression: #4294
 func TestVerifyflipRestrippedCommentRefuses(t *testing.T) {
+	installStatusgenFixture(t)
 	head := vlPart1 + vlHeldProse +
 		"| # | Command | Result | Output | Date (UTC) | Runner |\n|---|---------|--------|--------|------------|--------|\n" +
 		"| 2 | `true` | pass exit=0 <!<!--x-->--\n\n" + vlPart2

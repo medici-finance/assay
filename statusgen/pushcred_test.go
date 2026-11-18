@@ -361,6 +361,7 @@ func assertNoSecret(t *testing.T, where, out string) {
 //
 // regression: #2910
 func TestBoardPushAuthFailsOnce(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, bt := range boardTargets() {
 		for _, class := range []string{"expired", "revoked", "scope", "auth", "other"} {
 			t.Run(bt.name()+"/"+class, func(t *testing.T) {
@@ -394,6 +395,7 @@ func TestBoardPushAuthFailsOnce(t *testing.T) {
 //
 // regression: #3390
 func TestPushcredNoAutoMaintenance(t *testing.T) {
+	installStatusgenFixture(t)
 	r := newPushRig(t)
 	trace := filepath.Join(r.dir, "git-trace")
 	script := "git commit -q --allow-empty -m probe\n" +
@@ -426,6 +428,7 @@ func TestPushcredNoAutoMaintenance(t *testing.T) {
 //
 // regression: #2910
 func TestBoardPushPreflightStops(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, bt := range boardTargets() {
 		for _, class := range []string{"expired", "revoked", "scope", "auth"} {
 			t.Run(bt.name()+"/"+class, func(t *testing.T) {
@@ -465,6 +468,7 @@ func TestBoardPushPreflightStops(t *testing.T) {
 //
 // regression: #2910
 func TestBoardPushRaceRetries(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, bt := range boardTargets() {
 		t.Run(bt.name(), func(t *testing.T) {
 			r := newPushRig(t)
@@ -493,6 +497,7 @@ func TestBoardPushRaceRetries(t *testing.T) {
 // TestBoardPushHappyPath: the preflight changes nothing for a live
 // credential — the board lands on origin/main in one push.
 func TestBoardPushHappyPath(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, bt := range boardTargets() {
 		t.Run(bt.name(), func(t *testing.T) {
 			r := newPushRig(t)
@@ -579,6 +584,7 @@ func assertTokenOffArgv(t *testing.T, r *pushRig) {
 //
 // regression: #2910
 func TestGitlabRegenExpiredToken(t *testing.T) {
+	installStatusgenFixture(t)
 	r := newPushRig(t)
 	code, out := r.run(gitlabRegenScript(t, initGitlabCI), gitlabEnv("401:expired", "SHIM_PUSH=glauth")...)
 	if code == 0 {
@@ -608,6 +614,7 @@ func TestGitlabRegenExpiredToken(t *testing.T) {
 //
 // regression: #2910
 func TestGitlabRegenClassifies(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []struct {
 		name, self, dry, push string
 		wantCode              int
@@ -664,6 +671,7 @@ func TestGitlabRegenClassifies(t *testing.T) {
 //
 // regression: #2910
 func TestPushcredClassUnit(t *testing.T) {
+	installStatusgenFixture(t)
 	requirePushTools(t)
 	cases := map[string]string{
 		"remote: Token has expired.\nfatal: Authentication failed for 'https://h/p.git/'":                                                      "expired",
@@ -720,6 +728,7 @@ func TestPushcredClassUnit(t *testing.T) {
 //
 // regression: #2910
 func TestPushcredMaskShapes(t *testing.T) {
+	installStatusgenFixture(t)
 	requirePushTools(t)
 	src, err := filepath.Abs("pushcred.sh")
 	if err != nil {
@@ -774,6 +783,7 @@ exit 1
 //
 // regression: #2910
 func TestPushcredRawLogMode(t *testing.T) {
+	installStatusgenFixture(t)
 	requirePushTools(t)
 	src, err := filepath.Abs("pushcred.sh")
 	if err != nil {
@@ -1137,6 +1147,7 @@ func assertNoHeaderValue(t *testing.T, where, out string) {
 //
 // regression: #5004
 func TestPushcredHeaderInstrument(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, scope := range []string{"local", "plain", "global", "env"} {
 		t.Run(scope, func(t *testing.T) {
 			r := newHdrRig(t)
@@ -1167,6 +1178,7 @@ func TestPushcredHeaderInstrument(t *testing.T) {
 //
 // regression: #5004
 func TestPushcredHeaderCleared(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, sh := range []string{"bash", "sh"} {
 		for _, scope := range []string{"local", "plain", "both", "global", "env"} {
 			t.Run(sh+"/"+scope, func(t *testing.T) {
@@ -1201,6 +1213,7 @@ func TestPushcredHeaderCleared(t *testing.T) {
 //
 // regression: #5004
 func TestPushcredHeaderNoLeak(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, sh := range []string{"bash", "sh"} {
 		for _, pre := range []string{"", "set -x; "} {
 			mode := "quiet"
@@ -1228,6 +1241,7 @@ func TestPushcredHeaderNoLeak(t *testing.T) {
 // push is unchanged: the forge challenges, the helper answers with the board
 // credential, the push lands, and no reset is announced.
 func TestPushcredNoHeaderControl(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, sh := range []string{"bash", "sh"} {
 		t.Run(sh, func(t *testing.T) {
 			r := newHdrRig(t)
@@ -1249,6 +1263,7 @@ func TestPushcredNoHeaderControl(t *testing.T) {
 // TestPushcredHeaderKeptNoVar: without PUSHCRED_TOKEN_VAR the header IS the
 // credential (a GitHub checkout persists it), so it is left alone.
 func TestPushcredHeaderKeptNoVar(t *testing.T) {
+	installStatusgenFixture(t)
 	r := newHdrRig(t)
 	r.git(r.ws, "config", "http.extraheader", "Authorization: "+boardAuth)
 	rc, out := r.push("sh", "")
@@ -1277,6 +1292,7 @@ exit 0
 //
 // regression: #5004
 func TestPushcredHeaderListFails(t *testing.T) {
+	installStatusgenFixture(t)
 	requirePushTools(t)
 	src, err := filepath.Abs("pushcred.sh")
 	if err != nil {

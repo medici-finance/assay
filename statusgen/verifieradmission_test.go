@@ -10,6 +10,7 @@ import (
 )
 
 func TestVerifierAdmissionBeforeRows(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitInit(t, root, "fixture", "fixture@example.invalid")
 	t.Setenv("DESK_LOOP", "verify-desk")

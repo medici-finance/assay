@@ -865,6 +865,7 @@ func TestBriefClaimingNothingIsReportedSeparately(t *testing.T) {
 // exercised by nothing. That is the exact shape of the two prior defects this
 // brief cites: a green suite over an untested seam.
 func TestChangedPathsSinceReadsRealGit(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	git := func(args ...string) {
 		t.Helper()
@@ -1030,6 +1031,7 @@ func TestConsumersFallsBackWhenBaseUnpinnable(t *testing.T) {
 // and it must stay DISPROVED when main moves on with a commit the branch never
 // made, because the merge-base (the fork point) is the same either way.
 func TestConsumersDeterministicAcrossMovingMain(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	git := func(args ...string) {
 		t.Helper()

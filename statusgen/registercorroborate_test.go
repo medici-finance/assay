@@ -133,6 +133,7 @@ func approvedBy(login string) *ghPRData {
 // already on the entry authorizes the offline gate, and the PR adds no human:
 // line for the stamp lane — yet nobody acted on the PR. Must fail.
 func TestRegReusedAnchorFails(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedAnchoredFinding)
 	mutateFinding(t, path, landedAnchoredFinding, "resolved: false", "resolved: true")
 	if p := guttedRegisterFields(root); len(p) != 0 {
@@ -147,6 +148,7 @@ func TestRegReusedAnchorFails(t *testing.T) {
 // TestRegReusedAnchorApproved: the same flip passes once the named
 // human approves the PR.
 func TestRegReusedAnchorApproved(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedAnchoredFinding)
 	mutateFinding(t, path, landedAnchoredFinding, "resolved: false", "resolved: true")
 	st := &corroborateStub{
@@ -162,6 +164,7 @@ func TestRegReusedAnchorApproved(t *testing.T) {
 // TestRegAffectsNoAuthorityFails: emptying affects with no
 // authorizing key at all is a self-gut — fails online too.
 func TestRegAffectsNoAuthorityFails(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	mutateFinding(t, path, landedOpenFinding, `affects: ["stream-y", "stream-z/brief-01"]`, "affects: []")
 	st := &corroborateStub{
@@ -177,6 +180,7 @@ func TestRegAffectsNoAuthorityFails(t *testing.T) {
 // TestRegSelfResolveFails: writing a mapped anchor in the PR,
 // with no action by that human, fails.
 func TestRegSelfResolveFails(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	mutateFinding(t, path, landedOpenFinding, "resolved: false", "resolved: true\nauthorized-by: human:alex")
 	st := &corroborateStub{
@@ -191,6 +195,7 @@ func TestRegSelfResolveFails(t *testing.T) {
 // TestRegSelfParkFails / Approved: an in-horizon park named to a mapped
 // human fails until that human acts, then passes; an approval COMMENT counts.
 func TestRegSelfParkFails(t *testing.T) {
+	installStatusgenFixture(t)
 	pinParkNow(t, "2026-07-20")
 	root, path := gutFixture(t, landedOpenFinding)
 	mutateFinding(t, path, landedOpenFinding, "resolved: false",
@@ -203,6 +208,7 @@ func TestRegSelfParkFails(t *testing.T) {
 }
 
 func TestRegParkApprovedComment(t *testing.T) {
+	installStatusgenFixture(t)
 	pinParkNow(t, "2026-07-20")
 	root, path := gutFixture(t, landedOpenFinding)
 	mutateFinding(t, path, landedOpenFinding, "resolved: false",
@@ -221,6 +227,7 @@ func TestRegParkApprovedComment(t *testing.T) {
 // TestRegNoMergeBaseFailsClosed: a register-touching
 // PR whose merge-base cannot be resolved is MISSING, never a pass.
 func TestRegNoMergeBaseFailsClosed(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	mutateFinding(t, path, landedOpenFinding, "title: Register guard gap", "title: Register guard gap (retitled)")
 	st := &corroborateStub{files: findingFiles("-title: Register guard gap", "+title: Register guard gap (retitled)")}
@@ -232,6 +239,7 @@ func TestRegNoMergeBaseFailsClosed(t *testing.T) {
 // TestRegUnparseableFailsClosed: a touched entry the detector
 // cannot parse is invisible to it, so it fails closed.
 func TestRegUnparseableFailsClosed(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	if err := os.WriteFile(path, []byte("no frontmatter here\nresolved: true\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -245,6 +253,7 @@ func TestRegUnparseableFailsClosed(t *testing.T) {
 // TestRegCautionAddingPasses: widening affects (adds caution) is not a
 // transition; it needs nobody and passes.
 func TestRegCautionAddingPasses(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	mutateFinding(t, path, landedOpenFinding, `"stream-z/brief-01"]`, `"stream-z/brief-01", "stream-q"]`)
 	st := &corroborateStub{files: findingFiles(`+affects: ["stream-y", "stream-z/brief-01", "stream-q"]`), mergeBase: originMain(t, root)}
@@ -256,6 +265,7 @@ func TestRegCautionAddingPasses(t *testing.T) {
 // TestRegUntouchedLaneSilent: a PR whose tree touches no findings entry
 // is untouched by this lane — no data fetch, exit 0.
 func TestRegUntouchedLaneSilent(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := gutFixture(t, landedOpenFinding)
 	// The tree carries the change the listing names, so the base is shown to
 	// be the PR's base (see TestRegHeadAsBaseFails).
@@ -283,6 +293,7 @@ func otherFileListing() []ghPRFile {
 // listing alone. A listing that omits the findings entry (truncated with no
 // error) must not silence a reused-anchor gut that is in the tree.
 func TestRegListingOmitsGutFails(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedAnchoredFinding)
 	mutateFinding(t, path, landedAnchoredFinding, "resolved: false", "resolved: true")
 	st := &corroborateStub{files: otherFileListing(), mergeBase: originMain(t, root), listedShort: 3000}
@@ -295,6 +306,7 @@ func TestRegListingOmitsGutFails(t *testing.T) {
 // the listing, so a listing that cannot be shown complete — shorter than the
 // forge's changed_files count, or the count unreadable — fails closed.
 func TestRegTruncatedNoBaseFails(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, st := range []*corroborateStub{
 		{files: otherFileListing(), listedShort: 3000},
 		{files: otherFileListing(), countErr: errors.New("count unreadable")},
@@ -309,6 +321,7 @@ func TestRegTruncatedNoBaseFails(t *testing.T) {
 // TestRegCompleteNoBaseSilent: with no merge-base, a listing proven complete
 // against changed_files that names no findings entry is a real "untouched".
 func TestRegCompleteNoBaseSilent(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := gutFixture(t, landedOpenFinding)
 	st := &corroborateStub{files: otherFileListing()}
 	if rc := runCorroborateOn(t, root, st); rc != 0 {
@@ -320,6 +333,7 @@ func TestRegCompleteNoBaseSilent(t *testing.T) {
 // compared with (an object git does not have) proves nothing about what the PR
 // touched — fail closed rather than read the error as "untouched".
 func TestRegBadBaseFailsClosed(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedAnchoredFinding)
 	mutateFinding(t, path, landedAnchoredFinding, "resolved: false", "resolved: true")
 	st := &corroborateStub{files: otherFileListing(), mergeBase: strings.Repeat("0", 39) + "1"}
@@ -344,6 +358,7 @@ const landedParkAnchored = "---\n" +
 // already on the entry adds no human: line; with nobody acting on the PR the
 // park category itself must fail it.
 func TestRegReusedParkExtendFails(t *testing.T) {
+	installStatusgenFixture(t)
 	pinParkNow(t, "2026-11-01")
 	root, path := gutFixture(t, landedParkAnchored)
 	mutateFinding(t, path, landedParkAnchored, `parked-until: "2026-12-01"`, `parked-until: "2027-01-15"`)
@@ -356,6 +371,7 @@ func TestRegReusedParkExtendFails(t *testing.T) {
 // TestRegReusedParkExtendOK: the same in-horizon extension passes once the
 // parked-by human approves the PR — the control for the two tests below.
 func TestRegReusedParkExtendOK(t *testing.T) {
+	installStatusgenFixture(t)
 	pinParkNow(t, "2026-11-01")
 	root, path := gutFixture(t, landedParkAnchored)
 	mutateFinding(t, path, landedParkAnchored, `parked-until: "2026-12-01"`, `parked-until: "2027-01-15"`)
@@ -373,6 +389,7 @@ func TestRegReusedParkExtendOK(t *testing.T) {
 // when its parked-by human approved the PR — no approval authorizes it (#2012
 // ruling, item 1).
 func TestRegParkHorizonFails(t *testing.T) {
+	installStatusgenFixture(t)
 	pinParkNow(t, "2026-07-20")
 	root, path := gutFixture(t, landedOpenFinding)
 	mutateFinding(t, path, landedOpenFinding, "resolved: false",
@@ -390,6 +407,7 @@ func TestRegParkHorizonFails(t *testing.T) {
 // TestRegExtendHorizonFails: the planted second instance online — an approved
 // EXTENSION that crosses the 90 days fails too.
 func TestRegExtendHorizonFails(t *testing.T) {
+	installStatusgenFixture(t)
 	pinParkNow(t, "2026-11-01") // + 90 days = 2027-01-30
 	root, path := gutFixture(t, landedParkAnchored)
 	mutateFinding(t, path, landedParkAnchored, `parked-until: "2026-12-01"`, `parked-until: "2027-02-01"`)
@@ -409,6 +427,7 @@ func TestRegExtendHorizonFails(t *testing.T) {
 // authorized-by, who approves the PR. The stamp lane is satisfied (the added
 // stamp's human acted), so only the register lane can fail it: still MISSING.
 func TestRegAuthByNotParkOnline(t *testing.T) {
+	installStatusgenFixture(t)
 	pinParkNow(t, "2026-07-20")
 	root, path := gutFixture(t, landedParkedFinding) // parked-until 2026-08-01, parked-by human:bot
 	mutateFinding(t, path, landedParkedFinding, `parked-until: "2026-08-01"`,
@@ -428,6 +447,7 @@ func TestRegAuthByNotParkOnline(t *testing.T) {
 // key. parked-by authorizes a park, never a resolve — even when that human
 // approved the PR.
 func TestRegParkedByNotResolveAuth(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedParkAnchored)
 	mutateFinding(t, path, landedParkAnchored, "resolved: false", "resolved: true")
 	st := &corroborateStub{
@@ -443,6 +463,7 @@ func TestRegParkedByNotResolveAuth(t *testing.T) {
 // TestRegDataFetchErrFails: a lane that cannot read the PR's reviews and
 // comments cannot corroborate anything — the run exits non-zero.
 func TestRegDataFetchErrFails(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedAnchoredFinding)
 	mutateFinding(t, path, landedAnchoredFinding, "resolved: false", "resolved: true")
 	st := &corroborateStub{
@@ -495,6 +516,7 @@ func TestRegTouchedFileList(t *testing.T) {
 // already carries an anchor adds no diff line at all, so neither the stamp lane
 // nor an added-line reader sees anything. The transition lane must still fail it.
 func TestRegReusedAnchorAckFails(t *testing.T) {
+	installStatusgenFixture(t)
 	landed := strings.Replace(landedAnchoredFinding, "resolved: false", "resolved: false\nack: \"2026-07-18\"", 1)
 	root, path := gutFixture(t, landed)
 	mutateFinding(t, path, landed, "\nack: \"2026-07-18\"", "")
@@ -530,6 +552,7 @@ func headSHA(t *testing.T, root string) string {
 // a committed reused-anchor resolve flip must still fail — whether or not the
 // forge listing names the entry.
 func TestRegSubdirCwdFails(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, listing := range [][]ghPRFile{findingFiles("-resolved: false", "+resolved: true"), otherFileListing()} {
 		root, path := gutFixture(t, landedAnchoredFinding)
 		mutateFinding(t, path, landedAnchoredFinding, "resolved: false", "resolved: true")
@@ -546,6 +569,7 @@ func TestRegSubdirCwdFails(t *testing.T) {
 // deletion the tombstone guard owns. One that exists but cannot be read (here:
 // a directory where the entry file was) proves nothing — fail closed.
 func TestRegUnreadableEntryFails(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedAnchoredFinding)
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
@@ -561,6 +585,7 @@ func TestRegUnreadableEntryFails(t *testing.T) {
 // changed-file count. 0 listed == 0 counted would read as a complete listing,
 // so the count error itself must fail the run.
 func TestRegNoBaseCountErrFails(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := gutFixture(t, landedOpenFinding)
 	st := &corroborateStub{countErr: errors.New("count unreadable")}
 	if rc := runCorroborateOn(t, root, st); rc != 1 {
@@ -572,6 +597,7 @@ func TestRegNoBaseCountErrFails(t *testing.T) {
 // the PR with itself, so a committed gut shows no local change. The forge says
 // the PR changes files, so a tree identical to that base proves the base wrong.
 func TestRegHeadAsBaseFails(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedAnchoredFinding)
 	mutateFinding(t, path, landedAnchoredFinding, "resolved: false", "resolved: true")
 	commitGut(t, root)
@@ -586,6 +612,7 @@ func TestRegHeadAsBaseFails(t *testing.T) {
 // for the short name; so does a local branch named main for the bare base name.
 // The resolver must read only the fully-qualified remote-tracking ref.
 func TestMergeBaseIgnoresDecoyRefs(t *testing.T) {
+	installStatusgenFixture(t)
 	old := ghPRBaseRefFn
 	t.Cleanup(func() { ghPRBaseRefFn = old })
 	ghPRBaseRefFn = func(string, int) string { return "main" }
@@ -612,6 +639,7 @@ func TestMergeBaseIgnoresDecoyRefs(t *testing.T) {
 // origin/main on the PR's own commit — a committed reused-anchor gut must still
 // fail. Without the tag (control) it fails too.
 func TestRegDecoyTagBaseFails(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, decoy := range []bool{false, true} {
 		root, path := gutFixture(t, landedAnchoredFinding)
 		mutateFinding(t, path, landedAnchoredFinding, "resolved: false", "resolved: true")
@@ -732,6 +760,7 @@ func decoyAfterGut(t *testing.T, decoy string) string {
 // leave the base unresolved — online (prMergeBaseSHA) and offline
 // (registerLandedBase) alike.
 func TestMergeBaseAbsentRefDecoys(t *testing.T) {
+	installStatusgenFixture(t)
 	old := ghPRBaseRefFn
 	t.Cleanup(func() { ghPRBaseRefFn = old })
 	ghPRBaseRefFn = func(string, int) string { return "main" }
@@ -751,6 +780,7 @@ func TestMergeBaseAbsentRefDecoys(t *testing.T) {
 // identical-tree refusal cannot catch it). A reused-anchor gut must still fail.
 // The control (no decoy) fails too.
 func TestRegAbsentRefDecoyFails(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, decoy := range append([]string{""}, absentRefDecoys...) {
 		root := decoyAfterGut(t, decoy)
 		st := &corroborateStub{files: findingFiles("-resolved: false", "+resolved: true"), realMergeBase: true}
@@ -946,6 +976,7 @@ func TestFixedBaseNotHandedToHelpers(t *testing.T) {
 // (a could-not-check), never a diff against the PR's own commit. The control,
 // with the exact ref present, yields the PR's changed paths.
 func TestBranchChangedSetExactBase(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, decoy := range absentRefDecoys {
 		root := decoyAfterGut(t, decoy)
 		if set, ok := branchChangedSet(root); ok {
@@ -966,6 +997,7 @@ func TestBranchChangedSetExactBase(t *testing.T) {
 // re-resolves (and now finds the ref absent). The memo keeps the fixed-base
 // callers of one --lint to one resolution; it must never cross a run.
 func TestMergeBaseExactRunMemo(t *testing.T) {
+	installStatusgenFixture(t)
 	root := decoyAfterGut(t, "")
 	gitRun(t, root, "update-ref", "refs/remotes/origin/main", "HEAD~2")
 	end := beginGitReadSession()
@@ -995,6 +1027,7 @@ func TestMergeBaseExactRunMemo(t *testing.T) {
 // session, two trees asking for the same ref get their own answers — one whose
 // exact ref is present resolves, one whose ref is absent stays unresolved.
 func TestMergeBaseMemoPerRoot(t *testing.T) {
+	installStatusgenFixture(t)
 	withRef := decoyAfterGut(t, "")
 	gitRun(t, withRef, "update-ref", "refs/remotes/origin/main", "HEAD~2")
 	noRef := decoyAfterGut(t, "")

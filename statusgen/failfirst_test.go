@@ -194,6 +194,7 @@ func ffRepo(t *testing.T) (root, older, base, branch, head, stray string) {
 // commit of the branch, an older ancestor, a sibling tree and an object this
 // clone does not have are each a PROBLEM — never a pass.
 func TestFailFirstBaseAncestry(t *testing.T) {
+	installStatusgenFixture(t)
 	withBase(t, true)
 	root, older, base, branch, head, stray := ffRepo(t)
 	skip := failFirstCell("", baseNotSelected, -1, head[:12])
@@ -224,6 +225,7 @@ func TestFailFirstBaseAncestry(t *testing.T) {
 // is refused too (#2721).
 // regression: #4360
 func TestFailFirstBaseFlagRefusesNonAncestor(t *testing.T) {
+	installStatusgenFixture(t)
 	root, older, base, branch, head, _ := ffRepo(t)
 	withBriefHeld(t, base, older)
 	briefPath := filepath.Join(root, "docs", "streams", "ff", "brief-01-ff.md")
@@ -359,6 +361,7 @@ func TestFailFirstReadersSkipTheBaseColumn(t *testing.T) {
 // worktree checked out at the base, records red/green per risk-bearing row,
 // leaves non-risk rows not-selected, and removes the worktree afterwards.
 func TestFailFirstRunsAtBase(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _, base, _, _, _ := ffRepo(t)
 	rows := []verifyRow{
 		{ID: "1", Command: "grep -q new flag.txt", Expect: "exit 0"},
@@ -435,6 +438,7 @@ func withBriefHeld(t *testing.T, held ...string) {
 // after merge); held by neither is refused by the gate and by the runner.
 // Without one only the merge-base itself is accepted, held or not.
 func TestFailFirstBaseMustHoldBrief(t *testing.T) {
+	installStatusgenFixture(t)
 	withBase(t, true)
 	root, older, base, _, head, _ := ffRepo(t)
 	skip := failFirstCell("", baseNotSelected, -1, head[:12])
@@ -482,6 +486,7 @@ func TestFailFirstBaseMustHoldBrief(t *testing.T) {
 // as base, (1) was always refused; (2) and (3) used to be accepted. Each must be
 // refused now, and the merge-base itself stays accepted in every one.
 func TestFailFirstBriefHeldRealGit(t *testing.T) {
+	installStatusgenFixture(t)
 	const rel = "docs/streams/ff/brief-01-ff.md"
 	const renamed = "docs/streams/ff/brief-02-ff.md"
 	setup := func(t *testing.T, briefAtMergeBase bool) (root, rootCommit, mergeBase string) {
@@ -567,6 +572,7 @@ func TestFailFirstBriefHeldRealGit(t *testing.T) {
 // base with no delivering commit is refused outright, #2721), and the
 // merge-base itself is not refused.
 func TestVerifyrunFailFirstRefusesAncestorBaseOfBranchBornBrief(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitInit(t, root, "t", "t@example.com")
 	writeTemp(t, root, "flag.txt", "old\n")
@@ -599,6 +605,7 @@ func TestVerifyrunFailFirstRefusesAncestorBaseOfBranchBornBrief(t *testing.T) {
 // tree is held, a file added later (or never) is not.
 // regression: #4360
 func TestPathHeldAtReadsTheTree(t *testing.T) {
+	installStatusgenFixture(t)
 	root, older, _, _, _, _ := ffRepo(t)
 	if !pathHeldAt(root, older, "flag.txt") {
 		t.Errorf("flag.txt is in the older commit's tree")

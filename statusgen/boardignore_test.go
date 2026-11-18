@@ -81,6 +81,7 @@ func scaffoldPaths(t *testing.T, dir string) []string {
 //
 // regression: #2915
 func TestInitRefusesIgnoredBoard(t *testing.T) {
+	installStatusgenFixture(t)
 	isolateGit(t)
 	for _, forge := range []forgeKind{forgeGitHub, forgeGitLab} {
 		for _, dry := range []bool{false, true} {
@@ -108,6 +109,7 @@ func TestInitRefusesIgnoredBoard(t *testing.T) {
 //
 // regression: #2915
 func TestInitIgnoredParentDir(t *testing.T) {
+	installStatusgenFixture(t)
 	isolateGit(t)
 	dir := gitRepo(t, map[string]string{".gitignore": "docs/\n"})
 	var code int
@@ -127,6 +129,7 @@ func TestInitIgnoredParentDir(t *testing.T) {
 // TestInitCleanRepoUnchanged: a git repo with no rule over the board paths
 // (and one whose rule is negated) scaffolds exactly as before.
 func TestInitCleanRepoUnchanged(t *testing.T) {
+	installStatusgenFixture(t)
 	isolateGit(t)
 	for name, ignore := range map[string]string{
 		"no-gitignore": "",
@@ -157,6 +160,7 @@ func TestInitCleanRepoUnchanged(t *testing.T) {
 //
 // regression: #2915
 func TestLintIgnoredBoard(t *testing.T) {
+	installStatusgenFixture(t)
 	isolateGit(t)
 	for _, ignored := range []bool{false, true} {
 		dir := gitRepo(t, nil)
@@ -208,6 +212,7 @@ const initCommitStep = "Commit generated board surfaces if they changed"
 //
 // regression: #2915
 func TestRegenStepNamesRule(t *testing.T) {
+	installStatusgenFixture(t)
 	step := workflowStep(t, initWorkflow, "regen", initCommitStep)
 	if strings.Contains(step, "add -f") || strings.Contains(step, "--force") {
 		t.Fatalf("the commit step force-adds over ignore rules:\n%s", step)
@@ -250,6 +255,7 @@ func TestRegenStepNamesRule(t *testing.T) {
 //
 // regression: #2915
 func TestGitlabRegenNamesRule(t *testing.T) {
+	installStatusgenFixture(t)
 	r := newPushRig(t)
 	if err := plantFile(".gitignore", "STATUS.md\n")(r.ws); err != nil {
 		t.Fatal(err)

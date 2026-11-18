@@ -642,6 +642,7 @@ func TestScanLabelHoldFailsClosed(t *testing.T) {
 // TestScanLabelHoldKeepsDone: a held placeholder stays `done` through plan and apply; once the
 // check clears, the same sequence leaves it `todo`.
 func TestScanLabelHoldKeepsDone(t *testing.T) {
+	installStatusgenFixture(t)
 	holdRoster(t)
 	const issue = 710
 	run := func(t *testing.T, check labelHoldChecker) string {
@@ -813,6 +814,7 @@ func TestScanIssuesLabelHoldE2E(t *testing.T) {
 }
 
 func TestTranscribeLabelHoldE2E(t *testing.T) {
+	installStatusgenFixture(t)
 	holdRoster(t)
 	home := "example-org/tracker"
 	const issue = 811

@@ -66,6 +66,7 @@ func tokenFileFor(t *testing.T) string {
 
 // regression: #2443
 func TestReportRunNotCalledReadOnly(t *testing.T) {
+	installStatusgenFixture(t)
 	stubParityPulls(t)
 	tok := tokenFileFor(t)
 
@@ -111,6 +112,7 @@ func TestReportRunNotCalledReadOnly(t *testing.T) {
 
 // regression: #2443
 func TestWouldApplyAbsentNoLook(t *testing.T) {
+	installStatusgenFixture(t)
 	tok := tokenFileFor(t)
 	board := func(t *testing.T) string {
 		root := writeParityBoard(t)

@@ -49,6 +49,7 @@ func boardReadmes(t *testing.T, root string) map[string]string {
 
 // regression: #2694
 func TestHoldRegeneratesDriveRegion(t *testing.T) {
+	installStatusgenFixture(t)
 	pinNow(t, driveTestNow)
 	for _, write := range []bool{false, true} {
 		root, cells := driveManyRowBoard(t)

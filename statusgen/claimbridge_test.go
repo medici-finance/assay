@@ -13,6 +13,7 @@ import (
 
 // regression: #3327
 func TestClaimBridgeFlow(t *testing.T) {
+	installStatusgenFixture(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX subprocess wrapper; wire owner coverage is platform neutral")
 	}

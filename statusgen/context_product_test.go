@@ -101,6 +101,7 @@ func ctxStr(s *string) string {
 // original selection revision loses the record of what the work was first
 // selected against; a disposition against a target that moved must refuse.
 func TestProductBindingCheckpointFlow(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := buildStatusgenBinary(t)
 	dir := ctxCopyJourney(t)
 	for _, f := range []string{ctxBriefA03, ctxBriefA04} {

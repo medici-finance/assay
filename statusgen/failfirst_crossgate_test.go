@@ -81,6 +81,7 @@ func ffCrossEvidence(base, source string, att func(string) string) string {
 // Before #5549 the gate looked the base up in the tracking clone, which never
 // holds it, and refused every valid cross-repository closure.
 func TestFFCrossRepoBase(t *testing.T) {
+	installStatusgenFixture(t)
 	withBase(t, true)
 	deliverable, older, base, source, later, stray := ffCrossRepo(t)
 	t.Setenv("DESK_ROOTS", "example-org/two="+deliverable)
@@ -116,6 +117,7 @@ func TestFFCrossRepoBase(t *testing.T) {
 // not literal run metadata, and one whose source= is not the run's source each
 // keep the closure blocked, and none falls back to the tracking-clone rule.
 func TestFFCrossRepoFailsClosed(t *testing.T) {
+	installStatusgenFixture(t)
 	withBase(t, true)
 	deliverable, _, base, source, _, _ := ffCrossRepo(t)
 	tracking := ffCrossTracking(t)
@@ -149,6 +151,7 @@ func TestFFCrossRepoFailsClosed(t *testing.T) {
 // the same cross-repository arm as lint: the deliverable merge-base
 // authorizes the outcome; an older ancestor and a later commit do not.
 func TestFFCrossRepoSelected(t *testing.T) {
+	installStatusgenFixture(t)
 	deliverable, older, base, source, later, _ := ffCrossRepo(t)
 	t.Setenv("DESK_ROOTS", "example-org/two="+deliverable)
 	tracking := ffCrossTracking(t)
@@ -180,6 +183,7 @@ func TestFFCrossRepoSelected(t *testing.T) {
 // brief's own repository and brief= its repository-relative path. Either
 // mismatch keeps every risk-bearing row a PROBLEM.
 func TestFFCrossAnchorBriefIdentity(t *testing.T) {
+	installStatusgenFixture(t)
 	withBase(t, true)
 	deliverable, _, base, source, _, _ := ffCrossRepo(t)
 	t.Setenv("DESK_ROOTS", "example-org/two="+deliverable)
@@ -210,6 +214,7 @@ func TestFFCrossAnchorBriefIdentity(t *testing.T) {
 // whose repo= and source-repo= agree, and crossBindingBriefIdentity holds
 // repo= to the brief's repository; this pins the two together.
 func TestFFCrossAnchorDeliverableDiffersFromBrief(t *testing.T) {
+	installStatusgenFixture(t)
 	withBase(t, true)
 	deliverable, _, base, source, _, _ := ffCrossRepo(t)
 	t.Setenv("DESK_ROOTS", "example-org/one="+deliverable)
@@ -230,6 +235,7 @@ func TestFFCrossAnchorDeliverableDiffersFromBrief(t *testing.T) {
 // never a checkout or a --base change, which cannot clear it; a missing
 // deliverable checkout keeps the checkout remedy.
 func TestFFCrossAnchorRemedyPerCause(t *testing.T) {
+	installStatusgenFixture(t)
 	withBase(t, true)
 	deliverable, _, base, source, _, _ := ffCrossRepo(t)
 	tracking := ffCrossTracking(t)
@@ -257,6 +263,7 @@ func TestFFCrossAnchorRemedyPerCause(t *testing.T) {
 // can read, every risk-bearing row is a PROBLEM; it never falls back to the
 // tracking-clone rule.
 func TestFFCrossAnchorUnreadablePass(t *testing.T) {
+	installStatusgenFixture(t)
 	withBase(t, true)
 	deliverable, _, base, source, _, _ := ffCrossRepo(t)
 	t.Setenv("DESK_ROOTS", "example-org/two="+deliverable)
@@ -281,6 +288,7 @@ func TestFFCrossAnchorUnreadablePass(t *testing.T) {
 // even the right base stays a PROBLEM on every risk-bearing row, and nothing
 // falls back to "an ancestor of the source" or to the tracking-clone rule.
 func TestFFCrossRepoNoMergeBase(t *testing.T) {
+	installStatusgenFixture(t)
 	withBase(t, true)
 	noMain, _, base, source, _, _ := ffCrossRepo(t)
 	gitRun(t, noMain, "update-ref", "-d", "refs/remotes/origin/main")
@@ -316,6 +324,7 @@ func TestFFCrossRepoNoMergeBase(t *testing.T) {
 // #5550's runner gives for its merge-base == HEAD case, with no --base
 // suggestion.
 func TestFFCrossRepoPostMerge(t *testing.T) {
+	installStatusgenFixture(t)
 	withBase(t, true)
 	deliverable, _, base, source, later, _ := ffCrossRepo(t)
 	t.Setenv("DESK_ROOTS", "example-org/two="+deliverable)
@@ -353,6 +362,7 @@ func TestFFCrossRepoPostMerge(t *testing.T) {
 // refuses a source= that is not a commit object, before or after the merge,
 // on both callers, and never credits the red.
 func TestFFCrossRepoTagSource(t *testing.T) {
+	installStatusgenFixture(t)
 	withBase(t, true)
 	deliverable, _, base, source, _, _ := ffCrossRepo(t)
 	gitRun(t, deliverable, "tag", "-a", "-m", "delivered", "delivered", source)
@@ -390,6 +400,7 @@ func TestFFCrossRepoTagSource(t *testing.T) {
 // entries naming different paths are refused rather than picked by map
 // order; two that name the same path are one checkout and close.
 func TestFFCrossRootCaseVariants(t *testing.T) {
+	installStatusgenFixture(t)
 	withBase(t, true)
 	deliverable, _, base, source, _, _ := ffCrossRepo(t)
 	other := t.TempDir()

@@ -256,6 +256,7 @@ func TestWithdrawalPinLookupStaysInOwningRoot(t *testing.T) {
 }
 
 func TestWithdrawalHumanGateNotBypassed(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{dhReadmePath: dhReadme(dhRow("18", "withdrawn"))})
@@ -268,6 +269,7 @@ func TestWithdrawalHumanGateNotBypassed(t *testing.T) {
 }
 
 func TestWithdrawalRecordedHumanRulingStillWorks(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, dhForge("Option 1 for "+dhBoardID+", as written."))
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{dhReadmePath: dhReadme(dhRow("18", "withdrawn")), dhBriefPath: dhFM("gate: human", dhRuledLines())})
@@ -300,6 +302,7 @@ func TestWithdrawalArchivedExportDoesNotBorrowParentPin(t *testing.T) {
 }
 
 func TestWithdrawalHumanGateExitNotBypassed(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	for _, status := range []string{"implemented", "verified", "done"} {
 		t.Run(status, func(t *testing.T) {
@@ -318,6 +321,7 @@ func TestWithdrawalHumanGateExitNotBypassed(t *testing.T) {
 }
 
 func TestWithdrawalUnchangedHumanGateDoesNotCreateMove(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	base := unruledBase()
 	base[dhReadmePath] = dhReadme(dhRow("18", "withdrawn"))

@@ -47,6 +47,7 @@ func crossFFFixture(t *testing.T) (containerFixture, string, string, string, str
 // delivering commit), so the cross-repository rule
 // applies only where the caller chose the cross-repository form.
 func TestCrossFFBaseRev(t *testing.T) {
+	installStatusgenFixture(t)
 	fx, _, older, base, head := crossFFFixture(t)
 	if got, err := failFirstCrossRepoBaseRev(fx.home, base); err != nil || got != base {
 		t.Fatalf("cross-repository merge-base refused: %q %v", got, err)
@@ -96,6 +97,7 @@ func TestCrossFFBaseRev(t *testing.T) {
 // reported as a defect (exit 1), and a red made only by an ignored home file
 // was credited (exit 0).
 func TestCrossFFPostMerge(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, row := range []string{"delivered", "ignored"} {
 		for _, flag := range []string{"", "head"} {
 			fx, tracking, _, _, head := crossFFFixture(t)
@@ -128,6 +130,7 @@ func TestCrossFFPostMerge(t *testing.T) {
 // deliverable merge-base as its base and records a red there and a pass at
 // head.
 func TestCrossFFHostLane(t *testing.T) {
+	installStatusgenFixture(t)
 	fx, tracking, _, base, head := crossFFFixture(t)
 	t.Setenv("DESK_LOOP", "verify-desk")
 	// No check:ci class: the host lane runs the row without a network sandbox.
@@ -150,6 +153,7 @@ func TestCrossFFHostLane(t *testing.T) {
 // to the deliverable merge-base exactly and never to a delivering commit, so
 // accepting the flag would record a delivering= the gate never checked.
 func TestCrossFFNoDelivering(t *testing.T) {
+	installStatusgenFixture(t)
 	fx, tracking, _, base, head := crossFFFixture(t)
 	t.Setenv("DESK_LOOP", "verify-desk")
 	body := "# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | `test -f delivered.txt` | risk-bearing exit 0 |\n\n## Evidence\n\n## Review\n"
@@ -177,6 +181,7 @@ func TestCrossFFNoDelivering(t *testing.T) {
 // before any row with or without --base (the commit before the delivery
 // included).
 func TestCrossFFContainer(t *testing.T) {
+	installStatusgenFixture(t)
 	fx, tracking, _, base, head := crossFFFixture(t)
 	t.Setenv("DESK_LOOP", "")
 	clock := time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC)
@@ -214,6 +219,7 @@ func TestCrossFFContainer(t *testing.T) {
 // inside the deliverable home, and the same-repository import refuses one
 // outside it; neither form stands in for the other.
 func TestCrossHistoryRefusesInner(t *testing.T) {
+	installStatusgenFixture(t)
 	fx, _, _, _, head := crossFFFixture(t)
 	bundle := filepath.Join(t.TempDir(), "history.pack")
 	if err := exportContainerHistory(fx.home, bundle, head); err != nil {
@@ -279,6 +285,7 @@ func outsideBriefRepo(t *testing.T, row string, mainAtHead bool) (root, brief, b
 // was reported as a defect (exit 1). Pre-merge the merge-base is still
 // accepted, so only the HEAD base is refused.
 func TestSameFFOutsideHead(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, row := range []string{"delivered", "ignored"} {
 		for _, flag := range []string{"", "head"} {
 			root, brief, body, _, head := outsideBriefRepo(t, row, true)

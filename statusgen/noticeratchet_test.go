@@ -54,6 +54,7 @@ func runRatchet(t *testing.T, cfg diffLintConfig) diffLintResult {
 
 // regression: F-notice-ratchet
 func TestNoticeRatchet(t *testing.T) {
+	installStatusgenFixture(t)
 	legacy := rowNotice(ratchetHeadRoot, ratchetBriefA, "1", ruleTriviallyGreen, "is trivially green: `true` exits 0")
 	legacyBase := rowNotice(ratchetBaseRoot, ratchetBriefA, "1", ruleTriviallyGreen, "is trivially green: `true` exits 0")
 	second := rowNotice(ratchetHeadRoot, ratchetBriefA, "2", ruleGrepZeroCount, "grep -c exits 1 on zero")
@@ -513,6 +514,7 @@ func TestNoticeRatchet(t *testing.T) {
 // real repository: added, edited, renamed, deleted, untracked and non-brief
 // changes.
 func TestChangedBriefsGit(t *testing.T) {
+	installStatusgenFixture(t)
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}

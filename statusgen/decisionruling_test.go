@@ -459,6 +459,7 @@ func rlWriteCitingBrief(t *testing.T, root string) {
 // full-name marker passes with no registry — so the refusals are the alias lookup's,
 // not an empty citing set's.
 func TestRuling_AliasMarkerEndToEnd(t *testing.T) {
+	installStatusgenFixture(t)
 	rec := rlNamed("example_human", rlURL(rlRepo, rlIssue, rlComment))
 	run := func(registry, marker string) rulingOutcome {
 		t.Helper()

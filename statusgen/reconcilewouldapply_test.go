@@ -235,6 +235,7 @@ func stubParityPulls(t *testing.T) {
 // must leave the tree untouched and report as `wouldApply` exactly the rows the
 // --apply run reports as `applied`; each form carries only its own list.
 func TestWouldApplyParityCLI(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeParityBoard(t)
 	commitFixture(t, root)
 

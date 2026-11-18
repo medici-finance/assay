@@ -407,6 +407,7 @@ func prsForCohort(prs []PRRecord, id string) []PRRecord {
 
 // regression: #2703
 func TestBoardCohortFlow(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Setenv("GITHUB_TOKEN", "test-token")
 	f := cohortLoad(t)
 	root := cohortRoot(t, f)
@@ -665,6 +666,7 @@ func cohortBoards(t *testing.T, root string) map[string]string {
 
 // regression: #2703
 func TestBoardCohortFull(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Setenv("GITHUB_TOKEN", "test-token")
 	f := cohortLoad(t)
 	root := cohortRoot(t, f)

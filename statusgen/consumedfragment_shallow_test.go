@@ -22,6 +22,7 @@ import (
 // the fragment genuinely committed-then-removed, cloned down to depth 1 — the
 // exact shape GitHub Actions hands `lint` on every PR.
 func TestConsumedFragmentIndexShallowCloneIsCouldNotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	full, _ := writeConsumedFragmentFixture(t, true)
 
 	shallowParent := t.TempDir()
@@ -60,6 +61,7 @@ func TestConsumedFragmentIndexShallowCloneIsCouldNotCheck(t *testing.T) {
 // authoring defect in the brief. A tree with no git repo at all keeps the
 // "history was unreadable" note and never claims to be shallow.
 func TestShallowFragmentNoteNamesShallow(t *testing.T) {
+	installStatusgenFixture(t)
 	full, _ := writeConsumedFragmentFixture(t, true)
 	shallow := t.TempDir() + "/shallow"
 	if out, err := exec.Command("git", "clone", "--depth", "1", "file://"+full, shallow).CombinedOutput(); err != nil {

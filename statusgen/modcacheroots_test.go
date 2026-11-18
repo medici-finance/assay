@@ -82,6 +82,7 @@ func moduleRootsCoverage(home string, gomods []string, manifest string) []string
 // module is listed in the manifest, or declared not provisioned with a reason.
 // A planted module with a go.sum that the manifest does not list goes red.
 func TestModuleRootsCoverTree(t *testing.T) {
+	installStatusgenFixture(t)
 	out, err := exec.Command("git", "-C", "..", "ls-files", "--", "go.mod", "*/go.mod").Output()
 	if err != nil {
 		t.Skipf("git ls-files: %v", err)

@@ -21,6 +21,7 @@ func head(sha string, red bool, at string, runID int64, t *testing.T) ciHead {
 // --- episode matching: the correctness core --------------------------------
 
 func TestMatchEpisodesSimpleRedGreen(t *testing.T) {
+	installStatusgenFixture(t)
 	heads := []ciHead{
 		head("a", false, "2026-08-25T10:00:00Z", 1, t),
 		head("b", true, "2026-08-25T11:00:00Z", 2, t),
@@ -43,6 +44,7 @@ func TestMatchEpisodesSimpleRedGreen(t *testing.T) {
 // red, and the restore interval is measured from red#1, not red#2. This is the
 // "wrong-but-plausible interval reads as a real metric forever" guard.
 func TestMatchEpisodesConsecutiveRedsAnchorAtFirst(t *testing.T) {
+	installStatusgenFixture(t)
 	heads := []ciHead{
 		head("a", false, "2026-08-25T09:00:00Z", 1, t),
 		head("b", true, "2026-08-25T10:00:00Z", 2, t),  // first red — the anchor
@@ -66,6 +68,7 @@ func TestMatchEpisodesConsecutiveRedsAnchorAtFirst(t *testing.T) {
 // A still-red tail (no closing green) records NOTHING — an open episode is
 // could-not-check, never a fabricated interval.
 func TestMatchEpisodesStillRedTailRecordsNothing(t *testing.T) {
+	installStatusgenFixture(t)
 	heads := []ciHead{
 		head("a", false, "2026-08-25T09:00:00Z", 1, t),
 		head("b", true, "2026-08-25T10:00:00Z", 2, t), // opens, never closes
@@ -76,6 +79,7 @@ func TestMatchEpisodesStillRedTailRecordsNothing(t *testing.T) {
 }
 
 func TestMatchEpisodesMultipleEpisodes(t *testing.T) {
+	installStatusgenFixture(t)
 	heads := []ciHead{
 		head("a", true, "2026-08-25T09:00:00Z", 1, t),
 		head("b", false, "2026-08-25T10:00:00Z", 2, t), // close #1
@@ -96,6 +100,7 @@ func TestMatchEpisodesMultipleEpisodes(t *testing.T) {
 }
 
 func TestMatchEpisodesAllGreenNoEpisodes(t *testing.T) {
+	installStatusgenFixture(t)
 	heads := []ciHead{
 		head("a", false, "2026-08-25T09:00:00Z", 1, t),
 		head("b", false, "2026-08-25T10:00:00Z", 2, t),

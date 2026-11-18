@@ -36,6 +36,7 @@ var boardOracleCases = []struct {
 //
 // regression: #2915
 func TestBoardAddOracle(t *testing.T) {
+	installStatusgenFixture(t)
 	isolateGit(t)
 	requireTool(t, "sh")
 	shDir := t.TempDir()

@@ -95,6 +95,7 @@ func repairRoster(t *testing.T) {
 
 // regression: #6616
 func TestRepairApprovalScope(t *testing.T) {
+	installStatusgenFixture(t)
 	repairRoster(t)
 	login, _ := HumanLogin("alex")
 	for _, c := range []struct{ name, author, text, want string }{

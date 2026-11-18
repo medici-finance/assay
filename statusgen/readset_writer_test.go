@@ -14,6 +14,7 @@ import (
 // the close, so a token cannot hide a forged identity, tree or principal
 // from the compare while the whole-cell readers still see it.
 func TestCloseBracketReadSetForge(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	isolateGitIdentity(t)
 	t.Setenv("DESK_LOOP", "")

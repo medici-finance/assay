@@ -8,6 +8,7 @@ import (
 )
 
 func TestRunWritesAndChecks(t *testing.T) {
+	installStatusgenFixture(t)
 	// copy fixture to a temp dir so the test can write STATUS.md
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
@@ -38,6 +39,7 @@ func TestRunWritesAndChecks(t *testing.T) {
 // TestLint covers the --lint mode: every source check runs, but STATUS.md is
 // never read, written, or drift-compared.
 func TestLint(t *testing.T) {
+	installStatusgenFixture(t)
 	fresh := func(t *testing.T) string {
 		root := t.TempDir()
 		if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
@@ -119,6 +121,7 @@ func TestLint(t *testing.T) {
 // restructure docs/streams (or a whole repo silently dropping off a
 // multi-root board) look identical to a fine root.
 func TestEmptyRootLintsGreen(t *testing.T) {
+	installStatusgenFixture(t)
 	emptyRoot := func(t *testing.T) string {
 		root := t.TempDir()
 		if err := os.MkdirAll(filepath.Join(root, "docs", "streams"), 0o755); err != nil {

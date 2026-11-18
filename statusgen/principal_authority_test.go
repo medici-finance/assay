@@ -239,6 +239,7 @@ func decidedByLanes(t *testing.T, file, yamlValue string) (online int, offline b
 // branch adds, relay included. This test names that dependency: if the gain guard ever
 // stopped seeing a relay, a relay would pass both lanes with no human act.
 func TestReadmeCellRelayCaughtByGainGuard(t *testing.T) {
+	installStatusgenFixture(t)
 	const (
 		row01 = "| 01 | [brief-01](brief-01.md) | 1 | S | todo | — | — |"
 		row02 = "| 02 | [brief-02](brief-02.md) | 1 | M | verified | 2026-07-01 opus-verifier | — |"

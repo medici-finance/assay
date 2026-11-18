@@ -86,6 +86,7 @@ func decideWalkRev(t *testing.T, src *fakeFlipSource, rev reviewerIdentity) mode
 // approval; the older PR is the App-approved delivery. It must flip, crediting
 // the delivery. On main it was REFUSED on the Evidence PR.
 func TestAutoFlipSkipsEvidenceLanding(t *testing.T) {
+	installStatusgenFixture(t)
 	src := walkSource([]int{190, 151},
 		map[int]prReviewState{
 			190: humanApproved(afNoAppSHA, 5),
@@ -101,6 +102,7 @@ func TestAutoFlipSkipsEvidenceLanding(t *testing.T) {
 // TestAutoFlipEvidenceByTrailer — shape A, the usual case: the delivery never
 // touched the brief file, so only its `Brief:` trailer finds it.
 func TestAutoFlipEvidenceByTrailer(t *testing.T) {
+	installStatusgenFixture(t)
 	src := walkSource([]int{190},
 		map[int]prReviewState{
 			190: humanApproved(afNoAppSHA, 5),
@@ -119,6 +121,7 @@ func TestAutoFlipEvidenceByTrailer(t *testing.T) {
 // On main the walk stopped at the authoring PR (COULD-NOT-CHECK). The delivery's
 // own trailer settles attribution, whether or not merge times are known.
 func TestAutoFlipTrailerPastAuthoring(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, known := range []bool{true, false} {
 		t.Run(fmt.Sprintf("mergedAt known=%v", known), func(t *testing.T) {
 			states := map[int]prReviewState{
@@ -146,6 +149,7 @@ func TestAutoFlipTrailerPastAuthoring(t *testing.T) {
 // TestAutoFlipTrailerUnapproved: a trailer-resolved delivery must itself carry
 // the App approval at its merged head, or the brief is refused naming it.
 func TestAutoFlipTrailerUnapproved(t *testing.T) {
+	installStatusgenFixture(t)
 	src := walkSource([]int{190},
 		map[int]prReviewState{190: humanApproved(afNoAppSHA, 5), 151: humanApproved(afRealDeliveryHeadSHA, 1)},
 		map[int]prShape{190: evidenceShape(afVerifier), 151: realDelivery50})
@@ -158,6 +162,7 @@ func TestAutoFlipTrailerUnapproved(t *testing.T) {
 // TestAutoFlipTrailerOlderUnapproved: when a brief has two delivering PRs, the
 // older one must be approved too; crediting the newer never excuses it.
 func TestAutoFlipTrailerOlderUnapproved(t *testing.T) {
+	installStatusgenFixture(t)
 	src := walkSource(nil,
 		map[int]prReviewState{151: humanApproved(afRealDeliveryHeadSHA, 1), 153: mergedApproved(afHeadSHA, 4)},
 		map[int]prShape{151: realDelivery50, 153: realDelivery50})
@@ -170,6 +175,7 @@ func TestAutoFlipTrailerOlderUnapproved(t *testing.T) {
 // TestAutoFlipTrailerNewestCredited: of two approved deliveries, the stamp
 // cites the newest by merge time, whatever order the search returned.
 func TestAutoFlipTrailerNewestCredited(t *testing.T) {
+	installStatusgenFixture(t)
 	src := walkSource(nil,
 		map[int]prReviewState{151: mergedApproved(afRealDeliveryHeadSHA, 6), 153: mergedApproved(afHeadSHA, 2)},
 		map[int]prShape{151: realDelivery50, 153: realDelivery50})
@@ -183,6 +189,7 @@ func TestAutoFlipTrailerNewestCredited(t *testing.T) {
 // an unapproved non-Evidence PR that changed the brief file AFTER the delivery
 // still refuses the flip, as it did on main.
 func TestAutoFlipGuardNewerUnapproved(t *testing.T) {
+	installStatusgenFixture(t)
 	src := walkSource([]int{195, 190},
 		map[int]prReviewState{
 			195: humanApproved(afNoAppSHA, 7),
@@ -203,6 +210,7 @@ func TestAutoFlipGuardNewerUnapproved(t *testing.T) {
 // TestAutoFlipGuardStopsAtDelivery: a change to the brief file that merged
 // BEFORE the delivery is outside the guard, approved or not.
 func TestAutoFlipGuardStopsAtDelivery(t *testing.T) {
+	installStatusgenFixture(t)
 	src := walkSource([]int{190, 129},
 		map[int]prReviewState{
 			190: humanApproved(afNoAppSHA, 9),
@@ -219,6 +227,7 @@ func TestAutoFlipGuardStopsAtDelivery(t *testing.T) {
 // TestAutoFlipTrailerMultiBrief: a search hit whose body carries two `Brief:`
 // trailers cannot be attributed on a guess — could-not-check naming it.
 func TestAutoFlipTrailerMultiBrief(t *testing.T) {
+	installStatusgenFixture(t)
 	src := walkSource(nil,
 		map[int]prReviewState{196: mergedApproved(afHeadSHA, 2)},
 		map[int]prShape{196: {Files: []string{"internal/x/x.go"}, BriefTrailers: 2, Briefs: []string{"af/50", "af/51"}}})
@@ -232,6 +241,7 @@ func TestAutoFlipTrailerMultiBrief(t *testing.T) {
 // carries no real `Brief:` trailer (prose quoting one) or names another brief
 // is never credited, and the walk decides as it did on main.
 func TestAutoFlipTrailerFalseHit(t *testing.T) {
+	installStatusgenFixture(t)
 	src := walkSource([]int{151},
 		map[int]prReviewState{
 			197: mergedApproved(afHeadSHA, 8),
@@ -252,6 +262,7 @@ func TestAutoFlipTrailerFalseHit(t *testing.T) {
 // TestAutoFlipTrailerSearchFails: a search that cannot be read falls back to
 // the walk alone and says so on any non-flip; it never becomes a flip.
 func TestAutoFlipTrailerSearchFails(t *testing.T) {
+	installStatusgenFixture(t)
 	src := walkSource([]int{190},
 		map[int]prReviewState{190: humanApproved(afNoAppSHA, 5)},
 		map[int]prShape{190: evidenceShape(afVerifier)})
@@ -288,6 +299,7 @@ func editedFixture() *fakeFlipSource {
 // edit time cannot be ordered against its merge, is COULD-NOT-CHECK naming it.
 // It is not credited and does not end the guard over #160.
 func TestAutoFlipTrailerEditedBody(t *testing.T) {
+	installStatusgenFixture(t)
 	for name, set := range map[string]func(*fakeFlipSource){
 		"edited after merge": func(f *fakeFlipSource) {
 			f.bodyEdits = map[int]time.Time{170: afMerged(4).Add(time.Hour)}
@@ -321,6 +333,7 @@ func TestAutoFlipTrailerEditedBody(t *testing.T) {
 // is the body the PR merged with. It credits as before, and main's refusal on
 // the older unapproved #160 is outside the guard.
 func TestAutoFlipTrailerEditedPreMerge(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, edit := range []time.Time{afMerged(4).Add(-time.Hour), afMerged(4)} {
 		src := editedFixture()
 		src.bodyEdits = map[int]time.Time{170: edit}
@@ -335,6 +348,7 @@ func TestAutoFlipTrailerEditedPreMerge(t *testing.T) {
 // default branch. It is walked past, whether or not it is approved, and named
 // on the result. A hit merged into the default branch is credited.
 func TestAutoFlipTrailerSideBranch(t *testing.T) {
+	installStatusgenFixture(t)
 	onBranch := func(base string) prShape {
 		s := realDelivery50
 		s.BaseRef, s.DefaultBranch = base, "main"
@@ -369,6 +383,7 @@ func TestAutoFlipTrailerSideBranch(t *testing.T) {
 // commit order, not merge order, so a change merged later (#195, day 7) can
 // be listed after an older change (#129) or after the delivery itself (#151).
 func TestAutoFlipGuardLogOrder(t *testing.T) {
+	installStatusgenFixture(t)
 	for name, commits := range map[string][]int{
 		"pre-delivery change listed first": {129, 195},
 		"delivery listed first":            {151, 195},
@@ -638,6 +653,7 @@ func evidenceOnlyShape(author string) prShape {
 // delivery is credited. Every way out of the Evidence-only shape makes the PR an
 // ordinary candidate again, whose missing App approval refuses the flip.
 func TestAutoflipIgnoresEvidenceOnlyPR(t *testing.T) {
+	installStatusgenFixture(t)
 	run := func(t *testing.T, ev prShape) modelFlipResult {
 		t.Helper()
 		src := walkSource([]int{195, 151},
@@ -768,6 +784,7 @@ func decideWalkFiles(t *testing.T, src *fakeFlipSource, files ...string) modelFl
 // path in the brief's `files:`, never a newer credited PR that touches none.
 // When no PR touches them the result is COULD-NOT-CHECK and nothing flips.
 func TestAutoflipDeliveringByFilesOverlap(t *testing.T) {
+	installStatusgenFixture(t)
 	other := prShape{Files: []string{"internal/other/x.go"}, BriefTrailers: 1, Briefs: []string{"af/50"}}
 	states := func(newer prReviewState) map[int]prReviewState {
 		return map[int]prReviewState{151: mergedApproved(afRealDeliveryHeadSHA, 1), 152: newer}
@@ -874,6 +891,7 @@ func TestAutoflipDeliveringByFilesOverlap(t *testing.T) {
 // STATUS.md's roll-up, and `--auto-flip-model --check` exits 2 on it. Without
 // --check the exit stays 0, and a misconfiguration keeps its exit 1.
 func TestAutoflipCouldNotCheckIsVisible(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := loadAFStreams(t)
 	p := filepath.Join(root, "docs", "streams", "af", "brief-01-model-approved-at-head.md")
 	orig, err := os.ReadFile(p)

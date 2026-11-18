@@ -17,6 +17,7 @@ import (
 // commit object: a plain single-parent commit on main lands in no recognised
 // form, offline, whatever its message holds.
 func TestWitnessLandingReadFromCommitObject(t *testing.T) {
+	installStatusgenFixture(t)
 	f := newGitV2Fixture(t).build()
 	root := f.Root
 	// Main goes back to the base; the records and Evidence land again as one

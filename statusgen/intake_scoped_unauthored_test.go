@@ -167,6 +167,7 @@ func TestIntakeScopedUnauthoredNotices(t *testing.T) {
 // TestIntakeScopedUnauthoredLintIntegration exercises the NOTICE end-to-end through
 // run() in lint mode: it must surface on stderr AND stay non-fatal (exit 0).
 func TestIntakeScopedUnauthoredLintIntegration(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 
 	// goodrepo has stream "alpha" and no intake dir — a valid base.

@@ -517,6 +517,7 @@ func TestRequirementRegisterIsNotAStream(t *testing.T) {
 // requirementsDirName from reservedRegisterNames and this fails with
 // "stream directory requirements has no README.md" and rc=1.
 func TestRegisterLintsWithoutREADME(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)

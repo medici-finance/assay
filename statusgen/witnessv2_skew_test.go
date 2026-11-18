@@ -100,6 +100,7 @@ func coverageViaErr(t *testing.T, bin, root string) ([]skewBrief, error) {
 // binary and is refused under the previous release.
 // regression: #2026
 func TestWitnessSkewOldReader(t *testing.T) {
+	installStatusgenFixture(t)
 	old := oldStatusgenBin(t)
 	cur := buildStatusgenBinary(t)
 	f := newGitV2Fixture(t)
@@ -206,6 +207,7 @@ func materializeV1Corpus(t *testing.T) string {
 // and reason for every claim equal the baseline release's.
 // regression: #2026
 func TestWitnessV1Unchanged(t *testing.T) {
+	installStatusgenFixture(t)
 	old := oldStatusgenBin(t)
 	cur := buildStatusgenBinary(t)
 	root := materializeV1Corpus(t)

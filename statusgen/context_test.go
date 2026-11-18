@@ -72,6 +72,7 @@ func ctxDiscoverReceipt(t *testing.T, bin, snapshot string) (*contexthandoff.Han
 // the built binary's receipt must decode with the statusgen/19 package and
 // check clean against the snapshot it came from.
 func TestContextCLIDiscoverRoundTrip(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := buildStatusgenBinary(t)
 	h, raw := ctxDiscoverReceipt(t, bin, ctxJourney)
 	if !bytes.Equal(bytes.TrimSpace(raw), h.Canonical()) {
@@ -108,6 +109,7 @@ func TestContextCLIDiscoverRoundTrip(t *testing.T) {
 // as product alignment. Discovery through the CLI must state that it covers
 // architecture only and that product alignment is unchecked.
 func TestContextArchitectureCoverageNotProductAlignment(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := buildStatusgenBinary(t)
 	h, _ := ctxDiscoverReceipt(t, bin, ctxJourney)
 	var scope *contexthandoff.Query
@@ -144,6 +146,7 @@ func TestContextArchitectureCoverageNotProductAlignment(t *testing.T) {
 // prior read set misses guideline, owner, version and replacement changes and
 // new consumers, and treats an unreadable input as clean.
 func TestPickupContextRecheck(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := buildStatusgenBinary(t)
 	_, raw := ctxDiscoverReceipt(t, bin, ctxJourney)
 	receipt := ctxWriteTemp(t, "receipt.json", raw)
@@ -285,6 +288,7 @@ func ctxBoolPtr(b *bool) string {
 // rechecked as "current" and checked as "pass" (exit 0) while printing
 // "coverage: partial". Partial coverage, on either side, is a hold (exit 3).
 func TestContextCLITruncatedCoverageHolds(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := buildStatusgenBinary(t)
 	const consumer = "sources/repo-b/docs/streams/beta/brief-02-export-consumer.md"
 	appendEdit := func(t *testing.T, dir string) {
@@ -374,6 +378,7 @@ func TestContextCLITruncatedCoverageHolds(t *testing.T) {
 // Help and usage errors resolve no setting and read nothing: help names the
 // verbs and exits 0 even with a snapshot that does not exist.
 func TestContextHelpOffline(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := buildStatusgenBinary(t)
 	missing := filepath.Join(t.TempDir(), "absent")
 	for _, args := range [][]string{{"--help"}, {"discover", "--help", "--snapshot", missing}, {"check", "--help"}} {

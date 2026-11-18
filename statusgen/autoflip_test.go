@@ -393,6 +393,7 @@ var afNow = time.Date(2026, 8, 13, 0, 0, 0, 0, time.UTC)
 // ---- Task-1 case 1: approved at the merged head -> stamped AND flipped -------------
 
 func TestAutoFlipAtHead(t *testing.T) {
+	installStatusgenFixture(t)
 	root, streams := loadAFStreams(t)
 	src := afSource()
 
@@ -431,6 +432,7 @@ func TestAutoFlipAtHead(t *testing.T) {
 // ---- Task-1 case 2: recorded SHA does not match a live App approval ---------------
 
 func TestAutoFlipStaleSHA(t *testing.T) {
+	installStatusgenFixture(t)
 	root, streams := loadAFStreams(t)
 	src := afSource()
 
@@ -459,6 +461,7 @@ func TestAutoFlipStaleSHA(t *testing.T) {
 // ---- Task-1 case 3: the gate:human path is provably untouched ----------------------
 
 func TestAutoFlipHumanGate(t *testing.T) {
+	installStatusgenFixture(t)
 	root, streams := loadAFStreams(t)
 	src := afSource()
 
@@ -491,6 +494,7 @@ func TestAutoFlipHumanGate(t *testing.T) {
 // ---- Task-1 case 4: no App approval -> not flipped --------------------------------
 
 func TestAutoFlipNoApproval(t *testing.T) {
+	installStatusgenFixture(t)
 	root, streams := loadAFStreams(t)
 	src := afSource()
 
@@ -512,6 +516,7 @@ func TestAutoFlipNoApproval(t *testing.T) {
 // ---- could-not-check is NOT confirmed ---------------------------------------------
 
 func TestAutoFlipUnreadable(t *testing.T) {
+	installStatusgenFixture(t)
 	root, streams := loadAFStreams(t)
 	src := afSource()
 	// PR 101 becomes unreadable: an unfetchable review is could-not-check.
@@ -540,6 +545,7 @@ func TestAutoFlipUnreadable(t *testing.T) {
 // the roster: with no `reviewer=` App bound there is no identity whose approval
 // could be corroborated, so every candidate is could-not-check.
 func TestAutoFlipNoReviewer(t *testing.T) {
+	installStatusgenFixture(t)
 	root, streams := loadAFStreams(t)
 	src := afSource()
 
@@ -562,6 +568,7 @@ func TestAutoFlipNoReviewer(t *testing.T) {
 
 // TestAutoFlipDryRun pins that the reporting mode is read-only.
 func TestAutoFlipDryRun(t *testing.T) {
+	installStatusgenFixture(t)
 	root, streams := loadAFStreams(t)
 	before := afReadme(t, root)
 
@@ -585,6 +592,7 @@ func TestAutoFlipDryRun(t *testing.T) {
 // same row deferred removes the contradiction and the identical approval
 // flips it.
 func TestAutoflipRefusesHeldPass(t *testing.T) {
+	installStatusgenFixture(t)
 	root, streams := loadAFStreams(t)
 	s := streams[0]
 	path := filepath.Join(s.Dir, "brief-01-model-approved-at-head.md")
@@ -751,6 +759,7 @@ func TestMergedPRForCommitSkipsUnmerged(t *testing.T) {
 // brief file was touched in an intermediate commit of PR 107 (merged as a real
 // merge commit), and the whole pipeline — resolver through flip — closes it.
 func TestAutoFlipIntermediateCommitFlips(t *testing.T) {
+	installStatusgenFixture(t)
 	root, streams := loadAFStreams(t)
 	src := afSource()
 
@@ -786,6 +795,7 @@ func TestAutoFlipIntermediateCommitFlips(t *testing.T) {
 // other PR in the commit window, the brief stays verified as a could-not-check,
 // never a flip.
 func TestAutoFlipRefusesBulkMigrationPR(t *testing.T) {
+	installStatusgenFixture(t)
 	root, streams := loadAFStreams(t)
 	src := afSource()
 
@@ -828,6 +838,7 @@ func TestAutoFlipRefusesBulkMigrationPR(t *testing.T) {
 // trailer, App-approved at its own head. The resolver must skip 108 and flip
 // citing 109, the real delivering PR.
 func TestAutoFlipSkipsMigrationFindsRealDeliveryPR(t *testing.T) {
+	installStatusgenFixture(t)
 	root, streams := loadAFStreams(t)
 	src := afSource()
 
@@ -970,6 +981,7 @@ var realDelivery50 = prShape{Files: []string{"internal/walk/walk.go"}, BriefTrai
 // Walking past it must not change that — the brief must be refused, naming the
 // unapproved PR, never flipped citing the older one.
 func TestAutoFlipWalkPastStillRequiresApproval(t *testing.T) {
+	installStatusgenFixture(t)
 	src := walkSource([]int{150, 151},
 		map[int]prReviewState{
 			150: {Merged: true, HeadSHA: afNoAppSHA, Reviews: []ghReview{
@@ -994,6 +1006,7 @@ func TestAutoFlipWalkPastStillRequiresApproval(t *testing.T) {
 // trailer signal: an unapproved newer PR whose (post-merge editable) body names
 // another brief must still block the flip.
 func TestAutoFlipWalkPastBodyTrailerStillRequiresApproval(t *testing.T) {
+	installStatusgenFixture(t)
 	src := walkSource([]int{152, 151},
 		map[int]prReviewState{
 			152: {Merged: true, HeadSHA: afNoAppSHA},
@@ -1013,6 +1026,7 @@ func TestAutoFlipWalkPastBodyTrailerStillRequiresApproval(t *testing.T) {
 // DIFFERENT brief, App-approved) is the newest candidate. It must be walked
 // past and the older, real delivery PR credited.
 func TestAutoFlipWalksPastMigrationNamingAnotherBrief(t *testing.T) {
+	installStatusgenFixture(t)
 	src := walkSource([]int{160, 161},
 		map[int]prReviewState{
 			160: approvedAt(afBulkMigHeadSHA),
@@ -1028,6 +1042,7 @@ func TestAutoFlipWalksPastMigrationNamingAnotherBrief(t *testing.T) {
 // TestAutoFlipMigrationAloneNeverFlips: with only the #736-shaped migration in
 // the window there is no delivering PR — could-not-check, naming the walk.
 func TestAutoFlipMigrationAloneNeverFlips(t *testing.T) {
+	installStatusgenFixture(t)
 	src := walkSource([]int{160},
 		map[int]prReviewState{160: approvedAt(afBulkMigHeadSHA)},
 		map[int]prShape{160: migration736Shape})
@@ -1043,6 +1058,7 @@ func TestAutoFlipMigrationAloneNeverFlips(t *testing.T) {
 // TestAutoFlipUnattributableIsCouldNotCheck: an approved PR with no Brief:
 // trailer (an Issue:-only PR), or with two, is not credited on a guess.
 func TestAutoFlipUnattributableIsCouldNotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	for name, shape := range map[string]prShape{
 		"no Brief: trailer":   {Files: []string{"internal/x/x.go"}},
 		"two Brief: trailers": {Files: []string{"internal/x/x.go"}, BriefTrailers: 2, Briefs: []string{"af/50", "af/51"}},
@@ -1062,6 +1078,7 @@ func TestAutoFlipUnattributableIsCouldNotCheck(t *testing.T) {
 // TestAutoFlipShapeReadErrorIsCouldNotCheck: a PRShape error (e.g. a truncated
 // file list) is could-not-check, never a walk-past.
 func TestAutoFlipShapeReadErrorIsCouldNotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	src := walkSource([]int{180, 151},
 		map[int]prReviewState{180: approvedAt(afHeadSHA), 151: approvedAt(afRealDeliveryHeadSHA)},
 		map[int]prShape{151: realDelivery50})
@@ -1183,6 +1200,7 @@ func TestReportAutoFlipMisconfigDominates(t *testing.T) {
 // on every candidate AND stays fatal through the report — the fail-closed
 // direction on the roster is preserved.
 func TestAutoFlipNoReviewerMisconfig(t *testing.T) {
+	installStatusgenFixture(t)
 	root, streams := loadAFStreams(t)
 	results, err := autoFlipModel(root, streams, afSource(), reviewerIdentity{}, afNow, false)
 	if err != nil {
@@ -1208,6 +1226,7 @@ func TestAutoFlipNoReviewerMisconfig(t *testing.T) {
 // missing claim. The coverage refusal is also proven to short-circuit BEFORE
 // decideModelFlip's live fetch: PR 101's review state is never even read.
 func TestAutoFlipRefusesUnreleasedCoverage(t *testing.T) {
+	installStatusgenFixture(t)
 	root, streams := loadAFStreams(t)
 
 	// Strip af/01's execution witness (added for the coverage precondition —

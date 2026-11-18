@@ -89,6 +89,7 @@ func loadVGCRoot(t *testing.T) (root, sha string) {
 //
 // regression: #4091
 func TestVerifyIssueBodyCapped(t *testing.T) {
+	installStatusgenFixture(t)
 	root, sha := loadVGCRoot(t)
 	streams, _, err := loadStreams(root)
 	if err != nil {
