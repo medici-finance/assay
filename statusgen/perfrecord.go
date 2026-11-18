@@ -65,7 +65,7 @@ var (
 		"newbrief", "lint", "verify-gate-close", "context",
 	}
 	perfModeFlags = []string{
-		"check", "lint", "lint-audit", "instrument-audit", "record", "verify-issues",
+		"check", "lint", "lint-audit", "instrument-audit", "record", "write-and-record", "verify-issues",
 		"decision-issues", "owed-issues", "drive-issues", "watchdog", "drive-snapshot",
 		"signoff-digest", "scan-issues", "transcribe-scan", "transcribe-verdict",
 		"transcribe-scan-delta", "close-verify", "auto-flip-model", "register-links", "alarms",
