@@ -231,6 +231,7 @@ func TestPointQualityNoticesListsExactlyTheUnbackedRows(t *testing.T) {
 // STATUS.md must render an unbacked done row as `done*` and a backed done
 // row as plain `done`, with the legend present.
 func TestPointQualityRendering(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/quality")); err != nil {
 		t.Fatal(err)
@@ -276,6 +277,7 @@ func TestPointQualityRendering(t *testing.T) {
 // NOTICE is visible (returned in a way a caller can inspect) but --lint's
 // exit code is unaffected by unbacked rows — only hard problems change it.
 func TestPointQualityLintNoticeDoesNotChangeExitCode(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/quality")); err != nil {
 		t.Fatal(err)

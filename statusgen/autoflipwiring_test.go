@@ -143,6 +143,7 @@ func TestModelAutoflipStepPassesCheck(t *testing.T) {
 // stays green unless ASSAY_AUTOFLIP_STUCK_FAILS=true; exit 1 and any other
 // non-zero exit fail the job whatever the switch says.
 func TestModelAutoflipExitPolicyRuns(t *testing.T) {
+	installStatusgenFixture(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("the step runs on a Linux runner")
 	}

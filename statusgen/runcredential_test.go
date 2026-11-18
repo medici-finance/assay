@@ -258,6 +258,7 @@ func rcCredFile(t *testing.T, perms string) string {
 // new variable. No row ever sees the value. A forge-reading row whose
 // credential cannot be had is could-not-run, never run.
 func TestRunCredRowScoped(t *testing.T) {
+	installStatusgenFixture(t)
 	plan := resolveShellPlan()
 	if !plan.ok {
 		t.Skip("no runnable shell: " + plan.reason)
@@ -425,6 +426,7 @@ func rcAdmittedWith(t *testing.T, minted bool) {
 // REST site, passing the decoy straight to newGHClient as an unreviewed
 // caller would, still carries only the run credential, or refuses.
 func TestRunCredPlantedRest(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("minted", func(t *testing.T) {
 		rcAdmittedWith(t, true)
 		if c := newGHClient(os.Getenv("GH_TOKEN")); c.token != rcMinted {
@@ -457,6 +459,7 @@ func TestRunCredPlantedRest(t *testing.T) {
 // the admitted check runs before the caller's credential is honoured. A stub
 // gh is on PATH, so the result never depends on the runner having one.
 func TestRunCredPlantedCli(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, explicit := range []bool{false, true} {
 		launch := func() *exec.Cmd {
 			cmd := exec.Command("gh", "api", "example")
@@ -506,6 +509,7 @@ func TestRunCredPlantedCli(t *testing.T) {
 // endpoint never receives the github.com run credential. Outside an
 // admitted context it is unchanged.
 func TestRunCredDecayToken(t *testing.T) {
+	installStatusgenFixture(t)
 	const dotcom, ghes = "https://api.github.com/graphql", "https://github.example.invalid/api/graphql"
 	t.Run("minted", func(t *testing.T) {
 		rcAdmittedWith(t, true)

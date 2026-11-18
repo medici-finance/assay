@@ -31,6 +31,7 @@ func witnessPerfCommand(ctx context.Context, bin, root string, invocation bool) 
 // while a fixture child must retain TestMain's isolated authority. Removing the
 // explicit child environment makes the first case fail on the planted value.
 func TestWitnessPerfEnv(t *testing.T) {
+	installStatusgenFixture(t)
 	saved := witnessPerfInvocationEnv
 	witnessPerfInvocationEnv = append(append([]string(nil), saved...), "SG_PERF_ENV_PROBE=invocation")
 	t.Cleanup(func() { witnessPerfInvocationEnv = saved })
@@ -57,6 +58,7 @@ func TestWitnessPerfEnv(t *testing.T) {
 // fixture samples separately show that actual successful v2 evaluation ran;
 // they are not a substitute corpus or a relaxation of that budget.
 func TestWitnessPerfMedian(t *testing.T) {
+	installStatusgenFixtureInputs(t, "SG_NEW_BIN", "SG_PERF_ROOT")
 	old := oldStatusgenBin(t)
 	candidate := os.Getenv("SG_NEW_BIN")
 	if candidate == "" {

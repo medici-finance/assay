@@ -60,6 +60,7 @@ func rosterlessEnv(home string) []string {
 //
 // regression: #4978
 func TestGitLabRosterUnsetClaim(t *testing.T) {
+	installStatusgenFixture(t)
 	requireJobTools(t)
 	home := t.TempDir()
 	env := rosterlessEnv(home)

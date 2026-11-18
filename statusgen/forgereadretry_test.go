@@ -126,6 +126,7 @@ func TestForgeReadBudgetSharedAcrossRequests(t *testing.T) {
 }
 
 func TestForgeReadCLI(t *testing.T) {
+	installStatusgenFixture(t)
 	if os.PathSeparator == '\\' {
 		t.Skip("fixture shell is POSIX-only")
 	}

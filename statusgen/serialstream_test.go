@@ -40,6 +40,7 @@ func serialRows(section, stream string) int {
 }
 
 func TestSerializedStreamEndToEnd(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("declared cap binds: two eligible briefs, one offered", func(t *testing.T) {
 		root := serialRepoRoot(t)
 		stubRemoteBranches(t, nil, nil) // remote READ, nothing claimed

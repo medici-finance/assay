@@ -9,6 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
+	"sort"
 	"strings"
 	"testing"
 
@@ -25,7 +27,11 @@ func installStatusgenFixture(t *testing.T, overlays ...testenv.Options) *testenv
 	opts := testenv.Options{Tools: map[string]string{}, Vars: map[string]string{
 		"GOPROXY": "off", "GOSUMDB": "off", "GOTOOLCHAIN": "local", "GOENV": "off",
 	}}
-	for _, name := range []string{"git", "go", "sh", "bash", "cat", "grep", "touch", "env", "tr", "sleep"} {
+	toolNames := []string{"git", "go", "sh", "bash", "cat", "grep", "touch", "env", "tr", "sleep", "printenv", "sed", "awk", "wc", "mkdir", "mktemp", "rm", "date", "basename", "ls", "cut", "tee", "curl", "perl", "python3", "mkfifo", "jq", "sort", "mv", "cp"}
+	if runtime.GOOS == "linux" {
+		toolNames = append(toolNames, "stat", "unshare", "mount", "timeout")
+	}
+	for _, name := range toolNames {
 		path, err := exec.LookPath(name)
 		if err != nil {
 			if name == "git" || name == "go" {
@@ -45,6 +51,11 @@ func installStatusgenFixture(t *testing.T, overlays ...testenv.Options) *testenv
 		if value := os.Getenv(key); value != "" {
 			opts.Vars[key] = value
 		}
+	}
+	// Keep the existing missing-tool CI assertion; isolation must not turn
+	// a required CI execution into a developer-only skip.
+	if os.Getenv("CI") != "" {
+		opts.Vars["CI"] = "true"
 	}
 	for _, overlay := range overlays {
 		for name, path := range overlay.Tools {
@@ -67,6 +78,19 @@ func installStatusgenFixture(t *testing.T, overlays ...testenv.Options) *testenv
 	}
 	scanReloadConfig()
 	return f
+}
+
+// installStatusgenFixtureInputs declares test-runner inputs at the fixture
+// owner. The named controls survive setup; unrelated caller variables do not.
+func installStatusgenFixtureInputs(t *testing.T, keys ...string) *testenv.Fixture {
+	t.Helper()
+	vars := map[string]string{}
+	for _, key := range keys {
+		if value := os.Getenv(key); value != "" {
+			vars[key] = value
+		}
+	}
+	return installStatusgenFixture(t, testenv.Options{Vars: vars})
 }
 
 // The outer process supplies the same injected Git profile that exposed the
@@ -220,6 +244,12 @@ func TestFixtureSiblingParentIsolation08(t *testing.T) {
 	if controlErr == nil || !bytes.Contains(controlOut, []byte("inherited row marker prevented fixture GraphQL")) {
 		t.Fatalf("inherited control did not expose the fixture defect: %v\n%s", controlErr, controlOut)
 	}
+	strict := exec.Command(self, "-test.count=1", "-test.v", "-test.run=^TestFixtureCIControl08$")
+	strict.Env = f.Env("CI=true", "STATUSGEN08_CI_CONTROL=1")
+	strictOut, strictErr := strict.CombinedOutput()
+	if strictErr == nil || !bytes.Contains(strictOut, []byte("under CI this test must run, not skip")) || bytes.Contains(strictOut, []byte("--- SKIP: TestFixtureCIControl08")) {
+		t.Fatalf("fixture setup lost CI missing-tool strictness: %v\n%s", strictErr, strictOut)
+	}
 	if _, err := gitcore.OriginAuthority(repo); err != nil {
 		t.Fatalf("owned authority control: %v", err)
 	}
@@ -284,4 +314,32 @@ func fixtureSiblingTree08(t *testing.T, root string) map[string]string {
 		t.Fatal(err)
 	}
 	return result
+}
+
+// This probe is executed as an expected failure by the parent regression.
+func TestFixtureCIControl08(t *testing.T) {
+	if os.Getenv("STATUSGEN08_CI_CONTROL") != "1" {
+		t.Skip("CI failure probe is launched only by the parent regression")
+	}
+	installStatusgenFixture(t)
+	requireTool(t, "fixture-tool-intentionally-absent")
+}
+
+// A module run creates hundreds of separate fixture lifetimes. Unix's deleted
+// environment slots must not make later real bounded-history tests allocate for
+// every past lifetime. Keep the existing export caps and allocation thresholds.
+func TestFixtureLifetimesKeepExportBounded08(t *testing.T) {
+	before := os.Environ()
+	for i := 0; i < 1000; i++ {
+		t.Run(fmt.Sprintf("lifetime-%d", i), func(t *testing.T) { installStatusgenFixture(t) })
+	}
+	after := os.Environ()
+	// Compare logical presence and values; ordering is not part of the process
+	// environment contract. The caller's hostile inputs still belong to it.
+	sort.Strings(before)
+	sort.Strings(after)
+	if !reflect.DeepEqual(before, after) {
+		t.Fatal("fixture lifetimes changed the caller environment")
+	}
+	t.Run("actual-export-cap", TestExportCapBeforeRead)
 }

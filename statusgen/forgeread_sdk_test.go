@@ -332,6 +332,7 @@ func TestReaderSDKUnavailable(t *testing.T) {
 
 // regression: #2395
 func TestReaderSDKAuthorityBoundary(t *testing.T) {
+	installStatusgenFixture(t)
 	// 1. No ambient fallback: with a token in the environment, a forge API address in the
 	// environment and a `gh` on PATH, a run where the verb cannot run reaches NOTHING — the
 	// answer is every repo unavailable, the `gh` stub is never executed and the API is never hit.
@@ -533,6 +534,7 @@ func buildConsumer(t *testing.T, proxy string) (string, error) {
 
 // regression: #2395
 func TestReaderSDKExternalConsumer(t *testing.T) {
+	installStatusgenFixture(t)
 	if testing.Short() {
 		t.Skip("builds modules")
 	}

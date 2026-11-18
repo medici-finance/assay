@@ -14,6 +14,7 @@ import (
 // against the brief template and witness fixtures, independently of protected
 // acceptance records elsewhere in the repository.
 func TestBriefInputsLint(t *testing.T) {
+	installStatusgenFixture(t)
 	template, err := os.ReadFile("../docs/brief-template.md")
 	if err != nil {
 		t.Fatal(err)

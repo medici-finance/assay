@@ -93,6 +93,7 @@ func scopedDriveRunFixture(t *testing.T) string {
 // (the drive no longer resolves: could-not-check NOTICE).
 // regression: #2861
 func TestRunDriveLintScopeArms(t *testing.T) {
+	installStatusgenFixture(t)
 	pinNow(t, driveTestNow)
 	stubRemoteBranches(t, nil, nil)
 	stubMergedClosedBranches(t, nil, nil)

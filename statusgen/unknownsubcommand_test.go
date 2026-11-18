@@ -23,6 +23,7 @@ import (
 // The `run` helper the other tests use never sees the unknown token — the guard
 // sits in main() ahead of it.
 func TestUnknownSubcommandFailsClosed(t *testing.T) {
+	installStatusgenFixture(t)
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go toolchain unavailable")
 	}

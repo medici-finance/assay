@@ -88,6 +88,7 @@ func TestWitnessLiteralPathBound(t *testing.T) {
 // record.
 // regression: #2026
 func TestWitnessDigestVerb(t *testing.T) {
+	installStatusgenFixture(t)
 	f := newGitV2Fixture(t).build()
 	bin := buildStatusgenBinary(t)
 	run := func(args ...string) (witnessDigestOut, string) {

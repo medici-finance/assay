@@ -71,6 +71,7 @@ func TestBoardProvenanceLine(t *testing.T) {
 // row is a blocking board-source red (see offboard_test.go), the primary red
 // path the stamp guards.
 func TestBoardProvenanceReachesStderrOnRedBoard(t *testing.T) {
+	installStatusgenFixture(t)
 	saved := statusgenVersion
 	t.Cleanup(func() { statusgenVersion = saved })
 	statusgenVersion = "dev"

@@ -521,6 +521,7 @@ func writeTreeFiles(t *testing.T, root string, files map[string]string) {
 // network, filesystem and credential dependencies, directly and through any
 // package it pulls in.
 func TestEvaluationPureDependencyBoundary(t *testing.T) {
+	installStatusgenFixture(t)
 	// The real library: nothing outside the allowlist, and no package of this
 	// repository other than itself.
 	pkgs := goListDeps(t, ".", "./evaluation")
@@ -845,6 +846,7 @@ func moduleZip(t *testing.T, root, modulePath, version string) []byte {
 // relative replace and no network: a local file proxy is the only source.
 // regression: #2692 — no ambient module cache is needed to seed that proxy.
 func TestEvaluationExternalConsumer(t *testing.T) {
+	installStatusgenFixture(t)
 	const modulePath = "github.com/medici-finance/assay/statusgen"
 	const version = "v0.0.0-20261011000000-000000000000"
 	// An explicitly empty parent cache also catches another fixture helper

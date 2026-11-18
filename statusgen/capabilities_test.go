@@ -15,6 +15,7 @@ import (
 
 // regression: #4531
 func TestStatusgenCapsTruth(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := filepath.Join(t.TempDir(), "statusgen")
 	cmd := exec.Command("go", "build", "-o", bin, ".")
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOTOOLCHAIN=local")

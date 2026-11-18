@@ -331,6 +331,7 @@ func wantCell(t *testing.T, cells map[string]BriefCell, id, want, why string) Br
 // none reachable while a fold map is left nil by the production constructor.
 // regression: #4546
 func TestReconcileTokenFileReachesNestedReads(t *testing.T) {
+	installStatusgenFixture(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX-only: the stub gh is a shell script")
 	}

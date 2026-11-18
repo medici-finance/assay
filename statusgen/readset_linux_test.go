@@ -299,7 +299,7 @@ func TestVerifyrunRecordsReadSet(t *testing.T) {
 // regression: #2026
 // TestVerifyrunUntraceableReadOmitsReadSet — build-less-brittle/15 row 16.
 func TestVerifyrunUntraceableReadOmitsReadSet(t *testing.T) {
-	installStatusgenFixture(t)
+	installStatusgenFixtureInputs(t, "BLB15_MOUNTNS")
 	needRecorder(t)
 	if os.Getenv("BLB15_MOUNTNS") != "" {
 		// The re-run inside the private mount namespace: the planted cases only.

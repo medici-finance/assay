@@ -373,6 +373,7 @@ func TestStreamViewNegative(t *testing.T) {
 // with the defect corrected: it must lint clean, so the failure is the
 // mission's and nothing else in the minimal root.
 func TestStreamViewLintRun(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := svFixtures(t)
 	raw, err := os.ReadFile(filepath.Join(fx, "negative", "unknown-key", "README.md"))
 	if err != nil {

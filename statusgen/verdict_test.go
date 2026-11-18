@@ -45,6 +45,7 @@ func finalStdoutLine(t *testing.T, stdout string) string {
 }
 
 func TestLintVerdictLine(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("pass", func(t *testing.T) {
 		root := verdictRepo(t)
 		var code int
@@ -106,6 +107,7 @@ func TestLintVerdictLine(t *testing.T) {
 }
 
 func TestCheckVerdictLine(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("pass", func(t *testing.T) {
 		root := verdictRepo(t)
 		if code := run(root, "write", nil, nil, ""); code != 0 {
@@ -144,6 +146,7 @@ func TestCheckVerdictLine(t *testing.T) {
 // Write and record modes are NOT part of the verdict contract — no LINT:/CHECK:
 // line may leak into their stdout.
 func TestNoVerdictOutsideGateModes(t *testing.T) {
+	installStatusgenFixture(t)
 	root := verdictRepo(t)
 	stdout := captureStdout(t, func() {
 		if code := run(root, "write", nil, nil, ""); code != 0 {
@@ -161,6 +164,7 @@ func TestNoVerdictOutsideGateModes(t *testing.T) {
 // codes with and without a verdict-bearing mode agree (lint fail ⇔ 1,
 // lint pass ⇔ 0). Guards against the contract ever becoming a gate change.
 func TestVerdictMatchesExitCode(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, broken := range []bool{false, true} {
 		root := verdictRepo(t)
 		if broken {

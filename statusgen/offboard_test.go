@@ -48,6 +48,7 @@ func goodrepo(t *testing.T) string {
 // off-board, this row would land in a committed STATUS.md and in the
 // append-only history.
 func TestPhantomBriefRowStillBlocks(t *testing.T) {
+	installStatusgenFixture(t)
 	root := goodrepo(t)
 	readme := filepath.Join(root, "docs/streams/alpha/README.md")
 	raw, err := os.ReadFile(readme)
@@ -87,6 +88,7 @@ func TestPhantomBriefRowStillBlocks(t *testing.T) {
 }
 
 func TestDeadLinkAnywhereStillBlocks(t *testing.T) {
+	installStatusgenFixture(t)
 	// Both halves of docFiles(root): a board source, and outbound docs. Both
 	// block — the partition is per check-input, and this check's inputs are a
 	// superset of the board's sources, so it is blocking wherever it fires.
@@ -118,6 +120,7 @@ func TestDeadLinkAnywhereStillBlocks(t *testing.T) {
 // --- (3) register-ref problems block --------------------------------------
 
 func TestRegisterRefProblemStillBlocks(t *testing.T) {
+	installStatusgenFixture(t)
 	root := goodrepo(t)
 	// The target must EXIST, or the dead-link lint fires too and the case stops
 	// isolating registerRefProblems — this is the kind-isolation the reviewer
@@ -162,6 +165,7 @@ func TestRegisterRefProblemStillBlocks(t *testing.T) {
 // --- (4) board-source problems block, as before ---------------------------
 
 func TestBlockingProblemStillSuppressesGeneration(t *testing.T) {
+	installStatusgenFixture(t)
 	root := goodrepo(t)
 	readme := filepath.Join(root, "docs/streams/alpha/README.md")
 	b, _ := os.ReadFile(readme)
