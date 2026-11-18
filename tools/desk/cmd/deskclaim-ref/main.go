@@ -100,6 +100,10 @@ USAGE:
 <id> is the claim key: <repo>--<stream>--<NN> or <repo>--issue-<NN>. The <repo> prefix is
 MANDATORY — a bare stream name cross-locks another repo's stream.
 
+A value flag takes --flag value or --flag=value. A missing or empty value, or one that is
+itself a --flag, is refused (exit 5) and never consumed. --branch - is the placeholder a
+branchless (detached review/verify) claim records.
+
 The forge credential is read from --token-file <0600 file> when given, else GH_TOKEN /
 GITHUB_TOKEN / GITLAB_TOKEN. The forge (github/gitlab) resolves from ASSAY_REPO_FORGES or the
 origin remote host; every forge call is an in-process git-smart-HTTP request (no gh/glab CLI).
