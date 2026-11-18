@@ -50,6 +50,7 @@ func TestFixtureGitQuiet(t *testing.T) {
 func TestQuietEnvPreserved(t *testing.T) {
 	want := []string{"PATH=bin", "GIT_TEMPLATE_DIR=owned-template", "GIT_AUTHOR_NAME=fixture", "GIT_AUTHOR_DATE=stamp"}
 	got := fixtureGitEnv(append(append([]string{}, want...), "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=maintenance.auto", "GIT_CONFIG_VALUE_0=true", "GIT_NO_REPLACE_OBJECTS=1"))
+	want = append(want, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("fixture env = %q, want %q", got, want)
 	}

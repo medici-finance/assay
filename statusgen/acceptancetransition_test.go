@@ -125,6 +125,7 @@ func (f transitionFixture) evidence(t *testing.T, mutate func(string) string) {
 
 // regression: #3467
 func TestAcceptanceTransition(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []string{"approved", "approved-merge", "approved-scp", "approved-ssh", "approved-crlf", "origin-gitlab", "origin-ghe", "origin-ssh-port", "issue-marker-missing", "issue-marker-other", "tampered-current", "changed-expect", "offline", "absent", "bot", "stale", "edited", "other-brief", "wrong-base", "wrong-original", "wrong-amendment", "missing-row", "old-witness", "supplement-credit", "original-launder", "missing-provenance", "duplicate", "fenced", "quoted", "lost-history"}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -270,6 +271,7 @@ func TestAcceptanceTransition(t *testing.T) {
 
 // regression: #3467
 func TestTransitionExecution(t *testing.T) {
+	installStatusgenFixture(t)
 	runTransitionExecution(t, transitionFixtureAt(t))
 }
 
@@ -324,6 +326,7 @@ func runTransitionExecution(t *testing.T, f transitionFixture) {
 
 // regression: #3467
 func TestTransitionCISkip(t *testing.T) {
+	installStatusgenFixture(t)
 	f := transitionFixtureAt(t, false, true)
 	vfGit(t, f.root, vfMailVerifier, "config", "user.name", vfRunner)
 	vfGit(t, f.root, vfMailVerifier, "config", "user.email", vfMailVerifier)
@@ -357,6 +360,7 @@ func TestTransitionCISkip(t *testing.T) {
 
 // regression: #4596
 func TestTransitionRootPaths(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"dot", "nested", "symlink"} {
 		t.Run(mode, func(t *testing.T) {
 			f := transitionFixtureAt(t)
@@ -391,6 +395,7 @@ func TestTransitionRootPaths(t *testing.T) {
 
 // regression: #4823
 func TestSnapshotApprovalContext(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"approved", "offline", "absent", "bot", "edited", "foreign", "missing", "other-repo", "worktree-other"} {
 		t.Run(mode, func(t *testing.T) {
 			f := transitionFixtureAt(t)
@@ -458,6 +463,7 @@ func TestSnapshotApprovalContext(t *testing.T) {
 
 // regression: #4823 C1 C2
 func TestSnapshotOriginFailures(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"malformed", "push-only", "multiple", "scp-ambiguous", "scp-double-at", "helper"} {
 		t.Run(mode, func(t *testing.T) {
 			f := transitionFixtureAt(t)
@@ -510,6 +516,7 @@ func TestSnapshotOriginFailures(t *testing.T) {
 
 // regression: #4823 C1
 func TestSnapshotInjectedOrigin(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"count", "parameters"} {
 		t.Run(mode, func(t *testing.T) {
 			f := transitionFixtureAt(t)
@@ -555,6 +562,7 @@ func TestSnapshotInjectedOrigin(t *testing.T) {
 
 // regression: #4823 C1
 func TestSnapshotRewriteFallback(t *testing.T) {
+	installStatusgenFixture(t)
 	f := transitionFixtureAt(t)
 	f.evidence(t, nil)
 	vfGit(t, f.root, vfMailHuman, "config", "--add", "remote.origin.url", "https://github.com/foreign/project.git")
@@ -594,6 +602,7 @@ func TestSnapshotRewriteFallback(t *testing.T) {
 
 // regression: #4823 C1 C2 C3
 func TestAuthorityNeutralIncludes(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"matching-ci", "nonmatch-missing", "linked", "worktree-glob", "case-insensitive", "nested", "foreign", "rewrite", "unreadable", "cycle", "depth", "globstar", "approx-foreign"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
@@ -724,6 +733,7 @@ func TestAuthorityNeutralIncludes(t *testing.T) {
 
 // regression: #4823 C3 C4 C5
 func TestGlobalIncludeApproval(t *testing.T) {
+	installStatusgenFixture(t)
 	const foreign = "[remote \"origin\"]\n url = https://github.com/foreign/project.git\n"
 	for _, tc := range []struct{ name, global, content string }{
 		{"home-slash", "[includeIf \"gitdir:~/.assay-fixture-absent/\"]\n path = INC\n", foreign},
@@ -824,6 +834,7 @@ func TestGlobalIncludeApproval(t *testing.T) {
 // authority read, so the closure reaches a verdict. The reader stays strict:
 // an include carrying remote keys in the clone's own config is still refused.
 func TestVerifierLaunchEnv(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, tc := range []struct {
 		name       string
 		controlled bool

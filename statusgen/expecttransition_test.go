@@ -43,6 +43,7 @@ func setExpectApproval(t *testing.T, f *transitionFixture, rows string) {
 // regression: #4505. The actual shared plan must retain original assertions by
 // default and apply only the precise original-row columns approved by the human.
 func TestExpectOnlyTransition(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, name := range []string{"delivery-expect", "amendment-expect", "with-command", "command-only-approval", "missing-command", "supplemental-id", "duplicate-id", "reordered-id", "offline"} {
 		t.Run(name, func(t *testing.T) {
 			command := name != "delivery-expect" && name != "amendment-expect"
@@ -102,6 +103,7 @@ func TestExpectOnlyTransition(t *testing.T) {
 // regression: #4505. Execute the production route and retain its own generated
 // witnesses; a supplied PASS or hand-written acceptance-boolean is never used.
 func TestExpectTransitionExecution(t *testing.T) {
+	installStatusgenFixture(t)
 	f := expectTransitionFixture(t, false, false)
 	vfGit(t, f.root, vfMailVerifier, "config", "user.name", vfRunner)
 	vfGit(t, f.root, vfMailVerifier, "config", "user.email", vfMailVerifier)
@@ -147,6 +149,7 @@ func TestExpectTransitionExecution(t *testing.T) {
 // regression: #4505. An approval of an Expect cannot hide another changed
 // column, and author-added rows stay outside the transition's authority.
 func TestExpectTransitionRefusals(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, name := range []string{"hidden-command", "supplemental-expect", "changed-class"} {
 		t.Run(name, func(t *testing.T) {
 			f := contextFixture(t, nil, func(stage, body string) string {
@@ -184,6 +187,7 @@ func TestExpectTransitionRefusals(t *testing.T) {
 // regression: #4505. A command-only ruling cannot silently acquire approval of
 // an earlier delivered Expect; the runner still tests the original assertion.
 func TestExpectScopeExecution(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, name := range []string{"command-only", "protected-record"} {
 		t.Run(name, func(t *testing.T) {
 			f := expectTransitionFixture(t, true, false)

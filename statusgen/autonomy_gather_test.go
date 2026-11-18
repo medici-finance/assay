@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/gitcore/testenv"
 )
 
 // autonomyGHFixture fakes gh for autonomyGates. list is the `pr list` output
@@ -57,7 +59,10 @@ esac
 	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	installStatusgenFixture(t, testenv.Options{
+		Tools: map[string]string{"gh": filepath.Join(dir, "gh")},
+		Vars:  map[string]string{"GH_TOKEN": "fixture-autonomy-credential"},
+	})
 	t.Setenv("AUTONOMY_CALLS", log)
 	t.Setenv("AUTONOMY_LIST", list)
 	t.Setenv("AUTONOMY_ROLLUP", rollup)
