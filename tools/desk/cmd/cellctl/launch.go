@@ -200,6 +200,9 @@ func (c *Cell) deskLaunch(role, harness, model, modelDisp, session, wt, cfg, pro
 	// session. Re-locking an already-locked tree is a no-op here, not a failure.
 	_ = c.git(c.Repo, "worktree", "lock", "--reason", "cellctl "+c.Name+"/"+role+" live session", wt)
 	fmt.Printf("[worktree] %s @ %s (locked)\n", wt, short8(sha))
+	if deskRoots != "" && c.wantsSessionRoots(role) {
+		launchStepV("launch-session-roots", func() { deskRoots = c.prepareSessionRoots(deskRoots) })
+	}
 
 	if c.Deskd == "1" && !c.deskdUp() {
 		fmt.Fprintf(os.Stderr, "NOTICE: cell deskd is NOT up on %s — in your shell: CELL_ATTENDED=1 cellctl deskd %s\n", c.DeskdAddr, c.Name)

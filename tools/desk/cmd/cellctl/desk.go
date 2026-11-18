@@ -371,6 +371,10 @@ func cmdDesk(c *Cell, role string, o deskInputs) {
 		fmt.Printf("[dry-run] cell=%s kind=%s role=%s model=%s effort=%s provider=%s harness=%s cfg=%s wt=%s session=%s desk_roots=%s shims→HOME=%s\n",
 			c.Name, kindShown, role, modelDisp, effortDisp, orDefault(providerDisp, "anthropic"), harness, cfg, wt, session,
 			orDefault(deskRoots, "unset"), c.Home)
+		if deskRoots != "" && c.wantsSessionRoots(role) {
+			fmt.Printf("[dry-run] verify roots: DESK_ROOTS=%s (per-session trees at each root's origin/main; %s=1 reads the shared checkouts)\n",
+				c.sessionRootsPlan(deskRoots), verifyRootsOptOut)
+		}
 		// When the repair-admission opt-in is on, show it composed into the launch — the exact
 		// KEY=VALUE the child process (and, through it, deskdispatch) will carry. Off/unset is
 		// absent here, matching the composed environment (deskLaunch omits it).

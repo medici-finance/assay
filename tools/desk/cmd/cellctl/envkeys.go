@@ -147,6 +147,8 @@ func buildEnvKeys() []envKey {
 			desc: "Time one tick may run, a duration from 61s to 24h. Default: 20m once a cadence is set; without a cadence a launch refuses it."},
 		{key: "CELL_FF_ROOTS", class: envMachine, group: envGroupCadence, def: "0",
 			desc: "1 fast-forwards, at desk boot, every stream root that can move without a decision."},
+		{key: "CELL_VERIFY_SHARED_ROOTS", class: envMachine, group: envGroupCadence, def: "0",
+			desc: "1 gives a house verify-desk window the shared stream roots; otherwise it reads per-session trees kept at each root's origin/main."},
 		{key: "CELLCTL_DESKWT", class: envMachine, group: envGroupCadence, def: deskwtDefault,
 			desc: "1 lets an installed deskwt name each role worktree; any other value uses cellctl's own worktree path."},
 		{key: "CELLCTL_GENERATED_FILES", class: envMachine, group: envGroupCadence, def: "STATUS.md docs/streams/FINDINGS.md",
