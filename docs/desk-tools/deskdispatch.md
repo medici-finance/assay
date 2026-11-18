@@ -268,8 +268,13 @@ through the alias registry (graph-repos.yaml, schema graph-repos-v1) of the stre
 --claim-root (else --root), and nothing else. Before
 anything durable: no registry, or an alias reserved but unpublished there = exit 6; an alias the
 registry does not define = exit 5 naming it; a resolved repo that is not --repo or not --root's own
-origin = HARD FAIL exit 5 naming both repos — no claim, no worktree. The resolved repo is the claim
-repo and the token's repo; a cross-repo claim key carries the TRACKING alias; the prompt tells the
+origin = HARD FAIL exit 5 naming both repos and the `--repo` to re-run with — no claim, no worktree.
+The resolved repo is the claim repo and the token's repo for a worker or review dispatch; a
+cross-repo claim key carries the TRACKING alias. A cross-repository VERIFIER dispatch has one shape,
+`--repo <deliverable> --root <deliverable checkout> --claim-root <tracking checkout> --brief <abs
+tracking brief>` (the line `verifyloop plan` prints for the item): its Verify rows run against the
+deliverable, and its claim, its release, its Evidence and its outcome record all land in the
+TRACKING repo (`--claim-root`'s origin), where the brief lives (#5999). The prompt tells the
 worker to run `deskpr create --root <tracking checkout>` so its Brief: trailer resolves there.
 Under --cross-repo (a brief homed in one repo, its PR opened in --repo) the prompt instead names the
 exact `Cross-repo-brief: <alias>:<stream>/<NN>` line and plain `deskpr create` (fresh) or
