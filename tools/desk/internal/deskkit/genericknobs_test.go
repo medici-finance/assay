@@ -242,3 +242,32 @@ func TestNewKnobsAreRecognisedKeys(t *testing.T) {
 		t.Fatalf("a roster carrying the three new keys was refused: %v", p)
 	}
 }
+
+// ASSAY_HOME_REPO is parsed into Config.HomeRepo, the repository a bare `issue-N.md` placeholder
+// belongs to. A malformed value leaves it empty (no repository owns the bare name), is recorded
+// INVALID, and never refuses the roster.
+// regression: #7023
+func TestHomeRepoParse(t *testing.T) {
+	for value, want := range map[string]string{
+		"owner/repo":      "owner/repo",
+		"  owner/repo  ":  "owner/repo",
+		"owner":           "",
+		"one/two/three":   "",
+		"one/alpha,two/b": "",
+		"/alpha":          "",
+	} {
+		base := goldenRoster()
+		base[EnvHomeRepo] = value
+		withRoster(t, base)
+		c := EffectiveConfig()
+		if len(c.Problems) != 0 || !c.Configured() {
+			t.Fatalf("%q refused the roster: %v", value, c.Problems)
+		}
+		if c.HomeRepo != want {
+			t.Fatalf("HomeRepo for %q = %q, want %q", value, c.HomeRepo, want)
+		}
+		if st := c.Ext["home-repo"].Status; (want == "") != (st == ExtInvalid) {
+			t.Fatalf("home-repo status for %q = %v", value, st)
+		}
+	}
+}

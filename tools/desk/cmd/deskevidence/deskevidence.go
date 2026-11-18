@@ -18,7 +18,14 @@ import (
 
 const (
 	toolName = "deskevidence"
-	maxBytes = 256 * 1024 // generous but bounded; brief files (and a single outcome record) are ~a few KB
+	maxBytes = 256 * 1024 // bound on a single outcome record
+
+	// maxEvidenceFileBytes bounds the --evidence-file a landing commits: a brief file that
+	// accumulates one Evidence pass after another. Large briefs reached 262144 bytes and
+	// completed verifications (one a clean PASS) could not land (#6861). The bound is 1 MiB,
+	// the largest file the forge Contents API returns inline, so the landing can still read
+	// the branch copy it replaces. Witness bytes are never trimmed to fit.
+	maxEvidenceFileBytes = 1024 * 1024
 )
 
 // legacySidecarGlob names the RETIRED shared verify-outcomes log and any rotation shard of it,
@@ -469,8 +476,8 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// unbounded fleet-wide growth was the reason it needed one, and the class guard above now
 	// refuses writing that shape at all, so no evidence-file/brief-path write ever reaches
 	// this check for it. The general cap applies uniformly.
-	if len(localContent) > maxBytes {
-		return deskkit.Refused(fmt.Sprintf("refused: evidence file exceeds %d bytes (%d)", maxBytes, len(localContent)))
+	if len(localContent) > maxEvidenceFileBytes {
+		return deskkit.Refused(fmt.Sprintf("refused: evidence file exceeds %d bytes (%d)", maxEvidenceFileBytes, len(localContent)))
 	}
 
 	// docs/streams/ scoping guard (deskevidence: refuse a landing that adds a statusgen

@@ -745,7 +745,11 @@ func scanLoadConfig(class scanToolClass) scanConfig {
 	return cfg
 }
 
-func scanReadRawConfig(class scanToolClass) (map[string]string, string, []string) {
+// scanRosterReadKeys is every key statusgen's own configuration reads: the
+// trust roster, the repository set and the product keys. The CI class takes
+// exactly these from the environment, and the container lane's roster copy
+// (rostercopy.go) carries exactly these from the file.
+func scanRosterReadKeys() []string {
 	keys := []string{
 		scanEnvBlessLogin, scanEnvTrustedLogins, scanEnvTrustedBotSlugs,
 		scanEnvAllowedRepos, scanEnvHumanLoginMap, scanEnvFormerHumanLoginMap,
@@ -754,7 +758,11 @@ func scanReadRawConfig(class scanToolClass) (map[string]string, string, []string
 		scanEnvAuthorizedAuthors, scanEnvStreamCap, scanEnvGitLabDisplayNames,
 		scanEnvCriticalStampAuthorities, scanEnvAssertedHumans,
 	}
-	keys = append(keys, scanProductConfigKeys()...)
+	return append(keys, scanProductConfigKeys()...)
+}
+
+func scanReadRawConfig(class scanToolClass) (map[string]string, string, []string) {
+	keys := scanRosterReadKeys()
 	fromEnv := func() map[string]string {
 		m := map[string]string{}
 		for _, k := range keys {

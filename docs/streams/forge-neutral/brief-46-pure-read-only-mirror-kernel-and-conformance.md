@@ -120,6 +120,56 @@ Named tests below are deliverables, not claimed existing results. Exact PASS out
 
 <!-- Independent verifier records exact source/brief, commands, named PASS and production negative controls. No implementation or acceptance evidence is asserted at authoring. -->
 
+### Independent verification 2026-11-18 — rows 1–6, network-off container bracket
+
+Non-implementer verifier run against merged main `3a9ae0dec7fb7a9b5b889e64dab0d2412f908fea`, rows 1–6 (`check:ci`) executed in the release-pinned verify-runner image under `--network none` inside a closed admission bracket. Witness bytes as produced:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorKernelAdmission$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorKernelAdmission ' "$o")` | pass exit=0 sandbox=container-netns | sha256:2a3423f117c0 | 2026-11-18 | assay-verifier-app[bot] @ 3a9ae0dec7fb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorKernelCoverage$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorKernelCoverage ' "$o")` | pass exit=0 sandbox=container-netns | sha256:f3bc15921a31 | 2026-11-18 | assay-verifier-app[bot] @ 3a9ae0dec7fb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorKernelScanPlanning$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorKernelScanPlanning ' "$o")` | pass exit=0 sandbox=container-netns | sha256:89372f1cea3c | 2026-11-18 | assay-verifier-app[bot] @ 3a9ae0dec7fb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorStoreConformance$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorStoreConformance ' "$o")` | pass exit=0 sandbox=container-netns | sha256:11c6540e25d7 | 2026-11-18 | assay-verifier-app[bot] @ 3a9ae0dec7fb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `(cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorKernelFlow$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorKernelFlow ' "$o" && GOWORK=off go test -count=1 ./...)` | pass exit=0 sandbox=container-netns | sha256:0e6db43fdee9 | 2026-11-18 | assay-verifier-app[bot] @ 3a9ae0dec7fb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `GOWORK=off GOPROXY=off GOTOOLCHAIN=local go run tools/forge-import-check/check_env_imports.go forgeread/mirror && (cd forgeread && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestMirrorKernelBoundaries$' ./mirror/... > "$o" && grep -F -- '--- PASS: TestMirrorKernelBoundaries ' "$o")` | pass exit=0 sandbox=container-netns | sha256:b4f25c4affd5 | 2026-11-18 | assay-verifier-app[bot] @ 3a9ae0dec7fb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:f5adc530563f3ac4ef06dbff6db23b96609d310fe9d6e583b49b785858ebf5ce
+Container-Image: sha256:c67baa7a3c8ba3d514128f31340489146525a50c29ebb641a68899c650d354a1
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6909 run=d08899e82f9361e4f72027b369bcb43db334017d840156f155302d57abe24cdb source=3a9ae0dec7fb7a9b5b889e64dab0d2412f908fea brief=docs/streams/forge-neutral/brief-46-pure-read-only-mirror-kernel-and-conformance.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=d08899e82f9361e4f72027b369bcb43db334017d840156f155302d57abe24cdb source=3a9ae0dec7fb7a9b5b889e64dab0d2412f908fea tree=sha256:f5adc530563f3ac4ef06dbff6db23b96609d310fe9d6e583b49b785858ebf5ce witness=sha256:9adfecfe4f0d73e69c3b8774328a5729f13921a3aee59570a411030c4ac9387d opened=2026-11-18T15:19:42Z closed=2026-11-18T15:20:59Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 7 | `statusgen --root . --consumers --brief forge-neutral/46 --delivery a07f6cc85ad145a5a5b634f2f2a046974f44cf44 --base 2a796ec43b59f4fa4bf97c5ebfedac869beffb00` | pass exit=0 | sha256:0f7eb3915c21 | 2026-11-18 | assay-verifier-app[bot] @ 3a9ae0dec7fb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6909 run=d08899e82f9361e4f72027b369bcb43db334017d840156f155302d57abe24cdb source=3a9ae0dec7fb7a9b5b889e64dab0d2412f908fea brief=docs/streams/forge-neutral/brief-46-pure-read-only-mirror-kernel-and-conformance.md model=claude-opus-5-5 tier=strong
+
+Row 7 (class `check`, not `check:ci`) ran on the host with installed statusgen v1.0.87, because it reads git history (delivery `a07f6cc85ad1`, the merge of #5368, and its first parent `2a796ec43b59`). Its primary output: 7 CORROBORATED, 0 disproved, 1 UNCHECKED (`statusgen/: out-of-scope`), with the standing PRODUCER-DELIVERY COULD-NOT-CHECK notice. The Expect cell leaves the unchecked exclusion to the reviewer. A host observation (`git diff --stat 2a796ec43b59..a07f6cc85ad1`) shows 15 changed files and no path under statusgen/.
+
+Rows 1–6 primary output is recorded by digest in the bracketed witness above. All six exited 0 inside the container, and each grep for its named `--- PASS:` line succeeded. Row 5 includes the full `GOWORK=off go test -count=1 ./...` over the forgeread module. Merged main has changed forgeread/mirror since the delivery (later forge-neutral contributions). These rows verify the current merged-main behaviour at the attested source.
+
+**Supplemental probe: no acceptance credit.** This was a mutation matrix in disposable copies of the tracked forgeread snapshot, outside the admitted home. Each of the 21 production-source mutations in forgeread/mirror/mutations.json was applied in its own copy. Then the exact `-run` selectors of rows 1–6 were run offline (`GOWORK=off GOPROXY=off GOTOOLCHAIN=local`). No admitted file was edited.
+
+| Probe | Observation | Date | Runner |
+|---|---|---|---|
+| Row-claimed mutants vs row 1 selector | query-admission and store-admission both make TestMirrorKernelAdmission fail. | 2026-11-18 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| Row-claimed mutants vs row 2 selector | permission-hold-planner, partial-complete, partial-watermark, partial-absence and record-regression each make TestMirrorKernelCoverage fail. So do hold-recovery-plan-full, hold-recovery-scan-full and hold-recovery-scan-fresh. | 2026-11-18 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| Row-claimed mutants vs row 3 selector | missing-overlap, absence-closes, inventory-starvation, partial-not-modified, validator-window and partial-absence each make TestMirrorKernelScanPlanning fail. | 2026-11-18 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| Row-claimed mutants vs row 4 selector | permission-hold-store, store-admission and store-watermark each make TestMirrorStoreConformance fail. So do the three hold-recovery-store mutants (inventory, state-class and full-class). | 2026-11-18 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| Row 6 with checker present | Unmutated: the checker prints 0 and TestMirrorKernelBoundaries passes. kernel-http-import: the checker still prints 0 because net/http is outside its os/syscall scope, but the test fails with "forbidden kernel import net/http". | 2026-11-18 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+Every mutation the Expect cells of rows 1–4 and 6 name is killed by that row's own selector. Every row is discriminating for its named obligations.
+
+**Risk-bearing values** (the `sensitive-data: yes` trigger). The values below were enumerated over the production files the delivery diff introduced: forgeread/mirror types.go, query.go, coverage.go, planner.go and scan.go, plus mirrortest/store.go, all read at the attested source. The diff introduces no numeric default. Overlap, FullInventoryInterval, FailureBackoff and MaxAge are always caller-supplied. The values found are authority bindings and structural bounds.
+
+- RISK-VALUE: DERIVED — library admission `a.ID() == "" || a.ID() != scope.AdmissionID` @ forgeread/mirror/query.go:20. Task 2 requires a nonempty, exactly matching admission ID before Store access. Exact equality on the opaque, composition-derived ID is the only relation that does not widen a scope. Rows 1 and 4 show that the matching mutant is killed.
+- RISK-VALUE: DERIVED — Store admission `a == nil || a.ID() == "" || a.ID() != scope.AdmissionID` @ forgeread/mirror/mirrortest/store.go:26. Task 4 requires the same relation, enforced independently of the library. It matches the library check, adds a nil guard, and its mutant is killed (rows 1 and 4).
+- RISK-VALUE: DERIVED — planner hold clearing `s.Coverage.Reason == Permission && (!p.FullInventory || !now.After(s.Coverage.LastAttempted))` @ forgeread/mirror/scan.go:60. Task 5 says recovery needs a full inventory "strictly after the held snapshot's LastAttempted". `After` is strict, so an equal timestamp or a replay cannot clear the hold.
+- RISK-VALUE: DERIVED — Store hold clearing requires `CompleteScan`, `State == Complete`, `FullInventory`, `LastComplete.After(old.LastAttempted)` and `LastInventory.After(old.LastAttempted)` @ forgeread/mirror/mirrortest/store.go:66. This is the same strict relation, held independently as Task 5 requires.
+- RISK-VALUE: DERIVED — GitHub path segments `len(parts) != 2` (GitLab `len(parts) < 2`) @ forgeread/mirror/types.go:308. A GitHub repository is exactly owner/name, and a GitLab path can carry nested namespaces (Task 1). Ranks below the admission values: an edit and redeploy undo it.
+- RISK-VALUE: NAMED, NOT DERIVED — freshness `q.Now.Sub(LastComplete) <= q.MaxAge` @ forgeread/mirror/coverage.go:42, `q.MaxAge <= 0` refused @ forgeread/mirror/query.go:78, repair `now.Sub(c.LastInventory) >= p.FullInventoryInterval` @ forgeread/mirror/planner.go:17. These are reversible operational knobs, and their values come from the policy the caller supplies. The equal-boundary choice is a convention that no spec states.
+
+**VERIFY: PASS** — 7/7 rows pass. Rows 1–6 ran in the closed container-netns bracket (bracket-digest verdict=match). Row 7 ran on the host. Status is not advanced: `gate: human` and `sensitive-data: yes` leave acceptance and activation with the human decision on medici-finance/assay#5365. This Evidence chooses no retention policy and grants no activation.
+
 ## Review
 
 Gate human, inherited from /37. Review the actual lower-layer refusal, typed unknown/partial states, dependency closure and declared limits. The full persisted mirror, retention choice, service and deployment remain unqualified by this contribution.

@@ -64,7 +64,11 @@ func TestDeskevidenceRefusesUnpairedReadSet(t *testing.T) {
 			if f.putCalls != 0 || len(f.hits) != 0 {
 				t.Fatalf("a refused read-set landing reached the forge: %d writes, hits %v", f.putCalls, f.hits)
 			}
-			if d := lastAudit(t).Detail; !strings.Contains(d, c.why) {
+			d := lastAudit(t).Detail
+			if !strings.Contains(d, "Evidence PR") || (c.file == nil && !strings.Contains(d, "git rev-parse --git-path assay-read-sets")) {
+				t.Fatalf("refusal omits how to land the recorded files: %s", d)
+			}
+			if !strings.Contains(d, c.why) {
 				t.Fatalf("refusal %q lacks %q", d, c.why)
 			}
 		})

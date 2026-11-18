@@ -289,8 +289,12 @@ func dispatch(o dispatchOpts) error {
 		if plan.detached {
 			shownBranch = fmt.Sprintf("(detached off origin/main — %s touches no branch)", o.kit)
 		}
-		fmt.Printf("deskdispatch: PLAN (dry run — nothing touched) item=%s repo=%s tier=%s kit=%s branch=%s%s\n",
-			o.item, repo, o.tier, o.kit, shownBranch, wtBanner)
+		claimBanner := ""
+		if ns := plan.claimNamespace(); ns != repo {
+			claimBanner = " claim-repo=" + ns
+		}
+		fmt.Printf("deskdispatch: PLAN (dry run — nothing touched) item=%s repo=%s%s tier=%s kit=%s branch=%s%s\n",
+			o.item, repo, claimBanner, o.tier, o.kit, shownBranch, wtBanner)
 		for i, s := range dispatchSteps {
 			fmt.Printf("  %d %s\n", i+1, s)
 		}
@@ -419,25 +423,30 @@ func dispatch(o dispatchOpts) error {
 	// the forge-ref store writes refs on the forge; a store that writes none is handed none.
 	// (Every store this build can resolve to is the forge-ref store, so every dispatch still
 	// mints here exactly as before; the decision gate below reads the same resolution.)
+	claimRepo := plan.claimNamespace()
 	var auth claimAuth
 	if plan.claimStore.NeedsForgeCredential {
 		var aerr error
-		auth, aerr = resolveClaimAuth(o, repo, plan.forgeKind, plan.claimToolIsScript)
+		claimKind := plan.forgeKind
+		if plan.claimForgeKind != "" {
+			claimKind = plan.claimForgeKind
+		}
+		auth, aerr = resolveClaimAuth(o, claimRepo, claimKind, plan.claimToolIsScript)
 		if aerr != nil {
 			return aerr
 		}
 	}
 
 	// ADMISSION (example-stream/18) then the durable item claim, as one sequence: see admitAndClaim.
-	if err := admitAndClaim(o, plan, repo, auth, func() error {
-		return stepClaim(o, repo, plan.claimTool, plan.claimToolIsScript, auth, plan.claimKey)
+	if err := admitAndClaim(o, plan, claimRepo, auth, func() error {
+		return stepClaim(o, claimRepo, plan.claimTool, plan.claimToolIsScript, auth, plan.claimKey)
 	}); err != nil {
 		return err
 	}
 	o.say("%s OK: %s claimed in %s (claim key %s) via %s, store %s, authenticated by %s",
-		stepClaimAcquire, o.item, repo, plan.claimKey, plan.claimTool, plan.claimStore.Label(), auth.source)
+		stepClaimAcquire, o.item, claimRepo, plan.claimKey, plan.claimTool, plan.claimStore.Label(), auth.source)
 	// From here every abort returns through held.settle, which releases the claim (#2355).
-	held := &heldClaim{o: o, tool: plan.claimTool, key: plan.claimKey, repo: repo, auth: auth}
+	held := &heldClaim{o: o, tool: plan.claimTool, key: plan.claimKey, repo: claimRepo, auth: auth}
 
 	// dispatch_ref: the per-RUN key, minted right after the claim stands —
 	// the claim key alone names the ITEM, which every re-dispatch, re-review and stale reclaim
@@ -713,7 +722,7 @@ func dispatch(o dispatchOpts) error {
 	if emitErr == nil {
 		// 8 — say what has NOT happened. This verb prepares a run; it never starts the agent, so
 		// the claim just placed has no progress behind it until the caller launches and advances it.
-		o.notLaunched(plan, repo, home)
+		o.notLaunched(plan, plan.claimNamespace(), home)
 	}
 	return held.settle(emitErr)
 }
@@ -767,6 +776,14 @@ type dispatchPlan struct {
 	// derived once from the item key by claimKeyFor, so the acquire call and the release
 	// hint in the prompt cannot drift onto two different keys.
 	claimKey string
+	// claimRepo is the repository whose claim namespace holds the durable claim. It is the
+	// deliverable repo (repo) for every dispatch but a cross-repository VERIFIER, whose claim is
+	// taken in the TRACKING repo — where the brief, its board row, its Evidence and its outcome
+	// record live — so the one invocation verifyloop prints claims, verifies and lands in the
+	// same tracking namespace (#5999). Read it through claimNamespace, never directly.
+	claimRepo string
+	// claimForgeKind is the forge serving claimRepo; empty when it is repo's own forge.
+	claimForgeKind deskkit.ForgeKind
 	// claimTool is the RESOLVED claim-tool invocation target: the absolute
 	// tools/dispatch-claim.sh path when the resolved root carries it, else the bare
 	// goClaimBinary name (deskclaim-ref) resolved on PATH. claimToolIsScript records which,
@@ -1055,11 +1072,30 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// another store. An unset key, or a valid key naming a store this build does not ship
 	// (medici-finance/assay#2753), is the one-window legacy resolution, whose NOTICE is printed
 	// on every run.
-	store, serr := deskkit.ResolveClaimStore(repo)
+	// A cross-repository VERIFIER claims in the TRACKING repo (#5999): the Verify rows run against
+	// the deliverable, but the brief, its Evidence and its outcome record land in the tracking repo,
+	// so its claim does too — one invocation that claims, verifies and lands, all keyed to the repo
+	// the verify queue names the item by. Worker and review dispatches keep the deliverable claim.
+	if verifierKit(o.kit) && dl.crossRepo(o.root) {
+		target, terr := verifierTrackingTarget(o, dl)
+		if terr != nil {
+			return plan, terr
+		}
+		tracking := target.Repo.Slug()
+		if !deskkit.IsAllowedRepo(tracking) {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: the tracking repo %s is not in the desk repo set — a cross-repository verifier "+
+					"claims there, so it must be rostered. Nothing was claimed.", stepClaimAcquire, tracking))
+		}
+		plan.claimRepo = tracking
+		plan.claimForgeKind = target.Kind
+		plan.outcomeTarget = target
+	}
+	store, serr := deskkit.ResolveClaimStore(plan.claimNamespace())
 	if serr != nil {
 		return plan, deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: no dispatch claim can be taken for %s — the claim store did not resolve. Nothing was "+
-				"claimed, cut or minted.", stepClaimAcquire, repo), serr)
+				"claimed, cut or minted.", stepClaimAcquire, plan.claimNamespace()), serr)
 	}
 	plan.claimStore = store
 	if store.Notice != "" {
@@ -1090,18 +1126,8 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 			return plan, ferr
 		}
 		plan.forgeKind = target.Kind
-		if verifierKit(o.kit) {
+		if verifierKit(o.kit) && !dl.crossRepo(o.root) {
 			plan.outcomeTarget = target
-			if dl.crossRepo(o.root) {
-				tracking, err := verifierTrackingRepo(o, dl)
-				if err != nil {
-					return plan, err
-				}
-				plan.outcomeTarget, err = resolveTargetForge(tracking, dl.trackingRoot)
-				if err != nil {
-					return plan, err
-				}
-			}
 		}
 	}
 
@@ -1516,6 +1542,15 @@ func releaseClaim(o dispatchOpts, script string, auth claimAuth, claimKey, repo 
 			script + " release " + claimKey + " --repo " + repo + claimCredArg(script, stampRoleForKit(o.kit), repo, dispatcherLoop())
 	}
 	return "released"
+}
+
+// claimNamespace is the repository the durable claim is taken, advanced and released in:
+// claimRepo when the plan routed it (a cross-repository verifier, #5999), else the deliverable.
+func (p dispatchPlan) claimNamespace() string {
+	if p.claimRepo != "" {
+		return p.claimRepo
+	}
+	return p.repo
 }
 
 // heldClaim is the item claim from the moment stepClaim places it until the dispatch either
