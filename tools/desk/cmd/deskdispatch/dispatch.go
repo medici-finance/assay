@@ -742,12 +742,30 @@ func (o dispatchOpts) notLaunched(plan dispatchPlan, repo, home string) {
 	if branch == "" {
 		branch = "-" // a detached review/verify home has no branch; the claim records "-"
 	}
+	// The Go claim tool resolves a work-reference key against the work catalogue of the
+	// directory it runs in, and the acquire ran in --root. Printed bare, the command resolved
+	// against whatever checkout the reader's shell sat in, and a checkout that does not
+	// declare the repository refused the advance ("no published owning root", #6896). Pin the
+	// printed commands to the directory the acquire used. The legacy script hint keeps its
+	// agent-worktree-relative spelling.
+	if tool == goClaimBinary && strings.TrimSpace(o.root) != "" {
+		tool = "cd " + shellWord(o.root) + " && " + tool
+	}
 	fmt.Fprintf(os.Stderr, "deskdispatch: NOT LAUNCHED: %s is prepared, not running — no agent has been started in %s. "+
 		"The claim %s stays at state=claimed and another dispatcher reclaims it after %dm with no progress "+
 		"(CLAIMED_TTL_MIN, default %dm). Launch the agent with the emitted prompt, then run `%s progress %q --repo %s "+
 		"--branch %s%s`; or, if it will not be launched, release it with `%s release %q --repo %s%s`.\n",
 		o.item, home, plan.claimKey, int(claimedClaimTTL.Minutes()), int(claimedClaimTTL.Minutes()),
 		tool, plan.claimKey, repo, branch, cred, tool, plan.claimKey, repo, cred)
+}
+
+// shellWord spells s as one POSIX shell word: bare when it holds only characters no shell
+// treats specially, otherwise single-quoted with each embedded quote closed and escaped.
+func shellWord(s string) string {
+	if s != "" && strings.Trim(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-+=:@,") == "" {
+		return s
+	}
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // dispatchPlan is what validateCallerPreconditions derives once, so no later step
