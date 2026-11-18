@@ -36,6 +36,7 @@ func refusedCode(err error) bool {
 // forge's limit. It must refuse before it lists a single comment: the finder failing the
 // test is what pins "before doing anything else".
 func TestWorkpadUpsertRefusesOversizedBody(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	swapWorkpadSeams(t,
@@ -68,6 +69,7 @@ func TestWorkpadUpsertRefusesOversizedBody(t *testing.T) {
 // TestWorkpadUpsertRefusesDuplicateMarker: the same direct seam, a body carrying the
 // marker twice. Refused before the finder runs; the message names the marker.
 func TestWorkpadUpsertRefusesDuplicateMarker(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	swapWorkpadSeams(t,
@@ -92,6 +94,7 @@ func TestWorkpadUpsertRefusesDuplicateMarker(t *testing.T) {
 // TestWorkpadRunRefusesDuplicateMarker is the same refusal through the verb's own entry
 // point with --workpad: exit 5, no forge request.
 func TestWorkpadRunRefusesDuplicateMarker(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	swapWorkpadSeams(t,
@@ -115,6 +118,7 @@ func TestWorkpadRunRefusesDuplicateMarker(t *testing.T) {
 // way a runaway body reaches the forge, so it refuses the same shape. A single marker on the
 // plain path is not this test's concern; two is the caller bug.
 func TestPlainReplyRefusesDuplicateMarker(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	bf := bodyFileWith(t, twoMarkerBody())
@@ -132,6 +136,7 @@ func TestPlainReplyRefusesDuplicateMarker(t *testing.T) {
 // into memory. A 64 MiB sparse body file must be refused (exit 5) while the process
 // allocates nowhere near 64 MiB doing it.
 func TestOversizedBodyFileIsRefusedWithoutBeingRead(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 

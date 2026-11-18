@@ -60,6 +60,7 @@ func plantColliding(t *testing.T) *collidingForge {
 
 // regression: #5020
 func TestReplyKindMRPostsOnTheMROnly(t *testing.T) {
+	isolateReplyFixture(t)
 	for _, val := range []string{"mr", "pr", "MR"} {
 		t.Run(val, func(t *testing.T) {
 			work := newBaseFixture(t)
@@ -81,6 +82,7 @@ func TestReplyKindMRPostsOnTheMROnly(t *testing.T) {
 
 // regression: #5020
 func TestReplyKindMRWorkpadCreatesOnTheMR(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	fg := plantColliding(t)
@@ -101,6 +103,7 @@ func TestReplyKindMRWorkpadCreatesOnTheMR(t *testing.T) {
 
 // regression: #5020
 func TestReplyKindMRDryRunWritesNothing(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	fg := plantColliding(t)
@@ -120,6 +123,7 @@ func TestReplyKindMRDryRunWritesNothing(t *testing.T) {
 
 // regression: #5020
 func TestReplyKindIssueRefusedTouchesNothing(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	fg := plantColliding(t)
@@ -141,6 +145,7 @@ func TestReplyKindIssueRefusedTouchesNothing(t *testing.T) {
 
 // regression: #5020
 func TestReplyNoKindStillRefusesCollision(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	fg := plantColliding(t)
@@ -159,6 +164,7 @@ func TestReplyNoKindStillRefusesCollision(t *testing.T) {
 
 // regression: #5020
 func TestReplyBadKindRefusedLikeSiblings(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	fg := plantColliding(t)
@@ -180,6 +186,7 @@ func TestReplyBadKindRefusedLikeSiblings(t *testing.T) {
 // lands: the real GitHub PostCommentTyped is PostComment once the kind is validated.
 // regression: #5020
 func TestReplyKindMRHarmlessOnGitHub(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	bf := bodyFileWith(t, "a plain reply body")
