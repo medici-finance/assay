@@ -753,6 +753,7 @@ exec REALGIT "$@"
 // never reads as "no commits", "README only" or "nothing stray", which would
 // let the tick carry on past what it never checked.
 func TestReconcileJobBrokenReadFails(t *testing.T) {
+	installStatusgenFixture(t)
 	realGit, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("git not on PATH")
@@ -965,6 +966,7 @@ func TestReconcileJobLintFailureFails(t *testing.T) {
 // cause discarded. A failed listing now fails the tick AT the listing, with
 // git's own error in the log, and nothing is pushed.
 func TestReconcileJobRemoteListingFails(t *testing.T) {
+	installStatusgenFixture(t)
 	r := newJobRig(t)
 	if code, out := r.tick("STUB_FLIP=01"); code != 0 {
 		t.Fatalf("first tick exit %d:\n%s", code, out)
@@ -1201,6 +1203,7 @@ func TestReconcileJobTokenScope(t *testing.T) {
 // tick. No hook runs, the push reaches the real origin and not the decoy, and
 // gh reads a configuration directory of the job's own.
 func TestReconcileJobIgnoresRunnerResidue(t *testing.T) {
+	installStatusgenFixture(t)
 	r := newJobRig(t)
 	marker := filepath.Join(r.dir, "hook-ran")
 	hook := "#!/usr/bin/env bash\necho \"$0 ${GH_TOKEN:-}\" >> " + marker + "\n"

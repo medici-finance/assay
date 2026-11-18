@@ -19,6 +19,7 @@ import (
 // wins the reduction, so the latest record is unknown: could-not-check.
 // regression: #6734
 func TestVflipOutcomeFuture(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	vfOutcome(t, root, "blocked", vfSHA, "2099-01-01T00:00:00Z")
 	vfCommit(t, root, vfMailVerifier)
@@ -30,6 +31,7 @@ func TestVflipOutcomeFuture(t *testing.T) {
 // could-not-check.
 // regression: #6734
 func TestVflipOutcomeNoAdder(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.outcome = "blocked"
 	root, readme := vfFixture(t, o)
@@ -48,6 +50,7 @@ func TestVflipOutcomeNoAdder(t *testing.T) {
 // commit of its own to judge: could-not-check.
 // regression: #6734
 func TestVflipOutcomeLegacyDecides(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.outcome = "blocked"
 	root, readme := vfFixture(t, o)
@@ -62,6 +65,7 @@ func TestVflipOutcomeLegacyDecides(t *testing.T) {
 // no native retry.
 // regression: #6734
 func TestVflipOutcomeDeclined(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	vfWriteAt(t, root, "extra.cfg", []byte("[example]\n\tkey = value\n"))
 	vfCommit(t, root, vfMailVerifier)
@@ -74,6 +78,7 @@ func TestVflipOutcomeDeclined(t *testing.T) {
 // partial set of adders.
 // regression: #6734
 func TestVflipOutcomeWalkError(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.outcome = "blocked"
 	root, readme := vfFixture(t, o)
@@ -94,6 +99,7 @@ func TestVflipOutcomeWalkError(t *testing.T) {
 // HEAD refuses even when the typed status read reports it clean.
 // regression: #6734
 func TestVflipOutcomeHeadBytes(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	rel := "docs/streams/verify-outcomes.jsonl"
 	line := `{"brief":"vf/01","ts":"2026-08-14T12:00:00Z","outcome":"blocked","sha":"0000000000aa","source_sha":"` + vfSHA + `"}` + "\n"

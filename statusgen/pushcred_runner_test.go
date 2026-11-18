@@ -74,6 +74,7 @@ func (r *hdrRig) plantRunner(shape string) {
 //
 // regression: #5004
 func TestPushcredRunnerShapes(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, sh := range []string{"bash", "sh"} {
 		for _, shape := range runnerShapes {
 			t.Run(sh+"/"+shape, func(t *testing.T) {
@@ -139,6 +140,7 @@ func decoyForge(t *testing.T) (string, func() []string) {
 //
 // regression: #5004
 func TestPushcredRunnerOtherHost(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, sh := range []string{"bash", "sh"} {
 		t.Run(sh, func(t *testing.T) {
 			r := newHdrRig(t)
@@ -177,6 +179,7 @@ func TestPushcredRunnerOtherHost(t *testing.T) {
 //
 // regression: #5004
 func TestPushcredRunnerRemoteName(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, sh := range []string{"bash", "sh"} {
 		t.Run(sh, func(t *testing.T) {
 			r := newHdrRig(t)
@@ -204,6 +207,7 @@ func TestPushcredRunnerRemoteName(t *testing.T) {
 //
 // regression: #5004
 func TestPushcredRunnerPreflight(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, sh := range []string{"bash", "sh"} {
 		t.Run(sh, func(t *testing.T) {
 			r := newHdrRig(t)
@@ -230,6 +234,7 @@ func TestPushcredRunnerPreflight(t *testing.T) {
 // forge sees it; if git ever stopped using a shape, this goes red and the
 // test above proves nothing for it.
 func TestPushcredRunnerInstrument(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, shape := range []string{"insteadof", "credhelper", "envhelper"} {
 		t.Run(shape, func(t *testing.T) {
 			r := newHdrRig(t)

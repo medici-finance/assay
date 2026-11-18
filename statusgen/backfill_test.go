@@ -47,6 +47,7 @@ func initBackfillRepo(t *testing.T) string {
 }
 
 func TestReconstructBackfillWalksTransitions(t *testing.T) {
+	installStatusgenFixture(t)
 	dir := initBackfillRepo(t)
 	entries, couldNot, streams, err := reconstructBackfill(dir)
 	if err != nil {
@@ -83,6 +84,7 @@ func TestReconstructBackfillWalksTransitions(t *testing.T) {
 }
 
 func TestRunBackfillIdempotentAndPrepends(t *testing.T) {
+	installStatusgenFixture(t)
 	dir := initBackfillRepo(t)
 	path := filepath.Join(dir, filepath.FromSlash(historyRelPath))
 

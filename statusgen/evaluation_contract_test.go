@@ -217,6 +217,7 @@ func runCLIJSON(t *testing.T, bin, root, mode string) string {
 // regression: statusgen/15 — one frozen input, two consumers (the CLI over a
 // materialized tree; the library over hand-built observations), one verdict.
 func TestEvaluationLibraryCLIParity(t *testing.T) {
+	installStatusgenFixture(t)
 	sf := loadScenarios(t)
 	golden := readGolden(t)
 	bin := buildStatusgenBinary(t)
@@ -287,6 +288,7 @@ func TestEvaluationLibraryCLIParity(t *testing.T) {
 // different verdict from an unknown one. Treating "cannot tell" as satisfied
 // would release work on a guess.
 func TestEvaluationUncertainEvidenceHolds(t *testing.T) {
+	installStatusgenFixture(t)
 	sf := loadScenarios(t)
 	covByName := map[string]covScenario{}
 	for _, sc := range sf.Coverage {

@@ -94,6 +94,7 @@ func ffDeliveredGate(t *testing.T, root, cell string) []string {
 // strength) is refused.
 // regression: #2721
 func TestFailFirstDeliveringBindsBase(t *testing.T) {
+	installStatusgenFixture(t)
 	withBase(t, true)
 	root, rootC, prep, deliv, head, side, briefPath := ffDeliveredRepo(t, false)
 	for _, c := range []struct {
@@ -131,6 +132,7 @@ func TestFailFirstDeliveringBindsBase(t *testing.T) {
 // for a later brief) stays refused.
 // regression: #2721
 func TestFailFirstDeliveringBriefBornInDelivery(t *testing.T) {
+	installStatusgenFixture(t)
 	withBase(t, true)
 	root, _, prep, deliv, head, _, briefPath := ffDeliveredRepo(t, true)
 	if problems := ffDeliveredGate(t, root, ffDeliveredCell(prep, deliv, head)); len(problems) != 0 {
@@ -158,6 +160,7 @@ func TestFailFirstDeliveringBriefBornInDelivery(t *testing.T) {
 // refused outside --fail-first.
 // regression: #2721
 func TestVerifyrunRecordsDeliveringCommit(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _, prep, deliv, _, _, briefPath := ffDeliveredRepo(t, false)
 	res, out := captureVerifyrunOut(t, []string{"--fail-first", "--dry-run", "--root", root, "--delivering-commit", deliv, "--brief", briefPath})
 	want := "base=" + prep[:12] + " red rc=1 · head="
@@ -220,6 +223,7 @@ func TestFailFirstDeliveringCellGrammar(t *testing.T) {
 // the commit was on HEAD's history and had a parent.
 // regression: #2721
 func TestFailFirstDeliveringNoMergeBase(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _, prep, deliv, _, _, briefPath := ffDeliveredRepo(t, false)
 	gitRun(t, root, "update-ref", "-d", remoteMainRef)
 	for _, c := range []struct{ name, base, delivering string }{
@@ -244,6 +248,7 @@ func TestFailFirstDeliveringNoMergeBase(t *testing.T) {
 // surfaces. The delivering commit must be the merge-base or an ancestor of it.
 // regression: #2721
 func TestFailFirstDeliveringOffMain(t *testing.T) {
+	installStatusgenFixture(t)
 	withBase(t, true)
 	root, rootC, _, _, head, _, briefPath := ffDeliveredRepo(t, false)
 	gitRun(t, root, "checkout", "-q", "--detach", rootC)
@@ -271,6 +276,7 @@ func TestFailFirstDeliveringOffMain(t *testing.T) {
 // is still accepted.
 // regression: #2721
 func TestFailFirstBaseIsHeadAfterMerge(t *testing.T) {
+	installStatusgenFixture(t)
 	withBase(t, true)
 	root, _, _, deliv, head, _, briefPath := ffDeliveredRepo(t, false)
 	const want = "the base is the head the row ran on"
@@ -297,6 +303,7 @@ func TestFailFirstBaseIsHeadAfterMerge(t *testing.T) {
 // variable and the remedy.
 // regression: #2721
 func TestFailFirstDeliveringNamesEnv(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _, _, deliv, _, _, briefPath := ffDeliveredRepo(t, false)
 	t.Setenv("GIT_CONFIG_COUNT", "0")
 	_, _, err := failFirstBaseRev(root, "", deliv, briefPath)

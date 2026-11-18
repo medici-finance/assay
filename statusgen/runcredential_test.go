@@ -135,6 +135,7 @@ func rcRun(t *testing.T, admitted bool, mode string) (verifyrunResult, string, *
 // removed when the run ends, and its value is never printed. The unadmitted
 // control is unchanged: it mints nothing and reads with GH_TOKEN as before.
 func TestRunCredMintedRead(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("admitted", func(t *testing.T) {
 		res, out, rt, calls, log := rcRun(t, true, "ok")
 		if res.code != verifyrunExitPass {
@@ -199,6 +200,7 @@ func TestRunCredMintedRead(t *testing.T) {
 // check (the write grant) is revoked, not left to expire: the revocation is
 // the only request the forge may see.
 func TestRunCredUnavailable(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"fail", "write", "elsewhere", ""} {
 		t.Run(map[string]string{"": "stubbed"}[mode]+mode, func(t *testing.T) {
 			res, out, rt, calls, _ := rcRun(t, true, mode)
@@ -323,6 +325,7 @@ func TestRunCredRowScoped(t *testing.T) {
 // GH_TOKEN. A row handed none, or a file that fails its checks, is a
 // could-not-check with no request.
 func TestRunCredRowRead(t *testing.T) {
+	installStatusgenFixture(t)
 	for name, perms := range map[string]string{"read": rcRead, "write": `{"pull_requests":"write"}`, "no grant": "", "none handed": "-"} {
 		t.Run(name, func(t *testing.T) {
 			root := rrSetup(t, rrBoundForge())

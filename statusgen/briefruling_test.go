@@ -65,6 +65,7 @@ func brWantRefused(t *testing.T, rs []decisionGateResult, reason rulingReason) {
 
 // regression: #2595
 func TestBriefRulingBotAuthor(t *testing.T) {
+	installStatusgenFixture(t)
 	f := dhForge(brRulingText)
 	f.commentBody = rlCommentJSONWith("example-bot[bot]", "Bot", rlRepo, rlIssue, brRulingText, rlPosted, rlPosted)
 	brWantRefused(t, brPR(t, f, brBase(), brRuled()), rulingBotAuthor)
@@ -72,6 +73,7 @@ func TestBriefRulingBotAuthor(t *testing.T) {
 
 // regression: #2595
 func TestBriefRulingEdited(t *testing.T) {
+	installStatusgenFixture(t)
 	f := dhForge(brRulingText)
 	f.commentBody = rlCommentJSONWith(rlHuman, "User", rlRepo, rlIssue, brRulingText, rlPosted, "2026-09-02T10:00:00Z")
 	brWantRefused(t, brPR(t, f, brBase(), brRuled()), rulingEditedComment)
@@ -79,6 +81,7 @@ func TestBriefRulingEdited(t *testing.T) {
 
 // regression: #2595
 func TestBriefRulingMissing(t *testing.T) {
+	installStatusgenFixture(t)
 	f := dhForge(brRulingText)
 	f.commentStatus = 404
 	f.commentBody = `{"message":"Not Found"}`
@@ -87,6 +90,7 @@ func TestBriefRulingMissing(t *testing.T) {
 
 // regression: #2595
 func TestBriefRulingNonDriver(t *testing.T) {
+	installStatusgenFixture(t)
 	f := dhForge(brRulingText)
 	f.commentBody = rlCommentJSONWith("example-stranger", "User", rlRepo, rlIssue, brRulingText, rlPosted, rlPosted)
 	brWantRefused(t, brPR(t, f, brBase(), brRuled()), rulingWrongAuthor)
@@ -94,6 +98,7 @@ func TestBriefRulingNonDriver(t *testing.T) {
 
 // regression: #2595
 func TestBriefRulingNotUser(t *testing.T) {
+	installStatusgenFixture(t)
 	f := dhForge(brRulingText)
 	f.commentBody = rlCommentJSONWith(rlHuman, "Organization", rlRepo, rlIssue, brRulingText, rlPosted, rlPosted)
 	brWantRefused(t, brPR(t, f, brBase(), brRuled()), rulingBotAuthor)
@@ -102,6 +107,7 @@ func TestBriefRulingNotUser(t *testing.T) {
 // A ruling link to a comment on an issue other than the recorded decision issue
 // is refused before the forge is read.
 func TestBriefRulingOtherIssue(t *testing.T) {
+	installStatusgenFixture(t)
 	head := map[string]string{dhBriefPath: dhFM("", "decision-issue: 42\nruling: "+dhRuling+"\n")}
 	rs := brPR(t, nil, brBase(), head)
 	if !decisionGateRefused(rs) {
@@ -112,6 +118,7 @@ func TestBriefRulingOtherIssue(t *testing.T) {
 // A ruling link with no decision issue recorded is refused: there is no issue
 // to bind it to.
 func TestBriefRulingNoIssue(t *testing.T) {
+	installStatusgenFixture(t)
 	base := map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
 		dhBriefPath:  dhFM("", ""),
@@ -132,6 +139,7 @@ func TestBriefRulingNoIssue(t *testing.T) {
 // POSITIVE: the driver's own unedited comment, naming the brief, on its
 // decision issue, passes and is reported as ruled.
 func TestBriefRulingPositive(t *testing.T) {
+	installStatusgenFixture(t)
 	rs := brPR(t, dhForge(brRulingText), brBase(), brRuled())
 	if decisionGateRefused(rs) {
 		t.Fatalf("a good ruling link was refused: %+v", rs)
@@ -148,6 +156,7 @@ func TestBriefRulingPositive(t *testing.T) {
 // A ruling link the base already carries is not re-resolved: only an added or
 // changed link is judged here (the move lanes judge the rest).
 func TestBriefRulingUnchanged(t *testing.T) {
+	installStatusgenFixture(t)
 	base := map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
 		dhBriefPath:  dhFM("", dhRuledLines()),
@@ -161,6 +170,7 @@ func TestBriefRulingUnchanged(t *testing.T) {
 // A brief file moved into done/ carries its ruling link with it; the link is
 // not new.
 func TestBriefRulingMovedFile(t *testing.T) {
+	installStatusgenFixture(t)
 	base := map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
 		dhBriefPath:  dhFM("", dhRuledLines()),
@@ -179,6 +189,7 @@ func TestBriefRulingMovedFile(t *testing.T) {
 //
 // regression: #2595
 func TestBriefRulingRenumbered(t *testing.T) {
+	installStatusgenFixture(t)
 	base := map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
 		dhBriefPath:  dhFM("", dhRuledLines()),
@@ -197,6 +208,7 @@ func TestBriefRulingRenumbered(t *testing.T) {
 //
 // regression: #2595
 func TestBriefRulingAmbiguous(t *testing.T) {
+	installStatusgenFixture(t)
 	head := map[string]string{"docs/streams/" + dhStream + "/done/brief-18.md": dhFM("", dhRuledLines())}
 	rs := brPR(t, nil, brBase(), head)
 	for _, r := range rs {
@@ -209,6 +221,7 @@ func TestBriefRulingAmbiguous(t *testing.T) {
 
 // A changed ruling link is judged even when the base carried another one.
 func TestBriefRulingChanged(t *testing.T) {
+	installStatusgenFixture(t)
 	base := map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
 		dhBriefPath:  dhFM("", "decision-issue: 41\nruling: "+rlURL(rlRepo, rlIssue, 9000)+"\n"),
@@ -225,6 +238,7 @@ func TestBriefRulingChanged(t *testing.T) {
 //
 // regression: F-br-copied-ruling
 func TestBriefRulingCopied(t *testing.T) {
+	installStatusgenFixture(t)
 	base := map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
 		dhBriefPath:  dhFM("", dhRuledLines()),
@@ -238,6 +252,7 @@ func TestBriefRulingCopied(t *testing.T) {
 //
 // regression: F-br-issue-only-change
 func TestBriefRulingIssueOnly(t *testing.T) {
+	installStatusgenFixture(t)
 	base := map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
 		dhBriefPath:  dhFM("", dhRuledLines()),
@@ -267,6 +282,7 @@ const brBadFM = "---\nbrief: sdlc/18\ntitle: [unclosed\n---\n\n# Brief 18\n"
 //
 // regression: N-fmerr-scope
 func TestBriefRulingFMErr(t *testing.T) {
+	installStatusgenFixture(t)
 	rs := brLane(t, rlRepo, brBase(), map[string]string{dhBriefPath: brBadFM})
 	for _, r := range rs {
 		if r.Refused && strings.Contains(r.Detail, "frontmatter does not parse") {
@@ -281,6 +297,7 @@ func TestBriefRulingFMErr(t *testing.T) {
 //
 // regression: N-fmerr-scope
 func TestBriefRulingFMErrRowOnly(t *testing.T) {
+	installStatusgenFixture(t)
 	base := map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
 		dhBriefPath:  brBadFM,
@@ -295,6 +312,7 @@ func TestBriefRulingFMErrRowOnly(t *testing.T) {
 //
 // regression: N-norepo
 func TestBriefRulingNoRepo(t *testing.T) {
+	installStatusgenFixture(t)
 	rs := brLane(t, "", brBase(), brRuled())
 	for _, r := range rs {
 		if r.Refused && strings.Contains(r.Detail, string(rulingUnresolvable)) {
@@ -358,6 +376,7 @@ func brRunStep(t *testing.T, base, head map[string]string) (int, string, bool) {
 
 // regression: #2595
 func TestStagedCorroborateFilter(t *testing.T) {
+	installStatusgenFixture(t)
 	dr := "docs/streams/decisions/DR-example-ruling-rec.md"
 	for _, tc := range []struct {
 		name       string

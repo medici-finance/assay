@@ -209,6 +209,7 @@ const landedParkedFinding = "---\n" +
 // Adding a parked-until to a landed finding with no verified-human authorization
 // is a HARD lint problem — an uncorroborated self-park mutes the standing alarm.
 func TestGuttedParkAddedUnauthorized(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	gutted := strings.Replace(landedOpenFinding, "resolved: false",
 		"resolved: false\nparked-until: \"2099-01-01\"", 1)
@@ -224,6 +225,7 @@ func TestGuttedParkAddedUnauthorized(t *testing.T) {
 // The same park add WITH a mapped human under parked-by (its authorizing party)
 // passes the offline guard — parked-by is the park's authorized-by.
 func TestGuttedParkAddedAuthorizedByParkedBy(t *testing.T) {
+	installStatusgenFixture(t)
 	pinParkNow(t, "2026-07-20")
 	root, path := gutFixture(t, landedOpenFinding)
 	gutted := strings.Replace(landedOpenFinding, "resolved: false",
@@ -239,6 +241,7 @@ func TestGuttedParkAddedAuthorizedByParkedBy(t *testing.T) {
 // A park add whose parked-by names an UNMAPPED human (an agent-written token) is
 // not authorized — still fires. Fail-closed.
 func TestGuttedParkAddedUnknownParkedByNotAuthorized(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedOpenFinding)
 	gutted := strings.Replace(landedOpenFinding, "resolved: false",
 		"resolved: false\nparked-until: \"2099-01-01\"\nparked-by: human:bot\nparked-reason: waiting", 1)
@@ -253,6 +256,7 @@ func TestGuttedParkAddedUnknownParkedByNotAuthorized(t *testing.T) {
 // Extending a landed park to a LATER date is a guarded mutation (it mutes the
 // alarm longer); without a mapped human it is a HARD problem.
 func TestGuttedParkExtendedUnauthorized(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedParkedFinding) // base parked-until 2026-08-01, parked-by human:bot (unmapped)
 	gutted := strings.Replace(landedParkedFinding, "parked-until: \"2026-08-01\"",
 		"parked-until: \"2099-01-01\"", 1)
@@ -267,6 +271,7 @@ func TestGuttedParkExtendedUnauthorized(t *testing.T) {
 
 // Extending WITH a mapped human under parked-by passes.
 func TestGuttedParkExtendedAuthorized(t *testing.T) {
+	installStatusgenFixture(t)
 	pinParkNow(t, "2026-07-20")
 	root, path := gutFixture(t, landedParkedFinding)
 	gutted := strings.Replace(landedParkedFinding, "parked-until: \"2026-08-01\"\nparked-by: human:bot",
@@ -285,6 +290,7 @@ func TestGuttedParkExtendedAuthorized(t *testing.T) {
 // the park's authority is its own parked-by, and here that names an unmapped
 // account. Before the ruling the guard took either key, so this passed.
 func TestParkAuthorizedByNotPark(t *testing.T) {
+	installStatusgenFixture(t)
 	pinParkNow(t, "2026-07-20")
 	root, path := gutFixture(t, landedOpenFinding)
 	gutted := strings.Replace(landedOpenFinding, "resolved: false",
@@ -301,6 +307,7 @@ func TestParkAuthorizedByNotPark(t *testing.T) {
 // The second instance: an EXTENSION carried by authorized-by alone (parked-by
 // still the landed, unmapped name) is unauthorized too.
 func TestParkExtendAuthByNotPark(t *testing.T) {
+	installStatusgenFixture(t)
 	pinParkNow(t, "2026-07-20")
 	root, path := gutFixture(t, landedParkedFinding)
 	gutted := strings.Replace(landedParkedFinding, "parked-until: \"2026-08-01\"",
@@ -319,6 +326,7 @@ func TestParkExtendAuthByNotPark(t *testing.T) {
 // A park added more than 90 days past the day it is set is a PROBLEM even with a
 // mapped parked-by: no authorization stretches the horizon. Day 90 itself passes.
 func TestParkHorizonAddFails(t *testing.T) {
+	installStatusgenFixture(t)
 	pinParkNow(t, "2026-07-20") // + 90 days = 2026-10-18
 	for _, tc := range []struct {
 		until string
@@ -343,6 +351,7 @@ func TestParkHorizonAddFails(t *testing.T) {
 // The planted second instance: an EXTENSION of a landed, in-horizon park that
 // crosses the 90 days is a PROBLEM too, however it is authorized.
 func TestParkHorizonExtendFails(t *testing.T) {
+	installStatusgenFixture(t)
 	pinParkNow(t, "2026-07-20")
 	root, path := gutFixture(t, landedParkedFinding) // landed parked-until 2026-08-01
 	gutted := strings.Replace(landedParkedFinding, "parked-until: \"2026-08-01\"\nparked-by: human:bot",
@@ -360,6 +369,7 @@ func TestParkHorizonExtendFails(t *testing.T) {
 // from today: a park committed on 2026-05-01 may run to 2026-07-30 at most, even
 // though today (2026-07-20) + 90 days would allow it.
 func TestParkHorizonFromCommit(t *testing.T) {
+	installStatusgenFixture(t)
 	pinParkNow(t, "2026-07-20")
 	root, path := gutFixture(t, landedOpenFinding)
 	gutted := strings.Replace(landedOpenFinding, "resolved: false",
@@ -379,6 +389,7 @@ func TestParkHorizonFromCommit(t *testing.T) {
 // A commit date in the FUTURE counts as today: a committer cannot stretch the
 // horizon by post-dating the commit that sets the park.
 func TestParkHorizonFutureCommit(t *testing.T) {
+	installStatusgenFixture(t)
 	pinParkNow(t, "2026-07-20")
 	root, path := gutFixture(t, landedOpenFinding)
 	gutted := strings.Replace(landedOpenFinding, "resolved: false",
@@ -398,6 +409,7 @@ func TestParkHorizonFutureCommit(t *testing.T) {
 // A landed park that is NOT moved is not re-judged against the horizon, and a
 // narrowed one only shortens the snooze.
 func TestParkHorizonUnmovedQuiet(t *testing.T) {
+	installStatusgenFixture(t)
 	pinParkNow(t, "2030-01-01") // landed park long past any horizon from here
 	root, _ := gutFixture(t, landedParkedFinding)
 	if p := guttedRegisterFields(root); containsSubstr(p, "horizon") {
@@ -408,6 +420,7 @@ func TestParkHorizonUnmovedQuiet(t *testing.T) {
 // NARROWING a park to an EARLIER date re-exposes the alarm sooner — not an attack,
 // not guarded.
 func TestParkNarrowedNotGuarded(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := gutFixture(t, landedParkedFinding) // base parked-until 2026-08-01
 	narrowed := strings.Replace(landedParkedFinding, "parked-until: \"2026-08-01\"",
 		"parked-until: \"2026-07-20\"", 1)

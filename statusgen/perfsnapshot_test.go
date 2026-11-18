@@ -106,6 +106,7 @@ func perfInputFixture(t *testing.T) string {
 
 // regression: statusgen/26
 func TestInvocationSnapshotReuseParity(t *testing.T) {
+	installStatusgenFixture(t)
 	snapshotSetup(t)
 	// Move only the read-memo clock to make the fast path observable without a
 	// sleep. The mutations below still change ctime/content; clocks grant no reuse.

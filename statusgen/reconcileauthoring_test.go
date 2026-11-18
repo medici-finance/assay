@@ -178,6 +178,7 @@ func TestAuthoringAllDerivedStates(t *testing.T) {
 // is not the witness; an older delivery for the same brief is.
 // regression: #1502
 func TestAuthoringBackfillSkips(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Setenv("GITHUB_TOKEN", "test-token")
 	root := copyDesignGateFixture(t)
 	commitFixture(t, root)
@@ -198,6 +199,7 @@ func TestAuthoringBackfillSkips(t *testing.T) {
 
 // regression: #1502
 func TestAuthoringBackfillOnlyAuthor(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Setenv("GITHUB_TOKEN", "test-token")
 	root := copyDesignGateFixture(t)
 	commitFixture(t, root)
@@ -220,6 +222,7 @@ func TestAuthoringBackfillOnlyAuthor(t *testing.T) {
 
 // regression: #1502
 func TestAuthoringBackfillUnread(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Setenv("GITHUB_TOKEN", "test-token")
 	root := copyDesignGateFixture(t)
 	commitFixture(t, root)

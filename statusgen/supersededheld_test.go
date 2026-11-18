@@ -82,18 +82,21 @@ func shCheckVerified(t *testing.T, evidence, stamp string) (int, string) {
 
 // regression: #6767
 func TestShFlipNoteShape(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, shOpts(shNoteShape))
 	vfExpect(t, root, readme, verifyflipExitOK, "")
 }
 
 // regression: #6767
 func TestShFlipItemShape(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, shOpts(shItemShape))
 	vfExpect(t, root, readme, verifyflipExitOK, "")
 }
 
 // regression: #6767
 func TestShCheckVerifiedAgrees(t *testing.T) {
+	installStatusgenFixture(t)
 	// One principal across both tables: verifyflip flips, and check-verified
 	// admits the stamp it wrote.
 	root, readme := vfFixture(t, shOpts(shNoteShape))
@@ -165,6 +168,7 @@ const shAFPass = "| 1 | `go vet ./...` | pass exit=0 | sha256:abc123def456"
 
 // regression: #6767
 func TestShAutoflipSuperseded(t *testing.T) {
+	installStatusgenFixture(t)
 	got := shAutoflip(t, shAFEvidence(shAFPass, "; the condition of #12 is unchanged"))
 	if got.Outcome != flipDone {
 		t.Fatalf("a hold superseded by a witnessed full PASS stopped the autoflip: %v (%s)", got.Outcome, got.Reason)
@@ -173,6 +177,7 @@ func TestShAutoflipSuperseded(t *testing.T) {
 
 // regression: #6767
 func TestShAutoflipStillHeld(t *testing.T) {
+	installStatusgenFixture(t)
 	for name, ev := range map[string]string{
 		// The latest run's tool row failed: no passing witness, the hold stands.
 		"no witness": shAFEvidence("| 1 | `go vet ./...` | fail exit=1 | sha256:abc123def456", ""),
@@ -217,6 +222,7 @@ func shVerdictFirst(runner, q1, q2 string) string {
 // credits.
 // regression: #6767
 func TestShCheckVerifiedSameRun(t *testing.T) {
+	installStatusgenFixture(t)
 	kim := " (on-behalf-of human:kim)"
 	// Loose earlier rows, two principals in the latest run: both refuse.
 	split := shVerdictFirst("ci-host", shPrincipal, kim)
@@ -241,6 +247,7 @@ func TestShCheckVerifiedSameRun(t *testing.T) {
 // row's.
 // regression: #6767
 func TestShAutoflipWitnessGate(t *testing.T) {
+	installStatusgenFixture(t)
 	early := func(row string) string {
 		return shQual(strings.ReplaceAll(row, "2026-08-13", "2026-08-12"), shToolQuals)
 	}

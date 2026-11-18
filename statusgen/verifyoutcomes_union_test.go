@@ -51,6 +51,7 @@ func appendLine(t *testing.T, path, line string) {
 // re-conflicting on the append-only log. It runs in a scratch repo so it asserts git's union
 // driver behaviour directly, independent of the real tree.
 func TestVerifyOutcomesUnionMergeInEitherOrder(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, order := range []struct{ first, second string }{{"A", "B"}, {"B", "A"}} {
 		t.Run(order.first+"-then-"+order.second, func(t *testing.T) {
 			dir := t.TempDir()
@@ -161,6 +162,7 @@ func TestReadVerifyOutcomesUnionNoShards(t *testing.T) {
 // It skips when the test tree is not a git checkout (e.g. a vendored source copy), because the
 // scratch-repo test above is the driver-behaviour guarantee; this one guards the wiring.
 func TestRepoMarksVerifyOutcomesUnion(t *testing.T) {
+	installStatusgenFixture(t)
 	root, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
 	if err != nil {
 		t.Skip("not a git checkout; the scratch-repo test covers the driver behaviour")

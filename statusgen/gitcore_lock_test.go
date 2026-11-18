@@ -7,6 +7,7 @@ import (
 
 // regression: #2395
 func TestGoGitSessionLock(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := revisionFixture(t)
 	end := beginGitReadSession()
 	defer end()

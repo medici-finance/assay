@@ -217,6 +217,7 @@ func writeAlphaPlan(t *testing.T, root, region string) {
 }
 
 func TestLintOfflineMakesNoNetworkCall(t *testing.T) {
+	installStatusgenFixture(t)
 	pinNow(t, driveTestNow)
 	root := lintReachFixture(t) // built before any guard: fixture setup is not the run under test
 
@@ -309,6 +310,7 @@ func TestOfflineLintRequireClaims(t *testing.T) {
 //
 // regression: #3372
 func TestRegenStartsNoForgeProcess(t *testing.T) {
+	installStatusgenFixture(t)
 	pinNow(t, driveTestNow)
 	root := lintReachFixture(t)
 	g := installNetGuard(t, true)

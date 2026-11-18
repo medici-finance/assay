@@ -13,6 +13,7 @@ import (
 )
 
 func TestStaleFailVsMissingCard(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, state := range []string{"stale-fail", "missing-card", "current-fail"} {
 		t.Run(state, func(t *testing.T) {
 			root := t.TempDir()
@@ -111,6 +112,7 @@ func TestFailNoticeClass(t *testing.T) {
 }
 
 func TestFailHistoryRoutes(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, name := range []string{"model", "linked-card", "fix-issue", "unrelated", "same-day", "head-only", "unavailable", "undated", "newest", "superseded", "quoted-pass", "repeated-heading"} {
 		t.Run(name, func(t *testing.T) {
 			root := t.TempDir()
@@ -230,6 +232,7 @@ func TestFailRunDate(t *testing.T) {
 }
 
 func TestFailMergeLanding(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"path", "issue", "unrelated", "unmerged"} {
 		t.Run(mode, func(t *testing.T) {
 			root := t.TempDir()

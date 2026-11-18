@@ -139,6 +139,7 @@ func coreStaleFailMessageParity(t *testing.T) {
 }
 
 func TestStaleFailNativeEncodingKeys(t *testing.T) {
+	installStatusgenFixture(t)
 	for key, value := range map[string]string{"i18n.logOutputEncoding": "UTF-8", "i18n.commitEncoding": "UTF-8", "log.showSignature": "true"} {
 		t.Run(key, func(t *testing.T) {
 			root, _ := staleHistoryFixture(t)
@@ -156,6 +157,7 @@ func TestStaleFailNativeEncodingKeys(t *testing.T) {
 }
 
 func TestReferenceSnapshotHistoryIndependent(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, profile := range []string{"replace", "graft", "both"} {
 		t.Run(profile, func(t *testing.T) {
 			root, tip := staleHistoryFixture(t)
@@ -241,6 +243,7 @@ func coreLastPathFollowParity(t *testing.T) {
 
 // regression: #4846 F4/A2, config and pathspec env profiles
 func TestLastPathNativeProfiles(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []struct{ name, key, value, env string }{
 		{"follow-local", "log.follow", "true", ""},
 		{"show-signature", "log.showSignature", "true", ""},
@@ -283,6 +286,7 @@ func TestLastPathNativeProfiles(t *testing.T) {
 
 // The effective-configuration observation is made once per root in a run.
 func TestLastPathConfigObservedOnce(t *testing.T) {
+	installStatusgenFixture(t)
 	root := lastPathFollowFixture(t)
 	trace := gitTraceShim(t)
 	end := beginGitReadSession()

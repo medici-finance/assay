@@ -39,6 +39,7 @@ func TestSectionRangeEOF(t *testing.T) {
 // All changes and verifyflip writes stay inside the temporary Git fixtures.
 // regression: #3659
 func TestVflipEvidenceEOF(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, suffix := range []string{"", "\n", "\n\n", "\n<!-- note\ncontinued -->\n"} {
 		for _, crlf := range []bool{false, true} {
 			t.Run(strings.ReplaceAll(suffix, "\n", "LF")+map[bool]string{false: "/LF", true: "/CRLF"}[crlf], func(t *testing.T) {
@@ -65,6 +66,7 @@ func TestVflipEvidenceEOF(t *testing.T) {
 // The actual final content line still needs its own authorized author.
 // regression: #3659
 func TestVflipEOFUntrusted(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	vfEdit(t, root, "\n\n## Review\nGate: model.\n", "\n")
 	vfCommit(t, root, vfMailVerifier)
@@ -77,6 +79,7 @@ func TestVflipEOFUntrusted(t *testing.T) {
 // its ordinary revision, coverage, merged-PR and reviewer bindings.
 // regression: #3659
 func TestFoldEvidenceEOF(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeFoldFixture(t,
 		[]foldFixtureBrief{{num: "01", id: "fx/01", gate: "model", ev: foldPassEv}},
 		map[string][3]string{"01": {"implemented", "—", "—"}})

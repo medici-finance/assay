@@ -61,6 +61,7 @@ func (f *chainFixture) withRepair(commit string) {
 
 // regression: #6616
 func TestEvidenceRepairChain(t *testing.T) {
+	installStatusgenFixture(t)
 	f, repair := repairChain(t, repairSplit, repairMessage)
 	// Without a repair line the chain refuses exactly as before.
 	f.refuse(t, "link 1: historical Evidence was not preserved", true)
@@ -76,6 +77,7 @@ func TestEvidenceRepairChain(t *testing.T) {
 
 // regression: #6616
 func TestEvidenceRepairRefusals(t *testing.T) {
+	installStatusgenFixture(t)
 	login, _ := HumanLogin("alex")
 	for _, c := range []struct {
 		name, want, message string
@@ -116,6 +118,7 @@ func TestEvidenceRepairRefusals(t *testing.T) {
 
 // regression: #6616
 func TestEvidenceRepairPlacement(t *testing.T) {
+	installStatusgenFixture(t)
 	f, _ := repairChain(t, repairSplit, repairMessage)
 	f.withRepair(f.base)
 	f.refuse(t, "is not after the amendment's parent", true)

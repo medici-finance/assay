@@ -211,6 +211,7 @@ func TestWitnessRemoteVetoesLoginForm(t *testing.T) {
 // URL form a checkout carries, including `ssh://`, which the shared parser misreads. An
 // unparseable URL returns "", which means no veto, never a guess.
 func TestWitnessOriginRepoParsesRemoteForms(t *testing.T) {
+	installStatusgenFixture(t)
 	for in, want := range map[string]string{
 		"https://github.com/example-org/pub.git":     "example-org/pub",
 		"https://github.com:443/example-org/pub.git": "example-org/pub",

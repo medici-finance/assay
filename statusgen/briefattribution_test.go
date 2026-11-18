@@ -10,6 +10,7 @@ import (
 
 // regression: #3343 — strict opt-in shares actor policy, not corpus severity.
 func TestBriefAttribution(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, tc := range []struct {
 		name, author string
 		want         int
@@ -57,6 +58,7 @@ func TestBriefAttribution(t *testing.T) {
 
 // regression: #3343 — unavailable policy and grafted history are not rejections.
 func TestBriefAttributionUnavailable(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"policy", "shallow"} {
 		t.Run(mode, func(t *testing.T) {
 			o := vfDefaults()
@@ -93,6 +95,7 @@ func TestBriefAttributionUnavailable(t *testing.T) {
 // every brief-v2 and brief-v3 closure exited 2 ("cannot check attribution
 // without brief-v1 schema") whoever authored the Evidence.
 func TestBriefAttributionAcrossSchemas(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, schema := range []string{"brief-v1", "brief-v2", "brief-v3"} {
 		for _, tc := range []struct {
 			name, author string
@@ -129,6 +132,7 @@ func TestBriefAttributionAcrossSchemas(t *testing.T) {
 // regression: attribution-schema — a schema outside the supported set still
 // fails closed with the resolve exit, through the adapter and end to end.
 func TestBriefAttributionUnsupportedSchemaFailsClosed(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, schema := range []string{"legacy", "", "brief-v0", "brief-v9", "contract-v1"} {
 		t.Run("adapter/"+schema, func(t *testing.T) {
 			code, err := checkBriefInfoAttribution(t.TempDir(), &briefInfo{Key: "vf/01", Schema: schema})

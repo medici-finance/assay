@@ -109,6 +109,7 @@ func buildPerfBinaryWith(t *testing.T, flags ...string) string {
 // relative because the public tree carries no absolute machine paths.
 // regression: #3101
 func TestPerfHostileStampDropped(t *testing.T) {
+	installStatusgenFixture(t)
 	for name, stamp := range map[string]string{
 		"url":  "https://forge.invalid/rel?token=fake-stamp-token",
 		"path": "build/src/assay",
@@ -298,6 +299,7 @@ func TestPerfOnWritesOneRecord(t *testing.T) {
 // Both writers are held to it: the perf-v2 line and the perf-v3 line a selected profile writes.
 // regression: F-release-binary-unpinned
 func TestPerfRecordRevision(t *testing.T) {
+	installStatusgenFixture(t)
 	head, err := exec.Command("git", "rev-parse", "HEAD").Output()
 	if err != nil {
 		t.Skipf("not a git checkout (git rev-parse HEAD: %v) — no VCS information to embed", err)
@@ -343,6 +345,7 @@ func TestPerfRecordRevision(t *testing.T) {
 // The dev build's unchanged perf-v2 line is TestPerfOnWritesOneRecord's.
 // regression: #6141
 func TestPerfRecordReleaseTag(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := buildPerfBinaryWith(t, "-buildvcs=false", "-ldflags", "-X main.statusgenVersion=v1.0.82")
 	run, _, home := perfFixtureRun(t, bin, true, "--lint", "--root", "{root}")
 	if run.code != 0 {
@@ -850,6 +853,7 @@ var perfModes = []struct {
 //
 // regression: statusgen/26
 func TestSharedPhaseRecorderFlow(t *testing.T) {
+	installStatusgenFixture(t)
 	l := newPerfLab(t)
 	seen := map[string]bool{}
 	var parentLine, offLine string
@@ -1221,6 +1225,7 @@ func perfCredentialReads(t *testing.T, path, src string) []string {
 //
 // regression: statusgen/26
 func TestPerformanceKeepsCredentialBoundary(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("dependency closure", func(t *testing.T) {
 		if hits := perfForbiddenIn(goList(t, ".", "list", "-deps", ".")); len(hits) != 0 {
 			t.Errorf("statusgen depends on credential-holding packages: %v", hits)

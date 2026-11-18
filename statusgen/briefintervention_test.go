@@ -585,6 +585,7 @@ func TestFlowWaits(t *testing.T) {
 // contract, a forbidden login is refused without disclosure, and a human-act
 // record reaches neither the historian, the board nor a git work tree.
 func TestActSinks(t *testing.T) {
+	installStatusgenFixture(t)
 	s, err := eventSchema()
 	if err != nil {
 		t.Fatalf("ASSERT-FAIL[sinks-roles] %v", err)

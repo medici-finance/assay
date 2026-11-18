@@ -89,6 +89,7 @@ func rowCredProbe(t *testing.T, rec string) string {
 // the row's HOME is a fresh empty directory removed after the run. The
 // unadmitted control proves the plant lands.
 func TestAdmittedRowsNoCred(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, admit := range []bool{true, false} {
 		t.Run(map[bool]string{true: "admitted", false: "control"}[admit], func(t *testing.T) {
 			root, _ := admittedFixture(t, admit)
@@ -190,6 +191,7 @@ func TestAdmittedRowInputsPass(t *testing.T) {
 // scrubbed names with printenv, not $NAME: a $NAME read of a scrubbed name
 // makes an admitted row could-not-run (TestAdmittedScrubbedInputCouldNotRun).
 func TestAdmittedRowSeesDelivery(t *testing.T) {
+	installStatusgenFixture(t)
 	row := `test "$ASSAY_DELIVERY_SHA" = ` + rowInputSHA + ` && test "$ASSAY_DELIVERY_BASE_SHA" = ` + rowInputBase +
 		` && ! printenv ASSAY_ROLE_KEY_FILE && ! printenv ASSAY_TEST_POSTGRES_DSN`
 	for _, admit := range []bool{true, false} {
@@ -217,6 +219,7 @@ func TestAdmittedRowSeesDelivery(t *testing.T) {
 // 11). Each quoting form a row guards with is covered. The unadmitted control,
 // with the same inputs set, runs and passes each row.
 func TestAdmittedScrubbedInputCouldNotRun(t *testing.T) {
+	installStatusgenFixture(t)
 	rows := map[string]string{
 		"ASSAY_TEST_POSTGRES_DSN":     `test -n "$ASSAY_TEST_POSTGRES_DSN"`,
 		"ASSAY_TEST_PERF_DSN":         `[ -n "${ASSAY_TEST_PERF_DSN}" ]`,
@@ -271,6 +274,7 @@ func TestAdmittedScrubbedInputCouldNotRun(t *testing.T) {
 // and in a table where the other row passes or fails the run's exit is
 // could-not-run, never pass, with the row recorded could-not-run.
 func TestScrubbedRowNeverGreen(t *testing.T) {
+	installStatusgenFixture(t)
 	if state, _ := (expectSpec{exitCode: 0}).verdict(runResult{exit: 0, couldNotRun: true, reason: "r"}); state != stateCouldNotRun {
 		t.Fatalf("a could-not-run result with the expected exit reads %s, want %s", state, stateCouldNotRun)
 	}
@@ -441,6 +445,7 @@ func TestAdmittedRunCredAfterScrub(t *testing.T) {
 // hands its own read-only credential path to a --acceptance-forge row after
 // the scrub, never the path an inherited variable named.
 func TestAdmittedRunHandsCred(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := admittedFixture(t, true)
 	prev := runReadCredentialMint
 	runReadCredentialMint = func(_, out string) (string, error) {

@@ -92,6 +92,7 @@ func initRepoAt(t *testing.T, dir, date string) {
 // a non-UTC zone and asserts gitCommitTime returns it as UTC — both the
 // location and the wall clock, so a local-time leak cannot pass.
 func TestGitCommitTimeIsUTC(t *testing.T) {
+	installStatusgenFixture(t)
 	dir := t.TempDir()
 	initRepoAt(t, dir, fixedDate)
 
@@ -111,6 +112,7 @@ func TestGitCommitTimeIsUTC(t *testing.T) {
 // fixed tree the value never varies between calls, and it moves only when HEAD
 // moves. Wall-clock time advances across the calls; the result must not.
 func TestGitCommitTimeDeterministic(t *testing.T) {
+	installStatusgenFixture(t)
 	dir := t.TempDir()
 	initRepoAt(t, dir, fixedDate)
 
@@ -144,6 +146,7 @@ func TestGitCommitTimeDeterministic(t *testing.T) {
 // exact HEAD timestamp — CI checkouts are routinely shallow, and a helper that
 // degraded there would silently push callers onto the wall-clock fallback.
 func TestGitCommitTimeShallowClone(t *testing.T) {
+	installStatusgenFixture(t)
 	base := t.TempDir()
 	src := filepath.Join(base, "src")
 	dst := filepath.Join(base, "shallow")
@@ -164,6 +167,7 @@ func TestGitCommitTimeShallowClone(t *testing.T) {
 // TestGitCommitTimeUnbornHEAD covers a repo with no commits: `git show HEAD`
 // fails, and the contract is the zero time rather than a panic or a bogus date.
 func TestGitCommitTimeUnbornHEAD(t *testing.T) {
+	installStatusgenFixture(t)
 	dir := t.TempDir()
 	runGit(t, dir, "init", "-q", "-b", "main")
 
@@ -176,6 +180,7 @@ func TestGitCommitTimeUnbornHEAD(t *testing.T) {
 // gitCurrentSHA already tolerates. Skipped if the temp dir happens to sit
 // inside a repo, since git would then walk up and legitimately find a HEAD.
 func TestGitCommitTimeNonRepo(t *testing.T) {
+	installStatusgenFixture(t)
 	dir := t.TempDir()
 	probe := exec.Command("git", "-C", dir, "rev-parse", "--git-dir")
 	if err := probe.Run(); err == nil {
@@ -190,6 +195,7 @@ func TestGitCommitTimeNonRepo(t *testing.T) {
 // TestListRemoteBranches round-trips against a local bare-repo "origin" — no
 // live network required, so it stays green offline and in a sandboxed CI.
 func TestListRemoteBranches(t *testing.T) {
+	installStatusgenFixture(t)
 	base := t.TempDir()
 	origin := filepath.Join(base, "origin.git")
 	work := filepath.Join(base, "work")
@@ -225,6 +231,7 @@ func TestListRemoteBranches(t *testing.T) {
 // "nothing is claimed". The error text must name the cause, since it is what
 // the degraded board reports to its reader.
 func TestListRemoteBranchesDegradesGracefully(t *testing.T) {
+	installStatusgenFixture(t)
 	dir := t.TempDir()
 	runGit(t, dir, "init", "-q", "-b", "main")
 	// No "origin" remote configured at all.
@@ -246,6 +253,7 @@ func TestListRemoteBranchesDegradesGracefully(t *testing.T) {
 // The defect (a 3s deadline on a slow remote); without a test that
 // observes it failing, the fix is unproven.
 func TestListRemoteBranchesTimeoutIsNamed(t *testing.T) {
+	installStatusgenFixture(t)
 	dir := t.TempDir()
 	runGit(t, dir, "init", "-q", "-b", "main")
 

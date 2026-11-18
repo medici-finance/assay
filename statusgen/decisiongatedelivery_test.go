@@ -60,6 +60,7 @@ const dvBody = "Delivers the brief.\n\nBrief: " + dhBoardID + "\n"
 // The defect: a delivering PR with no decision keys writes no move, so before
 // the fix it passed. It is now refused, at the brief file, naming the PR.
 func TestDecisionGateDeliveryUnkeyedRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dvBase(t, "")
 	dvEvent(t, rlRepo, dvBody)
@@ -79,6 +80,7 @@ func TestDecisionGateDeliveryUnkeyedRefused(t *testing.T) {
 
 // With both keys recorded the delivery passes.
 func TestDecisionGateDeliveryKeyedPasses(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dvBase(t, dhRuledLines())
 	dvEvent(t, rlRepo, dvBody)
@@ -91,6 +93,7 @@ func TestDecisionGateDeliveryKeyedPasses(t *testing.T) {
 // trailer at all, and no pull_request event (push, schedule, local) all leave
 // the todo brief alone.
 func TestDecisionGateDeliveryNotDeliveredClean(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	for _, body := range []string{
 		"Brief: sdlc/19\n",
@@ -115,6 +118,7 @@ func TestDecisionGateDeliveryNotDeliveredClean(t *testing.T) {
 // A brief already at implemented or later at the base (or withdrawn) is not
 // judged again: its row has landed, so a PR naming it turns nothing red.
 func TestDecisionGateDeliveryLandedRowLeftAlone(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	for _, st := range []string{"implemented", "verified", "done", "withdrawn"} {
 		root := dhFixture(t, map[string]string{
@@ -132,6 +136,7 @@ func TestDecisionGateDeliveryLandedRowLeftAlone(t *testing.T) {
 // reconcile does not move the row, so neither does the hold. The same claim
 // for another repository does not lift it.
 func TestDecisionGateDeliveryPartialClaimClean(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	reg := "schema: graph-repos-v1\ncell: ex\nrepos:\n  ex: {cell: ex, repo: " + rlRepo + "}\n  other: {cell: ex, repo: example-org/other-repo}\n"
 	for _, tc := range []struct {
@@ -152,6 +157,7 @@ func TestDecisionGateDeliveryPartialClaimClean(t *testing.T) {
 
 // A pull_request event whose payload cannot be read fails closed.
 func TestDecisionGateDeliveryUnreadableEventFailsClosed(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dvBase(t, dhRuledLines())
 	t.Setenv("GITHUB_EVENT_NAME", "pull_request")
@@ -164,6 +170,7 @@ func TestDecisionGateDeliveryUnreadableEventFailsClosed(t *testing.T) {
 
 // The delivery reaches --lint itself.
 func TestDecisionGateDeliveryLintWiring(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dvBase(t, "")
 	dvEvent(t, rlRepo, dvBody)
@@ -253,6 +260,7 @@ func TestDecisionGateDeliveryEventCleared(t *testing.T) {
 // punctuation each name nothing reconcile moves, so nothing is judged. The
 // hierarchical form reduces to the same key and is judged.
 func TestDecisionGateDeliveryReadsTrailerAsReconcile(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	for _, body := range []string{
 		"Brief: " + dhBoardID + "\nBrief: sdlc/19\n",
@@ -275,6 +283,7 @@ func TestDecisionGateDeliveryReadsTrailerAsReconcile(t *testing.T) {
 // Only a row reconcile writes from (todo, in-progress) is judged as moved; a
 // blocked row is immutable to reconcile, so a PR naming it moves nothing.
 func TestDecisionGateDeliveryOnlyReconcileWritableRows(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	for _, tc := range []struct {
 		status string
@@ -305,6 +314,7 @@ func TestDecisionGateDeliveryOnlyReconcileWritableRows(t *testing.T) {
 // derive the brief unknown and move nothing: the hold judges no move and
 // says why in a notice.
 func TestDecisionGateDeliveryUndecidedPartialNotJudged(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	reg := "schema: graph-repos-v1\ncell: ex\nrepos:\n  ex: {cell: ex, repo: " + rlRepo + "}\n"
 	root := dhFixture(t, map[string]string{
@@ -328,6 +338,7 @@ func TestDecisionGateDeliveryUndecidedPartialNotJudged(t *testing.T) {
 // request or no number, and a delivering body with no repository to resolve
 // its partial claims against.
 func TestDecisionGateDeliveryNegativePayloads(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	write := func(t *testing.T, raw string) string {
 		t.Helper()
@@ -435,6 +446,7 @@ func TestDecisionGateDeliveryDesignGateWritableRowsOnly(t *testing.T) {
 // in this process with its production wiring; only the re-run target is a built
 // binary, so the parent's environment handling is what is under test.
 func TestDecisionGateDeliveryNotDemotedUnderDiffBase(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := filepath.Join(t.TempDir(), "statusgen")
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()

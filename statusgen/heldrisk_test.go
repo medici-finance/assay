@@ -65,6 +65,7 @@ func TestHeldRiskKeepsHolds(t *testing.T) {
 
 // regression: #4536
 func TestVflipRiskDefinition(t *testing.T) {
+	installStatusgenFixture(t)
 	const def = "RISK-VALUE: DERIVED — Unavailable = \"could-not-check\" @ examples/facts.go:12 — missing and could-not-check cannot release assessment."
 	for _, tail := range []string{"", "; row 2 could-not-check — runner unavailable"} {
 		t.Run(tail, func(t *testing.T) {

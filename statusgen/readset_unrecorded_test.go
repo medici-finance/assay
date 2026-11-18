@@ -26,6 +26,7 @@ func recordedReadSets(t *testing.T) {
 // held, as the row without a token is, and no read-set observation (file,
 // introduction walk, go floor) is wired into the callers at all.
 func TestCoverageTokenUnrecorded(t *testing.T) {
+	installStatusgenFixture(t)
 	// No observation is wired: no read-set file, introduction history walk
 	// or go floor runs on any caller while the switch is off.
 	if opts := coverageOptionsFor(t.TempDir(), nil); opts.readSets != nil {

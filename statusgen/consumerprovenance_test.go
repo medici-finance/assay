@@ -11,6 +11,7 @@ import (
 // cross-revision behavioral probe, which must compile on original source.
 // regression: #5684
 func TestV2ConsumerProvenance(t *testing.T) {
+	installStatusgenFixture(t)
 	f := v2ConsumerFixture(t, nil)
 	c := f.coverage()
 	if !c.Released || len(c.Claims) != 2 {
@@ -76,6 +77,7 @@ func TestV2ConsumerProvenance(t *testing.T) {
 
 // regression: #5684
 func TestV2LatestBadProvenance(t *testing.T) {
+	installStatusgenFixture(t)
 	f := v2ConsumerFixture(t, func(f *gitV2Fixture) {
 		f.Wits = append(f.Wits, gv2Witness{Row: "1", Identity: "verifier-app", Tail: " (forge-identity)", RecordCommand: "false"})
 	})
@@ -87,6 +89,7 @@ func TestV2LatestBadProvenance(t *testing.T) {
 
 // regression: #5684
 func TestV2ConsumerActorRequired(t *testing.T) {
+	installStatusgenFixture(t)
 	f := v2ConsumerFixture(t, nil)
 	b, err := os.ReadFile(f.BriefPath)
 	if err != nil {
@@ -113,6 +116,7 @@ func TestV2ConsumerActorRequired(t *testing.T) {
 
 // regression: #5684
 func TestV2ConsumerVersionSource(t *testing.T) {
+	installStatusgenFixture(t)
 	f := v2ConsumerFixture(t, nil)
 	consumerRewriteBrief(t, f, "schema: brief-v1", "schema: brief-v2\nversion: 2")
 	gv2GitAs(t, f.Root, fixtureVerifierName, fixtureVerifierEmail, "add", "-A")

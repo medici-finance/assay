@@ -78,6 +78,7 @@ func (fx containerFixture) closeArgs() []string {
 // could-not-attribute before any row, so no witness was written.
 // regression: #4208
 func TestContainerLinkedWorktree(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	isolateGitIdentity(t)
 	t.Setenv("DESK_LOOP", "")
@@ -142,6 +143,7 @@ func TestContainerLinkedWorktree(t *testing.T) {
 // the open step refuses, writing no receipt, when the host has no identity.
 // regression: #4208
 func TestContainerReceiptRunner(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	isolateGitIdentity(t)
 	t.Setenv("DESK_LOOP", "")
@@ -218,6 +220,7 @@ func TestContainerReceiptRunner(t *testing.T) {
 // digest mismatch.
 // regression: #4208
 func TestCloseBracketRunner(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	isolateGitIdentity(t)
 	t.Setenv("DESK_LOOP", "")

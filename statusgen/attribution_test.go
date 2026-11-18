@@ -627,6 +627,7 @@ func attrProblemsAndNotices(t *testing.T, root string) (problems, notices []stri
 // A brief whose authoring and Evidence commits are under DISTINCT identities is
 // not flagged at all — the healthy independent case.
 func TestAttributionIdentityCrossCheckMultiIdentity(t *testing.T) {
+	installStatusgenFixture(t)
 	gitAvailable(t)
 	root := t.TempDir()
 	writeIdentStream(t, root, []struct{ num, file string }{
@@ -668,6 +669,7 @@ func TestAttributionIdentityCrossCheckMultiIdentity(t *testing.T) {
 // identity layer instead surfaces a bounded corroborating NOTICE, so the
 // signal is still visible without manufacturing a duplicate failure.
 func TestAttributionIdentitySameIdentityAlreadyTokenFlagged(t *testing.T) {
+	installStatusgenFixture(t)
 	gitAvailable(t)
 	root := t.TempDir()
 	dir := filepath.Join(root, "docs", "streams", "gitattr")
@@ -770,6 +772,7 @@ sources: ["s"]
 // establishes that identity genuinely discriminates in this repo (its own
 // first=alice, last=bob) without itself becoming a same-identity candidate.
 func TestAttributionIdentityCrossCheckMechanicalTouchNotMasked(t *testing.T) {
+	installStatusgenFixture(t)
 	gitAvailable(t)
 	root := t.TempDir()
 	writeIdentStream(t, root, []struct{ num, file string }{
@@ -846,6 +849,7 @@ func TestAttributionIdentityCrossCheckMechanicalTouchNotMasked(t *testing.T) {
 // this repo's ONLY identities, the `idents` set collapses to one member, and
 // attributionProblems never reaches the escalation-candidate path at all.
 func TestAttributionIdentityCrossCheckAddendumAfterVerificationNotMasked(t *testing.T) {
+	installStatusgenFixture(t)
 	gitAvailable(t)
 	root := t.TempDir()
 	writeIdentStream(t, root, []struct{ num, file string }{
@@ -904,6 +908,7 @@ func TestAttributionIdentityCrossCheckAddendumAfterVerificationNotMasked(t *test
 // Escalation to a hard PROBLEM only applies once this repo's history shows
 // MORE than one identity (see TestAttributionIdentityCrossCheckMultiIdentity).
 func TestAttributionIdentitySingleIdentityInconclusive(t *testing.T) {
+	installStatusgenFixture(t)
 	gitAvailable(t)
 	root := t.TempDir()
 	writeIdentStream(t, root, []struct{ num, file string }{{"01", "brief-01-t.md"}})
@@ -924,6 +929,7 @@ func TestAttributionIdentitySingleIdentityInconclusive(t *testing.T) {
 // file has no commit history (untracked / just added), the cross-check degrades
 // LOUDLY with a per-brief NOTICE — never a silent pass.
 func TestAttributionIdentityUntrackedDegradesLoudly(t *testing.T) {
+	installStatusgenFixture(t)
 	gitAvailable(t)
 	root := t.TempDir()
 	writeIdentStream(t, root, []struct{ num, file string }{{"01", "brief-01-t.md"}})

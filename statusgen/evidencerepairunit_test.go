@@ -7,6 +7,7 @@ import (
 
 // regression: #6616
 func TestEvidenceRepairVerifyRow(t *testing.T) {
+	installStatusgenFixture(t)
 	f, repair := repairChain(t, repairSplit, repairMessage)
 	f.withRepair(repair)
 	parent := vfRev(t, f.root, f.amendments[0]+"^1")

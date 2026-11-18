@@ -453,6 +453,7 @@ func briefWithEvidence(evidence string) string {
 // attributionProblems passes BOTH (asserted below, so the gap this brief closes is
 // pinned rather than asserted in prose). The Evidence-actor check separates them.
 func TestEvidenceActorRealRepoPositiveControl(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	evActorGit(t, root, "init", "-q", "-b", "main")
 
@@ -520,6 +521,7 @@ func TestEvidenceActorRealRepoPositiveControl(t *testing.T) {
 // reviewer can diff), not tamper-PROOF. Whoever promotes this to a hard gate must
 // read this test first.
 func TestEvidenceActorRealRepoForgedAuthorIsVisible(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	evActorGit(t, root, "init", "-q", "-b", "main")
 	dir := filepath.Join(root, "docs", "streams", "forged")
@@ -545,6 +547,7 @@ func TestEvidenceActorRealRepoForgedAuthorIsVisible(t *testing.T) {
 // editing the file. Blame runs against the working tree, so an uncommitted
 // Evidence section is owned by nobody.
 func TestEvidenceActorRealRepoUncommittedIsNotBacked(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	evActorGit(t, root, "init", "-q", "-b", "main")
 	dir := filepath.Join(root, "docs", "streams", "wip")
@@ -586,6 +589,7 @@ func TestEvidenceActorRealRepoUncommittedIsNotBacked(t *testing.T) {
 // The SAME repo cloned in FULL still reads the row as verifier-backed, proving it is
 // the shallowness, not the content, that produces could-not-check.
 func TestEvidenceActorRealRepoShallowGraftIsCouldNotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	origin := t.TempDir()
 	evActorGit(t, origin, "init", "-q", "-b", "main")
 	dir := filepath.Join(origin, "docs", "streams", "graftbacked")
@@ -670,6 +674,7 @@ func TestEvidenceActorRealRepoShallowGraftIsCouldNotCheck(t *testing.T) {
 // backlog line, indistinguishable from a pre-existing closure and never a
 // PROBLEM. evidenceActorGate is what tells the two apart.
 func TestEvidenceCommitIdentityProblem(t *testing.T) {
+	installStatusgenFixture(t)
 	build := func(t *testing.T, authorName, authorEmail string) (root string, streams []*Stream) {
 		root = t.TempDir()
 		evActorGit(t, root, "init", "-q", "-b", "main")
@@ -779,6 +784,7 @@ func TestEvidenceCommitIdentityProblem(t *testing.T) {
 // just the NOTICE-only wrapper) so the PROBLEM half is proved innocent of this
 // failure mode too: a could-not-check row must never surface as a PROBLEM.
 func TestEvidenceActorShallowClone(t *testing.T) {
+	installStatusgenFixture(t)
 	origin := t.TempDir()
 	evActorGit(t, origin, "init", "-q", "-b", "main")
 	dir := filepath.Join(origin, "docs", "streams", "shallowclone")

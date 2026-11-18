@@ -144,6 +144,7 @@ func foldTrackingGitLine(t *testing.T, root string, args ...string) string {
 
 // regression: #5475
 func TestFoldTrackingRevision(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"current", "duplicate", "stale", "legacy", "legacy note", "quoted v1 beside v2"} {
 		t.Run(mode, func(t *testing.T) {
 			d, sourceSHA, _ := foldTrackingFixture(t, mode)
@@ -169,6 +170,7 @@ func TestFoldTrackingRevision(t *testing.T) {
 
 // regression: #5475
 func TestFoldTrackingRevisionRefusals(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"missing history", "missing tracking but source present", "mixed", "inline prefix", "missing origin", "short run", "wrong repo", "wrong path", "wrong source", "short tracking", "malformed", "conflicting", "fenced", "prior run only", "foreign homed source missing"} {
 		t.Run(mode, func(t *testing.T) {
 			d, _, _ := foldTrackingFixture(t, mode)
@@ -187,6 +189,7 @@ func TestFoldTrackingRevisionRefusals(t *testing.T) {
 // reason names which check refused, so a different refusal does not mask a
 // skipped one.
 func TestFoldTrackingRevisionRefusalsSourcePresent(t *testing.T) {
+	installStatusgenFixture(t)
 	for mode, reason := range map[string]string{
 		"fenced":               "not bound by literal selected-run metadata",
 		"prior run only":       "not bound by literal selected-run metadata",
@@ -213,6 +216,7 @@ func TestFoldTrackingRevisionRefusalsSourcePresent(t *testing.T) {
 // version read at tracking-source=. Both the cross-repository and legacy
 // rows derive verified with their source history configured.
 func TestReconcileCrossRepoPass(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"current", "legacy"} {
 		t.Run(mode, func(t *testing.T) {
 			d, sourceSHA, _, source := foldTrackingSource(t, mode)
@@ -256,6 +260,7 @@ func TestReconcileCrossRepoPass(t *testing.T) {
 // and whose selected run binds no attestation naming tracking-source= stays
 // could-not-check, and the reason says why instead of a bare exit status.
 func TestFoldCrossRepoNoBinding(t *testing.T) {
+	installStatusgenFixture(t)
 	d, sourceSHA, _ := foldTrackingFixture(t, "foreign homed source missing")
 	w, ok, why := foldVerified(d, map[string]Coverage{d.key: {Released: true}})
 	for _, want := range []string{"could-not-check the brief version for run source " + sourceSHA[:12], "fatal:", "this run binds none"} {

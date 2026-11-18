@@ -140,6 +140,7 @@ func rowreadAssertTree(t *testing.T, secrets []string, dir string) {
 // not its environment, not the reader's argv or environment, not a file under
 // its HOME or TMPDIR, not its output. The fake forge proves the read used one.
 func TestRowreadHoldsNoToken(t *testing.T) {
+	installStatusgenFixture(t)
 	sg := rowreadStatusgen(t)
 	root, _ := admittedFixture(t, true)
 	f := newRowreadForge(t, `"triage done (fixture triage)"`)

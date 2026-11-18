@@ -97,6 +97,7 @@ func v2ConsumerResults(t *testing.T, f *gitV2Fixture, dryRun bool) v2ConsumerRes
 // because it only parsed the legacy execution-SHA cell.
 // regression: #5684
 func TestV2FoldConsumerFlow(t *testing.T) {
+	installStatusgenFixture(t)
 	f := v2ConsumerFixture(t, nil)
 	if c := f.coverage(); !c.Released || len(c.Claims) != 2 {
 		t.Fatalf("fixture did not release two actual v2 claims: %+v", c)
@@ -122,6 +123,7 @@ func TestV2FoldConsumerFlow(t *testing.T) {
 
 // regression: #5684
 func TestV2ConsumerImplicitDeps(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []struct{ name, path, content string }{
 		{"source", "tools/x/pkg/a.go", "package pkg\n\nfunc A() int { return 3 }\n"},
 		{"module", "tools/x/go.mod", "module example.test/x\n\ngo 1.25\n\n// changed\n"},
@@ -156,6 +158,7 @@ func TestV2ConsumerImplicitDeps(t *testing.T) {
 
 // regression: #5684
 func TestV2ConsumerFixtureWrite(t *testing.T) {
+	installStatusgenFixture(t)
 	f := v2ConsumerFixture(t, nil)
 	out := v2ConsumerResults(t, f, false)
 	if out.flip.Outcome != flipDone {
@@ -187,6 +190,7 @@ func consumerRewriteBrief(t *testing.T, f *gitV2Fixture, old, next string) {
 
 // regression: #5684
 func TestV2ConsumerInvalidRecords(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []struct {
 		name   string
 		mutate func(*testing.T, *gitV2Fixture)
@@ -240,6 +244,7 @@ func TestV2ConsumerInvalidRecords(t *testing.T) {
 
 // regression: #5684
 func TestV2ConsumerLatestBad(t *testing.T) {
+	installStatusgenFixture(t)
 	f := v2ConsumerFixture(t, func(f *gitV2Fixture) {
 		f.Wits = append(f.Wits, gv2Witness{Row: "1", Identity: "verifier-app", Tail: " (forge-identity)", RecordCommand: "false"})
 	})

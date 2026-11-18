@@ -513,6 +513,7 @@ func TestNoticeRatchet(t *testing.T) {
 // real repository: added, edited, renamed, deleted, untracked and non-brief
 // changes.
 func TestChangedBriefsGit(t *testing.T) {
+	installStatusgenFixture(t)
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Skip("git not available")
 	}

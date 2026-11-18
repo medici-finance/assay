@@ -17,6 +17,7 @@ import (
 // a trailing newline, binary bytes, a tree, a missing path, a bad revision, a repeated read —
 // returns exactly what `git show <rev>:<path>` returns, error-ness included.
 func TestGitShowObjectMatchesExec(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitInit(t, root, "T", "t@example.com")
 	files := map[string][]byte{
@@ -77,6 +78,7 @@ func TestGitShowObjectMatchesExec(t *testing.T) {
 // TestGitReadSessionEndsWithRun: the memo never outlives its session — a read after the
 // session closes sees the tree as it is now, not the answer cached before HEAD moved.
 func TestGitReadSessionEndsWithRun(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitInit(t, root, "T", "t@example.com")
 	if err := os.WriteFile(filepath.Join(root, "f.md"), []byte("v1\n"), 0o644); err != nil {
@@ -108,6 +110,7 @@ func TestGitReadSessionEndsWithRun(t *testing.T) {
 // leaves the count unchanged, a count change on one line, a name that is a prefix of another,
 // a merge, and a name that never existed.
 func TestDeclAgeBatchMatchesPickaxe(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitInit(t, root, "T", "t@example.com")
 	file := filepath.Join(root, "statusgen", "main.go")

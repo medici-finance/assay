@@ -15,6 +15,7 @@ import (
 )
 
 func TestPublicAssayModuleCache(t *testing.T) {
+	installStatusgenFixture(t)
 	stubPublicAssay(t, http.StatusOK, publicAssayMetadata)
 	fx := newContainerFixture(t)
 	withModuleRoots(t, fx)
@@ -96,6 +97,7 @@ func TestPublicAssayProofFailClosed(t *testing.T) {
 }
 
 func TestPublicAssayScopeAndPrivateDenials(t *testing.T) {
+	installStatusgenFixture(t)
 	good := "github.com/medici-finance/assay/tools/desk"
 	version := "v0.0.0-20260908135545-8217692d48e4"
 	for _, tc := range []struct{ name, path, private, sum string }{
@@ -146,6 +148,7 @@ func TestPublicAssayScopeAndPrivateDenials(t *testing.T) {
 }
 
 func TestPublicAssayProofBeforeDownloadAndReceipt(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	withModuleRoots(t, fx)
 	path := "github.com/medici-finance/assay/tools/desk"
@@ -278,6 +281,7 @@ func noOperatorPrivate(t *testing.T) {
 // unauthenticated GET before any download, and a refused GET (here 403, the
 // anonymous rate limit) refuses the root with nothing downloaded.
 func TestPublicAssayNonOwnerProof(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, tc := range []struct {
 		name   string
 		status int
@@ -315,6 +319,7 @@ func TestPublicAssayNonOwnerProof(t *testing.T) {
 // refusal is a deliberate fail-closed false refusal: the request screen still
 // lists the original path, and dropping its binding would admit it unproven.
 func TestPublicAssayForkReplaceRefuses(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	withModuleRoots(t, fx)
 	path := "github.com/medici-finance/assay/tools/desk"
@@ -336,6 +341,7 @@ func TestPublicAssayForkReplaceRefuses(t *testing.T) {
 // read. A root edited while the proof's request is in flight (here: an owner
 // path planted in go.mod and go.sum) refuses with nothing downloaded.
 func TestPublicAssayScreenWindow(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	withModuleRoots(t, fx)
 	gomod, gosum := publicAssayRoot(t, fx)
