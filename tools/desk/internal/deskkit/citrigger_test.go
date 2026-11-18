@@ -386,6 +386,10 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{test: "tools/desk/internal/deskkit/fixture_environment_ci_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
+			reads:      []string{".github/workflows/ci.yml", "tools/test-fixture-environment.sh", "tools/test-fixture-environment_test.sh", "docs/test-policy.md"},
+			runInvokes: deskShardInvokes,
+			why:        "hostile full-module lane and required aggregate must detect skipped or failed execution and fixture escapes"},
 		{test: "gitcore/testenv/imports_test.go", module: "gitcore", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads: []string{"gitcore/", "statusgen/", "tools/desk/"}, runInvokes: []string{`*/gitcore|gitcore) extra="GOWORK=off go test -count=1 -timeout=300s . ./gittest ./testenv"`},
 			why: "test-support imports may appear only in test files across the shared helper and both consumer modules"},

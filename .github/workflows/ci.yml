@@ -408,6 +408,36 @@ jobs:
             ${{ runner.temp }}/authority-qualification/production-controls.*
           if-no-files-found: ignore
 
+  # Full modules run with hostile caller state, independently of the ordinary
+  # shards. No scope skip: this lane protects every fixture consumer.
+  fixture-environment:
+    runs-on: medici-builder-public
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+      - name: Fetch the statusgen skew baseline (checksum-verified)
+        run: bash statusgen/fetch-baseline.sh statusgen-linux-amd64 "${RUNNER_TEMP}/sg-baseline"
+      - name: Prepare complete offline test dependency closure
+        run: |
+          set -euo pipefail
+          bash statusgen/prepare-test-deps.test.sh
+          (cd statusgen && GOWORK=off go list -mod=readonly -deps -test ./... >/dev/null)
+          (cd tools/desk && GOWORK=off go list -mod=readonly -deps -test ./... >/dev/null)
+      - name: Test hostile launcher controls
+        run: bash tools/test-fixture-environment_test.sh
+      - name: Test full modules under hostile caller state
+        run: bash tools/test-fixture-environment.sh
+
   # The required check `build-test`. Branch protection requires a check of this
   # exact name, so it stays a single job that reports one verdict for the whole
   # sharded suite: success only when every build-test-shard leg succeeded. Any
@@ -416,7 +446,7 @@ jobs:
   # cancelled suite reads as a failure here, never as a skipped (passing) check.
   # GitHub-hosted: it only reads the needs context.
   build-test:
-    needs: [build-test-shard, forge-local-authority]
+    needs: [build-test-shard, forge-local-authority, fixture-environment]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -424,12 +454,14 @@ jobs:
         env:
           SHARDS: ${{ needs.build-test-shard.result }}
           AUTHORITY: ${{ needs.forge-local-authority.result }}
+          FIXTURES: ${{ needs.fixture-environment.result }}
         run: |
           set -euo pipefail
           echo "build-test-shard: ${SHARDS}"
           echo "forge-local-authority: ${AUTHORITY}"
-          if [ "$SHARDS" = "success" ] && [ "$AUTHORITY" = "success" ]; then
-            echo "every shard and actual authority qualification passed"
+          echo "fixture-environment: ${FIXTURES}"
+          if [ "$SHARDS" = "success" ] && [ "$AUTHORITY" = "success" ] && [ "$FIXTURES" = "success" ]; then
+            echo "every shard, actual authority qualification and hostile fixture suite passed"
           else
             echo "::error::build-test shards concluded '${SHARDS}' — the suite did not pass"
             exit 1
