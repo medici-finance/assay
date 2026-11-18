@@ -11,7 +11,11 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/gitquiet"
 )
+
+func TestMain(m *testing.M) { os.Exit(gitquiet.Run(m)) }
 
 func gitTool(t *testing.T) string {
 	t.Helper()
