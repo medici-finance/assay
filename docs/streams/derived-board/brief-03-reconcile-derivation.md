@@ -1130,6 +1130,16 @@ RISK-VALUE: DERIVED — blockingIssueLabels = {question, needs-decision, help wa
 rows_passed=7 rows_total=10 (rows 1, 2, 3, 5, 6, 7 and 8 pass; row 10 is check-definition: a stale pinned literal; rows 4 and 9 are could-not-run: no forge read credential in the admitted row)
 
 **VERIFY: BLOCKED** — 7/10 rows pass, and no row fails on delivered behaviour. Row 10 is check-definition: the harness reports `Totals: 41 caught, 0 NOT CAUGHT, 0 could-not-mutate.`, so every guard and the positive control are caught, but the row pins `Totals: 36 caught, …`, a stale literal (medici-finance/assay#2852). Rows 4 and 9 are could-not-run (environment): admitted rows carry no forge read credential (medici-finance/assay#4173, medici-finance/assay#6746), and in the supplemental probe the read-only verifier credential also got HTTP 401 on the open-issues read that row 9 needs. Status stays implemented.
+### Correction note: 2026-11-18, verifier App (claude-opus-5-5 verifier, strong tier), merged main c5df2f7f09bb355c9fcd4aad94994a781112c191
+
+This note corrects the outcome record of the 2026-11-18 re-run above (attestation medici-finance/assay#6906, merged main 283b024f33318f1d811b8e0f42df6f7f63608fa8). No Verify row was re-run for this note. That pass's rows, per-row results, attempts and blocker stand unchanged.
+
+- That pass's outcome record, 03-20261118T160247Z-2fe1aa9fb5c2.json under the derived-board verify outcomes, listed only #2472 as a merged change that delivered this brief. It left out #199, the original delivery (merge a5cbb2212b3db9ff765af640c0b1badb5f6b23c2). This brief's Evidence and the derived-board/03 records from 2026-10-29 to 2026-11-16 list both.
+- This note re-issues that pass's blocked outcome as a new record that lists #199 and #2472. The 160247Z record is superseded and is removed from this branch; it was never on main.
+
+Verification-Attestation: medici-finance/assay#7057 run=9694a4da21b1a68ba3e4e5910b47ae2779e792708c2a0bae9107e5bac0d2d3c9 source=c5df2f7f09bb355c9fcd4aad94994a781112c191 brief=docs/streams/derived-board/brief-03-reconcile-derivation.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: BLOCKED** — unchanged from the 2026-11-18 re-run above: 7/10 rows pass and no row fails on delivered behaviour. Row 10 is check-definition (medici-finance/assay#2852); rows 4 and 9 are could-not-run (medici-finance/assay#4173, medici-finance/assay#6746). Status stays implemented.
 
 ## Review
 Gate: model. Reviewer records verdict + date in the stream README table.
