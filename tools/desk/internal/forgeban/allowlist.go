@@ -209,6 +209,15 @@ var UnresolvedArgv = []Allowance{
 			"Tests supply compiled local fixtures. The ledger declares this blind spot and leaves the " +
 			"forge assertion and credential boundaries intact.",
 	},
+	{
+		Key: "loopadmin/experiments/pirunner/bridge.go::startBridge::<unresolved>",
+		Reason: "the pirunner experiment's Node bridge child, built only under the pirunner build tag. " +
+			"argv[0] is the Node runtime the caller resolved with exec.LookPath(\"node\") and argv[1] is the " +
+			"module's own compiled bridge script (node/dist/bridge.js); no shell is involved. The child's " +
+			"environment is replaced with PATH, KUBECONFIG=/dev/null and fixed switches, so no parent " +
+			"credential reaches it, and the bridge makes no network or forge call. It is a local runtime, " +
+			"not a forge CLI. This row registers the blind spot and grants no forge permit.",
+	},
 	// cmd/cellctl — the cell launcher (the Go port of the bash script now kept only as a test
 	// oracle, tools/cellctl/testdata/cellctl-shell-oracle.sh). It reaches NO forge at all: its one
 	// credential path goes through deskkit.RoleTokenForRepo, and its own brief asserts at the

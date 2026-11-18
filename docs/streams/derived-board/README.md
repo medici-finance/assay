@@ -59,7 +59,7 @@ passes `--backfill`, so it also folds in the historical branch/body fallback.
 | 04 | [generated Briefs table in every stream README + single-writer lint + scheduled reconcile PR](brief-04-generated-table.md) | 2 | M | implemented | — | — |
 | 05 | [desk skills — reference the brief, never flip the cell (author-brief, worker-desk, pr-review-desk, verify-desk; public copies)](brief-05-skill-updates.md) | 1 | S | done | 2026-09-01 opus-4.8[1m]-verifier | 2026-09-02 assay-reviewer-app[bot] (approved PR #316 @ 7d9ab3f8a772155ef8e4347a16b5f25b421e23e6) |
 | 06 | [v1.0.0 — deskmigrate statusgen-regen op, the v0.28.0→v1.0.0 migration, paired-versions bump, same-tag pin lint, brief-reading tools refuse v2 below v1](brief-06-v1-migration-and-cut.md) | 3 | M | implemented | — | — |
-| 07 | [per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills](brief-07-rollout-backfill.md) | 4 | L | in-progress | — | — |
+| 07 | [this repo's rollout — brief-v2 migration, scheduled reconcile, historical backfill as a drift-report PR; --backfill kept for the reconcile verb](brief-07-rollout-backfill.md) | 4 | L | in-progress | — | — |
 | 08 | [witness ledger — the board writer records every merged-PR fact the fold reads, so a merged PR is read from the forge once, ever](brief-08-witness-ledger.md) | 2 | M | todo | — | — |
 | 09 | [incremental reconcile — forge reads scale with open PRs plus PRs changed since the last regen, never with total PR history](brief-09-incremental-reconcile.md) | 3 | M | todo | — | — |
 | 10 | [Complete candidate coverage for partial-delivery reconciliation](brief-10-complete-candidate-coverage-for-partial-delivery-reconciliation.md) | 0 | M | implemented | — | — |
@@ -70,7 +70,8 @@ passes `--backfill`, so it also folds in the historical branch/body fallback.
 
 `derived-board/01` (the spec — what a cell may claim and from what) → `03` (the derivation
 engine) → `04` (the generated table that replaces the hand-edited one) → `06` (the v1.0.0
-migration and cut) → `07` (rollout + backfill across the five stream-bearing repos).
+migration and cut) → `07` (this repo's rollout + backfill; each consumer repo runs the same
+sequence on its own board).
 
 **The head was verified before authoring.** The tempting head is 03 (the engine) — it is the
 biggest piece and the one people want to see working. It is not the head: without 01 the
@@ -97,7 +98,9 @@ rows. The cell is derived or it is not trustworthy; there is no third option.
 - **Wave 2** — `derived-board/04` (depends on 03).
 - **Wave 3** — `derived-board/06` (depends on 04; human gate — the release cut is irreversible
   under immutable releases).
-- **Wave 4** — `derived-board/07` (depends on 05 + 06; workflow-file pushes need the human).
+- **Wave 4** — `derived-board/07` (depends on 05 + 06; scoped to this repo's rollout, its own
+  scheduled reconcile having landed through the human-promoted workflow; consumer repos' rollouts
+  are tracked on their own boards).
 
 - **Wave 2 (forge-cost follow-on)** — `derived-board/08` (depends on 03): the witness ledger.
 - **Wave 3 (forge-cost follow-on)** — `derived-board/09` (depends on 08): incremental reconcile.
@@ -114,7 +117,8 @@ today's full read.
 
 - Every brief here is a toolkit brief: code under `statusgen/` and `tools/desk/`, docs under
   `docs/`, skills under `plugins/assay/skills/`. The private toolkit's copies of the skills
-  and spec docs are consumers (`consumers:` lists them; re-stage is overlay, never mirror).
+  and spec docs are consumers (`consumers:` lists them). The skills have one canonical home
+  here and the overlay mirror is retired, so there is no re-stage step (brief 07, Task 3).
 - Three-state instrument invariant (brief-rules §"Three-state instrument invariant") binds
   every derived cell: a cell is `todo`/`in-progress`/`implemented`/`verified`/`done` **only
   when the instrument looked**; when it could not (no network, API error, no trailer) the cell

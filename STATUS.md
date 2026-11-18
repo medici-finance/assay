@@ -19,15 +19,15 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [comms-core](docs/streams/comms-core/README.md) | P1 | active | 1/4 | 2026-11-15 |  |
 | [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-11-16 |  |
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 1/9 | 2026-11-15 |  |
-| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/11 | 2026-11-16 |  |
+| [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/11 | 2026-11-18 |  |
 | [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 3/39 | 2026-11-17 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 9/37 | 2026-11-17 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/63 | 2026-11-18 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-11-16 |  |
-| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 4/67 | 2026-11-17 | 15 withdrawn |
+| [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 4/67 | 2026-11-18 | 15 withdrawn |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/18 | 2026-11-15 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 6/55 | 2026-11-16 |  |
-| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 3/40 | 2026-11-17 |  |
+| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 3/40 | 2026-11-18 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-11-18 |  |
 | [intake-class-routing](docs/streams/intake-class-routing/README.md) | P1 | active | 0/5 | 2026-11-15 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-11-10 |  |
@@ -58,7 +58,7 @@ _gate:model briefs at `verified` that the model auto-flip has not moved to `done
 | [desk-supervision/18](docs/streams/desk-supervision/README.md) | Enforce repair reservations at worker dispatch | 2d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [desk-supervision/19](docs/streams/desk-supervision/README.md) | Persist review findings and apply the existing round cap across sessions | 2d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [desk-supervision/27](docs/streams/desk-supervision/README.md) | Verify-outcome records carry join keys — delivering PRs, verifier tier and timing, per-row results — and every failure a blocker kind | 2d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
-| [desk-supervision/34](docs/streams/desk-supervision/README.md) | Worker usage counts at claim release — counts only, never transcripts | 11h | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
+| [desk-supervision/34](docs/streams/desk-supervision/README.md) | Worker usage counts at claim release — counts only, never transcripts | 20h | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [desk-tools/15](docs/streams/desk-tools/README.md) | `deskdispatch --dry-run --worktree <path>` — render the prompt against an operator-supplied home | 2d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [desk-tools/23](docs/streams/desk-tools/README.md) | Opt-in local usage + timing telemetry — a per-invocation perf record with a 7-day history, and `deskperf` to read it | 2d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [desk-tools/37](docs/streams/desk-tools/README.md) | Review workflow semantic oracle and matched cost baseline | 2d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
@@ -113,7 +113,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 | [fresh-views](docs/streams/fresh-views/README.md) | P2 | 0/6 | 2026-09-17 |
 | [review-profiles](docs/streams/review-profiles/README.md) | P2 | 0/6 | 2026-10-29 |
 | [server-controls](docs/streams/server-controls/README.md) | P2 | 0/5 | 2026-10-20 |
-| [tool-refactoring](docs/streams/tool-refactoring/README.md) | P1 | 0/11 | 2026-11-16 |
+| [tool-refactoring](docs/streams/tool-refactoring/README.md) | P1 | 0/11 | 2026-11-18 |
 
 ## Next up
 
@@ -121,9 +121,9 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **COULD NOT CHECK — main-red arm could not check — no `--main-health` input was supplied, so whether main is red is unknown here (statusgen does not read live CI). A main-red fix cannot be lifted into the critical tier on this run; this is not a reading that main is green.**
 
-_Next-up: 20 of 40 eligible — 20 held back (19 by per-stream caps, 1 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 19 of 39 eligible — 20 held back (per-stream caps; span-of-control cap 20 not reached). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
-_Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (13), desk-tools (6). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 20 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (13), desk-tools (7). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
@@ -139,20 +139,19 @@ _Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. 
 | desktools-v2 | 30 — Port the GitLab fleet provisioner to a Go command [exec:strong] | 3 | 2020 + 1500 (drive:desktools-v2) |
 | desktools-v2 | 25 — Migrate deskapps to Cobra and Viper [exec:strong] | 3 | 1520 + 1500 (drive:desktools-v2) |
 | graph-execution | 41 — Persist loop-admin journal and recovery in PostgreSQL [exec:strong] | 2 | 3020 |
-| derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2020 |
+| derived-board | 07 — this repo's rollout — brief-v2 migration, scheduled reconcile, historical backfill as a drift-report PR; --backfill kept for the reconcile verb | 4 | 2020 |
 | desk-tools | 52 — Link decision and verification cards without conflating their authority [exec:strong] | 1 | 2020 |
 | intake-class-routing | 02 — The scan publishes recorded handoffs and land stops a judged exit without one [exec:strong] | 0 | 2020 |
 | statusgen | 32 — Connect board drift notices to the existing reconciliation owners [exec:strong] | 1 | 2020 |
 | desk-tools | 34 — Pinned golangci-lint across every Go module [exec:strong] | 1 | 1520 |
 | desk-tools | 61 — Declare the secret scan's benign shapes in one registry, each entry bounded by a refusal it must keep [exec:strong] | 1 | 1520 |
-| agent-execution | 10 — Evaluate a Pi Durable runner with offline recovery fixtures [exec:strong] | 1 | 1020 |
 | statusgen | 34 — One owned scratch path for Verify rows [exec:strong] | 1 | 1020 |
 
 ## Drive: `build-less-brittle`
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 185b7ee7e 2026-11-18T01:48:27Z_
+_last regen: 6a6a87d5d 2026-11-18T12:17:20Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +172,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 185b7ee7e 2026-11-18T01:48:27Z_
+_last regen: 6a6a87d5d 2026-11-18T12:17:20Z_
 
 **Progress:** 36/100 brief items done.
 
@@ -237,7 +236,7 @@ _last regen: 185b7ee7e 2026-11-18T01:48:27Z_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (25 for the desk · 54 for the driver · 45 for workers · 41 for an operator · 50 runner-pending — of 218 total; 3 could-not-check)
+## Awaiting verification / review (25 for the desk · 54 for the driver · 45 for workers · 41 for an operator · 51 runner-pending — of 219 total; 3 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
@@ -267,7 +266,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | harness-portability | 04 [exec:strong] | implemented | 4020 | 6 | 2d | driver | human action, cite medici-finance/assay#1834 | — | — |
 | milestone-support | 06 [exec:strong] | implemented | 4020 | 6 | 2d | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#6656 | — | — |
 | verification-handoff | 03 [exec:strong] | implemented | 3520 | 5 | 2d | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
-| graph-execution | 40 [exec:strong] | implemented | 3500 | 3 | 11h | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
+| graph-execution | 40 [exec:strong] | implemented | 3500 | 3 | 20h | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
 | apps-installer | 10 | implemented | 3020 | 2 | 2d | driver | human action, cite medici-finance/assay#4560 | — | — |
 | derived-board | 04 | implemented | 3020 | 2 | 2d | driver | human action, cite #1175 | — | — |
 | windows-port | 03 [exec:strong] | implemented | 3020 | 4 | 2d | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
@@ -360,7 +359,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 38 [exec:strong] | implemented | 12520 | 23 | 2d | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
 | forge-neutral | 33 [exec:strong] | implemented | 12020 | 20 | 2d | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
 | desktools-v2 | 66 [exec:strong] | implemented | 11520 | 21 | 2d | operator | environment blocker, cite medici-finance/assay#5112 | — | — |
-| desk-supervision | 34 [exec:strong] | verified | 10000 | 18 | 11h | operator | environment blocker, cite medici-finance/assay#4823 | 2026-11-16 assay-verifier-app[bot] @ 35ddd8767418 (model verifier) | — |
+| desk-supervision | 34 [exec:strong] | verified | 10000 | 18 | 20h | operator | environment blocker, cite medici-finance/assay#4823 | 2026-11-16 assay-verifier-app[bot] @ 35ddd8767418 (model verifier) | — |
 | agent-execution | 01 [exec:strong] | implemented | 8020 | 14 | 2d | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | forge-neutral | 20 [exec:strong] | implemented | 7020 | 10 | 2d | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
 | cellctl-windows | 00 [exec:strong] | implemented | 5520 | 7 | 2d | operator | `$log = New-TemporaryFile; go test ./internal/celllaunch -run '^TestLaunchSpecRoundTrip$' -count=1 -v *> $log; if ($LASTEXITCODE -ne 0) { Get-Content $log; exit 1 }; if (-not (Select-String -Path $log -SimpleMatch '--- PASS: TestLaunchSpecRoundTrip ')) { exit 1 }; if (Select-String -Path $log -SimpleMatch '--- SKIP:') { exit 1 }` | — | — |
@@ -398,7 +397,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 18 | implemented | 1020 | 0 | 2d | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
 | statusgen | 26 [exec:strong] | implemented | 1020 | 0 | 2d | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
 
-### Runner-pending (50)
+### Runner-pending (51)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -434,10 +433,10 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | graph-execution | 32 [exec:strong] | verified | 2020 | 0 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
 | measured-status | 04 [exec:strong] | verified | 2020 | 0 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-10-22 assay-verifier-app[bot] @ 05dc9fbc88f2 (claude-opus-5-5) | — |
 | statusgen | 23 [exec:strong] | verified | 2020 | 2 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
-| intake-class-routing | 01 [exec:strong] | implemented | 2000 | 0 | 11h | verify runner | none | — | — |
-| intake-class-routing | 03 | implemented | 2000 | 0 | 11h | verify runner | none | — | — |
-| intake-class-routing | 04 [exec:strong] | implemented | 2000 | 0 | 11h | verify runner | none | — | — |
-| intake-class-routing | 05 | implemented | 2000 | 0 | 11h | verify runner | none | — | — |
+| intake-class-routing | 01 [exec:strong] | implemented | 2000 | 0 | 20h | verify runner | none | — | — |
+| intake-class-routing | 03 | implemented | 2000 | 0 | 20h | verify runner | none | — | — |
+| intake-class-routing | 04 [exec:strong] | implemented | 2000 | 0 | 20h | verify runner | none | — | — |
+| intake-class-routing | 05 | implemented | 2000 | 0 | 20h | verify runner | none | — | — |
 | desk-supervision | 19 [exec:strong] | verified | 1520 | 1 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ 70deba75a577 (claude-opus-5-5) | — |
 | statusgen | 17 | verified | 1520 | 1 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 54c024fca36e (claude-opus-5-5) | — |
 | statusgen | 24 [exec:strong] | verified | 1520 | 1 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-10-29 assay-verifier-app[bot] @ 4264d1027198 (forge-identity) | — |
@@ -452,34 +451,35 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 14 [exec:strong] | verified | 1020 | 0 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ 91f04b81ba06 (claude-opus-5-5) | — |
 | quality | 19 [exec:strong] | verified | 1020 | 0 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 3add8a9ae315 (claude-opus-5-5) | — |
 | statusgen | 21 [exec:strong] | verified | 1020 | 0 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-11-11 assay-verifier-app[bot] @ b856f281f758 (claude-opus-5-5) | — |
+| agent-execution | 10 [exec:strong] | implemented | 1000 | 0 | 7h | verify runner | none | — | — |
 
 ### Desk-actionable (25)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| forge-neutral | 46 [exec:strong] | implemented | 16000 | 28 | 11h | verify-desk | triage, then re-bucket | — | — |
-| forge-neutral | 51 [exec:strong] | implemented | 14500 | 25 | 11h | verify-desk | triage, then re-bucket | — | — |
-| forge-neutral | 47 [exec:strong] | implemented | 14000 | 24 | 11h | verify-desk | triage, then re-bucket | — | — |
-| forge-neutral | 50 [exec:strong] | implemented | 13000 | 22 | 11h | verify-desk | triage, then re-bucket | — | — |
-| desk-tools | 40 [exec:strong] | implemented | 11000 | 20 | 11h | verify-desk | triage, then re-bucket | — | — |
-| desk-tools | 41 [exec:strong] | implemented | 11000 | 20 | 11h | verify-desk | triage, then re-bucket | — | — |
-| desktools-v2 | 58 [exec:strong] | implemented | 11000 | 20 | 2h | verify-desk | triage, then re-bucket | — | — |
+| forge-neutral | 46 [exec:strong] | implemented | 16000 | 28 | 20h | verify-desk | triage, then re-bucket | — | — |
+| forge-neutral | 51 [exec:strong] | implemented | 14500 | 25 | 20h | verify-desk | triage, then re-bucket | — | — |
+| forge-neutral | 47 [exec:strong] | implemented | 14000 | 24 | 20h | verify-desk | triage, then re-bucket | — | — |
+| forge-neutral | 50 [exec:strong] | implemented | 13000 | 22 | 20h | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 40 [exec:strong] | implemented | 11000 | 20 | 20h | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 41 [exec:strong] | implemented | 11000 | 20 | 20h | verify-desk | triage, then re-bucket | — | — |
+| desktools-v2 | 58 [exec:strong] | implemented | 11000 | 20 | 12h | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 42 [exec:strong] | implemented | 10520 | 19 | 2d | verify-desk | triage, then re-bucket | — | — |
-| milestone-support | 08 [exec:strong] | implemented | 4000 | 6 | 11h | verify-desk | triage, then re-bucket | — | — |
-| milestone-support | 07 [exec:strong] | implemented | 3500 | 5 | 11h | verify-desk | triage, then re-bucket | — | — |
-| statusgen | 44 [exec:strong] | implemented | 3500 | 5 | 11h | verify-desk | dispatch one judge | — | — |
+| milestone-support | 08 [exec:strong] | implemented | 4000 | 6 | 20h | verify-desk | triage, then re-bucket | — | — |
+| milestone-support | 07 [exec:strong] | implemented | 3500 | 5 | 20h | verify-desk | triage, then re-bucket | — | — |
+| statusgen | 44 [exec:strong] | implemented | 3500 | 5 | 20h | verify-desk | dispatch one judge | — | — |
 | composability | 02 | implemented | 2520 | 3 | 2d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2520 | 1 | 2d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 06 | implemented | 2520 | 1 | 2d | verify-desk | dispatch one judge | — | — |
 | derived-board | 06 [exec:strong] | implemented | 2520 | 1 | 2d | verify-desk | dispatch one judge | — | — |
 | desk-containers | 09 [exec:strong] | implemented | 2520 | 3 | 2d | verify-desk | dispatch one judge | — | — |
-| measured-status | 06 [exec:strong] | implemented | 2200 | 0 | 11h | verify-desk | triage, then re-bucket | — | — |
+| measured-status | 06 [exec:strong] | implemented | 2200 | 0 | 20h | verify-desk | triage, then re-bucket | — | — |
 | desk-supervision | 04 [exec:strong] | implemented | 2020 | 2 | 2d | verify-desk | dispatch one judge | — | — |
 | forge-neutral | 17 [exec:strong] | implemented | 2020 | 0 | 2d | verify-desk | triage, then re-bucket | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2020 | 2 | 2d | verify-desk | triage, then re-bucket | — | — |
-| desk-tools | 48 [exec:strong] | implemented | 2000 | 2 | 11h | verify-desk | triage, then re-bucket | — | — |
-| desk-tools | 50 [exec:strong] | implemented | 2000 | 2 | 15h | verify-desk | triage, then re-bucket | — | — |
-| desk-tools | 62 [exec:strong] | implemented | 2000 | 2 | 11h | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 50 [exec:strong] | implemented | 2010 | 2 | 24h | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 48 [exec:strong] | implemented | 2000 | 2 | 20h | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 62 [exec:strong] | implemented | 2000 | 2 | 20h | verify-desk | triage, then re-bucket | — | — |
 | desktools-v2 | 71 [exec:strong] | implemented | 1020 | 0 | 2d | verify-desk | dispatch one judge | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1020 | 0 | 2d | verify-desk | triage, then re-bucket | — | — |
 
@@ -538,7 +538,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 07 Evaluate governed harness refinement with isolated offline fixtures — todo (wave 3)
 - 08 Qualify a Kubernetes verification runner through the existing supervisor — todo (wave 12)
 - 09 Qualify interactive Kubernetes standing desks through the shared runner — todo (wave 9)
-- 10 Evaluate a Pi Durable runner with offline recovery fixtures — todo (wave 1)
+- 10 Evaluate a Pi Durable runner with offline recovery fixtures — implemented (wave 1)
 
 ### apps-installer (8 open)
 
@@ -663,7 +663,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 03 `statusgen reconcile` — derive lifecycle state from PRs, witnesses, approvals and rulings; brief-v2 parser — implemented (wave 1)
 - 04 generated Briefs table in every stream README + single-writer lint + scheduled reconcile PR — implemented (wave 2)
 - 06 v1.0.0 — deskmigrate statusgen-regen op, the v0.28.0→v1.0.0 migration, paired-versions bump, same-tag pin lint, brief-reading tools refuse v2 below v1 — implemented (wave 3)
-- 07 per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills — in-progress (wave 4)
+- 07 this repo's rollout — brief-v2 migration, scheduled reconcile, historical backfill as a drift-report PR; --backfill kept for the reconcile verb — in-progress (wave 4)
 - 08 witness ledger — the board writer records every merged-PR fact the fold reads, so a merged PR is read from the forge once, ever — todo (wave 2)
 - 09 incremental reconcile — forge reads scale with open PRs plus PRs changed since the last regen, never with total PR history — todo (wave 3)
 - 10 Complete candidate coverage for partial-delivery reconciliation — implemented (wave 0)
