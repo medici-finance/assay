@@ -2333,6 +2333,36 @@ The **skill half** of this — the one-line-per-quiet-iteration console contract
 windows adopt, since no binary can gate what the model prints between tool calls — is the
 console noise floor, tracked in the desk-tools operator notes.
 
+## Cell lifecycle model — `internal/cellcadence/lifecycle.go` (tool-refactoring/06)
+
+`cellctl up`, `reconcile`, `down` and the interactive-owner settle used to each decide, in their own
+code, whether a recorded role owner is the process now running and whether a checkpoint is the one
+that owner wrote. Those judgments now live in one pure model in `internal/cellcadence`; the
+`cellctl` files are adapters that read the process table, the lease and the checkpoint, call the
+model, and act on its decision. The model has no file, process or lock access.
+
+| Judgment | Function | Used by |
+|---|---|---|
+| One recorded process vs a probe of its pid: gone / unreadable / no recorded start / reused / same | `JudgeProcess`, `ClassifyProcesses` | `reconcile` (`inventoryRecord`, `liveLeaseHolders`), `up` stale probe, `verifySurface` |
+| Owner generation: is this checkpoint the one the signalled owner wrote | `Generation.Attributes`, `Generation.OwnsUnfinished` | `down` settle; `Lease.RecordStopped` |
+| One reading of a signalled interactive owner: done / read again / refuse / record the stop | `JudgeSettle` | `settleOnce` |
+| `up --plan` class and plannability, and the (state, class) preconditions `up --apply` re-measures | `RoleObservation` | `upProbe`, `planPreconditions` |
+
+A pid alone never identifies a process; the pid and start time together do, and an unreadable
+start time or a missing observation is `could-not-check`, never dead, free or owned. The
+`RecordStopped` checkpoint writer takes the owner `Generation` (pid, start time, and the
+checkpoint sequence and start read before `down` signalled anyone) and refuses a checkpoint of
+another generation, so a repeated `down` cannot finish a replacement owner's record. This keeps
+the #6251 repair (the checkpoint down read binds an owner whose lease record left with the lease)
+as a characterization case in `TestCellLifecycleMatrix`. Nothing changes in the plan or result
+schemas, exit codes or verbs. Independent checks at other trust boundaries stay where they are:
+`cellstop` re-reads the kernel start time right before any signal, `RecordStopped` re-checks the
+generation under the lease it holds, and `cellop` re-measures plan preconditions at apply.
+`TestCellLifecycleClassGuard` parses the production source and rejects a second start-time
+judgment, a checkpoint writer outside `Run`/`RunInteractive`/`RecordStopped`, a `RecordStopped`
+call without a settle decision or with a bare pid, and a class precondition built outside
+`planPreconditions`; its committed plants are in `internal/cellcadence/testdata/lifecycle_plant`.
+
 ## Build & install
 
 ```bash
