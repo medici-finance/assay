@@ -1093,13 +1093,9 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		if verifierKit(o.kit) {
 			plan.outcomeTarget = target
 			if dl.crossRepo(o.root) {
-				tracking, err := verifierTrackingRepo(o, dl)
-				if err != nil {
-					return plan, err
-				}
-				plan.outcomeTarget, err = resolveTargetForge(tracking, dl.trackingRoot)
-				if err != nil {
-					return plan, err
+				plan.outcomeTarget, ferr = verifierTrackingTarget(o, dl)
+				if ferr != nil {
+					return plan, ferr
 				}
 			}
 		}
