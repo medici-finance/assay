@@ -95,6 +95,12 @@ Default if no answer: none — blocks until answered
 
 This decision governed foundation acceptance. Offline contract, source and disposable-container fixture work was permitted before that acceptance. No production connection, live migration, role grant, service enrollment, tool cutover or activation follows from this decision. The separate dependency installation blessing, passing tests, publication and merge do not supply this acceptance. The human records the selected option in their own account; a worker relay is not a ruling.
 
+**Design record awaiting ratification.** [DR-graph-exec-36](../decisions/DR-graph-exec-36.md) records the design delivered in #5418. The foundation ruling above predates the record. To approve the transcription, the driver can post the following as a new, unedited comment from their own account on [decision issue #5405](https://github.com/medici-finance/assay/issues/5405).
+
+> Approve DR-graph-exec-36 for graph-execution/36 as the design record for the bounded PostgreSQL foundation delivered in medici-finance/assay#5418. Independent verification and the full domain-store, mirror-retention, deployment and activation gates remain in place.
+
+If the record needs correction, the driver can name it on the same issue and leave ratification pending. On approval, bind the new comment's permalink in the record's `ruling:` and add `design: DR-graph-exec-36` to this brief's frontmatter. The existing brief-level `ruling:` continues to identify the foundation acceptance.
+
 ## Ground rules
 
 - Own isolated branch and draft PR only; no merge, release, deployment, activation, cluster or production contact.
