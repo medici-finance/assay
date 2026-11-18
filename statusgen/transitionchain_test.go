@@ -207,6 +207,7 @@ func (f *chainFixture) refuse(t *testing.T, contains string, structural bool) {
 
 // regression: #6064
 func TestTransitionChain(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, shape := range []string{"container", "repeat"} {
 		t.Run(shape, func(t *testing.T) {
 			f := chainFixtureAt(t, shape)
@@ -251,6 +252,7 @@ func TestTransitionChain(t *testing.T) {
 
 // regression: #6064
 func TestTransitionCombinedColumns(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"approved", "Command", "Expect", "class", "shell", "added", "supplement", "legacy"} {
 		t.Run(mode, func(t *testing.T) {
 			// Existing one-link fixture supplies the unmodified legacy policy boundary.
@@ -308,6 +310,7 @@ func TestTransitionCombinedColumns(t *testing.T) {
 
 // regression: #6064
 func TestChainRefusesForgedApproval(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"bot", "unmapped", "edited", "marker", "other-repo", "unreachable", "deleted404", "deleted410", "whitespace", "trailing-newline", "trailing-space", "repo", "brief", "delivery", "base", "original", "link", "predecessor", "amendment", "rows"} {
 		t.Run(mode, func(t *testing.T) {
 			f := chainFixtureAt(t, "container")
@@ -375,6 +378,7 @@ func TestChainRefusesForgedApproval(t *testing.T) {
 
 // regression: #6064
 func TestChainRefusesReplayedApproval(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"duplicate-url", "replay", "link", "amendment", "predecessor", "brief", "v1"} {
 		t.Run(mode, func(t *testing.T) {
 			f := chainFixtureAt(t, "repeat")
@@ -401,6 +405,7 @@ func TestChainRefusesReplayedApproval(t *testing.T) {
 
 // regression: #6064
 func TestChainRefusesSkippedLink(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"gap", "intermediate", "after", "version-only", "reverted", "version-jump", "merge-base"} {
 		t.Run(mode, func(t *testing.T) {
 			f := chainFixtureAt(t, "repeat")
@@ -468,6 +473,7 @@ func TestChainRefusesSkippedLink(t *testing.T) {
 
 // regression: #6064
 func TestChainRefusesReorderedChain(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("per-link-first-parent", func(t *testing.T) {
 		f := chainFixtureAt(t, "repeat")
 		read := func(rev string) (string, error) {
@@ -519,6 +525,7 @@ func TestChainRefusesReorderedChain(t *testing.T) {
 
 // regression: #6064
 func TestChainRefusesEditAfterApproval(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"current", "evidence", "history", "unnamed-command", "repeat-unnamed", "expect-drift", "expect-drift-command"} {
 		t.Run(mode, func(t *testing.T) {
 			f := chainFixtureAt(t, "repeat")
@@ -580,6 +587,7 @@ func TestChainRefusesEditAfterApproval(t *testing.T) {
 
 // regression: #6064
 func TestChainExecution(t *testing.T) {
+	installStatusgenFixture(t)
 	// An unrelated current definition changed at delivery remains owed at its
 	// original value; use the established fixture for this execution projection.
 	base := transitionFixtureAt(t)
@@ -654,6 +662,7 @@ func TestChainExecution(t *testing.T) {
 
 // regression: #6064
 func TestTransitionV1Unchanged(t *testing.T) {
+	installStatusgenFixture(t)
 	f := chainFixtureAt(t, "container")
 	for _, tc := range []struct{ amendment, why string }{{f.branches[0], "amendment is not after delivery on the observed first-parent chain"}, {f.amendments[0], "current Verify differs from the approved amendment"}, {f.amendments[1], "acceptance changed between delivery and amendment"}} {
 		f.descriptor = fmt.Sprintf("Verification-Table: delivery=%s base=%s original=%s\nAcceptance-Transition: amendment=%s approval=%s", f.delivery, f.base, f.base, tc.amendment, f.urls[0])

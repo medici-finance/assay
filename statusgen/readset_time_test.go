@@ -46,6 +46,7 @@ func tickingClock(src *readSetSource, trip int) *int {
 // read-set file exists starts the same few processes as a brief of two, the
 // file's existence at every row's introduction read by one batch check.
 func TestCoverageObserveLaunches(t *testing.T) {
+	installStatusgenFixture(t)
 	digest := strings.Repeat("d4", 32)
 	const briefRel = "docs/streams/s/brief-01-x.md"
 	launches := func(rows int) int64 {
@@ -76,6 +77,7 @@ func TestCoverageObserveLaunches(t *testing.T) {
 // walk cut short and the brief's batch check each refuse the observation with
 // the limit named, and nothing past the limit starts a git process.
 func TestCoverageObserveDeadline(t *testing.T) {
+	installStatusgenFixture(t)
 	digest := strings.Repeat("e5", 32)
 	const briefRel = "docs/streams/s/brief-01-x.md"
 	fileRel := "docs/streams/s/reads/" + digest
