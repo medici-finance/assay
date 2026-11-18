@@ -138,6 +138,13 @@ type ClassifyInput struct {
 	// verdict's submitted time is AFTER the label/edit, so the signal clears — no loop.
 	NonCommitResolution     bool
 	NonCommitResolutionNote string
+	// DeclarationHold (#2690) is the ready gate's desk-decided refusal reason for this
+	// PR, reduced by the caller with deskkit.DeskDecidedRefusal (the ONE implementation
+	// deskflip and deskpost ready run): a malformed block, a label/block disagreement, or a
+	// reviewer `Undeclared-desk-decision:` line still standing in either lane at head.
+	// Non-empty means the ready gate WILL refuse, so the classifier must not recommend FLIP
+	// or MERGE-NOW. Empty means no hold was found (or the caller did not evaluate one).
+	DeclarationHold string
 }
 
 func Classify(in ClassifyInput, reviewer string) (action, note string) {
@@ -284,6 +291,13 @@ func Classify(in ClassifyInput, reviewer string) (action, note string) {
 		checkedZero := ""
 		if in.ZeroCI == ZeroCINoChecks {
 			checkedZero = " (CI is a CHECKED zero: verified no workflow fires on this diff, #1652)"
+		}
+		// #2690: an open declaration hold means deskflip and `deskpost ready` will refuse
+		// this PR, so a FLIP or MERGE-NOW recommendation here would send the desk to a
+		// refusal it was told would succeed. The worker owns clearing it, like any finding.
+		if in.DeclarationHold != "" {
+			return ActBlocked, "declaration hold — the ready gate will refuse this PR, so neither a flip nor a merge is recommended: " +
+				in.DeclarationHold
 		}
 		// #241: a declared human gate never resolves to MERGE-NOW. Security still
 		// ranks above it — a risk-classed PR needs its verdict either way.

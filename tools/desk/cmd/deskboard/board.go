@@ -1148,6 +1148,9 @@ type classifyInput struct {
 	// verdict's submitted time is AFTER the label/edit, so the signal clears — no loop.
 	nonCommitResolution     bool
 	nonCommitResolutionNote string
+	// declarationHold (#2690): the ready gate's desk-decided refusal reason, see
+	// reviewflow.ClassifyInput.DeclarationHold.
+	declarationHold string
 }
 
 // classify reproduces deskboard v1's ACTION semantics exactly, with the single #216
@@ -1206,6 +1209,19 @@ func classificationFacts(p prBase, rs reviewState, ciRequired bool, zeroCI strin
 		SuspectNoOp:            rs.suspectNoOp,
 		ExternalPrereqDeclared: rs.externalPrereqDeclared,
 	}, CIRequired: ciRequired, ZeroCI: zeroCI}
+}
+
+// declarationHold reduces the PR's desk-decided condition for the classifier (#2690). It
+// is deskkit.DeskDecidedRefusal, the same function deskflip and `deskpost ready` call, on the
+// PR's labels, body and ALL reviews (a block-direction line is read in every state, so no
+// review is pre-filtered away), so the board cannot recommend a flip the gate refuses.
+// Returns "" when no hold stands.
+func declarationHold(p prBase, reviews []review) string {
+	rs := make([]deskkit.DeskDecidedReview, 0, len(reviews))
+	for _, r := range reviews {
+		rs = append(rs, deskkit.DeskDecidedReview{Login: r.User.Login, State: r.State, CommitID: r.CommitID, Body: r.Body})
+	}
+	return deskkit.DeskDecidedRefusal(p.Number, p.labelNames(), p.Body, rs, reviewerBotDisplay(), p.HeadRefOid)
 }
 
 func buildClassifyInput(p prBase, rs reviewState, ciRequired bool, zeroCI string) classifyInput {
@@ -2070,6 +2086,7 @@ func classifyPRFrom(repo string, p prBase, snapReviews []review, haveReviews boo
 
 	in.riskClassed = riskClassed
 	in.riskReason = riskReason
+	in.declarationHold = declarationHold(p, reviews)
 
 	action, note := classify(in)
 	note += staleGrantNote
@@ -3174,5 +3191,6 @@ func (in classifyInput) flow() reviewflow.ClassifyInput {
 		ExternalPrereqDeclared:  in.externalPrereqDeclared,
 		NonCommitResolution:     in.nonCommitResolution,
 		NonCommitResolutionNote: in.nonCommitResolutionNote,
+		DeclarationHold:         in.declarationHold,
 	}
 }
