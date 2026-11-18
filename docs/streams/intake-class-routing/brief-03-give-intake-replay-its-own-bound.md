@@ -80,5 +80,38 @@ Failure modes mapped: the new knob ignored → row 1; the fallback changed for i
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReplayCapOwnKnob$' ./cmd/scanloop > "$o" && grep -q -- '--- PASS: TestReplayCapOwnKnob ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ 2efcaa239c17 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReplayCapLeavesBurst$' ./cmd/deskmonitor > "$o" && grep -q -- '--- PASS: TestReplayCapLeavesBurst ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ 2efcaa239c17 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:07b236730896134cdf256254a4df6c1777a64d1bf987fe76b02e2ecc18d60e26
+Container-Image: sha256:c67baa7a3c8ba3d514128f31340489146525a50c29ebb641a68899c650d354a1
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6827 run=b1a2b436597a099fbeebb2b577ee26da15e803903070903d92f15714df70db38 source=2efcaa239c17469e48da1727967a2df954e70d46 brief=docs/streams/intake-class-routing/brief-03-give-intake-replay-its-own-bound.md model=claude-opus-5-5 tier=any
+Admission-Bracket: run=b1a2b436597a099fbeebb2b577ee26da15e803903070903d92f15714df70db38 source=2efcaa239c17469e48da1727967a2df954e70d46 tree=sha256:07b236730896134cdf256254a4df6c1777a64d1bf987fe76b02e2ecc18d60e26 witness=sha256:2ca38949f2a6ce955909bf6466bd5d0768534a390f8acf7d7f5f302c80e3133a opened=2026-11-18T02:01:32Z closed=2026-11-18T02:02:09Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 3 | `(cd tools/desk && GOWORK=off go test -count=1 ./cmd/scanloop ./cmd/deskmonitor)` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ 2efcaa239c17 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `statusgen --consumers --brief assay:assay:intake-class-routing:03` | could-not-run exit=- sandbox=unshare — check:ci hermetic execution requires a network-off sandbox, unavailable on this host: the network sandbox uses `unshare --net`, a Linux facility, and this host is darwin. check:ci rows are re-executed network-off by design (verdict-lane/02, R-6 c.6) — run on a Linux runner that provides `unshare --net` | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ 2efcaa239c17 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6827 run=b1a2b436597a099fbeebb2b577ee26da15e803903070903d92f15714df70db38 source=2efcaa239c17469e48da1727967a2df954e70d46 brief=docs/streams/intake-class-routing/brief-03-give-intake-replay-its-own-bound.md model=claude-opus-5-5 tier=any
+
+Rows 1 and 2 ran in the closed container-netns bracket above (verify-runner v1.0.87, arm64). Rows 3 and 4 are check:ci rows the darwin host cannot sandbox, and the container lane cannot carry them: both need the checkout's own git metadata, which a linked worktree does not bring into the container.
+
+Supplemental observations, no acceptance credit, discharging no row:
+
+- Container probe of row 3's command, same image and flags: the deskmonitor package passed; five scanloop tests failed (TestRun_CoalescesAcrossSessions, TestRun_ForeignScanPRIgnored, TestRun_ExplicitScanPRWins, TestRun_UnreadOpenPRsFailClosed, TestClassify_UnreadableLocalStateRoutesToJudgment). The first four fail because forge resolution falls back to the origin remote, which is unreadable without the git metadata ("cannot resolve which forge serves medici-finance/assay"). The fifth expects an unreadable file, and the container runs as root, which can still read it. None of these tests is in a file this brief changed. Date: 2026-11-18; Runner: assay-verifier-app[bot] (model verifier, claude-opus-5-5).
+- Host probe of row 3's command, with no network sandbox, GOPROXY=off and the bracket's module cache: exit 0, "ok" for both packages. Date: 2026-11-18; Runner: assay-verifier-app[bot] (model verifier, claude-opus-5-5).
+- Host probe of row 4's command as written: exit 2, COULD-NOT-CHECK. On merged main the diff is empty, and the delivery cannot be derived from history. With the delivery named explicitly (--delivery 7b24cdc21dc5d6b6fa99ac8c1ad559d7d8225d7f --base ebad098255fdd9bb443f3c2fe2d5df7503ed1740): exit 0, "summary: 1 corroborated, 0 disproved, 1 unchecked". The unchecked entry is the out-of-scope claim on the poller; no deskmonitor non-test source names INTAKE_REPLAY_CAP. Date: 2026-11-18; Runner: assay-verifier-app[bot] (model verifier, claude-opus-5-5).
+
+Risk-bearing values, enumerated over the non-test Go changes in commits 8f394bc770e5 and 74646d214031 plus the brief's Deliverables: the knob names and their precedence, the positivity bound, and the default.
+
+- RISK-VALUE: DERIVED — replayCap knob order = ["INTAKE_REPLAY_CAP", "INBOUND_MONITOR_BURST_CAP"] @ tools/desk/cmd/scanloop/observations.go:71 — Task 2 requires the new knob first and the burst knob as the unchanged fallback; the poller reads only INBOUND_MONITOR_BURST_CAP (tools/desk/cmd/deskmonitor/inbound.go:152), so its fresh-delta bound cannot move.
+- RISK-VALUE: DERIVED — positivity bound v > 0 @ tools/desk/cmd/scanloop/observations.go:72 — Task 2 makes zero, negative and unparseable values fall through, so a bad value never yields a zero or negative replay bound.
+- RISK-VALUE: NAMED, NOT DERIVED — replayCap default = 25 @ tools/desk/cmd/scanloop/observations.go:76 — unchanged by this diff and equal to the poller's own default (inbound.go:152); the brief states that whether 25 is the right default is not decided here.
+- All three values are reversible operator knobs (an edit and a redeploy undo them); the brief marks irreversible: no.
+
+**VERIFY: BLOCKED** — rows 1-2 pass (container witness, bracket verdict=match); rows 3-4 could-not-run: the darwin host has no network-off sandbox, and the container lane lacks the checkout's git metadata; no obligation was observed to fail.
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.
