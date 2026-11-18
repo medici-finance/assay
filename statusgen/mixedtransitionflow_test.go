@@ -15,6 +15,7 @@ import (
 // Container witness rows and the author-added disposition are producer output,
 // not a hand-authored substitute for either lane.
 func TestMixedTransitionProductionFlow(t *testing.T) {
+	installStatusgenFixture(t)
 	pinClock(t)
 	// The base fixture plants an unrelated original-command edit to test
 	// re-derivation. This flow selects current container rows, so retain that

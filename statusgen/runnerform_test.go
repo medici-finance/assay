@@ -25,6 +25,7 @@ func rfRowAt(id, date, cell string) string {
 
 // regression: #4299
 func TestFlipShaFormAgree(t *testing.T) {
+	installStatusgenFixture(t)
 	at := func(sha string) string { return vfRunner + " @ " + sha }
 	cases := []struct {
 		name  string
@@ -76,6 +77,7 @@ func TestFlipShaFormAgree(t *testing.T) {
 
 // regression: #4299
 func TestTransitionMixedForms(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []string{"mixed", "forged-prefix", "short-prefix", "all-short", "other-runner"}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -125,6 +127,7 @@ func TestTransitionMixedForms(t *testing.T) {
 
 // regression: #4299
 func TestEvidenceOnlyTreeClean(t *testing.T) {
+	installStatusgenFixture(t)
 	insert := func(t *testing.T, f rowsFixture, text string) {
 		t.Helper()
 		raw := getFile(t, f.brief)
@@ -209,6 +212,7 @@ func TestEvidenceOnlyTreeClean(t *testing.T) {
 
 // regression: #4299
 func TestEvidenceOnlyNeedsEvidence(t *testing.T) {
+	installStatusgenFixture(t)
 	pinClock(t)
 	f := newRowsFixture(t, "")
 	// A brief with no Evidence section at HEAD cannot have an Evidence-only edit.
@@ -233,6 +237,7 @@ func TestEvidenceOnlyNeedsEvidence(t *testing.T) {
 // transition run's Evidence) records the original rows at the 12-hex tree
 // token. The latest PASS reads one run and --check closes the table.
 func TestTransitionThenBracket(t *testing.T) {
+	installStatusgenFixture(t)
 	pinClock(t)
 	f := transitionFixtureAt(t)
 	vfGit(t, f.root, vfMailVerifier, "config", "user.name", vfRunner)
@@ -283,6 +288,7 @@ func TestTransitionThenBracket(t *testing.T) {
 // run's full sha only when it is an exact >=12-hex prefix that git resolves to
 // exactly that sha; every other token comes back unchanged and refuses.
 func TestTransitionWitnessTree(t *testing.T) {
+	installStatusgenFixture(t)
 	// A time-dependent commit can have an all-digit prefix, for which ToUpper
 	// is an identity operation (#4615). Pin only this fixture's dates and
 	// require a real case change, while retaining the same resolvable commit
@@ -319,6 +325,7 @@ func TestTransitionWitnessTree(t *testing.T) {
 // TestEvidenceConflictDirty: an unmerged brief whose conflict sits inside
 // Evidence is not an Evidence-only edit; it keeps +dirty.
 func TestEvidenceConflictDirty(t *testing.T) {
+	installStatusgenFixture(t)
 	pinClock(t)
 	f := newRowsFixture(t, "")
 	edit := func(text string) {

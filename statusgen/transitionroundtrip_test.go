@@ -53,6 +53,7 @@ func sameBody(body string) string { return body }
 
 // regression: #6599
 func TestChainRoundTripNoop(t *testing.T) {
+	installStatusgenFixture(t)
 	f, _ := roundTripFixture(t, sweepRow2, sameBody)
 	f.amend(t, strings.Replace(f.body, "| 1 | `true` |", "| 1 | `true && true` |", 1), "1:Command", true)
 	f.bind(t)
@@ -71,6 +72,7 @@ func TestChainRoundTripNoop(t *testing.T) {
 
 // regression: #6599
 func TestChainRoundTripRefusals(t *testing.T) {
+	installStatusgenFixture(t)
 	modes := []string{"inexact", "trailing-blank", "version", "unapproved-bump", "open", "reorder", "tab", "eol-space"}
 	for _, mode := range modes {
 		t.Run(mode, func(t *testing.T) {
@@ -137,6 +139,7 @@ func TestChainRoundTripRefusals(t *testing.T) {
 
 // regression: #6599
 func TestChainRoundTripThenBump(t *testing.T) {
+	installStatusgenFixture(t)
 	// The round trip collapses; a later real bump is still its own link and
 	// needs its own approval, with the delivery as its predecessor.
 	f, _ := roundTripFixture(t, sweepRow2, sameBody)
@@ -155,6 +158,7 @@ func TestChainRoundTripThenBump(t *testing.T) {
 
 // regression: #6599
 func TestChainRoundTripBetweenLinks(t *testing.T) {
+	installStatusgenFixture(t)
 	// The same span between two links, restored by a single-parent commit,
 	// collapses against link 1's accepted state, not the delivery's.
 	f, _ := roundTripFixture(t, sweepRow2, sameBody)

@@ -12,6 +12,7 @@ import (
 
 // regression: #5501
 func TestCoverageCrossSource(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"current", "tracker changed", "source changed", "missing checkout", "wrong checkout", "unmerged source", "changed expectation", "failed witness", "malformed", "dirty witness", "host tracker changed"} {
 		t.Run(mode, func(t *testing.T) {
 			fixtureMode := "current"
@@ -87,6 +88,7 @@ func TestCoverageCrossSource(t *testing.T) {
 // regression: #5501 — configured source history must not turn malformed or
 // ambiguous metadata into an applicability grant.
 func TestCoverageCrossRefusals(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"mixed", "inline prefix", "missing origin", "short run", "wrong repo", "wrong path", "wrong source", "short tracking", "malformed", "conflicting", "fenced", "prior run only", "foreign homed source missing"} {
 		t.Run(mode, func(t *testing.T) {
 			d, sourceSHA, _, source := foldTrackingSource(t, mode)
@@ -142,6 +144,7 @@ func addCrossCoverageSpan(t *testing.T, path, source string) {
 // regression: #5501 — one closed source bracket cannot grant source-only
 // scope to a host row, a row carried from another run, or a row outside it.
 func TestCrossCoverageScope(t *testing.T) {
+	installStatusgenFixture(t)
 	d, sourceSHA, _, _ := foldTrackingSource(t, "current")
 	addCrossCoverageSpan(t, d.path, sourceSHA)
 	bf, ok, err := parseBriefFile(d.path)
@@ -202,6 +205,7 @@ func TestCrossCoverageScope(t *testing.T) {
 // A host witness must bind both repositories. Its adjacent container bracket
 // never licenses a changed tracking policy or a different source revision.
 func TestCoverageCrossSourceMixedWitnesses(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"current", "status only", "tracking policy", "tracking stream policy", "source changed", "missing tracking", "unrelated tracking", "wrong source", "dirty host", "carried host", "malformed summary"} {
 		t.Run(mode, func(t *testing.T) {
 			d, sourceSHA, trackingSHA, source := foldTrackingSource(t, "mixed witnesses")
