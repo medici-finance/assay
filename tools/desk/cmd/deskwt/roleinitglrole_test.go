@@ -46,6 +46,7 @@ func gitLabTwoRoleRoster(t *testing.T, roleEmails string) {
 // allowlist's first entry (which is the worker's).
 // regression: #4978
 func TestRoleInitGLStampsOwnAddr(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	gitLabTwoRoleRoster(t, "verifier="+glVerifierAddr+",worker="+glWorkerAddr)
@@ -65,6 +66,7 @@ func TestRoleInitGLStampsOwnAddr(t *testing.T) {
 // nothing. Pre-fix it stamped the first entry — the worker's account.
 // regression: #4978
 func TestRoleInitGLAmbiguousRefuses(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	gitLabTwoRoleRoster(t, "")
@@ -86,6 +88,7 @@ func TestRoleInitGLAmbiguousRefuses(t *testing.T) {
 // allowlist refuses there too.
 // regression: #4978
 func TestAddRoleGLStampsOwnAddr(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	gitLabTwoRoleRoster(t, "verifier="+glVerifierAddr+",worker="+glWorkerAddr)
@@ -109,6 +112,7 @@ func TestAddRoleGLStampsOwnAddr(t *testing.T) {
 // on the verifier's worktree.
 // regression: #4978
 func TestAddRoleGLAmbiguousRefuses(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	gitLabTwoRoleRoster(t, "")

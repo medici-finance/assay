@@ -40,6 +40,7 @@ func lockedHome(t *testing.T, name, sess string) string {
 // The caller removes its OWN locked home: the tree and its registration are both gone.
 // regression: F-locked-remove
 func TestRemoveOwnLockedHome(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work) // the caller's session is "test" (CLAUDE_SESSION_ID)
 	t.Setenv("DESK_SESSION", "")
@@ -57,6 +58,7 @@ func TestRemoveOwnLockedHome(t *testing.T) {
 // session's last command takes.
 // regression: F-locked-remove
 func TestRemoveOwnLockedFromInside(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	t.Setenv("DESK_SESSION", "")
@@ -75,6 +77,7 @@ func TestRemoveOwnLockedFromInside(t *testing.T) {
 // directory was deleted and only the registration survived.
 // regression: F-locked-remove
 func TestRemoveForeignLockedRefused(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	t.Setenv("DESK_SESSION", "")
@@ -95,6 +98,7 @@ func TestRemoveForeignLockedRefused(t *testing.T) {
 // A lock that names no session has no identifiable owner and is never retired.
 // regression: F-locked-remove
 func TestRemoveUnownedLockRefused(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	t.Setenv("DESK_SESSION", "")
@@ -116,6 +120,7 @@ func TestRemoveUnownedLockRefused(t *testing.T) {
 // the file, the lock and the registration are all intact. Before the fix: rc=0, the file deleted.
 // regression: F-locked-remove
 func TestRemoveForeignNoBeaconRefused(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	t.Setenv("DESK_SESSION", "")
@@ -144,6 +149,7 @@ func TestRemoveForeignNoBeaconRefused(t *testing.T) {
 // tree, registration and the untracked file gone, the process left running in a deleted cwd.
 // regression: F-locked-remove
 func TestRemoveForeignStaleBeaconLiveOwnerRefused(t *testing.T) {
+	installWorktreeFixture(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("needs a POSIX sleep process")
 	}
@@ -182,6 +188,7 @@ func TestRemoveForeignStaleBeaconLiveOwnerRefused(t *testing.T) {
 // file, lock and registration intact. Once the file is moved away the same call succeeds.
 // regression: F-locked-remove
 func TestRemoveOwnLockedUntrackedRefused(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	t.Setenv("DESK_SESSION", "")
@@ -215,6 +222,7 @@ func TestRemoveOwnLockedUntrackedRefused(t *testing.T) {
 // the empty command). The ignored file is deleted with the tree, as the recipe says.
 // regression: F-locked-remove
 func TestRemoveOwnLockedIgnoredViaExcludesNotRefused(t *testing.T) {
+	installWorktreeFixture(t)
 	for _, route := range []string{"info-exclude", "excludesfile"} {
 		t.Run(route, func(t *testing.T) {
 			work := newRepo(t)
@@ -252,6 +260,7 @@ func TestRemoveOwnLockedIgnoredViaExcludesNotRefused(t *testing.T) {
 // repository holding only its .git, which go-git's status does not report.
 // regression: F-locked-remove
 func TestRemoveOwnLockedRefusalNamesRows(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	t.Setenv("DESK_SESSION", "")
@@ -279,6 +288,7 @@ func TestRemoveOwnLockedRefusalNamesRows(t *testing.T) {
 // tree or another exclude file: the target's own status lists wip.go, so remove refuses.
 // regression: F-locked-remove
 func TestRemoveOwnLockedIgnoresInheritedGitEnvironment(t *testing.T) {
+	installWorktreeFixture(t)
 	rows := map[string]func(t *testing.T, work string){
 		"GIT_WORK_TREE": func(t *testing.T, work string) {
 			t.Setenv("GIT_WORK_TREE", work)
@@ -325,6 +335,7 @@ func TestRemoveOwnLockedIgnoresInheritedGitEnvironment(t *testing.T) {
 // edit, and the first row keeps its leading status column.
 // regression: F-locked-remove
 func TestRemoveOwnLockedSubmoduleEditRefused(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	t.Setenv("DESK_SESSION", "")
@@ -364,6 +375,7 @@ func TestRemoveOwnLockedSubmoduleEditRefused(t *testing.T) {
 // branch held) when it carries a lock; the help and the codex.md recipe say exactly that, and the
 // stranded case is tracked on #5074. This pins the documented behaviour; it is not an endorsement.
 func TestRemoveOwnLockedNestedWorktreeUnderIgnoredPath(t *testing.T) {
+	installWorktreeFixture(t)
 	for _, nestedLocked := range []bool{false, true} {
 		name := map[bool]string{false: "unlocked", true: "locked"}[nestedLocked]
 		t.Run(name, func(t *testing.T) {
@@ -415,6 +427,7 @@ func TestCapRows(t *testing.T) {
 // `worktree prune`), the step that follows the directory delete.
 // regression: F-locked-remove
 func TestRemoveOwnLockedRestoredOnFailure(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	t.Setenv("DESK_SESSION", "")
