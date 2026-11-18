@@ -248,6 +248,34 @@ func (d deliverable) crossRepo(root string) bool {
 	return resolvePath(d.trackingRoot) != resolvePath(root)
 }
 
+// decisionTarget is the repo the human-decision gate ensures its issue in. It is a distinct type
+// so the deliverable repo — a plain string carried everywhere else in a dispatch — cannot be handed
+// to stepDecision by mistake (medici-finance/assay#5525): the only constructor in production code
+// is deliverable.decisionTarget, which picks the TRACKING repo.
+type decisionTarget struct{ repo string }
+
+// decisionTarget resolves where the decision issue for this item lives: the repo that TRACKS the
+// brief (its file, its board row, and so its decision issue), never the repo its deliverable lands
+// in. repo is the dispatch's resolved deliverable repo and root its --root.
+//
+//   - no cross-repo declaration at all → the dispatch repo (tracking and deliverable are one);
+//   - a resolved tracking repo → that repo, whatever the deliverable is;
+//   - tracking repo unknown (its alias reserved but unpublished in the registry copy read) and the
+//     tracking checkout is not --root → ok=false. The caller refuses: falling through to the
+//     deliverable repo is the defect itself — a dedupe in the wrong repo and, when that repo is
+//     public, the brief's gate prose copied there.
+func (d deliverable) decisionTarget(root, repo string) (decisionTarget, bool) {
+	switch {
+	case !d.active:
+		return decisionTarget{repo: repo}, true
+	case d.trackingRepo != "":
+		return decisionTarget{repo: d.trackingRepo}, true
+	case !d.crossRepo(root):
+		return decisionTarget{repo: repo}, true
+	}
+	return decisionTarget{}, false
+}
+
 // briefV2Alias returns the repo-alias segment of a brief-v2 typed id (`<cell>:<alias>:<stream>:<NN>`),
 // or "" when the value is not of that shape (a v1 brief, or no `brief:` field). The alias names the
 // repo the brief is TRACKED in.
