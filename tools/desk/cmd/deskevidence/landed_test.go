@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/gitcore"
+	"github.com/medici-finance/assay/gitcore/testenv"
 	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -514,9 +515,25 @@ func TestLandedFetchRefusals(t *testing.T) {
 
 // regression: #4823
 func TestLandedApprovalContext(t *testing.T) {
+	tools := map[string]string{}
+	for _, name := range []string{"git", "sh"} {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path, err = filepath.Abs(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tools[name] = path
+	}
 	for _, target := range []string{"docs/streams/verify-outcomes/vf/01-test.json", "docs/streams/verify-outcomes.jsonl"} {
 		t.Run(filepath.Ext(target), func(t *testing.T) {
+			testenv.Install(t, testenv.Options{Tools: tools})
 			f, _ := setupFake(t)
+			t.Setenv("USERPROFILE", os.Getenv("HOME"))
+			t.Setenv("XDG_CONFIG_HOME", filepath.Join(os.Getenv("HOME"), ".config"))
+			deskkit.ReloadConfig()
 			root, _, head, _ := landedFixture(t, false)
 			const origin = "https://github.com:443/example-org/tracker.git"
 			flGit(t, root, "remote", "add", "origin", origin)
