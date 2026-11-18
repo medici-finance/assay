@@ -45,6 +45,7 @@ func gitAll(t *testing.T, dir string, cmds [][]string) {
 //
 // regression: #6606
 func TestOriginSlugScopeRefused(t *testing.T) {
+	installDeskkitOriginFixture(t)
 	const steer = "https://github.com/other/steer.git"
 	wt := func(args ...string) []string { return append([]string{"config", "--worktree"}, args...) }
 	cases := []struct {
@@ -121,6 +122,7 @@ func TestOriginSlugScopeRefused(t *testing.T) {
 //
 // regression: #6606
 func TestOriginSlugPinAccepted(t *testing.T) {
+	installDeskkitOriginFixture(t)
 	cases := []struct {
 		name string
 		args [][]string
@@ -152,6 +154,7 @@ func TestOriginSlugPinAccepted(t *testing.T) {
 //
 // regression: #6606
 func TestOriginSlugEnvRefused(t *testing.T) {
+	installDeskkitOriginFixture(t)
 	for _, v := range []struct{ key, val string }{
 		{"GIT_CONFIG_COUNT", "1"},
 		{"GIT_CONFIG_PARAMETERS", "'remote.origin.url'=''"},
@@ -189,6 +192,7 @@ func TestOriginSlugEnvRefused(t *testing.T) {
 //
 // regression: #6606
 func TestOriginSlugGrammar(t *testing.T) {
+	installDeskkitOriginFixture(t)
 	activation := func(v string) func(t *testing.T, root, linked string) {
 		return func(t *testing.T, root, _ string) {
 			gitAll(t, root, [][]string{{"config", "extensions.worktreeConfig", v}})

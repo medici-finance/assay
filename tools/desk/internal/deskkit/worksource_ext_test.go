@@ -59,6 +59,7 @@ func workSourceFixture(t *testing.T, worktreeConfig bool) (string, string, strin
 
 // regression: #6606
 func TestWorkSourceWorktreeConfig(t *testing.T) {
+	installDeskkitOriginFixture(t)
 	for _, ext := range []bool{false, true} {
 		root, linked, commit := workSourceFixture(t, ext)
 		for _, dir := range []string{root, linked, filepath.Join(linked, "docs", "streams")} {
@@ -83,6 +84,7 @@ func TestWorkSourceWorktreeConfig(t *testing.T) {
 //
 // regression: #6606
 func TestWorkSourceUnknownExtension(t *testing.T) {
+	installDeskkitOriginFixture(t)
 	root, _, _ := workSourceFixture(t, true)
 	for _, args := range [][]string{
 		{"config", "core.repositoryformatversion", "1"},
@@ -108,6 +110,7 @@ func TestWorkSourceUnknownExtension(t *testing.T) {
 //
 // regression: #6606
 func TestWorkSourceOriginPushURL(t *testing.T) {
+	installDeskkitOriginFixture(t)
 	root, _, _ := workSourceFixture(t, false)
 	git := func(args ...string) {
 		t.Helper()
@@ -137,6 +140,7 @@ func TestWorkSourceOriginPushURL(t *testing.T) {
 //
 // regression: #6606
 func TestWorkSourceOriginScope(t *testing.T) {
+	installDeskkitOriginFixture(t)
 	const steer = "https://github.com/other/steer.git"
 	cases := []struct {
 		name string
@@ -186,6 +190,7 @@ func TestWorkSourceOriginScope(t *testing.T) {
 //
 // regression: #6606
 func TestWorkSourceOriginScopeOK(t *testing.T) {
+	installDeskkitOriginFixture(t)
 	for _, tc := range []struct {
 		name string
 		ext  bool
