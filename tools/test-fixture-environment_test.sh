@@ -14,7 +14,7 @@ for mode in healthy git-global git-repo installed-tool suite-failure absent-exec
   cat > "$fake_go" <<SH
 #!/bin/bash
 set -eu
-test "\$*" = 'test -json -count=1 -timeout=20m ./...'
+test "\$*" = 'test -json -count=1 -timeout=30m -p 4 ./...'
 test "\${GIT_CONFIG_COUNT:-}" = 2
 test "\${GIT_CONFIG_KEY_0:-}" = grep.patternType
 test "\${GIT_CONFIG_VALUE_0:-}" = default
@@ -122,18 +122,32 @@ if [ "\$1" = env ]; then
   esac
   exit
 fi
-test "\$*" = 'test -json -count=1 -timeout=20m ./...'
+test "\$*" = 'test -json -count=1 -timeout=30m -p 4 ./...'
 test "\${GH_TOKEN+x}" != x
 test "\${CI:-}" = true
+python3 - <<'PY_SOCKET'
+import os, socket
+path = os.path.join(os.environ['TMPDIR'], 'entry.sock')
+with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as endpoint:
+    endpoint.bind(path)
+os.unlink(path)
+PY_SOCKET
 printf '%s\\n' "\${PWD##*/}" >> '$entry/invocations'
 exit 8
 SH
 chmod +x "$entry/bin/go"
-if env -i "PATH=$entry/bin:/usr/bin:/bin" "HOME=$scratch" "GH_TOKEN=synthetic-parent-value" \
+long_parent_tmp="$entry/caller-temp-with-a-deliberately-long-name-to-exceed-unix-socket-path-limits-in-the-old-launcher"
+mkdir -p "$long_parent_tmp"
+if env -i "PATH=$entry/bin:/usr/bin:/bin" "HOME=$scratch" "TMPDIR=$long_parent_tmp" "GH_TOKEN=synthetic-parent-value" \
     /bin/bash "$root/tools/test-fixture-environment.sh" > "$entry/result" 2>&1; then
   echo 'public entry accepted failed module suites' >&2; exit 1
 fi
-test "$(wc -l < "$entry/invocations" | tr -d ' ')" = 2
+if [ ! -f "$entry/invocations" ] || [ "$(wc -l < "$entry/invocations" | tr -d ' ')" != 2 ]; then
+  cat "$entry/result"
+  echo 'public entry did not execute both modules with socket-capable owned temp paths' >&2
+  exit 1
+fi
 grep -Fx statusgen "$entry/invocations" >/dev/null
 grep -Fx desk "$entry/invocations" >/dev/null
 echo 'PASS: public entry executes both complete modules after failure'
+echo 'PASS: public entry bounds owned temporary paths for Unix sockets'

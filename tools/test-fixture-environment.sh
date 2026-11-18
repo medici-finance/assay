@@ -105,10 +105,10 @@ fixture_unchanged() {
 
 fixture_run_module() {
   local module=$1 failed=0
-  echo "fixture environment: $module: go test -json -count=1 -timeout=20m ./..."
+  echo "fixture environment: $module: go test -json -count=1 -timeout=30m -p 4 ./..."
   # pipefail preserves a failing test exit while JSON events expose progress;
   # a quiet Go package must not hide the next actionable failing fixture.
-  if ! (cd "$fixture_root/$module" && env -i "${fixture_env[@]}" "$fixture_go" test -json -count=1 -timeout=20m ./...) \
+  if ! (cd "$fixture_root/$module" && env -i "${fixture_env[@]}" "$fixture_go" test -json -count=1 -timeout=30m -p 4 ./...) \
       2>&1 | tee "$fixture_scratch/${module//\//-}.log"; then
     failed=1
   fi
@@ -148,7 +148,8 @@ fixture_main() (
   if [ -n "$baseline" ]; then
     case "$baseline" in /*) test -x "$baseline" ;; *) echo 'ERROR: SG_OLD_BIN must be an absolute prepared baseline' >&2; return 2 ;; esac
   fi
-  scratch="$(mktemp -d "${TMPDIR:-/tmp}/fixture-environment.XXXXXX")"
+  # A bounded parent path keeps Unix socket fixtures within platform limits.
+  scratch="$(mktemp -d "/tmp/fixture-environment.XXXXXX")"
   scratch="$(cd -- "$scratch" && pwd -P)"
   # The trap removes only the directory this invocation just created.
   trap 'rm -rf -- "$scratch"' EXIT

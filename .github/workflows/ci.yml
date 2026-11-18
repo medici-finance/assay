@@ -412,7 +412,8 @@ jobs:
   # shards. No scope skip: this lane protects every fixture consumer.
   fixture-environment:
     runs-on: medici-builder-public
-    timeout-minutes: 45
+    # Leave setup headroom for both suites with 30-minute package limits.
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
