@@ -191,3 +191,54 @@ func TestGhListOpenPRs_MapsChanges(t *testing.T) {
 		t.Fatalf("ghListOpenPRs on a read error = %+v, want nil", got)
 	}
 }
+
+type rosterCostForge struct {
+	fakeRosterForge
+	lists   map[string]int
+	details []int
+}
+
+func (f *rosterCostForge) ListOpenChanges(repo deskkit.ForgeRepo) (*deskkit.OpenChanges, error) {
+	f.lists[repo.Slug()]++
+	if repo.Name != "tracker" {
+		return &deskkit.OpenChanges{}, nil
+	}
+	return &deskkit.OpenChanges{Changes: []deskkit.OpenChange{
+		{Number: 11, State: "OPEN", Draft: true},
+		{Number: 12, State: "OPEN"},
+	}}, nil
+}
+
+func (f *rosterCostForge) GetPullRequest(_ deskkit.ForgeRepo, n int) (*deskkit.PullRequest, error) {
+	f.details = append(f.details, n)
+	return &deskkit.PullRequest{Number: n, State: "closed", Merged: true}, nil
+}
+
+func TestListReusesPositiveOpenRowsAndConfirmsMissingBeacons(t *testing.T) {
+	home := rosterSetup(t)
+	writeTestBeacon(t, home, Beacon{Session: "worker", OpenWork: []WorkEntry{
+		{Repo: "tracker", PR: 11}, {Repo: "tracker", PR: 12}, {Repo: "tracker", PR: 13},
+	}})
+	provider := &rosterCostForge{lists: make(map[string]int)}
+	previous := forgeFor
+	t.Cleanup(func() { forgeFor = previous })
+	forgeFor = func(slug string) (deskkit.Forge, deskkit.ForgeRepo, error) {
+		owner, name, _ := strings.Cut(slug, "/")
+		return provider, deskkit.ForgeRepo{Owner: owner, Name: name}, nil
+	}
+	if err := cmdList(); err != nil {
+		t.Fatal(err)
+	}
+	if len(provider.details) != 1 || provider.details[0] != 13 {
+		t.Fatalf("individual reads = %v, want only 13", provider.details)
+	}
+	for _, slug := range deskkit.AllowedRepos() {
+		if provider.lists[slug] != 1 {
+			t.Fatalf("repository %s read %d times, want one", slug, provider.lists[slug])
+		}
+	}
+	got := readTestBeacon(t, home, "worker")
+	if got == nil || len(got.OpenWork) != 2 || got.OpenWork[0].PR != 11 || got.OpenWork[1].PR != 12 {
+		t.Fatalf("unexpected surviving work: %+v", got)
+	}
+}

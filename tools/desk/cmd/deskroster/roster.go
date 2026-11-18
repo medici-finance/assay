@@ -631,6 +631,21 @@ func cmdList() error {
 		repo string
 		pr   int
 	}
+	// Both sections describe one sweep. A positive OPEN row already contains every
+	// field needed to display a beacon. Absence (including a truncated or failed
+	// listing) proves nothing about closure; only the single-change read may prune.
+	repos := deskkit.AllowedRepos()
+	openByRepo := make(map[string][]PRInfo, len(repos))
+	observedOpen := make(map[repoPR]*PRInfo)
+	for _, repo := range repos {
+		openByRepo[repo] = ghListOpenPRs(repo)
+		for i := range openByRepo[repo] {
+			pr := &openByRepo[repo][i]
+			if pr.State == "OPEN" {
+				observedOpen[repoPR{repo: repo, pr: pr.Number}] = pr
+			}
+		}
+	}
 	coveredByBeacon := make(map[repoPR]string) // (repo,pr) -> session name
 
 	// 3. Query live PR state for each beacon entry and auto-prune merged/closed.
@@ -650,7 +665,10 @@ func cmdList() error {
 		changed := false
 		for _, w := range b.OpenWork {
 			fullRepo := resolveFullRepo(w.Repo)
-			info := ghViewPR(fullRepo, w.PR)
+			info := observedOpen[repoPR{repo: fullRepo, pr: w.PR}]
+			if info == nil {
+				info = ghViewPR(fullRepo, w.PR)
+			}
 			state := "?"
 			if info != nil {
 				if info.State == "OPEN" {
@@ -679,7 +697,7 @@ func cmdList() error {
 				continue
 			}
 			surviving = append(surviving, w)
-			coveredByBeacon[repoPR{repo: w.Repo, pr: w.PR}] = b.Session
+			coveredByBeacon[repoPR{repo: fullRepo, pr: w.PR}] = b.Session
 		}
 
 		if changed {
@@ -758,11 +776,9 @@ func cmdList() error {
 	// 6. Unclaimed open PRs section.
 	// Scan all allowed repos for open PRs not covered by any beacon entry.
 	var unclaimed []PRInfo
-	for _, fullRepo := range deskkit.AllowedRepos() {
-		shortRepo := resolveShortRepo(fullRepo)
-		openPRs := ghListOpenPRs(fullRepo)
-		for _, pr := range openPRs {
-			if _, covered := coveredByBeacon[repoPR{repo: shortRepo, pr: pr.Number}]; covered {
+	for _, fullRepo := range repos {
+		for _, pr := range openByRepo[fullRepo] {
+			if _, covered := coveredByBeacon[repoPR{repo: fullRepo, pr: pr.Number}]; covered {
 				continue
 			}
 			unclaimed = append(unclaimed, pr)
