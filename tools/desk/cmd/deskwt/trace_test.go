@@ -21,6 +21,7 @@ import (
 // TestRunGitFailureCarriesStderrCommandAndExitStatus is the unit-level pin. It uses a real
 // git process against a real fixture repo — the failure is git's own, not a synthetic one.
 func TestRunGitFailureCarriesStderrCommandAndExitStatus(t *testing.T) {
+	installWorktreeFixture(t)
 	deskkit.ResetTrace()
 	work := newRepo(t)
 	withEnv(t, work)
@@ -51,6 +52,7 @@ func TestRunGitFailureCarriesStderrCommandAndExitStatus(t *testing.T) {
 // carries unpushed work, so the reclaim declines and `add` refuses. The operator must be
 // told WHICH branch and WHY, in one read.
 func TestWorktreeAddCollisionReachesTheOperatorWithGitsWords(t *testing.T) {
+	installWorktreeFixture(t)
 	deskkit.ResetTrace()
 	work := newRepo(t)
 	withEnv(t, work)
@@ -73,6 +75,7 @@ func TestWorktreeAddCollisionReachesTheOperatorWithGitsWords(t *testing.T) {
 // TestDeskwtTraceOffIsByteIdenticalAndOnCarriesTheCommand pins both directions of the switch
 // on a real deskwt failure.
 func TestDeskwtTraceOffIsByteIdenticalAndOnCarriesTheCommand(t *testing.T) {
+	installWorktreeFixture(t)
 	deskkit.ResetTrace()
 	t.Setenv("DESK_TRACE", "")
 	work := newRepo(t)

@@ -15,6 +15,7 @@ import (
 // mainline is walked once and a repeated non-mainline proof is computed once.
 // regression: #3187
 func TestSweepReapReusesAncestry(t *testing.T) {
+	installWorktreeFixture(t)
 	work, roots := newPerfFixture(t, 40, 500)
 	side := mustGit(t, work, "rev-parse", "refs/heads/side")
 	behind := mustGit(t, work, "rev-parse", "refs/remotes/origin/main~1")
@@ -72,6 +73,7 @@ func TestSweepReapReusesAncestry(t *testing.T) {
 
 // regression: #3187
 func TestSweepDetachedReviewsShareReachability(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	first, _ := openPRWorktree(t, work, "shared-review-first")
@@ -112,6 +114,7 @@ func TestSweepDetachedReviewsShareReachability(t *testing.T) {
 
 // regression: #3187
 func TestSweepRejectsChangedCommonStore(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	rt := addWorktree(t, "changed-store")
@@ -128,6 +131,7 @@ func TestSweepRejectsChangedCommonStore(t *testing.T) {
 
 // regression: #3187
 func TestSweepReapHoldsUnreadableHead(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	rt := addWorktree(t, "unreadable-head")
@@ -142,6 +146,7 @@ func TestSweepReapHoldsUnreadableHead(t *testing.T) {
 
 // regression: #3187
 func TestSweepAdminInventoryRefreshesBetweenSweeps(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	rt := addWorktree(t, "registry-refresh")
@@ -168,6 +173,7 @@ func TestSweepAdminInventoryRefreshesBetweenSweeps(t *testing.T) {
 
 // regression: #3187
 func TestSweepAdminInventoryScalesAcrossHusksAndAtTipTrees(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	head := mustGit(t, work, "rev-parse", "HEAD")
@@ -211,6 +217,7 @@ func TestSweepAdminInventoryScalesAcrossHusksAndAtTipTrees(t *testing.T) {
 
 // regression: #3187
 func TestSweepAdminIdentityFailsClosed(t *testing.T) {
+	installWorktreeFixture(t)
 	for _, bad := range []string{"duplicate", "unreadable", "malformed", "moved", "changed-malformed", "removed"} {
 		t.Run(bad, func(t *testing.T) {
 			work := newRepo(t)

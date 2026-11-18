@@ -66,6 +66,7 @@ func credentialFill(t *testing.T, dir, protocol, host string) string {
 }
 
 func TestRoleInitWiresHostScopedCredentialHelper(t *testing.T) {
+	installWorktreeFixture(t)
 	requireGitListReset(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
@@ -152,6 +153,7 @@ func TestRoleInitWiresHostScopedCredentialHelper(t *testing.T) {
 // The reuse (idempotent) path re-wires the helper, so a worktree polluted since its creation is
 // scrubbed on the next role-init rather than left to answer with the wrong credential.
 func TestRoleInitReuseRewiresCredentialHelper(t *testing.T) {
+	installWorktreeFixture(t)
 	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
@@ -176,6 +178,7 @@ func TestRoleInitReuseRewiresCredentialHelper(t *testing.T) {
 // local transport, which consults no credential helper. role-init wires NOTHING (never falls
 // back to the leaky unscoped key) and still succeeds — the fail-safe branch of the fix.
 func TestRoleInitHostlessOriginWiresNoCredentialHelper(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t) // origin is a local bare PATH, no host
 	withEnv(t, work)
 	rc, stderr := runCapErr(t, []string{"role-init", "--role", "verifier", "--session", "local"})
@@ -195,6 +198,7 @@ func TestRoleInitHostlessOriginWiresNoCredentialHelper(t *testing.T) {
 // The preflight runs LAST, against the provisioned worktree, as the role, on the repo — and a
 // red preflight is exit 6 with the path still printed (the worktree IS provisioned).
 func TestRoleInitRunsPreflightAgainstTheWorktree(t *testing.T) {
+	installWorktreeFixture(t)
 	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)
@@ -238,6 +242,7 @@ func TestRoleInitRunsPreflightAgainstTheWorktree(t *testing.T) {
 // A mint failure is could-not-check (exit 6) naming the role, never a token, and never a
 // worktree that reads as ready.
 func TestRoleInitMintFailureIsUnverifiable(t *testing.T) {
+	installWorktreeFixture(t)
 	requireGitListReset(t)
 	work := newRepo(t)
 	withEnv(t, work)

@@ -9,6 +9,7 @@ import (
 )
 
 func TestPinnedBaseRemainsImmutable(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	head := mustGit(t, work, "rev-parse", "HEAD")
@@ -35,6 +36,7 @@ func TestPinnedBaseRemainsImmutable(t *testing.T) {
 }
 
 func TestPinnedUpstreamRefusals(t *testing.T) {
+	installWorktreeFixture(t)
 	for _, tc := range []struct {
 		name string
 		args []string
@@ -64,6 +66,7 @@ func TestPinnedUpstreamRefusals(t *testing.T) {
 }
 
 func TestPinnedTrackingRollback(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	head := mustGit(t, work, "rev-parse", "HEAD")

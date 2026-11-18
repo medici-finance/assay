@@ -24,6 +24,7 @@ const sshPushURL = "ssh://git@example.invalid/example-org/tracker.git"
 // pushTransportGate call from cmdAdd. With it applied this test goes green-path — the
 // worktree is created off an SSH-remoted checkout — and fails here.
 func TestAddSSHPushRemoteRefuses(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	mustGit(t, work, "remote", "set-url", "--push", "origin", sshPushURL)
 	withEnv(t, work)
@@ -48,6 +49,7 @@ func TestAddSSHPushRemoteRefuses(t *testing.T) {
 // exactly what that key is for. Gating them would make the tool unusable for the case it
 // was never about.
 func TestAddSshRemoteNoBotIdentity(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	mustGit(t, work, "remote", "set-url", "--push", "origin", sshPushURL)
 	withEnv(t, work)
@@ -67,6 +69,7 @@ func TestAddSshRemoteNoBotIdentity(t *testing.T) {
 // destination; what matters is that the SSH value sits on `remote.origin.url` and the gate
 // reads `pushurl` instead.
 func TestAddSshFetchUrlHttpsPush(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	bare := originBare(t, work)
 	mustGit(t, work, "remote", "set-url", "origin", "git@example.invalid:example-org/tracker.git")
@@ -90,6 +93,7 @@ func TestAddSshFetchUrlHttpsPush(t *testing.T) {
 // carries "deskwt reads only the FIRST push url", which drops `--all` from this package's
 // reader; with it applied this test's add succeeds and it fails here.
 func TestAddSshSecondPushURL(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	bare := originBare(t, work)
 	mustGit(t, work, "remote", "set-url", "--push", "origin", bare)

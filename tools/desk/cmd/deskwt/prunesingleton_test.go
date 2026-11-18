@@ -40,6 +40,7 @@ func stampPathFor(t *testing.T, work string) string {
 // --- the LOCK fails closed ----------------------------------------------------------
 
 func TestPruneSingletonHeldByALiveSweepSkips(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "held-candidate")
@@ -78,6 +79,7 @@ func TestPruneSingletonHeldByALiveSweepSkips(t *testing.T) {
 // --- the TTL debounce -----------------------------------------------------------------
 
 func TestPruneSingletonRecentSweepSkips(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "recent-candidate")
@@ -103,6 +105,7 @@ func TestPruneSingletonRecentSweepSkips(t *testing.T) {
 // --singleton-ttl 0 and --no-singleton disable the DEBOUNCE. Neither disables the lock —
 // there is no --force in this verb and these are not one.
 func TestPruneSingletonTTLZeroAndNoSingletonStillSweep(t *testing.T) {
+	installWorktreeFixture(t)
 	for _, args := range [][]string{
 		{"prune", "--singleton-ttl", "0"},
 		{"prune", "--no-singleton"},
@@ -141,6 +144,7 @@ func TestPruneSingletonTTLZeroAndNoSingletonStillSweep(t *testing.T) {
 // and deleted the file by hand — the stale-lock class, recreated.
 
 func TestPruneSingletonBadStampAlwaysSweeps(t *testing.T) {
+	installWorktreeFixture(t)
 	future := time.Now().Add(48 * time.Hour).UTC().Format(time.RFC3339)
 	cases := []struct {
 		name, body string
@@ -178,6 +182,7 @@ func TestPruneSingletonBadStampAlwaysSweeps(t *testing.T) {
 
 // A missing stamp is the commonest case of all — the first sweep this machine ever ran.
 func TestPruneSingletonMissingStampSweeps(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "firstever-candidate")
@@ -208,6 +213,7 @@ func TestPruneSingletonMissingStampSweeps(t *testing.T) {
 
 // regression: F-prune-lock-release
 func TestPruneIntervalLockRelease(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "tick-candidate")
@@ -262,6 +268,7 @@ func writeStamp(t *testing.T, path string, st pruneStamp) {
 // worktree whichever one it starts in, so a sweep started from a linked worktree contends
 // on the same lock as one started from the main checkout.
 func TestPruneSingletonSharedAcrossWorktrees(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "shared-candidate")

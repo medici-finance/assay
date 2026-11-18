@@ -86,6 +86,9 @@ func withEnv(t *testing.T, work string) *[][]string {
 	t.Helper()
 	fixtureHome := t.TempDir()
 	t.Setenv("HOME", fixtureHome)
+	t.Setenv("USERPROFILE", fixtureHome)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(fixtureHome, ".config"))
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(fixtureHome, ".gitconfig"))
 	plantFixtureRoster(t, fixtureHome)
 	t.Setenv("DESK_TOOLS_DISABLED", "")
 	t.Setenv("CLAUDE_SESSION_ID", "test")
@@ -195,6 +198,7 @@ func assertExists(t testing.TB, path string) {
 // --- add: happy path + clean remove -----------------------
 
 func TestAddThenCleanRemoveSucceeds(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 
@@ -235,6 +239,7 @@ func TestAddThenCleanRemoveSucceeds(t *testing.T) {
 // --- add refusals ---------------------------------------------------------------
 
 func TestAddExistingTargetRefuses(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	target := filepath.Join(tmpBaseDir, "tracker-dup")
@@ -250,6 +255,7 @@ func TestAddExistingTargetRefuses(t *testing.T) {
 }
 
 func TestAddBadBaseUnverifiable(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	if rc := run([]string{"add", "bb", "--base", "origin/does-not-exist"}); rc != deskkit.ExitUnverifiable {
@@ -261,6 +267,7 @@ func TestAddBadBaseUnverifiable(t *testing.T) {
 }
 
 func TestAddFlagAfterNameParsed(t *testing.T) {
+	installWorktreeFixture(t)
 	// Usage puts <name> before flags; verify that order works and a bad
 	// --base placed AFTER the name is still caught (exit 6, not mis-parsed).
 	work := newRepo(t)
@@ -271,6 +278,7 @@ func TestAddFlagAfterNameParsed(t *testing.T) {
 }
 
 func TestAddRepoNotAllowedRefuses(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	mustGit(t, work, "remote", "set-url", "origin", "https://github.com/otheruser/otherrepo.git")
 	calls := withEnv(t, work)
@@ -283,6 +291,7 @@ func TestAddRepoNotAllowedRefuses(t *testing.T) {
 }
 
 func TestAddBadNameRefuses(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	for _, bad := range []string{"../escape", "a/b", "..", "-flaggy"} {
@@ -312,6 +321,7 @@ func TestAddBadNameRefuses(t *testing.T) {
 // worktrees prefix TEXTUALLY, but resolves (EvalSymlinks) to a dir OUTSIDE every prefix,
 // so a resolved-path check refuses it (a naive textual prefix check would wrongly pass).
 func TestRemoveSymlinkOutsidePrefixRefuses(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	wtDir := filepath.Join(work, ".claude", "worktrees")
@@ -343,6 +353,7 @@ func TestRemoveSymlinkOutsidePrefixRefuses(t *testing.T) {
 // dirty/upstream/ahead checks would all PASS: main is clean, has an upstream, and is at
 // its upstream — so ONLY the git-common-dir-parent identity check can refuse it.
 func TestRemoveSharedCheckoutRefusedByIdentity(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	mustGit(t, work, "branch", "--set-upstream-to=origin/main", "main")
 	calls := withEnv(t, work)
@@ -360,6 +371,7 @@ func TestRemoveSharedCheckoutRefusedByIdentity(t *testing.T) {
 }
 
 func TestRemoveUnregisteredRefuses(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	// A path UNDER the sanctioned tmp prefix that is not a registered worktree.
@@ -377,6 +389,7 @@ func TestRemoveUnregisteredRefuses(t *testing.T) {
 }
 
 func TestRemoveDirtyStagedTrackedRefuses(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	if rc := run([]string{"add", "dirty"}); rc != deskkit.ExitOK {
@@ -398,6 +411,7 @@ func TestRemoveDirtyStagedTrackedRefuses(t *testing.T) {
 }
 
 func TestRemoveModifiedTrackedRefuses(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	if rc := run([]string{"add", "mod"}); rc != deskkit.ExitOK {
@@ -420,6 +434,7 @@ func TestRemoveModifiedTrackedRefuses(t *testing.T) {
 // TestRemoveUntrackedArtifactDoesNotBlock proves the carve-out: an untracked build
 // artifact must NOT block removal (else the verb would fire on every real worktree).
 func TestRemoveUntrackedArtifactDoesNotBlock(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	if rc := run([]string{"add", "arti"}); rc != deskkit.ExitOK {
@@ -438,6 +453,7 @@ func TestRemoveUntrackedArtifactDoesNotBlock(t *testing.T) {
 }
 
 func TestRemoveUnpushedCommitsRefuses(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	if rc := run([]string{"add", "ahead"}); rc != deskkit.ExitOK {
@@ -461,6 +477,7 @@ func TestRemoveUnpushedCommitsRefuses(t *testing.T) {
 }
 
 func TestRemoveNoUpstreamRefuses(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	if rc := run([]string{"add", "noup"}); rc != deskkit.ExitOK {
@@ -489,6 +506,7 @@ func TestRemoveNoUpstreamRefuses(t *testing.T) {
 // one review. "No upstream" and "not on the remote" are different questions, and only the
 // second justifies refusing.
 func TestRemoveDetachedHeadOnRemoteSucceeds(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	if rc := run([]string{"add", "revhead"}); rc != deskkit.ExitOK {
@@ -516,6 +534,7 @@ func TestRemoveDetachedHeadOnRemoteSucceeds(t *testing.T) {
 // relaxation is precisely scoped to a commit proven present on the remote; it never weakens
 // the never-remove-unpushed-work guard.
 func TestRemoveDetachedHeadNotOnRemoteRefuses(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	if rc := run([]string{"add", "orphanhead"}); rc != deskkit.ExitOK {
@@ -541,6 +560,7 @@ func TestRemoveDetachedHeadNotOnRemoteRefuses(t *testing.T) {
 }
 
 func TestRemoveNoForceFlag(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	if rc := run([]string{"add", "force"}); rc != deskkit.ExitOK {
@@ -569,6 +589,7 @@ func TestRemoveNoForceFlag(t *testing.T) {
 // --- kill switch (both verbs) ---------------------------------------------------
 
 func TestKillSwitchDisablesBothVerbs(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	t.Setenv("DESK_TOOLS_DISABLED", "1")

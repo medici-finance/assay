@@ -49,6 +49,7 @@ func registered(t *testing.T, work, target string) bool {
 // branch it held can be checked out elsewhere afterwards.
 // regression: #1905
 func TestRemoveEmptyHuskLockedByCallerSucceeds(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work) // the caller's session is "test" (CLAUDE_SESSION_ID)
 	noHolders(t)
@@ -74,6 +75,7 @@ func TestRemoveEmptyHuskLockedByCallerSucceeds(t *testing.T) {
 // A registration whose directory is gone entirely is the same class and clears the same way.
 // regression: #1905
 func TestRemoveMissingDirectoryRegistrationSucceeds(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	noHolders(t)
@@ -95,6 +97,7 @@ func TestRemoveMissingDirectoryRegistrationSucceeds(t *testing.T) {
 // An UNLOCKED empty husk needs no owner match.
 // regression: #1905
 func TestRemoveUnlockedEmptyHuskSucceeds(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	noHolders(t)
@@ -113,6 +116,7 @@ func TestRemoveUnlockedEmptyHuskSucceeds(t *testing.T) {
 // nowhere else.
 // regression: #1905
 func TestRemoveHuskWithFilesStillRefused(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	noHolders(t)
@@ -136,6 +140,7 @@ func TestRemoveHuskWithFilesStillRefused(t *testing.T) {
 // A process holding the directory open (its cwd included) blocks the clear.
 // regression: #1905
 func TestRemoveHuskHeldOpenRefused(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	t.Setenv("DESK_SESSION", "")
@@ -157,6 +162,7 @@ func TestRemoveHuskHeldOpenRefused(t *testing.T) {
 // An open-handle probe that cannot run is could-not-check: exit 6, never a pass.
 // regression: #1905
 func TestRemoveHuskProbeUnavailableIsCouldNotCheck(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	t.Setenv("DESK_SESSION", "")
@@ -179,9 +185,10 @@ func TestRemoveHuskProbeUnavailableIsCouldNotCheck(t *testing.T) {
 // Skipped where lsof is not installed — the unavailable case above pins that arm.
 // regression: #1905
 func TestLsofHoldersSeesCwdHolder(t *testing.T) {
-	if _, err := exec.LookPath("lsof"); err != nil {
+	if worktreeStartupLsof == "" {
 		t.Skip("lsof not installed")
 	}
+	installWorktreeFixture(t)
 	dir := t.TempDir()
 	if pids, err := lsofHolders(dir); err != nil || len(pids) != 0 {
 		t.Fatalf("idle dir: holders = %v, err = %v; want none", pids, err)
@@ -208,6 +215,7 @@ func TestLsofHoldersSeesCwdHolder(t *testing.T) {
 // A lock whose owner is a DIFFERENT, live session is not the caller's to retire.
 // regression: #1905
 func TestRemoveHuskLockedByLiveOtherSessionRefused(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	noHolders(t)
@@ -226,6 +234,7 @@ func TestRemoveHuskLockedByLiveOtherSessionRefused(t *testing.T) {
 // The same lock held by a session the roster proves GONE is retired, with the evidence named.
 // regression: #1905
 func TestRemoveHuskLockedByDeadSessionSucceeds(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	noHolders(t)
@@ -246,6 +255,7 @@ func TestRemoveHuskLockedByDeadSessionSucceeds(t *testing.T) {
 // are never retired here.
 // regression: #1905
 func TestRemoveHuskUnattributableLockRefused(t *testing.T) {
+	installWorktreeFixture(t)
 	for name, reason := range map[string]string{
 		"nosession": "worker-desk dispatch in flight",
 		"initing":   "initializing",
@@ -273,6 +283,7 @@ func TestRemoveHuskUnattributableLockRefused(t *testing.T) {
 // admin entry is deleted: refused, as prune's stale-registration sweep refuses it.
 // regression: #1905
 func TestRemoveHuskUnpushedDetachedHeadRefused(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	noHolders(t)
@@ -295,6 +306,7 @@ func TestRemoveHuskUnpushedDetachedHeadRefused(t *testing.T) {
 // If the clear fails after the lock was retired, the ORIGINAL lock comes back.
 // regression: #1905
 func TestRemoveHuskRelocksWhenClearFails(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	noHolders(t)
@@ -339,6 +351,7 @@ func TestRemoveHuskRelocksWhenClearFails(t *testing.T) {
 // A worktree that still has its git link never reaches the husk arm: the ordinary gates run.
 // regression: #1905
 func TestRemoveHuskArmIgnoresLiveWorktree(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "live")
@@ -362,6 +375,7 @@ func mustGuard(t *testing.T, dir string) *pathGuard {
 // it must never run in the caller's checkout with an empty ASSAY_WORKTREE.
 // regression: #1905
 func TestRemoveHuskHookContract(t *testing.T) {
+	installWorktreeFixture(t)
 	for _, tc := range []struct {
 		name    string
 		husk    bool

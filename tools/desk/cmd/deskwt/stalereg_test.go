@@ -43,6 +43,7 @@ func ageWorktreeAdmin(t *testing.T, work, target string) {
 // merged-below-tip trees already were.
 // regression: #2660
 func TestPruneRemovesPristineDetachedAtMainTip(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	target := addWorktree(t, "pristine-detached")
@@ -74,6 +75,7 @@ func TestPruneRemovesPristineDetachedAtMainTip(t *testing.T) {
 // the mainline to move past it.
 // regression: #2660
 func TestPruneRemovesPristineBranchedAtMainTip(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "pristine-branched")
@@ -99,6 +101,7 @@ func TestPruneRemovesPristineBranchedAtMainTip(t *testing.T) {
 // one-hour freshness window) is HELD as too fresh; only an aged one drains.
 // regression: #2660
 func TestPruneHoldsFreshPristineAtTipWithinSafetyWindow(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "just-made")
@@ -124,6 +127,7 @@ func TestPruneHoldsFreshPristineAtTipWithinSafetyWindow(t *testing.T) {
 // untracked-inclusive content gate can be what holds it.
 // regression: #2660
 func TestPruneHoldsDirtyDetachedAtMainTip(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "dirty-detached")
@@ -150,6 +154,7 @@ func TestPruneHoldsDirtyDetachedAtMainTip(t *testing.T) {
 // lossless. Aged past the safety window, so ONLY the ignored-payload gate can hold it.
 // regression: #2660
 func TestPruneHoldsAtTipTreeWithIgnoredPayload(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	// The ignore rule must be committed on the mainline BEFORE the worktree is cut,
@@ -185,6 +190,7 @@ func TestPruneHoldsAtTipTreeWithIgnoredPayload(t *testing.T) {
 // claims it.
 // regression: #2660
 func TestPruneHoldsLockedDetachedAtMainTip(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "locked-detached")
@@ -219,6 +225,7 @@ func TestPruneHoldsLockedDetachedAtMainTip(t *testing.T) {
 // whichever bookkeeping step performs it.
 // regression: #2660
 func TestPruneClearsStaleRegistrationMissingGitFile(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "stale-gitfile")
@@ -254,6 +261,7 @@ func TestPruneClearsStaleRegistrationMissingGitFile(t *testing.T) {
 // proven-staleness evidence — never a default-sweep act.)
 // regression: #2660
 func TestPruneHoldsLockedStaleRegistrationByDefault(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "stale-locked")
@@ -294,6 +302,7 @@ func TestPruneHoldsLockedStaleRegistrationByDefault(t *testing.T) {
 // the lock and the registration is cleared — the directory still left on disk.
 // regression: #2660
 func TestPruneClearsStaleRegistrationAfterProvenStaleReclaim(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "stale-reclaimable")
@@ -325,6 +334,7 @@ func TestPruneClearsStaleRegistrationAfterProvenStaleReclaim(t *testing.T) {
 // arm: retiring it mid-add would race git itself.
 // regression: #2660
 func TestPruneNeverRetiresInitializingLock(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "stale-initializing")
@@ -360,6 +370,7 @@ func TestPruneNeverRetiresInitializingLock(t *testing.T) {
 // never unlocked, never deregistered, whatever its state.
 // regression: #2660
 func TestPruneStaleRegOutOfPrefixUntouched(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	// Register a worktree in an arbitrary temp dir — outside every sanctioned prefix.
@@ -407,6 +418,7 @@ func TestPruneStaleRegOutOfPrefixUntouched(t *testing.T) {
 // unlock what the content gate holds (the post-reclaim bookkeeping prune would drop it).
 // regression: #2660
 func TestPruneHoldsStaleRegWithUnpushedDetachedHead(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "stale-unpushed")
@@ -456,6 +468,7 @@ func TestPruneHoldsStaleRegWithUnpushedDetachedHead(t *testing.T) {
 // stale.
 // regression: #2660
 func TestPruneClearsBranchPointingStaleRegistration(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "stale-branched")
@@ -492,6 +505,7 @@ func TestPruneClearsBranchPointingStaleRegistration(t *testing.T) {
 // reports would-reclaims without performing them).
 // regression: #2660
 func TestPruneDryRunReportsStaleRegistrationWithoutClearing(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "stale-dry")
@@ -521,6 +535,7 @@ func TestPruneDryRunReportsStaleRegistrationWithoutClearing(t *testing.T) {
 // accounts for every registered path exactly once, whether the verdict was clear or hold.
 // regression: #2660
 func TestPruneStaleRegistrationNotDoubleReported(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	cleared := addWorktree(t, "stale-once")
@@ -562,6 +577,7 @@ func TestPruneStaleRegistrationNotDoubleReported(t *testing.T) {
 // its lock back with the EXACT original reason when the clear fails.
 // regression: #2660
 func TestRelockReclaimedHusksRestoresOriginalReason(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "relock-unit")
@@ -594,6 +610,7 @@ func TestRelockReclaimedHusksRestoresOriginalReason(t *testing.T) {
 // state silent.
 // regression: #2660
 func TestPruneRelocksHuskWhenClearFails(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "stale-relock")
@@ -635,6 +652,7 @@ func TestPruneRelocksHuskWhenClearFails(t *testing.T) {
 // lock, including failures before the stale-registration clearing pass begins.
 // regression: #2660
 func TestPruneHuskRollback(t *testing.T) {
+	installWorktreeFixture(t)
 	for _, failure := range []string{"prune", "unlock-verification"} {
 		t.Run(failure, func(t *testing.T) {
 			work := newRepo(t)
@@ -683,6 +701,7 @@ func TestPruneHuskRollback(t *testing.T) {
 // worktree too. This does not enter the stale-registration clearing path.
 // regression: #2660
 func TestReclaimVerifyRollback(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "rollback-intact")
@@ -720,6 +739,7 @@ func TestReclaimVerifyRollback(t *testing.T) {
 
 // regression: #2660
 func TestPruneMissingBranchHeld(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "missing-branch")
@@ -748,6 +768,7 @@ func TestPruneMissingBranchHeld(t *testing.T) {
 
 // regression: #2660
 func TestPruneRollbackFailureStops(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "rollback-fails")

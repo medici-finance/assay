@@ -15,6 +15,7 @@ import (
 // Real Git and a local TLS server prove which identity reaches the transport.
 // All credentials here are placeholders; no external endpoint is contacted.
 func TestRoleFetchCredentialIsolation(t *testing.T) {
+	installWorktreeFixture(t)
 	lanes := []string{"netrc", "header", "header-global", "header-env", "header-include", "cookie", "tls-home", "tls-home-scoped"}
 	for _, option := range []string{"sslCert", "sslKey", "sslCAPath", "sslCAInfo", "pinnedPubkey"} {
 		for _, scope := range []string{"host", "path", "port", "scheme", "user"} {

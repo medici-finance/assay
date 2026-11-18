@@ -234,6 +234,7 @@ func newPerfFixture(t testing.TB, n, commits int) (string, []string) {
 // the machine-independent assertion that origin/main is walked ONCE per sweep however many
 // candidates there are. The second is the real invariant; the first is the symptom.
 func TestPruneSweepScalesAtN(t *testing.T) {
+	installWorktreeFixture(t)
 	n := perfN(t)
 	work, planted := newPerfFixture(t, n, 5000)
 
@@ -280,6 +281,7 @@ func TestPruneSweepScalesAtN(t *testing.T) {
 // flock is associated with the OPEN FILE DESCRIPTION, not the process, so five independent
 // opens inside one test contend exactly as five processes would.
 func TestConcurrentPrunesCostOne(t *testing.T) {
+	installWorktreeFixture(t)
 	n := perfN(t)
 	work, _ := newPerfFixture(t, n, 5000)
 
@@ -372,6 +374,7 @@ func BenchmarkPruneSweepPerCandidate(b *testing.B) {
 // a small sample because the legacy cost is linear in the candidate count by construction —
 // that linearity IS the defect.
 func TestLegacyPerCandidateWalkCost(t *testing.T) {
+	installWorktreeFixture(t)
 	const sample = 20
 	work, planted := newPerfFixture(t, sample, 5000)
 

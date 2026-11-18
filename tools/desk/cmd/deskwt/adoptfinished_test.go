@@ -13,6 +13,7 @@ import (
 // comes back naming it, with the home untouched. The happy row proves the same home is
 // handed back on stdout.
 func TestAdoptRunClauses(t *testing.T) {
+	installWorktreeFixture(t)
 	const runKey = "assay--issue-9"
 	cases := []struct {
 		name  string
@@ -75,6 +76,7 @@ func TestAdoptRunClauses(t *testing.T) {
 }
 
 func TestAdoptRunNeedsUpstream(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	rc, stderr := runCapErr(t, []string{"add", "adopt", "--adopt-run", "assay--issue-9"})

@@ -46,6 +46,7 @@ func branchExists(t *testing.T, work, name string) bool {
 // --- branch GC: an ancestry-merged branch is collected ---------------------------------
 
 func TestPruneBranchGCCollectsMergedBranch(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	// A branch cut at the CURRENT main tip, then the mainline marches past it: the tip is
@@ -74,6 +75,7 @@ func TestPruneBranchGCCollectsMergedBranch(t *testing.T) {
 // --- branch GC: a cherry-clean (squash-merged) branch is collected ---------------------
 
 func TestPruneBranchGCCollectsCherryCleanBranch(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 
@@ -123,6 +125,7 @@ func TestPruneBranchGCCollectsCherryCleanBranch(t *testing.T) {
 // --- branch GC: a branch with unique patches is KEPT, always ---------------------------
 
 func TestPruneBranchGCKeepsUniquePatches(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 
@@ -152,6 +155,7 @@ func TestPruneBranchGCKeepsUniquePatches(t *testing.T) {
 // --- branch GC: main and master are never candidates ------------------------------------
 
 func TestPruneBranchGCNeverDeletesMainOrMaster(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	// A stale local `master` at the ORIGINAL tip, then the mainline marches: merged by
@@ -177,6 +181,7 @@ func TestPruneBranchGCNeverDeletesMainOrMaster(t *testing.T) {
 // --- branch GC: a branch checked out in any worktree is never a candidate ---------------
 
 func TestPruneBranchGCKeepsCheckedOutBranch(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	// A worktree on a branch, LOCKED so the worktree arms hold the tree and the branch
@@ -199,6 +204,7 @@ func TestPruneBranchGCKeepsCheckedOutBranch(t *testing.T) {
 // --- branch GC: the branch of a worktree Step B just removed is collected in-sweep ------
 
 func TestPruneBranchGCCollectsBranchOfRemovedWorktree(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	// The ordering contract: Step B removes the merged+clean worktree, and Step C in the
@@ -225,6 +231,7 @@ func TestPruneBranchGCCollectsBranchOfRemovedWorktree(t *testing.T) {
 // --- branch GC: a merge commit ahead of the mainline holds the branch -------------------
 
 func TestPruneBranchGCHoldsBranchWithMergeAhead(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 
@@ -255,6 +262,7 @@ func TestPruneBranchGCHoldsBranchWithMergeAhead(t *testing.T) {
 // --- branch GC: --dry-run reports the plan and deletes nothing --------------------------
 
 func TestPruneBranchGCDryRunDeletesNothing(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	mustGit(t, work, "branch", "stale-merged")
@@ -275,6 +283,7 @@ func TestPruneBranchGCDryRunDeletesNothing(t *testing.T) {
 // --- branch GC: a failed delete is a skip and a warning, never a sweep failure ----------
 
 func TestPruneBranchGCDeleteFailureIsSkipNotError(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	mustGit(t, work, "branch", "stale-merged")
@@ -310,6 +319,7 @@ func TestPruneBranchGCDeleteFailureIsSkipNotError(t *testing.T) {
 // --- branch GC: an unreadable mainline holds EVERYTHING (fail closed) -------------------
 
 func TestPruneBranchGCHoldsEverythingWhenMainlineUnreadable(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	mustGit(t, work, "branch", "stale-merged")
@@ -332,6 +342,7 @@ func TestPruneBranchGCHoldsEverythingWhenMainlineUnreadable(t *testing.T) {
 // --- the cadence split: --no-branches / --branches-only ---------------------------------
 
 func TestPruneNoBranchesSkipsTheGC(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "wt-only")
@@ -357,6 +368,7 @@ func TestPruneNoBranchesSkipsTheGC(t *testing.T) {
 }
 
 func TestPruneBranchesOnlySkipsTheWorktreeArms(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	target := addWorktree(t, "branches-only-wt")
@@ -383,6 +395,7 @@ func TestPruneBranchesOnlySkipsTheWorktreeArms(t *testing.T) {
 }
 
 func TestPruneBranchFlagsRefuseInertCombinations(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	for _, args := range [][]string{
@@ -400,6 +413,7 @@ func TestPruneBranchFlagsRefuseInertCombinations(t *testing.T) {
 // --- branch GC: the delete is the compare-and-delete, never a force verb ----------------
 
 func TestPruneBranchGCDeletesByCompareAndDelete(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	mustGit(t, work, "branch", "stale-merged")
@@ -444,6 +458,7 @@ func TestPruneBranchGCDeletesByCompareAndDelete(t *testing.T) {
 // "appeared" inside that window: the branch is provably merged, and only the re-read can
 // keep it.
 func TestPruneBranchGCRechecksHolderAtDelete(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	mustGit(t, work, "branch", "stale-merged")
@@ -492,6 +507,7 @@ func TestPruneBranchGCRechecksHolderAtDelete(t *testing.T) {
 // already holds — so without this test the suite cannot see whether the checked-out guard
 // covers the MAIN checkout's own branch. (Reviewer-driven coverage close.)
 func TestPruneBranchGCKeepsBranchCheckedOutInSharedCheckout(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	// Advance the mainline FIRST (advanceMain commits onto the checked-out branch), then
@@ -521,6 +537,7 @@ func TestPruneBranchGCKeepsBranchCheckedOutInSharedCheckout(t *testing.T) {
 // target's position). The delete carries --no-deref so the symref is deleted as itself —
 // or refused — and the target is never touched.
 func TestPruneBranchGCPlantedSymrefCannotDeleteItsTarget(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	calls := withEnv(t, work)
 	mainSHA := mustGit(t, work, "rev-parse", "refs/heads/main")
@@ -547,6 +564,7 @@ func TestPruneBranchGCPlantedSymrefCannotDeleteItsTarget(t *testing.T) {
 // forever. This test kills the consumer outright and requires an error within a bounded
 // time — the io.Pipe shape this replaced hangs here even on a one-commit fixture.
 func TestPatchIDConsumerFailureIsAnErrorNotAHang(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	withEnv(t, work)
 	inner := execCommand

@@ -34,6 +34,7 @@ func plantAmbiguousBase(t *testing.T, work string) (stale string) {
 // rely on — SUCCEEDS, and returns the STALE sha. Exit 0 plus a wrong answer is precisely
 // checked-clean reported where the true state is could-not-check.
 func TestGitResolvesAmbiguousBaseAtExitZero(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	stale := plantAmbiguousBase(t, work)
 	remote := mustGit(t, work, "rev-parse", "refs/remotes/origin/main")
@@ -55,6 +56,7 @@ func TestGitResolvesAmbiguousBaseAtExitZero(t *testing.T) {
 // TestAddAmbiguousBaseIsCouldNotCheck is the guard itself: cmdAdd must refuse with exit 6
 // (could-not-check) and must NOT run `git worktree add` at all.
 func TestAddAmbiguousBaseIsCouldNotCheck(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	plantAmbiguousBase(t, work)
 	calls := withEnv(t, work)
@@ -72,6 +74,7 @@ func TestAddAmbiguousBaseIsCouldNotCheck(t *testing.T) {
 // the SAME repo, the same two refs, but a fully-qualified --base resolves to exactly one
 // ref and the add succeeds. This is what keeps the guard from being a blanket refusal.
 func TestAddFullyQualifiedBaseUnambiguous(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	plantAmbiguousBase(t, work)
 	withEnv(t, work)
@@ -85,6 +88,7 @@ func TestAddFullyQualifiedBaseUnambiguous(t *testing.T) {
 // candidates[0] is the ref git would have picked (refs/heads/ before refs/remotes/), and
 // an unambiguous name yields exactly one candidate.
 func TestRefCandidatesOrdering(t *testing.T) {
+	installWorktreeFixture(t)
 	work := newRepo(t)
 	plantAmbiguousBase(t, work)
 
