@@ -69,7 +69,8 @@ func newHotfixWorld(t *testing.T, pin string) *hotfixWorld {
 	w.now, _ = time.Parse(time.RFC3339, hfNowText)
 	for _, d := range []string{w.root, w.pinned, w.home, filepath.Join(w.srcDir, ".github", "workflows"),
 		filepath.Join(w.srcDir, "tools", "desk", "cmd", "deskboard"), filepath.Join(w.srcDir, "tools", "desk", "cmd", "deskstatus"),
-		filepath.Join(w.srcDir, "tools", "desk", "cmd", "cellctl"), filepath.Join(w.srcDir, "tools", "desk", "cmd", "deskboot")} {
+		filepath.Join(w.srcDir, "tools", "desk", "cmd", "cellctl"), filepath.Join(w.srcDir, "tools", "desk", "cmd", "deskboot"),
+		filepath.Join(w.srcDir, "statusgen")} {
 		if err := os.MkdirAll(d, 0o755); err != nil {
 			t.Fatal(err)
 		}
@@ -85,6 +86,9 @@ func newHotfixWorld(t *testing.T, pin string) *hotfixWorld {
 	for _, tool := range []string{"deskboard", "deskstatus", "cellctl", "deskboot"} {
 		write(filepath.Join(w.srcDir, "tools", "desk", "cmd", tool, "main.go"), "package main\n")
 	}
+	write(filepath.Join(w.srcDir, "statusgen", "go.mod"), "module github.com/medici-finance/assay/statusgen\n")
+	write(filepath.Join(w.srcDir, "statusgen", "go.sum"), "example.com/statusgen-dep v0.0.0 h1:fixture\n")
+	write(filepath.Join(w.srcDir, "statusgen", "main.go"), "package main\n")
 	gitIn(t, w.srcDir, "init", "-q", "-b", "main")
 	gitIn(t, w.srcDir, "add", "-A")
 	gitIn(t, w.srcDir, "commit", "-q", "-m", "fixture source")
@@ -580,4 +584,108 @@ func captureStderrOf(t *testing.T, fn func()) string {
 		fn()
 	}()
 	return <-done
+}
+
+// statusgenBuild is a fake build of statusgen: it records the spec and writes a statusgen that
+// prints its tag on one line, the shape statusgen's own --version has.
+func (w *hotfixWorld) statusgenBuild(base string) {
+	hotfixRunBuild = func(s hotfixBuildSpec) error {
+		w.builds = append(w.builds, s)
+		script := "#!/bin/sh\necho '" + deskkit.HotfixTag(base, w.sha) + "'\n"
+		return os.WriteFile(filepath.Join(s.Out, "statusgen"), []byte(script), 0o755)
+	}
+}
+
+func writeHotfixPins(t *testing.T, root, deskTools, statusgen string) {
+	t.Helper()
+	sum := " 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
+	body := "desk-tools " + deskTools + sum
+	if statusgen != "" {
+		body += "statusgen " + statusgen + sum
+	}
+	if err := os.WriteFile(filepath.Join(root, ".assay-versions"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// regression: #4405
+// TestHotfixInstallStatusgen: `cellctl hotfix install statusgen` builds statusgen's own module
+// (statusgen/, package .) over statusgen's own pin line, never the desk-tools line, with
+// statusgen's own -X stamp vars; status and shim selection check it against that same line, so
+// a moved statusgen pin retires it while the desk-tools pin stands still. statusgen is refused
+// in one call with desk tools, and with no statusgen pin line the install is could-not-check.
+func TestHotfixInstallStatusgen(t *testing.T) {
+	w := newHotfixWorld(t, hfBase)
+	writeHotfixPins(t, w.root, hfMoved, hfBase)
+	w.statusgenBuild(hfBase)
+
+	code, out, errs := w.run("install", "statusgen", "--source", w.sha)
+	if code != 0 {
+		t.Fatalf("install statusgen rc=%d\n%s\n%s", code, out, errs)
+	}
+	tag := deskkit.HotfixTag(hfBase, w.sha)
+	if !strings.Contains(out, "hotfix installed: statusgen "+tag+" over pin "+hfBase) {
+		t.Errorf("install output does not name statusgen over its own pin:\n%s", out)
+	}
+	if len(w.builds) != 1 {
+		t.Fatalf("builds = %d", len(w.builds))
+	}
+	b := w.builds[0]
+	if filepath.Base(b.Dir) != "statusgen" || strings.Contains(b.Dir, filepath.Join("tools", "desk")) {
+		t.Errorf("statusgen built in %s, want the source's statusgen module", b.Dir)
+	}
+	if len(b.Pkgs) != 1 || b.Pkgs[0] != "." {
+		t.Errorf("statusgen packages = %v, want [.]", b.Pkgs)
+	}
+	for _, want := range []string{"-X main.statusgenVersion=" + tag, "-X main.statusgenBuiltAt=", "-X main.statusgenHotfixExpires="} {
+		if !strings.Contains(b.Ldflags, want) {
+			t.Errorf("statusgen ldflags lack %q: %s", want, b.Ldflags)
+		}
+	}
+	if strings.Contains(b.Ldflags, "internal/deskkit") || strings.Contains(b.Ldflags, "cellctlVersion") {
+		t.Errorf("statusgen ldflags carry desk-tools stamp vars: %s", b.Ldflags)
+	}
+	e, ok := w.manifest().Entry("statusgen")
+	if !ok {
+		t.Fatal("manifest has no statusgen entry")
+	}
+	sgSum, _ := deskkit.FileSHA256(filepath.Join(w.srcDir, "statusgen", "go.sum"))
+	if e.BasePin != hfBase || e.GoSumSHA256 != sgSum {
+		t.Errorf("statusgen entry base_pin %s go_sum %s, want %s and statusgen/go.sum's %s", e.BasePin, e.GoSumSHA256, hfBase, sgSum)
+	}
+
+	if code, out, _ := w.run("status"); code != 0 || !strings.Contains(out, "hotfix statusgen "+tag+" over pin "+hfBase) {
+		t.Errorf("status against statusgen's own pin rc=%d:\n%s", code, out)
+	}
+	c, shim := w.cell(t)
+	if err := os.WriteFile(filepath.Join(w.pinned, "statusgen"), []byte("#!/bin/sh\necho pinned\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c.genShims()
+	if body := readFile(t, shim, "statusgen"); !strings.Contains(body, `hotfix_bin="`+deskkit.HotfixBinaryPath(w.overlay, "statusgen")+`"`) {
+		t.Fatalf("a live statusgen hotfix is not in its shim:\n%s", body)
+	}
+	writeHotfixPins(t, w.root, hfMoved, hfMoved)
+	stderr := captureStderrOf(t, func() { c.genShims() })
+	if body := readFile(t, shim, "statusgen"); strings.Contains(body, "hotfix_bin") {
+		t.Errorf("after the statusgen pin moved the shim still points at the overlay:\n%s", body)
+	}
+	if !strings.Contains(stderr, deskkit.HotfixReasonOutlived) {
+		t.Errorf("no NOTICE naming the outlived statusgen hotfix:\n%s", stderr)
+	}
+	if code, out, _ := w.run("status"); code != hotfixExitRefused || !strings.Contains(out, deskkit.HotfixReasonOutlived) {
+		t.Errorf("status after the statusgen pin moved rc=%d:\n%s", code, out)
+	}
+
+	n := len(w.builds)
+	if code, _, errs := w.run("install", "statusgen", "deskboard", "--source", w.sha); code != hotfixExitRefused || !strings.Contains(errs, "installed on its own") {
+		t.Errorf("a mixed statusgen + desk-tool install rc=%d:\n%s", code, errs)
+	}
+	writeHotfixPins(t, w.root, hfBase, "")
+	if code, _, errs := w.run("install", "statusgen", "--source", w.sha); code != hotfixExitUnknown || !strings.Contains(errs, "no statusgen pin") {
+		t.Errorf("install statusgen with only a desk-tools pin rc=%d (want 6, never the desk-tools line):\n%s", code, errs)
+	}
+	if len(w.builds) != n {
+		t.Errorf("a refused statusgen install still built")
+	}
 }

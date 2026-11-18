@@ -226,10 +226,13 @@ func TestLockFailureStillWritesOneAuditLine(t *testing.T) {
 	}
 
 	before := len(auditEntries(t))
-	evidencePath := writeRepoFile(t, "docs/brief.md", "# Brief\n\n## Evidence\n| 1 | x | y |\n")
+	// A landing that passes preparation, so it reaches the write window where the lock
+	// is now taken (#5023).
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | x | y |\n")
 	f.setFile(evidencePath, "old")
 
-	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+	code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
 	if code != deskkit.ExitUnverifiable {
 		t.Fatalf("exit = %d, want %d (unverifiable)", code, deskkit.ExitUnverifiable)
 	}
@@ -284,13 +287,14 @@ func TestContendedLockTimesOutUnverifiable(t *testing.T) {
 	t.Cleanup(func() { lockWait = old })
 
 	before := len(auditEntries(t))
-	evidencePath := writeRepoFile(t, "docs/brief.md", "# Brief\n\n## Evidence\n| 1 | x | y |\n")
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, "# Brief\n\n## Evidence\n| 1 | x | y |\n")
 	f.setFile(evidencePath, "old")
 
 	done := make(chan int, 1)
 	start := time.Now()
 	go func() {
-		done <- run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath})
+		done <- run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root})
 	}()
 
 	var code int
@@ -308,6 +312,8 @@ func TestContendedLockTimesOutUnverifiable(t *testing.T) {
 	if elapsed := time.Since(start); elapsed < shortWait {
 		t.Errorf("returned after %s, want at least the %s deadline — it must WAIT for the lock, "+
 			"not give up on first contention", elapsed, shortWait)
+	} else if elapsed >= 2*shortWait {
+		t.Errorf("returned after %s, want under %s — the refusal waited on the lock twice; the bound is one lockWait", elapsed, 2*shortWait)
 	}
 	f.mu.Lock()
 	puts := f.putCalls
@@ -319,15 +325,18 @@ func TestContendedLockTimesOutUnverifiable(t *testing.T) {
 	if len(after)-before != 1 {
 		t.Fatalf("wrote %d audit lines, want exactly 1", len(after)-before)
 	}
-	if got := after[len(after)-1].Result; got != deskkit.ResultUnverifiable {
-		t.Fatalf("audit result = %q, want unverifiable", got)
+	// A lock-wait refusal is audited as contention, not as a write that may have landed (#6227):
+	// the wait is the first step of the write window (#5023), before the budget is read or
+	// anything is sent.
+	if got := after[len(after)-1].Result; got != deskkit.ResultContended {
+		t.Fatalf("audit result = %q, want contended", got)
 	}
 }
 
 // TestDeferOrderIsSourceGuarded guards the defer order in runOutward at SOURCE level, in
 // the style of TestInstallForOwnerIsGone.
 //
-// runOutward relies on Go's LIFO defer order: `lock.release()` is registered FIRST so it
+// runOutward relies on Go's LIFO defer order: `ac.releaseAuditLock()` is registered FIRST so it
 // runs LAST, i.e. AFTER the deferred audit append. Swapping the two registrations moves
 // the append outside the critical section and re-opens the precise window #227 is about,
 // and the file and the README both say "do not reorder" — but saying it is not enforcing it.
@@ -348,7 +357,7 @@ func TestDeferOrderIsSourceGuarded(t *testing.T) {
 		if strings.HasPrefix(trimmed, "//") {
 			continue // the doc comment discusses both; only code counts
 		}
-		if relIdx < 0 && strings.HasPrefix(trimmed, "defer lock.release()") {
+		if relIdx < 0 && strings.HasPrefix(trimmed, "defer ac.releaseAuditLock()") {
 			relIdx = i
 		}
 		if finIdx < 0 && strings.Contains(trimmed, "defer") && strings.Contains(trimmed, "ac.finalize(err)") {
@@ -356,7 +365,7 @@ func TestDeferOrderIsSourceGuarded(t *testing.T) {
 		}
 	}
 	if relIdx < 0 {
-		t.Fatal("no `defer lock.release()` in writeflow.go — the lock is not released on every exit path, " +
+		t.Fatal("no `defer ac.releaseAuditLock()` in writeflow.go — the lock is not released on every exit path, " +
 			"or it was renamed and this guard needs updating alongside it")
 	}
 	if finIdx < 0 {
@@ -364,7 +373,7 @@ func TestDeferOrderIsSourceGuarded(t *testing.T) {
 			"or it was renamed and this guard needs updating alongside it")
 	}
 	if relIdx > finIdx {
-		t.Fatalf("`defer lock.release()` (line %d) is registered AFTER the deferred audit append (line %d). "+
+		t.Fatalf("`defer ac.releaseAuditLock()` (line %d) is registered AFTER the deferred audit append (line %d). "+
 			"Go runs defers LIFO, so the lock would now be released BEFORE the append — putting the append "+
 			"outside the critical section and re-opening #227. Register release() first.",
 			relIdx+1, finIdx+1)
@@ -387,7 +396,7 @@ func TestAuditLockPathMatchesTheOtherDeskTools(t *testing.T) {
 	if dir != want {
 		t.Fatalf("deskDir = %q, want %q (cmd/deskpost/writeflow.go uses the same path)", dir, want)
 	}
-	l, err := acquireAuditLock()
+	l, err := acquireAuditLock(lockWait)
 	if err != nil {
 		t.Fatalf("acquire: %v", err)
 	}

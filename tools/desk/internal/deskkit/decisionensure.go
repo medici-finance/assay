@@ -360,10 +360,13 @@ func (e *decisionEnsure) run() DecisionEnsureResult {
 	// --- create ---
 	if req.BeforeCreate != nil {
 		if berr := req.BeforeCreate(repo); berr != nil {
-			switch ExitCodeOf(berr) {
-			case ExitRefused:
+			// Branch with the Is* predicates, not a switch on the code: two exit-code
+			// constants as switch cases stop this package compiling under the release
+			// gate's exit-code neighbour mutation (#6201; TestNoConstSwitchOnExitCodes).
+			switch {
+			case IsRefused(berr):
 				return e.refused("issue create was not attempted on %s: %s", repo, StripControl(berr.Error()))
-			case ExitRateLimited:
+			case IsRateLimited(berr):
 				// The write budget is spent: wait, then re-run. Nothing was filed.
 				e.err("rate-limited: issue create was not attempted on %s: %s", repo, StripControl(berr.Error()))
 				return DecisionEnsureResult{Code: ExitRateLimited, State: "rate-limited"}

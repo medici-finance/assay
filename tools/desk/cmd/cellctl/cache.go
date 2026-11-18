@@ -53,8 +53,12 @@ func (c *Cell) printCachePolicy() {
 	}
 }
 
-// cacheAdmission performs bounded preparation. Missing or dirty accounting
-// requires explicit maintenance; launch never falls through into a cache walk.
+// cacheAdmission performs bounded preparation and never falls through into a
+// cache walk itself. Dirty or corrupt accounting requires explicit
+// maintenance; a missing, unstamped or future-dated measurement, one past the
+// policy's freshness bound, or a stale one another check refused is
+// re-measured once by the caller's prepareLaunchOnce, never here. A
+// measurement that is only stale admits, reported stale with its age.
 func (c *Cell) cacheAdmission() error {
 	p, err := c.cachePolicy()
 	if err != nil {
@@ -71,27 +75,50 @@ func (c *Cell) cacheAdmission() error {
 
 // upPrepareLaunch is prepareLaunch for `cellctl up`. When bounded admission
 // defers on a refusal one clean can clear (the recorded size or free-space
-// margin, or an aged or overtaken measurement), it runs that clean once and
-// prepares again; a second deferral refuses exactly as before. Every other
-// refusal (ownership, domain, corrupt or dirty accounting) is returned
-// untouched and stays with the operator. Desk and scratch launches keep
-// calling prepareLaunch, which never walks the cache.
+// margin, or an unstamped, future-dated, missing or overtaken measurement, or
+// one past the policy's freshness bound), it runs that clean once and prepares
+// again; a measurement that is only stale admits with no clean; a second deferral
+// refuses exactly as before. Every other refusal (ownership, domain, corrupt or
+// dirty accounting) is returned untouched and stays with the operator.
 func (c *Cell) upPrepareLaunch() (bool, error) {
+	return c.prepareLaunchOnce("up cache clean", cellcache.Report.Reclaimable)
+}
+
+// launchPrepareLaunch is prepareLaunch for `cellctl desk` and scratch
+// launches. It re-measures only when the refusal is that the recorded
+// measurement is unstamped, future-dated, missing or past the policy's
+// freshness bound, or is older than five minutes and another check refused it
+// (#6593); a measurement that is only stale admits with no re-measure. One Check,
+// then one more bounded preparation that admits or refuses on the fresh
+// numbers. Size or free-space pressure on a fresh measurement, and every
+// operator-only refusal, are returned untouched: on a fresh measurement those
+// launches never clean for pressure. The one re-measure is the full, not-dry
+// Check, so when its fresh walk finds pressure or a cache past high water it
+// reclaims (a compiler-cache trim, or whole-root removal with no live
+// consumer) before the second preparation decides.
+func (c *Cell) launchPrepareLaunch() (bool, error) {
+	return c.prepareLaunchOnce("launch cache re-measure", cellcache.Report.Stale)
+}
+
+// prepareLaunchOnce runs bounded preparation and, when it defers for a reason
+// acts accepts, runs one clean and prepares once more. The second result is
+// final: there is no further clean and no loop.
+func (c *Cell) prepareLaunchOnce(label string, acts func(cellcache.Report) bool) (bool, error) {
 	fresh, err := c.prepareLaunch()
 	var d *cellcache.Deferred
-	if err == nil || !errors.As(err, &d) || !d.Report.Reclaimable() {
+	if err == nil || !errors.As(err, &d) || !acts(d.Report) {
 		return fresh, err
 	}
-	if err := c.upCacheClean(d.Report.Reason); err != nil {
+	if err := c.launchCacheClean(label, d.Report.Reason); err != nil {
 		return false, err
 	}
 	return c.prepareLaunch()
 }
 
-// upCacheClean is the one clean `up` may run: the same Check, not dry, that
-// `cellctl cache <cell> clean` runs, under the same lock and entry budget. It
-// prints one line naming why it ran and the logical bytes before and after.
-func (c *Cell) upCacheClean(why string) error {
+// launchCacheClean is the one clean a launch may run: the same Check, not dry,
+// that `cellctl cache <cell> clean` runs, under the same lock and entry budget.
+// It prints one line naming why it ran and the logical bytes before and after.
+func (c *Cell) launchCacheClean(label, why string) error {
 	p, err := c.cachePolicy()
 	if err != nil || p == nil {
 		return err
@@ -101,8 +128,8 @@ func (c *Cell) upCacheClean(why string) error {
 	time.Sleep(cellcache.AdmitMtimeSlack)
 	r, err := cellcache.Check(*p, false)
 	why, _, _ = strings.Cut(why, "; run cellctl cache")
-	fmt.Fprintf(os.Stderr, "up cache clean: %s; logical bytes before %s, after %s, reclaimed %d; outcome %s\n",
-		why, logicalBytes(r.Before), logicalBytes(r.After), r.Reclaimed, r.Outcome)
+	fmt.Fprintf(os.Stderr, "%s: %s; logical bytes before %s, after %s, reclaimed %d; outcome %s\n",
+		label, why, logicalBytes(r.Before), logicalBytes(r.After), r.Reclaimed, r.Outcome)
 	return err
 }
 

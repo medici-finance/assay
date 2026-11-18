@@ -130,8 +130,7 @@ commands and results before producing the closure record.
 
 When the delivery added supplemental rows but changed no original row, the
 independent verifier records that run with a protected record: a file holding
-only the `Verification-Table:` line above, passed as `--acceptance-record` (host
-execution and same-repository admission only; no `--acceptance-forge`, since it
+only the `Verification-Table:` line above, passed as `--acceptance-record` (same-repository host execution or the closed bracket below; no `--acceptance-forge`, since it
 reads no approval):
 
 ```sh
@@ -188,11 +187,11 @@ that comment removal is idempotent grants an exemption or older-row credit.
 ### Explicit human-approved acceptance transitions
 
 The immutable-delivery rule above remains the default. A versioned brief may opt
-into one later, separately landed command or Expect correction. This is a new human act,
+into later, separately landed command or Expect corrections. This is a new human act,
 not an authority inferred from merging a source edit, incrementing `version:`, a
 label, a local record, an APPROVED review, or a bot relaying a person's words.
 
-The transition supports a command-only or an Expect-only correction to an existing
+The legacy one-line transition supports a command-only or an Expect-only correction to an existing
 original row. A command correction retains its exact Expect, class, shell, order and
 obligations. It must occupy one unambiguous code span with byte-identical surrounding
 context, and its delivered row must still match the complete original definition.
@@ -318,8 +317,157 @@ or fail lint. Verify the upgraded workflow can corroborate the exact ruling befo
 committing a final transition verdict. This source change does not activate any
 repository's workflows or provide any actual amendment approval.
 
-Transition execution inside `--in-container` or with cross-repository admission is
-unsupported and refuses. The fenced runner gains no network access. Chained
-transitions, row retirement, class changes, combined command-and-Expect changes in
-one row, and table-layout migrations also remain unsupported. Human closure gates, independent review and release/pin
+A protected or transition record may run inside a closed **container-netns transition bracket**
+opened and closed with the same `--acceptance-record` descriptor. The dispatch host
+performs the protected plan and clean-source checks at open, re-reads transition approval
+with `--acceptance-forge`, and binds the exact planned table, row IDs, source and changes
+in the receipt. Inside it the container executes the receipt's planned table, not the
+current table; it reads no Git history or forge and refuses `--acceptance-forge`.
+Close re-plans with a fresh approval read and compares the complete receipt plan,
+byte-exact table and witness descriptor, changes and commands before appending anything.
+`deskdispatch --check-verifier` runs only on the dispatch host. A different-runtime
+runner still refuses `environment changed since admission: runtime`; the runtime
+recheck is unchanged and the container is never re-admitted. Protected container
+execution requires explicit `--root` and refuses `--fail-first`: the receipt binds
+the head plan, not baseline history. Keep baseline qualification on the host. Credit is unchanged:
+`credit=credited` only, never a matching bracket digest alone.
+
+Execution with `--acceptance-record` and `--in-container`, `--check` or cross-repository
+admission remains unsupported and refuses. The fenced runner gains no network access.
+Row retirement, class and shell changes, row add/delete/renumber, supplemental amendment
+or promotion, and table-layout migrations remain unsupported. Human closure gates, independent review and release/pin
 requirements remain separate; this mechanism performs none of those actions.
+
+#### Ordered approval chains
+
+A descriptor may instead follow its one `Verification-Table:` line with contiguous
+chain markers in order, starting at 1. It cannot mix chain and legacy markers,
+repeat an approval URL, or include another line:
+
+```text
+Acceptance-Transition: link=1 amendment=<sha1> approval=<url1>
+Acceptance-Transition: link=2 amendment=<sha2> approval=<url2>
+```
+
+Each link has its own unedited mapped-human approval on the same repository's
+marked issue. Its exact payload is (CRLF may be normalized to LF). Leading or
+trailing whitespace, including a final newline after the rows value, is refused:
+
+
+```text
+Approve acceptance-transition v2
+repo=<owner/repo>
+brief=<brief path>
+delivery=<sha>
+base=<sha>
+original=<sha>
+link=<k>
+predecessor=<previous amendment; delivery for link 1>
+amendment=<sha>
+rows=<id>:<Command|Expect|Command+Expect>,...
+```
+
+Rows appear in table order with their exact changed-column token. Every changed
+Command must be named. An unnamed Expect drift retains the prior effective Expect.
+Each link is applied to the preceding effective rows, so a previously corrected row
+may be corrected again. A `Command+Expect` approval may replace the whole Command
+cell, including prose and multiple spans; row ID, order, class, shell and obligations
+remain fixed. Command-only corrections retain the one-span/context rule. Link 1
+alone may reuse a v1 approval under the unchanged v1 rules, without combined cells.
+Legacy one-line descriptors retain their original rules and refusal verdicts.
+
+Every first-parent Verify or version change from delivery through HEAD must be
+exactly one ordered amendment, with one exception, the byte-identical round trip
+(human ruling on #6599). A span of unlinked first-parent changes that leaves the
+accepted state, which is the delivery or the last link, is a no-op when it returns
+to that state before the next link. The return must make the Verify section
+byte-identical to the accepted one and `version:` equal to the accepted version.
+Byte-identical means equal after the walk's existing normalization: CRLF line
+endings become LF and only the Verify section is compared. No other trimming
+applies, so a restore with reordered rows, a changed space or tab, an added blank
+line, or a different version still refuses as `link <k> missing at <12-hex>`,
+naming the span's first revision. The span must close before the next link: a link
+that lands while a span is still open refuses. The next link's predecessor stays the
+accepted revision, so a collapsed span never yields a version step and an approval
+must still name that revision as predecessor. A round trip after the final link has
+no later link to close against and refuses. Each parent table and unique two-parent merge base
+must match the preceding table; the version increases by one at each amendment.
+Evidence preservation, including only the existing empty-placeholder exception,
+stays unchanged. Immutable history and row-shape checks precede approval reads.
+Retention of an unnamed Expect depends on the actual prior approvals: if a later
+Command correction uses a parent row carrying that unapproved Expect, it refuses
+with "a changed command must still carry its complete prior definition", after
+reading earlier approvals. Explicitly approving the earlier Expect allows the later
+Command-only correction against that effective prior row. A later combined approval
+does not repair the missing prior definition.
+
+Refusals name the link; a missing amendment names `link <k> missing at <12-hex>`.
+A fetch failure is could-not-check and grants no credit. A directly observed HTTP
+404 or 410 refuses as "human approval could not be corroborated" through the shared
+ruling reader; neither result grants acceptance credit.
+There is no chain-length cap and no approval cache. The complete first-parent walk
+reads each commit's table and version, so its cost grows with history since delivery.
+It deliberately retains the complete walk rather than applying path-history
+simplification that could omit an acceptance edit.
+
+The same protected planner produces one effective table, per-row last approved
+amendment revisions, and one net `Acceptance-Changes:` receipt. Its tokens are
+`ID=Command`, `ID=Expect`, and `ID=Command+Expect`. Every original row needs a fresh
+witness at or after the final amendment. This shape is also the integration contract
+for the closed container-netns transition bracket; the host owns all approval reads.
+Verify-desk drafts each link's payload for the driver, never posts an approval, and
+performs independent verification only after the implementation ships and is pinned.
+
+#### Sanctioned Evidence repairs
+
+Historical Evidence stays a byte prefix of the current record. One kind of later
+edit is admitted, as its own chain entry, under
+[the #6616 ruling](https://github.com/medici-finance/assay/issues/6616#issuecomment-6922071617):
+an editorial repair that splits a combined `Date / Runner` column into `Date` and
+`Runner`, or adds one `(on-behalf-of human:<name>)` principal to a Runner. A transition
+descriptor names each repair after its transition lines:
+
+```text
+Verification-Table: delivery=<sha> base=<sha> original=<sha>
+Acceptance-Transition: link=1 amendment=<sha1> approval=<url1>
+Acceptance-Transition: link=2 amendment=<sha2> approval=<url2>
+Evidence-Repair: commit=<sha> approval=https://github.com/example-org/example-repo/pull/42#issuecomment-123
+```
+
+For each link whose pre-amendment Evidence the repair follows, the planner requires
+that Evidence to be a byte prefix of the Evidence at the repair's first parent. The
+repair commit must be on the observed first-parent chain after link 1's parent. It
+must leave the Verify section byte-identical. Every table row pairs 1:1 with its
+predecessor, and every cell other than Date and Runner stays byte-identical. The
+Date cell must be exactly the old cell's leading date, and the Runner cell the rest of
+the old text, which may only gain that one principal. A table that the repair splits
+is split in every one of its rows; the column map resets at each table, and a row
+counts as a table's header only when a separator row follows it, as the Evidence
+reader reads it. Every earlier prose line survives in order. Added prose carries no
+marker, verdict, HTML comment or fence line, no HTML line (any `<` followed by a
+letter, `/`, `?` or `!`, which also refuses `<https://...>` autolinks and `<name>`
+placeholders), and no link-reference or footnote definition (`[x]: ...`,
+`[^1]: ...`), splits no table, and leaves the whole-document view the readers parse
+unchanged: the same markers and verdicts after closed comments are stripped and
+fences tracked, no new unterminated comment, and every Evidence row still read. The commit
+message must name the approval's issue or pull request (`#<N>`). The byte-prefix
+baseline then becomes the Evidence at the repair commit, and the comparison stays
+byte-strict.
+
+The approval is read by the same resolver as transition approvals. It must be an
+unedited comment by the driver (the blessing login, mapped to a human), on an issue or
+pull request in the same repository. Its text must name the brief (`<stream>/<NN>`,
+not as the tail of a longer path), name its own issue or pull request (`#<N>`) and
+carry a sentence that says `I authorize`, in those two words. Every sentence that
+mentions authorizing must be a plain ASCII declarative statement: no question mark,
+no strikethrough, emphasis or character reference, and no negating or conditional
+word (`not`, `don't`, `if`, `unless`, `would`, `but`, `nobody` and the like). Other
+sentences may limit the repair's scope ("not a new verification claim"). A refusal
+word anywhere in the comment (`reject`, `refuse`, `decline`, `revoke`, `withdraw`
+and the like) refuses it. `authorizes`, `authorized` and `authorise` do not count as
+the approving words. Bot-authored, edited, cross-repository, unnamed or
+other-human approvals refuse, and an unset or unmapped driver login is a could-not-check. A missing or unreadable approval is a
+could-not-check. Without an `Evidence-Repair:` line, a reshaped history refuses as
+before with "historical Evidence was not preserved". A repair grants no witness,
+admission or acceptance credit, and every original row still needs a fresh witness
+after the final link.

@@ -133,8 +133,14 @@ func TestAdmittedRowEnvShape(t *testing.T) {
 // forge CLI guard (ghGuard: it only wraps statusgen's own literal `gh` reads,
 // which start no Verify row, snapshots the existing CI environment for retries,
 // removes CELLCTL_GH_AMBIENT when admission requires it, and adds a placeholder
-// for an unset token family).
-var rowEnvAllowed = []string{"rowEnv", "runVerifyrun", "runNetnsHelper", "runInContainer", "historyGitEnv", "ghGuard"}
+// for an unset token family) and the hotfix self-check's environment
+// (sgFallbackEnv: it only reaches the pinned install replacing a refused hotfix and only
+// ever removes DESK_HOTFIX_FALLBACK; when the refused hotfix is the check:ci network-off
+// helper, that pinned install runs the row with the row's own inherited environment, less
+// that one variable) and the run credential's minter (execRunCredentialMint: it
+// only runs the desktoken it resolved itself, which starts no Verify row, with
+// the forge credential variables and runCredentialEnv removed).
+var rowEnvAllowed = []string{"rowEnv", "runVerifyrun", "runNetnsHelper", "runInContainer", "historyGitEnv", "ghGuard", "sgFallbackEnv", "execRunCredentialMint"}
 
 // rowLaunchShells are the programs a Verify row's command text runs under.
 var rowLaunchShells = []string{"sh", "bash", "pwsh", "powershell", "cmd"}
@@ -142,10 +148,11 @@ var rowLaunchShells = []string{"sh", "bash", "pwsh", "powershell", "cmd"}
 // implicitEnvAllowed names every function that may start a shell or a program
 // it does not name literally without setting the process environment, so the
 // process inherits the caller's: the statusgen self re-runs of the lint and
-// diff-lint audits, the forge reader binary, the merge check (which runs the
+// diff-lint audits, the forge reader binary (readVerb, the one launch behind the per-item and
+// merged-list reads; IssueList and OpenIssues keep their own), the merge check (which runs the
 // operator's own command line, not a Verify row) and the probes that run only
 // `exit 0` or `true` to learn what the host supports.
-var implicitEnvAllowed = []string{"productionDiffLintRunner", "productionLintRunner", "OpenIssues", "readItem", "IssueList", "execOverTree", "probeShell", "networkOffWrapper", "netnsFacility"}
+var implicitEnvAllowed = []string{"productionDiffLintRunner", "productionLintRunner", "OpenIssues", "readVerb", "IssueList", "execOverTree", "probeShell", "networkOffWrapper", "netnsFacility"}
 
 // environCallers returns "file: func" for every os.Environ call outside the
 // allowed functions in the given sources, and for every function outside
@@ -292,10 +299,10 @@ func TestAdmittedRowsShellEnv(t *testing.T) {
 
 // TestAdmittedRowsKeepNarrowing: an admitted run's rows read without system
 // config, terminal prompt or askpass helper, whether the launch set those
-// narrowing settings or the caller's environment widened them, and a launch's
-// global config naming the home's own file survives (the row proves it is the
-// only one read: an XDG config beside it is not). The unadmitted control
-// proves the widening plant lands.
+// narrowing settings or the caller's environment widened them. A launch's
+// global config naming the home's own file does not survive (that file can
+// name a credential helper): the row reads neither it nor the XDG config
+// beside it. The unadmitted control proves the widening plant lands.
 func TestAdmittedRowsKeepNarrowing(t *testing.T) {
 	const pinned = `test "$GIT_CONFIG_NOSYSTEM" = 1 && test "$GIT_TERMINAL_PROMPT" = 0 && test "${GIT_ASKPASS-unset}" = ""`
 	for _, mode := range []string{"launch", "widened", "control"} {
@@ -320,7 +327,7 @@ func TestAdmittedRowsKeepNarrowing(t *testing.T) {
 				t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 				t.Setenv("GIT_TERMINAL_PROMPT", "0")
 				t.Setenv("GIT_ASKPASS", "")
-				row = `test "$(git config --get-all fixture.probe)" = global && ` + pinned
+				row = `test -z "$(git config --get-all fixture.probe)" && ` + pinned
 			} else {
 				t.Setenv("GIT_CONFIG_NOSYSTEM", "0")
 				t.Setenv("GIT_TERMINAL_PROMPT", "1")
@@ -347,7 +354,7 @@ func TestAdmittedEnvNarrowOnly(t *testing.T) {
 		kv   string
 		keep bool
 	}{
-		{"GIT_CONFIG_GLOBAL=" + global, true},
+		{"GIT_CONFIG_GLOBAL=" + global, false},
 		{"GIT_CONFIG_GLOBAL=" + os.DevNull, true},
 		{"GIT_CONFIG_GLOBAL=" + filepath.Join(elsewhere, ".gitconfig"), false},
 		{"GIT_CONFIG_GLOBAL=.gitconfig", false},
@@ -416,7 +423,7 @@ func TestAdmittedRowsDropForgeTokens(t *testing.T) {
 // TestAdmittedEnvDropsForgeTokens pins the removal one variable at a time,
 // whatever its case, beside a variable that only shares a prefix.
 func TestAdmittedEnvDropsForgeTokens(t *testing.T) {
-	in := []string{"PATH=/bin", "GH_TOKEN_FILE=kept", "Gh_Token=x"}
+	in := []string{"PATH=/bin", "GITHUB_TOKEN_FILE=kept", "Gh_Token=x"}
 	for _, name := range forgeTokenVars {
 		in = append(in, name+"=x")
 	}
@@ -426,7 +433,7 @@ func TestAdmittedEnvDropsForgeTokens(t *testing.T) {
 			t.Errorf("admitted row environment carries %s", kv)
 		}
 	}
-	for _, kv := range []string{"PATH=/bin", "GH_TOKEN_FILE=kept"} {
+	for _, kv := range []string{"PATH=/bin", "GITHUB_TOKEN_FILE=kept"} {
 		if !slices.Contains(admittedRowEnv(in), kv) {
 			t.Errorf("admitted row environment dropped %s", kv)
 		}

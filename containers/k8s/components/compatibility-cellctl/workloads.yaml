@@ -23,6 +23,10 @@
             ],
             "env": [
               {
+                "name": "GODEBUG",
+                "value": "multipathtcp=0"
+              },
+              {
                 "name": "ASSAY_COMPAT_LAUNCH_ID",
                 "value": "REQUIRES_PREPARED_LAUNCH_DIGEST"
               },
@@ -83,6 +87,10 @@
               "/usr/local/bin/desk-session"
             ],
             "env": [
+              {
+                "name": "GODEBUG",
+                "value": "multipathtcp=0"
+              },
               {
                 "name": "ASSAY_COMPAT_LAUNCH_ID",
                 "value": "REQUIRES_PREPARED_LAUNCH_DIGEST"
@@ -145,6 +153,10 @@
             ],
             "env": [
               {
+                "name": "GODEBUG",
+                "value": "multipathtcp=0"
+              },
+              {
                 "name": "ASSAY_COMPAT_LAUNCH_ID",
                 "value": "REQUIRES_PREPARED_LAUNCH_DIGEST"
               },
@@ -206,6 +218,10 @@
             ],
             "env": [
               {
+                "name": "GODEBUG",
+                "value": "multipathtcp=0"
+              },
+              {
                 "name": "ASSAY_COMPAT_LAUNCH_ID",
                 "value": "REQUIRES_PREPARED_LAUNCH_DIGEST"
               },
@@ -266,6 +282,10 @@
               "/usr/local/bin/desk-session"
             ],
             "env": [
+              {
+                "name": "GODEBUG",
+                "value": "multipathtcp=0"
+              },
               {
                 "name": "ASSAY_COMPAT_LAUNCH_ID",
                 "value": "REQUIRES_PREPARED_LAUNCH_DIGEST"

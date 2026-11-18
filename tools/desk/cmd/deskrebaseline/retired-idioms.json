@@ -1,0 +1,4 @@
+{
+  "_comment": "Tool idioms retired by a recorded ruling, read by deskrebaseline's safe:idiom class (idiom.go). Each entry needs idiom, replacement and ruling: the ruling is the reference to the recorded decision that retired the idiom (#N, owner/repo#N, or an issue or pull URL). An entry without one is ignored. Add an entry only with that ruling, in a reviewed change.",
+  "idioms": []
+}

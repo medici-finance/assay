@@ -102,8 +102,11 @@ Unknown required semantics map to refusal (5); unreadable/malformed requirements
 unterminated actual record now stops at capability preflight with could-not-check (6),
 before the Evidence caller reaches its existing stamp refusal (5). The stamp guard is
 unchanged and independently tested below preflight; both paths permit no forge writes.
-Evidence startup preflight runs inside the existing audit lock before landing reads,
-credentials or effects. Both malformed and unsupported refusals append one existing audit
+Evidence startup preflight runs under the per-landing-root preparation lock, before landing
+reads, credentials or effects; it reads only the local tree and the tool version, never
+authority or budget. Its refusal row is appended under the shared audit lock, which the
+write budget, the conditional forge write and the audit append keep using as one critical
+section. Both malformed and unsupported refusals append one existing audit
 row with result, record path and reason when the sink is writable. An append failure is
 reported explicitly on stderr; it cannot be reported as a recorded row.
 

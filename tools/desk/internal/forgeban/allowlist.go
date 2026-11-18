@@ -209,6 +209,15 @@ var UnresolvedArgv = []Allowance{
 			"Tests supply compiled local fixtures. The ledger declares this blind spot and leaves the " +
 			"forge assertion and credential boundaries intact.",
 	},
+	{
+		Key: "loopadmin/experiments/pirunner/bridge.go::startBridge::<unresolved>",
+		Reason: "the pirunner experiment's Node bridge child, built only under the pirunner build tag. " +
+			"argv[0] is the Node runtime the caller resolved with exec.LookPath(\"node\") and argv[1] is the " +
+			"module's own compiled bridge script (node/dist/bridge.js); no shell is involved. The child's " +
+			"environment is replaced with PATH, KUBECONFIG=/dev/null and fixed switches, so no parent " +
+			"credential reaches it, and the bridge makes no network or forge call. It is a local runtime, " +
+			"not a forge CLI. This row registers the blind spot and grants no forge permit.",
+	},
 	// cmd/cellctl — the cell launcher (the Go port of the bash script now kept only as a test
 	// oracle, tools/cellctl/testdata/cellctl-shell-oracle.sh). It reaches NO forge at all: its one
 	// credential path goes through deskkit.RoleTokenForRepo, and its own brief asserts at the
@@ -245,6 +254,20 @@ var UnresolvedArgv = []Allowance{
 		Reason: "runs the Cursor agent executable with --help under a five-second deadline to verify " +
 			"its documented noninteractive permission flags. Production passes agent; tests pass a " +
 			"compiled local fixture. It launches no model session and is not a forge CLI.",
+	},
+	{
+		Key: "cmd/cellctl/cycle.go::Cell.cycleRestart::<unresolved>",
+		Reason: "`cellctl cycle` re-executes cellctl itself (os.Executable()) as `up <cell> --role <role> " +
+			"--no-attach --json` to reopen a role window the way up does. argv[0] is this binary's own " +
+			"path, not a forge CLI; the child inherits the caller's environment and mints nothing beyond " +
+			"what `up` does. It registers the blind spot and grants no forge permit.",
+	},
+	{
+		Key: "cmd/cellctl/cycle.go::deskinstallCursor::<unresolved>",
+		Reason: "`cellctl cycle`'s Cursor placement sync runs the cell's own desk-tools deskinstall " +
+			"(<DESK_TOOLS_BIN>/deskinstall, as liveClaims reaches desksupervise) with --harness cursor " +
+			"--release v<pin> and its --check. argv[0] is that operator-installed desk binary, not a forge " +
+			"CLI. It registers the blind spot and grants no forge permit.",
 	},
 	{
 		Key: "cmd/cellctl/deskd.go::cmdDeskd::<unresolved>",
@@ -342,8 +365,10 @@ var UnresolvedArgv = []Allowance{
 			"Fixed argv after the binary, read-only, JSON on stdout; never a forge CLI and never a write.",
 	},
 	{
-		Key:    "cmd/verifyloop/durable.go::newGitDurable::<unresolved>",
-		Reason: "git-only durable-state helper; its callers pass git argvs.",
+		Key: "cmd/verifyloop/durable.go::landingCommand::<unresolved>",
+		Reason: "the Evidence landing's one process builder, under the verifier Git environment: newGitDurable's " +
+			"run passes git argvs (remote get-url, add, commit, pull --rebase, rev-parse), and the pre-push " +
+			"hook passes the checkout's own hooks/pre-push path. Never a forge CLI; the push is in-process.",
 	},
 	{
 		Key:    "internal/acp/client.go::Spawn::<unresolved>",

@@ -13,7 +13,7 @@ func TestVerifiedOutcomeGateBeforeWrite(t *testing.T) {
 	for _, dry := range []bool{false, true} {
 		t.Run(map[bool]string{false: "write", true: "dry-run"}[dry], func(t *testing.T) {
 			f, _ := setupFake(t)
-			outcomeGuardFn = func(string, string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string) error {
+			outcomeGuardFn = func(string, string, string, []byte, []byte, deskkit.Forge, deskkit.ForgeRepo, string, childOptions) error {
 				return deskkit.Refused("closure still implemented")
 			}
 			file := "docs/streams/verify-outcomes.jsonl"
@@ -37,7 +37,7 @@ func TestVerifiedOutcomeRealStatusgen(t *testing.T) {
 	landedStatusgenOnPath(t)
 	root, _, head, files := landedFixture(t, false)
 	flGit(t, root, "checkout", "-q", "-f", "--detach", head)
-	file, err := checkVerifiedClosure(root, "vf/01")
+	file, err := checkVerifiedClosure(root, "vf/01", childOptions{})
 	if err != nil || file != "docs/streams/vf/brief-01-check.md" {
 		t.Fatalf("file=%q error=%v", file, err)
 	}
@@ -45,7 +45,7 @@ func TestVerifiedOutcomeRealStatusgen(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, board), []byte(strings.Replace(files[board], "| verified |", "| implemented |", 1)), 0644); err != nil {
 		t.Fatal(err)
 	}
-	_, err = checkVerifiedClosure(root, "vf/01")
+	_, err = checkVerifiedClosure(root, "vf/01", childOptions{})
 	var de *deskkit.DeskError
 	if !asDeskError(err, &de) || de.Code != deskkit.ExitRefused {
 		t.Fatalf("expected refused closure, got %v", err)
@@ -56,7 +56,7 @@ func TestVerifiedOutcomeClosureGuard(t *testing.T) {
 	const success = "{\"brief\":\"test/01\",\"outcome\":\"verified\"}\n"
 	const failure = "{\"brief\":\"test/01\",\"outcome\":\"verify-fail\"}\n"
 	for _, tc := range []struct {
-		name, before, after                 string
+		name, before, after, lint           string
 		closureErr, drift, lintRed, wantErr bool
 		// kind is what the branch holds the closure brief as (S-2266-8); "" leaves it a
 		// plain file.
@@ -66,6 +66,14 @@ func TestVerifiedOutcomeClosureGuard(t *testing.T) {
 		{name: "unclosed", after: success, closureErr: true, wantErr: true},
 		{name: "local-only", after: success, drift: true, wantErr: true},
 		{name: "lint-refused", after: success, lintRed: true, wantErr: true},
+		// regression: #4823 — a PROBLEM on a brief this record does not close is
+		// that brief's to fix; one on the closed brief (or unattributed) still refuses.
+		{name: "foreign-brief-problem", after: success, lint: "PROBLEM: other/37: protected table: x"},
+		{name: "foreign-stream-problem", after: success, lint: "PROBLEM: test-b/01: protected table: x"},
+		{name: "own-brief-problem", after: success, lint: "PROBLEM: test/01: protected table: x", wantErr: true},
+		{name: "own-brief-padded", after: success, lint: "PROBLEM: test/1: protected table: x", wantErr: true},
+		{name: "own-among-foreign", after: success, lint: "PROBLEM: other/37: x\nPROBLEM: test/01: x", wantErr: true},
+		{name: "unattributed-problem", after: success, lint: "PROBLEM: docs/streams/test/README.md: x", wantErr: true},
 		{name: "failure-after-history", before: success, after: success + failure, closureErr: true},
 		{name: "duplicate-new-success", before: success, after: success + success, closureErr: true, wantErr: true},
 		// regression: S-2266-8 — a link served as its target's bytes matches the local
@@ -94,19 +102,22 @@ func TestVerifiedOutcomeClosureGuard(t *testing.T) {
 			}
 			oldCheck, oldLint := closureCheckFn, statusgenLintFn
 			t.Cleanup(func() { closureCheckFn = oldCheck; statusgenLintFn = oldLint })
-			closureCheckFn = func(string, string) (string, error) {
+			closureCheckFn = func(string, string, childOptions) (string, error) {
 				if tc.closureErr {
 					return "", deskkit.Refused("not verified")
 				}
 				return brief, nil
 			}
-			statusgenLintFn = func(string) ([]string, error) {
+			statusgenLintFn = func(string, childOptions) ([]string, error) {
 				if tc.lintRed {
 					return []string{"PROBLEM: bad closure"}, nil
 				}
+				if tc.lint != "" {
+					return strings.Split(tc.lint, "\n"), nil
+				}
 				return nil, nil
 			}
-			err := guardVerifiedOutcomes(root, root, "docs/streams/verify-outcomes-2026-09.jsonl", []byte(tc.before), []byte(tc.after), f, deskkit.ForgeRepo{}, "main")
+			err := guardVerifiedOutcomes(root, root, "docs/streams/verify-outcomes-2026-09.jsonl", []byte(tc.before), []byte(tc.after), f, deskkit.ForgeRepo{}, "main", childOptions{})
 			if (err != nil) != tc.wantErr {
 				t.Fatalf("error=%v wantErr=%v", err, tc.wantErr)
 			}
@@ -126,7 +137,7 @@ if [ "$arg" = "--check-attribution" ]; then
 fi
 done
 echo '{"key":"vf/01","file":"docs/streams/vf/brief-01-check.md"}'`)
-	_, err := checkVerifiedClosure(t.TempDir(), "vf/01")
+	_, err := checkVerifiedClosure(t.TempDir(), "vf/01", childOptions{})
 	var de *deskkit.DeskError
 	if !asDeskError(err, &de) || de.Code != deskkit.ExitUnverifiable {
 		t.Fatalf("old capability did not fail closed: %v", err)

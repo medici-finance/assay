@@ -63,8 +63,9 @@
                        desk-manifest. On Windows this is a per-user install and
                        needs no elevation -- unlike the Unix `sudo make
                        desk-install` into root-owned /opt/desk-tools/bin.
-    desk-manifest      (re)write tools/desk/MANIFEST.sha256 from the installed
-                       binaries via Get-FileHash (shasum-compatible lines).
+    desk-manifest      (re)write MANIFEST.sha256 INSIDE the install dir from the
+                       installed files via Get-FileHash (shasum-compatible
+                       lines), and delete the old tools/desk/MANIFEST.sha256.
     desk-hook-install  install the pre-push hook shim into .githooks/pre-push
                        (idempotent; -Force to overwrite a foreign hook).
     desk-test          run the deskkit test suite (go test ./... -count=1).
@@ -146,7 +147,11 @@ $MakefileParityTargets = @(
 $RepoRoot   = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $DeskDir    = Join-Path $RepoRoot 'tools\desk'
 $DistDir    = Join-Path $DeskDir  'dist'
-$Manifest   = Join-Path $DeskDir  'MANIFEST.sha256'
+# The manifest lives in the install dir beside the bytes it describes, as a
+# release tarball's will once a release is cut with the workflow's manifest step
+# (#6604; none published before it carries one); the old source-tree location is deleted.
+$Manifest       = Join-Path $InstallDir 'MANIFEST.sha256'
+$LegacyManifest = Join-Path $DeskDir    'MANIFEST.sha256'
 $DeskModule = 'github.com/medici-finance/assay/tools/desk'
 $DeskPkg    = "$DeskModule/internal/deskkit"
 
@@ -364,21 +369,31 @@ function Target-DeskInstall {
 }
 
 function Target-DeskManifest {
+    # Same contract as the Makefile's desk-manifest (#6604): every regular file
+    # at the top of the install dir, the manifest excluded, sorted by Name
+    # (Sort-Object: culture-aware and case-insensitive, unlike the Makefile's
+    # LC_ALL=C sort; line order does not affect checking), in
+    # shasum-compatible lines "<sha256(lowercased)>  <filename>", written beside
+    # those files; the old tools/desk/MANIFEST.sha256 is deleted.
+    Remove-Item -Force -ErrorAction SilentlyContinue -Path $LegacyManifest
     $binaries = @()
     if (Test-Path $InstallDir) {
-        $binaries = @(Get-ChildItem -Path $InstallDir -File | Sort-Object Name)
+        $binaries = @(Get-ChildItem -Path $InstallDir -File |
+            Where-Object { $_.Name -ne 'MANIFEST.sha256' -and $_.Name -ne 'MANIFEST.sha256.tmp' } |
+            Sort-Object Name)
     }
     if ($binaries.Count -eq 0) {
-        Set-Content -Path $Manifest -Value '' -NoNewline
-        Write-Host "desk-manifest: no installed binaries; wrote empty $Manifest"
+        Remove-Item -Force -ErrorAction SilentlyContinue -Path $Manifest
+        Write-Host "desk-manifest: no installed binaries in $InstallDir; no manifest written"
         return
     }
-    # shasum-compatible lines: "<sha256(lowercased)>  <filename>".
     $lines = foreach ($b in $binaries) {
         $hash = (Get-FileHash -Algorithm SHA256 -Path $b.FullName).Hash.ToLower()
         "$hash  $($b.Name)"
     }
-    Set-Content -Path $Manifest -Value $lines
+    $tmp = "$Manifest.tmp"
+    Set-Content -Path $tmp -Value $lines
+    Move-Item -Force -Path $tmp -Destination $Manifest
     Write-Host "desk-manifest: wrote $Manifest"
 }
 

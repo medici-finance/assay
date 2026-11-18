@@ -17,10 +17,9 @@ package main
 // cannot positively place is refused:unclassified, because a loose "safe" answer here
 // launders a real regression into a green (brief 05 §Context, single-point-of-failure).
 //
-// This predicate handles all three safe classes given the facts, but the shipped verb only
-// reaches safe:rename: gatherRowFacts does not yet populate the count/idiom facts, so
-// safe:count and safe:idiom are not-yet-implemented scaffolding (see the SafeCount and
-// SafeIdiom consts, and docs/rebaseline.md).
+// gatherRowFacts (facts.go) supplies the facts for all three safe classes: the rename hop,
+// the count-drift shape with its git-history additions proof (count.go), and the retired
+// idiom from the checked-in, ruling-referenced list (idiom.go, #5529).
 
 // Verdict is the classification of a failing Verify row. The safe:* verdicts authorise a
 // one-row re-baseline PR; the refused:* verdicts require the row be filed as an issue.
@@ -33,21 +32,14 @@ const (
 	SafeRename Verdict = "safe:rename"
 	// SafeCount — the row's Expect is a count whose current value differs, and the target
 	// files changed ONLY by additions since the Evidence date, so the higher count is
-	// growth, not a regression.
-	//
-	// SCAFFOLDING — NOT YET REACHABLE IN THE SHIPPED VERB. The classifier CAN return this
-	// verdict, but gatherRowFacts (facts.go) does not yet populate CountShaped/OnlyAdditions,
-	// so the shipped fact-gatherer never produces safe:count. Wiring the count facts (and
-	// reconciling the step-3 behaviour probe, which pre-empts a count drift written as
-	// `test $(...) -eq N`) is a tracked follow-up; until then only safe:rename fires in
-	// production, and the user-facing docs (docs/rebaseline.md) say so. Kept, not deleted, so
-	// the follow-up inherits the decision boundary and its tests already in place.
+	// growth, not a regression. Both halves are proven, never assumed: the run differs only
+	// in its one pinned count, which grew, and `git diff` from the row's Evidence commit to
+	// HEAD shows only added lines in every target (count.go).
 	SafeCount Verdict = "safe:count"
 	// SafeIdiom — the row pins a tool idiom retired by a recorded ruling (e.g. a renamed
-	// flag). The command idiom moved; the checked behaviour did not.
-	//
-	// SCAFFOLDING — NOT YET REACHABLE IN THE SHIPPED VERB, for the same reason as SafeCount:
-	// gatherRowFacts never sets RetiredIdiom. Wired end-to-end by the same tracked follow-up.
+	// flag). The command idiom moved; the checked behaviour did not. Only an idiom an entry
+	// of the checked-in list retired-idioms.json names, with its ruling reference, counts,
+	// and only once the row rewritten to the replacement passes its Expect (idiom.go).
 	SafeIdiom Verdict = "safe:idiom"
 
 	// RefusedRiskBearing — the row's OWNING BRIEF is risk-bearing (gate: human, or any
@@ -113,22 +105,24 @@ type RowFacts struct {
 	CommandRan    bool
 	RCDiffers     bool
 
-	// Count-drift facts (SafeCount). CountShaped is true when the Expect asserts a count
-	// whose current value differs; OnlyAdditions is true when the command's target files
-	// changed only by additions since the Evidence date.
-	//
-	// SCAFFOLDING: gatherRowFacts (facts.go) does not yet SET either field, so in the shipped
-	// verb both are always false and safe:count never fires — only the fixture-fed unit tests
-	// exercise this path. Wiring them is the tracked follow-up (see the SafeCount const).
+	// Count-drift facts (SafeCount), set by gatherRowFacts (facts.go, count.go). CountShaped is
+	// true when the probed row fails ONLY because its one pinned count grew: same exit, the
+	// output now a larger bare integer CountNow, and the Expect rewritten to CountNow passes.
+	// OnlyAdditions is true when git history proves every file the command names changed
+	// only by additions between the row's Evidence commit and HEAD; CountEvidence records it.
 	CountShaped   bool
 	OnlyAdditions bool
+	CountNow      int
+	CountEvidence string
 
-	// RetiredIdiom names a tool idiom the row pins that a recorded ruling retired (e.g. the
-	// `--consumers` form), or "" when the row pins no such idiom.
-	//
-	// SCAFFOLDING: gatherRowFacts does not yet set it either, so safe:idiom is likewise
-	// unreachable in the shipped verb pending the same follow-up.
+	// RetiredIdiom names a tool idiom the row's command uses that an entry of the checked-in
+	// list retired-idioms.json retires, and IdiomRuling is that entry's ruling reference
+	// (idiom.go). An idiom the list does not name, or an entry with no ruling reference, is
+	// never set. IdiomProbe is the judgement of the row re-run with the idiom replaced,
+	// against its own Expect; "" when it was not re-run.
 	RetiredIdiom string
+	IdiomRuling  string
+	IdiomProbe   judgement
 }
 
 // Classification is the verb's decision about one row: the verdict and a one-line reason
@@ -147,10 +141,15 @@ type Classification struct {
 //     Expect is safe:rename (a failing re-run is refused:behaviour-changed, an undecided one
 //     refused:unclassified), no hop is refused:gone. This precedes the behaviour probe because a command that fails only
 //     because its pinned path moved must not be read as a behaviour change.
-//  3. A command that still RUNS and returns a different result is refused:behaviour-changed
+//  3. A listed retired idiom is decided next: the row rewritten to its replacement passing
+//     its Expect is safe:idiom (a failing rewrite is refused:behaviour-changed, anything
+//     else refused:unclassified). This precedes the behaviour probe because the original
+//     command fails exactly because its idiom was retired.
+//  4. A count drift proven pure additions by git history is safe:count. This precedes the
+//     behaviour probe because the drifted count is what fails the row's Expect.
+//  5. A command that still RUNS and returns a different result is refused:behaviour-changed
 //     — a real regression, not a stale oracle.
-//  4. A retired tool idiom is safe:idiom; a pure-additions count drift is safe:count.
-//  5. Anything left is refused:unclassified — unproven, so never re-baselined.
+//  6. Anything left is refused:unclassified — unproven, so never re-baselined.
 func Classify(f RowFacts) Classification {
 	// 1. Risk gate — absolute. Brief 05 facts: "any row tagged risk-bearing" is refused,
 	// "regardless of shape".
@@ -177,20 +176,28 @@ func Classify(f RowFacts) Classification {
 		return Classification{RefusedGone, "pinned deliverable " + f.PathRef + " is gone with no single rename hop — cannot prove the work survived; file it"}
 	}
 
-	// 3. Behaviour change. A command that still runs and returns a different result is a
+	// 3. Retired idiom, proven by the rewritten row passing.
+	if f.RetiredIdiom != "" {
+		switch f.IdiomProbe {
+		case judgePass:
+			return Classification{SafeIdiom, "row pins tool idiom " + f.RetiredIdiom + ", retired by ruling " + f.IdiomRuling + ", and the row rewritten to the replacement passes its Expect — idiom stale, behaviour intact"}
+		case judgeFail:
+			return Classification{RefusedBehaviourChanged, "row pins retired tool idiom " + f.RetiredIdiom + " but the row rewritten to the replacement fails its Expect — file it"}
+		}
+		return Classification{RefusedUnclassified, "row pins retired tool idiom " + f.RetiredIdiom + " but the rewritten row produced no verdict — unproven; file it"}
+	}
+
+	// 4. Pure-additions count drift, proven from git history.
+	if f.CountShaped && f.OnlyAdditions && f.CommandProbed && f.CommandRan {
+		return Classification{SafeCount, "count Expect grew and every target changed only by additions since the Evidence commit — growth, not a regression"}
+	}
+
+	// 5. Behaviour change. A command that still runs and returns a different result is a
 	// real regression, not a stale oracle. Only a probed, runnable command counts.
 	if f.CommandProbed && f.CommandRan && f.RCDiffers {
 		return Classification{RefusedBehaviourChanged, "command still runs and returns a different result than the row pinned — a real behaviour change; file it"}
 	}
 
-	// 4. Retired idiom, then pure-additions count drift.
-	if f.RetiredIdiom != "" {
-		return Classification{SafeIdiom, "row pins tool idiom " + f.RetiredIdiom + " retired by a recorded ruling — idiom stale, behaviour intact"}
-	}
-	if f.CountShaped && f.OnlyAdditions {
-		return Classification{SafeCount, "count Expect differs and the target files changed only by additions since the Evidence date — growth, not a regression"}
-	}
-
-	// 5. Fail closed.
+	// 6. Fail closed.
 	return Classification{RefusedUnclassified, "the facts do not positively place this row in any safe class — unproven is never re-baselined; file it"}
 }

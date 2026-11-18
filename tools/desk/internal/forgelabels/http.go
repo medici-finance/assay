@@ -21,12 +21,24 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// maxResponseBytes bounds one forge response read; no label answer is near it.
+// maxResponseBytes bounds one forge response read; no label answer is near it. An answer over
+// it is refused (deskkit.ReadForgeBodyUpTo), never read as its first 4 MiB.
 const maxResponseBytes = 4 << 20
+
+// requestTimeout bounds one forge request, response body included, when the caller's client
+// sets no deadline of its own: a nil client, or one whose Timeout is zero (net/http reads zero
+// as "no deadline"). The forge answers a label request in seconds, so one still open after 30s
+// is stalled, not slow. A client that sets its own Timeout keeps it.
+const requestTimeout = 30 * time.Second
+
+// defaultTimeout is the deadline applied where the caller set none. It is a var only so a
+// test can shorten it; production code never changes it.
+var defaultTimeout = requestTimeout
 
 // ValidateAPIBase refuses a base URL that would carry a credential in the clear.
 func ValidateAPIBase(name, raw string) error {
@@ -89,16 +101,20 @@ type httpTransport struct {
 }
 
 // NewHTTPTransport returns the Transport for forge ("github" or "gitlab") at base, carrying
-// token as that forge's credential header over a copy of hc that refuses redirects.
+// token as that forge's credential header over a copy of hc that refuses redirects. A nil hc,
+// or one with no Timeout, gets the default transport bounded by requestTimeout.
 func NewHTTPTransport(forge, base string, hc *http.Client, token string) (Transport, error) {
 	base = strings.TrimRight(strings.TrimSpace(base), "/")
 	if err := ValidateAPIBase("forge API base", base); err != nil {
 		return nil, err
 	}
-	if hc == nil {
-		hc = http.DefaultClient
+	var c http.Client
+	if hc != nil {
+		c = *hc
 	}
-	c := *hc
+	if c.Timeout <= 0 {
+		c.Timeout = defaultTimeout
+	}
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	t := &httpTransport{base: base, hc: &c}
 	switch forge {
@@ -137,7 +153,12 @@ func (t *httpTransport) Do(method, path string, body any) (Response, error) {
 		return Response{}, fmt.Errorf("%s %s: %v", method, path, causeOf(err))
 	}
 	defer resp.Body.Close()
-	b, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
+	b, err := deskkit.ReadForgeBodyUpTo(resp.Body, method+" "+path, maxResponseBytes)
+	if deskkit.IsForgeBodyOverCap(err) {
+		// Over the bound: no answer at all. A prefix such as `[]` would decode as a complete,
+		// empty label list. The refusal is Unverifiable and names method and path only.
+		return Response{Status: resp.StatusCode}, err
+	}
 	if err != nil {
 		return Response{Status: resp.StatusCode}, fmt.Errorf("%s %s: read response: %v", method, path, err)
 	}

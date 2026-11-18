@@ -67,7 +67,7 @@ func TestVerifiedSidecarRefusedWhenClosureNotAccepted(t *testing.T) {
 
 	// The tree does not accept a verified closure for the brief.
 	var askedFor []string
-	verifiedClosureCheckFn = func(root, brief string) (closureVerdict, string, error) {
+	verifiedClosureCheckFn = func(root, brief string, options childOptions) (closureVerdict, string, error) {
 		askedFor = append(askedFor, brief)
 		return closureNotAccepted, "example-stream/14: NOT accepted — Status is \"implemented\", not verified/done", nil
 	}
@@ -98,7 +98,7 @@ func TestVerifiedSidecarRefusedWhenClosureNotAccepted(t *testing.T) {
 func TestVerifiedSidecarAllowedWhenClosureAccepted(t *testing.T) {
 	f, errBuf := setupFake(t)
 
-	verifiedClosureCheckFn = func(root, brief string) (closureVerdict, string, error) {
+	verifiedClosureCheckFn = func(root, brief string, options childOptions) (closureVerdict, string, error) {
 		return closureAccepted, "", nil
 	}
 
@@ -122,7 +122,7 @@ func TestVerifiedSidecarAllowedWhenClosureAccepted(t *testing.T) {
 func TestVerifyFailSidecarRowNeverGated(t *testing.T) {
 	f, errBuf := setupFake(t)
 
-	verifiedClosureCheckFn = func(root, brief string) (closureVerdict, string, error) {
+	verifiedClosureCheckFn = func(root, brief string, options childOptions) (closureVerdict, string, error) {
 		t.Fatalf("closure check must NOT run for a verify-fail record (brief %q)", brief)
 		return closureCouldNotErr, "", nil
 	}
@@ -145,7 +145,7 @@ func TestVerifyFailSidecarRowNeverGated(t *testing.T) {
 func TestVerifiedSidecarCouldNotCheckRefusesUnverifiable(t *testing.T) {
 	f, errBuf := setupFake(t)
 
-	verifiedClosureCheckFn = func(root, brief string) (closureVerdict, string, error) {
+	verifiedClosureCheckFn = func(root, brief string, options childOptions) (closureVerdict, string, error) {
 		return closureCouldNotErr, "", deskkit.Unverifiable("statusgen verifyclosure could not evaluate "+brief, nil)
 	}
 

@@ -90,6 +90,33 @@ func (w *breakerWalk) observe(result string, recent bool) {
 	}
 }
 
+// Ledger read arms, named on a MeterSnapshot so a capacity reading says how it was read.
+const (
+	LedgerReadBounded = "bounded reverse read"
+	LedgerReadWhole   = "whole-ledger parse"
+)
+
+// readPoints is pointsFor, also naming the arm that answered. The enforcing gates and the
+// read-only ReadMeters both come through here, so a capacity reading and
+// the gate it describes see the same lines through the same arm.
+func readPoints(tool string, now time.Time) ([]auditPoint, string, error) {
+	want := CanonicalToolKeyOr(tool)
+	if mine, ok := boundedPointsFor(want, now); ok {
+		sortPoints(mine)
+		return mine, LedgerReadBounded, nil
+	}
+	entries, err := LoadEntries()
+	if err != nil {
+		return nil, "", err // already an Unverifiable *DeskError
+	}
+	mine, err := pointsFrom(entries, want, tool)
+	if err != nil {
+		return nil, "", err
+	}
+	sortPoints(mine)
+	return mine, LedgerReadWhole, nil
+}
+
 // boundedPointsFor is pointsFor's bounded arm. ok=false means "not determined" and is the
 // caller's signal to re-read the whole ledger — never an answer.
 func boundedPointsFor(want string, now time.Time) (mine []auditPoint, ok bool) {

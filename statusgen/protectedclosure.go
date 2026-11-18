@@ -130,6 +130,10 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 	if !isObjectID(delivery) || !isObjectID(base) || !isObjectID(original) || len(paths) != 1 || paths[0] == "" {
 		return protectedPlan{}, "protected table: full object ids and the brief's repository path are required"
 	}
+	// Chain grammar is checked before even deliveryCoordinates reads Git.
+	if _, why := transitionLinks(evidence); why != "" {
+		return protectedPlan{}, why
+	}
 	dir, file := filepath.Dir(paths[0]), filepath.Base(paths[0])
 	refuse := func(err any) (protectedPlan, string) { return protectedPlan{}, fmt.Sprint("protected table: ", err) }
 	// Reuse the qualified source-provenance primitive. This authenticates the
@@ -194,6 +198,9 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 		originalVerify := baseline
 		baseline, revisions, why = acceptanceTransition(paths[0], verify, fullEvidence, evidence, delivery, base, original, baseline, delivered, proposal == "", read)
 		if why != "" {
+			if strings.HasPrefix(why, "acceptance transition: link ") {
+				return protectedPlan{}, why
+			}
 			return refuse(why)
 		}
 		changes = acceptanceChanges(originalVerify, baseline, revisions)
@@ -262,18 +269,38 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 // One Verification-Table line is a protected record (#4499): it names the
 // immutable delivery coordinates and nothing else, so which rows are original
 // and which are supplemental is derived from git at those coordinates, never
-// read from the record. That line plus one Acceptance-Transition line is an
-// acceptance transition. Any other shape, including an extra line that would
+// read from the record. That line plus one legacy Acceptance-Transition line
+// or ordered chain lines is a transition. Any other shape, including a line that would
 // carry a verifier-supplied row list, is refused.
 func acceptanceRecordKind(descriptor string) (transition bool, why string) {
 	lines := strings.Split(descriptor, "\n")
+	// Trailing Evidence-Repair lines (#6616) follow a transition, never stand alone.
+	repaired := len(lines)
+	for repaired > 2 && strings.HasPrefix(lines[repaired-1], "Evidence-Repair:") {
+		repaired--
+	}
+	if repaired < len(lines) {
+		if _, why := evidenceRepairs(strings.Join(lines[repaired:], "\n")); why != "" {
+			return false, "statusgen verifyrun: --acceptance-record: " + why
+		}
+		lines = lines[:repaired]
+	}
+	if len(lines) > 1 && strings.HasPrefix(lines[0], "Verification-Table:") {
+		links, why := transitionLinks(strings.Join(lines[1:], "\n"))
+		if why != "" {
+			return false, "statusgen verifyrun: --acceptance-record: " + why
+		}
+		if len(links) > 0 && len(links) == len(lines)-1 {
+			return true, ""
+		}
+	}
 	switch {
 	case len(lines) == 1 && strings.HasPrefix(lines[0], "Verification-Table:"):
 		return false, ""
 	case len(lines) == 2 && strings.HasPrefix(lines[0], "Verification-Table:") && strings.HasPrefix(lines[1], "Acceptance-Transition:"):
 		return true, ""
 	}
-	return false, "statusgen verifyrun: --acceptance-record must hold one Verification-Table line, optionally followed by one Acceptance-Transition line, and nothing else"
+	return false, "statusgen verifyrun: --acceptance-record must hold one Verification-Table line, optionally followed by one Acceptance-Transition line or ordered chain lines and then Evidence-Repair lines, and nothing else"
 }
 
 // originalDefinitionDrift refuses a protected record whose original rows were
@@ -398,6 +425,11 @@ func acceptanceChanges(original, effective string, revisions map[string]string) 
 		column := "Command"
 		if row.Expect != old[row.ID].Expect {
 			column = "Expect"
+			if row.CommandCell != old[row.ID].CommandCell {
+				column = "Command+Expect"
+			}
+		} else if row.CommandCell == old[row.ID].CommandCell {
+			continue
 		}
 		changes = append(changes, row.ID+"="+column)
 	}

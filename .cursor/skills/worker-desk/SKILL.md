@@ -45,9 +45,9 @@ fires within one observer interval instead of relying on a worker to remember it
 > Disposable task output follows [desk-shell.md §Managed task scratch](../../references/desk-shell.md#managed-task-scratch). Use inherited owned scratch, complete canonical evidence handoff before acknowledgment, and let the runtime reclaim it. A delegated agent must never acknowledge its parent’s scratch.
 
 
-> The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache — is [`../../references/standing-note.md`](../../references/standing-note.md).
+> The loop-continuity note this role writes at each iteration boundary and before any long wait — nine sections, re-probe rather than cache, every carried hold naming its source on the same line and re-checked at the next fresh sweep (lifted only when its own lift condition is met or the identity that set it releases it; a hold whose source cannot be read, or cannot be found, is kept and reported, never dropped) — is [`../../references/standing-note.md`](../../references/standing-note.md).
 
-> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, and how it is reconciled and marked read are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
+> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, how it is reconciled and marked read, and how each hold it carries is re-checked against its source are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
 
 > Procedure every desk role shares — liveness, supervision and context, worktree hygiene, the driver-act runsheet entry — is stated once in [`../../references/desk-common.md`](../../references/desk-common.md); read it at boot. Hard gates never move there: they stay resident in this body.
 
@@ -112,7 +112,8 @@ slots, and a sweep proving nothing eligible exists (§HARD GATE).
     default) and file it. Ignorance never widens a pool.
 - **The reservation is the code-enforced form of the next two rules** (desk-supervision/05):
   `deskroster width --role worker-desk --reserve resume=N,rework=M` floors N/M slots for orphan
-  resumes and `Awaiting implementer rework` rows, riding the same entry as the width and decaying
+  resumes and the `rework` class (durable repair obligations, row 5b, and an `Awaiting implementer
+  rework` row only when its status could not be read), riding the same entry as the width and decaying
   with it. `fanoutloop plan` classifies its queue and states the floor whenever a reserved class
   is actually waiting (`fresh capped at <k> by reservation`) — **it never idles a slot** for a
   class with nothing queued, which is what keeps this a floor and not a second cap. worker-desk
@@ -147,8 +148,9 @@ slots, and a sweep proving nothing eligible exists (§HARD GATE).
   window neither ends nor asks the driver what to do next (§Liveness contract).
 - **Concurrency (N) is DECOUPLED from the span-of-control display cap (20)**, which bounds what the
   board SHOWS. The 4-per-stream cap is an anti-monopoly guard that must **never idle a slot**: fill
-  under-N cycles with WIP-draining work first — orphan resumes, `Awaiting implementer rework` rows,
-  `CONFLICTING` PRs, red checks — then un-briefed issues, before leaving one empty.
+  under-N cycles with WIP-draining work first — orphan resumes, the cited blockers of
+  `Awaiting implementer rework` rows (row 5), `CONFLICTING` PRs, red checks — then un-briefed
+  issues, before leaving one empty.
 - **Scan the active PR queue on every tick** for dispatched PRs owing a worker action
   (`CHANGES_REQUESTED` at head, `CONFLICTING`, a stale draft); **resuming started work outranks a
   fresh brief** (mm/10). Distinct from pr-review-desk's *review* monitor; both run.
@@ -165,7 +167,7 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 | 2 | Rows **held back** by the 4-per-stream cap, the span cap, or the drive worker floor | `deskboard dispatch` — it reports the held-back decomposition (N by per-stream caps, M by span, K by the drive worker floor) plus per-root claim degradation, so an EMPTY queue is distinguishable from a THROTTLED one |
 | 3 | Orphan PRs owing a worker action, `CONFLICTING` PRs, red checks | the per-slug PR + disposition reads in [`references/dispatch-runbook.md`](references/dispatch-runbook.md) §The tick sweep, with the disposition read FIRST |
 | 4 | Stale drafts (reviewer verdict `CHANGES_REQUESTED` at head, author silent) | `deskboard stalled [--min-age-hours N]` — the purpose-built detector; its disposition column is advisory (shepherd / close-candidate / reconcile) |
-| 5 | `Awaiting implementer rework` board rows | `fanoutloop plan --root <root>` (desk-supervision/05: read per root from `refs/remotes/origin/main:STATUS.md`, the SAME offline ref read row 1 uses — no separate sweep) |
+| 5 | `Awaiting implementer rework` board rows | `fanoutloop plan --root <root>` (desk-supervision/05: read per root from `refs/remotes/origin/main:STATUS.md`, the SAME offline ref read row 1 uses — no separate sweep). A verification already FAILED each such row with a cited blocker, so it is worker-owned: `plan` lists it under `AWAITING REWORK, owner worker` with the section's next act (`fix, cite <ref>`) and never offers the delivered brief as IMPLEMENT. The owed work is that cited blocker, worked as its own item (row 6 when it is a trusted work-ready issue; otherwise apply the trust gate before acting on it). Only a row whose status could not be read at all is still offered. Any other brief row whose status is not `todo`/`in-progress` is listed under `WITHHELD BY STATUS` with what it waits on (implemented or verified: the verify-desk queue) |
 | 5b | **Durable repair obligations** — a failed/blocked verification's actionable, still-unresolved obligation (desk-supervision/17) | `fanoutloop plan --root <root>` reads the reconciled obligations across the configured roots' `docs/streams/repair-obligations.jsonl` and surfaces the ASSIGNABLE ones (actionable, unresolved, awaiting-assignment or dead-lease) in the SAME rework lane as row 5. The item's ID is the IMMUTABLE obligation key, so a replacement worker resumes the SAME obligation after a dead lease — never a duplicate |
 | 6 | Un-briefed trusted work-ready issues (§Un-briefed issues) | `issueboard issues --projection work-ready` — fail-closed |
 | 7 | A red default branch on a watched repo | `deskboard health` — three-state (green / RED / COULD-NOT-CHECK) |
@@ -406,11 +408,14 @@ carrying its tier and its exact dispatch instruction. It spawns nothing, writes 
 no network** — the chained fetch is the freshness guarantee. Exits 3 disabled · 5 refused · 6
 unverifiable · 7 author==runner: none of them is an empty queue.
 
-**`plan` is not the whole queue, and a zero from it is not an idle claim.** It carries no
-`Awaiting implementer rework` row and no held-back row; run `deskboard dispatch` beside it every tick
-for the held-back decomposition, and read the rework section off each root's board (§Sources of work
-rows 2 and 5). Where the two disagree, the wider reading wins and the narrower one is a defect to
-file, never a queue to route around.
+**`plan` is not the whole queue, and a zero from it is not an idle claim.** It dispatches no
+`Awaiting implementer rework` row — it LISTS each under `AWAITING REWORK, owner worker` with its
+cited blocker, and that blocker is the work to start — and it carries no held-back row; run
+`deskboard dispatch` beside it every tick for the held-back decomposition, and compare the
+`AWAITING REWORK` listing with the rework section on each root's board (§Sources of work rows 2 and
+5). Where the two disagree on which rows await rework, the wider reading wins and the narrower one
+is a defect to file, never a queue to route around. Neither reading licenses dispatching the
+delivered brief itself as IMPLEMENT.
 
 **The drive worker floor is the one exception: for drive work, the FLOORED reading wins.** While a
 drive is active, drive work takes at most 6 of 8 workers (statusgen's `driveWorkerCap`; the tool's
@@ -453,7 +458,8 @@ the one state in which this desk has nothing new to START, and it is never a sta
 window stops, hands back, or asks the driver for direction.
 
 1. **Drain WIP before pulling more.** In this state the desk works the WIP-draining sources FIRST and
-   in this order: orphan resumes (§Sources of work row 3), `Awaiting implementer rework` rows (row 5),
+   in this order: orphan resumes (§Sources of work row 3), the cited blockers of `Awaiting implementer
+   rework` rows (row 5) and durable repair obligations (row 5b),
    `CONFLICTING` PRs and red checks on PRs this desk dispatched, stalled drafts (row 4). Only when
    those are genuinely clear does a fresh start go into a free slot. The board's own overflow line
    says the same thing — a persistently overflowing Next-up is an alarm about load, and refilling to 8
@@ -644,6 +650,20 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
 - **Serialize out-of-repo items** — no worktree isolation, no branch-as-claim: at most ONE in
   flight across all streams, the declaration is the claim, so check in-flight PRs for overlaps first.
 - **Placeholders are dispatchable** (ruling 2, 2026-08-24); `fanoutloop plan` includes them.
+- **A window holding a project role secret dispatches only work proven trusted.** A native container
+  cell can export a project role secret into a worker window as a path variable,
+  `ASSAY_ROLE_SECRET_<SERVICE>_FILE` (`containers/secrets.md` §4.4). Every agent dispatched from that
+  window inherits the variable, so `deskdispatch` refuses, before the claim, the following:
+  - any brief-keyed or review-kit item;
+  - an issue or change whose author is not trusted and that carries no current blessing;
+  - a `--pr` item whose head commits are not all on the base repository, with a linked author and
+    committer that are both roster logins (commit attribution, not proof of who pushed).
+
+  Unreadable forge data counts as untrusted. Treat that refusal like any guard refusal: it is a
+  STOP for the item in that window. Never route around it by unsetting the variable: the
+  file stays mounted, and an existing `/run/secrets/role-*` file makes the window a holding one
+  anyway. `deskdispatch` also strips every such variable from the tool processes it
+  starts.
 
 ## Cockpit-aware worktree creation — additive, chosen by `ASSAY_COCKPIT` or detected on PATH, never required
 
@@ -719,7 +739,7 @@ item, and the cockpit is only a nicer way to reach it.
 `gate: human` / `irreversible: yes` items DISPATCH NORMALLY (2026-07-10): the gate binds APPROVAL —
 review, merge, verify sign-off — not implementation, and every human control point sits downstream.
 But **a human gate with no filed issue is an empty decision surface** (human:<name> 2026-08-23), so pass
-`--gate-human` (or a `--brief` whose metadata gates), which runs `decision-issue ensure … --at start` between claim and launch — idempotent by its hidden marker, swept `--state all`, landing a
+`--gate-human` (or a `--brief` whose metadata gates; with no `--brief`, a brief-shaped item key's own brief gates the same way, and a key whose brief does not resolve is refused pre-claim), which runs `decision-issue ensure … --at start` between claim and launch — idempotent by its hidden marker, swept `--state all`, landing a
 `needs-decision` issue that enters the weekly digest. Three non-filing outcomes: `deferred:
 decision-trigger=spec` — the decision is only well-formed at the pickup design step, so the prompt
 instructs the executor to author the brief's `## Human decision` section in its PR and report
@@ -1057,12 +1077,16 @@ worker-desk's own.
   bindings), the desk falls back to the event-driven + fixed-cadence board sweep at the same 30-minute
   cadence and **states the gap in-session**; a durable wake is a convenience, never one of the three
   never-degrade guarantees.
-- **A tick never renews the dead-man lease.** When the `HEARTBEAT` file in the config home
-  (desk-shell.md §Config home: `~/.config/assay`) exists and was last touched outside its
-  staleness window, the desk tools refuse to run: that is STOP-ALL by construction. Renewal is a
-  HUMAN act. The driver, or a cron the driver owns, touches the file. No agent or loop touches,
-  renews or deletes it, on any tick, because a loop that keeps its own lease fresh defeats the
-  dead-man semantics. A `heartbeat stale (age …)` refusal is the lease firing. Quote it verbatim
+- **A tick never renews the dead-man lease; only progress does.** When the `HEARTBEAT` file in the
+  config home (desk-shell.md §Config home: `~/.config/assay`) exists and was last touched outside
+  its staleness window, the desk tools refuse to run: that is STOP-ALL by construction. A FRESH
+  lease is renewed by the desk tools themselves, and only when a verb completes an outward act the
+  forge confirmed (a push, a PR, a review or comment, an issue, an Evidence landing, a ready flip);
+  the act's audit row records it (desk-shell.md §HEARTBEAT lease). A tick, a read, a mint or a
+  failed act renews nothing, so a loop that only polls still lapses. A LAPSED lease is revived only
+  by a human: the driver, or a cron the driver owns, touches the file. No agent or loop touches,
+  creates or deletes it by hand, on any tick. A `heartbeat stale (age …)` refusal is the lease
+  firing. Quote it verbatim
   in the hand-off note, print ONE loud line naming it, and stand down. Never ask the driver how
   to proceed.
 - **A tick reads the armed per-run stops and stops each run's worker.** Every tick, read the armed

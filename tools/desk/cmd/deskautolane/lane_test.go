@@ -820,6 +820,81 @@ func TestAutoLane_SizeLabelUntrusted_CouldNotCheck(t *testing.T) {
 	}
 }
 
+// regression: #6234
+// The rollup is green, but a newer suite of the app that reports it has no conclusion and no
+// runs: the forge's merge gate waits on it, so checks-green is could-not-check, nothing written.
+func TestAutoLane_ZeroRunSuiteHolds(t *testing.T) {
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.suites = []deskkit.CheckSuite{
+		{ID: "11", App: "github-actions", Status: "completed", Conclusion: "success", RunCount: 1,
+			CreatedAt: "2026-11-11T20:09:57Z"},
+		{ID: "12", App: "github-actions", Status: "queued", CreatedAt: "2026-11-11T20:23:15Z"},
+	}
+	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
+	if code != deskkit.ExitUnverifiable || !strings.Contains(stderr, "suite 12 queued") {
+		t.Fatalf("exit %d stderr %q — want exit 6 naming the unconcluded suite", code, stderr)
+	}
+	if w := e.fg.writes(); len(w) != 0 {
+		t.Fatalf("a pending suite ejected: %v", w)
+	}
+}
+
+// regression: #6234
+// Review finding F4: the check-suite read fails. That is could-not-check (exit 6), audited
+// `unwritten`, nothing written — never read as "no suites, so green".
+func TestAutoLane_SuiteReadErrorHolds(t *testing.T) {
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.fail["CheckSuitesAtHead"] = true
+	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
+	if code != deskkit.ExitUnverifiable || !strings.Contains(stderr, "check suites at") ||
+		!strings.Contains(stderr, "could not be read") {
+		t.Fatalf("exit %d stderr %q — want exit 6 naming the unreadable suites", code, stderr)
+	}
+	if !e.hasAudit(deskkit.AutoLaneVerbMerge, deskkit.ResultUnwritten) {
+		t.Fatalf("no autolane:merge result=unwritten audit line")
+	}
+	if w := e.fg.writes(); len(w) != 0 {
+		t.Fatalf("writes on an unreadable suite list: %v", w)
+	}
+}
+
+// regression: #6234
+// Review finding F4: the forge asserts more suites than it served. The unread suite could be
+// the one holding the merge gate, so a short read is could-not-check, nothing written.
+func TestAutoLane_SuiteShortReadHolds(t *testing.T) {
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.suites = []deskkit.CheckSuite{{ID: "11", App: "github-actions", Status: "completed",
+		Conclusion: "success", RunCount: 1, CreatedAt: "2026-11-11T20:09:57Z"}}
+	e.fg.suitesTot = 2
+	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
+	if code != deskkit.ExitUnverifiable || !strings.Contains(stderr, "were not read in full") {
+		t.Fatalf("exit %d stderr %q — want exit 6 naming the short read", code, stderr)
+	}
+	if w := e.fg.writes(); len(w) != 0 {
+		t.Fatalf("writes on a short suite read: %v", w)
+	}
+}
+
+// regression: #6234
+// Review finding F1: a later suite of the same app that concluded with runs — on the reported
+// head, a rerun of the stuck suite's own workflow — does not release the stuck one;
+// checks-green still holds, nothing written.
+func TestAutoLane_RerunSuiteHolds(t *testing.T) {
+	e := install(t, fixtureLaneKeys, rulingsSigned)
+	e.fg.suites = []deskkit.CheckSuite{
+		{ID: "12", App: "github-actions", Status: "queued", CreatedAt: "2026-11-11T20:23:15Z"},
+		{ID: "13", App: "github-actions", Status: "completed", Conclusion: "success", RunCount: 1,
+			CreatedAt: "2026-11-12T00:40:07Z"},
+	}
+	code, _, stderr := e.run(verbMerge, "7", "--dry-run", "--fpy-file", e.fpy(healthyFPY))
+	if code != deskkit.ExitUnverifiable || !strings.Contains(stderr, "suite 12 queued") {
+		t.Fatalf("exit %d stderr %q — want exit 6 naming the unconcluded suite", code, stderr)
+	}
+	if w := e.fg.writes(); len(w) != 0 {
+		t.Fatalf("a pending suite ejected: %v", w)
+	}
+}
+
 // TestAutoLane_PendingChecksAre_CouldNotCheck — CI still running on an in-lane PR is
 // could-not-check at recompute (exit 6, nothing written, no latch), never a one-way ejection.
 func TestAutoLane_PendingChecksAre_CouldNotCheck(t *testing.T) {

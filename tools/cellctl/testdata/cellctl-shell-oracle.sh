@@ -72,12 +72,6 @@
 #                                                see Pinned models / Per-harness namespaces below. An explicit
 #                                                --model always passes through verbatim to the selected harness,
 #                                                bypassing the namespace/tier resolution entirely.
-#                                                --model-top/mid/fast <m> override the provider's per-tier
-#                                                models for THIS run (assay#1352; refused without a provider —
-#                                                the keys are provider-keyed); with --set they persist as
-#                                                CELL_PROVIDER_<NAME>_MODEL_<TIER>, making the tier model the
-#                                                cell's default. cellctl up threads the same flags onto every
-#                                                role window via the CELL_TIER_MODEL_<TIER> env.
 #                                                --kind / --cockpit / --provider override cell.env's CELL_KIND /
 #                                                CELL_COCKPIT / CELL_PROVIDER for this run (#1303 scope 2; a
 #                                                --kind the cell is not provisioned for is refused naming the
@@ -171,8 +165,8 @@
 # overrides its preset value piecewise. TOKEN_ENV is the NAME of an env var the operator exports;
 # cellctl never stores, prints or persists a token value. With a provider the launch unsets
 # ANTHROPIC_API_KEY and exports ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL,
-# each alias mapping to the provider's MODEL_<tier> for its tier when one exists (glm maps MID —
-# the sonnet slot — to glm-5.3-flash[1m], assay#1352), else the flat provider model
+# every alias mapping to the flat provider model. A different model per tier is a model-policy
+# concern (CELL_MODEL_POLICY), not a provider key (#6183 retired the per-tier provider keys)
 # (provider_preset / resolve_provider / cmd_desk's claude arm below; docs/cellctl.md Providers).
 #
 # `cellctl desk`/`up --model <m>` (or DESK_MODEL_OVERRIDE in the environment) overrides the resolved
@@ -696,14 +690,11 @@ provider_var(){ printf 'CELL_PROVIDER_%s_%s' "$(printf '%s' "$1" | tr '[:lower:]
 # environment) overrides the matching preset value; a name with no preset still needs its own
 # lines exactly as before. Presets carry no credential of any kind — only the env var's NAME.
 #
-# Per-TIER provider models (assay#1352): a provider's flat MODEL is what a window launches with when no
-# pin names a model, and what every tier alias maps to when nothing finer exists. A provider may
-# additionally name a DIFFERENT model for one tier — `MODEL_TOP` / `MODEL_MID` / `MODEL_FAST`,
-# same CELL_PROVIDER_<NAME>_<suffix> override family, preset first. `glm` ships one: MID (the
-# sonnet slot) maps to `glm-5.3-flash[1m]`, so a mid-tier window and everything inside any window
-# that asks for sonnet runs the flash variant instead of the full model; TOP (the-desk) keeps the
-# full `glm-5.3[1m]`, and FAST keeps the flat model until a ruling says otherwise.
-provider_preset(){ # <name> <BASE_URL|TOKEN_ENV|MODEL|MODEL_TOP|MODEL_MID|MODEL_FAST> → the compiled default, or nothing
+# A provider's flat MODEL is what a window launches with when no pin names a model, and what every
+# tier alias maps to. The per-tier provider keys (CELL_PROVIDER_<NAME>_MODEL_<TIER>, the
+# --model-top/mid/fast flags and CELL_TIER_MODEL_<TIER>) are retired (#6183): a different model
+# per tier or role is what model policy (CELL_MODEL_POLICY) routes.
+provider_preset(){ # <name> <BASE_URL|TOKEN_ENV|MODEL> → the compiled default, or nothing
   case "$1:$2" in
     kimi:BASE_URL)  printf '%s' 'https://api.kimi.com/coding' ;;
     kimi:TOKEN_ENV) printf '%s' 'KIMI_API_KEY' ;;
@@ -711,7 +702,6 @@ provider_preset(){ # <name> <BASE_URL|TOKEN_ENV|MODEL|MODEL_TOP|MODEL_MID|MODEL_
     glm:BASE_URL)   printf '%s' 'https://api.z.ai/api/anthropic' ;;
     glm:TOKEN_ENV)  printf '%s' 'ZAI_API_KEY' ;;
     glm:MODEL)      printf '%s' 'glm-5.3[1m]' ;;
-    glm:MODEL_MID)  printf '%s' 'glm-5.3-flash[1m]' ;;
   esac
   return 0
 }
@@ -726,25 +716,12 @@ provider_value(){
   if [[ -n "$PROVIDER_VALUE" ]]; then PROVIDER_VALUE_SRC="preset"; return 0; fi
   PROVIDER_VALUE_SRC="unset"; return 0
 }
-# provider_alias_model <name> <OPUS|SONNET|HAIKU> — the per-tier model for one of the LAUNCH-TIME
-# tier ALIASES, via the provider's MODEL_<tier> value for the matching cellctl tier (TOP/MID/FAST).
-# Sets PROVIDER_VALUE to that model or leaves it empty (caller falls back to the flat provider
-# model). Pure alias→tier translation plus provider_value — no logic of its own.
-provider_alias_model(){
-  case "$2" in
-    OPUS)   provider_value "$1" MODEL_TOP ;;
-    SONNET) provider_value "$1" MODEL_MID ;;
-    HAIKU)  provider_value "$1" MODEL_FAST ;;
-    *)      PROVIDER_VALUE="" ;;
-  esac
-  return 0
-}
 resolve_provider(){
   local name="$1" base_var token_var
   base_var="$(provider_var "$name" BASE_URL)"; token_var="$(provider_var "$name" TOKEN_ENV)"
   provider_value "$name" BASE_URL;  PROVIDER_BASE_URL="$PROVIDER_VALUE"
   provider_value "$name" TOKEN_ENV; PROVIDER_TOKEN_ENV="$PROVIDER_VALUE"
-  provider_value "$name" MODEL;     PROVIDER_MODEL="$PROVIDER_VALUE"; PROVIDER_MODEL_SRC="$PROVIDER_VALUE_SRC"
+  provider_value "$name" MODEL;     PROVIDER_MODEL="$PROVIDER_VALUE"
   [[ -n "$PROVIDER_BASE_URL" ]] || die "cell.env: $base_var is not set — declare it for provider '$name' (e.g. $base_var=https://api.$name.example)"
   local upname; upname="$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')"
   [[ -n "$PROVIDER_TOKEN_ENV" ]] || die "cell.env: $token_var is not set — declare it for provider '$name' as the NAME of an env var carrying the token (never the token itself), e.g. $token_var=${upname}_API_KEY"
@@ -1007,7 +984,7 @@ known_cell_env_key(){
       r="${k#CODEX_MODEL_}"
       for w in $ROLES_DEFAULT; do [[ "$r" == "${w//-/_}" ]] && return 0; done
       ;;
-    CELL_PROVIDER_*_BASE_URL|CELL_PROVIDER_*_TOKEN_ENV|CELL_PROVIDER_*_MODEL|CELL_PROVIDER_*_MODEL_TOP|CELL_PROVIDER_*_MODEL_MID|CELL_PROVIDER_*_MODEL_FAST) return 0 ;;
+    CELL_PROVIDER_*_BASE_URL|CELL_PROVIDER_*_TOKEN_ENV|CELL_PROVIDER_*_MODEL) return 0 ;;
   esac
   return 1
 }
@@ -1522,18 +1499,7 @@ cmd_check(){
       chk "provider $CELL_PROVIDER: \$$pv_tokvar_val is set in this shell" '[[ -n "${!pv_tokvar_val:-}" ]]'
     fi
     if [[ -n "$pv_model" ]]; then
-      # Per-tier provider models (assay#1352) show in their own row when one differs from the flat
-      # model, so `cellctl check` answers "what would the sonnet slot run" without a launch.
-      local pv_mid pv_mid_src; provider_value "$CELL_PROVIDER" MODEL_MID; pv_mid="$PROVIDER_VALUE"; pv_mid_src="$PROVIDER_VALUE_SRC"
-      # Same predicate the launch applies (role arm + alias block): a PRESET tier model is
-      # suppressed when the flat model is operator-set — in that case the sonnet slot runs the
-      # flat model the model row already names, so no differing sonnet row is shown.
-      if [[ -n "$pv_mid" && "$pv_mid" != "$pv_model" && ! ( "$pv_model_src" == "cell.env" && "$pv_mid_src" == "preset" ) ]]; then
-        chk "provider $CELL_PROVIDER: model=$pv_model ($pv_model_src; exported as ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL at launch)" 'true'
-        chk "provider $CELL_PROVIDER: sonnet slot (MID tier)=$pv_mid ($PROVIDER_VALUE_SRC; ANTHROPIC_DEFAULT_SONNET_MODEL + mid-tier role launches)" 'true'
-      else
-        chk "provider $CELL_PROVIDER: model=$pv_model ($pv_model_src; exported as ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL at launch)" 'true'
-      fi
+      chk "provider $CELL_PROVIDER: model=$pv_model ($pv_model_src; exported as ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL at launch)" 'true'
     else
       na "provider $CELL_PROVIDER: model — no $(provider_var "$CELL_PROVIDER" MODEL) and no preset; the role pin is exported as is"
     fi
@@ -1706,10 +1672,12 @@ check_house(){
 
 # scrubbed_mode_is <path> <octal-mode>: the two-spelling `stat` probe every custody row in this
 # file already uses (the codex/BSD-vs-GNU `stat -f`/`stat -c` split `check_codex_harness` and the
-# existing PEM-adjacent rows try) — never a third spelling.
+# existing PEM-adjacent rows try) — never a third spelling. GNU first: GNU `stat -f` is
+# --file-system, which prints the filesystem record and exits non-zero, so a BSD-first probe
+# returns that record glued to the mode on Linux; BSD `stat -c` fails with no output.
 scrubbed_mode_is(){
   local p="$1" want="$2" m
-  m="$(stat -f '%Lp' "$p" 2>/dev/null || stat -c '%a' "$p" 2>/dev/null)" || return 1
+  m="$(stat -c '%a' "$p" 2>/dev/null || stat -f '%Lp' "$p" 2>/dev/null)" || return 1
   [[ "$m" == "$want" ]]
 }
 
@@ -2237,14 +2205,9 @@ cmd_desk(){
   # the cell's own values are never re-written by a `--set` that did not name them.
   local model_override="${DESK_MODEL_OVERRIDE:-}" persist=0 cfg_in="" provider="" harness="$CELL_HARNESS"
   local harness_flag="" cockpit_flag="" provider_flag=""
-  local tier_top="${CELL_TIER_MODEL_TOP:-}" tier_mid="${CELL_TIER_MODEL_MID:-}" tier_fast="${CELL_TIER_MODEL_FAST:-}"
-  local tier_top_src="" tier_mid_src="" tier_fast_src="" tier_flag=0
   while [[ $# -gt 0 ]]; do case "$1" in
     --model) model_override="${2:?--model needs a value}"; shift 2;;
     --set) persist=1; shift;;
-    --model-top) tier_top="${2:?--model-top needs a value}"; tier_top_src="flag"; tier_flag=1; shift 2;;
-    --model-mid) tier_mid="${2:?--model-mid needs a value}"; tier_mid_src="flag"; tier_flag=1; shift 2;;
-    --model-fast) tier_fast="${2:?--model-fast needs a value}"; tier_fast_src="flag"; tier_flag=1; shift 2;;
     --provider) provider="${2:?--provider needs a value (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; provider_flag="$provider"; shift 2;;
     --harness) harness="${2:?--harness needs a value (claude|codex)}"; harness_flag="$harness"; shift 2;;
     --kind) shift 2;;  # consumed by prescan_kind_override above; CELL_KIND already reflects it
@@ -2255,8 +2218,8 @@ cmd_desk(){
   # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
   [[ -z "$cockpit_flag" ]] || value_in "$cockpit_flag" $COCKPIT_VALUES \
     || die "desk: --cockpit must be one of ${COCKPIT_VALUES// /|}, got '$cockpit_flag'"
-  [[ "$persist" == "0" || -n "$model_override$harness_flag$provider_flag$CELL_KIND_OVERRIDE$cockpit_flag" || "$tier_flag" == "1" ]] \
-    || die "desk: --set needs --model <m> (or DESK_MODEL_OVERRIDE in the environment), --model-top/mid/fast, --harness, --provider, --kind or --cockpit — nothing to persist otherwise"
+  [[ "$persist" == "0" || -n "$model_override$harness_flag$provider_flag$CELL_KIND_OVERRIDE$cockpit_flag" ]] \
+    || die "desk: --set needs --model <m> (or DESK_MODEL_OVERRIDE in the environment), --harness, --provider, --kind or --cockpit — nothing to persist otherwise"
   case "$harness" in claude|codex) ;; *) die "desk: --harness must be claude or codex, got '$harness'";; esac
   local model="" MODEL_POLICY_SETTINGS="" MODEL_POLICY_SHA="" MODEL_POLICY_EFFORT="" MODEL_POLICY_PROVIDER=""
   local -a MODEL_POLICY_ENV=() MODEL_POLICY_ARGS=() MODEL_POLICY_UNSET=()
@@ -2283,15 +2246,7 @@ cmd_desk(){
   # The provider is an explicit --provider for this run, else cell.env's CELL_PROVIDER default
   # (unset = Anthropic, cellctl's own long-standing default).
   [[ -n "${CELL_MODEL_POLICY:-}" ]] || provider="${provider:-${CELL_PROVIDER:-}}"
-  # Per-tier provider models are provider-KEYED (CELL_PROVIDER_<NAME>_MODEL_<TIER>), so a tier
-  # flag with no provider to hang it on is refused rather than silently ignored — the operator
-  # naming a tier model is naming it FOR a provider.
-  # Any tier value reaching desk — a --model-* flag or a CELL_TIER_MODEL_* env (what up threads)
-  # — needs a provider to hang on; up refuses the same shape, so desk must too, not silently ignore.
-  if [[ -n "$tier_top$tier_mid$tier_fast" ]]; then
-    [[ -n "$provider" ]] || die "desk: --model-top/mid/fast (or a CELL_TIER_MODEL_TOP/MID/FAST in the environment) need a provider — pass --provider <name> (or set CELL_PROVIDER in cell.env); a tier model is provider-keyed (CELL_PROVIDER_<NAME>_MODEL_<TIER>)"
-  fi
-  local PROVIDER_BASE_URL="" PROVIDER_TOKEN_ENV="" PROVIDER_TOKEN_VAL="" PROVIDER_MODEL="" PROVIDER_MODEL_SRC=""
+  local PROVIDER_BASE_URL="" PROVIDER_TOKEN_ENV="" PROVIDER_TOKEN_VAL="" PROVIDER_MODEL=""
   [[ -n "$provider" ]] && resolve_provider "$provider"
   # ONE name for both surfaces: the roster beacon (DESK_SESSION) and the session's display name
   # (--name), so the cell's coordinator sees "<cell>-<short role>" in its agent listing and in the
@@ -2316,14 +2271,6 @@ cmd_desk(){
   # scope 2). Built once here so the container, dry-run and live branches below agree.
   local -a persist_kvs=()
   [[ -n "$model_override" ]] && persist_kvs+=("$mvar=$model_override")
-  # Per-tier provider models persist to their provider-keyed keys — the "make it the cell's
-  # default" half of the tier flags (--set writes exactly what was given, like every other flag).
-  if [[ "$tier_flag" == "1" && -n "$provider" ]]; then
-    local tkey_pfx; tkey_pfx="$(printf '%s' "$provider" | tr '[:lower:]-' '[:upper:]_')"
-    [[ -n "$tier_top"  ]] && persist_kvs+=("CELL_PROVIDER_${tkey_pfx}_MODEL_TOP=$tier_top")
-    [[ -n "$tier_mid"  ]] && persist_kvs+=("CELL_PROVIDER_${tkey_pfx}_MODEL_MID=$tier_mid")
-    [[ -n "$tier_fast" ]] && persist_kvs+=("CELL_PROVIDER_${tkey_pfx}_MODEL_FAST=$tier_fast")
-  fi
   [[ -n "$harness_flag" ]] && persist_kvs+=("CELL_HARNESS=$harness_flag")
   [[ -n "$provider_flag" ]] && persist_kvs+=("CELL_PROVIDER=$provider_flag")
   [[ -n "$CELL_KIND_OVERRIDE" ]] && persist_kvs+=("CELL_KIND=$CELL_KIND_OVERRIDE")
@@ -2344,35 +2291,6 @@ cmd_desk(){
     # window runs when neither --model nor a PER-ROLE pin names one (#1303): the harness-wide
     # DESK_MODEL_DEFAULT / tier fallback are Anthropic names the provider's endpoint would reject.
     model="$PROVIDER_MODEL"; RESOLVED_MODEL_SRC="provider:$provider ($(provider_var "$provider" MODEL))"
-    # Per-tier provider model (assay#1352): a provider's MODEL_<TIER> (preset, or a cell.env line)
-    # re-points just this role's tier — the flat MODEL above stays the default. `glm` maps MID
-    # to glm-5.3-flash[1m], so mid-tier windows launch on the flash variant while the-desk (TOP)
-    # keeps the full model. A per-role pin or --model still wins over both. An operator-set flat
-    # MODEL (cell.env line) suppresses PRESET tier splits — an operator naming their own model
-    # owns every tier unless they also name the tier key — while an operator-set MODEL_<TIER>
-    # always applies.
-    local ptier; ptier="$(printf '%s' "$(role_tier "$role")" | tr '[:lower:]' '[:upper:]')"
-    local cli_tier="" cli_tier_src=""
-    case "$ptier" in
-      TOP)  cli_tier="$tier_top";  cli_tier_src="${tier_top_src:-env}" ;;
-      MID)  cli_tier="$tier_mid";  cli_tier_src="${tier_mid_src:-env}" ;;
-      FAST) cli_tier="$tier_fast"; cli_tier_src="${tier_fast_src:-env}" ;;
-    esac
-    provider_value "$provider" "MODEL_${ptier}"
-    if [[ -n "$cli_tier" ]]; then
-      # A CLI tier value beats the preset AND a cell.env tier line for this run (--set is what
-      # promotes it to the cell's default); it still loses to --model and per-role pins above.
-      # The source label says which surface it came from: a --model-* flag, or the
-      # CELL_TIER_MODEL_* env `up` threads.
-      model="$cli_tier"
-      if [[ "$cli_tier_src" == "flag" ]]; then
-        RESOLVED_MODEL_SRC="provider:$provider (tier $ptier: --model-$(printf '%s' "$ptier" | tr '[:upper:]' '[:lower:]') flag)"
-      else
-        RESOLVED_MODEL_SRC="provider:$provider (tier $ptier: env CELL_TIER_MODEL_${ptier}, up threading)"
-      fi
-    elif [[ -n "$PROVIDER_VALUE" && ! ( "$PROVIDER_MODEL_SRC" == "cell.env" && "$PROVIDER_VALUE_SRC" == "preset" ) ]]; then
-      model="$PROVIDER_VALUE"; RESOLVED_MODEL_SRC="provider:$provider (tier $ptier: $(provider_var "$provider" "MODEL_${ptier}") ${PROVIDER_VALUE_SRC})"
-    fi
   else
     resolve_role_model "$role" "$harness" \
       || die "desk: $RESOLVED_MODEL_SRC — set $mvar in cell.env, or the harness default, or a tier fallback (docs/cellctl.md Pinned models), or pass --model explicitly"
@@ -2592,26 +2510,13 @@ cmd_desk(){
     # aliases take the provider's own model (CELL_PROVIDER_<NAME>_MODEL / preset) when it has one,
     # else the model this window launches with.
     local pmodel="${PROVIDER_MODEL:-$model}"
-    # Per-tier alias models (assay#1352): each alias maps to the provider's MODEL_<TIER> for its own
-    # tier (preset or cell.env line, TOP/MID/FAST ← OPUS/SONNET/HAIKU), else the flat provider
-    # model — so a provider can run its flash variant for the sonnet slot without touching what
-    # an opus- or haiku-asker resolves to.
-    local pmodel_opus pmodel_sonnet pmodel_haiku
-    provider_alias_model "$provider" OPUS;   [[ -n "$PROVIDER_VALUE" && ! ( "$PROVIDER_MODEL_SRC" == "cell.env" && "$PROVIDER_VALUE_SRC" == "preset" ) ]] && pmodel_opus="$PROVIDER_VALUE"   || pmodel_opus="$pmodel"
-    provider_alias_model "$provider" SONNET; [[ -n "$PROVIDER_VALUE" && ! ( "$PROVIDER_MODEL_SRC" == "cell.env" && "$PROVIDER_VALUE_SRC" == "preset" ) ]] && pmodel_sonnet="$PROVIDER_VALUE" || pmodel_sonnet="$pmodel"
-    provider_alias_model "$provider" HAIKU;  [[ -n "$PROVIDER_VALUE" && ! ( "$PROVIDER_MODEL_SRC" == "cell.env" && "$PROVIDER_VALUE_SRC" == "preset" ) ]] && pmodel_haiku="$PROVIDER_VALUE"  || pmodel_haiku="$pmodel"
-    # CLI tier flags re-point their alias for this run — same precedence as the launch arm: flag
-    # > cell.env tier line > preset > flat, everything below --model and per-role pins.
-    [[ -n "$tier_top"  ]] && pmodel_opus="$tier_top"
-    [[ -n "$tier_mid"  ]] && pmodel_sonnet="$tier_mid"
-    [[ -n "$tier_fast" ]] && pmodel_haiku="$tier_fast"
     exec env "${MODEL_POLICY_UNSET[@]}" ${provider:+-u ANTHROPIC_API_KEY} PATH="$CELL_DIR/shim:$PATH" CLAUDE_CONFIG_DIR="$cfg" CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false DESK_LOOP="$role" DESK_SESSION="$session" \
       ${desk_roots:+DESK_ROOTS="$desk_roots"} \
       ${repair_admission:+ASSAY_REPAIR_ADMISSION="$repair_admission"} \
       ${assay_cockpit:+ASSAY_COCKPIT="$assay_cockpit"} \
       ${provider:+ANTHROPIC_BASE_URL="$PROVIDER_BASE_URL"} ${provider:+ANTHROPIC_AUTH_TOKEN="$PROVIDER_TOKEN_VAL"} \
       ${provider:+ANTHROPIC_MODEL="$model"} \
-      ${provider:+ANTHROPIC_DEFAULT_OPUS_MODEL="$pmodel_opus"} ${provider:+ANTHROPIC_DEFAULT_SONNET_MODEL="$pmodel_sonnet"} ${provider:+ANTHROPIC_DEFAULT_HAIKU_MODEL="$pmodel_haiku"} \
+      ${provider:+ANTHROPIC_DEFAULT_OPUS_MODEL="$pmodel"} ${provider:+ANTHROPIC_DEFAULT_SONNET_MODEL="$pmodel"} ${provider:+ANTHROPIC_DEFAULT_HAIKU_MODEL="$pmodel"} \
       "${MODEL_POLICY_ENV[@]}" \
       claude "${MODEL_POLICY_ARGS[@]}" --name "$session" --model "$model" "/assay:$role"
   fi
@@ -2766,7 +2671,7 @@ cmd_up(){
     cmd_desk "$CELL" "$first_role" "$@"
     return $?
   fi
-  local no_the_desk=0 attach=1 cfg_in="" cockpit_flag="" automate="" model_override="" provider_flag="" harness_flag="" persist=0 tier_top_flag="" tier_mid_flag="" tier_fast_flag=""
+  local no_the_desk=0 attach=1 cfg_in="" cockpit_flag="" automate="" model_override="" provider_flag="" harness_flag="" persist=0
   while [[ $# -gt 0 ]]; do case "$1" in
     --no-the-desk) no_the_desk=1; shift;;
     --with-the-desk) shift;;
@@ -2775,9 +2680,6 @@ cmd_up(){
     --automate) automate="${2:?--automate needs a trigger (a 5-field cron string or a preset)}"; shift 2;;
     --model) model_override="${2:?--model needs a value}"; shift 2;;
     --provider) provider_flag="${2:?--provider needs a value (kimi|glm, or a name with CELL_PROVIDER_<NAME>_BASE_URL/_TOKEN_ENV in cell.env)}"; shift 2;;
-    --model-top) tier_top_flag="${2:?--model-top needs a value}"; shift 2;;
-    --model-mid) tier_mid_flag="${2:?--model-mid needs a value}"; shift 2;;
-    --model-fast) tier_fast_flag="${2:?--model-fast needs a value}"; shift 2;;
     --harness) harness_flag="${2:?--harness needs a value (claude|codex)}"; shift 2;;
     --kind) shift 2;;  # consumed by prescan_kind_override above; CELL_KIND already reflects it
     --set) persist=1; shift;;
@@ -2788,8 +2690,8 @@ cmd_up(){
   # shellcheck disable=SC2086  # the space-separated value list word-splits into value_in candidates on purpose
   [[ -z "$cockpit_flag" ]] || value_in "$cockpit_flag" $COCKPIT_VALUES \
     || die "up: --cockpit must be one of ${COCKPIT_VALUES// /|}, got '$cockpit_flag'"
-  [[ "$persist" == "0" || -n "$model_override$harness_flag$provider_flag$CELL_KIND_OVERRIDE$cockpit_flag$tier_top_flag$tier_mid_flag$tier_fast_flag" ]] \
-    || die "up: --set needs --model, --model-top/mid/fast, --harness, --provider, --kind or --cockpit — nothing to persist otherwise"
+  [[ "$persist" == "0" || -n "$model_override$harness_flag$provider_flag$CELL_KIND_OVERRIDE$cockpit_flag" ]] \
+    || die "up: --set needs --model, --harness, --provider, --kind or --cockpit — nothing to persist otherwise"
   # GLOBAL (not local): role_cmd, called below and by every up_* cockpit arm, reads these to
   # thread --model / --harness / --provider onto each role's own `cellctl desk` invocation.
   # Applies to EVERY role window this run opens, the-desk included — there is deliberately no
@@ -2799,12 +2701,6 @@ cmd_up(){
   MODEL_OVERRIDE="$model_override"
   HARNESS_OVERRIDE="$harness_flag"
   up_provider="$provider_flag"
-  # Tier flags thread the same way --model does, via the env cmd_desk reads as its defaults —
-  # one value for EVERY role window this run opens (tier keys are provider-keyed, not per-role).
-  [[ -n "$tier_top_flag$tier_mid_flag$tier_fast_flag" && -z "$provider_flag" && -z "${CELL_PROVIDER:-}" ]] \
-    && die "up: --model-top/mid/fast need a provider — pass --provider <name> (or set CELL_PROVIDER in cell.env)"
-  CELL_TIER_MODEL_TOP="$tier_top_flag"; CELL_TIER_MODEL_MID="$tier_mid_flag"; CELL_TIER_MODEL_FAST="$tier_fast_flag"
-  export CELL_TIER_MODEL_TOP CELL_TIER_MODEL_MID CELL_TIER_MODEL_FAST
   local cfg; cfg="$(resolve_cfg "$cfg_in")"
   cockpit_want "$cockpit_flag"
   resolve_cockpit "$COCKPIT_WANT" "$COCKPIT_SRC" || die "$COCKPIT_ERR"
@@ -2841,16 +2737,6 @@ cmd_up(){
     [[ -n "$provider_flag" ]] && persist_kvs+=("CELL_PROVIDER=$provider_flag")
     [[ -n "$CELL_KIND_OVERRIDE" ]] && persist_kvs+=("CELL_KIND=$CELL_KIND_OVERRIDE")
     [[ -n "$cockpit_flag" ]] && persist_kvs+=("CELL_COCKPIT=$cockpit_flag")
-    # Tier flags persist to the same provider-keyed keys cmd_desk writes (--provider flag, else
-    # the cell.env CELL_PROVIDER the run resolved; up's guard already refused tier-without-provider).
-    if [[ -n "$tier_top_flag$tier_mid_flag$tier_fast_flag" ]]; then
-      local up_tier_provider tkey_pfx
-      up_tier_provider="${provider_flag:-${CELL_PROVIDER:-}}"
-      tkey_pfx="$(printf '%s' "$up_tier_provider" | tr '[:lower:]-' '[:upper:]_')"
-      [[ -n "$tier_top_flag"  ]] && persist_kvs+=("CELL_PROVIDER_${tkey_pfx}_MODEL_TOP=$tier_top_flag")
-      [[ -n "$tier_mid_flag"  ]] && persist_kvs+=("CELL_PROVIDER_${tkey_pfx}_MODEL_MID=$tier_mid_flag")
-      [[ -n "$tier_fast_flag" ]] && persist_kvs+=("CELL_PROVIDER_${tkey_pfx}_MODEL_FAST=$tier_fast_flag")
-    fi
   fi
   first_window
   # Nothing to open is not an error, but it is never silent, and no empty session is created for it.
@@ -3378,10 +3264,12 @@ CELL_COCKPIT=auto
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
+# The intake role's judgment work needs a strong tier; removing this line returns the role to DESK_MODEL_DEFAULT.
+DESK_MODEL_intake_desk=opus
 # The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
 # overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
 CELL_HARNESS=claude
-# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the two
+# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the
 # DESK_MODEL_* lines above are Claude-only and are never read on --harness codex. Absent here,
 # a role falls back to the tier map (docs/cellctl.md's Pinned models section); uncomment to pin:
 # CODEX_MODEL_default=gpt-5.6-terra
@@ -3436,10 +3324,12 @@ CELL_COCKPIT=auto
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
+# The intake role's judgment work needs a strong tier; removing this line returns the role to DESK_MODEL_DEFAULT.
+DESK_MODEL_intake_desk=opus
 # The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
 # overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
 CELL_HARNESS=claude
-# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the two
+# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the
 # DESK_MODEL_* lines above are Claude-only and are never read on --harness codex. Absent here,
 # a role falls back to the tier map (docs/cellctl.md's Pinned models section); uncomment to pin:
 # CODEX_MODEL_default=gpt-5.6-terra
@@ -3492,7 +3382,7 @@ new_container(){
     printf '# Container cell registration; the launcher owns runtime custody.\n'
     printf 'CELL=%q\nCELL_KIND=container\nCELL_REPO=%q\n' "$cell" "$repo"
     printf 'CELL_CONTAINER_LAUNCHER=%q\nROLES=%q\nCELL_ROOTS=%q\n' "$launcher" "$roles" "$roots"
-    printf 'CELL_HARNESS=claude\nDESK_MODEL_DEFAULT=sonnet\nDESK_MODEL_the_desk=fable\nDESKD=0\n'
+    printf 'CELL_HARNESS=claude\nDESK_MODEL_DEFAULT=sonnet\nDESK_MODEL_the_desk=fable\nDESK_MODEL_intake_desk=opus\nDESKD=0\n'
   } > "$d/cell.env"
   chmod 600 "$d/cell.env"
   echo "[new] registered $d (container) — cellctl check $cell, then cellctl up $cell"
@@ -3535,10 +3425,12 @@ CELL_COCKPIT=auto
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
+# The intake role's judgment work needs a strong tier; removing this line returns the role to DESK_MODEL_DEFAULT.
+DESK_MODEL_intake_desk=opus
 # The harness a role window boots on: claude (default) or codex. \`cellctl desk\`/\`up --harness\`
 # overrides it for one run without touching this line; see docs/cellctl.md's Harnesses section.
 CELL_HARNESS=claude
-# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the two
+# Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — the
 # DESK_MODEL_* lines above are Claude-only and are never read on --harness codex. Absent here,
 # a role falls back to the tier map (docs/cellctl.md's Pinned models section); uncomment to pin:
 # CODEX_MODEL_default=gpt-5.6-terra
@@ -3616,6 +3508,8 @@ CELL_HARNESS=claude
 # Pinned models (values \`claude --model\` accepts); the CLI default is never used.
 DESK_MODEL_DEFAULT=sonnet
 DESK_MODEL_the_desk=fable
+# The intake role's judgment work needs a strong tier; removing this line returns the role to DESK_MODEL_DEFAULT.
+DESK_MODEL_intake_desk=opus
 # Codex gets its OWN model-pin namespace (CODEX_MODEL_<role> / CODEX_MODEL_default) — absent
 # here, a role falls back to the tier map (docs/cellctl.md's Pinned models section):
 # CODEX_MODEL_default=gpt-5.6-terra

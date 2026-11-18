@@ -20,6 +20,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -58,7 +59,7 @@ var verifyFlipFn = statusgenVerifyFlip
 // checkVerifiedFn is the verified-closure check (seam: tests stub it).
 var checkVerifiedFn = checkVerifiedClosure
 
-func runFlip(args []string) error {
+func runFlip(args []string, options childOptions) error {
 	fs := flag.NewFlagSet("flip", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	root := fs.String("root", "", "")
@@ -112,8 +113,13 @@ func runFlip(args []string) error {
 		return err
 	}
 
+	options, err = prepareFlipApproval(abs, options)
+	if err != nil {
+		return err
+	}
+
 	// Plan: every refusal statusgen owns, nothing written.
-	rel, stamp, err := verifyFlipFn(abs, *brief, *sha, name, true)
+	rel, stamp, err := verifyFlipFn(abs, *brief, *sha, name, true, options)
 	if err != nil {
 		return err
 	}
@@ -131,20 +137,20 @@ func runFlip(args []string) error {
 	restore := func() { _ = os.WriteFile(readme, orig, 0o644) }
 
 	// The PROBLEM baseline, read on the tree as it stands.
-	before, err := statusgenLintFn(abs)
+	before, err := statusgenLintFn(abs, options)
 	if err != nil {
 		return err
 	}
 
 	// The write: statusgen's own refusals run again on the live tree.
-	if _, stamp2, err := verifyFlipFn(abs, *brief, *sha, name, false); err != nil {
+	if _, stamp2, err := verifyFlipFn(abs, *brief, *sha, name, false, options); err != nil {
 		restore()
 		return err
 	} else if stamp2 != stamp {
 		restore()
 		return deskkit.Unverifiable("flip: statusgen derived two different stamps for one tree", nil)
 	}
-	if _, err := checkVerifiedFn(abs, *brief); err != nil {
+	if _, err := checkVerifiedFn(abs, *brief, options); err != nil {
 		restore()
 		return err
 	}
@@ -197,14 +203,16 @@ func runFlip(args []string) error {
 		}
 		return err
 	}
-	after, err := statusgenLintFn(abs)
+	after, err := statusgenLintFn(abs, options)
 	if err != nil {
 		if uerr := uncommit(); uerr != nil {
 			return uerr
 		}
 		return err
 	}
-	if introduced := newProblems(before, after); len(introduced) > 0 {
+	introduced, excused := attributeIntroduced(before, after, flipScope(rel, *brief))
+	printExcused(stderr, rel, excused)
+	if len(introduced) > 0 {
 		if uerr := uncommit(); uerr != nil {
 			return uerr
 		}
@@ -225,15 +233,15 @@ func runFlip(args []string) error {
 
 // statusgenVerifyFlip shells `statusgen verifyflip`: exit 1 is a refusal, any
 // other failure is could-not-check.
-func statusgenVerifyFlip(root, brief, sha, runner string, dryRun bool) (rel, stamp string, err error) {
+func statusgenVerifyFlip(root, brief, sha, runner string, dryRun bool, options childOptions) (rel, stamp string, err error) {
 	if _, lerr := exec.LookPath("statusgen"); lerr != nil {
 		return "", "", deskkit.Unverifiable("flip: statusgen is not on PATH", lerr)
 	}
-	args := []string{"verifyflip", "--root", root, "--brief", brief, "--sha", sha, "--runner", runner}
+	args := []string{"--brief", brief, "--sha", sha, "--runner", runner}
 	if dryRun {
 		args = append(args, "--dry-run")
 	}
-	cmd := exec.Command("statusgen", acceptanceArgs(args...)...)
+	cmd := statusgenAudit(context.Background(), auditFlip, root, options, args...)
 	cmd.Dir = os.TempDir()
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
@@ -257,20 +265,16 @@ func statusgenVerifyFlip(root, brief, sha, runner string, dryRun bool) (rel, sta
 	return rel, stamp, nil
 }
 
-// newProblems is after minus before: the PROBLEM lines the flip introduced.
-func newProblems(before, after []string) []string {
-	had := make(map[string]bool, len(before))
-	for _, p := range before {
-		had[p] = true
+// flipScope is what a flip touches: the board README it commits (every brief of that
+// stream) and the flipped brief's own stream, by statusgen's key as well as by directory.
+// The flip's new-PROBLEM diff attributes by it exactly as a landing's does (lintdiff.go).
+func flipScope(readme, brief string) landingScope {
+	s := landingScopeOf(readme)
+	s.addBrief(brief)
+	if stream, _, ok := strings.Cut(strings.TrimSpace(brief), "/"); ok {
+		s.addStream(stream)
 	}
-	var out []string
-	for _, p := range after {
-		if !had[p] {
-			had[p] = true
-			out = append(out, p)
-		}
-	}
-	return out
+	return s
 }
 
 // gitOut runs git -C dir args and returns trimmed stdout.

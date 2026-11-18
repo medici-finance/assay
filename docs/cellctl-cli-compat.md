@@ -105,7 +105,8 @@ it also fails when a listed row stops differing, so this table cannot go stale i
   parser bypassed and requires the same refusals.
 - **`up` output.** The per-role command lines `up` prints still re-execute and reproduce the plan. A dry run still prints one line per absent role, byte for byte as before, and
   now also a disposition line for a role that is already up or stale; `up` itself converges (it
-  no longer prompts to reconcile a stale role: that is `up --plan` then `up --apply`).
+  no longer prompts to reconcile a stale role: a dead record is cleared by `up --plan` then
+  `up --apply`, any other by the recover verb its row names).
 
 ## What differs
 
@@ -267,6 +268,15 @@ cockpit has always launched private tmux. With cell-owned provider/Herdr support
 all other stdout and all stderr remain byte-identical in the fixture. The frozen
 pre-migration transcript remains unchanged.
 
+## The intake role's scaffolded pin
+
+A freshly scaffolded cell pins the intake role to a strong tier: `cellctl new` writes
+`DESK_MODEL_intake_desk=opus` after the coordinator pin (see *Pinned models* in [cellctl](cellctl.md)).
+`new-house/1` and `new-trailing-value/2` run `show` on such a cell, and differ in exactly one stdout
+line: `[show] model intake-desk=sonnet (cell.env DESK_MODEL_DEFAULT)` is now `[show] model
+intake-desk=opus (cell.env DESK_MODEL_intake_desk)`. They keep exit 0, and every other byte and all
+stderr still must match.
+
 ## The house cell's forge label set
 
 Issue #6127 makes `new --kind house` ensure the desk tools' forge label set on every `--roots`
@@ -287,3 +297,26 @@ that has roots and a roster but no `CELL_LABELS_TOKEN_FILE`. Against the shell o
 run keeps exit 0 and closes `[check] every checked precondition met; N could-not-check row(s) (?)
 — not clean until each is checked`. The case accepts that line only when every could-not-check
 row is a labels row.
+
+The shell matrix (`tools/cellctl/tests/parity.test.sh`) uses the same no-role label
+expectations as the pre-migration Go transcript test, under
+`tools/cellctl/testdata/parity/`. Its adapter adds these exact expected lines to
+only the frozen oracle's house fixture output; it leaves Go output untouched.
+On a clean house fixture it also expects the one-unknown-row summary above.
+Neither label errors nor arbitrary diagnostics are filtered. Exit codes, plans,
+scaffold bytes and every other output byte retain the existing comparison.
+The Go test runs the full 200-cell matrix and plants unexpected label text,
+changed label states, a false clean summary, an unrelated diagnostic, a changed
+exit code and changed plan bytes; each must produce a named divergence.
+
+## A pin outside the active harness namespace
+
+The intake-pin delivery (source `48f213f2e`) adds a post-write notice when
+a model pin belongs to another harness. The shell matrix's `set` writes
+`DESK_MODEL_DEFAULT=haiku` on every kind. Its twelve Codex cells therefore add
+exactly the notice in `testdata/parity/set-codex.txt` after the value-change line:
+the pin was written but Codex reads its own namespace. The expected-output
+adapter adds that line only to the oracle's Codex `set` fixture. The write,
+backup, exit code and all other bytes are unchanged; an additional unknown
+notice still fails parity. This is the second instance of the declared Go
+extension class covered by the matrix test.

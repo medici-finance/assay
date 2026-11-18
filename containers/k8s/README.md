@@ -64,6 +64,14 @@ admitting a profile. Kubernetes Secret files otherwise default to root ownership
 0400 alone would be unreadable to this non-root process. The mount remains
 read-only, and only `app.pem` is projected.
 
+Each role container carries exactly three inline env entries: `ASSAY_DESK`, the
+canonical `ASSAY_APP_PEM_FILE` path, and `GODEBUG=multipathtcp=0`. The last one
+turns off the MPTCP listeners Go has opened by default since 1.24, as a stopgap
+for CVE-2026-98432 (a Linux kernel use-after-free in that path). It is fragile:
+it covers only Go programs that read it, and a later override undoes it. Patched
+node kernels are the real fix. The checker rejects a role container that drops it
+or turns MPTCP back on.
+
 `secrets.example.yaml` contains empty named skeletons for all ten Secrets, with
 required keys listed only in comments; it is excluded from the build. These
 skeletons are not deployable. Do not apply or populate that tracked file. Provision real Secrets
@@ -91,9 +99,12 @@ sh containers/k8s/check.sh --source-secrets --self-test
 
 Required installed tools: Kustomize **v5.8.3**, kubeconform **v0.8.0**, gitleaks
 **8.30.1** (the existing repository scanner pin), Python 3.9+ and the repository's
-Go toolchain with its existing `gopkg.in/yaml.v3 v3.0.1` module cached. No tool is
-installed by the checker. The small Go YAML-to-JSON adapter runs from the existing
-desk module; Python's standard library performs the package assertions. No new
+Go toolchain with its existing `gopkg.in/yaml.v3 v3.0.1` module cached. Self-tests
+also require the Python bytecode inventory of both checker import roots, this
+package and `tools/release`, to remain unchanged. The checker disables bytecode
+writes before importing package fixtures or the image-record contract in every mode.
+No tool is installed by the checker. The small Go YAML-to-JSON adapter runs from
+the existing desk module; Python's standard library performs the package assertions. No new
 parser or package dependency is introduced. The scanner uses the repository's
 existing `.gitleaks.toml`, redacts output, ignores inline allow directives and
 also scans decoded Secret.data. Its staged positive controls prove that an

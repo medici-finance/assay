@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -17,28 +18,25 @@ import (
 )
 
 // fakeGHSource is compiled once (TestMain) into a temp dir placed FIRST on PATH, so the
-// tool's `gh` and `desktoken` invocations hit this canned stand-in instead of the
-// network. `pr list` returns [] (or one PR when FAKEGH_LIST_HAS_PR=1); `pr create` prints
-// a PR URL; `desktoken worker` creates a fake token file and prints its path. It also
-// appends its argv to FAKEGH_LOG when set (the literal PATH-shim recorder); the in-process
-// execCommand recorder is the authoritative one used by assertions.
+// tool's `gh` invocations hit this canned stand-in instead of the network. `pr list` returns
+// [] (or one PR when FAKEGH_LIST_HAS_PR=1); `pr create` prints a PR URL. It also appends its
+// argv to FAKEGH_LOG when set (the literal PATH-shim recorder); the in-process execCommand
+// recorder is the authoritative one used by assertions. (The role credential is read in
+// process since #5457, so this fake no longer stands in for desktoken: fakeRoleMinter does.)
 //
-// The `worker` and `list`/`create` cases model the REAL cross-installation failure mode
-// from #562/#565, not just a canned success: `desktoken worker` resolves an "owner"
-// from `--repo <slug>` — defaulting to "example-org" when the flag is ABSENT, exactly like
-// the production tool — and mints a token whose value encodes that owner
-// ("fake-worker-installation-token-for-<owner>"). `gh pr list`/`pr create` then check
-// that GH_TOKEN's embedded owner matches the owner of the `-R <repo>` target: a mismatch
-// exits 1 with the same "Could not resolve to a Repository" wording GitHub's real API
-// returns for an installation token scoped to the wrong org. Without deskpr forwarding
-// --repo, this fake would reproduce the bug and the regression tests below would fail
-// exactly as the real tool did.
+// The `list`/`create` cases model the REAL cross-installation failure mode from #562/#565,
+// not just a canned success: fakeRoleMinter hands out a credential whose value encodes the
+// owner it was asked for ("fake-worker-installation-token-for-<owner>"), and `gh pr
+// list`/`pr create` check that GH_TOKEN's embedded owner matches the owner of the `-R <repo>`
+// target: a mismatch exits 1 with the same "Could not resolve to a Repository" wording
+// GitHub's real API returns for an installation credential scoped to the wrong org. A deskpr
+// that read the credential for the wrong owner reproduces the bug, and the regression tests
+// below fail exactly as the real tool did.
 const fakeGHSource = `package main
 
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 )
 
@@ -79,34 +77,6 @@ func main() {
 		return "example-org/tracker"
 	}
 	switch {
-	case has("worker"), has("verifier"):
-		// desktoken worker [--repo <slug>]: mirror the REAL desktoken default — owner is
-		// parsed from --repo when present, else defaults to "example-org" (the bug #562/
-		// #565 fixed was deskreply/deskpr never passing --repo, so this always resolved
-		// "example-org").
-		o := "example-org"
-		if repo := val("--repo"); repo != "" {
-			o = owner(repo)
-		}
-		// The token lands under FAKE_TOKEN_DIR (set by the TestMain, removed with the
-		// fake's own directory), never loose in the real temp dir.
-		f, err := os.CreateTemp(os.Getenv("FAKE_TOKEN_DIR"), "fake-worker-token-*")
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "create temp token: %v\n", err)
-			os.Exit(1)
-		}
-		if _, werr := f.WriteString("fake-worker-installation-token-for-" + o + "\n"); werr != nil {
-			f.Close()
-			os.Remove(f.Name())
-			os.Exit(1)
-		}
-		f.Close()
-		if cerr := os.Chmod(f.Name(), 0o600); cerr != nil {
-			os.Remove(f.Name())
-			os.Exit(1)
-		}
-		abs, _ := filepath.Abs(f.Name())
-		fmt.Println(abs)
 	case has("list"):
 		target := val("-R")
 		tokenOwner := strings.TrimPrefix(os.Getenv("GH_TOKEN"), "fake-worker-installation-token-for-")
@@ -246,29 +216,52 @@ func runTests(m *testing.M) int {
 		fmt.Fprintf(os.Stderr, "build fake gh: %v\n%s\n", berr, out)
 		return 1
 	}
-	// Also build as desktoken (same fake binary, different name — the tool shells
-	// out to `desktoken worker` when --as-app is set; the fake handles the "worker"
-	// argv check).
-	buildDT := exec.Command("go", "build", "-o", filepath.Join(dir, "desktoken"), ".")
-	buildDT.Dir = dir
-	buildDT.Env = fakeBuildEnv()
-	if out, berr := goquiet.Cmd(buildDT).CombinedOutput(); berr != nil {
-		fmt.Fprintf(os.Stderr, "build fake desktoken: %v\n%s\n", berr, out)
-		return 1
-	}
-	// The fake desktoken's token files land here, inside the directory this function
-	// removes — never in the real temp dir, where nothing would ever remove them.
+	// The role credential is read IN PROCESS since #5457 (deskkit.WriteVerbRoleCredential),
+	// so no fake desktoken binary is built: the suite installs a fake minter instead. Its
+	// credential files land here, inside the directory this function removes — never in the
+	// real temp dir, where nothing would ever remove them.
 	tokens := filepath.Join(dir, "tokens")
 	if merr := os.Mkdir(tokens, 0o700); merr != nil {
 		fmt.Fprintln(os.Stderr, merr)
 		return 1
 	}
-	if serr := os.Setenv("FAKE_TOKEN_DIR", tokens); serr != nil {
-		fmt.Fprintln(os.Stderr, serr)
-		return 1
-	}
+	restore := deskkit.SetRoleTokenMinter(fakeRoleMinter(tokens))
+	defer restore()
 	fakeGHDir = dir
 	return gitquiet.Run(m)
+}
+
+// mintRecord is one call the fake minter answered.
+type mintRecord struct{ role, owner string }
+
+var (
+	mintMu  sync.Mutex
+	mintLog []mintRecord
+)
+
+// fakeRoleMinter is the suite's stand-in for the in-process credential provider. It models
+// the #562/#565 cross-installation failure mode, not just a canned success: the credential
+// VALUE encodes the owner it was minted for ("fake-<role>-installation-token-for-<owner>"),
+// and the fake forge refuses a request whose credential names another owner. Every call is
+// appended to mintLog; deskkit memoises per (role, owner) for the life of the process, so a
+// case that asserts on mintLog uses a pair no earlier case has asked for.
+func fakeRoleMinter(dir string) func(role, owner string) (string, string, error) {
+	return func(role, owner string) (string, string, error) {
+		mintMu.Lock()
+		mintLog = append(mintLog, mintRecord{role, owner})
+		mintMu.Unlock()
+		f, err := os.CreateTemp(dir, "fake-"+role+"-*")
+		if err != nil {
+			return "", "", err
+		}
+		_, werr := f.WriteString("fake-" + role + "-installation-token-for-" + owner + "\n")
+		cerr := f.Close()
+		if werr != nil || cerr != nil {
+			os.Remove(f.Name())
+			return "", "", fmt.Errorf("write the fake %s credential: %v %v", role, werr, cerr)
+		}
+		return f.Name(), "", nil
+	}
 }
 
 // --- fixtures -------------------------------------------------------------------
@@ -778,25 +771,41 @@ func TestWarnUnknownNeverSettles(t *testing.T) {
 	}
 }
 
+// clearRoleCred empties the package's held credential for one case and restores it after, so
+// assertRoleCredRead sees only what THIS case read.
+func clearRoleCred(t *testing.T) {
+	t.Helper()
+	old := ghToken
+	ghToken = ""
+	t.Cleanup(func() { ghToken = old })
+}
+
+// assertRoleCredRead fails unless the verb holds the credential the fake minter hands out for
+// (role, owner) and forked no desktoken binary. It compares values without printing them.
+// deskkit's per-process memo may answer a repeat (role, owner) pair without calling the
+// minter, so this asserts on the credential held, never on a mint count.
+func assertRoleCredRead(t *testing.T, calls [][]string, role, owner string) {
+	t.Helper()
+	if ghToken != "fake-"+role+"-installation-token-for-"+owner {
+		t.Fatalf("deskpr does not hold the %s role credential for %s (held one is empty: %t)", role, owner, ghToken == "")
+	}
+	for _, c := range calls {
+		if len(c) > 0 && filepath.Base(c[0]) == "desktoken" {
+			t.Fatalf("deskpr forked desktoken — a write verb reads its credential in process (#5457): %v", c)
+		}
+	}
+}
+
 func TestCreateAsAppMintsWorkerToken(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
+	clearRoleCred(t)
 
 	rc := run([]string{"create", "--title", "worker app PR", "--body-min", "posted as worker app\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create --as-app rc = %d, want 0", rc)
 	}
-	// desktoken worker was called to mint the worker App token.
-	found := false
-	for _, c := range *calls {
-		if len(c) >= 2 && filepath.Base(c[0]) == "desktoken" && c[1] == "worker" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("expected `desktoken worker` call when --as-app is set; calls: %v", *calls)
-	}
+	assertRoleCredRead(t, *calls, "worker", "example-org")
 	// The gh calls happened with GH_TOKEN set in the environment.
 	if !anyCall(ghCalls(*calls), "pr", "create", "--draft") {
 		t.Fatalf("expected `gh pr create --draft`; gh calls: %v", ghCalls(*calls))
@@ -811,23 +820,13 @@ func TestCreateAsAppMintsWorkerToken(t *testing.T) {
 func TestCreateMintsWorkerTokenScopedToOwnRepo(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
+	clearRoleCred(t)
 
-	rc := run([]string{"create", "--title", "scoped mint", "--body-min", "desktoken must be told which repo it's minting for\nBrief: fixture/01"})
+	rc := run([]string{"create", "--title", "scoped mint", "--body-min", "the credential read must be told which repo it is for\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create rc = %d, want 0", rc)
 	}
-	found := false
-	for _, c := range *calls {
-		if len(c) >= 2 && filepath.Base(c[0]) == "desktoken" && c[1] == "worker" {
-			found = true
-			if !callContainsAll(c, "--repo", "example-org/tracker") {
-				t.Fatalf("desktoken worker call did not forward --repo <this worktree's repo>: %v", c)
-			}
-		}
-	}
-	if !found {
-		t.Fatalf("expected a `desktoken worker` call; calls: %v", *calls)
-	}
+	assertRoleCredRead(t, *calls, "worker", "example-org")
 }
 
 // TestCreateMediciFinanceRepoSucceeds is the end-to-end regression test for #565
@@ -850,7 +849,7 @@ func TestCreateMediciFinanceRepoSucceeds(t *testing.T) {
 	rc := run([]string{"create", "--title", "medici finance PR", "--body-min", "creating on a repo under an org other than example-org\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create on a medici-finance-origin worktree rc = %d, want 0 (#565 regression: "+
-			"desktoken must resolve the medici-finance installation, not silently default to example-org)", rc)
+			"the worker credential must resolve the medici-finance installation, not silently default to example-org)", rc)
 	}
 	if !anyCall(ghCalls(*calls), "pr", "create", "--draft") {
 		t.Fatalf("expected a `gh pr create --draft`; gh calls: %v", ghCalls(*calls))
@@ -864,21 +863,13 @@ func TestCreateMediciFinanceRepoSucceeds(t *testing.T) {
 func TestCreateDefaultMintsWorkerToken(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
+	clearRoleCred(t)
 
 	rc := run([]string{"create", "--title", "default is as-app", "--body-min", "posted as worker app by default\nBrief: fixture/01"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("create (no --as-app) rc = %d, want 0", rc)
 	}
-	found := false
-	for _, c := range *calls {
-		if len(c) >= 2 && filepath.Base(c[0]) == "desktoken" && c[1] == "worker" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("expected `desktoken worker` call with NO --as-app flag (default must be true); calls: %v", *calls)
-	}
+	assertRoleCredRead(t, *calls, "worker", "example-org")
 	if !anyCall(ghCalls(*calls), "pr", "create", "--draft") {
 		t.Fatalf("expected `gh pr create --draft`; gh calls: %v", ghCalls(*calls))
 	}
@@ -889,21 +880,13 @@ func TestUpdateDefaultMintsWorkerToken(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	t.Setenv("FAKEGH_LIST_HAS_PR", "1") // open draft PR on the branch
+	clearRoleCred(t)
 
 	rc := run([]string{"update"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("update (no --as-app) rc = %d, want 0", rc)
 	}
-	found := false
-	for _, c := range *calls {
-		if len(c) >= 2 && filepath.Base(c[0]) == "desktoken" && c[1] == "worker" {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("expected `desktoken worker` call with NO --as-app flag on update (default must be true); calls: %v", *calls)
-	}
+	assertRoleCredRead(t, *calls, "worker", "example-org")
 }
 
 // The `--as-app=false` ambient-identity fallback is RETIRED (write-verbs-C): the token-refusing
@@ -916,26 +899,15 @@ func TestUpdateAsAppMintsWorkerToken(t *testing.T) {
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	t.Setenv("FAKEGH_LIST_HAS_PR", "1") // open draft PR on the branch
+	clearRoleCred(t)
 
 	rc := run([]string{"update"})
 	if rc != deskkit.ExitOK {
 		t.Fatalf("update --as-app rc = %d, want 0", rc)
 	}
-	found := false
-	for _, c := range *calls {
-		if len(c) >= 2 && filepath.Base(c[0]) == "desktoken" && c[1] == "worker" {
-			found = true
-			// #565 regression: the update call site must forward --repo too, not just
-			// create's.
-			if !callContainsAll(c, "--repo", "example-org/tracker") {
-				t.Fatalf("desktoken worker call on update did not forward --repo <this worktree's repo>: %v", c)
-			}
-			break
-		}
-	}
-	if !found {
-		t.Fatalf("expected `desktoken worker` call when --as-app is set on update; calls: %v", *calls)
-	}
+	// #565 regression: the update call site reads the credential for this worktree's own
+	// owner too, not just create's.
+	assertRoleCredRead(t, *calls, "worker", "example-org")
 }
 
 // TestMintTokenResolvesRoleFromLoop is the #396 regression: mintWorkerToken must mint the
@@ -964,48 +936,21 @@ func TestMintTokenResolvesRoleFromLoop(t *testing.T) {
 			t.Setenv("DESK_LOOP", tc.loop)
 			withStderrCapture(t) // absorb the fallback note the default path prints
 
-			// A token file the stubbed desktoken "prints" the path of, so mintWorkerToken's
-			// ReadFile succeeds and sets ghToken.
-			tokPath := filepath.Join(t.TempDir(), "tok")
-			if werr := os.WriteFile(tokPath, []byte("fake-token\n"), 0o600); werr != nil {
-				t.Fatalf("write token fixture: %v", werr)
-			}
-
-			var recorded [][]string
+			clearRoleCred(t)
+			var calls [][]string
 			oldExec := execCommand
 			execCommand = func(name string, args ...string) *exec.Cmd {
-				recorded = append(recorded, append([]string{name}, args...))
-				return oldExec("echo", tokPath) // any role: echo the token path, exit 0
+				calls = append(calls, append([]string{name}, args...))
+				return oldExec(name, args...)
 			}
-			oldTok := ghToken
-			t.Cleanup(func() { execCommand, ghToken = oldExec, oldTok })
+			t.Cleanup(func() { execCommand = oldExec })
 
 			if merr := mintWorkerToken("medici-finance/assay"); merr != nil {
 				t.Fatalf("mintWorkerToken: %v", merr)
 			}
-
-			// Exactly one desktoken call, and it names the resolved role plus the scoped
-			// --repo (the #565 property must survive the role resolution).
-			var dt []string
-			for _, c := range recorded {
-				if len(c) > 0 && filepath.Base(c[0]) == "desktoken" {
-					dt = c
-				}
-			}
-			if dt == nil {
-				t.Fatalf("no desktoken call recorded; calls: %v", recorded)
-			}
-			if len(dt) < 2 || dt[1] != tc.wantRole {
-				t.Fatalf("desktoken role = %q, want %q (loop %q); call: %v", func() string {
-					if len(dt) >= 2 {
-						return dt[1]
-					}
-					return "<none>"
-				}(), tc.wantRole, tc.loop, dt)
-			}
-			if !callContainsAll(dt, "--repo", "medici-finance/assay") {
-				t.Fatalf("desktoken %s call did not forward --repo <own repo>: %v", tc.wantRole, dt)
-			}
+			// The credential read names the resolved role AND the scoped owner (the #565
+			// property must survive the role resolution), and forks nothing (#5457).
+			assertRoleCredRead(t, calls, tc.wantRole, "medici-finance")
 		})
 	}
 }

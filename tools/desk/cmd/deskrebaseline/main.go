@@ -12,12 +12,11 @@
 //
 // The safe/refusal boundary is the single point of failure: a loose "safe" launders a real
 // regression into a green. It therefore fails CLOSED (classify.go) — a row reaches the safe
-// set only by a positive proof, and everything else is filed. In this first cut the ONE safe
-// class the shipped verb produces is safe:rename (a single rename hop to an existing file).
-// safe:count (a pure-additions count drift) and safe:idiom (a tool idiom retired by a
-// recorded ruling) are NOT YET IMPLEMENTED: the classifier carries their arms, but
-// gatherRowFacts (facts.go) does not populate their facts, so such a row falls through to
-// refused:unclassified and is filed as today (see docs/rebaseline.md).
+// set only by a positive proof, and everything else is filed. The safe classes are
+// safe:rename (a single rename hop to an existing file), safe:count (a count that grew while
+// git history shows its targets gained only added lines since the Evidence commit) and
+// safe:idiom (a tool idiom an entry of the checked-in retired-idioms.json list retires, with
+// the ruling reference that retired it). See docs/rebaseline.md.
 //
 // USAGE:
 //
@@ -311,6 +310,16 @@ func printPlan(w io.Writer, lb loadedBrief, row verifyRow, f RowFacts, cls Class
 	}
 	if f.CommandProbed {
 		fmt.Fprintf(w, "evidence: command-probed ran=%t fails-expect=%t\n", f.CommandRan, f.RCDiffers)
+	}
+	if f.RetiredIdiom != "" {
+		fmt.Fprintf(w, "evidence: retired-idiom=%s ruling=%s rewrite-rerun=%s\n", f.RetiredIdiom, f.IdiomRuling, f.IdiomProbe)
+	}
+	if f.CountShaped {
+		fmt.Fprintf(w, "evidence: count-now=%d additions-only=%t", f.CountNow, f.OnlyAdditions)
+		if f.CountEvidence != "" {
+			fmt.Fprintf(w, " (%s)", f.CountEvidence)
+		}
+		fmt.Fprintln(w)
 	}
 	if cls.Verdict.IsSafe() {
 		branch := rebaselineBranch(lb.Path, row.Num)

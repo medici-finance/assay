@@ -1,0 +1,41 @@
+{
+  "note": "Decision fixtures for TestPiPilotDecisionEvidence. Each fixture starts from the published results.json and source-manifest.json, applies go_control's patches (which complete the evidence the pilot does not yet hold, so the derivation reaches GO), then its own dotted-path patches. want is the derived verdict; accept is whether the claimed verdict is truthful against it. A fabricated GO over any adverse or unknown fixture must be rejected; a truthful NO-GO or UNKNOWN must be accepted. Group indexes follow results.json: 0 Contract, 1 Restart, 2 Effects, 3 Authority, 4 StopAndObserve, 5 Accounting, 6 DecisionEvidence, 7 NegativeControls.",
+  "go_control": {
+    "name": "positive-control",
+    "results_patch": {
+      "environment": {"os": "linux", "network_denied": true, "approved_environment": true},
+      "measurements.0.commit_count": 101,
+      "measurements.0.peak_continuous": true,
+      "measurements.1.commit_count": 1001,
+      "measurements.1.peak_continuous": true
+    },
+    "manifest_patch": {"vetted_by": "fixture maintainer (control only)"},
+    "claim": "GO",
+    "accept": true,
+    "want": "GO"
+  },
+  "fixtures": [
+    {"name": "wrong-pi-tuple", "results_patch": {"tuple.pi_durable": "1.0.4"}, "claim": "GO", "accept": false, "want": "UNKNOWN"},
+    {"name": "wrong-tuple-truthful", "results_patch": {"tuple.pi_durable": "1.0.4"}, "claim": "UNKNOWN", "accept": true, "want": "UNKNOWN"},
+    {"name": "unvetted-tuple", "manifest_patch": {"vetted_by": "pending maintainer vetting"}, "claim": "GO", "accept": false, "want": "UNKNOWN"},
+    {"name": "stale-subject-hash", "results_patch": {"subject_hashes": {"experiments/pirunner/adapter.go": "0000"}}, "claim": "GO", "accept": false, "want": "UNKNOWN"},
+    {"name": "local-not-approved", "results_patch": {"environment.os": "darwin", "environment.approved_environment": false}, "claim": "GO", "accept": false, "want": "UNKNOWN"},
+    {"name": "network-allowed", "results_patch": {"environment.network_denied": false}, "claim": "GO", "accept": false, "want": "UNKNOWN"},
+    {"name": "omitted-case", "results_patch": {"groups.1.cases": [{"name": "KillMidTool", "status": "pass"}, {"name": "CrashAfterIntent", "status": "pass"}, {"name": "CrashAfterSubmit", "status": "pass"}, {"name": "OneOwner", "status": "pass"}]}, "claim": "GO", "accept": false, "want": "UNKNOWN"},
+    {"name": "failed-case", "results_patch": {"groups.2.cases.1.status": "fail"}, "claim": "GO", "accept": false, "want": "UNKNOWN"},
+    {"name": "failed-group", "results_patch": {"groups.2.status": "fail"}, "claim": "GO", "accept": false, "want": "UNKNOWN"},
+    {"name": "missing-exit", "results_patch": {"groups.3.exit": null}, "claim": "GO", "accept": false, "want": "UNKNOWN"},
+    {"name": "unrun-group", "results_patch": {"groups.7.status": "unrun"}, "claim": "GO", "accept": false, "want": "UNKNOWN"},
+    {"name": "group-absent", "results_patch": {"groups.4.name": "TestSomethingElse"}, "claim": "GO", "accept": false, "want": "UNKNOWN"},
+    {"name": "control-survived", "results_patch": {"negative_controls.1.verdict": "survived"}, "claim": "GO", "accept": false, "want": "UNKNOWN"},
+    {"name": "control-build-fail", "results_patch": {"negative_controls.0.verdict": "invalid:build"}, "claim": "GO", "accept": false, "want": "UNKNOWN"},
+    {"name": "measurement-missing", "results_patch": {"measurements.1.tool_results": 999}, "claim": "GO", "accept": false, "want": "UNKNOWN"},
+    {"name": "coverage-partial", "results_patch": {"measurements.0.commit_count": null}, "claim": "GO", "accept": false, "want": "UNKNOWN"},
+    {"name": "no-deletion", "results_patch": {"deletions": []}, "claim": "GO", "accept": false, "want": "UNKNOWN"},
+    {"name": "duplicate-effect", "results_patch": {"adverse_findings": ["duplicate-effect"]}, "claim": "GO", "accept": false, "want": "NO-GO"},
+    {"name": "duplicate-effect-truthful", "results_patch": {"adverse_findings": ["duplicate-effect"]}, "claim": "NO-GO", "accept": true, "want": "NO-GO"},
+    {"name": "stale-auth-hidden", "results_patch": {"adverse_findings": ["stale-authorization"]}, "claim": "UNKNOWN", "accept": false, "want": "NO-GO"},
+    {"name": "offset-deletion", "results_patch": {"deletions": [{"candidate": "inner tool checkpointing", "paths": ["planned"], "disposition": "omit", "offset_by_replacement": true}]}, "claim": "GO", "accept": false, "want": "NO-GO"},
+    {"name": "go-understated", "claim": "UNKNOWN", "accept": true, "want": "GO"}
+  ]
+}

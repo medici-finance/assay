@@ -114,7 +114,7 @@ Options:
    content already pushed, including content pushed under an override, is never judged again on
    later updates.
 
-Default if no answer: option 1 after 14 days. Silence changes nothing. Option 2 is the
+Default if no answer: option 1 after 2026-11-24. Silence changes nothing. Option 2 is the
 recommendation. The ruling below takes option 2 and adds a condition: unchanged context is
 skipped only when the diff's base is proven to be on the remote.
 

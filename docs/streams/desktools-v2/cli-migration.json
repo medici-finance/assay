@@ -82,6 +82,16 @@
       "reason": "offline planted defects that prove the brief-08 acceptance assertions reject broken inputs; run only by desk-supervision/08 Verify rows, never installed or released as an operator CLI (#1363)"
     },
     {
+      "class": "test",
+      "pattern": "docs/streams/desk-tools/verify.d/39-consumer-routes.sh",
+      "reason": "desk-tools/39 Verify row 3 executes this pinned source-only helper to check the landed consumer routes against three local Git diffs"
+    },
+    {
+      "class": "test",
+      "pattern": "docs/streams/measured-status/verify.d/06-allowance-backlog.sh",
+      "reason": "read-only acceptance check for the stamp-allowance removal condition; run only by measured-status/06 Verify rows (a witness host run, plus its offline test), never installed or released as an operator CLI (#3369)"
+    },
+    {
       "class": "library",
       "pattern": "tools/release/images.py",
       "reason": "internal release image producer imported by fixed workflow Python calls; no shebang, main guard, argument parser or independent operator entrypoint (#3204)"
@@ -180,6 +190,11 @@
       "class": "test",
       "pattern": "tools/release/sbom_test.py",
       "reason": "offline SBOM writer and release workflow wiring fixtures executed by build-test through the regression package; never an operator entrypoint (#4716)"
+    },
+    {
+      "class": "test",
+      "pattern": "tools/release/desk_manifest_test.py",
+      "reason": "offline desk-tools tarball manifest fixtures executed by build-test through the regression package; never an operator entrypoint (#6604)"
     },
     {
       "class": "test",
@@ -360,6 +375,11 @@
       "class": "library",
       "pattern": "statusgen/boardadd.sh",
       "reason": "board-staging function (board_add) embedded verbatim in both CI templates statusgen init writes (issue #2915); no shebang, never executed"
+    },
+    {
+      "class": "library",
+      "pattern": "tools/cellctl/tests/parity-extensions.sh",
+      "reason": "test-only expected-output adapter sourced by parity.test.sh; no standalone parser or operator command (issue #6455)"
     },
     {
       "class": "library",
@@ -2823,6 +2843,24 @@
       "complexity": "simple",
       "basis": "104 lines at 53e432b36c75",
       "owner": "desktools-v2/80",
+      "state": "pending"
+    },
+    {
+      "executable": "desk_manifest.py",
+      "path": "tools/release/desk_manifest.py",
+      "kind": "script",
+      "module": "python3",
+      "release": "repo tooling; run by release.yml's desk-tools package step as python3 -m tools.release.desk_manifest, and operator-invoked from a checkout",
+      "consumers": [
+        ".github/workflows/release.yml",
+        "ci/staged-workflows/release.yml",
+        "tools/release/README.md",
+        "docs/distribution.md"
+      ],
+      "parser": "hand-rolled sys.argv: two positionals, a verb (write or check) and a directory",
+      "complexity": "simple",
+      "basis": "142 lines, 2 verbs, no flags (#6604)",
+      "owner": "desktools-v2/82",
       "state": "pending"
     },
     {

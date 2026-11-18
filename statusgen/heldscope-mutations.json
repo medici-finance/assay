@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction|TestHeldLatest|TestHeldCarryElement|TestHeldContainerFence|TestVerifyflip|TestHeldWitnessNonZero|TestHeldNonZero|TestHeldProse' -count=1 -timeout 300s",
+  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction|TestHeldLatest|TestHeldCarryElement|TestHeldContainerFence|TestVerifyflip|TestHeldWitnessNonZero|TestHeldNonZero|TestHeldProse|TestSh' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — supersession drops every earlier hold (the S1 defect)",
     "file": "heldscope.go",
@@ -838,8 +838,8 @@
     {
       "name": "#4294 witness: a Base cell counts as a clean outcome, not neutral",
       "file": "heldscope.go",
-      "old": "lines[r][rg[0]:rg[1]]) {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\tst := heldOutcome(",
-      "new": "lines[r][rg[0]:rg[1]]) {\n\t\t\t\t\tran = true\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\tst := heldOutcome("
+      "old": "lines[r][rg[0]:rg[1]]) {\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\tcell := lines[r][rg[0]:rg[1]]",
+      "new": "lines[r][rg[0]:rg[1]]) {\n\t\t\t\t\tran = true\n\t\t\t\t\tcontinue\n\t\t\t\t}\n\t\t\t\tcell := lines[r][rg[0]:rg[1]]"
     },
     {
       "name": "#4294 witness: a Base cell is matched after heldNorm (emphasis ignored)",
@@ -850,7 +850,7 @@
     {
       "name": "#4294 prose pipe: the one-line exemption is off (a prose pipe line still blocks whole supersession)",
       "file": "heldscope.go",
-      "old": "out[i].key == \"\" && !heldOneLineProse(lines, inFence, i) {",
+      "old": "out[i].key == \"\" && !heldOneLineProse(lines, inFence, i, latestRun && e == len(starts)-1) {",
       "new": "out[i].key == \"\" {"
     },
     {
@@ -1656,6 +1656,24 @@
       "file": "heldscope.go",
       "old": "(?: output=sha256:[0-9a-f]{64} log=row-[0-9]{6}\\.log)?",
       "new": ""
+    },
+    {
+      "name": "#6767 latest-run note: a noted restatement row never reads clean (the corroboration branch is off)",
+      "file": "heldscope.go",
+      "old": "\t\t\t\t\tif role == heldColOther || !heldCorroboratedNote(cell) {",
+      "new": "\t\t\t\t\tif true {"
+    },
+    {
+      "name": "#6767 latest-run note: any note corroborates, whatever it says",
+      "file": "heldscope.go",
+      "old": "\t\t\t\t\tif role == heldColOther || !heldCorroboratedNote(cell) {",
+      "new": "\t\t\t\t\tif role == heldColOther {"
+    },
+    {
+      "name": "#6767 latest-run bullet: a one-line bullet holding a pipe is never read as prose",
+      "file": "heldscope.go",
+      "old": "\tif items && heldOneLineItem(l) {",
+      "new": "\tif false && items && heldOneLineItem(l) {"
     }
   ]
 }

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -86,13 +87,19 @@ func (c *clock) set(t time.Time) {
 	c.now = t
 }
 
+var idSeq atomic.Int64
+
+// newID is a two-word id no other test plan in this run has: "test-" and a counter spelled in
+// letters, so tests never collide by chance the way two random draws could.
 func newID(t *testing.T) string {
 	t.Helper()
-	id, err := NewID()
-	if err != nil {
-		t.Fatal(err)
+	n := idSeq.Add(1)
+	var b [4]byte
+	for i := len(b) - 1; i >= 0; i-- {
+		b[i] = byte('a' + n%26)
+		n /= 26
 	}
-	return id
+	return "test-" + string(b[:])
 }
 
 // testPlan is a one-action drain plan on cell whose precondition "state" was measured as value.
@@ -169,7 +176,7 @@ func TestOutcomeExitCodes(t *testing.T) {
 	}
 }
 
-// The digest must be sha256 over RFC 8785 bytes with digest and confirm_code omitted, and confirm_code its first 8 characters (spec/cell-op-v1.md).
+// The digest must be sha256 over RFC 8785 bytes with digest and confirm_code omitted, and confirm_code the word the digest selects (spec/cell-op-v1.md).
 // regression: #2890
 func TestPlanDigestIsJCS(t *testing.T) {
 	p, err := NewPlan("0123456789abcdef01234567", "gc", []string{"b", "a", "b"}, []Action{{
@@ -190,7 +197,7 @@ func TestPlanDigestIsJCS(t *testing.T) {
 	if string(got) != want {
 		t.Fatalf("canonical form\n got %s\nwant %s", got, want)
 	}
-	if p.ConfirmCode != p.Digest[:8] || len(p.Digest) != 64 {
+	if w, err := confirmWord(p.Digest, p.ID); err != nil || p.ConfirmCode != w || len(p.Digest) != 64 {
 		t.Fatalf("digest %q confirm %q", p.Digest, p.ConfirmCode)
 	}
 	q := p

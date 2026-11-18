@@ -64,10 +64,17 @@ func provision(o options, stdout, stderr io.Writer) int {
 		groupTier: "unknown",
 	}
 	defer p.cleanup()
-	if err := p.run(); err != nil {
-		return 1
+	code := 1
+	if err := p.run(); err == nil {
+		code = p.summary()
 	}
-	return p.summary()
+	if p.api.unreadable != nil {
+		// A run that met an answer it could not read whole did not see what the forge holds:
+		// could-not-check (exit 6), whatever the steps around it reported.
+		fmt.Fprintf(p.err, "could-not-check: %v\n", p.api.unreadable)
+		return 6
+	}
+	return code
 }
 
 func (p *provisioner) cleanup() {
@@ -222,6 +229,9 @@ func (p *provisioner) uploadAvatar(role, username, tokenFile string) {
 	if err == nil {
 		self := newAPIClient(p.o.gitlabURL, strings.TrimRight(string(tok), "\n"))
 		status, _ = self.putFile("/user/avatar", "avatar", filepath.Base(file), data)
+		if self.unreadable != nil {
+			p.api.noteUnreadable(self.unreadable)
+		}
 	}
 	p.say("avatar: %s <- %s (HTTP %s)", username, file, status)
 	if status != "200" {

@@ -18,7 +18,8 @@ STAMP AFTER OPEN. The dispatching worker-desk hands the opened PR and the actual
 from its real dispatch receipt to the coordinator desk (the-desk), which runs --stamp-only.
 Worker-desk and its child worker are both refused; inherited DESK_SESSION is claim custody,
 not independent stamp authority. Both model and tier are required;
-no model is inferred from existing labels. The original kit selects the same dispatcher
+no model is inferred from existing labels (the one alias settlement below only narrows the
+selected model). The original kit selects the same dispatcher
 role as ordinary dispatch. The session role must match it and be roster-bound; the worker
 cannot self-attest. No item key, claim, worktree, roster registration, hook, queue label or
 prompt is involved. This does not launch an agent or renew review-claim authority.
@@ -41,7 +42,19 @@ actually selected by the harness, never a guessed provider/model mapping.
 
 The shared stamp step reads current labels and their standing appliers, repairs partial,
 conflicting or foreign/unattributed stamps using the explicitly selected pair, and leaves
-an identical accepted stamp unchanged. Read failures stop before writes. After a write it
+an identical accepted stamp unchanged. One settlement keeps two spellings of one model from
+replacing each other, and only when no worker attestation is named: when the selected model
+is an unversioned family alias (letters only, such as opus) and it is the family word of the
+accepted standing stamp's slug (the -/. separated word directly before the first
+digit-bearing word, never the first word: opus in claude-opus-5-5), the standing slug is
+kept, only the tier is taken from the selection, and the receipt reports the settlement. A
+vendor, suffix or version word never settles. That is the only case where an existing label
+shapes the stamp, and it narrows the model without changing it. The full id over a standing
+alias still replaces it, and a foreign or partial stamp is never kept. A run bound to a
+worker attestation, and the shared stamp writer every attestation record uses, write exactly
+the selected pair. An alias cannot correct a stale versioned stamp of the same family: opus
+over a standing claude-opus-4-1 keeps claude-opus-4-1, so correcting a versioned stamp needs
+the full id. Read failures stop before writes. After a write it
 re-reads labels AND timeline with the applier-aware reader for the kit's pair; only the
 exact accepted pair returns an applied-and-verified receipt. Unverified writes exit 6, never success. An open
 change is required for --stamp-only. Its --dry-run reads and prints the removal/application
@@ -78,13 +91,17 @@ change and, like the verifier's, is excluded from issue intake, boards and sweep
 
 STEPS, in order. Each prints one line; the first red one stops the dispatch and NAMES itself.
 
-  Before step 1, two brief-side holds refuse with exit 5, naming claim-acquire, with
+  Before step 1, three brief-side holds refuse with exit 5, naming claim-acquire, with
   nothing claimed and no worktree made: a --brief whose exec-tier is stricter than
-  --tier (checked on a --dry-run too), and a fresh worker dispatch of a gate: human
-  brief whose decision issue (its decision-issue: field, else the issue carrying its
-  decision-gate marker) is open, carries needs-decision, and has no ruling from the
-  ratifying identity since that label was applied. A decision read that fails, or
-  a brief whose decision issue does not exist yet, does not hold.
+  --tier (checked on a --dry-run too); a brief-shaped item key, dispatched with no
+  --brief and no --gate-human, whose brief (see step 4) matches no file, more than
+  one, or sits in a directory or file that cannot be read (could-not-check, naming
+  the key and every path tried); and a fresh worker dispatch of a gate: human
+  brief (given by --brief or named by the key) whose decision issue (its
+  decision-issue: field, else the issue carrying its decision-gate marker) is open,
+  carries needs-decision, and has no ruling from the ratifying identity since that
+  label was applied. A decision read that fails, or a brief whose decision issue
+  does not exist yet, does not hold.
 
   1 claim-acquire     runs the claim tool's acquire <claim-key>. The tool is the pure-Go
                       deskclaim-ref binary when it is on PATH (installed with desk-tools;
@@ -127,7 +144,13 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       the exact command is emitted into the prompt.
   4 decision-gate     with --gate-human (or a --brief whose own metadata gates on a
                       human), ensures the decision issue so the human has something
-                      concrete to decide. The tool resolves like the claim tool:
+                      concrete to decide. With no --brief, a brief-shaped item key
+                      (<repo>--<stream>--<NN>, <stream>/<NN>) names its brief,
+                      docs/streams/<stream>/brief-<NN>-*.md under --root then
+                      --claim-root, and that brief's `gate: human` gates the same way;
+                      a key whose brief matches no file, or more than one, is REFUSED
+                      pre-claim (exit 5). SKIPPED is printed only when the brief was
+                      read and does not gate, or the item names no brief (issue-<N>). The tool resolves like the claim tool:
                       `deskdecision ensure` (installed with desk-tools) when it is on
                       PATH, else tools/decision-issue.sh ensure from the resolved root
                       (--claim-root when given, else --root). With neither it REFUSES

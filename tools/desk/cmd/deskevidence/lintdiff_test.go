@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,7 +25,7 @@ func stubStatusgenLint(t *testing.T, before, after []string) {
 	t.Helper()
 	old := statusgenLintFn
 	calls := 0
-	statusgenLintFn = func(root string) ([]string, error) {
+	statusgenLintFn = func(root string, options childOptions) ([]string, error) {
 		calls++
 		switch calls {
 		case 1:
@@ -48,7 +49,7 @@ func TestLintDiffAtIntroducedOnly(t *testing.T) {
 	stubStatusgenLint(t, []string{preexisting}, []string{preexisting, introducedOne})
 
 	root := t.TempDir()
-	introduced, err := lintDiffAt(root, "docs/streams/x/brief.md", []byte("new content\n"))
+	introduced, err := lintDiffAt(root, "docs/streams/x/brief.md", []byte("new content\n"), childOptions{})
 	if err != nil {
 		t.Fatalf("lintDiffAt: %v", err)
 	}
@@ -65,7 +66,7 @@ func TestLintDiffAtCleanTreeIntroducesNothing(t *testing.T) {
 	stubStatusgenLint(t, same, same)
 
 	root := t.TempDir()
-	introduced, err := lintDiffAt(root, "docs/streams/x/brief.md", []byte("new content\n"))
+	introduced, err := lintDiffAt(root, "docs/streams/x/brief.md", []byte("new content\n"), childOptions{})
 	if err != nil {
 		t.Fatalf("lintDiffAt: %v", err)
 	}
@@ -90,7 +91,7 @@ func TestLintDiffAtRestoresOriginalFile(t *testing.T) {
 		t.Fatalf("write original: %v", err)
 	}
 
-	if _, err := lintDiffAt(root, rel, []byte("staged content that must not survive\n")); err != nil {
+	if _, err := lintDiffAt(root, rel, []byte("staged content that must not survive\n"), childOptions{}); err != nil {
 		t.Fatalf("lintDiffAt: %v", err)
 	}
 
@@ -119,7 +120,7 @@ func TestLintDiffAtRestoresOriginalFileOnRefusal(t *testing.T) {
 		t.Fatalf("write original: %v", err)
 	}
 
-	introduced, err := lintDiffAt(root, rel, []byte("staged content that must not survive\n"))
+	introduced, err := lintDiffAt(root, rel, []byte("staged content that must not survive\n"), childOptions{})
 	if err != nil {
 		t.Fatalf("lintDiffAt: %v", err)
 	}
@@ -145,7 +146,7 @@ func TestLintDiffAtRemovesNewlyCreatedFile(t *testing.T) {
 	root := t.TempDir()
 	rel := "docs/streams/x/new-brief.md"
 
-	if _, err := lintDiffAt(root, rel, []byte("brand new content\n")); err != nil {
+	if _, err := lintDiffAt(root, rel, []byte("brand new content\n"), childOptions{}); err != nil {
 		t.Fatalf("lintDiffAt: %v", err)
 	}
 
@@ -161,12 +162,12 @@ func TestLintDiffAtRemovesNewlyCreatedFile(t *testing.T) {
 func TestLintDiffAtBeforeLintErrorPropagatesWithoutStaging(t *testing.T) {
 	old := statusgenLintFn
 	wantErr := deskkit.Unverifiable("statusgen is not on PATH", nil)
-	statusgenLintFn = func(string) ([]string, error) { return nil, wantErr }
+	statusgenLintFn = func(string, childOptions) ([]string, error) { return nil, wantErr }
 	t.Cleanup(func() { statusgenLintFn = old })
 
 	root := t.TempDir()
 	rel := "docs/streams/x/brief.md"
-	_, err := lintDiffAt(root, rel, []byte("content\n"))
+	_, err := lintDiffAt(root, rel, []byte("content\n"), childOptions{})
 	if err != wantErr {
 		t.Fatalf("lintDiffAt error = %v, want the before-lint error propagated unchanged", err)
 	}
@@ -200,7 +201,7 @@ func fakeStatusgenOnPath(t *testing.T, script string) {
 // rule.
 func TestStatusgenLintAtNotOnPathIsUnverifiable(t *testing.T) {
 	t.Setenv("PATH", t.TempDir()) // a PATH with nothing on it
-	_, err := statusgenLintAt(t.TempDir())
+	_, err := statusgenLintAt(t.TempDir(), childOptions{})
 	if err == nil {
 		t.Fatal("statusgenLintAt with no statusgen on PATH returned nil error — want could-not-check")
 	}
@@ -220,7 +221,7 @@ echo "NOTICE: some notice, not a problem"
 echo "PROBLEM: docs/streams/y/brief.md: second problem"
 exit 1`)
 
-	got, err := statusgenLintAt(t.TempDir())
+	got, err := statusgenLintAt(t.TempDir(), childOptions{})
 	if err != nil {
 		t.Fatalf("statusgenLintAt: %v", err)
 	}
@@ -243,7 +244,7 @@ func TestStatusgenLintAtCleanExitNoProblems(t *testing.T) {
 	fakeStatusgenOnPath(t, `echo "LINT: PASS"
 exit 0`)
 
-	got, err := statusgenLintAt(t.TempDir())
+	got, err := statusgenLintAt(t.TempDir(), childOptions{})
 	if err != nil {
 		t.Fatalf("statusgenLintAt: %v", err)
 	}
@@ -291,7 +292,7 @@ exit 1`,
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			fakeStatusgenOnPath(t, tc.script)
-			got, err := statusgenLintAt(t.TempDir())
+			got, err := statusgenLintAt(t.TempDir(), childOptions{})
 			if err == nil {
 				t.Fatalf("statusgenLintAt on a structural failure returned (problems=%v, nil err) — "+
 					"want could-not-check; a nonzero exit with no PROBLEM lines must not fold into a clean report", got)
@@ -328,7 +329,7 @@ func TestStatusgenLintAtRealBinaryStructuralFailure(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "docs", "streams", "x", "brief-01.md"), []byte("body\n"), 0o644); err != nil {
 		t.Fatalf("write: %v", err)
 	}
-	got, err := statusgenLintAt(root)
+	got, err := statusgenLintAt(root, childOptions{})
 	if err == nil {
 		t.Fatalf("statusgenLintAt against the real statusgen on an incomplete root returned (problems=%v, nil err) — "+
 			"want could-not-check", got)
@@ -359,7 +360,7 @@ func TestStatusgenLintAtPassesRootAndNeutralCwd(t *testing.T) {
 echo "CWD: $(pwd -P)" >> `+report+`
 exit 0`)
 
-	if _, err := statusgenLintAt(target); err != nil {
+	if _, err := statusgenLintAt(target, childOptions{}); err != nil {
 		t.Fatalf("statusgenLintAt: %v", err)
 	}
 	out, rerr := os.ReadFile(report)
@@ -388,4 +389,260 @@ func asDeskError(err error, target **deskkit.DeskError) bool {
 	}
 	*target = de
 	return true
+}
+
+// captureLintDiffNotices points lintDiffStderr at a buffer for one test.
+func captureLintDiffNotices(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	old := lintDiffStderr
+	var buf bytes.Buffer
+	lintDiffStderr = &buf
+	t.Cleanup(func() { lintDiffStderr = old })
+	return &buf
+}
+
+const (
+	otherInclude = "PROBLEM: example-other/54: protected table: acceptance transition: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
+	otherForge   = "PROBLEM: example-other/54: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	thirdForge   = "PROBLEM: example-third/37: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	// The chained Acceptance-Transition form: statusgen returns it without the
+	// "protected table: " wrapper, numbered by link.
+	chainForge = "PROBLEM: example-other/54: acceptance transition: link 1: could-not-check human authority: --acceptance-forge is required"
+	chainRepo  = "PROBLEM: example-third/37: acceptance transition: link 2: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
+	chainHuman = "PROBLEM: example-third/37: acceptance transition: link 12: could-not-check human authority: example detail"
+	// The Evidence-repair approval read, inside either form, named by its repair
+	// commit's first 12 hex digits.
+	repairChain  = "PROBLEM: example-other/54: acceptance transition: link 2: evidence repair 0123456789ab: could-not-check human authority: example detail"
+	repairLegacy = "PROBLEM: example-third/37: protected table: acceptance transition: evidence repair 0123456789ab: could-not-check human authority: example detail"
+)
+
+// An unchanged brief's could-not-check that only the after run printed is not this
+// landing's: it is reported on stderr and does not refuse. Both #6581 shapes: an Evidence
+// landing on another brief, and an outcome record for another brief; and the chained
+// acceptance-transition form of the same reads.
+//
+// regression: #6581
+func TestUntouchedCouldNotCheck(t *testing.T) {
+	for _, tc := range []struct {
+		target string
+		before []string
+		after  []string
+	}{
+		{"docs/streams/example-stream/brief-12-example.md", nil, []string{otherInclude}},
+		{"docs/streams/verify-outcomes/example-outcome/24-20261116T013825Z-bbe7ddc7f052.json",
+			[]string{otherInclude}, []string{otherForge, thirdForge}},
+		{"docs/streams/example-stream/brief-12-example.md", nil, []string{chainForge, chainRepo, chainHuman}},
+		{"docs/streams/example-stream/brief-12-example.md", nil, []string{repairChain, repairLegacy}},
+	} {
+		stubStatusgenLint(t, tc.before, tc.after)
+		notices := captureLintDiffNotices(t)
+		introduced, err := lintDiffAt(t.TempDir(), tc.target, []byte("x\n"), childOptions{})
+		if err != nil {
+			t.Fatalf("%s: lintDiffAt: %v", tc.target, err)
+		}
+		if len(introduced) != 0 {
+			t.Fatalf("%s: introduced = %v, want none (could-not-check on an untouched brief)", tc.target, introduced)
+		}
+		for _, p := range tc.after {
+			if !strings.Contains(notices.String(), p) {
+				t.Fatalf("%s: stderr does not report %q:\n%s", tc.target, p, notices.String())
+			}
+		}
+	}
+}
+
+// A real finding still refuses beside an excused could-not-check, and so does a
+// could-not-check on the brief the landing writes, or on any brief when the landing's
+// path names no brief or stream. A finding that is not a could-not-check refuses on a
+// brief the landing does not write too — on an outcome record as well, which the
+// closure gate's foreign split (splitClosureProblems) hands to this diff — and so does
+// one that only quotes the marker out of brief text. Only the known could-not-check
+// producers are excused; other protected-table findings refuse, including the numbered
+// protected-acceptance-row shape.
+//
+// regression: #6581
+func TestIntroducedStillRefused(t *testing.T) {
+	real := "PROBLEM: example-stream/12: Evidence row #3: backticked path \"../x\" does not exist"
+	own := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	ownChain := "PROBLEM: example-stream/12: acceptance transition: link 1: could-not-check human authority: --acceptance-forge is required"
+	foreignReal := "PROBLEM: example-other/54: Evidence row #3: backticked path \"../x\" does not exist"
+	quoted := "PROBLEM: example-other/54: Evidence row #2: cell reads \"x: could-not-check y\""
+	rowDrift := "PROBLEM: example-other/54: protected table: original row x: could-not-check y differs from its delivered definition; a changed original row needs an Acceptance-Transition record and its approval"
+	rowState := "PROBLEM: example-other/54: protected acceptance row x: could-not-check y: fail"
+	rowNumbered := "PROBLEM: example-other/54: protected acceptance row 2: could-not-check y: fail"
+	ownRepair := "PROBLEM: example-stream/12: acceptance transition: link 1: evidence repair 0123456789ab: could-not-check human authority: example detail"
+	outcome := "docs/streams/verify-outcomes/example-outcome/24-20261116T013825Z-bbe7ddc7f052.json"
+	for _, tc := range []struct {
+		target string
+		after  []string
+		want   []string
+	}{
+		{"docs/streams/example-stream/brief-12-example.md", []string{otherInclude, real}, []string{real}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{own}, []string{own}},
+		{"docs/streams/verify-outcomes/example-stream/12-20261116T013825Z-bbe7ddc7f052.json", []string{own}, []string{own}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{otherInclude, foreignReal}, []string{foreignReal}},
+		{outcome, []string{otherForge, foreignReal}, []string{foreignReal}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{quoted}, []string{quoted}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{ownChain}, []string{ownChain}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{rowDrift}, []string{rowDrift}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{rowState}, []string{rowState}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{rowNumbered}, []string{rowNumbered}},
+		{"docs/streams/example-stream/notes.md", []string{otherInclude}, []string{otherInclude}},
+		{"docs/README.md", []string{otherInclude}, []string{otherInclude}},
+		{"docs/streams/example-stream/brief-12-example.md", []string{ownRepair}, []string{ownRepair}},
+	} {
+		stubStatusgenLint(t, nil, tc.after)
+		captureLintDiffNotices(t)
+		introduced, err := lintDiffAt(t.TempDir(), tc.target, []byte("x\n"), childOptions{})
+		if err != nil {
+			t.Fatalf("%s: lintDiffAt: %v", tc.target, err)
+		}
+		if strings.Join(introduced, "\n") != strings.Join(tc.want, "\n") {
+			t.Errorf("%s: introduced = %v, want %v", tc.target, introduced, tc.want)
+		}
+	}
+}
+
+// Each tightening of the known-producer allow-list refuses a near miss on a brief the
+// write does not touch: the start anchor (a producer prefix quoted mid-line, or as a
+// protected acceptance row's id), the authority tail (an unlisted could-not-check
+// reason), the link number (non-numeric, zero, zero-padded), and the repair commit id
+// (too short, too long, upper case, missing).
+//
+// regression: #6581
+func TestCouldNotCheckAllowListExact(t *testing.T) {
+	target := "docs/streams/example-stream/brief-12-example.md"
+	for _, p := range []string{
+		// anchor
+		"PROBLEM: example-other/54: Evidence row #2: cell reads \"acceptance transition: link 1: could-not-check human authority: x\"",
+		"PROBLEM: example-other/54: Evidence row #2: cell reads \"protected table: acceptance transition: evidence repair 0123456789ab: could-not-check human authority: x\"",
+		"PROBLEM: example-other/54: protected acceptance row acceptance transition: link 1: could-not-check human authority: x: fail",
+		// authority tail
+		"PROBLEM: example-other/54: acceptance transition: link 1: could-not-check history: x",
+		"PROBLEM: example-other/54: protected table: acceptance transition: evidence repair 0123456789ab: could-not-check approval text: x",
+		// link number
+		"PROBLEM: example-other/54: acceptance transition: link x: could-not-check human authority: x",
+		"PROBLEM: example-other/54: acceptance transition: link 0: could-not-check human authority: x",
+		"PROBLEM: example-other/54: acceptance transition: link 01: could-not-check human authority: x",
+		// repair commit id
+		"PROBLEM: example-other/54: acceptance transition: link 1: evidence repair 0123456789a: could-not-check human authority: x",
+		"PROBLEM: example-other/54: acceptance transition: link 1: evidence repair 0123456789abc: could-not-check human authority: x",
+		"PROBLEM: example-other/54: acceptance transition: link 1: evidence repair 0123456789AB: could-not-check human authority: x",
+		"PROBLEM: example-other/54: acceptance transition: link 1: evidence repair: could-not-check human authority: x",
+	} {
+		stubStatusgenLint(t, nil, []string{p})
+		captureLintDiffNotices(t)
+		introduced, err := lintDiffAt(t.TempDir(), target, []byte("x\n"), childOptions{})
+		if err != nil {
+			t.Fatalf("lintDiffAt: %v", err)
+		}
+		if len(introduced) != 1 || introduced[0] != p {
+			t.Errorf("not refused: %s (introduced = %v)", p, introduced)
+		}
+	}
+}
+
+// A refusal prints the before-landing set beside the introduced lines, so a changed line
+// on a brief shows as a change, not only as an addition.
+//
+// regression: #6581
+func TestRefusalPrintsBeforeSet(t *testing.T) {
+	target := "docs/streams/example-stream/brief-12-example.md"
+	before := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
+	after := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	stubStatusgenLint(t, []string{before}, []string{after})
+	notices := captureLintDiffNotices(t)
+	introduced, err := lintDiffAt(t.TempDir(), target, []byte("x\n"), childOptions{})
+	if err != nil {
+		t.Fatalf("lintDiffAt: %v", err)
+	}
+	if len(introduced) != 1 || introduced[0] != after {
+		t.Fatalf("introduced = %v, want [%s]", introduced, after)
+	}
+	for _, want := range []string{
+		"deskevidence: lint delta for " + target + ": 1 PROBLEM line(s) before this landing, 1 introduced",
+		"  before: " + before,
+		"  introduced: " + after,
+	} {
+		if !strings.Contains(notices.String(), want+"\n") {
+			t.Fatalf("stderr lacks %q:\n%s", want, notices.String())
+		}
+	}
+}
+
+// Pins TODAY's behaviour when one brief's could-not-check changes class (different
+// wording) between the before and after runs. The diff is on exact lines, so the after
+// line is new. On a brief the landing does not write it is excused with a NOTICE; on the
+// landing's own brief it is counted as introduced and refuses. This test records that
+// behaviour; it is not a ruling that it is right.
+//
+// regression: #6581
+func TestCouldNotCheckClassChange(t *testing.T) {
+	const (
+		ownTarget   = "docs/streams/example-stream/brief-12-example.md"
+		otherTarget = "docs/streams/example-third/brief-37-example.md"
+	)
+	ownBefore := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check repository authority: repository origin authority is unavailable: an include may affect authority"
+	ownAfter := "PROBLEM: example-stream/12: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	for _, tc := range []struct {
+		name   string
+		target string
+		want   []string
+	}{
+		{"untouched brief: excused", otherTarget, nil},
+		{"own brief: refused", ownTarget, []string{ownAfter}},
+	} {
+		stubStatusgenLint(t, []string{ownBefore}, []string{ownAfter})
+		notices := captureLintDiffNotices(t)
+		introduced, err := lintDiffAt(t.TempDir(), tc.target, []byte("x\n"), childOptions{})
+		if err != nil {
+			t.Fatalf("%s: lintDiffAt: %v", tc.name, err)
+		}
+		if strings.Join(introduced, "\n") != strings.Join(tc.want, "\n") {
+			t.Fatalf("%s: introduced = %v, want %v", tc.name, introduced, tc.want)
+		}
+		if tc.want == nil && !strings.Contains(notices.String(), "NOTICE: not counted as introduced") {
+			t.Fatalf("%s: no NOTICE on stderr:\n%s", tc.name, notices.String())
+		}
+	}
+}
+
+// Attribution is by statusgen's brief key, normalised as the closure gate's
+// splitClosureProblems normalises it: a board README write owns its whole stream and
+// excuses only other streams; a letter-suffixed brief and a zero-padded key are named;
+// and nothing is excused while either run reports a stream whose frontmatter name
+// differs from its directory, since the scope (directory) and the line (frontmatter)
+// could not then be matched.
+//
+// regression: #6581
+func TestAttributionScopes(t *testing.T) {
+	sibling := "PROBLEM: example-stream/30: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	suffixOwn := "PROBLEM: example-stream/12a: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	paddedOwn := "PROBLEM: example-stream/012: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	renamed := "PROBLEM: example-renamed/12: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required"
+	mismatch := "PROBLEM: docs/streams/example-stream: frontmatter stream \"example-renamed\" != directory name \"example-stream\""
+	brief12 := "docs/streams/example-stream/brief-12-example.md"
+	for _, tc := range []struct {
+		name, target  string
+		before, after []string
+		want          []string
+	}{
+		{"readme: other stream excused", "docs/streams/example-stream/README.md", nil, []string{otherInclude}, nil},
+		{"readme: own stream refused", "docs/streams/example-stream/README.md", nil, []string{sibling}, []string{sibling}},
+		{"suffixed: foreign excused", "docs/streams/example-stream/brief-12a-example.md", nil, []string{otherForge}, nil},
+		{"suffixed: own refused", "docs/streams/example-stream/brief-12a-example.md", nil, []string{suffixOwn}, []string{suffixOwn}},
+		{"padded key: own refused", brief12, nil, []string{paddedOwn}, []string{paddedOwn}},
+		{"mismatch before: refused", brief12, []string{mismatch}, []string{mismatch, renamed}, []string{renamed}},
+		{"mismatch after: refused", brief12, nil, []string{mismatch, otherInclude}, []string{mismatch, otherInclude}},
+	} {
+		stubStatusgenLint(t, tc.before, tc.after)
+		captureLintDiffNotices(t)
+		introduced, err := lintDiffAt(t.TempDir(), tc.target, []byte("x\n"), childOptions{})
+		if err != nil {
+			t.Fatalf("%s: lintDiffAt: %v", tc.name, err)
+		}
+		if strings.Join(introduced, "\n") != strings.Join(tc.want, "\n") {
+			t.Errorf("%s: introduced = %v, want %v", tc.name, introduced, tc.want)
+		}
+	}
 }

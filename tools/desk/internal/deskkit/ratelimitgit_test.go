@@ -35,10 +35,10 @@ func TestGitReadBudget(t *testing.T) {
 				t.Fatal(err)
 			}
 			for name, gate := range map[string]func() error{
-				"per-target": func() error { return checkPRBudget("deskgit", testRepo, 0, now, mine) },
-				"per-repo":   func() error { return checkRepoBudget("deskgit", testRepo, now, mine) },
-				"repo-wide":  func() error { return checkRepoWideBudget("deskgit", testRepo, now, mine) },
-				"tool-wide":  func() error { return checkToolBudget("deskgit", now, mine) },
+				"per-target": func() error { return checkPRBudget("deskgit", testRepo, 0, prLimit("deskgit", 0), now, mine) },
+				"per-repo":   func() error { return checkRepoBudget("deskgit", testRepo, RateLimitPerRepoPerHour, now, mine) },
+				"repo-wide":  func() error { return checkRepoWideBudget("deskgit", testRepo, RateLimitPerPRPerHour, now, mine) },
+				"tool-wide":  func() error { return checkToolBudget("deskgit", RateLimitPerPRPerHour, now, mine) },
 			} {
 				if err := gate(); err != nil {
 					t.Fatalf("%s charged read-only history: %v", name, err)

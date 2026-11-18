@@ -60,7 +60,7 @@ func cmdEdit(args []string) (err error) {
 	bodyFile := fs.String("body-file", "", "path to a file holding the replacement PR body (required)")
 	title := fs.String("title", "", "replacement PR title (optional; the title is left alone when empty)")
 	root := fs.String("root", ".", "repo root the Brief: trailer resolves against (docs/streams under it)")
-	scanOverride := fs.String(deskkit.ScanOverrideFlag, "", "override a secret-scan refusal, stating why; writes an audit row (tool, surface digest, reason, identity)")
+	applyOverride, scanOverride := deskkit.RegisterOutboundOverride(fs, "deskpr", "edit")
 	explain := fs.Bool("explain", false, "on a secret-scan refusal, also print a scan-explain line naming the rule id and line number (never the offending span)")
 	decided := fs.String("decided", "", "path to a file declaring desk-taken decisions (decision:/alternative:/cost: triples, one item per numbered line) — writes/replaces the `## Desk-decided` block in the replacement body and applies the desk-decided label")
 	prNum := fs.Int("pr", 0, "edit THIS open PR instead of the one whose head branch is this worktree's branch: admitted when this checkout is the PR's own (its branch is the PR's head branch, or its HEAD commit is exactly the PR's head commit — #1901), or, from any other feature branch or detached HEAD, when the PR's head branch is in this repository and its current body already carries a link trailer (#2085)")
@@ -90,6 +90,11 @@ func cmdEdit(args []string) (err error) {
 		if verr := deskkit.ValidateScanOverride(*scanOverride); verr != nil {
 			return verr
 		}
+	}
+	// #5914: hand the reason to the process outbound context too, so the checking Forge's
+	// own scan of every write this verb makes honours the override this verb records.
+	if aerr := applyOverride(); aerr != nil {
+		return aerr
 	}
 	// --body-file only, deliberately: `create`'s --body-min exists so a one-line body can be
 	// opened without a temp file, and a CORRECTION that fits on one line is not the case this
@@ -350,7 +355,8 @@ func cmdEdit(args []string) (err error) {
 	// edited, so a landed relink always has its record; the reverse (a record for an edit that
 	// then failed) is named in the record itself and in the error below.
 	if rl != nil {
-		if _, aErr := fg.PostComment(fr, pr.Number, relinkAudit(oldLink, newLink, rl.reason)); aErr != nil {
+		// Typed (#6264): the record lands on a PR; a bare number is ambiguous on GitLab.
+		if _, aErr := fg.PostCommentTyped(fr, pr.Number, deskkit.TargetChange, relinkAudit(oldLink, newLink, rl.reason)); aErr != nil {
 			return deskkit.Unverifiable("the link-correction audit comment could not be posted, so the body was NOT edited — "+
 				"re-run once the forge is reachable", aErr)
 		}
@@ -373,7 +379,8 @@ func cmdEdit(args []string) (err error) {
 	// it. This comment is that event. It is posted BEFORE the --decided label write (review
 	// finding F4): a label failure must never swallow the one event that tells the review
 	// loop the body changed.
-	_, cErr := fg.PostComment(fr, pr.Number, reviewNotice(changed))
+	// Typed (#6264): the notice lands on the PR this verb just edited.
+	_, cErr := fg.PostCommentTyped(fr, pr.Number, deskkit.TargetChange, reviewNotice(changed))
 	if cErr != nil {
 		ac.detail += " — re-review notice FAILED"
 	}

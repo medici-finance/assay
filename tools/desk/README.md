@@ -15,7 +15,7 @@ tools/desk/
   internal/deskkit/   ← shared safety plumbing (brief 01)
   cmd/<tool>/         ← one binary per workflow verb (deskpr = brief 04; 02/03/05/07 pending)
   dist/               ← desk-build output (unprivileged, git-ignored)
-  MANIFEST.sha256     ← written by `sudo make desk-install`; LOCAL, not committed
+                        (MANIFEST.sha256 is written into the INSTALL dir, never here; see Build & install)
 ```
 
 **New here?** The table below is the whole surface, one line per binary; then
@@ -76,7 +76,7 @@ changed or discarded.
 | `deskdispatch` | `<item-key>` — the adapter verb for a loop's DISPATCH seam: durable claim, worktree in the item's own repo, the `before_run` [lifecycle hook](../../docs/desk-tools/hooks.md) (failure ⇒ exit 6, no prompt, claim released), roster register, human-decision gate, model-stamp labels, assembled agent prompt from `cmd/deskdispatch/references/` | outward write (the wrapped claim + stamp) | no |
 | `deskflip` | `<N>` — the adapter verb for a loop's LAND seam: the ready-flip gate. Refuses unless the reviewer App approved AT HEAD, checks are green, the PR is mergeable, the `desk-decided` label and body block agree with no standing `Undeclared-desk-decision:` finding, a risk-classed PR carries a security verdict at head, and the caller is the review role | outward write | no |
 | `deskpost` | `review`, `security-review`, `comment`, `ready` — as the reviewer App; `finish` posts a verdict, confirms it at the reviewed head and releases the review claim in one command | outward write | yes |
-| `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push; its link trailer is fixed except through `--relink-from N --relink-to M --relink-reason TEXT`, all three or none, which runs only from the PR's own checkout and moves only a same-repository `Issue:`/`Fixes:` link to an open, trusted-or-blessed, ungated issue (a pull-request number refuses) and posts an audit comment naming old, new and reason BEFORE the body edit — #5020); each takes `--check`, an OFFLINE gate run — every local check the write path runs, stopped before any token mint or connection; `--decided <file>` on `create`/`edit` declares a desk-taken reversible default as a `## Desk-decided` body section (decision:/alternative:/cost: triples) plus the `desk-decided` label — see "Desk-decided: the merge is the gate" below | outward write | yes |
+| `deskpr` | `create` (draft-only), `update` (follow-up push), `edit` (body/title of the branch's open PR, no push; its link trailer is fixed except through `--relink-from N --relink-to M --relink-reason TEXT`, all three or none, which runs only from the PR's own checkout and moves only a same-repository `Issue:`/`Fixes:` link to an open, trusted-or-blessed, ungated issue (a pull-request number refuses) and posts an audit comment naming old, new and reason BEFORE the body edit — #5020); each takes `--check`, an OFFLINE gate run — every local check the write path runs, stopped before any token mint or connection; `--decided <file>` on `create`/`edit` declares a desk-taken reversible default as a `## Desk-decided` body section (decision:/alternative:/cost: triples) plus the `desk-decided` label — see "Desk-decided: the merge is the gate" below; a branch-diff secret-scan refusal names where the offending line lives as `<path>:<line> (<side>)` — the line in the head file for an `added` or `context` line, in the base file for a `removed` one, and `unknown line` when the diff does not number it (never a guess), with a path that carries control or bidi characters printed Go-quoted — and `--explain` prints the same as `line=<n> path=<path> side=<side>` (#3196) | outward write | yes |
 | `deskreply` | PR reply comment under the **worker** identity; `--workpad` upserts ONE marked progress comment per PR (find the worker's own newest unresolved comment carrying the workpad marker and edit it in place, or create the first one) instead of always posting a new reply — `--dry-run` (plain reply or `--workpad`) reports what would post without writing; `--kind mr` names the merge request where a GitLab number also names an issue (without it that number refuses could-not-check, exit 6), and `--kind issue` is refused because the verb replies only on your own PR | outward write | yes |
 | `deskfile` | `new`, `attach`, `check` — the issue-filing gate (dedupe first) | outward write | yes |
 | `deskclose` | `duplicate`, `superseded` (two-role: a worker token proposes, a reviewer token confirms or disputes), `review-request`, `manifest` (the documented human-ruled BATCH lane) — the issue-CLOSING gate (a fetched human authorization or nothing); plus two identity+structure lanes that cite no artifact because they close nothing belonging to another party: `self-withdraw` (the authoring App's own draft, pinned by login AND bot id) and `verify-gate-refire` (the verifier session reopens + re-closes a closed `verify-gate` card) | outward write | yes |
@@ -354,11 +354,15 @@ scan-explain: rule=high-entropy-run line=42 length=40 shape=Qx…Dz (base64)
 ```
 
 — the rule id (`high-entropy-run`, `decrypted-k8s-secret`, `pem-block`, `sops-block`,
-`github-token`, `aws-key-id`, `jwt`, `url-userinfo`), the 1-based line of the first offending span, its
-length, and a REDACTED shape (first two and last two characters, the middle elided, plus a
-character-class summary). **The explain line never prints the offending span itself — the
+`github-token`, `aws-key-id`, `jwt`, `url-userinfo`), the 1-based line of the first offending span
+in the scanned surface, its length, and a REDACTED shape (first two and last two characters, the
+middle elided, plus a character-class summary). One surface differs: on `deskpr`'s branch diff,
+`line=` is the line in the FILE, not in the scanned (stripped) diff text, and the line adds
+`path=` and `side=` (see the `deskpr` row above); a path that carries control or bidi characters
+is printed Go-quoted. **The explain line never prints the offending span itself — the
 refusal must not become the leak.** Without `--explain` the refusal message is byte-for-byte
-what it was, so existing transcripts do not change shape.
+what it was, so existing transcripts do not change shape — except that `deskpr`'s branch-diff
+refusal also names the file location, as its row states.
 
 When the target repo is not known-private, `deskpr create`, `deskpr edit`, `deskpost` and `deskreply`
 additionally run `deskkit.SelfContainCheck` (`internal/deskkit/selfcontain.go`) over the
@@ -415,7 +419,7 @@ no tool reinvents it with holes:
 | `Log(Entry) error` | Appends one JSON line to the audit log (O_APPEND; never truncates). |
 | `AllowWrite(tool) error` / `AllowWriteAt(tool, now)` | **Two meters** (C-5/TM-4, #209). Budget: ≤20/tool/rolling hour (`RateLimitPerPRPerHour`, raised 10→20 by PR #1053, 2026-08-14), charged only by attempts that may have reached the remote (`ok`, `unverifiable`). Breaker: 5 consecutive non-progress attempts (`refused`, `noop`) → open for 15m. Neither meter counts `ratelimited`/`disabled` — its own output — which is what made the old single counter non-recovering; nor `dryrun` (#214), which wrote nothing. Exit-4 errors carry a **retry-after** (`RetryAfterOf(err)`). The cap is a **chosen throughput ceiling**, not a figure derived from an incident — `ratelimit.go` states what each value is chosen against. |
 | `AlreadyDone(repo, pr, head, verb) bool` / `AlreadyDoneIn(entries, …)` | Idempotency: only prior `ok`/`noop` entries count as done (C-5). `dryrun` never counts — a rehearsal must not suppress the real write. |
-| audit `result` | `ok` · `noop` (attempted, idempotency short-circuited it) · `dryrun` (`--dry-run`: stopped **before** the write, invisible to both meters, #214) · `refused` · `disabled` · `ratelimited` · `unverifiable`. |
+| audit `result` | `ok` · `noop` (attempted, idempotency short-circuited it) · `dryrun` (`--dry-run`: stopped **before** the write, invisible to both meters, #214) · `refused` · `disabled` · `ratelimited` · `unverifiable` · `contended` (the bounded audit-lock wait ran out before anything was read or sent; invisible to both meters, #6227). |
 | `BodyCheck([]byte) error` | Shared secret scan (C-3); refuses token/PEM/JWT/AKIA/sops shapes + high-entropy runs. Exempts 40/64-char lowercase-hex git SHAs and **paths** — absolute or repo-relative — whose slash-separated segments are *word-shaped* (#1052, #209). Bare CamelCase identifiers are word-shaped too: a 2-4 letter acronym (optionally plural, `PRs`/`IDs`), a `V` version segment of 1-2 digits between words or closing the name (`V1`, `V10`; one per name, sharing the acronym budget), and the numeronyms `K8s`/`I18n`/`L10n`/`A11y` and the term `OAuth` count as words, and one acronym that closes the name spends no acronym budget unless the name carries a version segment (a version and an acronym never share one name); a 40/64-hex git SHA assigned to an ALL-CAPS env var whose name ends in a closed digest key (`SHA`, `SHA1`, `SHA256`, `DIGEST`, `CHECKSUM`, `COMMIT`, or `HEX` directly behind one, as in a Dockerfile `ARG BASE_DIGEST_HEX=<sha256>`) is exempt, unless the name contains a credential stem (`SECRET`, `TOKEN`, `KEY`, `PASS`, …). Any other ALL-CAPS env-var assignment is exempt only when the value is already exempt on its own (a word-shaped identifier, a git SHA or a word-shaped path, as in `make test TEST=<GoTestName>`, `PGDATA=/var/lib/…` or `DELIVERY_HEAD=<sha>`), the key is at most 16 capitals, and the full name carries neither a credential stem nor a digest stem; any other value, and any other key, refuses as on main (#1642). A Go test name with a subtest path (`TestX/sub`) is exempt when its head is such an identifier and its subtest path is at most 16 characters (half the run threshold) of word-shaped segments carrying at most 4 short lowercase characters in total; a run made only of `+` (a `git diff --stat` change bar) is exempt like an all-`=` banner. `${NAME}`/`$NAME` substitutions never form a run (`$`, `{`, `}`, `_` are outside the run class). Refuses `glpat-` GitLab tokens (#1642). Opaque material between slashes still refuses, including an AWS **secret access key**, whose `/` characters defeat a length-only segment gate. **Also refuses impersonated human rulings (#45)**: a body claiming a configured human's decision BY NAME — `"Decision (Alex, ...)"`, `"Ruling: ... — Alex"`, `"I (Alex) have decided"` — is refused categorically, since no desk write path ever posts as a human; see `ImpersonatedRulingClaim` (`impersonation.go`). |
 | `Version()` / `WarnIfUnpinned(w)` | Reports the embedded `sourceSHA`/`builtAt`; warns loudly when unpinned (C-1). |
 | exit codes | `ExitOK 0`, `ExitDisabled 3`, `ExitRateLimited 4`, `ExitRefused 5`, `ExitUnverifiable 6`. `ExitCodeOf(err)` maps a typed error, failing **closed** to 6 for any unexpected error. |
@@ -757,9 +761,21 @@ At runtime the tools read/write, under `~/.config/assay/`:
   any desk can already write.
 - `HEARTBEAT` — dead-man lease (brief 08, optional). If the file EXISTS and its
   mtime is older than 24h, it is treated as STOP-ALL. Absent file = feature off
-  (no behaviour change until Ada opts in by touching it once). **Renewal is a HUMAN
-  act** — Ada or an Ada-owned cron touches it; no agent/loop may touch or delete
-  HEARTBEAT (that would defeat the dead-man semantics).
+  (no behaviour change until Ada opts in by touching it once). **A progressing cell
+  renews a fresh lease; only a lapsed lease needs a human** (#6510). When a desk verb
+  completes an outward mutating act the forge confirmed — a branch push (`deskgit push`),
+  a PR create/edit (`deskpr`), a review, comment or ready flip (`deskpost`, `deskreply`,
+  `deskflip`), an issue file or attach (`deskfile`), an Evidence landing (`deskevidence`) —
+  deskkit touches HEARTBEAT in the same call that writes that act's audit row, and the row
+  ends ` | heartbeat=renewed`. It re-reads the lease's age first and touches it only while
+  it is still fresh: a lease that is already stale (or went stale after the guard check)
+  is left stale and the row ends ` | heartbeat=stale-not-renewed`. Liveness never renews:
+  reads, mints, boots, ticks, quiet sweeps, claim progress, dry runs, a push that moved no
+  ref (logged `noop`) and refused or failed acts leave the lease alone, so a loop that only
+  polls still lapses. A desk never creates HEARTBEAT (absent stays feature-off) and never
+  deletes it. Reviving a lapsed lease is a HUMAN act — Ada or an Ada-owned cron touches it.
+  The guard is unchanged: a stale lease refuses every verb, including the act that would
+  have renewed it.
 - Loop-name registry (canonical names for `DESK_LOOP` and `STOP.<name>`):
   `pr-review-desk`, `verify-desk`, `worker-desk`, `the-desk`. Ad-hoc `/loop`
   or Monitor sessions pick a name at arm time and state it in their description.
@@ -1571,7 +1587,9 @@ desk decision; that is the reviewer's question, and the reviewer kit (`cmd/deskd
 references/review-prompt.md` §15) asks it on every review. A reviewer who judges that the
 diff took an undeclared reversible default names it in the verdict with the fixed line
 `Undeclared-desk-decision: <one line>`, and the flip refuses while that line stands at the
-CURRENT head — cleared by `deskpr edit --body-file <the PR's current body> --decided F`
+CURRENT head (a value of `none`, `none found`, `none observed` or `none identified`, any case,
+optionally followed by a separator and an explanation, records a clean check and holds
+nothing; an empty value holds) — cleared by `deskpr edit --body-file <the PR's current body> --decided F`
 and a fresh DECISIVE verdict (APPROVE or REQUEST_CHANGES) at the same head, in the same
 lane, that omits the line; no new commit required. The two review lanes are read separately, because the correctness and security
 verdicts are posted by the same reviewer App in parallel: a `Security-Review:` verdict never
@@ -2326,9 +2344,19 @@ sudo make desk-install   # HUMAN ONLY — see below
 each `cmd/*` binary to `/opt/desk-tools/bin/<tool>`, **root-owned 0755** — the sudo
 password is the manual permission gate; agents cannot write there. It stamps each
 binary with `-ldflags "-X …/deskkit.SourceSHA=<sha> -X …/deskkit.BuiltAt=<ts>"` and
-writes `tools/desk/MANIFEST.sha256` for drift verification. That manifest is a
-**local, generated artifact — it is NOT committed** (`git ls-tree origin/main tools/desk/`
-lists no such file); it describes only what is installed on this machine.
+writes `/opt/desk-tools/bin/MANIFEST.sha256` **beside the installed binaries** for drift
+verification. That manifest describes only what is installed on this machine, and it lives with
+those bytes, in the same `<sha256>  <path>` shape as the `MANIFEST.sha256` release tarballs
+carry at their root once the release workflow's manifest step (#6604) has cut a release; no
+release published before that step ships one, so after extracting such a tarball over the dir,
+rerun `sudo make desk-manifest` or install with `deskinstall` to rewrite the manifest. `deskinstall` writes one from the bytes it
+places, and lists only those: a binary installed into the same dir by another route (a
+standalone `statusgen`, say) is reported as present but not listed by
+`python3 -B -m tools.release.desk_manifest check`, though `sha256sum -c` passes. The older location,
+`tools/desk/MANIFEST.sha256` in the source tree, outlived every reinstall and went on describing a
+build that was no longer installed (#6604); `desk-manifest` now deletes it. Which file hashes which
+release artifact (`checksums.txt` versus the tarball manifest) is set out in
+[distribution.md](../../docs/distribution.md#the-umbrella-version).
 
 The install target builds as the invoking user (`$SUDO_USER`) and then installs the
 result as root, so the module cache is not written as root. Both `desk-build` and
@@ -3396,9 +3424,10 @@ writeguard's shared-checkout claim. A desk window, a dispatched worker, or a scr
 runs **must never export it**.
 
 It is declared in `deskkit` (`EnvAllowCluster`) for one reason: it sits in the `ASSAY_` namespace,
-and an unrecognised `ASSAY_` key in `roster.env` refuses the WHOLE configuration. An operator who
+and an unrecognised `ASSAY_` key in `roster.env` draws an `assay-config: NOTICE` line (the desk tools no
+longer refuse the whole configuration over one; `statusgen` still does). An operator who
 recorded the opt-in in the shared roster file — a natural mistake, since every other `ASSAY_` knob
-lives there — would otherwise take every desk tool's trust roster down at once. **Recognised is
+lives there — would otherwise get that NOTICE on every run. **Recognised is
 not applied:** putting it in `roster.env` still does not grant the opt-in.
 
 ### The kill switch: this guard does not participate, and why
@@ -3486,21 +3515,29 @@ sudo make desk-install   # HUMAN ONLY
    skipped, and foreign hooks are **refused** unless invoked with `FORCE=1` (`-Force` in
    PowerShell). Standalone hook installation requires `desk-build` first; an absent
    built guard refuses without changing hooks. No static-copy fallback remains.
-4. Runs `desk-manifest`: writes `tools/desk/MANIFEST.sha256` from the installed binaries.
+4. Runs `desk-manifest`: writes `/opt/desk-tools/bin/MANIFEST.sha256` from the installed
+   files (every regular file in the dir except the manifest), and deletes the obsolete
+   `tools/desk/MANIFEST.sha256`.
 
 `/opt/desk-tools/bin` is deliberately **not on `PATH`** — every desk tool is invoked by its
 absolute path, which is what makes the `Bash(/opt/desk-tools/bin/<tool> …)` allow rules
 anchor on a specific installed binary rather than on whatever a name resolves to.
 
-**Post-install drift check.** `desk-manifest` generates the manifest with
-`( cd /opt/desk-tools/bin && shasum -a 256 * )`, so its entries are **bare basenames** and
-`shasum -c` resolves them against the **current directory**. It must therefore be run from
-the install dir, against an absolute manifest path — running it from the repo root makes
-`shasum` look for `deskboard` in the repo root and fail to open every entry:
+**Post-install drift check.** The manifest's entries are **bare basenames** and `shasum -c`
+resolves them against the **current directory**, so run it from the install dir:
 
 ```bash
-( cd /opt/desk-tools/bin && shasum -a 256 -c /path/to/assay/tools/desk/MANIFEST.sha256 )
+( cd /opt/desk-tools/bin && shasum -a 256 -c MANIFEST.sha256 )
 ```
+
+It holds the hashes of the bytes the last install placed there — `make desk-install`,
+`deskinstall`, or a release tarball's own manifest when the tarball was extracted over the dir.
+A `deskinstall` older than #6604 flattens the tarball to base names and also places the
+tarball's manifest, whose `hooks/pre-push` line then names a path the flattened dir does not
+have, so the check fails on that line (`check` exits 1). Reinstall with a current `deskinstall`,
+or rerun `sudo make desk-manifest`, to rewrite it from what landed.
+Copying binaries in by any other route leaves it describing the previous bytes: rerun
+`sudo make desk-manifest` after such a copy, or expect those entries to fail.
 
 ### App credentials (`desktoken`, `deskpost`, `deskevidence`)
 
@@ -3511,8 +3548,10 @@ its scope limits are documented once, under
 [Where the App credentials live — the #794 ruling](#where-the-app-credentials-live--the-794-ruling).
 
 Worth stating here because it is the half that is easy to miss: `deskpost` and `deskevidence`
-do **not** shell out to `desktoken`. Each signs its own JWT and mints its own installation
-token, so fixing the resolution in `desktoken` alone left both of them reading from a
+do **not** shell out to `desktoken`. `deskpost` signs its own JWT and mints its own installation
+token; `deskevidence` reads the verifier credential in process through
+`deskkit.WriteVerbRoleCredential`. When both still signed their own JWTs, fixing the resolution
+in `desktoken` alone left both of them reading from a
 hardcoded `~/.config/assay` — a deployment provisioning elsewhere still could not post a
 review or write an Evidence commit from a cold shell, with the App **ID** resolving fine off
 the search path, so the failure read as a broken key rather than a wrong directory.
@@ -3597,7 +3636,7 @@ re-resolves.
 The GitHub cache, install-id resolution, App JWT exchange and the GitLab custody read and
 rotation live in one package, `internal/credential`. Two adapters call it: the `desktoken`
 CLI, and `deskkit.RoleTokenForOwner` (and through it every `ForgeFor` / `GitHubRoleToken`
-consumer — `deskboard`, `deskflip`, `deskdispatch`, `deskread`, `deskwt`, `scanloop`, `deskgit`, `cellctl`).
+consumer; the callsite inventory below lists them).
 The provider imports nothing from the desk module; `deskkit` hands it the controls it applies
 — the live guard, the audit ledger, the custody link and owner-only checks, the advisory lock
 — as the same functions the CLI used, so the two adapters cannot apply different checks.
@@ -3612,17 +3651,38 @@ The provider imports nothing from the desk module; `deskkit` hands it the contro
 | **Install id** | `<PREFIX>_INSTALL_ID` is trimmed and must be digits only; anything else is refused before a JWT is signed. |
 | **GitLab** | Rotation stays an explicit `desktoken <role> --forge gitlab` act, serialized per role by the rotation lock. A read-only lookup (`--no-rotate`) never rotates, takes no lock and contacts no forge. The rotation and its self-check never follow a redirect. |
 
-**Callers that still run `desktoken` as a child.** These verbs mint by running `desktoken`
-directly rather than through `RoleTokenForOwner`. They keep the CLI's guard, audit and expiry
-rules, because the CLI is an adapter over the same provider; moving them in process is
-deferred to their own changes:
+**Callsite inventory.** Where each production role-credential reader in `tools/desk` stands,
+and which processes hand a credential they already hold, or the path of the file that holds
+it, to a child (the "forwards" rows). A forwarding child mints nothing. The cell `gh` wrapper's
+ambient operator credential is not a role credential and is not listed here. No write verb runs
+`desktoken` as a child any more; the only sites that still start the program are probes of the
+installed binary, which keep it on purpose. `desktokenExecAllow` in
+`internal/deskkit/roletokenguard_test.go` is the closed list of the places outside the minter's
+own package whose non-test Go holds a string literal that is the program name (the whole
+literal, or its last path element): those probe sites, plus three entries that name it only
+as audit-row data and start nothing. A literal that merely contains the name is not matched:
+`cmd/deskdispatch/prompt.go` prints a claim command line that runs `desktoken` for a dispatched
+agent's own shell, which is the CLI in that shell, not a child of `deskdispatch`. `TestWriteVerbsReadCredential`
+(`internal/deskkit/writeverbguard_test.go`) fails if a write verb names `desktoken` again:
 
 | Site | Status |
 |---|---|
-| `cmd/deskclose/forge.go`, `cmd/deskrestamp/forge.go`, `cmd/deskpr/exec.go`, `cmd/deskfile/github.go`, `cmd/desklabel/forge.go`, `cmd/deskevidence/github.go`, `cmd/deskboot/boot.go`, `cmd/repohardenguard/forge.go`, `cmd/deskdisposition/forge.go`, `cmd/deskpathguard/forge.go`, `cmd/deskreply/exec.go` | deferred: direct `desktoken` child |
-| `cmd/deskrelease/github.go`, the `desktoken` lookup in `internal/deskkit/preflight.go` | out of scope: they check the installed binary itself |
+| `cmd/deskclose/forge.go`, `cmd/deskdisposition/forge.go`, `cmd/deskevidence/github.go`, `cmd/deskfile/github.go`, `cmd/desklabel/forge.go`, `cmd/deskpathguard/forge.go`, `cmd/deskpr/exec.go`, `cmd/deskreply/exec.go`, `cmd/deskrestamp/forge.go` | migrated (#5457): in process through `deskkit.WriteVerbRoleCredential`, which reads GitLab custody read-only and never rotates. Each reads only its own loop's role, except the two verbs whose posting identity is fixed: `deskreply` (`worker`) and `deskevidence` (`verifier`) admit an audited cross-role read from another window (#6069; see [Role separation](#role-separation-a-loop-takes-only-its-own-role-6069)) |
+| `cmd/repohardenguard/forge.go` | migrated (#1573): in process through `deskkit.GitHubRoleToken` (the `auditor` role) |
+| `internal/deskkit/roletoken.go` (`tokenMinter`), and every caller of the shared resolver: `RoleTokenForOwner`, `RoleTokenForRepo`, `GitHubRoleToken`, `GitHubRoleTokenForDestinations` or `ResolveRoleCredential` in `cellctl` (`deskd.go`), `deskautolane`, `deskboard`, `deskdispatch`, `deskflip`, `deskgit`, `deskinbox`, `deskmerge`, `deskmonitor`, `deskread`, `deskroster`, `deskrun`, `deskwt`, `issueboard` and `scanloop`, and every `ForgeFor` caller that installs no custody minter of its own | migrated: runs the provider in process for GitHub; on GitLab it reads the provisioned custody file and never rotates. This path mints whichever role its caller names and does not apply the loop-role check (`RequireLoopRole`): only the `desktoken` CLI and `WriteVerbRoleCredential` apply it. That is by design (`deskdispatch` takes the `desk` role from worker and verifier windows); the separation is the per-window config home, which holds only the role keys that window acts as (see [Role separation](#role-separation-a-loop-takes-only-its-own-role-6069)) |
+| `cmd/deskpost/github.go` (`mintInstallationToken`, installed by `init` as the resolver's GitHub custody minter through `deskkit.SetGitHubCustodyMinter`) | separate, not moved onto the provider: `deskpost` reads the reviewer App key, signs its own JWT and exchanges it for an installation token in process, with no `desktoken` child. It mints fresh on every run and writes no token cache. Its tests are in `cmd/deskpost/token_test.go` (`TestMintTokenSuccess` and the refusal cases) |
 | `deskkit`'s own GitLab custody read (`gitlabCustody`) and `desktoken coverage` | separate: unchanged by this change |
-| `internal/deskkit/roletoken.go` (`tokenMinter`) | migrated: runs the provider in process |
+| `cmd/deskboot/boot.go` (`stepMint`), the `desktoken` lookup in `internal/deskkit/preflight.go` (`coldMintProbe`) | out of scope: each proves the installed binary mints from a shell, so the child is the thing under test |
+| `cmd/deskrelease/github.go` (`resolveDeskTokenPath`) | out of scope: pins the `desktoken` installed beside `deskrelease` |
+| `cmd/deskdispatch/dispatch.go` (`resolveClaimAuth`, `resolveClaimAuthGitLab`) | forwards; the child mints nothing: the role credential `deskdispatch` already holds goes to the claim tool, as `--token-file` for the Go binary and in the environment for the legacy script (`GH_TOKEN`, plus `GITLAB_TOKEN` on GitLab). The same resolution, in that environment form, also goes to two more children, whichever shape the claim tool takes it in, so that each runs as the dispatching role: the legacy decision-gate script (`ensure`; the Go port of the gate is handed no credential and resolves its own role), and the `statusgen --corroborate` recorded-ruling check (`checkRecordedRuling`, `recordedruling.go`). Where `GH_TOKEN` was exported explicitly, all three inherit it as-is |
+| `cmd/deskevidence/statusgen.go` (`statusgenAudit`) | forwards; the child mints nothing: for a host audit (`--acceptance-forge`) the verifier credential `deskevidence` already holds goes to the `statusgen` child as `GH_TOKEN`. Every other `statusgen` child has the forge credential variables stripped and a non-credential refusal marker in their place. `statusgen` mints nothing and has no credential authority of its own. It runs holding a handed credential here (the verifier's token), for the `deskdispatch` recorded-ruling check (the dispatching role's token) and for `deskreconcile` (an operator-given token file) |
+| `cmd/cellctl/deskd.go` (`deskdMintGitHub`) | forwards: on a GitHub cell, `cellctl` reads the `desk` role once per configured org through `RoleTokenForRepo` and passes each token to the `deskd` child in its environment as `DESKD_GITHUB_TOKEN_<ORG>`, for both the `--once` go/no-go run and the standing run. The GitLab arm (`deskdProvisionGitLab`) passes no token, only the API base |
+| `cmd/cellctl/git.go` (`gitlabCredArgs`) | forwards the path of a file: on a GitLab cell, the boot fetch and the check-time `ls-remote` give `git` an inline credential helper that reads the cell's hand-provisioned `deskd` read-token file, named by `DESKD_GITLAB_TOKEN_FILE`; it is never written to git config. Unlike the `deskgit` and `deskwt` helpers, it is set under the plain `credential.helper` key, not a host-scoped one, so it answers whatever host that `git` run asks |
+| `cmd/scanloop/monitor.go` (`monitorArgs`) | forwards the path of a file: the poller child gets one `--token-file OWNER=PATH` per GitHub owner in scope, naming the running role's installation token cache as resolved through `ResolveRoleCredential`. A GitLab owner's custody file is not handed to the poller |
+| `cmd/deskgit/exec.go` (`credentialSupply`) | forwards: on `deskgit push --as <role>` the role's installation token (from `GitHubRoleTokenForDestinations`) goes into the `git` child's environment as `DESKGIT_TOKEN`, answered by an ephemeral credential helper that responds only to an https request for `github.com` and is removed after the call. `deskgit`'s fetch runs in process and starts no `git` child |
+| `cmd/deskwt/roleinit.go`, `cmd/deskwt/rolefetch.go` | forwards the path of a file: each resolves the role credential through `ResolveRoleCredential` and gives `git` a host-scoped credential helper (`deskkit.AppTokenHelper`) that reads that token file. Role init writes the helper into the worktree's own git config, so every later `git` there authenticates with it; role fetch passes it with `-c` for one `git` run |
+| `cmd/deskreconcile/reconcile.go` | forwards the path of a file: an operator-given `--token-file` is passed on to `statusgen reconcile` as `--token-file`. With none, `statusgen` falls back to the `GITHUB_TOKEN` it inherits |
+| `statusgen/forgecredential.go` (`ghGuard`, outside `tools/desk`) | forwards, second hop: a token `statusgen` was handed goes on to the `gh` children it starts. Where `statusgen` resolved one for its GitHub reader, `ghGuard` sets it as `GH_TOKEN` and clears the alternate credential variables for that launch |
 
 `TestCredentialImportConfinement` (internal/credential) holds the boundary: only `deskkit` and
 `cmd/desktoken` may import the provider, only three named functions may run an operation, and
@@ -3831,6 +3891,19 @@ touches a schema or migration directory, a permission or role-binding definition
 record format, or the hotfix machinery itself is refused as `hotfix-ineligible`. `cellctl` and
 `deskboot` are never hotfix targets: they install, select and refuse hotfixes, so they always
 run the pinned release's code. The overlay is not supported on Windows.
+
+**`statusgen` is hotfixed on its own.** `statusgen` is released and pinned apart from the desk
+tools (its own `statusgen` line in `.assay-versions`), so `cellctl hotfix install statusgen`
+takes no other tool in the same call (a mixed install is refused). Its hotfix is built from the
+`statusgen` module at the commit, stamped `<statusgen pin>+hotfix-<sha12>`, and every layer
+below compares it against the `statusgen` pin line, never the `desk-tools` one: moving
+`statusgen`'s pin retires it, moving `desk-tools`' pin does not. A checkout with no `statusgen`
+line cannot prove such a hotfix and refuses it; unlike the desk tools, `statusgen`'s own check
+never falls back to asking the pinned install for its `--version`, so outside a checkout that
+pins it a `statusgen` hotfix is could-not-check. `statusgen` is its own Go module, so it carries
+its own copy of the layer-2 start-up check (`statusgen/hotfixself.go`); a parity test holds its
+ruled values, phrases and paths equal to the desk tools' copy, and both copies are on the
+`hotfix-ineligible` list.
 
 **Four layers, each deciding on its own signal.**
 
@@ -5368,16 +5441,56 @@ invocations each read a budget below the cap and both committed; measured, seedi
 `RateLimitPerPRPerHour-1` charged entries and holding one invocation inside its PUT produced
 **two commits and 11 charged writes against a 10 cap**.
 
+**The window is the write, not the run** (#5023). The lock is taken by
+`ac.enterWriteWindow` immediately before the budget read and held through the conditional
+forge write and the audit append; preparation (admission, remote snapshot, closure and
+decision-gate reads, the statusgen PROBLEM-diff) runs before it, so one landing's lint no
+longer holds the lock every other desk writer waits on. The remote target stays protected by
+the write itself, which is conditional on the blob preparation read: a target changed after
+preparation refuses with no write (`TestEvidenceSnapshotConcurrentFileEditRefuses`,
+`cmd/deskevidence/snapshot_test.go:122`), and an unrelated commit on the branch is still
+accepted (`TestEvidenceSnapshotUnrelatedCommitDoesNotConflict`, `snapshot_test.go:138`).
+Capability preflight (`RefuseIfTreeV2BelowV1`) reads only the local tree and the tool version,
+so it runs under the preparation lock; its refusal row is appended under the audit lock.
+Preparation stages content
+into the landing root, so it keeps its own exclusion: a per-root lock
+(`~/.config/assay/evidence-prep-<hash>.lock`) that serialises two landings on the SAME root and
+never two on different roots. The lock is keyed on the PARSED `--root` (either spelling the
+flag package accepts; a repeated `--root` is refused) and on the root admission names for the
+staged gates, each made canonical (absolute, symlinks resolved, then the directory's device and
+inode, or a case-folded path where those are unavailable), so two spellings of one directory
+take one lock (`TestDashRootTakesPrepLock`, `TestRecasedRootTakesPrepLock`,
+`TestRepeatedRootRefused`). A preparation lock that stays busy is contention, the same class
+as a busy audit lock (#6227): it is neither charged to the budget nor counted by the circuit
+breaker (`TestPrepBusyIsContended`).
+
+**The write window re-reads what preparation read.** Preparation holds no audit lock, so the
+write does not trust its reads: in `enterWriteWindow`, after the audit lock and before the
+budget, every input the write relies on is re-read through the uncached forge and a change
+refuses with nothing written. These are the admission (attestation, trust, labels, the home and
+tracking checkouts), the local evidence input (pinned by SHA-256 at preparation), visibility,
+the on-behalf-of principal, the board and the decision-gate verdict; on the outcome path, the
+record bytes, the join facts and their redaction, visibility, the principal and (for a
+branch-tip binding) the Evidence and observation bindings. The expensive staged gates (the
+statusgen PROBLEM-diff, verdict and sidecar checks) stay in preparation, their inputs pinned
+by those re-reads (`prepwindow_test.go`). A run that ends before its write window (refusal, noop, dry-run)
+takes the audit lock only for its one audit append. `TestBudgetOnlyInWriteWindow` fails any
+budget spend or audit-lock acquisition outside that window. The two locks share ONE 60s wait
+budget per run, so a refusal never waits twice: a run whose write-window lock (or preparation
+lock) stayed busy makes a single attempt at the audit lock for its refusal row and, failing
+that, appends it unlocked. `TestAuditWaitIsBounded` and `TestPrepRefusalWaitsOnce` pin the
+upper bound.
+
 Two details are load-bearing and easy to undo:
 
-- **Defer order.** `lock.release()` is registered BEFORE the deferred audit append, so
+- **Defer order.** `ac.releaseAuditLock()` is registered BEFORE the deferred audit append, so
   (Go runs defers LIFO) it runs after it. Swapping them puts the append outside the
   critical section, which is the exact window the lock exists to close. Guarded at source
   by `TestDeferOrderIsSourceGuarded` — the swap is not observable from a behavioural test
   (the gap is microseconds), so a source guard is the only thing that catches the refactor.
 - **It is a lock, not a retry.** The second caller does not lose a race and try again; it
   waits, then re-reads the ledger the first caller actually wrote. A lock it cannot get
-  inside 60s is Unverifiable (exit 6) — never "assume free" (C-10). A retry loop would
+  inside 60s of waiting in total (one budget across the preparation and audit locks) is Unverifiable (exit 6) — never "assume free" (C-10). A retry loop would
   only make the double-spend rarer. `TestContendedLockTimesOutUnverifiable` holds the lock
   from a second file description and pins both halves: it waits, and it then refuses.
 
@@ -5387,17 +5500,30 @@ Two limits, so the guarantee is not read as more than it is:
   do not serialise against each other. Each also writes its own `~/.config/assay/
   audit.jsonl`, so the rate-limit ledger they are protecting is per-host too — the lock is
   exactly as wide as the thing it guards, and no wider.
-- **The holder is bounded by an HTTP timeout, not by the lock.** Every network call runs
-  inside the critical section, so `httpClient` carries a 30s per-request `Timeout`
-  (`cmd/deskevidence/github.go`). Without it a hung connection would pin the *shared*
-  `audit.lock` and starve `deskpost` and `deskrelease` with it. `deskpost` and
-  `deskrelease` still use `http.DefaultClient` and do not have this bound. The timeout is
-  guarded at source by `TestHTTPClientIsBoundedNotDefault`, not behaviourally: every test
-  replaces `httpClient` with one wired to the fake, so the production declaration is never
-  exercised and reverting it to `http.DefaultClient` used to survive the suite green.
+- **The holder's in-process forge requests are bounded; the decision-gate child is bounded once #6747 lands.**
+  Every forge request in the write window runs inside the critical section: the window
+  rechecks' re-reads through the uncached forge (the re-admission, the board re-read, the
+  visibility read and, on the outcome path, the join-fact and delivery-PR re-reads and, for a
+  branch-tip binding, the Evidence and observation binding re-reads), the decision-gate
+  judge's re-run on the re-read board, then the forge write and the attribution read. Each
+  in-process request gives up after 30 seconds (`deskkit.ForgeRequestTimeout`): the GitHub
+  backend's REST client and its diff read, the GitLab client, and the clients `deskpost` and
+  `deskrelease` use for their own forge calls all carry that per-request bound, and a client a
+  caller injects with its own non-zero timeout keeps it. The judge re-run is not an
+  in-process request: it is a `statusgen --decision-gate` child process, run twice, that reads
+  from the forge who wrote each ruling. Until #6747 lands, that child is started with
+  `context.Background()` and nothing in this process bounds it, so a hung forge connection
+  inside it can pin the *shared* `audit.lock` until the child exits, and no other desk writer
+  that needs the lock, `deskpost` and `deskrelease` included, can take it meanwhile. #6747
+  runs the child under the write-window bound, `lockWait` (60s), kills it at that deadline and
+  reads the kill as could-not-check. `TestNoUnboundedForgeClient`
+  (`internal/deskkit/forgetimeout_test.go`) is a source guard behind the shared helpers: a
+  pattern scan of the forge library, the credential package and the lock-holding tools for
+  the common deadline-free client shapes and for an `io.ReadAll` whose error is not checked,
+  not a proof that no other construction exists, and it does not see the child process.
 - **Failure mode: refuse, never proceed.** A lock that cannot be acquired — for any reason,
-  including the 60s deadline — returns `Unverifiable` from `runOutward` before
-  `cmdEvidence` is called, so nothing outward happens and exactly one audit line is
+  including the run's single 60s wait budget — returns `Unverifiable` from `enterWriteWindow` before the
+  budget is read, so nothing outward happens and exactly one audit line is
   written. There is no arm that degrades to "proceed unserialised", which would be worse
   than no lock because it would report success.
   `TestLockFailureStillWritesOneAuditLine` and `TestContendedLockTimesOutUnverifiable` both
@@ -5775,7 +5901,7 @@ transport, with a FIXED argv and nothing appendable:
 
 ```
 git -c credential.helper= -c credential.https://github.com.helper=!'<ephemeral helper>' \
-    push --receive-pack=git-receive-pack --no-recurse-submodules origin refs/heads/<B>:refs/heads/<B>
+    push --porcelain --receive-pack=git-receive-pack --no-recurse-submodules origin refs/heads/<B>:refs/heads/<B>
 ```
 
 - `<B>` is the current branch (`symbolic-ref --short HEAD`), validated by the **same** rule
@@ -5784,6 +5910,9 @@ git -c credential.helper= -c credential.https://github.com.helper=!'<ephemeral h
 - `--receive-pack=git-receive-pack` is pinned, overriding any config/env receive-pack.
 - `--no-recurse-submodules` is pinned, overriding `push.recurseSubmodules` /
   `submodule.recurse` from any config scope.
+- `--porcelain` makes git report each ref's outcome. A push that moved no ref (git's
+  "Everything up-to-date", which still exits 0) is logged `noop`, so it never renews the
+  HEARTBEAT lease.
 - `--force`/`--force-with-lease`, `--delete`, `--prune`, `--mirror`, `--tags` and `--no-verify`
   are refused **by name, with their own reason, before the FlagSet** (`checkPushSafety`); a
   caller `--receive-pack` is refused by the transport-exec guard. None of them is in the

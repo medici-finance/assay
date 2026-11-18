@@ -263,40 +263,23 @@ func intakeExitsPath() (string, error) {
 	return filepath.Join(dir, intakeExitsFile), nil
 }
 
-// exitLockWait bounds how long a writer waits for the shared audit lock.
-const exitLockWait = 60 * time.Second
+// exitLockWait bounds how long a writer waits for the shared audit lock. It is a var so a test can
+// shorten it; the shipped value is deskkit.AuditLockWait.
+var exitLockWait = deskkit.AuditLockWait
 
 // withAuditLock runs fn holding the desk audit lock (<state dir>/audit.lock), the same advisory
-// lock every desk write takes, so a read-check-append cannot interleave with another writer's.
+// lock every desk write takes, so a read-check-append cannot interleave with another writer's. A
+// lock that stays busy is refused naming the lock file and its holder (deskkit.AcquireAuditLock).
 func withAuditLock(fn func(dir string) error) error {
 	dir, err := deskkit.StateDir()
 	if err != nil {
 		return deskkit.Unverifiable("cannot resolve the desk state dir (HOME missing?)", err)
 	}
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return deskkit.Unverifiable("cannot create the desk state dir", err)
-	}
-	f, err := os.OpenFile(filepath.Join(dir, "audit.lock"), os.O_CREATE|os.O_RDWR, 0o600)
+	l, err := deskkit.AcquireAuditLock(dir, exitLockWait)
 	if err != nil {
-		return deskkit.Unverifiable("cannot open the audit lock", err)
+		return err
 	}
-	defer f.Close()
-	deadline := time.Now().Add(exitLockWait)
-	for {
-		lerr := deskkit.TryLockExclusive(f)
-		if lerr == nil {
-			break
-		}
-		if !errors.Is(lerr, deskkit.ErrLockBusy) {
-			return deskkit.Unverifiable("cannot acquire the audit lock", lerr)
-		}
-		if time.Now().After(deadline) {
-			return deskkit.Unverifiable(fmt.Sprintf("the audit lock was held for more than %s; "+
-				"another desk write may be stuck; retry, or a human clears it", exitLockWait), nil)
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	defer func() { _ = deskkit.UnlockFile(f) }()
+	defer l.Release()
 	return fn(dir)
 }
 

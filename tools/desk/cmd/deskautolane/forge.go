@@ -19,6 +19,8 @@ type laneForge interface {
 	ListChangedFiles(repo deskkit.ForgeRepo, number int) ([]deskkit.ChangedFile, error)
 	ReviewsAtHead(repo deskkit.ForgeRepo, number int) ([]deskkit.Review, error)
 	ChecksAtHead(repo deskkit.ForgeRepo, sha string) (*deskkit.ChecksAtHead, error)
+	// CheckSuitesAtHead reads the suites a run-less, unconcluded suite hides in (#6234).
+	CheckSuitesAtHead(repo deskkit.ForgeRepo, sha string) (*deskkit.CheckSuitesAtHead, error)
 	// GetCommit reads the head commit's committer date for reviewer-approved's re-anchor
 	// test (#3093): an APPROVED submitted before the head commit existed is not a verdict at it.
 	GetCommit(repo deskkit.ForgeRepo, sha string) (*deskkit.RepoCommit, error)
@@ -40,7 +42,9 @@ type laneForge interface {
 	// The two WRITES this verb owns: the admission/ejection label swap and the one marked
 	// ejection comment. Both are gated on the enactment gate (see enactment).
 	ApplyLabels(repo deskkit.ForgeRepo, number int, change deskkit.LabelChange) (*deskkit.LabelOutcome, error)
-	PostComment(repo deskkit.ForgeRepo, number int, body string) (*deskkit.CommentRef, error)
+	// The comment names its target kind: it lands on a PR, and on GitLab issue #N and merge
+	// request !N coexist, so the bare-number write refuses such a number (#6264).
+	PostCommentTyped(repo deskkit.ForgeRepo, number int, kind deskkit.TargetKind, body string) (*deskkit.CommentRef, error)
 }
 
 var _ laneForge = deskkit.Forge(nil)

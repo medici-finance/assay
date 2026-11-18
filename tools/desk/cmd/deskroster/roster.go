@@ -100,17 +100,12 @@ func claimsDir() (string, error) {
 
 // ---- session resolution ----
 
-// resolveSession returns the session name from env or flag.
-// Order: $DESK_SESSION → $CLAUDE_SESSION_ID → flag → exit 6.
+// resolveSession returns the session name via deskkit.ResolveSessionName.
+// Order: --session flag → $DESK_SESSION → $CLAUDE_SESSION_ID → exit 6. An explicit flag
+// always wins over an inherited environment variable.
 func resolveSession(sessionFlag string) (string, error) {
-	if s := os.Getenv("DESK_SESSION"); s != "" {
+	if s := deskkit.ResolveSessionName(sessionFlag); s != "" {
 		return s, nil
-	}
-	if s := os.Getenv("CLAUDE_SESSION_ID"); s != "" {
-		return s, nil
-	}
-	if sessionFlag != "" {
-		return sessionFlag, nil
 	}
 	return "", deskkit.Unverifiable(
 		"cannot resolve session identity: set $DESK_SESSION, $CLAUDE_SESSION_ID, or pass --session",
@@ -227,36 +222,25 @@ func loadClaims() ([]deskkit.Claim, error) {
 
 // ---- repo name mapping ----
 
-// shortToFull builds a map from short repo name (e.g. "tracker") to
-// full owner/repo (e.g. "example-org/tracker").
-func shortToFull() map[string]string {
-	m := make(map[string]string)
-	for _, full := range deskkit.AllowedRepos() {
-		parts := strings.SplitN(full, "/", 2)
-		if len(parts) == 2 {
-			m[parts[1]] = full
+// A legacy beacon may name a repository without its owner. Keep every possible
+// match: the PR number alone cannot tell sibling repositories apart.
+type beaconRepoAliases map[string][]string
+
+func indexBeaconRepos(repos []string) beaconRepoAliases {
+	aliases := make(beaconRepoAliases)
+	for _, full := range repos {
+		if _, name, ok := strings.Cut(full, "/"); ok {
+			aliases[name] = append(aliases[name], full)
 		}
 	}
-	return m
+	return aliases
 }
 
-// resolveFullRepo returns the full owner/repo for a short repo name.
-// If the short name isn't in the mapping, returns it as-is (for robustness).
-func resolveFullRepo(short string) string {
-	m := shortToFull()
-	if full, ok := m[short]; ok {
-		return full
+func (aliases beaconRepoAliases) candidates(name string) []string {
+	if strings.Contains(name, "/") {
+		return []string{name}
 	}
-	return short
-}
-
-// resolveShortRepo returns the short repo name from a full owner/repo.
-func resolveShortRepo(full string) string {
-	parts := strings.SplitN(full, "/", 2)
-	if len(parts) == 2 {
-		return parts[1]
-	}
-	return full
+	return aliases[name]
 }
 
 // ---- forge PR reads ----
@@ -386,7 +370,7 @@ func cmdSet(args []string) error {
 	fs.IntVar(&pr, "pr", 0, "PR number")
 	fs.StringVar(&what, "what", "", "Description of the work")
 	fs.StringVar(&role, "role", "", "Optional role label for this session")
-	fs.StringVar(&session, "session", "", "Session name (env: $DESK_SESSION or $CLAUDE_SESSION_ID)")
+	fs.StringVar(&session, "session", "", "Session name; wins over $DESK_SESSION and $CLAUDE_SESSION_ID")
 	fs.IntVar(&width, "width", 0, "With --role: set that LOOP's agent-pool width (see `deskroster width --role`)")
 	fs.StringVar(&tokens, "tokens", "", "Cumulative tokens this session has consumed, or \"unknown\" (could-not-check); omit to leave unset")
 	fs.StringVar(&ctxPct, "context-pct", "", "Percent of the context window in use (0-100), or \"unknown\"; omit to leave unset")
@@ -531,7 +515,7 @@ func cmdDrop(args []string) error {
 	)
 	fs.StringVar(&repo, "repo", "", "Short repo name (e.g. tracker)")
 	fs.IntVar(&pr, "pr", 0, "PR number")
-	fs.StringVar(&session, "session", "", "Session name (env: $DESK_SESSION or $CLAUDE_SESSION_ID)")
+	fs.StringVar(&session, "session", "", "Session name; wins over $DESK_SESSION and $CLAUDE_SESSION_ID")
 
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused(fmt.Sprintf("drop: %v", err))
@@ -585,9 +569,8 @@ type lineEntry struct {
 
 func cmdList() error {
 	// 0. Scope guard (#494, same shape as #489 in deskboard). `list` sweeps
-	// deskkit.AllowedRepos() twice — once via shortToFull() to resolve beacon repo
-	// names, once directly for the unclaimed-PR scan — and an empty repo set makes
-	// both loops iterate zero times. Before this guard that read nothing and reported
+	// deskkit.AllowedRepos() to resolve beacon names and list unclaimed PRs. An
+	// empty scope yields no observations. Before this guard that read nothing and reported
 	// it as a clean, silent result: no unclaimed section, no beacon repos resolved,
 	// exit 0. That is could-not-check, not "nothing to report", so it is checked
 	// BEFORE any read is attempted, exactly like deskboard's dispatch-level guard.
@@ -636,7 +619,23 @@ func cmdList() error {
 		repo string
 		pr   int
 	}
-	coveredByBeacon := make(map[repoPR]string) // (repo,pr) -> session name
+	// Both sections describe one sweep. A positive OPEN row already contains every
+	// field needed to display a beacon. Absence (including a truncated or failed
+	// listing) proves nothing about closure; only the single-change read may prune.
+	repos := deskkit.AllowedRepos()
+	aliases := indexBeaconRepos(repos)
+	openByRepo := make(map[string][]PRInfo, len(repos))
+	observedOpen := make(map[repoPR]*PRInfo)
+	for _, repo := range repos {
+		openByRepo[repo] = ghListOpenPRs(repo)
+		for i := range openByRepo[repo] {
+			pr := &openByRepo[repo][i]
+			if pr.State == "OPEN" {
+				observedOpen[repoPR{repo: repo, pr: pr.Number}] = pr
+			}
+		}
+	}
+	coveredByBeacon := make(map[repoPR]bool)
 
 	// 3. Query live PR state for each beacon entry and auto-prune merged/closed.
 	type beaconRow struct {
@@ -654,8 +653,15 @@ func cmdList() error {
 		var surviving []WorkEntry
 		changed := false
 		for _, w := range b.OpenWork {
-			fullRepo := resolveFullRepo(w.Repo)
-			info := ghViewPR(fullRepo, w.PR)
+			candidates := aliases.candidates(w.Repo)
+			var info *PRInfo
+			if len(candidates) == 1 {
+				repo := candidates[0]
+				info = observedOpen[repoPR{repo: repo, pr: w.PR}]
+				if info == nil {
+					info = ghViewPR(repo, w.PR)
+				}
+			}
 			state := "?"
 			if info != nil {
 				if info.State == "OPEN" {
@@ -684,7 +690,11 @@ func cmdList() error {
 				continue
 			}
 			surviving = append(surviving, w)
-			coveredByBeacon[repoPR{repo: w.Repo, pr: w.PR}] = b.Session
+			// Every candidate may own this PR. Advertise none of them as free
+			// until a full repository identity disambiguates the beacon.
+			for _, repo := range candidates {
+				coveredByBeacon[repoPR{repo: repo, pr: w.PR}] = true
+			}
 		}
 
 		if changed {
@@ -763,11 +773,9 @@ func cmdList() error {
 	// 6. Unclaimed open PRs section.
 	// Scan all allowed repos for open PRs not covered by any beacon entry.
 	var unclaimed []PRInfo
-	for _, fullRepo := range deskkit.AllowedRepos() {
-		shortRepo := resolveShortRepo(fullRepo)
-		openPRs := ghListOpenPRs(fullRepo)
-		for _, pr := range openPRs {
-			if _, covered := coveredByBeacon[repoPR{repo: shortRepo, pr: pr.Number}]; covered {
+	for _, fullRepo := range repos {
+		for _, pr := range openByRepo[fullRepo] {
+			if coveredByBeacon[repoPR{repo: fullRepo, pr: pr.Number}] {
 				continue
 			}
 			unclaimed = append(unclaimed, pr)
@@ -810,7 +818,7 @@ func cmdList() error {
 func cmdMine(args []string) error {
 	fs := flag.NewFlagSet("mine", flag.ContinueOnError)
 	var session string
-	fs.StringVar(&session, "session", "", "Session name (env: $DESK_SESSION or $CLAUDE_SESSION_ID)")
+	fs.StringVar(&session, "session", "", "Session name; wins over $DESK_SESSION and $CLAUDE_SESSION_ID")
 
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused(fmt.Sprintf("mine: %v", err))
@@ -843,9 +851,12 @@ func cmdMine(args []string) error {
 	fmt.Printf("%-6s %-8s %s\n", "PR", "STATE", "WHAT")
 	fmt.Printf("%-6s %-8s %s\n", "----", "------", "----")
 
+	aliases := indexBeaconRepos(deskkit.AllowedRepos())
 	for _, w := range b.OpenWork {
-		fullRepo := resolveFullRepo(w.Repo)
-		info := ghViewPR(fullRepo, w.PR)
+		var info *PRInfo
+		if repos := aliases.candidates(w.Repo); len(repos) == 1 {
+			info = ghViewPR(repos[0], w.PR)
+		}
 		state := "?"
 		if info != nil {
 			if info.State == "OPEN" {

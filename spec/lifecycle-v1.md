@@ -448,7 +448,8 @@ decided, never what they decided.
   not the tree has a base to judge against.
 - **Layer two (network).** The linked comment is fetched and MUST pass every condition of
   the design-decision ruling-link check (`registers-v1.md` §7.5): an unedited comment by a
-  login mapped to a human, never a bot, on the brief's recorded decision issue. The issue
+  login mapped to a human, from a personal account (type `User`, never a bot), on the
+  brief's recorded decision issue. The issue
   binding is the brief's own: the decision issue's body carries a decision-gate marker
   (`<!-- decision-gate: <board id> -->`) naming this brief, and the ruling comment's text
   names the brief by its board id. A colon-form marker that names a repository names this
@@ -457,6 +458,12 @@ decided, never what they decided.
   registry leaves the name alone. Where the comment, the issue or the login map cannot
   be read, the result is `could-not-check`, which refuses the transition; it is never a
   pass.
+- **A ruling link added or changed.** On a pull request, any brief (whatever its gate or
+  status) whose frontmatter `ruling:` link, or the `decision-issue:` it points into, the
+  pull request adds or changes is judged by both layers above, move or no move: the link
+  must point at the recorded decision issue and pass every layer-two condition. A link
+  that cannot be resolved is refused, never skipped. A brief file moved or renumbered with
+  its link and decision issue unchanged carries no new link.
 
 **Where it runs.** Layer two runs on the pull request that carries the transition, and on
 every landing path that bypasses a pull request: an evidence landing or a close-to-done

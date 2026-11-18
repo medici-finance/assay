@@ -26,6 +26,7 @@ const (
 	condMergeable        = "mergeable"
 	condSecurityVerdict  = "security-verdict"
 	condDeskDecided      = deskkit.DeskDecidedCondition
+	condNotReverted      = "not-reverted"
 	condHeadStable       = "head-stable"
 )
 
@@ -82,6 +83,12 @@ const (
 // PR's own labels/body (already in hand from pr-open-draft) and the reviews already read for
 // reviewer-approved — no new paginated read — so it costs nothing extra ahead of model-floor
 // and security-verdict, the two conditions the cost ordering above exists to protect.
+//
+// not-reverted (medici-finance/assay#6253 review F2) is ADDITIVE too, and sits right before
+// head-stable. It reads the change's comments once, for the post-flip backstop's revert marker
+// at the current head: a head the backstop already returned to draft is never flipped again,
+// or the revert would repeat on every tick. It runs only when there is a ready mutation to
+// guard (a draft PR), and it never ADMITS anything: a match refuses, no match passes.
 var flipConditions = []string{
 	condCallerRole,
 	condAppToken,
@@ -92,6 +99,7 @@ var flipConditions = []string{
 	condDeskDecided,
 	condModelFloor,
 	condSecurityVerdict,
+	condNotReverted,
 	condHeadStable,
 }
 
@@ -122,6 +130,10 @@ type flipOpts struct {
 	root   string
 	quiet  bool
 	dryRun bool
+	// flipped, when non-nil, is set true once the ready mutation itself has succeeded. It is
+	// what lets audit tell a real flip from the success paths that write nothing (a dry run,
+	// an already-ready PR), because only a real flip renews the HEARTBEAT lease (#6510).
+	flipped *bool
 }
 
 func cmdFlip(args []string) error {
@@ -150,7 +162,8 @@ func cmdFlip(args []string) error {
 		return deskkit.Refused("deskflip: unexpected extra arguments after <N>: " + strings.Join(fs.Args(), " "))
 	}
 
-	o := flipOpts{pr: n, repo: *repo, root: *root, quiet: *quiet, dryRun: *dryRun}
+	var flipped bool
+	o := flipOpts{pr: n, repo: *repo, root: *root, quiet: *quiet, dryRun: *dryRun, flipped: &flipped}
 	ferr := flip(o)
 	audit(o, ferr)
 	return ferr
@@ -408,6 +421,11 @@ func flip(o flipOpts) error {
 				condChecksGreen, short(head), repo, len(missing), strings.Join(missing, ", ")), nil)
 		}
 	}
+	// A green reading of the rollup is not yet the forge's: a check suite with no conclusion and
+	// no runs is invisible to the rollup yet holds the merge gate (#6234).
+	if err := checkSuitesHold(o, fg, fr, head); err != nil {
+		return err
+	}
 	o.say("%s OK: %d check(s) green at %s", condChecksGreen, len(checks), short(head))
 
 	// --- desk-decided --------------------------------------------------------------
@@ -445,6 +463,12 @@ func flip(o flipOpts) error {
 		return err
 	}
 	o.say("%s OK: %d changed file(s) read", condSecurityVerdict, len(files))
+
+	if !alreadyReady {
+		if err := checkNotReverted(o, fg, fr, head); err != nil {
+			return err
+		}
+	}
 
 	// --- head-stable (TOCTOU) ----------------------------------------------------
 	// The ready mutation has no compare-and-swap, so the head is re-read HERE, after every
@@ -570,11 +594,46 @@ func flip(o flipOpts) error {
 		}
 		return deskkit.Unverifiable(msg, err)
 	}
+	if o.flipped != nil {
+		*o.flipped = true
+	}
+	// The post-flip backstop (#6242): ready means mergeable per the forge. A revert returns
+	// here, before the queue label moves to the merge queue.
+	if err := readyBackstop(fg, fr, o.pr, pr.change, head); err != nil {
+		return err
+	}
 	if err := ensureLabelSwap(o, fg, fr, pr); err != nil {
 		return err
 	}
 	fmt.Printf("deskflip: FLIPPED %s#%d ready-for-human at %s — the merge is the human's. (%s)\n",
 		repo, o.pr, short(head), obo)
+	return nil
+}
+
+// checkNotReverted refuses a head the post-flip backstop already returned to draft
+// (medici-finance/assay#6253 review F2). The backstop's revert comment carries a hidden marker
+// naming the head (deskkit.ReadyBackstopRevertMarker); a trusted comment carrying it for the
+// CURRENT head means this flip would be reverted again, so the flip stops as could-not-check
+// and names the comment. A new head clears it. An unreadable comment thread is could-not-check
+// too: the condition cannot be shown to hold.
+func checkNotReverted(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, head string) error {
+	comments, err := fg.ListCommentsTyped(fr, o.pr, deskkit.TargetChange)
+	if err != nil {
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: PR #%d's comments could not be read, so whether the post-flip check already "+
+				"reverted this head is unknown: %s", condNotReverted, o.pr, firstLine(err.Error())), err)
+	}
+	if c, ok := deskkit.FindReadyBackstopRevert(comments, head); ok {
+		ref := c.URL
+		if ref == "" {
+			ref = fmt.Sprintf("comment %d", c.DatabaseID)
+		}
+		return deskkit.Unverifiable(fmt.Sprintf(
+			"condition %s: the post-flip check already returned PR #%d to draft at %s (%s): the forge "+
+				"reported it not mergeable right after a flip at this head, so flipping it again would be "+
+				"reverted again. A new head clears this condition.", condNotReverted, o.pr, short(head), ref), nil)
+	}
+	o.say("%s OK: no post-flip revert recorded at %s", condNotReverted, short(head))
 	return nil
 }
 
@@ -1663,7 +1722,7 @@ func (o flipOpts) resolveRepo() (string, error) {
 	slug := repoSlugFromURL(r.stdout)
 	if slug == "" {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
-			"origin %q does not parse to an owner/name — pass --repo <owner/name>.", r.stdout), nil)
+			"origin %q does not parse to an owner/name — pass --repo <owner/name>.", deskkit.RedactRemoteUserinfo(r.stdout)), nil)
 	}
 	return slug, nil
 }
@@ -2217,6 +2276,12 @@ func checksIn(entries []rollupEntry, want ciState, none string) []string {
 	return out
 }
 
+// renewsLease reports whether this invocation's audit row records a ready mutation the forge
+// confirmed: no error, not a dry run, and the mutation itself ran (o.flipped).
+func renewsLease(o flipOpts, err error) bool {
+	return err == nil && !o.dryRun && o.flipped != nil && *o.flipped
+}
+
 func audit(o flipOpts, err error) {
 	result := deskkit.ResultOK
 	detail := fmt.Sprintf("flipped PR #%d", o.pr)
@@ -2232,7 +2297,14 @@ func audit(o flipOpts, err error) {
 		}
 		detail = firstLine(err.Error())
 	}
-	if lerr := deskkit.Log(deskkit.Entry{
+	// A real ready flip is an outward mutating act and renews a fresh HEARTBEAT lease on
+	// success (#6510). A dry run and an already-ready PR are also logged ResultOK here but
+	// made no ready mutation, so they go through plain Log: only a flip that happened renews.
+	logRow := deskkit.Log
+	if renewsLease(o, err) {
+		logRow = deskkit.LogOutwardAct
+	}
+	if lerr := logRow(deskkit.Entry{
 		Tool:   toolName,
 		Verb:   "flip",
 		Result: result,

@@ -343,9 +343,9 @@ func TestReconcileTokenFileReachesNestedReads(t *testing.T) {
 [ "$GH_TOKEN" = fixture-selected-token ] && [ "$GH_HOST" = github.com ] || exit 4
 case "$*" in
   *'/pulls/11/files?'*)
-    printf '%s\n' '["docs/streams/fx/brief-01-example.md","","@@ -1 +1 @@\n-# Old title\n+# New title"]' ;;
+    printf '%s\n' '["docs/streams/fx/brief-01-example.md","","@@ -1 +1 @@\n-# Old title\n+# New title"]' '["STATUS.md","","@@ -1 +1 @@\n-a\n+b"]' ;;
   *'/pulls/11')
-    printf '%s\n' '{"changed_files":1,"head":{"sha":"fixture-head"},"base":{"ref":"main","repo":{"default_branch":"main"}}}' ;;
+    printf '%s\n' '{"changed_files":2,"head":{"sha":"fixture-head"},"base":{"ref":"main","repo":{"default_branch":"main"}}}' ;;
   *'/contents/docs/streams/fx/brief-01-example.md?ref=fixture-head')
     printf '%s\n' '# New title' ;;
   'pr view 11 --repo github.com/o/r '*)
@@ -371,7 +371,9 @@ esac
 				t.Fatal(err)
 			}
 			a := newAuthoringClassifier(newGHClient(token), "o/r", nil)
-			a.cache[11] = filesResult{files: []prFile{{Filename: "docs/streams/fx/brief-01-example.md", Status: "modified"}}}
+			// STATUS.md keeps the PR out of the brief-revision rule (#6091) and inside the
+			// Evidence-shaped paths, so the classification still reaches the nested shape read.
+			a.cache[11] = filesResult{files: []prFile{{Filename: "docs/streams/fx/brief-01-example.md", Status: "modified"}, {Filename: "STATUS.md", Status: "modified"}}}
 			if excluded, err := a.notImplementation(11, "fx/01"); err != nil || excluded {
 				t.Fatalf("classifying the brief edit: excluded=%v, err=%v", excluded, err)
 			}
