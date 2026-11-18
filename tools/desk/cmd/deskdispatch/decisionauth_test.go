@@ -27,6 +27,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitcore/testenv"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -43,6 +44,26 @@ const decisionChildScript = `#!/bin/sh
 echo "created: decision issue #12"
 exit 0
 `
+
+// decisionFixtureEnvironment declares the only real child tools this family
+// needs. Fake claim/decision ports are installed afterward; no host desk binary
+// or forge credential can answer in their place.
+func decisionFixtureEnvironment(t *testing.T) {
+	t.Helper()
+	tools := map[string]string{}
+	for _, name := range []string{"sh", "cat"} {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path, err = filepath.Abs(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tools[name] = path
+	}
+	testenv.Install(t, testenv.Options{Tools: tools})
+}
 
 type decisionChildRecord struct {
 	argv, ghToken, gitlabToken string
@@ -123,8 +144,12 @@ func planClaimTool(t *testing.T, root, tool string) {
 func TestDecisionChildReceivesTheMintedRoleTokenInItsEnvironment(t *testing.T) {
 	for _, tool := range []string{"go-binary", "legacy-script"} {
 		t.Run(tool, func(t *testing.T) {
+			decisionFixtureEnvironment(t)
 			s := &stub{}
 			_, root := s.install(t)
+			t.Setenv("USERPROFILE", os.Getenv("HOME"))
+			t.Setenv("XDG_CONFIG_HOME", filepath.Join(os.Getenv("HOME"), ".config"))
+			deskkit.ReloadConfig()
 			planClaimTool(t, root, tool)
 			record := installDecisionChild(t, s, root)
 			s.replies = happyReplies("/private/tmp/worker-home")
@@ -159,8 +184,12 @@ func TestDecisionChildReceivesTheMintedRoleTokenInItsEnvironment(t *testing.T) {
 func TestDecisionChildSeesTheExplicitGHTokenAndNothingIsMinted(t *testing.T) {
 	for _, tool := range []string{"go-binary", "legacy-script"} {
 		t.Run(tool, func(t *testing.T) {
+			decisionFixtureEnvironment(t)
 			s := &stub{}
 			_, root := s.install(t)
+			t.Setenv("USERPROFILE", os.Getenv("HOME"))
+			t.Setenv("XDG_CONFIG_HOME", filepath.Join(os.Getenv("HOME"), ".config"))
+			deskkit.ReloadConfig()
 			planClaimTool(t, root, tool)
 			record := installDecisionChild(t, s, root)
 			s.replies = happyReplies("/private/tmp/worker-home")
