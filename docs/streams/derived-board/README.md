@@ -117,7 +117,8 @@ today's full read.
 
 - Every brief here is a toolkit brief: code under `statusgen/` and `tools/desk/`, docs under
   `docs/`, skills under `plugins/assay/skills/`. The private toolkit's copies of the skills
-  and spec docs are consumers (`consumers:` lists them; re-stage is overlay, never mirror).
+  and spec docs are consumers (`consumers:` lists them). The skills have one canonical home
+  here and the overlay mirror is retired, so there is no re-stage step (brief 07, Task 3).
 - Three-state instrument invariant (brief-rules §"Three-state instrument invariant") binds
   every derived cell: a cell is `todo`/`in-progress`/`implemented`/`verified`/`done` **only
   when the instrument looked**; when it could not (no network, API error, no trailer) the cell
