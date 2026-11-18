@@ -204,8 +204,8 @@ func (f *rosterCostForge) ListOpenChanges(repo deskkit.ForgeRepo) (*deskkit.Open
 		return &deskkit.OpenChanges{}, nil
 	}
 	return &deskkit.OpenChanges{Changes: []deskkit.OpenChange{
-		{Number: 11, State: "OPEN", Draft: true},
-		{Number: 12, State: "OPEN"},
+		{Number: 11, State: "OPEN", Draft: true, Title: repo.Slug() + "#11"},
+		{Number: 12, State: "OPEN", Title: repo.Slug() + "#12"},
 	}}, nil
 }
 
@@ -214,11 +214,8 @@ func (f *rosterCostForge) GetPullRequest(_ deskkit.ForgeRepo, n int) (*deskkit.P
 	return &deskkit.PullRequest{Number: n, State: "closed", Merged: true}, nil
 }
 
-func TestListReusesPositiveOpenRowsAndConfirmsMissingBeacons(t *testing.T) {
-	home := rosterSetup(t)
-	writeTestBeacon(t, home, Beacon{Session: "worker", OpenWork: []WorkEntry{
-		{Repo: "tracker", PR: 11}, {Repo: "tracker", PR: 12}, {Repo: "tracker", PR: 13},
-	}})
+func installRosterCostForge(t *testing.T) *rosterCostForge {
+	t.Helper()
 	provider := &rosterCostForge{lists: make(map[string]int)}
 	previous := forgeFor
 	t.Cleanup(func() { forgeFor = previous })
@@ -226,6 +223,15 @@ func TestListReusesPositiveOpenRowsAndConfirmsMissingBeacons(t *testing.T) {
 		owner, name, _ := strings.Cut(slug, "/")
 		return provider, deskkit.ForgeRepo{Owner: owner, Name: name}, nil
 	}
+	return provider
+}
+
+func TestListReusesPositiveOpenRowsAndConfirmsMissingBeacons(t *testing.T) {
+	home := rosterSetup(t)
+	writeTestBeacon(t, home, Beacon{Session: "worker", OpenWork: []WorkEntry{
+		{Repo: "tracker", PR: 11}, {Repo: "tracker", PR: 12}, {Repo: "tracker", PR: 13},
+	}})
+	provider := installRosterCostForge(t)
 	if err := cmdList(); err != nil {
 		t.Fatal(err)
 	}
@@ -240,5 +246,46 @@ func TestListReusesPositiveOpenRowsAndConfirmsMissingBeacons(t *testing.T) {
 	got := readTestBeacon(t, home, "worker")
 	if got == nil || len(got.OpenWork) != 2 || got.OpenWork[0].PR != 11 || got.OpenWork[1].PR != 12 {
 		t.Fatalf("unexpected surviving work: %+v", got)
+	}
+}
+
+func TestListAmbiguousLegacyBeaconPreservesOwnership(t *testing.T) {
+	home := installRosterEnv(t, partialRosterNoRepos+"ASSAY_ALLOWED_REPOS=a/tracker:ci:private,b/tracker:ci:private\n")
+	writeTestBeacon(t, home, Beacon{Session: "worker", OpenWork: []WorkEntry{
+		{Repo: "tracker", PR: 11, What: "ambiguous open"},
+		{Repo: "a/tracker", PR: 12, What: "explicit owner"},
+		{Repo: "tracker", PR: 13, What: "ambiguous missing"},
+	}})
+	provider := installRosterCostForge(t)
+
+	var rc int
+	out := captureStdout(t, func() { rc = run([]string{"list"}) })
+	if rc != deskkit.ExitOK {
+		t.Fatalf("list exit %d: %s", rc, out)
+	}
+	for _, title := range []string{"a/tracker#11", "b/tracker#11", "a/tracker#12"} {
+		if strings.Contains(out, title) {
+			t.Errorf("possibly owned PR advertised as unclaimed: %s in %s", title, out)
+		}
+	}
+	if !strings.Contains(out, "b/tracker#12") {
+		t.Errorf("full ID in one repository hid another's unclaimed PR: %s", out)
+	}
+	for _, description := range []string{"ambiguous open", "ambiguous missing"} {
+		if !strings.Contains(strings.Join(strings.Fields(out), " "), "? "+description) {
+			t.Errorf("ambiguous state should be unknown for %s: %s", description, out)
+		}
+	}
+	saved := readTestBeacon(t, home, "worker")
+	if saved == nil || len(saved.OpenWork) != 3 || len(provider.details) != 0 {
+		t.Errorf("ambiguous references must survive without guessed detail reads: saved=%+v, reads=%v", saved, provider.details)
+	}
+	out = captureStdout(t, func() { rc = run([]string{"mine", "--session", "worker"}) })
+	fields := strings.Join(strings.Fields(out), " ")
+	if rc != deskkit.ExitOK || !strings.Contains(fields, "? ambiguous open") || !strings.Contains(fields, "? ambiguous missing") {
+		t.Errorf("mine should show unknown state for ambiguous entries: exit %d: %s", rc, out)
+	}
+	if len(provider.details) != 1 || provider.details[0] != 12 {
+		t.Errorf("mine detail reads %v, want only the explicit repository entry", provider.details)
 	}
 }

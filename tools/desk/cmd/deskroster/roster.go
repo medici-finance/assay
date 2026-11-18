@@ -222,36 +222,25 @@ func loadClaims() ([]deskkit.Claim, error) {
 
 // ---- repo name mapping ----
 
-// shortToFull builds a map from short repo name (e.g. "tracker") to
-// full owner/repo (e.g. "example-org/tracker").
-func shortToFull() map[string]string {
-	m := make(map[string]string)
-	for _, full := range deskkit.AllowedRepos() {
-		parts := strings.SplitN(full, "/", 2)
-		if len(parts) == 2 {
-			m[parts[1]] = full
+// A legacy beacon may name a repository without its owner. Keep every possible
+// match: the PR number alone cannot tell sibling repositories apart.
+type beaconRepoAliases map[string][]string
+
+func indexBeaconRepos(repos []string) beaconRepoAliases {
+	aliases := make(beaconRepoAliases)
+	for _, full := range repos {
+		if _, name, ok := strings.Cut(full, "/"); ok {
+			aliases[name] = append(aliases[name], full)
 		}
 	}
-	return m
+	return aliases
 }
 
-// resolveFullRepo returns the full owner/repo for a short repo name.
-// If the short name isn't in the mapping, returns it as-is (for robustness).
-func resolveFullRepo(short string) string {
-	m := shortToFull()
-	if full, ok := m[short]; ok {
-		return full
+func (aliases beaconRepoAliases) candidates(name string) []string {
+	if strings.Contains(name, "/") {
+		return []string{name}
 	}
-	return short
-}
-
-// resolveShortRepo returns the short repo name from a full owner/repo.
-func resolveShortRepo(full string) string {
-	parts := strings.SplitN(full, "/", 2)
-	if len(parts) == 2 {
-		return parts[1]
-	}
-	return full
+	return aliases[name]
 }
 
 // ---- forge PR reads ----
@@ -580,9 +569,8 @@ type lineEntry struct {
 
 func cmdList() error {
 	// 0. Scope guard (#494, same shape as #489 in deskboard). `list` sweeps
-	// deskkit.AllowedRepos() twice — once via shortToFull() to resolve beacon repo
-	// names, once directly for the unclaimed-PR scan — and an empty repo set makes
-	// both loops iterate zero times. Before this guard that read nothing and reported
+	// deskkit.AllowedRepos() to resolve beacon names and list unclaimed PRs. An
+	// empty scope yields no observations. Before this guard that read nothing and reported
 	// it as a clean, silent result: no unclaimed section, no beacon repos resolved,
 	// exit 0. That is could-not-check, not "nothing to report", so it is checked
 	// BEFORE any read is attempted, exactly like deskboard's dispatch-level guard.
@@ -635,6 +623,7 @@ func cmdList() error {
 	// field needed to display a beacon. Absence (including a truncated or failed
 	// listing) proves nothing about closure; only the single-change read may prune.
 	repos := deskkit.AllowedRepos()
+	aliases := indexBeaconRepos(repos)
 	openByRepo := make(map[string][]PRInfo, len(repos))
 	observedOpen := make(map[repoPR]*PRInfo)
 	for _, repo := range repos {
@@ -646,7 +635,7 @@ func cmdList() error {
 			}
 		}
 	}
-	coveredByBeacon := make(map[repoPR]string) // (repo,pr) -> session name
+	coveredByBeacon := make(map[repoPR]bool)
 
 	// 3. Query live PR state for each beacon entry and auto-prune merged/closed.
 	type beaconRow struct {
@@ -664,10 +653,14 @@ func cmdList() error {
 		var surviving []WorkEntry
 		changed := false
 		for _, w := range b.OpenWork {
-			fullRepo := resolveFullRepo(w.Repo)
-			info := observedOpen[repoPR{repo: fullRepo, pr: w.PR}]
-			if info == nil {
-				info = ghViewPR(fullRepo, w.PR)
+			candidates := aliases.candidates(w.Repo)
+			var info *PRInfo
+			if len(candidates) == 1 {
+				repo := candidates[0]
+				info = observedOpen[repoPR{repo: repo, pr: w.PR}]
+				if info == nil {
+					info = ghViewPR(repo, w.PR)
+				}
 			}
 			state := "?"
 			if info != nil {
@@ -697,7 +690,11 @@ func cmdList() error {
 				continue
 			}
 			surviving = append(surviving, w)
-			coveredByBeacon[repoPR{repo: fullRepo, pr: w.PR}] = b.Session
+			// Every candidate may own this PR. Advertise none of them as free
+			// until a full repository identity disambiguates the beacon.
+			for _, repo := range candidates {
+				coveredByBeacon[repoPR{repo: repo, pr: w.PR}] = true
+			}
 		}
 
 		if changed {
@@ -778,7 +775,7 @@ func cmdList() error {
 	var unclaimed []PRInfo
 	for _, fullRepo := range repos {
 		for _, pr := range openByRepo[fullRepo] {
-			if _, covered := coveredByBeacon[repoPR{repo: fullRepo, pr: pr.Number}]; covered {
+			if coveredByBeacon[repoPR{repo: fullRepo, pr: pr.Number}] {
 				continue
 			}
 			unclaimed = append(unclaimed, pr)
@@ -854,9 +851,12 @@ func cmdMine(args []string) error {
 	fmt.Printf("%-6s %-8s %s\n", "PR", "STATE", "WHAT")
 	fmt.Printf("%-6s %-8s %s\n", "----", "------", "----")
 
+	aliases := indexBeaconRepos(deskkit.AllowedRepos())
 	for _, w := range b.OpenWork {
-		fullRepo := resolveFullRepo(w.Repo)
-		info := ghViewPR(fullRepo, w.PR)
+		var info *PRInfo
+		if repos := aliases.candidates(w.Repo); len(repos) == 1 {
+			info = ghViewPR(repos[0], w.PR)
+		}
 		state := "?"
 		if info != nil {
 			if info.State == "OPEN" {
