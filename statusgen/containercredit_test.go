@@ -178,6 +178,7 @@ func rosterWith(over map[string]string) map[string]string {
 }
 
 func TestBracketCredit(t *testing.T) {
+	installStatusgenFixture(t)
 	creditFakeDeskread(t)
 
 	// The base case. The block matches its own bracket, so without --credit the
@@ -383,6 +384,7 @@ var creditTrackingSource = strings.Repeat("d", 40)
 // repository is the brief's own, and the source repository is in the configured
 // repository set. Records 60 and 61 differ only in their source repository.
 func TestBracketCreditCrossRepo(t *testing.T) {
+	installStatusgenFixture(t)
 	creditFakeDeskread(t)
 	check := func(t *testing.T, name string, att string, wantCode int, wantCredit, wantWhy string) {
 		t.Helper()

@@ -69,6 +69,7 @@ func TestRoutesToRequiredLint(t *testing.T) {
 // removes the NOTICE — proving the owed condition is a real dereference against
 // authored provenance, not merely that the detector ran.
 func TestLifecycleOwedNoticeIntegration(t *testing.T) {
+	installStatusgenFixture(t)
 	build := func(t *testing.T, withCitingBrief bool) (problems, notices []string) {
 		t.Helper()
 		root := t.TempDir()

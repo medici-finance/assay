@@ -106,6 +106,7 @@ func mustCoverageStream(t *testing.T, name string) (*Stream, string) {
 // TestCoverage is the baseline: one Verify row with a matching, passing witness
 // releases the brief with exactly one `pass` claim.
 func TestCoverage(t *testing.T) {
+	installStatusgenFixture(t)
 	s, root := mustCoverageStream(t, "cov")
 	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
 	// The witness must be corroborable against real history (review finding F3,
@@ -235,6 +236,7 @@ func TestCoverageCouldNotCheckIsNotPass(t *testing.T) {
 // parsed pattern are constructed directly here — exactly the
 // "testable without a provider" the amendment asks for.
 func TestCoverageJoinRequiresIntegrationRow(t *testing.T) {
+	installStatusgenFixture(t)
 	pat := patternDoc{
 		Name: "fixture-pattern",
 		Join: "verify",
@@ -416,6 +418,7 @@ func mustGitCommitAll(t *testing.T, root, message string) string {
 // file changed since (the ordinary "run the check, then commit the Evidence"
 // shape).
 func TestCoverageAncestorWitnessReleases(t *testing.T) {
+	installStatusgenFixture(t)
 	s, root := mustCoverageStream(t, "cov")
 	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
 	writeCoverageBrief(t, s.Dir, "01", "cov", verify, "") // no Evidence yet — this is the tree the check ran against
@@ -446,6 +449,7 @@ func TestCoverageAncestorWitnessReleases(t *testing.T) {
 // path outside the board's own bookkeeping (round-2 F2 scope rule) — a change
 // to an implementation path (src/, not docs/streams/** or STATUS.md) holds it.
 func TestCoverageAncestorWitnessOtherPathChangedMismatch(t *testing.T) {
+	installStatusgenFixture(t)
 	s, root := mustCoverageStream(t, "cov")
 	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
 	writeCoverageBrief(t, s.Dir, "01", "cov", verify, "")
@@ -481,6 +485,7 @@ func TestCoverageAncestorWitnessOtherPathChangedMismatch(t *testing.T) {
 // changed, same as TestCoverageAncestorWitnessReleases), so this pins that the
 // SEPARATE Expect-history guard (verifyRowAtRevision) still catches it.
 func TestCoverageExpectChangedSinceWitnessRan(t *testing.T) {
+	installStatusgenFixture(t)
 	s, root := mustCoverageStream(t, "cov")
 	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
 	writeCoverageBrief(t, s.Dir, "01", "cov", verify, "")
@@ -525,6 +530,7 @@ func mustWriteFile(t *testing.T, root, rel, content string) {
 // read the row at the witness's BASE commit (suffix stripped) and still catch
 // an Expect tightened after the run — never skip itself into a `pass`.
 func TestCoverageDirtyWitnessExpectChangedIsError(t *testing.T) {
+	installStatusgenFixture(t)
 	s, root := mustCoverageStream(t, "cov")
 	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
 	writeCoverageBrief(t, s.Dir, "01", "cov", verify, "")
@@ -549,6 +555,7 @@ func TestCoverageDirtyWitnessExpectChangedIsError(t *testing.T) {
 // together with its Evidence), so the row the witness answered cannot be read.
 // That is could-not-check — uncorroborated is never `pass`.
 func TestCoverageBriefAbsentAtWitnessTreeIsCouldNotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	s, root := mustCoverageStream(t, "cov")
 	mustWriteFile(t, root, "src/impl.txt", "v1\n")
 	witnessTree := mustGitInit(t, root) // the brief is NOT in this tree
@@ -570,6 +577,7 @@ func TestCoverageBriefAbsentAtWitnessTreeIsCouldNotCheck(t *testing.T) {
 // TestCoverageRowAbsentAtWitnessTreeIsCouldNotCheck — round-2 F3(b): the brief
 // existed at the witness's tree, but the row id did not (it was added after).
 func TestCoverageRowAbsentAtWitnessTreeIsCouldNotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	s, root := mustCoverageStream(t, "cov")
 	writeCoverageBrief(t, s.Dir, "01", "cov", "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |", "")
 	witnessTree := mustGitInit(t, root)
@@ -602,6 +610,7 @@ func TestCoverageRowAbsentAtWitnessTreeIsCouldNotCheck(t *testing.T) {
 // bookkeeping is not something the witness speaks for; it must not turn a
 // witness into `wrong-revision`.
 func TestCoverageSiblingEvidenceAndStatusRegenStillRelease(t *testing.T) {
+	installStatusgenFixture(t)
 	s, root := mustCoverageStream(t, "cov")
 	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
 	writeCoverageBrief(t, s.Dir, "01", "cov", verify, "")
@@ -633,6 +642,7 @@ func TestCoverageSiblingEvidenceAndStatusRegenStillRelease(t *testing.T) {
 // declared path (including one under a declared directory) holds. Without the
 // manifest the undeclared change holds too (TestCoverageReuseDoesNotRetargetPass).
 func TestCoverageDeclaredFilesScopeTheWitness(t *testing.T) {
+	installStatusgenFixture(t)
 	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
 	// No prose annotation: since round 5 a word outside the spans, such as
 	// `(planned)`, is an entry that names nothing and widens to conservative.
@@ -677,6 +687,7 @@ func TestCoverageDeclaredFilesScopeTheWitness(t *testing.T) {
 // guard still binds. This is a DELIBERATE, documented tolerance — if it is ever
 // narrowed, this test is the one to change, in the same commit as the spec.
 func TestCoverageDirtyWitnessToleranceIsDeclared(t *testing.T) {
+	installStatusgenFixture(t)
 	s, root := mustCoverageStream(t, "cov")
 	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
 	writeCoverageBrief(t, s.Dir, "01", "cov", verify, "")
@@ -749,6 +760,7 @@ func writes(kv ...string) func(t *testing.T, root string) {
 // regen lands — those are the surfaces verify and regen necessarily write. Any
 // OTHER declared docs/streams/ artifact still holds.
 func TestCoverageDeclaredScopeExemptsVerifyBookkeeping(t *testing.T) {
+	installStatusgenFixture(t)
 	readme := func(state string) string {
 		return "| # | Brief | Status |\n|---|---|---|\n| 01 | fixture | " + state + " |\n"
 	}
@@ -814,6 +826,7 @@ func TestCoverageDeclaredScopeExemptsVerifyBookkeeping(t *testing.T) {
 // speaking for nothing, and the scope is read from the brief at the witness's
 // base commit as well as now, so narrowing `files:` afterwards is visible.
 func TestCoverageWitnessScopeNeverFailsOpen(t *testing.T) {
+	installStatusgenFixture(t)
 	gitMv := func(from, to string) func(t *testing.T, root string) {
 		return func(t *testing.T, root string) {
 			t.Helper()
@@ -920,6 +933,7 @@ func TestCoverageWitnessScopeNeverFailsOpen(t *testing.T) {
 // outside it releases), including a trailing `/**` directory glob and a
 // one-segment glob path.Match can express.
 func TestCoverageResolvableDeclarationsStillScope(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []struct {
 		name  string
 		files string
@@ -950,6 +964,7 @@ func TestCoverageResolvableDeclarationsStillScope(t *testing.T) {
 // bookkeeping exemption also covers the brief's path — this test is the only
 // thing standing between that exemption and a mutation that removes it.
 func TestCoverageBriefOwnFileNeverInvalidates(t *testing.T) {
+	installStatusgenFixture(t)
 	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
 	for _, files := range []string{"", "`plans/cov/brief-01.md`, `src/impl.go`"} {
 		t.Run("files="+files, func(t *testing.T) {
@@ -994,6 +1009,7 @@ func TestCoverageBriefOwnFileNeverInvalidates(t *testing.T) {
 // ever writes a hex SHA (treeSHALen), so only a hand-edited row can carry this
 // shape.
 func TestCoverageWitnessTokenMustBeHexShaped(t *testing.T) {
+	installStatusgenFixture(t)
 	s, root := mustCoverageStream(t, "cov")
 	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
 	writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", "`src/impl.go`", verify, "")
@@ -1023,6 +1039,7 @@ func TestCoverageWitnessTokenMustBeHexShaped(t *testing.T) {
 // never vacuously released. No committed test exercised this before — the
 // reviewer's M-b mutation (observe resolves `pass`) survived the full suite.
 func TestCoverageBoundObserveClaimHolds(t *testing.T) {
+	installStatusgenFixture(t)
 	pat := patternDoc{
 		Name: "fixture-observe-pattern",
 		NodeByID: map[string]patternNode{
@@ -1064,6 +1081,7 @@ func TestCoverageBoundObserveClaimHolds(t *testing.T) {
 // genuinely zero-claim brief before — the reviewer's M-d mutation (this guard
 // removed) survived the full suite.
 func TestCoverageZeroClaimsBriefIsHeld(t *testing.T) {
+	installStatusgenFixture(t)
 	s, root := mustCoverageStream(t, "cov")
 	writeCoverageBrief(t, s.Dir, "01", "cov", "", "")
 	mustGitInit(t, root)
@@ -1109,6 +1127,7 @@ func soleClaim(t *testing.T, root string, s *Stream, opts coverageOptions) Claim
 // dependency manifest to prove it irrelevant — holds the claim instead of
 // letting the old PASS release the new subject.
 func TestCoverageReuseDoesNotRetargetPass(t *testing.T) {
+	installStatusgenFixture(t)
 	s, root := mustCoverageStream(t, "cov")
 	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |"
 	mustWriteFile(t, root, "src/impl.go", "v1\n")
@@ -1150,6 +1169,7 @@ func TestCoverageReuseDoesNotRetargetPass(t *testing.T) {
 // policy, and its receipt keeps revision A. A sibling claim that does not
 // depend on the policy is still reused.
 func TestCoveragePolicyDependencyChanged(t *testing.T) {
+	installStatusgenFixture(t)
 	s, root := mustCoverageStream(t, "cov")
 	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` | exit 0 |\n| 2 | `true 2` | exit 0 |"
 	mustWriteFile(t, root, "src/impl.go", "v1\n")
@@ -1195,6 +1215,7 @@ func TestCoveragePolicyDependencyChanged(t *testing.T) {
 // TestCoverageEnvDependency — an environment dependency is compared by its
 // recorded and current fingerprints; a missing value is could-not-check.
 func TestCoverageEnvDependency(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []struct {
 		name, recorded, current, want string
 	}{
@@ -1226,6 +1247,7 @@ func TestCoverageEnvDependency(t *testing.T) {
 // not list the helper licenses reuse and says so; one that lists the helper
 // as a source dependency of the row holds.
 func TestCoverageManifestScopesReuse(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []struct {
 		name string
 		opts coverageOptions
@@ -1269,6 +1291,7 @@ func TestCoverageManifestScopesReuse(t *testing.T) {
 // atBase still finds a declaration at the witness's base and does not widen on
 // its own: only the "nothing is declared" branch keeps the claim held.
 func TestCoverageNothingDeclaredStaysConservative(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []struct {
 		name string
 		dep  workInputDep
@@ -1347,6 +1370,7 @@ func TestDeclaredEntriesKeepAll(t *testing.T) {
 // witness matches the row and its revision, so nothing but the prose-led guard
 // stands between it and a released pass.
 func TestCoverageProseLedPassIsNotReleased(t *testing.T) {
+	installStatusgenFixture(t)
 	s, root := mustCoverageStream(t, "cov")
 	verify := "| # | Command | Expect |\n|---|---------|--------|\n| 1 | `true` then run `go test ./nonexistent-pkg-1808 -count=1` | exit 0 |"
 	rows := briefVerifyRows(verify)

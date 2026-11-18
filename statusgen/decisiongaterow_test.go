@@ -24,6 +24,7 @@ func dhRowGoneRefused(t *testing.T, root string) {
 
 // The row is removed and the brief file moved under done/, unruled. Refused.
 func TestDGRowGoneFileToDoneRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{
@@ -36,6 +37,7 @@ func TestDGRowGoneFileToDoneRefused(t *testing.T) {
 
 // The same with a sibling brief still on the board, so the stream keeps rows.
 func TestDGRowGoneFileToDoneBesideSiblingRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	files := unruledBase()
 	files[dhReadmePath] = dhReadme(dhRow("18", "todo"), dhRow("19", "todo"))
@@ -51,6 +53,7 @@ func TestDGRowGoneFileToDoneBesideSiblingRefused(t *testing.T) {
 
 // The row is removed and the brief file stays at the stream root. Refused.
 func TestDGRowGoneFileStaysRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{dhReadmePath: dhReadme()})
@@ -61,6 +64,7 @@ func TestDGRowGoneFileStaysRefused(t *testing.T) {
 // implemented, and the brief file moved under done/. The brief keeps its board
 // id but loses its row: a drop, refused — the look-alike row carries no gate.
 func TestDGRowGoneDecoratedCellRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, cell := range []string{"**18**", "18.", "#18"} {
 		t.Run(cell, func(t *testing.T) {
 			dhSeams(t, nil)
@@ -78,6 +82,7 @@ func TestDGRowGoneDecoratedCellRefused(t *testing.T) {
 // The stream is moved to the archive tree and the brief's row removed there,
 // the brief file kept. Refused.
 func TestDGRowGoneInArchiveRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	files := unruledBase()
 	files["docs/streams/control/README.md"] = dhReadme(dhRow("1", "todo"))
@@ -93,6 +98,7 @@ func TestDGRowGoneInArchiveRefused(t *testing.T) {
 // Controls. A recorded ruling lifts the drop like any other drop; a brief whose
 // row stays (moved under done/ with the row kept) is not a drop.
 func TestDGRowGoneRuledPasses(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, dhForge("Option 1 for "+dhBoardID+"."))
 	root := dhFixture(t, map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
@@ -112,6 +118,7 @@ func TestDGRowGoneRuledPasses(t *testing.T) {
 }
 
 func TestDGRowKeptFileToDoneQuiet(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "done")),

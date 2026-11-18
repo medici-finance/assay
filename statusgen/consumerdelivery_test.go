@@ -22,6 +22,7 @@ func deliveryFixture(t *testing.T, routes []string) (string, string, string) {
 
 // regression: #1915
 func TestDeliveryInherited(t *testing.T) {
+	installStatusgenFixture(t)
 	root, base, delivery := deliveryFixture(t, []string{"web/fixed.go: fixed-here", "web/excluded.go: out-of-scope (unchanged reader contract)"})
 	if got := runDeliveryConsumers(root, base, "alpha/01", delivery); got != 0 {
 		t.Fatalf("inherited delivery claims: got %d, want 0", got)
@@ -40,6 +41,7 @@ func TestDeliveryInherited(t *testing.T) {
 
 // regression: #1915
 func TestDeliveryPlantedRoutes(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, route := range []string{"web/untouched.go: fixed-here", "web/fixed.go: out-of-scope (must remain unchanged)"} {
 		t.Run(route, func(t *testing.T) {
 			root, base, delivery := deliveryFixture(t, []string{"web/fixed.go: fixed-here", route})
@@ -52,6 +54,7 @@ func TestDeliveryPlantedRoutes(t *testing.T) {
 
 // regression: #1915
 func TestDeliveryBounds(t *testing.T) {
+	installStatusgenFixture(t)
 	root, base, delivery := deliveryFixture(t, []string{"web/fixed.go: fixed-here"})
 	for _, v := range [][3]string{{base, "", delivery}, {base, "alpha/99", delivery}, {delivery, "alpha/01", delivery}, {base, "alpha/01", "HEAD"}, {"main", "alpha/01", delivery}, {mustGitOut(t, root, "rev-parse", base+"^"), "alpha/01", delivery}, {base, "alpha/01", strings.Repeat("a", 40)}} {
 		if got := runDeliveryConsumers(root, v[0], v[1], v[2]); got != 2 {
@@ -92,6 +95,7 @@ func TestDeliveryBounds(t *testing.T) {
 
 // regression: #1915
 func TestDeliveryNoEvidence(t *testing.T) {
+	installStatusgenFixture(t)
 	root, base, delivery := deliveryFixture(t, []string{"remote reader: out-of-scope (not visible in this repository)"})
 	if got := runDeliveryConsumers(root, base, "alpha/01", delivery); got != 2 {
 		t.Fatalf("unchecked only got %d", got)
@@ -100,6 +104,7 @@ func TestDeliveryNoEvidence(t *testing.T) {
 
 // regression: #5375
 func TestDeliveryIdentitySwapped(t *testing.T) {
+	installStatusgenFixture(t)
 	// Each producer's follow-up routes corroborate at either delivery. That
 	// topology must not be presented as proof of which producer was delivered.
 	root := consumersFixture(t, []string{"web/fixed.go: follow-up alpha/01", "web/excluded.go: out-of-scope (unchanged reader contract)"}, map[string]string{"web/fixed.go": "before\n", "web/untouched.go": "before\n", "web/excluded.go": "before\n"})
@@ -139,6 +144,7 @@ func TestDeliveryIdentitySwapped(t *testing.T) {
 
 // regression: #5375
 func TestDeliveryIdentityDerived(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _, _ := derivedFixture(t, []string{"web/fixed.go: fixed-here"}, goodMarker)
 	var code int
 	var out string
@@ -152,6 +158,7 @@ func TestDeliveryIdentityDerived(t *testing.T) {
 
 // regression: #5375 F1
 func TestDeliveryStdoutStable(t *testing.T) {
+	installStatusgenFixture(t)
 	root, base, delivery := deliveryFixture(t, []string{"web/fixed.go: fixed-here"})
 	var code int
 	var out string
@@ -169,6 +176,7 @@ func TestDeliveryStdoutStable(t *testing.T) {
 
 // regression: #1915
 func TestDeliveryCLI(t *testing.T) {
+	installStatusgenFixture(t)
 	root, base, delivery := deliveryFixture(t, []string{"web/fixed.go: fixed-here"})
 	bin := buildStatusgenBinary(t)
 	out, err := exec.Command(bin, "--root", root, "--consumers", "--brief", "alpha/01", "--delivery", delivery, "--base", base).CombinedOutput()

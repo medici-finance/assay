@@ -108,6 +108,7 @@ func wantClaim(t *testing.T, got Claim, result string, reasonHas ...string) {
 // changelog fragment, release stamps and a README the row does not read
 // leave its witness standing.
 func TestDepScopeUnrelatedReleases(t *testing.T) {
+	installStatusgenFixture(t)
 	setup := writes(".assay-versions", "v1\n", ".claude-plugin/marketplace.json", "{}\n", "README.md", "r1\n", "src/b.go", "b1\n")
 	got := dsScenario(t, dsCmd, setup, writes(
 		".assay-versions", "v2\n",
@@ -122,6 +123,7 @@ func TestDepScopeUnrelatedReleases(t *testing.T) {
 // TestDepScopeInputChangedHolds — the refusal direction: the file the row's
 // command reads changed after the witness ran, so the witness is stale.
 func TestDepScopeInputChangedHolds(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("the file read", func(t *testing.T) {
 		got := dsScenario(t, dsCmd, nil, writes("src/a.go", "a v2\n"))
 		wantClaim(t, got, covWrongRevision, "src/a.go differs", "derived from its text")
@@ -148,6 +150,7 @@ func TestDepScopeInputChangedHolds(t *testing.T) {
 // change the bytes the command reads without changing the input's blob, so a
 // change to one refuses the witness.
 func TestDepScopeAttributesHold(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, ga := range []string{".gitattributes", "src/.gitattributes"} {
 		t.Run(ga, func(t *testing.T) {
 			got := dsScenario(t, dsCmd, nil, writes(ga, "*.go eol=crlf\n"))
@@ -160,6 +163,7 @@ func TestDepScopeAttributesHold(t *testing.T) {
 // establish keeps the conservative scope: an unrelated release stamp still
 // refuses it, and the reason says why the inputs could not be derived.
 func TestDepScopeUnderivableHolds(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, cmd := range []string{"grep -c a $(echo src/a.go)", "go test ./src", "cat src/a.go > /dev/null"} {
 		t.Run(cmd, func(t *testing.T) {
 			got := dsScenario(t, cmd, writes(".assay-versions", "v1\n"), writes(".assay-versions", "v2\n"))
@@ -172,6 +176,7 @@ func TestDepScopeUnderivableHolds(t *testing.T) {
 // reads the link's target, which its path does not establish: the scope
 // widens to conservative and an unrelated change refuses.
 func TestDepScopeLinkWidens(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []struct{ name, cmd, link, target string }{
 		{"the input is a link", "cat src/l.go", "src/l.go", "a.go"},
 		{"a parent is a link", "cat lib/a.go", "lib", "src"},
@@ -201,6 +206,7 @@ func TestDepScopeLinkWidens(t *testing.T) {
 // to catch: see TestDepScopeRootBelowToplevelWidens and
 // TestDepScopeVerifyrunBelowToplevelRefused.
 func TestDepScopeAbsentWidens(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("operand untracked at that path", func(t *testing.T) {
 		got := dsScenario(t, "cat a.go", writes(".assay-versions", "v1\n"), writes(".assay-versions", "v2\n", "src/a.go", "a v2\n"))
 		wantClaim(t, got, covWrongRevision, "not tracked under that exact path in the witness's tree")
@@ -222,6 +228,7 @@ func TestDepScopeAbsentWidens(t *testing.T) {
 // behind a narrowed scope: it keeps the conservative scope, and a pass says
 // only the base commit landed.
 func TestDepScopeDirtyHolds(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, sfx := range []string{"+dirty", "+unknown"} {
 		t.Run(sfx, func(t *testing.T) {
 			root, s := dsRepoTok(t, dsCmd, sfx, writes(".assay-versions", "v1\n"), writes(".assay-versions", "v2\n"))
@@ -238,6 +245,7 @@ func TestDepScopeDirtyHolds(t *testing.T) {
 // write (its own brief, a stream README), directly or through a directory,
 // keeps the conservative scope.
 func TestDepScopeBriefReadWidens(t *testing.T) {
+	installStatusgenFixture(t)
 	cmds := []string{
 		"grep -c Verify docs/streams/cov/brief-01.md",
 		"cat docs/streams/cov/README.md",
@@ -257,6 +265,7 @@ func TestDepScopeBriefReadWidens(t *testing.T) {
 // witness's (outside the board's bookkeeping), and stays honoured when an
 // unrelated release stamp lands on main afterwards.
 func TestLandSquashReleases(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("squash equal", func(t *testing.T) {
 		root, s, b := dsSquash(t, nil, nil)
 		got := soleClaim(t, root, s, coverageOptions{})
@@ -279,6 +288,7 @@ func TestLandSquashReleases(t *testing.T) {
 // never existed on the item's history, so the check ran against code main
 // never carried as a whole — even when nothing the row reads differs.
 func TestLandNeverLandedRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("main moved before the squash", func(t *testing.T) {
 		root, s, _ := dsSquash(t, writes(".assay-versions", "v2\n"), nil)
 		wantClaim(t, soleClaim(t, root, s, coverageOptions{}), covWrongRevision, "never landed")
@@ -303,6 +313,7 @@ func TestLandNeverLandedRefused(t *testing.T) {
 // TestLandShallowCannotCheck — a shallow clone cuts the history the landing
 // search reads: could-not-check, naming it, never a pass.
 func TestLandShallowCannotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := dsRepo(t, dsCmd, nil, writes("changelog/x.md", "- x\n"))
 	clone := filepath.Join(t.TempDir(), "clone")
 	runGit(t, filepath.Dir(clone), "clone", "-q", "--depth", "2", "file://"+root, clone)
@@ -316,6 +327,7 @@ func TestLandShallowCannotCheck(t *testing.T) {
 // TestLandBoundCannotCheck — more commits to compare than the search's bound:
 // could-not-check, never assumed landed.
 func TestLandBoundCannotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	old := maxLandingCandidates
 	maxLandingCandidates = 1
 	t.Cleanup(func() { maxLandingCandidates = old })
@@ -327,6 +339,7 @@ func TestLandBoundCannotCheck(t *testing.T) {
 // merge base, so it has landed with no search: the bound never refuses it,
 // however many unrelated commits followed.
 func TestLandAncestorPastBound(t *testing.T) {
+	installStatusgenFixture(t)
 	old := maxLandingCandidates
 	maxLandingCandidates = 1
 	t.Cleanup(func() { maxLandingCandidates = old })
@@ -351,6 +364,7 @@ func dsDropTree(t *testing.T, root, rev string) {
 // TestLandGitErrorCannotCheck — git cannot read a tree the judgement needs:
 // could-not-check, naming which step failed, never a pass.
 func TestLandGitErrorCannotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("the witness's tree", func(t *testing.T) {
 		root, s := dsRepo(t, dsCmd, nil, writes("changelog/x.md", "- x\n"))
 		dsDropTree(t, root, "HEAD~1")
@@ -373,6 +387,7 @@ func TestLandGitErrorCannotCheck(t *testing.T) {
 // still be refused. So the bookkeeping exemptions stay docs/streams/** and
 // STATUS.md, and no non-test coverage file names a release-stamp path.
 func TestNoFixedPathExemption(t *testing.T) {
+	installStatusgenFixture(t)
 	// The path predicates live in the evaluation package
 	// (TestBookkeepingPathsNotStamps); here the files of the adapter and of the
 	// library are scanned for a named release path.
@@ -440,6 +455,7 @@ func dsShadowRepo(t *testing.T, cmd string, change func(t *testing.T, top string
 // row ran is ambiguous there, so the scope widens to conservative and the
 // change refuses the witness.
 func TestDepScopeRootBelowToplevelWidens(t *testing.T) {
+	installStatusgenFixture(t)
 	_, sub, s := dsShadowRepo(t, "grep -c ok README.md", writes("sub/README.md", "changed\n"))
 	got := soleClaim(t, sub, s, coverageOptions{})
 	wantClaim(t, got, covWrongRevision, "sub/README.md differs", "below its repository's toplevel")
@@ -452,6 +468,7 @@ func TestDepScopeRootBelowToplevelWidens(t *testing.T) {
 // toplevel's README.md) would be judged by the wrong file, so verifyrun
 // refuses that root and writes nothing; at the toplevel it runs as before.
 func TestDepScopeVerifyrunBelowToplevelRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	top, sub, s := dsShadowRepo(t, "grep -c ok README.md", nil)
 	brief := filepath.Join(s.Dir, "brief-01.md")
 	before, err := os.ReadFile(brief)
@@ -524,6 +541,7 @@ func dsIndexScenario(t *testing.T, cmd string, setup func(t *testing.T, root str
 // refuses. A non-ASCII operand widens too, since its canonically equivalent
 // spellings are not compared here.
 func TestDepScopeFoldCollisionWidens(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("case collision", func(t *testing.T) {
 		got := dsIndexScenario(t, "grep -c ok README.md", writes("README.md", "ok\n"),
 			[]string{"readme.md", "ok\n"}, []string{"readme.md", "changed\n"})

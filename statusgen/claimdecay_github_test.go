@@ -91,6 +91,7 @@ func branchPage(hasNext bool, cursor string, states map[string]string) string {
 //
 // regression: #3372
 func TestDecayRunsWithoutGhOnPath(t *testing.T) {
+	installStatusgenFixture(t)
 	offlineGitHubEnv(t, "test-token")
 	calls := fakeGraphQL(t, func(n int, _ map[string]any) (int, string) {
 		if n == 1 {
@@ -135,6 +136,7 @@ func TestDecayRunsWithoutGhOnPath(t *testing.T) {
 //
 // regression: #3372
 func TestDecayNoTokenIsCouldNotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	offlineGitHubEnv(t, "")
 	calls := fakeGraphQL(t, func(int, map[string]any) (int, string) { return 200, branchPage(false, "", nil) })
 	branches := []string{"fix/alpha-01-dead"}
@@ -155,6 +157,7 @@ func TestDecayNoTokenIsCouldNotCheck(t *testing.T) {
 // TestDecayHTTP401CouldNotCheck: a refused read keeps every branch and carries
 // the status and GitHub's message onto the board's could-not-check.
 func TestDecayHTTP401CouldNotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	offlineGitHubEnv(t, "bad-token")
 	fakeGraphQL(t, func(int, map[string]any) (int, string) { return 401, `{"message":"Bad credentials"}` })
 	branches := []string{"fix/alpha-01-dead"}
@@ -173,6 +176,7 @@ func TestDecayHTTP401CouldNotCheck(t *testing.T) {
 // does not advance, or still paging at the safety bound — is an error, never a
 // short listing read as "these are all the branches".
 func TestDecayPagingNeverShort(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("stuck-cursor", func(t *testing.T) {
 		offlineGitHubEnv(t, "test-token")
 		fakeGraphQL(t, func(int, map[string]any) (int, string) {
@@ -255,6 +259,7 @@ func TestGitHubDecayTarget(t *testing.T) {
 //
 // regression: SEC-2 on #3384
 func TestDecayTokenStaysOnItsHost(t *testing.T) {
+	installStatusgenFixture(t)
 	const lookalike = "https://github.lookalike.example/acme/widgets.git"
 	setOrigin := func(t *testing.T, origin string) {
 		prev := remoteOriginURL
@@ -384,6 +389,7 @@ func decayLoginSentinel(t *testing.T) string {
 
 // regression: forge-neutral/49
 func TestDecayNoStoredLogin(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, endpoint := range []struct{ name, origin, override, credential string }{
 		{"public", "https://github.com/acme/widgets.git", "", "GH_TOKEN"},
 		{"derived-enterprise", "https://github.lookalike.example/acme/widgets.git", "", "GH_ENTERPRISE_TOKEN"},

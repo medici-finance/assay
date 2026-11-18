@@ -11,6 +11,7 @@ import (
 
 // regression: #3342
 func TestProtectedClosureRows(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, name := range []string{"squash", "merge", "expect-edited", "command-edited", "divergent-original", "row-removed", "row-renumbered", "class-changed", "duplicate-id"} {
 		t.Run(name, func(t *testing.T) {
 			o := vfDefaults()
@@ -198,6 +199,7 @@ func TestProtectedClosureRows(t *testing.T) {
 
 // regression: #3342
 func TestProtectedRerun(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.status = "verified"
 	o.verified = "2026-08-13 human:alex"
@@ -294,6 +296,7 @@ func TestProtectedRerun(t *testing.T) {
 
 // regression: #3342
 func TestProtectedMainDrift(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.status = "verified"
 	o.verified = "2026-08-13 human:alex"
@@ -354,6 +357,7 @@ func TestProtectedUnmarked(t *testing.T) {
 
 // regression: #3342
 func TestProtectedMainlineDelivery(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.status, o.verified, o.evidence = "verified", "2026-08-13 human:alex", ""
 	root, _ := vfFixture(t, o)
@@ -418,6 +422,7 @@ func TestProtectedMainlineDelivery(t *testing.T) {
 
 // regression: #3342
 func TestProtectedRerunConsumers(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, c := range []struct {
 		name                                       string
 		protected, missingMarker, missingRow, pass bool

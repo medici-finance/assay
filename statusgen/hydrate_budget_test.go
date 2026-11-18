@@ -172,6 +172,7 @@ var hydrateCorpus = hydrateShape{streams: 4, briefsPerStream: 8, merges: 24}
 
 // regression: statusgen/44
 func TestHydrateBudget(t *testing.T) {
+	installStatusgenFixture(t)
 	root := hydrateRealShapeRoot(t, hydrateCorpus)
 	m := measureHydration(t, root, hydrateSynthRuns, nil)
 	t.Logf("%d briefs: bare %v, hydrated %v (%.1fx), history queries %d, parses %d", m.briefs, m.bare, m.hydrated, m.ratio(), m.historyQueries, m.parses)
@@ -187,6 +188,7 @@ func TestHydrateBudget(t *testing.T) {
 // asserts the budget check reports it by count and by ratio.
 // regression: statusgen/44
 func TestHydrateBudgetPlant(t *testing.T) {
+	installStatusgenFixture(t)
 	root := hydrateRealShapeRoot(t, hydrateCorpus)
 	briefHistoryNoticesInHydration = true
 	t.Cleanup(func() { briefHistoryNoticesInHydration = false })

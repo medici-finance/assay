@@ -11,6 +11,7 @@ import (
 
 // regression: #2395
 func TestRevisionOrdinaryNestedPrefix(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := revisionFixture(t)
 	nested := filepath.Join(root, "sub")
 	if err := os.Mkdir(nested, 0755); err != nil {

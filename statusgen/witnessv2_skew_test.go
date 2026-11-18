@@ -206,6 +206,7 @@ func materializeV1Corpus(t *testing.T) string {
 // and reason for every claim equal the baseline release's.
 // regression: #2026
 func TestWitnessV1Unchanged(t *testing.T) {
+	installStatusgenFixture(t)
 	old := oldStatusgenBin(t)
 	cur := buildStatusgenBinary(t)
 	root := materializeV1Corpus(t)

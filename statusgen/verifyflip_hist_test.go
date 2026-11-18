@@ -59,6 +59,7 @@ func vfGitCommandEnv(root string, env []string, args ...string) *exec.Cmd {
 // on a different base, so a check of only the first base git lists is red in
 // one of them whichever order git lists them in.
 func TestVflipEveryMergeBase(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, c := range []struct {
 		name, merger string
 		failFirst    bool
@@ -168,6 +169,7 @@ func vfCrissCross(t *testing.T, yFail bool) (root, readme string) {
 // from the older base A. The merge is the trivial result, so its author is not
 // judged and the flip passes.
 func TestVflipCrissCrossNoNet(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfCrissCross(t, false)
 	vfExpect(t, root, readme, verifyflipExitOK, "flipped")
 }
@@ -179,6 +181,7 @@ func TestVflipCrissCrossNoNet(t *testing.T) {
 // merge (the fixture's positive control has already shown HEAD is a merge):
 // a refusal of any other commit in the fixture is not this test passing.
 func TestVflipCrissCrossDropsFail(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfCrissCross(t, true)
 	merge := vfRev(t, root, "HEAD")
 	vfExpect(t, root, readme, verifyflipExitRefused, "provenance: commit "+merge[:12]+" changed the Evidence section")
@@ -190,6 +193,7 @@ func TestVflipCrissCrossDropsFail(t *testing.T) {
 // with the FAIL matches the merge, so a check that compares only the first
 // two parents finds nothing. The merge is judged, and the refusal names it.
 func TestVflipOctopusDropsFail(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	pass := vfRev(t, root, "HEAD")
 	runGitEnv(t, root, nil, "checkout", "-q", "-b", "q", pass)
@@ -237,6 +241,7 @@ func TestVflipSideBroughtNothingEqualEvidence(t *testing.T) {
 // TestFlipMergeBasesObjectIDs: the allow-listed merge-base caller refuses any
 // operand that is not a commit object id, so a name never reaches git.
 func TestFlipMergeBasesObjectIDs(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := vfFixture(t, vfDefaults())
 	head := vfRev(t, root, "HEAD")
 	if got, err := flipMergeBases(root, head, head); err != nil || len(got) != 1 || got[0] != head {
@@ -303,6 +308,7 @@ func vfRewriteHead(t *testing.T, root string, edit func(string) string) string {
 // it), so trimming it would read the verifier where git log reads another
 // address. The flip is could-not-check, never a pass.
 func TestVflipAmbiguousAuthor(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	id := vfRewriteHead(t, root, func(s string) string {
 		return strings.Replace(s, "<"+vfMailVerifier+">", "< "+vfMailVerifier+">", 1)
@@ -320,6 +326,7 @@ func TestVflipAmbiguousAuthor(t *testing.T) {
 // refs/replace/ entry substitutes a copy of that commit naming the verifier.
 // The provenance reads the object store's own commit.
 func TestVflipReplaceObject(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.author = vfMailWorker
 	root, readme := vfFixture(t, o)
@@ -344,6 +351,7 @@ func TestVflipReplaceObject(t *testing.T) {
 // back to the verifier's commit. The blame layers (and the Evidence-actor
 // lint, which shares the read) must still name the editor.
 func TestVflipIgnoreRevsConfig(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	raw, err := os.ReadFile(vfBrief(root))
 	if err != nil {
@@ -496,6 +504,7 @@ func TestHistoryGitIsolated(t *testing.T) {
 // provenance read sees. The plain read is the positive control: it proves the
 // graft file is live in this git, so the pinned read's full count is the pin.
 func TestHistoryGitGrafts(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	git := func(args ...string) string {
 		t.Helper()
@@ -535,6 +544,7 @@ func TestHistoryGitGrafts(t *testing.T) {
 // commit encoding (an ordinary git setting) is still a PROBLEM, never a
 // could-not-check NOTICE with the row skipped.
 func TestVflipLintAmbiguousHeader(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.author = vfMailWorker
 	root, readme := vfFixture(t, o)

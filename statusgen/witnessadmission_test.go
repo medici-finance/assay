@@ -39,6 +39,7 @@ func evidenceFiles(shape prShape) []map[string]any {
 
 // regression: #2703
 func TestEvidenceAdmission(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, backfill := range []bool{false, true} {
 		for _, prior := range []bool{false, true} {
 			t.Run(fmt.Sprint(backfill)+"/"+fmt.Sprint(prior), func(t *testing.T) {

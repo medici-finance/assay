@@ -82,6 +82,7 @@ func wantCouldNotCheck(t *testing.T, root string, needles ...string) {
 
 // regression: #6099
 func TestDerivedHistoryMergeCommit(t *testing.T) {
+	installStatusgenFixture(t)
 	// GitHub's merge message is title-only: the trailer lives on the commits
 	// the merge introduced. The delivery is the merge, pinned to its first parent.
 	for name, msgs := range map[string][]string{
@@ -100,12 +101,14 @@ func TestDerivedHistoryMergeCommit(t *testing.T) {
 
 // regression: #6099
 func TestDerivedHistorySquash(t *testing.T) {
+	installStatusgenFixture(t)
 	root, base, delivery := historyFixture(t, []string{"web/fixed.go: fixed-here"}, historyShape{messages: []string{trailer("implement (#7)", "alpha/01")}})
 	wantDerivedPass(t, root, base, delivery)
 }
 
 // regression: #6099
 func TestDerivedHistoryNoMatch(t *testing.T) {
+	installStatusgenFixture(t)
 	// Nothing in history names the brief: could-not-check, naming both the
 	// missing marker and what the history search covered.
 	for name, msg := range map[string]string{
@@ -123,6 +126,7 @@ func TestDerivedHistoryNoMatch(t *testing.T) {
 
 // regression: #6099
 func TestDerivedHistoryAmbiguous(t *testing.T) {
+	installStatusgenFixture(t)
 	// Two first-parent commits name the brief: the instrument never picks one.
 	root, _, _ := historyFixture(t, []string{"web/fixed.go: fixed-here"}, historyShape{messages: []string{trailer("implement", "alpha/01"), trailer("follow-up", "alpha/01")}})
 	wantCouldNotCheck(t, root, "no Verification-Table marker", "ambiguous", "2 first-parent commits")
@@ -130,6 +134,7 @@ func TestDerivedHistoryAmbiguous(t *testing.T) {
 
 // regression: #6099
 func TestDerivedHistoryFlagsWin(t *testing.T) {
+	installStatusgenFixture(t)
 	// Precedence: explicit --delivery/--base, then the marker, then history.
 	// The history here is ambiguous, so only a higher source can pass.
 	root, _, _ := historyFixture(t, []string{"web/fixed.go: fixed-here"}, historyShape{messages: []string{trailer("implement", "alpha/01"), trailer("follow-up", "alpha/01")}})
@@ -151,6 +156,7 @@ func TestDerivedHistoryFlagsWin(t *testing.T) {
 
 // regression: #6099
 func TestDerivedHistoryDisproved(t *testing.T) {
+	installStatusgenFixture(t)
 	// A route the derived delivery does not make true stays DISPROVED.
 	for _, merge := range []bool{true, false} {
 		root, _, _ := historyFixture(t, []string{"web/fixed.go: fixed-here", "web/untouched.go: fixed-here"}, historyShape{merge: merge, messages: []string{trailer("implement", "alpha/01")}})
@@ -164,6 +170,7 @@ func TestDerivedHistoryDisproved(t *testing.T) {
 
 // regression: #6099
 func TestDerivedHistoryNotLanded(t *testing.T) {
+	installStatusgenFixture(t)
 	// A candidate the fetched mainline ref does not contain is not a delivery.
 	root, _, _ := historyFixture(t, []string{"web/fixed.go: fixed-here"}, historyShape{messages: []string{trailer("implement", "alpha/01")}})
 	runGit(t, root, "update-ref", "-d", remoteMainRef)
@@ -172,6 +179,7 @@ func TestDerivedHistoryNotLanded(t *testing.T) {
 
 // regression: #6099
 func TestDerivedHistoryShallow(t *testing.T) {
+	installStatusgenFixture(t)
 	// A shallow clone cannot prove there is exactly one candidate.
 	src, _, _ := historyFixture(t, []string{"web/fixed.go: fixed-here"}, historyShape{messages: []string{trailer("implement", "alpha/01")}})
 	runGit(t, src, "branch", "-f", "landed", "HEAD")
@@ -188,6 +196,7 @@ func TestDerivedHistoryShallow(t *testing.T) {
 
 // regression: #6099
 func TestDerivedHistoryBadMarker(t *testing.T) {
+	installStatusgenFixture(t)
 	// Only a MISSING marker falls through to history. A malformed one is still
 	// a refusal, even when the history alone would have named the delivery. (A
 	// line wholly inside a code span is no marker at all, so it does fall through.)
@@ -211,6 +220,7 @@ func TestDerivedHistoryBadMarker(t *testing.T) {
 
 // regression: #6099
 func TestDerivedHistoryOctopus(t *testing.T) {
+	installStatusgenFixture(t)
 	// An octopus merge has no single side to attribute: refused, not pinned.
 	root := consumersFixture(t, []string{"web/fixed.go: fixed-here"}, map[string]string{"web/fixed.go": "before\n", "web/untouched.go": "before\n", "web/excluded.go": "before\n"})
 	mustGitInit(t, root)
@@ -234,6 +244,7 @@ func TestDerivedHistoryOctopus(t *testing.T) {
 
 // regression: #6099
 func TestDerivedHistoryDiffFails(t *testing.T) {
+	installStatusgenFixture(t)
 	// The second miss site: the branch diff cannot be taken at all. Both sites
 	// reach the one derivation, so the history source pins this one too.
 	root, base, delivery := historyFixture(t, []string{"web/fixed.go: fixed-here"}, historyShape{merge: true, messages: []string{trailer("implement", "alpha/01")}})
@@ -247,6 +258,7 @@ func TestDerivedHistoryDiffFails(t *testing.T) {
 
 // regression: #6099
 func TestDerivedHistoryNativeMessage(t *testing.T) {
+	installStatusgenFixture(t)
 	// A commit whose message the library cannot render exactly (here a declared
 	// non-UTF-8 encoding) is refused, never searched natively or skipped.
 	root, _, _ := historyFixture(t, []string{"web/fixed.go: fixed-here"}, historyShape{messages: []string{trailer("implement", "alpha/01")}})

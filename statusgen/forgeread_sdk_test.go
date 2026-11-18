@@ -157,6 +157,7 @@ func canonOf(data map[string][]forgeIssue, un []forgeUnavailable) canon {
 
 // regression: #2395
 func TestReaderSDKCLIParity(t *testing.T) {
+	installStatusgenFixture(t)
 	obs, exp, repos := loadSDKParity(t)
 	for provider, build := range map[string]func(adapters.Access) func(context.Context, string) ([]forgeread.Issue, error){
 		"github": func(a adapters.Access) func(context.Context, string) ([]forgeread.Issue, error) {

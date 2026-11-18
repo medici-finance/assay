@@ -12,6 +12,7 @@ import (
 )
 
 func TestBaseOutputRetainsPrimaryBytes(t *testing.T) {
+	installStatusgenFixture(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("private POSIX-mode output directories")
 	}
@@ -88,6 +89,7 @@ func TestBaseOutputRetainsPrimaryBytes(t *testing.T) {
 }
 
 func TestBaseOutputUnprovenDoesNotEmitMetadata(t *testing.T) {
+	installStatusgenFixture(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("private POSIX-mode logs")
 	}
@@ -214,6 +216,7 @@ func TestBaseOutputRefusesUnsafePaths(t *testing.T) {
 }
 
 func TestBaseOutputWriteFailureStopsRows(t *testing.T) {
+	installStatusgenFixture(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("private POSIX-mode output directories")
 	}
@@ -256,6 +259,7 @@ func TestBaseOutputFlagPreflight(t *testing.T) {
 }
 
 func TestBaseOutputVerifyrunIntegration(t *testing.T) {
+	installStatusgenFixture(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX shell fixture and private-mode logs")
 	}
@@ -310,6 +314,7 @@ func TestBaseOutputVerifyrunIntegration(t *testing.T) {
 }
 
 func TestBaseOutputBracketDigestCompatibility(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	fx.writeBracketReceipt(t, validCheck)
 	if res, out := captureVerifyrunOut(t, fx.runArgs()); res.code != verifyrunExitPass {

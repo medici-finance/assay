@@ -534,6 +534,7 @@ func TestExecutingRunnerPrefersTheActionsIdentity(t *testing.T) {
 }
 
 func TestExecutingRunnerFallsBackToGitIdentity(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Setenv("GITHUB_ACTIONS", "")
 	t.Setenv("GITHUB_ACTOR", "")
 	root := t.TempDir()
@@ -549,6 +550,7 @@ func TestExecutingRunnerFallsBackToGitIdentity(t *testing.T) {
 }
 
 func TestExecutingRunnerRecordsABotVerbatim(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Setenv("GITHUB_ACTIONS", "")
 	t.Setenv("GITHUB_ACTOR", "")
 	root := t.TempDir()
@@ -565,6 +567,7 @@ func TestExecutingRunnerRecordsABotVerbatim(t *testing.T) {
 // TestExecutingRunnerFailsClosed: no derivable identity must yield NO runner, so
 // the caller refuses rather than writing an unattributed witness.
 func TestExecutingRunnerFailsClosed(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Setenv("GITHUB_ACTIONS", "")
 	t.Setenv("GITHUB_ACTOR", "")
 	t.Setenv("HOME", t.TempDir()) // no ~/.gitconfig to fall back on

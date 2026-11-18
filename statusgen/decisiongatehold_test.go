@@ -165,6 +165,7 @@ func unruledBase() map[string]string {
 // Verify 1: a move to implemented with the decision issue unruled is refused by
 // both layers, and the refusal names the issue and what is missing.
 func TestDecisionGateVerify1UnruledMoveRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{
@@ -189,6 +190,7 @@ func TestDecisionGateVerify1UnruledMoveRefused(t *testing.T) {
 
 // Verify 2: the same move once the ruling is recorded is allowed by both layers.
 func TestDecisionGateVerify2RuledMoveAllowed(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, dhForge("Option 1 for "+dhBoardID+", as written."))
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{
@@ -208,6 +210,7 @@ func TestDecisionGateVerify2RuledMoveAllowed(t *testing.T) {
 // Any ruling lifts the hold — one that holds the brief too. The check confirms
 // THAT a human decided, not what.
 func TestDecisionGateHoldingRulingAlsoLifts(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, dhForge(dhBoardID+": 4 — hold."))
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{
@@ -221,6 +224,7 @@ func TestDecisionGateHoldingRulingAlsoLifts(t *testing.T) {
 
 // Verify 3: no decision issue at all is a refusal, not a pass.
 func TestDecisionGateVerify3NoDecisionIssueRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
@@ -244,6 +248,7 @@ func TestDecisionGateVerify3NoDecisionIssueRefused(t *testing.T) {
 // catching the fault with the upper layer satisfied. Perturbing the relay into
 // the human's own comment turns the same fixture green.
 func TestDecisionGateVerify4RelayRefusedHumanPasses(t *testing.T) {
+	installStatusgenFixture(t)
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "implemented")),
@@ -270,6 +275,7 @@ func TestDecisionGateVerify4RelayRefusedHumanPasses(t *testing.T) {
 
 // Verify 5: the hold is scoped to gate: human — a gate: model brief moves freely.
 func TestDecisionGateVerify5ModelGateAllowed(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
@@ -287,6 +293,7 @@ func TestDecisionGateVerify5ModelGateAllowed(t *testing.T) {
 // Verify 9: a bare status-cell flip — the README row only, frontmatter untouched
 // — is refused.
 func TestDecisionGateVerify9BareCellFlipRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{dhReadmePath: dhReadme(dhRow("18", "implemented"))})
@@ -301,6 +308,7 @@ func TestDecisionGateVerify9BareCellFlipRefused(t *testing.T) {
 // A row already at or past its new status at the base is left alone, and so is
 // a move to a status the hold does not cover.
 func TestDecisionGateLeavesLandedAndEarlyStatusesAlone(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	for _, tc := range []struct{ from, to string }{
 		{"implemented", "implemented"},
@@ -321,6 +329,7 @@ func TestDecisionGateLeavesLandedAndEarlyStatusesAlone(t *testing.T) {
 // A row that first appears already advanced is a move from "not on the board",
 // and a move straight to done is in scope.
 func TestDecisionGateNewRowAndStraightToDone(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{dhReadmePath: dhReadme()})
 	dhWrite(t, root, map[string]string{
@@ -337,6 +346,7 @@ func TestDecisionGateNewRowAndStraightToDone(t *testing.T) {
 // Amendment: the gate relabelled away from human in the same change as the move
 // is judged as gate: human.
 func TestDecisionGateAmendRelabelWithMove(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{
@@ -356,6 +366,7 @@ func TestDecisionGateAmendRelabelWithMove(t *testing.T) {
 // Amendment: the relabel alone, in a first change, is refused; were it let
 // through, the second change (the move) would see gate: model on both sides.
 func TestDecisionGateAmendRelabelThenMove(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	for _, gate := range []string{"gate: model", ""} { // relabel, and deleting the key
@@ -382,6 +393,7 @@ func TestDecisionGateAmendRelabelThenMove(t *testing.T) {
 // An unparseable frontmatter after the change cannot show the gate is still
 // human, so it is judged as a relabel.
 func TestDecisionGateUnparseableFrontmatterIsRelabel(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{dhBriefPath: "---\ngate: [human\n---\n"})
@@ -395,6 +407,7 @@ func TestDecisionGateUnparseableFrontmatterIsRelabel(t *testing.T) {
 // Amendment: renumbered AND given a new permanent id, with a relabel and a move,
 // in one change — both keys changed, so the base brief is dropped.
 func TestDecisionGateAmendRenumberNewIDRelabelMove(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
@@ -417,6 +430,7 @@ func TestDecisionGateAmendRenumberNewIDRelabelMove(t *testing.T) {
 
 // Amendment: a renumber of a brief that has no permanent id drops it.
 func TestDecisionGateAmendRenumberWithoutPermID(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{
@@ -435,6 +449,7 @@ func TestDecisionGateAmendRenumberWithoutPermID(t *testing.T) {
 // and status follow the brief — and a ruling that named the OLD board id still
 // stands for it.
 func TestDecisionGateRenumberKeepingPermIDKeepsRuling(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, dhForge("Option 1 for "+dhBoardID+"."))
 	root := dhFixture(t, map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
@@ -457,6 +472,7 @@ func TestDecisionGateRenumberKeepingPermIDKeepsRuling(t *testing.T) {
 // Amendment: deleting the brief drops it; deleting only its file leaves a row
 // with no gate behind it, a relabel.
 func TestDecisionGateAmendDeletion(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{dhBriefPath: "", dhReadmePath: dhReadme()})
@@ -476,6 +492,7 @@ func TestDecisionGateAmendDeletion(t *testing.T) {
 
 // Archiving a stream, or moving a brief into done/, is not a drop.
 func TestDecisionGateArchiveIsNotDrop(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "done")),
@@ -495,6 +512,7 @@ func TestDecisionGateArchiveIsNotDrop(t *testing.T) {
 // and no Human decision section yet is refused, and the refusal names the
 // missing decision issue.
 func TestDecisionGateAmendSpecTriggerRelabelNoIssue(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
@@ -511,6 +529,7 @@ func TestDecisionGateAmendSpecTriggerRelabelNoIssue(t *testing.T) {
 // Amendment: a human's comment that does not name the brief is refused, and a
 // bare option number is refused with it.
 func TestDecisionGateAmendCommentNotNamingBriefRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "implemented")),
@@ -528,6 +547,7 @@ func TestDecisionGateAmendCommentNotNamingBriefRefused(t *testing.T) {
 
 // Layer one: a malformed link, and a link to a comment on another issue.
 func TestDecisionGateLayerOneLinkShape(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	for _, tc := range []struct{ ruling, want string }{
 		{"https://example.com/not-a-comment", "is not an issue-comment URL"},
@@ -579,6 +599,7 @@ func TestDecisionGateBriefIssueMarker(t *testing.T) {
 
 // Amendment: the colon-form marker the brief declares verbatim passes layer two.
 func TestDecisionGateColonFormMarkerAccepted(t *testing.T) {
+	installStatusgenFixture(t)
 	forge := dhForge("Option 1 for " + dhBoardID + ".")
 	forge.issueBody = rlIssueJSON("decide\n\n<!-- decision-gate: house:ex:sdlc:18 -->\n")
 	dhSeams(t, forge)
@@ -595,6 +616,7 @@ func TestDecisionGateColonFormMarkerAccepted(t *testing.T) {
 // The close to done lands with no pull request, so --close-verify runs both
 // layers on the README it would write.
 func TestDecisionGateCloseVerifyHold(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "verified")),
@@ -642,6 +664,7 @@ func TestDecisionGatePRLaneUnresolvedBase(t *testing.T) {
 // gate: human brief under docs/archive/ moved to done is refused, and the
 // refusal comes from the binary's own file listing, not a workflow path filter.
 func TestDecisionGatePRLaneArchiveOnlyChangeRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	archReadme := "docs/archive/" + dhStream + "/README.md"
 	archBrief := "docs/archive/" + dhStream + "/done/brief-18.md"
@@ -667,6 +690,7 @@ func TestDecisionGatePRLaneArchiveOnlyChangeRefused(t *testing.T) {
 
 // The PR lane with a resolved merge-base judges the checkout against it.
 func TestDecisionGatePRLaneJudgesAgainstMergeBase(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	baseOut, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
@@ -692,6 +716,7 @@ func TestDecisionGateUsage(t *testing.T) {
 
 // An unresolvable base revision fails closed.
 func TestDecisionGateBadBaseFailsClosed(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	var code int
@@ -705,6 +730,7 @@ func TestDecisionGateBadBaseFailsClosed(t *testing.T) {
 // gate: human brief is at todo) emits a NOTICE, never a pass that looks like a
 // clean run.
 func TestDecisionGateLayerOneUnresolvedBaseNotice(t *testing.T) {
+	installStatusgenFixture(t)
 	root := dhFixture(t, unruledBase())
 	gitRun(t, root, "update-ref", "-d", "refs/remotes/origin/main")
 	problems, notices := decisionGateHoldProblems(root)
@@ -717,6 +743,7 @@ func TestDecisionGateLayerOneUnresolvedBaseNotice(t *testing.T) {
 // brief is at implemented or later: without the base, a committed move would be
 // compared with itself and pass (the register field-gutting guard's rule).
 func TestDecisionGateLayerOneUnresolvedBaseFailsClosed(t *testing.T) {
+	installStatusgenFixture(t)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
 		dhBriefPath:  dhFM("gate: human", "decision-issue: 41\n"),
@@ -745,6 +772,7 @@ const dhBrief19Path = "docs/streams/" + dhStream + "/brief-19.md"
 // renumber and sdlc/19 is judged by its own record — refused by both layers,
 // even though the forge would confirm sdlc/18's ruling.
 func TestDecisionGatePermIDSwapCannotBorrowRuling(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, dhForge("Option 1 for "+dhBoardID+"."))
 	root := dhFixture(t, map[string]string{
 		dhReadmePath:  dhReadme(dhRow("18", "todo"), dhRow("19", "todo")),
@@ -775,6 +803,7 @@ func TestDecisionGatePermIDSwapCannotBorrowRuling(t *testing.T) {
 // the parked id keep sdlc/18 on the board: sdlc/18 is judged as dropped (its
 // own recorded ruling covers that drop; sdlc/19's move stays refused).
 func TestDecisionGatePermIDTakenFromDroppedBriefCannotBorrowRuling(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, dhForge("Option 1 for "+dhBoardID+"."))
 	root := dhFixture(t, map[string]string{
 		dhReadmePath:  dhReadme(dhRow("18", "todo"), dhRow("19", "todo")),
@@ -812,6 +841,7 @@ func TestDecisionGatePermIDTakenFromDroppedBriefCannotBorrowRuling(t *testing.T)
 // ruling recorded on the brief whose id it took does not lend (before the fix,
 // it did: this move passed layer one on sdlc/18's ruling).
 func TestDecisionGatePermIDMatchStillCarriesScope(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath:  dhReadme(dhRow("18", "todo"), dhRow("19", "todo")),
@@ -838,6 +868,7 @@ func TestDecisionGatePermIDMatchStillCarriesScope(t *testing.T) {
 // must be ruled on its own record; the donor's landed done status (and its
 // ruling) are not sdlc/19's. Refused by both layers.
 func TestDecisionGateNewRowTakingDonorPermIDIsAMove(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, dhForge("Option 1 for "+dhBoardID+"."))
 	root := dhFixture(t, map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "done")),
@@ -870,6 +901,7 @@ func TestDecisionGateNewRowTakingDonorPermIDIsAMove(t *testing.T) {
 // The same new row as a gate: model brief: the donor's gate: human still puts
 // it in scope, and the donor's done status still does not make it landed.
 func TestDecisionGateNewModelRowTakingDonorPermIDIsAMove(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "done")),
@@ -891,6 +923,7 @@ func TestDecisionGateNewModelRowTakingDonorPermIDIsAMove(t *testing.T) {
 // gone and the new board id is new, so the renumbered brief takes its status
 // (and its ruling) from the base brief — nothing turns red.
 func TestDecisionGateLandedRenumberStaysLanded(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "done")),
@@ -921,6 +954,7 @@ func mustGateAtRev(t *testing.T, root string) gateSnapshot {
 // The hold is wired into `statusgen --lint`: an unruled move turns the lint red
 // and the lint names the hold.
 func TestDecisionGateLintWiring(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{dhReadmePath: dhReadme(dhRow("18", "implemented"))})
@@ -953,6 +987,7 @@ func TestDecisionGateCloseVerifyWiring(t *testing.T) {
 // The hold is wired into `statusgen --corroborate --pr`: a PR that moves an
 // unruled gate: human brief fails the pass, and the report carries the lane.
 func TestDecisionGateCorroborateWiring(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{dhReadmePath: dhReadme(dhRow("18", "implemented"))})
@@ -969,6 +1004,7 @@ func TestDecisionGateCorroborateWiring(t *testing.T) {
 // verify-gate-close.yml keys its reopen-and-relay branch on the literal phrase
 // every close-verify hold refusal carries; the two must not drift apart.
 func TestDecisionGateCloseWorkflowKeyedPhrase(t *testing.T) {
+	installStatusgenFixture(t)
 	const phrase = "decision-gate hold"
 	// The edit surface is the staged twin while it is pending promotion (no App may
 	// push a .github/workflows/* change); once a maintainer promotes it and the twin
@@ -1023,6 +1059,7 @@ func TestDecisionGateBriefIssueMarkerAliasAware(t *testing.T) {
 // reads the tree as it stands. An absent registry yields none; one that is not a plain
 // file at the base yields none (matched by name only).
 func TestDecisionGateAliasesReadAtBase(t *testing.T) {
+	installStatusgenFixture(t)
 	gitIn := func(dir string, args ...string) {
 		t.Helper()
 		c := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false"}, args...)...)
@@ -1072,6 +1109,7 @@ func TestDecisionGateAliasesReadAtBase(t *testing.T) {
 // repository by the alias the base's registry declares rules on the brief; the same
 // marker with the alias added only by the change under judgment does not.
 func TestDecisionGateAliasMarkerFromBaseRegistry(t *testing.T) {
+	installStatusgenFixture(t)
 	const registry = "docs/streams/graph-repos.yaml"
 	ruled := map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "implemented")),

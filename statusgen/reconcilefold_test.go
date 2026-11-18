@@ -389,6 +389,7 @@ esac
 }
 
 func TestFoldWiresAllInputs(t *testing.T) {
+	installStatusgenFixture(t)
 	root := foldStdTree(t)
 	foldServer(t, foldStdPulls(), foldIssues(
 		map[string]any{"number": 7, "labels": []map[string]any{{"name": "question"}}}))
@@ -411,6 +412,7 @@ func TestFoldWiresAllInputs(t *testing.T) {
 // TestFoldVerifiedPositive: a verifier-committed PASS at a real sha, with the
 // App approval refused, derives verified and names the run it read.
 func TestFoldVerifiedPositive(t *testing.T) {
+	installStatusgenFixture(t)
 	root := foldStdTree(t)
 	foldServer(t, foldStdPulls(), foldIssues())
 	src := foldApproved()
@@ -425,6 +427,7 @@ func TestFoldVerifiedPositive(t *testing.T) {
 // TestFoldModelUncheckedUnknown: a could-not-check approval read is unknown
 // with the reason, never verified and never done.
 func TestFoldModelUncheckedUnknown(t *testing.T) {
+	installStatusgenFixture(t)
 	root := foldStdTree(t)
 	foldServer(t, foldStdPulls(), foldIssues())
 	src := foldApproved()
@@ -447,6 +450,7 @@ func TestFoldModelUncheckedUnknown(t *testing.T) {
 // TestFoldStaleApprovalNotDone: an approval at an earlier commit, not the
 // merged head, is not done (the at-head requirement).
 func TestFoldStaleApprovalNotDone(t *testing.T) {
+	installStatusgenFixture(t)
 	root := foldStdTree(t)
 	foldServer(t, foldStdPulls(), foldIssues())
 	src := foldApproved()
@@ -460,6 +464,7 @@ func TestFoldStaleApprovalNotDone(t *testing.T) {
 // TestFoldOtherApproverNotDone: an approval by an identity other than the
 // bound reviewer is not done.
 func TestFoldOtherApproverNotDone(t *testing.T) {
+	installStatusgenFixture(t)
 	root := foldStdTree(t)
 	foldServer(t, foldStdPulls(), foldIssues())
 	src := foldApproved()
@@ -477,6 +482,7 @@ func TestFoldOtherApproverNotDone(t *testing.T) {
 // internal/fx/fx.go. A brief declaring that path derives done; one declaring a
 // path no PR touches derives no approval (unknown, naming the reason), never done.
 func TestFoldFilesOverlapNotDone(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, tc := range []struct{ files, want, why string }{
 		{"`internal/fx/fx.go`", "done", "PR #11 touches the declared path"},
 		{"`internal/nothing/`", "unknown", "no PR touches the declared path"},
@@ -498,6 +504,7 @@ func TestFoldFilesOverlapNotDone(t *testing.T) {
 // TestFoldModelGateIgnoresStamp: a gate:model brief's human stamp is not its
 // done witness.
 func TestFoldModelGateIgnoresStamp(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeFoldFixture(t,
 		[]foldFixtureBrief{{num: "01", id: "fx/01", gate: "model", ev: foldPassEv}},
 		map[string][3]string{"01": {"implemented", "—", "2026-10-05 human:alex"}})
@@ -533,6 +540,7 @@ func TestHumanSignoffAnchored(t *testing.T) {
 // gate:human brief whose Reviewed cell carries only a substring stamp stays
 // verified.
 func TestFoldHumanSubstringNotDone(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeFoldFixture(t,
 		[]foldFixtureBrief{{num: "02", id: "fx/02", gate: "human", ev: foldPassEv}},
 		map[string][3]string{"02": {"implemented", "—", "2026-10-05 superhuman:x"}})
@@ -555,6 +563,7 @@ func foldOneModel(t *testing.T, b foldFixtureBrief) map[string]BriefCell {
 // TestFoldBlockedVerdictNoWitness: Evidence whose latest verdict is BLOCKED
 // (rows pass) is no verified witness.
 func TestFoldBlockedVerdictNoWitness(t *testing.T) {
+	installStatusgenFixture(t)
 	wantCell(t, foldOneModel(t, foldFixtureBrief{ev: foldBlockedEv}), "fx/01", "implemented",
 		"the latest verdict is not a strict PASS")
 }
@@ -562,6 +571,7 @@ func TestFoldBlockedVerdictNoWitness(t *testing.T) {
 // TestFoldHeldRowNoWitness: a PASS beside an unrouted HELD row is no
 // verified witness (closeVerify's held refusal).
 func TestFoldHeldRowNoWitness(t *testing.T) {
+	installStatusgenFixture(t)
 	wantCell(t, foldOneModel(t, foldFixtureBrief{ev: foldHeldEv}), "fx/01", "implemented",
 		"a non-deferred HELD row contradicts the PASS")
 }
@@ -569,6 +579,7 @@ func TestFoldHeldRowNoWitness(t *testing.T) {
 // TestFoldImplementerPassNoWitness: a PASS committed by the implementer (the
 // worker App), not the verifier, is no verified witness.
 func TestFoldImplementerPassNoWitness(t *testing.T) {
+	installStatusgenFixture(t)
 	wantCell(t, foldOneModel(t, foldFixtureBrief{ev: foldPassEv, evMail: foldMailWorker}), "fx/01", "implemented",
 		"the PASS lines must be the verifier's")
 }
@@ -577,6 +588,7 @@ func TestFoldImplementerPassNoWitness(t *testing.T) {
 // Verify section refuses the closure audit (closureWitnesses), so a PASS
 // that would otherwise stand is no witness.
 func TestFoldRefusedAuditNoWitness(t *testing.T) {
+	installStatusgenFixture(t)
 	wantCell(t, foldOneModel(t, foldFixtureBrief{ev: foldPassEv, verifyTail: "\n<!-- an opener never closed\n"}),
 		"fx/01", "implemented", "a refused Evidence audit yields no witness")
 }
@@ -584,6 +596,7 @@ func TestFoldRefusedAuditNoWitness(t *testing.T) {
 // TestFoldNoVerifyRowsNoWitness: a PASS marker with a witness table but no
 // Verify row to bind it to is no witness.
 func TestFoldNoVerifyRowsNoWitness(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeFoldFixture(t,
 		[]foldFixtureBrief{{num: "01", id: "fx/01", gate: "model", ev: foldPassEv}},
 		map[string][3]string{"01": {"implemented", "—", "—"}})
@@ -606,6 +619,7 @@ func TestFoldNoVerifyRowsNoWitness(t *testing.T) {
 // now v2 — the version is read at the run's sha, never copied from the
 // current brief, so the stale-version demotion fires.
 func TestFoldStaleVersionUnknown(t *testing.T) {
+	installStatusgenFixture(t)
 	c := wantCell(t, foldOneModel(t, foldFixtureBrief{ev: foldPassEv, version: 2}), "fx/01", "unknown",
 		"witness for v1, brief is v2")
 	if !strings.Contains(c.Reason, "v1") {
@@ -616,6 +630,7 @@ func TestFoldStaleVersionUnknown(t *testing.T) {
 // TestFoldPRReadFailedUnknown: the PR list read failed; a witnessed brief is
 // unknown, never verified.
 func TestFoldPRReadFailedUnknown(t *testing.T) {
+	installStatusgenFixture(t)
 	root := foldStdTree(t)
 	foldServer(t, nil, foldIssues())
 	cells := foldCells(t, root)
@@ -627,6 +642,7 @@ func TestFoldPRReadFailedUnknown(t *testing.T) {
 // TestFoldUnmergedWitnessUnknown: a passing witness with only a closed,
 // unmerged PR on record is unknown, never verified.
 func TestFoldUnmergedWitnessUnknown(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeFoldFixture(t,
 		[]foldFixtureBrief{{num: "01", id: "fx/01", gate: "model", ev: foldPassEv}},
 		map[string][3]string{"01": {"todo", "—", "—"}})
@@ -639,6 +655,7 @@ func TestFoldUnmergedWitnessUnknown(t *testing.T) {
 
 // TestFoldIssuePRsFiltered: a PR entry in the issues list never blocks.
 func TestFoldIssuePRsFiltered(t *testing.T) {
+	installStatusgenFixture(t)
 	root := foldStdTree(t)
 	foldServer(t, foldStdPulls(), foldIssues(map[string]any{
 		"number": 7, "pull_request": map[string]any{"url": "x"},
@@ -658,6 +675,7 @@ func foldFullPage(page int) []map[string]any {
 
 // TestFoldIssuesPaged: the blocking issue on page 2 is read.
 func TestFoldIssuesPaged(t *testing.T) {
+	installStatusgenFixture(t)
 	root := foldStdTree(t)
 	foldServer(t, foldStdPulls(), func(page int) []map[string]any {
 		if page == 1 {
@@ -674,6 +692,7 @@ func TestFoldIssuesPaged(t *testing.T) {
 // TestFoldIssuesCapUnknown: a read that reaches the page cap with full pages
 // is truncated: the brief with linked issues is unknown, never todo.
 func TestFoldIssuesCapUnknown(t *testing.T) {
+	installStatusgenFixture(t)
 	root := foldStdTree(t)
 	foldServer(t, foldStdPulls(), foldFullPage)
 	code, res, _ := foldRun(t, root)
@@ -693,6 +712,7 @@ func TestFoldIssuesCapUnknown(t *testing.T) {
 // TestFoldIssuesFailUnknown: a failed labels read renders the linked brief
 // unknown, discloses it in the JSON, and refuses --apply with exit 3.
 func TestFoldIssuesFailUnknown(t *testing.T) {
+	installStatusgenFixture(t)
 	root := foldStdTree(t)
 	foldServer(t, foldStdPulls(), nil)
 	code, res, _ := foldRun(t, root)
@@ -721,6 +741,7 @@ func TestFoldIssuesFailUnknown(t *testing.T) {
 // in-progress, with a merged PR and a passing witness (derived verified),
 // is still written implemented by --apply, naming the merged PR.
 func TestFoldApplyWritesWitnessed(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeFoldFixture(t,
 		[]foldFixtureBrief{{num: "01", id: "fx/01", gate: "model", ev: foldPassEv}},
 		map[string][3]string{"01": {"in-progress", "—", "—"}})
@@ -740,6 +761,7 @@ func TestFoldApplyWritesWitnessed(t *testing.T) {
 // TestFoldOfflineStaysUnknown pins that the wiring changes nothing about the
 // offline arm: no tree or forge witness populates --offline.
 func TestFoldOfflineStaysUnknown(t *testing.T) {
+	installStatusgenFixture(t)
 	root := foldStdTree(t)
 	out, err := os.CreateTemp(t.TempDir(), "stdout")
 	if err != nil {
@@ -767,6 +789,7 @@ func TestFoldOfflineStaysUnknown(t *testing.T) {
 // TestRegenDriftUsesWiredFold pins the SECOND production caller (#1787 names
 // both): the regen drift comparator folds the same wired inputs.
 func TestRegenDriftUsesWiredFold(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Setenv("GITHUB_TOKEN", "test-token")
 	root := foldStdTree(t)
 	foldServer(t, foldStdPulls(), foldIssues(
@@ -823,6 +846,7 @@ const foldUnreadableSHA = "0123456789ab"
 // counts it, the JSON discloses it, and the drift comparator stays silent.
 // regression: #2472
 func TestFoldUnreadableRunUnknownNoTrailer(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeFoldFixture(t,
 		[]foldFixtureBrief{
 			{num: "01", id: "fx/01", gate: "model", ev: strings.ReplaceAll(foldPassEv, "{SHA}", foldUnreadableSHA)},
@@ -893,6 +917,7 @@ func TestFoldTablePrintsUnknownReason(t *testing.T) {
 // passing-witness rule: an open trailer PR and a passing run derive unknown.
 // regression: #2472
 func TestFoldInProgressWitnessUnknown(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeFoldFixture(t,
 		[]foldFixtureBrief{{num: "01", id: "fx/01", gate: "model", ev: foldPassEv}},
 		map[string][3]string{"01": {"in-progress", "—", "—"}})
@@ -909,6 +934,7 @@ func TestFoldInProgressWitnessUnknown(t *testing.T) {
 // "no witness".
 // regression: #2472
 func TestFoldProvenanceErrorUnknown(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeFoldFixture(t,
 		[]foldFixtureBrief{{num: "01", id: "fx/01", gate: "model", ev: foldPassEv}},
 		map[string][3]string{"01": {"implemented", "—", "—"}})
@@ -932,6 +958,7 @@ func TestFoldProvenanceErrorUnknown(t *testing.T) {
 // witness and the brief is unknown, never verified or done.
 // regression: #2472
 func TestFoldCoverageNotReleasedUnknown(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeFoldFixture(t,
 		[]foldFixtureBrief{{num: "01", id: "fx/01", gate: "model", ev: foldPassEv}},
 		map[string][3]string{"01": {"implemented", "—", "—"}})
@@ -957,6 +984,7 @@ func TestFoldCoverageNotReleasedUnknown(t *testing.T) {
 // strict PASS marker over a witness row that failed is no witness.
 // regression: #2472
 func TestFoldPassMarkerOverFailedRowNoWitness(t *testing.T) {
+	installStatusgenFixture(t)
 	ev := witnessHeader + "\n| 1 | `true` | fail exit=1 | sha256:aaaaaaaaaaaa | 2026-10-01 | assay-verifier-app[bot] @ {SHA} |\n" +
 		"\n**VERIFY: PASS** — row 1 green.\n"
 	wantCell(t, foldOneModel(t, foldFixtureBrief{ev: ev}), "fx/01", "implemented",
@@ -990,6 +1018,7 @@ func TestFoldTreeLoadFailUnknown(t *testing.T) {
 // failed read, never a complete one with no labels.
 // regression: #2472
 func TestFoldIssuesUndecodableUnknown(t *testing.T) {
+	installStatusgenFixture(t)
 	root := foldStdTree(t)
 	foldServer(t, foldStdPulls(), nil)
 	pullsJSON, err := json.Marshal(foldStdPulls())
@@ -1042,6 +1071,7 @@ func foldBackfillPull(n int, num string) map[string]any {
 // any kind is never written.
 // regression: #2472
 func TestFoldBackfillWritesWitnessed(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeFoldFixture(t,
 		[]foldFixtureBrief{
 			{num: "01", id: "fx/01", gate: "model", ev: foldPassEv},
@@ -1150,6 +1180,7 @@ func previewParity(t *testing.T, root string) (dry reconcileResult, wetCode int,
 // working, shows fx/01 is a row both forms take.
 // regression: #2472
 func TestFoldPreviewRefusalParity(t *testing.T) {
+	installStatusgenFixture(t)
 	briefs := []foldFixtureBrief{
 		{num: "01", id: "fx/01", gate: "model"},
 		{num: "03", id: "fx/03", gate: "model", issues: []int{7}},
@@ -1184,6 +1215,7 @@ func TestFoldPreviewRefusalParity(t *testing.T) {
 // still be named as the raw pull list, not reported as a clean board.
 // regression: #2472
 func TestFoldPreviewPullsRefusal(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeFoldFixture(t,
 		[]foldFixtureBrief{{num: "01", id: "fx/01", gate: "model"}},
 		map[string][3]string{"01": {"todo", "—", "—"}})

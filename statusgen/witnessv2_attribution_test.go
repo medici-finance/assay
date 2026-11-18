@@ -181,6 +181,7 @@ func itoaRow(n int) string {
 // regression: #2026 — the Evidence Command cell binds a v2 witness in
 // coverage, in the Command audit and in the witness gate alike.
 func TestWitnessV2CommandCellAgrees(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := buildStatusgenBinary(t)
 	const oldCmd, newCmd, adapted = "cat tools/x/pkg/a.go", "cat tools/x/pkg/b.go", "cat ./tools/x/pkg/a.go"
 

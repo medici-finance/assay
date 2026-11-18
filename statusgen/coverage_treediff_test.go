@@ -119,6 +119,7 @@ func squashRepo(t *testing.T, setup, mainChange func(t *testing.T, root string))
 // When no path it speaks for differs between its tree and main's, it is
 // reused (the receipt keeps the witness's revision and states the derivation).
 func TestTreeDiffSquashIdentical(t *testing.T) {
+	installStatusgenFixture(t)
 	root, s, b, _ := squashRepo(t, writes("src/other.go", "o v1\n"), nil)
 	got := soleClaim(t, root, s, coverageOptions{})
 	if got.Result != covPass || got.Revision != b {
@@ -133,6 +134,7 @@ func TestTreeDiffSquashIdentical(t *testing.T) {
 // merge, any path in the conservative scope that differs still refuses,
 // naming the path.
 func TestTreeDiffSquashChanged(t *testing.T) {
+	installStatusgenFixture(t)
 	root, s, b, _ := squashRepo(t, writes("src/other.go", "o v1\n"), writes("src/other.go", "o v2\n"))
 	got := soleClaim(t, root, s, coverageOptions{})
 	if got.Result != covWrongRevision || got.Revision != b {
@@ -149,6 +151,7 @@ func TestTreeDiffSquashChanged(t *testing.T) {
 // board's bookkeeping, so a release-bookkeeping change still holds it. A row
 // that names what it reads is narrowed instead (coverage_inputs_test.go).
 func TestTreeDiffConservativeHolds(t *testing.T) {
+	installStatusgenFixture(t)
 	got := tdScenario(t, writes(".assay-versions", "v1\n"), writes(".assay-versions", "v2\n"))
 	if got.Result != covWrongRevision || !strings.Contains(got.Reason, ".assay-versions") {
 		t.Fatalf("the conservative scope must still hold on any non-bookkeeping change, got %+v", got)
@@ -160,6 +163,7 @@ func TestTreeDiffConservativeHolds(t *testing.T) {
 // hand-edited sha). The comparison cannot be made, so the claim is
 // could-not-check, naming why — never pass, and never a silent guess.
 func TestTreeDiffUnreachableWitness(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("squash branch not fetched", func(t *testing.T) {
 		root, _, b, mainBranch := squashRepo(t, nil, nil)
 		clone := filepath.Join(t.TempDir(), "clone")
@@ -186,6 +190,7 @@ func TestTreeDiffUnreachableWitness(t *testing.T) {
 // (security review, release-path row 10): an unrelated root is not a witness
 // for this work.
 func TestTreeDiffUnrelatedRoot(t *testing.T) {
+	installStatusgenFixture(t)
 	got := tdWitnessAt(t, func(t *testing.T, root, mainBranch string) string {
 		runGit(t, root, "checkout", "-q", "--orphan", "stray")
 		o := mustGitCommitAll(t, root, "unrelated root, same tree")
@@ -205,6 +210,7 @@ func TestTreeDiffUnrelatedRoot(t *testing.T) {
 // clone"), and a hex-shaped ref NAME is could-not-check rather than resolved
 // to whatever the ref points at.
 func TestTreeDiffTokenShapes(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("tree id", func(t *testing.T) {
 		got := tdWitnessAt(t, func(t *testing.T, root, _ string) string {
 			return mustGitOut(t, root, "rev-parse", "HEAD^{tree}")[:12]
@@ -228,6 +234,7 @@ func TestTreeDiffTokenShapes(t *testing.T) {
 // TestTreeDiffItemUnresolvable — the item's own revision names no commit in
 // this clone: the comparison has no footing, so could-not-check, naming it.
 func TestTreeDiffItemUnresolvable(t *testing.T) {
+	installStatusgenFixture(t)
 	s, root := mustCoverageStream(t, "cov")
 	writeCoverageBriefWithFiles(t, s.Dir, "01", "cov", tdFiles, tdVerify, "")
 	mustWriteFile(t, root, "src/a.go", "a v1\n")

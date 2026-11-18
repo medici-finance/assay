@@ -108,7 +108,10 @@ func evidenceOf(t *testing.T, path string) string {
 // flag existed. TestVerifyrunRowsSelectsOnlyNamed runs the same check. Since
 // build-less-brittle/15 the witness format carries each executed row's
 // read-set token after its tree, and the golden carries it too.
-func TestVerifyrunRowsUnrestrictedGolden(t *testing.T) { checkUnrestrictedGolden(t) }
+func TestVerifyrunRowsUnrestrictedGolden(t *testing.T) {
+	installStatusgenFixture(t)
+	checkUnrestrictedGolden(t)
+}
 
 // checkUnrestrictedGolden runs the unrestricted golden on its own fresh fixture.
 func checkUnrestrictedGolden(t *testing.T) {
@@ -181,6 +184,7 @@ func gitDirOf(t *testing.T, root string) string {
 // own fixture, first: it is also TestVerifyrunRowsUnrestrictedGolden);
 // --in-container carries the selector to the inner run.
 func TestVerifyrunRowsSelectsOnlyNamed(t *testing.T) {
+	installStatusgenFixture(t)
 	checkUnrestrictedGolden(t)
 	pinClock(t)
 	f := newRowsFixture(t, "")
@@ -264,6 +268,7 @@ func rowKeys(m map[string][]evidenceRow) []string {
 // the brief byte-identical, with and without --dry-run, and names the ID or
 // flag.
 func TestVerifyrunRowsRefusals(t *testing.T) {
+	installStatusgenFixture(t)
 	f := newRowsFixture(t, "")
 	// shared: two rows carry the ID 2 (they touch markers 2 and 3).
 	shared := newRowsFixture(t, "")
@@ -489,6 +494,7 @@ func hostTableRows(t *testing.T, path string) []string {
 // the other rows could-not-run; last-wins is unchanged; a hand-pasted,
 // headerless, fenced host table is credited to no H row.
 func TestVerifyrunRowsMixedAssembly(t *testing.T) {
+	installStatusgenFixture(t)
 	all := map[string]string{"1": statePass, "2": statePass, "3": statePass, "4": statePass, "5": statePass}
 
 	// (a) container first, then host.
@@ -568,6 +574,7 @@ func TestVerifyrunRowsMixedAssembly(t *testing.T) {
 // with a host --rows table above or below the block; every container
 // admission refusal still fires before any row with --rows given.
 func TestVerifyrunRowsContainerBracket(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	t.Setenv("DESK_LOOP", "")
 	t.Setenv("GITHUB_ACTOR", "")
@@ -722,6 +729,7 @@ func TestVerifyrunRowsContainerBracket(t *testing.T) {
 // in its own state; an ID outside the run set is refused with nothing
 // written; --dry-run prints the selected table and writes nothing.
 func TestVerifyrunRowsAcceptanceTransition(t *testing.T) {
+	installStatusgenFixture(t)
 	f := transitionFixtureAt(t)
 	vfGit(t, f.root, vfMailVerifier, "config", "user.name", vfRunner)
 	vfGit(t, f.root, vfMailVerifier, "config", "user.email", vfMailVerifier)
@@ -796,6 +804,7 @@ func TestVerifyrunRowsAcceptanceTransition(t *testing.T) {
 // uncommitted, and once that is committed, the two descriptors' witnesses do
 // not close.
 func TestVerifyrunRowsTransitionSplitRunsDoNotClose(t *testing.T) {
+	installStatusgenFixture(t)
 	f := transitionFixtureAt(t)
 	vfGit(t, f.root, vfMailVerifier, "config", "user.name", vfRunner)
 	vfGit(t, f.root, vfMailVerifier, "config", "user.email", vfMailVerifier)
@@ -836,6 +845,7 @@ func TestVerifyrunRowsTransitionSplitRunsDoNotClose(t *testing.T) {
 // reads only the selected rows, so with no risk-bearing row among them the
 // notice names the selection, not the table (row 1 carries the risk here).
 func TestVerifyrunRowsFailFirstScope(t *testing.T) {
+	installStatusgenFixture(t)
 	f := newRowsFixture(t, "| # | Command | Expect |\n|---|---|---|\n| 1 | `true` | exit 0 (live) |\n| 2 | `true` | exit 0 |\n")
 	base := mustGitOut(t, f.root, "rev-parse", "HEAD")
 	// The base must be the merge-base itself, and an unresolvable merge-base
@@ -879,6 +889,7 @@ func dropHashColumn(body string) string {
 // to equal rows; --rows reads the `#`-cell bit from numberedVerifyRows'
 // parallel slice, never from verifyRow.
 func TestVerifyRowsHashColumnNeutral(t *testing.T) {
+	installStatusgenFixture(t)
 	classed := strings.Replace(strings.Replace(strings.Replace(vfVerify, "| Expect |", "| Expect | Class |", 1), "|--------|", "|--------|---|", 1), "| exit 1 |", "| exit 1 | check |", 1)
 	classed = strings.Replace(classed, "| exit 0 |", "| exit 0 | check |", 1)
 	for _, c := range []struct{ name, table string }{{"plain", vfVerify}, {"class", classed}} {

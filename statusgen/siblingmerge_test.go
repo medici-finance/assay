@@ -133,6 +133,7 @@ func withSiblingMergeOptIn(t *testing.T) {
 // --- Verify row 1 -----------------------------------------------------------
 
 func TestSiblingMergeSubjectID(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeSiblingRegistry(t, siblingExampleRegistry)
 	sib := newSiblingGitRepo(t)
 	commitEmpty(t, sib, "feat(overrides): the thing (example-stream/19) (#129)")
@@ -163,6 +164,7 @@ func TestSiblingMergeSubjectID(t *testing.T) {
 // --- Verify row 2 -----------------------------------------------------------
 
 func TestSiblingMergeBodyOnlyID(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeSiblingRegistry(t, siblingExampleRegistry)
 	sib := newSiblingGitRepo(t)
 	// The real shape this class exists for (fact 3): the id names the brief
@@ -184,6 +186,7 @@ func TestSiblingMergeBodyOnlyID(t *testing.T) {
 // --- Verify row 3 -----------------------------------------------------------
 
 func TestSiblingMergeCouldNotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	assertCNCOnly := func(t *testing.T, notices []string, failed, cnc int) {
 		t.Helper()
 		if failed != 0 {
@@ -248,6 +251,7 @@ func TestSiblingMergeCouldNotCheck(t *testing.T) {
 // --- Verify row 4 -----------------------------------------------------------
 
 func TestSiblingMergeNeverProblem(t *testing.T) {
+	installStatusgenFixture(t)
 	root := siblingBriefTree(t, "deliverable_repo: ex\n")
 	sib := newSiblingGitRepo(t)
 	commitEmpty(t, sib, "feat: ship it (example-stream/02) (#42)")
@@ -331,6 +335,7 @@ func TestSiblingMergeHeldFromNextUp(t *testing.T) {
 // --- Verify row 6 -----------------------------------------------------------
 
 func TestSiblingMergeInProgressNotHeld(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeSiblingRegistry(t, siblingExampleRegistry)
 	sib := newSiblingGitRepo(t)
 	commitEmpty(t, sib, "feat: x (example-stream/05) (#7)")
@@ -365,6 +370,7 @@ func TestSiblingMergeInProgressNotHeld(t *testing.T) {
 // --- Verify row 7 -----------------------------------------------------------
 
 func TestPhantomsVerbExitCodes(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("checked-failed exits 1", func(t *testing.T) {
 		root := siblingBriefTree(t, "deliverable_repo: ex\n")
 		sib := newSiblingGitRepo(t)
@@ -401,6 +407,7 @@ func TestPhantomsVerbExitCodes(t *testing.T) {
 // --- Verify row 8 -----------------------------------------------------------
 
 func TestSiblingMergeUnknownStreamIgnored(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("an id naming no row on this board produces no finding", func(t *testing.T) {
 		root := writeSiblingRegistry(t, siblingExampleRegistry)
 		sib := newSiblingGitRepo(t)
@@ -438,6 +445,7 @@ func TestSiblingMergeUnknownStreamIgnored(t *testing.T) {
 // --- Verify row 9 -----------------------------------------------------------
 
 func TestSiblingMergeDeclaredRef(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeSiblingRegistry(t, siblingExampleRegistry)
 	sib := newSiblingGitRepo(t)
 	// The withheld-identifier shape (fact 4): the brief id appears nowhere;
@@ -470,6 +478,7 @@ func TestSiblingMergeDeclaredRef(t *testing.T) {
 // --- Verify row 10 ----------------------------------------------------------
 
 func TestSiblingMergeIsPromptNotProof(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeSiblingRegistry(t, siblingExampleRegistry)
 	sib := newSiblingGitRepo(t)
 	commitEmpty(t, sib, "feat: ship it (example-stream/06) (#55)")
@@ -511,6 +520,7 @@ func TestSiblingMergeIsPromptNotProof(t *testing.T) {
 // --- Verify row 11 -----------------------------------------------------------
 
 func TestSiblingMergeDeliveryClaimAck(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeSiblingRegistry(t, siblingExampleRegistry)
 
 	t.Run("an acknowledged partial releases the hold with no finding", func(t *testing.T) {
@@ -638,6 +648,7 @@ func TestSiblingTargetsExcludeOwnRepo(t *testing.T) {
 // once the brief's own deliverable_repo: alias is excluded as the board's own
 // repo.
 func TestSiblingMergeOwnRepoEndToEnd(t *testing.T) {
+	installStatusgenFixture(t)
 	registry := "schema: graph-repos-v1\ncell: test\nself: home\nrepos:\n" +
 		"  home: {cell: test, repo: example-org/example-home}\n"
 	root := writeSiblingRegistry(t, registry)
@@ -668,6 +679,7 @@ func TestSiblingMergeOwnRepoEndToEnd(t *testing.T) {
 // the exact live defect: root's own history (which DOES mention the brief id,
 // same as any audit/authoring commit) is read back as "merged in a sibling".
 func TestSiblingMergePathIsRootBackstop(t *testing.T) {
+	installStatusgenFixture(t)
 	root := newSiblingGitRepo(t) // root is itself a real, non-shallow git checkout
 	streamsDir := filepath.Join(root, "docs", "streams")
 	if err := os.MkdirAll(streamsDir, 0o755); err != nil {
@@ -704,6 +716,7 @@ func TestSiblingMergePathIsRootBackstop(t *testing.T) {
 // "merged in a sibling" is still emitted as a dispatchable todo in the JSON a
 // cross-repo dispatcher actually reads.
 func TestNextUpJSONHonorsSiblingMergeHold(t *testing.T) {
+	installStatusgenFixture(t)
 	root := siblingBriefTree(t, "deliverable_repo: ex\n") // one todo brief: example-stream/02
 	sib := newSiblingGitRepo(t)
 	commitEmpty(t, sib, "feat: ship it (example-stream/02) (#42)")
@@ -748,6 +761,7 @@ func siblingMergeNoticesAreSingleLine(t *testing.T, notices []string) {
 // resolve to under the old basename-next-to-root convention — reading it
 // would hold the row on a directory outside every configured root.
 func TestSiblingMergeRegistryRepoTraversalRejected(t *testing.T) {
+	installStatusgenFixture(t)
 	registry := "schema: graph-repos-v1\ncell: test\nrepos:\n" +
 		"  ex: {cell: test, repo: \"anyone/..\"}\n"
 	outside := newSiblingGitRepo(t)
@@ -842,6 +856,7 @@ const siblingOptInEnv = "ASSAY_SIBLING_MERGE"
 // the STATUS.md regen and --next-up must not read that sibling unless the
 // operator opted in.
 func TestSiblingMergeOffByDefault(t *testing.T) {
+	installStatusgenFixture(t)
 	sib := newSiblingGitRepo(t)
 	commitEmpty(t, sib, "feat: ship it (example-stream/02) (#42)")
 	t.Setenv("DESK_ROOTS", "example-org/example-sibling="+sib)
@@ -895,6 +910,7 @@ func TestSiblingMergeOffByDefault(t *testing.T) {
 // TestSiblingMergeOptInEnvIsExact pins the env opt-in's comparison: only the
 // exact value "1" enables the sibling read.
 func TestSiblingMergeOptInEnvIsExact(t *testing.T) {
+	installStatusgenFixture(t)
 	sib := newSiblingGitRepo(t)
 	commitEmpty(t, sib, "feat: ship it (example-stream/02) (#42)")
 	t.Setenv("DESK_ROOTS", "example-org/example-sibling="+sib)
@@ -918,6 +934,7 @@ func TestSiblingMergeOptInEnvIsExact(t *testing.T) {
 // basename-next-to-root default path must not be read on the registry's
 // say-so alone — that is a could-not-check, never a checked result.
 func TestSiblingMergeRegistryCannotWiden(t *testing.T) {
+	installStatusgenFixture(t)
 	root := siblingBriefTree(t, "deliverable_repo: ex\n")
 	sib := filepath.Join(filepath.Dir(root), "example-sibling")
 	if err := os.MkdirAll(sib, 0o755); err != nil {
@@ -1037,6 +1054,7 @@ func TestOwnRepoForRejectsInvalidSelfRepo(t *testing.T) {
 // panel must not offer it, the same hold STATUS.md and --next-up apply. The
 // opt-in-off run is the control that proves the row is otherwise eligible.
 func TestRoadmapNextUpHonorsSiblingMergeHold(t *testing.T) {
+	installStatusgenFixture(t)
 	oa, og := autonomyMergedAuthors, autonomyGates
 	autonomyMergedAuthors = func(root string, since, until time.Time) ([]autonomyAuthor, bool) { return nil, false }
 	autonomyGates = func(root string, since, until time.Time) ([]autonomyGatePR, bool, string) {

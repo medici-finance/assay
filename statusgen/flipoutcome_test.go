@@ -13,6 +13,7 @@ import (
 
 // regression: #6734
 func TestVflipOutcomeBlocked(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.outcome = "blocked"
 	vfRefuses(t, o, "outcome record result mismatch")
@@ -20,6 +21,7 @@ func TestVflipOutcomeBlocked(t *testing.T) {
 
 // regression: #6734
 func TestVflipOutcomeOtherRev(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.outcome = "none"
 	root, readme := vfFixture(t, o)
@@ -30,6 +32,7 @@ func TestVflipOutcomeOtherRev(t *testing.T) {
 
 // regression: #6734
 func TestVflipOutcomeAbsent(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.outcome = "none"
 	vfRefuses(t, o, "outcome record absent")
@@ -37,6 +40,7 @@ func TestVflipOutcomeAbsent(t *testing.T) {
 
 // regression: #6734
 func TestVflipOutcomeAgrees(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.outcome = "none"
 	root, _ := vfFixture(t, o)
@@ -51,6 +55,7 @@ func TestVflipOutcomeAgrees(t *testing.T) {
 // newer blocked one for the same revision.
 // regression: #6734
 func TestVflipOutcomeLatestWins(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	vfOutcome(t, root, "blocked", vfSHA, "2026-08-14T12:00:00Z")
 	vfCommit(t, root, vfMailVerifier)
@@ -59,6 +64,7 @@ func TestVflipOutcomeLatestWins(t *testing.T) {
 
 // regression: #6734
 func TestVflipOutcomeUnreadable(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	bad := filepath.Join(root, "docs", "streams", "verify-outcomes", "vf", "01-20260814T120000Z-000000000000.json")
 	if err := os.WriteFile(bad, []byte("{not json\n"), 0o644); err != nil {
@@ -70,6 +76,7 @@ func TestVflipOutcomeUnreadable(t *testing.T) {
 
 // regression: #6734
 func TestVflipOutcomeNoRevision(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.outcome = "none"
 	root, readme := vfFixture(t, o)
@@ -82,6 +89,7 @@ func TestVflipOutcomeNoRevision(t *testing.T) {
 // would rank oldest and lose to the older verified one; it is could-not-check.
 // regression: #6734 F-sec-2
 func TestVflipOutcomeBadTS(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	vfWriteAt(t, root, "docs/streams/verify-outcomes/vf/01-20260814T120000Z-aaaaaaaaaaaa.json",
 		[]byte(`{"brief":"vf/01","ts":"2026-08-14 12:00:00","outcome":"blocked","sha":"0000000000aa","source_sha":"`+vfSHA+`"}`+"\n"))
@@ -93,6 +101,7 @@ func TestVflipOutcomeBadTS(t *testing.T) {
 // unparseable ts; a dropped line naming the brief is could-not-check.
 // regression: #6734 F-sec-2
 func TestVflipOutcomeLegacyBadTS(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	vfWriteAt(t, root, "docs/streams/verify-outcomes.jsonl",
 		[]byte(`{"brief":"vf/01","ts":"2026-08-14 12:00:00","outcome":"blocked","source_sha":"`+vfSHA+`"}`+"\n"))
@@ -105,6 +114,7 @@ func TestVflipOutcomeLegacyBadTS(t *testing.T) {
 // flip; the gate refuses to read past a record that is not at its own name.
 // regression: #6734 F-sec-3
 func TestVflipOutcomeMisfiled(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	line := `{"brief":"vf/01","ts":"2026-08-14T12:00:00Z","outcome":"verified","sha":"0000000000aa","source_sha":"` + vfSHA + `"}`
 	name, err := outcomeRecordName([]byte(line))
@@ -120,6 +130,7 @@ func TestVflipOutcomeMisfiled(t *testing.T) {
 // verifier's committed blocked one refuses, like uncommitted Evidence.
 // regression: #6734 F-sec-1
 func TestVflipOutcomeUntracked(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.outcome = "blocked"
 	root, readme := vfFixture(t, o)
@@ -131,6 +142,7 @@ func TestVflipOutcomeUntracked(t *testing.T) {
 // identity does not override the verifier's own blocked record.
 // regression: #6734 F-sec-1
 func TestVflipOutcomeNotVerifier(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.outcome = "blocked"
 	root, readme := vfFixture(t, o)
@@ -143,6 +155,7 @@ func TestVflipOutcomeNotVerifier(t *testing.T) {
 // flip's revision says its sha is likely the Evidence landing commit.
 // regression: #6734 A-1
 func TestVflipOutcomeLegacyRev(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.outcome = "none"
 	root, readme := vfFixture(t, o)

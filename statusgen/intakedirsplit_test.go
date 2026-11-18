@@ -248,6 +248,7 @@ func TestRootFileNoticeSilent(t *testing.T) {
 // flat root into a disposition subdir is a TRANSITION, not a delete — the
 // core contract of issue-loop/15.
 func TestDeletedIntakeMoveRootSub(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	gitRun(t, root, "checkout", "-q", "-b", "base")
@@ -280,6 +281,7 @@ func TestDeletedIntakeMoveRootSub(t *testing.T) {
 // TestDeletedIntakeMoveSubSub proves the same for a
 // transition between two subdirs (the normal steady-state triage-verb move).
 func TestDeletedIntakeMoveSubSub(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	gitRun(t, root, "checkout", "-q", "-b", "base")
@@ -315,6 +317,7 @@ func TestDeletedIntakeMoveSubSub(t *testing.T) {
 // delete-from-intake as a move just because some file somewhere carries the
 // same id token.
 func TestDeletedIntakeCrossRegFires(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	gitRun(t, root, "checkout", "-q", "-b", "base")
@@ -349,6 +352,7 @@ func TestDeletedIntakeCrossRegFires(t *testing.T) {
 // removal (id resolves nowhere in the tree) still trips the tamper wire
 // after the split — the relaxation only recognizes a move, never a delete.
 func TestDeletedIntakeRealDelFires(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	gitRun(t, root, "checkout", "-q", "-b", "base")

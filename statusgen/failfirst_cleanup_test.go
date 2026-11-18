@@ -11,6 +11,7 @@ import (
 
 // regression: #2808
 func TestFailFirstCleanupScope(t *testing.T) {
+	installStatusgenFixture(t)
 	// Every Git effect below belongs to this temporary repository, never the
 	// checkout running go test. Clear repository redirection and caller config.
 	for _, key := range []string{"GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_CONFIG_PARAMETERS", "BASH_ENV", "ENV"} {

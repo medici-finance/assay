@@ -122,6 +122,7 @@ func TestIDFormatProblemsDuplicateSlugInFixture(t *testing.T) {
 // unresolvable — T9's fail-CLOSED default -----
 
 func TestIDFormatProblemsNewNumericInFixture(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	fdir := filepath.Join(root, "docs", "streams", "findings")
@@ -237,6 +238,7 @@ func TestIDFormatProblemsValidSlugPasses(t *testing.T) {
 // ----- combined: valid slug + legacy numeric in same fixture -----
 
 func TestIDFormatProblemsMixedFormats(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	fdir := filepath.Join(root, "docs", "streams", "findings")
@@ -294,6 +296,7 @@ func TestIDFormatProblemsCompletelyInvalid(t *testing.T) {
 // ----- intake entries too -----
 
 func TestIDFormatProblemsIntakeEntries(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	idir := filepath.Join(root, "docs", "streams", "intake")
@@ -327,6 +330,7 @@ func TestIDFormatProblemsIntakeEntries(t *testing.T) {
 // The old fallback to base=HEAD grandfathered the very ID the check exists to
 // reject.
 func TestGrandfatheredIDsFailClosed(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	fdir := filepath.Join(root, "docs", "streams", "findings")
@@ -387,6 +391,7 @@ func gitCapture(t *testing.T, root string, args ...string) string {
 // nobody is on. Qualified, the merge-base is the real remote tip and the landed
 // ID is correctly grandfathered.
 func TestGrandfatheredIDsResolvesQualifiedRemoteRef(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	fdir := filepath.Join(root, "docs", "streams", "findings")
@@ -443,6 +448,7 @@ func TestGrandfatheredIDsResolvesQualifiedRemoteRef(t *testing.T) {
 // would see zero entries here and silently suppress the degraded-validation
 // NOTICE even though a real entry exists.
 func TestGrandfatheredFallbackCountsSplitIntake(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 

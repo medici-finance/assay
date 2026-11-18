@@ -57,6 +57,7 @@ func loadStreamsOrSkip(t *testing.T, root string) []*Stream {
 }
 
 func TestHumanStampCaseA_GainReviewedFires(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := humanStampFixture(t)
 	gained := readmeWithHumanInReviewed()
 	if err := os.WriteFile(path, []byte(gained), 0o644); err != nil {
@@ -69,6 +70,7 @@ func TestHumanStampCaseA_GainReviewedFires(t *testing.T) {
 }
 
 func TestHumanStampCaseA_GainVerifiedFires(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := humanStampFixture(t)
 	gained := readmeWithHumanInVerified()
 	if err := os.WriteFile(path, []byte(gained), 0o644); err != nil {
@@ -81,6 +83,7 @@ func TestHumanStampCaseA_GainVerifiedFires(t *testing.T) {
 }
 
 func TestHumanStampCaseB_ReflowDoesNotFire(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := humanStampFixture(t)
 	if err := os.WriteFile(path, []byte(humanStampSampleReadme), 0o644); err != nil {
 		t.Fatal(err)
@@ -92,6 +95,7 @@ func TestHumanStampCaseB_ReflowDoesNotFire(t *testing.T) {
 }
 
 func TestHumanStampCaseC_UnknownNameFires(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := humanStampFixture(t)
 	c := strings.Replace(humanStampSampleReadme,
 		"| 02 | [brief-02](brief-02.md) | 1 | M | verified | 2026-07-01 opus-verifier | — |",
@@ -105,6 +109,7 @@ func TestHumanStampCaseC_UnknownNameFires(t *testing.T) {
 	}
 }
 func TestHumanStampCaseD_AuthorizedByBoundary(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := humanStampFixture(t)
 	fdir := filepath.Join(root, "docs", "streams", "findings")
 	mustMkdirAll(t, fdir)
@@ -123,6 +128,7 @@ func TestHumanStampCaseD_AuthorizedByBoundary(t *testing.T) {
 }
 
 func TestHumanStampCaseE_ArmedOffOnMain(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := humanStampFixture(t)
 	gitRun(t, root, "update-ref", "refs/remotes/origin/main", "HEAD")
 	gained := readmeWithHumanInReviewed()
@@ -136,6 +142,7 @@ func TestHumanStampCaseE_ArmedOffOnMain(t *testing.T) {
 }
 
 func TestHumanStampCaseF_RenameWithinRepo(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := humanStampFixture(t)
 	oldDir := filepath.Join(root, "docs", "streams", "old-stream")
 	mustMkdirAll(t, oldDir)
@@ -161,6 +168,7 @@ func TestHumanStampCaseF_RenameWithinRepo(t *testing.T) {
 	}
 }
 func TestHumanStamp_NoOriginMainReturnsNil(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := humanStampFixture(t)
 	gitRun(t, root, "update-ref", "-d", "refs/remotes/origin/main")
 	gained := readmeWithHumanInReviewed()
@@ -177,6 +185,7 @@ func TestHumanStamp_NoOriginMainReturnsNil(t *testing.T) {
 }
 
 func TestHumanStampNewRowGainsStamp(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := humanStampFixture(t)
 	newReadme := strings.TrimSuffix(humanStampSampleReadme, "\n") + "| 04 | [brief-04](brief-04.md) | 1 | M | verified | — | 2026-08-01 human:alice |\n"
 	writeTemp(t, filepath.Join(root, "docs", "streams", "test-stream"), "brief-04.md",
@@ -221,6 +230,7 @@ func TestHumanStamp_NoGitReturnsNotice(t *testing.T) {
 }
 
 func TestHumanStamp_RowRemovedDoesNotFire(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := humanStampFixture(t)
 	lines := strings.Split(humanStampSampleReadme, "\n")
 	var kept []string
@@ -241,6 +251,7 @@ func TestHumanStamp_RowRemovedDoesNotFire(t *testing.T) {
 }
 
 func TestHumanStamp_AckInProseInReadmeDoesNotFire(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := humanStampFixture(t)
 	content := humanStampSampleReadme + "\n## Notes\n\nhuman:alice mentioned in prose.\n"
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
@@ -256,6 +267,7 @@ func TestHumanStamp_AckInProseInReadmeDoesNotFire(t *testing.T) {
 // on the branch (e.g. human:alice → human:mallory) must fire. This is reviewer
 // case 4b — a key-existence-only check would miss it.
 func TestHumanStampStampSwapFires(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := humanStampFixture(t)
 	// Swap name in brief-03 Reviewed cell from human:alice to human:mallory.
 	c := strings.Replace(humanStampSampleReadme,
@@ -273,6 +285,7 @@ func TestHumanStampStampSwapFires(t *testing.T) {
 // TestHumanStampStampAppendFires: appending a second human:<name> stamp
 // to an already-stamped cell must fire. This is reviewer case 4c.
 func TestHumanStampStampAppendFires(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := humanStampFixture(t)
 	// Append human:bob to the already-stamped cell.
 	c := strings.Replace(humanStampSampleReadme,
@@ -302,6 +315,7 @@ func TestHumanStampStampAppendFires(t *testing.T) {
 // change. This test exists so the limit is discovered here rather than
 // re-discovered as an unknown in review.
 func TestHumanStamp_ReDateSameNameDoesNotFire(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := humanStampFixture(t)
 	c := strings.Replace(humanStampSampleReadme,
 		"| 03 | [brief-03](brief-03.md) | 1 | L | done | 2026-07-01 opus-verifier | 2026-07-02 human:alice |",
@@ -326,6 +340,7 @@ func TestHumanStamp_ReDateSameNameDoesNotFire(t *testing.T) {
 // mallory and stay invisible to --lint. The gate must now fire on the
 // ambiguous form even though it cannot recover a name from it.
 func TestHumanStamp_AmbiguousSpaceAfterColonFires(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := humanStampFixture(t)
 	// Reviewer's exact row 2 construction: replace the canonical
 	// "human:alice" stamp with the space-separated "human: mallory" bypass.
@@ -356,6 +371,7 @@ func TestHumanStamp_AmbiguousSpaceAfterColonFires(t *testing.T) {
 // still accepts this (HasPrefix(tok, "human:") on the token "human:" itself);
 // the gate must still fire.
 func TestHumanStamp_BareColonNoNameFires(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := humanStampFixture(t)
 	c := strings.Replace(humanStampSampleReadme,
 		"| 03 | [brief-03](brief-03.md) | 1 | L | done | 2026-07-01 opus-verifier | 2026-07-02 human:alice |",
@@ -376,6 +392,7 @@ func TestHumanStamp_BareColonNoNameFires(t *testing.T) {
 // "lint" and "check" mode and asserts the human-stamp PROBLEM appears only
 // under lint.
 func TestHumanStampModeGating(t *testing.T) {
+	installStatusgenFixture(t)
 	root, path := humanStampFixture(t)
 	gained := readmeWithHumanInReviewed()
 	if err := os.WriteFile(path, []byte(gained), 0o644); err != nil {
@@ -398,6 +415,7 @@ func TestHumanStampModeGating(t *testing.T) {
 // Cause 1 — the original parser's inTable latch grabbed the first |---|
 // separator and never reached the brief table.
 func TestHumanStamp_PrecedingTableDoesNotFire(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	gitRun(t, root, "checkout", "-q", "-b", "base")
@@ -488,6 +506,7 @@ func TestRelPath_HandlesBothSeparatorStyles(t *testing.T) {
 // Cause 2 — the original parser read the stream name from ANY line starting
 // with "stream:", including wrapped English prose.
 func TestHumanStamp_ProseStreamWordDoesNotFire(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 	gitRun(t, root, "checkout", "-q", "-b", "base")

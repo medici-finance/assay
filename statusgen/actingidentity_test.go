@@ -20,6 +20,7 @@ import (
 // evidenceactor_test.go and verifyrun_test.go — this test's job is to be the ONE place row 14's
 // command name resolves to, not to duplicate their coverage.
 func TestActingIdentityUnchanged(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("evidence-actor policy binds the fixture roster's verifier unchanged", func(t *testing.T) {
 		p := evidenceActorPolicyFromRoster()
 		if p.Unavailable != "" {

@@ -14,6 +14,7 @@ import (
 
 // regression: #2703
 func TestTrailerWriterObservationScope(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, mode := range []string{"writer", "audit", "backfill writer"} {
 		t.Run(mode, func(t *testing.T) {
 			t.Setenv("GITHUB_TOKEN", "test-token")

@@ -169,6 +169,7 @@ func (fx containerFixture) assertNothingRan(t *testing.T, before string) {
 // through unattested), and equally with DESK_LOOP naming a verifier. The
 // control proves the row does run once a receipt is given.
 func TestContainerNetnsRequiresAdmissionReceipt(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	for _, loop := range []string{"", "verify-desk"} {
 		t.Setenv("DESK_LOOP", loop)
@@ -204,6 +205,7 @@ func TestContainerNetnsRequiresAdmissionReceipt(t *testing.T) {
 // changed, one file added) are each refused before any row runs.
 // deskdispatch is never started, even with DESK_LOOP naming a verifier.
 func TestContainerNetnsReceipt(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	t.Setenv("DESK_LOOP", "verify-desk")
 	source := filepath.Join(fx.home, "source.txt")
@@ -331,6 +333,7 @@ func TestContainerNetnsReceipt(t *testing.T) {
 // changed source, a different run, a refused host check and an already
 // bracketed witness each append nothing and exit non-zero.
 func TestCloseBracket(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	t.Setenv("DESK_LOOP", "")
 	// The clock is the test's: the open runs at clock, the close a minute

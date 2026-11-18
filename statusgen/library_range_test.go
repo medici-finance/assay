@@ -13,6 +13,7 @@ import (
 )
 
 func TestLibraryStaleFailRange(t *testing.T) {
+	installStatusgenFixture(t)
 	root, tip := staleHistoryFixture(t)
 	base := strings.TrimSpace(string(parityGitBytes(t, root, "rev-parse", tip+"^1")))
 	end := beginGitReadSession()
@@ -46,6 +47,7 @@ func TestLibraryStaleFailRange(t *testing.T) {
 }
 
 func TestLibraryStaleFailRangeEncodingAndGap(t *testing.T) {
+	installStatusgenFixture(t)
 	root, base := staleHistoryFixture(t)
 	tree := strings.TrimSpace(string(parityGitBytes(t, root, "rev-parse", "HEAD^{tree}")))
 	raw := []byte(fmt.Sprintf("tree %s\nparent %s\nauthor Fixture <fixture@example.invalid> 1 +0000\ncommitter Fixture <fixture@example.invalid> 1 +0000\nencoding ISO-8859-1\n\nfix #72 caf", tree, base))
@@ -87,6 +89,7 @@ func TestLibraryStaleFailRangeEncodingAndGap(t *testing.T) {
 }
 
 func TestStaleFailHistorySymbolicReplace(t *testing.T) {
+	installStatusgenFixture(t)
 	root, landing := staleHistoryFixture(t)
 	side := strings.TrimSpace(string(parityGitBytes(t, root, "rev-parse", landing+"^2")))
 	tree := strings.TrimSpace(string(parityGitBytes(t, root, "rev-parse", side+"^{tree}")))

@@ -1520,6 +1520,7 @@ func TestCandidatePlant(t *testing.T) {
 
 // regression: #2703
 func TestCandidateFlow(t *testing.T) {
+	installStatusgenFixture(t)
 	_, c := candMustLoad(t)
 	before := candProdHashes(t)
 	for _, tc := range []struct {
@@ -1632,6 +1633,7 @@ func TestCandidateFull(t *testing.T) {
 
 // regression: #2703
 func TestCandidateUnknown(t *testing.T) {
+	installStatusgenFixture(t)
 	inv, c := candMustLoad(t)
 	pulls := candStandins(c)
 	d := readDeclaredPartials(candIsoTree(t, nil), candRepo)
@@ -1710,6 +1712,7 @@ func candRuleOff(t *testing.T) {
 
 // regression: #2703
 func TestCandidateMentionOnly(t *testing.T) {
+	installStatusgenFixture(t)
 	inv, c := candMustLoad(t)
 	standins := candStandins(c)
 	files, held := candServedFiles(c)
@@ -1908,6 +1911,7 @@ func candRepoRoot(t *testing.T) string {
 
 // regression: #2703
 func TestCandidateRecollect(t *testing.T) {
+	installStatusgenFixture(t)
 	res := candRecollectRun(candRecollectOpts{W: os.Stdout, Getenv: os.Getenv,
 		NewDoer: func() httpDoer {
 			return &http.Client{Timeout: 60 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -1923,6 +1927,7 @@ func TestCandidateRecollect(t *testing.T) {
 
 // regression: #2703
 func TestCandidateReplay(t *testing.T) {
+	installStatusgenFixture(t)
 	path := os.Getenv("ASSAY_COHORT_REPLAY")
 	if path == "" {
 		t.Skip("ASSAY_COHORT_REPLAY is not set: no replay is read")
@@ -2156,6 +2161,7 @@ func candEnv(m map[string]string, asked *[]string) func(string) string {
 
 // regression: #2703
 func TestRecollectControls(t *testing.T) {
+	installStatusgenFixture(t)
 	world := candWorldPulls()
 	dir := t.TempDir()
 	invPath, cohortPath, _, _ := candWriteWorld(t, dir, world, candWorldFiles())
@@ -2411,6 +2417,7 @@ func candReplayOf(t *testing.T, ps []ghPull, inv candInventory, files map[int][]
 
 // regression: #2703
 func TestReplayBindingControls(t *testing.T) {
+	installStatusgenFixture(t)
 	inv0, _ := candMustLoad(t)
 	candCheckKnownAnswer(t, inv0.KnownAnswer)
 	world := candWorldPulls()

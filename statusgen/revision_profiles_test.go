@@ -11,6 +11,7 @@ import (
 
 // regression: #2395
 func TestRevisionPortProfiles(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("ordinary-repository-locator", func(t *testing.T) {
 		a, _ := revisionFixture(t)
 		b, _ := revisionFixture(t)

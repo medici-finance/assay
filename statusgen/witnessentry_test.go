@@ -100,6 +100,7 @@ func recordingStatusgen(t *testing.T) (bin, log string) {
 // statusgen is started, so no row runs. Portable: every refusal is decided
 // before the script reads its network namespace.
 func TestWitnessKeyRefusals(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newWitnessFixture(t)
 	bin, log := recordingStatusgen(t)
 	receipt := filepath.Join(fx.admit, "receipt.json")
@@ -171,6 +172,7 @@ func mustRename(t *testing.T, from, to string) {
 // the witness, base64 on the last `vr-witness ` line, carrying the image
 // digest; with the receipt removed, the same run executes nothing.
 func TestWitnessKeyAdmittedRun(t *testing.T) {
+	installStatusgenFixture(t)
 	requireSandbox(t)
 	fx := newWitnessFixture(t)
 	bin := t.TempDir()

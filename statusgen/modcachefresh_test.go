@@ -111,6 +111,7 @@ func fixedClock(t *testing.T) *time.Time {
 // cache, mounted read-only, records the digest as Module-Cache, and the close
 // step binds it to the receipt's.
 func TestModCacheMountsReadOnly(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	t.Setenv("DESK_LOOP", "")
 	withModuleRoots(t, fx)
@@ -198,6 +199,7 @@ func TestModCacheMountsReadOnly(t *testing.T) {
 // refused without --module-cache, so its rows never fall back to the image's
 // baked cache.
 func TestModCacheDownloadFails(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	t.Setenv("DESK_LOOP", "")
 	withModuleRoots(t, fx)
@@ -319,6 +321,7 @@ func TestModCacheHardLineFlags(t *testing.T) {
 // host's own module cache, lies inside it or holds it, or already holds files,
 // before any download and with no receipt.
 func TestModCacheNeverAmbient(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := newContainerFixture(t)
 	t.Setenv("DESK_LOOP", "")
 	withModuleRoots(t, fx)
@@ -397,6 +400,7 @@ func goTelemetryOff(t *testing.T) {
 // source's own moduleRootsManifest; a planted image that bakes a literal root
 // goes red.
 func TestModCacheFromSourceOnly(t *testing.T) {
+	installStatusgenFixture(t)
 	out, err := exec.Command("git", "-C", "..", "ls-files", "--", "*Dockerfile*").Output()
 	if err != nil {
 		t.Skipf("git ls-files: %v", err)

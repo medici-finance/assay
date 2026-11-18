@@ -103,6 +103,7 @@ func landingRun(t *testing.T, extra ...string) (res reconcileResult, root, planB
 
 // regression: #2694
 func TestApplyReconcileLandsDriven(t *testing.T) {
+	installStatusgenFixture(t)
 	res, root, planBefore, out, rc := landingRun(t)
 	if rc != 0 || !strings.Contains(out, "LANDS") {
 		t.Fatalf("a default --apply tick on a driven board must pass the job's stray-path check, got rc %d:\n%s", rc, out)
@@ -134,6 +135,7 @@ func TestApplyReconcileLandsDriven(t *testing.T) {
 // plan page, which the job's stray-path check refuses by name. That is why the
 // opt-in stays off on the landing callers.
 func TestApplyReconcileRegenStrays(t *testing.T) {
+	installStatusgenFixture(t)
 	res, root, planBefore, out, rc := landingRun(t, "--regenerate")
 	if len(res.Held) != 0 || len(res.Applied) != 8 {
 		t.Fatalf("with --regenerate want all 8 rows written, got applied=%d held=%+v", len(res.Applied), res.Held)

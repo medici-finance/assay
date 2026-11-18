@@ -70,6 +70,7 @@ func TestVerifyrunSignalRowNoVerdict(t *testing.T) {
 // could-not-run, the next row never starts, and no witness is written.
 // regression: #4360
 func TestVerifyrunSignalCancelsRow(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, tc := range []struct {
 		sig  syscall.Signal
 		name string
@@ -204,6 +205,7 @@ func waitForFile(t *testing.T, root, name string, limit time.Duration, out *byte
 // interrupted, could-not-run one.
 // regression: #4360
 func TestVerifyrunSignalIgnoredStays(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, tc := range []struct {
 		sig  syscall.Signal
 		trap string
@@ -244,6 +246,7 @@ func TestVerifyrunSignalIgnoredStays(t *testing.T) {
 // SIGTERM must still end statusgen instead of being caught and dropped.
 // regression: #4360
 func TestVerifyrunSignalSecondStops(t *testing.T) {
+	installStatusgenFixture(t)
 	if _, err := exec.LookPath("perl"); err != nil {
 		t.Skip("no perl to leave the row's process group")
 	}

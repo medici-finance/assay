@@ -411,6 +411,7 @@ func TestStreamViewLintRun(t *testing.T) {
 // parsed from the README, survive Encode → Decode (the documented consumer)
 // with the exact source revision and every value, in authored order.
 func TestStreamViewFlow(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := svFixtures(t)
 	e := svLoadExpect(t, fx).Flow
 	repoDir := svGitRepo(t, filepath.Join(fx, strings.SplitN(e.Readme, "/", 2)[0]))
@@ -540,6 +541,7 @@ func svGitRepo(t *testing.T, src string) string {
 // are reported as planned; external refs are reported as unchecked residue;
 // absent, stale, unknown-repo and planned-but-present bindings are rejected.
 func TestStreamViewDereference(t *testing.T) {
+	installStatusgenFixture(t)
 	fx := svFixtures(t)
 	e := svLoadExpect(t, fx).Deref
 	dirs := map[string]string{}
