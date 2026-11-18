@@ -220,11 +220,13 @@ launches a stronger configured model (see its row).
   a subagent whose definition pins another model.
 - **Hold:** a missing pin, Auto, an unconfirmed inherit, a weaker fallback, an
   unresolvable identity or a pickup tier failure holds the item, for every loop. The
-  hold applies to what the desk can actually confirm for the model that will run the
-  work (the launched subagent, or the session itself): a live session model it cannot
-  confirm, a weaker one, or an unconfirmed inherit, and no configured strong id to
-  launch. It does not apply merely because the cell default reads `auto`. File
-  it under that loop's own escalation procedure. A session below the floor does
+  hold is judged on the model that will run the work. A launched subagent is held
+  when its served model (the task card, or the CLI `system` / `init` `model` field) is
+  unconfirmed, a weaker fallback or an unconfirmed inherit, whatever strong id the cell
+  configures. When the session itself runs the work, it is held when its live model is
+  unconfirmed, weaker or an unconfirmed inherit and there is no configured strong id
+  to launch instead. The hold does not apply merely because the cell default reads
+  `auto`. File it under that loop's own escalation procedure. A session below the floor does
   only the work its skill allows below it: intake queues the judgment work instead of
   doing it inline, the review loop escalates a ready-flip instead of issuing it, and
   the verify drain holds an `exec-tier: strong` brief its local session model cannot
