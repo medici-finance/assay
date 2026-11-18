@@ -27,7 +27,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [desktools-v2](docs/streams/desktools-v2/README.md) | P2 | active | 4/67 | 2026-11-17 | 15 withdrawn |
 | [forge-gitlab](docs/streams/forge-gitlab/README.md) | P2 | active | 12/18 | 2026-11-15 |  |
 | [forge-neutral](docs/streams/forge-neutral/README.md) | P1 | active | 6/55 | 2026-11-16 |  |
-| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 3/40 | 2026-11-17 |  |
+| [graph-execution](docs/streams/graph-execution/README.md) | P1 | active | 3/40 | 2026-11-18 |  |
 | [harness-portability](docs/streams/harness-portability/README.md) | P2 | active | 5/17 | 2026-11-18 |  |
 | [intake-class-routing](docs/streams/intake-class-routing/README.md) | P1 | active | 0/5 | 2026-11-15 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-11-10 |  |
@@ -121,9 +121,9 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **COULD NOT CHECK — main-red arm could not check — no `--main-health` input was supplied, so whether main is red is unknown here (statusgen does not read live CI). A main-red fix cannot be lifted into the critical tier on this run; this is not a reading that main is green.**
 
-_Next-up: 20 of 40 eligible — 20 held back (19 by per-stream caps, 1 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 19 of 39 eligible — 20 held back (per-stream caps; span-of-control cap 20 not reached). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
-_Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (13), desk-tools (6). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 20 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (13), desk-tools (7). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
@@ -145,14 +145,13 @@ _Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. 
 | statusgen | 32 — Connect board drift notices to the existing reconciliation owners [exec:strong] | 1 | 2020 |
 | desk-tools | 34 — Pinned golangci-lint across every Go module [exec:strong] | 1 | 1520 |
 | desk-tools | 61 — Declare the secret scan's benign shapes in one registry, each entry bounded by a refusal it must keep [exec:strong] | 1 | 1520 |
-| agent-execution | 10 — Evaluate a Pi Durable runner with offline recovery fixtures [exec:strong] | 1 | 1020 |
 | statusgen | 34 — One owned scratch path for Verify rows [exec:strong] | 1 | 1020 |
 
 ## Drive: `build-less-brittle`
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 52ca4698b 2026-11-18T04:03:22Z_
+_last regen: 0e21d4bc5 2026-11-18T04:11:29Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +172,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 52ca4698b 2026-11-18T04:03:22Z_
+_last regen: 0e21d4bc5 2026-11-18T04:11:29Z_
 
 **Progress:** 36/100 brief items done.
 
@@ -237,7 +236,7 @@ _last regen: 52ca4698b 2026-11-18T04:03:22Z_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (25 for the desk · 54 for the driver · 45 for workers · 41 for an operator · 50 runner-pending — of 218 total; 3 could-not-check)
+## Awaiting verification / review (25 for the desk · 54 for the driver · 45 for workers · 41 for an operator · 51 runner-pending — of 219 total; 3 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
@@ -398,7 +397,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 18 | implemented | 1020 | 0 | 2d | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
 | statusgen | 26 [exec:strong] | implemented | 1020 | 0 | 2d | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
 
-### Runner-pending (50)
+### Runner-pending (51)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -441,6 +440,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 19 [exec:strong] | verified | 1520 | 1 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ 70deba75a577 (claude-opus-5-5) | — |
 | statusgen | 17 | verified | 1520 | 1 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 54c024fca36e (claude-opus-5-5) | — |
 | statusgen | 24 [exec:strong] | verified | 1520 | 1 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-10-29 assay-verifier-app[bot] @ 4264d1027198 (forge-identity) | — |
+| agent-execution | 10 [exec:strong] | implemented | 1020 | 0 | — | verify runner | none | — | — |
 | desk-containers | 05 | verified | 1020 | 0 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-11-02 assay-verifier-app[bot] @ dbfa166d5d96 (forge-identity) | — |
 | desk-supervision | 18 [exec:strong] | verified | 1020 | 0 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-10-20 assay-verifier-app[bot] @ b73d90d774fc (claude-opus-5-5) | — |
 | desk-supervision | 27 [exec:strong] | verified | 1020 | 0 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 8eb028b49bc5 (claude-opus-5-5) | — |
@@ -538,7 +538,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 07 Evaluate governed harness refinement with isolated offline fixtures — todo (wave 3)
 - 08 Qualify a Kubernetes verification runner through the existing supervisor — todo (wave 12)
 - 09 Qualify interactive Kubernetes standing desks through the shared runner — todo (wave 9)
-- 10 Evaluate a Pi Durable runner with offline recovery fixtures — todo (wave 1)
+- 10 Evaluate a Pi Durable runner with offline recovery fixtures — implemented (wave 1)
 
 ### apps-installer (8 open)
 
