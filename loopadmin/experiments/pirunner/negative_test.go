@@ -33,8 +33,12 @@ type negMutation struct {
 	Assert string `json:"assert"`
 }
 
+// Control is the positive control: a blunt mutation the suite must catch,
+// planted before any listed mutation. If it is not killed the harness itself
+// is broken and no mutation verdict below it means anything.
 type negMap struct {
 	Baseline  string        `json:"baseline_run"`
+	Control   negMutation   `json:"control"`
 	Mutations []negMutation `json:"mutations"`
 }
 
@@ -133,6 +137,19 @@ func TestPiPilotNegativeControls(t *testing.T) {
 			if v := classify(base.out, base.timedOut, top, ""); v != vSurvived {
 				t.Fatalf("baseline %s: %s, want a clean pass\n%s", top, v, base.out)
 			}
+		}
+		if m.Control.File == "" || m.Control.Run == "" || m.Control.Assert == "" {
+			t.Fatal("map carries no positive control; every mutation verdict would be unvalidated")
+		}
+		ctl := m.Control
+		cr := runMutated(t, &ctl, ctl.Run)
+		cv := cr.verdict
+		if cv == "" {
+			cv = classify(cr.out, cr.timedOut, topTest(ctl.Run), ctl.Assert)
+		}
+		t.Logf("positive-control %s: %s (%.1fs)", ctl.Name, cv, cr.secs)
+		if cv != vKilled {
+			t.Fatalf("harness broken: positive control %s not killed: %s\n%s", ctl.Name, cv, tail(cr.out, 3000))
 		}
 		for _, mu := range m.Mutations {
 			r := runMutated(t, &mu, mu.Run)

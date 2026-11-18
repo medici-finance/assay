@@ -13,7 +13,8 @@
     "Commit count is not exposed by Pi Durable 1.4.0 (entries are reported as a proxy); bridge RSS is sampled once after each run, not a continuous peak.",
     "Pi usage has no unknown-cost value and the faux provider overwrites message usage with a text-length estimate; the adapter carries runner usage opaquely in the final answer and never reads Pi's usage as spend.",
     "The adapter declares no Resume, CancelAck, Snapshot or ProfileDeclarer capability; the conformance kit's profile cases pass without exercising it.",
-    "npm 1.4.0 tarballs carry no gitHead; correspondence to the inspected Pi revision is by declared version and changelog only."
+    "npm 1.4.0 tarballs carry no gitHead; correspondence to the inspected Pi revision is by declared version and changelog only.",
+    "On 2026-11-17 the positive control was added to the negative-control map and TestPiPilotNegativeControls was re-run on the same darwin-arm64 workstation with Node v26.13.1, not the tuple's v26.13.0: the control and all five mutations were killed, and the other groups passed on the same re-run. The recorded measurements are from the original run."
   ],
   "tuple": {
     "pi_durable": "1.4.0",
@@ -31,12 +32,12 @@
     "experiments/pirunner/helpers_test.go": "29a070acb59b7d7d593373ce26ce18afbe9802203eab3291fefde0b063fa8116",
     "experiments/pirunner/contract_test.go": "d638085a6d97b94e5862622861cdfb49662d2b2861877c9b5facf65243dc943d",
     "experiments/pirunner/recovery_test.go": "bc7d99ce173c4337d8726901ce6dfccef054d628f1868e3261573e2a6b3b36f0",
-    "experiments/pirunner/negative_test.go": "d3a0b358e814d259638309c4f8e3c744c4ee9ac8f0664bd18f843ccef83a5523",
+    "experiments/pirunner/negative_test.go": "d7e24141cb2a8245444c88a98e84be3616d16d901c48275b7f2c2d6865414820",
     "experiments/pirunner/node/src/bridge.ts": "97405c389c4a96f9a9da3d511293f9aea7afdc5eadf5551a6d73fcd07cdd88a1",
     "experiments/pirunner/node/package.json": "c00112fa5a24c2ffcf493c8d2ffe4ac7c2b68a80d46287051004efbe2a4766db",
     "experiments/pirunner/node/package-lock.json": "2fd34fa6ba124725e664e008be27e54227374d5ceb4d72c0445b1a49a743584b",
     "experiments/pirunner/node/tsconfig.json": "aaf41d3e1321e9f4c7ecbfefa3512c2cf3bd2748bdae28c1f26a5a7aee4abc6e",
-    "testdata/pirunner/negative-controls.json": "e897148d85b202119d20b248beaa1c8f208a2b1e77573f21618aa7e1b160d702"
+    "testdata/pirunner/negative-controls.json": "bb4b71d4ae6d9521e3b4bf46a2ee01e6f55ce10c1b0e55a20f0b8b72e37dbcc2"
   },
   "environment": {
     "os": "darwin",
@@ -244,6 +245,10 @@
     },
     {
       "name": "unknown-cost-zeroed",
+      "verdict": "killed"
+    },
+    {
+      "name": "positive-control-no-dedupe-guard",
       "verdict": "killed"
     }
   ],

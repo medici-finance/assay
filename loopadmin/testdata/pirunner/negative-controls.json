@@ -1,6 +1,14 @@
 {
-  "note": "Test-owned negative controls for the pirunner experiment. Each mutation replaces text that must occur exactly once in the named file (relative to loopadmin/), the bridge is rebuilt in the copy, and the named test runs with -tags pirunner. A kill needs a FAIL of that test whose output contains the named assertion; build failures, timeouts, skips and zero-selected runs are invalid, never kills.",
+  "note": "Test-owned negative controls for the pirunner experiment. Each mutation replaces text that must occur exactly once in the named file (relative to loopadmin/), the bridge is rebuilt in the copy, and the named test runs with -tags pirunner. A kill needs a FAIL of that test whose output contains the named assertion; build failures, timeouts, skips and zero-selected runs are invalid, never kills. The control is the positive control: it is planted first and must be killed, or the harness is broken and no mutation verdict counts.",
   "baseline_run": "^(TestPiPilotRestart|TestPiPilotEffects|TestPiPilotAuthority|TestPiPilotStopAndObserve|TestPiPilotAccounting)$/^(CrashAfterSubmit|StableIdentity|ReplayRechecks|AbortHoldsForChild|PartialCostUnknown)$",
+  "control": {
+    "name": "positive-control-no-dedupe-guard",
+    "file": "experiments/pirunner/ledger.go",
+    "old": "if l.applied[id] > 0 {",
+    "new": "if false {",
+    "run": "^TestPiPilotEffects$/^StableIdentity$",
+    "assert": "one logical effect applied"
+  },
   "mutations": [
     {
       "name": "no-start-dedupe",

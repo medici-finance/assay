@@ -60,6 +60,8 @@ Each group ran as `GOWORK=off go test -tags pirunner -count=1 -v -run "^<group>$
 
 `loopadmin/testdata/pirunner/negative-controls.json` holds the mutation map. The shared `loopadmin/mutate` runner runs untagged `go test ./...`, which would select nothing from this package. The test therefore owns its own runner. It copies `loopadmin` and its relative `../perfrec` dependency, links the pinned `node_modules`, applies one exact-once replacement, rebuilds the bridge with the pinned `tsc`, and runs the named test with `-tags pirunner`.
 
+Before any listed mutation, the runner plants the map's positive control, `positive-control-no-dedupe-guard`. It disables the ledger's duplicate guard in `ledger.go` and must be killed by `TestPiPilotEffects`, subtest `StableIdentity`. If it survives, the harness is broken and the test fails before any mutation verdict is recorded. The control also makes the map a well-formed spec for the repository's mutation-anchor guard.
+
 | Mutation | Target | Killed by |
 |---|---|---|
 | `no-start-dedupe` | `bridge.ts` start reads no prior map record | `TestPiPilotRestart`, subtest `CrashAfterSubmit`, "want exactly one launch" |
