@@ -115,6 +115,8 @@ Every row runs from the repository root on `main`.
 | 8 | check:ci | `git ls-files '*reconcile.patch' \| wc -l` | `0` (the stale staged reconcile patch stays retired) |
 | 9 | check +dereference | `for n in 735 736 945 1010 1194 5037; do gh pr view $n -R medici-finance/assay --json state --jq .state; done \| sort \| uniq -c` | `6 MERGED` (every PR that Task 1 and `delivery:` cite resolves to a merged PR) |
 | 10 | check | `statusgen --consumers --brief derived-board/07` | exit 0 (after the merge it pins itself to the delivery the single `Brief:` trailer commit names); 0 disproved; the two out-of-scope entries stay UNCHECKED and reviewer-owned |
+| 11 | check +dereference | `gh run list -R medici-finance/assay -w assay-statusgen.yml -e schedule -L 1 --json conclusion --jq '.[0].conclusion'` | `success` (version 1's row 6, restored: the most recent scheduled board-workflow run, which carries the reconcile job, concluded success) |
+| 12 | check:ci | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -timeout 300s -v -run '^(TestApplyReconcileBackfill\|TestApplyReconcileBackfill_PullFetchFailed\|TestApplyCouldNotCheckExitsNonzero\|TestReconcileJobCouldNotCheckFails)$' . > "$out" && grep -c -- '^--- PASS: Test' "$out")` | `4` (version 1's row 5, as a fixture row: a hand-asserted state with no witness renders `unknown` with a reason naming that state, even when the pull read failed; a reconcile `--apply` that could not read the forge exits 3 and writes nothing; and the scheduled job fails its tick on that exit, so a `success` in row 11 is never an offline or unread run) |
 
 ## Evidence
 <!-- appended at implementation time -->
@@ -187,13 +189,23 @@ checkouts. The brief therefore keeps its partial `delivery:` entries.
 six merged PRs in `delivery:` (each confirmed merged on the forge before this edit); the
 consumer rollout moves to each consumer repo's own board; the overlay re-stage is retired
 as not applicable; and the `--backfill` decision is recorded as KEEP (Task 4). The Verify
-table was rewritten: the version-1 rows checked a `v1.0.0` pin this repo does not carry,
-other checkouts, and a consumer-side copy, none of which this repo's scope delivers. The
+table was rewritten. Version 1's rows 1, 7 and 8 checked a `v1.0.0` pin this repo does not
+carry, other checkouts, and a consumer-side copy, none of which this repo's scope delivers;
+they are dropped. Rows 2 and 3 carry forward as row 2, row 4 as row 1, and row 9 as row 5.
+Version 1's rows 5
+and 6 are this repo's own obligations and stay: row 6 (last scheduled board-workflow run
+concluded `success`) is restored unchanged as row 11. Row 5 (a full online
+`statusgen reconcile --json` in which every `unknown` names a hand-asserted state or a
+missing trailer, and none says `offline` in CI) is restored as row 12, a fixture row over
+the same two properties, with row 11 supplying the live half: the full history read did
+not finish inside a 600-second bound from a workstation (`timeout 600` exit 124, no JSON
+emitted), so the literal command is not a row a verifier can complete. The
 `delivery:` entries are append-only history and are left as they were; their "Task 2-4
 remain owed" notes describe version 1's scope. The two Evidence runs above use version 1's
 row numbers (their row 9 is row 5 below).
 
-**Verify rows, run against the head above** (statusgen v1.0.87, offline except where noted).
+**Verify rows, run against the head above** (statusgen v1.0.87, offline except where noted;
+rows 11 and 12 were added in review and run on 2026-11-18 on this branch after merging main).
 
 | # | Result |
 |---|--------|
@@ -207,6 +219,8 @@ row numbers (their row 9 is row 5 below).
 | 8 | `0` |
 | 9 | `6 MERGED` (authenticated forge read) |
 | 10 | exit 0; `0 corroborated, 0 disproved, 2 unchecked` |
+| 11 | `success` (authenticated forge read, 2026-11-18; the five most recent scheduled runs on main all concluded `success`) |
+| 12 | `4` (`TestApplyCouldNotCheckExitsNonzero`, `TestApplyReconcileBackfill`, `TestApplyReconcileBackfill_PullFetchFailed`, `TestReconcileJobCouldNotCheckFails`) |
 
 ## Review
 Gate: model. Reviewer records verdict + date via the generated board.
