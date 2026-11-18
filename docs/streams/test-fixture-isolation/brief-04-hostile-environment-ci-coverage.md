@@ -5,7 +5,7 @@ version: 2
 title: Hostile environment CI coverage
 why: "Caller Git configuration, installed desk binaries and credential state can redirect test fixtures, delaying unrelated qualification and risking writes outside temporary HOME. Explicit fixture ownership makes failures describe the code under test."
 wave: 3
-depends: ["test-fixture-isolation/02", "test-fixture-isolation/03", "test-fixture-isolation/05", "test-fixture-isolation/06", "test-fixture-isolation/07", "test-fixture-isolation/08"]
+depends: ["test-fixture-isolation/02", "test-fixture-isolation/03", "test-fixture-isolation/05", "test-fixture-isolation/06", "test-fixture-isolation/07", "test-fixture-isolation/08", "test-fixture-isolation/09", "test-fixture-isolation/10", "test-fixture-isolation/11"]
 unblocks: []
 effort: M
 gate: model
@@ -32,7 +32,7 @@ consumers:
 
 ## Context
 
-files: .github/workflows/ci.yml, tools/test-fixture-environment.sh (new), tools/test-fixture-environment_test.sh (new), tools/desk/internal/deskkit/citrigger_test.go, tools/desk/internal/deskkit/fixture_environment_ci_test.go (new), docs/test-policy.md, changelog/fixture-hostile-ci.md
+files: .github/workflows/ci.yml, tools/test-fixture-environment.sh (new), tools/test-fixture-environment_test.sh (new), tools/desk/internal/deskkit/citrigger_test.go, docs/streams/desktools-v2/cli-migration.json, tools/desk/internal/deskkit/fixture_environment_ci_test.go (new), docs/test-policy.md, changelog/fixture-hostile-ci.md
 
 facts:
 - ci.yml runs Go build/test without Docker on medici-builder-public; the fixture lane requires no service or container daemon.
@@ -62,6 +62,8 @@ layering: a flat local test runner supplies hostile inputs to real module suites
 2. Exercise both absence and synthetic-presence credential scenarios where the test contract requires them. Demonstrate a deliberately leaking fixture, installed-binary selection and global-config escape are detected by controls; the runner must not erase hostile variables before starting suites.
 3. Wire the lane through the already-required build-test aggregate, including failure, cancellation and skipped dependency cases. Do not change required-check administration or weaken any existing shard/control to make the lane pass. If those settings cannot be established with source wiring, retain the operator act as an explicit unresolved closure condition.
 4. Register all cross-module readers and widen affected workflow paths. Document the repeatable local command and the distinction between worker CI results and independent post-merge qualification. Route additional module-suite failures as findings; do not omit failing packages or relabel a partial lane as full coverage.
+
+Implementation pickup: the fresh integrated census confirms that the new shell runner needs a test-only routing disposition in the existing CLI migration inventory. The runner must preserve CI tool-requirement strictness and declare the pre-resolved compatible Bash/Python/tool closure before restricting PATH. These are launcher dependencies, not permission to change regression assertions or silently skip unavailable tools. The intentionally hostile Go build flag remains an input for fixture-owned compiler-environment controls; production build/version assertions stay unchanged.
 
 ## Verify
 

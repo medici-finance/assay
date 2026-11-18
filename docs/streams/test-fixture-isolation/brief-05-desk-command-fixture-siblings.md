@@ -1,7 +1,7 @@
 ---
 brief: assay:assay:test-fixture-isolation:05
 id: d3c710ca-e1fe-46f4-a65e-ee4eeff9b1a8
-version: 2
+version: 3
 title: Desk command fixture siblings
 why: "Caller Git configuration, installed desk binaries and credential state can redirect test fixtures, delaying unrelated qualification and risking writes outside temporary HOME. Explicit fixture ownership makes failures describe the code under test."
 wave: 1
@@ -65,7 +65,7 @@ Run from the repository root. Prepared dependencies are local; no live forge or 
 | # | Class | Command | Expect |
 |---|---|---|---|
 | 1 | check:ci | `cd tools/desk && GOWORK=off go test -count=1 ./cmd/deskperf ./cmd/deskpushguard ./cmd/deskreply ./cmd/verifyloop` | exit 0; all named packages execute without test omission |
-| 2 | check:ci | `cd tools/desk && GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=grep.patternType GIT_CONFIG_VALUE_0=basic GIT_CONFIG_KEY_1=grep.extendedRegexp GIT_CONFIG_VALUE_1=false GIT_NO_REPLACE_OBJECTS=1 GOWORK=off go test -count=1 ./cmd/deskperf ./cmd/deskpushguard ./cmd/deskreply ./cmd/verifyloop` | exit 0; full named package suites run under admitted-style configuration |
+| 2 | check:ci | `cd tools/desk && GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=grep.patternType GIT_CONFIG_VALUE_0=default GIT_CONFIG_KEY_1=grep.extendedRegexp GIT_CONFIG_VALUE_1=false GIT_NO_REPLACE_OBJECTS=1 GOWORK=off go test -count=1 ./cmd/deskperf ./cmd/deskpushguard ./cmd/deskreply ./cmd/verifyloop` | exit 0; full named package suites run under admitted-style configuration |
 | 3 | check:ci +mutation | `o=$(mktemp) && (cd tools/desk && GOWORK=off go test -v -count=1 -run '^TestFixtureSiblingParentIsolation05$' ./cmd/deskperf ./cmd/deskpushguard ./cmd/deskreply ./cmd/verifyloop) > "$o" 2>&1 && grep -F -- '--- PASS: TestFixtureSiblingParentIsolation05' "$o"` | exit 0; inherited control fails, isolated fixture preserves victim, and deliberate rejected input remains rejected; named test must execute |
 | 4 | check:ci | `cd tools/desk && GOWORK=off go vet ./cmd/deskperf ./cmd/deskpushguard ./cmd/deskreply ./cmd/verifyloop` | exit 0 |
 

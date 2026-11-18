@@ -1,7 +1,7 @@
 ---
 brief: assay:assay:test-fixture-isolation:06
 id: cee8c90d-6a8c-4323-bc9b-4e39dfe39765
-version: 1
+version: 2
 title: Worktree fixture siblings
 why: "Caller Git configuration, installed desk binaries and credential state can redirect test fixtures, delaying unrelated qualification and risking writes outside temporary HOME. Explicit fixture ownership makes failures describe the code under test."
 wave: 2
@@ -65,7 +65,7 @@ Run from the repository root. Prepared dependencies are local; no live forge or 
 | # | Class | Command | Expect |
 |---|---|---|---|
 | 1 | check:ci | `cd tools/desk && GOWORK=off go test -count=1 ./cmd/deskwt` | exit 0; all named packages execute without test omission |
-| 2 | check:ci | `cd tools/desk && GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=grep.patternType GIT_CONFIG_VALUE_0=basic GIT_CONFIG_KEY_1=grep.extendedRegexp GIT_CONFIG_VALUE_1=false GIT_NO_REPLACE_OBJECTS=1 GOWORK=off go test -count=1 ./cmd/deskwt` | exit 0; full named package suites run under admitted-style configuration |
+| 2 | check:ci | `cd tools/desk && GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=grep.patternType GIT_CONFIG_VALUE_0=default GIT_CONFIG_KEY_1=grep.extendedRegexp GIT_CONFIG_VALUE_1=false GIT_NO_REPLACE_OBJECTS=1 GOWORK=off go test -count=1 ./cmd/deskwt` | exit 0; full named package suites run under admitted-style configuration |
 | 3 | check:ci +mutation | `o=$(mktemp) && (cd tools/desk && GOWORK=off go test -v -count=1 -run '^TestFixtureSiblingParentIsolation06$' ./cmd/deskwt) > "$o" 2>&1 && grep -F -- '--- PASS: TestFixtureSiblingParentIsolation06' "$o"` | exit 0; inherited control fails, isolated fixture preserves victim, and deliberate rejected input remains rejected; named test must execute |
 | 4 | check:ci | `cd tools/desk && GOWORK=off go vet ./cmd/deskwt` | exit 0 |
 

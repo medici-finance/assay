@@ -1,12 +1,12 @@
 ---
 brief: assay:assay:test-fixture-isolation:01
 id: a6566a59-40e2-479a-84b5-eb9ab6b53d32
-version: 1
+version: 3
 title: Shared explicit fixture environment
 why: "Caller Git configuration, installed desk binaries and credential state can redirect test fixtures, delaying unrelated qualification and risking writes outside temporary HOME. Explicit fixture ownership makes failures describe the code under test."
 wave: 0
 depends: []
-unblocks: ["test-fixture-isolation/02", "test-fixture-isolation/03", "test-fixture-isolation/05", "test-fixture-isolation/07"]
+unblocks: ["test-fixture-isolation/02", "test-fixture-isolation/03", "test-fixture-isolation/05", "test-fixture-isolation/07", "test-fixture-isolation/09"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -62,9 +62,11 @@ layering: a flat test-support package owns environment construction and scoped p
 ## Task
 
 1. Implement the README interface with no production imports. Explicitly handle runtime Windows variables and case-insensitive environment keys. Reject missing/nonabsolute tool mappings; never extend the caller PATH.
-2. Keep each fixture's global Git config writable and private. Clear inherited Git selectors, command-priority config and credentials before applying explicit overlays. Restore absence as well as values. Preserve owned Git maintenance templates.
+2. Preserve the declared CI test-runtime indicator so existing required-tool checks keep their fail-versus-skip semantics. Keep each fixture's global Git config writable and private. Clear inherited Git selectors, command-priority config and credentials before applying explicit overlays. Restore absence as well as values. Preserve owned Git maintenance templates.
 3. Test parent GIT_DIR/WORK_TREE/INDEX_FILE, injected count/key/value and global config against a separately constructed victim repository and config file; both stay byte-unchanged. Prove explicit fixture overlays and later hostile controls still reach in-process and child readers.
 4. Add ./testenv to the existing gitcore CI test invocation and register its import-boundary readers of gitcore/statusgen/tools/desk with matching trigger coverage; the new hostile lane remains brief 04. Delegate regression helpers where behavior is equivalent; retain intentionally different wrappers with an explicit reason. Add an import-boundary test that fails when a non-test production file imports testenv, allowing only declared test-support adapters.
+
+5. Bound Unix environment-cache cost across repeated Install/cleanup lifetimes. Preserve all live values and absence exactly, run the testing concurrency guard before manual process mutation, and keep cleanup safe after a parallel-test refusal. The child-only constructor in09 retains this lifecycle behavior without mutating parent state.
 
 ## Verify
 
@@ -77,6 +79,7 @@ Tests are planned names to implement, not existing coverage claims. Run from the
 | 3 | check:ci | `cd gitcore && GOWORK=off go test -count=1 -run '^TestFixtureImportBoundary$' ./testenv` | exit 0; production import plant is rejected and actual imports are test-only |
 | 4 | check:ci | `cd tools/desk && GOWORK=off go test -count=1 -run '^TestFloorExecEnv$' ./internal/regression` | exit 0; compatibility floor retains its intentionally different existing semantics |
 | 5 | check:ci | `cd tools/desk && GOWORK=off go test -count=1 -run 'TestCI' ./internal/deskkit` | exit 0; gitcore testenv execution and all cross-module reads covered by existing CI |
+| 6 | check:ci +mutation | `cd gitcore && GOWORK=off go test -count=1 -run '^TestFixtureEnvironment(LifetimeCost\|ParallelRefusal\|AbsentPath)$' ./testenv` | exit 0; 1,000 real fixture lifetimes retain bounded environment-copy cost, parallel refusal and absent PATH restore parent state |
 
 ## Evidence
 

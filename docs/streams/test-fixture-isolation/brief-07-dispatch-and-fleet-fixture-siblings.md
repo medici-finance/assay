@@ -1,7 +1,7 @@
 ---
 brief: assay:assay:test-fixture-isolation:07
 id: e5644982-4b2f-4dfc-bb6a-1837fbf99ec9
-version: 1
+version: 3
 title: Dispatch and fleet fixture siblings
 why: "Caller Git configuration, installed desk binaries and credential state can redirect test fixtures, delaying unrelated qualification and risking writes outside temporary HOME. Explicit fixture ownership makes failures describe the code under test."
 wave: 1
@@ -30,13 +30,13 @@ consumers:
 
 ## Context
 
-files: tools/desk/cmd/deskdispatch/resumealloc_test.go, tools/desk/cmd/deskdispatch/reworkhome_test.go, tools/desk/cmd/deskdispatch/*fixture*_test.go, tools/desk/internal/fleetharness/fleetharness_test.go, changelog/dispatch-fleet-fixture-isolation.md
+files: tools/desk/cmd/deskdispatch/resumealloc_test.go, tools/desk/cmd/deskdispatch/reworkhome_test.go, tools/desk/cmd/deskdispatch/verifiercrossrepo_test.go, tools/desk/cmd/deskdispatch/*fixture*_test.go, tools/desk/internal/fleetharness/fleetharness_test.go, changelog/dispatch-fleet-fixture-isolation.md
 
 facts:
 - The complete worker census at dabede22b records real allocator origin refusals in TestResumeRealAllocator and four TestReworkAdopts/Refuses cases; newRealResume builds real deskwt before the child inherits caller Git settings.
 - Three fleet deskreply workflow scenarios reach an authority refusal instead of their expected synthetic remote seam; newFleetEnv and scenario/Git child environments append os.Environ.
 - Fresh origin/main d7a10023e92ace806ab6d11e670025aa4c6b800a changes none of these affected source directories. The scoped refusal mechanism remains current.
-- TestCrossRepoDispatchExecution and unrelated module timeouts are not attributed to this class without a plain/admitted discriminator; they remain explicitly outside this delivery until diagnosed.
+- A subsequent unchanged-source discriminator confirms TestCrossRepoDispatchExecution: plain passes, admitted fails both public/private claim-root tracking resolution. Its top-level fixture is included; unrelated module timeouts remain outside this delivery until diagnosed.
 
 Read first: README.md Shared interface contract, brief01, the named fixture sources and production origin reader (read only), docs/test-policy.md.
 
@@ -66,7 +66,7 @@ Run from the repository root. Prepared Go dependencies and synthetic/local remot
 | # | Class | Command | Expect |
 |---|---|---|---|
 | 1 | check:ci | `cd tools/desk && GOWORK=off go test -count=1 ./cmd/deskdispatch ./internal/fleetharness` | exit0; both full packages execute |
-| 2 | check:ci | `cd tools/desk && GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=grep.patternType GIT_CONFIG_VALUE_0=basic GIT_CONFIG_KEY_1=grep.extendedRegexp GIT_CONFIG_VALUE_1=false GIT_NO_REPLACE_OBJECTS=1 GOWORK=off go test -count=1 ./cmd/deskdispatch ./internal/fleetharness` | exit0; full real-child suites run under admitted-style inputs |
+| 2 | check:ci | `cd tools/desk && GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=grep.patternType GIT_CONFIG_VALUE_0=default GIT_CONFIG_KEY_1=grep.extendedRegexp GIT_CONFIG_VALUE_1=false GIT_NO_REPLACE_OBJECTS=1 GOWORK=off go test -count=1 ./cmd/deskdispatch ./internal/fleetharness` | exit0; full real-child suites run under admitted-style inputs |
 | 3 | check:ci +mutation | `o=$(mktemp) && (cd tools/desk && GOWORK=off go test -v -count=1 -run '^TestFixtureSiblingParentIsolation07$' ./cmd/deskdispatch ./internal/fleetharness) > "$o" 2>&1 && grep -F -- '--- PASS: TestFixtureSiblingParentIsolation07' "$o"` | exit0; named real-consumer control executes, preserves victims and retains intentional refusal |
 | 4 | check:ci | `cd tools/desk && GOWORK=off go vet ./cmd/deskdispatch ./internal/fleetharness` | exit0 |
 

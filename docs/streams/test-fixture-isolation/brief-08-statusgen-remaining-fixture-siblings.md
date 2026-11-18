@@ -1,13 +1,13 @@
 ---
 brief: assay:assay:test-fixture-isolation:08
 id: 2a56be74-dc7a-4012-be20-5ec37808fc55
-version: 1
+version: 3
 title: Statusgen remaining fixture siblings
 why: "Caller Git configuration, installed desk binaries and credential state can redirect test fixtures, delaying unrelated qualification and risking writes outside temporary HOME. Explicit fixture ownership makes failures describe the code under test."
 wave: 2
-depends: ["test-fixture-isolation/02"]
+depends: ["test-fixture-isolation/02", "test-fixture-isolation/09"]
 unblocks: ["test-fixture-isolation/04"]
-effort: M
+effort: L
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
@@ -51,6 +51,8 @@ design-fit:
   weight: verbs +0, flags +0, production refusals +0, resident rule-text lines +0
   why-add: the full-module acceptance surface exceeds the original bounded transition-chain repair
 
+Sizing: L is justified by the shared test-package environment owner and its single synthetic roster/cache wrapper. The package-wide migration consists primarily of scoped top-level entry calls plus independent hostile-parent controls; splitting it alphabetically would leave the same environment owner and full-suite acceptance distributed across disconnected fixture variants. No production implementation is added.
+
 ## Task
 
 1. Reproduce each newly named family under plain/admitted profiles with disposable canonical HOME/global config and prepared offline caches. Preserve exact source and compiled-binary attribution. Route every unvisited or timed-out family truthfully; do not infer that a partial alphabetical census is complete.
@@ -59,6 +61,8 @@ design-fit:
 4. Add TestFixtureSiblingParentIsolation08 using a genuinely failing inherited control and actual previously failing consumer families. Assert the independent parent's config/repository remains unchanged and intentionally injected authority input remains rejected after setup.
 5. Run focused meaningful race controls and full non-race module suites. Do not run allocation-budget assertions under race and call their instrumentation cost a regression, or relax the existing non-race limits. New source failures are worker work; environmental timeouts are reported with their measured scope, never turned into a green result.
 
+The shared09 lifecycle fix is the required producer for final allocation acceptance: Unix environment tombstones caused os.Environ cost to grow after repeated fixture lifetimes. Retire the temporary wrapper-only compaction after consuming the real shared fix; retain the1,000-lifetime actual-export regression and unchanged allocation limits.
+
 ## Verify
 
 Run from the repository root with prepared offline Go dependencies and synthetic fixtures.
@@ -66,7 +70,7 @@ Run from the repository root with prepared offline Go dependencies and synthetic
 | # | Class | Command | Expect |
 |---|---|---|---|
 |1|check:ci|`cd statusgen && GOWORK=off go test -count=1 ./...`|exit0; all module packages execute without omission|
-|2|check:ci|`cd statusgen && GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=grep.patternType GIT_CONFIG_VALUE_0=basic GIT_CONFIG_KEY_1=grep.extendedRegexp GIT_CONFIG_VALUE_1=false GIT_NO_REPLACE_OBJECTS=1 GOWORK=off go test -count=1 ./...`|exit0; full non-race module suite executes under admitted-style inputs|
+|2|check:ci|`cd statusgen && GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=grep.patternType GIT_CONFIG_VALUE_0=default GIT_CONFIG_KEY_1=grep.extendedRegexp GIT_CONFIG_VALUE_1=false GIT_NO_REPLACE_OBJECTS=1 GOWORK=off go test -count=1 ./...`|exit0; full non-race module suite executes under admitted-style inputs|
 |3|check:ci +mutation|`o=$(mktemp) && (cd statusgen && GOWORK=off go test -v -count=1 -run '^TestFixtureSiblingParentIsolation08$' .) > "$o" 2>&1 && grep -F -- '--- PASS: TestFixtureSiblingParentIsolation08' "$o"`|exit0; named consumer controls execute, victims unchanged, intentional authority rejection retained|
 |4|check:ci|`cd statusgen && GOWORK=off go vet ./...`|exit0|
 
