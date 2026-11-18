@@ -115,3 +115,26 @@ no merge is blocked for its absence. It is an argument addressed to a reviewer â
 that makes divergence legible â€” and a reviewer can note its absence on an M/L brief the same
 way they note any other missing context. Effort-S briefs are exempt: the plan and the diff are
 the same size, and demanding a separate plan block there is ceremony, not signal.
+
+
+## Fixture caller environments
+
+Repository and command fixtures declare their own executable set, homes, Git
+configuration and synthetic credential state through `gitcore/testenv`. A fixture
+that deliberately tests a rejected authority input installs its environment first,
+then plants that input; fixture setup must not erase the negative control.
+
+Run `bash tools/test-fixture-environment.sh` after preparing Go dependencies and
+the statusgen skew baseline with the existing preparation scripts. The runner
+executes **all packages** in both `statusgen` and `tools/desk`, under admitted-style
+Git configuration and no ambient forge credentials. Decoy installed commands and
+disposable caller configuration detect fixtures that escape their declared inputs.
+Tests needing credential presence set a synthetic value themselves. The launcher
+uses prepared caches with module downloads disabled; it does not provision a live
+service. `bash tools/test-fixture-environment_test.sh` exercises failing controls
+without running the full suites.
+
+The `fixture-environment` CI job participates in the existing required
+`build-test` aggregate: missing, failed, skipped or cancelled execution cannot
+produce aggregate success. Worker regression results and CI do not substitute
+for independent post-merge verification or its Evidence.
