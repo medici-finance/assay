@@ -7,16 +7,17 @@ trap 'rm -rf -- "$scratch"' EXIT
 git_bin="$(command -v git)"; python_bin="$(command -v python3)"
 mkdir -p "$scratch/repo/statusgen" "$scratch/repo/tools/desk"
 
-for mode in healthy git-global git-repo installed-tool suite-failure; do
+for mode in healthy git-global git-repo installed-tool suite-failure absent-execution; do
   case_root="$scratch/$mode"
   mkdir -p "$case_root"
   fake_go="$case_root/fake-go"
   cat > "$fake_go" <<SH
 #!/bin/bash
 set -eu
-test "\$*" = 'test -count=1 -timeout=20m ./...'
+test "\$*" = 'test -json -count=1 -timeout=20m ./...'
 test "\${GIT_CONFIG_COUNT:-}" = 2
 test "\${GIT_CONFIG_KEY_0:-}" = grep.patternType
+test "\${GIT_CONFIG_VALUE_0:-}" = default
 test "\${GIT_NO_REPLACE_OBJECTS:-}" = 1
 test "\${GH_TOKEN+x}" != x
 test "\${GITHUB_TOKEN+x}" != x
@@ -27,7 +28,9 @@ case '$mode' in
   git-repo) git -C '$case_root/victim' config fixture.leaked yes ;;
   installed-tool) env -i "PATH=\$PATH" deskdecision || true ;;
   suite-failure) exit 8 ;;
+  absent-execution) exit 0 ;;
 esac
+printf '%s\\n' '{"Action":"run","Package":"fixture.example/module","Test":"TestFixtureControl"}' '{"Action":"pass","Package":"fixture.example/module"}'
 SH
   chmod +x "$fake_go"
   fixture_prepare "$scratch/repo" "$case_root" "$fake_go" "$git_bin" "$python_bin" "$case_root/cache" "$case_root/modcache" "$case_root/gopath"
@@ -42,6 +45,18 @@ SH
   fi
   echo "PASS: $mode"
 done
+
+# A caller may name owned scratch through a symlink (Darwin's /tmp is one).
+# Fixtures must see physical paths, matching Git/native path witnesses.
+canonical="$scratch/canonical"
+mkdir -p "$canonical"
+ln -s "$canonical" "$scratch/scratch-alias"
+fixture_prepare "$scratch/repo" "$scratch/scratch-alias" /bin/true "$git_bin" "$python_bin" "$canonical/cache" "$canonical/modcache" "$canonical/gopath"
+physical="$(cd -- "$canonical" && pwd -P)"
+test "$fixture_scratch" = "$physical"
+printf '%s\n' "${fixture_env[@]}" | grep -Fx "TMPDIR=$physical/tmp" >/dev/null
+printf '%s\n' "${fixture_env[@]}" | grep -Fx "HOME=$physical/home" >/dev/null
+echo 'PASS: physical owned scratch paths'
 
 # Demonstrate credentials are explicit, rather than asserting only absence.
 case_root="$scratch/credentials"
@@ -72,7 +87,7 @@ if [ "\$1" = env ]; then
   esac
   exit
 fi
-test "\$*" = 'test -count=1 -timeout=20m ./...'
+test "\$*" = 'test -json -count=1 -timeout=20m ./...'
 test "\${GH_TOKEN+x}" != x
 printf '%s\\n' "\${PWD##*/}" >> '$entry/invocations'
 exit 8

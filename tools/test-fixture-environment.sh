@@ -20,7 +20,9 @@ PY
 # controls source these functions with their own fake Go executable; the public
 # command has no selected-package, fake-tool or ignore-failure option.
 fixture_prepare() {
-  fixture_root=$1 fixture_scratch=$2 fixture_go=$3 fixture_git=$4 fixture_python=$5
+  fixture_root="$(cd -- "$1" && pwd -P)"
+  fixture_scratch="$(cd -- "$2" && pwd -P)"
+  fixture_go=$3 fixture_git=$4 fixture_python=$5
   local cache=$6 modcache=$7 gopath=$8 baseline=${9:-}
   mkdir -p "$fixture_scratch/home" "$fixture_scratch/home/.config" "$fixture_scratch/bin" "$fixture_scratch/tmp"
   printf '[fixture]\n\tcaller = unchanged\n' > "$fixture_scratch/global"
@@ -37,14 +39,14 @@ PY
     chmod +x "$fixture_scratch/bin/$tool"
   done
   fixture_env=(
-    "PATH=$fixture_scratch/bin:/usr/bin:/bin" "HOME=$fixture_scratch/home"
+    "PATH=$fixture_scratch/bin:/usr/bin:/bin:/usr/sbin:/sbin" "HOME=$fixture_scratch/home"
     "USERPROFILE=$fixture_scratch/home" "XDG_CONFIG_HOME=$fixture_scratch/home/.config"
     "TMPDIR=$fixture_scratch/tmp" "TMP=$fixture_scratch/tmp" "TEMP=$fixture_scratch/tmp"
     "GOCACHE=$cache" "GOMODCACHE=$modcache" "GOPATH=$gopath" "GOWORK=off"
     "GOTOOLCHAIN=local" "GOPROXY=off" "GOSUMDB=off" "GOFLAGS=-buildvcs=false"
     "GIT_CONFIG_GLOBAL=$fixture_scratch/global" "GIT_CONFIG_SYSTEM=$fixture_scratch/system"
-    "GIT_CONFIG_NOSYSTEM=1" "GIT_NO_REPLACE_OBJECTS=1" "GIT_TERMINAL_PROMPT=0"
-    "GIT_CONFIG_COUNT=2" "GIT_CONFIG_KEY_0=grep.patternType" "GIT_CONFIG_VALUE_0=basic"
+    "GIT_CONFIG_NOSYSTEM=1" "GIT_NO_REPLACE_OBJECTS=1" "GIT_ATTR_NOSYSTEM=1" "GIT_TERMINAL_PROMPT=0" "GIT_ASKPASS="
+    "GIT_CONFIG_COUNT=2" "GIT_CONFIG_KEY_0=grep.patternType" "GIT_CONFIG_VALUE_0=default"
     "GIT_CONFIG_KEY_1=grep.extendedRegexp" "GIT_CONFIG_VALUE_1=false"
     "KUBECONFIG=/dev/null" "LC_ALL=C" "TZ=UTC"
   )
@@ -74,12 +76,31 @@ fixture_unchanged() {
 
 fixture_run_module() {
   local module=$1 failed=0
-  echo "fixture environment: $module: go test -count=1 -timeout=20m ./..."
-  if (cd "$fixture_root/$module" && env -i "${fixture_env[@]}" "$fixture_go" test -count=1 -timeout=20m ./...) \
-      > "$fixture_scratch/${module//\//-}.log" 2>&1; then
-    cat "$fixture_scratch/${module//\//-}.log"
-  else
-    cat "$fixture_scratch/${module//\//-}.log"
+  echo "fixture environment: $module: go test -json -count=1 -timeout=20m ./..."
+  # pipefail preserves a failing test exit while JSON events expose progress;
+  # a quiet Go package must not hide the next actionable failing fixture.
+  if ! (cd "$fixture_root/$module" && env -i "${fixture_env[@]}" "$fixture_go" test -json -count=1 -timeout=20m ./...) \
+      2>&1 | tee "$fixture_scratch/${module//\//-}.log"; then
+    failed=1
+  fi
+  if ! "$fixture_python" - "$fixture_scratch/${module//\//-}.log" <<'PY'
+import json, pathlib, sys
+completed, started = set(), set()
+for line in pathlib.Path(sys.argv[1]).read_text().splitlines():
+    try:
+        event = json.loads(line)
+    except json.JSONDecodeError:
+        continue
+    if event.get('Action') == 'pass' and event.get('Package') and not event.get('Test'):
+        completed.add(event['Package'])
+    if event.get('Action') == 'run' and event.get('Test'):
+        started.add((event.get('Package'), event['Test']))
+if not completed or not started:
+    print('ERROR: required module test execution has no completed package/test events', file=sys.stderr)
+    sys.exit(1)
+print(f'fixture events: {len(completed)} packages completed, {len(started)} tests started')
+PY
+  then
     failed=1
   fi
   if ! fixture_unchanged; then failed=1; fi
@@ -89,7 +110,7 @@ fixture_run_module() {
 fixture_main() (
   if [ "$#" -ne 0 ]; then echo 'usage: bash tools/test-fixture-environment.sh' >&2; return 2; fi
   local root go_bin git_bin python_bin scratch cache modcache gopath baseline=${SG_OLD_BIN:-} failed=0
-  root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+  root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
   go_bin="$(command -v go)"; git_bin="$(command -v git)"; python_bin="$(command -v python3)"
   for executable in "$go_bin" "$git_bin" "$python_bin"; do
     case "$executable" in /*) test -x "$executable" ;; *) echo 'ERROR: tools must resolve to absolute executable paths' >&2; return 2 ;; esac
@@ -99,6 +120,7 @@ fixture_main() (
     case "$baseline" in /*) test -x "$baseline" ;; *) echo 'ERROR: SG_OLD_BIN must be an absolute prepared baseline' >&2; return 2 ;; esac
   fi
   scratch="$(mktemp -d "${TMPDIR:-/tmp}/fixture-environment.XXXXXX")"
+  scratch="$(cd -- "$scratch" && pwd -P)"
   # The trap removes only the directory this invocation just created.
   trap 'rm -rf -- "$scratch"' EXIT
   trap 'exit 130' INT

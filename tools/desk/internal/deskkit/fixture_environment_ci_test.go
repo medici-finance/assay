@@ -2,9 +2,13 @@ package deskkit
 
 import (
 	"fmt"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -116,7 +120,39 @@ func TestFixtureEnvironmentCIRunner(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, required := range []string{"fixture_run_module statusgen", "fixture_run_module tools/desk", "test -count=1 -timeout=20m ./...", "GIT_CONFIG_COUNT=2", "GIT_NO_REPLACE_OBJECTS=1", `env -i "${fixture_env[@]}"`, "fixture_unchanged"} {
+	// Couple the launcher's injected Git profile to the actual admission owner,
+	// rather than perpetuating an older issue report's marker values. The
+	// caller global config is deliberately stronger hostile input: it names a
+	// disposable victim instead of pretending that caller configuration is safe.
+	owner, err := parser.ParseFile(token.NewFileSet(), filepath.Join(root, "statusgen/verifieradmission.go"), nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	profileValues := 0
+	for _, decl := range owner.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "admittedRowEnv" {
+			continue
+		}
+		ast.Inspect(fn.Body, func(node ast.Node) bool {
+			lit, ok := node.(*ast.BasicLit)
+			if !ok || lit.Kind != token.STRING {
+				return true
+			}
+			value, err := strconv.Unquote(lit.Value)
+			if err == nil && strings.HasPrefix(value, "GIT_") && strings.Contains(value, "=") {
+				profileValues++
+				if !strings.Contains(string(runner), strconv.Quote(value)) {
+					t.Errorf("hostile launcher drifted from admitted Git profile: %s", value)
+				}
+			}
+			return true
+		})
+	}
+	if profileValues == 0 {
+		t.Fatal("actual admitted Git profile was not inspected")
+	}
+	for _, required := range []string{"fixture_run_module statusgen", "fixture_run_module tools/desk", "test -json -count=1 -timeout=20m ./...", "GIT_CONFIG_COUNT=2", "GIT_NO_REPLACE_OBJECTS=1", `env -i "${fixture_env[@]}"`, "fixture_unchanged"} {
 		if !strings.Contains(string(runner), required) {
 			t.Errorf("full-suite launcher missing %q", required)
 		}
@@ -136,7 +172,7 @@ func TestFixtureEnvironmentCIRunner(t *testing.T) {
 	if err != nil {
 		t.Fatalf("launcher controls: %v: %s", err, out)
 	}
-	for _, control := range []string{"healthy", "git-global", "git-repo", "installed-tool", "suite-failure", "explicit credential presence and absence", "public entry executes both complete modules after failure"} {
+	for _, control := range []string{"healthy", "git-global", "git-repo", "installed-tool", "suite-failure", "absent-execution", "explicit credential presence and absence", "physical owned scratch paths", "public entry executes both complete modules after failure"} {
 		if !strings.Contains(string(out), fmt.Sprintf("PASS: %s", control)) {
 			t.Errorf("missing actual launcher control %s", control)
 		}
