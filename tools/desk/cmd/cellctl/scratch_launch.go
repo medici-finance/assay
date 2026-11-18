@@ -24,7 +24,7 @@ type scratchLaunch struct {
 
 func (c *Cell) beginScratch(role string, env []string) (*scratchLaunch, []string, error) {
 	began := time.Now()
-	if _, err := c.prepareLaunch(); err != nil {
+	if _, err := c.launchPrepareLaunch(); err != nil {
 		return nil, env, err
 	}
 	value := func(key string) string {

@@ -218,17 +218,17 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 37 | [Review workflow semantic oracle and matched cost baseline](brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md) | 1 | M | verified | 2026-11-01 assay-verifier-app[bot] @ ab6803d9f65c (claude-opus-5-5) | — |
 | 38 | [Correct desk performance attribution and counter coverage](brief-38-correct-desk-performance-attribution-and-counter-coverage.md) | 2 | M | implemented | — | — |
 | 39 | [Extract shared review observation and pure planning contracts](brief-39-extract-shared-review-observation-and-pure-planning-contracts.md) | 2 | M | implemented | — | — |
-| 40 | [Deliver one review queue observation and offline planning bridge](brief-40-deliver-one-review-queue-observation-and-offline-planning-bridge.md) | 3 | M | todo | — | — |
-| 41 | [Share exact-source review preparation context](brief-41-share-exact-source-review-preparation-context.md) | 3 | M | todo | — | — |
+| 40 | [Deliver one review queue observation and offline planning bridge](brief-40-deliver-one-review-queue-observation-and-offline-planning-bridge.md) | 3 | M | implemented | — | — |
+| 41 | [Share exact-source review preparation context](brief-41-share-exact-source-review-preparation-context.md) | 3 | M | implemented | — | — |
 | 42 | [Narrow issue discovery projections before enrichment](brief-42-narrow-issue-discovery-projections-before-enrichment.md) | 3 | M | implemented | — | — |
 | 43 | [Migrate review callers with qualified versions and rollback](brief-43-migrate-review-callers-with-qualified-versions-and-rollback.md) | 4 | M | todo | — | — |
 | 44 | [Qualify complete workflow cost and last-consumer retirement](brief-44-qualify-complete-workflow-cost-and-last-consumer-retirement.md) | 5 | M | todo | — | — |
 | 45 | [Expose the canonical verification queue to its consumers](brief-45-expose-the-canonical-verification-queue-to-its-consumers.md) | 1 | M | implemented | — | — |
 | 46 | [Reuse accepted verification inputs to stop repeated PASS dispatch](brief-46-reuse-accepted-verification-inputs-to-stop-repeated-pass-dispatch.md) | 3 | M | todo | — | — |
 | 47 | [Resume interrupted Evidence landing through the existing sanctioned paths](brief-47-resume-interrupted-evidence-landing-through-the-existing-sanctioned-paths.md) | 4 | M | todo | — | — |
-| 48 | [Report remaining landing capacity from the enforced budget owners](brief-48-report-remaining-landing-capacity-from-the-enforced-budget-owners.md) | 2 | M | todo | — | — |
+| 48 | [Report remaining landing capacity from the enforced budget owners](brief-48-report-remaining-landing-capacity-from-the-enforced-budget-owners.md) | 2 | M | implemented | — | — |
 | 49 | [Deduplicate verifier filings by their canonical work identity](brief-49-deduplicate-verifier-filings-by-their-canonical-work-identity.md) | 1 | M | todo | — | — |
-| 50 | [Bind verifier environment evidence to the run admission](brief-50-bind-verifier-environment-evidence-to-the-run-admission.md) | 1 | M | todo | — | — |
+| 50 | [Bind verifier environment evidence to the run admission](brief-50-bind-verifier-environment-evidence-to-the-run-admission.md) | 1 | M | implemented | — | — |
 | 51 | [Drive the verifier skill from the current queue and landing contract](brief-51-drive-the-verifier-skill-from-the-current-queue-and-landing-contract.md) | 5 | M | todo | — | — |
 | 52 | [Link decision and verification cards without conflating their authority](brief-52-link-decision-and-verification-cards-without-conflating-their-authority.md) | 1 | M | todo | — | — |
 | 53 | [Rename pr-review-desk to review-desk without breaking live windows or adopters](brief-53-rename-pr-review-desk-to-review-desk.md) | 1 | L | todo | — | — |
@@ -239,9 +239,10 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 59 | [Remove incidental prune mutation fixture work](brief-59-remove-incidental-prune-mutation-fixture-work.md) | 1 | M | implemented | — | — |
 | 60 | [Operate is human, and the gate ladder — what an agent fleet owns, what a human owns, and the written condition under which a human gate may ever widen (every threshold recorded as not set)](brief-60-operate-is-human-and-the-gate-ladder.md) | 1 | S | todo | — | — |
 | 61 | [Declare the secret scan's benign shapes in one registry, each entry bounded by a refusal it must keep](brief-61-benign-shape-registry.md) | 1 | L | todo | — | — |
-| 62 | [Name the file, line and side of a branch-diff secret-scan refusal, not its line in the stripped diff](brief-62-diff-finding-file-line.md) | 1 | M | todo | — | — |
+| 62 | [Name the file, line and side of a branch-diff secret-scan refusal, not its line in the stripped diff](brief-62-diff-finding-file-line.md) | 1 | M | implemented | — | — |
 | 63 | [Admit the open false-positive shapes as registry entries, each with the refusals that bound it, and cap word-shaped admission](brief-63-registry-acceptance-shapes.md) | 2 | L | todo | — | — |
 | 64 | [Decide which lines of a branch diff the secret scan reads, and pin the answer](brief-64-diff-scan-scope.md) | 2 | M | todo | — | — |
+| 65 | [Read each Verify row's disposition from a field the verifier tooling writes, not from Evidence prose](brief-65-structured-verify-disposition.md) | 1 | L | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -277,7 +278,7 @@ See "Secret-scan class — 10 November 2026" below.
 
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
-  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60, /61, /62 (all independent; parallelizable). desk-tools/06
+  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60, /61, /62, /65 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 - **Wave 2** — desk-tools/35 (depends on desk-tools/34), desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
@@ -463,8 +464,9 @@ No new brief IDs or generated status changes. Both prose and discrete clients co
 same role-qualified plan; graph-execution/27 composes all five existing role evaluators.
 
 Critical path stays /37 -> /39 -> /40 -> /43 -> /44 for the review bridge. All-five-role
-runtime parity in graph-execution/27 also waits on /42, /45 and the actual prose adapters
-from /43 and /51, including /51’s existing human gate. Those edges are reciprocal; R6
+runtime parity in graph-execution/27 also waits on /42, /45 and the actual prose adapter
+from /43. Those edges are reciprocal. From 16 November 2026 /51 is an ordering notice there,
+not a hold: verify-role parity is reported unavailable until /51’s prose adapter lands; R6
 cross-window reuse follows its own route.
 Completed Evidence remains intact. A modified active assignment is rebound only through its
 owner checkpoint; authoring this amendment does not replace its current contract.
@@ -536,3 +538,19 @@ stays 1). #6062 (closing #6060) documented the remote check's full-diff breadth,
 `KEY=<value>` shape (#1642's latest occurrence, #5825, #5974) is not duplicated: it becomes one
 registry entry. The sibling class fix for a different scanner (#5142, draft #3350) is cited and
 not folded in.
+
+## Structured Verify disposition — 16 November 2026
+
+The implemented-to-verified flip (`statusgen verifyflip`, and the reconcile fold through the same
+reader) refuses when the credited run's Evidence reads HELD or could-not-check on a row not marked
+deferred. It finds those words in free prose, behind six exclusion rules in `statusgen/heldscope.go`.
+#6638 (open) proposes a seventh for quoted output and names the residual it leaves: a prose count
+such as "Could-not-check (3)". The source is the driver's ruling on the originating house issue,
+which asks the gate to read a structured disposition instead of prose.
+
+| Brief | What it does | Gate |
+|---|---|---|
+| [65](brief-65-structured-verify-disposition.md) | `verifyrun` writes a `disp=` field into each witness Result cell (pass, fail, held, could-not-check, or deferred with an issue reference), and the flip reads that field. A missing, unknown or contradictory field refuses as could-not-check. Runs without the field keep the prose rules until 2027-01-31, then refuse. | human, at creation; not yet answered |
+
+Close-verify, the card emitter and autoflip keep the prose rules. This brief changes the flip read
+only, the same scope #6638 takes.

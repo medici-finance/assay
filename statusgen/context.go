@@ -42,8 +42,9 @@ const (
 	ctxExitHold   = 3
 
 	// ctxMaxInputBytes bounds every receipt, manifest or patch file the
-	// adapter reads; the snapshot has its own limits.
-	ctxMaxInputBytes = 16 << 20
+	// adapter reads; the snapshot has its own limits. It is the shared
+	// contexthandoff.MaxInputBytes, the same bound deskdispatch applies.
+	ctxMaxInputBytes = contexthandoff.MaxInputBytes
 )
 
 // ctxExit carries a verb's exit code out of Cobra.

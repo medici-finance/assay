@@ -209,6 +209,15 @@ var UnresolvedArgv = []Allowance{
 			"Tests supply compiled local fixtures. The ledger declares this blind spot and leaves the " +
 			"forge assertion and credential boundaries intact.",
 	},
+	{
+		Key: "loopadmin/experiments/pirunner/bridge.go::startBridge::<unresolved>",
+		Reason: "the pirunner experiment's Node bridge child, built only under the pirunner build tag. " +
+			"argv[0] is the Node runtime the caller resolved with exec.LookPath(\"node\") and argv[1] is the " +
+			"module's own compiled bridge script (node/dist/bridge.js); no shell is involved. The child's " +
+			"environment is replaced with PATH, KUBECONFIG=/dev/null and fixed switches, so no parent " +
+			"credential reaches it, and the bridge makes no network or forge call. It is a local runtime, " +
+			"not a forge CLI. This row registers the blind spot and grants no forge permit.",
+	},
 	// cmd/cellctl — the cell launcher (the Go port of the bash script now kept only as a test
 	// oracle, tools/cellctl/testdata/cellctl-shell-oracle.sh). It reaches NO forge at all: its one
 	// credential path goes through deskkit.RoleTokenForRepo, and its own brief asserts at the
@@ -356,8 +365,10 @@ var UnresolvedArgv = []Allowance{
 			"Fixed argv after the binary, read-only, JSON on stdout; never a forge CLI and never a write.",
 	},
 	{
-		Key:    "cmd/verifyloop/durable.go::newGitDurable::<unresolved>",
-		Reason: "git-only durable-state helper; its callers pass git argvs.",
+		Key: "cmd/verifyloop/durable.go::landingCommand::<unresolved>",
+		Reason: "the Evidence landing's one process builder, under the verifier Git environment: newGitDurable's " +
+			"run passes git argvs (remote get-url, add, commit, pull --rebase, rev-parse), and the pre-push " +
+			"hook passes the checkout's own hooks/pre-push path. Never a forge CLI; the push is in-process.",
 	},
 	{
 		Key:    "internal/acp/client.go::Spawn::<unresolved>",

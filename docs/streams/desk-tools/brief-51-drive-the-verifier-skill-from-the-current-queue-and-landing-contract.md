@@ -4,7 +4,7 @@ title: "Drive the verifier skill from the current queue and landing contract"
 why: "The skill still asks agents to assemble their own answer from scattered mechanics. Once the tool contract exists, a short lane-to-action table should direct each run through the implemented path."
 wave: 5
 depends: ["desk-tools/45", "desk-tools/46", "desk-tools/47", "desk-tools/48", "desk-tools/49", "desk-tools/50", "desk-tools/52", "statusgen/29", "statusgen/38"]
-unblocks: ["graph-execution/27", "verification-handoff/06"]
+unblocks: ["verification-handoff/06"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: yes, irreversible: no, sensitive-data: no}
@@ -23,7 +23,7 @@ exec-tier: strong
 exec-tier-why: "Cross-component queue, input provenance and effect boundaries must agree; a subtle error can suppress needed verification or advance the wrong state."
 domain: complicated
 outcome: none
-version: 5
+version: 7
 id: af2553b5-b208-4d3d-aab1-5d8c518b2add
 consumers:
   - "tools/desk/internal/deskkit/citrigger_test.go: follow-up desk-tools/51 (register the skill-body cross-module read; existing CI already runs on every push and pull request)"
@@ -40,7 +40,7 @@ consumers:
 
 ## Context
 
-files: tools/desk/cmd/verifyloop/repair.go, plugins/assay/skills/verify-desk/SKILL.md, tools/desk/cmd/deskdispatch/references/verifier-prompt.md, tools/desk/cmd/verifyloop/main.go, tools/desk/README.md, tools/desk/internal/deskkit/citrigger_test.go, changelog/verifier-lane-actions.md, tools/desk/cmd/verifyloop/flow_51_test.go
+files: tools/desk/cmd/verifyloop/repair.go, plugins/assay/skills/verify-desk/SKILL.md, tools/desk/cmd/deskdispatch/references/verifier-prompt.md, tools/desk/cmd/verifyloop/main.go, tools/desk/README.md, tools/desk/internal/deskkit/citrigger_test.go, changelog/verifier-lane-actions.md, tools/desk/cmd/verifyloop/flow_51_test.go, tools/desk/internal/deskclient/ (verify-role binding only when graph-execution/27 has delivered it)
 facts:
 - The current skill already documents one-file Evidence landing, a PR-required lane and the separately gated verdict-transcription future. Preserve those permissions.
 - The plan already has explicit wait and Evidence-only states. No unconditional rule that all human/risk items are model-flippable is valid.
@@ -117,6 +117,29 @@ and /52 dependencies. Do not implement their policies in skill prose.
   qualification to verification-handoff/06 after the tools and this contract exist. Update only
   existing shipped role/reference consumers; no new desk, command-policy engine or standing
   verification gate.
+
+### Verify-role parity follow-on — 2026-11-16
+
+graph-execution/27 (from version 12) no longer waits for this brief: its `depends:` entry here became
+a `feathers:` ordering notice, and its planner-parity row reports the verify role `unavailable`
+while this brief's prose adapter is absent. This brief's own Verify table is unchanged, and row 4
+still does not depend on that driver.
+
+graph-execution/27 owns the registration and keys it on presence, not on anything this brief
+records: its planner-parity test looks for the `TestVerifyDriverPlan` (planned) declaration this
+brief delivers, anywhere in the tools/desk/cmd/verifyloop package, and a tree that holds that
+declaration without the verify role registered and compared fails that test. A package it
+cannot read fails that test too; it is never read as the adapter being absent.
+
+- If graph-execution/27 has delivered at pickup, `TestDeskPlannerParity` (planned) is already on main
+  and fails this brief's change as soon as that declaration lands. Register the verify role's
+  prose adapter in that brief's binding in the same change, so the test compares the verify
+  role and passes. The binding under tools/desk/internal/deskclient/ is in this brief's scope
+  for that one registration and nothing else.
+- If graph-execution/27 has not delivered at pickup, nothing is owed here. That brief's
+  implementer registers the present adapter, and its row 10 fails otherwise.
+
+Either way a check enforces it; a hand-off note does not discharge it.
 
 ### Existing task obligations
 

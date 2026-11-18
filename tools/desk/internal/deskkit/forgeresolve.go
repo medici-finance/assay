@@ -21,8 +21,8 @@ package deskkit
 //  2. CUSTODY. ForgeFor obtains the resolved role's already-minted token from the
 //     existing custody path for that forge and hands it to the backend it constructs.
 //     It never mints a credential itself (GitHub: it either calls the installed
-//     GitHubCustodyMinter hook — see below — or shells to the existing `desktoken`
-//     mint-or-reuse path via RoleTokenForRepo; GitLab: it only READS the file a prior
+//     GitHubCustodyMinter hook — see below — or runs the role-credential provider's
+//     mint-or-reuse path in process via RoleTokenForRepo; GitLab: it only READS the file a prior
 //     `desktoken --forge gitlab <role>` rotation produced — it never rotates). It never
 //     falls back to an ambient CLI credential. A missing or insecurely-permissioned
 //     custody file is Refused (exit 5) naming the remedy: this is a deployment
@@ -88,7 +88,7 @@ var originRemoteHost = func() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return hostOfRemote(strings.TrimSpace(out))
+	return hostOfRemote(out)
 }
 
 // HostOfRemote is the exported wrapper over hostOfRemote: it extracts the host from a git
@@ -101,23 +101,23 @@ func HostOfRemote(raw string) (string, error) { return hostOfRemote(raw) }
 // hostOfRemote extracts the host component from a git remote URL in either an
 // scheme://host/... form or an scp-like user@host:path form.
 func hostOfRemote(raw string) (string, error) {
-	raw = strings.TrimSpace(raw)
+	raw = strings.Trim(raw, " \t\r\n")
 	if raw == "" {
 		return "", fmt.Errorf("empty remote URL")
 	}
 	if strings.Contains(raw, "://") {
 		u, err := url.Parse(raw)
 		if err != nil || u.Hostname() == "" {
-			return "", fmt.Errorf("cannot parse remote URL %q", raw)
+			return "", fmt.Errorf("cannot parse remote URL host")
 		}
-		return strings.ToLower(u.Hostname()), nil
+		return NormalizeForgeHost(u.Hostname())
 	}
 	at := strings.Index(raw, "@")
 	colon := strings.Index(raw, ":")
-	if at >= 0 && colon > at {
-		return strings.ToLower(raw[at+1 : colon]), nil
+	if at >= 0 && colon > at && !strings.ContainsAny(raw[:at], "/:") && IsBareGitHost(raw[at+1:colon]) {
+		return NormalizeForgeHost(raw[at+1 : colon])
 	}
-	return "", fmt.Errorf("cannot determine a host from remote URL %q", raw)
+	return "", fmt.Errorf("cannot determine a host from remote URL")
 }
 
 // knownForgeHostsList renders wellKnownForgeHosts for a refusal message, sorted so the
@@ -170,7 +170,8 @@ func resolveForgeKindWithHost(repo ForgeRepo, host string) (ForgeResolution, err
 	if kind, ok := cfg.RepoForges[key]; ok {
 		return ForgeResolution{Repo: repo, Kind: ForgeKind(kind), Source: "repo-config:" + EnvRepoForges}, nil
 	}
-	if h := strings.ToLower(strings.TrimSpace(host)); h != "" {
+	if h, err := NormalizeForgeHost(host); err == nil {
+		h = strings.TrimSpace(h)
 		if kind, ok := wellKnownForgeHosts[h]; ok {
 			return ForgeResolution{Repo: repo, Kind: kind, Source: "remote-host:" + h}, nil
 		}
@@ -229,12 +230,20 @@ func ForgeKindForRepoRemote(repo ForgeRepo, originRemoteURL string) (ForgeResolu
 // Defaulting the host to the canonical SaaS instance is how a self-hosted adopter's credential
 // ends up presented to a public host, with the auth failure swallowed downstream as a bare
 // "unverifiable" (#727). An empty host is therefore could-not-check (Unverifiable, exit 6),
-// naming the repo — never a SaaS default. The caller's job is to hand a readable origin host
-// (see cmd/deskclaim-ref's originRemoteURL, which reads it through something that understands
-// the worktreeConfig extension go-git does not).
+// naming the repo. deskclaim-ref takes the host and inferred slug from the same checked
+// origin URL that SlugRemoteURL reads.
 func ForgeKindFromSlugAndHost(slug, host string) (ForgeKind, string, error) {
 	key := strings.ToLower(strings.TrimSpace(slug))
-	h := strings.ToLower(strings.TrimSpace(host))
+	h, err := NormalizeForgeHost(host)
+	if err != nil {
+		return "", "", Unverifiable(fmt.Sprintf("invalid forge host for %s", slug), err)
+	}
+	h = strings.TrimSpace(h)
+	if h != "" {
+		if err := validateGitHost(h, slug); err != nil {
+			return "", "", err
+		}
+	}
 	resolve := func(kind ForgeKind) (ForgeKind, string, error) {
 		if h != "" {
 			return kind, h, nil
@@ -274,8 +283,8 @@ func ForgeKindFromSlugAndHost(slug, host string) (ForgeKind, string, error) {
 type GitHubCustodyMinterFunc func(role string, repo ForgeRepo) (token, baseURL string, err error)
 
 // githubCustodyMinter is the installable seam ForgeFor's GitHub branch calls instead of
-// its default (RoleTokenForRepo, which shells to the `desktoken` binary's mint-or-reuse
-// path). A caller that already mints its OWN GitHub App installation tokens in-process —
+// its default (RoleTokenForRepo, which runs the role-credential provider's mint-or-reuse
+// path in process). A caller that already mints its OWN GitHub App installation tokens in-process —
 // deskpost, extracted from the live behavior this package's golden corpus pins — installs
 // its existing, tested minter here (cmd/deskpost/github.go's init) instead of this
 // package growing a SECOND JWT-signing implementation, and instead of deskpost losing the
@@ -451,7 +460,7 @@ const githubAppHost = "github.com"
 // An EMPTY originURL is a roster-only caller whose transport is not bound to an origin (a
 // GitHubCustodyMinter hook talks to GitHubAPIBase itself); it keeps the historical path.
 func githubAppOriginHost(res ForgeResolution, originURL string) error {
-	raw := strings.TrimSpace(originURL)
+	raw := strings.Trim(originURL, " \t\r\n")
 	if raw == "" {
 		return nil
 	}
@@ -675,7 +684,7 @@ func githubAppRoleToken(role, repo string) (token, path string, err error) {
 // GitLabForge to gitlab.com when nothing else was configured is the backend's own shipped
 // default behavior, not a new risk this resolver introduces.
 func gitlabAPIBaseOverride() string {
-	return strings.TrimSpace(os.Getenv("GITLAB_API_BASE"))
+	return strings.Trim(os.Getenv("GITLAB_API_BASE"), " \t\r\n")
 }
 
 // verifyCustodyFileMode enforces that a custody file is a regular file locked to its

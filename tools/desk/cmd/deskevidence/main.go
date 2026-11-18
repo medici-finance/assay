@@ -217,7 +217,7 @@ func run(args []string) int {
 		return deskkit.ExitCodeOf(err)
 	}
 
-	// runOutward holds the flock across the whole write window and writes the
+	// runOutward holds the audit flock across the write window and writes the
 	// single audit line (#227).
 	// The refusal goes to the package-level stderr (helpers.go), which IS os.Stderr in
 	// production and the captured buffer under test — so a test can assert on the

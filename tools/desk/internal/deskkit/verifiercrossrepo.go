@@ -386,13 +386,16 @@ func verifierCrossRepoCheck(root, brief string, r verifierLocal, phase verifierP
 
 // VerifierBriefLocation reads local dispatch provenance without granting admission.
 // Packet/prompt construction uses it; execution still requires the forge check.
-func VerifierBriefLocation(root string) (briefRoot, brief, revision string, err error) {
+func VerifierBriefLocation(root, trackingRepo string) (briefRoot, brief, revision string, err error) {
 	r, err := verifierLoad(root)
 	if err != nil {
 		return "", "", "", err
 	}
 	if err := verifierLocalCheck(root, r.Binding.Brief, r, verifierExecution); err != nil {
 		return "", "", "", err
+	}
+	if r.Binding.Repo != trackingRepo {
+		return "", "", "", Refused("verifier outcome destination differs from the admitted tracking repository")
 	}
 	if r.Binding.Version == 2 {
 		return r.TrackingHome, r.Binding.Brief, r.Binding.TrackingSource, nil

@@ -191,6 +191,22 @@ func TestVerifierDispatchAdmissionEndToEnd(t *testing.T) {
 			if _, err := deskkit.CheckVerifierEvidence(home, allowedRepo, "spec.md"); err != nil {
 				t.Fatalf("normal Evidence preparation deadlocked: %v", err)
 			}
+			// The closure stays as tight as before the read-set recorder: an
+			// untracked file in the home, even one shaped like a read-set file,
+			// still refuses. The recorder writes under the git dir instead.
+			planted := filepath.Join(home, "reads", strings.Repeat("a", 64))
+			if err := os.MkdirAll(filepath.Dir(planted), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(planted, []byte("x\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := deskkit.CheckVerifierEvidence(home, allowedRepo, "spec.md"); err == nil || !strings.Contains(err.Error(), "unattested worktree file: reads/") {
+				t.Fatalf("an untracked read-set-shaped file in the home was admitted: %v", err)
+			}
+			if err := os.RemoveAll(filepath.Dir(planted)); err != nil {
+				t.Fatal(err)
+			}
 			if err := receipt.CheckEvidenceContent("spec.md", after, nil); err != nil {
 				t.Fatal(err)
 			}

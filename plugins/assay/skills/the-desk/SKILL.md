@@ -285,8 +285,8 @@ not own.
   past the cap. Before opening a stream, ask whether the work is a brief in one that already exists.
   A genuinely new stream at the cap is scaffolded `status: parked` (out of dispatch, briefs kept) and
   the opening PR names which active stream to park or archive to make room — the swap is human:<name>'s
-  call. A stream is opened ONLY from an `**Status:** approved` scoping doc (the `stream-source` lint),
-  never from a raw idea or a `draft`.
+  call. To open a stream, cite its approved scoping doc. The `stream-source` lint accepts
+  `approved` and the later `routed` state after the first briefs land.
 - **Fanout-first: the desk runs on the top tier — spend that tier ONLY on judgment, synthesis,
   arbitration, verifying agent output, and talking to human:<name>.** Everything else fans out by
   default (mechanical evidence-gathering → cheap tier; research/drafting/authoring →

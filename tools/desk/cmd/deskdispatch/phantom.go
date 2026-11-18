@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -30,7 +32,17 @@ import (
 // a PR list the transport could not read is UNVERIFIABLE, never rounded to "no PR exists":
 // could-not-check is not the same answer as clear, and treating it as clear is how a phantom slips
 // through.
-var listRepresentedPRs func(repo string) ([]deskkit.PRRef, error)
+//
+// The transport also reports whether the window it read was INCOMPLETE (the repo holds more
+// open+merged changes than the seam's page ceiling). Absence from an incomplete window is
+// could-not-check, not "no PR": see lookupBriefChanges.
+var listRepresentedPRs func(repo string) (prs []deskkit.PRRef, incomplete bool, err error)
+
+// lookupBriefChanges is the per-brief fallback the phantom check runs ONLY when the window above
+// was incomplete and did not represent the brief: every change of the repo whose body names the
+// given id, read to completion by the typed `Brief:` trailer search. Nil (offline build, or a
+// backend with no such search) and an error are both could-not-check, and HOLD the dispatch.
+var lookupBriefChanges func(repo, id string) ([]deskkit.PRRef, error)
 
 // briefIDFromItem reduces a dispatch item key to the brief id `<stream>/<NN>` a PR's `Brief:`
 // trailer carries, so the two can be compared. It accepts every item-key form deskdispatch is
@@ -163,7 +175,7 @@ func phantomCheckFor(o dispatchOpts, repo string, dl deliverable) (phantomFollow
 	if briefID == "" {
 		return none, nil
 	}
-	prs, err := listRepresentedPRs(repo)
+	prs, incomplete, err := listRepresentedPRs(repo)
 	if err != nil {
 		return none, deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: could not read %s's open+merged PRs to check whether %s already has one (%v). "+
@@ -183,6 +195,11 @@ func phantomCheckFor(o dispatchOpts, repo string, dl deliverable) (phantomFollow
 		matchedOn += " or `Cross-repo-brief: " + xrLink + "`"
 	}
 	open, merged := representingPRs(briefID, xrLink, prs)
+	if len(open) == 0 && len(merged) == 0 && incomplete {
+		if open, merged, err = lookUpPastWindow(repo, briefID, xrLink); err != nil {
+			return none, err
+		}
+	}
 	if len(open) > 0 {
 		n := open[0]
 		return none, deskkit.Refused(fmt.Sprintf(
@@ -191,6 +208,13 @@ func phantomCheckFor(o dispatchOpts, repo string, dl deliverable) (phantomFollow
 				"hide it. Dispatching would spawn a worker that re-derives the PR already exists and returns no "+
 				"new work. Resume the PR (--pr %d) or close it; do not fresh-dispatch over it.",
 			stepClaimAcquire, briefID, repo, n, matchedOn, sanitizeSegment(o.item), n))
+	}
+	// A MERGED PR the brief's own `delivery:` list declares `covers: partial` is work in progress,
+	// not the brief's delivery (#6751) — statusgen's reading, which keeps the row on Next-up. A fresh
+	// dispatch sets such PRs aside; --rework keeps them, so its follow-up branch still moves off the
+	// newest merged branch's name.
+	if !o.rework {
+		merged = dropDeclaredPartialMerges(o, repo, briefID, merged)
 	}
 	if len(merged) > 0 {
 		n := merged[0]
@@ -213,6 +237,93 @@ func phantomCheckFor(o dispatchOpts, repo string, dl deliverable) (phantomFollow
 			stepClaimAcquire, briefID, repo, n, matchedOn, short, briefID))
 	}
 	return none, nil
+}
+
+// lookUpPastWindow answers the phantom question for a brief the INCOMPLETE window did not
+// represent: absence from a truncated list is could-not-check (#5853), so the brief is looked up by
+// its trailer instead. Under --cross-repo the `Cross-repo-brief:` value is looked up as well. The
+// hits go through the same authoring drop and the same reduction as the window, so a body that
+// merely mentions the phrase names nothing. No lookup, or one that failed, HOLDS the dispatch.
+func lookUpPastWindow(repo, briefID, xrLink string) (open, merged []int, err error) {
+	ids := []string{briefID}
+	if xrLink != "" {
+		ids = append(ids, xrLink)
+	}
+	var hits []deskkit.PRRef
+	seen := map[int]bool{}
+	for _, id := range ids {
+		var got []deskkit.PRRef
+		lerr := fmt.Errorf("no `Brief:` trailer lookup is wired for this forge")
+		if lookupBriefChanges != nil {
+			got, lerr = lookupBriefChanges(repo, id)
+		}
+		if lerr != nil {
+			return nil, nil, deskkit.Unverifiable(fmt.Sprintf(
+				"step %s: %s holds more open+merged changes than the phantom check's window, %s is not in "+
+					"that window, and the lookup by its trailer (%s) could not run (%v). Absence from an "+
+					"incomplete list is could-not-check, not no-PR-exists, so the dispatch is HELD — nothing "+
+					"was claimed; retry.", stepClaimAcquire, repo, briefID, id, lerr), lerr)
+		}
+		for _, pr := range got {
+			if !seen[pr.Number] {
+				seen[pr.Number] = true
+				hits = append(hits, pr)
+			}
+		}
+	}
+	if hits, err = dropBriefAuthoringPRs(repo, briefID, hits); err != nil {
+		return nil, nil, err
+	}
+	open, merged = representingPRs(briefID, xrLink, hits)
+	return open, merged, nil
+}
+
+// dropDeclaredPartialMerges returns merged without the PR numbers the brief's `delivery:` list
+// declares `covers: partial` for repo (deskkit.DeclaredPartialDeliveries, resolved through the
+// graph-repos.yaml of the tree that holds the brief). The brief is --brief, or with none the one the
+// item key names (the caller passes plan.gateOpts). The file must be the dispatched item's own brief:
+// its frontmatter `brief:` id is compared with briefID inside DeclaredPartialDeliveries, so a --brief
+// file naming a different brief, or naming none, relaxes nothing. No brief at all, an unreadable
+// brief, an id that does not match, or a partial claim that cannot be resolved sets nothing aside —
+// the refusal stands, as before #6751 — and the could-not-check reason is disclosed on stderr.
+func dropDeclaredPartialMerges(o dispatchOpts, repo, briefID string, merged []int) []int {
+	if len(merged) == 0 || strings.TrimSpace(o.brief) == "" {
+		return merged
+	}
+	raw, err := os.ReadFile(o.brief)
+	if err != nil {
+		return merged
+	}
+	nums, why := deskkit.DeclaredPartialDeliveries(string(raw), briefID, repo, deskkit.LoadDeliveryAliases(briefTreeRoot(o)))
+	if why != "" {
+		fmt.Fprintf(os.Stderr, "deskdispatch: NOTICE — %s's delivery: list could not be read with certainty (%s); "+
+			"no merged PR is set aside as a partial delivery (could-not-check, not a pass)\n", briefID, why)
+		return merged
+	}
+	if len(nums) == 0 {
+		return merged
+	}
+	kept := make([]int, 0, len(merged))
+	for _, n := range merged {
+		if nums[n] {
+			fmt.Fprintf(os.Stderr, "deskdispatch: NOTICE — %s#%d names %s in its `Brief:` trailer, but the brief's "+
+				"delivery: list declares it a partial delivery, so it is work in progress, not the brief's delivery\n",
+				repo, n, briefID)
+			continue
+		}
+		kept = append(kept, n)
+	}
+	return kept
+}
+
+// briefTreeRoot is the checkout that holds the --brief file: the directory above its
+// docs/streams/, else --root.
+func briefTreeRoot(o dispatchOpts) string {
+	p := filepath.ToSlash(o.brief)
+	if i := strings.LastIndex(p, "/docs/streams/"); i > 0 {
+		return filepath.FromSlash(p[:i])
+	}
+	return o.root
 }
 
 // applyFollowUp turns the plan into a FOLLOW-UP of merged PR pr: the default branch moves to a new

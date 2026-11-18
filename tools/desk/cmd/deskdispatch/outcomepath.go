@@ -193,12 +193,12 @@ func pruneOutcomeDirs(dir string, cutoff time.Time) {
 
 // writeOutcomeRecordLine names the outcome directory and the exact landing command. Only the
 // verifier assignment calls it, and only when a directory was resolved.
-func writeOutcomeRecordLine(b *strings.Builder, plan dispatchPlan, repo, home string) {
+func writeOutcomeRecordLine(b *strings.Builder, plan dispatchPlan, home string) {
 	if plan.outcomePath == "" {
 		return
 	}
 	approvalFlag := ""
-	if plan.forgeKind == deskkit.ForgeGitHub {
+	if plan.outcomeTarget.Kind == deskkit.ForgeGitHub {
 		approvalFlag = " --acceptance-forge"
 	}
 	fmt.Fprintf(b, "## Outcome record — write it OUTSIDE the home\n\n"+
@@ -206,9 +206,10 @@ func writeOutcomeRecordLine(b *strings.Builder, plan dispatchPlan, repo, home st
 		"and nowhere else: never write the record inside the home `%s` (an untracked file there refuses the "+
 		"admission check). The directory is per claim, so a re-dispatch of the same claim reuses it and an "+
 		"earlier run's record may already be there: write a new file and land only your own. Land it on the host with exactly:\n\n```\ndeskevidence %s main --outcome-record %s --root %s%s\n```\n\n"+
-		"For GitHub, explicit --acceptance-forge permits fresh read-only approval corroboration for the landed closure tree, "+
-		"including protected transitions on other briefs. It supplies no approval and does not repair unknown repository authority. "+
+		"For GitHub, explicit --acceptance-forge permits fresh read-only approval corroboration for the landed closure tree. "+
+		"A lint PROBLEM naming another brief prints as a notice and does not block this record; one naming this brief, or no brief, still refuses. "+
+		"It supplies no approval and does not repair unknown repository authority. "+
 		"Other forges retain the ordinary landing command; unsupported GitHub approval reads remain held. "+
 		"Retain every refusal; do not retry with stripped Git configuration, another origin or a stored human login.\n\n",
-		plan.outcomePath, home, repo, filepath.Join(plan.outcomePath, "<file>.json"), home, approvalFlag)
+		plan.outcomePath, home, plan.outcomeTarget.Repo.Slug(), filepath.Join(plan.outcomePath, "<file>.json"), home, approvalFlag)
 }

@@ -205,12 +205,12 @@ From that checkout's repository root, run:
 sh containers/k8s/check.sh --compatibility-cellctl --self-test
 ```
 
-The checker reads **that checkout's** component, not the operator JSON file or a
-remote deployment. Required result: exit 0 and
-`checked-clean: compatibility cellctl profile`, after all 11 hostile fixtures are
-rejected. The unchanged public template still exits 1 at
-`checked-failed: prepared launch identity missing`; that is expected until real
-values are bound in the copy being checked. Fixture success alone clears nothing.
+The checker reads the component in the selected checkout. A successful self-test
+prints `checked-clean: compatibility mutation fixtures; actual candidate remains a separate gate`.
+For a prepared component, require exit 0 and `checked-clean: compatibility cellctl profile`.
+The public template has placeholder launch identities, so the same command exits 1
+and names the affected role and environment variable even when the self-test passes.
+Use the corresponding `workload_env` entry returned by that role’s preparation command.
 
 For an existing, appropriately configured operator cell, `cellctl check` validates
 its explicitly selected profile offline. The custodian can supply its approved

@@ -4,10 +4,15 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
@@ -239,6 +244,169 @@ func TestForgeLocalAuthorityChannelRestart(t *testing.T) {
 	})
 }
 
+// regression: #6756
+// A strictly sequential client on any channel is never refused on the
+// full-pool branch: each complete response leaves its slot already free.
+func TestForgeLocalAuthoritySlots(t *testing.T) {
+	f := newAuthorityFixture(t, nil)
+	ctx := context.Background()
+	control := filepath.Join(f.resources.Private.Name(), "control.sock")
+	grant := filepath.Join(f.resources.Grants[f.config.Launches[0].ID].Name(), "grant.sock")
+	scope := f.config.Launches[0].Scope.Scope
+	for i := range 50 {
+		state, e := RequestControl(ctx, control, f.config.MaxFrameBytes, f.config.IOTimeout, nil)
+		if e != nil {
+			t.Fatalf("sequential control readback %d refused: %v", i, e)
+		}
+		if state.Version != f.version {
+			t.Fatalf("sequential control readback %d changed version", i)
+		}
+		assertIdleSlots(t, f.controller, "a control readback")
+		g, e := ReadGrant(ctx, grant, f.config.MaxFrameBytes, f.config.IOTimeout)
+		if e != nil {
+			t.Fatalf("sequential grant read %d refused: %v", i, e)
+		}
+		if !same(g, f.grant) {
+			t.Fatalf("sequential grant read %d returned another grant", i)
+		}
+		assertIdleSlots(t, f.controller, "a grant read")
+		r, e := f.verifier.Authorize(ctx, f.grant, scope)
+		if e != nil {
+			t.Fatalf("sequential current read %d refused: %v", i, e)
+		}
+		if e = f.verifier.CheckRelease(ctx, r); e != nil {
+			t.Fatal(e)
+		}
+		assertIdleSlots(t, f.controller, "a current read")
+	}
+}
+
+// waitDataSlots reports whether exactly n handlers come to hold a data slot
+// within a bound. It never fails the test itself, so any goroutine may call it.
+func waitDataSlots(c *Controller, n int) bool {
+	deadline := time.Now().Add(2 * time.Second)
+	for len(c.dataSlots) != n {
+		if time.Now().After(deadline) {
+			return false
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return true
+}
+
+// regression: #6756
+// A handler still running when its IOTimeout runs out is cut off by expiring
+// its deadline, never by closing its connection under it: the client sees the
+// end of the exchange only after the handler has given its slot back.
+func TestForgeLocalAuthorityExpiry(t *testing.T) {
+	f := newAuthorityFixture(t, nil)
+	grant := filepath.Join(f.resources.Grants[f.config.Launches[0].ID].Name(), "grant.sock")
+	// Holding the controller lock parks the grant handler inside its exchange,
+	// holding its data slot, past its own IOTimeout.
+	f.controller.mu.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			f.controller.mu.Unlock()
+		}
+	}()
+	answered := make(chan error, 1)
+	go func() {
+		_, e := ReadGrant(context.Background(), grant, f.config.MaxFrameBytes, 10*f.config.IOTimeout)
+		answered <- e
+	}()
+	if !waitDataSlots(f.controller, 1) {
+		t.Fatal("grant handler never held its slot")
+	}
+	select {
+	case e := <-answered:
+		t.Fatalf("client answered while its handler held a slot past its deadline: %v", e)
+	case <-time.After(f.config.IOTimeout + 500*time.Millisecond):
+	}
+	f.controller.mu.Unlock()
+	locked = false
+	select {
+	case e := <-answered:
+		if e == nil {
+			t.Fatal("expired exchange delivered a grant")
+		}
+	case <-time.After(5 * f.config.IOTimeout):
+		t.Fatal("client not answered after its handler returned")
+	}
+	assertIdleSlots(t, f.controller, "an expired exchange")
+}
+
+// fatalRecorder stands in for the fixture's testing.TB so a test can observe
+// that a fixture helper fails. Fatal ends only the goroutine running the
+// helper, as testing.T's Fatal does.
+type fatalRecorder struct {
+	testing.TB
+	mu      sync.Mutex
+	message string
+}
+
+func (r *fatalRecorder) Helper() {}
+func (r *fatalRecorder) Fatalf(format string, args ...any) {
+	r.mu.Lock()
+	r.message = fmt.Sprintf(format, args...)
+	r.mu.Unlock()
+	runtime.Goexit()
+}
+func (r *fatalRecorder) Fatal(args ...any) { r.Fatalf("%s", fmt.Sprint(args...)) }
+func (r *fatalRecorder) failure() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.message
+}
+
+// regression: #6756
+// A startup attempt that gives up while its handler still holds a slot fails
+// the fixture at that attempt, even though the next attempt succeeds and the
+// abandoned handler has finished before the pools are checked again.
+func TestForgeLocalAuthorityAbandon(t *testing.T) {
+	f := newAuthorityFixture(t, nil)
+	grant := filepath.Join(f.resources.Grants[f.config.Launches[0].ID].Name(), "grant.sock")
+	r := &fatalRecorder{TB: t}
+	attempts := 0
+	locked, parked := false, false
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		waitAuthorityRead(r, f.controller, ctx, "grant", func(call context.Context) error {
+			attempts++
+			if attempts == 1 {
+				// The handler parks on the controller lock holding its slot;
+				// the client stops waiting long before the handler's IOTimeout.
+				f.controller.mu.Lock()
+				locked = true
+				_, e := ReadGrant(call, grant, f.config.MaxFrameBytes, 50*time.Millisecond)
+				parked = waitDataSlots(f.controller, 1)
+				return e
+			}
+			f.controller.mu.Unlock()
+			locked = false
+			if !waitDataSlots(f.controller, 0) {
+				return errors.New("abandoned handler never finished")
+			}
+			_, e := ReadGrant(call, grant, f.config.MaxFrameBytes, f.config.IOTimeout)
+			return e
+		})
+	}()
+	<-done
+	if locked {
+		f.controller.mu.Unlock()
+	}
+	if !parked {
+		t.Fatal("first grant handler never held its slot")
+	}
+	if msg := r.failure(); !strings.Contains(msg, "abandoned 1 handler") {
+		t.Fatalf("abandoned handler not reported after %d attempts: %q", attempts, msg)
+	}
+}
+
+// regression: #6668
 func TestForgeLocalAuthorityControlCapacity(t *testing.T) {
 	f := newAuthorityFixture(t, nil)
 	var connections []net.Conn
@@ -266,12 +434,81 @@ func TestForgeLocalAuthorityControlCapacity(t *testing.T) {
 		t.Fatal(e)
 	}
 	r, e := RequestControl(context.Background(), filepath.Join(f.resources.Private.Name(), "control.sock"), f.config.MaxFrameBytes, f.config.IOTimeout, &OperatorCommand{Operation: Revoke, ExpectedVersion: f.version, GrantID: claims.GrantID})
-	if e != nil || r.Version != f.version+1 {
-		t.Fatal("slow data slots blocked private revocation")
+	if e != nil {
+		t.Fatal("slow data slots blocked private revocation", e)
+	}
+	if r.Version != f.version+1 {
+		t.Fatalf("private revocation moved version %d to %d", f.version, r.Version)
 	}
 	for _, conn := range connections {
 		conn.Close()
 	}
 	read, e := f.verifier.Authorize(context.Background(), f.grant, claims.Scope.Scope)
 	assertHeld(t, read, e)
+}
+
+// closeOrder records whether conn was closed while its slot was still held.
+type closeOrder struct {
+	net.Conn
+	slots chan struct{}
+	early atomic.Bool
+}
+
+func (c *closeOrder) Close() error {
+	if len(c.slots) != 0 {
+		c.early.Store(true)
+	}
+	return c.Conn.Close()
+}
+
+// A client's call ends at the server's close (it reads to EOF), so the slot
+// must already be free then. Otherwise a back-to-back call on the one-slot
+// control channel is refused as busy by the caller's own finished call.
+// regression: #6302
+func TestReplyFreesSlotBeforeClose(t *testing.T) {
+	dir, e := os.MkdirTemp("/tmp", "a57-")
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	l, e := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(dir, "s.sock"), Net: "unix"})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer l.Close()
+	client, e := net.DialUnix("unix", nil, l.Addr().(*net.UnixAddr))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer client.Close()
+	server, e := l.AcceptUnix()
+	if e != nil {
+		t.Fatal(e)
+	}
+	const frame = 32 * 1024
+	c := &Controller{config: ProducerConfig{IOTimeout: time.Second, MaxFrameBytes: frame}}
+	slots := make(chan struct{}, 1)
+	slots <- struct{}{} // taken by the accept loop for this connection
+	conn := &closeOrder{Conn: server, slots: slots}
+	b, e := encode(wireRequest{Schema: Schema, Operation: "control", Readback: true}, frame)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = client.Write(b); e != nil || client.CloseWrite() != nil {
+		t.Fatal("request", e)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		c.answer(context.Background(), conn, slots, func(context.Context, wireRequest) wireResponse { return heldResponse() })
+	}()
+	var r wireResponse
+	if e = readFrame(client, frame, &r); e != nil || r.Error != "held" {
+		t.Fatal("framed reply", e)
+	}
+	held := len(slots)
+	<-done
+	if conn.early.Load() || held != 0 {
+		t.Fatalf("connection closed before its slot was freed (closed early %v, held at client EOF %d)", conn.early.Load(), held)
+	}
 }

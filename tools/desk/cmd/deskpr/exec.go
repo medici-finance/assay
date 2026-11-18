@@ -86,8 +86,10 @@ func runCmd(dir, name string, args ...string) (string, error) {
 	err := cmd.Run()
 	stdout := strings.TrimSpace(out.String())
 	if err != nil {
-		return stdout, fmt.Errorf("%s %s: %w (%s)", name, strings.Join(args, " "),
-			err, strings.TrimSpace(errb.String()))
+		// The argv and git's stderr can both carry a remote URL (ls-remote <push URL>), so
+		// each is shown with its userinfo masked: a failed read must not print a credential.
+		return stdout, fmt.Errorf("%s %s: %w (%s)", name, deskkit.RedactRemoteArgv(args),
+			err, deskkit.RedactRemoteUserinfo(deskkit.StripControl(strings.TrimSpace(errb.String()))))
 	}
 	return stdout, nil
 }

@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -296,6 +297,10 @@ func dispatch(o dispatchOpts) error {
 		// Step 2 records the run key worktree-locally on a real dispatch; name it here so an
 		// operator can see which STOP.run.<key> would stop this run before launching it.
 		fmt.Printf("  run key (recorded at step %s as assay.runKey): %s\n", stepWorktreeCreate, plan.claimKey)
+		if plan.gateHuman {
+			fmt.Printf("  %s: would ensure the decision issue in %s (the repo that tracks the brief); not run in a "+
+				"dry run\n", stepDecisionGate, plan.decision.repo)
+		}
 		if o.rework {
 			// The phantom check is a forge read and a dry run makes none, so it cannot say whether this
 			// rework row's PR is merged. State that, rather than let the branch above read as final.
@@ -335,8 +340,9 @@ func dispatch(o dispatchOpts) error {
 	// wedges nothing (no claim yet) and is a no-op for a review/verifier dispatch or a --pr resume.
 	// A --rework dispatch whose brief already has a MERGED PR comes back as a FOLLOW-UP: the plan's
 	// branch is moved off the merged branch's name here, still pre-claim, so the worktree, the claim
-	// and the prompt all see the follow-up branch.
-	followUp, err := phantomCheckFor(o, repo, plan.dl)
+	// and the prompt all see the follow-up branch. With no --brief it reads the brief the item key
+	// names (plan.gateOpts), so the `delivery:` set-aside (#6751) holds on the key-only path too.
+	followUp, err := phantomCheckFor(plan.gateOpts(o), repo, plan.dl)
 	if err != nil {
 		return err
 	}
@@ -615,7 +621,9 @@ func dispatch(o dispatchOpts) error {
 	// pre-claim and is carried on the plan.
 	// The script child runs under the credential the claim step resolved (auth.scriptEnv), never
 	// the ambient login — issue 1146.
-	gate, gerr := stepDecision(plan.gateOpts(o), plan.gateHuman, repo, plan.decisionTool, plan.ruling, auth)
+	// It ensures the issue in the brief's TRACKING repo (plan.decision), not the deliverable repo
+	// the claim was taken in — #5525.
+	gate, gerr := stepDecision(plan.gateOpts(o), plan.gateHuman, plan.decision, plan.decisionTool, plan.ruling, auth)
 	if gerr != nil {
 		return held.settle(gerr)
 	}
@@ -675,7 +683,7 @@ func dispatch(o dispatchOpts) error {
 		// Cross-repository prompts and packets read the SAME isolated tracking tree
 		// bound by the completed attestation, never the dispatcher's shared checkout.
 		if plan.dl.crossRepo(o.root) {
-			br, brief, rev, err := deskkit.VerifierBriefLocation(home)
+			br, brief, rev, err := deskkit.VerifierBriefLocation(home, plan.outcomeTarget.Repo.Slug())
 			if err != nil {
 				return held.settle(err)
 			}
@@ -752,7 +760,8 @@ type dispatchPlan struct {
 	gateHuman bool
 	// keyBrief is the brief the ITEM KEY names, read for the human gate when no --brief was given
 	// (#6173, briefkey.go): absolute path, and its shown spelling. Empty when --brief was given or
-	// the key is not brief-shaped. Only the gate steps read it (gateOpts).
+	// the key is not brief-shaped. Only the gate steps and the phantom check's `delivery:` set-aside
+	// (#6751) read it, both through gateOpts.
 	keyBrief, keyBriefShown string
 	// claimKey is the key the durable claim is taken (and later released) under —
 	// derived once from the item key by claimKeyFor, so the acquire call and the release
@@ -776,6 +785,9 @@ type dispatchPlan struct {
 	// presence check and the invocation cannot drift onto two different tools; stepDecision
 	// tells the two apart by that bare name.
 	decisionTool string
+	// decision is where the decision gate ensures its issue: the brief's TRACKING repo, resolved
+	// pre-claim by deliverable.decisionTarget, set only for a human-gated item (#5525).
+	decision decisionTarget
 	// ruling is the brief's RECORDED ruling (#2079, recordedruling.go) — a `**Ruling (<date>):
 	// option <N>.**` line transcribed as a decision record — parsed offline before the claim;
 	// nil when the brief records none, and the decision gate then runs the script as before.
@@ -813,10 +825,10 @@ type dispatchPlan struct {
 	// from — fields on the plan so a test can fix both.
 	now     func() time.Time
 	entropy io.Reader
-	// forgeKind is resolved pre-claim for review and verifier prompts: reviews
-	// name forge-specific head refs, while verifier outcome recipes opt in to
-	// GitHub-only approval reads. Worker prompts keep their existing path.
-	forgeKind deskkit.ForgeKind
+	// forgeKind serves the dispatch checkout and its claim. Outcomes are
+	// published in the repository that tracks the brief.
+	forgeKind     deskkit.ForgeKind
+	outcomeTarget deskkit.ForgeResolution
 	// claimStore is where the dispatch claim is kept, as deskkit.ResolveClaimStore decided it
 	// from the roster — never a flag. Resolved pre-claim, so a store that
 	// cannot be used refuses before any worktree is cut and before any credential is minted.
@@ -1073,11 +1085,24 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// also resolves here so only GitHub outcome recipes request GitHub approval
 	// reads; other forges retain their ordinary landing path.
 	if reviewKit(o.kit) || verifierKit(o.kit) {
-		kind, ferr := o.resolveTargetForgeKind(repo)
+		target, ferr := resolveTargetForge(repo, o.root)
 		if ferr != nil {
 			return plan, ferr
 		}
-		plan.forgeKind = kind
+		plan.forgeKind = target.Kind
+		if verifierKit(o.kit) {
+			plan.outcomeTarget = target
+			if dl.crossRepo(o.root) {
+				tracking, err := verifierTrackingRepo(o, dl)
+				if err != nil {
+					return plan, err
+				}
+				plan.outcomeTarget, err = resolveTargetForge(tracking, dl.trackingRoot)
+				if err != nil {
+					return plan, err
+				}
+			}
+		}
 	}
 
 	// Read-only kits allocate detached. A reviewer checks out the PR head
@@ -1208,7 +1233,8 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	plan.gateHuman = o.gateHuman
 	// No --brief: a brief-shaped item key still names a brief, and its `gate: human` binds the same
 	// way (#6173). It is resolved here, pre-claim, and a key whose brief cannot be read is REFUSED
-	// rather than reported as "not human-gated". It feeds the gate steps only (gateOpts).
+	// rather than reported as "not human-gated". It feeds the gate steps and the phantom check's
+	// `delivery:` set-aside (gateOpts).
 	if !plan.gateHuman && strings.TrimSpace(o.brief) == "" {
 		kb, shown, kerr := keyBriefFn(o)
 		if kerr != nil {
@@ -1221,6 +1247,21 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		plan.gateHuman = true
 	}
 	if plan.gateHuman {
+		// The decision issue belongs to the repo that TRACKS the brief, not the one its deliverable
+		// lands in (#5525): the helper's dedupe reads only the repo it is given, so a homed-in or
+		// --cross-repo dispatch keyed on the deliverable missed the existing issue and filed (or
+		// failed on) a second one there. An unknown tracking repo refuses here, before the claim,
+		// rather than fall through to the deliverable.
+		target, known := plan.dl.decisionTarget(o.root, plan.repo)
+		if !known {
+			return plan, deskkit.Unverifiable(fmt.Sprintf(
+				"step %s: this human-gated item is tracked under alias %q, which the registry at %s reserves but "+
+					"does not publish, so the repo its decision issue lives in cannot be resolved (could-not-check). "+
+					"The gate never falls back to the deliverable repo %s. Point --claim-root at a tracking "+
+					"checkout whose registry publishes %q. Nothing was claimed.",
+				stepDecisionGate, plan.dl.homeAlias, plan.dl.registryPath, plan.repo, plan.dl.homeAlias), nil)
+		}
+		plan.decision = target
 		// The decision helper resolves in the claim tool's order (issue 6131): its pure-Go PATH
 		// port goDecisionBinary FIRST, then tools/decision-issue.sh under the same resolved root as
 		// the claim script (--claim-root when given, else --root). Only when NEITHER is available
@@ -1597,11 +1638,11 @@ func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, 
 	// read (the "nothing durable before the flags are good" contract the zero-process tests pin).
 	kind := forgeKind
 	if strings.TrimSpace(string(kind)) == "" {
-		var ferr error
-		kind, ferr = o.resolveTargetForgeKind(repo)
+		target, ferr := resolveTargetForge(repo, o.root)
 		if ferr != nil {
 			return claimAuth{}, ferr
 		}
+		kind = target.Kind
 	}
 	// ISSUE 1631. An inherited GH_TOKEN wins only once it is shown to BE the dispatching role's
 	// credential. A launcher (a cell shim) exported the operator's ambient gh login there, and
@@ -1688,7 +1729,7 @@ func (o dispatchOpts) verifyInheritedToken(role, repo string, kind deskkit.Forge
 	}
 	expected := deskkit.RoleAppLoginOrEmpty(role)
 	owner, name, _ := strings.Cut(repo, "/")
-	id, err := tokenIdentityFn(deskkit.ForgeRepo{Owner: owner, Name: name}, o.targetOriginURL(), tok)
+	id, err := tokenIdentityFn(deskkit.ForgeRepo{Owner: owner, Name: name}, targetOriginURL(o.root), tok)
 	if err != nil {
 		return false, "", deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: a GH_TOKEN is exported in this environment, but the account it acts as could not be read "+
@@ -1865,9 +1906,15 @@ func stepRoster(o dispatchOpts, repo string) string {
 // ruling as a decision record (recordedruling.go), the record's ruling is corroborated through
 // statusgen under the SAME handed-over credential, and on a pass no decision issue is ensured —
 // the decision it would ask for is already made. A ruling that does not corroborate REFUSES.
-func stepDecision(o dispatchOpts, gateHuman bool, repo, script string, ruling *recordedRuling, auth claimAuth) (string, error) {
+func stepDecision(o dispatchOpts, gateHuman bool, target decisionTarget, script string, ruling *recordedRuling, auth claimAuth) (string, error) {
 	if !gateHuman {
 		return "SKIPPED: item is not human-gated", nil
+	}
+	repo := target.repo
+	if strings.TrimSpace(repo) == "" {
+		return "", deskkit.Unverifiable(fmt.Sprintf(
+			"step %s: no decision repo was resolved for %s, so the gate cannot say where its issue lives. NOT run.",
+			stepDecisionGate, o.brief), nil)
 	}
 	// The PATH port resolves the dispatching role's own credential itself and reads none from
 	// its environment, so only an environment-authenticated child — the script, or the ruling
@@ -2038,18 +2085,31 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 			stepModelStamp, repo, o.pr, forge, firstLine(eerr.Error())), eerr)
 	}
 	tl := deskkit.StampTimeline{Present: change.Labels, Events: events}
+	// A family alias (`opus`) over a standing full id of that family (`claude-opus-5-5`) keeps
+	// the full id, so two spellings of one model never replace each other. Only when NO
+	// attestation is named: a bound run stamps exactly the selection the record binds, so a
+	// settlement never replaces an attestation that is already bound. The receipt says so.
+	settled := ""
+	if bound == "" {
+		asked := labels
+		labels = stampKind.SettleRequest(tl, labels, deskkit.IsStampAuthorityLogin)
+		if !slices.Equal(asked, labels) {
+			settled = fmt.Sprintf(" (SETTLED: requested %s kept as the standing %s, the full id of that model family)",
+				asked[0], labels[0])
+		}
+	}
 	// Only labels of THIS kit's pair are read, removed or verified: an authoring re-stamp
 	// never removes a review session's dispatched-* pair, and the reverse (#2760).
 	stale := stampKind.ReStampRemovals(tl, labels, deskkit.IsStampAuthorityLogin)
 	if o.dryRun {
-		return fmt.Sprintf("PLAN: repo=%s pr=%d role=%s model=%s tier=%s remove=%v apply=%v (%s)%s; nothing written or verified", repo, o.pr, stampRole, o.model, o.tier, stale, labels, forge, bound), nil
+		return fmt.Sprintf("PLAN: repo=%s pr=%d role=%s model=%s tier=%s remove=%v apply=%v (%s)%s; nothing written or verified", repo, o.pr, stampRole, o.model, o.tier, stale, labels, forge, bound+settled), nil
 	}
 	if len(stale) == 0 && labelsPresent(change.Labels, labels) {
 		// An IDENTICAL stamp already standing under the dispatcher is a no-op: nothing is
 		// removed and nothing is re-applied, so a re-dispatch neither churns the label
 		// history nor leaves the PR briefly unstamped.
 		return fmt.Sprintf("OK: verified %s already standing on %s#%d under accepted stamp authority (%s)%s — an identical stamp is a no-op, nothing was written",
-			strings.Join(labels, " + "), repo, o.pr, forge, bound), nil
+			strings.Join(labels, " + "), repo, o.pr, forge, bound+settled), nil
 	}
 	if err := deskkit.ApplyVerifiedStamp(fg, fr, o.pr, deskkit.TargetChange, stampKind, labels, deskkit.IsStampAuthorityLogin); err != nil {
 		return "", err
@@ -2066,10 +2126,10 @@ func stepStamp(o dispatchOpts, repo string) (string, error) {
 	if stampKind == deskkit.StampAuthored {
 		return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App — the authoring attestation; "+
 			"no dispatched-* label was read or written, and the capability floor does not read this pair (%s)%s%s",
-			strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped, bound), nil
+			strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped, bound+settled), nil
 	}
-	return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App, the identity the capability floor accepts (%s)%s",
-		strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped), nil
+	return fmt.Sprintf("OK: applied and verified %s to %s#%d as the %s App, the identity the capability floor accepts (%s)%s%s",
+		strings.Join(labels, " + "), repo, o.pr, stampRole, forge, restamped, settled), nil
 }
 
 // labelsPresent reports whether every wanted label is already on the change, by the same
@@ -2370,39 +2430,28 @@ func (o dispatchOpts) resolveRepo() (string, error) {
 	if slug == "" {
 		return "", deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: origin %q does not parse to an owner/name — pass --repo <owner/name>.",
-			stepClaimAcquire, r.stdout), nil)
+			stepClaimAcquire, deskkit.RedactRemoteUserinfo(r.stdout)), nil)
 	}
 	return slug, nil
 }
 
-// resolveTargetForgeKind resolves WHICH forge serves the target repo, for the two places
-// this verb branches on the answer: the review kit's forge-shaped head-fetch refspec, and the
-// claim child's credential custody (GitHub App mint vs GitLab role PAT — issue 1203). It reads
-// the TARGET repo's origin remote from o.root — the same checkout resolveRepo reads — through
-// the runCmd seam, and hands the raw URL to deskkit, which owns the roster-first/host-map
-// resolution and the well-known host table; deskdispatch re-derives neither. A repo the
-// roster configures (ASSAY_REPO_FORGES) resolves even with an unreadable remote; otherwise
-// the origin host decides. Unresolvable is deskkit's own could-not-check (exit 6), returned
-// verbatim so the dispatch fails closed rather than guessing a forge.
-func (o dispatchOpts) resolveTargetForgeKind(repo string) (deskkit.ForgeKind, error) {
+// resolveTargetForge reads the named checkout's origin. Deskkit owns roster-first
+// resolution and host mapping for review refs, claim custody and outcome publication.
+func resolveTargetForge(repo, root string) (deskkit.ForgeResolution, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok || strings.TrimSpace(owner) == "" || strings.TrimSpace(name) == "" {
-		return "", deskkit.Unverifiable(fmt.Sprintf(
+		return deskkit.ForgeResolution{}, deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: %q does not parse to an owner/name, so the forge serving it cannot be resolved.",
 			stepClaimAcquire, repo), nil)
 	}
-	res, err := deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, o.targetOriginURL())
-	if err != nil {
-		return "", err
-	}
-	return res.Kind, nil
+	return deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, targetOriginURL(root))
 }
 
-// targetOriginURL reads the TARGET checkout's origin remote (o.root) through the runCmd seam, or
+// targetOriginURL reads the target checkout's origin remote through the runCmd seam, or
 // "" when it cannot be read — deskkit then answers from the roster alone. The raw URL is handed
 // to deskkit and never printed (an https origin can carry userinfo).
-func (o dispatchOpts) targetOriginURL() string {
-	if r := runCmd(o.root, "git", "remote", "get-url", "origin"); r.err == nil {
+func targetOriginURL(root string) string {
+	if r := runCmd(root, "git", "remote", "get-url", "origin"); r.err == nil {
 		return r.stdout
 	}
 	return ""

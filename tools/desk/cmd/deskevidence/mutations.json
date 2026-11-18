@@ -160,8 +160,8 @@
     {
       "name": "the mint moves back below forge resolution and admission (the original #2458 order: admission's forge read meets the custody step's empty-token refusal, and every landing, --dry-run included, refuses)",
       "file": "cmd/deskevidence/deskevidence.go",
-      "old": "\tcredential, merr := mintTokenFn(repoSlug)\n\tif merr != nil {\n\t\treturn nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr\n\t}\n\tac.options.credential = credential\n\tfg, fr, ferr := forgeForFn(owner, name)\n\tif ferr != nil {\n\t\treturn nil, fr, deskkit.VerifierReceipt{}, ferr\n\t}\n\tfg = deskkit.EvidenceLandingForge(fg, fr, target, branch)\n\treceipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)\n\tif aerr != nil {\n\t\treturn nil, fr, receipt, aerr\n\t}\n",
-      "new": "\tfg, fr, ferr := forgeForFn(owner, name)\n\tif ferr != nil {\n\t\treturn nil, fr, deskkit.VerifierReceipt{}, ferr\n\t}\n\tfg = deskkit.EvidenceLandingForge(fg, fr, target, branch)\n\treceipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)\n\tif aerr != nil {\n\t\treturn nil, fr, receipt, aerr\n\t}\n\tcredential, merr := mintTokenFn(repoSlug)\n\tif merr != nil {\n\t\treturn nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr\n\t}\n\tac.options.credential = credential\n"
+      "old": "\tcredential, merr := mintTokenFn(repoSlug)\n\tif merr != nil {\n\t\treturn nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr\n\t}\n\tac.options.credential = credential\n\tfg, fr, ferr := forgeForFn(owner, name)\n\tif ferr != nil {\n\t\treturn nil, fr, deskkit.VerifierReceipt{}, ferr\n\t}\n\tfresh := fg\n\tac.freshForge = fresh\n\tfg = deskkit.EvidenceLandingForge(fg, fr, target, branch)\n\treceipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)\n\tif aerr != nil {\n\t\treturn nil, fr, receipt, aerr\n\t}\n",
+      "new": "\tfg, fr, ferr := forgeForFn(owner, name)\n\tif ferr != nil {\n\t\treturn nil, fr, deskkit.VerifierReceipt{}, ferr\n\t}\n\tfresh := fg\n\tac.freshForge = fresh\n\tfg = deskkit.EvidenceLandingForge(fg, fr, target, branch)\n\treceipt, aerr := admitVerifierEvidence(root, repoSlug, target, fg, ac)\n\tif aerr != nil {\n\t\treturn nil, fr, receipt, aerr\n\t}\n\tcredential, merr := mintTokenFn(repoSlug)\n\tif merr != nil {\n\t\treturn nil, deskkit.ForgeRepo{}, deskkit.VerifierReceipt{}, merr\n\t}\n\tac.options.credential = credential\n"
     },
     {
       "name": "mint above the command-line refusals (a call refused on its arguments alone spends a token mint \u2014 on GitLab, a credential rotation)",
@@ -196,8 +196,8 @@
     {
       "name": "branch board lets a compare error through (an unreadable branch is read as an unchanged board)",
       "file": "cmd/deskevidence/decisiongate.go",
-      "old": "cmp, err := fg.CompareRefs(fr, head, tip)\n\tif err != nil {",
-      "new": "cmp, err := fg.CompareRefs(fr, head, tip)\n\tif false && err != nil {"
+      "old": "\tcase err != nil:\n\t\treturn nil, deskkit.Unverifiable(fmt.Sprintf(\"cannot compare the landing home's HEAD",
+      "new": "\tcase false && err != nil:\n\t\treturn nil, deskkit.Unverifiable(fmt.Sprintf(\"cannot compare the landing home's HEAD"
     },
     {
       "name": "branch board skips the compare for every tip, not only the home's own HEAD (a branch that moved past the judged board is never read) \u2014 #6270",
@@ -588,6 +588,42 @@
       "file": "cmd/deskevidence/outcomerecord.go",
       "old": "\tif remoteExists {",
       "new": "\tif !dryRun && remoteExists {"
+    },
+    {
+      "name": "#6610: admit any path on the GitLab branch lane (a non-Evidence change on the branch is never refused)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "|| (f.Filename != target && !evidenceLandingPath(f.Filename)) {",
+      "new": "|| false {"
+    },
+    {
+      "name": "#6610: admit a removal or rename on the GitLab branch lane",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "if (f.Status != \"added\" && f.Status != \"modified\") ||",
+      "new": "if false &&"
+    },
+    {
+      "name": "#6610: drop the clean-path test on an Evidence path (an unclean spelling of a brief path is admitted)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "path.Clean(p) != p ||",
+      "new": "path.Clean(p) == \"\" ||"
+    },
+    {
+      "name": "the decision-gate deadline check is dropped (a killed child's partial output is parsed as the gate's answer, never refused as did-not-finish)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\tif ctx.Err() != nil {\n\t\t// Checked BEFORE the output is read",
+      "new": "\tif false && ctx.Err() != nil {\n\t\t// Checked BEFORE the output is read"
+    },
+    {
+      "name": "the decision-gate drain sits outside the halved deadline (each child can run lockWait/2 plus the drain, so the before/after pair holds the preparation lock past lockWait)",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "func decisionGateDeadline() time.Duration { return lockWait/2 - decisionGateWaitDelay() }",
+      "new": "func decisionGateDeadline() time.Duration { return lockWait / 2 }"
+    },
+    {
+      "name": "#6738: every lock acquisition is granted a full lockWait (the waits are per attempt, not one budget per run)",
+      "file": "cmd/deskevidence/writeflow.go",
+      "old": "\tif left := lockWait - a.lockWaited; left > 0 {",
+      "new": "\tif left := lockWait; left > 0 {"
     }
   ]
 }

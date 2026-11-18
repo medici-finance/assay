@@ -798,8 +798,9 @@ func gitlabColdCustodyProbe(role string) (string, error) {
 	return path, nil
 }
 
-// deriveRepoSlug reads the landing remote's repository-local URL through gitcore.RemoteURL
-// (fetch insteadOf rules applied, push-only rewrites excluded) and
+// deriveRepoSlug reads the landing remote's repository-local URL through SlugRemoteURL
+// (fetch insteadOf rules applied, push-only rewrites excluded; "" when config that read
+// does not merge could change the URL) and
 // extracts owner/name through the single shared parser (ParseRemoteRepo). That parser
 // handles every remote shape a desk checkout uses, including an ssh HOST ALIAS and the
 // rewritten/hybrid forms an `insteadOf` config bakes onto it (issue 1470) — the alias form
@@ -812,7 +813,7 @@ func deriveRepoSlug(dir, remote string) string {
 	if err != nil {
 		return ""
 	}
-	out, err := repo.RemoteURL(remote)
+	out, err := SlugRemoteURL(repo, remote)
 	if err != nil {
 		return ""
 	}
@@ -1165,7 +1166,7 @@ func listReachability(opts gitcore.ListOpts) (ProbeVerdict, string, error) {
 	select {
 	case res = <-done:
 	case <-time.After(listTimeout):
-		return ProbeInconclusive, "List of " + redactURLCredential(opts.URL) + " did not answer within " + listTimeout.String(), nil
+		return ProbeInconclusive, "List of " + RedactRemoteUserinfo(opts.URL) + " did not answer within " + listTimeout.String(), nil
 	}
 	if res.err == nil {
 		return ProbePermitted, listedDetail(res.refs), nil

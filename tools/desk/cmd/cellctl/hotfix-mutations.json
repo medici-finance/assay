@@ -1,0 +1,35 @@
+{
+  "test": "go test ./cmd/cellctl/ -count=1 -timeout 300s -run '^(TestHotfixOverlayOwnerReason|TestHotfixClearOwnerReason)$'",
+  "control": {
+    "name": "CONTROL: the owner-check reason ignores a namespace-gate refusal",
+    "file": "internal/deskkit/userns.go",
+    "old": "\tif errors.Is(err, errOwnerUnverified) {\n\t\treturn HotfixReasonOwnerUnverified\n\t}",
+    "new": "\tif false && errors.Is(err, errOwnerUnverified) {\n\t\treturn HotfixReasonOwnerUnverified\n\t}"
+  },
+  "mutations": [
+    {
+      "name": "N3: install's overlay check reports every owner refusal as not root-owned (TestHotfixOverlayOwnerReason)",
+      "file": "cmd/cellctl/hotfix.go",
+      "old": "\t\t\treturn &deskkit.HotfixError{Reason: deskkit.HotfixOwnerReason(err), Detail: err.Error(), Code: hotfixExitRefused}",
+      "new": "\t\t\treturn &deskkit.HotfixError{Reason: deskkit.HotfixReasonNotRootOwned, Detail: err.Error(), Code: hotfixExitRefused}"
+    },
+    {
+      "name": "N3: clear reports every owner refusal as not root-owned (TestHotfixClearOwnerReason)",
+      "file": "cmd/cellctl/hotfix.go",
+      "old": "\t\tfmt.Fprintf(stderr, \"cellctl: hotfix clear: %s: %v\\n\", deskkit.HotfixOwnerReason(err), err)",
+      "new": "\t\tfmt.Fprintf(stderr, \"cellctl: hotfix clear: %s: %v\\n\", deskkit.HotfixReasonNotRootOwned, err)"
+    },
+    {
+      "name": "N3: install's overlay check reports every owner refusal as could-not-check (TestHotfixOverlayOwnerReason)",
+      "file": "cmd/cellctl/hotfix.go",
+      "old": "\t\t\treturn &deskkit.HotfixError{Reason: deskkit.HotfixOwnerReason(err), Detail: err.Error(), Code: hotfixExitRefused}",
+      "new": "\t\t\treturn &deskkit.HotfixError{Reason: deskkit.HotfixReasonOwnerUnverified, Detail: err.Error(), Code: hotfixExitRefused}"
+    },
+    {
+      "name": "N3: clear reports every owner refusal as could-not-check (TestHotfixClearOwnerReason)",
+      "file": "cmd/cellctl/hotfix.go",
+      "old": "\t\tfmt.Fprintf(stderr, \"cellctl: hotfix clear: %s: %v\\n\", deskkit.HotfixOwnerReason(err), err)",
+      "new": "\t\tfmt.Fprintf(stderr, \"cellctl: hotfix clear: %s: %v\\n\", deskkit.HotfixReasonOwnerUnverified, err)"
+    }
+  ]
+}

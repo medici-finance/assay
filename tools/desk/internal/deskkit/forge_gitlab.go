@@ -157,7 +157,9 @@ func (g *GitLabForge) client() (*gitlab.Client, error) {
 	// first so the counting copy keeps the refusal (SEC-1: a GitLab credential never follows a redirect).
 	hc := countingClient(gitlabNoRedirectClient(g.Client))
 	hc.Transport = observedTransport(hc.Transport, g.Observer, "provider", true)
-	opts = append(opts, gitlab.WithHTTPClient(hc))
+	// Outermost: every body the client reads, error bodies included, is capped
+	// (forgebodytransport.go).
+	opts = append(opts, gitlab.WithHTTPClient(cappedForgeClient(hc)))
 	cl, err := gitlab.NewClient(g.Token, opts...)
 	if err != nil {
 		return nil, Unverifiable("cannot build GitLab API client", err)
@@ -178,11 +180,9 @@ func (g *GitLabForge) client() (*gitlab.Client, error) {
 // naming the status. The copy leaves the caller's client untouched.
 // forge_redirect_test.go pins it over the wire; gitlabcredsites_test.go lists every site.
 func gitlabNoRedirectClient(base *http.Client) *http.Client {
-	c := &http.Client{}
-	if base != nil {
-		cp := *base
-		c = &cp
-	}
+	// boundedCopy: a zero Timeout is no deadline, so every GitLab call is bounded like the GitHub
+	// backend's (ForgeRequestTimeout) and a stalled forge cannot hold a desk write verb's audit lock.
+	c := boundedCopy(base)
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return c
 }
@@ -2566,6 +2566,91 @@ func (g *GitLabForge) CompareRefs(repo ForgeRepo, base, head string) (*RefCompar
 		repo.Slug(), base, head), nil)
 }
 
+// DescendantDiffServed reports whether f's backend answers ReadDescendantDiff. Only the GitLab
+// backend does: it is the backend whose CompareRefs is a declared gap, and the one question
+// below is the part of a compare that GitLab can answer exactly. A caller uses it to tell "this
+// backend has a narrower exact read" from "the compare failed", so a GitHub compare error is
+// never re-routed to a weaker read.
+func DescendantDiffServed(f Forge) bool {
+	_, ok := backendOf(f).(*GitLabForge)
+	return ok
+}
+
+// ReadDescendantDiff answers ONE narrow question exactly, never a divergence verdict: when
+// ancestor is an ancestor of descendant (both full commit ids), which files differ between
+// the two trees. Every other shape is could-not-check:
+//
+//   - either id not a full lowercase object id (an abbreviation or branch name could move);
+//   - the forge's merge base of the two is not ancestor itself (unrelated or diverged
+//     history, or a branch behind the ancestor): git's merge base of A and B is A exactly
+//     when A is an ancestor of B, so this is an ancestry fact, not a count;
+//   - the compare reports compare_timeout (GitLab documents that its diffs list may then be
+//     incomplete), or serves an entry with no path.
+//
+// It reports no ahead/behind counts and no status word, so it cannot stand in for CompareRefs.
+// Consumer: cmd/deskevidence's decision-gate board read on the GitLab branch lane (#6610).
+func ReadDescendantDiff(f Forge, repo ForgeRepo, ancestor, descendant string) ([]ChangedFile, error) {
+	g, ok := backendOf(f).(*GitLabForge)
+	if !ok {
+		return nil, Unverifiable("could-not-check: ReadDescendantDiff is served only by the GitLab backend for "+repo.Slug(), nil)
+	}
+	return g.descendantDiff(repo, ancestor, descendant)
+}
+
+func (g *GitLabForge) descendantDiff(repo ForgeRepo, ancestor, descendant string) ([]ChangedFile, error) {
+	if !IsFullSHA(ancestor) || !IsFullSHA(descendant) {
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: the descendant read on %s needs two full commit ids (%q, %q)", repo.Slug(), ancestor, descendant), nil)
+	}
+	if ancestor == descendant {
+		return nil, nil
+	}
+	cl, err := g.client()
+	if err != nil {
+		return nil, err
+	}
+	mbPath := fmt.Sprintf("/projects/%s/repository/merge_base", g.projectPath(repo))
+	mb, _, merr := cl.Repositories.MergeBase(repo.Slug(), &gitlab.MergeBaseOptions{Ref: &[]string{ancestor, descendant}})
+	if merr != nil {
+		return nil, g.mapErr(http.MethodGet, mbPath, merr)
+	}
+	if mb == nil || strings.ToLower(strings.TrimSpace(mb.ID)) != ancestor {
+		got := ""
+		if mb != nil {
+			got = mb.ID
+		}
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: %s is not an ancestor of %s on %s (merge base %q)", ancestor, descendant, repo.Slug(), got), nil)
+	}
+	cmpPath := fmt.Sprintf("/projects/%s/repository/compare", g.projectPath(repo))
+	cmp, _, cerr := cl.Repositories.Compare(repo.Slug(), &gitlab.CompareOptions{
+		From: gitlab.Ptr(ancestor), To: gitlab.Ptr(descendant), Straight: gitlab.Ptr(true),
+	})
+	if cerr != nil {
+		return nil, g.mapErr(http.MethodGet, cmpPath, cerr)
+	}
+	if cmp == nil || cmp.CompareTimeout {
+		return nil, Unverifiable(fmt.Sprintf("could-not-check: GitLab's compare of %s...%s on %s exceeded its limits (compare_timeout), so its file list may be incomplete", ancestor, descendant, repo.Slug()), nil)
+	}
+	out := make([]ChangedFile, 0, len(cmp.Diffs))
+	for _, d := range cmp.Diffs {
+		if d == nil || strings.TrimSpace(d.NewPath) == "" || strings.TrimSpace(d.OldPath) == "" {
+			return nil, Unverifiable(fmt.Sprintf("could-not-check: GitLab's compare of %s...%s on %s served a file entry with no path", ancestor, descendant, repo.Slug()), nil)
+		}
+		cf := ChangedFile{Filename: d.NewPath, Status: "modified"}
+		switch {
+		case d.DeletedFile:
+			cf.Status = "removed"
+		case d.RenamedFile:
+			cf.Status, cf.PreviousFilename = "renamed", d.OldPath
+		case d.NewFile:
+			cf.Status = "added"
+		case d.OldPath != d.NewPath:
+			cf.Status, cf.PreviousFilename = "renamed", d.OldPath
+		}
+		out = append(out, cf)
+	}
+	return out, nil
+}
+
 // SearchOpenChanges is a could-not-check REFUSAL on GitLab, naming the gap. This is the ONE
 // owner-wide read on the seam: GitHub's `search prs --owner` asks a single account-scoped
 // question and returns changes across every repo under it. GitLab's search is scoped per group
@@ -4464,7 +4549,7 @@ func (g *GitLabForge) triggerClient() (*gitlab.Client, error) {
 	// transport sees every round-trip: perf forgeCalls means the same on both backends.
 	// countingClient copies, never mutates, the client it is handed; the no-redirect copy goes in
 	// first so the counting copy keeps the refusal (SEC-1: a GitLab credential never follows a redirect).
-	opts = append(opts, gitlab.WithHTTPClient(countingClient(gitlabNoRedirectClient(g.Client))))
+	opts = append(opts, gitlab.WithHTTPClient(cappedForgeClient(countingClient(gitlabNoRedirectClient(g.Client)))))
 	cl, err := gitlab.NewAuthSourceClient(gitlab.Unauthenticated{}, opts...)
 	if err != nil {
 		return nil, Unverifiable("cannot build GitLab trigger client", err)
@@ -4719,7 +4804,10 @@ func (g *GitLabForge) runLog(repo ForgeRepo, run RunRef, lim runLogBounds) ([]Ru
 	kept := 0
 	for _, j := range jobs {
 		rel := fmt.Sprintf("projects/%s/jobs/%d/trace", g.projectPath(repo), j.ID)
-		req, rerr := cl.NewRequest(http.MethodGet, rel, nil, nil)
+		// The trace keeps its own bound (runLogSink); the transport cap is raised to one byte
+		// past it so the sink's refusal is the one that fires.
+		req, rerr := cl.NewRequest(http.MethodGet, rel, nil,
+			[]gitlab.RequestOptionFunc{gitlab.WithContext(withForgeBodyLimit(context.Background(), lim.readCap+1))})
 		if rerr != nil {
 			return nil, Unverifiable(fmt.Sprintf("could-not-check: GET /%s could not be built", rel), rerr)
 		}

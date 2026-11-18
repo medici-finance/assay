@@ -34,7 +34,8 @@ func TestOutcomeAuthorityRecipes(t *testing.T) {
 func TestOutcomeForgeRecipes(t *testing.T) {
 	for _, forge := range []deskkit.ForgeKind{deskkit.ForgeGitHub, deskkit.ForgeGitLab, ""} {
 		var out strings.Builder
-		writeOutcomeRecordLine(&out, dispatchPlan{outcomePath: "outcomes", forgeKind: forge}, "example/repo", "home")
+		target := deskkit.ForgeResolution{Repo: deskkit.ForgeRepo{Owner: "example", Name: "repo"}, Kind: forge}
+		writeOutcomeRecordLine(&out, dispatchPlan{outcomePath: "outcomes", outcomeTarget: target}, "home")
 		permitted := false
 		for _, line := range strings.Split(out.String(), "\n") {
 			if strings.HasPrefix(line, "deskevidence ") {

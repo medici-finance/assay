@@ -147,6 +147,8 @@ func buildEnvKeys() []envKey {
 			desc: "Time one tick may run, a duration from 61s to 24h. Default: 20m once a cadence is set; without a cadence a launch refuses it."},
 		{key: "CELL_FF_ROOTS", class: envMachine, group: envGroupCadence, def: "0",
 			desc: "1 fast-forwards, at desk boot, every stream root that can move without a decision."},
+		{key: "CELL_VERIFY_SHARED_ROOTS", class: envMachine, group: envGroupCadence, def: "0",
+			desc: "1 gives a house verify-desk window the shared stream roots; otherwise it reads per-session trees kept at each root's origin/main."},
 		{key: "CELLCTL_DESKWT", class: envMachine, group: envGroupCadence, def: deskwtDefault,
 			desc: "1 lets an installed deskwt name each role worktree; any other value uses cellctl's own worktree path."},
 		{key: "CELLCTL_GENERATED_FILES", class: envMachine, group: envGroupCadence, def: "STATUS.md docs/streams/FINDINGS.md",
@@ -213,6 +215,10 @@ func buildEnvKeys() []envKey {
 			why: "is the one checkout a cell's role worktrees are created from"},
 		envKey{key: "CELL_REPO_SLUG", class: envCell, desc: "Scrubbed cells: the one repository the cell is scoped to.",
 			why: "is the one repository a scrubbed cell is scoped to"},
+		// CELL_WORKSPACE_STORES_V1, the one key a managed-aware reader will use to find the
+		// managed-store mapping (workspace_repository.go), is proposed and deliberately NOT
+		// registered here: nothing reads it until the activation step. It has no default, and the
+		// mapping's contents are never exported beside CELL_ROOTS.
 		envKey{key: "CELL_LABELS_TOKEN_FILE", class: envCell, desc: "House cells: a FILE holding an operator credential that can read labels; `check` reads the cell's forge label set with it (unset: the labels rows are could-not-check).",
 			why: "is one operator credential file for one cell's repos"},
 		envKey{key: "CELL_ROOTS", class: envCell, desc: "The cell's stream-root map, exported to its role windows.",

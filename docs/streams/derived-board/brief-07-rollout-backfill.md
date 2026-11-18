@@ -1,11 +1,12 @@
 ---
 brief: assay:assay:derived-board:07
-title: per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills
+title: this repo's rollout — brief-v2 migration, scheduled reconcile, historical backfill as a drift-report PR; --backfill kept for the reconcile verb
 why: >-
-  Five repositories carry stream boards and every one of them has phantom rows today.
-  The cut is worthless until each repo runs the migration, gets the reconcile step, and
-  has its history derived once — with the disagreements between what the table said and
-  what GitHub says put in front of a human, not silently overwritten.
+  Every repository that carries stream boards had phantom rows. The cut is worthless
+  until a repo runs the migration, gets the reconcile step, and has its history derived
+  once — with the disagreements between what the table said and what GitHub says put in
+  front of a human, not silently overwritten. This brief delivers that for this repo;
+  each consumer repo runs the same sequence under its own board.
 wave: 4
 depends: ["derived-board/05", "derived-board/06"]
 unblocks: []
@@ -29,15 +30,24 @@ sources:
 exec-tier: any
 domain: complicated
 consumers:
-  - "each consumer repo's .assay-versions, regen workflow, brief spec docs and the four desk skills: fixed-here (one PR per repo, listed in Task)"
-version: 1
+  - "each consumer repo's .assay-versions, regen workflow and brief migration: out-of-scope (each consumer repo tracks its own rollout on its own board; re-scoped in version 2)"
+  - "tools/desk/cmd/deskreconcile/reconcile.go: out-of-scope (calls `statusgen reconcile --backfill --apply`; Task 4 keeps the flag, so this caller is unchanged)"
+version: 2
 id: 3535fcb8-1d38-4a68-b59d-202985f32264
 ---
 
 # Brief 07 — rollout + backfill
 
 ## Context
-The files below are touched per consumer repo, one PR each; this repo first.
+**Re-scoped (version 2).** This brief now covers this repo only. Version 1 also carried
+the rollout to each consumer repo (old Task 2), a consumer-side overlay re-stage of the
+spec docs and desk skills (old Task 3), and retiring the `--backfill` fallback once every
+repo had merged (old Task 4). Their dispositions are recorded in the Task list below; the
+original rollout description is kept here because it is the sequence each consumer repo
+follows under its own board.
+
+As originally written, the files below were touched per consumer repo, one PR each; this
+repo first.
 
 files:
 - `.assay-versions` — re-pinned to v1.0.0 by `upgrade-assay` (sha256 from the published release's `checksums.txt`, harvested not typed).
@@ -50,7 +60,8 @@ facts:
 - Historical PRs have no trailer. `--backfill` uses a DECLARED, reviewable fallback for
   history only: a merged PR whose branch name or body contains the brief id in the
   `<stream>/<NN>` or `<stream>-<NN>` form. Every backfilled edge is listed in the report
-  with its source; after the rollout the fallback is OFF (trailer only).
+  with its source. The scheduled reconcile job runs trailer-only (no `--backfill`); the
+  fallback stays an explicit opt-in flag (see Task 4).
 - Rows where hand-said `implemented`/`verified`/`done` and no PR is found are NOT demoted
   silently: they render `unknown (no witness — hand-asserted <state> at <sha>)` until a
   human either links the PR (adds the trailer to the merged PR's body via edit, which the
@@ -67,25 +78,45 @@ facts:
 - Never resolve a drift row by editing a table; link or accept, in the report.
 
 ## Task
-1. This repo: `upgrade-assay --to v1.0.0` (dry-run, then apply), workflow step, backfill
-   report, PR.
-2. Each consumer repo, same sequence, one PR each, serially.
-3. Private toolkit additionally: overlay re-stage of the spec docs + four skills.
-4. After every repo is merged: remove the historical fallback flag from `--backfill`
-   (or leave it refusing with "backfill already ran for this repo" — record which).
+1. **This repo — DONE.** Delivered by the merged PRs the `delivery:` list cites: the
+   statusgen fixes that unblocked the migration (#735), the brief-v1 → brief-v2 migration
+   (#736), `reconcile --backfill --report` and this repo's drift report (#945), the
+   `reconcile --apply` write arm (#1010), the brief-v2/trailer join repair and this
+   repo's rollout slice (#1194), and the retirement of the stale staged reconcile patch
+   once the scheduled reconcile job was live in the board workflow (#5037). This repo is
+   the source of the tooling, so it carries no root `.assay-versions` to re-pin; the
+   `upgrade-assay --to v1.0.0` step of the original sequence does not apply here.
+2. **Each consumer repo — MOVED OUT.** Each consumer repo's rollout (pin, regen-workflow
+   reconcile step, migration, backfill report) belongs to that repo's own board, as its
+   own brief and PR. This brief keeps this repo only.
+3. **Overlay re-stage — RETIRED, not applicable.** The four desk skills and the brief spec
+   docs have one canonical home, in this repo; the consumer-side overlay mirror they would
+   have been re-staged into was retired, so there is nothing to re-stage.
+4. **`--backfill` fallback — KEPT (recorded decision).** The brief offered two endings:
+   remove the historical fallback flag, or leave it refusing. Neither: the flag stays as
+   an explicit, declared opt-in, because the desk-side reconcile verb calls
+   `statusgen reconcile --backfill --apply` (`tools/desk/cmd/deskreconcile/reconcile.go`,
+   the `sgArgs` line in step 3). Removing or refusing the flag would break that caller. The
+   default path stays trailer-only: the scheduled reconcile job in the board workflow runs
+   without `--backfill`, and its job tests pin that.
 
 ## Verify (executable — no prose-only DoD items)
-| # | Command | Expect |
-|---|---------|--------|
-| 1 | `grep -E -e '^statusgen ' -e '^desk-tools-linux-amd64 ' .assay-versions \| awk '{print $2}' \| sort -u` | exactly `v1.0.0` |
-| 2 | `statusgen --root . --lint` | exit 0; no `ungenerated board` NOTICE |
-| 3 | `grep -l 'board: generated' docs/streams/*/README.md \| wc -l` | equals `ls -d docs/streams/*/ \| wc -l` (every stream) |
-| 4 | `ls docs/streams/board-drift-*.md && grep -c '^|' docs/streams/board-drift-*.md` | report exists; row count printed |
-| 5 | `statusgen reconcile --root . --repo medici-finance/assay --json \| python3 -c "import json,sys;d=json.load(sys.stdin);u=[b for b in d['briefs'] if b['cell']=='unknown'];print(len(u));[print(b['id'],b['reason']) for b in u]"` | every `unknown` has a reason naming a hand-asserted state or a missing trailer — none says `offline` in CI |
-| 6 | `gh run list -w assay-statusgen.yml -e schedule -L 1 --json conclusion --jq '.[0].conclusion'` | `success` (first scheduled reconcile ran) |
-| 7 | `for r in $(python3 -c "import yaml;print(' '.join(v['repo'].split('/')[1] for v in yaml.safe_load(open('docs/streams/graph-repos.yaml'))['repos'].values()))"); do statusgen --root ../$r --lint; echo $r rc=$?; done` | `rc=0` each; list the five in Evidence |
-| 8 | in the private toolkit checkout: `diff <(sed -n '1,40p' docs/brief-rules.md) <(curl -fsSL https://raw.githubusercontent.com/medici-finance/assay/main/docs/brief-rules.md \| sed -n '1,40p')` | empty (private re-staged to public text) — DEREFERENCES the public file |
-| 9 | `go test ./statusgen/ -run TestApplyReconcileWrites -v` | all PASS, including: (a) a fixture `todo` row with a merged-PR witness becomes `implemented` under `reconcile --backfill --apply`; (b) a `done`/`verified` row is left byte-for-byte untouched even when fed a fresh `implemented` witness; (c) a row already carrying a `human:<name>` stamp (in Reviewed) is left untouched — the write never touches anything but the Status cell |
+Every row runs from the repository root on `main`.
+
+| # | Class | Command | Expect |
+|---|-------|---------|--------|
+| 1 | check:ci | `ls docs/streams/board-drift-*.md \| wc -l` | a number ≥ 1 (this repo's committed drift reports) |
+| 2 | check | `statusgen --root . --lint 2>&1 \| awk '/ungenerated board/{n++} END{print n+0}'` | `0` (no stream board in this repo is left ungenerated) |
+| 3 | check:ci | `grep -c '^  schedule:' .github/workflows/assay-statusgen.yml` | `1` (the board workflow carries the scheduled reconcile trigger) |
+| 4 | check:ci | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -timeout 300s -v -run '^TestReconcileJobStatusgenArgs$' . > "$out" && grep -q -- '--- PASS: TestReconcileJobStatusgenArgs ' "$out")` | exit 0; named PASS (the scheduled job's run blocks, extracted from the workflow, call `reconcile --apply` with no `--backfill`) |
+| 5 | check:ci | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -timeout 300s -v -run '^(TestApplyReconcileWrites_TodoToImplemented\|TestApplyReconcileWrites_DoneRowImmutable\|TestApplyReconcileWrites_NeverTouchesHumanStamp)$' . > "$out" && grep -c -- '^--- PASS: TestApplyReconcileWrites_' "$out")` | `3` (top-level PASS lines only), the three named cases: (a) a fixture `todo` row with a merged-PR witness becomes `implemented` under `reconcile --backfill --apply`; (b) a `done`/`verified` row is left byte-for-byte untouched even when fed a fresh `implemented` witness; (c) a row already carrying a `human:<name>` stamp (in Reviewed) is left untouched — the write never touches anything but the Status cell |
+| 6 | check:ci +flow | `grep -c 'fs.Bool("backfill"' statusgen/reconcile.go && grep -c '"reconcile", "--backfill", "--apply"' tools/desk/cmd/deskreconcile/reconcile.go` | `1` then `1` (Task 4, both sides of the flag contract: statusgen still declares `--backfill`, and the reconcile verb still passes it) |
+| 7 | check:ci | `go -C tools/desk test ./cmd/deskreconcile/ -count=1 -timeout 300s` | `ok` (the reconcile verb that depends on the kept flag) |
+| 8 | check:ci | `git ls-files '*reconcile.patch' \| wc -l` | `0` (the stale staged reconcile patch stays retired) |
+| 9 | check +dereference | `for n in 735 736 945 1010 1194 5037; do gh pr view $n -R medici-finance/assay --json state --jq .state; done \| sort \| uniq -c` | `6 MERGED` (every PR that Task 1 and `delivery:` cite resolves to a merged PR) |
+| 10 | check | `statusgen --consumers --brief derived-board/07` | exit 0 (after the merge it pins itself to the delivery the single `Brief:` trailer commit names); 0 disproved; the two out-of-scope entries stay UNCHECKED and reviewer-owned |
+| 11 | check +dereference | `gh run list -R medici-finance/assay -w assay-statusgen.yml -e schedule -L 1 --json conclusion --jq '.[0].conclusion'` | `success` (version 1's row 6, restored: the most recent scheduled board-workflow run, which carries the reconcile job, concluded success) |
+| 12 | check:ci | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -timeout 300s -v -run '^(TestApplyReconcileBackfill\|TestApplyReconcileBackfill_PullFetchFailed\|TestApplyCouldNotCheckExitsNonzero\|TestReconcileJobCouldNotCheckFails)$' . > "$out" && grep -c -- '^--- PASS: Test' "$out")` | `4` (version 1's row 5, as a fixture row: a hand-asserted state with no witness renders `unknown` with a reason naming that state, even when the pull read failed; a reconcile `--apply` that could not read the forge exits 3 and writes nothing; and the scheduled job fails its tick on that exit, so a `success` in row 11 is never an offline or unread run) |
 
 ## Evidence
 <!-- appended at implementation time -->
@@ -151,6 +182,45 @@ the removal of a stale patch file; the Verify-9 suite is unchanged and was re-ru
 
 **Owed to a human.** Rows 5-6 need the forge; rows 1, 7 and Tasks 2-4 need the other
 checkouts. The brief therefore keeps its partial `delivery:` entries.
+
+### Re-scope run (version 2) — 2026-11-17, branch off main @ 999315147
+
+**What this run covers.** A re-scope, not new code. Task 1 is recorded done against the
+six merged PRs in `delivery:` (each confirmed merged on the forge before this edit); the
+consumer rollout moves to each consumer repo's own board; the overlay re-stage is retired
+as not applicable; and the `--backfill` decision is recorded as KEEP (Task 4). The Verify
+table was rewritten. Version 1's rows 1, 7 and 8 checked a `v1.0.0` pin this repo does not
+carry, other checkouts, and a consumer-side copy, none of which this repo's scope delivers;
+they are dropped. Rows 2 and 3 carry forward as row 2, row 4 as row 1, and row 9 as row 5.
+Version 1's rows 5
+and 6 are this repo's own obligations and stay: row 6 (last scheduled board-workflow run
+concluded `success`) is restored unchanged as row 11. Row 5 (a full online
+`statusgen reconcile --json` in which every `unknown` names a hand-asserted state or a
+missing trailer, and none says `offline` in CI) is restored as row 12, a fixture row over
+the same two properties, with row 11 supplying the live half: the full history read did
+not finish inside a 600-second bound from a workstation (`timeout 600` exit 124, no JSON
+emitted), so the literal command is not a row a verifier can complete. The
+`delivery:` entries are append-only history and are left as they were; their "Task 2-4
+remain owed" notes describe version 1's scope. The two Evidence runs above use version 1's
+row numbers (their row 9 is row 5 below).
+
+**Verify rows, run against the head above** (statusgen v1.0.87, offline except where noted;
+rows 11 and 12 were added in review and run on 2026-11-18 on this branch after merging main).
+
+| # | Result |
+|---|--------|
+| 1 | `2` — `board-drift-2026-09-12.md` and `board-drift-2026-09-16.md` |
+| 2 | `0` ungenerated-board notices (the full lint itself exits 1 on three pre-existing PROBLEMs in other streams, each `could-not-check human authority: --acceptance-forge is required`; none in this stream) |
+| 3 | `1` |
+| 4 | exit 0; `--- PASS: TestReconcileJobStatusgenArgs` |
+| 5 | `3` (the full `TestApplyReconcileWrites_*` family, five tests, also passes) |
+| 6 | `1`, `1` |
+| 7 | `ok` |
+| 8 | `0` |
+| 9 | `6 MERGED` (authenticated forge read) |
+| 10 | exit 0; `0 corroborated, 0 disproved, 2 unchecked` |
+| 11 | `success` (authenticated forge read, 2026-11-18; the five most recent scheduled runs on main all concluded `success`) |
+| 12 | `4` (`TestApplyCouldNotCheckExitsNonzero`, `TestApplyReconcileBackfill`, `TestApplyReconcileBackfill_PullFetchFailed`, `TestReconcileJobCouldNotCheckFails`) |
 
 ## Review
 Gate: model. Reviewer records verdict + date via the generated board.

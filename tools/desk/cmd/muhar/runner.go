@@ -206,6 +206,22 @@ func buildMutation(root string, m Mutation, specBuild, specTest string, env []st
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(base, path)
 	}
+	// A suite command of the form `cd <dir> && go test …` runs in <dir>, so the
+	// build must too: from base, a mutant in another module is "outside main
+	// module" and even the positive control fails to build (#4117).
+	dir := root
+	if cdDir, joined, rest, ok := leadingCd(base, specTest, env); ok {
+		// The package path is taken lexically, from the joined directory the
+		// suite's shell names, so a package directory that is itself a
+		// symlink keeps its place in the module. Resolving either side would
+		// turn it into a path outside the module. Only the build's working
+		// directory is the resolved one.
+		abs, err := filepath.Abs(path)
+		if err != nil {
+			return CommandResult{Err: err}
+		}
+		path, base, dir, specTest = abs, joined, cdDir, rest
+	}
 	rel, err := filepath.Rel(base, filepath.Dir(path))
 	if err != nil {
 		return CommandResult{Err: err}
@@ -218,7 +234,182 @@ func buildMutation(root string, m Mutation, specBuild, specTest string, env []st
 	if !ok {
 		cmd = "go test -vet=off -c -o " + shellQuote(os.DevNull) + " " + shellQuote(pkg)
 	}
-	return runShell(root, cmd, env, timeout)
+	return runShell(dir, cmd, env, timeout)
+}
+
+var (
+	// cdPrefix splits `cd <dir> && <rest>`; a newline anywhere fails the match.
+	cdPrefix = regexp.MustCompile(`^cd[ \t]+([^ \t]+)[ \t]+&&[ \t]+(.+)$`)
+	// cdDirWord is the whole alphabet a followed directory may use: no quote,
+	// expansion, glob, tilde or operator character can reach the shell.
+	cdDirWord = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)
+)
+
+// leadingCd recognises a suite command that is exactly `cd <dir> && <cmd>`,
+// where <dir> is a plain relative path and <cmd> is one simple command that
+// starts, after plain NAME=value assignments, with `go test`. It returns the
+// directory, absolute, resolved against base with every symlink resolved; the
+// same directory joined to the absolute base without resolving anything, as
+// the suite's shell names it; and <cmd>. It refuses — and the build runs from base exactly as before — when
+// <dir> is not an operand the suite's shell resolves by joining it to base
+// (see cdOperandIsPlain), carries any shell syntax, does not exist, or
+// resolves (symlinks included) outside the git checkout enclosing base
+// (outside base itself when there is none, as in a parallel worker's copy or
+// an archive export); and when <cmd> chains or redirects anything further.
+// env is the environment the suite runs with. <dir> is never handed to a
+// shell: it only becomes the build's working directory.
+//
+// The resolved path is returned, not the joined one, so the containment check
+// and the build use the same directory: a symlink on the joined path swapped
+// after the check cannot move the build outside the bound. The build differs
+// from the suite only in naming that directory physically rather than through
+// the symlink, and the build's shell already sees the physical path, because
+// the PWD it inherits names muhar's directory, not this one. The joined path
+// is only ever compared lexically, never opened.
+func leadingCd(base, test string, env []string) (string, string, string, bool) {
+	m := cdPrefix.FindStringSubmatch(test)
+	if m == nil || !cdDirWord.MatchString(m[1]) || !cdOperandIsPlain(m[1], env) {
+		return "", "", "", false
+	}
+	rest := m[2]
+	words, ok := simpleCommandWords(rest)
+	if !ok {
+		return "", "", "", false
+	}
+	i := 0
+	for ; i < len(words); i++ {
+		if name, _, assign := strings.Cut(words[i], "="); !assign || !envName.MatchString(name) {
+			break
+		}
+	}
+	if i+1 >= len(words) || words[i] != "go" || words[i+1] != "test" {
+		return "", "", "", false
+	}
+	absBase, err := filepath.Abs(base)
+	if err != nil {
+		return "", "", "", false
+	}
+	target := filepath.Join(absBase, filepath.FromSlash(m[1]))
+	bound, err := filepath.EvalSymlinks(checkoutRoot(absBase))
+	if err != nil {
+		return "", "", "", false
+	}
+	resolved, err := filepath.EvalSymlinks(target)
+	if err != nil {
+		return "", "", "", false
+	}
+	if info, err := os.Stat(resolved); err != nil || !info.IsDir() || !within(bound, resolved) {
+		return "", "", "", false
+	}
+	return resolved, target, rest, true
+}
+
+// cdOperandIsPlain reports whether the POSIX shell's `cd word` lands in
+// base/word, the only directory leadingCd can follow. It does not when word is
+// absolute; when it starts with `-`, which the shell reads as the previous
+// directory (`-`), the end of options (`--`, then the home directory) or an
+// option (`-L`, `-P`); or when the suite's environment sets a non-empty CDPATH
+// and word's first component is not `.` or `..`, so the shell searches CDPATH
+// before base.
+func cdOperandIsPlain(word string, env []string) bool {
+	if strings.HasPrefix(word, "/") || strings.HasPrefix(word, "-") {
+		return false
+	}
+	first, _, _ := strings.Cut(word, "/")
+	return first == "." || first == ".." || envValue(env, "CDPATH") == ""
+}
+
+// envValue is name's value in env as a child process sees it: the last entry
+// wins, and an absent name is empty.
+func envValue(env []string, name string) string {
+	value := ""
+	for _, e := range env {
+		if v, ok := strings.CutPrefix(e, name+"="); ok {
+			value = v
+		}
+	}
+	return value
+}
+
+// checkoutRoot is the nearest directory at or above dir holding a .git entry,
+// or dir itself when none does. The fallback is fail-closed: in a source
+// archive or export with no .git above it, a cd out of dir is not followed,
+// and a mutant outside dir's module then cannot build there.
+func checkoutRoot(dir string) string {
+	for d := filepath.Clean(dir); ; {
+		if _, err := os.Lstat(filepath.Join(d, ".git")); err == nil {
+			return d
+		}
+		parent := filepath.Dir(d)
+		if parent == d {
+			return filepath.Clean(dir)
+		}
+		d = parent
+	}
+}
+
+// simpleCommandWords splits one simple shell command into its raw words,
+// keeping quotes and a `$(…)` substitution inside the word they belong to. It
+// refuses anything that could run a further command in the suite's shell or
+// move it elsewhere: an unquoted or substituted `;`, `&`, `|`, `<`, `>`, a
+// backtick, a newline, or an unbalanced quote or parenthesis. A `$(…)` whose
+// contents pass the same check runs in a subshell and cannot change the
+// directory the suite runs in.
+func simpleCommandWords(s string) ([]string, bool) {
+	var words []string
+	var cur strings.Builder
+	var quote byte
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case quote == '\'':
+			if c == '\'' {
+				quote = 0
+			}
+		case c == '`' || c == '\n':
+			return nil, false
+		case quote == '"':
+			if c == '"' {
+				quote = 0
+			} else if c == '\\' || c == '$' {
+				return nil, false
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		case c == '\\' || strings.IndexByte(";&|<>", c) >= 0:
+			return nil, false
+		case c == '$' && i+1 < len(s) && s[i+1] == '(':
+			depth++
+			cur.WriteByte(c)
+			i++
+			c = '('
+		case c == '(':
+			if depth == 0 {
+				return nil, false
+			}
+			depth++
+		case c == ')':
+			if depth == 0 {
+				return nil, false
+			}
+			depth--
+		case (c == ' ' || c == '\t') && depth == 0:
+			if cur.Len() > 0 {
+				words = append(words, cur.String())
+				cur.Reset()
+			}
+			continue
+		}
+		cur.WriteByte(c)
+	}
+	if quote != 0 || depth != 0 {
+		return nil, false
+	}
+	if cur.Len() > 0 {
+		words = append(words, cur.String())
+	}
+	return words, true
 }
 
 var envName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

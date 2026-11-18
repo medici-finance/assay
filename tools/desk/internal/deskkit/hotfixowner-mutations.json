@@ -1,0 +1,41 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -timeout 300s -run '^(TestHotfixUserNSIdentity|TestHotfixOwnerUserNS|TestHotfixOwnerReasonDistinct|TestHotfixOwnerReadersKnown|TestHotfixOwnerScanStatx|TestHotfixReadProcIsProcfs|TestHotfixProcRootChecked)$'",
+  "control": {
+    "name": "CONTROL: the namespace gate passes any mapping",
+    "file": "internal/deskkit/userns.go",
+    "old": "\t\tif !isIdentityIDMap(string(b)) {",
+    "new": "\t\tif false && !isIdentityIDMap(string(b)) {"
+  },
+  "mutations": [
+    {
+      "name": "N1: the procfs-root check is removed (TestHotfixProcRootChecked; Linux only)",
+      "file": "internal/deskkit/procread_linux.go",
+      "old": "\tif int64(sfs.Type) != unix.PROC_SUPER_MAGIC || st.Ino != procRootIno {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "N1: the procfs-root check keeps only the inode test (TestHotfixProcRootChecked; Linux only)",
+      "file": "internal/deskkit/procread_linux.go",
+      "old": "\tif int64(sfs.Type) != unix.PROC_SUPER_MAGIC || st.Ino != procRootIno {",
+      "new": "\tif st.Ino != procRootIno {"
+    },
+    {
+      "name": "N1: the procfs-root check keeps only the filesystem-type test (TestHotfixProcRootChecked; Linux only)",
+      "file": "internal/deskkit/procread_linux.go",
+      "old": "\tif int64(sfs.Type) != unix.PROC_SUPER_MAGIC || st.Ino != procRootIno {",
+      "new": "\tif int64(sfs.Type) != unix.PROC_SUPER_MAGIC {"
+    },
+    {
+      "name": "N2: the owner-reader scan keys on Stat_t alone, so a Statx_t owner read passes unlisted (TestHotfixOwnerScanStatx)",
+      "file": "internal/deskkit/userns_test.go",
+      "old": "var ownerStatType = regexp.MustCompile(`Statx?_t\\b`)",
+      "new": "var ownerStatType = regexp.MustCompile(`Stat_t`)"
+    },
+    {
+      "name": "the owner-check reason ignores a namespace-gate refusal (TestHotfixOwnerReasonDistinct)",
+      "file": "internal/deskkit/userns.go",
+      "old": "\tif errors.Is(err, errOwnerUnverified) {\n\t\treturn HotfixReasonOwnerUnverified\n\t}",
+      "new": "\tif false && errors.Is(err, errOwnerUnverified) {\n\t\treturn HotfixReasonOwnerUnverified\n\t}"
+    }
+  ]
+}

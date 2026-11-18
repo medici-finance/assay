@@ -26,10 +26,10 @@
       "new": "(false && expectedRepo != \"\" && slug != expectedRepo)"
     },
     {
-      "name": "credential host binding removed for GitLab",
+      "name": "different reserved fixture host accepted for GitLab",
       "file": "internal/deskkit/gitread.go",
-      "old": "if !strings.EqualFold(u.Hostname(), host) {",
-      "new": "if false && !strings.EqualFold(u.Hostname(), host) {"
+      "old": "if err != nil || originHost != host {",
+      "new": "if err != nil || (originHost != host && originHost != \"elsewhere.invalid\") {"
     },
     {
       "name": "credential port binding removed",

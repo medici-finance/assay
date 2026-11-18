@@ -189,7 +189,7 @@ func TestForgeGitEndpointFor_HostIsKindCanonicalNotAnUnrelatedForge(t *testing.T
 func TestValidateGitHostRejectsAuthorityInjection(t *testing.T) {
 	repo := ForgeRepo{Owner: "example-org", Name: "private"}
 	for _, ok := range []string{"github.com", "gitlab.example.test", "ghe.example"} {
-		if err := validateGitHost(ok, repo); err != nil {
+		if err := validateGitHost(ok, repo.Slug()); err != nil {
 			t.Errorf("validateGitHost(%q) = %v, want nil", ok, err)
 		}
 	}
@@ -197,7 +197,7 @@ func TestValidateGitHostRejectsAuthorityInjection(t *testing.T) {
 		"", "  ", "git@a.example@evil.test:o/n", "a@evil.test", "evil.test:8080",
 		"evil.test/../x", "evil.test?x=1", "evil.test#frag", "evil.test\\x", "host with space",
 	} {
-		if err := validateGitHost(bad, repo); err == nil {
+		if err := validateGitHost(bad, repo.Slug()); err == nil {
 			t.Errorf("validateGitHost(%q) = nil, want a refusal", bad)
 		} else if ExitCodeOf(err) != ExitUnverifiable {
 			t.Errorf("validateGitHost(%q) exit = %d, want %d", bad, ExitCodeOf(err), ExitUnverifiable)

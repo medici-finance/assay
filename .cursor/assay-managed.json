@@ -1,12 +1,12 @@
 {
   "schema": 1,
-  "version": "1.0.86",
+  "version": "1.0.88",
   "files": {
     ".cursor/references/claude-code.md": "e516df336b5f36b2809b27d058b223d02ad6477ec21fe6b7f66b764bfdd8bf98",
     ".cursor/references/codex.md": "1b53dee41663e068838624783661337e393efe34656e514eddecf678b8325895",
     ".cursor/references/cursor.md": "5523c839cf7625f70953c6dcb5b3d17e5ff2f4ee0aa1c58b71e38ce1820acda0",
     ".cursor/references/desk-common.md": "b53f68c457a84a6fdf165c8985c6428cb641ceba6040aa14452781aa977936cf",
-    ".cursor/references/desk-shell.md": "2eff2e1a25485a0dc17c8afb323cc130c1e4ee7e4a53bb902ab2aec338a9c1b0",
+    ".cursor/references/desk-shell.md": "d42fba6d493409be960a7a3ec57867488d481d712072a663e912de7c394cb0ef",
     ".cursor/references/handoff-note.md": "db49ec02dced63b33a8a891ae6e9e8465f7bad4c134d93d260ac77fbba987136",
     ".cursor/references/implementation-pickup.md": "8c546416be12ba00bd24b0bc6bac074e1e4e1c8d37afb9a408f4e4703611caad",
     ".cursor/references/intake-class-pass.md": "37bf415a5004ae75cc569d60654e8e35e6a43ce1d890bd8303913b7c672a8475",
@@ -15,10 +15,10 @@
     ".cursor/references/milestone-authoring.md": "f510d0d74761d1bb7840f26860eb33ac375b9e838678a4c8c45fcf6af4ac6f00",
     ".cursor/references/standing-note.md": "5b846214744e16741227a6f15728f062eb6df8ff2974e007463621f423803fb0",
     ".cursor/references/tick-contract.md": "65e6ac141091a31120f5eefd126891409ed1a92c376d6ef3f99fd8ea52e86ee7",
-    ".cursor/rules/assay.mdc": "4672416edf3900eedab43c193457779671180a18ffa7deca9652f70666896b2d",
+    ".cursor/rules/assay.mdc": "ce22141d5aac4b3fe78a0f034f1e4aad85b55c2923005c39e0e14f304dd0e9b3",
     ".cursor/skills/adopt/SKILL.md": "e438b5a1993ca87f9e90167e01b7beda8ea772d2378bf7baeb88f0dc3bba9c5c",
     ".cursor/skills/ask-decision/SKILL.md": "dd56d7f814c1833eb8a8913ff218709574641a01aa83d76dbcaaaec412783db9",
-    ".cursor/skills/author-brief/SKILL.md": "25fd0643c7ece7a772f466a0866b46d50e0c9029d65893e41c9aecd425de29b9",
+    ".cursor/skills/author-brief/SKILL.md": "1b24289fc3e85d0249c684e724544015e247afdb6a6b0925fb29ad592407aa9a",
     ".cursor/skills/author-spec/SKILL.md": "6a22dd23cd115c1bf60edaeedb37a1a55c2f15ac8c8b1eb505e4fa5f7572c545",
     ".cursor/skills/author-spec/references/quality-requirements.md": "b89b1d814fa8737f73273c964cf94a772321e4006161a8e0422f54c1acb2901b",
     ".cursor/skills/author-spec/references/review-prompts.md": "3b75799a47769ad8d469880aaf97b5b69c9e3bfc0ce400e36052b598873a06a6",
@@ -39,13 +39,14 @@
     ".cursor/skills/session-coach/example.md": "4853dad1eda099d81bdc8e612cab0a8b309af99bcb7d6d64bdfde534bcfa08b3",
     ".cursor/skills/system-demo/SKILL.md": "e13915b75b8843dcbbe183091c883b7dc17fd7267c59408d9a068b6cc0dd1dca",
     ".cursor/skills/system-demo/references/storyboard.md": "9d55dd566e084c1a48eaecb09b6370e2745cd3d7268fdb08494187a80eeff531",
-    ".cursor/skills/the-desk/SKILL.md": "5b43173d42a41a484e32416d1bfd7cea0f67f91860a0801f6a7f934e8fd58a9f",
-    ".cursor/skills/trace-path-to-live/SKILL.md": "3f53cf3cb564fb8631e42f14a82cd31b4f5fe7ac8cae9f0044c20b4f01193c66",
-    ".cursor/skills/trace-path-to-live/references/report.md": "91fad1473fb5876ca40aff859be4376c147a5952797c062ea1487a4fabacfdf1",
+    ".cursor/skills/the-desk/SKILL.md": "a27452e6a29296a833ba3330214cebd152aef67954fac156cba92f2d974a7f23",
+    ".cursor/skills/trace-path-to-live/SKILL.md": "e4a678fce85dce77d0606d93b7a6f95775dfa1a1702a2fd160f6fa2080ee7211",
+    ".cursor/skills/trace-path-to-live/references/progress.md": "3802a1f2750f6c2141c818c640078ff921c04c0b441adb2ed364836739cf16a4",
+    ".cursor/skills/trace-path-to-live/references/report.md": "a1400f9166900a512ba55e55ed336cb2d12908227838de43200ef10f0e47f4db",
     ".cursor/skills/upgrade-assay/SKILL.md": "629fb0269d7344583a8fca08d801b32a3d8f3dbb28db7fa5af9be732928df775",
-    ".cursor/skills/verify-desk/SKILL.md": "d963a5fb415c03189d4ad933f0b51592300bca0a8be25fd07cf831e2597cb772",
-    ".cursor/skills/worker-desk/SKILL.md": "44fe4e26c0f78e4060a9ccf8f051f5225a73803299b94ff4d29afc7683ef0b56",
+    ".cursor/skills/verify-desk/SKILL.md": "7ba02b1ebb1d7ea8d153c035c1b079fa718ca99a5cdd589dbd995b626bbb913a",
+    ".cursor/skills/worker-desk/SKILL.md": "b99a4a73bb0d17d8f9440bd0a556599a17bbe31027aed750c899093b6be89e66",
     ".cursor/skills/worker-desk/references/dispatch-runbook.md": "61f6196d7830a57b9ef84c2cf4b2d4862a62207625893fc74e91f0e878b8672b"
   },
-  "bindingsSha256": "16ad85be49f24753aed324f8776144f3d6f025ad3ceebc019158c0b509cd94c0"
+  "bindingsSha256": "1c8a819abe70a89798b8b95ac1cba945dc92ff969c6dae93c87baca653092572"
 }

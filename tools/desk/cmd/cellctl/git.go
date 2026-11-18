@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/gitcore"
 )
 
 func (c *Cell) git(dir string, args ...string) error {
@@ -62,7 +64,7 @@ func (c *Cell) gitlabFetchReachable() bool {
 // PREVIOUS boot's sha is left in place. And when the file cannot be removed either, the boot is
 // refused — reading it would be that previous boot's main.
 func (c *Cell) fetchMainUnderLock(role string) string {
-	gitdir, err := gitOut(c.Repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+	gitdir, err := gitcore.CommonDir(c.Repo)
 	if err != nil || gitdir == "" {
 		gitdir = filepath.Join(c.Repo, ".git")
 	}
@@ -140,16 +142,19 @@ func (c *Cell) cellctlGeneratedFiles() []string {
 // On a conflict the generated single-writer files are taken from main; ANY other conflict STOPS
 // the boot — merge aborted, tree left exactly as it was, the paths named, nothing launched.
 func (c *Cell) mergeRoleWorktree(wt, sha string) {
-	if exec.Command("git", "-C", wt, "merge-base", "--is-ancestor", sha, "HEAD").Run() == nil {
-		fmt.Printf("[worktree] %s already contains origin/main %s\n", wt, short8(sha))
-		return
+	repo, openErr := gitcore.Open(wt)
+	if openErr == nil {
+		if ok, err := repo.IsAncestor(sha, "HEAD"); err == nil && ok {
+			fmt.Printf("[worktree] %s already contains origin/main %s\n", wt, short8(sha))
+			return
+		}
 	}
-	before, _ := gitOut(wt, "rev-parse", "HEAD")
+	before := headID(wt)
 	mergeCmd := exec.Command("git", "-C", wt, "merge", "--no-edit",
 		"-m", "merge origin/main "+short8(sha)+" at cellctl desk boot", sha)
 	mergeOut, mergeErr := mergeCmd.CombinedOutput()
 	if mergeErr == nil {
-		if head, _ := gitOut(wt, "rev-parse", "HEAD"); head == sha {
+		if headID(wt) == sha {
 			fmt.Printf("[worktree] fast-forwarded %s to origin/main %s\n", wt, short8(sha))
 		} else {
 			fmt.Printf("[worktree] merged origin/main %s into %s (two-parent merge; local commits kept)\n", short8(sha), wt)
@@ -196,6 +201,20 @@ func (c *Cell) mergeRoleWorktree(wt, sha string) {
 		die("desk: %s could not commit the boot merge of origin/main %s after taking the generated files from main — boot STOPPED (nothing launched). Inspect: git -C %s status", wt, short8(sha), wt)
 	}
 	fmt.Printf("[worktree] merged origin/main %s into %s (two-parent merge; generated files taken from main)\n", short8(sha), wt)
+}
+
+// headID is `git rev-parse HEAD` read in-process; "" when it cannot be read. Each call opens
+// the repository afresh, so a read after a merge sees the merge's HEAD.
+func headID(dir string) string {
+	repo, err := gitcore.Open(dir)
+	if err != nil {
+		return ""
+	}
+	id, err := repo.HeadID()
+	if err != nil {
+		return ""
+	}
+	return id
 }
 
 func lastLines(s string, n int) string {

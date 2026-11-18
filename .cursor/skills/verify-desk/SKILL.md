@@ -267,6 +267,9 @@ With `--acceptance-record`, execute the protected host rows in **one** host invo
 clean committed source, before inserting uncommitted Evidence. Include every supplemental
 row so the producer records `author-added; no acceptance credit`. Select these host rows
 with `--rows`; use `--acceptance-forge` when the descriptor names an approved transition.
+An admitted run reads that approval only with a read-only verifier credential it mints for
+itself through `desktoken` on `PATH`, and revokes when the run ends. It ignores `GH_TOKEN` and
+the stored login, and with no such credential the read is could-not-check.
 A chain descriptor carries `Acceptance-Transition: link=<k> amendment=<sha> approval=<url>`
 for each contiguous link after the one `Verification-Table:` line. Draft each link's
 exact v2 payload for the driver; never post an approval. Link 1 alone may retain a v1
@@ -812,7 +815,9 @@ where admission is checked. The admitted forms are:
 - Outcome record: `--outcome-record <absolute file outside the home>`.
 For GitHub, all three forms and `deskevidence flip` pass `--acceptance-forge` explicitly
 on the host. The full landed closure lint may need fresh corroboration of an approved
-transition on another brief; the emitted outcome command carries that permission too.
+transition; the emitted outcome command carries that permission too. An outcome record
+refuses on a lint PROBLEM naming the brief it closes or naming no brief; a PROBLEM naming
+another brief prints as a notice and is that brief's to fix, never this record's to block.
 It supplies no approval or acceptance credit and does not alter authored Verify commands
 or network-off execution. Unknown repository authority, an unavailable approval read and
 a refuted approval still hold or refuse the landing. Keep the diagnostic and route the

@@ -14,6 +14,100 @@ import (
 	"time"
 )
 
+// regression: #4192
+func TestKubeCompatCheckerReadOnly(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Fatal("could-not-check: Python required for checker regression")
+	}
+	root := t.TempDir()
+	packageDir := filepath.Join(root, "containers", "k8s")
+	for _, name := range []string{"check.py", "testdata/mutations.py"} {
+		raw, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "containers", "k8s", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		destination := filepath.Join(packageDir, name)
+		if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(destination, raw, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, args := range [][]string{{"init", "-q", root}, {"-C", root, "add", "containers/k8s"}} {
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("synthetic source repository: %v\n%s", err, out)
+		}
+	}
+	snapshot := func() map[string]string {
+		t.Helper()
+		files := map[string]string{}
+		err := filepath.WalkDir(packageDir, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			key, err := filepath.Rel(packageDir, path)
+			if err != nil {
+				return err
+			}
+			files[key] = "directory"
+			if !entry.IsDir() {
+				raw, err := os.ReadFile(path)
+				if err != nil {
+					return err
+				}
+				files[key] = string(raw)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return files
+	}
+	before := snapshot()
+	// Run the real source-self-test control flow, fixture imports and Git
+	// inventory. Only the external scanner is replaced; no scanner qualification
+	// is claimed here. Isolated Python ignores inherited PYTHON* settings but
+	// deliberately permits bytecode writes so the regression can fail.
+	const driver = `import runpy, sys
+from pathlib import Path
+checker = Path(sys.argv[1])
+sys.path.insert(0, str(checker.parent))
+namespace = runpy.run_path(str(checker))
+calls = 0
+def scanner(paths):
+    global calls
+    calls += 1
+    if calls == 1:
+        return len(paths)
+    raise namespace['Invalid']('credential detected by synthetic scanner')
+namespace['main'].__globals__['scan_sources'] = scanner
+sys.argv = [str(checker), '--source-secrets', '--self-test']
+namespace['main']()
+assert calls == 3, 'source and both positive controls must execute'
+`
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, python, "-I", "-c", driver, filepath.Join(packageDir, "check.py"))
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "KUBECONFIG=/dev/null")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("source self-test failed: %v\n%s", err, out)
+	}
+	if after := snapshot(); !reflect.DeepEqual(before, after) {
+		var added []string
+		for path := range after {
+			if _, found := before[path]; !found {
+				added = append(added, path)
+			}
+		}
+		sort.Strings(added)
+		t.Fatalf("checker changed package tree; added paths: %v", added)
+	}
+}
+
 // regression: #4772
 func TestKubeCompatPreparation(t *testing.T) {
 	python, err := exec.LookPath("python3")

@@ -1011,12 +1011,7 @@ case "${MODE:-}:$1" in scan-fail:*|deskd-scan-fail:*/deskd:*) exit 1;; esac
         (self.inputs / 'statusgen-linux-amd64').write_bytes(b'published statusgen bytes')
         (self.inputs / 'statusgen-linux-arm64').write_bytes(b'published arm64 statusgen bytes')
         (self.inputs / 'image-bugs-gc-linux-amd64').write_bytes(b'bugs-gc bytes')
-        with tarfile.open(self.inputs / 'desk-tools-linux-amd64.tar.gz', 'w:gz') as out:
-            for name in ['deskboard', 'cellctl', 'deskpr', 'hooks/pre-push']:
-                info = tarfile.TarInfo(name)
-                info.mode = 0o755
-                info.size = len(name)
-                out.addfile(info, io.BytesIO(name.encode()))
+        self.suite()
         self.native = self.root / 'native-in'
         self.native.mkdir()
         self.native_archive = self.native / 'verify-runner-linux-arm64.tar'
@@ -1102,6 +1097,107 @@ if args[:2] == ['image', 'inspect']:
         self.calls = self.root / 'calls'
         self.env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ['PATH'],
                         CALLS=str(self.calls), PYTHONDONTWRITEBYTECODE='1')
+
+    SUITE = ('deskboard', 'cellctl', 'deskpr', 'hooks/pre-push')
+
+    def suite(self, members=SUITE, manifest=None, extra=()):
+        """Write the Linux suite tarball as the release package step does:
+        0755 members plus a 0644 MANIFEST.sha256 at the root (#6604) whose
+        text defaults to the members' real digests. extra adds (name, mode)
+        members the manifest does not describe unless manifest says so."""
+        data = {name: name.encode() for name in members}
+        if manifest is None:
+            manifest = ''.join(f'{hashlib.sha256(b).hexdigest()}  {n}\n'
+                               for n, b in sorted(data.items()))
+        with tarfile.open(self.inputs / 'desk-tools-linux-amd64.tar.gz', 'w:gz') as out:
+            entries = [(n, 0o755, b) for n, b in data.items()]
+            entries += [(n, mode, n.encode()) for n, mode in extra]
+            if manifest is not False:
+                entries.append(('./MANIFEST.sha256', 0o644, manifest.encode()))
+            for name, mode, body in entries:
+                info = tarfile.TarInfo(name)
+                info.mode = mode
+                info.size = len(body)
+                out.addfile(info, io.BytesIO(body))
+
+    def refused_before_build(self, text):
+        result = self.invoke()
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn(text, result.stderr)
+        self.assertFalse(any('"build"' in s for s in self.recorded()))
+        self.assertFalse((self.root / '.release-images/harness/MANIFEST.sha256').exists())
+
+    # regression: sec-6608-s1
+    def test_suite_manifest_checked(self):
+        result = self.invoke()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        harness = self.root / '.release-images/harness'
+        self.assertFalse((harness / 'MANIFEST.sha256').exists())
+        self.assertFalse((self.root / '.release-images/desk-tools/MANIFEST.sha256').exists())
+        self.assertEqual((harness / 'deskboard').read_bytes(), b'deskboard')
+
+    # regression: sec-6608-s1
+    def test_suite_manifest_interop(self):
+        # The real writer, tarred as the package step does (tar -C stage .).
+        stage = self.root / 'stage'
+        (stage / 'hooks').mkdir(parents=True)
+        for name in self.SUITE:
+            (stage / name).write_bytes(name.encode())
+            (stage / name).chmod(0o755)
+        result = subprocess.run([sys.executable, '-B', '-m', 'tools.release.desk_manifest',
+                                 'write', str(stage)], cwd=HERE.parents[1],
+                                text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((stage / 'MANIFEST.sha256').stat().st_mode & 0o111, 0)
+        result = subprocess.run(['tar', '-C', str(stage), '-czf',
+                                 str(self.inputs / 'desk-tools-linux-amd64.tar.gz'), '.'],
+                                # macOS bsdtar would add ._* xattr members.
+                                env=dict(os.environ, COPYFILE_DISABLE='1'),
+                                text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        result = self.invoke()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / '.release-images/harness/MANIFEST.sha256').exists())
+
+    # regression: sec-6608-s1
+    def test_suite_manifest_refusals(self):
+        good = {n: hashlib.sha256(n.encode()).hexdigest() for n in self.SUITE}
+        def text(rows):
+            return ''.join(f'{d}  {n}\n' for n, d in sorted(rows.items()))
+        cases = {
+            'missing': (False, 'has no MANIFEST.sha256'),
+            'wrong digest': (text(dict(good, deskboard='0' * 64)), 'deskboard: sha256'),
+            'hook digest': (text(dict(good, **{'hooks/pre-push': '0' * 64})), 'hooks/pre-push: sha256'),
+            'unlisted': (text({n: d for n, d in good.items() if n != 'deskpr'}), 'deskpr: present but not listed'),
+            'absent': (text(dict(good, deskgone='1' * 64)), 'deskgone: listed but not present'),
+            'twice': (text(good) + f'{good["cellctl"]}  cellctl\n', 'cellctl: listed twice'),
+            'malformed': (text(good) + 'not a line\n', 'malformed'),
+            'carriage return': (text(good).replace('\n', '\r\n'), 'malformed'),
+            'no newline': (text(good).rstrip('\n'), 'malformed'),
+            'self listed': (text(dict(good, **{'MANIFEST.sha256': '2' * 64})), 'MANIFEST.sha256: listed but not present'),
+        }
+        for case, (manifest, expected) in cases.items():
+            with self.subTest(case=case):
+                self.setUp()
+                self.suite(manifest=manifest)
+                self.refused_before_build(expected)
+
+    # regression: sec-6608-s1
+    def test_suite_mode_check_kept(self):
+        # Only the root manifest is exempt from the executable-bit check.
+        for name in ('NOTES', 'MANIFEST.sha256.tmp', 'manifest.sha256'):
+            with self.subTest(name=name):
+                self.setUp()
+                self.suite(extra=[(name, 0o644)])
+                self.refused_before_build('non-executable Linux suite archive member')
+        with self.subTest(name='nested manifest'):
+            self.setUp()
+            self.suite(extra=[('hooks/MANIFEST.sha256', 0o644)])
+            self.refused_before_build('unexpected nested Linux suite archive member')
+        with self.subTest(name='duplicate member'):
+            self.setUp()
+            self.suite(extra=[('deskboard', 0o755)])
+            self.refused_before_build('duplicate Linux suite archive member')
 
     def invoke(self, publish=False, mode='', native=None):
         code = ('from pathlib import Path; import sys; from images import build_images; '

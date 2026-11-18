@@ -39,10 +39,7 @@ func (e *mirrorResponseStatusError) Unwrap() []error {
 // mirrorResponseClient copies the admitted transport. Only the two enumerated
 // incremental methods use this copy; ordinary reads, logs and writes keep theirs.
 func mirrorResponseClient(base *http.Client) *http.Client {
-	c := &http.Client{}
-	if base != nil {
-		*c = *base
-	}
+	c := boundedCopy(base)
 	next := c.Transport
 	if next == nil {
 		next = http.DefaultTransport

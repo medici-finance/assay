@@ -1,0 +1,75 @@
+//go:build unix
+
+package main
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"runtime"
+	"syscall"
+)
+
+// sgHotfixOwnedBy is deskkit's HotfixOwnedBy: path (symlinks resolved) must be owned by uid
+// and not group- or world-writable, and every parent directory must be owned by uid or root
+// and not group- or world-writable unless sticky. Production passes uid 0; only a test, or a
+// binary built with the test-only hotfixseam tag, passes another uid. It trusts no owner
+// outside the initial user namespace (sgUserNSIdentity): there every path is could-not-check.
+func sgHotfixOwnedBy(uid uint32) func(string) error {
+	return sgHotfixOwnedByNS(uid, sgReadProc, runtime.GOOS)
+}
+
+// sgHotfixOwnedByNS is sgHotfixOwnedBy over an explicit /proc reader and platform, so a test
+// feeds it a mapping. The namespace gate runs before any owner is read, on every path.
+func sgHotfixOwnedByNS(uid uint32, read func(string) ([]byte, error), goos string) func(string) error {
+	check := sgHotfixOwnedByIn(uid, 0)
+	return func(path string) error {
+		if err := sgUserNSIdentity(read, goos); err != nil {
+			return fmt.Errorf("%s: %w", path, err)
+		}
+		return check(path)
+	}
+}
+
+// sgHotfixOwnedByIn is the check itself: path owned by uid, every parent by uid or root.
+func sgHotfixOwnedByIn(uid, root uint32) func(string) error {
+	return func(path string) error {
+		real, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return fmt.Errorf("%s: %v", path, err)
+		}
+		fi, err := os.Lstat(real)
+		if err != nil {
+			return fmt.Errorf("%s: %v", real, err)
+		}
+		st, ok := fi.Sys().(*syscall.Stat_t)
+		if !ok {
+			return fmt.Errorf("%s: owner unreadable", real)
+		}
+		if st.Uid != uid {
+			return fmt.Errorf("%s is owned by uid %d, not %d", real, st.Uid, uid)
+		}
+		if fi.Mode().Perm()&0o022 != 0 {
+			return fmt.Errorf("%s is group- or world-writable (%04o)", real, fi.Mode().Perm())
+		}
+		for dir := filepath.Dir(real); ; dir = filepath.Dir(dir) {
+			di, err := os.Lstat(dir)
+			if err != nil {
+				return fmt.Errorf("%s: %v", dir, err)
+			}
+			dst, ok := di.Sys().(*syscall.Stat_t)
+			if !ok {
+				return fmt.Errorf("%s: owner unreadable", dir)
+			}
+			if dst.Uid != uid && dst.Uid != root {
+				return fmt.Errorf("parent %s is owned by uid %d, not %d or root", dir, dst.Uid, uid)
+			}
+			if di.Mode().Perm()&0o022 != 0 && di.Mode()&os.ModeSticky == 0 {
+				return fmt.Errorf("parent %s is group- or world-writable (%04o)", dir, di.Mode().Perm())
+			}
+			if parent := filepath.Dir(dir); parent == dir {
+				return nil
+			}
+		}
+	}
+}

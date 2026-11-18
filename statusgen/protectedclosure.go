@@ -274,6 +274,17 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 // carry a verifier-supplied row list, is refused.
 func acceptanceRecordKind(descriptor string) (transition bool, why string) {
 	lines := strings.Split(descriptor, "\n")
+	// Trailing Evidence-Repair lines (#6616) follow a transition, never stand alone.
+	repaired := len(lines)
+	for repaired > 2 && strings.HasPrefix(lines[repaired-1], "Evidence-Repair:") {
+		repaired--
+	}
+	if repaired < len(lines) {
+		if _, why := evidenceRepairs(strings.Join(lines[repaired:], "\n")); why != "" {
+			return false, "statusgen verifyrun: --acceptance-record: " + why
+		}
+		lines = lines[:repaired]
+	}
 	if len(lines) > 1 && strings.HasPrefix(lines[0], "Verification-Table:") {
 		links, why := transitionLinks(strings.Join(lines[1:], "\n"))
 		if why != "" {
@@ -289,7 +300,7 @@ func acceptanceRecordKind(descriptor string) (transition bool, why string) {
 	case len(lines) == 2 && strings.HasPrefix(lines[0], "Verification-Table:") && strings.HasPrefix(lines[1], "Acceptance-Transition:"):
 		return true, ""
 	}
-	return false, "statusgen verifyrun: --acceptance-record must hold one Verification-Table line, optionally followed by one Acceptance-Transition line, and nothing else"
+	return false, "statusgen verifyrun: --acceptance-record must hold one Verification-Table line, optionally followed by one Acceptance-Transition line or ordered chain lines and then Evidence-Repair lines, and nothing else"
 }
 
 // originalDefinitionDrift refuses a protected record whose original rows were
