@@ -1,0 +1,3 @@
+### Fixed
+- `cellctl` scratch maintenance now reclaims the work dir of a task that finished without a receipt (failed, or exited zero and was reaped) once it has been quiet past a 24-hour handoff grace, keeping its record, receipt and output tail; Git data in the work dir still keeps that entry. The inventory walk now pages through a task of any width instead of giving up at the entry limit, so one large build cache no longer keeps itself and makes every sweep partial; only the fixed depth bound still stops a walk (#5560, #3929).
+- The `muhar` CLI tests now remove the temp dir of the tool binary they build when the test process exits.

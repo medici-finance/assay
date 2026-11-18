@@ -26,8 +26,9 @@ This is an explicit attestation by the caller, not an automatic forge upload or 
 claim that a zero process exit proves handoff. Do not acknowledge while evidence,
 resumption state, a running delegated task, or work not yet committed/pushed still
 depends on scratch. Do not generate further required output after acknowledgment.
-A missing receipt preserves the tree, including after successful exit. The one
-exception is abandoned build output, described under "Periodic maintenance" below.
+A missing receipt preserves the tree, including after successful exit. The
+exceptions are the work dir of a finished task left past its handoff grace and
+abandoned build output, both described under "Periodic maintenance" below.
 An acknowledgment alone never overrides a live execution lease or surviving child.
 
 Successful acknowledged tasks become eligible for explicit maintenance after child-tree cleanup. Failed or
@@ -38,7 +39,8 @@ diagnostic bundle records that terminal output could not be captured; redirected
 streams and non-interactive launches retain their bounded output tail. Capture
 any other required diagnostic file at its canonical destination *before* acknowledgment.
 Failed tasks without a receipt keep their workspace until an operator/desk completes
-that handoff, apart from abandoned build output. Mark an inactive run resumable with `ack --resumable`; sweeps always
+that handoff or its handoff grace (24 hours) runs out; after that a sweep reclaims the
+workspace and keeps the record and tail. Mark an inactive run resumable with `ack --resumable`; sweeps always
 preserve it. Finish resumption in a new managed run; an old resumable directory is
 intentionally not automatically released.
 
@@ -105,8 +107,8 @@ Directory entries and filesystem metadata are not counted.
 
 Maintenance serializes other sweeps with a maintenance lease. Recursive inventory runs outside the root admission lock; each eligible run's execution lease remains held through revalidation and deletion. Short root transactions cover enrollment and lifecycle metadata. Live,
 resumable, unacknowledged, unverified, and Git-containing trees stay intact, with a
-reason in the report. Abandoned build output is the only part of an unacknowledged
-tree a sweep can remove. The root and destructive operations use Go's confined
+reason in the report. The work dir of a finished task past its handoff grace and
+abandoned build output are the only parts of an unacknowledged tree a sweep can remove. The root and destructive operations use Go's confined
 `os.Root`, so a symlink cannot redirect deletion outside the scratch root. While
 planning, the sweep pins the identity (device and inode) of every path it may
 delete through, the task, its `work` and each planned entry, before measuring
@@ -189,9 +191,9 @@ surviving children, pending/resumable/foreign/Git paths, path escapes, competing
 sweeps, partial deletion and retry, snapshot completeness and bounds, and repeated
 worker/reviewer/verifier passes across the supported host harnesses.
 
-Maintenance streams directory entries and retains at most 262,144 inventory entries per walk/list and 64 directory levels. Exceeding either limit reports partial accounting. When the scratch root's own listing is over the limit, the sweep reclaims nothing. When one entry's walk is over either limit, that entry alone is kept, with the reason `over the maintenance inventory limit` in its report row and its name in the sweep's error, and the rest of the plan still runs: fully measured tasks beside it are reclaimed by the usual rules. A task whose execution lease is live or unavailable is kept for that reason before its walk is judged, so it is neither named nor makes the sweep partial. The kept entry's bytes are what the walk counted before it stopped, a lower bound, so the budget rules can only reclaim less, never more. Any other failed inspection still withholds reclamation from the whole sweep. A sweep with a contained over-limit entry is partial, so the periodic sweep records a failed attempt rather than a stamp. A wider legacy inventory returns an error rather than presenting a prefix as complete. These are reversible local safety defaults, not latency objectives.
+Maintenance streams directory entries and retains at most 262,144 inventory entries per list and 64 directory levels. A walk that only measures bytes retains no entries, so it pages through a tree of any width: after each page of 262,144 entries it checks for cancellation and carries on. A task's work dir is listed the same way, and removal empties a directory a page at a time. Only depth past 64 levels, or the scratch root's own listing past the entry limit, reports partial accounting. When the scratch root's own listing is over the limit, the sweep reclaims nothing. When one entry's walk is over the depth limit, that entry alone is kept, with the reason `over the maintenance inventory limit` in its report row and its name in the sweep's error, and the rest of the plan still runs: fully measured tasks beside it are reclaimed by the usual rules. A task whose execution lease is live or unavailable is kept for that reason before its walk is judged, so it is neither named nor makes the sweep partial. The kept entry's bytes are what the walk counted before it stopped, a lower bound, so the budget rules can only reclaim less, never more. Any other failed inspection still withholds reclamation from the whole sweep. A sweep with a contained over-limit entry is partial, so the periodic sweep records a failed attempt rather than a stamp. A wider legacy inventory returns an error rather than presenting a prefix as complete. These are reversible local safety defaults, not latency objectives.
 
-For an inventory wider than the default, explicitly raise the maintenance-only budget, for example `ASSAY_MAINTENANCE_ENTRY_LIMIT=524288 cellctl cache house clean` (or the existing scratch sweep command). Values must be 1 through 1,048,576. Invalid values and exhausted budgets fail closed; there is no unlimited fallback. This setting does not change retained-data protections, per-role authority or launch pressure policy. Trees beyond the finite ceiling or depth limit remain incomplete and require owner-assisted layout correction.
+For a scratch root listing wider than the default, explicitly raise the maintenance-only budget, for example `ASSAY_MAINTENANCE_ENTRY_LIMIT=524288 cellctl cache house clean` (or the existing scratch sweep command). Values must be 1 through 1,048,576. Invalid values and exhausted budgets fail closed; there is no unlimited fallback. This setting does not change retained-data protections, per-role authority or launch pressure policy. Trees beyond the finite ceiling or depth limit remain incomplete and require owner-assisted layout correction.
 
 The default entry budget covers the representative fixture with 150,000 compiler-cache entries and 75,000 module-cache entries. The override remains finite; it is a maintenance resource budget, not a launch-policy or retention override.
 
@@ -227,8 +229,17 @@ the scratch root (rotated once past 1 MiB), and a cadenced supervisor also
 prints it on stderr. A failed sweep is logged and never stops the desk.
 
 The periodic sweep applies the same policy as `sweep --apply`. That policy has
-one narrow rule for tasks whose session died without acknowledging them. Such a task loses
-only its compiler and test-binary output, and only when all of these hold:
+two narrow rules for tasks that were never acknowledged.
+
+A task that finished without a receipt, whether it failed (non-zero exit) or exited
+zero, loses its whole work dir once its handoff grace has passed. The grace is 24 hours from the
+task's last recorded activity, whatever the retention max-age, so an operator still has
+a day to complete or inspect the handoff. The same lease, process-group and Git
+checks as below apply, entry by entry: an entry holding Git data stays. The record,
+receipt, diagnostics and output tail stay. The report row's action is `reclaim-work`.
+
+A task whose session died while it was still running loses only its compiler and
+test-binary output, and only when all of these hold:
 
 - it has no receipt and is not resumable;
 - its execution lease is free, so its owner is gone;

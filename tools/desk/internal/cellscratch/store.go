@@ -601,12 +601,15 @@ func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 		// build lists the disposable build output of an abandoned unacknowledged
 		// task; such a candidate loses only these paths, never its record or tail.
 		build []string
+		// whole marks a finished task whose every work entry without Git data is
+		// reclaimed, not only its build output.
+		whole bool
 		// seen pins the identities planning observed at every path deletion opens.
 		seen pins
 	}
 	var candidates []candidate
 	var errs []error
-	// unmeasured names each entry too large to walk inside the inventory bound. Such
+	// unmeasured names each entry too deep to walk inside the depth bound. Such
 	// an entry is kept, and the sweep reports partial, but it is contained: unlike
 	// any other failed inspection it does not withdraw authority from the rest of the
 	// plan, so one oversized task cannot stop every other task being reclaimed.
@@ -671,14 +674,14 @@ func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 					row.Reason = "resumable task"
 				case receiptErr != nil:
 					row.Reason = "pending evidence handoff"
-					build, n, buildErr := s.abandonedBuild(r, p, seen)
+					build, n, whole, buildErr := s.abandonedBuild(r, p, seen)
 					if errors.Is(buildErr, errNotRealDir) {
 						row.Reason = "workspace is not a real directory; retained"
 					} else if buildErr != nil {
 						row.Reason = "could-not-check abandoned build output"
 						errs = append(errs, buildErr)
 					} else if len(build) > 0 {
-						candidates = append(candidates, candidate{r: r, observed: r, entry: len(rep.Entries), size: size, work: n, lease: lease, build: build, seen: seen})
+						candidates = append(candidates, candidate{r: r, observed: r, entry: len(rep.Entries), size: size, work: n, lease: lease, build: build, whole: whole, seen: seen})
 						rep.Entries = append(rep.Entries, row)
 						continue
 					}
@@ -721,7 +724,7 @@ func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 	}()
 	// Incomplete accounting grants no reclamation authority, even for earlier
 	// fully observed candidates. Their leases close through the defer above. The one
-	// contained exception is an entry over the inventory bound (unmeasured): it is
+	// contained exception is an entry past the depth bound (unmeasured): it is
 	// itself kept and never a candidate, and the bytes it hides only lower the totals
 	// the budget rules read, so the remaining candidates may still be reclaimed.
 	if len(errs) > 0 {
@@ -756,6 +759,10 @@ func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 		if build {
 			row.Action = "reclaim-build"
 			row.Reason = "abandoned unacknowledged task; disposable build output only"
+			if c.whole {
+				row.Action = "reclaim-work"
+				row.Reason = "finished unacknowledged task past its handoff grace; work reclaimed, record and tail kept"
+			}
 		}
 		if entire {
 			target = c.r.ID
@@ -914,7 +921,10 @@ func (s *Store) measure(name string) (int64, bool, error) {
 	}
 	var n int64
 	git := false
-	err = deskkit.BoundedWalkDir(s.root.FS(), name, s.inventoryLimit(), func(p string, d fs.DirEntry, err error) error {
+	// The walk pages through the tree rather than giving up at the inventory bound:
+	// it retains only a byte count, so a task holding a large build cache is measured
+	// in full. Only the fixed depth bound still stops it (overLimitReason).
+	err = deskkit.PagedWalkDir(s.root.FS(), name, s.inventoryLimit(), s.stopped, func(p string, d fs.DirEntry, err error) error {
 		if os.IsNotExist(err) && p == name {
 			return nil
 		}
@@ -953,13 +963,22 @@ func (s *Store) measure(name string) (int64, bool, error) {
 // the whole plan closed. Each entry's identity is pinned in seen before it is measured,
 // and work's identity is verified against seen. The record, the output tail and every
 // other work file stay for the owner's handoff.
-func (s *Store) abandonedBuild(r Record, p Policy, seen pins) ([]string, int64, error) {
+func (s *Store) abandonedBuild(r Record, p Policy, seen pins) ([]string, int64, bool, error) {
 	last := r.Created
 	if r.Finished.After(last) {
 		last = r.Finished
 	}
-	if time.Since(last) <= p.MaxAge {
-		return nil, 0, nil
+	// A finished task (failed, or pending a handoff that never came) loses its
+	// whole work dir, not only build output, once quiet past the handoff grace. The
+	// grace is its own floor: a zero retention age never skips it. A task that never
+	// finished keeps the build-only rule at the retention age.
+	whole := r.State == "failed" || r.State == "pending"
+	age := p.MaxAge
+	if whole {
+		age = HandoffGrace
+	}
+	if time.Since(last) <= age {
+		return nil, 0, false, nil
 	}
 	quiet := r.Reaped
 	if !quiet && r.ChildGroup > 0 {
@@ -967,55 +986,68 @@ func (s *Store) abandonedBuild(r Record, p Policy, seen pins) ([]string, int64, 
 		quiet = err == nil && empty
 	}
 	if !quiet {
-		return nil, 0, nil
+		return nil, 0, false, nil
 	}
 	// os.Root follows a link that stays inside the root: a work that is a link to a
 	// sibling's work must not list, measure or plan the sibling's build output.
 	err := s.realDir(r.ID + "/work")
 	if os.IsNotExist(err) {
-		return nil, 0, nil
+		return nil, 0, false, nil
 	}
 	if err == nil {
 		err = s.pin(seen, r.ID+"/work")
 	}
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, false, err
 	}
 	f, err := s.root.Open(r.ID + "/work")
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, false, err
 	}
-	entries, err := deskkit.ReadDirBounded(f, s.inventoryLimit())
-	f.Close()
-	if err != nil {
-		return nil, 0, err
-	}
+	defer f.Close()
 	var build []string
 	var total int64
-	for _, e := range entries {
-		if !buildOutput(e.Name()) || e.Type()&fs.ModeSymlink != 0 {
-			continue
+	// work is listed a page at a time, so a work dir wider than the inventory bound
+	// is planned in full; only the names planned for removal are kept.
+	for {
+		entries, err := f.ReadDir(s.inventoryLimit())
+		for _, e := range entries {
+			if !whole && !buildOutput(e.Name()) || e.Type()&fs.ModeSymlink != 0 {
+				continue
+			}
+			if err := s.pin(seen, r.ID+"/work/"+e.Name()); err != nil {
+				return nil, 0, false, err
+			}
+			n, git, err := s.measure(r.ID + "/work/" + e.Name())
+			if err != nil {
+				return nil, 0, false, err
+			}
+			if git {
+				continue
+			}
+			build = append(build, r.ID+"/work/"+e.Name())
+			total += n
 		}
-		if err := s.pin(seen, r.ID+"/work/"+e.Name()); err != nil {
-			return nil, 0, err
+		if err == io.EOF || err == nil && len(entries) == 0 {
+			return build, total, whole, nil
 		}
-		n, git, err := s.measure(r.ID + "/work/" + e.Name())
 		if err != nil {
-			return nil, 0, err
+			return nil, 0, false, err
 		}
-		if git {
-			continue
+		if err := s.stopped(); err != nil {
+			return nil, 0, false, err
 		}
-		build = append(build, r.ID+"/work/"+e.Name())
-		total += n
 	}
-	return build, total, nil
 }
 
-// overLimitReason keeps an entry whose walk ran past the inventory bound, either the
-// entry count or the fixed directory depth. Its size and Git content are unknown, so it
-// is never reclaimed by this sweep. The remedy differs by limit, so both are named.
-const overLimitReason = "over the maintenance inventory limit (entries or depth); not measured, retained (ASSAY_MAINTENANCE_ENTRY_LIMIT raises the entry bound; a tree past the depth limit needs owner-assisted layout correction)"
+// HandoffGrace is how long a finished task's work dir waits for its owner's
+// evidence handoff before maintenance reclaims it, whatever the retention age.
+var HandoffGrace = 24 * time.Hour
+
+// overLimitReason keeps an entry whose walk ran past the fixed directory depth. Its
+// size and Git content are unknown, so it is never reclaimed by this sweep. A wide
+// tree is no longer a reason: measure pages through it.
+const overLimitReason = "over the maintenance inventory limit (directory depth); not measured, retained (a tree past the depth limit needs owner-assisted layout correction)"
 
 var errNotRealDir = errors.New("scratch path crosses a link or non-directory")
 
@@ -1107,14 +1139,26 @@ func (s *Store) removeConfined(target string, seen pins) error {
 	if r, err = descend(r, []string{leaf}, []os.FileInfo{pinned}); err != nil {
 		return err
 	}
-	f, err := r.Open(".")
-	var entries []fs.DirEntry
-	if err == nil {
-		entries, err = deskkit.ReadDirBounded(f, s.inventoryLimit())
+	// The directory is emptied a page at a time: a work dir wider than the
+	// inventory bound is removed in full rather than refused at the bound.
+	for err == nil {
+		var f *os.File
+		var page []fs.DirEntry
+		if f, err = r.Open("."); err != nil {
+			break
+		}
+		page, err = f.ReadDir(s.inventoryLimit())
 		f.Close()
-	}
-	for _, e := range entries {
-		err = errors.Join(err, r.RemoveAll(e.Name()))
+		if err == io.EOF || err == nil && len(page) == 0 {
+			err = nil
+			break
+		}
+		for _, e := range page {
+			err = errors.Join(err, r.RemoveAll(e.Name()))
+		}
+		if err == nil {
+			err = s.stopped()
+		}
 	}
 	r.Close()
 	if err != nil {
