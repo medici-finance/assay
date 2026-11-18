@@ -440,7 +440,7 @@ jobs:
 
   # The required check `build-test`. Branch protection requires a check of this
   # exact name, so it stays a single job that reports one verdict for the whole
-  # sharded suite: success only when every build-test-shard leg succeeded. Any
+  # sharded suite, authority and hostile-fixture lanes: every dependency must succeed. Any
   # failed, cancelled or skipped leg fails it; there is no pass-without-running
   # path. `always()` makes it report even when the run is cancelled, so a
   # cancelled suite reads as a failure here, never as a skipped (passing) check.
@@ -463,7 +463,7 @@ jobs:
           if [ "$SHARDS" = "success" ] && [ "$AUTHORITY" = "success" ] && [ "$FIXTURES" = "success" ]; then
             echo "every shard, actual authority qualification and hostile fixture suite passed"
           else
-            echo "::error::build-test shards concluded '${SHARDS}' — the suite did not pass"
+            echo "::error::build-test dependencies concluded shards='${SHARDS}' authority='${AUTHORITY}' fixtures='${FIXTURES}' — the suite did not pass"
             exit 1
           fi
 

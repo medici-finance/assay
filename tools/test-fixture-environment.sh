@@ -86,7 +86,7 @@ fixture_run_module() {
   return "$failed"
 }
 
-fixture_main() {
+fixture_main() (
   if [ "$#" -ne 0 ]; then echo 'usage: bash tools/test-fixture-environment.sh' >&2; return 2; fi
   local root go_bin git_bin python_bin scratch cache modcache gopath baseline=${SG_OLD_BIN:-} failed=0
   root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -100,16 +100,16 @@ fixture_main() {
   fi
   scratch="$(mktemp -d "${TMPDIR:-/tmp}/fixture-environment.XXXXXX")"
   # The trap removes only the directory this invocation just created.
-  trap 'rm -rf -- "$scratch"' RETURN
+  trap 'rm -rf -- "$scratch"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
   fixture_prepare "$root" "$scratch" "$go_bin" "$git_bin" "$python_bin" "$cache" "$modcache" "$gopath" "$baseline"
   # No early-success path: both complete module invocations are owed even when
   # the first fails. env -i withholds every ambient forge credential. Fixtures
   # requiring credential presence declare their own synthetic value in tests.
   if ! fixture_run_module statusgen; then failed=1; fi
   if ! fixture_run_module tools/desk; then failed=1; fi
-  trap - RETURN
-  rm -rf -- "$scratch"
   return "$failed"
-}
+)
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then fixture_main "$@"; fi
