@@ -53,7 +53,7 @@ different axis. Its vocabulary is:
 
 `parked` is the WIP-cap release valve (attention-budget/04): at the cap, a new stream is
 scaffolded `status: parked` rather than adding a net-new active stream. An `active` stream
-must cite in its `spec:` frontmatter a scoping doc whose header is `**Status:** approved`
+must cite in its `spec:` frontmatter a scoping doc whose header state is `approved` or `routed`
 (the `stream-source` lint, spec/lifecycle-v1.md §8.1); a `parked` stream may cite a
 `draft`.
 
