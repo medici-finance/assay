@@ -121,15 +121,14 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **COULD NOT CHECK — main-red arm could not check — no `--main-health` input was supplied, so whether main is red is unknown here (statusgen does not read live CI). A main-red fix cannot be lifted into the critical tier on this run; this is not a reading that main is green.**
 
-_Next-up: 20 of 41 eligible — 21 held back (20 by per-stream caps, 1 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 20 of 40 eligible — 20 held back (19 by per-stream caps, 1 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
-_Held by per-stream caps: 20 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (14), desk-tools (6). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
+_Held by per-stream caps: 19 brief(s) across 2 stream(s) — top: desktools-v2. By stream: desktools-v2 (13), desk-tools (6). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
 | Stream | Brief | Wave | Score |
 |---|---|---|---|
 | graph-execution | 26 — Shared loop-admin launch supervision for desks and workflows [exec:strong] | 6 | 22020 |
 | graph-execution | 36 — Canonical PostgreSQL foundation for read-only consumers [exec:strong] | 0 | 21020 |
-| desktools-v2 | 58 — Extract the role credential provider and retire internal desktoken callouts [exec:strong] | 1 | 11020 + 1500 (drive:desktools-v2) |
 | desk-tools | 49 — Deduplicate verifier filings by their canonical work identity [exec:strong] | 1 | 4520 |
 | comms-core | 02 — Extract the comms server over the existing file backend [exec:strong] | 1 | 4020 |
 | forge-neutral | 18 — statusgen off gh — one desk-tools read verb on the seam, offline lint by default, one git walk [exec:strong] | 5 | 3520 |
@@ -138,6 +137,7 @@ _Held by per-stream caps: 20 brief(s) across 2 stream(s) — top: desktools-v2. 
 | desk-containers | 35 — Cell dev-env file contract — one coordinator-owned file per cell, names declared by Verify rows [exec:strong] | 1 | 3010 |
 | build-less-brittle | 15 — Witness inputs are recorded, not parsed [exec:strong] | 0 | 3020 + 1500 (drive:build-less-brittle) |
 | desktools-v2 | 30 — Port the GitLab fleet provisioner to a Go command [exec:strong] | 3 | 2020 + 1500 (drive:desktools-v2) |
+| desktools-v2 | 25 — Migrate deskapps to Cobra and Viper [exec:strong] | 3 | 1520 + 1500 (drive:desktools-v2) |
 | graph-execution | 41 — Persist loop-admin journal and recovery in PostgreSQL [exec:strong] | 2 | 3020 |
 | derived-board | 07 — per-repo rollout — upgrade-assay to v1.0.0, reconcile step in each regen workflow, historical backfill as a drift-report PR; private re-stage of spec + skills | 4 | 2020 |
 | desk-tools | 52 — Link decision and verification cards without conflating their authority [exec:strong] | 1 | 2020 |
@@ -152,7 +152,7 @@ _Held by per-stream caps: 20 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 09e753016 2026-11-17T21:52:03Z_
+_last regen: 94324ad40 2026-11-17T23:59:43Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +173,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 09e753016 2026-11-17T21:52:03Z_
+_last regen: 94324ad40 2026-11-17T23:59:43Z_
 
 **Progress:** 36/100 brief items done.
 
@@ -198,6 +198,7 @@ _last regen: 09e753016 2026-11-17T21:52:03Z_
 - desktools-v2/45
 - desktools-v2/46
 - desktools-v2/47
+- desktools-v2/58
 - desktools-v2/60
 - desktools-v2/63
 - desktools-v2/64
@@ -225,7 +226,6 @@ _last regen: 09e753016 2026-11-17T21:52:03Z_
 - desktools-v2/55
 - desktools-v2/56
 - desktools-v2/57
-- desktools-v2/58
 - desktools-v2/67
 - desktools-v2/70
 - desktools-v2/73
@@ -237,7 +237,7 @@ _last regen: 09e753016 2026-11-17T21:52:03Z_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (24 for the desk · 54 for the driver · 45 for workers · 41 for an operator · 50 runner-pending — of 217 total; 3 could-not-check)
+## Awaiting verification / review (25 for the desk · 54 for the driver · 45 for workers · 41 for an operator · 50 runner-pending — of 218 total; 3 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
@@ -453,7 +453,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | quality | 19 [exec:strong] | verified | 1020 | 0 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 3add8a9ae315 (claude-opus-5-5) | — |
 | statusgen | 21 [exec:strong] | verified | 1020 | 0 | 2d | CI auto-flip | none; stuck after one main run → file | 2026-11-11 assay-verifier-app[bot] @ b856f281f758 (claude-opus-5-5) | — |
 
-### Desk-actionable (24)
+### Desk-actionable (25)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -461,9 +461,10 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 51 [exec:strong] | implemented | 14500 | 25 | 8h | verify-desk | triage, then re-bucket | — | — |
 | forge-neutral | 47 [exec:strong] | implemented | 14000 | 24 | 8h | verify-desk | triage, then re-bucket | — | — |
 | forge-neutral | 50 [exec:strong] | implemented | 13000 | 22 | 8h | verify-desk | triage, then re-bucket | — | — |
+| desktools-v2 | 58 [exec:strong] | implemented | 11020 | 20 | — | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 40 [exec:strong] | implemented | 11000 | 20 | 8h | verify-desk | triage, then re-bucket | — | — |
 | desk-tools | 41 [exec:strong] | implemented | 11000 | 20 | 8h | verify-desk | triage, then re-bucket | — | — |
-| desk-tools | 42 [exec:strong] | implemented | 10510 | 19 | 2d | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 42 [exec:strong] | implemented | 10520 | 19 | 2d | verify-desk | triage, then re-bucket | — | — |
 | milestone-support | 08 [exec:strong] | implemented | 4000 | 6 | 8h | verify-desk | triage, then re-bucket | — | — |
 | milestone-support | 07 [exec:strong] | implemented | 3500 | 5 | 8h | verify-desk | triage, then re-bucket | — | — |
 | statusgen | 44 [exec:strong] | implemented | 3500 | 5 | 8h | verify-desk | dispatch one judge | — | — |
@@ -849,7 +850,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 55 Port the go-analysis adapter entrypoints — todo (wave 3)
 - 56 Migrate deskperf and qualify deskusage on the shared CLI — todo (wave 3)
 - 57 Migrate intake-eval to Cobra and Viper — todo (wave 3)
-- 58 Extract the role credential provider and retire internal desktoken callouts — todo (wave 1)
+- 58 Extract the role credential provider and retire internal desktoken callouts — implemented (wave 1)
 - 59 Share concurrent credential lookups and bound reuse by credential expiry — todo (wave 2)
 - 60 Bound component activation discovery and reuse validated manifest snapshots — implemented (wave 1)
 - 61 Version shared performance boundaries and keep legacy reports comparable — verified (wave 1)
