@@ -41,6 +41,7 @@ human decision, never a model self-clear.
 | Model endpoint + model selection | Runtime **env** | same as above | Never (non-secret, but still runtime-supplied — see §3). |
 | GitHub token (if a pre-minted one is used at all) | Runtime **env** | same as above | Never. |
 | Project role secret (a `service:<name>` Verify row's credential) | Mounted **file**, read-only, **worker and verifier containers only** | Native container cell (`cellctl`) bind at `/run/secrets/role-<service>`; `ASSAY_ROLE_SECRET_<SERVICE>_FILE` names the path (§4.4) | Never: neither the file nor the path variable. |
+| Cell dev-env file (dev-only values a Verify row declares by name) | One `NAME=value` **file** per cell, written by the coordinator role only, outside every checkout | Named by `cell.env` `CELL_DEV_ENV_FILE`; reaches a window as the path `ASSAY_CELL_DEV_ENV_FILE` only on a surface `DR-desk-containers-35` approves; a row receives only the `DEVENV_*` names it declares (§4.5) | Never: neither the file nor the path variable. |
 
 The desks mint their own short-lived, per-role GitHub tokens **from the mounted
 PEM** at runtime (via `desktoken`); the PEM is therefore the root GitHub secret,
@@ -268,6 +269,87 @@ head check reads; and an admitted agent still reads comments, review bodies and
 linked content from accounts outside the roster, so prompt-injection
 exfiltration through that content is not covered. Keep role secrets to non-production, per-role, per-service credentials,
 and rotate on any doubt.
+
+### 4.5 Cell dev-env file
+
+A cell keeps the dev-only values its Verify rows need (a local database host, a
+local API stub's port) in **one dev-env file per cell**, in place of a `.env`
+file per desk window. It is a separate, narrower class than a role secret
+(§4.4): it never carries a value that a role secret or the cell database
+passfile covers. The rules below are normative. The design-decision record
+`DR-desk-containers-35` adds the surface rule (the last subsection below), and
+it must exist, approved by the driver by name, before any surface binds the
+file.
+
+**Where it is named.** The cell's own `cell.env` key `CELL_DEV_ENV_FILE`, an
+absolute path. Never `defaults.env`, never the launching shell. The file lies
+outside every git checkout and worktree.
+
+**Who writes and who reads.** The coordinator role (`the-desk`) is the only
+writer. Implementer (`worker-desk`), reviewer (`pr-review-desk`) and verifier
+(`verify-desk`) roles read it only. Intake neither reads nor writes it: the
+ruling does not name intake, and intake runs no Verify row. The verifier
+refuses a file that any role other than the coordinator can write.
+
+**Format.** `NAME=value` lines and `#` comment lines only. Every name matches
+`DEVENV_[A-Z0-9_]+` (the allow-list below). No shell expansion and no `export`.
+Values are dev-only and throwaway: a local database, a local API stub.
+Production values, role secrets, forge tokens, App keys, model keys and the
+cell database password are never placed in it. Every value is at least **8
+characters** long: the coordinator's write verb refuses a shorter one, and
+admission refuses a row whose declared value is shorter, so every admitted
+value is long enough to redact.
+
+**Allow-list, deny by default.** A declarable name matches `DEVENV_[A-Z0-9_]+`
+and nothing else. No shell, dynamic loader, interpreter, forge client, git or
+Assay component reads a name in that namespace on its own, so a value the
+coordinator writes reaches a row only through a name the row's command reads
+explicitly (for example `PGHOST="$DEVENV_PGHOST" psql …`), where review sees
+it. Every other name refuses, which covers by construction: path and home
+(`PATH`, `HOME`, `XDG_CONFIG_HOME`); the dynamic loader (`LD_PRELOAD`,
+`LD_LIBRARY_PATH`, `DYLD_*`); interpreter options (`NODE_OPTIONS`,
+`PYTHONPATH`, `PERL5LIB`); tool configuration (`GH_CONFIG_DIR`, `GIT_*`, the
+four forge token variables, the shell-startup variables the verifier strips
+from a row); agent sockets (`SSH_AUTH_SOCK`); and every `ASSAY_*` name,
+`ASSAY_ROLE_SECRET_*` and `ASSAY_CELL_DEV_ENV_FILE` included. `statusgen
+--lint` refuses each of these in a Verify row's `Env` cell and names its class.
+The allow-list keeps the coordinator, a non-holding role, from steering what a
+holding window executes or reads as configuration through a name. It does not
+by itself keep the file away from a role-secret holder (see the surface rule).
+
+**Declared names.** A Verify row declares the names it needs in its `Env`
+cell, `service:<name>:<NAME>[,<NAME>…]` (`docs/brief-rules.md` rule 45). A row
+that declares no names receives none from the file. When the verifier admits a
+row, it passes only the declared names, records the declared names and the
+file's sha256 in the row's attestation, never a value, and redacts every
+admitted value from the captured output.
+
+**Change receipts.** Every write appends a receipt: the time, the file's new
+sha256, the names added and the names removed. Never a value. Every write also
+adds one nonce comment line carrying at least 128 bits from the operating
+system's cryptographic random source, so the digest that receipts and
+attestations record is not a guessing oracle for a value (the reason §4.4's
+receipts record no hash of a role secret).
+
+**Surface rule: not yet bound.** How a cell proves that only the coordinator
+role can write the file, and how the file stays clear of role-secret holders,
+is the open question of the brief that wrote this section
+(`docs/streams/desk-containers/brief-35-cell-dev-env-file-contract.md`,
+`## Human decision`). Whatever `DR-desk-containers-35` picks meets both clauses
+of DR-desk-containers-34 that bind here: no non-holding identity (the
+coordinator is one) may write anything a holding window executes or reads as
+configuration, a writable mount shared with a holding container included; and
+a row that receives dev-env values must be unable to open a role secret, not
+only unaware of its path. Removing `ASSAY_ROLE_SECRET_*` variables from a row
+makes it unaware and is never claimed as that separation. The record also
+names how the verifier learns the coordinator's identity, and where any pin the
+verifier and the launcher both read is kept, as one source no role identity
+can write.
+
+Until that record is approved, **no surface binds a dev-env file**: `cellctl`
+projects no path into any window, and a Verify row that declares names stays
+could-not-check. A credential channel is never opened by default. Per-desk
+`.env` files retire only once a surface binds the cell file.
 
 ---
 
