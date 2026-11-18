@@ -6,7 +6,7 @@
 // content starts `cmd:` (spec/brief-v1.md §4.4). An executor MUST prefer the first
 // honoured marked span over any other text in the cell.
 //
-// This package holds NO lexical rule of its own (tool-refactoring/03). The
+// This package holds NO lexical rule of its own (the Verify-syntax single-owner rule). The
 // marker scan, the first-span lift, the shell comment and no-op verdicts and the
 // prose-led verdict all live in statusgen/briefdoc (verification.go), which
 // statusgen's verifyrun and these executors both call; what remains here is the
