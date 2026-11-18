@@ -41,26 +41,53 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 		rest = rest[1:]
 	}
 	for i := 0; i < len(rest); i++ {
-		switch rest[i] {
-		case "--repo":
-			repoFlag, i = next(rest, i)
-		case "--owner":
-			owner, i = next(rest, i)
-		case "--branch":
-			branch, i = next(rest, i)
-		case "--reason":
-			reason, i = next(rest, i)
-		case "--token-file":
-			tokenFile, i = next(rest, i)
-		case "-h", "--help":
-			return dieUsage()
-		default:
-			if cli.ManualPerformance(&pc, rest[i], func() string { v, j := next(rest, i); i = j; return v }) {
-				continue
-			}
-			errf("refused: unknown flag %s", rest[i])
-			return exitRefused
+		// A value flag takes `--flag value` or `--flag=value`. The bare `-` is a value (the
+		// branch placeholder a branchless claim records); another `--` token never is.
+		name, inline, hasInline := rest[i], "", false
+		if strings.HasPrefix(name, "--") {
+			name, inline, hasInline = strings.Cut(name, "=")
 		}
+		var dst *string
+		switch name {
+		case "--repo":
+			dst = &repoFlag
+		case "--owner":
+			dst = &owner
+		case "--branch":
+			dst = &branch
+		case "--reason":
+			dst = &reason
+		case "--token-file":
+			dst = &tokenFile
+		case "-h", "--help":
+			if !hasInline {
+				return dieUsage()
+			}
+		}
+		if dst != nil {
+			v, j, ok := flagValue(rest, i, inline, hasInline)
+			if !ok {
+				errf("refused: %s requires a value", name)
+				return exitRefused
+			}
+			*dst, i = v, j
+			continue
+		}
+		missing := false
+		if cli.ManualPerformance(&pc, rest[i], func() string {
+			v, j, ok := flagValue(rest, i, "", false)
+			missing = !ok
+			i = j
+			return v
+		}) {
+			if missing {
+				errf("refused: %s requires a value", name)
+				return exitRefused
+			}
+			continue
+		}
+		errf("refused: unknown flag %s", rest[i])
+		return exitRefused
 	}
 
 	selectContext()
@@ -162,13 +189,20 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 	return dieUsage()
 }
 
-// next returns the value after flag position i and the advanced index. A missing value
-// yields "" (the bash `${2:-}`), which the verb-level checks then refuse where required.
-func next(rest []string, i int) (string, int) {
-	if i+1 < len(rest) {
-		return rest[i+1], i + 1
+// flagValue is the one place a value flag takes its value: the inline `--flag=value` part,
+// else the token after position i (returning the advanced index). It mirrors the bash
+// script's guard: an absent or empty value, or a next token that is itself a `--` flag, is
+// missing (ok=false) and is never consumed. Consuming it turned `--repo --branch -` into
+// repo="--branch" and then "unknown flag -", or `--repo --branch=-` into a repository named
+// "--branch=-" whose work source has no owning root (#6896). A single `-` is a value.
+func flagValue(rest []string, i int, inline string, hasInline bool) (string, int, bool) {
+	if hasInline {
+		return inline, i, inline != ""
 	}
-	return "", i
+	if i+1 >= len(rest) || rest[i+1] == "" || strings.HasPrefix(rest[i+1], "--") {
+		return "", i, false
+	}
+	return rest[i+1], i + 1, true
 }
 
 func defaultOwner() string {
