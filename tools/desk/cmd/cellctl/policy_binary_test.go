@@ -7,10 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
 
+	"github.com/medici-finance/assay/gitcore/testenv"
 	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
@@ -47,10 +49,8 @@ func cellctlBinary(t *testing.T) string {
 			return
 		}
 		out := filepath.Join(tmp, "cellctl")
-		cmd := exec.Command("go", "build", "-o", out, "./cmd/cellctl")
-		cmd.Dir = moduleRoot
-		if b, err := goquiet.Cmd(cmd).CombinedOutput(); err != nil {
-			buildErr = fmt.Errorf("go build ./cmd/cellctl (from %s): %v\n%s", moduleRoot, err, b)
+		if err := compileCellctl(t, moduleRoot, out); err != nil {
+			buildErr = err
 			return
 		}
 		builtBinary = out
@@ -59,6 +59,68 @@ func cellctlBinary(t *testing.T) string {
 		t.Fatalf("building the cellctl binary under test: %v", buildErr)
 	}
 	return builtBinary
+}
+
+// compilerFixture resolves the prepared caches before constructing a private HOME.
+// The query itself accepts only startup/cache paths, never caller Go build policy,
+// Git selectors or credentials. New does not change the test process environment.
+func compilerFixture(t *testing.T) (*testenv.Fixture, string) {
+	t.Helper()
+	tools := map[string]string{}
+	for _, name := range []string{"go", "git"} {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path, err = filepath.Abs(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tools[name] = path
+	}
+	query := exec.Command(tools["go"], "env", "-json", "GOCACHE", "GOMODCACHE", "GOPATH", "GOROOT")
+	query.Env = []string{"GOENV=off", "GOFLAGS=", "GOWORK=off", "GOTOOLCHAIN=local", "GOPROXY=off", "GOSUMDB=off", "GOTELEMETRY=off"}
+	// Windows needs these startup locations even for go env. They are query-only;
+	// the compiler below receives owned application/configuration directories.
+	for _, key := range []string{"HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "SystemRoot", "WINDIR", "COMSPEC", "PATHEXT", "GOCACHE", "GOMODCACHE", "GOPATH", "GOROOT"} {
+		if value, ok := os.LookupEnv(key); ok {
+			query.Env = append(query.Env, key+"="+value)
+		}
+	}
+	raw, err := goquiet.Cmd(query).CombinedOutput()
+	if err != nil {
+		t.Fatalf("query prepared Go paths: %v\n%s", err, raw)
+	}
+	vars := map[string]string{}
+	if err := json.Unmarshal(raw, &vars); err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"GOCACHE", "GOMODCACHE", "GOPATH", "GOROOT"} {
+		if vars[key] == "" {
+			t.Fatalf("prepared Go path %s is empty", key)
+		}
+	}
+	for key, value := range map[string]string{
+		"GOENV": "off", "GOFLAGS": "-mod=readonly", "GOWORK": "off",
+		"GOTOOLCHAIN": "local", "GOPROXY": "off", "GOSUMDB": "off",
+		"GOTELEMETRY": "off", "CGO_ENABLED": "0", "GOOS": runtime.GOOS, "GOARCH": runtime.GOARCH,
+	} {
+		vars[key] = value
+	}
+	f := testenv.New(t, testenv.Options{Tools: tools, Vars: vars})
+	return f, tools["go"]
+}
+
+func compileCellctl(t *testing.T, moduleRoot, out string) error {
+	t.Helper()
+	f, goTool := compilerFixture(t)
+	cmd := exec.Command(goTool, "build", "-o", out, "./cmd/cellctl")
+	cmd.Dir = moduleRoot
+	cmd.Env = f.Env("APPDATA="+filepath.Join(f.Home, "appdata"), "LOCALAPPDATA="+filepath.Join(f.Home, "localappdata"))
+	if b, err := goquiet.Cmd(cmd).CombinedOutput(); err != nil {
+		return fmt.Errorf("go build ./cmd/cellctl (from %s): %v\n%s", moduleRoot, err, b)
+	}
+	return nil
 }
 
 // policyFixture is one house cell, complete enough for `set`/`show`/`desk --model … DRY_RUN=1`

@@ -1,0 +1,1 @@
+Cellctl binary tests now compile with an explicit offline fixture environment, preserving native source build metadata under caller Go and Git settings without changing the parent environment. The expired-shim fixture declares a synthetic typed credential input and rejects accidental credential lookup.
