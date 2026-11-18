@@ -119,7 +119,8 @@ func sameDirectory(a, b string) bool {
 // since they can set any of the above before the row's own command runs.
 //
 // The scrub is an allow-list. An inherited variable reaches a row only when it
-// is on the pass list (admittedRowPass): the search path, locale and terminal
+// is on the pass list (admittedRowPass): the search path, the account and
+// shell names (USER, LOGNAME, SHELL), the bare CI flag, locale and terminal
 // settings, the Go toolchain settings, proxy and trust-root settings and the
 // Windows system locations, each by exact name. Every other variable is
 // dropped, whatever its family, so a credential pointer nobody has thought to
@@ -194,7 +195,8 @@ func admittedRowEnv(environ []string) []string {
 // admittedRowPassNames are the inherited variables an admitted row keeps,
 // matched by exact name whatever its case, besides the named row inputs, the
 // narrowing global git setting and the locale's LC_* settings. Each is a
-// search path, a locale or terminal setting, a Go toolchain setting the
+// search path, an account or shell name (USER, LOGNAME, SHELL), the bare CI
+// flag, a locale or terminal setting, a Go toolchain setting the
 // container run's module controls depend on, a proxy or trust-root setting, or
 // a Windows system location. None names a credential: GOAUTH (a credential
 // command), GOENV (a settings file that can set one), the Windows profile

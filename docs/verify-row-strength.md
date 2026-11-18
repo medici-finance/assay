@@ -309,13 +309,16 @@ Registry entry: `verify-unplaced-rows`.
 An admitted run (one with a verifier admission receipt) does not hand its rows the invoking
 environment. Each row gets a fresh, empty `HOME` and `TMPDIR` of its own, and its environment is
 built from an allow-list: an inherited variable reaches the row only when it is the search path
-(`PATH`), a locale or terminal setting (`LANG`, `LC_*`, `TERM`, `TZ` and similar), a Go toolchain
+(`PATH`), the account and shell names (`USER`, `LOGNAME`, `SHELL`), the bare `CI` flag, a locale
+or terminal setting (`LANG`, `LC_*`, `TERM`, `TZ` and similar), a Go toolchain
 setting (`GOFLAGS`, `GOPROXY`, `GOMODCACHE`, `GOTOOLCHAIN` and the rest of the build settings), a
 proxy or trust-root setting, a Windows system location, or one of the two delivery coordinates
 (`ASSAY_DELIVERY_SHA`, `ASSAY_DELIVERY_BASE_SHA`, and only while each holds a full commit id).
 Every other variable is dropped, whatever its family: a forge token, another tool's config
-pointer, an agent socket, a runtime directory and a Windows profile location alike. A listed proxy
-or module proxy whose URL carries a user name is dropped too. The run then adds what it hands the
+pointer, an agent socket, a runtime directory, a Windows profile location and a CI runtime
+variable (`GITHUB_ACTIONS`, `RUNNER_TEMP` and the like) alike. A listed proxy or module proxy whose
+URL carries a user name is dropped too; one that carries a secret elsewhere in its URL (a path or
+query) is not checked for it and passes. The run then adds what it hands the
 row itself: the git narrowing settings, its row-read socket, and its read-only credential path for
 a row that passes `--acceptance-forge`. A row that reads a dropped `ASSAY_*` variable by name is
 recorded could-not-run, never fail; a row that reads any other dropped variable sees it unset.
@@ -328,6 +331,9 @@ What a row can still reach today, because it runs as the invoking user:
   config still applies to the row's git.
 - **The account's home directory.** A tool that resolves home from the user's account record
   rather than from `HOME` (ssh does) finds the real one.
+- **The user's Windows temp directory.** On a Windows host, `TEMP` and `TMP` are on the pass
+  list, so a row inherits the invoking user's temp directory (under the user profile); only
+  `TMPDIR` is replaced per row.
 - **Same-user local endpoints.** An agent socket, another run's row-read socket, or any other
   local service the user can connect to, at a path the row knows or can list.
 - **Other processes' environments.** A same-user process can generally read another's startup
