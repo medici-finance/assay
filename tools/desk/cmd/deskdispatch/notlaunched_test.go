@@ -99,7 +99,7 @@ func TestNotLaunchedBranchlessProgressShape(t *testing.T) {
 	}
 	old := os.Stderr
 	os.Stderr = w
-	dispatchOpts{item: "stream--b-08"}.notLaunched(dispatchPlan{claimKey: "assay-console--stream--b-08", claimReleaseHint: goClaimBinary}, "medici-finance/assay", "/home/x")
+	dispatchOpts{item: "stream--b-08"}.notLaunched(dispatchPlan{claimKey: "assay-console--stream--b-08", claimReleaseHint: goClaimBinary}, "medici-finance/assay", "worker-home")
 	_ = w.Close()
 	os.Stderr = old
 	var buf bytes.Buffer
