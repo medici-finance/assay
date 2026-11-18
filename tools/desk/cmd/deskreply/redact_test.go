@@ -7,6 +7,7 @@ import (
 
 // regression: #6621 (security review A2)
 func TestPreflightRedactsOrigin(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	mustGit(t, work, "remote", "set-url", "origin", "https://user:secret@example.invalid/repo.git")
 	_, err := preflight(work)

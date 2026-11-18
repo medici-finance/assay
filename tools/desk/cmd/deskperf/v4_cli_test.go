@@ -27,6 +27,13 @@ func buildV4CLI(t *testing.T) string {
 		t.Fatal(e)
 	}
 	base := []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"), "USERPROFILE=" + os.Getenv("USERPROFILE"), "GOPROXY=off", "GOSUMDB=off", "GOTOOLCHAIN=local", "KUBECONFIG=" + os.DevNull}
+	// A launcher may already have moved HOME while explicitly preserving its
+	// prepared caches. Keep those declarations before resolving defaults.
+	for _, key := range []string{"GOMODCACHE", "GOCACHE", "GOPATH", "GOROOT"} {
+		if value, ok := os.LookupEnv(key); ok {
+			base = append(base, key+"="+value)
+		}
+	}
 	if systemRoot := os.Getenv("SystemRoot"); systemRoot != "" {
 		base = append(base, "SystemRoot="+systemRoot)
 	}

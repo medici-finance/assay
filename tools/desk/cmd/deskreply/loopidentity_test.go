@@ -15,6 +15,7 @@ import (
 )
 
 func TestDeskLoopUnsetRefusesTheOutwardVerb(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	t.Setenv("DESK_LOOP", "")

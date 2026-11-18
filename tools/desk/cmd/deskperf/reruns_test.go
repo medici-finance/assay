@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitcore/testenv"
 	"github.com/medici-finance/assay/perfrec"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -262,6 +263,7 @@ func num(t *testing.T, v any) int64 {
 // legacy record with none — counts 4 runs, and the cost block's uncredited-plus-discarded wall
 // is exactly the fixture rows inside attempts 1-2.
 func TestReruns_GraphExecution02Fixture(t *testing.T) {
+	isolateRerunsFixture(t)
 	stateDir, _ := rerunsHome(t)
 	seedRerunsPerf(t, stateDir)
 	root := rerunsRoot(t)
@@ -329,6 +331,7 @@ func itoa64(n int64) string { return strconv.FormatInt(n, 10) }
 // TestReruns_InvalidStoredRecordNotCounted is Verify row 4: a record landed with the writer
 // bypassed, whose attempts put credited first, is listed invalid with its path and not counted.
 func TestReruns_InvalidStoredRecordNotCounted(t *testing.T) {
+	isolateRerunsFixture(t)
 	rerunsHome(t)
 	root := rerunsRoot(t)
 	day := yesterday()
@@ -359,6 +362,7 @@ func TestReruns_InvalidStoredRecordNotCounted(t *testing.T) {
 // TestReruns_NeverEstimates is Verify row 5: a measure that is missing, pruned or ambiguous is
 // a stated state, never a 0 and never apportioned; rows outside every window are unassigned.
 func TestReruns_NeverEstimates(t *testing.T) {
+	isolateRerunsFixture(t)
 	t.Run("empty perf dir", func(t *testing.T) {
 		rerunsHome(t)
 		root := rerunsRoot(t)
@@ -443,6 +447,7 @@ func TestReruns_NeverEstimates(t *testing.T) {
 // real perfrec resolver with the skill's qualified --perf-work join; rows written with the
 // <stream>/<NN> id carry no work at all, so the attempt is could-not-check (no perf rows).
 func TestReruns_JoinsQualifiedWorkRefOnly(t *testing.T) {
+	isolateRerunsFixture(t)
 	ref, err := deskkit.PerfBriefRef("assay:assay:example-stream:02")
 	if err != nil || !strings.Contains(skillPerfWork, `"brief":"`+ref+`"`) {
 		t.Fatalf("the skill's value is not PerfBriefRef's: %q %v", ref, err)
@@ -479,4 +484,21 @@ func TestReruns_JoinsQualifiedWorkRefOnly(t *testing.T) {
 			t.Fatalf("total %+v", s)
 		}
 	})
+}
+
+// The caller's Git controls must not change either setup children or the
+// in-process origin reader. Each top-level fixture owns this environment.
+func isolateRerunsFixture(t *testing.T) {
+	t.Helper()
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	git, err = filepath.Abs(git)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(deskkit.ReloadConfig)
+	testenv.Install(t, testenv.Options{Tools: map[string]string{"git": git}})
+	deskkit.ReloadConfig()
 }

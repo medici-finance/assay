@@ -37,6 +37,7 @@ func TestDocTemplateControl(t *testing.T) {
 }
 
 func TestDocWorkpadDryRun(t *testing.T) {
+	isolateReplyFixture(t)
 	body, ok := documentedWorkpad(usage)
 	if !ok {
 		t.Fatal("help omits the runnable workpad template")
@@ -105,6 +106,7 @@ func TestWorkpadDocSurfaces(t *testing.T) {
 // The refusal is the surface a worker reads at the moment it fails (#2122 review F1): it
 // must send the caller to the installed-binary template, never to the internal library.
 func TestWorkpadRefusalNamesHelp(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	bf := bodyFileWith(t, "an ordinary reply body with no workpad marker")

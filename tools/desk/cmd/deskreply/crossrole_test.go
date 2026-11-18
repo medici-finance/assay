@@ -12,6 +12,7 @@ import (
 // audited cross-role override (#6069) and under the worker's own loop it records none.
 // regression: #6069
 func TestReplyMintCrossRole(t *testing.T) {
+	isolateReplyFixture(t)
 	for _, tc := range []struct {
 		loop     string
 		override bool

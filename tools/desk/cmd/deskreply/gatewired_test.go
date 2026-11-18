@@ -28,6 +28,7 @@ import (
 // would either dial the real api.github.com (an empty BaseURL defaults there) or panic on a nil
 // Client in this offline harness — this test must never depend on live network.
 func TestPublicRepoGateFetcherRoutesThroughResolvedForge(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	body := bodyFileWith(t, "routing check")
