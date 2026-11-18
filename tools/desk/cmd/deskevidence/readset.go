@@ -17,8 +17,6 @@ package main
 // A could-not-check token names no file and lands as any other row does.
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path"
@@ -27,6 +25,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/medici-finance/assay/statusgen/evaluation"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -56,26 +55,28 @@ func refuseUnpairedReadSets(content []byte, root, target string) error {
 	if len(digests) == 0 {
 		return nil
 	}
-	dir := path.Join(path.Dir(target), "reads")
+	stream := path.Dir(target)
 	var broken []string
 	for _, d := range digests {
-		rel := dir + "/" + d
+		rel := evaluation.ReadSetPath(stream, d)
 		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
 		switch {
 		case err != nil:
 			broken = append(broken, rel+" is absent locally")
 		default:
-			sum := sha256.Sum256(b)
-			if got := hex.EncodeToString(sum[:]); got != d {
+			if got := evaluation.ReadSetDigest(b); got != d {
 				broken = append(broken, fmt.Sprintf("%s hashes to %s", rel, got))
 			}
 		}
 	}
+	dir := path.Join(stream, evaluation.ReadSetDir)
+	paired := "use an Evidence PR to commit the rows and their matching read-set files together"
 	if len(broken) > 0 {
 		return deskkit.Refused("refused: " + target + " names read-set files it cannot land with: " +
-			strings.Join(broken, "; ") + " — a row and its read-set file land together or not at all")
+			strings.Join(broken, "; ") + ". In the verifier execution checkout, git rev-parse --git-path " +
+			evaluation.ReadSetStateDir + " locates the recorded files. Check their digests, copy them into " +
+			dir + ", and " + paired)
 	}
 	return deskkit.Refused("refused: " + target + " names read-set file(s) " + dir + "/{" + strings.Join(digests, ",") +
-		"} and this landing commits one file, so the row and its read-set file cannot land in one commit " +
-		"(the read-set introduction binding) — land them through an Evidence PR that adds both in one commit")
+		"} and this landing commits one file, so the row and its read-set file cannot land in one commit. " + paired)
 }

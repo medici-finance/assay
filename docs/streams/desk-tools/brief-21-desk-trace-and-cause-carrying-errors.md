@@ -38,7 +38,7 @@ exec-tier-why: >-
 consumers:
   - "Every other desk verb: OUT OF SCOPE and unchanged. `deskkit.ReportError` is opt-in per verb — a verb that still calls `fmt.Fprintln(os.Stderr, err.Error())` behaves exactly as it does today. The four retrofitted here are the first wave, chosen because each carries a symptom that was actually observed."
   - "`tools/desk/internal/deskkit/bodycheck.go`: read, not changed. The new redactor REUSES its compiled patterns; a prefix added there is redacted in traces on the same commit."
-version: 1
+version: 2
 id: b82e4e2e-0694-4c7e-a014-b71838743803
 ---
 
@@ -210,7 +210,7 @@ facts — the design:
 | 8 | check:ci | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestWorktreeCreateFailureCarriesDeskwtStderrAndTheCommandLine$' -count=1 && go test ./cmd/deskdispatch/ -run '^TestTraceIsOffByDefaultAndOutputIsUnchanged$' -count=1` | exit 0 — deskwt's refusal (5) still passes through, the trace names the argv and status, and the default output did not move |
 | 9 | check:ci | `cd tools/desk && go test ./cmd/deskwt/ -run '^TestRunGitFailureCarriesStderrCommandAndExitStatus$' -count=1 && go test ./cmd/deskwt/ -run '^TestDeskwtTraceOffIsByteIdenticalAndOnCarriesTheCommand$' -count=1` | exit 0 — fact 5 closed, both directions of the switch |
 | 10 | check:ci | `cd tools/desk && go test ./cmd/desktoken/ -run '^TestTokenPathNoticeIsPrintedOnStderrNotStdout$' -count=1` | exit 0 — fact 3 closed; stdout is still EXACTLY the path and the token value reaches neither stream |
-| 11 | check:ci | `cd tools/desk && go test ./cmd/deskfile/ -run '^TestDedupeSearchOutageNamesTheAPIStatus$' -count=1 && go test ./cmd/deskfile/ -run '^TestGhStderrStripsControlBytes$' -count=1` | exit 0 — 401/403/429 tell apart, exit 6 unchanged, and the pre-existing control-sequence strip survived the move |
+| 11 | check:ci | `cd tools/desk && go test ./cmd/deskfile/ -run '^TestDedupeSearchPropagatesTheForgeDiagnosis$' -count=1 && go test ./cmd/deskfile/ -run '^TestDedupeSearchControlBytesStrippedByBackend$' -count=1` | exit 0 — 401/403/429 tell apart, exit 6 unchanged, and the pre-existing control-sequence strip survived the move |
 | 12 | check:ci | `cd tools/desk && go test -timeout 300s ./internal/deskkit/... ./cmd/deskdispatch/... ./cmd/deskwt/... ./cmd/desktoken/... ./cmd/deskfile/... -count=1` | exit 0 — every existing test of the five touched packages, unchanged |
 | 13 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run 'TestS2' -count=1 && go test ./internal/deskkit/ -run 'TestCorpus' -count=1` | exit 0 — the control-based leak sweep, split into its two halves so no regex alternation is spelled inside a table cell (the stream's Conventions rule); CI runs them in one invocation |
 | 14 | check:ci | `cd tools/desk && gofmt -l internal/deskkit/trace.go internal/deskkit/runtool.go internal/deskkit/scrub.go internal/deskkit/exitcodes.go cmd/deskdispatch cmd/deskwt cmd/desktoken cmd/deskfile > /tmp/dt21-fmt.out; test ! -s /tmp/dt21-fmt.out` | exit 0 |
