@@ -70,7 +70,8 @@ passes `--backfill`, so it also folds in the historical branch/body fallback.
 
 `derived-board/01` (the spec — what a cell may claim and from what) → `03` (the derivation
 engine) → `04` (the generated table that replaces the hand-edited one) → `06` (the v1.0.0
-migration and cut) → `07` (rollout + backfill across the five stream-bearing repos).
+migration and cut) → `07` (this repo's rollout + backfill; each consumer repo runs the same
+sequence on its own board).
 
 **The head was verified before authoring.** The tempting head is 03 (the engine) — it is the
 biggest piece and the one people want to see working. It is not the head: without 01 the
@@ -97,7 +98,9 @@ rows. The cell is derived or it is not trustworthy; there is no third option.
 - **Wave 2** — `derived-board/04` (depends on 03).
 - **Wave 3** — `derived-board/06` (depends on 04; human gate — the release cut is irreversible
   under immutable releases).
-- **Wave 4** — `derived-board/07` (depends on 05 + 06; workflow-file pushes need the human).
+- **Wave 4** — `derived-board/07` (depends on 05 + 06; scoped to this repo's rollout, its own
+  scheduled reconcile having landed through the human-promoted workflow; consumer repos' rollouts
+  are tracked on their own boards).
 
 - **Wave 2 (forge-cost follow-on)** — `derived-board/08` (depends on 03): the witness ledger.
 - **Wave 3 (forge-cost follow-on)** — `derived-board/09` (depends on 08): incremental reconcile.
