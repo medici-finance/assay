@@ -29,6 +29,9 @@ func gitVar(key string) bool { return strings.HasPrefix(strings.ToUpper(key), "G
 // hook, or any git command that runs the suite on a caller's behalf, exports GIT_DIR;
 // inherited unchanged, it points every fixture git call at the caller's repository
 // instead of the fixture's temporary one.
+// This compatibility API deliberately preserves non-Git values and has no test
+// lifetime to own HOME or PATH. New explicit fixtures use gitcore/testenv.Install;
+// replacing this wrapper with that stricter contract requires migrating callers.
 func FixtureEnv(extra ...string) []string {
 	var env []string
 	for _, kv := range os.Environ() {
@@ -42,6 +45,8 @@ func FixtureEnv(extra ...string) []string {
 // IsolateGit removes every GIT_* variable from the test process until t ends, so
 // production code the fixture calls in-process (and any child it starts with the
 // inherited environment) cannot be redirected either. Values are restored at cleanup.
+// This Git-only floor control intentionally differs from testenv.Install, which
+// also owns the command set, configuration homes and every declared variable.
 func IsolateGit(t testing.TB) {
 	t.Helper()
 	for _, kv := range os.Environ() {

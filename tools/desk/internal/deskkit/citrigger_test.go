@@ -386,6 +386,9 @@ func ciCrossModuleRegistry() []ciEntry {
 	}
 
 	registry := []ciEntry{
+		{test: "gitcore/testenv/imports_test.go", module: "gitcore", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads: []string{"gitcore/", "statusgen/", "tools/desk/"}, runInvokes: []string{`*/gitcore|gitcore) extra="GOWORK=off go test -count=1 -timeout=300s . ./gittest ./testenv"`},
+			why: "test-support imports may appear only in test files across the shared helper and both consumer modules"},
 		{test: "workflow/store/refresh_provision_test.go", module: "workflow", workflow: ".github/workflows/assay-workflow.yml",
 			prJob: ciJobRef{id: "test", check: "test"}, pushJob: ciJobRef{id: "test", check: "test"},
 			reads:      []string{"spec/coordination-store-v1.md", "forgeread/mirror/", "forgeread/refresh/"},
@@ -415,13 +418,13 @@ func ciCrossModuleRegistry() []ciEntry {
 			why:        "the canonical PostgreSQL foundation contract and workflow are executable inputs, not build-only documentation"},
 
 		{test: "gitcore/ackguard_test.go", module: "gitcore", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
-			reads: []string{"gitcore/", "tools/desk/"}, runInvokes: []string{`*/gitcore|gitcore) extra="GOWORK=off go test -count=1 -timeout=300s . ./gittest"`},
+			reads: []string{"gitcore/", "tools/desk/"}, runInvokes: []string{`*/gitcore|gitcore) extra="GOWORK=off go test -count=1 -timeout=300s . ./gittest ./testenv"`},
 			why: "the lifted Git owner retains desk and public-owner source coverage; actual source CI execution is required"},
 		{test: "gitcore/claimref_guard_test.go", module: "gitcore", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
-			reads: []string{"gitcore/", "tools/desk/"}, runInvokes: []string{`*/gitcore|gitcore) extra="GOWORK=off go test -count=1 -timeout=300s . ./gittest"`},
+			reads: []string{"gitcore/", "tools/desk/"}, runInvokes: []string{`*/gitcore|gitcore) extra="GOWORK=off go test -count=1 -timeout=300s . ./gittest ./testenv"`},
 			why: "the lifted Git owner retains desk and public-owner source coverage; actual source CI execution is required"},
 		{test: "gitcore/fetchtags_guard_test.go", module: "gitcore", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
-			reads: []string{"gitcore/", "tools/desk/"}, runInvokes: []string{`*/gitcore|gitcore) extra="GOWORK=off go test -count=1 -timeout=300s . ./gittest"`},
+			reads: []string{"gitcore/", "tools/desk/"}, runInvokes: []string{`*/gitcore|gitcore) extra="GOWORK=off go test -count=1 -timeout=300s . ./gittest ./testenv"`},
 			why: "the lifted Git owner retains desk and public-owner source coverage; actual source CI execution is required"},
 		{test: "tools/desk/internal/reviewtest/prepare_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob,
 			reads: []string{"gitcore/", "tools/desk/"}, runInvokes: deskShardInvokes,

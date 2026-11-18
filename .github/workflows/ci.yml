@@ -285,7 +285,7 @@ jobs:
               # do not reach the trace append path (review F-m2-ci).
               */qualgen|qualgen) extra="GOWORK=off go test -count=1 -timeout=60s -run '^(TestM2.*|TestCLILegacyForms)$' ." ;;
               # Lifted Git owner and its canonical fixture harness leave the desk shard.
-              */gitcore|gitcore) extra="GOWORK=off go test -count=1 -timeout=300s . ./gittest" ;;
+              */gitcore|gitcore) extra="GOWORK=off go test -count=1 -timeout=300s . ./gittest ./testenv" ;;
               */deskcore|deskcore) extra="GOWORK=off go test -count=1 ./..." ;;
               */deskd|deskd) extra="GOWORK=off go test -count=1 -timeout=180s ./..." ;;
               # tools/desk: build+vet here; `go test` in the desk-K legs.
