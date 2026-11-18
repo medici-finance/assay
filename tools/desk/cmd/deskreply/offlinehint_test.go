@@ -42,6 +42,7 @@ func captureStderr(t *testing.T, fn func()) string {
 // rehearsal (`--dry-run`) that would have caught it for free, without losing the original
 // diagnosis.
 func TestSchemaRefusalNamesTheOfflineCheck(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 

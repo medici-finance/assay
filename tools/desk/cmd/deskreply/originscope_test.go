@@ -36,6 +36,7 @@ func originScopeFixture(t *testing.T, cmds [][]string) string {
 
 // regression: #6606
 func TestPreflightOriginScope(t *testing.T) {
+	isolateReplyFixture(t)
 	wt := func(args ...string) []string { return append([]string{"config", "--worktree"}, args...) }
 	steer := "https://github.com/other/steer.git"
 	refused := originScopeFixture(t, [][]string{
