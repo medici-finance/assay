@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	opUUID    = "7a0c0968-a001-4aab-acea-681909b30340"
+	opUUID    = "00000000-0000-4000-8000-000000000001"
 	opTracker = "owner/tracker"
 	opProduct = "owner/product"
 	opPath    = "docs/streams/stream/brief-01-work.md"
