@@ -987,7 +987,17 @@ func verifyPassHeldWitnessed(evidence, path string) (bool, string) {
 // only when latestRun is true: flipHeldRefusal passes it for verifyflip and
 // the reconcile fold, whose witness check reads the same run; every other
 // caller passes false.
+//
+// Every read also shares one comment normalisation (heldjoin.go): a marker
+// that only stripping HTML comments forms ("HE<!-- -->LD", the page renders
+// HELD) is a hold on each read line it spans, with no negation, routing or
+// quoting excuse, and Evidence whose comments do not settle is refused.
 func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
+	joinText, joinSrc, settled := heldCommentJoins(evidence)
+	if !settled {
+		return true, "HTML comments that still change after repeated stripping"
+	}
+	joined := heldJoinedLines(evidence, joinSrc, heldOrCouldNotCheckRe.FindAllStringIndex(joinText, -1))
 	inFence := false
 	var codeScan inlineCodeScan
 	scope := heldScanScope(evidence, latestRun)
@@ -1026,6 +1036,10 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 		masked := codeScan.mask(line)
 		read := scope.lines[i]
 		if strings.HasPrefix(trimmed, ">") || read.skip {
+			continue
+		}
+		if joined[i] {
+			hits, quotes = append(hits, i), append(quotes, trimmed)
 			continue
 		}
 		// A results-table row is read in its result cells only: the

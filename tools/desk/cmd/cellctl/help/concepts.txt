@@ -34,8 +34,7 @@ built-in presets `kimi` (https://api.kimi.com/coding, $KIMI_API_KEY, k3[1m]) and
 overrides its preset value piecewise. TOKEN_ENV is the NAME of an env var the operator exports;
 cellctl never stores, prints or persists a token value. With a provider the launch unsets
 ANTHROPIC_API_KEY and exports ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL,
-each alias mapping to the provider's MODEL_<tier> for its tier when one exists (glm maps MID —
-the sonnet slot — to glm-5.3-flash[1m], assay#1352), else the flat provider model
+every alias mapping to the flat provider model (a model per tier or role is model policy's job)
 (docs/cellctl.md Providers).
 
 `cellctl desk`/`up --model <m>` (or DESK_MODEL_OVERRIDE in the environment) overrides the resolved
