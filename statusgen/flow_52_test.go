@@ -11,6 +11,7 @@ import (
 
 // regression: F-card-purpose
 func TestFlowCard(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("emitter contract", func(t *testing.T) {
 		root, streams := loadDCStreams(t)
 		decisions := decisionIssues(root, streams, nil)

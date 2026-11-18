@@ -109,6 +109,7 @@ func (f transBracketFixture) editReceipt(t *testing.T, edit func(*bracketReceipt
 
 // regression: #1800
 func TestOpenBracketTransition(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, name := range []string{"approved", "drift", "unapproved", "edited", "unreadable", "origin", "dirty", "source", "no-forge"} {
 		t.Run(name, func(t *testing.T) {
 			f := newTransBracket(t, name == "drift")
@@ -176,6 +177,7 @@ func TestOpenBracketTransition(t *testing.T) {
 
 // regression: #1800
 func TestContainerNetnsTransition(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("protected-record", func(t *testing.T) {
 		c := newContainerFixture(t)
 		r := newRecordFixture(t, nil)
@@ -279,6 +281,7 @@ func TestContainerNetnsTransition(t *testing.T) {
 
 // regression: #1800
 func TestTransitionBracketRefusals(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, name := range []string{"no-receipt", "no-plan", "descriptor", "table-digest", "run-set", "added", "rows", "forge", "dropped", "version2", "in-container", "check", "fail-first", "no-root"} {
 		t.Run("container/"+name, func(t *testing.T) {
 			f := newTransBracket(t, false)
