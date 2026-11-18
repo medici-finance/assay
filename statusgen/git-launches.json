@@ -131,7 +131,7 @@
     "s027": {
       "operation": "exec.Command(\"git\", \"-C\", root, \"diff\", \"--name-only\", base+\"...HEAD\")",
       "why": "Native diff semantics are retained. TestDiffReadGaps records partial success on changed missing subtrees and a control-byte directory failure in the selected library; unrelated missing subtrees must remain safely skippable. Rename, index/worktree, pathspec and raw output modes at this operation are not replaced by a new custom diff algorithm.",
-      "owner": "statusgen/consumers.go — changedPathsSince caller maintainer"
+      "owner": "statusgen/consumers.go — committedPathsSince caller maintainer"
     },
     "s028": {
       "operation": "exec.Command(\"git\", \"-C\", root, \"status\", \"--porcelain\", \"--untracked-files=all\")",
@@ -1172,15 +1172,15 @@
     },
     {
       "key": "consumers.go::changedPathsSince::direct#1",
-      "expression": "exec.Command(\"git\", \"-C\", root, \"diff\", \"--name-only\", base+\"...HEAD\")",
-      "disposition": "retained",
-      "reason": "s027"
-    },
-    {
-      "key": "consumers.go::changedPathsSince::direct#2",
       "expression": "exec.Command(\"git\", \"-C\", root, \"status\", \"--porcelain\", \"--untracked-files=all\")",
       "disposition": "retained",
       "reason": "s028"
+    },
+    {
+      "key": "consumers.go::committedPathsSince::direct#1",
+      "expression": "exec.Command(\"git\", \"-C\", root, \"diff\", \"--name-only\", base+\"...HEAD\")",
+      "disposition": "retained",
+      "reason": "s027"
     },
     {
       "key": "consumers.go::consumerEntriesAtBase::direct#1",

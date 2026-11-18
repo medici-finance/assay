@@ -3,6 +3,7 @@ package main
 import (
 	"strings"
 
+	"github.com/medici-finance/assay/statusgen/evaluation"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 )
 
@@ -250,7 +251,7 @@ func classifyItem(it loopengine.Item, tier loopengine.Tier) (disposition, string
 // state is unknown, or whose latest outcome is anything but verified (a verify-fail wants a
 // re-run once fixed), is not stuck.
 func stuckFlip(it loopengine.Item) (string, bool) {
-	if payloadValue(it, "sidecar_outcome") != "verified" || payloadValue(it, "evidence_empty") != "no" {
+	if evaluation.ParseVerificationOutcome(payloadValue(it, "sidecar_outcome")) != evaluation.OutcomeVerified || payloadValue(it, "evidence_empty") != "no" {
 		return "", false
 	}
 	return "sidecar outcome verified " + payloadValue(it, "sidecar_ts") + " (sha " + payloadValue(it, "sidecar_sha") +
