@@ -114,7 +114,7 @@ Every row runs from the repository root on `main`.
 | 7 | check:ci | `go -C tools/desk test ./cmd/deskreconcile/ -count=1 -timeout 300s` | `ok` (the reconcile verb that depends on the kept flag) |
 | 8 | check:ci | `git ls-files '*reconcile.patch' \| wc -l` | `0` (the stale staged reconcile patch stays retired) |
 | 9 | check +dereference | `for n in 735 736 945 1010 1194 5037; do gh pr view $n -R medici-finance/assay --json state --jq .state; done \| sort \| uniq -c` | `6 MERGED` (every PR that Task 1 and `delivery:` cite resolves to a merged PR) |
-| 10 | check | `statusgen --consumers --brief derived-board/07 --base $(git merge-base origin/main HEAD)` | exit 0; 0 disproved; the two out-of-scope entries stay UNCHECKED and reviewer-owned |
+| 10 | check | `statusgen --consumers --brief derived-board/07` | exit 0 (after the merge it pins itself to the delivery the single `Brief:` trailer commit names); 0 disproved; the two out-of-scope entries stay UNCHECKED and reviewer-owned |
 
 ## Evidence
 <!-- appended at implementation time -->
