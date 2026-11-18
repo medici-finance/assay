@@ -1,0 +1,1 @@
+- Statusgen's transition, coverage and flow fixtures now own their environment, so caller Git configuration and installed tools no longer redirect those tests. Fake forge commands receive an explicit synthetic credential, while production Git authority and stored-login refusals remain unchanged.

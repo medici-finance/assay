@@ -61,6 +61,7 @@ func swapWorkpadSeams(t *testing.T,
 // The stubbed finder models GitHub's own state transition: empty before the first call's
 // create actually lands, then carrying exactly the comment that call created.
 func TestWorkpadUpsertIsIdempotent(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 
@@ -177,6 +178,7 @@ func TestWorkpadFilterIgnoresMinimizedComments(t *testing.T) {
 // exactly like a plain reply — the SAME bodycheck, applied before ANY workpad-specific
 // preflight (mint/list/find-or-create) runs — with nothing posted.
 func TestWorkpadBodycheckRefuses(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 
@@ -196,6 +198,7 @@ func TestWorkpadBodycheckRefuses(t *testing.T) {
 // caller error (it belongs on the plain-reply path instead) and is refused before any
 // write, same as the bodycheck case above.
 func TestWorkpadWithoutMarkerRefuses(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 
@@ -218,6 +221,7 @@ func TestWorkpadWithoutMarkerRefuses(t *testing.T) {
 // already had, and deskpost's --dry-run has always had. It is a REHEARSAL, not an offline
 // check: it reaches the forge for the reads a real reply performs.
 func TestPlainReplyDryRunRehearsesWithoutWriting(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 
@@ -244,6 +248,7 @@ func TestPlainReplyDryRunRehearsesWithoutWriting(t *testing.T) {
 // ("WORKPAD: would create" / "WORKPAD: would edit #<id>") and asserts NEITHER produces any
 // gh call — dry-run's whole point is a report with no write.
 func TestWorkpadDryRunReportsWithoutWriting(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	calls := withEnv(t, work)
 	swapWorkpadSeams(t,
@@ -304,6 +309,7 @@ func TestWorkpadDryRunReportsWithoutWriting(t *testing.T) {
 // worktree-local hint recorded after a CREATE is the numeric id the forge reported for the
 // comment it created, not a number recovered from display text.
 func TestWorkpadCreateRecordsTheForgeReportedID(t *testing.T) {
+	isolateReplyFixture(t)
 	work := newBaseFixture(t)
 	withEnv(t, work)
 	swapWorkpadSeams(t,

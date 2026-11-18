@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"github.com/medici-finance/assay/gitcore/testenv"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/gitmaintenance"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -18,8 +20,35 @@ import (
 
 func maintenanceFixture(t *testing.T) (string, *[][]string) {
 	t.Helper()
+	tools := map[string]string{}
+	names := []string{"git"}
+	if runtime.GOOS != "windows" {
+		names = append(names, "sh", "sleep")
+	}
+	for _, name := range names {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path, err = filepath.Abs(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tools[name] = path
+	}
+	testenv.Install(t, testenv.Options{Tools: tools})
 	work := newRepo(t)
 	withEnv(t, work)
+	t.Setenv("USERPROFILE", os.Getenv("HOME"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(os.Getenv("HOME"), ".config"))
+	deskkit.ReloadConfig()
+	// withEnv installs the synthetic roster under a second owned HOME. Git
+	// setup and the production hook inventory must read that same global file.
+	global := filepath.Join(os.Getenv("HOME"), ".gitconfig")
+	if err := os.WriteFile(global, nil, 0600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_CONFIG_GLOBAL", global)
 	old := maintenanceCommand
 	calls := [][]string{}
 	maintenanceCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {

@@ -133,6 +133,7 @@ func (f verifyRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 // Compose the real scheduling source/backend/counted transport with a fake leaf.
 // Removing the invocation observer loses the request/cost assertions below.
 func TestVerifyPerformanceSchedulingRequests(t *testing.T) {
+	isolatePlanOriginFixture(t)
 	oldSource := issueSourceFn
 	issueSourceFn = performanceIssueSource
 	t.Cleanup(func() { issueSourceFn = oldSource })

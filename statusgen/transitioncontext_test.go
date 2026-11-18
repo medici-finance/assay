@@ -16,6 +16,7 @@ func contextEdit(stage, body string) string {
 
 // regression: #3492
 func TestTransitionContext(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []string{"suffix", "prefix", "second-row", "both-extra", "both-hidden", "both-unclosed", "both-math", "changed", "removed", "added", "spacing", "moved", "delivery-context", "extra-span", "unclosed", "hidden", "escaped", "prose-led", "expect", "class", "obligation", "shell", "supplement"}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -130,5 +131,6 @@ func TestTransitionContext(t *testing.T) {
 
 // regression: #3492
 func TestContextExecution(t *testing.T) {
+	installStatusgenFixture(t)
 	runTransitionExecution(t, contextFixture(t, nil, contextEdit))
 }

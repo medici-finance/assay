@@ -12,10 +12,12 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitcore/testenv"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -24,6 +26,8 @@ func plantAllowedRoster(t *testing.T, allowed ...string) {
 	t.Helper()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	dir := filepath.Join(home, ".config", "assay")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		t.Fatal(err)
@@ -339,6 +343,7 @@ func TestWriterBareRefReadsBlocker(t *testing.T) {
 // checkout's origin — through cmdPlan; with no origin it stays could-not-check, never guessed.
 // regression: #2798 / R3429-F1
 func TestPlanBareRefUsesRootRepo(t *testing.T) {
+	isolatePlanOriginFixture(t)
 	old := issueSourceFn
 	t.Cleanup(func() { issueSourceFn = old })
 	issueSourceFn = func() deskkit.IssueStateSource {
@@ -379,4 +384,19 @@ func TestPlanBareRefUsesRootRepo(t *testing.T) {
 	if out := plan(false); strings.Contains(out, "   WAIT ") || !strings.Contains(out, "could-not-check=1") {
 		t.Errorf("with no origin: want could-not-check, no WAIT:\n%s", out)
 	}
+}
+
+func isolatePlanOriginFixture(t *testing.T) {
+	t.Helper()
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	git, err = filepath.Abs(git)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(deskkit.ReloadConfig)
+	testenv.Install(t, testenv.Options{Tools: map[string]string{"git": git}})
+	plantAllowedRoster(t, "example-org/tracker")
 }

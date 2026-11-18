@@ -86,6 +86,7 @@ func (f protectedRecordFixture) closes(t *testing.T) bool {
 
 // regression: #4499
 func TestProtectedRecordRun(t *testing.T) {
+	installStatusgenFixture(t)
 	f := newRecordFixture(t, nil)
 	if code, diag := f.run(t); code != 0 {
 		t.Fatalf("protected record run: %d %s", code, diag)
@@ -112,6 +113,7 @@ func TestProtectedRecordRun(t *testing.T) {
 
 // regression: #4499
 func TestProtectedRecordRefusal(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []struct {
 		name, want string
 		deliver    func(string) string
@@ -159,6 +161,7 @@ func TestProtectedRecordRefusal(t *testing.T) {
 
 // regression: #4499
 func TestProtectedRecordCredit(t *testing.T) {
+	installStatusgenFixture(t)
 	marker := func(f protectedRecordFixture) string {
 		return "Verification-Table: delivery=" + f.delivery + " base=" + f.base + " original=" + f.base + "\n"
 	}

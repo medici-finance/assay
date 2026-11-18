@@ -32,6 +32,7 @@ func gitFullHead(t *testing.T, root string) string {
 // computed by the go tool over the exported witness tree, with the recorded
 // -tags and package arguments, and fails closed on a missing dependency.
 func TestGoFloorFromWitnessTree(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	writes(
 		"go.mod", "module example.com/fl\n\ngo 1.22\n",
@@ -231,6 +232,7 @@ func coverageAF01(t *testing.T, root string) (modelFlipResult, bool, string) {
 // record refuses through each with the floor reason — the floor computed by
 // the adapter, never injected.
 func TestCoverageCallersApplyFloor(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("with no recorder the token is not judged", func(t *testing.T) {
 		root := afReadSetFixture(t, []string{"a.go", "b.go", "go.mod"})
 		mustWriteFile(t, root, ".claude-plugin/marketplace.json", "{}\n")
@@ -298,6 +300,7 @@ func TestCoverageCallersApplyFloor(t *testing.T) {
 // never released because the name still exists. A file added under the
 // directory still releases.
 func TestCoverageStatDirNowFile(t *testing.T) {
+	installStatusgenFixture(t)
 	for name, change := range map[string]func(root string){
 		"still present": func(root string) { mustWriteFile(t, root, "sub/y.txt", "added\n") },
 		"removed": func(root string) {
@@ -344,6 +347,7 @@ func TestCoverageStatDirNowFile(t *testing.T) {
 // arrived in that same commit. A file or token a later commit added never
 // moves the introduction.
 func TestReadSetIntroObservation(t *testing.T) {
+	installStatusgenFixture(t)
 	const briefRel = "docs/streams/s/brief-01-x.md"
 	digest := strings.Repeat("ab", 32)
 	token := evaluation.ReadSetCellToken(digest, "")
@@ -418,6 +422,7 @@ func goFloorFixture(t *testing.T) (*readSetSource, string) {
 // not reproduce is a problem, in either spelling, never a narrower floor and
 // never a value handed to the go tool.
 func TestFloorRefusesUnreadFlags(t *testing.T) {
+	installStatusgenFixture(t)
 	src, commit := goFloorFixture(t)
 	outside := t.TempDir()
 	test := func(extra ...string) []string { return append([]string{"go", "test"}, append(extra, "./p")...) }
@@ -473,6 +478,7 @@ func TestFloorRefusesUnreadFlags(t *testing.T) {
 // TestFloorEmptyIsProblem — a floor with no file of the witness tree is a
 // problem, never an empty floor the library would read as nothing omitted.
 func TestFloorEmptyIsProblem(t *testing.T) {
+	installStatusgenFixture(t)
 	src, commit := goFloorFixture(t)
 	for name, g := range map[string]evaluation.GoRun{
 		"a pattern matching nothing": {Dir: ".", Args: []string{"go", "vet", "./nomatch/..."}},
@@ -492,6 +498,7 @@ func TestFloorEmptyIsProblem(t *testing.T) {
 // nothing the caller set: ambient GOFLAGS, proxy, experiment, workspace and
 // any other variable never reach it, and the pins hold.
 func TestFloorEnvIsBuilt(t *testing.T) {
+	installStatusgenFixture(t)
 	for k, v := range map[string]string{
 		"GOFLAGS": "-toolexec=x", "GOPROXY": "https://proxy.invalid", "GOINSECURE": "*", "GOEXPERIMENT": "nosuchexperiment",
 		"GOWORK": "elsewhere/go.work", "GONOSUMDB": "*", "GOTOOLCHAIN": "go1.99.0", "FLOOR_PROBE_SECRET": "leaked",
@@ -539,6 +546,7 @@ func TestFloorEnvIsBuilt(t *testing.T) {
 // TestFloorRunIsBounded — a go tool run that outlives floorTimeout is a
 // problem, never a wait without end.
 func TestFloorRunIsBounded(t *testing.T) {
+	installStatusgenFixture(t)
 	src, commit := goFloorFixture(t)
 	g := evaluation.GoRun{Dir: ".", Args: []string{"go", "test", "./p"}}
 	if fl := src.goFloor(commit, g); fl.Problem != "" {
@@ -570,6 +578,7 @@ func gitPipe(t *testing.T, dir, stdin string, args ...string) string {
 // duplicate name, a path through a link, and a link out of the tree are each
 // an error, the partial export is removed, and nothing lands beside it.
 func TestExportTreeContains(t *testing.T) {
+	installStatusgenFixture(t)
 	repo := t.TempDir()
 	writes("seed.txt", "seed\n")(t, repo)
 	mustGitInit(t, repo)
@@ -636,6 +645,7 @@ func allocated(f func()) uint64 {
 // allocated far less than one copy of that object, and a tree under the cap
 // exports with each distinct object read once, never held whole.
 func TestExportCapBeforeRead(t *testing.T) {
+	installStatusgenFixture(t)
 	const big = 4 << 20
 	repo := t.TempDir()
 	writes("seed.txt", "seed\n")(t, repo)
@@ -708,6 +718,7 @@ func TestExportCapBeforeRead(t *testing.T) {
 // does not become its introduction, and a row two branches each added has
 // none, so neither shape binds a read set.
 func TestIntroIgnoresCommitDate(t *testing.T) {
+	installStatusgenFixture(t)
 	const briefRel = "docs/streams/s/brief-01-x.md"
 	digest := strings.Repeat("cd", 32)
 	token := evaluation.ReadSetCellToken(digest, "")
@@ -799,6 +810,7 @@ func observeAlloc(root, briefRel string, w evaluation.Witness) (*evaluation.Read
 // that version; and the read-set file's existence at the introduction commit
 // is a batch check that reads none of its content.
 func TestIntroHistoryBounded(t *testing.T) {
+	installStatusgenFixture(t)
 	const big = 8 << 20
 	briefRel, fileRel, brief, w := boundsBrief(strings.Repeat("ef", 32))
 	defer func(a, b int64) { introMaxBlobBytes, introMaxHistoryBytes = a, b }(introMaxBlobBytes, introMaxHistoryBytes)
@@ -856,6 +868,7 @@ func TestIntroHistoryBounded(t *testing.T) {
 // allocated far less than it, and a symbolic link is a problem, never
 // followed.
 func TestReadSetFileBounded(t *testing.T) {
+	installStatusgenFixture(t)
 	const big = 8 << 20
 	briefRel, fileRel, brief, w := boundsBrief(strings.Repeat("ab", 32))
 	defer func(n int64) { readSetMaxBytes = n }(readSetMaxBytes)
@@ -899,6 +912,7 @@ func TestReadSetFileBounded(t *testing.T) {
 // stops at its caps: a tree listing far more entries, or far more bytes, than
 // the caps is refused having allocated far less than the listing.
 func TestListingCapStreams(t *testing.T) {
+	installStatusgenFixture(t)
 	const n = 40000
 	repo := t.TempDir()
 	writes("seed.txt", "seed\n")(t, repo)
@@ -941,6 +955,7 @@ func TestListingCapStreams(t *testing.T) {
 // floorEvalBudget has gone to them, a floor is a problem with no run; and
 // every export of the evaluation together writes at most exportEvalBytes.
 func TestFloorEvalBudget(t *testing.T) {
+	installStatusgenFixture(t)
 	src, commit := goFloorFixture(t)
 	defer func(r int, d time.Duration, b int64) { floorEvalRuns, floorEvalBudget, exportEvalBytes = r, d, b }(floorEvalRuns, floorEvalBudget, exportEvalBytes)
 	p := evaluation.GoRun{Dir: ".", Args: []string{"go", "test", "./p"}}
@@ -1009,6 +1024,7 @@ func fakeGo(t *testing.T, before, listJSON string) {
 // hold is a problem, and a tool that exits while a child keeps its output
 // open is not waited for past floorWaitDelay.
 func TestFloorFakeGoBranches(t *testing.T) {
+	installStatusgenFixture(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("a shell-script go tool on PATH is POSIX-only")
 	}
@@ -1103,6 +1119,7 @@ func tokenRows(digest string, n int) (string, map[string][]evaluation.Witness) {
 // budget: past it a row is refused, so the bytes the observations allocate
 // together stay near one file however many rows name it.
 func TestCoverageObserveBudgetReadSet(t *testing.T) {
+	installStatusgenFixture(t)
 	const fileCap, rows = 1 << 20, 64
 	defer func(a, b int64) { readSetMaxBytes, observeEvalBytes = a, b }(readSetMaxBytes, observeEvalBytes)
 	readSetMaxBytes, observeEvalBytes = fileCap, 8*fileCap
@@ -1150,6 +1167,7 @@ func TestCoverageObserveBudgetReadSet(t *testing.T) {
 // many rows back across many touching commits allocates about one read of
 // that version, whatever the number of touches.
 func TestCoverageObserveBudgetIntroTouches(t *testing.T) {
+	installStatusgenFixture(t)
 	const touches = 200
 	digest := strings.Repeat("b2", 32)
 	head, ws := tokenRows(digest, 1)
@@ -1190,6 +1208,7 @@ func TestCoverageObserveBudgetIntroTouches(t *testing.T) {
 // charged for each: many briefs over the same near-cap history are refused
 // past the budget, so the bytes they parse together stay near the budget.
 func TestCoverageObserveBudgetSharedHistory(t *testing.T) {
+	installStatusgenFixture(t)
 	const blob, versions, briefs = 256 << 10, 4, 24
 	defer func(a, b, c int64) { introMaxBlobBytes, introMaxHistoryBytes, observeEvalBytes = a, b, c }(introMaxBlobBytes, introMaxHistoryBytes, observeEvalBytes)
 	introMaxBlobBytes, introMaxHistoryBytes, observeEvalBytes = blob, versions*blob+(64<<10), 3*versions*blob
@@ -1256,6 +1275,7 @@ func TestCoverageObserveBudgetSharedHistory(t *testing.T) {
 // the brief's token rows more times than the budget allows is refused, while
 // the same versions touched a few times are observed.
 func TestCoverageObserveBudgetTouchCompares(t *testing.T) {
+	installStatusgenFixture(t)
 	digest := strings.Repeat("d4", 32)
 	head, ws := tokenRows(digest, 500)
 	defer func(n int64) { observeEvalBytes = n }(observeEvalBytes)
@@ -1294,6 +1314,7 @@ func TestCoverageObserveBudgetTouchCompares(t *testing.T) {
 // an export that fails after it began writing is charged its bytes, and the
 // floor its time; and a link target is checked before anything is written.
 func TestCoverageFloorBudgetCharges(t *testing.T) {
+	installStatusgenFixture(t)
 	defer func(r int, b int64) { floorEvalRuns, exportEvalBytes = r, b }(floorEvalRuns, exportEvalBytes)
 	t.Run("each go tool run as it starts", func(t *testing.T) {
 		src, commit := goFloorFixture(t)
@@ -1381,6 +1402,7 @@ func TestCoverageFloorBudgetCharges(t *testing.T) {
 // problem, and standard error is kept only to floorMaxStderrBytes, each having
 // allocated far less than the tool wrote.
 func TestCoverageFloorOutputCapped(t *testing.T) {
+	installStatusgenFixture(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("a shell-script go tool on PATH is POSIX-only")
 	}
@@ -1414,6 +1436,7 @@ func TestCoverageFloorOutputCapped(t *testing.T) {
 // through a link in the tree, to a directory outside it is a problem before
 // any go tool run starts.
 func TestCoverageFloorOutsideTree(t *testing.T) {
+	installStatusgenFixture(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("creating a symbolic link needs a privilege there")
 	}

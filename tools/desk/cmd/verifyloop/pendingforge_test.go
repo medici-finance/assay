@@ -206,6 +206,7 @@ func pendingSibling(t *testing.T, v *VerifyLoop, f *pendingForge, r deskkit.Veri
 
 // regression: #2939
 func TestPendingForge(t *testing.T) {
+	isolatePlanOriginFixture(t)
 	// author sets one account as the change's author on both the list and the change read.
 	author := func(f *pendingForge, login string, id int64) {
 		f.change.Author = deskkit.Account{Login: login, ID: id}
