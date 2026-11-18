@@ -1,14 +1,9 @@
 package main
 
-// Tests for the board regen job's status-historian wiring. history.go's
-// header says the --record pass is wired into main's regen CI only, after
-// STATUS.md regenerates, and that docs/streams/.history.jsonl is git-tracked.
-// Until the regen job ran it, the log never existed in this repository, so
-// every Age / Waiting cell on STATUS.md read "—" and --bottleneck had no
-// dwell to read. These tests pin the wiring on the live workflow and its
-// staged twin: the record runs after the write (and again on a push retry),
-// the commit step lands the log in the same bot commit as STATUS.md, and the
-// push trigger excludes the log so that commit cannot retrigger the workflow.
+// Main's board writer records status history after regenerating the views.
+// The initial run and a retry on a newer main may use separate commands or
+// --write-and-record. The commit guard includes history-only changes, and
+// the push trigger excludes the historian file to avoid retriggering regen.
 
 import (
 	"bytes"
@@ -94,31 +89,49 @@ func TestBoardRegenRecordsHistory(t *testing.T) {
 	}
 }
 
-// TestBoardRegenRecordGuardFires is the negative control: each of the
-// properties, removed from the live file, must be reported.
+// Exercise both command forms even after the live workflow adopts the staged one.
 func TestBoardRegenRecordGuardFires(t *testing.T) {
 	raw, err := os.ReadFile(regenRecordWorkflows[1])
 	if err != nil {
 		t.Fatal(err)
 	}
-	wf := string(raw)
-	if p := regenRecordProblems(wf); len(p) != 0 {
-		t.Fatalf("baseline is not clean: %v", p)
-	}
-	mutants := map[string][2]string{
-		"retry without record": {"\n            " + regenRecordCmd + "\n", "\n            " + regenCmd + " --acceptance-forge\n"},
-		"extra record pass":    {regenRecordCmd + "\n", regenRecordCmd + "\n          " + regenCmd + " --record --acceptance-forge\n"},
-		"no history add":       {"then git add -- docs/streams/.history.jsonl; fi", "then :; fi"},
-		"guard on STATUS.md":   {"git status --porcelain -- STATUS.md docs/streams/.history.jsonl", "git status --porcelain -- STATUS.md"},
-		"no push exclusion":    {historyExclude + "\n", ""},
-	}
-	for name, m := range mutants {
-		if !strings.Contains(wf, m[0]) {
-			t.Fatalf("%s: mutation anchor not found", name)
-		}
-		if len(regenRecordProblems(strings.Replace(wf, m[0], m[1], 1))) == 0 {
-			t.Errorf("%s: the guard reported nothing", name)
-		}
+	write := regenCmd + " --acceptance-forge"
+	record := regenCmd + " --record --acceptance-forge"
+	for _, format := range []struct {
+		name     string
+		commands []string
+	}{
+		{"separate", []string{write, record}},
+		{"combined", []string{regenRecordCmd}},
+	} {
+		t.Run(format.name, func(t *testing.T) {
+			// Preserve the shell indentation of both the first call and the retry.
+			initial := "\n          " + strings.Join(format.commands, "\n          ") + "\n"
+			retry := "\n            " + strings.Join(format.commands, "\n            ") + "\n"
+			wf := strings.Replace(string(raw), "\n          "+regenRecordCmd+"\n", initial, 1)
+			wf = strings.Replace(wf, "\n            "+regenRecordCmd+"\n", retry, 1)
+			if p := regenRecordProblems(wf); len(p) != 0 {
+				t.Fatalf("baseline is not clean: %v", p)
+			}
+			mutants := map[string][2]string{
+				"initial without record": {initial, "\n          " + write + "\n"},
+				"retry without record":   {retry, "\n            " + write + "\n"},
+				"extra record pass":      {initial, initial + "          " + record + "\n"},
+				"no history add":         {"then git add -- docs/streams/.history.jsonl; fi", "then :; fi"},
+				"guard on STATUS.md":     {"git status --porcelain -- STATUS.md docs/streams/.history.jsonl", "git status --porcelain -- STATUS.md"},
+				"no push exclusion":      {historyExclude + "\n", ""},
+			}
+			for name, m := range mutants {
+				t.Run(name, func(t *testing.T) {
+					if !strings.Contains(wf, m[0]) {
+						t.Fatal("mutation anchor not found")
+					}
+					if len(regenRecordProblems(strings.Replace(wf, m[0], m[1], 1))) == 0 {
+						t.Fatal("the guard reported nothing")
+					}
+				})
+			}
+		})
 	}
 }
 

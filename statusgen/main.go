@@ -31,7 +31,8 @@ import (
 //     and append any transitions. Single-writer, same as STATUS.md itself —
 //     Used by main-side workflows that record history separately.
 //   - "write-and-record": write the views, then record history from the same
-//     validated stream snapshot if the write succeeded.
+//     validated stream snapshot. Off-board failures still write the views and
+//     exit 1 before either historian runs.
 func run(root, mode string, budget []string, changed []string, scope string) int {
 	// Reset the phase-4 drive-dashboard render inputs each run (one run() call
 	// per root under --root repeats; a leftover from a previous root must never
