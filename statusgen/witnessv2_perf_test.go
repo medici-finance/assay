@@ -58,7 +58,7 @@ func TestWitnessPerfEnv(t *testing.T) {
 // fixture samples separately show that actual successful v2 evaluation ran;
 // they are not a substitute corpus or a relaxation of that budget.
 func TestWitnessPerfMedian(t *testing.T) {
-	installStatusgenFixture(t)
+	installStatusgenFixtureInputs(t, "SG_NEW_BIN", "SG_PERF_ROOT")
 	old := oldStatusgenBin(t)
 	candidate := os.Getenv("SG_NEW_BIN")
 	if candidate == "" {

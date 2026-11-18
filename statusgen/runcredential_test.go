@@ -426,6 +426,7 @@ func rcAdmittedWith(t *testing.T, minted bool) {
 // REST site, passing the decoy straight to newGHClient as an unreviewed
 // caller would, still carries only the run credential, or refuses.
 func TestRunCredPlantedRest(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("minted", func(t *testing.T) {
 		rcAdmittedWith(t, true)
 		if c := newGHClient(os.Getenv("GH_TOKEN")); c.token != rcMinted {
@@ -508,6 +509,7 @@ func TestRunCredPlantedCli(t *testing.T) {
 // endpoint never receives the github.com run credential. Outside an
 // admitted context it is unchanged.
 func TestRunCredDecayToken(t *testing.T) {
+	installStatusgenFixture(t)
 	const dotcom, ghes = "https://api.github.com/graphql", "https://github.example.invalid/api/graphql"
 	t.Run("minted", func(t *testing.T) {
 		rcAdmittedWith(t, true)

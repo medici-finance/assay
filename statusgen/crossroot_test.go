@@ -258,7 +258,6 @@ func TestCrossRootReconcileWrites(t *testing.T) {
 // real checkouts as cross-root witnesses.
 // regression: #4614
 func TestDeskRootsCleared(t *testing.T) {
-	installStatusgenFixture(t)
 	if os.Getenv("STATUSGEN_DESKROOTS_PROBE") == "1" {
 		if v, ok := os.LookupEnv("DESK_ROOTS"); ok {
 			t.Fatalf("the test binary inherited DESK_ROOTS=%q", v)

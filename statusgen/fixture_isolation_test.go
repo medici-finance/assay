@@ -25,7 +25,7 @@ func installStatusgenFixture(t *testing.T, overlays ...testenv.Options) *testenv
 	opts := testenv.Options{Tools: map[string]string{}, Vars: map[string]string{
 		"GOPROXY": "off", "GOSUMDB": "off", "GOTOOLCHAIN": "local", "GOENV": "off",
 	}}
-	for _, name := range []string{"git", "go", "sh", "bash", "cat", "grep", "touch", "env", "tr", "sleep", "printenv", "sed", "awk", "wc", "mkdir", "mktemp", "rm", "date", "basename", "ls", "cut", "tee", "curl", "perl", "python3", "mkfifo", "jq"} {
+	for _, name := range []string{"git", "go", "sh", "bash", "cat", "grep", "touch", "env", "tr", "sleep", "printenv", "sed", "awk", "wc", "mkdir", "mktemp", "rm", "date", "basename", "ls", "cut", "tee", "curl", "perl", "python3", "mkfifo", "jq", "sort", "mv", "cp"} {
 		path, err := exec.LookPath(name)
 		if err != nil {
 			if name == "git" || name == "go" {
@@ -72,6 +72,19 @@ func installStatusgenFixture(t *testing.T, overlays ...testenv.Options) *testenv
 	}
 	scanReloadConfig()
 	return f
+}
+
+// installStatusgenFixtureInputs declares test-runner inputs at the fixture
+// owner. The named controls survive setup; unrelated caller variables do not.
+func installStatusgenFixtureInputs(t *testing.T, keys ...string) *testenv.Fixture {
+	t.Helper()
+	vars := map[string]string{}
+	for _, key := range keys {
+		if value := os.Getenv(key); value != "" {
+			vars[key] = value
+		}
+	}
+	return installStatusgenFixture(t, testenv.Options{Vars: vars})
 }
 
 // The outer process supplies the same injected Git profile that exposed the

@@ -1911,7 +1911,6 @@ func candRepoRoot(t *testing.T) string {
 
 // regression: #2703
 func TestCandidateRecollect(t *testing.T) {
-	installStatusgenFixture(t)
 	res := candRecollectRun(candRecollectOpts{W: os.Stdout, Getenv: os.Getenv,
 		NewDoer: func() httpDoer {
 			return &http.Client{Timeout: 60 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -1927,7 +1926,7 @@ func TestCandidateRecollect(t *testing.T) {
 
 // regression: #2703
 func TestCandidateReplay(t *testing.T) {
-	installStatusgenFixture(t)
+	installStatusgenFixtureInputs(t, "ASSAY_COHORT_REPLAY")
 	path := os.Getenv("ASSAY_COHORT_REPLAY")
 	if path == "" {
 		t.Skip("ASSAY_COHORT_REPLAY is not set: no replay is read")
