@@ -88,6 +88,7 @@ func TestCrossRepoDispatchExecution(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX row executor; core association checks are portable")
 	}
+	realAllocatorFixtureEnvironment(t, "touch", "bash")
 	bin := filepath.Join(t.TempDir(), "statusgen")
 	build := exec.Command("go", "build", "-o", bin, ".")
 	build.Dir = "../../../../statusgen"
@@ -309,6 +310,7 @@ func TestCrossRepoDispatchExecution(t *testing.T) {
 // resolves. A checkout of another repository carrying the same registry and
 // brief is refused at dispatch, by that reason, before any preparation.
 func TestCrossRepoClaimRootOrigin(t *testing.T) {
+	realAllocatorFixtureEnvironment(t, "touch", "bash")
 	crossDispatchConfig(t, "public")
 	t.Setenv(deskkit.EnvAllowedRepos, "example-org/source:ci:public,example-org/tracking:ci:private,example-org/other:ci:private")
 	t.Setenv(deskkit.EnvRepoForges, "example-org/source=github,example-org/tracking=github,example-org/other=github")

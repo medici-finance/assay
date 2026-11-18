@@ -21,6 +21,7 @@ import (
 // regression: desktools-v2/58 — the allocator child mints in process, so a PATH minter
 // fixture is never run; the child must be served from the provider's own cache.
 func TestResumeRealAllocator(t *testing.T) {
+	realAllocatorFixtureEnvironment(t)
 	r := newRealResume(t)
 	result := createDispatchWorktree(r.o, r.plan)
 	if result.err != nil {
@@ -68,6 +69,8 @@ func newRealResume(t *testing.T) realResume {
 	// reuse needs no key and no network, and it adopts the cache for the account it served.
 	s := &stub{}
 	home, root := s.install(t)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
 	cfg := filepath.Join(home, ".config", "assay")
 	if err := os.MkdirAll(cfg, 0o700); err != nil {
 		t.Fatal(err)

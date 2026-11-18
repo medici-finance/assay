@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/medici-finance/assay/gitcore/testenv"
 	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
@@ -78,10 +79,11 @@ type expectation struct {
 //
 // Release-blocking for the desk-tools ship bar.
 func TestFleetWorkflowAcceptance(t *testing.T) {
+	f := fleetFixtureEnvironment(t)
 	if _, err := exec.LookPath("git"); err != nil {
 		t.Fatalf("git is not on PATH: %v — this is could-not-check, not a pass", err)
 	}
-	env := newFleetEnv(t)
+	env := newFleetEnv(t, f)
 	expected := loadExpectations(t)
 
 	observed := map[string]string{}
@@ -152,6 +154,7 @@ func loadExpectations(t *testing.T) map[string]expectation {
 // ---------------------------------------------------------------------------
 
 type fleetEnv struct {
+	fixture       *testenv.Fixture
 	bin           string // dir holding the built verbs + the gh shim
 	home          string // private HOME (roster, audit log)
 	tokens        string // the planted role-credential cache the write verbs read in-process (see plantCredential)
@@ -243,12 +246,49 @@ const (
 	fixtureBotEmail = "300000006+assay-worker-app[bot]@users.noreply.github.com"
 )
 
-func newFleetEnv(t *testing.T) *fleetEnv {
+// Capture only the declared executable/build dependencies before HOME changes.
+// Scenario children use the frozen Fixture.Env rather than the caller process.
+func fleetFixtureEnvironment(t *testing.T) *testenv.Fixture {
+	t.Helper()
+	tools := map[string]string{}
+	for _, name := range []string{"git", "go", "sh", "cat"} {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		path, err = filepath.Abs(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tools[name] = path
+	}
+	cmd := exec.Command(tools["go"], "env", "-json", "GOCACHE", "GOMODCACHE", "GOPATH", "GOROOT")
+	raw, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("resolve fleet Go paths: %v", err)
+	}
+	vars := map[string]string{}
+	if err := json.Unmarshal(raw, &vars); err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range vars {
+		if value == "" || !filepath.IsAbs(filepath.SplitList(value)[0]) {
+			t.Fatalf("invalid fleet build path %s", key)
+		}
+	}
+	for key, value := range map[string]string{"GOWORK": "off", "GOTOOLCHAIN": "local", "GOPROXY": "off", "GOSUMDB": "off", "GOENV": "off", "GOFLAGS": "-buildvcs=false"} {
+		vars[key] = value
+	}
+	return testenv.Install(t, testenv.Options{Tools: tools, Vars: vars})
+}
+
+func newFleetEnv(t *testing.T, f *testenv.Fixture) *fleetEnv {
 	t.Helper()
 	root := t.TempDir()
 	e := &fleetEnv{
-		bin:       filepath.Join(root, "bin"),
-		home:      filepath.Join(root, "home"),
+		fixture:   f,
+		bin:       f.Bin,
+		home:      f.Home,
 		tokens:    filepath.Join(root, "tokens"),
 		ownRepo:   "example-org/tracker",
 		otherRepo: "example-org/agents",
@@ -264,9 +304,9 @@ func newFleetEnv(t *testing.T) *fleetEnv {
 	// the public-repo gate still hits the real api.github.com through the dead proxy.
 	e.forgeURL = startFakeForge(t).URL
 
-	buildVerbForge(t, e.bin, "deskpr", e.forgeURL)
-	buildVerb(t, e.bin, "deskreply")
-	buildShim(t, e.bin, "gh", ghShimSource)
+	buildVerbForge(t, f, e.bin, "deskpr", e.forgeURL)
+	buildVerb(t, f, e.bin, "deskreply")
+	buildShim(t, f, e.bin, "gh", ghShimSource)
 
 	// Two origins, laid out so that `remote.origin.url`'s last two path components parse
 	// to the owner/name slugs above — the tools derive the repo from the remote URL, so a
@@ -274,8 +314,8 @@ func newFleetEnv(t *testing.T) *fleetEnv {
 	// nothing else.
 	origins := filepath.Join(root, "origins", "example-org")
 	mkdir(t, origins)
-	ownOrigin := seedOrigin(t, filepath.Join(origins, "tracker"), e.branch)
-	seedOrigin(t, filepath.Join(origins, "agents"), e.branch)
+	ownOrigin := seedOrigin(t, f, filepath.Join(origins, "tracker"), e.branch)
+	seedOrigin(t, f, filepath.Join(origins, "agents"), e.branch)
 
 	// The worker clone, and THE MANDATED SHAPE on top of it: a worktree added with
 	// --detach from the remote-tracking ref, never a named local branch. The skills
@@ -283,16 +323,16 @@ func newFleetEnv(t *testing.T) *fleetEnv {
 	// a stale sibling worktree holding the branch makes a named checkout impossible
 	// without destroying another session's state.
 	clone := filepath.Join(root, "clone")
-	run(t, root, "git", "clone", ownOrigin, clone)
-	run(t, clone, "git", "remote", "set-head", "origin", "--auto")
+	run(t, f, root, "git", "clone", ownOrigin, clone)
+	run(t, f, clone, "git", "remote", "set-head", "origin", "--auto")
 	e.detached = filepath.Join(root, "wt-detached")
-	run(t, clone, "git", "worktree", "add", e.detached, "refs/remotes/origin/"+e.branch, "--detach")
+	run(t, f, clone, "git", "worktree", "add", e.detached, "refs/remotes/origin/"+e.branch, "--detach")
 
 	// The shape the verbs were WRITTEN for, kept as the harness's own control: if this
 	// one does not reach the remote either, the harness is broken and its verdict on the
 	// mandated shape means nothing.
 	e.onBranch = filepath.Join(root, "wt-branch")
-	run(t, clone, "git", "worktree", "add", e.onBranch, "-b", e.branch+"-local", "refs/remotes/origin/"+e.branch)
+	run(t, f, clone, "git", "worktree", "add", e.onBranch, "-b", e.branch+"-local", "refs/remotes/origin/"+e.branch)
 
 	e.bodyClean = filepath.Join(root, "body-clean.md")
 	write(t, e.bodyClean, "## Summary\n\nA clean body citing tools/desk/internal/deskkit/bodycheck.go:45.\n\nBrief: fixture/01\n")
@@ -311,29 +351,29 @@ func newFleetEnv(t *testing.T) *fleetEnv {
 // commit ahead, and returns the path. Bare, because a worker clones an origin; the feature
 // branch exists on the remote already, because the mandated worktree is created from
 // refs/remotes/origin/<branch>.
-func seedOrigin(t *testing.T, path, branch string) string {
+func seedOrigin(t *testing.T, f *testenv.Fixture, path, branch string) string {
 	t.Helper()
 	mkdir(t, path)
-	run(t, path, "git", "init", "--bare", "--initial-branch=main", ".")
+	run(t, f, path, "git", "init", "--bare", "--initial-branch=main", ".")
 	seed := t.TempDir()
-	run(t, seed, "git", "init", "--initial-branch=main", ".")
-	run(t, seed, "git", "config", "user.email", fixtureBotEmail)
-	run(t, seed, "git", "config", "user.name", fixtureBotName)
+	run(t, f, seed, "git", "init", "--initial-branch=main", ".")
+	run(t, f, seed, "git", "config", "user.email", fixtureBotEmail)
+	run(t, f, seed, "git", "config", "user.name", fixtureBotName)
 	write(t, filepath.Join(seed, "README.md"), "seed\n")
 	// example-stream/02: a real brief so `Brief: fixture/01` trailers in the harness
 	// bodies resolve under --root in every fixture worktree.
 	mkdir(t, filepath.Join(seed, "docs", "streams", "fixture"))
 	write(t, filepath.Join(seed, "docs", "streams", "fixture", "brief-01-test.md"),
 		"---\nschema: brief-v1\nbrief: fixture/01\ntitle: fixture brief\n---\n\nFixture brief.\n")
-	run(t, seed, "git", "add", "-A")
-	run(t, seed, "git", "commit", "-m", "seed")
-	run(t, seed, "git", "checkout", "-b", branch)
+	run(t, f, seed, "git", "add", "-A")
+	run(t, f, seed, "git", "commit", "-m", "seed")
+	run(t, f, seed, "git", "checkout", "-b", branch)
 	write(t, filepath.Join(seed, "CHANGE.md"), "the branch's own commit\n")
-	run(t, seed, "git", "add", "-A")
-	run(t, seed, "git", "commit", "-m", "brief work")
-	run(t, seed, "git", "remote", "add", "origin", path)
-	run(t, seed, "git", "push", "origin", "main", branch)
-	run(t, path, "git", "symbolic-ref", "HEAD", "refs/heads/main")
+	run(t, f, seed, "git", "add", "-A")
+	run(t, f, seed, "git", "commit", "-m", "brief work")
+	run(t, f, seed, "git", "remote", "add", "origin", path)
+	run(t, f, seed, "git", "push", "origin", "main", branch)
+	run(t, f, path, "git", "symbolic-ref", "HEAD", "refs/heads/main")
 	return path
 }
 
@@ -519,10 +559,7 @@ func (e *fleetEnv) exec(t *testing.T, dir string, withCredential bool, verb stri
 	t.Helper()
 	cmd := exec.Command(filepath.Join(e.bin, verb), args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(),
-		"PATH="+e.bin+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"HOME="+e.home,
-		"XDG_CONFIG_HOME="+filepath.Join(e.home, ".config"),
+	cmd.Env = e.fixture.Env(
 		"CLAUDE_SESSION_ID=fleet-harness",
 		"DESK_TOOLS_DISABLED=",
 		// The workflow these scenarios measure is a DISPATCHED WORKER's, and such a
@@ -532,7 +569,6 @@ func (e *fleetEnv) exec(t *testing.T, dir string, withCredential bool, verb stri
 		// measure the gate instead of the shape it is about. The refusal itself is pinned
 		// per verb in each verb's own package.
 		"DESK_LOOP=worker-desk",
-		"GIT_CONFIG_GLOBAL="+filepath.Join(e.home, "gitconfig"),
 		// The network is deliberately unreachable, so the public-repo gate — the first
 		// step that needs GitHub — fails fast and marks the boundary between "the local
 		// preconditions all passed" and everything before it. A harness that reached the
@@ -547,11 +583,12 @@ func (e *fleetEnv) exec(t *testing.T, dir string, withCredential bool, verb stri
 		"FAKEGH_LIST_HAS_PR="+os.Getenv("FAKEGH_LIST_HAS_PR"),
 		"FAKEGH_LIST_DRAFT="+os.Getenv("FAKEGH_LIST_DRAFT"),
 		"FAKEGH_HEAD_REF="+os.Getenv("FAKEGH_HEAD_REF"),
+		"FAKEGH_PR_BODY="+os.Getenv("FAKEGH_PR_BODY"),
 	)
 	if withCredential {
 		cmd.Env = append(cmd.Env, e.plantCredential(t)...)
 	} else {
-		// os.Environ() may carry a real operator's App config; a cold shell has none.
+		// The cold-shell scenario explicitly declares no App provider inputs.
 		cmd.Env = append(cmd.Env, "WORKER_APP_ID=", "WORKER_INSTALL_ID=", "WORKER_TOKEN=", "WORKER_PEM=", "WORKER_APP=")
 	}
 	out, err := cmd.CombinedOutput()
@@ -613,29 +650,29 @@ func (e *fleetEnv) overrideRows(t *testing.T) int {
 // Build helpers and PATH shims.
 // ---------------------------------------------------------------------------
 
-func buildVerb(t *testing.T, bin, name string) {
+func buildVerb(t *testing.T, f *testenv.Fixture, bin, name string) {
 	t.Helper()
 	// The module root is two levels up from internal/fleetharness.
-	run(t, filepath.Join("..", ".."), "go", "build", "-o", filepath.Join(bin, name), "./cmd/"+name)
+	run(t, f, filepath.Join("..", ".."), "go", "build", "-o", filepath.Join(bin, name), "./cmd/"+name)
 }
 
 // buildVerbForge builds a verb with its test-only forge API base (a package var) injected at link
 // time, so the subprocess reaches the harness's fake forge instead of the real api.github.com.
 // This is the link-time equivalent of the per-test `forgeAPIBase` override the verb's own package
 // tests set — the fleet harness cannot set a package var in a subprocess, so it sets it here.
-func buildVerbForge(t *testing.T, bin, name, forgeURL string) {
+func buildVerbForge(t *testing.T, f *testenv.Fixture, bin, name, forgeURL string) {
 	t.Helper()
-	run(t, filepath.Join("..", ".."), "go", "build",
+	run(t, f, filepath.Join("..", ".."), "go", "build",
 		"-ldflags", "-X main.forgeAPIBase="+forgeURL,
 		"-o", filepath.Join(bin, name), "./cmd/"+name)
 }
 
-func buildShim(t *testing.T, bin, name, src string) {
+func buildShim(t *testing.T, f *testenv.Fixture, bin, name, src string) {
 	t.Helper()
 	dir := t.TempDir()
 	write(t, filepath.Join(dir, "main.go"), src)
 	write(t, filepath.Join(dir, "go.mod"), "module shim\n\ngo 1.22\n")
-	run(t, dir, "go", "build", "-o", filepath.Join(bin, name), ".")
+	run(t, f, dir, "go", "build", "-o", filepath.Join(bin, name), ".")
 }
 
 // ghShimSource stands in for the GitHub CLI. It answers only the reads the gated verbs
@@ -698,17 +735,16 @@ func write(t *testing.T, p, content string) {
 	}
 }
 
-func run(t *testing.T, dir, name string, args ...string) string {
+func run(t *testing.T, f *testenv.Fixture, dir, name string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(),
+	cmd.Env = f.Env(
 		// The fixture commits carry the worker bot identity a provisioned worktree stamps,
 		// so the publish-identity gate the pushing verbs run sees the role's own commits and
 		// the mandated-workflow control rows reach the remote (see fixtureBotEmail).
 		"GIT_AUTHOR_NAME="+fixtureBotName, "GIT_AUTHOR_EMAIL="+fixtureBotEmail,
 		"GIT_COMMITTER_NAME="+fixtureBotName, "GIT_COMMITTER_EMAIL="+fixtureBotEmail,
-		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
 	)
 	if name == "go" {
 		goquiet.Cmd(cmd)
