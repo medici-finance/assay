@@ -135,11 +135,11 @@ func qualifyPublication(t *testing.T, bin, dispatch string, split bool) {
 	if out, err := call.CombinedOutput(); err != nil {
 		t.Fatalf("dispatch: %v %s", err, out)
 	}
-	if got := crossLandGit(t, source, "for-each-ref", "--format=%(objectname)", "refs/fixture-claims/"); got != sourceHead {
-		t.Fatalf("claim points to %q; want %s", got, sourceHead)
+	if got := crossLandGit(t, tracking, "for-each-ref", "--format=%(objectname)", "refs/fixture-claims/"); got != trackingHead {
+		t.Fatalf("tracking claim points to %q; want %s", got, trackingHead)
 	}
-	if split && crossLandGit(t, tracking, "for-each-ref", "refs/fixture-claims/") != "" {
-		t.Fatal("delivery claim created in tracking repository")
+	if split && crossLandGit(t, source, "for-each-ref", "refs/fixture-claims/") != "" {
+		t.Fatal("verifier claim created in delivery repository")
 	}
 	command, err := os.ReadFile(prompt + ".command")
 	if err != nil {

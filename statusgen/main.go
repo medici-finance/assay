@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-// run operates in one of four modes:
+// run operates in one of five modes:
 //   - "write" (default): regenerate and write STATUS.md.
 //
 // Every mode reports two classes of hard problem — see the classification
@@ -29,8 +29,10 @@ import (
 //     whatever budget specs it is handed.
 //   - "record": diff current brief status against docs/streams/.history.jsonl
 //     and append any transitions. Single-writer, same as STATUS.md itself —
-//     wired ONLY into main's status-regen CI, run AFTER STATUS.md regenerates.
-//     Never invoked by --lint.
+//     Used by main-side workflows that record history separately.
+//   - "write-and-record": write the views, then record history from the same
+//     validated stream snapshot. Off-board failures still write the views and
+//     exit 1 before either historian runs.
 func run(root, mode string, budget []string, changed []string, scope string) int {
 	// Reset the phase-4 drive-dashboard render inputs each run (one run() call
 	// per root under --root repeats; a leftover from a previous root must never
@@ -962,7 +964,7 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 			fmt.Fprintln(os.Stderr, "PROBLEM:", p)
 		}
 		tail := "they do not suppress anything in this mode."
-		if mode == "write" || mode == "record" {
+		if mode == "write" || mode == "record" || mode == "write-and-record" {
 			tail = "the generated views were regenerated rather than left stale, " +
 				"because an off-board failure cannot make the board wrong."
 		}
@@ -1028,17 +1030,9 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 		// single-writer append; never reached from --lint. The append happens
 		// (the board sources passed every check that reads them), and the run
 		// still exits 1 if anything off-board failed.
-		if code := recordHistory(root, streams); code != 0 {
+		if code := recordHistorians(root, streams); code != 0 {
 			return code
 		}
-		// The DORA-timing historian rides the SAME single-writer record pass
-		// (docs/streams/.dora-timing.jsonl, sibling to .history.jsonl). It is
-		// best-effort and fail-open: a repo it cannot resolve or any REST read
-		// that fails records nothing and never fails the record job — so a
-		// could-not-check here must not change the exit code below. The reads
-		// go straight to the REST API (GH_TOKEN / GITHUB_TOKEN); they need no
-		// `gh` on the runner, which is what kept the substrate from accruing.
-		recordDoraTiming(root, newHTTPDoraTimingSource(), nowFunc())
 		if len(offBoardProblems) > 0 {
 			return 1
 		}
@@ -1086,6 +1080,9 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	fmt.Println("wrote register views (INTAKE.md, FINDINGS.md)")
 	if len(offBoardProblems) > 0 {
 		return 1
+	}
+	if mode == "write-and-record" {
+		return recordHistorians(root, streams)
 	}
 	return 0
 }
@@ -1685,6 +1682,7 @@ func main() {
 	// checkouts get read. ASSAY_SIBLING_MERGE=1 (exactly "1") is the env form.
 	// `statusgen phantoms --class sibling-merge-unreconciled` needs neither.
 	flag.BoolVar(&siblingMergeFlagValue, "sibling-merge", false, "opt in to the sibling-merge-unreconciled sibling read on --lint, regen, --next-up and --roadmap (also ASSAY_SIBLING_MERGE=1); reads only repos named in DESK_ROOTS or --sibling-root")
+	writeAndRecord := flag.Bool("write-and-record", false, "regenerate the board and append its status and DORA histories after a successful write (main CI only)")
 	recordMode := flag.Bool("record", false, "append brief status transitions to docs/streams/.history.jsonl (main CI only)")
 	verifyIssuesMode := flag.Bool("verify-issues", false, "emit JSON for newly-eligible verify-gate (gate:human + verified) briefs")
 	existingMarkers := flag.String("existing-markers", "", "file of already-existing verify-gate issue markers (one per line, or raw issue bodies)")
@@ -2550,6 +2548,8 @@ func main() {
 		mode = "check"
 	case *recordMode:
 		mode = "record"
+	case *writeAndRecord:
+		mode = "write-and-record"
 	}
 	// Budget specs are resolved PER ROOT inside runRoots (bare --lint defaults to
 	// the same spec CI enforces, and drops itself on a root with no

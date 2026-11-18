@@ -268,7 +268,11 @@ func admittedRowScrubbedRefs(command string, env []string) []string {
 // and tools find no user config and no stored login there, and nothing an
 // earlier row of the same run left behind. It returns that directory, which
 // the caller removes when the row ends, and the two variables to set.
-func admittedRowDirs(scratch string) (string, []string, error) {
+//
+// With roster (a container run whose receipt carries the open step's roster
+// copy, rostercopy.go) the fresh HOME also holds that copy as its config-home
+// roster, and nothing else.
+func admittedRowDirs(scratch string, roster []byte) (string, []string, error) {
 	dir, err := os.MkdirTemp(scratch, "row-")
 	if err != nil {
 		return "", nil, err
@@ -276,6 +280,12 @@ func admittedRowDirs(scratch string) (string, []string, error) {
 	home, tmp := filepath.Join(dir, "home"), filepath.Join(dir, "tmp")
 	for _, d := range []string{home, tmp} {
 		if err := os.Mkdir(d, 0o700); err != nil {
+			removeRowScratch(dir)
+			return "", nil, err
+		}
+	}
+	if roster != nil {
+		if err := installRowRoster(home, roster); err != nil {
 			removeRowScratch(dir)
 			return "", nil, err
 		}

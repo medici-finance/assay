@@ -82,8 +82,8 @@ func TestPublicationHandoffDispatcher(t *testing.T) {
 	if err := cmdDispatch(args); err != nil {
 		t.Fatalf("dispatch: %v", err)
 	}
-	if decided != tracker || claimed != deliveryRepo {
-		t.Fatalf("decision=%q claim=%q, want %q and %q", decided, claimed, tracker, deliveryRepo)
+	if decided != tracker || claimed != tracker {
+		t.Fatalf("decision=%q claim=%q, want both in %q", decided, claimed, tracker)
 	}
 	b, err := os.ReadFile(emittedPathFor(prompt))
 	if err != nil {

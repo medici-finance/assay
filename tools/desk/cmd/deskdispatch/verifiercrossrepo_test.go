@@ -151,6 +151,20 @@ func TestCrossRepoDispatchExecution(t *testing.T) {
 			if len(records) != 1 || len(childCalls) == 0 {
 				t.Fatal("dispatch did not acquire and record its run")
 			}
+			// regression: #5999 — the claim is acquired in the TRACKING repo, where the
+			// brief's Evidence and outcome record land, never the deliverable's namespace.
+			acquired := false
+			for _, call := range childCalls {
+				if strings.Contains(call, "dispatch-claim.sh acquire ") {
+					acquired = true
+					if !strings.Contains(call, "--repo example-org/tracking") {
+						t.Fatalf("cross-repository verifier claim not taken in the tracking repo: %s", call)
+					}
+				}
+			}
+			if !acquired {
+				t.Fatalf("no claim acquire among the dispatch children: %v", childCalls)
+			}
 			prompt, err := os.ReadFile(emittedPathFor(o.promptFile))
 			if err != nil || !strings.Contains(string(prompt), "Packet:") || strings.Contains(string(prompt), "stamp PENDING") {
 				t.Fatalf("dispatch did not emit admitted packet prompt: %v", err)

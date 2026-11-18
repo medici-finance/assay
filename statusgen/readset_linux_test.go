@@ -232,6 +232,15 @@ func main() {
 }
 `
 
+// regression: #6274
+func TestReadSetTargetWithoutRepository(t *testing.T) {
+	root := t.TempDir()
+	brief := filepath.Join(t.TempDir(), "brief.md")
+	if target := newReadSetTarget(root, brief, nil); target != nil {
+		t.Fatal("reported a recorder target without establishing a checkout")
+	}
+}
+
 // regression: #2026
 // TestVerifyrunRecordsReadSet — build-less-brittle/15 row 14.
 func TestVerifyrunRecordsReadSet(t *testing.T) {
