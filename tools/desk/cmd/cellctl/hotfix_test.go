@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitcore/testenv"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -334,13 +335,33 @@ func TestHotfixShimExpired(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	cmd := exec.Command("bash", shimPath)
-	cmd.Env = append(os.Environ(), "HOME="+w.home)
+	// Expiry is the subject here, not stored-login discovery. Declare a synthetic
+	// typed ambient input and make any accidental forge lookup observable locally.
+	lookup := filepath.Join(t.TempDir(), "lookup")
+	decoy := filepath.Join(t.TempDir(), "gh")
+	script := "#!/bin/sh\nprintf lookup > '" + strings.ReplaceAll(lookup, "'", "'\"'\"'") + "'\nexit 97\n"
+	if err := os.WriteFile(decoy, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	tools := map[string]string{"gh": decoy}
+	for _, name := range []string{"bash", "date", "env"} {
+		path, err := exec.LookPath(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tools[name] = path
+	}
+	child := testenv.New(t, testenv.Options{Tools: tools})
+	cmd := exec.Command(filepath.Join(child.Bin, "bash"), shimPath)
+	cmd.Env = child.Env("CELLCTL_GH_AMBIENT=fixture-not-a-credential")
 	var se bytes.Buffer
 	cmd.Stderr = &se
 	out, _ := cmd.Output()
 	if !strings.Contains(se.String(), "expired") || !strings.Contains(string(out), "pinned-ran") {
 		t.Errorf("expired shim: stdout %q stderr %q, want the pinned binary and an expiry NOTICE", out, se.String())
+	}
+	if _, err := os.Stat(lookup); !os.IsNotExist(err) {
+		t.Fatal("expiry fixture reached credential lookup")
 	}
 }
 
