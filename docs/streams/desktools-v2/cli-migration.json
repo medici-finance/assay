@@ -83,6 +83,11 @@
     },
     {
       "class": "test",
+      "pattern": "docs/streams/desk-tools/verify.d/39-consumer-routes.sh",
+      "reason": "desk-tools/39 Verify row 3 executes this pinned source-only helper to check the landed consumer routes against three local Git diffs"
+    },
+    {
+      "class": "test",
       "pattern": "docs/streams/measured-status/verify.d/06-allowance-backlog.sh",
       "reason": "read-only acceptance check for the stamp-allowance removal condition; run only by measured-status/06 Verify rows (a witness host run, plus its offline test), never installed or released as an operator CLI (#3369)"
     },
