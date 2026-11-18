@@ -239,6 +239,7 @@ func TestDecisionGateDeliveryDesignGate(t *testing.T) {
 // runner's event variables: a child test binary started with them set sees
 // neither.
 func TestDecisionGateDeliveryEventCleared(t *testing.T) {
+	installStatusgenFixture(t)
 	if os.Getenv("STATUSGEN_EVENT_PROBE") == "1" {
 		for _, k := range []string{"GITHUB_EVENT_NAME", "GITHUB_EVENT_PATH"} {
 			if v, ok := os.LookupEnv(k); ok {

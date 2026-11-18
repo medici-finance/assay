@@ -25,7 +25,7 @@ func installStatusgenFixture(t *testing.T, overlays ...testenv.Options) *testenv
 	opts := testenv.Options{Tools: map[string]string{}, Vars: map[string]string{
 		"GOPROXY": "off", "GOSUMDB": "off", "GOTOOLCHAIN": "local", "GOENV": "off",
 	}}
-	for _, name := range []string{"git", "go", "sh", "bash", "cat", "grep", "touch", "env", "tr", "sleep"} {
+	for _, name := range []string{"git", "go", "sh", "bash", "cat", "grep", "touch", "env", "tr", "sleep", "printenv", "sed", "awk", "wc", "mkdir", "mktemp", "rm", "date", "basename", "ls", "cut", "tee", "curl", "perl", "python3", "mkfifo", "jq"} {
 		path, err := exec.LookPath(name)
 		if err != nil {
 			if name == "git" || name == "go" {
@@ -45,6 +45,11 @@ func installStatusgenFixture(t *testing.T, overlays ...testenv.Options) *testenv
 		if value := os.Getenv(key); value != "" {
 			opts.Vars[key] = value
 		}
+	}
+	// Keep the existing missing-tool CI assertion; isolation must not turn
+	// a required CI execution into a developer-only skip.
+	if os.Getenv("CI") != "" {
+		opts.Vars["CI"] = "true"
 	}
 	for _, overlay := range overlays {
 		for name, path := range overlay.Tools {
@@ -220,6 +225,12 @@ func TestFixtureSiblingParentIsolation08(t *testing.T) {
 	if controlErr == nil || !bytes.Contains(controlOut, []byte("inherited row marker prevented fixture GraphQL")) {
 		t.Fatalf("inherited control did not expose the fixture defect: %v\n%s", controlErr, controlOut)
 	}
+	strict := exec.Command(self, "-test.count=1", "-test.v", "-test.run=^TestFixtureCIControl08$")
+	strict.Env = f.Env("CI=true", "STATUSGEN08_CI_CONTROL=1")
+	strictOut, strictErr := strict.CombinedOutput()
+	if strictErr == nil || !bytes.Contains(strictOut, []byte("under CI this test must run, not skip")) || bytes.Contains(strictOut, []byte("--- SKIP: TestFixtureCIControl08")) {
+		t.Fatalf("fixture setup lost CI missing-tool strictness: %v\n%s", strictErr, strictOut)
+	}
 	if _, err := gitcore.OriginAuthority(repo); err != nil {
 		t.Fatalf("owned authority control: %v", err)
 	}
@@ -284,4 +295,13 @@ func fixtureSiblingTree08(t *testing.T, root string) map[string]string {
 		t.Fatal(err)
 	}
 	return result
+}
+
+// This probe is executed as an expected failure by the parent regression.
+func TestFixtureCIControl08(t *testing.T) {
+	if os.Getenv("STATUSGEN08_CI_CONTROL") != "1" {
+		t.Skip("CI failure probe is launched only by the parent regression")
+	}
+	installStatusgenFixture(t)
+	requireTool(t, "fixture-tool-intentionally-absent")
 }

@@ -273,6 +273,7 @@ func perfMemoCounts() (files, dirs int) {
 // errors, not a claim to count every file read in statusgen.
 // regression: statusgen/26
 func TestPerfReadCountCoverage(t *testing.T) {
+	installStatusgenFixture(t)
 	resetReadMemo()
 	t.Cleanup(resetReadMemo)
 	dir := t.TempDir()

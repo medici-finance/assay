@@ -183,6 +183,7 @@ func stubBakedRoots(t *testing.T, roots, cache string) {
 // manifest, or no gap, nothing is reclassified.
 // regression: #5766
 func TestContainerRowStoppedOnMissingModule(t *testing.T) {
+	installStatusgenFixture(t)
 	stubIfaces(t, netnoneIfaces)
 	root, cache := t.TempDir(), t.TempDir()
 	writeGapFile(t, root, "tools/desk/go.mod", "module example.com/desk\n\ngo 1.27.0\n\nrequire golang.org/x/text v0.43.0\n")

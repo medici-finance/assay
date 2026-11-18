@@ -65,6 +65,7 @@ func assertRegated(t *testing.T, path, wantGate string, wantLabels []string) {
 // live label set.
 // regression: F-scan-reopen-frontmatter
 func TestReopenArchiveRegates(t *testing.T) {
+	installStatusgenFixture(t)
 	root, dir := reopenFixture(t)
 	archived := writeTemp(t, filepath.Join(dir, archiveDirName), "issue-661.md",
 		closedPlaceholderFile("issue-loop", 661, "bug", "gate: model"))
@@ -89,6 +90,7 @@ func TestReopenArchiveRegates(t *testing.T) {
 // with a security label gains gate: human and the live labels.
 // regression: F-scan-reopen-frontmatter
 func TestReopenInPlaceRegates(t *testing.T) {
+	installStatusgenFixture(t)
 	root, dir := reopenFixture(t)
 	path := writeTemp(t, dir, "issue-662.md", closedPlaceholderFile("issue-loop", 662, "bug"))
 
@@ -110,6 +112,7 @@ func TestReopenInPlaceRegates(t *testing.T) {
 // issue with no labels left drops the line.
 // regression: F-scan-reopen-frontmatter
 func TestReopenKeepsHumanGate(t *testing.T) {
+	installStatusgenFixture(t)
 	root, dir := reopenFixture(t)
 	body := "---\nschema: placeholder-v1\nbrief: issue-loop/issue-663\nissue: 663\n" +
 		"repo: example-org/tracker\nwave: 0\nstatus: done\ngate: human\n" +
@@ -145,6 +148,7 @@ func TestReopenKeepsHumanGate(t *testing.T) {
 // a placeholder with no gate line whose stored labels derive human keeps that too.
 // regression: F-scan-reopen-frontmatter
 func TestReopenKeepsHumanGateAnyYAMLForm(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []struct {
 		name   string
 		gate   string // the frontmatter gate line ("" = none)

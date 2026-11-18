@@ -258,6 +258,7 @@ effectiveness: "go test ./x -run TestY"
 // mutant that drops the calls in run(), or appends their problems to notices,
 // fails here.
 func TestEffClosureLintEntryPoint(t *testing.T) {
+	installStatusgenFixture(t)
 	lintWith := func(t *testing.T, entry string) capturedRun {
 		t.Helper()
 		root := t.TempDir()

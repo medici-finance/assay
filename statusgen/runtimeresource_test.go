@@ -632,6 +632,7 @@ func TestRuntimeResourceContractTag(t *testing.T) {
 // TestRuntimeResourceContractCLI drives the subcommand end to end: the
 // three-state exit, and fail-closed refusal when the registry cannot be trusted.
 func TestRuntimeResourceContractCLI(t *testing.T) {
+	installStatusgenFixture(t)
 	run := func(args ...string) (int, string) {
 		var out, errb bytes.Buffer
 		code := runRuntimeResource(args, &out, &errb)

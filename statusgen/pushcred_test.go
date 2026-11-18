@@ -671,6 +671,7 @@ func TestGitlabRegenClassifies(t *testing.T) {
 //
 // regression: #2910
 func TestPushcredClassUnit(t *testing.T) {
+	installStatusgenFixture(t)
 	requirePushTools(t)
 	cases := map[string]string{
 		"remote: Token has expired.\nfatal: Authentication failed for 'https://h/p.git/'":                                                      "expired",
@@ -727,6 +728,7 @@ func TestPushcredClassUnit(t *testing.T) {
 //
 // regression: #2910
 func TestPushcredMaskShapes(t *testing.T) {
+	installStatusgenFixture(t)
 	requirePushTools(t)
 	src, err := filepath.Abs("pushcred.sh")
 	if err != nil {
@@ -781,6 +783,7 @@ exit 1
 //
 // regression: #2910
 func TestPushcredRawLogMode(t *testing.T) {
+	installStatusgenFixture(t)
 	requirePushTools(t)
 	src, err := filepath.Abs("pushcred.sh")
 	if err != nil {
@@ -1289,6 +1292,7 @@ exit 0
 //
 // regression: #5004
 func TestPushcredHeaderListFails(t *testing.T) {
+	installStatusgenFixture(t)
 	requirePushTools(t)
 	src, err := filepath.Abs("pushcred.sh")
 	if err != nil {

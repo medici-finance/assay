@@ -213,6 +213,7 @@ func TestRowreadHoldsNoToken(t *testing.T) {
 // a flag smuggled into the target and a stray trailing argument are refused
 // before any reader starts.
 func TestRowreadRefusesNonRead(t *testing.T) {
+	installStatusgenFixture(t)
 	sg := rowreadStatusgen(t)
 	f := newRowreadForge(t, `"x"`)
 	for _, args := range [][]string{
@@ -245,6 +246,7 @@ func TestRowreadRefusesNonRead(t *testing.T) {
 // TestRowreadUnreadFailsClosed: an issue the reader did not read is a
 // could-not-check exit, never an empty answer a row would read as "absent".
 func TestRowreadUnreadFailsClosed(t *testing.T) {
+	installStatusgenFixture(t)
 	sg := rowreadStatusgen(t)
 	rowreadStub(t, "echo '{\"schema\":1,\"kind\":\"comments\",\"items\":[],\"partial\":[{\"repo\":\"example-org/one\",\"number\":7,\"reason\":\"unreadable\"}]}'\n")
 	out, err := exec.Command(sg, "rowread", "comments", "--issue", "example-org/one#7").Output()
@@ -260,6 +262,7 @@ func TestRowreadUnreadFailsClosed(t *testing.T) {
 // tests "any output?" without pipefail would otherwise read the earlier
 // issue's line as a pass.
 func TestRowreadLaterUnreadPrintsNothing(t *testing.T) {
+	installStatusgenFixture(t)
 	sg := rowreadStatusgen(t)
 	rowreadStub(t, `case "$*" in
 *one#8*) echo '{"schema":1,"kind":"comments","items":[],"partial":[{"repo":"example-org/one","number":8,"reason":"unreadable"}]}' ;;
@@ -278,6 +281,7 @@ esac
 // whose body holds the text. Row 13's marker check and its control both rest
 // on this: an unfiltered read would pass on any issue with any comment.
 func TestRowreadBodyContainsFilters(t *testing.T) {
+	installStatusgenFixture(t)
 	sg := rowreadStatusgen(t)
 	rowreadStub(t, `echo '{"schema":1,"kind":"comments","items":[{"repo":"example-org/one","number":7,"comments":[`+
 		`{"authorLogin":"example-other","authorId":2,"createdAt":"2026-11-02T00:00:00Z","body":"unrelated note"},`+

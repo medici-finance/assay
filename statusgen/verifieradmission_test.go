@@ -37,6 +37,7 @@ func TestVerifierAdmissionBeforeRows(t *testing.T) {
 // see none, so no test here can inherit a verify loop and reach the real
 // deskdispatch through admission, whatever the CI environment carries.
 func TestDeskLoopCleared(t *testing.T) {
+	installStatusgenFixture(t)
 	if os.Getenv("STATUSGEN_DESKLOOP_PROBE") == "1" {
 		if v, ok := os.LookupEnv("DESK_LOOP"); ok {
 			t.Fatalf("the test binary inherited DESK_LOOP=%q", v)

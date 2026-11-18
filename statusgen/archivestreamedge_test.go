@@ -258,6 +258,7 @@ func TestEdgeResolutionUniverseActiveWinsCollision(t *testing.T) {
 // checkBriefFiles in main.go — reddens THIS test (the archived-stream assertion
 // fires); the control assertion is what proves the wiring did not blanket-suppress.
 func TestRunLintResolvesArchivedEdges(t *testing.T) {
+	installStatusgenFixture(t)
 	root := writeArchiveEdgeFixture(t)
 	var code int
 	stderr := captureStderr(t, func() { code = run(root, "lint", nil, nil, "") })

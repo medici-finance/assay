@@ -11,6 +11,7 @@ import (
 // TestInitScaffoldsLintCleanTree verifies `statusgen init` creates a structure that
 // statusgen itself accepts: after init, --lint (mode "lint") must return 0.
 func TestInitScaffoldsLintCleanTree(t *testing.T) {
+	installStatusgenFixture(t)
 	dir := t.TempDir()
 
 	if code := runInit(dir, false); code != 0 {

@@ -21,6 +21,7 @@ const sgProcBindChild = "STATUSGEN_PROCBIND_CHILD"
 // The gate must stay could-not-check. Skips where an unprivileged user namespace or the
 // mount is unavailable.
 func TestStatusgenProcBindMount(t *testing.T) {
+	installStatusgenFixture(t)
 	if os.Getenv(sgProcBindChild) == "1" {
 		sgProcBindChildRun()
 		return

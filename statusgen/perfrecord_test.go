@@ -174,6 +174,7 @@ func perfRecords(t *testing.T, home string) []map[string]any {
 //
 // regression: #3101
 func TestPerfOffWritesNothing(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := buildPerfBinary(t)
 	onHome := t.TempDir()
 	on := runPerfBinary(t, bin, onHome, true, "1", "--version")
@@ -205,6 +206,7 @@ func TestPerfOffWritesNothing(t *testing.T) {
 //
 // regression: #3101, #3327
 func TestPerfOnWritesOneRecord(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := buildPerfBinary(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {

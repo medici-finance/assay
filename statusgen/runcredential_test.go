@@ -258,6 +258,7 @@ func rcCredFile(t *testing.T, perms string) string {
 // new variable. No row ever sees the value. A forge-reading row whose
 // credential cannot be had is could-not-run, never run.
 func TestRunCredRowScoped(t *testing.T) {
+	installStatusgenFixture(t)
 	plan := resolveShellPlan()
 	if !plan.ok {
 		t.Skip("no runnable shell: " + plan.reason)
@@ -457,6 +458,7 @@ func TestRunCredPlantedRest(t *testing.T) {
 // the admitted check runs before the caller's credential is honoured. A stub
 // gh is on PATH, so the result never depends on the runner having one.
 func TestRunCredPlantedCli(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, explicit := range []bool{false, true} {
 		launch := func() *exec.Cmd {
 			cmd := exec.Command("gh", "api", "example")

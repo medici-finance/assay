@@ -785,6 +785,7 @@ func TestReconcileJobBrokenReadFails(t *testing.T) {
 // holds RUNNER_TEMP and outlives a job). The control, without the job's env,
 // shows the planted file would otherwise be read.
 func TestReconcileJobBuildIgnoresGoWork(t *testing.T) {
+	installStatusgenFixture(t)
 	requireTool(t, "go")
 	job := stagedWorkflow(t).Jobs["reconcile"]
 	root := t.TempDir()
@@ -1115,6 +1116,7 @@ const prProjection = `.[] | [.number, (.head.repo.full_name // "-"), .head.ref, 
 // each come out as the four fields the selection reads. Skipped without jq on
 // a developer machine; under CI a missing jq fails it.
 func TestReconcileJobPRProjection(t *testing.T) {
+	installStatusgenFixture(t)
 	requireTool(t, "jq")
 	jq, err := exec.LookPath("jq")
 	if err != nil {
@@ -1266,6 +1268,7 @@ func TestReconcileJobIgnoresRunnerResidue(t *testing.T) {
 // not the pin is refused and never extracted; the pinned digest is extracted.
 // The isolation guard reads the same gate as text; this pins what it does.
 func TestReconcileJobInstallVerifies(t *testing.T) {
+	installStatusgenFixture(t)
 	requireJobTools(t)
 	wf := stagedWorkflow(t)
 	ghPin := regexp.MustCompile(`want="([0-9a-f]{64})"`)
@@ -1505,6 +1508,7 @@ func reconcileWithStepEnv(t *testing.T, actions string) scanConfig {
 // sets it, and requires the child to see none, so the suite's verdicts do not
 // depend on where it runs (release.yml runs it on a runner).
 func TestGitHubActionsCleared(t *testing.T) {
+	installStatusgenFixture(t)
 	if os.Getenv("STATUSGEN_GHACTIONS_PROBE") == "1" {
 		if v, ok := os.LookupEnv("GITHUB_ACTIONS"); ok {
 			t.Fatalf("the test binary inherited GITHUB_ACTIONS=%q", v)
@@ -1909,6 +1913,7 @@ var reconcileMutants = []struct {
 // comment and the README say is tested is shown red when its line is reverted.
 // It re-runs this test binary against each mutated copy of the staged file.
 func TestReconcileJobMutantsFail(t *testing.T) {
+	installStatusgenFixture(t)
 	if os.Getenv("RECONCILEJOB_WORKFLOW") != "" {
 		t.Skip("running against a mutant")
 	}

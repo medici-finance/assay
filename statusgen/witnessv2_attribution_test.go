@@ -54,6 +54,7 @@ func gv2WitnessRow(rowID, command, cell string) string {
 
 // regression: #2026 — a v2 cell must not change who the reads say ran a row.
 func TestWitnessV2AttributionUnchanged(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, id := range gv2Identities {
 		v1, v2 := gv2Cells(id)
 		if p := evaluation.ParseRunnerCell(v2); p.Schema != evaluation.WitnessSchemaV2 || strings.TrimSpace(p.Identity) != id.identity {

@@ -509,6 +509,7 @@ func floorAllowanceGuards(t *testing.T) {
 
 // regression: graph-execution/29
 func TestFloorFreezeAuthoring(t *testing.T) {
+	installStatusgenFixture(t)
 	cmd := exec.Command("go", "test", "-timeout", "45s", "-count=1", "./testdata/regressionfloor")
 	cmd.Env = append(os.Environ(), "GOWORK=off", "GOPROXY=off", "GOTOOLCHAIN=local", "KUBECONFIG=/dev/null")
 	out, err := goquiet.Cmd(cmd).CombinedOutput()

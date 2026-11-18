@@ -1004,6 +1004,7 @@ func TestNoticeSafeEscapesLineBreaks(t *testing.T) {
 // (a skipped read is never shown as a clean one), and nothing at all when no
 // row names one.
 func TestSiblingMergeOffNoticeNamesSkippedRead(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Setenv("DESK_ROOTS", "")
 	t.Setenv(siblingOptInEnv, "")
 
@@ -1103,6 +1104,7 @@ func TestRoadmapNextUpHonorsSiblingMergeHold(t *testing.T) {
 // count: a row whose only sibling declaration is an unresolvable
 // `deliverable_repo:` alias made the line fire, so it is counted.
 func TestSiblingMergeOffNoticeCountsUnresolvedRows(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Setenv("DESK_ROOTS", "")
 	t.Setenv(siblingOptInEnv, "")
 	root := siblingBriefTree(t, "deliverable_repo: no-such-alias\n")

@@ -14,6 +14,7 @@ import (
 
 // regression: #3057
 func TestLintConfigRefusal(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := filepath.Join(t.TempDir(), "statusgen")
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
