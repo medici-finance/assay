@@ -46,6 +46,7 @@ func TestNewFixtureEnvironment(t *testing.T) {
 		tools["sh"] = sh
 	}
 	before := asMap(os.Environ())
+	ci, ciPresent := before["CI"]
 	homes := make(chan string, 2)
 	// The containing Run waits for both parallel fixtures, allowing a parent
 	// observation after all child operations and cleanups have completed.
@@ -62,7 +63,10 @@ func TestNewFixtureEnvironment(t *testing.T) {
 				if base["HOME"] != f.Home || base["PATH"] != f.Bin || base["FIXTURE_EXPLICIT"] != value {
 					t.Fatal("child fixture lost owned or explicit values")
 				}
-				for _, key := range []string{"GH_TOKEN", "GIT_CONFIG_COUNT", "GIT_DIR", "BASH_ENV", "GOFLAGS"} {
+				if got, present := base["CI"]; got != ci || present != ciPresent {
+					t.Fatal("child fixture changed CI indicator presence or value")
+				}
+				for _, key := range []string{"GH_TOKEN", "GIT_CONFIG_COUNT", "GIT_DIR", "BASH_ENV", "GOFLAGS", "GITHUB_ACTIONS"} {
 					if _, exists := base[key]; exists {
 						t.Fatalf("undeclared child input survived: %s", key)
 					}
@@ -111,6 +115,7 @@ func TestNewFixtureEnvironment(t *testing.T) {
 
 func TestFixtureEnvironment(t *testing.T) {
 	git := gitTool(t)
+	t.Setenv("CI", "true")
 	t.Setenv("GIT_CONFIG_COUNT", "2")
 	t.Setenv("GIT_CONFIG_KEY_0", "grep.patternType")
 	t.Setenv("GIT_CONFIG_VALUE_0", "basic")
@@ -130,6 +135,9 @@ func TestFixtureEnvironment(t *testing.T) {
 		}
 		if os.Getenv("HOME") != f.Home || os.Getenv("PATH") != f.Bin {
 			t.Fatal("fixture does not own HOME/PATH")
+		}
+		if os.Getenv("CI") != "true" || asMap(f.Env())["CI"] != "true" {
+			t.Fatal("fixture removed the existing CI tool-requirement indicator")
 		}
 		if !reflect.DeepEqual(asMap(os.Environ()), asMap(f.Env())) {
 			t.Fatal("process and child base environments differ")

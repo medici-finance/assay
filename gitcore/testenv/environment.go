@@ -74,6 +74,12 @@ func New(t testing.TB, opts Options) *Fixture {
 		"GIT_TEMPLATE_DIR": gitquiet.TemplateDir(t), "GIT_TERMINAL_PROMPT": "0",
 		"KUBECONFIG": os.DevNull, "LC_ALL": "C", "TZ": "UTC",
 	}
+	// CI controls existing test requirements (for example, failing rather than
+	// skipping when a required tool is missing). Keep that declared test-runtime
+	// input while removing undeclared operator configuration and credentials.
+	if value, present := os.LookupEnv("CI"); present {
+		f.base["CI"] = value
+	}
 	if runtime.GOOS == "windows" {
 		for _, key := range []string{"SystemRoot", "WINDIR", "COMSPEC", "PATHEXT"} {
 			if value, ok := os.LookupEnv(key); ok {
