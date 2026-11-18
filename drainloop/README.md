@@ -155,6 +155,25 @@ Recovery mutations are reproducible with `python3 testdata/effect_mutations.py`
 from this module. Each mutant must fail a named runtime assertion and the harness
 restores the source even on failure; it rejects compile-only failures.
 
+## Role capacity is a gauge, not a lock
+
+`RoleCapacity` (`capacity.go`) lets a desk instance pace its next bounded refill
+against a role-wide target. Each desk builds its own estimate from shared
+observations (claim summaries, heartbeats, supervisor process facts) through the
+`CapacityObserver` adapter. It sums every fresh reading for the role, including
+other instances and draining predecessors, and `Refill` returns the gap to the
+target capped by a small burst.
+
+It is deliberately approximate. There is no cross-desk mutex, semaphore, leased
+slot or count-and-reserve step, so two desks that read the same gap may both fill
+it and briefly overshoot; the next observation corrects that and refill stops
+until completions bring the role back under target. A failed refresh is reported
+but never blocks refill. Missing or aged-out data is "unknown", not zero, and
+yields one bounded burst rather than the whole target. Per-item claims
+(`Claimer`), claim generations, effect identity and the budget brakes are exact
+and never consult the estimate. `TestDeskRoleCapacity` covers these behaviours
+and the mutation harness carries a named control for each.
+
 ## Files
 
 | File | What it is |
@@ -168,6 +187,7 @@ restores the source even on failure; it rejects compile-only failures.
 | [`effect.go`](./effect.go) | `Effect`, `Receipt`, stable operation coordinates and mandatory reconciliation |
 | [`handoff.go`](./handoff.go) | transactional intent/claim-generation outbox contract |
 | [`journal.go`](./journal.go) | `Journal`/`Event` sink and the `Timeouts` liveness taxonomy |
+| [`capacity.go`](./capacity.go) | `RoleCapacity`, a per-desk approximate role-capacity gauge (no cross-desk lock) |
 | [`cmd/demo`](./cmd/demo) | a runnable demonstration |
 | `*_test.go` | the negative tests: claim collision, dispatch failure, held item, could-not-check tier, the opt-in layers, and the deskkit-free assertion |
 
