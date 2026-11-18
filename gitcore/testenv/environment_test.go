@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -32,6 +33,8 @@ func gitTool(t *testing.T) string {
 
 func TestFixtureEnvironment(t *testing.T) {
 	git := gitTool(t)
+	t.Setenv("CI", "true")
+	t.Setenv("GITHUB_ACTIONS", "true")
 	t.Setenv("GIT_CONFIG_COUNT", "2")
 	t.Setenv("GIT_CONFIG_KEY_0", "grep.patternType")
 	t.Setenv("GIT_CONFIG_VALUE_0", "basic")
@@ -44,13 +47,16 @@ func TestFixtureEnvironment(t *testing.T) {
 	before := os.Environ()
 	t.Run("scoped", func(t *testing.T) {
 		f := Install(t, Options{Tools: map[string]string{"git": git}, Vars: map[string]string{"FIXTURE_EXPLICIT": "yes"}})
-		for _, key := range []string{"GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_NO_REPLACE_OBJECTS", "GH_TOKEN", "GITLAB_TOKEN", "BASH_ENV", "ASSAY_CONFIG_HOME", "FIXTURE_UNDECLARED"} {
+		for _, key := range []string{"GITHUB_ACTIONS", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0", "GIT_NO_REPLACE_OBJECTS", "GH_TOKEN", "GITLAB_TOKEN", "BASH_ENV", "ASSAY_CONFIG_HOME", "FIXTURE_UNDECLARED"} {
 			if _, exists := os.LookupEnv(key); exists {
 				t.Fatalf("undeclared parent key survived: %s", key)
 			}
 		}
 		if os.Getenv("HOME") != f.Home || os.Getenv("PATH") != f.Bin {
 			t.Fatal("fixture does not own HOME/PATH")
+		}
+		if os.Getenv("CI") != "true" || asMap(f.Env())["CI"] != "true" {
+			t.Fatal("fixture removed the existing CI tool-requirement indicator")
 		}
 		if !reflect.DeepEqual(asMap(os.Environ()), asMap(f.Env())) {
 			t.Fatal("process and child base environments differ")
@@ -96,11 +102,81 @@ func TestFixtureEnvironment(t *testing.T) {
 	})
 }
 
+var environmentAllocationSink []string
+
+func TestFixtureEnvironmentAbsentPath(t *testing.T) {
+	t.Setenv("PATH", "")
+	if err := os.Unsetenv("PATH"); err != nil {
+		t.Fatal(err)
+	}
+	parent := asMap(os.Environ())
+	t.Run("scoped", func(t *testing.T) { Install(t, Options{}) })
+	if !reflect.DeepEqual(parent, asMap(os.Environ())) {
+		t.Fatal("cleanup did not restore an absent PATH")
+	}
+}
+
+func TestFixtureEnvironmentLifetimeCost(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Unix Unsetenv allocation regression")
+	}
+	t.Setenv("FIXTURE_PARENT_EMPTY", "")
+	t.Setenv("FIXTURE_PARENT_VALUE", "parent=value")
+	t.Setenv("FIXTURE_PARENT_ABSENT", "")
+	if err := os.Unsetenv("FIXTURE_PARENT_ABSENT"); err != nil {
+		t.Fatal(err)
+	}
+	parent := asMap(os.Environ())
+	allocation := func() uint64 {
+		var before, after runtime.MemStats
+		runtime.ReadMemStats(&before)
+		for range 32 {
+			environmentAllocationSink = os.Environ()
+		}
+		runtime.ReadMemStats(&after)
+		return (after.TotalAlloc - before.TotalAlloc) / 32
+	}
+	before := allocation()
+	for range 1000 {
+		t.Run("lifetime", func(t *testing.T) { Install(t, Options{}) })
+	}
+	after := allocation()
+	if !reflect.DeepEqual(parent, asMap(os.Environ())) {
+		t.Fatal("repeated fixture cleanup changed parent presence or values")
+	}
+	t.Logf("os.Environ allocation per call before=%d after=%d bytes", before, after)
+	// Allow runtime bookkeeping noise, but not growth with historical removals.
+	if after > before+64*1024 {
+		t.Fatalf("environment allocation grew after fixture cleanup: %d -> %d bytes", before, after)
+	}
+}
+
+func TestFixtureEnvironmentParallelRefusal(t *testing.T) {
+	t.Run("parent", func(t *testing.T) {
+		t.Run("parallel", func(t *testing.T) {
+			t.Parallel()
+			parent := asMap(os.Environ())
+			t.Cleanup(func() {
+				if !reflect.DeepEqual(parent, asMap(os.Environ())) {
+					t.Error("refused parallel installation or its cleanup changed the environment")
+				}
+			})
+			defer func() {
+				failure := recover()
+				if failure == nil || !strings.Contains(fmt.Sprint(failure), "Setenv") {
+					t.Errorf("expected testing.Setenv parallel refusal, got %v", failure)
+				}
+			}()
+			Install(t, Options{})
+		})
+	})
+}
+
 func asMap(env []string) map[string]string {
 	m := map[string]string{}
 	for _, entry := range env {
 		key, value, _ := strings.Cut(entry, "=")
-		m[key] = value
+		m[keyFor(key, runtime.GOOS)] = value
 	}
 	return m
 }
