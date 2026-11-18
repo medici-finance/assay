@@ -319,13 +319,17 @@ func TestPiPilotAuthority(t *testing.T) {
 			t.Fatal(err)
 		}
 		observe(t, a, req, true)
+		// The bridge emits tool-exec only after the exec-check is answered,
+		// so the replay's verdict is recorded once this count is reached.
 		waitFor(t, "safe probe replay", func() bool { return a.H.Counters.Snapshot().ToolExec["safe_probe"] >= 2 })
-		c := a.H.Counters.Snapshot()
-		if c.BeforeTool != 1 {
-			t.Fatalf("beforeTool ran %d times; replay was expected to skip it", c.BeforeTool)
+		// The session keeps running after the refused replay, and later model
+		// turns may call beforeTool again, so read the count the replay itself
+		// saw rather than the live total.
+		if seen := a.H.Counters.Snapshot().ExecBeforeTool["safe_probe"][1]; seen != 1 {
+			t.Fatalf("beforeTool ran %d times; replay was expected to skip it", seen)
 		}
 		if !refused(a.H.Ledger, "exec-check", "stale-generation") {
-			t.Fatalf("replayed safe tool was not refused at execution: %v", a.H.Ledger.Refusals)
+			t.Fatalf("replayed safe tool was not refused at execution: %v", refusals(a.H.Ledger))
 		}
 	})
 
@@ -337,7 +341,7 @@ func TestPiPilotAuthority(t *testing.T) {
 		req := start(t, a, "ledger-alone", step("effect_write", "e1", map[string]any{"action": "merge", "target": "pr-4"}))
 		a.Complete(req.Ref(), conformance.GoodResult(req), conformance.FullUsage())
 		if a.H.Ledger.Applied(EffectID(key, "merge", "pr-4")) != 0 || !refused(a.H.Ledger, "effect", "paused") {
-			t.Fatalf("paused effect applied without the upper hook: %v", a.H.Ledger.Refusals)
+			t.Fatalf("paused effect applied without the upper hook: %v", refusals(a.H.Ledger))
 		}
 	})
 
@@ -351,6 +355,13 @@ func TestPiPilotAuthority(t *testing.T) {
 			t.Fatal("beforeTool did not block a paused effect")
 		}
 	})
+}
+
+// refusals copies the ledger's refusals under its lock.
+func refusals(l *Ledger) []string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return append([]string(nil), l.Refusals...)
 }
 
 func refused(l *Ledger, kind, why string) bool {

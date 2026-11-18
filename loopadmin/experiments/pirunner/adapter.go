@@ -44,6 +44,11 @@ type Counts struct {
 	ChildPIDs   []int
 	ToolHeld    map[string]int
 	BridgeStart int
+
+	// ExecBeforeTool holds, per tool, the BeforeTool count at each of its
+	// tool-exec events in event order, so a test can tell which beforeTool
+	// calls preceded one execution while the session is still running.
+	ExecBeforeTool map[string][]int
 }
 
 // Snapshot copies the counters.
@@ -56,6 +61,10 @@ func (c *Counters) Snapshot() Counts {
 	}
 	for k, v := range c.ToolHeld {
 		out.ToolHeld[k] = v
+	}
+	out.ExecBeforeTool = map[string][]int{}
+	for k, v := range c.ExecBeforeTool {
+		out.ExecBeforeTool[k] = append([]int(nil), v...)
 	}
 	out.ChildPIDs = append(out.ChildPIDs, c.ChildPIDs...)
 	return out
@@ -88,7 +97,7 @@ func OpenHost(dir, node, script string) (*Host, error) {
 		f.Close()
 		return nil, fmt.Errorf("%w: %v", ErrOwned, err)
 	}
-	h := &Host{dir: dir, node: node, script: script, lock: f, Ledger: NewLedger(), Counters: &Counters{Counts: Counts{ToolExec: map[string]int{}, ToolHeld: map[string]int{}}}, runGen: map[string]uint64{}, faults: msg{}}
+	h := &Host{dir: dir, node: node, script: script, lock: f, Ledger: NewLedger(), Counters: &Counters{Counts: Counts{ToolExec: map[string]int{}, ExecBeforeTool: map[string][]int{}, ToolHeld: map[string]int{}}}, runGen: map[string]uint64{}, faults: msg{}}
 	if err := h.spawn(); err != nil {
 		h.release()
 		return nil, err
@@ -193,7 +202,9 @@ func (h *Host) event(name string, m msg) {
 	case "before-tool":
 		c.BeforeTool++
 	case "tool-exec":
-		c.ToolExec[fmt.Sprint(m["tool"])]++
+		tool := fmt.Sprint(m["tool"])
+		c.ToolExec[tool]++
+		c.ExecBeforeTool[tool] = append(c.ExecBeforeTool[tool], c.BeforeTool)
 	case "tool-held":
 		c.ToolHeld[fmt.Sprint(m["tool"])]++
 	case "submit":

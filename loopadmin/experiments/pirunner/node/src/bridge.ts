@@ -168,8 +168,10 @@ function tools(key: string) {
 		parameters: Type.Object({ step: Type.String(), hold: Type.Optional(Type.Boolean()) }),
 		replay: "safe",
 		execute: async (args, api, tctx) => {
-			event("tool-exec", { key, tool: "safe_probe", step: args.step, task: String(api.taskId) });
 			const r = await ask("exec-check", { key, tool: "safe_probe", step: args.step, task: String(api.taskId) });
+			// tool-exec follows the answered check, so a host that has counted
+			// this execution has already recorded the check's verdict.
+			event("tool-exec", { key, tool: "safe_probe", step: args.step, task: String(api.taskId) });
 			if (r.status !== "allowed") {
 				return { output: [{ type: "text", text: "refused: " + String(r.status) }], isError: true };
 			}
