@@ -381,6 +381,7 @@ func TestAwaitReadSetTokenSettles(t *testing.T) {
 	}
 	for name, tok := range map[string]string{
 		"digest token":          evaluation.ReadSetCellToken(strings.Repeat("ab", 32), ""),
+		"external host brief":   evaluation.ReadSetCellToken("", "the brief is outside the checkout being verified"),
 		"could-not-check token": evaluation.ReadSetCellToken("", "recorder is Linux-only (plan9)"),
 	} {
 		ev := row("ok", "verifier-model @ 0123456789ab "+tok)

@@ -1,9 +1,10 @@
 ---
 id: DR-graph-exec-36
-date: "2026-11-16"
-title: "PostgreSQL foundation (graph-execution/36): explicit connections, compatible-schema Open and one forward-only Goose migration and checksum ledger in workflow/store, qualified on a disposable PostgreSQL fixture; proposed, not yet ratified as a design record"
+date: "2026-11-18"
+title: "PostgreSQL foundation (graph-execution/36): explicit connections, compatible-schema Open and one forward-only Goose migration and checksum ledger in workflow/store, qualified on a disposable PostgreSQL fixture"
 consequence: major # The transcriber's classification.
 decided-by: "human:<name>"
+ruling: "https://github.com/medici-finance/assay/issues/5405#issuecomment-6967687802"
 alternatives:
   - "Option 2 on decision issue #5405, hold acceptance and name an unsupported boundary or correction. Not taken: the driver's comment on #5405 chose option 1. No rationale beyond that comment is recorded, and none is supplied here."
   - "A mirror-specific database or a temporary embedded backend. Ruled out by the brief's design-fit `why-add:` and facts: R2 PostgreSQL is the only coordination-store engine, SQLite and a second online backend are forbidden, and consumers would otherwise duplicate migrations and fixture lifecycle."
@@ -18,11 +19,10 @@ accepted:
 
 ## State and provenance
 
-**Approval state: proposed, not ratified as a design record.** The `decided-by` stamp above is
-the public placeholder and names nobody. This record carries no `ruling:` link, so
-`statusgen --corroborate` reports it `placeholder-unratified` until the driver posts, on the
-decision issue, an unedited comment from the driver's own login that names `DR-graph-exec-36`.
-The `ruling:` link to that comment, and the brief's `design:` key, are added only after it exists.
+**Design ratification.** The driver approved DR-graph-exec-36 for graph-execution/36 on
+2026-11-18. The ruling names #5418 and retains independent verification and the full
+domain-store, mirror-retention, deployment and activation gates. The public `decided-by`
+placeholder is corroborated through the driver's unedited [ruling on #5405](https://github.com/medici-finance/assay/issues/5405#issuecomment-6967687802).
 
 **What the driver has already ruled.** The brief's decision issue,
 [#5405](https://github.com/medici-finance/assay/issues/5405), carries the decision-gate marker for
@@ -30,12 +30,12 @@ The `ruling:` link to that comment, and the brief's `design:` key, are added onl
 "graph-execution/36: 1", accepting the bounded PostgreSQL foundation in #5418 on the independent
 security review and the correctness review of the credential, migration and CI boundary, with the
 complete domain-store, mirror-retention, deployment and activation gates kept in place. The brief
-already cites that comment as its `ruling:`. It names the brief, not this record, so it cannot
-serve as this record's `ruling:` link (`spec/registers-v1.md` §7.5, `record-not-named`).
+cites that [foundation acceptance](https://github.com/medici-finance/assay/issues/5405#issuecomment-6621165749)
+as its own `ruling:`. This record's `ruling:` cites the later design ratification.
 
 **Written after implementation.** graph-execution/36 was delivered by
 [#5418](https://github.com/medici-finance/assay/pull/5418), merged 2026-11-04, before this record
-existed. It is written on demand under the ruling on #5145, which limits back-filled design
+existed. The record was proposed on 2026-11-16 under the ruling on #5145, which limits back-filled design
 records to held briefs that block other work: graph-execution/19 and forge-neutral/52 each declare
 `depends:` on graph-execution/36, and both are `todo` on their boards.
 

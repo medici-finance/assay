@@ -10,6 +10,37 @@ import (
 	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
+// regression: #6274
+func TestVerifyrunExternalBriefReadSet(t *testing.T) {
+	tracking := newRowsFixture(t, "")
+	delivery := newRowsFixture(t, "")
+	res, out := captureVerifyrunOut(t, []string{"--root", delivery.root, "--brief", tracking.brief, "--rows", "1"})
+	if res.code != verifyrunExitPass {
+		t.Fatalf("verifyrun: exit %d\n%s", res.code, out)
+	}
+	witnesses := parseEvidenceRows(evidenceOf(t, tracking.brief))["1"]
+	if len(witnesses) != 1 {
+		t.Fatalf("row 1 has %d witnesses, want 1", len(witnesses))
+	}
+	want := "the brief is outside the checkout being verified"
+	if runtime.GOOS != "linux" {
+		want = "recorder is Linux-only (" + runtime.GOOS + ")"
+	}
+	cells := witnessCells(witnesses[0].Text)
+	if cells == nil {
+		t.Fatalf("unreadable witness: %q", witnesses[0].Text)
+	}
+	runner := cells[witnessCellRunner]
+	if digest, why, ok := evaluation.ReadSetToken(runner); !ok || digest != "" || why != want {
+		t.Fatalf("external brief: Runner %q, want could-not-check %q", runner, want)
+	}
+	for _, root := range []string{delivery.root, tracking.root} {
+		if _, err := os.Stat(filepath.Join(gitDirOf(t, root), evaluation.ReadSetStateDir)); !os.IsNotExist(err) {
+			t.Errorf("external brief created read-set state, or state was unreadable: %v", err)
+		}
+	}
+}
+
 // regression: #2026
 // TestRecorderOffLinuxWritesCouldNotCheck — build-less-brittle/15 row 28:
 // off Linux a row run through verifyrun carries the Linux-only could-not-check
