@@ -14,6 +14,7 @@ import (
 
 // regression: #5704
 func TestWorkSourceSnapshot(t *testing.T) {
+	installDeskkitOriginFixture(t)
 	root := t.TempDir()
 	repo, err := git.PlainInit(root, false)
 	if err != nil {
