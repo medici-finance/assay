@@ -137,3 +137,43 @@ func TestCursorSkillDiscoveryRequiresEnabledRoles(t *testing.T) {
 		t.Fatal("installed role skills were not found")
 	}
 }
+
+// regression: #6646
+func TestCursorBootNamesStrongModel(t *testing.T) {
+	wt := t.TempDir()
+	cell := &Cell{Env: envWith(map[string]string{
+		"CURSOR_MODEL_default": "auto", "TIER_MODEL_TOP_CURSOR": "strong-model-x",
+	})}
+	for _, role := range knownRoles {
+		got := cell.cursorLaunchArgv(role, "auto", wt)
+		prompt := got[len(got)-1]
+		for _, want := range []string{`"strong-model-x"`, "not by itself a reason to hold", "unconfirmed, weaker, or an unconfirmed inherit"} {
+			if !strings.Contains(prompt, want) {
+				t.Fatalf("%s boot prompt lacks %q: %q", role, want, prompt)
+			}
+		}
+	}
+}
+
+// regression: #6646
+func TestCursorBootNeverNamesAutoStrong(t *testing.T) {
+	wt := t.TempDir()
+	for _, env := range []map[string]string{
+		{"CURSOR_MODEL_default": "auto"},
+		{"CURSOR_MODEL_default": "auto", "TIER_MODEL_TOP_CURSOR": "auto"},
+		{"TIER_MODEL_TOP_CURSOR": "  "},
+	} {
+		prompt := (&Cell{Env: envWith(env)}).cursorLaunchArgv("worker-desk", "auto", wt)
+		p := prompt[len(prompt)-1]
+		if strings.Contains(p, "set the subagent to the configured") || !strings.Contains(p, "is held unless this session's own model is confirmed strong") {
+			t.Fatalf("unconfigured strong tier did not keep the hold (%v): %q", env, p)
+		}
+	}
+	if p := (&Cell{}).cursorLaunchArgv("worker-desk", "m", wt); !strings.Contains(p[len(p)-1], "Strong tier:") {
+		t.Fatal("nil Env cell lost the strong-tier note")
+	}
+	tick := &Cell{Cadence: resolveDeskCadence("house", "cursor", "30m", "")}
+	if p := tick.cursorLaunchArgv("worker-desk", "m", wt); p[len(p)-1] != `Invoke the "assay:worker-desk" skill now.` {
+		t.Fatalf("headless tick prompt must stay minimal: %q", p[len(p)-1])
+	}
+}
