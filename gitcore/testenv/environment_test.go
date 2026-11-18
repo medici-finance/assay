@@ -33,6 +33,7 @@ func gitTool(t *testing.T) string {
 
 func TestFixtureEnvironment(t *testing.T) {
 	git := gitTool(t)
+	t.Setenv("CI", "true")
 	t.Setenv("GIT_CONFIG_COUNT", "2")
 	t.Setenv("GIT_CONFIG_KEY_0", "grep.patternType")
 	t.Setenv("GIT_CONFIG_VALUE_0", "basic")
@@ -52,6 +53,9 @@ func TestFixtureEnvironment(t *testing.T) {
 		}
 		if os.Getenv("HOME") != f.Home || os.Getenv("PATH") != f.Bin {
 			t.Fatal("fixture does not own HOME/PATH")
+		}
+		if os.Getenv("CI") != "true" || asMap(f.Env())["CI"] != "true" {
+			t.Fatal("fixture removed the existing CI tool-requirement indicator")
 		}
 		if !reflect.DeepEqual(asMap(os.Environ()), asMap(f.Env())) {
 			t.Fatal("process and child base environments differ")
