@@ -31,6 +31,88 @@ func gitTool(t *testing.T) string {
 	return path
 }
 
+func TestNewFixtureEnvironment(t *testing.T) {
+	git := gitTool(t)
+	tools := map[string]string{"git": git}
+	if runtime.GOOS != "windows" {
+		sh, err := exec.LookPath("sh")
+		if err != nil {
+			t.Fatal(err)
+		}
+		sh, err = filepath.Abs(sh)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tools["sh"] = sh
+	}
+	before := asMap(os.Environ())
+	ci, ciPresent := before["CI"]
+	homes := make(chan string, 2)
+	// The containing Run waits for both parallel fixtures, allowing a parent
+	// observation after all child operations and cleanups have completed.
+	t.Run("parallel", func(t *testing.T) {
+		for _, value := range []string{"first", "second"} {
+			t.Run(value, func(t *testing.T) {
+				t.Parallel()
+				f := New(t, Options{Tools: tools, Vars: map[string]string{"FIXTURE_EXPLICIT": value}})
+				homes <- f.Home
+				if !reflect.DeepEqual(before, asMap(os.Environ())) {
+					t.Fatal("New changed parent environment")
+				}
+				base := asMap(f.Env())
+				if base["HOME"] != f.Home || base["PATH"] != f.Bin || base["FIXTURE_EXPLICIT"] != value {
+					t.Fatal("child fixture lost owned or explicit values")
+				}
+				if got, present := base["CI"]; got != ci || present != ciPresent {
+					t.Fatal("child fixture changed CI indicator presence or value")
+				}
+				for _, key := range []string{"GH_TOKEN", "GIT_CONFIG_COUNT", "GIT_DIR", "BASH_ENV", "GOFLAGS", "GITHUB_ACTIONS"} {
+					if _, exists := base[key]; exists {
+						t.Fatalf("undeclared child input survived: %s", key)
+					}
+				}
+				copy := f.Env("FIXTURE_EXPLICIT=overlay", "FIXTURE_EXPLICIT=last")
+				if asMap(copy)["FIXTURE_EXPLICIT"] != "last" {
+					t.Fatal("explicit child overlays lost")
+				}
+				copy[0] = "MUTATED=caller"
+				if !reflect.DeepEqual(base, asMap(f.Env())) {
+					t.Fatal("returned child environment aliases stored base")
+				}
+				repo := filepath.Join(t.TempDir(), "repo")
+				cmd := exec.Command(filepath.Join(f.Bin, "git"+filepath.Ext(git)), "init", "-q", repo)
+				cmd.Env = f.Env()
+				if out, err := cmd.CombinedOutput(); err != nil {
+					t.Fatalf("New child git: %v: %s", err, out)
+				}
+				if sh, ok := tools["sh"]; ok {
+					cmd = exec.Command(sh, "-c", `printf '%s\n' "$HOME" "$FIXTURE_EXPLICIT" "${GH_TOKEN-unset}" "${GIT_CONFIG_COUNT-unset}"`)
+					cmd.Env = f.Env()
+					out, err := cmd.CombinedOutput()
+					want := f.Home + "\n" + value + "\nunset\nunset\n"
+					if err != nil || string(out) != want {
+						t.Fatalf("New child shell: %v: got %q, want %q", err, out, want)
+					}
+				}
+			})
+		}
+	})
+	if !reflect.DeepEqual(before, asMap(os.Environ())) {
+		t.Fatal("parallel child fixtures changed parent environment")
+	}
+	close(homes)
+	seen := map[string]bool{}
+	for home := range homes {
+		if seen[home] {
+			t.Fatal("parallel fixtures shared a home")
+		}
+		seen[home] = true
+	}
+	if len(seen) != 2 {
+		t.Fatal("parallel fixtures did not both construct")
+	}
+}
+
 func TestFixtureEnvironment(t *testing.T) {
 	git := gitTool(t)
 	t.Setenv("CI", "true")
@@ -222,19 +304,31 @@ func TestFixtureVictimUnchanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	beforeTree := snapshot(t, victim)
-	fixtureRepo := filepath.Join(root, "fixture")
-	t.Run("isolated", func(t *testing.T) {
-		f := Install(t, Options{Tools: map[string]string{"git": git}})
-		run(f.Env(), "init", "-q", fixtureRepo)
-		run(f.Env(), "-C", fixtureRepo, "config", "fixture.changed", "fixture-only")
-		run(f.Env(), "config", "--global", "fixture.changed", "fixture-only")
-		for _, setting := range []string{"maintenance.auto", "gc.auto"} {
-			got := strings.TrimSpace(string(run(f.Env(), "-C", fixtureRepo, "config", "--local", setting)))
-			if got != "false" && got != "0" {
-				t.Fatalf("owned template lost %s", setting)
+	beforeEnv := asMap(os.Environ())
+	for _, constructor := range []struct {
+		name string
+		new  func(testing.TB, Options) *Fixture
+	}{{"installed", Install}, {"child-only", New}} {
+		t.Run(constructor.name, func(t *testing.T) {
+			f := constructor.new(t, Options{Tools: map[string]string{"git": git}})
+			if constructor.name == "child-only" && !reflect.DeepEqual(beforeEnv, asMap(os.Environ())) {
+				t.Fatal("New erased deliberate parent inputs")
 			}
+			fixtureRepo := filepath.Join(t.TempDir(), "fixture")
+			run(f.Env(), "init", "-q", fixtureRepo)
+			run(f.Env(), "-C", fixtureRepo, "config", "fixture.changed", "fixture-only")
+			run(f.Env(), "config", "--global", "fixture.changed", "fixture-only")
+			for _, setting := range []string{"maintenance.auto", "gc.auto"} {
+				got := strings.TrimSpace(string(run(f.Env(), "-C", fixtureRepo, "config", "--local", setting)))
+				if got != "false" && got != "0" {
+					t.Fatalf("owned template lost %s", setting)
+				}
+			}
+		})
+		if !reflect.DeepEqual(beforeEnv, asMap(os.Environ())) {
+			t.Fatal("fixture did not preserve parent environment")
 		}
-	})
+	}
 	afterRepo, err := os.ReadFile(filepath.Join(victim, ".git", "config"))
 	if err != nil {
 		t.Fatal(err)
