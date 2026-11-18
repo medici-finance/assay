@@ -1,5 +1,5 @@
 diff --git a/.github/workflows/assay-statusgen.yml b/.github/workflows/assay-statusgen.yml
-index 8d4bc8ec2..73170137d 100644
+index df40a6ef7f4504f4361348250eecf48b8dcd0a98..bcee60ed1c64d0c5b2c592ef76741316b0fc16a8 100644
 --- a/.github/workflows/assay-statusgen.yml
 +++ b/.github/workflows/assay-statusgen.yml
 @@ -8,9 +8,10 @@ name: statusgen-board
@@ -16,7 +16,7 @@ index 8d4bc8ec2..73170137d 100644
  #
  # statusgen is built FROM THIS REPO'S OWN SOURCE (statusgen/), not downloaded as a
  # pinned release binary: this IS the repo statusgen lives in, so a released binary
-@@ -78,8 +79,10 @@ on:
+@@ -89,8 +90,10 @@ on:
  # refs/heads/main, the same group the push-to-main regen runs queue in; a group
  # holds one pending run, so a pending hourly tick sharing it could displace a
  # pending push regen and leave STATUS.md stale until the next push. The reconcile
@@ -29,7 +29,7 @@ index 8d4bc8ec2..73170137d 100644
  concurrency:
    group: statusgen-board-${{ github.event_name == 'pull_request' && format('pr-run-{0}', github.run_id) || github.event_name == 'schedule' && 'reconcile' || github.ref }}
    cancel-in-progress: false
-@@ -469,7 +472,11 @@ jobs:
+@@ -562,7 +565,11 @@ jobs:
  
  
    # Hourly board reconcile (derived-board/04): writes the GENERATED Briefs tables
@@ -42,7 +42,7 @@ index 8d4bc8ec2..73170137d 100644
    #
    # The three `run:` blocks that touch git (the clone, compute and publish steps
    # below) are tested end to end: statusgen/reconcilejob_test.go extracts them,
-@@ -478,93 +485,65 @@ jobs:
+@@ -571,93 +578,65 @@ jobs:
    # board workflow's PR lint job (above) runs that suite on any change to
    # statusgen/, this file or its staged copy, so an edit here meets those tests;
    # TestReconcileJobMutantsFail holds a list of edits to this job, each of which
@@ -170,7 +170,7 @@ index 8d4bc8ec2..73170137d 100644
    #   - No git command runs in the workspace. actions/checkout keeps an existing
    #     workspace repository, and with it any hooks and local configuration
    #     (remote and push addresses, URL rewrites) an earlier job planted there,
-@@ -573,21 +552,20 @@ jobs:
+@@ -666,21 +645,20 @@ jobs:
    #   - No git command reads the runner user's or the system git configuration:
    #     the first step points GIT_CONFIG_GLOBAL at a job-local file that turns
    #     hooks off (core.hooksPath=/dev/null), sets GIT_CONFIG_NOSYSTEM, and stops
@@ -200,10 +200,10 @@ index 8d4bc8ec2..73170137d 100644
    reconcile:
      environment: board-writer
      if: ${{ github.event_name == 'schedule' && github.repository == 'medici-finance/assay' }}
-@@ -653,21 +631,6 @@ jobs:
-           set -euo pipefail
-           go version
-           go build -o "${RUNNER_TEMP}/statusgen" .
+@@ -773,21 +751,6 @@ jobs:
+           if [ "$rc" -ne 0 ]; then
+             echo "::warning::statusgen --signoff-digest exited ${rc}: its inputs could not be read, so the digest reports nothing about the queue (see its body); the reconcile tick continues"
+           fi
 -      # Always the pinned tarball, never a gh already on PATH: the publish step
 -      # hands it the board-writer token.
 -      - name: Install gh CLI (pinned, checksum-verified)
@@ -222,7 +222,7 @@ index 8d4bc8ec2..73170137d 100644
        # Compute: read-only. No write credential exists yet in this job.
        - name: Reconcile and regenerate the stream README tables
          id: compute
-@@ -679,71 +642,27 @@ jobs:
+@@ -803,71 +766,27 @@ jobs:
            set -euo pipefail
            statusgen="${RUNNER_TEMP}/statusgen"
            repo="${GITHUB_REPOSITORY}"
@@ -290,9 +290,9 @@ index 8d4bc8ec2..73170137d 100644
            # would add — reaches the job log on every tick, including a tick on
 -          # which every witnessed row is held and nothing is carried.
 +          # which every witnessed row is held and nothing is landed.
-           "$statusgen" reconcile --apply --root . --repo "$repo" | tee "$out"
+           "$statusgen" reconcile --apply --root . --repo "$repo" --acceptance-forge | tee "$out"
            "$statusgen" regen --readmes --root .
-           "$statusgen" --root . --lint
+           "$statusgen" --root . --lint --acceptance-forge
            # This job may change stream READMEs and nothing else.
 -          # The same README pattern as the foreign-commit check above. The
 -          # status read is a plain assignment, so errexit sees its failure: a
@@ -302,7 +302,7 @@ index 8d4bc8ec2..73170137d 100644
            porcelain="$(git status --porcelain --untracked-files=all)"
            stray="$(printf '%s\n' "$porcelain" | grep -v -E "^ M ${readme_re#^}" || true)"
            if [ -n "$stray" ]; then
-@@ -753,21 +672,9 @@ jobs:
+@@ -877,21 +796,9 @@ jobs:
            fi
            git add -- 'docs/streams/*/README.md'
            tree="$(git write-tree)"
@@ -327,7 +327,7 @@ index 8d4bc8ec2..73170137d 100644
            fi
            msg="${RUNNER_TEMP}/reconcile-msg.txt"
            {
-@@ -775,7 +682,9 @@ jobs:
+@@ -899,7 +806,9 @@ jobs:
              echo
              sed -n '/^reconcile --apply:/,$p' "$out"
            } > "$msg"
@@ -338,7 +338,7 @@ index 8d4bc8ec2..73170137d 100644
            # The publish step runs only when this output is set.
            echo "commit=${commit}" >> "${GITHUB_OUTPUT}"
        - name: Mint assay-board-writer App token
-@@ -785,75 +694,33 @@ jobs:
+@@ -909,75 +818,33 @@ jobs:
          with:
            app-id: ${{ secrets.BOARD_APP_ID }}
            private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
@@ -427,7 +427,7 @@ index 8d4bc8ec2..73170137d 100644
 -          gh pr create --repo "$repo" --draft --base "$default_branch" --head "$branch" --title "$title" --body-file "$body"
 +            push "${GITHUB_SERVER_URL}/${repo}.git" "${COMMIT}:refs/heads/main"
 diff --git a/ci/staged-workflows/assay-statusgen.yml b/ci/staged-workflows/assay-statusgen.yml
-index 8d4bc8ec2..73170137d 100644
+index c3b8ccf4cc86d6d7708ef176ef5dd66c42a286bd..bad5d8e4c895a1ea977c861cdcc12806143aba9d 100644
 --- a/ci/staged-workflows/assay-statusgen.yml
 +++ b/ci/staged-workflows/assay-statusgen.yml
 @@ -8,9 +8,10 @@ name: statusgen-board
@@ -444,7 +444,7 @@ index 8d4bc8ec2..73170137d 100644
  #
  # statusgen is built FROM THIS REPO'S OWN SOURCE (statusgen/), not downloaded as a
  # pinned release binary: this IS the repo statusgen lives in, so a released binary
-@@ -78,8 +79,10 @@ on:
+@@ -94,8 +95,10 @@ on:
  # refs/heads/main, the same group the push-to-main regen runs queue in; a group
  # holds one pending run, so a pending hourly tick sharing it could displace a
  # pending push regen and leave STATUS.md stale until the next push. The reconcile
@@ -457,7 +457,7 @@ index 8d4bc8ec2..73170137d 100644
  concurrency:
    group: statusgen-board-${{ github.event_name == 'pull_request' && format('pr-run-{0}', github.run_id) || github.event_name == 'schedule' && 'reconcile' || github.ref }}
    cancel-in-progress: false
-@@ -469,7 +472,11 @@ jobs:
+@@ -650,7 +653,11 @@ jobs:
  
  
    # Hourly board reconcile (derived-board/04): writes the GENERATED Briefs tables
@@ -470,7 +470,7 @@ index 8d4bc8ec2..73170137d 100644
    #
    # The three `run:` blocks that touch git (the clone, compute and publish steps
    # below) are tested end to end: statusgen/reconcilejob_test.go extracts them,
-@@ -478,93 +485,65 @@ jobs:
+@@ -659,22 +666,20 @@ jobs:
    # board workflow's PR lint job (above) runs that suite on any change to
    # statusgen/, this file or its staged copy, so an edit here meets those tests;
    # TestReconcileJobMutantsFail holds a list of edits to this job, each of which
@@ -495,12 +495,13 @@ index 8d4bc8ec2..73170137d 100644
    #      witnessed todo|in-progress -> implemented Status cell. A row whose write
    #      would add a lint PROBLEM (a risk-gated brief with no design record) is
 -  #      held: reported in the job log on every tick, and in the commit and PR
--  #      body, never written. A reconcile that could not read the PRs exits
--  #      nonzero and fails the tick.
-+  #      held: reported in the job log on every tick, and in the commit message,
-+  #      never written. A reconcile that could not read the PRs exits nonzero
-+  #      and fails the tick.
-   #   2. `statusgen regen --readmes` — re-renders the marker-wrapped tables from
+-  #      body, never written. So is a row on a stream an active drive names
++  #      held: reported in the job log on every tick, and in the commit
++  #      message, never written. So is a row on a stream an active drive names
+   #      whose move would re-render that drive's plan-page snapshot region: the
+   #      job never passes `--regenerate`, the opt-in under which `--apply` also
+   #      writes docs/roadmap/drives/<slug>.md, a path the check below refuses.
+@@ -684,72 +689,46 @@ jobs:
    #      brief frontmatter. Everything outside the markers is untouched.
    #   3. `statusgen --lint` — the full lint over the result; a failure fails the
    #      tick and nothing is committed.
@@ -598,7 +599,7 @@ index 8d4bc8ec2..73170137d 100644
    #   - No git command runs in the workspace. actions/checkout keeps an existing
    #     workspace repository, and with it any hooks and local configuration
    #     (remote and push addresses, URL rewrites) an earlier job planted there,
-@@ -573,21 +552,20 @@ jobs:
+@@ -758,21 +737,20 @@ jobs:
    #   - No git command reads the runner user's or the system git configuration:
    #     the first step points GIT_CONFIG_GLOBAL at a job-local file that turns
    #     hooks off (core.hooksPath=/dev/null), sets GIT_CONFIG_NOSYSTEM, and stops
@@ -628,10 +629,10 @@ index 8d4bc8ec2..73170137d 100644
    reconcile:
      environment: board-writer
      if: ${{ github.event_name == 'schedule' && github.repository == 'medici-finance/assay' }}
-@@ -653,21 +631,6 @@ jobs:
-           set -euo pipefail
-           go version
-           go build -o "${RUNNER_TEMP}/statusgen" .
+@@ -865,21 +843,6 @@ jobs:
+           if [ "$rc" -ne 0 ]; then
+             echo "::warning::statusgen --signoff-digest exited ${rc}: its inputs could not be read, so the digest reports nothing about the queue (see its body); the reconcile tick continues"
+           fi
 -      # Always the pinned tarball, never a gh already on PATH: the publish step
 -      # hands it the board-writer token.
 -      - name: Install gh CLI (pinned, checksum-verified)
@@ -650,7 +651,7 @@ index 8d4bc8ec2..73170137d 100644
        # Compute: read-only. No write credential exists yet in this job.
        - name: Reconcile and regenerate the stream README tables
          id: compute
-@@ -679,71 +642,27 @@ jobs:
+@@ -895,71 +858,27 @@ jobs:
            set -euo pipefail
            statusgen="${RUNNER_TEMP}/statusgen"
            repo="${GITHUB_REPOSITORY}"
@@ -718,9 +719,9 @@ index 8d4bc8ec2..73170137d 100644
            # would add — reaches the job log on every tick, including a tick on
 -          # which every witnessed row is held and nothing is carried.
 +          # which every witnessed row is held and nothing is landed.
-           "$statusgen" reconcile --apply --root . --repo "$repo" | tee "$out"
+           "$statusgen" reconcile --apply --root . --repo "$repo" --acceptance-forge | tee "$out"
            "$statusgen" regen --readmes --root .
-           "$statusgen" --root . --lint
+           "$statusgen" --root . --lint --acceptance-forge
            # This job may change stream READMEs and nothing else.
 -          # The same README pattern as the foreign-commit check above. The
 -          # status read is a plain assignment, so errexit sees its failure: a
@@ -730,7 +731,7 @@ index 8d4bc8ec2..73170137d 100644
            porcelain="$(git status --porcelain --untracked-files=all)"
            stray="$(printf '%s\n' "$porcelain" | grep -v -E "^ M ${readme_re#^}" || true)"
            if [ -n "$stray" ]; then
-@@ -753,21 +672,9 @@ jobs:
+@@ -969,21 +888,9 @@ jobs:
            fi
            git add -- 'docs/streams/*/README.md'
            tree="$(git write-tree)"
@@ -755,7 +756,7 @@ index 8d4bc8ec2..73170137d 100644
            fi
            msg="${RUNNER_TEMP}/reconcile-msg.txt"
            {
-@@ -775,7 +682,9 @@ jobs:
+@@ -991,7 +898,9 @@ jobs:
              echo
              sed -n '/^reconcile --apply:/,$p' "$out"
            } > "$msg"
@@ -766,7 +767,7 @@ index 8d4bc8ec2..73170137d 100644
            # The publish step runs only when this output is set.
            echo "commit=${commit}" >> "${GITHUB_OUTPUT}"
        - name: Mint assay-board-writer App token
-@@ -785,75 +694,33 @@ jobs:
+@@ -1001,75 +910,33 @@ jobs:
          with:
            app-id: ${{ secrets.BOARD_APP_ID }}
            private-key: ${{ secrets.BOARD_APP_PRIVATE_KEY }}
@@ -855,10 +856,10 @@ index 8d4bc8ec2..73170137d 100644
 -          gh pr create --repo "$repo" --draft --base "$default_branch" --head "$branch" --title "$title" --body-file "$body"
 +            push "${GITHUB_SERVER_URL}/${repo}.git" "${COMMIT}:refs/heads/main"
 diff --git a/statusgen/reconcilejob_test.go b/statusgen/reconcilejob_test.go
-index ccc53d0a3..111e9f15f 100644
+index 792464efccc252571e65c0201751ca16c0a569c1..01561a67a54287d1f8ab45aed0b51e7d54fa2530 100644
 --- a/statusgen/reconcilejob_test.go
 +++ b/statusgen/reconcilejob_test.go
-@@ -33,10 +33,11 @@ const (
+@@ -35,10 +35,11 @@ const (
  // implemented in the fixture README on `reconcile`, or with $STUB_HOLD reports
  // one held row (in the real report's shape, statusgen/reconcile.go's
  // printReconcileTable) and writes nothing; prints the --apply report and exits
@@ -874,7 +875,7 @@ index ccc53d0a3..111e9f15f 100644
  const stubStatusgen = `#!/usr/bin/env bash
  set -eu
  echo "$*" >> "$STUB_LOG/statusgen.log"
-@@ -60,26 +61,20 @@ case "${1:-}" in
+@@ -62,26 +63,20 @@ case "${1:-}" in
        echo "  s/${STUB_FLIP} todo -> implemented   $f   [PR #7 (merged abc1234)]"
      fi ;;
    regen)
@@ -905,7 +906,7 @@ index ccc53d0a3..111e9f15f 100644
      [ -z "${STUB_PULLS:-}" ] || printf '%s\n' "$STUB_PULLS" ;;
    pr)
      case "$2" in
-@@ -88,10 +83,6 @@ case "$1" in
+@@ -90,10 +85,6 @@ case "$1" in
  esac
  `
  
@@ -916,7 +917,7 @@ index ccc53d0a3..111e9f15f 100644
  type jobRig struct {
  	t         *testing.T
  	dir       string
-@@ -246,7 +237,7 @@ func reconcileWorkflowPath() string {
+@@ -248,7 +239,7 @@ func reconcileWorkflowPath() string {
  const (
  	cloneStepName        = "Clone main into a fresh job-local directory"
  	reconcileJobStepName = "Reconcile and regenerate the stream README tables"
@@ -925,7 +926,7 @@ index ccc53d0a3..111e9f15f 100644
  	appTokenExpr         = "${{ steps.app-token.outputs.token }}"
  	commitGateExpr       = "${{ steps.compute.outputs.commit != '' }}"
  	runnerTempExpr       = "${{ runner.temp }}"
-@@ -465,24 +456,41 @@ func (r *jobRig) statusgenLog() []string {
+@@ -484,24 +475,41 @@ func (r *jobRig) statusgenLog() []string {
  	return strings.Split(strings.TrimRight(string(b), "\n"), "\n")
  }
  
@@ -975,7 +976,7 @@ index ccc53d0a3..111e9f15f 100644
  }
  
  // TestReconcileJobStatusgenArgs is review B6's trailer-only half at the job
-@@ -500,54 +508,62 @@ func TestReconcileJobStatusgenArgs(t *testing.T) {
+@@ -520,54 +528,62 @@ func TestReconcileJobStatusgenArgs(t *testing.T) {
  }
  
  // TestReconcileJobSurvivesConflictingMainChange is review B3: a routine change
@@ -1055,7 +1056,7 @@ index ccc53d0a3..111e9f15f 100644
  func TestReconcileJobNeverForces(t *testing.T) {
  	r := newJobRig(t)
  	var racer string
-@@ -555,208 +571,53 @@ func TestReconcileJobNeverForces(t *testing.T) {
+@@ -575,208 +591,53 @@ func TestReconcileJobNeverForces(t *testing.T) {
  		other := filepath.Join(r.dir, "racer")
  		r.git("", "clone", "-q", r.origin, other)
  		r.write(other, strings.Replace(jobReadmeMain, "| 02 | two | todo |", "| 02 | two | implemented |", 1))
@@ -1288,7 +1289,7 @@ index ccc53d0a3..111e9f15f 100644
  }
  
  // TestReconcileJobBuildIgnoresGoWork: with the job's env, Go reads no go.work
-@@ -807,74 +668,54 @@ func TestReconcileJobBuildIgnoresGoWork(t *testing.T) {
+@@ -827,74 +688,54 @@ func TestReconcileJobBuildIgnoresGoWork(t *testing.T) {
  	}
  }
  
@@ -1408,7 +1409,7 @@ index ccc53d0a3..111e9f15f 100644
  	}
  }
  
-@@ -882,25 +723,16 @@ func TestReconcileJobRefusesStrayPath(t *testing.T) {
+@@ -902,25 +743,16 @@ func TestReconcileJobRefusesStrayPath(t *testing.T) {
  // that could not read the PRs fails the tick and pushes nothing.
  func TestReconcileJobCouldNotCheckFails(t *testing.T) {
  	r := newJobRig(t)
@@ -1436,7 +1437,7 @@ index ccc53d0a3..111e9f15f 100644
  // TestReconcileJobRejectsBadCommitOutput pins the publish step's check of the
  // compute step's output: a value that is not an object name is refused before
  // git sees it.
-@@ -913,15 +745,16 @@ func TestReconcileJobRejectsBadCommitOutput(t *testing.T) {
+@@ -933,15 +765,16 @@ func TestReconcileJobRejectsBadCommitOutput(t *testing.T) {
  	}
  }
  
@@ -1456,7 +1457,7 @@ index ccc53d0a3..111e9f15f 100644
  	}
  }
  
-@@ -929,249 +762,56 @@ func TestReconcileJobNoChangeNoPush(t *testing.T) {
+@@ -949,249 +782,56 @@ func TestReconcileJobNoChangeNoPush(t *testing.T) {
  // the lint rejects is not committed.
  func TestReconcileJobLintFailureFails(t *testing.T) {
  	r := newJobRig(t)
@@ -1728,7 +1729,7 @@ index ccc53d0a3..111e9f15f 100644
  }
  
  // TestReconcileJobIgnoresRunnerResidue is review SEC-2372-2's second round:
-@@ -1179,7 +819,7 @@ func TestReconcileJobTokenScope(t *testing.T) {
+@@ -1199,7 +839,7 @@ func TestReconcileJobTokenScope(t *testing.T) {
  // workspace with hooks and a push address, and the runner user's own git
  // configuration with a hooks path and URL rewrites — takes no effect on the
  // tick. No hook runs, the push reaches the real origin and not the decoy, and
@@ -1737,7 +1738,7 @@ index ccc53d0a3..111e9f15f 100644
  func TestReconcileJobIgnoresRunnerResidue(t *testing.T) {
  	r := newJobRig(t)
  	marker := filepath.Join(r.dir, "hook-ran")
-@@ -1214,6 +854,7 @@ func TestReconcileJobIgnoresRunnerResidue(t *testing.T) {
+@@ -1234,6 +874,7 @@ func TestReconcileJobIgnoresRunnerResidue(t *testing.T) {
  	r.git("", "config", "--file", r.userCfg, "url."+decoyURL+".pushInsteadOf", forgeURL)
  	r.git("", "config", "--file", r.userCfg, "remote.origin.pushurl", decoyURL+"o/r.git")
  
@@ -1745,7 +1746,7 @@ index ccc53d0a3..111e9f15f 100644
  	code, out := r.tick("STUB_FLIP=01")
  	if code != 0 {
  		t.Fatalf("exit %d:\n%s", code, out)
-@@ -1221,44 +862,33 @@ func TestReconcileJobIgnoresRunnerResidue(t *testing.T) {
+@@ -1241,44 +882,33 @@ func TestReconcileJobIgnoresRunnerResidue(t *testing.T) {
  	if b, err := os.ReadFile(marker); err == nil {
  		t.Fatalf("a hook left by an earlier job ran during the tick:\n%s", b)
  	}
@@ -1799,7 +1800,7 @@ index ccc53d0a3..111e9f15f 100644
  		for _, sum := range []string{strings.Repeat("0", 64), pin} {
  			dir := t.TempDir()
  			bin := filepath.Join(dir, "bin")
-@@ -1302,7 +932,7 @@ func TestReconcileJobInstallVerifies(t *testing.T) {
+@@ -1322,7 +952,7 @@ func TestReconcileJobInstallVerifies(t *testing.T) {
  
  // TestReconcileJobTriggerAndScope pins the job's guards, read from the YAML:
  // the schedule-and-repository `if:` (review A5), the read-only job token, and
@@ -1808,7 +1809,7 @@ index ccc53d0a3..111e9f15f 100644
  // wiring the job depends on: the hourly schedule, the scheduled runs' own
  // concurrency group (one reconcile at a time, never queued with a push regen),
  // the PR lint step that runs these tests, and the pull_request path entries
-@@ -1358,13 +988,19 @@ func TestReconcileJobTriggerAndScope(t *testing.T) {
+@@ -1378,13 +1008,19 @@ func TestReconcileJobTriggerAndScope(t *testing.T) {
  				t.Errorf("the mint must cover this repository only; it sets %s: %v", k, v)
  			}
  		}
@@ -1830,7 +1831,7 @@ index ccc53d0a3..111e9f15f 100644
  }
  
  // TestReconcileJobStepWiring is review SEC-2372-2's credential half, read from
-@@ -1635,22 +1271,10 @@ jobs:
+@@ -1758,22 +1394,10 @@ jobs:
  	}
  }
  
@@ -1855,12 +1856,12 @@ index ccc53d0a3..111e9f15f 100644
  	goHead = `never $HOME; the tarball checksum-pinned.
        - name: Install Go (job-local toolchain and caches, checksum-verified)
          run: |
-@@ -1678,60 +1302,59 @@ var reconcileMutants = []struct {
+@@ -1801,60 +1425,59 @@ var reconcileMutants = []struct {
  }{
  	{"backfill on the schedule",
  		`"$statusgen" reconcile --apply --root .`, `"$statusgen" reconcile --backfill --apply --root .`, "TestReconcileJobStatusgenArgs"},
 +	{"held-row report not captured for the commit",
-+		`--repo "$repo" | tee "$out"`, `--repo "$repo"`, "TestReconcileJobShowsHeldRows"},
++		`--acceptance-forge | tee "$out"`, `--acceptance-forge`, "TestReconcileJobShowsHeldRows"},
 +	{"landing parent dropped",
 +		`commit="$(git commit-tree "$tree" -p "$base" -F "$msg")"`, `commit="$(git commit-tree "$tree" -F "$msg")"`, "TestReconcileJobLandsOnMain"},
 +	{"landing marked skip-status-regen",
@@ -1954,7 +1955,7 @@ index ccc53d0a3..111e9f15f 100644
  	{"hooks not disabled",
  		`printf '[core]\n\thooksPath = /dev/null\n' > "$cfg"`, `: > "$cfg"`, "TestIsolationGuardFlagsPlant"},
  	{"clone takes the template directory",
-@@ -1740,37 +1363,10 @@ var reconcileMutants = []struct {
+@@ -1863,37 +1486,10 @@ var reconcileMutants = []struct {
  		`push "${GITHUB_SERVER_URL}/${repo}.git" "${COMMIT}`, `push origin "${COMMIT}`, "TestIsolationGuardFlagsPlant"},
  	{"credential helper for any host",
  		`-c "credential.${GITHUB_SERVER_URL}.helper=${helper}"`, `-c "credential.helper=${helper}"`, "TestIsolationGuardFlagsPlant"},

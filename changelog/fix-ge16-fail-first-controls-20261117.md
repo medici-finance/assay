@@ -1,0 +1,1 @@
+- GE/16 verification commands retain Go's test events and require each named test to pass in the owning package. A run that cannot build or execute the package remains unproven.

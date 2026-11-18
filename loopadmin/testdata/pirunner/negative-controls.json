@@ -1,0 +1,54 @@
+{
+  "note": "Test-owned negative controls for the pirunner experiment. Each mutation replaces text that must occur exactly once in the named file (relative to loopadmin/), the bridge is rebuilt in the copy, and the named test runs with -tags pirunner. A kill needs a FAIL of that test whose output contains the named assertion; build failures, timeouts, skips and zero-selected runs are invalid, never kills. The control is the positive control: it is planted first and must be killed, or the harness is broken and no mutation verdict counts.",
+  "baseline_run": "^(TestPiPilotRestart|TestPiPilotEffects|TestPiPilotAuthority|TestPiPilotStopAndObserve|TestPiPilotAccounting)$/^(CrashAfterSubmit|StableIdentity|ReplayRechecks|AbortHoldsForChild|PartialCostUnknown)$",
+  "control": {
+    "name": "positive-control-no-dedupe-guard",
+    "file": "experiments/pirunner/ledger.go",
+    "old": "if l.applied[id] > 0 {",
+    "new": "if false {",
+    "run": "^TestPiPilotEffects$/^StableIdentity$",
+    "assert": "one logical effect applied"
+  },
+  "mutations": [
+    {
+      "name": "no-start-dedupe",
+      "file": "experiments/pirunner/node/src/bridge.ts",
+      "old": "const prior = readMap(key);",
+      "new": "const prior = undefined as MapRecord | undefined;",
+      "run": "^TestPiPilotRestart$/^CrashAfterSubmit$",
+      "assert": "want exactly one launch"
+    },
+    {
+      "name": "no-exec-reauth",
+      "file": "experiments/pirunner/node/src/bridge.ts",
+      "old": "const r = await ask(\"exec-check\", { key, tool: \"safe_probe\", step: args.step, task: String(api.taskId) });",
+      "new": "const r: Obj = { status: \"allowed\" };",
+      "run": "^TestPiPilotAuthority$/^ReplayRechecks$",
+      "assert": "replayed safe tool was not refused at execution"
+    },
+    {
+      "name": "unstable-effect-id",
+      "file": "experiments/pirunner/ledger.go",
+      "old": "id := EffectID(key, action, target)",
+      "new": "id := EffectID(key, action, target) + fmt.Sprint(\"#\", l.Attempts)",
+      "run": "^TestPiPilotEffects$/^StableIdentity$",
+      "assert": "one logical effect applied"
+    },
+    {
+      "name": "no-unknown-stop-hold",
+      "file": "experiments/pirunner/node/src/bridge.ts",
+      "old": "if (live > 0 || children.length > 0) return { ...base, state: \"running\", live, reason };",
+      "new": "",
+      "run": "^TestPiPilotStopAndObserve$/^AbortHoldsForChild$",
+      "assert": "child alive"
+    },
+    {
+      "name": "unknown-cost-zeroed",
+      "file": "experiments/pirunner/node/src/bridge.ts",
+      "old": "const usage = (m.usage ?? {}) as Obj;",
+      "new": "const usage = { cost_micros: 0, ...((m.usage ?? {}) as Obj) } as Obj;",
+      "run": "^TestPiPilotAccounting$/^PartialCostUnknown$",
+      "assert": "missing cost became"
+    }
+  ]
+}

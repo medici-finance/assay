@@ -654,6 +654,16 @@ type shellPlan struct {
 	rowScratch string
 }
 
+// admittedScrubbedNote is the could-not-run note for an admitted row that
+// reads scrubbed ASSAY_* inputs. It names the inputs and says what running the
+// row outside admission takes, so the note never reads as permission to do it.
+func admittedScrubbedNote(names []string) string {
+	return "the row reads " + strings.Join(names, ", ") +
+		", which an admitted run removes from every row's environment, so it cannot run as written here." +
+		" This note is not permission to run it outside admission, where the row sees the full environment" +
+		" admission removes: do that only once the row itself has been reviewed for what it reads"
+}
+
 // removeRowScratch removes an admitted run's row scratch, first making
 // writable any directory a row left read-only.
 func removeRowScratch(dir string) {
@@ -923,11 +933,13 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	if plan.rowScratch != "" {
 		// A row that reads an ASSAY_* input the scrub removed cannot run as
 		// written under admission. It is could-not-run, never a fail: its own
-		// guard on the missing value would otherwise read as a regression.
+		// guard on the missing value would otherwise read as a regression. Nor
+		// is it ever a pass: the row's text chooses this outcome, so it must
+		// not be one that clears anything. The note does not grant a run
+		// outside admission either, where the row sees everything the scrub
+		// removed.
 		if names := admittedRowScrubbedRefs(command, plan.rowEnv()); len(names) > 0 {
-			return runResult{exit: -1, couldNotRun: true,
-				reason: "the row reads " + strings.Join(names, ", ") +
-					", which an admitted run removes from every row's environment: run it outside admission"}
+			return runResult{exit: -1, couldNotRun: true, reason: admittedScrubbedNote(names)}
 		}
 		dir, vars, err := admittedRowDirs(plan.rowScratch)
 		if err != nil {

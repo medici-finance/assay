@@ -1,0 +1,2 @@
+### Changed
+- desk-containers/16 (cell-scoped stop flags): Verify row 3's Expect quotes the exit code the code under test returns, so the verify runner no longer reads it as the command's own expected exit, and Verify row 6a pins the delivery merge and its first-parent base so the consumers check can reach the delivered diff on merged main. Brief version 1 to 2; the acceptance-transition approval is a separate human act.

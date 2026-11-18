@@ -133,7 +133,7 @@ func TestDecisionPortNeedsNoHandedCredential(t *testing.T) {
 	s.replies = []reply{{match: goDecisionBinary + " ensure", stdout: "created: decision issue #4"}}
 	o := dispatchOpts{root: root, brief: "spec.md", kit: "worker"}
 
-	line, err := stepDecision(o, true, allowedRepo, goDecisionBinary, nil, claimAuth{})
+	line, err := stepDecision(o, true, decisionTarget{repo: allowedRepo}, goDecisionBinary, nil, claimAuth{})
 	if err != nil {
 		t.Fatalf("the port was refused for a missing handed credential it never reads: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestDecisionPortNeedsNoHandedCredential(t *testing.T) {
 
 	s.calls = nil
 	script := filepath.Join(root, filepath.FromSlash(decisionScriptRel))
-	if _, err := stepDecision(o, true, allowedRepo, script, nil, claimAuth{}); err == nil ||
+	if _, err := stepDecision(o, true, decisionTarget{repo: allowedRepo}, script, nil, claimAuth{}); err == nil ||
 		deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable {
 		t.Fatalf("the script must still refuse on ambient auth (exit 6): %v", err)
 	}
