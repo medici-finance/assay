@@ -177,6 +177,43 @@ func rosterWith(over map[string]string) map[string]string {
 	return vals
 }
 
+func TestBracketCreditPortableWitnessPaths(t *testing.T) {
+	creditFakeDeskread(t)
+	fx := landed(t, vfMailVerifier, creditBaseAtt(41))
+	t.Chdir(fx.root)
+
+	// The alias points below the brief directory, so alias/../brief traverses
+	// back into that directory. Cleaning the argument before following the
+	// link would select a different file.
+	deeper := filepath.Join(filepath.Dir(filepath.FromSlash(creditBriefRel)), "nested")
+	if err := os.Mkdir(deeper, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(deeper, "alias"); err != nil {
+		t.Fatal(err)
+	}
+	aliasPath := filepath.FromSlash("alias/../") + filepath.Base(fx.brief)
+	for _, tc := range []struct{ dir, arg string }{
+		{fx.root, fx.brief},
+		{fx.root, filepath.FromSlash(creditBriefRel)},
+		{fx.root, aliasPath},
+		{filepath.Dir(fx.brief), filepath.Base(fx.brief)},
+	} {
+		t.Chdir(tc.dir)
+		input := creditFx{root: fx.root, brief: tc.arg}
+		if code, out := input.credit(t, fixtureSource); code != verifyrunExitPass || !strings.Contains(out, "credit=credited") {
+			t.Errorf("%s: exit %d, want credited: %s", tc.arg, code, out)
+		}
+		if code, out := input.credit(t, strings.Repeat("e", 40)); code != verifyrunExitFail || !strings.Contains(out, "credit=not-credited") {
+			t.Errorf("%s (other source): exit %d, want not-credited: %s", tc.arg, code, out)
+		}
+	}
+	missing := creditFx{root: fx.root, brief: "absent.md"}
+	if code, out := missing.credit(t, fixtureSource); code != verifyrunExitCouldNot || strings.Contains(out, "credit=credited") {
+		t.Errorf("missing witness: exit %d, want could-not-check: %s", code, out)
+	}
+}
+
 func TestBracketCredit(t *testing.T) {
 	installStatusgenFixture(t)
 	creditFakeDeskread(t)

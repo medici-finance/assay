@@ -683,7 +683,7 @@ func dispatch(o dispatchOpts) error {
 		// Cross-repository prompts and packets read the SAME isolated tracking tree
 		// bound by the completed attestation, never the dispatcher's shared checkout.
 		if plan.dl.crossRepo(o.root) {
-			br, brief, rev, err := deskkit.VerifierBriefLocation(home)
+			br, brief, rev, err := deskkit.VerifierBriefLocation(home, plan.outcomeTarget.Repo.Slug())
 			if err != nil {
 				return held.settle(err)
 			}
@@ -825,10 +825,10 @@ type dispatchPlan struct {
 	// from — fields on the plan so a test can fix both.
 	now     func() time.Time
 	entropy io.Reader
-	// forgeKind is resolved pre-claim for review and verifier prompts: reviews
-	// name forge-specific head refs, while verifier outcome recipes opt in to
-	// GitHub-only approval reads. Worker prompts keep their existing path.
-	forgeKind deskkit.ForgeKind
+	// forgeKind serves the dispatch checkout and its claim. Outcomes are
+	// published in the repository that tracks the brief.
+	forgeKind     deskkit.ForgeKind
+	outcomeTarget deskkit.ForgeResolution
 	// claimStore is where the dispatch claim is kept, as deskkit.ResolveClaimStore decided it
 	// from the roster — never a flag. Resolved pre-claim, so a store that
 	// cannot be used refuses before any worktree is cut and before any credential is minted.
@@ -1085,11 +1085,24 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// also resolves here so only GitHub outcome recipes request GitHub approval
 	// reads; other forges retain their ordinary landing path.
 	if reviewKit(o.kit) || verifierKit(o.kit) {
-		kind, ferr := o.resolveTargetForgeKind(repo)
+		target, ferr := resolveTargetForge(repo, o.root)
 		if ferr != nil {
 			return plan, ferr
 		}
-		plan.forgeKind = kind
+		plan.forgeKind = target.Kind
+		if verifierKit(o.kit) {
+			plan.outcomeTarget = target
+			if dl.crossRepo(o.root) {
+				tracking, err := verifierTrackingRepo(o, dl)
+				if err != nil {
+					return plan, err
+				}
+				plan.outcomeTarget, err = resolveTargetForge(tracking, dl.trackingRoot)
+				if err != nil {
+					return plan, err
+				}
+			}
+		}
 	}
 
 	// Read-only kits allocate detached. A reviewer checks out the PR head
@@ -1625,11 +1638,11 @@ func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, 
 	// read (the "nothing durable before the flags are good" contract the zero-process tests pin).
 	kind := forgeKind
 	if strings.TrimSpace(string(kind)) == "" {
-		var ferr error
-		kind, ferr = o.resolveTargetForgeKind(repo)
+		target, ferr := resolveTargetForge(repo, o.root)
 		if ferr != nil {
 			return claimAuth{}, ferr
 		}
+		kind = target.Kind
 	}
 	// ISSUE 1631. An inherited GH_TOKEN wins only once it is shown to BE the dispatching role's
 	// credential. A launcher (a cell shim) exported the operator's ambient gh login there, and
@@ -1716,7 +1729,7 @@ func (o dispatchOpts) verifyInheritedToken(role, repo string, kind deskkit.Forge
 	}
 	expected := deskkit.RoleAppLoginOrEmpty(role)
 	owner, name, _ := strings.Cut(repo, "/")
-	id, err := tokenIdentityFn(deskkit.ForgeRepo{Owner: owner, Name: name}, o.targetOriginURL(), tok)
+	id, err := tokenIdentityFn(deskkit.ForgeRepo{Owner: owner, Name: name}, targetOriginURL(o.root), tok)
 	if err != nil {
 		return false, "", deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: a GH_TOKEN is exported in this environment, but the account it acts as could not be read "+
@@ -2422,34 +2435,23 @@ func (o dispatchOpts) resolveRepo() (string, error) {
 	return slug, nil
 }
 
-// resolveTargetForgeKind resolves WHICH forge serves the target repo, for the two places
-// this verb branches on the answer: the review kit's forge-shaped head-fetch refspec, and the
-// claim child's credential custody (GitHub App mint vs GitLab role PAT — issue 1203). It reads
-// the TARGET repo's origin remote from o.root — the same checkout resolveRepo reads — through
-// the runCmd seam, and hands the raw URL to deskkit, which owns the roster-first/host-map
-// resolution and the well-known host table; deskdispatch re-derives neither. A repo the
-// roster configures (ASSAY_REPO_FORGES) resolves even with an unreadable remote; otherwise
-// the origin host decides. Unresolvable is deskkit's own could-not-check (exit 6), returned
-// verbatim so the dispatch fails closed rather than guessing a forge.
-func (o dispatchOpts) resolveTargetForgeKind(repo string) (deskkit.ForgeKind, error) {
+// resolveTargetForge reads the named checkout's origin. Deskkit owns roster-first
+// resolution and host mapping for review refs, claim custody and outcome publication.
+func resolveTargetForge(repo, root string) (deskkit.ForgeResolution, error) {
 	owner, name, ok := strings.Cut(repo, "/")
 	if !ok || strings.TrimSpace(owner) == "" || strings.TrimSpace(name) == "" {
-		return "", deskkit.Unverifiable(fmt.Sprintf(
+		return deskkit.ForgeResolution{}, deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: %q does not parse to an owner/name, so the forge serving it cannot be resolved.",
 			stepClaimAcquire, repo), nil)
 	}
-	res, err := deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, o.targetOriginURL())
-	if err != nil {
-		return "", err
-	}
-	return res.Kind, nil
+	return deskkit.ForgeKindForRepoRemote(deskkit.ForgeRepo{Owner: owner, Name: name}, targetOriginURL(root))
 }
 
-// targetOriginURL reads the TARGET checkout's origin remote (o.root) through the runCmd seam, or
+// targetOriginURL reads the target checkout's origin remote through the runCmd seam, or
 // "" when it cannot be read — deskkit then answers from the roster alone. The raw URL is handed
 // to deskkit and never printed (an https origin can carry userinfo).
-func (o dispatchOpts) targetOriginURL() string {
-	if r := runCmd(o.root, "git", "remote", "get-url", "origin"); r.err == nil {
+func targetOriginURL(root string) string {
+	if r := runCmd(root, "git", "remote", "get-url", "origin"); r.err == nil {
 		return r.stdout
 	}
 	return ""
