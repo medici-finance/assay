@@ -9,6 +9,7 @@ import (
 // regression: #4563. These are source-fixture checks, not
 // independent verification of desk-tools/38 or a substitute human ruling.
 func TestTransitionDeliveredPlaceholder(t *testing.T) {
+	installStatusgenFixture(t)
 	const placeholder = "<!-- Independent verifier appends one row per Verify command after implementation. -->"
 	cases := []string{"quoted-placeholder", "nested-placeholder", "unchanged-result", "unquoted-elsewhere", "quoted-with-suffix", "quoted-with-prefix", "changed-quotation", "missing-placeholder", "placeholder-plus-result", "arbitrary-comment", "lookalike", "quoted-result", "changed-amendment-history", "lost-current-history", "offline"}
 	for _, name := range cases {

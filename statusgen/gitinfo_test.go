@@ -50,6 +50,8 @@ func runGitEnv(t *testing.T, dir string, env []string, args ...string) {
 // fixtureGitEnv removes caller Git controls that can change fixture setup or
 // positive controls. Tests that need a particular Git environment pass it
 // explicitly to runGitEnv; production row environments are tested separately.
+// The owned template, explicit identity and dates survive, while undeclared
+// system/global Git configuration never becomes a fallback after filtering.
 func fixtureGitEnv(env []string) []string {
 	filtered := make([]string, 0, len(env))
 	for _, entry := range env {
@@ -59,7 +61,7 @@ func fixtureGitEnv(env []string) []string {
 		}
 		filtered = append(filtered, entry)
 	}
-	return filtered
+	return append(filtered, "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull)
 }
 
 // fixedDate is deliberately expressed with a non-UTC offset (+05:30). git

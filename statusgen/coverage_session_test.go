@@ -10,6 +10,7 @@ import (
 // owns the Git reader. Reopening the same repository for each evaluator question
 // loses the existing invocation-scoped object cache.
 func TestCoverageGitReadLifetime(t *testing.T) {
+	installStatusgenFixture(t)
 	root := bulkV2Fixture(t, 1, 1, 1)
 	stream := &Stream{Name: gv2Stream, Dir: filepath.Join(root, "docs", "streams", gv2Stream), Root: root}
 	if activeGitReads != nil {
@@ -78,6 +79,7 @@ func TestCoverageGitReadLifetime(t *testing.T) {
 // A reused reader must still observe a newly corrupt history profile; restoring
 // that metadata must permit the original valid evidence again.
 func TestCoverageGitReadMetadataChanges(t *testing.T) {
+	installStatusgenFixture(t)
 	root := bulkV2Fixture(t, 1, 1, 1)
 	stream := &Stream{Name: gv2Stream, Dir: filepath.Join(root, "docs", "streams", gv2Stream), Root: root}
 	defer beginGitReadSession()()
