@@ -146,6 +146,11 @@ func Install(t testing.TB, opts Options) *Fixture {
 	f := New(t, opts)
 	// Clear all undeclared inputs, not just today's known Git/token variables.
 	// Register both presence and value restoration through testing's own cleanup.
+	// Check testing's parallel restriction before registering any cleanup that
+	// mutates the environment. Register compaction before the remaining Setenv
+	// callbacks so it runs after they have restored the parent environment.
+	t.Setenv("PATH", os.Getenv("PATH"))
+	t.Cleanup(func() { compactEnvironment(t) })
 	for _, entry := range os.Environ() {
 		key, _, _ := strings.Cut(entry, "=")
 		if _, keep := f.base[keyFor(key, runtime.GOOS)]; !keep {
@@ -159,7 +164,27 @@ func Install(t testing.TB, opts Options) *Fixture {
 		key, value, _ := strings.Cut(entry, "=")
 		t.Setenv(key, value)
 	}
+	compactEnvironment(t)
 	return f
+}
+
+// compactEnvironment preserves live keys, values and absence while discarding
+// Unix's internal Unsetenv tombstones. Otherwise repeated Install lifetimes make
+// every later os.Environ call allocate in proportion to all past removals.
+// Call only after testing's Setenv guard has admitted process-scoped mutation.
+func compactEnvironment(t testing.TB) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		return
+	}
+	live := os.Environ()
+	os.Clearenv()
+	for _, entry := range live {
+		key, value, _ := strings.Cut(entry, "=")
+		if err := os.Setenv(key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func (f *Fixture) overlay(env map[string]string, key, value string) {
