@@ -6,10 +6,11 @@ import (
 )
 
 // runnersource_test.go — #5530: the rows of one latest-PASS run may differ in
-// the derived source tag at the end of the Runner cell, and only there. A
-// container bracket row reads `(forge-identity)` or `(git-config)`; a row the
-// verifier recorded itself reads `(model verifier)` or carries no tag. Every
-// other difference still refuses.
+// a description or an omitted identity source (runnerCellsAgree, #6767), also
+// when every row sits on the same tree suffix (+dirty, +unknown). A container
+// bracket row reads `(forge-identity)`; a row the verifier recorded itself
+// reads `(model verifier)` or carries no tag. Every other difference, including
+// two different sources or a different tree suffix, still refuses.
 
 const rsOBO = " (on-behalf-of human:pat)"
 
@@ -32,7 +33,6 @@ func TestFlipSourceTagOneRunner(t *testing.T) {
 	}{
 		{"forge-model", []string{rsOBO + " (forge-identity)", " (model verifier)" + rsOBO}, ""},
 		{"forge-none", []string{rsOBO + " (forge-identity)", rsOBO}, ""},
-		{"gitcfg-forge", []string{rsOBO + " (git-config)", rsOBO + " (forge-identity)"}, ""},
 		{"no-obo-mixed", []string{" (forge-identity)", ""}, ""},
 		{"dirty-mixed", []string{"+dirty" + rsOBO + " (forge-identity)", "+dirty (model verifier)" + rsOBO, "+dirty" + rsOBO}, "-"},
 		{"dirty-bare-mixed", []string{"+dirty (forge-identity)", "+dirty"}, "+dirty"},
@@ -80,6 +80,7 @@ func TestFlipSourceTagNearMiss(t *testing.T) {
 		{"trailing-text", []string{at + rsOBO + " (forge-identity) x", at + rsOBO + " y"}, "runner mismatch"},
 		{"dirty-vs-unknown", []string{at + "+dirty (forge-identity)", at + "+unknown (model verifier)"}, "runner mismatch"},
 		{"dirty-obo", []string{at + "+dirty" + rsOBO + " (forge-identity)", at + "+dirty (on-behalf-of human:alex)"}, "runner mismatch"},
+		{"gitcfg-forge", []string{at + rsOBO + " (git-config)", at + rsOBO + " (forge-identity)"}, "runner mismatch"},
 		{"dirty-tag", []string{at + "+dirty (forge-identity)", at + "+dirty (ci-env)"}, "runner mismatch"},
 		{"no-sha", []string{at + rsOBO + " (forge-identity)", vfRunner + rsOBO}, "sha mismatch"},
 	}
@@ -94,6 +95,19 @@ func TestFlipSourceTagNearMiss(t *testing.T) {
 				t.Fatalf("err = %v, want a refusal naming %q", err, c.want)
 			}
 		})
+	}
+}
+
+// regression: #5530
+// TestCloseRunnerTreeMixed: the one-step human close reads one runner for a
+// shared tree suffix with mixed tags, in either row order, naming no source.
+func TestCloseRunnerTreeMixed(t *testing.T) {
+	a, b := "+dirty (forge-identity)", "+dirty (model verifier)"
+	want := vfRunner + " @ " + vfSHA + "+dirty"
+	for _, tails := range [][]string{{a, b}, {b, a}} {
+		if _, runner := evidenceVerifierInfo(rsRun(tails...)); runner != want {
+			t.Fatalf("rows %q: close runner %q, want %q", tails, runner, want)
+		}
 	}
 }
 
