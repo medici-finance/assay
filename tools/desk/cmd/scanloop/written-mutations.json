@@ -53,7 +53,7 @@
       "name": "the bare issue-N.md credits a member of any repository again (#7023)",
       "file": "cmd/scanloop/written.go",
       "old": "\treturn home != \"\" && strings.EqualFold(repo, home)",
-      "new": "\treturn true"
+      "new": "\t_ = home\n\treturn true"
     },
     {
       "name": "HasPlaceholder matches on the number alone (#7023)",
