@@ -684,9 +684,52 @@ func detectNonCommitResolution(repo string, p prBase, lastReviewAt time.Time) (b
 		if t, perr := time.Parse(time.RFC3339, p.LastEditedAt); perr == nil && t.After(lastReviewAt) {
 			return true, "PR body/title edited after the last review", nil
 		}
+		return false, "", nil
+	}
+
+	// GitLab reports no edit time on the change list (ListOpenChanges leaves LastEditedAt
+	// empty), so an empty value there is "not read", not "never edited" — and a description
+	// edit would be invisible to this signal. The forge's trust read derives the edit time from
+	// the change's description-change system notes; read it, for this one blocked row only.
+	// Any other forge keeps the empty value as "never edited" and pays no extra read.
+	if kind, kerr := forgeKindOf(repo); kerr == nil && kind == deskkit.ForgeGitLab {
+		edited, rerr := gitlabBodyEditedAt(repo, p.Number)
+		if rerr != nil {
+			return false, "", rerr
+		}
+		if edited.After(lastReviewAt) {
+			return true, "PR body/title edited after the last review", nil
+		}
 	}
 
 	return false, "", nil
+}
+
+// forgeKindOf names the forge kind serving repo; a package var so tests can pin it.
+var forgeKindOf = func(repo string) (deskkit.ForgeKind, error) {
+	owner, name, _ := strings.Cut(repo, "/")
+	res, err := deskkit.ForgeKindFor(deskkit.ForgeRepo{Owner: owner, Name: name})
+	if err != nil {
+		return "", err
+	}
+	return res.Kind, nil
+}
+
+// gitlabBodyEditedAt reads the change's latest description-edit time through the forge's
+// typed trust read. An incomplete payload is could-not-check (error), never "unedited".
+func gitlabBodyEditedAt(repo string, num int) (time.Time, error) {
+	f, fr, err := forgeFor(repo)
+	if err != nil {
+		return time.Time{}, err
+	}
+	tp, err := f.PRTrustEvents(fr, num)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if !tp.Complete {
+		return time.Time{}, deskkit.Unverifiable(fmt.Sprintf("could not establish the description-edit time of %s#%d (incomplete activity read)", repo, num), nil)
+	}
+	return tp.BodyEdited, nil
 }
 
 // prBlessed evaluates the blessing for a PR whose AUTHOR is untrusted: ONE
