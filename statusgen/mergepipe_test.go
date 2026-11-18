@@ -54,6 +54,7 @@ func TestPipeChild(t *testing.T) {
 }
 
 func TestPipeDiagnostics(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, tc := range []struct {
 		name           string
 		archive, untar int
@@ -95,6 +96,7 @@ func TestPipeDiagnostics(t *testing.T) {
 }
 
 func TestPipeStartCleanup(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("archive_start", func(t *testing.T) {
 		marker := filepath.Join(t.TempDir(), "untar-finished")
 		u := pipeChild("untar", marker, 0)

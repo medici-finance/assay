@@ -195,6 +195,7 @@ func vfRefuses(t *testing.T, o vfOpts, want string, extra ...string) {
 }
 
 func TestVflipHappyPath(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	before, _ := os.ReadFile(readme)
 	code, out, errOut := runVF(t, root)
@@ -213,6 +214,7 @@ func TestVflipHappyPath(t *testing.T) {
 }
 
 func TestVflipDryRunNoWrite(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	before, _ := os.ReadFile(readme)
 	code, out, errOut := runVF(t, root, "--dry-run")
@@ -229,6 +231,7 @@ func TestVflipDryRunNoWrite(t *testing.T) {
 // verdict, does not count against the later PASS — only the PASS's own rows
 // are read.
 func TestVflipLatestRunOnly(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	old := strings.ReplaceAll(witnessTableFor(vfRow1, vfRow2), vfSHA, "0123456789ab")
 	o.evidence = old + "\n\nVERIFY: BLOCKED. row 2 did not execute.\n\n" + o.evidence
@@ -239,30 +242,35 @@ func TestVflipLatestRunOnly(t *testing.T) {
 }
 
 func TestVflipVerdictFailAfter(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence += "\n\n**VERIFY: FAIL** — row 1 regressed."
 	vfRefuses(t, o, "verdict mismatch")
 }
 
 func TestVflipVerdictBlocked(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence += "\n\nVERIFY: BLOCKED — row 2 could not run."
 	vfRefuses(t, o, "verdict mismatch")
 }
 
 func TestVflipNoVerdict(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = witnessTableFor(vfRow1, vfRow2)
 	vfRefuses(t, o, "verdict mismatch")
 }
 
 func TestVflipLenientPass(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = witnessTableFor(vfRow1, vfRow2) + "\n\nVERIFY: PASS. Both rows green."
 	vfRefuses(t, o, "non-strict PASS")
 }
 
 func TestVflipLooseBoldPass(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = witnessTableFor(vfRow1, vfRow2) + "\n\n**Non-implementer run — VERIFY: PASS**"
 	vfRefuses(t, o, "non-strict PASS")
@@ -271,32 +279,38 @@ func TestVflipLooseBoldPass(t *testing.T) {
 // TestVflipQuotedPass: a strict marker quoted in inline code after a FAIL is
 // a quotation, not a verdict — the FAIL stays the latest verdict.
 func TestVflipQuotedPass(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence += "\n\n**VERIFY: FAIL** — fix, then record `**VERIFY: PASS**`."
 	vfRefuses(t, o, "verdict mismatch")
 }
 
 func TestVflipShaMismatch(t *testing.T) {
+	installStatusgenFixture(t)
 	vfRefuses(t, vfDefaults(), "sha mismatch", "--sha", "deadbeef0000")
 }
 
 func TestVflipRowShaDisagree(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = witnessTableFor(vfRow1, strings.Replace(vfRow2, vfSHA, "0123456789ab", 1)) + "\n\n" + vfPass
 	vfRefuses(t, o, "sha mismatch")
 }
 
 func TestVflipRunnerMismatch(t *testing.T) {
+	installStatusgenFixture(t)
 	vfRefuses(t, vfDefaults(), "runner mismatch", "--runner", "assay-worker-app[bot]")
 }
 
 func TestVflipRowRunnerDisagree(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = witnessTableFor(vfRow1, strings.Replace(vfRow2, vfRunner, "human:alex", 1)) + "\n\n" + vfPass
 	vfRefuses(t, o, "runner mismatch")
 }
 
 func TestVflipRunnerNoSha(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = witnessTableFor(strings.Replace(vfRow1, " @ "+vfSHA, "", 1),
 		strings.Replace(vfRow2, " @ "+vfSHA, "", 1)) + "\n\n" + vfPass
@@ -304,42 +318,49 @@ func TestVflipRunnerNoSha(t *testing.T) {
 }
 
 func TestVflipGateHuman(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.gate = "human"
 	vfRefuses(t, o, "gate is human")
 }
 
 func TestVflipRiskYes(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.risk = "{regulatory: no, customer: yes, irreversible: no, sensitive-data: no}"
 	vfRefuses(t, o, "risk.customer")
 }
 
 func TestVflipIrreversible(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.risk = "{regulatory: no, customer: no, irreversible: yes, sensitive-data: no}"
 	vfRefuses(t, o, "irreversible")
 }
 
 func TestVflipNotImplemented(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.status, o.verified = "verified", vfStamp
 	vfRefuses(t, o, "not implemented")
 }
 
 func TestVflipStampPresent(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.verified = vfStamp
 	vfRefuses(t, o, "never overwrites a stamp")
 }
 
 func TestVflipUnwitnessed(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = witnessTableFor(vfRow1, strings.Replace(vfRow2, "pass exit=1", "fail exit=0", 1)) + "\n\n" + vfPass
 	vfRefuses(t, o, "passing execution witness")
 }
 
 func TestVflipHeldRow(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = witnessTableFor(vfRow1, vfRow2) + "\n\nRow 2 is HELD pending a rerun.\n\n" + vfPass
 	vfRefuses(t, o, "HELD")
@@ -376,6 +397,7 @@ func TestVflipDiffGuard(t *testing.T) {
 // stamped sha that records row 1 only, then PASS. Row 2 was never run at the
 // stamped sha, so the flip refuses — witnesses come from the PASS run alone.
 func TestVflipWitnessOldRun(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	old := strings.ReplaceAll(witnessTableFor(vfRow1, vfRow2), vfSHA, "0123456789ab")
 	o.evidence = old + "\n\nVERIFY: BLOCKED. row 2 did not execute.\n\n" +
@@ -387,6 +409,7 @@ func TestVflipWitnessOldRun(t *testing.T) {
 // its verdict; Date/Runner rows after the latest PASS refuse rather than let
 // the PASS take the earlier (FAIL) run's rows.
 func TestVflipRowsAfterPass(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	runX := strings.ReplaceAll(witnessTableFor(vfRow1, vfRow2), vfSHA, "0123456789ab")
 	o.evidence = "**VERIFY: FAIL** — run at X.\n\n" + runX + "\n\n" + vfPass + "\n\n" +
@@ -397,6 +420,7 @@ func TestVflipRowsAfterPass(t *testing.T) {
 // TestVflipDiffWired (ADV-6): planVerifyFlip itself runs the diff guard — a
 // rewrite that also writes the Reviewed cell is refused before any write.
 func TestVflipDiffWired(t *testing.T) {
+	installStatusgenFixture(t)
 	orig := flipRewriteFn
 	t.Cleanup(func() { flipRewriteFn = orig })
 	flipRewriteFn = func(raw, num, stamp string) (string, error) {
@@ -424,6 +448,7 @@ func vfDated(date string) vfOpts {
 // TestVflipDateNotIso (ADV-5): the Date cell is copied into the stamp, so it
 // must be a real YYYY-MM-DD date.
 func TestVflipDateNotIso(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, d := range []string{"2026-8-13", "13 Aug 2026", "2026-02-30", "soon"} {
 		t.Run(d, func(t *testing.T) { vfRefuses(t, vfDated(d), "bad date") })
 	}
@@ -431,6 +456,7 @@ func TestVflipDateNotIso(t *testing.T) {
 
 // TestVflipDateFuture (ADV-5): a run dated after today refuses.
 func TestVflipDateFuture(t *testing.T) {
+	installStatusgenFixture(t)
 	vfRefuses(t, vfDated("2999-01-01"), "bad date")
 }
 
@@ -438,6 +464,7 @@ func TestVflipDateFuture(t *testing.T) {
 // (could-not-check), as `statusgen brief --check-verified` reports it — never
 // a silent pick of the first file.
 func TestVflipAmbiguousFile(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	dir := filepath.Dir(readme)
 	src, err := os.ReadFile(filepath.Join(dir, "brief-01-flip.md"))
@@ -454,6 +481,7 @@ func TestVflipAmbiguousFile(t *testing.T) {
 // name rather than its directory resolves nowhere under --check-verified, so
 // the flip cannot check it either.
 func TestVflipStreamNameKey(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	raw, _ := os.ReadFile(readme)
 	if err := os.WriteFile(readme, []byte(strings.Replace(string(raw), "stream: vf\n", "stream: other\n", 1)), 0o644); err != nil {
@@ -465,6 +493,7 @@ func TestVflipStreamNameKey(t *testing.T) {
 // TestVflipStreamDirClash (ADV-4): a board in another directory that names
 // itself `vf` must not have its README flipped from the vf/ brief's record.
 func TestVflipStreamDirClash(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	other := filepath.Join(root, "docs", "streams", "aa")
 	if err := os.MkdirAll(other, 0o755); err != nil {
@@ -501,6 +530,7 @@ func vfCouldNotCheck(t *testing.T, root, readme, key, want string) {
 // TestVflipSymlinkReadme (ADV-7): a README that is a symlink is refused, and
 // the link target is never written.
 func TestVflipSymlinkReadme(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	target := filepath.Join(t.TempDir(), "target.md")
 	raw, _ := os.ReadFile(readme)
@@ -526,6 +556,7 @@ func TestVflipSymlinkReadme(t *testing.T) {
 // latest verdict, but it still ends the earlier run — that run's rows at
 // another sha are not read as the PASS's rows.
 func TestVflipStruckBoundary(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	old := strings.ReplaceAll(witnessTableFor(vfRow1, vfRow2), vfSHA, "0123456789ab")
 	o.evidence = old + "\n\n~~VERIFY: BLOCKED. row 2 did not execute.~~\n\n" + o.evidence
@@ -537,6 +568,7 @@ func TestVflipStruckBoundary(t *testing.T) {
 
 // TestVflipStruckPassOnly: a struck strict PASS is a retraction, not a verdict.
 func TestVflipStruckPassOnly(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = witnessTableFor(vfRow1, vfRow2) + "\n\n~~" + vfPass + "~~"
 	vfRefuses(t, o, "verdict mismatch")
@@ -552,6 +584,7 @@ func vfQualified(quals string) vfOpts {
 // TestVflipOnBehalfDropped: the Evidence row's `on-behalf-of human:<name>`
 // qualifier stays out of the Verified stamp; the other qualifiers are kept.
 func TestVflipOnBehalfDropped(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfQualified(" (claude-x) (on-behalf-of human:pat) (forge-identity)"))
 	code, out, errOut := runVF(t, root)
 	want := vfStamp + " (claude-x) (forge-identity)"
@@ -567,6 +600,7 @@ func TestVflipOnBehalfDropped(t *testing.T) {
 // TestVflipHumanTokenRefused: a `human:` token outside a clean qualifier
 // list cannot be dropped, so the flip refuses rather than write it.
 func TestVflipHumanTokenRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	vfRefuses(t, vfQualified(" by human:pat"), "human-stamp")
 }
 
@@ -592,6 +626,7 @@ func vfExpect(t *testing.T, root, readme string, code int, want string) {
 // a PASS run whose Runner text names the verifier. The rows read right, so
 // only blame tells them apart.
 func TestVflipWorkerPassRun(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = strings.ReplaceAll(witnessTableFor(vfRow1, vfRow2), vfSHA, "0123456789ab") +
 		"\n\n**VERIFY: FAIL** — row 2 failed at 0123456789ab."
@@ -603,6 +638,7 @@ func TestVflipWorkerPassRun(t *testing.T) {
 
 // TestVflipWorkerMarker: the verifier's rows, another App's PASS marker.
 func TestVflipWorkerMarker(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = witnessTableFor(vfRow1, vfRow2)
 	root, readme := vfFixture(t, o)
@@ -613,6 +649,7 @@ func TestVflipWorkerMarker(t *testing.T) {
 
 // TestVflipWorkerRow: the verifier's PASS, one row rewritten by another App.
 func TestVflipWorkerRow(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	raw, _ := os.ReadFile(vfBrief(root))
 	edited := strings.Replace(string(raw), "sha256:6f1a0b3c9d22", "sha256:6f1a0b3c9d23", 1)
@@ -626,6 +663,7 @@ func TestVflipWorkerRow(t *testing.T) {
 // TestVflipFoldedPassLine: a comment folds two file lines into the PASS line;
 // the second one is another App's, so it is blamed too.
 func TestVflipFoldedPassLine(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence += " <!-- note\nend -->"
 	root, readme := vfFixture(t, o)
@@ -640,6 +678,7 @@ func TestVflipFoldedPassLine(t *testing.T) {
 
 // TestVflipUncommittedPass: a PASS nobody committed is owned by nobody.
 func TestVflipUncommittedPass(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = witnessTableFor(vfRow1, vfRow2)
 	root, readme := vfFixture(t, o)
@@ -649,6 +688,7 @@ func TestVflipUncommittedPass(t *testing.T) {
 
 // TestVflipHumanOwnedPass: a roster human may verify.
 func TestVflipHumanOwnedPass(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.author = vfMailHuman
 	root, readme := vfFixture(t, o)
@@ -657,6 +697,7 @@ func TestVflipHumanOwnedPass(t *testing.T) {
 
 // TestVflipNoRosterCannotCheck: no roster, no accepted actor — could-not-check.
 func TestVflipNoRosterCannotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	scanWithNoRoster(t)
 	vfExpect(t, root, readme, verifyflipExitCouldNotCheck, "provenance")
@@ -665,6 +706,7 @@ func TestVflipNoRosterCannotCheck(t *testing.T) {
 // TestVflipShallowCannotCheck: blame in a shallow clone cannot reach the
 // commits behind the lines — could-not-check, never a pass.
 func TestVflipShallowCannotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := vfFixture(t, vfDefaults())
 	if err := os.WriteFile(filepath.Join(root, "later.txt"), []byte("x\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -678,6 +720,7 @@ func TestVflipShallowCannotCheck(t *testing.T) {
 
 // TestVflipNotARepo: outside git there is no provenance — could-not-check.
 func TestVflipNotARepo(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	if err := os.RemoveAll(filepath.Join(root, ".git")); err != nil {
 		t.Fatal(err)
@@ -689,6 +732,7 @@ func TestVflipNotARepo(t *testing.T) {
 // carrying two trailing comments. The marker line is content; its author must
 // be judged, however many comments follow the text on the same line.
 func TestVflipMarkerTwoComments(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = witnessTableFor(vfRow1, vfRow2)
 	root, readme := vfFixture(t, o)
@@ -800,6 +844,7 @@ func TestVflipBlameCallers(t *testing.T) {
 // the Evidence-actor lint reads a line with text before two comments as
 // content, so a verifier who owns only such a line still backs the closure.
 func TestVflipLintTwoComments(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = witnessTableFor(vfRow1, vfRow2)
 	o.author = vfMailWorker
@@ -843,6 +888,7 @@ func TestVflipStrippedSpans(t *testing.T) {
 // row flipped by hand), the Evidence-actor lint the deskevidence flip runs
 // after its commit still names the closure.
 func TestVflipLintLowerLayer(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.author = vfMailWorker
 	root, readme := vfFixture(t, o)
@@ -875,24 +921,28 @@ func vfClassed(c1, c2 string) string {
 }
 
 func TestVflipGateHumanRow(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.verify = vfClassed("check", "gate:human")
 	vfRefuses(t, o, "gate-class: Verify row 2 is classed gate:human")
 }
 
 func TestVflipGateHumanCompound(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.verify = vfClassed("`Gate:Human` +flow", "check")
 	vfRefuses(t, o, "gate-class: Verify row 1 is classed gate:human")
 }
 
 func TestVflipUnknownRowClass(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.verify = vfClassed("check", "gate:humn")
 	vfRefuses(t, o, "unknown class")
 }
 
 func TestVflipClassedRowsFlip(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.verify = vfClassed("check:ci", "check")
 	root, readme := vfFixture(t, o)
@@ -905,6 +955,7 @@ func TestVflipClassedRowsFlip(t *testing.T) {
 // deskevidence flip runs after the write — refuses the same tree, and
 // accepts it once the Verified cell names a human.
 func TestVflipCheckVerifiedLayer(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.verify = vfClassed("check", "gate:human")
 	root, readme := vfFixture(t, o)
@@ -958,6 +1009,7 @@ const vfNoDateHdr = "| # | Command | Result | Output | When | Who |\n|---|---|--
 // recorded the PASS. Only blame of the whole run sees it: no commit follows
 // the PASS, and the marker and the Date/Runner row are the verifier's.
 func TestVflipRunRowNoDateHdr(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = witnessTableFor(vfRow1)
 	root, readme := vfFixture(t, o)
@@ -971,6 +1023,7 @@ func TestVflipRunRowNoDateHdr(t *testing.T) {
 // TestVflipRunRowAfterPass is the reviewer's shape: the same table inserted
 // above the verifier's PASS by a later commit of another App.
 func TestVflipRunRowAfterPass(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = witnessTableFor(vfRow1) + "\n\n" + vfPass
 	root, readme := vfFixture(t, o)
@@ -1002,6 +1055,7 @@ func vfFailAfterPass(t *testing.T) (root, readme string) {
 // — deleting it, striking it, quoting it — so the earlier PASS reads as the
 // latest verdict again. Each refuses.
 func TestVflipLaterFailEdited(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, c := range []struct{ name, repl string }{
 		{"deleted", ""},
 		{"struck", "~~" + vfLaterFail + "~~"},
@@ -1020,6 +1074,7 @@ func TestVflipLaterFailEdited(t *testing.T) {
 // TestVflipLaterRunDeleted: the verifier recorded a whole later FAIL run (a
 // new witness table, then the FAIL); another App deleted the block.
 func TestVflipLaterRunDeleted(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	later := "\n\n" + strings.ReplaceAll(witnessTableFor(vfRow1, vfRow2), vfSHA, "0123456789ab") +
 		"\n\n**VERIFY: FAIL** — row 2 failed at 0123456789ab."
@@ -1033,6 +1088,7 @@ func TestVflipLaterRunDeleted(t *testing.T) {
 // TestVflipUncommittedDelete: a deletion nobody committed has no blame record
 // and no commit; the working tree's Evidence must match HEAD's.
 func TestVflipUncommittedDelete(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFailAfterPass(t)
 	vfEdit(t, root, "\n\n"+vfLaterFail, "")
 	vfExpect(t, root, readme, verifyflipExitRefused, "provenance")
@@ -1045,6 +1101,7 @@ func TestVflipUncommittedDelete(t *testing.T) {
 // lines are enumerated from the fixture, so a new line the verb reads is
 // covered without editing this list.
 func TestVflipEveryRunLine(t *testing.T) {
+	installStatusgenFixture(t)
 	run := strings.Split(witnessTableFor(vfRow1, vfRow2), "\n")
 	for i, line := range run {
 		t.Run(fmt.Sprintf("line%d", i), func(t *testing.T) {
@@ -1078,6 +1135,7 @@ func TestVflipEveryRunLine(t *testing.T) {
 // post-PASS note passes. The template comment the brief's author wrote before
 // the run is not content and is not judged either.
 func TestVflipMergeNotJudged(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = "<!-- appended at implementation time -->"
 	o.author = vfMailWorker
@@ -1120,6 +1178,7 @@ const vfBriefRel = "docs/streams/vf/brief-01-flip.md"
 // for "Evidence equals one parent" would skip it anyway. Each variant refuses,
 // whoever lands the branch.
 func TestVflipMergeDropsFail(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, c := range []struct{ name, keep, land, lander string }{
 		{"ours-noff", "ours", "--no-ff", vfMailHuman},
 		{"checkout-noff", "checkout", "--no-ff", vfMailHuman},
@@ -1157,6 +1216,7 @@ func TestVflipMergeDropsFail(t *testing.T) {
 // equals the parent that carries the verifier's note, the branch's own side
 // changed nothing since the merge base, and the flip goes through.
 func TestVflipBaseMergedIn(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFixture(t, vfDefaults())
 	runGitEnv(t, root, nil, "checkout", "-q", "-b", "wk")
 	vfOther(t, root, "other.txt", vfMailWorker)
@@ -1177,6 +1237,7 @@ func TestVflipBaseMergedIn(t *testing.T) {
 // rename and never the deletion made under the old name. A brief that is not
 // at the same path in the commit that wrote the PASS is could-not-check.
 func TestVflipRenamedBrief(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFailAfterPass(t)
 	vfEdit(t, root, "\n\n"+vfLaterFail, "")
 	vfCommit(t, root, vfMailWorker)
@@ -1198,6 +1259,7 @@ func TestVflipRenamedBrief(t *testing.T) {
 // lists only the two moves; the move away leaves the brief absent at its path,
 // which is could-not-check rather than a commit that "changed" Evidence.
 func TestVflipMovedAndBack(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFailAfterPass(t)
 	moved := "docs/streams/vf/brief-01-away.md"
 	vfGit(t, root, vfMailHuman, "mv", vfBriefRel, moved)
@@ -1255,6 +1317,7 @@ func vfMailmap(t *testing.T, root string) {
 // Blame prints the verifier for every line of that run; the commits say
 // otherwise, and the verb judges the commits. (Layer 1: the stamp's lines.)
 func TestVflipMailmapPassRun(t *testing.T) {
+	installStatusgenFixture(t)
 	root, readme := vfFailAfterPass(t)
 	vfMailmap(t, root)
 	vfAppend(t, root, "\n\n"+strings.ReplaceAll(witnessTableFor(vfRow1, vfRow2), "2026-08-13", "2026-08-14")+
@@ -1268,6 +1331,7 @@ func TestVflipMailmapPassRun(t *testing.T) {
 // Date/Runner row are the verifier's, no commit follows the PASS, so only
 // layer 2 can see the row, and only by the commit's own author.
 func TestVflipMailmapRunRow(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = witnessTableFor(vfRow1)
 	root, readme := vfFixture(t, o)
@@ -1283,6 +1347,7 @@ func TestVflipMailmapRunRow(t *testing.T) {
 // row flipped by hand) and the identity map committed, the Evidence-actor
 // lint still names a closure whose Evidence no verifier committed.
 func TestVflipMailmapLint(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.author = vfMailWorker
 	root, readme := vfFixture(t, o)
@@ -1309,6 +1374,7 @@ func TestVflipMailmapLint(t *testing.T) {
 // make the assertions below vacuous. A line not committed yet gets the fixed
 // not-committed-yet identity even when the map rewrites that address too.
 func TestBlameRawLines(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := vfFixture(t, vfDefaults())
 	vfAppend(t, root, "\n\nworker line")
 	vfCommit(t, root, vfMailWorker)
@@ -1351,6 +1417,7 @@ func TestBlameRawLines(t *testing.T) {
 // TestVflipHistoryJudgesMarker: layer 3 judges the commit that wrote the PASS
 // marker itself, by its commit object, independently of the blame layers.
 func TestVflipHistoryJudgesMarker(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.author = vfMailWorker
 	root, _ := vfFixture(t, o)
@@ -1382,6 +1449,7 @@ func TestVflipHistoryJudgesMarker(t *testing.T) {
 // main's Evidence. With no merge base there is nothing to show the other side
 // made no net change, so the merge changed Evidence and is judged.
 func TestVflipUnrelatedMerge(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, c := range []struct {
 		name, merger string
 		code         int

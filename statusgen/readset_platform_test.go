@@ -16,6 +16,7 @@ import (
 // token and writes no read-set file; on Linux the platform-neutral function
 // readset_other.go calls yields that token for a non-Linux OS name.
 func TestRecorderOffLinuxWritesCouldNotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	const darwin = "(reads could-not-check: recorder is Linux-only (darwin))"
 	if got := readSetOffLinuxToken("darwin"); got != darwin {
 		t.Fatalf("readSetOffLinuxToken(darwin) = %q, want %q", got, darwin)
@@ -120,6 +121,7 @@ func verifyExpects(t *testing.T, brief string) map[string]string {
 // A file of another brief, one its Evidence does not name, or one whose
 // content differs from its name still marks the tree +dirty.
 func TestEvidenceOnlyAdmitsOwnReadSet(t *testing.T) {
+	installStatusgenFixture(t)
 	content := []byte("assay-read-set v1\n")
 	digest := evaluation.ReadSetDigest(content)
 	cases := []struct {

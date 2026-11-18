@@ -135,6 +135,7 @@ func stageCacheFailures(t *testing.T, script string) []string {
 // TestStageCachePublicOwned: without host-side identity/visibility proof,
 // the cluster stager refuses every owner path before download.
 func TestStageCachePublicOwned(t *testing.T) {
+	installStatusgenFixture(t)
 	requireStageCacheHost(t)
 	if bad := stageCacheFailures(t, stageCacheEntrypoint); len(bad) != 0 {
 		t.Fatalf("stage-cache.sh decided %d cases wrongly:\n%s", len(bad), strings.Join(bad, "\n"))
@@ -145,6 +146,7 @@ func TestStageCachePublicOwned(t *testing.T) {
 // TestStageCachePublicOwnedMutants: dropping the owner refusal or inserting
 // an unproven public-prefix bypass makes the real script admit refused paths.
 func TestStageCachePublicOwnedMutants(t *testing.T) {
+	installStatusgenFixture(t)
 	requireStageCacheHost(t)
 	raw, err := os.ReadFile(stageCacheEntrypoint)
 	if err != nil {

@@ -217,6 +217,7 @@ func writeAlphaPlan(t *testing.T, root, region string) {
 }
 
 func TestLintOfflineMakesNoNetworkCall(t *testing.T) {
+	installStatusgenFixture(t)
 	pinNow(t, driveTestNow)
 	root := lintReachFixture(t) // built before any guard: fixture setup is not the run under test
 
@@ -279,6 +280,7 @@ func TestLintOfflineMakesNoNetworkCall(t *testing.T) {
 // fail closed on it (exit 1, naming --forge) rather than pass on claims it never read; with
 // forge reads opted in and a readable origin, the same run passes.
 func TestOfflineLintRequireClaims(t *testing.T) {
+	installStatusgenFixture(t)
 	root := goodRepoRoot(t)
 	// A readable origin with no branches: the claim read succeeds and decay has nothing to
 	// read, so the opted-in half reaches no forge either.
@@ -309,6 +311,7 @@ func TestOfflineLintRequireClaims(t *testing.T) {
 //
 // regression: #3372
 func TestRegenStartsNoForgeProcess(t *testing.T) {
+	installStatusgenFixture(t)
 	pinNow(t, driveTestNow)
 	root := lintReachFixture(t)
 	g := installNetGuard(t, true)
@@ -343,6 +346,7 @@ func TestRegenStartsNoForgeProcess(t *testing.T) {
 //
 // regression: #3323
 func TestDriveLintOfflineNoClaims(t *testing.T) {
+	installStatusgenFixture(t)
 	pinNow(t, driveTestNow)
 	root := goodRepoRoot(t)
 	claimedRegion := alphaDriveRegion(t, root, map[string]bool{"alpha/02": true})
@@ -422,6 +426,7 @@ func TestDriveLintOfflineNoClaims(t *testing.T) {
 //
 // regression: #3323
 func TestDriveLintOfflineOwnInFlight(t *testing.T) {
+	installStatusgenFixture(t)
 	pinNow(t, driveTestNow)
 	root := goodRepoRoot(t)
 	readme := filepath.Join(root, "docs", "streams", "alpha", "README.md")

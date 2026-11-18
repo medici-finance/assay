@@ -213,6 +213,7 @@ func TestPartialUnresolvedUnknown(t *testing.T) {
 // witness; an older delivery for the same brief is.
 // regression: #2703
 func TestPartialBackfillSkips(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Setenv("GITHUB_TOKEN", "test-token")
 	root := copyDesignGateFixture(t)
 	declareDelivery(t, root, "03", `{in: "fx#31", covers: partial, note: "skeleton"}`)

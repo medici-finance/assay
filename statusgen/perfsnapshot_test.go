@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitcore/testenv"
 	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
@@ -60,6 +61,27 @@ func snapshotRun(t *testing.T, root, mode string) snapshotResult {
 
 func resetPerfInputs() { resetReadMemo(); resetBriefParseMemo() }
 
+// installSnapshotFixture retains only the mutation runner's declared child
+// protocol. Ordinary fixture setup never inherits overlay or mutation controls.
+func installSnapshotFixture(t *testing.T, protocolKeys ...string) {
+	t.Helper()
+	vars := map[string]string{}
+	for _, key := range protocolKeys {
+		if value := os.Getenv(key); value != "" {
+			vars[key] = value
+		}
+	}
+	switch os.Getenv("ASSAY_SNAPSHOT_MUTANT") {
+	case "head-only", "prior-readset", "file-count", "dir-count", "recording-output":
+		for _, key := range []string{"ASSAY_SNAPSHOT_MUTANT", "ASSAY_PERF_WORKLOAD_SAMPLES", "GOFLAGS"} {
+			if value := os.Getenv(key); value != "" {
+				vars[key] = value
+			}
+		}
+	}
+	installStatusgenFixture(t, testenv.Options{Vars: vars})
+}
+
 func snapshotSetup(t *testing.T) string {
 	t.Helper()
 	// Keep the invoking toolchain's prepared caches when isolating HOME. In CI,
@@ -106,6 +128,7 @@ func perfInputFixture(t *testing.T) string {
 
 // regression: statusgen/26
 func TestInvocationSnapshotReuseParity(t *testing.T) {
+	installSnapshotFixture(t)
 	snapshotSetup(t)
 	// Move only the read-memo clock to make the fast path observable without a
 	// sleep. The mutations below still change ctime/content; clocks grant no reuse.
@@ -272,6 +295,7 @@ func perfMemoCounts() (files, dirs int) {
 // errors, not a claim to count every file read in statusgen.
 // regression: statusgen/26
 func TestPerfReadCountCoverage(t *testing.T) {
+	installSnapshotFixture(t)
 	resetReadMemo()
 	t.Cleanup(resetReadMemo)
 	dir := t.TempDir()

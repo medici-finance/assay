@@ -16,6 +16,7 @@ import (
 // pin statusgen by tag; a binary that cannot say which release it is makes a stale
 // install indistinguishable from a current one.
 func TestVersionFlag(t *testing.T) {
+	installStatusgenFixture(t)
 	if statusgenVersion != "dev" {
 		t.Fatalf("in-package default statusgenVersion = %q, want \"dev\" — an unstamped build must not claim a release", statusgenVersion)
 	}

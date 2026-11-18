@@ -190,6 +190,7 @@ func TestNetnsRefusalClassified(t *testing.T) {
 // root, or the sandbox's mapped root) it is the identity refusal. Off Linux the
 // stub refuses unconditionally.
 func TestNetnsHelperRefusesOutside(t *testing.T) {
+	installStatusgenFixture(t)
 	callerNS := "net:[unread-off-linux]"
 	if runtime.GOOS == "linux" {
 		ns, err := os.Readlink("/proc/self/ns/net")
@@ -230,6 +231,7 @@ func TestNetnsHelperRefusesOutside(t *testing.T) {
 // refuses in its caller's namespace. Where the namespace facility works, the
 // real binary must also run the row inside the full sandbox.
 func TestNetnsBinaryDispatchesHelper(t *testing.T) {
+	installStatusgenFixture(t)
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("SKIP (could-not-check, not a pass): go toolchain unavailable to build statusgen")
 	}
@@ -384,6 +386,7 @@ func TestNetnsRefusalIsCouldNotRun(t *testing.T) {
 // lo the only interface) nothing but the lo-up refusal stands between the helper
 // and the command, which is the case a privilege-dependent premise missed.
 func TestNetnsLoUpFailureRefuses(t *testing.T) {
+	installStatusgenFixture(t)
 	w := requireSandbox(t)
 	out, err := exec.Command(w[0], "--map-root-user", w[3], netnsHelperArg, "net:[0]", "sh", "-c", "echo RAN-UNSANDBOXED").CombinedOutput()
 	ee, isExit := err.(*exec.ExitError)
@@ -399,6 +402,7 @@ func TestNetnsLoUpFailureRefuses(t *testing.T) {
 // (so lo CAN be brought up and only lo exists), tell the helper the caller's
 // namespace is the one it is in. It must refuse on identity alone.
 func TestNetnsSameNamespaceRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	w := requireSandbox(t)
 	script := `exec "$0" ` + netnsHelperArg + ` "$(readlink /proc/self/ns/net)" sh -c "echo RAN-UNSANDBOXED"`
 	out, err := exec.Command(w[0], w[1], w[2], "sh", "-c", script, w[3]).CombinedOutput()
@@ -425,6 +429,7 @@ const netnsNestedEnv = "STATUSGEN_TEST_NETNS_NESTED"
 // TestNetns* test inside the real sandbox and requires them green, so the next
 // test written with a host-only premise is red here rather than in a row.
 func TestNetnsTestsPassInSandbox(t *testing.T) {
+	installStatusgenFixture(t)
 	if os.Getenv(netnsNestedEnv) != "" {
 		t.Skip("SKIP (by design, not a gap): this IS the nested in-sandbox run")
 	}

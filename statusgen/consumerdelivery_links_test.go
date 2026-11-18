@@ -32,6 +32,7 @@ func linkedConsumerDelivery(t *testing.T, links map[string]string) (string, stri
 
 // regression: #5395
 func TestDeliveryUnchangedContainedLinks(t *testing.T) {
+	installStatusgenFixture(t)
 	root, base, delivery := linkedConsumerDelivery(t, map[string]string{
 		"aliases/view": "../web", "aliases/file": "../web/fixed.go", "aliases/chain": "view", "aliases/parent": "view/../web/fixed.go", "aliases/repeated": "view/../aliases/view/fixed.go",
 	})
@@ -46,6 +47,7 @@ func TestDeliveryUnchangedContainedLinks(t *testing.T) {
 
 // regression: #5395
 func TestDeliveryAliasGlob(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, tc := range []struct {
 		name, route string
 		partial     bool
@@ -324,6 +326,7 @@ func TestSnapshotResolveGuards(t *testing.T) {
 
 // regression: #5395
 func TestDeliveryUnsafeUnchangedLinks(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := map[string]map[string]string{
 		"relative escape": {"aliases/link": "../../outside"},
 		"absolute escape": {"aliases/link": "/outside"},
@@ -349,6 +352,7 @@ func TestDeliveryUnsafeUnchangedLinks(t *testing.T) {
 }
 
 func TestDeliveryChangedLinkStillRefuses(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _, _ := linkedConsumerDelivery(t, map[string]string{"aliases/view": "../web"})
 	base := mustGitOut(t, root, "rev-parse", "HEAD")
 	p := filepath.Join(root, "aliases/view")
@@ -366,6 +370,7 @@ func TestDeliveryChangedLinkStillRefuses(t *testing.T) {
 }
 
 func TestDeliveryBoardLinkStillRefuses(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _, _ := deliveryFixture(t, []string{"web/fixed.go: fixed-here"})
 	index := filepath.Join(root, "docs/streams/alpha/README.md")
 	original := filepath.Join(root, "docs/original-index.md")
@@ -385,6 +390,7 @@ func TestDeliveryBoardLinkStillRefuses(t *testing.T) {
 }
 
 func TestDeliverySubmoduleStillRefuses(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _, _ := deliveryFixture(t, []string{"web/fixed.go: fixed-here"})
 	base := mustGitOut(t, root, "rev-parse", "HEAD")
 	runGit(t, root, "update-index", "--add", "--cacheinfo", "160000,"+base+",module")

@@ -136,6 +136,7 @@ func shAmend(t *testing.T, dir string, h *contexthandoff.Handoff, withPatch bool
 // receipt is discovered, the brief author amends with a candidate patch bound
 // in a manifest, and check passes; an amend left without its patch fails.
 func TestContextSpecToBriefJourney(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := buildStatusgenBinary(t)
 	dir := ctxCopyJourney(t)
 	h, _ := ctxDiscoverReceipt(t, bin, dir)
@@ -246,6 +247,7 @@ func TestSkillsCiteShippedContextVerbs(t *testing.T) {
 // the selection revision or folds product into architecture coverage loses
 // what the work was selected against.
 func TestSkillsProductTargetHandoff(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := buildStatusgenBinary(t)
 	dir := ctxCopyJourney(t)
 	ctxEditFile(t, dir, ctxBriefA04, "\n---\n", "\noutcome: REQ-nightly-export\noutcome-revision: r1\n---\n")

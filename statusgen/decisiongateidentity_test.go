@@ -58,6 +58,7 @@ func dhRefusedBoth(t *testing.T, root, want string) {
 // is not the same brief as sdlc/18 (both board ids existed at the base), so
 // sdlc/18 is dropped, unruled — refused.
 func TestDGParkedIDHidesDrop(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath:  dhReadme(dhRow("18", "todo"), dhRow("19", "todo")),
@@ -76,6 +77,7 @@ func TestDGParkedIDHidesDrop(t *testing.T) {
 // The same route the other way round: the surviving brief is the landed, ruled
 // one, and the unruled brief whose id it takes is the one removed.
 func TestDGParkedIDHidesDropOfOther(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath:  dhReadme(dhRow("18", "done"), dhRow("19", "todo")),
@@ -94,6 +96,7 @@ func TestDGParkedIDHidesDropOfOther(t *testing.T) {
 // id (018 beside 18), listed first, hides the move of the existing unruled
 // gate: human sdlc/18 to implemented.
 func TestDGNumberDecoyHidesMove(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{
@@ -107,6 +110,7 @@ func TestDGNumberDecoyHidesMove(t *testing.T) {
 // A new gate: human row with no decision issue rides a landed row's number
 // under another spelling (018 beside a done 18).
 func TestDGDecoyRidesLandedRow(t *testing.T) {
+	installStatusgenFixture(t)
 	// The forge would confirm the landed row's own ruling: it must not lift the
 	// refusal of a board id that now resolves to two records.
 	dhSeams(t, dhForge("Option 1 for "+dhBoardID+"."))
@@ -131,6 +135,7 @@ func TestDGDecoyRidesLandedRow(t *testing.T) {
 // (gate: human) are new, and row 18 goes straight to implemented. The second
 // file's gate: human must still be read.
 func TestDGModelDecoyHidesHuman(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath:       dhReadme(dhRow("19", "todo")),
@@ -149,6 +154,7 @@ func TestDGModelDecoyHidesHuman(t *testing.T) {
 // up by the change, which also moves sdlc/18 to implemented. The move is judged
 // against the lowest base status for that id, so it is a move, unruled — refused.
 func TestDGBaseDecoyRemovedWithMove(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath:        dhReadme(dhRow("018", "implemented"), dhRow("18", "todo")),
@@ -166,6 +172,7 @@ func TestDGBaseDecoyRemovedWithMove(t *testing.T) {
 // a landed gate: human brief; the change adds docs/streams/sdlc with a new
 // gate: human brief 18 at implemented and no decision issue.
 func TestDGArchivedNameReused(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		"docs/archive/" + dhStream + "/README.md":        dhReadme(dhRow("18", "implemented")),
@@ -185,6 +192,7 @@ func TestDGArchivedNameReused(t *testing.T) {
 // One row and one file, but from two trees: the new brief must not read as
 // already landed.
 func TestDGArchivedRowLendsStatus(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		"docs/archive/" + dhStream + "/README.md": dhReadme(dhRow("18", "done")),
@@ -201,6 +209,7 @@ func TestDGArchivedRowLendsStatus(t *testing.T) {
 // issue of their own. Neither is THE renumber of sdlc/18, so neither inherits
 // its ruling — both refused, even though the forge confirms sdlc/18's ruling.
 func TestDGOneRulingTwoRenumbers(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, dhForge("Option 1 for "+dhBoardID+"."))
 	root := dhFixture(t, map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
@@ -222,6 +231,7 @@ func TestDGOneRulingTwoRenumbers(t *testing.T) {
 // done. It is the renumber of neither, so it cannot borrow sdlc/18's ruling or
 // its done status, and the unruled sdlc/19 is dropped — refused.
 func TestDGTwoBasesOneRenumber(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, dhForge("Option 1 for "+dhBoardID+"."))
 	root := dhFixture(t, map[string]string{
 		dhReadmePath:  dhReadme(dhRow("18", "done"), dhRow("19", "todo")),
@@ -243,6 +253,7 @@ func TestDGTwoBasesOneRenumber(t *testing.T) {
 // gate: human board id, left exactly as it is by a change elsewhere, turns
 // nothing red.
 func TestDGUnchangedCollisionIsQuiet(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath:                   dhReadme(dhRow("018", "todo"), dhRow("18", "implemented")),
@@ -264,6 +275,7 @@ func TestDGUnchangedCollisionIsQuiet(t *testing.T) {
 // read is skipped as a duplicate, so no record can sit unseen behind another —
 // and every board id with more than one record is marked ambiguous.
 func TestDGEveryRecordAccounted(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{
 		dhReadmePath:        dhReadme(dhRow("018", "todo"), dhRow("18", "implemented"), dhRow("19", "todo")),
@@ -310,6 +322,7 @@ func TestDGEveryRecordAccounted(t *testing.T) {
 // brief after the change, and one brief after it is the same brief as at most
 // one base record — over every route's base and head.
 func TestDGSameBriefOneToOne(t *testing.T) {
+	installStatusgenFixture(t)
 	type side = map[string]string
 	cases := []struct{ base, head side }{
 		{ // one base id, two renumbers

@@ -60,6 +60,7 @@ func nextUpSection(t *testing.T, status string) string {
 // STATUS.md), but that board must SAY it is unfiltered — on stderr for the
 // operator and inside the artifact for every later reader.
 func TestClaimReadFailureIsReportedNotSwallowed(t *testing.T) {
+	installStatusgenFixture(t)
 	root := goodRepoRoot(t)
 	stubRemoteBranches(t, nil, errors.New("`git ls-remote --heads origin` timed out after 10s (raise with STATUSGEN_REMOTE_TIMEOUT)"))
 
@@ -95,6 +96,7 @@ func TestClaimReadFailureIsReportedNotSwallowed(t *testing.T) {
 // read must NOT print the degraded banner, or the alarm becomes noise and gets
 // ignored (the ISA-18.2 failure mode).
 func TestClaimFilteringIsSilentWhenItActuallyRan(t *testing.T) {
+	installStatusgenFixture(t)
 	root := goodRepoRoot(t)
 	stubRemoteBranches(t, []string{"main"}, nil)
 
@@ -120,6 +122,7 @@ func TestClaimFilteringIsSilentWhenItActuallyRan(t *testing.T) {
 // row when the remote read fails that they correctly suppress when it succeeds.
 // It is that difference — invisible before this fix — the banner now labels.
 func TestDegradedBoardIsAGenuineSuperset(t *testing.T) {
+	installStatusgenFixture(t)
 	filteredRoot := goodRepoRoot(t)
 	stubRemoteBranches(t, []string{"main", "feat/alpha-02-in-flight"}, nil)
 	if code := run(filteredRoot, "write", nil, nil, ""); code != 0 {
@@ -148,6 +151,7 @@ func TestDegradedBoardIsAGenuineSuperset(t *testing.T) {
 // that dispatches work from the board can refuse an unfiltered one outright.
 // Nothing is written, so no degraded artifact is left behind either.
 func TestRequireClaimsFailsClosed(t *testing.T) {
+	installStatusgenFixture(t)
 	root := goodRepoRoot(t)
 	stubRemoteBranches(t, nil, errors.New("`git ls-remote --heads origin` failed: fatal: 'origin' does not appear to be a git repository"))
 	requireClaims = true
@@ -169,6 +173,7 @@ func TestRequireClaimsFailsClosed(t *testing.T) {
 // TestRequireClaimsPassesWhenClaimsAreKnown: the fail-closed flag must not
 // change any behaviour on a healthy run.
 func TestRequireClaimsPassesWhenClaimsAreKnown(t *testing.T) {
+	installStatusgenFixture(t)
 	root := goodRepoRoot(t)
 	stubRemoteBranches(t, []string{"main"}, nil)
 	requireClaims = true

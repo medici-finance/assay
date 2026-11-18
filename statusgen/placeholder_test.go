@@ -335,6 +335,7 @@ func TestCheckPlaceholderFilesProblems(t *testing.T) {
 // TestPlaceholderLintGreen — the full run(--lint) path stays exit 0 with a
 // placeholder present (Verify item 3 in miniature).
 func TestPlaceholderLintGreen(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)

@@ -615,6 +615,7 @@ func TestVICRunRefuseOutside(t *testing.T) {
 // the docker argv, in the line the launcher prints, or on its stderr — they ride
 // only in the docker client's environment, copied name-only (`-e NAME`).
 func TestVICHostIdent(t *testing.T) {
+	installStatusgenFixture(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake docker is a POSIX sh stub")
 	}

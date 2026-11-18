@@ -234,6 +234,7 @@ func TestUnrunUnresolvableBaseGrandfathersWithNotice(t *testing.T) {
 // merge-base and grandfathers the briefs `done`/`verified` there — while
 // matching the current reality that the statusgen repo root has no such briefs.
 func TestUnrunRealMergeBaseResolves(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	gitRun(t, root, "init", "-q")
 

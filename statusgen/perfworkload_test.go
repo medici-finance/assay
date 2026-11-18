@@ -138,6 +138,7 @@ func perfMetric(samples []perfWorkSample, get func(perfWorkSample) float64) stri
 // public script supplies the report path, sample count and source revision.
 // regression: statusgen/26
 func TestPerfWorkloadSamples(t *testing.T) {
+	installSnapshotFixture(t, "ASSAY_PERF_WORKLOAD_REPORT", "ASSAY_PERF_WORKLOAD_SAMPLES", "ASSAY_PERF_WORKLOAD_SOURCE")
 	reportPath := os.Getenv("ASSAY_PERF_WORKLOAD_REPORT")
 	if reportPath == "" {
 		t.Skip("run bench/perfworkload.sh to request local workload measurements")

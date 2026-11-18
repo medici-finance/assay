@@ -30,6 +30,7 @@ func dhRegisterReadme(rows ...string) string {
 // loader skips the stream (STATUS.md drops it) — the brief left the board, and
 // that is a drop the hold refuses.
 func TestDGRegisterRouteRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	dhWrite(t, root, map[string]string{dhReadmePath: dhRegisterReadme(dhRow("18", "todo"))})
@@ -43,6 +44,7 @@ func TestDGRegisterRouteRefused(t *testing.T) {
 // register aborts the board's load elsewhere — the hold keeps reading its rows
 // and has nothing of its own to refuse for an unchanged row.
 func TestDGRegisterRouteControls(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	t.Run("well-formed index quoting the phrase", func(t *testing.T) {
 		root := dhFixture(t, unruledBase())
@@ -73,6 +75,7 @@ func dhArchive(t *testing.T, root string) {
 // is moved whole into docs/archive, rows kept. Archived work is completed work
 // (archivecheck.go): the stream leaves the active board with its decision owed.
 func TestDGArchiveOfOpenBriefRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	dhArchive(t, root)
@@ -84,6 +87,7 @@ func TestDGArchiveOfOpenBriefRefused(t *testing.T) {
 // archived register is no stream), whatever the text says, so the rows it lists
 // are not on the board: the hold reports the brief as dropped, not as archived.
 func TestDGArchivedBrokenIndexIsOffTheBoard(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	dhArchive(t, root)
@@ -106,6 +110,7 @@ func TestDGArchivedBrokenIndexIsOffTheBoard(t *testing.T) {
 // archived at the base is not turned red by a later change (a pin bump), and an
 // archived DONE brief is not refused (TestDecisionGateArchiveIsNotDrop).
 func TestDGArchiveOfOpenBriefNotLiftedByRulingAndGrandfathered(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	ruled := map[string]string{
 		dhReadmePath: dhReadme(dhRow("18", "todo")),
@@ -127,6 +132,7 @@ func TestDGArchiveOfOpenBriefNotLiftedByRulingAndGrandfathered(t *testing.T) {
 // fault of its own, so a before/after diff of the refused lines (deskevidence's
 // network layer) sees the move as new.
 func TestDGMoveBesideUnreadableRecordIsItsOwnFault(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSymlinks(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
@@ -161,6 +167,7 @@ func TestDGMoveBesideUnreadableRecordIsItsOwnFault(t *testing.T) {
 // adding it, leaving it and removing it are all quiet, on a board with no
 // gate: human brief and on one holding an unruled one.
 func TestDGInertLinksAreNotBoardRecords(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSymlinks(t)
 	dhSeams(t, nil)
 	for _, boards := range []struct {
@@ -212,6 +219,7 @@ func TestDGInertLinksAreNotBoardRecords(t *testing.T) {
 // existing one, one through a link, or one leaving the repository — is still
 // unreadable on both.
 func TestDGLinkKindsAgree(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSymlinks(t)
 	cases := []struct {
 		name, rel, target string
@@ -261,6 +269,7 @@ func TestDGLinkKindsAgree(t *testing.T) {
 // brief the loaders list is one the hold covers — the hold's notion of "on the
 // board" is the generator's, for each way a stream index can leave the board.
 func TestDGBoardPresenceMatchesTheLoaders(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []struct {
 		name  string
 		files map[string]string
@@ -328,6 +337,7 @@ func dhHas(ss []string, s string) bool {
 // refused (replacing or removing the link): it says there is no in-band exit
 // and a human decides. Replacing or removing the link IS refused, in both lanes.
 func TestDGLinkedStreamDirectoryHasNoInBandExit(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSymlinks(t)
 	dhSeams(t, nil)
 	files := unruledBase()
@@ -352,6 +362,7 @@ func TestDGLinkedStreamDirectoryHasNoInBandExit(t *testing.T) {
 // layer one reads the board that write WOULD leave, so an unruled move of a
 // gate: human brief is held, while the disk still says todo.
 func TestDGReconcileHoldSeesStagedReadme(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
 	if p := dhLayerOne(t, root); len(p) != 0 {

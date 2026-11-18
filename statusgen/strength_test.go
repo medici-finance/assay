@@ -245,6 +245,7 @@ func ufpbRepo(t *testing.T, closedAtBase bool) string {
 // run against the bare testdata directory: it has no git history, so no
 // merge-base, so the gate runs degraded and exits 0 by design.)
 func TestUnfailablePostBase(t *testing.T) {
+	installStatusgenFixture(t)
 	var code int
 	root := ufpbRepo(t, false)
 	stderr := captureStderr(t, func() { code = run(root, "lint", nil, nil, "") })

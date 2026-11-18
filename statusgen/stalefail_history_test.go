@@ -75,6 +75,7 @@ func staleHistoryAnswer(t *testing.T, root string, issue int, day int) string {
 
 // Repeated briefs share the native history bytes, not the issue/date decision.
 func TestStaleFailHistoryQueryReuse(t *testing.T) {
+	installStatusgenFixture(t)
 	root, landing := staleHistoryFixture(t)
 	marker := staleHistoryLogCounter(t, false)
 	end := beginGitReadSession()
@@ -98,6 +99,7 @@ func TestStaleFailHistoryQueryReuse(t *testing.T) {
 }
 
 func TestStaleFailHistoryFreshConfig(t *testing.T) {
+	installStatusgenFixture(t)
 	root, landing := staleHistoryFixture(t)
 	end := beginGitReadSession()
 	defer end()
@@ -111,6 +113,7 @@ func TestStaleFailHistoryFreshConfig(t *testing.T) {
 }
 
 func TestStaleFailHistoryFreshNamespace(t *testing.T) {
+	installStatusgenFixture(t)
 	root, landing := staleHistoryFixture(t)
 	base := strings.TrimSpace(string(parityGitBytes(t, root, "rev-parse", "HEAD^1")))
 	runGit(t, root, "update-ref", "refs/heads/decoy", base)
@@ -131,6 +134,7 @@ func TestStaleFailHistoryFreshNamespace(t *testing.T) {
 }
 
 func TestStaleFailHistorySessionBoundary(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := staleHistoryFixture(t)
 	marker := staleHistoryLogCounter(t, false)
 	end := beginGitReadSession()
@@ -146,6 +150,7 @@ func TestStaleFailHistorySessionBoundary(t *testing.T) {
 }
 
 func TestStaleFailHistoryFailureRetry(t *testing.T) {
+	installStatusgenFixture(t)
 	root, landing := staleHistoryFixture(t)
 	staleHistoryLogCounter(t, true)
 	end := beginGitReadSession()
@@ -179,6 +184,7 @@ func TestStaleFailHistoryCopies(t *testing.T) {
 }
 
 func TestStaleFailHistoryOutsideSession(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := staleHistoryFixture(t)
 	marker := staleHistoryLogCounter(t, false)
 	previous := activeGitReads
@@ -193,6 +199,7 @@ func TestStaleFailHistoryOutsideSession(t *testing.T) {
 }
 
 func TestStaleFailHistoryPhysicalRoot(t *testing.T) {
+	installStatusgenFixture(t)
 	root, landing := staleHistoryFixture(t)
 	other := t.TempDir()
 	if err := os.CopyFS(other, os.DirFS(root)); err != nil {

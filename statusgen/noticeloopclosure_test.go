@@ -56,6 +56,7 @@ func nlcPickIDs(nu NextUp) []string {
 }
 
 func TestNoticeLoopClosure(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("foreign-owned or already-delivered rows cannot dispatch", func(t *testing.T) {
 		build := func() (string, *Stream, []mergedPR) {
 			root := t.TempDir()

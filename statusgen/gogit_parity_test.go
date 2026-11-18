@@ -14,6 +14,7 @@ import (
 
 // regression: #2395
 func TestGoGitReadParity(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("reftable-discovery", coreReftableParity)
 	t.Run("nested-dotgit-discovery", coreNestedDotGitParity)
 	t.Run("repository-metadata-errors", coreRepositoryProfileErrors)

@@ -10,6 +10,7 @@ import (
 
 // regression: #1608
 func TestFixtureGitQuiet(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, site := range []string{"transition", "history", "child"} {
 		t.Run(site, func(t *testing.T) {
 			var root string

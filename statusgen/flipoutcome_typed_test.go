@@ -16,6 +16,7 @@ import (
 
 // regression: #6734
 func TestOutcomeStatusParity(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	mail := vfMailVerifier
 	vfGit(t, root, mail, "init", "-q")
@@ -85,6 +86,7 @@ func TestOutcomeStatusParity(t *testing.T) {
 
 // regression: #6734
 func TestOutcomeAddersParity(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	mail := vfMailVerifier
 	g := func(args ...string) { t.Helper(); vfGit(t, root, mail, args...) }

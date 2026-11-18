@@ -51,6 +51,7 @@ func perBriefHandSaid(root, stream, num string) (state, sha string, found bool) 
 // removed, and the lookup still answers every brief of that stream from its
 // replay.
 func TestHandSaidLookupMatchesPerBrief(t *testing.T) {
+	installStatusgenFixture(t)
 	dir := initHandSaidRepo(t)
 	lookup := newHandSaidLookup(dir)
 	for _, c := range []struct{ stream, num string }{{"demo", "01"}, {"demo", "99"}, {"no-such-stream", "01"}} {
@@ -191,6 +192,7 @@ func TestMemoRepoAsksEachQuestionOnce(t *testing.T) {
 // recorded, not only the first. 01 moves todo → implemented and then stays;
 // 02 stays todo until the third commit, then goes done.
 func TestHandSaidReplayTwoBriefs(t *testing.T) {
+	installStatusgenFixture(t)
 	dir := t.TempDir()
 	runGit(t, dir, "init", "-q", "-b", "main")
 	runGit(t, dir, "config", "user.email", "test@example.com")
@@ -231,6 +233,7 @@ func TestHandSaidReplayTwoBriefs(t *testing.T) {
 
 // regression: #3018
 func TestHandSaidKeepsDeletedRow(t *testing.T) {
+	installStatusgenFixture(t)
 	dir := t.TempDir()
 	runGit(t, dir, "init", "-q", "-b", "main")
 	runGit(t, dir, "config", "user.email", "test@example.com")

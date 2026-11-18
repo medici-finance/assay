@@ -59,6 +59,7 @@ func dhLinkedBrief(t *testing.T, root string) {
 // The first change alone is refused: it leaves a board record the hold cannot
 // read the way the board reads it.
 func TestDGLinkedBriefRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSymlinks(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
@@ -71,6 +72,7 @@ func TestDGLinkedBriefRefused(t *testing.T) {
 // is relabelled away from human and the row moved to implemented, unruled.
 // Refused — the base's linked record is not read as carrying no gate.
 func TestDGLinkedBriefRelabelMoveRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSymlinks(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
@@ -86,6 +88,7 @@ func TestDGLinkedBriefRelabelMoveRefused(t *testing.T) {
 // Two changes, drop: after the link has landed, the brief's row, its link and
 // the linked-to file are removed, unruled. Refused as a drop.
 func TestDGLinkedBriefDropRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSymlinks(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
@@ -100,6 +103,7 @@ func TestDGLinkedBriefDropRefused(t *testing.T) {
 // same unruled gate: human record, row unchanged, is not refused — the base's
 // unreadable record reads conservatively, not as a fault in itself.
 func TestDGLinkedBriefRepairedQuiet(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSymlinks(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, unruledBase())
@@ -122,6 +126,7 @@ func TestDGLinkedBriefRepairedQuiet(t *testing.T) {
 // one reading rule — at every board position a link or a nested repository
 // can sit, with a plain control record beside each planted one.
 func TestDGReadersAgree(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSymlinks(t)
 	type plant struct {
 		name string
@@ -219,6 +224,7 @@ func TestDGReadersAgree(t *testing.T) {
 // unreadable done/ folder, so the change is refused, not judged as dropping
 // nothing.
 func TestDGLinkedDoneFolderRemovedRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	dhSymlinks(t)
 	dhSeams(t, nil)
 	root := dhFixture(t, map[string]string{

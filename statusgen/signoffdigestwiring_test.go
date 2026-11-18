@@ -88,6 +88,7 @@ func TestReconcileSignoffDigestStep(t *testing.T) {
 // statusgen: a digest body reaches the job summary, and a could-not-check exit
 // warns while the step itself exits 0.
 func TestReconcileSignoffDigestStepRuns(t *testing.T) {
+	installStatusgenFixture(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("the step runs on a Linux runner")
 	}

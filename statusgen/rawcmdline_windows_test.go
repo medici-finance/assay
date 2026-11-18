@@ -15,6 +15,7 @@ import (
 // element). This is the build-tagged half of the #1424 evidence; the portable
 // half (rawcmdline_test.go) proves the same string shape without a Windows host.
 func TestApplyRowCmdLine_SetsRawCmdLine_Windows(t *testing.T) {
+	installStatusgenFixture(t)
 	argv := []string{"cmd", "/d", "/s", "/c", cmdRowSample}
 	cmd := exec.Command(argv[0], argv[1:]...)
 
@@ -46,6 +47,7 @@ func TestApplyRowCmdLine_SetsRawCmdLine_Windows(t *testing.T) {
 // `cmd` row gets a raw CmdLine. `pwsh` and `sh` rows keep os/exec's default
 // escaping, which is correct for a program parsed via CommandLineToArgvW.
 func TestApplyRowCmdLine_LeavesPwshAndShAlone_Windows(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, shell := range []string{rowShellPwsh, rowShellSh} {
 		cmd := exec.Command("x")
 		applyRowCmdLine(cmd, shell, []string{"x", "y"})

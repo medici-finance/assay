@@ -166,6 +166,7 @@ func slModes(t *testing.T, body func(t *testing.T, admitted bool)) {
 // TestStoredLoginRulingRecord: rulingrecord.go's client
 // (rulingRecordClientFn, `--corroborate-record`).
 func TestStoredLoginRulingRecord(t *testing.T) {
+	installStatusgenFixture(t)
 	slModes(t, func(t *testing.T, admitted bool) {
 		root := rrSetup(t, rrBoundForge())
 		rulingRecordClientFn = rulingForgeClient
@@ -187,6 +188,7 @@ func TestStoredLoginRulingRecord(t *testing.T) {
 // TestStoredLoginDecisionGate: decisiongatehold.go's client
 // (decisionGateClientFn, `--decision-gate`).
 func TestStoredLoginDecisionGate(t *testing.T) {
+	installStatusgenFixture(t)
 	slModes(t, func(t *testing.T, admitted bool) {
 		forge := dhForge("Option 1 for " + dhBoardID + ", as written.")
 		dhSeams(t, forge)
@@ -217,6 +219,7 @@ func TestStoredLoginDecisionGate(t *testing.T) {
 // TestStoredLoginAcceptance: acceptancetransition.go's client (the
 // acceptance-approval read behind --acceptance-forge).
 func TestStoredLoginAcceptance(t *testing.T) {
+	installStatusgenFixture(t)
 	slModes(t, func(t *testing.T, admitted bool) {
 		f := transitionFixtureAt(t)
 		f.evidence(t, nil)
@@ -250,6 +253,7 @@ func TestStoredLoginAcceptance(t *testing.T) {
 // TestStoredLoginCorroborate: corroborate.go's ruling lane (`--corroborate`
 // on a pull request that adds a decision record).
 func TestStoredLoginCorroborate(t *testing.T) {
+	installStatusgenFixture(t)
 	slModes(t, func(t *testing.T, admitted bool) {
 		rlWithRoster(t)
 		root := t.TempDir()
@@ -279,6 +283,7 @@ func TestStoredLoginCorroborate(t *testing.T) {
 // (githubDecayToken), for github.com and an enterprise host alike. The stored
 // login is now retired in both ordinary and admitted contexts (forge-neutral/49).
 func TestStoredLoginClaimDecay(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, c := range []struct {
 		endpoint string
 		derived  bool
@@ -306,6 +311,7 @@ func TestStoredLoginClaimDecay(t *testing.T) {
 // admission state can refuse the stored login for its acceptance-approval
 // read. The control is the same run without the attestation file.
 func TestStoredLoginVerifyrunState(t *testing.T) {
+	installStatusgenFixture(t)
 	slModes(t, func(t *testing.T, admitted bool) {
 		f := transitionFixtureAt(t)
 		vfGit(t, f.root, vfMailVerifier, "config", "user.name", vfRunner)
@@ -348,6 +354,7 @@ func TestStoredLoginVerifyrunState(t *testing.T) {
 // TestStoredLoginDecider pins each signal storedLoginRefusal reads, one at a
 // time, against the no-signal baseline.
 func TestStoredLoginDecider(t *testing.T) {
+	installStatusgenFixture(t)
 	cases := []struct {
 		name   string
 		set    func(t *testing.T)
@@ -392,6 +399,7 @@ func slState(t *testing.T, s int32) {
 // CELLCTL_GH_AMBIENT and with the unset family closed by a placeholder;
 // allowed outside CI, it is untouched; CI pins the same environment.
 func TestStoredLoginGhGuard(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("refused-no-token", func(t *testing.T) {
 		log := slAdmittedRow(t)
 		out, err := ghGuard(exec.Command("gh", "auth", "token")).Output()

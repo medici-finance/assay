@@ -70,6 +70,7 @@ func runDerivedCLI(t *testing.T, bin, root string, args ...string) (int, string,
 
 // regression: #1281
 func TestDerivedDeliveryPassesOnMergedMain(t *testing.T) {
+	installStatusgenFixture(t)
 	root, base, delivery := derivedFixture(t, []string{"web/fixed.go: fixed-here"}, goodMarker)
 	if got := runConsumersDerived(root, "alpha/01"); got != 0 {
 		t.Fatalf("merged brief with a recorded delivery: got %d, want 0", got)
@@ -87,6 +88,7 @@ func TestDerivedDeliveryPassesOnMergedMain(t *testing.T) {
 
 // regression: #1281
 func TestDerivedDeliveryPlantedSecondInstance(t *testing.T) {
+	installStatusgenFixture(t)
 	// The same defect class, a second instance: a claim the delivered diff does
 	// not make true must still be DISPROVED on merged main, never waved through.
 	for _, route := range []string{"web/untouched.go: fixed-here", "web/fixed.go: out-of-scope (must remain unchanged)"} {
@@ -101,6 +103,7 @@ func TestDerivedDeliveryPlantedSecondInstance(t *testing.T) {
 
 // regression: #1281
 func TestDerivedDeliveryPinsRecordedDeliveryParent(t *testing.T) {
+	installStatusgenFixture(t)
 	// Two deliveries land. The marker names the SECOND, which did not touch
 	// web/fixed.go; its own first parent is the pin, not the older baseline.
 	root, base, _ := deliveryFixture(t, []string{"web/fixed.go: fixed-here"})
@@ -117,6 +120,7 @@ func TestDerivedDeliveryPinsRecordedDeliveryParent(t *testing.T) {
 
 // regression: #1281
 func TestDerivedDeliveryDiffCannotBeTaken(t *testing.T) {
+	installStatusgenFixture(t)
 	// The first miss site: the branch diff cannot be taken at all. The recorded,
 	// landed delivery still pins the run.
 	root, _, _ := derivedFixture(t, []string{"web/fixed.go: fixed-here"}, goodMarker)
@@ -130,6 +134,7 @@ func TestDerivedDeliveryDiffCannotBeTaken(t *testing.T) {
 
 // regression: #1281
 func TestDerivedDeliveryRequiresLandedDelivery(t *testing.T) {
+	installStatusgenFixture(t)
 	// A marker committed only in this checkout is not a landed delivery. With no
 	// fetched mainline ref there is nothing to land against; with a ref that
 	// does not yet contain the named delivery the commit is still local.
@@ -170,6 +175,7 @@ func TestDerivedDeliveryRequiresLandedDelivery(t *testing.T) {
 
 // regression: #1281
 func TestDerivedDeliveryRefusalBranches(t *testing.T) {
+	installStatusgenFixture(t)
 	// One case per refusal branch of deriveConsumerDelivery, each reached with
 	// everything else valid, so a weakened branch changes the answer.
 	root, _, _ := derivedFixture(t, []string{"web/fixed.go: fixed-here"}, goodMarker)
@@ -205,6 +211,7 @@ func TestDerivedDeliveryRefusalBranches(t *testing.T) {
 
 // regression: #1281
 func TestDerivedDeliveryRefusesAmbiguousBrief(t *testing.T) {
+	installStatusgenFixture(t)
 	// Two brief files claiming the same brief id: the derivation must not pick
 	// the first one.
 	root, _, _ := derivedFixture(t, []string{"web/fixed.go: fixed-here"}, goodMarker)
@@ -225,6 +232,7 @@ func TestDerivedDeliveryRefusesAmbiguousBrief(t *testing.T) {
 
 // regression: #1281
 func TestDerivedDeliveryCouldNotCheck(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := buildStatusgenBinary(t)
 	const zeros = "0000000000000000000000000000000000000000"
 	cases := []struct {
@@ -282,6 +290,7 @@ func TestDerivedDeliveryCouldNotCheck(t *testing.T) {
 
 // regression: #1281
 func TestDerivedDeliveryRefusesSideBranchDelivery(t *testing.T) {
+	installStatusgenFixture(t)
 	// A delivery reachable only through a merged side branch is not on HEAD's
 	// first-parent chain; recording it cannot choose the range.
 	root := consumersFixture(t, []string{"web/fixed.go: fixed-here"}, map[string]string{"web/fixed.go": "before\n", "web/untouched.go": "before\n"})
@@ -308,6 +317,7 @@ func TestDerivedDeliveryRefusesSideBranchDelivery(t *testing.T) {
 
 // regression: #1281
 func TestDerivedDeliveryIgnoresWorkingTreeMarker(t *testing.T) {
+	installStatusgenFixture(t)
 	// Only the committed brief names a delivery. A dirty marker naming another
 	// valid range, or a marker that was never committed, is not read.
 	root, base, delivery := derivedFixture(t, []string{"web/fixed.go: fixed-here"}, goodMarker)
@@ -328,6 +338,7 @@ func TestDerivedDeliveryIgnoresWorkingTreeMarker(t *testing.T) {
 
 // regression: #1281
 func TestExplicitBaseIsUnchanged(t *testing.T) {
+	installStatusgenFixture(t)
 	// A recorded delivery does not change what an explicit --base means: the
 	// branch diff, which carries no evidence about a merged brief, is
 	// COULD-NOT-CHECK exactly as before, and --delivery keeps its own contract.
@@ -353,6 +364,7 @@ func TestExplicitBaseIsUnchanged(t *testing.T) {
 
 // regression: #1281
 func TestDerivedBranchDiffStillWins(t *testing.T) {
+	installStatusgenFixture(t)
 	// A brief the branch diff does carry is checked against that diff, with or
 	// without a marker: derivation is only for a diff with no evidence.
 	root, base, _ := deliveryFixture(t, []string{"web/fixed.go: fixed-here"})
@@ -367,6 +379,7 @@ func TestDerivedBranchDiffStillWins(t *testing.T) {
 
 // regression: #1281
 func TestDerivedDeliveryMergeCommitPinsFirstParent(t *testing.T) {
+	installStatusgenFixture(t)
 	// A merge delivery records the divergence baseline in its marker, but the
 	// range judged is the merge against its FIRST parent (the mainline).
 	root := consumersFixture(t, []string{"web/fixed.go: fixed-here"}, map[string]string{"web/fixed.go": "before\n", "web/untouched.go": "before\n"})
@@ -414,6 +427,7 @@ func decoyRepoEnv(t *testing.T) map[string]string {
 
 // regression: #1281
 func TestDerivedDeliveryIgnoresRepoLocatingEnv(t *testing.T) {
+	installStatusgenFixture(t)
 	// The environment must not redirect the delivery derivation: with a
 	// repository-locating variable pointing at a decoy repository the derived
 	// run still reads the real checkout and reaches the same verdict.

@@ -13,6 +13,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
+	"github.com/medici-finance/assay/gitcore/testenv"
 	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
@@ -236,6 +237,17 @@ func (r *jobRig) commitOnMain(readme, msg string) {
 // test. RECONCILEJOB_WORKFLOW points the tests at another copy of it — a
 // mutant, in TestReconcileJobMutantsFail.
 const reconcileJobWorkflow = "../ci/staged-workflows/assay-statusgen.yml"
+
+// The workflow override is the mutation runner's explicit fixture input.
+// Retain it only for these workflow tests, never for unrelated fixtures.
+func installReconcileJobFixture(t *testing.T) {
+	t.Helper()
+	vars := map[string]string{}
+	if path := os.Getenv("RECONCILEJOB_WORKFLOW"); path != "" {
+		vars["RECONCILEJOB_WORKFLOW"] = path
+	}
+	installStatusgenFixture(t, testenv.Options{Vars: vars})
+}
 
 func reconcileWorkflowPath() string {
 	if p := os.Getenv("RECONCILEJOB_WORKFLOW"); p != "" {
@@ -753,6 +765,7 @@ exec REALGIT "$@"
 // never reads as "no commits", "README only" or "nothing stray", which would
 // let the tick carry on past what it never checked.
 func TestReconcileJobBrokenReadFails(t *testing.T) {
+	installReconcileJobFixture(t)
 	realGit, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("git not on PATH")
@@ -784,6 +797,7 @@ func TestReconcileJobBrokenReadFails(t *testing.T) {
 // holds RUNNER_TEMP and outlives a job). The control, without the job's env,
 // shows the planted file would otherwise be read.
 func TestReconcileJobBuildIgnoresGoWork(t *testing.T) {
+	installReconcileJobFixture(t)
 	requireTool(t, "go")
 	job := stagedWorkflow(t).Jobs["reconcile"]
 	root := t.TempDir()
@@ -965,6 +979,7 @@ func TestReconcileJobLintFailureFails(t *testing.T) {
 // cause discarded. A failed listing now fails the tick AT the listing, with
 // git's own error in the log, and nothing is pushed.
 func TestReconcileJobRemoteListingFails(t *testing.T) {
+	installReconcileJobFixture(t)
 	r := newJobRig(t)
 	if code, out := r.tick("STUB_FLIP=01"); code != 0 {
 		t.Fatalf("first tick exit %d:\n%s", code, out)
@@ -1113,6 +1128,7 @@ const prProjection = `.[] | [.number, (.head.repo.full_name // "-"), .head.ref, 
 // each come out as the four fields the selection reads. Skipped without jq on
 // a developer machine; under CI a missing jq fails it.
 func TestReconcileJobPRProjection(t *testing.T) {
+	installReconcileJobFixture(t)
 	requireTool(t, "jq")
 	jq, err := exec.LookPath("jq")
 	if err != nil {
@@ -1201,6 +1217,7 @@ func TestReconcileJobTokenScope(t *testing.T) {
 // tick. No hook runs, the push reaches the real origin and not the decoy, and
 // gh reads a configuration directory of the job's own.
 func TestReconcileJobIgnoresRunnerResidue(t *testing.T) {
+	installReconcileJobFixture(t)
 	r := newJobRig(t)
 	marker := filepath.Join(r.dir, "hook-ran")
 	hook := "#!/usr/bin/env bash\necho \"$0 ${GH_TOKEN:-}\" >> " + marker + "\n"
@@ -1263,6 +1280,7 @@ func TestReconcileJobIgnoresRunnerResidue(t *testing.T) {
 // not the pin is refused and never extracted; the pinned digest is extracted.
 // The isolation guard reads the same gate as text; this pins what it does.
 func TestReconcileJobInstallVerifies(t *testing.T) {
+	installReconcileJobFixture(t)
 	requireJobTools(t)
 	wf := stagedWorkflow(t)
 	ghPin := regexp.MustCompile(`want="([0-9a-f]{64})"`)
@@ -1906,6 +1924,7 @@ var reconcileMutants = []struct {
 // comment and the README say is tested is shown red when its line is reverted.
 // It re-runs this test binary against each mutated copy of the staged file.
 func TestReconcileJobMutantsFail(t *testing.T) {
+	installReconcileJobFixture(t)
 	if os.Getenv("RECONCILEJOB_WORKFLOW") != "" {
 		t.Skip("running against a mutant")
 	}

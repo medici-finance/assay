@@ -29,6 +29,7 @@ func lintExit(t *testing.T, root string) int {
 
 // regression: #5895
 func TestScanNewStreamLints(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)
@@ -72,6 +73,7 @@ func TestScanNewStreamLints(t *testing.T) {
 // The directory already exists with its own README: the scan writes the
 // placeholder exactly as before and never touches the authored README.
 func TestScanKeepsAuthoredREADME(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)
@@ -138,6 +140,7 @@ func TestScanDryRunNamesREADME(t *testing.T) {
 
 // regression: #5895 — the transcription lane opens the same directory.
 func TestTranscribeNewStreamLints(t *testing.T) {
+	installStatusgenFixture(t)
 	scanWithRoster(t, transcribeRoster())
 	_, root := scanFixtureRepo(t, nil)
 	writeRulings(t, root, r7Armed)
@@ -163,6 +166,7 @@ func TestTranscribeNewStreamLints(t *testing.T) {
 
 // regression: #5895 — the cross-repo delta lane opens the same directory.
 func TestScanDeltaNewStreamLints(t *testing.T) {
+	installStatusgenFixture(t)
 	scanWithRoster(t, scanDeltaRoster())
 	key := scanDeltaTestKey(t)
 	_, root := scanFixtureRepo(t, nil)

@@ -62,6 +62,7 @@ func TestHeldWitnessNonZeroPass(t *testing.T) {
 // TestVerifyflipNonZeroSuperseded: the #5541 shape flips (rule 3c).
 // regression: #5541
 func TestVerifyflipNonZeroSuperseded(t *testing.T) {
+	installStatusgenFixture(t)
 	o := vfDefaults()
 	o.evidence = nzOldHeld() + nzLatest(vfRow2)
 	vlFlips(t, o)

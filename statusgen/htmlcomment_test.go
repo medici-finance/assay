@@ -221,6 +221,7 @@ const lineStartOpener = "<!-- draft, hidden when rendered\n\n"
 // witness table exits non-zero with the "no closing" PROBLEM. The control (the
 // same comment, closed) lints clean, so the PROBLEM is what turns the exit red.
 func TestRunLintRefusesOpener(t *testing.T) {
+	installStatusgenFixture(t)
 	witness := witnessTableFor(witnessRowOnePass, witnessRowTwoPass)
 
 	var code int

@@ -378,6 +378,7 @@ func TestIntakeAlarmParseRoundTrip(t *testing.T) {
 }
 
 func TestIntakeAlarmMainLintIntegration(t *testing.T) {
+	installStatusgenFixture(t)
 	// Verify --lint mode correctly computes and surfaces the intake NOTICE.
 	root := t.TempDir()
 

@@ -182,6 +182,7 @@ func legacyConsumerCoverage(root string,streams []*Stream,opts coverageOptions)m
 
 // regression: #5684
 func TestWitnessConsumerFlow(t *testing.T) {
+	installStatusgenFixture(t)
 	root := consumerRequired(t, "SG_CONSUMER_ROOT")
 	candidate := consumerRequired(t, "SG_NEW_BIN")
 	legacy := consumerRequired(t, "SG_LEGACY_BIN")

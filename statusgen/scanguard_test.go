@@ -55,6 +55,7 @@ func TestScanIsolationGuardNonGitRootAllowed(t *testing.T) {
 }
 
 func TestScanIsolationGuardPrimaryCheckoutRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	primary, _ := guardFixtureRepos(t)
 	reason := scanIsolationRefusal(primary)
 	if reason == "" {
@@ -70,6 +71,7 @@ func TestScanIsolationGuardPrimaryCheckoutRefused(t *testing.T) {
 }
 
 func TestScanIsolationGuardLinkedWorktreeAllowed(t *testing.T) {
+	installStatusgenFixture(t)
 	_, worktree := guardFixtureRepos(t)
 	if reason := scanIsolationRefusal(worktree); reason != "" {
 		t.Errorf("linked-worktree root is the sanctioned isolation, got refusal: %s", reason)
@@ -77,6 +79,7 @@ func TestScanIsolationGuardLinkedWorktreeAllowed(t *testing.T) {
 }
 
 func TestScanIsolationGuardOverrideAllowsPrimary(t *testing.T) {
+	installStatusgenFixture(t)
 	primary, _ := guardFixtureRepos(t)
 	t.Setenv(scanPrimaryOKEnv, "1")
 	if reason := scanIsolationRefusal(primary); reason != "" {
@@ -89,6 +92,7 @@ func TestScanIsolationGuardOverrideAllowsPrimary(t *testing.T) {
 // --dry-run mode (dry-run still performs un-block writes today, so it is
 // guarded the same).
 func TestScanIssuesRefusesPrimaryCheckoutRoot(t *testing.T) {
+	installStatusgenFixture(t)
 	primary, _ := guardFixtureRepos(t)
 	if err := os.CopyFS(primary, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)
@@ -115,6 +119,7 @@ func TestScanIssuesRefusesPrimaryCheckoutRoot(t *testing.T) {
 // TestScanIssuesLinkedWorktreeRootSucceeds: the sanctioned environment — an
 // isolated linked worktree — scans exactly as before.
 func TestScanIssuesLinkedWorktreeRootSucceeds(t *testing.T) {
+	installStatusgenFixture(t)
 	_, worktree := guardFixtureRepos(t)
 	if err := os.CopyFS(worktree, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)

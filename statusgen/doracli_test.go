@@ -39,6 +39,7 @@ func TestDoraRunEmits(t *testing.T) {
 // binary: both aliases must PARSE (never that error), `-trend` must behave
 // identically to its primary `-verif-backlog`, and the primary flags must still work.
 func TestBackCompatFlagsParse(t *testing.T) {
+	installStatusgenFixture(t)
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("go toolchain unavailable")
 	}

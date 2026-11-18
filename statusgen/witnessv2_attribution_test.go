@@ -54,6 +54,7 @@ func gv2WitnessRow(rowID, command, cell string) string {
 
 // regression: #2026 — a v2 cell must not change who the reads say ran a row.
 func TestWitnessV2AttributionUnchanged(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, id := range gv2Identities {
 		v1, v2 := gv2Cells(id)
 		if p := evaluation.ParseRunnerCell(v2); p.Schema != evaluation.WitnessSchemaV2 || strings.TrimSpace(p.Identity) != id.identity {
@@ -181,6 +182,7 @@ func itoaRow(n int) string {
 // regression: #2026 — the Evidence Command cell binds a v2 witness in
 // coverage, in the Command audit and in the witness gate alike.
 func TestWitnessV2CommandCellAgrees(t *testing.T) {
+	installStatusgenFixture(t)
 	bin := buildStatusgenBinary(t)
 	const oldCmd, newCmd, adapted = "cat tools/x/pkg/a.go", "cat tools/x/pkg/b.go", "cat ./tools/x/pkg/a.go"
 

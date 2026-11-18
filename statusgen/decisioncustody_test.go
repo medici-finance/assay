@@ -12,6 +12,7 @@ import (
 // Exercise the production credential reader and both decision-gate layers, not
 // a substituted client that resolves a ruling regardless of authentication.
 func TestDecisionRulingCustody(t *testing.T) {
+	installStatusgenFixture(t)
 	for _, tc := range []struct {
 		name, token                  string
 		foreign, unavailable, edited bool

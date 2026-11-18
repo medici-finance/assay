@@ -215,6 +215,7 @@ func TestAppendHistoryAppendsLines(t *testing.T) {
 // seed a testdata history, flip a brief implemented->verified, run
 // `statusgen --record`, expect one new JSONL line; re-run appends nothing.
 func TestRecordAppendsTransitionAndIsIdempotent(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/historyrepo")); err != nil {
 		t.Fatal(err)
@@ -282,6 +283,7 @@ func TestRecordAppendsTransitionAndIsIdempotent(t *testing.T) {
 // TestRecordFirstRunSeedsEveryBrief covers the "first run" case: no history
 // log exists yet, so every current brief status is seeded with from="".
 func TestRecordFirstRunSeedsEveryBrief(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)

@@ -48,6 +48,7 @@ func revisionFixture(t *testing.T) (string, string) {
 
 // regression: #2395
 func TestRevisionCallerFlow(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("exact-ref-peel", func(t *testing.T) {
 		root, head := revisionFixture(t)
 		marker := revisionNativeGuard(t)

@@ -522,6 +522,7 @@ func normalizedCoverage(t *testing.T, cov map[string]Coverage, labels map[string
 // reasons, as computed through the statusgen evaluation entry points, to the
 // golden file captured from the pre-extraction implementation.
 func TestEvaluationGoldenVerdicts(t *testing.T) {
+	installStatusgenFixtureInputs(t, "STATUSGEN_UPDATE_GOLDEN")
 	sf := loadScenarios(t)
 	got := goldenFile{Eligibility: map[string][]eligRecord{}, Coverage: map[string][]Coverage{}}
 	for _, sc := range sf.Eligibility {

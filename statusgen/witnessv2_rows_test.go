@@ -88,6 +88,7 @@ func TestWitnessLiteralPathBound(t *testing.T) {
 // record.
 // regression: #2026
 func TestWitnessDigestVerb(t *testing.T) {
+	installStatusgenFixture(t)
 	f := newGitV2Fixture(t).build()
 	bin := buildStatusgenBinary(t)
 	run := func(args ...string) (witnessDigestOut, string) {
@@ -294,6 +295,7 @@ func countCoverageGitCalls(t *testing.T, briefs, rows, groups int) (calls []stri
 // a constant, and do not grow with the row or brief count.
 // regression: #2026
 func TestCoverageGitCallsBounded(t *testing.T) {
+	installStatusgenFixture(t)
 	const (
 		perRevision = 3
 		constant    = 4

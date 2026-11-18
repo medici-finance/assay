@@ -185,6 +185,7 @@ func TestParseBriefFileMemoDistinctPaths(t *testing.T) {
 // `first` rather than `last`) reddens this test on the multi-author file while leaving the
 // single-commit file passing — which is why the fixture carries both.
 func TestAttributionOneWalkMatchesPerPathReads(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	streams := filepath.Join(root, "docs", "streams", "example-stream")
 	if err := os.MkdirAll(streams, 0o755); err != nil {

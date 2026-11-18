@@ -13,6 +13,7 @@ import (
 
 // regression: #2395
 func TestFlipHistoryParity(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("selected-commit-set", flipHistoryOracle)
 	t.Run("every-criss-cross-base", TestVflipEveryMergeBase)
 	t.Run("criss-cross-no-net", TestVflipCrissCrossNoNet)

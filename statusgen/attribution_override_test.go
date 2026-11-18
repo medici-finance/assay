@@ -87,6 +87,7 @@ func validOverride() string {
 // identity commit OUTSIDE the Evidence section (a mechanical title touch, which would
 // otherwise re-arm the whole-file same-identity signal) does not invalidate it.
 func TestAttributionIdentityOverrideHonored(t *testing.T) {
+	installStatusgenFixture(t)
 	root, b1 := overrideRepo(t)
 	setOverride(t, b1, validOverride())
 	gitCommitAs(t, root, "Carol", "carol@example.com", "carol records the human-authorized override")
@@ -122,6 +123,7 @@ func TestAttributionIdentityOverrideHonored(t *testing.T) {
 // CARRIES an override is still judged precisely, so the override is reported, never
 // silently moot.
 func TestAttributionIdentityOverrideVisibleWhenRecorderClearsWholeFileSignal(t *testing.T) {
+	installStatusgenFixture(t)
 	root, b1 := overrideRepo(t)
 	setOverride(t, b1, validOverride())
 	gitCommitAs(t, root, "Carol", "carol@example.com", "carol records the human-authorized override")
@@ -140,6 +142,7 @@ func TestAttributionIdentityOverrideVisibleWhenRecorderClearsWholeFileSignal(t *
 // human.
 // The hard PROBLEM stands, and says why the override was not honored.
 func TestAttributionIdentityOverrideSelfServeRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	root, b1 := overrideRepo(t)
 	setOverride(t, b1, validOverride())
 	gitCommitAs(t, root, "Alice", "alice@example.com", "alice records an override excusing herself")
@@ -162,6 +165,7 @@ func TestAttributionIdentityOverrideSelfServeRefused(t *testing.T) {
 // override, then the excused identity edits the override line (e.g. widens the
 // reason). The line is now last written by the excused identity, so it is refused.
 func TestAttributionIdentityOverrideSelfEditRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	root, b1 := overrideRepo(t)
 	setOverride(t, b1, validOverride())
 	gitCommitAs(t, root, "Carol", "carol@example.com", "carol records the override")
@@ -177,6 +181,7 @@ func TestAttributionIdentityOverrideSelfEditRefused(t *testing.T) {
 // TestAttributionIdentityOverrideStaleRefused: the override covers the Evidence the
 // human saw. A same-identity Evidence edit after it re-opens the PROBLEM.
 func TestAttributionIdentityOverrideStaleRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	root, b1 := overrideRepo(t)
 	setOverride(t, b1, validOverride())
 	gitCommitAs(t, root, "Carol", "carol@example.com", "carol records the override")
@@ -194,6 +199,7 @@ func TestAttributionIdentityOverrideStaleRefused(t *testing.T) {
 // on CONTENT, not on commit history, so an Evidence edit that was never committed also
 // leaves the override behind.
 func TestAttributionIdentityOverrideStaleByUncommittedEvidenceRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	root, b1 := overrideRepo(t)
 	setOverride(t, b1, validOverride())
 	gitCommitAs(t, root, "Carol", "carol@example.com", "carol records the override")
@@ -209,6 +215,7 @@ func TestAttributionIdentityOverrideStaleByUncommittedEvidenceRefused(t *testing
 // TestAttributionIdentityOverrideUncommittedRefused: an override present only in the
 // working tree has no committer, so who recorded it is unknown — refused.
 func TestAttributionIdentityOverrideUncommittedRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	root, b1 := overrideRepo(t)
 	setOverride(t, b1, validOverride())
 
@@ -224,6 +231,7 @@ func TestAttributionIdentityOverrideUncommittedRefused(t *testing.T) {
 // git attributes the COMMITTED line, so the value being judged has no recorder of its
 // own — refused, never honored on the committed line's provenance.
 func TestAttributionIdentityOverrideWorkingTreeEditRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	root, b1 := overrideRepo(t)
 	setOverride(t, b1, validOverride())
 	gitCommitAs(t, root, "Carol", "carol@example.com", "carol records the override")
@@ -239,6 +247,7 @@ func TestAttributionIdentityOverrideWorkingTreeEditRefused(t *testing.T) {
 // TestAttributionIdentityNoOverrideStaysHard pins the default: with no override the
 // same-identity pair is still the hard PROBLEM, and its remedy names the override.
 func TestAttributionIdentityNoOverrideStaysHard(t *testing.T) {
+	installStatusgenFixture(t)
 	root, _ := overrideRepo(t)
 	problems, notices := attrProblemsAndNotices(t, root)
 	p := problemFor(problems, "gitattr/brief-01")
@@ -329,6 +338,7 @@ func writeOverrideFixtureFile(t *testing.T, root, rel, content string) {
 // excused identity committed stays refused, and an override a distinct identity committed
 // stays honored, whatever the mailmap folds together.
 func TestAttributionIdentityOverrideRecorderIsCommitAuthor(t *testing.T) {
+	installStatusgenFixture(t)
 	t.Run("excused-identity-commit-stays-refused", func(t *testing.T) {
 		root, b1 := overrideRepo(t)
 		setOverride(t, b1, validOverride())
@@ -366,6 +376,7 @@ func TestAttributionIdentityOverrideRecorderIsCommitAuthor(t *testing.T) {
 // configuration that tells blame to skip a commit does not change the recorder, so an
 // override line the excused identity last rewrote stays refused.
 func TestAttributionIdentityOverrideRecorderIndependentOfRunnerConfig(t *testing.T) {
+	installStatusgenFixture(t)
 	root, b1 := overrideRepo(t)
 	setOverride(t, b1, validOverride())
 	gitCommitAs(t, root, "Carol", "carol@example.com", "carol records the override")
@@ -421,6 +432,7 @@ func TestAttributionIdentityOverrideRecorderIndependentOfRunnerConfig(t *testing
 // corpus has its human:<name> stamps skipped by --corroborate, so an override there could
 // never be corroborated online. It is refused, and the refusal says why.
 func TestAttributionIdentityOverrideInFixtureCorpusRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	root, b1 := overrideRepo(t)
 	setOverride(t, b1, validOverride())
 	writeOverrideFixtureFile(t, root, "docs/streams/gitattr/"+fixtureCorpusMarkerName, "")
@@ -437,6 +449,7 @@ func TestAttributionIdentityOverrideInFixtureCorpusRefused(t *testing.T) {
 // TestAttributionIdentityOverrideDateAfterRecordingRefused: the override's date is when the
 // human authorized it, so it cannot be later than the commit that recorded it.
 func TestAttributionIdentityOverrideDateAfterRecordingRefused(t *testing.T) {
+	installStatusgenFixture(t)
 	root, b1 := overrideRepo(t)
 	setOverride(t, b1, `"human:`+overrideHuman+` 2999-01-01 dated after the commit that records it"`)
 	gitCommitAs(t, root, "Carol", "carol@example.com", "carol records an override dated in the future")
@@ -454,6 +467,7 @@ func TestAttributionIdentityOverrideDateAfterRecordingRefused(t *testing.T) {
 // reported as an override that could not be judged. It is not described as a brief whose
 // whole-file authoring and most-recent commit share one identity.
 func TestAttributionIdentityOverrideForcedInUnreadableEvidenceNotice(t *testing.T) {
+	installStatusgenFixture(t)
 	root, b1 := overrideRepo(t)
 	body, err := os.ReadFile(b1)
 	if err != nil {

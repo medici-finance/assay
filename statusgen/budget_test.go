@@ -228,6 +228,7 @@ func TestResolveBudgetSpecs(t *testing.T) {
 // wired through main() — the same way CI's explicit
 // `--lint --budget CLAUDE.md:2850` does, with no --budget flag needed locally.
 func TestLintDefaultBudgetCatchesOverage(t *testing.T) {
+	installStatusgenFixture(t)
 	root := t.TempDir()
 	if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
 		t.Fatal(err)
@@ -257,6 +258,7 @@ func TestLintDefaultBudgetCatchesOverage(t *testing.T) {
 // trees — the dominant review use — read the drop in count as problems fixed.
 // Both problems must now appear, and the count must be their union.
 func TestBudgetFailureDoesNotSkipLaterPhases(t *testing.T) {
+	installStatusgenFixture(t)
 	root := verdictRepo(t)
 	if err := os.WriteFile(filepath.Join(root, "WORDY.md"), []byte(strings.Repeat("word ", 50)), 0o644); err != nil {
 		t.Fatal(err)

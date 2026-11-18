@@ -142,6 +142,7 @@ var notice28Rules = []string{
 // default --lint printed every finding on a closed brief as its own NOTICE
 // (2179 lines on the real tree) beside three private per-emitter aggregates.
 func TestHistoricalNoticeReport(t *testing.T) {
+	installStatusgenFixture(t)
 	root := noticeFixtureRoot(t)
 	withBase(t, true, "demo/02", "demo/03")
 
@@ -349,6 +350,7 @@ func TestHistoricalNoticeReport(t *testing.T) {
 // record is grandfathered. The report must SAY so (a could-not-check state),
 // never present the demotion as a verified fact.
 func TestHistoricalNoticeBaseUnresolved(t *testing.T) {
+	installStatusgenFixture(t)
 	root := noticeFixtureRoot(t)
 	withBase(t, false)
 	resetNoticeReportState(t)
@@ -533,6 +535,7 @@ func TestNoticeSubjectIsLeadingSlot(t *testing.T) {
 // closed at the merge-base; on the real tree three of those closures were dated
 // after 2026-08-15 and are live gaps, not frozen history.
 func TestHeldRuleStaysActionable(t *testing.T) {
+	installStatusgenFixture(t)
 	root := noticeFixtureRoot(t)
 	withBase(t, true, "demo/02", "demo/03")
 	resetNoticeReportState(t)
@@ -576,6 +579,7 @@ func TestHeldRuleStaysActionable(t *testing.T) {
 // regression: F-cnc-line-dropped — the lines had no prefix and the --diff-base
 // runner dropped them.
 func TestCouldNotCheckLinesCarryNoticePrefix(t *testing.T) {
+	installStatusgenFixture(t)
 	root := noticeFixtureRoot(t)
 	withBase(t, false)
 	resetNoticeReportState(t)
@@ -731,6 +735,7 @@ func TestArchiveExcludedFromLifecycleOnly(t *testing.T) {
 // regression: F-nonlint-closed-rows — the report was built for --lint only, so
 // every other mode printed each closed-brief row as its own NOTICE.
 func TestNonLintModesBoundClosedRecordNotices(t *testing.T) {
+	installStatusgenFixture(t)
 	root := noticeFixtureRoot(t)
 	withBase(t, true, "demo/02", "demo/03")
 	for _, mode := range []string{"check", "write"} {
@@ -817,6 +822,7 @@ func TestFragmentRulesIgnoreQuotedAuthorText(t *testing.T) {
 // order, so a Reviewed cell containing " has no why:" filed the notice under
 // why-absent and the held trust notice read as frozen history.
 func TestHeldRuleNotSteeredByQuotedReviewedCell(t *testing.T) {
+	installStatusgenFixture(t)
 	cells := map[string]string{
 		"another rule's phrase":          "2026-09-23 human:fixture; this brief has no why: n/a",
 		"phrase behind an escaped quote": `2026-09-23 human:fixture "x" has no why: y`,

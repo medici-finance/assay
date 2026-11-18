@@ -206,6 +206,7 @@ func TestMigrateAnchorsSymlink(t *testing.T) {
 //
 // regression: #5004
 func TestLintGitlabAnchorDrift(t *testing.T) {
+	installStatusgenFixture(t)
 	dir, cur, _ := staleGitlabScaffold(t)
 	lint := func() string {
 		var errs string
