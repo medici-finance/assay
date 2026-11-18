@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -100,7 +101,7 @@ func asMap(env []string) map[string]string {
 	m := map[string]string{}
 	for _, entry := range env {
 		key, value, _ := strings.Cut(entry, "=")
-		m[key] = value
+		m[keyFor(key, runtime.GOOS)] = value
 	}
 	return m
 }
