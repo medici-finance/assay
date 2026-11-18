@@ -104,14 +104,16 @@ one-line apply command; the worker touches zero workflow files.
 
 ## Verify (executable — no prose-only DoD items)
 
-Row 1 is discriminating under either mechanism; rows 2–3 apply per mechanism chosen; row 4
-passes today and must still pass. Run from the repo root.
+Row 1 is discriminating under either mechanism. The delivery chose mechanism B (direct-CI
+single writer), so rows 2 and 3 are written for B, and the mechanism-A lane-config row was
+retired because it no longer applies. Row 4 passes today and must still pass. Run from the
+repo root.
 
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check | `grep -rq '2688' docs/streams/issue-flow/rulings.md && echo ok` | prints `ok`: the register the implementation CREATES carries the R-8 enactment line citing the ruling. FAILS today: the register does not exist (grep exits 2 on the missing file — the fail-state is the absent artifact, stated as such). |
-| 2 | check | `deskautolane --help > /dev/null 2>&1 && grep -rqF 'chore(board): reconcile' <the lane-config path cited in the PR body> && echo ok` | prints `ok` (mechanism A only; under B record not-applicable with the reason): the lane config carries the title match — AND the PR body demonstrates the REAL admission predicate against the installed deskautolane: the exact-title + exact-author case ADMITS, and the two negatives (same title, different author; near-miss title, correct author) each REFUSE, quoting the verb's own output. A bare title grep passes on an unused or mis-authored entry and proves nothing — round 1 demonstrated exactly that false pass. |
-| 3 | check +flow | READ FROM THE FORGE after the first scheduled reconcile tick following this brief's merge: the reconcile PR either does not exist (B: direct-CI landing on main) or exists merged by the reviewer App via deskautolane (A) with no dispatched reviewer verdict and no authorization-needed label. | The ruling's caught-by: the class stops consuming a reviewer slot and a human gate. Could-not-check at authoring: no post-landing tick has run. |
+| 2 | check | `shasum -a 256 docs/runsheets/reconcile-lane-hunk.diff \| grep -q '^1c9cb1953c9b9a8bd11d3a73d09a1ae2f43f2a0c3d093a25c2641fe2f210b680 ' && { git apply --check docs/runsheets/reconcile-lane-hunk.diff 2>/dev/null \|\| git apply --reverse --check docs/runsheets/reconcile-lane-hunk.diff; } && echo ok` | prints `ok`: the carried conversion is the pinned bytes, and it either applies cleanly to this tree or is already applied. This is the mechanism-B half of the delivery. FAILS when main has moved under the diff and it is neither applicable nor applied, which is the stale-serialization state the 2026-10-18 to 2026-10-30 passes recorded. |
+| 3 | check +flow | `git fetch -q origin main && test "$(gh pr list -R medici-finance/assay --head board/reconcile --state open --json number --jq length)" = 0 && git log FETCH_HEAD --first-parent --no-merges --since=7.days --format=%s \| grep -q '^chore(board): reconcile' && echo ok` | prints `ok`: no `board/reconcile` pull request is open, and a reconcile commit landed directly on main's first-parent line in the last 7 days. A reconcile that comes in through a pull request sits on a merge's second parent, so the log check only passes for a direct-CI landing. This is the ruling's caught-by: the class stops consuming a reviewer slot and a human gate. Run it after the first scheduled tick that follows the driver's apply of the runsheet (row 2). Until that apply lands it FAILS by design. |
 | 4 | check +neighbour | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt36-sg" . && "${TMPDIR:-/tmp}/dt36-sg" --root .. --lint 2>&1 \| grep -q 'LINT: PASS' && echo ok` | prints `ok`: the tree lints clean. Passes today and must still pass. |
 
 ## Evidence

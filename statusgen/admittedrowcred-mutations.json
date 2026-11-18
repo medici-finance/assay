@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvPassList|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred|TestAdmittedRowInputsPass|TestAdmittedRowSeesDelivery|TestAdmittedScrubbedInputCouldNotRun|TestAdmittedRowScrubbedRefs)$' -count=1 -timeout 600s",
+  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvPassList|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred|TestAdmittedRowInputsPass|TestAdmittedRowSeesDelivery|TestAdmittedScrubbedInputCouldNotRun|TestAdmittedRowScrubbedRefs|TestScrubbedRowNeverGreen)$' -count=1 -timeout 600s",
   "control": {
     "name": "admitted rows keep every credential pointer",
     "file": "verifieradmission.go",
@@ -148,7 +148,7 @@
     {
       "name": "an admitted row that reads a scrubbed ASSAY_* input runs and records fail",
       "file": "verifyrun.go",
-      "old": "\t\tif names := admittedRowScrubbedRefs(command, plan.rowEnv()); len(names) > 0 {\n\t\t\treturn runResult{exit: -1, couldNotRun: true,\n\t\t\t\treason: \"the row reads \" + strings.Join(names, \", \") +\n\t\t\t\t\t\", which an admitted run removes from every row's environment: run it outside admission\"}\n\t\t}\n",
+      "old": "\t\tif names := admittedRowScrubbedRefs(command, plan.rowEnv()); len(names) > 0 {\n\t\t\treturn runResult{exit: -1, couldNotRun: true, reason: admittedScrubbedNote(names)}\n\t\t}\n",
       "new": ""
     },
     {
@@ -192,6 +192,24 @@
       "file": "verifieradmission.go",
       "old": "slices.Contains(admittedRowURLNames, key) && strings.Contains(value, \"@\")",
       "new": "slices.Contains(admittedRowURLNames, key) && value == \"\\x00\""
+    },
+    {
+      "name": "a could-not-run row reads as pass",
+      "file": "verifyrun.go",
+      "old": "\tif res.couldNotRun {\n\t\treturn stateCouldNotRun, res.reason\n\t}\n",
+      "new": "\tif res.couldNotRun {\n\t\treturn statePass, res.reason\n\t}\n"
+    },
+    {
+      "name": "a could-not-run row does not hold the run's exit",
+      "file": "verifyrun.go",
+      "old": "\t\tcase stateCouldNotRun:\n\t\t\tworst = verifyrunExitCouldNot\n",
+      "new": "\t\tcase stateCouldNotRun:\n"
+    },
+    {
+      "name": "the could-not-run note reads as permission to run outside admission",
+      "file": "verifyrun.go",
+      "old": "\t\t\" This note is not permission to run it outside admission, where the row sees the full environment\" +\n\t\t\" admission removes: do that only once the row itself has been reviewed for what it reads\"\n",
+      "new": "\t\t\" Run it outside admission\"\n"
     }
   ]
 }

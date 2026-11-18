@@ -1,2 +1,0 @@
-### Fixed
-- The verifier shell lines in the desk-shell reference are now pinned to the code's verifier Git shell form by a test, so the documented lines cannot drift from what `verifyloop` and the verifier kit declare. The pre-push hook-path and Evidence-landing comments now state that a verifier landing reads no global or system Git configuration, so its identity, credential helper and `core.hooksPath` must be repository- or worktree-scoped at cutover.

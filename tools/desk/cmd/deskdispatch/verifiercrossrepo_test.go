@@ -83,6 +83,7 @@ func TestCrossRepoChecker(t *testing.T) {
 }
 
 // regression: #2485
+// regression: #6274 — the verifier runs against the deliverable and publishes its outcome in the tracking repo.
 func TestCrossRepoDispatchExecution(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX row executor; core association checks are portable")
@@ -157,7 +158,14 @@ func TestCrossRepoDispatchExecution(t *testing.T) {
 			if err != nil || !strings.Contains(string(prompt), "Packet:") || strings.Contains(string(prompt), "stamp PENDING") {
 				t.Fatalf("dispatch did not emit admitted packet prompt: %v", err)
 			}
-			br, rel, rev, err := deskkit.VerifierBriefLocation(source)
+			if !strings.Contains(string(prompt), "deskevidence example-org/tracking main --outcome-record ") ||
+				strings.Contains(string(prompt), "deskevidence example-org/source main --outcome-record ") {
+				t.Fatal("emitted outcome command must address the tracking repository")
+			}
+			if _, _, _, err := deskkit.VerifierBriefLocation(source, o.repo); !deskkit.IsRefused(err) {
+				t.Fatalf("delivery repository was accepted as the Evidence destination: %v", err)
+			}
+			br, rel, rev, err := deskkit.VerifierBriefLocation(source, "example-org/tracking")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -312,8 +320,52 @@ func TestCrossRepoClaimRootOrigin(t *testing.T) {
 	body := "---\ndeliverable_repo: source\n---\n# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | `true` | exit 0 |\n"
 	registry := "schema: graph-repos-v1\nself: track\nrepos:\n  track:\n    repo: example-org/tracking\n  source:\n    repo: example-org/source\n"
 	tracking := crossDispatchRepo(t, "example-org/tracking", map[string]string{brief: body, "docs/streams/graph-repos.yaml": registry})
-	crossDispatchGit(t, tracking, "remote", "set-url", "origin", "https://github.com/example-org/other.git")
 	o := dispatchOpts{root: source, claimRoot: tracking, repo: "example-org/source", brief: filepath.Join(tracking, brief), model: "gpt-6-astra", tier: "strong", kit: "verifier", item: "sample/01"}
+	// The preview uses the tracking checkout for both the repository and the
+	// forge-specific approval option, even when delivery uses another forge.
+	t.Setenv("DESK_LOOP", "verify-desk")
+	isolateClaimTool(t, t.TempDir())
+	plantScripts(t, tracking)
+	for _, tc := range []struct {
+		host, slug string
+		approval   bool
+		refused    bool
+	}{
+		{"gitlab.com", "example-org/tracking", false, false},
+		{"github.com", "example-org/tracking", true, false},
+		{"github.com", "example-org/other", false, true},
+	} {
+		t.Run(tc.host+"/"+tc.slug, func(t *testing.T) {
+			// Only the delivery repo has a roster mapping. The tracker's forge
+			// must resolve from its own origin, independently of delivery.
+			t.Setenv(deskkit.EnvRepoForges, "example-org/source=github")
+			crossDispatchGit(t, tracking, "remote", "set-url", "origin", "https://"+tc.host+"/"+tc.slug+".git")
+			preview := o
+			preview.dryRun = true
+			preview.promptFile = filepath.Join(t.TempDir(), "preview.md")
+			err := dispatch(preview)
+			prompt, readErr := os.ReadFile(emittedPathFor(preview.promptFile))
+			if tc.refused {
+				if !deskkit.IsRefused(err) || !os.IsNotExist(readErr) {
+					t.Fatalf("mismatched tracking origin: dispatch error=%v, prompt read=%v", err, readErr)
+				}
+				return
+			}
+			if err != nil || readErr != nil {
+				t.Fatalf("preview: dispatch error=%v, prompt read=%v", err, readErr)
+			}
+			for _, line := range strings.Split(string(prompt), "\n") {
+				if strings.HasPrefix(line, "deskevidence example-org/tracking main --outcome-record ") {
+					if strings.Contains(line, " --acceptance-forge") != tc.approval {
+						t.Fatalf("unexpected approval option in outcome command: %s", line)
+					}
+					return
+				}
+			}
+			t.Fatal("preview did not address the tracking repository")
+		})
+	}
+	crossDispatchGit(t, tracking, "remote", "set-url", "origin", "https://github.com/example-org/other.git")
 	_, err := attestVerifierDispatch(o, "example-org/source", source)
 	if err == nil || !strings.Contains(err.Error(), "requires the resolved tracking repository") {
 		t.Fatalf("--claim-root of another repository not refused by its origin: %v", err)

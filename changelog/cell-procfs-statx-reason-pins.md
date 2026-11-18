@@ -1,2 +1,0 @@
-### Changed
-- Tests now pin three parts of the hotfix owner checks: the `/proc` reader refuses a root that is not a procfs root (by filesystem type and by inode), the owner-reader scans also catch a file owner read through `unix.Statx_t`, and `cellctl hotfix install` and `clear` name a namespace-gate refusal as could-not-check and only an owner actually read as "not root-owned". Each has a mutation entry that removes the check and is caught (#6781).

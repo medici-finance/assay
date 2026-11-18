@@ -1,0 +1,22 @@
+{
+  "name": "pirunner-bridge",
+  "private": true,
+  "type": "module",
+  "description": "Experimental JSON-lines bridge from the loopadmin pirunner experiment to one pinned Pi Durable harness. Test fixture only.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@earendil-works/pi-durable": "1.4.0",
+    "@earendil-works/pi-ai": "1.4.0",
+    "@earendil-works/chord": "1.4.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "@types/node": "22.19.0"
+  }
+}

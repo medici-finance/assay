@@ -436,12 +436,30 @@ row(s)`, never `all preconditions met`.
 `deskd` is reported `n/a` unless `cell.env` sets `DESKD=1`, in which case the cell is checked, stood
 and torn down exactly as a k8s cell's is.
 
-`desk` and `up` on a house cell differ from a k8s cell in three ways and no others: no `deskd`
+`desk` and `up` on a house cell differ from a k8s cell in four ways and no others: no `deskd`
 window or "deskd is not up" notice unless `DESKD=1`; `DESK_ROOTS` is exported from `CELL_ROOTS`
-(on a k8s cell too, when `cell.env` carries one); and `DESK_SESSION` — also the `claude --name` —
-is `<cell>-<role>-<UTC boot stamp>` rather than `<cell>-<short role>`, because house windows are
-re-booted by hand across days and the roster beacon should tell one boot from the next. The
-worktree, the shims, the pinned model and the `/assay:<role>` first prompt are the same code path.
+(on a k8s cell too, when `cell.env` carries one); the `verify-desk` window's `DESK_ROOTS` names
+per-session trees rather than the shared checkouts (below); and `DESK_SESSION` — also the
+`claude --name` — is `<cell>-<role>-<UTC boot stamp>` rather than `<cell>-<short role>`, because
+house windows are re-booted by hand across days and the roster beacon should tell one boot from the
+next. The worktree, the shims, the pinned model and the `/assay:<role>` first prompt are the same
+code path.
+
+**Per-session verify roots.** The verifier's queue read refuses a stream root whose `HEAD` is not
+that root's fetched `refs/remotes/origin/main`. A shared checkout fails that whenever its operator
+is on a branch, and again whenever another session's fetch moves `origin/main` in the shared
+object database. So a house `verify-desk` boot fetches `main` into each `CELL_ROOTS` checkout
+(explicit refspec `+refs/heads/main:refs/remotes/origin/main`) and cuts one detached, locked
+worktree per root at that commit, under `<cell>/worktrees/verify-desk-roots/<owner>--<repo>`. The
+window's `DESK_ROOTS` keeps every name and points it at that tree. Before every cadence pass the
+trees are fetched and moved to `origin/main` again; a tree that cannot be makes the pass
+`could-not-check`. A later boot reuses a tree only when moving it loses nothing: tracked changes,
+or a `HEAD` that `origin/main` does not contain, stop the boot with the path named. A root that is
+not a git checkout keeps its shared path, with a notice. The shared checkouts are fetched into and
+never moved. `CELL_VERIFY_SHARED_ROOTS=1` in `cell.env` restores the shared checkouts; the dry run
+prints the planned map on a `[dry-run] verify roots:` line. The trees share the root's object
+database, so the refresh before each pass is what keeps them current: a window without a cadence
+gets the boot refresh only.
 
 ---
 
@@ -1764,35 +1782,14 @@ persists `--model` per the widened-scope rules above, into `DESK_MODEL_<role>`.
 - `ANTHROPIC_MODEL` = the model this window launches with, and
   `ANTHROPIC_DEFAULT_OPUS_MODEL` / `ANTHROPIC_DEFAULT_SONNET_MODEL` /
   `ANTHROPIC_DEFAULT_HAIKU_MODEL` = a name the endpoint accepts — the provider model (else the
-  launch model), or that tier's per-tier model where one applies (next paragraph).
+  launch model). Every alias maps to that one flat model.
 
-**Per-tier provider models** (`assay#1352`): a provider may name a DIFFERENT model for one tier —
-`CELL_PROVIDER_<NAME>_MODEL_TOP` / `_MODEL_MID` / `_MODEL_FAST` (cell.env line, else the preset) —
-and it applies in two places: a role window whose cellctl tier is that one launches on it (the
-flat `MODEL` stays every other tier's default), and the matching launch alias
-(`OPUS`→`MODEL_TOP`, `SONNET`→`MODEL_MID`, `HAIKU`→`MODEL_FAST`) maps to it, else to the flat
-provider model. The built-in `glm` preset ships one: `MODEL_MID` = `glm-5.3-flash[1m]`, so on a
-glm cell every mid-tier window and every sonnet ask inside any window runs the flash variant,
-while the-desk (TOP) keeps the full `glm-5.3[1m]`. `cellctl check` prints the sonnet slot as its
-own row when it differs. A per-role pin or `--model` still wins over both, verbatim as ever.
-
-**Tier flags** (`--model-top` / `--model-mid` / `--model-fast`): override the provider's
-per-tier models for ONE run — refused without a provider (the keys are provider-keyed), and
-`--set` persists each given flag to its `CELL_PROVIDER_<NAME>_MODEL_<TIER>` key, making it the
-cell's default. `cellctl up` accepts the same three flags and threads them onto every role
-window it opens (via the `CELL_TIER_MODEL_<TIER>` environment), and the raw keys are settable
-directly: `cellctl set <cell> CELL_PROVIDER_GLM_MODEL_MID=glm-5.3-flash[1m]`.
-
-A per-tier provider model refines the launch path — it does not replace the flat model. The
-launch `--model` resolves through the normal precedence (`--model` > per-role pin > provider flat
-`MODEL` (preset or cell.env line) > harness default), so a provider configured with only a tier
-key and no flat `MODEL` launches on that resolved default model NAME — the model name is
-unaffected by the provider — while the per-tier aliases (`ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL`)
-still take the provider's tier/flat model. Configure the provider's flat `MODEL` too when you want
-the launch model itself to be provider-sourced rather than the harness default. The one refusal
-here that IS enforced: a tier flag or `CELL_TIER_MODEL_*` value reaching `desk` with no provider
-at all is refused, the same way `up` refuses it — a tier model is provider-keyed and has nothing to
-hang on without one.
+**One model per provider.** A provider names one flat `MODEL`; the per-tier provider keys
+(`CELL_PROVIDER_<NAME>_MODEL_TOP` / `_MID` / `_FAST`), the `--model-top` / `--model-mid` /
+`--model-fast` flags and the `CELL_TIER_MODEL_<TIER>` environment are retired (#6183): `set`
+refuses the keys as unknown and `desk` / `up` refuse the flags. A different model per role or
+tier is what model policy routes — see [Per-role provider, model and effort
+policy](#per-role-provider-model-and-effort-policy).
 
 A provider is a **claude-harness** seam: `--harness codex` with a provider (flag or `CELL_PROVIDER`)
 is refused rather than launching codex against Anthropic with a provider the operator asked for.

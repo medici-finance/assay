@@ -169,7 +169,7 @@ RUN set -eux; \
 # home can re-check itself. The floor is proven by the LAST RUN of this stage
 # (GIT FLOOR CHECK below), so no later layer can bring in a git unchecked.
 COPY --from=gitbuild /out/usr/local/ /usr/local/
-COPY containers/scripts/git-floor-check.sh /usr/local/bin/git-floor-check
+COPY --chmod=0755 containers/scripts/git-floor-check.sh /usr/local/bin/git-floor-check
 
 # Go toolchain, pinned, from the official distribution tarball, checked against
 # its pinned sha256 before it is unpacked.
@@ -230,13 +230,14 @@ RUN set -eux; \
 COPY --from=desktools /usr/local/bin/ /usr/local/bin/
 
 # The assay plugin baked from this repo: skills, commands, hooks. A desk session
-# finds its skill by public desk name under /opt/assay/plugin/skills.
-COPY plugins/assay/ /opt/assay/plugin/
+# finds its skill by public desk name under /opt/assay/plugin/skills. The
+# symbolic mode keeps each hook and script executable and every file writable by
+# root alone, whatever mode the checkout gave it.
+COPY --chmod=u=rwX,go=rX plugins/assay/ /opt/assay/plugin/
 
 # Bounded compatibility launcher; existing shell defaults and credential preflight stay.
-COPY containers/k8s/compatibility/desk-session.sh /usr/local/bin/desk-session
-COPY containers/k8s/compatibility/desk-session.py /usr/local/lib/assay/desk-session.py
-RUN chmod 0755 /usr/local/bin/desk-session /usr/local/lib/assay/desk-session.py
+COPY --chmod=0755 containers/k8s/compatibility/desk-session.sh /usr/local/bin/desk-session
+COPY --chmod=0755 containers/k8s/compatibility/desk-session.py /usr/local/lib/assay/desk-session.py
 
 # Non-root user. Home is routed onto the persistent volume (see ENV below) so
 # the parts of $HOME that must survive a container restart live on /work.
@@ -301,7 +302,17 @@ RUN set -eux; \
 # missing binary fail (ldd alone would print its error to stderr and let the
 # grep pass); the ldd check catches a shared library the apt list above stopped
 # providing (git-remote-http carries the libcurl link). /usr/local must be
-# root-owned throughout, since git now lives there.
+# root-owned throughout, since git now lives there. Nothing installed under
+# /usr/local or /opt/assay may be set-id or writable by its group or others (no
+# bit of mode 6022): a COPY from the build context keeps the checkout's mode
+# unless it names --chmod, so a checkout made under umask 002 would otherwise
+# ship group-writable files on PATH. Both roots are tested to exist first: find
+# on a missing root only writes to stderr, the pipeline's status is grep's, and
+# the gate would pass on a tree it never read. Any symlink under /opt/assay
+# fails, since its own mode says nothing about its target. /usr/local holds
+# legitimate in-root links (the node archive's npm, npx and corepack, and
+# base-files' /usr/local/man), so there a link fails only if it dangles or
+# resolves outside /usr/local, whose files the first find already checks.
 RUN set -eux; \
     test "$(/usr/local/bin/git version)" = "git version 2.56.1"; \
     test -x /usr/local/bin/git; \
@@ -312,6 +323,24 @@ RUN set -eux; \
     fi; \
     if find /usr/local -xdev \( ! -user 0 -o ! -group 0 \) -print | grep .; then \
         echo "/usr/local holds files not owned by root:root" >&2; \
+        exit 1; \
+    fi; \
+    test -d /usr/local; \
+    test -d /opt/assay; \
+    if find /usr/local -xdev ! -type l \( -perm /6022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "an installed file is set-id, is not root:root, or is writable by its group or others" >&2; \
+        exit 1; \
+    fi; \
+    if find /usr/local -xdev -xtype l -print | grep .; then \
+        echo "a symlink under /usr/local dangles" >&2; \
+        exit 1; \
+    fi; \
+    if find /usr/local -xdev -type l -exec realpath -m {} + | grep -v '^/usr/local/'; then \
+        echo "a symlink under /usr/local resolves outside it" >&2; \
+        exit 1; \
+    fi; \
+    if find /opt/assay -xdev \( -type l -o -perm /6022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "a path under /opt/assay is a symlink, is set-id, is not root:root, or is writable by its group or others" >&2; \
         exit 1; \
     fi; \
     git-floor-check

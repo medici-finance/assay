@@ -26,38 +26,49 @@ names).
 
 ## The serialized diff — what it is, and its receipts
 
-- **Bytes in-repo:** `docs/runsheets/reconcile-lane-hunk.diff`, 112,747 bytes,
-  sha256 `f4e3e0df93e1d7d47088021c61cf2e232cd4b9ca91564e919cb8687f9a866cd8`.
-- **Thread record:** assembled and validated on #2688 — the assembly comment
-  (6133573531) carries the summary, the apply recipe and the validation record;
-  the eight fenced parts that follow it concatenate to these exact bytes.
-- **Base:** `ca0dad5c4162a7203167340c49d4c241e14060bb`. The three target files —
-  the live workflow `.github/workflows/assay-statusgen.yml`, its staged twin
-  `ci/staged-workflows/assay-statusgen.yml` (byte-identical edit; the
-  `declared-changes.json` `identical` classification holds), and the hermetic
-  suite `statusgen/reconcilejob_test.go` — are unchanged from that base to this
-  branch's head and to current main, so the patch applies cleanly at the tip.
-- **After the decision-gate hold lands.** The hold's change (#2266)
-  stages its own edit to `ci/staged-workflows/assay-statusgen.yml` and classes that
-  file `pending` (not `identical`) in `declared-changes.json`. The diff above still
-  applies cleanly on top of it (`git apply --check` exits 0 on the merge of both, in
-  either order) and the edit it makes to the staged twin is unchanged; only the
-  `identical` classification stops holding for that one file.
-- **Receipts:** the assembly record's validation (baseline green at the base;
-  fail-first red of the re-pointed suite against the unconverted workflow, quoted
-  there; the converted suite green with 37/37 mutant entries shown red; a
-  pristine-checkout apply round-trip with the suite re-run green; `gofmt`/`go vet`
-  clean; live/staged twin `cmp` clean) — and, on this delivery branch:
-  `git apply --check docs/runsheets/reconcile-lane-hunk.diff` exits 0 at head
-  `956afcfb1`, which carries the `.diff` file.
+- **Bytes in-repo:** `docs/runsheets/reconcile-lane-hunk.diff`, 113,409 bytes,
+  sha256 `1c9cb1953c9b9a8bd11d3a73d09a1ae2f43f2a0c3d093a25c2641fe2f210b680`.
+- **Base:** `fe3ec16a4c705beaf6518296f8bdb567277128fa` (main at re-serialization).
+  The three target files are the live workflow `.github/workflows/assay-statusgen.yml`,
+  its staged twin `ci/staged-workflows/assay-statusgen.yml`, and the hermetic suite
+  `statusgen/reconcilejob_test.go`. `git apply --check` exits 0 at that base. A
+  main that later touches any of the three can make the apply fail again; the
+  first command of the act above is the check, so a stale diff stops before it writes.
+- **Re-serialized, not re-designed.** The first serialization (112,747 bytes,
+  sha256 `f4e3e0df93e1d7d47088021c61cf2e232cd4b9ca91564e919cb8687f9a866cd8`, base
+  `ca0dad5c4162a7203167340c49d4c241e14060bb`, assembled on #2688 in comment
+  6133573531 and the eight parts after it) stopped applying once main changed the
+  three files after its base. This version is that conversion carried onto the new
+  base by a three-way merge, keeping everything main added in between:
+  - the reconcile job's read-only sign-off digest step, which stays;
+  - `--acceptance-forge` on the reconcile and lint invocations, which stays;
+  - the toolchain, permission, historian and auto-flip changes in other jobs,
+    which merge without overlap.
+  Only one thing goes: the gh CLI install step that main had left in the reconcile
+  job. The converted job runs no `gh`, so that step goes with the pull-request
+  path. One mutant entry ("held-row report not captured for the commit") is
+  re-bound to the `--acceptance-forge | tee "$out"` text, which the job now carries.
+  The design (properties 1–4 below) is unchanged.
+- **Twins.** The edit to the staged twin matches the edit to the live workflow,
+  hunk for hunk. The only difference is the existing header comment the staged twin
+  already carries about drive plan-page snapshot regions. `declared-changes.json`
+  classes the staged file `pending` for a separate staged change, and this apply
+  leaves that classification as it is.
+- **Receipts** (on the re-serialized bytes, in a scratch tree, never in a live checkout):
+  - The converted suite passes at the base with the diff applied:
+    `go test -count=1 -run 'Reconcile|CredentialedJobIsolation|IsolationGuardFlagsPlant|GitHubActionsCleared' ./statusgen/`
+    gives `ok`, and all 37 subtests of the mutants table pass, so each mutant goes red.
+  - Fail-first: the converted suite run against main's unconverted workflow fails
+    12 `TestReconcileJob*` tests.
+  - `gofmt -l` and `go vet` are clean on the suite.
 
 ## Status: serialized and carried — the remaining act is the driver's apply
 
 The serialization this runsheet originally recorded as blocked EXISTS: the driver
 authorized it as option (a) on #2688 (comment 6129501634), a dispatched
 serialization session delivered it (assembly comment 6133573531 plus the eight
-parts), and this delivery now carries the same bytes as the sibling `.diff` with
-the sha256 pinned above. Nothing further is owed by a desk or a worker on the
+parts). The sibling `.diff` carries that conversion, re-serialized onto current
+main, with the sha256 pinned above. Nothing further is owed by a desk or a worker on the
 serialization: the one remaining act is the driver's own apply, above — the leg is
 carried by the driver's apply, and until it lands, the scheduled reconcile keeps
 opening `chore(board): reconcile` pull requests under the standing rules (#2651
