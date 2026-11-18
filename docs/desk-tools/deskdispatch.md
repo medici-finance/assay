@@ -110,7 +110,11 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       root (--claim-root when given, else --root) carries it. The OK line
                       names which one ran. The claim itself is a ref in the TARGET repo
                       (--repo) either way — the flag names where the TOOL lives, never where
-                      the claim lands. The child runs as the DISPATCHING role: this step
+                      the claim lands — with ONE exception: a cross-repository VERIFIER
+                      dispatch claims in the TRACKING repo (--claim-root's origin), where its
+                      brief, Evidence and outcome record live, so its claim is inspected,
+                      released or stolen there, never in --repo (#5999; see CROSS-REPO
+                      below). The child runs as the DISPATCHING role: this step
                       mints (or reuses) that role's App token exactly as the model-stamp step
                       does and hands it over as --token-file <0600 path> (deskclaim-ref) or
                       GH_TOKEN in the child's environment (the script); a GH_TOKEN already
