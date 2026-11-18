@@ -30,12 +30,10 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
 
-	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport"
 
@@ -71,15 +69,34 @@ var _ deskkit.ClaimStore = (*gogitStore)(nil)
 // returns a deskkit.ClaimStore bound to them, or an error (which the caller maps to exit 6,
 // could-not-check). tokenFile, when non-empty, is the 0600 file the token is read from instead
 // of the environment.
-func newForgeStore(repo, tokenFile string) (deskkit.ClaimStore, error) {
+func newForgeStore(repo, tokenFile string, readOrigin func() (string, error)) (deskkit.ClaimStore, error) {
 	owner, name, ok := splitSlug(repo)
 	if !ok {
 		return nil, fmt.Errorf("repo %q is not an owner/name slug", repo)
 	}
-	originHost, _ := parseRemote(originRemoteURL())
-	originHost, aerr := resolveHostAlias(originHost)
-	if aerr != nil {
-		return nil, aerr
+	origin, err := readOrigin()
+	if err != nil {
+		return nil, fmt.Errorf("cannot determine claim forge host from origin: %w", err)
+	}
+	originHost, err := deskkit.HostOfRemote(origin)
+	if err != nil || !deskkit.IsBareGitHost(originHost) {
+		// The origin can contain userinfo, including when its URL is malformed.
+		return nil, fmt.Errorf("claim origin has no valid ASCII forge hostname")
+	}
+	if strings.Contains(origin, "://") {
+		u, err := url.Parse(origin)
+		if err != nil {
+			return nil, fmt.Errorf("claim origin URL is malformed")
+		}
+		if u.Scheme == "https" && u.Port() != "" && u.Port() != "443" {
+			return nil, fmt.Errorf("claim store requires the default HTTPS port")
+		}
+	}
+	if deskkit.IsSSHTransport(origin) {
+		originHost, err = resolveHostAlias(originHost)
+		if err != nil {
+			return nil, err
+		}
 	}
 	kind, host, err := deskkit.ForgeKindFromSlugAndHost(repo, originHost)
 	if err != nil {
@@ -240,229 +257,29 @@ func findRef(refs []*plumbing.Reference, name string) (string, bool) {
 
 // --- repo / token resolution ------------------------------------------------
 
-// resolveRepo returns owner/name: --repo when given, else the cwd's origin remote (read
-// in-process via go-git, never by shelling git or gh).
-func resolveRepo(repoFlag string) string {
+// An explicit repo chooses which claim namespace to use. The forge store still
+// needs the checked origin to determine which instance serves that namespace.
+func resolveRepo(repoFlag string, readOrigin func() (string, error)) (string, error) {
 	if s := strings.TrimSpace(repoFlag); s != "" {
-		return s
+		return s, nil
 	}
-	_, slug := parseRemote(originRemoteURL())
-	return slug
-}
-
-// originRemoteURL reads the "origin" remote URL from the current directory's checkout, trying
-// three readers in order so a fault in one does not lose the answer (#727):
-//
-//  1. go-git (in-process, no external process) — the fast path, and the ONLY one on a
-//     native-Windows adopter with no git on PATH. go-git does NOT support the worktreeConfig
-//     extension, though, which git itself enables whenever linked worktrees are in use — exactly
-//     the isolated-worktree model the desks mandate. On such a checkout go-git returns nothing by
-//     one of two routes: PlainOpen fails outright on the shared checkout
-//     (`…does not support extension: worktreeconfig`), or PlainOpen succeeds on a LINKED worktree
-//     but the config it reads carries no remotes (the remotes live in the common .git/config).
-//  2. native `git remote get-url origin` — git understands its own worktreeConfig extension, so
-//     it resolves origin correctly for both the shared checkout and a linked worktree, including
-//     any conditional includes. This shells `git`, not a forge CLI (`gh`/`glab`), so it does NOT
-//     reopen the forge surface the ban (internal/forgeban) fences — no network is contacted, it
-//     only reads local config.
-//  3. a direct parse of the common .git/config's `[remote "origin"]` — the last resort when git
-//     is absent (a native-Windows adopter whose go-git path already failed), resolving the
-//     linked-worktree commondir so the shared config is the one read.
-//
-// Empty from all three means no readable origin; ForgeKindFromSlugAndHost then fails closed
-// rather than defaulting a host.
-func originRemoteURL() string {
-	if u := gogitOriginURL("."); u != "" {
-		return u
-	}
-	if u := nativeGitOriginURL("."); u != "" {
-		return u
-	}
-	return configFileOriginURL(".")
-}
-
-// gogitOriginURL is the in-process go-git reader (originRemoteURL step 1).
-func gogitOriginURL(dir string) string {
-	r, err := git.PlainOpenWithOptions(dir, &git.PlainOpenOptions{DetectDotGit: true})
+	origin, err := readOrigin()
 	if err != nil {
-		return ""
+		return "", err
 	}
-	u, err := gitcore.RemoteURL(r, "origin")
+	return deskkit.RemoteRepoSlug(origin)
+}
+
+func checkedOriginURL(dir string) (string, error) {
+	top, err := gitcore.Toplevel(dir)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return u
-}
-
-// nativeGitOriginURL shells `git remote get-url origin` (originRemoteURL step 2). git resolves
-// the worktreeConfig extension go-git cannot, so this answers for both the shared checkout and a
-// linked worktree. It is `git`, never a forge CLI, and makes no network call. Empty on any
-// failure (no git on PATH, no remote, not a repo) so the caller falls through to step 3.
-func nativeGitOriginURL(dir string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "git", "-C", dir, "remote", "get-url", "origin")
-	outb, err := cmd.Output()
+	repo, err := gitcore.Open(top)
 	if err != nil {
-		return ""
+		return "", err
 	}
-	return strings.TrimSpace(string(outb))
-}
-
-// configFileOriginURL parses the `[remote "origin"]` url out of the common .git/config directly
-// (originRemoteURL step 3), the reader that needs neither go-git's extension support nor a git
-// binary. It resolves the git-dir the way git does — a `.git` directory in place, or a `.git`
-// FILE (`gitdir: …`) in a linked worktree, whose common config lives one level up from its
-// `worktrees/<name>` dir (or wherever its `commondir` file points). Empty when nothing resolves.
-func configFileOriginURL(dir string) string {
-	commonGitDir := resolveCommonGitDir(dir)
-	if commonGitDir == "" {
-		return ""
-	}
-	return parseOriginFromGitConfig(filepath.Join(commonGitDir, "config"))
-}
-
-// resolveCommonGitDir walks up from dir to find the checkout's .git, then resolves the COMMON
-// git dir (the one holding the shared config with the remotes) — following a linked worktree's
-// `.git` gitdir pointer and its `commondir` file. Empty when no .git is found.
-func resolveCommonGitDir(dir string) string {
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		return ""
-	}
-	for {
-		dotgit := filepath.Join(abs, ".git")
-		fi, statErr := os.Stat(dotgit)
-		if statErr == nil {
-			if fi.IsDir() {
-				return dotgit // a normal checkout: .git is the git dir and holds config directly
-			}
-			// A linked worktree: .git is a file `gitdir: <path>/worktrees/<name>`. The common
-			// git dir is where its `commondir` file points (usually `../..`), i.e. the main
-			// checkout's .git.
-			if wtGitDir := readGitdirPointer(dotgit); wtGitDir != "" {
-				return commonDirOf(wtGitDir)
-			}
-			return ""
-		}
-		parent := filepath.Dir(abs)
-		if parent == abs {
-			return "" // reached the filesystem root without finding a .git
-		}
-		abs = parent
-	}
-}
-
-// readGitdirPointer reads a linked worktree's `.git` FILE and returns the absolute path its
-// `gitdir: …` line names. Empty on any read/parse failure.
-func readGitdirPointer(dotgitFile string) string {
-	b, err := os.ReadFile(dotgitFile)
-	if err != nil {
-		return ""
-	}
-	line := strings.TrimSpace(string(b))
-	p, ok := strings.CutPrefix(line, "gitdir:")
-	if !ok {
-		return ""
-	}
-	p = strings.TrimSpace(p)
-	if !filepath.IsAbs(p) {
-		p = filepath.Join(filepath.Dir(dotgitFile), p)
-	}
-	return filepath.Clean(p)
-}
-
-// commonDirOf maps a linked worktree's git dir (`<main>/.git/worktrees/<name>`) to the common
-// git dir that holds the shared config, honoring an explicit `commondir` file where present.
-func commonDirOf(wtGitDir string) string {
-	if b, err := os.ReadFile(filepath.Join(wtGitDir, "commondir")); err == nil {
-		rel := strings.TrimSpace(string(b))
-		if rel != "" {
-			if filepath.IsAbs(rel) {
-				return filepath.Clean(rel)
-			}
-			return filepath.Clean(filepath.Join(wtGitDir, rel))
-		}
-	}
-	// No commondir file: the conventional layout is <common>/worktrees/<name>, so the common
-	// dir is two levels up.
-	return filepath.Clean(filepath.Join(wtGitDir, "..", ".."))
-}
-
-// parseOriginFromGitConfig extracts the first url under `[remote "origin"]` from a git config
-// file. It reads the INI-ish grammar git writes — a `[remote "origin"]` section header, then
-// `url = …` on an indented line before the next section — without a full git-config parser,
-// which is all this fallback needs. Empty when the file is absent or has no origin url.
-func parseOriginFromGitConfig(configPath string) string {
-	f, err := os.Open(configPath)
-	if err != nil {
-		return ""
-	}
-	defer f.Close()
-	inOrigin := false
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
-		if strings.HasPrefix(line, "[") {
-			// A new section header. Match `[remote "origin"]` allowing for extra spacing.
-			norm := strings.ToLower(strings.Join(strings.Fields(line), " "))
-			inOrigin = norm == `[remote "origin"]`
-			continue
-		}
-		if !inOrigin {
-			continue
-		}
-		if v, ok := cutConfigKey(line, "url"); ok {
-			return v
-		}
-	}
-	return ""
-}
-
-// cutConfigKey matches a `key = value` git-config line (case-insensitive key, optional spacing)
-// and returns the trimmed value.
-func cutConfigKey(line, key string) (string, bool) {
-	eq := strings.IndexByte(line, '=')
-	if eq < 0 {
-		return "", false
-	}
-	if !strings.EqualFold(strings.TrimSpace(line[:eq]), key) {
-		return "", false
-	}
-	return strings.TrimSpace(line[eq+1:]), true
-}
-
-// parseRemote extracts the host and the owner/name slug from a git remote URL in either
-// scheme://host/owner/name(.git) form or the scp-like user@host:owner/name(.git) form. Either
-// component may be "" when the URL does not carry it.
-func parseRemote(raw string) (host, slug string) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return "", ""
-	}
-	var path string
-	if strings.Contains(raw, "://") {
-		u, err := url.Parse(raw)
-		if err != nil {
-			return "", ""
-		}
-		host = strings.ToLower(u.Hostname())
-		path = u.Path
-	} else if at := strings.Index(raw, "@"); at >= 0 {
-		// scp-like: user@host:owner/name.git
-		rest := raw[at+1:]
-		if colon := strings.Index(rest, ":"); colon >= 0 {
-			host = strings.ToLower(rest[:colon])
-			path = rest[colon+1:]
-		}
-	}
-	path = strings.TrimPrefix(path, "/")
-	path = strings.TrimSuffix(path, ".git")
-	parts := strings.Split(path, "/")
-	if len(parts) >= 2 {
-		slug = parts[len(parts)-2] + "/" + parts[len(parts)-1]
-	}
-	return host, slug
+	return deskkit.SlugRemoteURL(repo, "origin")
 }
 
 // sshConfigHostname resolves an OpenSSH `Host` alias to the real hostname its config maps it
@@ -492,9 +309,9 @@ var sshConfigHostname = func(alias string) (string, error) {
 	}
 	sc := bufio.NewScanner(strings.NewReader(string(outb)))
 	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
+		line := strings.Trim(sc.Text(), " \t\r\n")
 		if h, ok := strings.CutPrefix(line, "hostname "); ok {
-			if h = strings.TrimSpace(h); h != "" {
+			if h = strings.Trim(h, " \t\r\n"); h != "" {
 				return h, nil
 			}
 		}
@@ -514,7 +331,7 @@ func sshGConfigArgv(alias string) []string {
 
 // resolveHostAlias resolves host to a dialable forge hostname when it looks like an SSH config
 // `Host` alias rather than a DNS name — issue #1371: an scp-like origin (`git@alias:owner/name`)
-// with an alias mapping to a real forge host and a per-identity key. parseRemote takes the
+// with an alias mapping to a real forge host and a per-identity key. HostOfRemote takes the
 // literal host segment of such a URL, and ForgeKindFromSlugAndHost (by design, #727) never
 // substitutes a SaaS default for it, so an unresolved alias would otherwise be dialed verbatim
 // as if it were a DNS name and fail with a bare "no such host".
@@ -540,7 +357,7 @@ func sshGConfigArgv(alias string) []string {
 // collapsing to a bare "no such host" once the caller later tries to dial the alias directly.
 func resolveHostAlias(host string) (string, error) {
 	h := strings.TrimSpace(host)
-	if h == "" || strings.Contains(h, ".") {
+	if h == "" || strings.ContainsAny(h, ".:") {
 		return h, nil
 	}
 	if strings.HasPrefix(h, "-") {
@@ -560,7 +377,10 @@ func resolveHostAlias(host string) (string, error) {
 				"directly.",
 			h, h, err.Error(), h)
 	}
-	return strings.ToLower(strings.TrimSpace(resolved)), nil
+	if !deskkit.IsBareGitHost(resolved) {
+		return "", fmt.Errorf("SSH alias did not resolve to a bare forge hostname")
+	}
+	return deskkit.NormalizeForgeHost(resolved)
 }
 
 func splitSlug(slug string) (owner, name string, ok bool) {

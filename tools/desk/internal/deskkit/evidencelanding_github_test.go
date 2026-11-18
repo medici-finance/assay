@@ -164,3 +164,173 @@ func TestSnapshotMissingFile(t *testing.T) {
 		})
 	}
 }
+
+// ghB64Wrapped is base64 as the git blobs API serves it: wrapped at 60
+// columns with a trailing newline.
+func ghB64Wrapped(s string) string {
+	enc := ghB64(s)
+	var b strings.Builder
+	for len(enc) > 60 {
+		b.WriteString(enc[:60] + "\n")
+		enc = enc[60:]
+	}
+	b.WriteString(enc + "\n")
+	return b.String()
+}
+
+// regression: #5543 — Blob.text is not the blob's bytes: the go-gh transport
+// rewrites a literal backslash-u-0003 in any JSON answer into caret notation.
+// When text does not prove itself against the blob id, the snapshot reads the
+// bytes by that id, and still refuses bytes that cannot be proven.
+func TestSnapshotBlobTextRewritten(t *testing.T) {
+	plain := "| cmd | `curl -d '{\"input\":\"touch x\"}'` |\n"
+	real := "| cmd | `curl -d '{\"input\":\"\\u0003touch x\"}'` |\n"
+	sameLen := strings.Replace(real, "\\u0003", "^C^C^C", 1) // a rendering the length check alone cannot tell apart
+	oid := blobID(real, false)
+	if !strings.Contains(strings.TrimSuffix(ghB64Wrapped(real), "\n"), "\n") {
+		t.Fatal("the served blob must be long enough to wrap, as GitHub serves it")
+	}
+	type blobResp struct {
+		status int
+		body   map[string]any
+	}
+	okBlob := func() *blobResp {
+		return &blobResp{200, map[string]any{"sha": oid, "size": len(real), "encoding": "base64", "content": ghB64Wrapped(real)}}
+	}
+	cases := []struct {
+		name  string
+		body  string // the blob's bytes; "" means real
+		text  any
+		blob  *blobResp // nil: the blob endpoint must not be called
+		want  bool
+		calls int32
+	}{
+		{name: "text proves itself", body: plain, text: plain, want: true, calls: 1},
+		{name: "transport rewrites escape", text: real, blob: okBlob(), want: true, calls: 2},
+		{name: "rewritten same length", text: sameLen, blob: okBlob(), want: true, calls: 2},
+		{name: "text omitted", text: nil, blob: okBlob(), want: true, calls: 2},
+		{name: "blob bytes mismatch", text: real, calls: 2, blob: &blobResp{200, map[string]any{"sha": oid, "size": len(sameLen), "encoding": "base64", "content": ghB64Wrapped(sameLen)}}},
+		{name: "blob wrong size", text: real, calls: 2, blob: &blobResp{200, map[string]any{"sha": oid, "size": len(real) + 1, "encoding": "base64", "content": ghB64Wrapped(real)}}},
+		{name: "blob wrong sha", text: real, calls: 2, blob: &blobResp{200, map[string]any{"sha": strings.Repeat("b", 40), "size": len(real), "encoding": "base64", "content": ghB64Wrapped(real)}}},
+		{name: "blob not base64", text: real, calls: 2, blob: &blobResp{200, map[string]any{"sha": oid, "size": len(real), "encoding": "utf-8", "content": real}}},
+		{name: "blob unreadable", text: real, calls: 2, blob: &blobResp{404, map[string]any{"message": "untrusted-message-marker"}}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			body, id := real, oid
+			if tc.body != "" {
+				body, id = tc.body, blobID(tc.body, false)
+			}
+			repo := snapshotFixture()
+			repo["ref"].(map[string]any)["target"].(map[string]any)["file"] = map[string]any{
+				"mode": 0100644, "object": map[string]any{"__typename": "Blob", "oid": id, "text": tc.text, "byteSize": len(body), "isBinary": false},
+			}
+			var calls atomic.Int32
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case r.Method == http.MethodPost && r.URL.Path == "/graphql":
+					_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"repository": repo}})
+				case r.Method == http.MethodGet && r.URL.Path == "/repos/example-org/project/git/blobs/"+oid && tc.blob != nil:
+					w.WriteHeader(tc.blob.status)
+					_ = json.NewEncoder(w).Encode(tc.blob.body)
+				default:
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+					w.WriteHeader(http.StatusTeapot)
+				}
+			}))
+			defer srv.Close()
+			g := &GitHubForge{Token: "stub", BaseURL: srv.URL, Client: srv.Client()}
+			s, err := g.evidenceSnapshot(ForgeRepo{Owner: "example-org", Name: "project"}, 77, "docs/streams/example/brief.md", "evidence")
+			if tc.want {
+				if err != nil || s == nil || s.file == nil {
+					t.Fatalf("provable blob refused: %v", err)
+				}
+				if string(s.file.Content) != body || s.file.SHA != id || s.file.Kind != FileKindRegular {
+					t.Fatalf("destination is not the blob's own bytes: %q", s.file.Content)
+				}
+			} else if err == nil || !IsUnverifiable(err) || IsForgeNotFound(err) {
+				// A 404 on an oid the snapshot just named is never a real absence.
+				t.Fatalf("unprovable blob accepted or not refused as unverifiable: %+v, %v", s, err)
+			}
+			if err != nil && strings.Contains(err.Error(), "untrusted-message-marker") {
+				t.Errorf("forge response message disclosed: %v", err)
+			}
+			if calls.Load() != tc.calls {
+				t.Fatalf("requests = %d, want %d", calls.Load(), tc.calls)
+			}
+		})
+	}
+}
+
+// regression: SR-6680-3
+// TestLandingCreateRaceRefused: a landing whose validators read NO destination file, on the
+// native (non-snapshot) write path, refuses when the file has been created since that read —
+// even against a forge that accepts the overwrite (here, a server that never answers 422).
+// Before the create-only precondition the native write re-read the destination, found the new
+// file and updated it in place, citing the new file's own blob id.
+func TestLandingCreateRaceRefused(t *testing.T) {
+	const file = "docs/streams/verify-outcomes/example/01-new.json"
+	body := "created meanwhile\n"
+	oid := blobID(body, false)
+	var created, puts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/repos/example-org/project/contents/"+file:
+			if created.Load() == 0 {
+				w.WriteHeader(http.StatusNotFound)
+				_ = json.NewEncoder(w).Encode(map[string]any{"message": "Not Found"})
+				return
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"type": "file", "path": file, "sha": oid, "encoding": "base64", "content": ghB64Wrapped(body)})
+		case r.Method == http.MethodPost && r.URL.Path == "/graphql":
+			_ = json.NewEncoder(w).Encode(map[string]any{"data": map[string]any{"repository": map[string]any{
+				"object": map[string]any{"__typename": "Commit", "file": map[string]any{"mode": 0100644, "oid": oid}},
+			}}})
+		case r.Method == http.MethodPut && r.URL.Path == "/repos/example-org/project/contents/"+file:
+			// This forge accepts every PUT: the refusal under test is the code's, not a 422.
+			puts.Add(1)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"content": map[string]any{"sha": strings.Repeat("c", 40)},
+				"commit":  map[string]any{"sha": strings.Repeat("d", 40), "author": map[string]any{"name": "example-app"}},
+			})
+		default:
+			t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusTeapot)
+		}
+	}))
+	defer srv.Close()
+	repo := ForgeRepo{Owner: "example-org", Name: "project"}
+	e := &evidenceLandingForge{Forge: &GitHubForge{Token: "stub", BaseURL: srv.URL, Client: srv.Client()}, repo: repo, file: file, branch: "evidence"}
+	if _, err := e.ReadFile(repo, ReadFileInput{File: file, Ref: "evidence"}); !IsForgeNotFound(err) {
+		t.Fatalf("validators' read: want absent, got %v", err)
+	}
+	created.Store(1) // another writer creates the destination after the validators' read
+	res, err := e.WriteFile(repo, WriteFileInput{File: file, Branch: "evidence", Content: []byte("{}\n"), Message: "outcome"})
+	if puts.Load() != 0 {
+		t.Fatalf("a file created after the validators' read was overwritten: %d PUT(s), result %+v", puts.Load(), res)
+	}
+	if err == nil || !IsRefused(err) || !strings.Contains(err.Error(), "create-only") {
+		t.Fatalf("want a create-only refusal, got %+v, %v", res, err)
+	}
+}
+
+// regression: SR-6680-3
+// TestCreateOnlyPrecondition: the backend-neutral precondition every backend runs after its
+// own fetch refuses a create-only write over a present file, and a create-only write that also
+// names a revision; it lets a create-only write over an absent file through.
+func TestCreateOnlyPrecondition(t *testing.T) {
+	in := WriteFileInput{File: "f", Branch: "b", ExpectAbsent: true}
+	if err := expectedSHAPrecondition(in, false, ""); err != nil {
+		t.Fatalf("absent file refused: %v", err)
+	}
+	if err := expectedSHAPrecondition(in, true, "abc"); err == nil || !IsRefused(err) {
+		t.Fatalf("present file accepted: %v", err)
+	}
+	in.ExpectedSHA = "abc"
+	if err := expectedSHAPrecondition(in, true, "abc"); err == nil || !IsRefused(err) {
+		t.Fatalf("contradictory preconditions accepted: %v", err)
+	}
+}

@@ -1,0 +1,14 @@
+{
+  "receipt": "sha256:f6ba29225e8b9249427202d9dd51cafc0e47d393ab147fe8bec5a73aa239a2c8",
+  "current": true,
+  "findings": [],
+  "verdicts": [
+    {
+      "obligation": "statusgen-37-inverse-edge",
+      "subject": "assay:assay:statusgen:37",
+      "outcome": "pass",
+      "reason": "binds, applies and preserves history"
+    }
+  ],
+  "outcome": "pass"
+}

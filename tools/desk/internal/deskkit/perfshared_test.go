@@ -201,12 +201,17 @@ func importsInNonTest(t *testing.T, dir, path string) bool {
 // TestPerfSharedConstantsAgree pins the equality perfrec cannot assert itself, because it
 // cannot import this package: its exit codes and result strings are the desk kit's.
 func TestPerfSharedConstantsAgree(t *testing.T) {
-	for exit, want := range map[int]string{
-		ExitOK: ResultOK, ExitDisabled: ResultDisabled, ExitRefused: ResultRefused,
-		ExitUnverifiable: ResultUnverifiable, 42: ResultUnverifiable,
+	// Pairs, not a map keyed by the codes: duplicate keys stop this package compiling
+	// under the exit-code neighbour mutation (#6201; TestNoConstSwitchOnExitCodes).
+	for _, c := range []struct {
+		exit int
+		want string
+	}{
+		{ExitOK, ResultOK}, {ExitDisabled, ResultDisabled}, {ExitRefused, ResultRefused},
+		{ExitUnverifiable, ResultUnverifiable}, {42, ResultUnverifiable},
 	} {
-		if got := perfrec.ResultForExit(exit); got != want {
-			t.Errorf("perfrec.ResultForExit(%d) = %q, want the desk kit's %q", exit, got, want)
+		if got := perfrec.ResultForExit(c.exit); got != c.want {
+			t.Errorf("perfrec.ResultForExit(%d) = %q, want the desk kit's %q", c.exit, got, c.want)
 		}
 	}
 	if perfrec.RoleNone != "none" || perfrec.Other != "other" {

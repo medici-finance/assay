@@ -79,6 +79,9 @@ func TestVerifierDryRunPlanNamesNoBranch(t *testing.T) {
 	s := &stub{}
 	_, root := s.install(t)
 	plantScripts(t, root)
+	// A valid forge-shaped outcome recipe needs an observed forge. The
+	// separate unknown-forge test requires a refusal instead of a recipe.
+	s.replies = []reply{{match: "remote get-url origin", stdout: "https://github.com/medici-finance/assay.git"}}
 	promptFile := filepath.Join(t.TempDir(), "p.md")
 	out := captureStdoutOf(t, func() {
 		if rc := run([]string{"example-stream/07", "--root", root, "--repo", allowedRepo, "--kit", "verifier", "--model", "gpt-6-astra", "--brief", "spec.md",

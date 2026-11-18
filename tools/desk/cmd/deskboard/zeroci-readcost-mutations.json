@@ -1,0 +1,29 @@
+{
+  "test": "go test -count=1 -run \"TestActionsZeroCIReadsOnce|TestZeroCI_\" ./cmd/deskboard",
+  "control": {
+    "name": "CONTROL: ignore external commit statuses",
+    "file": "cmd/deskboard/zeroci.go",
+    "old": "statuses := checks.StatusTotalCount",
+    "new": "statuses := 0"
+  },
+  "mutations": [
+    {
+      "name": "repeat the complete typed CI read",
+      "file": "cmd/deskboard/zeroci.go",
+      "old": "statuses := checks.StatusTotalCount",
+      "new": "statuses := checks.StatusTotalCount\n\t_, _ = fetchHeadChecks(repo, p.HeadRefOid)"
+    },
+    {
+      "name": "reuse cross-sweep risk files for CI path filters",
+      "file": "cmd/deskboard/board.go",
+      "old": "files, complete, err := fetchChangedFiles(repo, p.Number, expected...)",
+      "new": "_ = expected\n\t\t\tfiles, complete, err := changedFiles()"
+    },
+    {
+      "name": "discard within-classification file observation",
+      "file": "cmd/deskboard/board.go",
+      "old": "if filesRead {",
+      "new": "if false && filesRead {"
+    }
+  ]
+}

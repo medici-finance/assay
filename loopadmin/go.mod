@@ -2,6 +2,8 @@ module github.com/medici-finance/assay/loopadmin
 
 go 1.27.0
 
+toolchain go1.27.4
+
 // The pirunner experiment's Node tree (and anything npm installs under it)
 // is never part of a ./... pattern in this module.
 ignore ./experiments/pirunner/node

@@ -71,7 +71,7 @@
           "effort": "high"
         },
         "intake-desk": {
-          "tier": "mid",
+          "tier": "strong",
           "effort": "high"
         }
       }
@@ -134,7 +134,7 @@
           "effort": "high"
         },
         "intake-desk": {
-          "tier": "mid",
+          "tier": "strong",
           "effort": "high"
         }
       }
@@ -197,7 +197,7 @@
           "effort": "high"
         },
         "intake-desk": {
-          "tier": "mid",
+          "tier": "strong",
           "effort": "high"
         }
       }
@@ -260,7 +260,7 @@
           "effort": "medium"
         },
         "intake-desk": {
-          "tier": "mid",
+          "tier": "strong",
           "effort": "medium"
         }
       }

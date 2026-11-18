@@ -3,7 +3,6 @@ package main
 import (
 	"os"
 	"os/exec"
-	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -70,7 +69,7 @@ func runGitStreams(dir string, args ...string) (stdout, stderr string, err error
 		// control said no". Every caller that turns a git failure into a REFUSAL does so on
 		// its own reading of the repository state, above this line — see cmdAdd's branch
 		// guard — and that reading is untouched here.
-		return r.Stdout, r.Stderr, r.Fail(deskkit.ExitUnverifiable, "git %s", strings.Join(args, " "))
+		return r.Stdout, r.Stderr, r.Fail(deskkit.ExitUnverifiable, "git %s", deskkit.RedactRemoteArgv(args))
 	}
 	return r.Stdout, r.Stderr, nil
 }

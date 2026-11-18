@@ -163,10 +163,12 @@ func CredentialResult(err error) string {
 	if err == nil {
 		return ResultOK
 	}
-	switch ExitCodeOf(CredentialError(err)) {
-	case ExitDisabled:
+	// Is* predicates, not a switch on the code (#6201; TestNoConstSwitchOnExitCodes).
+	ce := CredentialError(err)
+	switch {
+	case IsDisabled(ce):
 		return ResultDisabled
-	case ExitRefused:
+	case IsRefused(ce):
 		return ResultRefused
 	default:
 		return ResultUnverifiable
@@ -174,8 +176,9 @@ func CredentialResult(err error) string {
 }
 
 // credentialHTTP is the transport the in-process GitHub minter sends through. A package var
-// so a test can point it at a fake forge; production uses the default client.
-var credentialHTTP = http.DefaultClient
+// so a test can point it at a fake forge; production uses a client bounded by
+// ForgeRequestTimeout, never the deadline-free http.DefaultClient.
+var credentialHTTP = BoundedHTTPClient()
 
 // SetCredentialHTTP installs c as the in-process minter's transport and returns a function
 // that restores the previous one. It is a TEST seam in the SetRoleTokenMinter mould: the

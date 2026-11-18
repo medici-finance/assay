@@ -93,12 +93,14 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -590,7 +592,14 @@ type runResult struct {
 	output      []byte
 	couldNotRun bool
 	reason      string
+	reads       string // the read-set cell the recorder gave this row, if any
 }
+
+// rowExitError is a traced row's non-zero exit: the recorder reaps the row
+// itself, so there is no *exec.ExitError. code is -1 for a signal.
+type rowExitError struct{ code int }
+
+func (e rowExitError) Error() string { return "exit status " + strconv.Itoa(e.code) }
 
 // ---------------------------------------------------------------------------
 // Shell selection — resolved ONCE per run, before any row executes
@@ -633,6 +642,41 @@ type shellPlan struct {
 	// captureOutput is an opt-in base-run sink. It sees primary bytes only for
 	// commands that ran; a failed write stops later rows and prevents a witness.
 	captureOutput func(string, []byte) error
+	// readSet, when set, records each row's read set (build-less-brittle/15,
+	// Linux only); runWitnessesSandboxed narrows it to the row.
+	readSet *readSetTarget
+	// readCred is an admitted host run's run-scoped read-only credential
+	// (runcredential.go). Only a row that reads the forge gets its file path.
+	// nil leaves every row as it was.
+	readCred *runReadCredential
+	// rowScratch, when set (an admitted run), is the directory under which
+	// each row gets its own fresh HOME and TMPDIR, removed when the row ends.
+	rowScratch string
+}
+
+// admittedScrubbedNote is the could-not-run note for an admitted row that
+// reads scrubbed ASSAY_* inputs. It names the inputs and says what running the
+// row outside admission takes, so the note never reads as permission to do it.
+func admittedScrubbedNote(names []string) string {
+	return "the row reads " + strings.Join(names, ", ") +
+		", which an admitted run removes from every row's environment, so it cannot run as written here." +
+		" This note is not permission to run it outside admission, where the row sees the full environment" +
+		" admission removes: do that only once the row itself has been reviewed for what it reads"
+}
+
+// removeRowScratch removes an admitted run's row scratch, first making
+// writable any directory a row left read-only.
+func removeRowScratch(dir string) {
+	if os.RemoveAll(dir) == nil {
+		return
+	}
+	filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && d.IsDir() {
+			os.Chmod(p, 0o700)
+		}
+		return nil
+	})
+	os.RemoveAll(dir)
 }
 
 // rowEnv is the environment every Verify row of the run executes in: the
@@ -872,6 +916,39 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 		return runResult{exit: -1, couldNotRun: true,
 			reason: "unsubstituted placeholder(s) " + strings.Join(mv, ", ") + " — the row cannot run as written"}
 	}
+	// A row of an admitted run that reads the forge gets the run's read-only
+	// credential's PATH, and only that row. This copy of plan is the row's own.
+	// A credential that cannot be had makes the row could-not-run. It never
+	// runs without one and is never scored.
+	if plan.readCred != nil && rowReadsForge(command) {
+		credPath, _, err := plan.readCred.ensure()
+		if err != nil {
+			return runResult{exit: -1, couldNotRun: true,
+				reason: "could-not-check: the row reads the forge, and the verifier's run-scoped read-only credential is unavailable: " + err.Error()}
+		}
+		plan.env = append(slices.Clip(plan.rowEnv()), runCredentialEnv+"="+credPath)
+	}
+	// A row of an admitted run gets a HOME and a TMPDIR of its own, so it
+	// finds nothing an earlier row of the run left there.
+	if plan.rowScratch != "" {
+		// A row that reads an ASSAY_* input the scrub removed cannot run as
+		// written under admission. It is could-not-run, never a fail: its own
+		// guard on the missing value would otherwise read as a regression. Nor
+		// is it ever a pass: the row's text chooses this outcome, so it must
+		// not be one that clears anything. The note does not grant a run
+		// outside admission either, where the row sees everything the scrub
+		// removed.
+		if names := admittedRowScrubbedRefs(command, plan.rowEnv()); len(names) > 0 {
+			return runResult{exit: -1, couldNotRun: true, reason: admittedScrubbedNote(names)}
+		}
+		dir, vars, err := admittedRowDirs(plan.rowScratch)
+		if err != nil {
+			return runResult{exit: -1, couldNotRun: true,
+				reason: "could-not-check: cannot make the row's own HOME: " + err.Error()}
+		}
+		defer removeRowScratch(dir)
+		plan.env = withRowVars(plan.rowEnv(), vars...)
+	}
 	// Resolve the concrete interpreter argv for the row's declared shell (issue
 	// #1424). For `sh` this is the bash plan resolved and PROBED once for this run
 	// (resolveShellPlan): when no pipefail-capable POSIX shell could be started the
@@ -912,6 +989,33 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	// `\|`-unescaping is a MARKDOWN-table convention, so it applies to every shell.
 	argv := append(append([]string{}, wrapper...), shellArgv...)
 	argv = append(argv, unescapePipes(command))
+	// The read-set recorder (build-less-brittle/15) traces an `sh` row on
+	// Linux when the run names a target; it reaps the row itself, so it runs
+	// the command its own way. A host that refuses the tracer runs the row
+	// below as ever, its token saying why no read set was recorded.
+	var reads string
+	if plan.readSet != nil && posixShell {
+		tr, handled := traceRow(ctx, newRowCmd(ctx, root, argv, plan, shell), plan.readSet, len(wrapper) > 0)
+		if handled {
+			res := classifyRowRun(plan, ctx, timeout, posixShell, tr.output, tr.err)
+			if !res.couldNotRun {
+				res.reads = tr.reads
+			}
+			return res
+		}
+		reads = tr.reads
+	}
+	out, err := runRowCmd(ctx, newRowCmd(ctx, root, argv, plan, shell))
+	res := classifyRowRun(plan, ctx, timeout, posixShell, out, err)
+	if !res.couldNotRun {
+		res.reads = reads
+	}
+	return res
+}
+
+// newRowCmd builds one row's process: its own process group, the run's row
+// environment, no stdin.
+func newRowCmd(ctx context.Context, root string, argv []string, plan shellPlan, shell string) *exec.Cmd {
 	cmd := exec.CommandContext(ctx, argv[0], argv[1:]...)
 	// Keep the unchanged row deadline effective for ordinary descendants too:
 	// killing only the shell leaves children holding the output pipe, so a
@@ -940,7 +1044,12 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	// blocks on input would hang to the timeout and report could-not-run for a
 	// reason that has nothing to do with the check.
 	cmd.Stdin = nil
+	return cmd
+}
 
+// runRowCmd runs an untraced row to completion and returns its combined
+// output and wait error.
+func runRowCmd(ctx context.Context, cmd *exec.Cmd) ([]byte, error) {
 	// One buffer for both streams, as CombinedOutput gives: exec shares a
 	// single pipe when Stdout and Stderr are the same writer.
 	var combined bytes.Buffer
@@ -953,7 +1062,12 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 		err = cmd.Wait()
 		stopGroupKill()
 	}
-	out := combined.Bytes()
+	return combined.Bytes(), err
+}
+
+// classifyRowRun turns a finished row's output and wait error into its
+// result.
+func classifyRowRun(plan shellPlan, ctx context.Context, timeout time.Duration, posixShell bool, out []byte, err error) runResult {
 	// A stop signal is checked first: its cancellation is not a deadline, and
 	// a row it killed must never fall through to a pass/fail verdict.
 	if why := plan.interruption(); why != "" {
@@ -965,11 +1079,15 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 			reason: fmt.Sprintf("timed out after %s — no verdict was produced", timeout)}
 	}
 	var exitErr *exec.ExitError
+	var tracedExit rowExitError
 	switch {
 	case err == nil:
 		return runResult{exit: 0, output: out}
-	case errors.As(err, &exitErr):
-		code := exitErr.ExitCode()
+	case errors.As(err, &exitErr), errors.As(err, &tracedExit):
+		code := tracedExit.code
+		if exitErr != nil {
+			code = exitErr.ExitCode()
+		}
 		// 127 = command not found, 126 = found but not executable. These are
 		// the shell saying it never ran the check, and they are the only two
 		// "did not run" signals a POSIX shell reports distinctly. cmd/PowerShell
@@ -1670,6 +1788,10 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 			continue
 		}
 		var res runResult
+		// The recorder target, when the run has one, is narrowed to this row:
+		// its read set names the row's ID and command digest.
+		rowPlan := plan
+		rowPlan.readSet = plan.readSet.forRow(r.ID, r.Command)
 		// rowSandbox is the sandbox this row's network-off guarantee rests on:
 		// a check:ci row's own wrapper, or — in container-netns mode — the
 		// prechecked container every row runs in.
@@ -1684,15 +1806,15 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 			res = runResult{exit: -1, couldNotRun: true, reason: refused}
 		case sandbox == sandboxContainerNetns:
 			rowSandbox = sandbox
-			res = runVerifyCommandWith(root, r.Command, timeout, nil, plan, r.Shell)
+			res = runVerifyCommandWith(root, r.Command, timeout, nil, rowPlan, r.Shell)
 			if why, ok := modGapReclass(res, gaps); ok {
 				res.couldNotRun, res.reason = true, why
 			}
 		case r.Class == classCheckCI:
 			rowSandbox = sandboxUnshare
-			res = runHermeticallyWith(root, r.Command, timeout, plan, r.Shell)
+			res = runHermeticallyWith(root, r.Command, timeout, rowPlan, r.Shell)
 		default:
-			res = runVerifyCommandWith(root, r.Command, timeout, nil, plan, r.Shell)
+			res = runVerifyCommandWith(root, r.Command, timeout, nil, rowPlan, r.Shell)
 		}
 		state, note := parseExpect(r.Expect).verdict(res)
 		captureFailed := false
@@ -1738,10 +1860,14 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 
 // rowReads is an executed row's read-set token. A fail-first run (no tree)
 // and a row that never started carry none; every other row carries the
-// recorder's token, which off Linux is always a could-not-check.
+// recorder's token: the one the traced run wrote, else a could-not-check
+// (always so off Linux).
 func rowReads(tree string, res runResult) string {
 	if tree == "" || res.couldNotRun {
 		return ""
+	}
+	if res.reads != "" {
+		return res.reads
 	}
 	return rowReadSetToken()
 }
@@ -2001,7 +2127,7 @@ const verifyrunUsage = `statusgen verifyrun — execution witness for a brief's 
 
 Usage:
   statusgen verifyrun --brief <path> [--dry-run] [--timeout <dur>] [--root <dir>] [--sandbox <mode>]
-  statusgen verifyrun --brief <path> --fail-first [--base <rev>] [--dry-run]
+  statusgen verifyrun --brief <path> --fail-first [--base <rev>] [--delivering-commit <rev>] [--dry-run]
   statusgen verifyrun --brief <path> --rows <id>[,<id>...] [any run flags above or below]
   statusgen verifyrun --check <path>
   statusgen verifyrun --open-bracket --root <home> --brief <path> --out <receipt>
@@ -2057,16 +2183,25 @@ Flags:
                     SKIPPED (runner-executed, not selected here); legacy rows and
                     check:ci rows are unaffected. check:ci rows always run network-off.
   --acceptance-forge  explicitly permit fresh human-approval reads on the host.
-  --acceptance-record <file>  coordinate-only protected-table descriptor; host
-                    execution only, same-repository admission. One
+  --acceptance-record <file>  coordinate-only protected-table descriptor; same-repository
+                    host execution or a closed container-netns transition bracket. One
                     Verification-Table line is a protected record: original
                     rows must equal their delivered definitions and run as
                     delivered; every delivered row the original table lacks
                     (derived from git at the coordinates, never from the file)
                     is witnessed author-added with no acceptance credit. That
-                    line plus an Acceptance-Transition line is a transition,
-                    which also needs --acceptance-forge and executes the
-                    canonical original-plus-approved obligation plan.
+                    line plus one legacy or an ordered chain of Acceptance-Transition
+                    lines is a transition,
+                    which needs --acceptance-forge on the host and executes the
+                    canonical original-plus-approved obligation plan. A transition
+                    may end with Evidence-Repair: commit=<sha> approval=<url> lines:
+                    the driver's unedited comment sanctions an editorial
+                    repair (Date/Runner split, added principal) that touched no
+                    Verify row and no other cell; the byte-prefix check then
+                    starts from the Evidence at that commit. Open and
+                    close use the same record; the container executes the receipt's
+                    exact planned table, requires --root and refuses --acceptance-forge
+                    and --fail-first (baseline history is outside this plan).
   --sandbox <mode>  the network-off sandbox (default unshare). unshare wraps each
                     check:ci row in ` + "`unshare --net --map-root-user`" + `.
                     container-netns is an EXPLICIT opt-in for a runner already
@@ -2107,7 +2242,8 @@ Flags:
   --history-pack <file>  with container-netns --fail-first, import that pack
                     into private scratch for baseline checkouts. Its source must
                     equal the admitted source. Head rows still run on --root.
-                    See docs/container-baseline-history.md.
+                    A version 2 (cross-repository) receipt's brief stays in the
+                    tracking tree it binds. See docs/container-baseline-history.md.
   --admission-receipt <file>  the --open-bracket receipt, read-only and outside the
                     home. The container run refuses before any row unless its
                     --root digests to the receipt's tree, the receipt admits
@@ -2215,12 +2351,23 @@ Flags:
                     non-discriminating and folds the exit code to 1. The lint
                     refuses a new closure whose risk-bearing row has no such
                     current witness, is non-discriminating, or names a base that
-                    is not the merge-base or an ancestor of it. Refused with
-                    --check and --in-container.
+                    is neither the merge-base nor the parent of the delivering
+                    commit the witness records. Refused with --check and
+                    --in-container.
   --base <rev>      the base for --fail-first (default: the exact merge-base of
-                    HEAD and origin/main); it may name that merge-base or an
-                    ancestor of it. After the change has merged, pass the
-                    parent of the delivering merge
+                    HEAD and origin/main); it must name that merge-base, or,
+                    beside --delivering-commit, that commit's parent. On a
+                    cross-repository (version 2 receipt) run the base must be
+                    the deliverable merge-base exactly, and the run is refused
+                    before any row when it cannot be resolved or is HEAD itself
+                    (post-merge, and always in the container). With no
+                    resolvable merge-base any --base is refused
+  --delivering-commit <rev>  with --fail-first, after the change has merged
+                    (the merge-base then already holds it): the commit that
+                    delivered the change, HEAD or an ancestor of HEAD. Its
+                    first parent is the base, and the Base cell records
+                    ` + "`· delivering=<sha>`" + `; the lint checks both again (#2721).
+                    Refused on a cross-repository run, which does not bind it
   --env-file <path> role env-file forwarded to the container as --env-file (the
                     PATH only; its contents are never read or logged). Defaults to
                     the ASSAY_VERIFY_ENV_FILE environment variable. Omit for offline.
@@ -2278,7 +2425,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// and once from the ErrHelp branch below.
 	fs.Usage = func() {}
 	briefPath := fs.String("brief", "", "brief file whose Verify table to run")
-	transitionRecord := fs.String("acceptance-record", "", "coordinate-only protected record or transition descriptor; host only; a transition also requires --acceptance-forge")
+	transitionRecord := fs.String("acceptance-record", "", "coordinate-only protected record or transition descriptor; host or closed container-netns bracket; host transitions require --acceptance-forge")
 	checkMode := fs.Bool("check", false, "audit an existing witness table instead of running anything")
 	dryRun := fs.Bool("dry-run", false, "print the witness table without writing it back")
 	rootDir := fs.String("root", "", "repo root the commands run in (its repository's toplevel; a subdirectory is refused)")
@@ -2287,7 +2434,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	inContainer := fs.Bool("in-container", false, "run the Verify rows inside the pinned harness container (the supported witness runner on Windows) instead of on the host")
 	sandbox := fs.String("sandbox", sandboxUnshare, "network-off sandbox for check:ci rows: "+sandboxUnshare+" (default) or "+sandboxContainerNetns+" (runner already inside a --network none container; refused in CI)")
 	failFirstMode := fs.Bool("fail-first", false, "run each risk-bearing row at the merge-base first and record red/green in a Base column")
-	baseRev := fs.String("base", "", "base revision for --fail-first (default: the merge-base of HEAD and origin/main)")
+	baseRev := fs.String("base", "", "base revision for --fail-first: the merge-base of HEAD and origin/main (the default), or the parent of --delivering-commit")
+	deliveringRev := fs.String("delivering-commit", "", "with --fail-first after the change merged: the commit that delivered it (HEAD or an ancestor of HEAD); its parent is the base and the witness records it")
 	baseLog := fs.String("base-log", "", "with --fail-first: retain base primary output in a new private directory outside the home")
 	envFile := fs.String("env-file", "", "role env-file passed to the container as --env-file (path only; contents never read/logged); defaults to $"+inContainerEnvFileVar)
 	admissionReceipt := fs.String("admission-receipt", "", "container-netns and --close-bracket: the receipt file --open-bracket wrote, read-only and outside the home")
@@ -2446,7 +2594,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		if path == "" && fs.NArg() > 0 {
 			path = fs.Arg(0)
 		}
-		hostStep := "statusgen verifyrun: --open-bracket and --close-bracket are host steps around a container run; they run no rows and take no --sandbox, --container-image-digest, --check, --dry-run, --fail-first, --in-container or --acceptance-record"
+		hostStep := "statusgen verifyrun: --open-bracket and --close-bracket are host steps around a container run; they run no rows and take no --sandbox, --container-image-digest, --check, --dry-run, --fail-first or --in-container"
 		switch {
 		case *openBracket && *closeBracket:
 			fmt.Fprintln(stderr, "statusgen verifyrun: --open-bracket and --close-bracket are separate steps")
@@ -2454,7 +2602,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		case *openOut != "" && !*openBracket:
 			fmt.Fprintln(stderr, "statusgen verifyrun: --out only applies to --open-bracket")
 			return verifyrunExitUsageError
-		case *sandbox != sandboxUnshare || *imageDigest != "" || *checkMode || *dryRun || *failFirstMode || *inContainer || *transitionRecord != "":
+		case *sandbox != sandboxUnshare || *imageDigest != "" || *checkMode || *dryRun || *failFirstMode || *inContainer:
 			fmt.Fprintln(stderr, hostStep)
 			return verifyrunExitUsageError
 		case *openBracket && (*rootDir == "" || path == "" || *openOut == "" || *admissionReceipt != "" || *witnessFile != ""):
@@ -2465,9 +2613,23 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitUsageError
 		}
 		if *openBracket {
-			return runOpenBracket(*rootDir, path, *openOut, *moduleCacheDir, stdout, stderr, *historyOut)
+			return runOpenAcceptance(*rootDir, path, *openOut, *moduleCacheDir, *historyOut, *transitionRecord, stdout, stderr)
 		}
-		return runCloseBracket(*rootDir, path, *admissionReceipt, *witnessFile, stdout, stderr)
+		return runCloseBracket(*rootDir, path, *admissionReceipt, *witnessFile, stdout, stderr, *transitionRecord)
+	}
+	if *sandbox == sandboxContainerNetns && *transitionRecord != "" {
+		if *rootDir == "" {
+			fmt.Fprintln(stderr, "statusgen verifyrun: protected container execution needs --root; it never derives a root from Git")
+			return verifyrunExitCouldNot
+		}
+		if *failFirstMode {
+			fmt.Fprintln(stderr, "statusgen verifyrun: protected container execution cannot run --fail-first; baseline history is not part of the bound acceptance plan")
+			return verifyrunExitCouldNot
+		}
+	}
+	if *sandbox == sandboxContainerNetns && transitionForge {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --acceptance-forge is refused inside the container; approval is read on the host")
+		return verifyrunExitCouldNot
 	}
 	if why := containerBracketRefusal(*sandbox, *admissionReceipt, *imageDigest); why != "" {
 		fmt.Fprintln(stderr, "statusgen verifyrun:", why)
@@ -2484,6 +2646,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 
 	if *baseRev != "" && !*failFirstMode {
 		fmt.Fprintln(stderr, "statusgen verifyrun: --base only applies to --fail-first")
+		return verifyrunExitUsageError
+	}
+	if *deliveringRev != "" && !*failFirstMode {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --delivering-commit only applies to --fail-first")
 		return verifyrunExitUsageError
 	}
 	if *failFirstMode && (*checkMode || *inContainer) {
@@ -2506,6 +2672,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	defer verifyrunAdmission.Store(prevAdmission)
 	attestation, admittedHome, containerTree := "", "", ""
 	var container containerAdmit
+	var runCred *runReadCredential
 	if *sandbox == sandboxContainerNetns && !*checkMode {
 		// Inside a --network none container admission is never run: the host's
 		// receipt is read instead, and the host closes the bracket afterwards.
@@ -2550,6 +2717,18 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 				fmt.Fprintln(stderr, "statusgen verifyrun:", why)
 				return verifyrunExitCouldNot
 			}
+		}
+		// An admitted host run reads the forge only with the verifier's own
+		// run-scoped read-only credential (runcredential.go). It is prepared
+		// here, before any acceptance read, and minted on first use. It is
+		// revoked and removed when the run returns.
+		if attestation != "" {
+			runCred = newRunReadCredential(attestation)
+			currentRunCredential.Store(runCred)
+			defer func() {
+				currentRunCredential.Store(nil)
+				runCred.close(stderr)
+			}()
 		}
 		verifyrunAdmission.Store(admissionState(attestation))
 	}
@@ -2616,9 +2795,11 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	}
 
 	root := rowRoot()
-	if why := verifyrunRootBelowToplevel(root); why != "" {
-		fmt.Fprintln(stderr, "statusgen verifyrun:", why)
-		return verifyrunExitUsageError
+	if *sandbox != sandboxContainerNetns || *transitionRecord == "" {
+		if why := verifyrunRootBelowToplevel(root); why != "" {
+			fmt.Fprintln(stderr, "statusgen verifyrun:", why)
+			return verifyrunExitUsageError
+		}
 	}
 	// Container mode never derives any part of a Runner cell of its own: a
 	// linked worktree's git directory is not mounted (#4208), and anything the
@@ -2642,32 +2823,20 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	var protectedExecution protectedPlan
 	// transitionDescriptor is the --acceptance-record text: a protected record
 	// (one Verification-Table line, #4499) or an acceptance transition (that
-	// line plus one Acceptance-Transition line). transitionRun is the latter.
+	// line plus one legacy or an ordered chain of Acceptance-Transition lines).
+	// transitionRun is the latter.
 	var transitionDescriptor string
 	var transitionRun bool
-	if *transitionRecord != "" {
-		raw, err := os.ReadFile(*transitionRecord)
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return verifyrunExitCouldNot
-		}
-		transitionDescriptor = strings.TrimSpace(string(raw))
-		why := ""
-		transitionRun, why = acceptanceRecordKind(transitionDescriptor)
-		if why == "" && transitionRun && !transitionForge {
-			why = "statusgen verifyrun: an Acceptance-Transition record requires --acceptance-forge"
-		}
+	if netnsContainer && (container.cell.Acceptance != nil || *transitionRecord != "") {
+		var why string
+		protectedExecution, transitionDescriptor, transitionRun, why = containerAcceptance(container.cell, *transitionRecord, verify)
 		if why != "" {
 			fmt.Fprintln(stderr, why)
 			return verifyrunExitCouldNot
 		}
-		protectedExecution, why = protectedAcceptanceFor(verify, evidence, transitionDescriptor, path)
-		if why == "" && !transitionRun {
-			// No transition approves a changed original here, so every original
-			// row must run exactly as delivered (protectedAcceptanceFor has
-			// already required the current section to equal the delivery's).
-			why = originalDefinitionDrift(protectedExecution.Verify, verify)
-		}
+	} else if *transitionRecord != "" {
+		var why string
+		protectedExecution, transitionDescriptor, transitionRun, why = planAcceptanceRecord(path, verify, evidence, *transitionRecord)
 		if why != "" {
 			fmt.Fprintln(stderr, why)
 			return verifyrunExitCouldNot
@@ -2698,6 +2867,14 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// --acceptance-record, the protected run set), after every admission check
 	// and before any row runs or anything is written.
 	allRows := rows
+	if rowsSet && netnsContainer && container.cell.Acceptance != nil {
+		for _, id := range selectedIDs {
+			if !slices.Contains(container.cell.Acceptance.RunSet, id) {
+				fmt.Fprintln(stderr, "statusgen verifyrun: --rows outside the protected run set")
+				return verifyrunExitUsageError
+			}
+		}
+	}
 	if rowsSet {
 		scope := "the Verify table"
 		if transitionDescriptor != "" {
@@ -2717,29 +2894,83 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	defer releaseInterrupt()
 	plan.stop = stop
 	if attestation != "" {
-		plan.env = admittedRowEnv(os.Environ())
+		// An admitted run's rows get the scrubbed environment and the run's
+		// row-read socket. Each row also gets a fresh, empty HOME and TMPDIR of
+		// its own (runVerifyCommandWith). All of it sits under one 0700
+		// scratch directory, removed when the run returns.
+		environ := os.Environ()
+		scratch, err := os.MkdirTemp("", "verifyrun-row-")
+		if err != nil {
+			fmt.Fprintln(stderr, "statusgen verifyrun: cannot make the rows' scratch:", err)
+			return verifyrunExitCouldNot
+		}
+		defer removeRowScratch(scratch)
+		plan.env = append(admittedRowEnv(environ), admittedRowGo(environ)...)
+		plan.rowScratch = scratch
+		if sock, sockDir, err := rowreadSocketPath(scratch); err == nil {
+			if sockDir != "" {
+				defer removeRowScratch(sockDir)
+			}
+			if stopBroker, err := serveRowread(sock, rowreadReaderEnv(environ)); err == nil {
+				defer stopBroker()
+				plan.env = append(plan.env, rowreadSocketVar+"="+sock)
+			}
+		}
+		plan.readCred = runCred
 	}
 	// Fail-first (verify-integrity/03): the base run comes FIRST, on its own
 	// checkout, so the head run below is the ordinary run, unchanged.
 	var ff map[string]failFirst
 	var riskyIDs map[string]bool
+	ffCrossRepo := false
 	if *failFirstMode {
 		baseRoot, baseBrief := root, path
-		if *historyPack != "" {
+		// A cross-repository run is one ADMITTED on a version 2 receipt (the
+		// host lane's admitted deliverable home, or the container receipt's
+		// binding), never inferred from where the brief file sits: its base is a
+		// deliverable commit and the receipt binds the tracking brief's bytes.
+		crossRepo := admittedHome != ""
+		bindingVersion, bindingSource := 0, ""
+		if netnsContainer {
+			// Every container run was admitted on a receipt above, so an
+			// unreadable binding refuses here rather than fall back to a
+			// resolver the receipt never chose.
 			binding, err := checkBinding(container.cell.Check)
 			if err != nil {
-				fmt.Fprintln(stderr, "statusgen verifyrun: --history-pack:", err)
+				fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first: the admission receipt's binding cannot be read:", err)
 				return verifyrunExitCouldNot
 			}
+			bindingVersion, bindingSource = binding.Version, binding.Source
+			crossRepo = crossRepo || bindingVersion == 2
+		}
+		if *historyPack != "" {
+			var err error
 			var cleanup func()
-			baseRoot, baseBrief, cleanup, err = importContainerHistory(root, path, *historyPack, binding.Source)
+			if bindingVersion == 2 {
+				baseRoot, cleanup, err = importCrossRepoHistory(root, path, *historyPack, bindingSource)
+			} else {
+				baseRoot, baseBrief, cleanup, err = importContainerHistory(root, path, *historyPack, bindingSource)
+			}
 			if err != nil {
 				fmt.Fprintln(stderr, "statusgen verifyrun: --history-pack:", err)
 				return verifyrunExitCouldNot
 			}
 			defer cleanup()
 		}
-		base, berr := failFirstBaseRev(baseRoot, *baseRev, baseBrief)
+		ffCrossRepo = crossRepo
+		var base, delivering string
+		var berr error
+		switch {
+		case crossRepo && *deliveringRev != "":
+			// The cross-repository resolver binds the base to the deliverable
+			// merge-base and never to a delivering commit, so the flag would be
+			// silently ignored and no delivering= recorded: refuse it instead.
+			berr = errors.New("--delivering-commit is refused on a cross-repository (version 2 receipt) run: its base is bound to the deliverable merge-base exactly, and that arm does not bind a delivering commit")
+		case crossRepo:
+			base, berr = failFirstCrossRepoBaseRev(baseRoot, *baseRev)
+		default:
+			base, delivering, berr = failFirstBaseRev(baseRoot, *baseRev, *deliveringRev, baseBrief)
+		}
 		if berr != nil {
 			fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first:", berr)
 			return verifyrunExitCouldNot
@@ -2773,12 +3004,18 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			fmt.Fprintln(stderr, "statusgen verifyrun: --fail-first:", ferr)
 			return verifyrunExitCouldNot
 		}
+		for id, f := range ff {
+			if delivering != "" && (f.State == baseRed || f.State == baseGreen) {
+				f.Delivering = ffShort(delivering)
+				ff[id] = f
+			}
+		}
 	}
-	executionTree := briefTreeSHA(root, path)
-	if netnsContainer {
-		executionTree = container.cell.RunnerTree
+	executionTree := container.cell.RunnerTree
+	if !netnsContainer {
+		executionTree = briefTreeSHA(root, path)
 	}
-	if transitionRun {
+	if transitionRun && !netnsContainer {
 		// A transition run binds the full HEAD as its immutable source, so it
 		// keeps the strict check: even an Evidence-only edit (an earlier run's
 		// uncommitted witnesses) refuses it, and a transition run records its
@@ -2795,17 +3032,30 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			fmt.Fprintln(stderr, modCacheGapNotice(gaps))
 		}
 	}
+	// The read-set recorder (build-less-brittle/15) runs for the head run
+	// only, after any fail-first base run. It is off for a dry run, which
+	// writes nothing, and inside the container lane, whose mounted home must
+	// end the rows byte-identical; there every row records could-not-check.
+	if !*dryRun && !netnsContainer {
+		plan.readSet = newReadSetTarget(root, path, plan.rowEnv())
+	}
 	ws := runWitnessesSandboxed(plan, *sandbox, root, rows, runner, runnerSource, executionTree, nowFunc().Format("2006-01-02"), *timeout, *ci)
 	if ff != nil {
 		for i := range ws {
 			f := ff[ws[i].ID]
 			ws[i].Base = failFirstCell(f.Base, f.State, f.Exit, ws[i].Tree)
+			if f.Delivering != "" {
+				ws[i].Base += " · delivering=" + f.Delivering
+			}
 			if f.OutputDigest != "" {
 				ws[i].Base += " output=" + f.OutputDigest + " log=" + f.LogName
 			}
 		}
 	}
-	target := witnessAnnotationRepo(witnessTargetRepo(path), witnessOriginRepo(root))
+	target := ""
+	if !netnsContainer {
+		target = witnessAnnotationRepo(witnessTargetRepo(path), witnessOriginRepo(root))
+	}
 	for i := range ws {
 		ws[i].Repo = target
 		if netnsContainer {
@@ -2895,7 +3145,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return verifyrunExitCouldNot
 	}
 	if ff != nil {
-		worst = foldFailFirst(ws, ff, riskyIDs, worst, stdout)
+		worst = foldFailFirst(ws, ff, riskyIDs, worst, ffCrossRepo, stdout)
 	}
 	fmt.Fprintln(stdout)
 	fmt.Fprintln(stdout, table)
@@ -3056,4 +3306,34 @@ func repoRootFor(briefPath string) string {
 		return wd
 	}
 	return "."
+}
+
+// readAcceptanceRecord is shared by host planning and the offline container
+// reader. Shape belongs to acceptanceRecordKind; this adapter adds no grammar.
+func readAcceptanceRecord(path string) (raw []byte, descriptor string, transition bool, why string) {
+	var err error
+	raw, err = os.ReadFile(path)
+	if err != nil {
+		return nil, "", false, err.Error()
+	}
+	descriptor = strings.TrimSpace(string(raw))
+	transition, why = acceptanceRecordKind(descriptor)
+	return
+}
+
+// planAcceptanceRecord is the one host execution adapter over the protected
+// planner. Open, host execution and close all corroborate the same obligations.
+func planAcceptanceRecord(path, verify, evidence, record string) (protectedPlan, string, bool, string) {
+	_, descriptor, transition, why := readAcceptanceRecord(record)
+	if why == "" && transition && !transitionForge {
+		why = "statusgen verifyrun: an Acceptance-Transition record requires --acceptance-forge"
+	}
+	if why != "" {
+		return protectedPlan{}, descriptor, transition, why
+	}
+	protectedExecution, why := protectedAcceptanceFor(verify, evidence, descriptor, path)
+	if why == "" && !transition {
+		why = originalDefinitionDrift(protectedExecution.Verify, verify)
+	}
+	return protectedExecution, descriptor, transition, why
 }

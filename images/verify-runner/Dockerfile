@@ -23,7 +23,7 @@
 #
 # One reference for both stages: git is built against the libraries of the very
 # image it ships in, so the two stages cannot be bumped apart.
-ARG RUNNER_BASE=golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e1ff19f2d74469ae4a595c6676e80a5
+ARG RUNNER_BASE=golang:1.27.4-bookworm@sha256:4fa7c968ba93f1635670522dbb01a2c78150443e1385746924566079f36570ea
 
 # ---- git, built from the fleet's pinned upstream release -----------------
 # Its own stage, so the -dev packages never reach the final image. The tarball
@@ -31,8 +31,8 @@ ARG RUNNER_BASE=golang:1.27.3-bookworm@sha256:972b4110ba0f47539a975c31e52c64765e
 # copied from containers/base/Dockerfile; to bump it, follow the "To bump" note
 # above that file's gitbuild stage and change both Dockerfiles in one change.
 FROM ${RUNNER_BASE} AS gitbuild
-ARG GIT_VERSION=2.56.0
-ARG GIT_TARBALL_SHA256=26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
+ARG GIT_VERSION=2.56.1
+ARG GIT_TARBALL_SHA256=f0b0bf89264b9bd2e1c640363e7529643989da76281600473c50745cd34a607f
 ENV DEBIAN_FRONTEND=noninteractive
 RUN set -eux; \
     apt-get update; \
@@ -171,7 +171,7 @@ RUN set -eu; \
 # stops on a missing module as could-not-run, naming the module and both
 # versions.
 ENV GOMODCACHE=/go/pkg/mod
-COPY images/verify-runner/go-module-roots.txt /usr/local/share/verify-runner/go-module-roots.txt
+COPY --chmod=0644 images/verify-runner/go-module-roots.txt /usr/local/share/verify-runner/go-module-roots.txt
 COPY tools/desk/go.mod tools/desk/go.sum /tmp/modsrc/tools/desk/
 COPY statusgen/go.mod statusgen/go.sum /tmp/modsrc/statusgen/
 COPY qualgen/go.mod qualgen/go.sum /tmp/modsrc/qualgen/
@@ -191,6 +191,7 @@ COPY deskcore/go.mod /tmp/modsrc/deskcore/
 COPY forgeread/go.mod /tmp/modsrc/forgeread/
 COPY gitquiet/go.mod /tmp/modsrc/gitquiet/
 COPY perfrec/go.mod /tmp/modsrc/perfrec/
+COPY workspace/go.mod /tmp/modsrc/workspace/
 RUN set -eu; \
     export GOWORK=off GOFLAGS=-mod=readonly GOTOOLCHAIN=local; \
     while read -r root; do \
@@ -199,12 +200,15 @@ RUN set -eu; \
     done < /usr/local/share/verify-runner/go-module-roots.txt; \
     rm -rf /tmp/modsrc /root/.cache
 
-COPY .release-images/verify-runner/statusgen-linux-${TARGETARCH} /usr/local/bin/statusgen
+COPY --chmod=0755 .release-images/verify-runner/statusgen-linux-${TARGETARCH} /usr/local/bin/statusgen
 
 # git from the gitbuild stage, over /usr. The check script stays in the image so a
-# running home can re-check itself.
+# running home can re-check itself. Every COPY from the build context into an
+# installed path names its mode with --chmod, so the image never inherits the
+# checkout's mode bits; the install-mode gate in the last RUN fails the build
+# on any one that does not.
 COPY --from=gitbuild /out/usr/ /usr/
-COPY containers/scripts/git-floor-check.sh /usr/local/bin/git-floor-check
+COPY --chmod=0755 containers/scripts/git-floor-check.sh /usr/local/bin/git-floor-check
 
 # The cluster backend's fixed entrypoints. An admission policy that pins each
 # container's command (or the absence of one) to a single script path can only
@@ -236,16 +240,44 @@ RUN chown -R 0:0 /usr/local/lib/verify-runner && chmod 0755 /usr/local/lib/verif
 # committed tree. It runs with the admitted runner's own fixed PATH, so it is the
 # git the runner reaches that is checked, not whichever one this image's PATH
 # finds first.
+#
+# The install-mode gate: every file and directory the runner installs under
+# /usr/local/bin, /usr/local/lib/verify-runner and /usr/local/share/verify-runner
+# is root:root, carries no set-id bit, and is writable by nobody but root (no
+# bit of mode 6022). A consumer that checks an installed image before trusting
+# it refuses a group-writable file, and a COPY with no --chmod keeps the build
+# context's mode, which on a checkout made under umask 002 is group-writable.
+# A symlink under those roots fails the build too: its own mode says nothing
+# about the file it points at. It sits in this last RUN so no later layer can
+# install a file it has not seen.
+#
+# Each root of both find gates is tested to exist first: find on a missing
+# root only writes to stderr, the pipeline's status is grep's, and the gate
+# would pass on a root it never read.
 RUN set -eux; \
     test -x /usr/bin/git; \
+    test "$(/usr/bin/git version)" = "git version 2.56.1"; \
     test -x /usr/libexec/git-core/git-remote-http; \
     if ldd /usr/bin/git /usr/libexec/git-core/git-remote-http | grep 'not found'; then \
         echo "source-built git is missing a shared library" >&2; \
         exit 1; \
     fi; \
+    test -d /usr/libexec/git-core; \
+    test -d /usr/share/git-core; \
     if find /usr/bin/git /usr/libexec/git-core /usr/share/git-core -xdev \( ! -user 0 -o ! -group 0 \) -print | grep .; then \
         echo "the source-built git install tree holds files not owned by root:root" >&2; \
         exit 1; \
     fi; \
     test ! -e /usr/lib/git-core; \
+    test -d /usr/local/bin; \
+    test -d /usr/local/lib/verify-runner; \
+    test -d /usr/local/share/verify-runner; \
+    if find /usr/local/bin /usr/local/lib/verify-runner /usr/local/share/verify-runner -xdev \( -type l -o -perm /6022 -o ! -user 0 -o ! -group 0 \) -print | grep .; then \
+        echo "an installed runner path is a symlink, is set-id, is not root:root, or is writable by its group or others" >&2; \
+        exit 1; \
+    fi; \
     PATH=/usr/bin:/bin:/usr/sbin:/sbin /usr/local/bin/git-floor-check
+
+# CVE-2026-98432 stopgap: Go >= 1.24 opens MPTCP listeners by default; turn
+# them off. A fragile stopgap only; patched node kernels are the real fix.
+ENV GODEBUG=multipathtcp=0

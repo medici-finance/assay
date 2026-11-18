@@ -2,7 +2,6 @@ package cellop
 
 import (
 	"bytes"
-	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -19,14 +18,16 @@ import (
 // Expiry is the fixed lifetime of every plan: it expires exactly this long after it was created.
 const Expiry = 10 * time.Minute
 
-// ConfirmLen is how many leading hex characters of the digest make the confirm code.
-const ConfirmLen = 8
-
 var (
-	idRE   = regexp.MustCompile(`^[0-9a-f]{24}$`)
+	// idRE is a plan id: two words joined by a hyphen (planid.go), or the 24 lowercase hex
+	// characters a plan stored before two-word ids carries. Both are safe as file names.
+	idRE   = regexp.MustCompile(`^(?:[a-z]{3,8}-[a-z]{3,8}|[0-9a-f]{24})$`)
 	nameRE = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 	verbRE = regexp.MustCompile(`^[a-z][a-z0-9-]*$`)
 	hexRE  = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	// retiredConfirmRE is the confirm code's earlier form, the digest's first 8 hex characters.
+	// Verify names it when it refuses a plan stored in that form.
+	retiredConfirmRE = regexp.MustCompile(`^[0-9a-f]{8}$`)
 )
 
 // ErrInvalid wraps every reason a plan document fails the contract.
@@ -68,15 +69,6 @@ type Plan struct {
 	Expires     string     `json:"expires"`
 	Digest      string     `json:"digest"`
 	ConfirmCode string     `json:"confirm_code"`
-}
-
-// NewID returns a fresh random plan id (24 lowercase hex characters).
-func NewID() (string, error) {
-	var b [12]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return "", fmt.Errorf("plan id: %w", err)
-	}
-	return hex.EncodeToString(b[:]), nil
 }
 
 // NewPlan builds and seals a plan made at now. cells is sorted and de-duplicated; every action's
@@ -155,7 +147,11 @@ func (p *Plan) Seal() error {
 	if err != nil {
 		return err
 	}
-	p.Digest, p.ConfirmCode = d, d[:ConfirmLen]
+	w, err := confirmWord(d, p.ID)
+	if err != nil {
+		return err
+	}
+	p.Digest, p.ConfirmCode = d, w
 	return nil
 }
 
@@ -188,7 +184,7 @@ func (p Plan) Verify() error {
 		return bad("schema %q kind %q, want %q %q", p.Schema, p.Kind, Schema, KindPlan)
 	}
 	if !idRE.MatchString(p.ID) {
-		return bad("id %q is not 24 lowercase hex characters", p.ID)
+		return bad("id %q is not a plan id (word-word, or 24 lowercase hex characters)", p.ID)
 	}
 	if !verbRE.MatchString(p.Verb) {
 		return bad("verb %q", p.Verb)
@@ -249,8 +245,15 @@ func (p Plan) Verify() error {
 	if p.Digest != d {
 		return bad("digest does not recompute from the plan's canonical form")
 	}
-	if p.ConfirmCode != d[:ConfirmLen] {
-		return bad("confirm_code is not the digest's first %d characters", ConfirmLen)
+	w, err := confirmWord(d, p.ID)
+	if err != nil {
+		return bad("confirm word: %v", err)
+	}
+	if p.ConfirmCode != w {
+		if retiredConfirmRE.MatchString(p.ConfirmCode) {
+			return bad("confirm_code %q is the retired 8-hex-character form; the confirm is now one word, so make the plan again with --plan", p.ConfirmCode)
+		}
+		return bad("confirm_code is not the word the digest selects")
 	}
 	return nil
 }

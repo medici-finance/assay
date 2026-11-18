@@ -77,17 +77,26 @@ func installClaimChild(t *testing.T, s *stub) (record string) {
 
 // plantGoClaimChild puts the fake child on a temp PATH under the Go binary's bare name and
 // restores the REAL PATH lookup, so resolution goes through exec.LookPath exactly as
-// production does.
+// production does. The PATH is built from scratch (hermeticPath), never prepended to the
+// host's: the real lookup also resolves the other PATH ports (deskdecision, statusgen), and
+// an installed desk-tools would otherwise answer for them in place of the test's fixtures.
 func plantGoClaimChild(t *testing.T) {
 	t.Helper()
 	bin := t.TempDir()
 	if err := os.WriteFile(filepath.Join(bin, goClaimBinary), []byte(claimChildScript), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("PATH", hermeticPath(bin))
 	old := lookPath
 	lookPath = exec.LookPath
 	t.Cleanup(func() { lookPath = old })
+}
+
+// hermeticPath is a PATH holding dir and the system tool directories only (the fake children
+// are /bin/sh scripts that call cat). No directory a user or an installer adds — where an
+// installed desk-tools lives — is on it, so a name the test did not plant does not resolve.
+func hermeticPath(dir string) string {
+	return strings.Join([]string{dir, "/usr/bin", "/bin"}, string(os.PathListSeparator))
 }
 
 // plantScriptClaimChild plants the fake child as the resolved root's tools/dispatch-claim.sh
@@ -350,5 +359,35 @@ func TestClaimAcquireLineNamesTheToolAndTheCredentialSource(t *testing.T) {
 	}
 	if strings.Contains(out, stubMintedToken) {
 		t.Errorf("the token VALUE was printed:\n%s", out)
+	}
+}
+
+// HOST ISOLATION. plantGoClaimChild switches lookPath to the real PATH lookup, and that lookup
+// also answers the OTHER PATH ports the dispatch probes. A desk-tools install on the host's
+// PATH must not answer for them: with a stand-in deskdecision (and statusgen) on the host
+// PATH, only the planted claim child may resolve. On the prepend-to-host PATH the installed
+// deskdecision was found and the planted fixture never ran.
+// regression: #6791
+func TestPlantedPathHidesHostTools(t *testing.T) {
+	host := t.TempDir()
+	for _, name := range []string{goDecisionBinary, statusgenBinary, goClaimBinary} {
+		if err := os.WriteFile(filepath.Join(host, name), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", host+string(os.PathListSeparator)+os.Getenv("PATH"))
+	plantGoClaimChild(t)
+	for _, name := range []string{goDecisionBinary, statusgenBinary} {
+		if p, err := lookPath(name); err == nil {
+			t.Errorf("%s resolved to %s from the host PATH; the planted PATH must hold only the "+
+				"test's own fixtures and the system tool directories", name, p)
+		}
+	}
+	p, err := lookPath(goClaimBinary)
+	if err != nil {
+		t.Fatalf("the planted %s did not resolve: %v", goClaimBinary, err)
+	}
+	if strings.HasPrefix(p, host) {
+		t.Errorf("%s resolved to the host's copy %s, not the planted child", goClaimBinary, p)
 	}
 }

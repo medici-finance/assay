@@ -40,6 +40,21 @@ func (f *changingDuplicateForge) GetIssue(repo deskkit.ForgeRepo, n int) (*deskk
 	return f.Forge.GetIssue(repo, n)
 }
 
+// GetIssueTyped is the board's per-issue state read since #6264; the duplicate-read behaviour
+// above applies to it unchanged.
+func (f *changingDuplicateForge) GetIssueTyped(repo deskkit.ForgeRepo, n int, kind deskkit.TargetKind) (*deskkit.Issue, error) {
+	if n == 9 {
+		f.reads++
+		if f.reads == 2 && f.second == "open" {
+			return &deskkit.Issue{Number: n, State: "open", Title: "reopened"}, nil
+		}
+		if f.reads == 2 && f.second == "denied" {
+			return nil, deskkit.Unverifiable("second duplicate read denied", nil)
+		}
+	}
+	return f.Forge.GetIssueTyped(repo, n, kind)
+}
+
 // regression: #4360
 // A malformed local population may contain two placeholder files for one
 // issue. Keep both original row reads rather than silently sharing a fact.

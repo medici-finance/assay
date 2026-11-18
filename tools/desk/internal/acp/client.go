@@ -7,6 +7,8 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
+	"strings"
 	"sync"
 )
 
@@ -22,6 +24,10 @@ type Opts struct {
 	// Env is appended to the spawned process's environment; os.Environ() is
 	// inherited first, so entries here can override individual keys.
 	Env []string
+	// Unset names variables removed from the inherited os.Environ() before Env
+	// is appended. An override in Env can only set a value, never remove one,
+	// and an empty value is not the same as an absent one for every reader.
+	Unset []string
 	// Stderr receives the agent process's stderr. Defaults to os.Stderr --
 	// spike-grade: passed straight through unattributed. A real consumer
 	// should capture and attribute it instead.
@@ -149,8 +155,8 @@ func Spawn(cmd []string, opts Opts) (*Client, error) {
 
 	c := exec.Command(cmd[0], cmd[1:]...)
 	c.Dir = opts.Dir
-	if len(opts.Env) > 0 {
-		c.Env = append(os.Environ(), opts.Env...)
+	if len(opts.Env) > 0 || len(opts.Unset) > 0 {
+		c.Env = append(withoutEnv(os.Environ(), opts.Unset), opts.Env...)
 	}
 	c.Stderr = opts.Stderr
 
@@ -443,4 +449,29 @@ func (cl *Client) serveFSWrite(params json.RawMessage) (any, *wireError) {
 		return nil, &wireError{Code: -32000, Message: fmt.Sprintf("acp: write failed: %v", err)}
 	}
 	return map[string]any{}, nil
+}
+
+// withoutEnv returns env with every KEY=value entry whose key is in keys removed.
+func withoutEnv(env, keys []string) []string {
+	if len(keys) == 0 {
+		return env
+	}
+	out := make([]string, 0, len(env))
+	for _, kv := range env {
+		key := kv
+		if i := strings.IndexByte(kv, '='); i >= 0 {
+			key = kv[:i]
+		}
+		drop := false
+		for _, k := range keys {
+			if key == k || (runtime.GOOS == "windows" && strings.EqualFold(key, k)) {
+				drop = true
+				break
+			}
+		}
+		if !drop {
+			out = append(out, kv)
+		}
+	}
+	return out
 }

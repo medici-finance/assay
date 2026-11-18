@@ -141,15 +141,15 @@ func TestListWorkflowFiles_NotFoundIsKnownAnswer(t *testing.T) {
 	}
 }
 
-func TestFetchCombinedStatusTotal_ReadsChecksAtHeadTotal(t *testing.T) {
+func TestFetchHeadChecks_ReadsStatusTotal(t *testing.T) {
 	installFakeForge(t)
 	t.Setenv("DESKBOARD_GH_COMBINED_STATUS_JSON", `{"total_count":3,"statuses":[]}`)
-	total, err := fetchCombinedStatusTotal("example-org/tracker", "abc")
+	checks, err := fetchHeadChecks("example-org/tracker", "abc")
 	if err != nil {
-		t.Fatalf("fetchCombinedStatusTotal: %v", err)
+		t.Fatalf("fetchHeadChecks: %v", err)
 	}
-	if total != 3 {
-		t.Fatalf("total = %d, want 3 (ChecksAtHead.StatusTotalCount)", total)
+	if checks.StatusTotalCount != 3 {
+		t.Fatalf("total = %d, want 3 (ChecksAtHead.StatusTotalCount)", checks.StatusTotalCount)
 	}
 }
 

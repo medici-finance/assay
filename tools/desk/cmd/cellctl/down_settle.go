@@ -34,6 +34,12 @@ type interactiveOwner struct {
 	Role  string
 	PID   int
 	Start string
+	// Sequence and LastStart name the checkpoint the owner was running when down read its lease
+	// record, before anything was signalled. They are what binds an owner whose record is gone
+	// to the checkpoint it left: a clean exit releases the lease, and that removes the owner
+	// record and the start time in it (#6251). Zero is a checkpoint down did not read.
+	Sequence  uint64
+	LastStart time.Time
 }
 
 // interactiveOwners lists the interactive owners holding this cell's role leases right now.
@@ -80,6 +86,10 @@ func (c *Cell) interactiveOwner(role string) (interactiveOwner, bool, error) {
 	if holderErr == nil && holder != nil && holder.PID > 0 && holder.Start != "" &&
 		holder.Cell == c.Name && holder.Role == role {
 		o.PID, o.Start = holder.PID, holder.Start
+		if s, err := cellcadence.Read(dir); err == nil && s.Mode == "interactive" && s.Running &&
+			s.Cell == c.Name && s.Role == role && s.PID == holder.PID {
+			o.Sequence, o.LastStart = s.Sequence, s.LastStart
+		}
 	}
 	return o, true, nil
 }
@@ -147,7 +157,7 @@ func (c *Cell) settleOnce(o interactiveOwner, dir string) (string, error) {
 		return "a process carrying the role's marker is still running", nil
 	case e.Class != reconcileDead:
 		return "the record is " + e.Class + ", not proven dead", nil
-	case !e.HasState || e.Start != o.Start:
+	case !e.HasState || !c.recordIsOwners(o, e):
 		return "", errors.New("the record is not the one the signalled owner wrote")
 	}
 	lease, err := cellcadence.Acquire(dir)
@@ -162,6 +172,23 @@ func (c *Cell) settleOnce(o interactiveOwner, dir string) (string, error) {
 		return "", err
 	}
 	return "", nil
+}
+
+// recordIsOwners reports whether the role's checkpoint is the one o's owner wrote. While the owner
+// record survives, that is its start time matching the one down read. A launch that exits
+// releases its lease, and the release removes the owner record: nothing then carries a start
+// time, and requiring one refused every owner that exited on the hangup (#6251). That owner is
+// attributed by the checkpoint down read before it signalled anyone: the same interactive record
+// (sequence and start), written by the same pid. The caller has already established that the
+// checkpoint is Running, that the pid is gone (an unreadable start time is never dead), and that
+// the lease is free, so a replacement owner's record (another sequence) or an unread one (zero)
+// is never matched.
+func (c *Cell) recordIsOwners(o interactiveOwner, e *reconcileEntry) bool {
+	if e.Start != "" {
+		return e.Start == o.Start
+	}
+	s := e.State
+	return o.Sequence != 0 && s.Sequence == o.Sequence && s.PID == o.PID && s.LastStart.Equal(o.LastStart)
 }
 
 // settleInteractiveOwners settles each owner against one shared deadline, so the whole wait is
@@ -195,37 +222,49 @@ func writeDownStop(dir string) error {
 	return errors.Join(err, f.Close())
 }
 
-// clearDownStop removes the role's STOP file when, and only when, its body is downStopReason.
-// The caller holds the role lease, so no supervisor of the role is reading it. The file is read
-// through a no-follow open, and removed only while the path still names that same, unchanged
-// file. It reports whether a STOP was removed.
-func clearDownStop(dir string) (bool, error) {
-	p := filepath.Join(dir, "STOP")
+// readDownStop reports whether the STOP file at p is the one writeDownStop writes: a regular file
+// whose body, read through a no-follow open of that same file, is exactly downStopReason. opened
+// is the file it read, for a caller that acts on it only while the path still names it. A STOP
+// that is absent reads false with no error.
+func readDownStop(p string) (opened os.FileInfo, ok bool, err error) {
 	st, err := os.Lstat(p)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		return nil, false, nil
 	}
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 	if !st.Mode().IsRegular() || st.Size() != int64(len(downStopReason)) {
-		return false, nil
+		return nil, false, nil
 	}
 	f, err := os.OpenFile(p, os.O_RDONLY|oNoFollow, 0)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 	defer f.Close()
-	opened, err := f.Stat()
+	opened, err = f.Stat()
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 	b, err := io.ReadAll(io.LimitReader(f, int64(len(downStopReason))+1))
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 	if string(b) != downStopReason || !os.SameFile(st, opened) {
-		return false, nil
+		return nil, false, nil
+	}
+	return opened, true, nil
+}
+
+// clearDownStop removes the role's STOP file when, and only when, its body is downStopReason
+// (readDownStop). The caller holds the role lease, so no supervisor of the role is reading it. The
+// file is removed only while the path still names that same, unchanged file. It reports whether a
+// STOP was removed.
+func clearDownStop(dir string) (bool, error) {
+	p := filepath.Join(dir, "STOP")
+	opened, ok, err := readDownStop(p)
+	if err != nil || !ok {
+		return false, err
 	}
 	again, err := os.Lstat(p)
 	if err != nil || !os.SameFile(again, opened) || again.Size() != opened.Size() || !again.ModTime().Equal(opened.ModTime()) {

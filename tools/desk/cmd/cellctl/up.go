@@ -474,8 +474,9 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string, ctl upControl) {
 	}
 
 	// The reconcile classification (#2880) is read, never acted on, by a plain `up`: each role is
-	// probed up / stale / absent from the same evidence the preflight uses, and stale state is
-	// cleared only by an applied plan (`up --plan`, then `up --apply <plan-id>` on a terminal).
+	// probed up / stale / absent from the same evidence the preflight uses. Plain `up` clears no
+	// stale state: a dead record is cleared by an applied plan (`up --plan`, then `up --apply
+	// <plan-id>` on a terminal), any other by the recover verb its row names (staleRecovery).
 	var commsCfg *deskCommsConfig
 	if c.Kind == "house" {
 		var cfgErr error
@@ -642,16 +643,26 @@ func cmdUp(c *Cell, v *cli.Values, cfgIn string, ctl upControl) {
 
 // commsPreflightStale refuses a launch over stale comms state. Plain `up` never clears it, on a
 // terminal or off one: the inventory and the exact commands are printed (the reconcile preflight's
-// own output) and `up --plan` is named as the way to clear it with a typed confirm. A dry run
-// prints the inventory and changes nothing.
+// own output), then commsStalePointer names the verb that clears the comms record's class (`up
+// --plan` only for a dead record or orphans alone). A dry run prints the inventory and changes
+// nothing.
 func (c *Cell) commsPreflightStale(comms *deskCommsConfig, dryRun bool) {
 	if c.Kind != "house" || comms == nil {
 		return
 	}
 	if err := c.reconcile(nil, comms, reconcileIO{DryRun: dryRun, Out: os.Stdout}); err != nil {
-		fmt.Printf("[reconcile] cellctl up %s --plan writes one plan for the whole cell; cellctl up %s --apply <plan-id> runs it on a terminal\n", c.Name, c.Name)
+		fmt.Println(c.commsStalePointer(commsStale(c.reconcileInventory(nil, comms))))
 		die("up: %v", err)
 	}
+}
+
+// commsStalePointer is the way out printed under a refused comms preflight: `up --plan` only for a
+// record it plans (proven dead); otherwise the comms record's own recovery (#6192).
+func (c *Cell) commsStalePointer(e *reconcileEntry) string {
+	if e == nil || e.Class == reconcileDead {
+		return fmt.Sprintf("[reconcile] cellctl up %s --plan writes one plan for the whole cell; cellctl up %s --apply <plan-id> runs it on a terminal", c.Name, c.Name)
+	}
+	return "[reconcile] comms: " + c.commsStaleHint(e)
 }
 
 // knownRolesOrdered lists the keys of set in the cell-role order.
@@ -723,7 +734,7 @@ func (c *Cell) upTmux(cfg string, probes []upProbe, reconciled map[string]bool, 
 	rows := c.convergeRoles(probes, reconciled, c.roleGate(wait), open)
 	_ = exec.Command("tmux", "select-window", "-t", c.Session+":"+surfaceName(c.Name, "the-desk")).Run()
 	report(rows)
-	fmt.Printf("[cell] %s up: %s (config=%s)\n", c.Session, upWindowList(firstName, "", upRoleNames(probes)), cfg)
+	fmt.Printf("[cell] %s up: %s (config=%s)\n", c.Session, upWindowList(firstName, upRoleNames(probes)), cfg)
 	fmt.Printf("[cell] attach: tmux attach -t %s   ·   down: cellctl down %s\n", c.Session, c.Name)
 	if attach {
 		runForeground([]string{"tmux", "attach", "-t", c.Session}, os.Environ(), "")
@@ -762,10 +773,10 @@ func (c *Cell) upHerdr(cfg string, probes []upProbe, reconciled map[string]bool,
 	}
 	newWsID, newDefaultTab := w.ID, w.DefaultTab
 	if firstName != "" {
-		c.herdrWindow(c.Name+"-"+firstName, firstCmd, newWsID)
+		c.herdrWindow(herdrTabLabel(firstName), firstCmd, newWsID)
 	}
 	rows := c.convergeRoles(probes, reconciled, c.roleGate(wait), func(role string) error {
-		tab, pane, err := c.herdrWindowIDs(surfaceName(c.Name, role), c.paneRoleCmd(role, cfg, o), newWsID)
+		tab, pane, err := c.herdrWindowIDs(herdrTabLabel(role), c.paneRoleCmd(role, cfg, o), newWsID)
 		if err == nil {
 			c.noteSurface(role, surfaceReceipt{Cockpit: "herdr", Workspace: newWsID, Surface: tab, Pane: pane})
 		}
@@ -780,8 +791,8 @@ func (c *Cell) upHerdr(cfg string, probes []upProbe, reconciled map[string]bool,
 		}
 	}
 	report(rows)
-	fmt.Printf("[cell] %s up in herdr: %s (config=%s)\n", c.Name, upWindowList(firstName, c.Name+"-", upRoleNames(probes)), cfg)
-	fmt.Printf("[cell] each window is the tab labelled <cell>-<role>   ·   down: cellctl down %s\n", c.Name)
+	fmt.Printf("[cell] %s up in herdr: %s (config=%s)\n", c.Name, upWindowList(firstName, upRoleNames(probes)), cfg)
+	fmt.Printf("[cell] each window is the tab labelled <role> in the %s workspace   ·   down: cellctl down %s\n", c.Name, c.Name)
 	return rows
 }
 
@@ -907,11 +918,11 @@ func (c *Cell) upOrca(cfg string, roles []string, probes []upProbe, reconciled m
 
 // upWindowList is the summary line's window list: "<prefix><first> +<roles>" when there is a
 // first (deskd) window, else the role windows alone — a cell with no deskd names no first window.
-func upWindowList(firstName, prefix string, roles []string) string {
+func upWindowList(firstName string, roles []string) string {
 	if firstName == "" {
 		return strings.Join(roles, " ")
 	}
-	return prefix + firstName + " +" + strings.Join(roles, " ")
+	return firstName + " +" + strings.Join(roles, " ")
 }
 
 func orcaTerminalVerb() (string, bool) {

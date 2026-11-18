@@ -20,35 +20,38 @@ func TestDeskCapsPreflight(t *testing.T) {
 		"unclosed":    {"---\nschema: brief-v1\n## Evidence\n| 1 | unresolved |\n", deskkit.ExitUnverifiable, "unterminated frontmatter"},
 		"unsupported": {"---\n\"reader-\\x72equirements\": {schema: \"reader-\\x72equirements-v1\", required: [{operation: acceptance, schemas: [], semantics: [future-v1]}]}\n---\n## Evidence\n", deskkit.ExitRefused, "unsupported required operation: acceptance"},
 	} {
-		t.Run(name, func(t *testing.T) {
-			f := setupStamp(t, true)
-			mintCalls := 0
-			oldMint := mintTokenFn
-			mintTokenFn = func(repo string) error { mintCalls++; return oldMint(repo) }
-			root := rootWithFile(t, stampBrief, tc.content)
-			before := len(auditEntries(t))
-			if code := run([]string{stampPublicRepo, "main", "--evidence-file", stampBrief, "--root", root}); code != tc.want {
-				t.Fatalf("preflight exit = %d, want %d", code, tc.want)
-			}
-			if mintCalls != 0 {
-				t.Errorf("startup capability refusal contacted credentials %d time(s)", mintCalls)
-			}
-			rows := auditEntries(t)
-			if len(rows) != before+1 {
-				t.Fatalf("preflight wrote %d audit rows, want exactly one", len(rows)-before)
-			}
-			row := rows[len(rows)-1]
-			wantResult := deskkit.ResultRefused
-			if tc.want == deskkit.ExitUnverifiable {
-				wantResult = deskkit.ResultUnverifiable
-			}
-			if row.Tool != "deskevidence" || row.Verb != "commit" || row.Result != wantResult || !strings.Contains(row.Detail, "reader capabilities:") || !strings.Contains(row.Detail, stampBrief) || !strings.Contains(row.Detail, tc.why) {
-				t.Fatalf("preflight refusal audit lost context: %+v", row)
-			}
-			if f.putCalls != 0 {
-				t.Fatalf("preflight failure wrote %d time(s)", f.putCalls)
-			}
-		})
+		for _, flag := range []string{"--root", "-root"} {
+			t.Run(name+flag, func(t *testing.T) {
+				f := setupStamp(t, true)
+				mintCalls := 0
+				oldMint := mintTokenFn
+				mintTokenFn = func(repo string) (deskkit.RoleCredential, error) { mintCalls++; return oldMint(repo) }
+				root := rootWithFile(t, stampBrief, tc.content)
+				before := len(auditEntries(t))
+				// Both spellings the flag package accepts: the preflight reads the PARSED root.
+				if code := run([]string{stampPublicRepo, "main", "--evidence-file", stampBrief, flag, root}); code != tc.want {
+					t.Fatalf("preflight exit = %d, want %d", code, tc.want)
+				}
+				if mintCalls != 0 {
+					t.Errorf("startup capability refusal contacted credentials %d time(s)", mintCalls)
+				}
+				rows := auditEntries(t)
+				if len(rows) != before+1 {
+					t.Fatalf("preflight wrote %d audit rows, want exactly one", len(rows)-before)
+				}
+				row := rows[len(rows)-1]
+				wantResult := deskkit.ResultRefused
+				if tc.want == deskkit.ExitUnverifiable {
+					wantResult = deskkit.ResultUnverifiable
+				}
+				if row.Tool != "deskevidence" || row.Verb != "commit" || row.Result != wantResult || !strings.Contains(row.Detail, "reader capabilities:") || !strings.Contains(row.Detail, stampBrief) || !strings.Contains(row.Detail, tc.why) {
+					t.Fatalf("preflight refusal audit lost context: %+v", row)
+				}
+				if f.putCalls != 0 {
+					t.Fatalf("preflight failure wrote %d time(s)", f.putCalls)
+				}
+			})
+		}
 	}
 	t.Run("diagnostic-does-not-poison-ledger", func(t *testing.T) {
 		f, output := setupFake(t)
@@ -183,7 +186,7 @@ func TestDeskCapsPreflight(t *testing.T) {
 		raw := strings.Replace(good, "---\n", "---\nreader-requirements: {schema: reader-requirements-v1, required: [{operation: syntax, schemas: [], semantics: []}]}\n", 1)
 		root := rootWithFile(t, stampBrief, raw)
 		changed := false
-		lintDiffFn = func(_, _ string, content []byte) ([]string, error) {
+		lintDiffFn = func(_, _ string, content []byte, _ childOptions) ([]string, error) {
 			pos := bytes.Index(content, []byte("operation: syntax"))
 			if pos >= 0 {
 				copy(content[pos:], []byte("operation: future"))

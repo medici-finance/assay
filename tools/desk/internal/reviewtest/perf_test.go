@@ -341,7 +341,7 @@ func TestPerfCoverageFlow(t *testing.T) {
 	}
 
 	t.Run("mutation_counts_local_refusal", func(t *testing.T) {
-		mutated := mutationBinary(t, "deskboard", "internal/deskkit/forgetransport.go", `return &http.Client{Transport: countedTransport{next: githubTransportWrapper(countRoundTrips(http.DefaultTransport))}}`, `return &http.Client{Transport: githubTransportWrapper(http.DefaultTransport)}`)
+		mutated := mutationBinary(t, "deskboard", "internal/deskkit/forgetransport.go", `return &http.Client{Transport: countedTransport{next: githubTransportWrapper(countRoundTrips(http.DefaultTransport))}, Timeout: ForgeRequestTimeout}`, `return &http.Client{Transport: githubTransportWrapper(http.DefaultTransport), Timeout: ForgeRequestTimeout}`)
 		bad := exec.Command(filepath.Join(mutated, "deskboard.test"), "-test.run=^TestPerfLeafTransport$", "-test.v")
 		bad.Env = isolatedEnv(t.TempDir())
 		log, err := bad.CombinedOutput()

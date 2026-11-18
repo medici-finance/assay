@@ -203,9 +203,16 @@ desk-specific half: at cycle end, compress what matters (which PRs are mid-revie
 on, open findings) into a short [standing note](../../references/standing-note.md) and treat all
 prior tool output as *evicted*. That note orients the next cycle; it never substitutes for a fresh
 read — see the reference for the nine-section schema and the re-probe rule that keeps a resumed
-session from acting on a remembered answer.
+session from acting on a remembered answer. A hold this desk carries, such as no ready-flip on one
+repository until a fix ships, names its source on the same line, at the scope that source states.
+At the next fresh sweep the desk re-reads that source and drops, and reports dropping, a hold
+only when its own lift condition is met or the identity that set it releases it; a closed source
+is not a lift. A hold whose source cannot be read stays held as could-not-check, and one whose
+source cannot be found stays held, reported and escalated to the driver; neither is dropped (the
+reference's hold rule). Dropping a hold line never lifts a gate. A summary of the note never
+widens a hold.
 
-> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, and how it is reconciled and marked read are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
+> In a cell, a drain asks this role for a handoff record before it is stopped, and the next boot reads it before the first sweep. The record's five sections, where it lives, how it is reconciled and marked read, and how each hold it carries is re-checked against its source are in [`../../references/handoff-note.md`](../../references/handoff-note.md).
 
 ### Stop-flag check — run at every iteration boundary
 
@@ -696,6 +703,12 @@ and the environment it needs; the approval rests on what the reviewer could chec
 witnessed after merge, in the board's Environment-blocked queue, by an operator who holds that
 environment (verify-desk §"Rows that need a project secret or a live service"). No reviewer slot is
 given a project secret, and no PR head is run with one.
+
+For a `service:` row, the review accepts only the verifier's **signed** outcome for that row, and
+never a run report from anyone. Until the signed verdict lane is enacted, no such outcome exists and
+the interim rule above is the whole procedure. A reviewer window never holds a project role secret.
+`cellctl` refuses a binding to the reviewer role (`containers/secrets.md` §4.4), and `deskdispatch`
+refuses every review-kit dispatch from a window that holds one.
 
 ### Finding-class calibration — reversal-rate demotion
 

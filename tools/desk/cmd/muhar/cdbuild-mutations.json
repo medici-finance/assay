@@ -1,0 +1,131 @@
+{
+  "test": "go test ./cmd/muhar -run '^(TestLeadingCd|TestLeadingCdRefusesDash|TestLeadingCdRefusesCdpath|TestLeadingCdReturnsResolved|TestBuildFollowsLeadingCd|TestBuildRefusesCompoundCd|TestBuildNoCheckoutFailsClosed|TestBuildCdUnderSymlinkRoot|TestBuildCdSymlinkedPackageDir|TestBuildCdHonoursCdpathEnv)$' -count=1 -timeout=600s",
+  "control": {
+    "name": "CONTROL: a leading cd is never followed",
+    "file": "cmd/muhar/runner.go",
+    "old": "\treturn resolved, target, rest, true\n",
+    "new": "\treturn \"\", \"\", \"\", false\n"
+  },
+  "mutations": [
+    {
+      "name": "build runs from the spec root, not the followed directory",
+      "file": "cmd/muhar/runner.go",
+      "old": "\t\tpath, base, dir, specTest = abs, joined, cdDir, rest\n",
+      "new": "\t\tpath, base, dir, specTest = abs, joined, root, rest\n\t\t_ = cdDir\n"
+    },
+    {
+      "name": "absolute directory accepted",
+      "file": "cmd/muhar/runner.go",
+      "old": "strings.HasPrefix(word, \"/\") || ",
+      "new": ""
+    },
+    {
+      "name": "directory alphabet admits shell syntax",
+      "file": "cmd/muhar/runner.go",
+      "old": "cdDirWord = regexp.MustCompile(`^[A-Za-z0-9._/-]+$`)",
+      "new": "cdDirWord = regexp.MustCompile(`^.+$`)"
+    },
+    {
+      "name": "command after cd need not be go test",
+      "file": "cmd/muhar/runner.go",
+      "old": "if i+1 >= len(words) || words[i] != \"go\" || words[i+1] != \"test\" {",
+      "new": "if i+1 >= len(words) {"
+    },
+    {
+      "name": "checkout containment dropped",
+      "file": "cmd/muhar/runner.go",
+      "old": "|| !within(bound, resolved) {",
+      "new": "|| bound == \"\" {"
+    },
+    {
+      "name": "non-directory accepted",
+      "file": "cmd/muhar/runner.go",
+      "old": "|| !info.IsDir() ||",
+      "new": "|| info == nil ||"
+    },
+    {
+      "name": "containment checked lexically, a symlink escapes",
+      "file": "cmd/muhar/runner.go",
+      "old": "resolved, err := filepath.EvalSymlinks(target)",
+      "new": "resolved, err := target, error(nil)"
+    },
+    {
+      "name": "no checkout found: bound is the spec root only",
+      "file": "cmd/muhar/runner.go",
+      "old": "if _, err := os.Lstat(filepath.Join(d, \".git\")); err == nil {",
+      "new": "if _, err := os.Lstat(filepath.Join(d, \".git\")); err != nil && false {"
+    },
+    {
+      "name": "semicolon chains a second command",
+      "file": "cmd/muhar/runner.go",
+      "old": "strings.IndexByte(\";&|<>\", c)",
+      "new": "strings.IndexByte(\"&|<>\", c)"
+    },
+    {
+      "name": "backtick substitution allowed",
+      "file": "cmd/muhar/runner.go",
+      "old": "case c == '`' || c == '\\n':",
+      "new": "case c == '\\n':"
+    },
+    {
+      "name": "bare subshell parenthesis allowed",
+      "file": "cmd/muhar/runner.go",
+      "old": "\t\tcase c == '(':\n\t\t\tif depth == 0 {\n\t\t\t\treturn nil, false\n\t\t\t}\n",
+      "new": "\t\tcase c == '(':\n"
+    },
+    {
+      "name": "leading dash accepted",
+      "file": "cmd/muhar/runner.go",
+      "old": " || strings.HasPrefix(word, \"-\") {",
+      "new": " {"
+    },
+    {
+      "name": "CDPATH ignored",
+      "file": "cmd/muhar/runner.go",
+      "old": " || envValue(env, \"CDPATH\") == \"\"",
+      "new": " || true"
+    },
+    {
+      "name": "CDPATH searched even for a ./ or ../ word",
+      "file": "cmd/muhar/runner.go",
+      "old": "first == \".\" || first == \"..\" || ",
+      "new": "first == \"\" && false || "
+    },
+    {
+      "name": "the first CDPATH entry wins, not the last",
+      "file": "cmd/muhar/runner.go",
+      "old": "\t\t\tvalue = v\n",
+      "new": "\t\t\tif value == \"\" {\n\t\t\t\tvalue = v\n\t\t\t}\n"
+    },
+    {
+      "name": "unresolved directory returned, a swapped symlink moves the build",
+      "file": "cmd/muhar/runner.go",
+      "old": "\treturn resolved, target, rest, true\n",
+      "new": "\treturn target, target, rest, true\n"
+    },
+    {
+      "name": "package path taken from the resolved directory",
+      "file": "cmd/muhar/runner.go",
+      "old": "\t\tpath, base, dir, specTest = abs, joined, cdDir, rest\n",
+      "new": "\t\tpath, base, dir, specTest = abs, cdDir, cdDir, rest\n\t\t_ = joined\n"
+    },
+    {
+      "name": "package path taken from the resolved file and directory",
+      "file": "cmd/muhar/runner.go",
+      "old": "\t\tpath, base, dir, specTest = abs, joined, cdDir, rest\n",
+      "new": "\t\tif d, err := filepath.EvalSymlinks(filepath.Dir(abs)); err == nil {\n\t\t\tabs = filepath.Join(d, filepath.Base(abs))\n\t\t}\n\t\tpath, base, dir, specTest = abs, cdDir, cdDir, rest\n\t\t_ = joined\n"
+    },
+    {
+      "name": "suite environment not consulted",
+      "file": "cmd/muhar/runner.go",
+      "old": "leadingCd(base, specTest, env)",
+      "new": "leadingCd(base, specTest, nil)"
+    },
+    {
+      "name": "no checkout found: bound widened to the filesystem root",
+      "file": "cmd/muhar/runner.go",
+      "old": "\t\t\treturn filepath.Clean(dir)\n",
+      "new": "\t\t\treturn d\n"
+    }
+  ]
+}

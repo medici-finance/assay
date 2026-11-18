@@ -356,7 +356,7 @@ const (
 	// everything after it (spaces included) is the display name, kept verbatim (trimmed). The
 	// username key is lowercased to match the roster slug. It is CONSUMED here (statusgen's
 	// Evidence-actor gate). deskkit RECOGNISES the key — the two readers share one roster.env,
-	// so an unknown ASSAY_ key would collapse deskkit's whole configuration — but does not
+	// so an unknown ASSAY_ key would draw a NOTICE from deskkit on every run — but does not
 	// consume it (its GitLab commit-identity paths resolve the username ONLINE via the typed
 	// forge, deskevidence's attribution check). KEEP IN SYNC with deskkit's
 	// EnvGitLabDisplayNames. An UNSET value is neither an error nor a refusal (the offline
@@ -469,13 +469,15 @@ const (
 // can be bound to the desk tools' twin (deskkit.KnownRosterKeys) over the shared
 // vector file statusgen/testdata/roster_coupling.json.
 //
-// WHY THE BINDING EXISTS. Both binaries read the SAME ~/.config/assay/roster.env,
-// and both REFUSE the whole configuration on an ASSAY_ key they do not recognise
+// WHY THE BINDING EXISTS. Both binaries read the SAME ~/.config/assay/roster.env.
+// This reader REFUSES the whole configuration on an ASSAY_ key it does not recognise
 // (an unapplied key leaves a control surface empty while the configuration reports
-// itself correct — see parseConfig). So a key one binary knows and the other does
-// not is not a cosmetic difference: it makes a roster that is valid and REQUIRED
+// itself correct — see parseConfig); the desk tools' reader records a NOTICE instead
+// and does not apply the key (#1261). So a key the desk tools know and this binary
+// does not is not a cosmetic difference: it makes a roster that is valid and REQUIRED
 // for one tool a total refusal for the other, with no roster edit able to satisfy
-// both. That is exactly what happened when the desk tools grew ASSAY_REPO_FORGES
+// both; the reverse (a key this binary knows and the desk tools do not) costs a
+// NOTICE on every desk-tool run. That is exactly what happened when the desk tools grew ASSAY_REPO_FORGES
 // and this set did not follow.
 //
 // RECOGNISED IS NOT APPLIED. Most of these are consumed by only one of the two
@@ -554,8 +556,8 @@ type scanConfig struct {
 
 	// HomeRepo and ScanRepos are statusgen-only roster values (the compiled-in
 	// owned-repo roster this externalises). deskkit RECOGNISES their keys — the
-	// two readers share one roster.env, so an unknown ASSAY_ key would collapse
-	// the OTHER reader's whole configuration — but does not consume them.
+	// two readers share one roster.env, so an unknown ASSAY_ key would draw a NOTICE
+	// from the OTHER reader on every run — but does not consume them.
 	HomeRepo  string
 	ScanRepos []string
 

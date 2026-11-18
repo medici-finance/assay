@@ -352,7 +352,9 @@ func edgeResolutionUniverse(streams, archived []*Stream) []*Stream {
 // next one.
 //
 // checkBriefFiles' problems/notices are intentionally discarded here: a
-// diagnostic/consumer view HYDRATES, it does not re-run the validation gate.
+// diagnostic/consumer view HYDRATES, it does not re-run the validation gate. For
+// the same reason it asks for the no-history mode (checkBriefFilesMode): a notice
+// nobody reads is not worth a git history query per waiting brief.
 // The STATUS.md build path in run() still calls checkBriefFiles directly and
 // surfaces those problems as the --lint verdict; this helper is for the paths
 // that need the hydrated rows but not the validation report.
@@ -369,7 +371,10 @@ func loadHydratedStreams(root string) ([]*Stream, []Finding, error) {
 		return nil, nil, err
 	}
 	attachPlaceholders(streams)
-	checkBriefFiles(streams, streams) // for its hydration side effect only
+	// Hydration side effect only: the notices are discarded, so the history-backed
+	// ones (one git query per waiting brief, ~95% of this call on a real tree) are
+	// not computed. See checkBriefFilesMode and statusgen/44.
+	checkBriefFilesMode(streams, streams, briefHistoryNoticesInHydration)
 	return streams, findings, nil
 }
 

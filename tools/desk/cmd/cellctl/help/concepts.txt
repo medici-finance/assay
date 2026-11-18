@@ -3,6 +3,19 @@ claude harness) and DESK_MODEL_<role with - as _> overrides (e.g. DESK_MODEL_the
 what `claude --model` accepts (fable | opus | sonnet | haiku | a full model id). the-desk is the one
 role `cellctl desk`/`cellctl check` refuse to pin to Opus.
 
+INTAKE PIN. New cells also scaffold DESK_MODEL_intake_desk=opus: the intake skill reserves its judgment
+work for a strong tier and a session below it does mechanical work only. The seeded provider defaults
+give intake-desk tier strong under every provider too. Which applies depends on the cell: a house/k8s
+cell with CELL_MODEL_POLICY, or with a shared CELLS_ROOT/providers.json (plus the cell's own
+providers.json merged over it), resolves through that file and does NOT read the DESK_MODEL_* pins; a
+house/k8s cell with neither (a fresh house cell until `cellctl providers init` runs) and a
+container/scrubbed cell read the pins. Existing cells are not rewritten. Move one: strong for every cell
+in the shared providers.json; for one cell, a providers.json in the cell dir holding only that key (the
+shared file must already exist, or desk/up/check refuse with "cannot read provider defaults"); on a cell
+with neither, `cellctl set <cell> DESK_MODEL_intake_desk=opus`. Changing a provider-defaults file a
+running cell reads needs that cell's windows restarted. `cellctl set` prints a notice (still writes, same exit
+code) when a model pin it wrote is not read by the cell.
+
 PER-HARNESS NAMESPACES (#986). A claude pin names a Claude model; Codex does not understand it (and
 vice versa), so each harness keeps its OWN namespace: DESK_MODEL_<role>/DESK_MODEL_DEFAULT for claude,
 CODEX_MODEL_<role>/CODEX_MODEL_default for codex — set independently, never cross-read. A role/harness
@@ -21,8 +34,7 @@ built-in presets `kimi` (https://api.kimi.com/coding, $KIMI_API_KEY, k3[1m]) and
 overrides its preset value piecewise. TOKEN_ENV is the NAME of an env var the operator exports;
 cellctl never stores, prints or persists a token value. With a provider the launch unsets
 ANTHROPIC_API_KEY and exports ANTHROPIC_MODEL + ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL,
-each alias mapping to the provider's MODEL_<tier> for its tier when one exists (glm maps MID —
-the sonnet slot — to glm-5.3-flash[1m], assay#1352), else the flat provider model
+every alias mapping to the flat provider model (a model per tier or role is model policy's job)
 (docs/cellctl.md Providers).
 
 `cellctl desk`/`up --model <m>` (or DESK_MODEL_OVERRIDE in the environment) overrides the resolved

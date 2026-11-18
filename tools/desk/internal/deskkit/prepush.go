@@ -27,7 +27,10 @@ type PrePushHook struct {
 	// Dir is any directory inside the checkout being pushed from.
 	Dir string
 	// HookPath answers `git rev-parse --path-format=absolute --git-path hooks/pre-push` for
-	// Dir — the path git itself would run, core.hooksPath applied from every config scope.
+	// Dir — the path git itself would run, core.hooksPath applied from every config scope the
+	// caller's git environment reads. A caller that runs this read under VerifierGitEnv (the
+	// verifier Evidence landing) reads no global or system scope, so a core.hooksPath set
+	// only there is not applied: the hook must be configured in the repository or worktree.
 	// It is a local config read (no remote), supplied by the caller through its own git seam.
 	HookPath func() (string, error)
 	// Command builds the hook process; nil means exec.Command. The hook is whatever the

@@ -23,6 +23,8 @@ gate-why: >-
   it, but a change to a credential control's input path is reviewed by a human before the
   ready flip.
 decision-trigger: start
+decision-issue: 4284
+ruling: "https://github.com/medici-finance/assay/issues/4284#issuecomment-6774271356"
 issues: [3196]
 outcome: none
 design: DR-scan-diff-reader
@@ -108,7 +110,7 @@ Options:
 2. **Add a separate reader for the report only** — the outbound check's reader is not touched,
    but two readers of diff structure exist and can drift apart.
 
-Default if no answer: option 1 after 7 days. Neither option changes what is refused.
+Default if no answer: option 1 after 2026-11-17. Neither option changes what is refused.
 
 ## Ground rules
 - Ruled option A on the decision issue, which is option 1 above: https://github.com/medici-finance/assay/issues/4284#issuecomment-6774271356

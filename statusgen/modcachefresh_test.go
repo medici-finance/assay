@@ -424,6 +424,17 @@ func TestModCacheFromSourceOnly(t *testing.T) {
 	}
 }
 
+// moduleRootsCopyMode is the mode the manifest is installed with: a COPY with
+// no --chmod keeps the build context's mode, group-writable from a checkout
+// made under umask 002, and the image build refuses that.
+const moduleRootsCopyMode = "--chmod=0644"
+
+// moduleRootsCopyLine is the one Dockerfile line that installs the source's
+// manifest where verifyrun reads it.
+func moduleRootsCopyLine() string {
+	return "COPY " + moduleRootsCopyMode + " " + moduleRootsManifest + " " + bakedModuleRootsFile + "\n"
+}
+
 // bakedModuleCacheProblem says why a Dockerfile's final stage provisions a Go
 // module cache from anything but the source's moduleRootsManifest. Build
 // stages (any stage before the last FROM) may download what they compile.
@@ -440,8 +451,8 @@ func bakedModuleCacheProblem(df string) string {
 	if len(downloads) == 0 && !strings.Contains(final, "GOMODCACHE") {
 		return ""
 	}
-	if !strings.Contains(final, "COPY "+moduleRootsManifest+" "+bakedModuleRootsFile+"\n") {
-		return fmt.Sprintf("the runtime stage provisions a Go module cache but does not copy %s to %s", moduleRootsManifest, bakedModuleRootsFile)
+	if !strings.Contains(final, moduleRootsCopyLine()) {
+		return fmt.Sprintf("the runtime stage provisions a Go module cache but does not copy %s to %s with `%s`", moduleRootsManifest, bakedModuleRootsFile, moduleRootsCopyMode)
 	}
 	loop := regexp.MustCompile(`while read -r root; do[^\n]*\n(?:[^\n]*\n)*?\s*\(cd "/tmp/modsrc/\$root" && go mod download\); \\\n\s*done < ` + regexp.QuoteMeta(bakedModuleRootsFile) + `;`)
 	if n := len(loop.FindAllString(final, -1)); n != 1 || len(downloads) != 1 {

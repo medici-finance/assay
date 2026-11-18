@@ -25,6 +25,16 @@ package main
 // unparseable brief id is "not authoring-only": the PR stays a witness, the status quo. The
 // classification can only ever REMOVE a witness.
 //
+// THE RECONCILE-ONLY REVISION RULE (#6091). The shared rule keeps a PR that only EDITS an
+// existing brief counted as a delivery, on purpose: for the dispatcher that answer only stops a
+// brief being dispatched again. The reconcile uses the answer to move a row FORWARD, so there
+// the same PR flipped a row to `implemented` with none of the brief's deliverables built. The
+// reconcile therefore also sets aside a PR that only REVISED the brief (briefRevisionOnly):
+// every file it touches is that brief's own file, its own stream's board README or a changelog
+// fragment, and it touches the brief's own file. A PR that also writes any other path, another
+// stream's board or another brief stays a witness. This rule is NOT part of the shared vector
+// and the dispatcher's rule is unchanged.
+//
 // THREE-STATE. A PR whose file list cannot be read, or cannot be proved complete, is neither
 // answer. The brief derives `unknown` and the read is disclosed in `unread`, which refuses
 // `--apply` (reconcile.go) — it is never guessed in either direction.
@@ -78,6 +88,44 @@ func briefAuthoringOnly(briefID string, files []prFile) bool {
 		}
 	}
 	return authored
+}
+
+// briefRevisionOnly reports whether a change touching files only REVISED briefID: every file
+// (both halves of a rename) is the brief's own file, its own stream's board README or a
+// changelog fragment, and at least one file is the brief's own file. It returns false for an
+// empty list and an unparseable brief id. It is the reconcile's rule only; the dispatcher still
+// counts such a PR as a delivery (deskkit.BriefAuthoringOnly).
+func briefRevisionOnly(briefID string, files []prFile) bool {
+	stream, nn, ok := splitBriefRef(briefID)
+	if !ok || len(files) == 0 {
+		return false
+	}
+	revised := false
+	for _, f := range files {
+		if !isRevisionPathFor(f.Filename, stream, nn) {
+			return false
+		}
+		if f.PreviousFilename != "" && !isRevisionPathFor(f.PreviousFilename, stream, nn) {
+			return false
+		}
+		if isBriefFileFor(f.Filename, stream, nn) {
+			revised = true
+		}
+	}
+	return revised
+}
+
+// isRevisionPathFor reports whether p is a file a revision of brief <stream>/<NN> writes: the
+// brief's own file, the stream's board README, or a changelog fragment.
+func isRevisionPathFor(p, stream, nn string) bool {
+	if !isAuthoringPath(p) {
+		return false
+	}
+	if isBriefFileFor(p, stream, nn) {
+		return true
+	}
+	dir, base := path.Split(cleanRepoPath(p))
+	return dir == "changelog/" || (base == "README.md" && strings.EqualFold(dir, "docs/streams/"+stream+"/"))
 }
 
 // cleanRepoPath normalises a forge-reported repo-relative path so a `./` prefix or a `..`
@@ -198,7 +246,8 @@ func newAuthoringClassifier(client *ghClient, repo string, stderr io.Writer) *au
 	return &authoringClassifier{client: client, repo: repo, stderr: stderr, cache: map[int]filesResult{}, shapes: map[int]shapeResult{}}
 }
 
-// authoringOnly reports whether PR number only authored briefID. A non-nil error means the file
+// authoringOnly reports whether PR number only authored or only revised briefID
+// (briefAuthoringOnly, briefRevisionOnly). A non-nil error means the file
 // list could not be read or proved complete: the answer is could-not-check.
 func (a *authoringClassifier) authoringOnly(number int, briefID string) (bool, error) {
 	r := a.files(number)
@@ -209,6 +258,13 @@ func (a *authoringClassifier) authoringOnly(number int, briefID string) (bool, e
 		if a.stderr != nil {
 			fmt.Fprintf(a.stderr, "reconcile: NOTICE — PR #%d names %s but only AUTHORED it (it adds the brief's file and touches only "+
 				"stream board READMEs, brief files and changelog fragments), so it is not a witness that the brief is implemented\n", number, briefID)
+		}
+		return true, nil
+	}
+	if briefRevisionOnly(briefID, r.files) {
+		if a.stderr != nil {
+			fmt.Fprintf(a.stderr, "reconcile: NOTICE — PR #%d names %s but only REVISED it (it changes only the brief's own file, "+
+				"its stream board README and changelog fragments), so it is not a witness that the brief is implemented\n", number, briefID)
 		}
 		return true, nil
 	}

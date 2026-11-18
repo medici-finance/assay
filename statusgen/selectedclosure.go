@@ -33,5 +33,11 @@ func checkSelectedClosure(root, key, status, verified string, art briefArtifacts
 	if err := evaluation.ValidateSelectedClosure(observation); err != nil {
 		return nil, err
 	}
+	// A latest PASS run whose Runner cells verifyflip refuses as not one
+	// runner is refused here with the same reason, read through verifyflip's
+	// own run selector (latestPassRunnerRefusal, #6767).
+	if err := latestPassRunnerRefusal(art.Evidence); err != nil {
+		return nil, err
+	}
 	return findings, nil
 }

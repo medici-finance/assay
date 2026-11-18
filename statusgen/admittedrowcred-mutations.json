@@ -1,0 +1,191 @@
+{
+  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred|TestAdmittedRowInputsPass|TestAdmittedRowSeesDelivery|TestAdmittedScrubbedInputCouldNotRun|TestAdmittedRowScrubbedRefs|TestScrubbedRowNeverGreen)$' -count=1 -timeout 600s",
+  "control": {
+    "name": "admitted rows keep every credential pointer",
+    "file": "verifieradmission.go",
+    "old": "\t\tcase admittedRowCredential(key):\n",
+    "new": ""
+  },
+  "mutations": [
+    {
+      "name": "HOME passes through to the rows",
+      "file": "verifieradmission.go",
+      "old": "[]string{\"HOME\", \"XDG_CONFIG_HOME\", \"DESK_LOOP\", \"CELLCTL_GH_AMBIENT\"}",
+      "new": "[]string{\"XDG_CONFIG_HOME\", \"DESK_LOOP\", \"CELLCTL_GH_AMBIENT\"}"
+    },
+    {
+      "name": "DESK_LOOP passes through to the rows",
+      "file": "verifieradmission.go",
+      "old": "[]string{\"HOME\", \"XDG_CONFIG_HOME\", \"DESK_LOOP\", \"CELLCTL_GH_AMBIENT\"}",
+      "new": "[]string{\"HOME\", \"XDG_CONFIG_HOME\", \"CELLCTL_GH_AMBIENT\"}"
+    },
+    {
+      "name": "XDG_CONFIG_HOME passes through to the rows",
+      "file": "verifieradmission.go",
+      "old": "[]string{\"HOME\", \"XDG_CONFIG_HOME\", \"DESK_LOOP\", \"CELLCTL_GH_AMBIENT\"}",
+      "new": "[]string{\"HOME\", \"DESK_LOOP\", \"CELLCTL_GH_AMBIENT\"}"
+    },
+    {
+      "name": "cell ambient login passes through to the rows",
+      "file": "verifieradmission.go",
+      "old": "[]string{\"HOME\", \"XDG_CONFIG_HOME\", \"DESK_LOOP\", \"CELLCTL_GH_AMBIENT\"}",
+      "new": "[]string{\"HOME\", \"XDG_CONFIG_HOME\", \"DESK_LOOP\"}"
+    },
+    {
+      "name": "GH_* family passes through to the rows",
+      "file": "verifieradmission.go",
+      "old": "return strings.HasPrefix(key, \"GH_\") || strings.HasPrefix(key, \"ASSAY_\") ||",
+      "new": "return strings.HasPrefix(key, \"ASSAY_\") ||"
+    },
+    {
+      "name": "ASSAY_* family passes through to the rows",
+      "file": "verifieradmission.go",
+      "old": "return strings.HasPrefix(key, \"GH_\") || strings.HasPrefix(key, \"ASSAY_\") ||",
+      "new": "return strings.HasPrefix(key, \"GH_\") ||"
+    },
+    {
+      "name": "the home's own global git config survives",
+      "file": "verifieradmission.go",
+      "old": "return key == \"GIT_CONFIG_GLOBAL\" && value == os.DevNull",
+      "new": "return key == \"GIT_CONFIG_GLOBAL\" && (value == os.DevNull || strings.HasSuffix(value, \".gitconfig\"))"
+    },
+    {
+      "name": "the rows' scratch outlives the run",
+      "file": "verifyrun.go",
+      "old": "\t\tdefer removeRowScratch(scratch)\n",
+      "new": ""
+    },
+    {
+      "name": "rows are not offered the run's row-read socket",
+      "file": "verifyrun.go",
+      "old": "\t\t\t\tplan.env = append(plan.env, rowreadSocketVar+\"=\"+sock)\n",
+      "new": ""
+    },
+    {
+      "name": "the brokered reader keeps the forge token variables",
+      "file": "rowreadbroker.go",
+      "old": "\t\tif admittedRowForgeToken(key) || strings.EqualFold(key, \"CELLCTL_GH_AMBIENT\") {",
+      "new": "\t\tif key == \"\" {"
+    },
+    {
+      "name": "the broker answers any verb without the closed set",
+      "file": "rowreadbroker.go",
+      "old": "\t\treply.Code = runRowreadWith(req.Args, reader, &out, &errb)\n",
+      "new": "\t\treply.Code = runRowreadWith(append([]string{\"comments\"}, req.Args[1:]...), reader, &out, &errb)\n"
+    },
+    {
+      "name": "an unreachable run reads as an empty answer",
+      "file": "rowreadbroker.go",
+      "old": "\t\tfmt.Fprintf(stderr, \"statusgen rowread: could-not-check: the run's row-read socket is unreachable: %v\\n\", err)\n\t\treturn rowreadExitCouldNot",
+      "new": "\t\treturn rowreadExitOK"
+    },
+    {
+      "name": "rows get no HOME of their own",
+      "file": "verifieradmission.go",
+      "old": "\treturn dir, []string{\"HOME=\" + home, \"TMPDIR=\" + tmp}, nil\n",
+      "new": "\treturn dir, []string{\"TMPDIR=\" + tmp}, nil\n"
+    },
+    {
+      "name": "rows get no TMPDIR of their own",
+      "file": "verifieradmission.go",
+      "old": "\treturn dir, []string{\"HOME=\" + home, \"TMPDIR=\" + tmp}, nil\n",
+      "new": "\treturn dir, []string{\"HOME=\" + home}, nil\n"
+    },
+    {
+      "name": "rows share one HOME across the run",
+      "file": "verifieradmission.go",
+      "old": "\tdir, err := os.MkdirTemp(scratch, \"row-\")\n",
+      "new": "\tdir, err := filepath.Join(scratch, \"row\"), os.MkdirAll(filepath.Join(scratch, \"row\"), 0o700)\n\tos.RemoveAll(filepath.Join(dir, \"home\"))\n\tos.RemoveAll(filepath.Join(dir, \"tmp\"))\n"
+    },
+    {
+      "name": "a row's own HOME outlives the row",
+      "file": "verifyrun.go",
+      "old": "\t\tdefer removeRowScratch(dir)\n\t\tplan.env = withRowVars(plan.rowEnv(), vars...)\n",
+      "new": "\t\t_ = dir\n\t\tplan.env = withRowVars(plan.rowEnv(), vars...)\n"
+    },
+    {
+      "name": "an inherited row-read socket passes through",
+      "file": "verifieradmission.go",
+      "old": "\t\tcase strings.EqualFold(key, rowreadSocketVar):\n",
+      "new": ""
+    },
+    {
+      "name": "the per-row variables drop the run credential path",
+      "file": "verifieradmission.go",
+      "old": "\t\t\treturn strings.EqualFold(k, key)\n",
+      "new": "\t\t\treturn strings.EqualFold(k, key) || strings.HasPrefix(key, \"ASSAY_\")\n"
+    },
+    {
+      "name": "an admitted run hands rows no read credential",
+      "file": "verifyrun.go",
+      "old": "\t\tplan.readCred = runCred\n",
+      "new": ""
+    },
+    {
+      "name": "the named delivery coordinates are scrubbed with the ASSAY_* family",
+      "file": "verifieradmission.go",
+      "old": "\t\tcase admittedRowInput(kv):\n\t\t\tenv = append(env, kv)\n",
+      "new": ""
+    },
+    {
+      "name": "the row-input allowlist widens to a name prefix",
+      "file": "verifieradmission.go",
+      "old": "\treturn slices.Contains(admittedRowInputs, key) && fullObjectIDRe.MatchString(value)\n",
+      "new": "\treturn strings.HasPrefix(key, \"ASSAY_DELIVERY\") && fullObjectIDRe.MatchString(value)\n"
+    },
+    {
+      "name": "the row-input names match whatever their case",
+      "file": "verifieradmission.go",
+      "old": "\treturn slices.Contains(admittedRowInputs, key) && fullObjectIDRe.MatchString(value)\n",
+      "new": "\treturn slices.ContainsFunc(admittedRowInputs, func(n string) bool { return strings.EqualFold(n, key) }) && fullObjectIDRe.MatchString(value)\n"
+    },
+    {
+      "name": "any value rides under a named row input",
+      "file": "verifieradmission.go",
+      "old": "\treturn slices.Contains(admittedRowInputs, key) && fullObjectIDRe.MatchString(value)\n",
+      "new": "\treturn slices.Contains(admittedRowInputs, key) && value != \"\"\n"
+    },
+    {
+      "name": "an admitted row that reads a scrubbed ASSAY_* input runs and records fail",
+      "file": "verifyrun.go",
+      "old": "\t\tif names := admittedRowScrubbedRefs(command, plan.rowEnv()); len(names) > 0 {\n\t\t\treturn runResult{exit: -1, couldNotRun: true, reason: admittedScrubbedNote(names)}\n\t\t}\n",
+      "new": ""
+    },
+    {
+      "name": "the scrubbed-input rule misses the ${NAME...} forms",
+      "file": "verifieradmission.go",
+      "old": "|\\$\\{?[#!]?([A-Za-z_][A-Za-z0-9_]*)|",
+      "new": "|\\$([A-Za-z_][A-Za-z0-9_]*)|"
+    },
+    {
+      "name": "the delivery coordinates count as scrubbed inputs",
+      "file": "verifieradmission.go",
+      "old": "\t\tif !slices.Contains(admittedRowEnv([]string{probe}), probe) {\n",
+      "new": "\t\tif !slices.Contains(admittedRowEnv([]string{probe}), probe) || probe != \"\" {\n"
+    },
+    {
+      "name": "a name the run sets after the scrub still counts as scrubbed",
+      "file": "verifieradmission.go",
+      "old": "\t\t\treturn strings.EqualFold(key, name)\n",
+      "new": "\t\t\treturn strings.EqualFold(key, name) && false\n"
+    },
+    {
+      "name": "a could-not-run row reads as pass",
+      "file": "verifyrun.go",
+      "old": "\tif res.couldNotRun {\n\t\treturn stateCouldNotRun, res.reason\n\t}\n",
+      "new": "\tif res.couldNotRun {\n\t\treturn statePass, res.reason\n\t}\n"
+    },
+    {
+      "name": "a could-not-run row does not hold the run's exit",
+      "file": "verifyrun.go",
+      "old": "\t\tcase stateCouldNotRun:\n\t\t\tworst = verifyrunExitCouldNot\n",
+      "new": "\t\tcase stateCouldNotRun:\n"
+    },
+    {
+      "name": "the could-not-run note reads as permission to run outside admission",
+      "file": "verifyrun.go",
+      "old": "\t\t\" This note is not permission to run it outside admission, where the row sees the full environment\" +\n\t\t\" admission removes: do that only once the row itself has been reviewed for what it reads\"\n",
+      "new": "\t\t\" Run it outside admission\"\n"
+    }
+  ]
+}

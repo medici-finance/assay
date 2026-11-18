@@ -17,8 +17,11 @@ const admissionWait = 2 * time.Second
 // measurement and pressure reclamation remain with explicit Check maintenance.
 // It is idempotent for a compatible owned root and policy; no returned report
 // is a lease or authority to start a child. Acquire revalidates independently.
+// The lock-free pass applies the policy's freshness bound when it is tighter
+// than AdmitMaxAge, so preparation never admits what enrollment would refuse
+// on age.
 func Prepare(p Policy) (Report, error) {
-	if r, why := cheapClean(p, false, admitEnv{free: diskFree, now: time.Now}); why == "" {
+	if r, why := cheapClean(p, false, admitEnv{free: diskFree, now: time.Now}, p.MeasurementBound()); why == "" {
 		return r, nil
 	}
 	m, err := openWithWait(p, true, admissionWait)
@@ -41,7 +44,7 @@ func (m *manager) launchCheck() (Report, error) {
 		return m.emptyAdmission()
 
 	}
-	r, why, reclaimable := precheck(m.p, false, admitEnv{free: m.free, now: time.Now})
+	r, why, kind := precheck(m.p, false, admitEnv{free: m.free, now: time.Now}, m.p.MeasurementBound())
 	if why == "" {
 		return r, nil
 	}
@@ -53,10 +56,14 @@ func (m *manager) launchCheck() (Report, error) {
 			return m.emptyAdmission()
 		}
 	}
-	// Missing, stale, dirty, partial or corrupt accounting cannot become a zero
-	// estimate, and Prepare never walks the cache itself. The refusal says
-	// whether one clean may clear it; only `cellctl up` acts on that.
-	r = Report{Schema: schema, Policy: m.p, Outcome: "could-not-check", Admission: "bounded-refusal", Reason: fmt.Sprintf("%s; run cellctl cache <cell> clean before retrying launch", why), reclaimable: reclaimable}
+	// Missing, unstamped, future-dated, dirty, partial or corrupt accounting
+	// cannot become a zero estimate, nor can a measurement older than the
+	// policy's freshness bound, and Prepare never walks the cache itself. A
+	// measurement that is only stale admitted above, reported as stale. The
+	// refusal says whether one clean may clear it (only `cellctl up` acts on
+	// that) and whether it is only a measurement it cannot lean on (every
+	// cellctl launch re-measures once on that).
+	r = Report{Schema: schema, Policy: m.p, Outcome: "could-not-check", Admission: "bounded-refusal", Reason: fmt.Sprintf("%s; run cellctl cache <cell> clean before retrying launch", why), reclaimable: kind != refuseOperator, stale: kind == refuseStale}
 	return r, &Deferred{r}
 }
 
