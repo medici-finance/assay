@@ -23,6 +23,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 const outcomesUsage = `statusgen outcomes split — migrate the shared verify-outcomes log to one file per record.
@@ -85,12 +87,12 @@ func runOutcomes(args []string, stdout, stderr io.Writer) int {
 			if len(line) == 0 {
 				continue
 			}
-			rec, perr := parseOutcomeRecord(line)
+			rec, perr := evaluation.ParseRecord(line)
 			if perr != nil {
 				fmt.Fprintf(stderr, "statusgen outcomes split: %s line %d: %v\n", p, i+1, perr)
 				return 1
 			}
-			name, nerr := outcomeRecordName(line)
+			name, nerr := evaluation.RecordName(line)
 			if nerr != nil {
 				fmt.Fprintf(stderr, "statusgen outcomes split: %s line %d (brief %s): %v\n", p, i+1, rec.Brief, nerr)
 				return 1
@@ -110,7 +112,7 @@ func runOutcomes(args []string, stdout, stderr io.Writer) int {
 				fmt.Fprintf(stderr, "statusgen outcomes split: %v\n", err)
 				return 1
 			}
-			if err := os.WriteFile(target, outcomeCanonicalBytes(rec.Raw), 0o644); err != nil {
+			if err := os.WriteFile(target, evaluation.CanonicalBytes(rec.Raw), 0o644); err != nil {
 				fmt.Fprintf(stderr, "statusgen outcomes split: %v\n", err)
 				return 1
 			}

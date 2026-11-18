@@ -5,7 +5,7 @@ package main
 //
 // THE GAP IT CLOSES. verifyflip takes its verdict from the latest strict
 // `**VERIFY: PASS**` in Evidence. The same verify run also writes a
-// verify-outcome record (one file per run under outcomeRecordsDir), and the
+// verify-outcome record (one file per run under evaluation.OutcomeRecordsDir), and the
 // two can disagree: an Evidence entry can read PASS while the run's
 // own record says `blocked`. Without this check the flip acted on the
 // Evidence alone.
@@ -32,7 +32,7 @@ package main
 //   - its `ts` parses as RFC 3339 — the reduction ranks an unparseable ts as
 //     the oldest, so a newer `blocked` record would silently lose to an older
 //     `verified` one;
-//   - a per-file record sits at the path outcomeRecordName gives for its own
+//   - a per-file record sits at the path evaluation.RecordName gives for its own
 //     bytes (its brief's stream directory, its ts, its digest) — a record
 //     filed under another stream, or edited after it was named, is not
 //     counted silently;
@@ -85,6 +85,8 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/gitcore"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // flipOutcomeCheck cross-checks the brief's latest verify-outcome record under
@@ -131,7 +133,7 @@ func flipOutcomeCheck(root, key, wantSHA string) error {
 		}
 		return refuseFlip("outcome record revision mismatch: the latest verify-outcome record for %s (%s) names %s, the flip is at %s", key, rec.Source, rev, wantSHA)
 	}
-	if classifyOutcome(o.Outcome) != outcomePass {
+	if evaluation.ClassifyOutcome(o.Outcome) != evaluation.OutcomePass {
 		return refuseFlip("outcome record result mismatch: the latest verify-outcome record for %s (%s) says outcome %q, the flip requests verified", key, rec.Source, o.Outcome)
 	}
 	return flipOutcomeAuthor(root, rec)
@@ -141,7 +143,7 @@ func flipOutcomeCheck(root, key, wantSHA string) error {
 // naming it cannot be dated or is not where its own bytes say it belongs, or
 // when the legacy tolerance skipped a log line naming it. Each is
 // could-not-check.
-func flipOutcomeInputs(records []outcomeRecord, skipped []outcomeSkipped, key string) error {
+func flipOutcomeInputs(records []evaluation.Record, skipped []evaluation.Skipped, key string) error {
 	for _, rec := range records {
 		if rec.Brief != key {
 			continue
@@ -152,7 +154,7 @@ func flipOutcomeInputs(records []outcomeRecord, skipped []outcomeSkipped, key st
 		if rec.Path == "" {
 			continue
 		}
-		want, err := outcomeRecordName(rec.Raw)
+		want, err := evaluation.RecordName(rec.Raw)
 		if err != nil {
 			return fmt.Errorf("outcome record: %s names %s but has no record name: %v", rec.Source, key, err)
 		}
@@ -179,7 +181,7 @@ func flipOutcomeInputs(records []outcomeRecord, skipped []outcomeSkipped, key st
 // not the committed ones: anything untracked, modified or deleted under the
 // brief's stream record directory or in a legacy log.
 func flipOutcomeCommitted(root, key string) error {
-	stream, _, err := splitOutcomeBriefKey(key)
+	stream, _, err := evaluation.SplitBriefKey(key)
 	if err != nil {
 		return fmt.Errorf("outcome record: %v", err)
 	}
@@ -228,7 +230,7 @@ func flipOutcomeHeadBytes(root string, read gitCoreRead, stream string) error {
 // outcomeScope is the brief's stream record directory and the legacy-log
 // pathspec glob, both relative to root.
 func outcomeScope(stream string) (string, *regexp.Regexp) {
-	return path.Join(outcomeRecordsDir, stream), outcomePathspecGlob(path.Join("docs/streams", verifyOutcomesGlob))
+	return path.Join(evaluation.OutcomeRecordsDir, stream), outcomePathspecGlob(path.Join("docs/streams", verifyOutcomesGlob))
 }
 
 // outcomeInScope reports whether rel falls under dir or matches glob.
@@ -324,7 +326,7 @@ func outcomeAddingCommit(c gitcore.PathCommit) bool {
 
 // flipOutcomeAuthor judges the commit(s) that added the deciding record: each
 // must be the bound verifier's or a roster human's, by the raw commit author.
-func flipOutcomeAuthor(root string, rec outcomeRecord) error {
+func flipOutcomeAuthor(root string, rec evaluation.Record) error {
 	if rec.Path == "" {
 		return fmt.Errorf("outcome record: the deciding record for %s is a legacy log line (%s), which has no adding commit of its own to judge", rec.Brief, rec.Source)
 	}

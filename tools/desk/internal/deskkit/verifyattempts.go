@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/perfrec"
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // Attempt dispositions. Unrecorded is never valid on a record: it is what the rollup calls the
@@ -260,7 +261,7 @@ func CheckAttempts(f map[string]json.RawMessage) ([]VerifyAttempt, error) {
 			return nil, attemptRefusal(a.Attempt, "credited-last", "the credited attempt is the last one")
 		}
 	}
-	if outcome, ok := recStr("outcome"); ok && (outcome == "verified" || outcome == "pass") && out[last-1].Disposition != AttemptCredited {
+	if outcome, ok := recStr("outcome"); ok && evaluation.ClassifyOutcome(outcome) == evaluation.OutcomePass && out[last-1].Disposition != AttemptCredited {
 		return nil, attemptRefusal(last, "verified-ends-credited", "a "+outcome+" record's attempts end in a credited attempt")
 	}
 	return out, nil

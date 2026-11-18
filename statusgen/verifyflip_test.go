@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // verifyflip_test.go — red-first tests for `statusgen verifyflip` (#2074).
@@ -104,11 +106,11 @@ func vfOutcome(t *testing.T, root, outcome, sourceSHA, ts string) {
 // and returns that repo-relative path.
 func vfOutcomeRaw(t *testing.T, root, line string) string {
 	t.Helper()
-	name, err := outcomeRecordName([]byte(line))
+	name, err := evaluation.RecordName([]byte(line))
 	if err != nil {
 		t.Fatal(err)
 	}
-	vfWriteAt(t, root, name, outcomeCanonicalBytes([]byte(line)))
+	vfWriteAt(t, root, name, evaluation.CanonicalBytes([]byte(line)))
 	return name
 }
 

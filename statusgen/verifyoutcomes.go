@@ -1,19 +1,13 @@
 package main
 
 import (
-	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
-	"errors"
-	"fmt"
+	"io/fs"
 	"os"
-	"path"
 	"path/filepath"
-	"regexp"
 	"sort"
-	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // verifyoutcomes.go — the READ side of #1338 part 2: a rotation-aware
@@ -93,276 +87,39 @@ func readVerifyOutcomesUnion(root string) ([]byte, error) {
 	return out, nil
 }
 
-// --- #882 per-file verify-outcome record layer — statusgen's OWN copy ----------------------
+// --- verify-outcome record layer: an adapter over the shared protocol -----------------------
 //
-// tools/desk/internal/deskkit carries the desk-side twin of everything below
-// (RecordName/ParseRecord/ReadVerifyOutcomes/LatestPerBrief). statusgen is a SEPARATE Go
-// module (this file's own header explains why: it cannot import tools/desk) so it keeps an
-// independent copy of the pure record-naming/reading rules rather than sharing the code — the
-// two are kept byte-identical BY HAND, and TestVerifyOutcomesSingleReader in each module pins
-// that its own module has exactly one place that opens this path.
+// The record codec, naming rule, vocabulary, per-brief reduction and the fs.FS reader live in
+// statusgen/evaluation (outcome.go) — the ONE owner of how an outcome record is read
+// (tool-refactoring/05). What remains here is the source adapter: it names a filesystem root
+// and a wall clock and hands them to the shared reader as an io/fs port and a parameter.
+// TestVerifyOutcomesSingleReader pins that this module has exactly one place that opens the
+// verify-outcomes path, and TestOutcomeProtocolClassGuard pins that no second copy of the
+// protocol's rules reappears.
 
-// outcomeRecordsDir is the repo-relative directory verify-outcome records live under, one file
-// per outcome, per-stream subdirectory (docs/streams/verify-outcomes/<stream>/*.json).
-const outcomeRecordsDir = "docs/streams/verify-outcomes"
-
-var (
-	outcomeStreamRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
-	outcomeNumRe    = regexp.MustCompile(`^[0-9]+$`)
-)
-
-// outcomeRecord is one verify outcome, read generically enough that a caller can unmarshal Raw
-// into its own richer type. Raw is the CANONICAL line — the record's single JSON object,
-// trimmed of surrounding whitespace, with NO trailing newline.
-type outcomeRecord struct {
-	Brief  string
-	TS     string
-	Raw    []byte
-	Name   string // outcomeRecordName's basename for this record's bytes
-	Source string // "record:<path>" or "legacy:<path>", diagnostics only
-	Digest string
-	// Path is a per-file record's repo-relative slash path (outcomeRecordsDir/<stream>/<file>),
-	// the place it was READ from; empty for a legacy log line.
-	Path string
+// outcomeFS maps a checkout root to the read port the shared reader takes. The empty root means
+// the current directory, as filepath.Join("", ...) always did.
+func outcomeFS(root string) fs.FS {
+	if root == "" {
+		root = "."
+	}
+	return os.DirFS(root)
 }
 
-// outcomeSkipped is a legacy log line readVerifyOutcomeRecordsSkips dropped under the legacy
-// tolerance (a malformed line, or one with no computable record name such as an unparseable
-// ts). A reader that may not inherit that tolerance — verifyflip's gate — judges these itself.
-type outcomeSkipped struct {
-	Source string
-	Line   []byte
-}
-
-// parseOutcomeRecord parses one verify-outcome record's raw bytes and returns it with Raw
-// holding the canonical line. A record with no `brief` key, or bytes that are not one JSON
-// object, is refused.
-func parseOutcomeRecord(raw []byte) (outcomeRecord, error) {
-	line := bytes.TrimSpace(raw)
-	if len(line) == 0 {
-		return outcomeRecord{}, errors.New("empty verify-outcome record")
-	}
-	var head struct {
-		Brief string `json:"brief"`
-		TS    string `json:"ts"`
-	}
-	if err := json.Unmarshal(line, &head); err != nil {
-		return outcomeRecord{}, fmt.Errorf("invalid verify-outcome record JSON: %w", err)
-	}
-	if strings.TrimSpace(head.Brief) == "" {
-		return outcomeRecord{}, errors.New("verify-outcome record has no brief key")
-	}
-	canon := append([]byte{}, line...)
-	return outcomeRecord{Brief: head.Brief, TS: head.TS, Raw: canon, Digest: outcomeRecordDigest(canon)}, nil
-}
-
-// outcomeRecordDigest is the first 12 hex digits of the SHA-256 of canonicalLine plus a
-// trailing newline — the record file's exact on-disk bytes.
-func outcomeRecordDigest(canonicalLine []byte) string {
-	buf := make([]byte, 0, len(canonicalLine)+1)
-	buf = append(buf, canonicalLine...)
-	buf = append(buf, '\n')
-	sum := sha256.Sum256(buf)
-	return hex.EncodeToString(sum[:])[:12]
-}
-
-// outcomeCanonicalBytes returns the exact bytes a record file holds for canonicalLine.
-func outcomeCanonicalBytes(canonicalLine []byte) []byte {
-	out := make([]byte, 0, len(canonicalLine)+1)
-	out = append(out, canonicalLine...)
-	return append(out, '\n')
-}
-
-// splitOutcomeBriefKey splits a "<stream>/<NN>" brief key, refusing (never sanitising) any
-// other shape.
-func splitOutcomeBriefKey(brief string) (stream, num string, err error) {
-	parts := strings.SplitN(brief, "/", 2)
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid brief key %q: want <stream>/<NN>", brief)
-	}
-	stream, num = parts[0], parts[1]
-	if !outcomeStreamRe.MatchString(stream) {
-		return "", "", fmt.Errorf("invalid brief stream %q in key %q", stream, brief)
-	}
-	if !outcomeNumRe.MatchString(num) {
-		return "", "", fmt.Errorf("invalid brief number %q in key %q", num, brief)
-	}
-	return stream, num, nil
-}
-
-// outcomeRecordName computes the repo-relative path a verify-outcome record's bytes land at:
-// docs/streams/verify-outcomes/<stream>/<NN>-<YYYYMMDDTHHMMSSZ>-<digest12>.json. A pure
-// function of recordBytes — see deskkit.RecordName's doc for the full rationale (collision-free
-// across concurrent PRs).
-func outcomeRecordName(recordBytes []byte) (string, error) {
-	rec, err := parseOutcomeRecord(recordBytes)
-	if err != nil {
-		return "", err
-	}
-	stream, num, err := splitOutcomeBriefKey(rec.Brief)
-	if err != nil {
-		return "", err
-	}
-	ts, err := time.Parse(time.RFC3339, rec.TS)
-	if err != nil {
-		return "", fmt.Errorf("invalid verify-outcome record ts %q for brief %s: %w", rec.TS, rec.Brief, err)
-	}
-	compact := ts.UTC().Format("20060102T150405Z")
-	return path.Join(outcomeRecordsDir, stream, fmt.Sprintf("%s-%s-%s.json", num, compact, rec.Digest)), nil
-}
-
-// readVerifyOutcomeRecords reads every verify-outcome record under root: every per-file record
-// under docs/streams/verify-outcomes/<stream>/*.json AND every line of any legacy
-// docs/streams/verify-outcomes*.jsonl, deduped by canonical-bytes digest. An absent records
-// directory and an absent legacy log together are an empty set, never an error; an unreadable
-// file is an error (could-not-check), never a skipped record — the legacy log keeps its
-// pre-existing tolerance for a malformed LINE (skipped) but not for an unreadable FILE.
-func readVerifyOutcomeRecords(root string) ([]outcomeRecord, error) {
+// readVerifyOutcomeRecords reads every verify-outcome record under root (see
+// evaluation.ReadRecords for the three-state contract).
+func readVerifyOutcomeRecords(root string) ([]evaluation.Record, error) {
 	records, _, err := readVerifyOutcomeRecordsSkips(root)
 	return records, err
 }
 
 // readVerifyOutcomeRecordsSkips is readVerifyOutcomeRecords that also returns every legacy log
 // line the legacy tolerance skipped, so a gate can refuse to read past one (#6734).
-func readVerifyOutcomeRecordsSkips(root string) ([]outcomeRecord, []outcomeSkipped, error) {
-	var records []outcomeRecord
-	var skipped []outcomeSkipped
-	seen := map[string]bool{}
-
-	recordsDir := filepath.Join(root, filepath.FromSlash(outcomeRecordsDir))
-	streamDirs, err := os.ReadDir(recordsDir)
-	if err != nil {
-		if !os.IsNotExist(err) {
-			return nil, nil, fmt.Errorf("could-not-check: cannot read %s: %w", recordsDir, err)
-		}
-		streamDirs = nil
-	}
-	sort.Slice(streamDirs, func(i, j int) bool { return streamDirs[i].Name() < streamDirs[j].Name() })
-	for _, sd := range streamDirs {
-		if !sd.IsDir() {
-			continue
-		}
-		streamDir := filepath.Join(recordsDir, sd.Name())
-		files, ferr := os.ReadDir(streamDir)
-		if ferr != nil {
-			return nil, nil, fmt.Errorf("could-not-check: cannot read %s: %w", streamDir, ferr)
-		}
-		names := make([]string, 0, len(files))
-		for _, f := range files {
-			if !f.IsDir() && strings.HasSuffix(f.Name(), ".json") {
-				names = append(names, f.Name())
-			}
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			p := filepath.Join(streamDir, name)
-			raw, rerr := os.ReadFile(p)
-			if rerr != nil {
-				return nil, nil, fmt.Errorf("could-not-check: cannot read record %s: %w", p, rerr)
-			}
-			rec, perr := parseOutcomeRecord(raw)
-			if perr != nil {
-				return nil, nil, fmt.Errorf("could-not-check: malformed verify-outcome record %s: %w", p, perr)
-			}
-			rec.Name = name
-			rec.Source = "record:" + filepath.ToSlash(p)
-			rec.Path = path.Join(outcomeRecordsDir, sd.Name(), name)
-			if !seen[rec.Digest] {
-				seen[rec.Digest] = true
-				records = append(records, rec)
-			}
-		}
-	}
-
-	matches, gerr := verifyOutcomesShardPaths(root)
-	if gerr != nil {
-		return nil, nil, gerr
-	}
-	for _, p := range matches {
-		raw, rerr := os.ReadFile(p)
-		if rerr != nil {
-			if os.IsNotExist(rerr) {
-				continue
-			}
-			return nil, nil, fmt.Errorf("could-not-check: cannot read %s: %w", p, rerr)
-		}
-		for _, line := range bytes.Split(raw, []byte("\n")) {
-			line = bytes.TrimSpace(line)
-			if len(line) == 0 {
-				continue
-			}
-			rec, perr := parseOutcomeRecord(line)
-			if perr != nil {
-				// legacy tolerance: a malformed line is skipped, never fatal
-				skipped = append(skipped, outcomeSkipped{Source: "legacy:" + filepath.ToSlash(p), Line: append([]byte{}, line...)})
-				continue
-			}
-			if name, nerr := outcomeRecordName(line); nerr == nil {
-				rec.Name = filepath.Base(name)
-			} else {
-				skipped = append(skipped, outcomeSkipped{Source: "legacy:" + filepath.ToSlash(p), Line: append([]byte{}, line...)})
-				continue
-			}
-			rec.Source = "legacy:" + filepath.ToSlash(p)
-			if !seen[rec.Digest] {
-				seen[rec.Digest] = true
-				records = append(records, rec)
-			}
-		}
-	}
-
-	return records, skipped, nil
+func readVerifyOutcomeRecordsSkips(root string) ([]evaluation.Record, []evaluation.Skipped, error) {
+	return evaluation.ReadRecords(outcomeFS(root), root)
 }
 
-// maxClockSkew mirrors deskkit.MaxClockSkew (#1803 SR-1803-2) — kept in sync by hand, like every
-// other pure rule in this file's own copy of the record layer (see the header comment).
-const maxClockSkew = 5 * time.Minute
-
-// futureTS mirrors deskkit.FutureTS.
-func futureTS(ts string, now time.Time) bool {
-	t, err := time.Parse(time.RFC3339, ts)
-	if err != nil {
-		return false
-	}
-	return t.After(now.Add(maxClockSkew))
-}
-
-// latestOutcomePerBrief reduces records to one winner per brief key: the newest `ts` wins, ties
-// broken by the lexically greatest record name. A record whose `ts` is more than maxClockSkew
-// ahead of now is never a candidate winner (#1803 SR-1803-2): it is excluded from the reduction
-// and its brief key is reported in the second return value.
-func latestOutcomePerBrief(records []outcomeRecord) (latest map[string]outcomeRecord, futureByBrief map[string]bool) {
-	return latestOutcomePerBriefAt(records, time.Now())
-}
-
-// latestOutcomePerBriefAt is latestOutcomePerBrief with an explicit "now", for tests.
-func latestOutcomePerBriefAt(records []outcomeRecord, now time.Time) (latest map[string]outcomeRecord, futureByBrief map[string]bool) {
-	out := make(map[string]outcomeRecord, len(records))
-	future := map[string]bool{}
-	tsOf := func(r outcomeRecord) time.Time {
-		t, err := time.Parse(time.RFC3339, r.TS)
-		if err != nil {
-			return time.Time{}
-		}
-		return t
-	}
-	for _, rec := range records {
-		if futureTS(rec.TS, now) {
-			future[rec.Brief] = true
-			continue
-		}
-		cur, ok := out[rec.Brief]
-		if !ok {
-			out[rec.Brief] = rec
-			continue
-		}
-		rt, ct := tsOf(rec), tsOf(cur)
-		switch {
-		case rt.After(ct):
-			out[rec.Brief] = rec
-		case rt.Equal(ct) && rec.Name > cur.Name:
-			out[rec.Brief] = rec
-		}
-	}
-	return out, future
+// latestOutcomePerBrief reduces records to one winner per brief key at the wall clock now.
+func latestOutcomePerBrief(records []evaluation.Record) (map[string]evaluation.Record, map[string]bool) {
+	return evaluation.LatestPerBrief(records, time.Now())
 }
