@@ -106,6 +106,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
@@ -366,7 +367,7 @@ var witnessStateRe = regexp.MustCompile(`\b(could-not-run|pass|fail)\b`)
 // alone appears in prose Evidence already on main, and a bare `sha256:` could
 // be a hash someone pasted.
 func witnessCells(text string) []string {
-	cells := splitRowEscaped(strings.TrimSpace(text))
+	cells := briefdoc.SplitRowEscaped(strings.TrimSpace(text))
 	if len(cells) < witnessCellCount {
 		return nil
 	}
@@ -403,7 +404,7 @@ func witnessCommandOf(text string) string {
 	if cells == nil {
 		return ""
 	}
-	return codeSpan(cells[witnessCellCommand])
+	return briefdoc.CodeSpan(cells[witnessCellCommand])
 }
 
 // The tree token follows the Runner cell's ` @ ` marker (witness.row() writes
@@ -1601,34 +1602,19 @@ func numberedVerifyRows(verifySection string) ([]verifyRow, []bool) {
 // row's trimmed Class cell.
 func verifyRowsOf(verifySection string, numbered *[]bool, classCells *[]string) []verifyRow {
 	var rows []verifyRow
-	ordinal := 0
-	verifyRowTable(verifySection, func(r verifyRowCells) {
-		cmd := verifyCommand(r.Command)
-		if strings.TrimSpace(cmd) == "" && strings.TrimSpace(r.Expect) == "" {
-			return
-		}
-		ordinal++
-		id := strconv.Itoa(ordinal)
-		v := normalizeRowID(r.Num)
-		if v != "" {
-			id = v
-		}
-		row := verifyRow{ID: id, Command: cmd, CommandCell: strings.TrimSpace(r.Command), Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell(), Obligations: r.obligations(), RiskText: strings.TrimSpace(r.Command) + " " + strings.TrimSpace(r.Expect)}
-		if first, why := proseLedCommandWhy(r.Command); why != "" {
-			what := "first span "
-			if why == shellCommentMarkedWhy || why == shellNoOpMarkedWhy {
-				what = "marked command "
-			}
-			row.ProseLed = what + strings.ReplaceAll(first, "|", "\\|") + " is " + why
-		}
-		rows = append(rows, row)
+	// Row identity, command lift and the prose-led verdict are compiled once, by
+	// the document owner (briefdoc.CompileVerification); only the class, shell
+	// and obligation MEANING, which needs this package's constants, is added here.
+	for _, c := range briefdoc.CompileVerification(verifySection) {
+		cells := verifyRowCells{Class: c.ClassCell, Classed: c.Classed, Shell: c.ShellCell}
+		rows = append(rows, verifyRow{ID: c.ID, Command: c.Command, CommandCell: c.CommandCell, Expect: c.Expect, Class: cells.class(), Classed: c.Classed, Shell: cells.shell(), Obligations: cells.obligations(), RiskText: c.CommandCell + " " + strings.TrimSpace(c.Expect), ProseLed: c.ProseLed})
 		if numbered != nil {
-			*numbered = append(*numbered, v != "")
+			*numbered = append(*numbered, c.Numbered)
 		}
 		if classCells != nil {
-			*classCells = append(*classCells, strings.TrimSpace(r.Class))
+			*classCells = append(*classCells, c.ClassCell)
 		}
-	})
+	}
 	return rows
 }
 
@@ -1643,7 +1629,7 @@ func parseRowSelector(value string) ([]string, map[string]bool, string) {
 	parts := strings.Split(value, ",")
 	ids, set := make([]string, 0, len(parts)), make(map[string]bool, len(parts))
 	for i, part := range parts {
-		id := normalizeRowID(part)
+		id := briefdoc.NormalizeRowID(part)
 		if id == "" {
 			return nil, nil, fmt.Sprintf("element %d is empty; every comma-separated element names one Verify row ID", i+1)
 		}
@@ -1878,7 +1864,7 @@ func rowReads(tree string, res runResult) string {
 // proseLedNote is the could-not-run note for a prose-led row: the lint's
 // stable rule tag first (greppable in Evidence), then the reason and the fix.
 func proseLedNote(reason string) string {
-	return ruleProseLedCommand + ": not executed; the " + reason + ", not a command. " + proseLedRemedy(reason)
+	return ruleProseLedCommand + ": not executed; the " + reason + ", not a command. " + briefdoc.ProseLedRemedy(reason)
 }
 
 // witnessTable renders a full Evidence table for a run.

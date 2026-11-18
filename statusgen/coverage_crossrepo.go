@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
@@ -134,7 +135,7 @@ func crossCoverageSpan(evidence, run string, rows []evaluation.VerifyRow, tracki
 			return fmt.Errorf("Verify row %s has no latest execution witness in the selected run", row.ID)
 		}
 		if witnessSandboxOf(got) != sandboxContainerNetns {
-			execClass, _ := splitRowClassCell(row.ClassCell)
+			execClass, _ := briefdoc.SplitRowClassCell(row.ClassCell)
 			class, _ := resolveRowClass(execClass)
 			if class == classCheckCI {
 				return fmt.Errorf("Verify row %s requires a sealed container witness", row.ID)

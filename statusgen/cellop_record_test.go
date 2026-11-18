@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // The explicitly authorized editorial repair must remain consumable by the
@@ -100,7 +102,7 @@ track: platform
 	legacy := "| # | Command | Expected | Observed (exit + key output) | Date / Runner |\n" +
 		"|---|---------|----------|------------------------------|---------------|\n"
 	for _, line := range lines[2:] {
-		cells := splitRowEscaped(line)
+		cells := briefdoc.SplitRowEscaped(line)
 		if len(cells) != 6 {
 			t.Fatalf("canonical Evidence row has %d cells: %s", len(cells), line)
 		}

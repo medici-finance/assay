@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/deskcore/attestation"
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // The container bracket (desktools-v2/71). A runner inside a --network none
@@ -1361,7 +1362,7 @@ func isWitnessHeaderLine(l string) bool {
 
 // witnessRunnerColumn is the Runner cell's index in a witness header line.
 func witnessRunnerColumn(header string) int {
-	for i, c := range splitRowEscaped(header) {
+	for i, c := range briefdoc.SplitRowEscaped(header) {
 		if strings.TrimSpace(c) == "Runner" {
 			return i
 		}

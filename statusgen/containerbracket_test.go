@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // The container bracket (desktools-v2/71). Every test here runs on fixtures:
@@ -492,7 +494,7 @@ func TestCloseBracket(t *testing.T) {
 	// layout, and sees every other byte of the span.
 	lines := strings.Split(witness, "\n")
 	row := lines[2]
-	if witnessRunnerColumn(lines[0]) != 5 || len(splitRowEscaped(row)) < 6 {
+	if witnessRunnerColumn(lines[0]) != 5 || len(briefdoc.SplitRowEscaped(row)) < 6 {
 		t.Fatalf("fixture row is not a witness row: %q", row)
 	}
 	withRow := func(r string) string {
@@ -538,7 +540,7 @@ func TestCloseBracket(t *testing.T) {
 			t.Fatalf("%s is not the exact stamp form but was removed from the digest", ann)
 		}
 	}
-	cells := splitRowEscaped(row)
+	cells := briefdoc.SplitRowEscaped(row)
 	for name, col := range map[string]int{"Command": 1, "Result": 2, "Date": 4} {
 		v := strings.TrimSpace(cells[col])
 		edited := strings.Replace(row, "| "+v+" |", "| "+v+"X |", 1)
@@ -561,7 +563,7 @@ func TestCloseBracket(t *testing.T) {
 	if len(out) != 2 || !strings.HasPrefix(out[0], fmt.Sprintf("bracket=L%d header=L3 ", n+2)) || !strings.HasPrefix(out[1], fmt.Sprintf("bracket=L%d header=L%d ", h2+n-1, h2)) {
 		t.Fatalf("two bracketed tables: %q", out)
 	}
-	cells0 := splitRowEscaped(row)
+	cells0 := briefdoc.SplitRowEscaped(row)
 	res0 := strings.TrimSpace(cells0[2])
 	editedTwo := strings.Replace(two, "| "+res0+" |", "| "+res0+"X |", 1)
 	out = verbLines(t, editedTwo, verifyrunExitFail)
@@ -655,7 +657,7 @@ func TestCloseBracket(t *testing.T) {
 	// in the Runner cell outside the digest.
 	cmd := strings.TrimSpace(cells[1])
 	escRow := strings.Replace(row, "| "+cmd+" |", "| "+cmd+` \| cat |`, 1)
-	if escRow == row || len(splitRowEscaped(escRow)) != len(splitRowEscaped(row)) {
+	if escRow == row || len(briefdoc.SplitRowEscaped(escRow)) != len(briefdoc.SplitRowEscaped(row)) {
 		t.Fatalf("fixture: could not put an escaped pipe in the Command cell: %q", escRow)
 	}
 	if digestOf(t, withRow(escRow)) != digestOf(t, withRow(stamp(escRow, "(on-behalf-of human:someone)"))) {

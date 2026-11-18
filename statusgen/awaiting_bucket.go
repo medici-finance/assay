@@ -3,13 +3,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/medici-finance/assay/statusgen/verifyqueue"
 	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
+	"github.com/medici-finance/assay/statusgen/verifyqueue"
 )
 
 // Awaiting-board bucketing: every awaiting (implemented/verified) brief in an
@@ -575,7 +577,7 @@ func unrunAwaitRows(rows []verifyRowCells, evidence string) []unrunAwaitRow {
 	evRows := parseEvidenceRows(evidence)
 	var out []unrunAwaitRow
 	for i, r := range rows {
-		id := normalizeRowID(r.Num)
+		id := briefdoc.NormalizeRowID(r.Num)
 		if id == "" {
 			id = strconv.Itoa(i + 1)
 		}
