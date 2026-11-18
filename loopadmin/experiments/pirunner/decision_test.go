@@ -62,9 +62,13 @@ type Tuple struct {
 }
 
 type Manifest struct {
-	Tuple     Tuple             `json:"tuple"`
-	VettedBy  string            `json:"vetted_by"`
-	Integrity map[string]string `json:"lock_integrity"`
+	Tuple    Tuple  `json:"tuple"`
+	VettedBy string `json:"vetted_by"`
+	// Each entry nests its SRI value under an "integrity" key, the same
+	// shape package-lock.json uses.
+	Integrity map[string]struct {
+		Integrity string `json:"integrity"`
+	} `json:"lock_integrity"`
 }
 
 type Case struct {
@@ -386,8 +390,8 @@ func TestPiPilotDecisionEvidence(t *testing.T) {
 		want := map[string]string{"@earendil-works/pi-durable": m.Tuple.PiDurable, "@earendil-works/pi-ai": m.Tuple.PiAI, "@earendil-works/chord": m.Tuple.Chord, "typescript": m.Tuple.TypeScript}
 		for pkg, ver := range want {
 			l := lock.Packages["node_modules/"+pkg]
-			if l.Version != ver || l.Integrity == "" || l.Integrity != m.Integrity[pkg] {
-				t.Errorf("%s: lock %s %s, manifest %s %s", pkg, l.Version, l.Integrity, ver, m.Integrity[pkg])
+			if l.Version != ver || l.Integrity == "" || l.Integrity != m.Integrity[pkg].Integrity {
+				t.Errorf("%s: lock %s %s, manifest %s %s", pkg, l.Version, l.Integrity, ver, m.Integrity[pkg].Integrity)
 			}
 			var inst struct {
 				Version string `json:"version"`
