@@ -12,7 +12,7 @@ spec: docs/streams/test-fixture-isolation/README.md
 
 # Test fixtures own their environment
 
-**Status:** draft. This adopts the test-only outcomes recorded on issue #6300 and splits implementation into four contracts. The maintainer's merge approves this scoping document; no earlier approval, qualification or class closure is asserted. Implementation drafts may be prepared against this explicit draft contract under the driver's request to fan out; ordinary review, merge and independent verification stay with their respective desks.
+**Status:** draft. This adopts the test-only outcomes recorded on issue #6300 and splits implementation into eight contracts. The maintainer's merge approves this scoping document; no earlier approval, qualification or class closure is asserted. Implementation drafts may be prepared against this explicit draft contract under the driver's request to fan out; ordinary review, merge and independent verification stay with their respective desks.
 
 **Routes-to:** docs/streams/test-fixture-isolation/
 
@@ -30,22 +30,31 @@ Freshness checked on 2026-11-17 at `dabede22b0be3abd3320a0a7016132a917192e86`: s
 | 01 | [Shared explicit fixture environment](brief-01-shared-explicit-fixture-environment.md) | 0 | M | todo | — | — |
 | 02 | [Statusgen Git fixture migration](brief-02-statusgen-git-fixture-migration.md) | 1 | M | todo | — | — |
 | 03 | [Desk fixture migration](brief-03-desk-fixture-migration.md) | 1 | M | todo | — | — |
-| 04 | [Hostile environment CI coverage](brief-04-hostile-environment-ci-coverage.md) | 2 | M | todo | — | — |
+| 04 | [Hostile environment CI coverage](brief-04-hostile-environment-ci-coverage.md) | 3 | M | todo | — | — |
+| 05 | [Desk command fixture siblings](brief-05-desk-command-fixture-siblings.md) | 1 | M | todo | — | — |
+| 06 | [Worktree fixture siblings](brief-06-worktree-fixture-siblings.md) | 2 | M | todo | — | — |
+| 07 | [Dispatch and fleet fixture siblings](brief-07-dispatch-and-fleet-fixture-siblings.md) | 1 | M | todo | — | — |
+| 08 | [Statusgen remaining fixture siblings](brief-08-statusgen-remaining-fixture-siblings.md) | 2 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
 
-`01 -> (02 and 03 in parallel) -> 04`. The real head is a shared, importable test-support contract, not a release or #5749. Existing `tools/desk/internal/regression` cannot be imported by statusgen; both already depend on gitcore. `gitcore/gittest` registers a global update flag and is unsuitable for this environment-only reuse. Use a separate `gitcore/testenv` package. #5749's publication exception, PostgreSQL work, and write/execution features are outside this graph.
+`01 -> (02, 03, 05 and 07 in parallel) -> (06 after 03 and 08 after 02) -> 04`. The real head is a shared, importable test-support contract, not a release or #5749. Existing `tools/desk/internal/regression` cannot be imported by statusgen; both already depend on gitcore. `gitcore/gittest` registers a global update flag and is unsuitable for this environment-only reuse. Use a separate `gitcore/testenv` package. #5749's publication exception, PostgreSQL work, and write/execution features are outside this graph.
 
 ## Dependency waves
 
 | Wave | Briefs | Boundary |
 |---|---|---|
 | 0 | 01 | Shared helper contract and hostile controls |
-| 1 | 02, 03 | Separate statusgen and desk consumers |
-| 2 | 04 | Both migrations exercised by mandatory existing CI aggregate |
+| 1 | 02, 03, 05, 07 | Separate statusgen and desk consumers |
+| 2 | 06, 08 | Wider worktree and statusgen fixtures after bounded consumer migrations |
+| 3 | 04 | All migrations exercised by mandatory existing CI aggregate |
 
 Draft branches may be prepared concurrently against this contract; a consumer's dependency is satisfied by the real helper commit, not by an invented API or a prose completion claim. Integrate that commit without rebasing. Source qualification and lifecycle transitions require the independent desks.
+
+## Whole-suite sibling follow-ups
+
+The full hostile desk worker census found additional current consumers beyond the narrow maintenance/decision slice. [05 — Desk command fixture siblings](brief-05-desk-command-fixture-siblings.md) covers deskperf, deskpushguard, deskreply and verifyloop. [06 — Worktree fixture siblings](brief-06-worktree-fixture-siblings.md) covers the wider deskwt newRepo/withEnv families after the maintenance migration. [07 — Dispatch and fleet fixture siblings](brief-07-dispatch-and-fleet-fixture-siblings.md) covers confirmed real-allocator and fleet child-environment consumers. [08 — Remaining statusgen fixtures](brief-08-statusgen-remaining-fixture-siblings.md) covers the additional history/decay/repair groups exposed by the partial full-module run. These follow-ups reuse the same helper and preserve authority controls; required CI acceptance waits for these actual consumers rather than omitting their packages. The generated Briefs table will incorporate the new files at regeneration. No #5749 dependency or human ruling is added.
 
 ## Shared interface contract
 

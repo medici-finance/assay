@@ -6,7 +6,7 @@ title: Statusgen Git fixture migration
 why: "Caller Git configuration, installed desk binaries and credential state can redirect test fixtures, delaying unrelated qualification and risking writes outside temporary HOME. Explicit fixture ownership makes failures describe the code under test."
 wave: 1
 depends: ["test-fixture-isolation/01"]
-unblocks: ["test-fixture-isolation/04"]
+unblocks: ["test-fixture-isolation/04", "test-fixture-isolation/08"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

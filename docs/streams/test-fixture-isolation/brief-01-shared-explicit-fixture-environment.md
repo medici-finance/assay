@@ -6,7 +6,7 @@ title: Shared explicit fixture environment
 why: "Caller Git configuration, installed desk binaries and credential state can redirect test fixtures, delaying unrelated qualification and risking writes outside temporary HOME. Explicit fixture ownership makes failures describe the code under test."
 wave: 0
 depends: []
-unblocks: ["test-fixture-isolation/02", "test-fixture-isolation/03"]
+unblocks: ["test-fixture-isolation/02", "test-fixture-isolation/03", "test-fixture-isolation/05", "test-fixture-isolation/07"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}

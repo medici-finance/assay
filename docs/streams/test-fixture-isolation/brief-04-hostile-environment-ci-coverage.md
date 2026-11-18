@@ -1,11 +1,11 @@
 ---
 brief: assay:assay:test-fixture-isolation:04
 id: 7eec7169-7e1b-492e-a10c-6584ece39c71
-version: 1
+version: 2
 title: Hostile environment CI coverage
 why: "Caller Git configuration, installed desk binaries and credential state can redirect test fixtures, delaying unrelated qualification and risking writes outside temporary HOME. Explicit fixture ownership makes failures describe the code under test."
-wave: 2
-depends: ["test-fixture-isolation/02", "test-fixture-isolation/03"]
+wave: 3
+depends: ["test-fixture-isolation/02", "test-fixture-isolation/03", "test-fixture-isolation/05", "test-fixture-isolation/06", "test-fixture-isolation/07", "test-fixture-isolation/08"]
 unblocks: []
 effort: M
 gate: model

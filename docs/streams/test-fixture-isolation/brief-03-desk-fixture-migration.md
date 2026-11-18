@@ -6,7 +6,7 @@ title: Desk fixture migration
 why: "Caller Git configuration, installed desk binaries and credential state can redirect test fixtures, delaying unrelated qualification and risking writes outside temporary HOME. Explicit fixture ownership makes failures describe the code under test."
 wave: 1
 depends: ["test-fixture-isolation/01"]
-unblocks: ["test-fixture-isolation/04"]
+unblocks: ["test-fixture-isolation/04", "test-fixture-isolation/06"]
 effort: M
 gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
@@ -63,6 +63,8 @@ Use an owned isolated worktree and synthetic fixtures. Branch publication follow
 2. Migrate cell-origin and landed-origin setup before repository creation and in-process authority reads. Preserve custody restoration and negative origin tests, including deliberate injected-config refusals planted after installation.
 3. Migrate worktree maintenance fixtures to private Git config and declared tools. Build the hostile global-config victim independently and prove its bytes, mode and repository state remain unchanged; never baseline against the operator's real global file.
 4. Inventory sibling test entry points and route those beyond these named groups with exact paths. Keep statusgen autonomy credential fixtures in brief 02. The hostile desk regression must prove intentional injected-config refusal survives fixture installation and must not contact a live forge.
+
+Sibling disposition: deskperf, deskpushguard, deskreply and verifyloop fixture families are follow-up test-fixture-isolation/05. The wider deskwt newRepo/withEnv consumers are follow-up test-fixture-isolation/06; this preserves the maintenance-only bound of this delivery.
 
 ## Verify
 
