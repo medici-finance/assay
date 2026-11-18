@@ -17,7 +17,7 @@ The behavioural corpus passes on the real Pi path. The conformance kit, restart,
 Other evidence limits are recorded but do not block the verdict:
 
 - Pi's usage model has no "unknown cost" value. The adapter therefore never reads Pi usage as spend; see the Pi findings below.
-- The adapter declares no `Resume`, `CancelAck`, `Snapshot` or `runner.ProfileDeclarer`. The conformance kit's profile-admission cases therefore pass without exercising the adapter. `TestPiPilotContract/NoProfileDecl` pins that fact.
+- The adapter declares no `Resume`, `CancelAck`, `Snapshot` or `runner.ProfileDeclarer`. The conformance kit's profile-admission cases therefore pass without exercising the adapter. The `NoProfileDecl` subtest of `TestPiPilotContract` pins that fact.
 - The npm 1.4.0 tarballs carry no `gitHead`. They correspond to the inspected Pi revision `8c03fef4d3b7ecf7a9e8cc5b1312ff60ec2be149` only by declared version and the 1.4.0 changelog entry; no byte comparison was made.
 
 A GO needs all three reason codes cleared on a re-run: the tuple vetted, rows 2-9 rerun in the network-off Linux environment, and a measurement that covers commits and peak memory. After that re-run, `results.json` must be regenerated. `cases.json` proves the derivation rejects a fabricated GO for each of these gaps and for every adverse fixture.
