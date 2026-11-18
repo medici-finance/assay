@@ -7810,7 +7810,7 @@ gather Evidence for such a brief — its member line reads `Evidence-only (never
 but never flips it; the Evidence-only lane in `Land` writes Evidence with no status flip and the
 human's merge of the checkpoint PR is the flip.
 
-**One outcome protocol for the writer and its readers** (tool-refactoring/05). The outcome words, the
+**One outcome protocol for the writer and its readers**. The outcome words, the
 row-result reduction and the record codec the verifier writes and the queue reads are defined once in
 `statusgen/evaluation/outcome.go`; `deskkit` keeps only the adapters. Consequences an operator can see:
 `--outcome-record` lands only the exact canonical words (`verified`, `verify-fail`, `fail`, `blocked`,

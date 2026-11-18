@@ -91,7 +91,7 @@ func readVerifyOutcomesUnion(root string) ([]byte, error) {
 //
 // The record codec, naming rule, vocabulary, per-brief reduction and the fs.FS reader live in
 // statusgen/evaluation (outcome.go) — the ONE owner of how an outcome record is read
-// (tool-refactoring/05). What remains here is the source adapter: it names a filesystem root
+//. What remains here is the source adapter: it names a filesystem root
 // and a wall clock and hands them to the shared reader as an io/fs port and a parameter.
 // TestVerifyOutcomesSingleReader pins that this module has exactly one place that opens the
 // verify-outcomes path, and TestOutcomeProtocolClassGuard pins that no second copy of the

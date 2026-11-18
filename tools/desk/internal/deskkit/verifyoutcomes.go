@@ -16,7 +16,7 @@ package deskkit
 // legacy shared log, unioned and deduped (ReadVerifyOutcomes), then reduce to one winner per
 // brief (LatestPerBrief). It touches no forge and no git, so it is tested with neither.
 //
-// SHARED PROTOCOL (tool-refactoring/05). The codec, naming rule, per-brief reduction and the
+// SHARED PROTOCOL. The codec, naming rule, per-brief reduction and the
 // reader itself are NOT defined here: they live once, in statusgen/evaluation (outcome.go),
 // which tools/desk already links through its replace directive, and statusgen uses the same
 // code. What this file keeps is the adapter surface callers already import by its old names:

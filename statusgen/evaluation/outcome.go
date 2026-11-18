@@ -2,7 +2,7 @@ package evaluation
 
 // outcome.go — the verification-outcome protocol: the ONE owner of how a verify-outcome record
 // is named, parsed, classified and reduced (contracts S-evidence-coverage and
-// S-verification-domain; brief tool-refactoring/05).
+// S-verification-domain).
 //
 // Before this file the same rules were copied by hand into four places: the desk-tools record
 // layer (tools/desk/internal/deskkit/verifyoutcomes.go), statusgen's own copy of it, statusgen's

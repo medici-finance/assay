@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// outcome_test.go — the protocol's matrix and its class guard (brief tool-refactoring/05).
+// outcome_test.go — the protocol's matrix and its class guard.
 
 // TestOutcomeProtocolMatrix pins the shared meaning once: the outcome vocabulary as a reader
 // and as a writer, the lifecycle disposition, the row reduction and the run reduction, and the
