@@ -747,8 +747,11 @@ admission; with `--root`, `deskevidence` refuses a relative or in-home `--outcom
 `attempts`: one entry per run of the Verify table in the dispatch, as the verifier reported them (window,
 `rows_run`, disposition and reason; a discarded run keeps its entry). `deskperf reruns` counts them. On PASS write the same row's shape with `"outcome":"verified"` only AFTER
 the Evidence, execution witnesses, Status `verified` (or `done`), and dated Verified stamp have
-landed on the target branch and `statusgen --lint --acceptance-forge` accepts that same tree
-on the host. Before writing,
+landed on the target branch. Submit the record to `deskevidence --outcome-record` for the
+landed-tree closure check described under **Landing** below. If the Verify table itself
+requires clean repo-wide lint, credit that row only under brief rule 51, with a clean
+host run at the witnessed revision using the pinned statusgen and `--acceptance-forge`.
+Before writing,
 refresh only the brief in the verifier home from the target branch
 (`git -C <home> fetch origin <branch>`, then `git -C <home> show FETCH_HEAD:<path> > <home>/<path>`).
 Use the full `git -C <home> rev-parse FETCH_HEAD` as the record's Evidence commit SHA.
@@ -823,7 +826,7 @@ refuses on a lint PROBLEM naming the brief it closes or naming no brief; a PROBL
 another brief prints as a notice and is that brief's to fix, never this record's to block.
 It supplies no approval or acceptance credit and does not alter authored Verify commands
 or network-off execution. Unknown repository authority, an unavailable approval read and
-a refuted approval still hold or refuse the landing. Keep the diagnostic and route the
+a refuted approval for the closure being recorded still hold or refuse it. Keep the diagnostic and route the
 missing capability; never retry by stripping Git configuration, changing the origin or
 borrowing a stored human login. Diagnose the run environment separately from the missing
 opt-in, because the flag cannot resolve an authority-bearing Git include.
