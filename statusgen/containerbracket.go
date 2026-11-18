@@ -141,7 +141,10 @@ type bracketReceipt struct {
 	// ModuleCache is the module cache the open step downloaded for the home
 	// (--module-cache, #4683); nil when the open step downloaded none.
 	ModuleCache *receiptModuleCache `json:"module_cache,omitempty"`
-	Acceptance  *receiptAcceptance  `json:"acceptance,omitempty"`
+	// Roster is the roster copy the open step wrote for the container
+	// (--roster-copy, #6904); nil when it wrote none.
+	Roster     *receiptRoster     `json:"roster,omitempty"`
+	Acceptance *receiptAcceptance `json:"acceptance,omitempty"`
 }
 
 // receiptRunnerRe is the shape of a runner token executingRunner derives: a
@@ -263,6 +266,9 @@ func readBracketReceipt(path, home, brief string) (bracketReceipt, string, strin
 		return r, "", "", err
 	}
 	if err := moduleCacheRequirementProblem(home, r.ModuleCache); err != nil {
+		return r, "", "", err
+	}
+	if err := receiptRosterProblem(r.Roster); err != nil {
 		return r, "", "", err
 	}
 	b, err := checkBinding(r.Check)
@@ -393,6 +399,7 @@ type containerAdmit struct {
 	attestation, tree string
 	cell              bracketReceipt // Runner, RunnerSource, RunnerTree, OnBehalfOf
 	moduleCache       string         // the receipt's module cache digest, "" with none
+	roster            []byte         // the verified roster copy each row's HOME holds, nil with none
 }
 
 // containerAdmission is the container half: the host's receipt replaces
@@ -417,8 +424,14 @@ func containerAdmission(receiptPath, root, brief string) (containerAdmit, error)
 		}
 		moduleCache = r.ModuleCache.Digest
 	}
+	var roster []byte
+	if r.Roster != nil {
+		if roster, err = containerRosterCopy(root, r.Roster); err != nil {
+			return containerAdmit{}, fmt.Errorf("container admission refused; no Verify rows executed: %w", err)
+		}
+	}
 	cell := bracketReceipt{Check: r.Check, Runner: r.Runner, RunnerSource: r.RunnerSource, RunnerTree: r.RunnerTree, OnBehalfOf: r.OnBehalfOf, Acceptance: r.Acceptance}
-	return containerAdmit{attestation: line, tree: tree, cell: cell, moduleCache: moduleCache}, nil
+	return containerAdmit{attestation: line, tree: tree, cell: cell, moduleCache: moduleCache, roster: roster}, nil
 }
 
 // relWithin returns p's slash path relative to root when p lies inside root,
@@ -577,10 +590,13 @@ func runOpenBracket(home, brief, out, moduleCache string, stdout, stderr io.Writ
 	if len(historyOut) > 0 {
 		history = historyOut[0]
 	}
-	return runOpenAcceptance(home, brief, out, moduleCache, history, "", stdout, stderr)
+	return runOpenAcceptance(home, brief, out, moduleCache, history, "", "", stdout, stderr)
 }
 
-func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record string, stdout, stderr io.Writer) int {
+// runOpenAcceptance is the open step with every option. With rosterCopy it
+// also writes the container's roster copy (rostercopy.go) to that new file and
+// records it in the receipt.
+func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record, rosterCopy string, stdout, stderr io.Writer) int {
 	refuse := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "statusgen verifyrun --open-bracket: refused, no receipt written: "+format+"\n", a...)
 		return verifyrunExitCouldNot
@@ -594,6 +610,17 @@ func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record string,
 	if moduleCache != "" {
 		if p := moduleCachePathProblem(home, moduleCache); p != "" {
 			return refuse("%s", p)
+		}
+	}
+	if rosterCopy != "" {
+		if p := rosterCopyPathProblem(home, rosterCopy); p != "" {
+			return refuse("%s", p)
+		}
+		if canonicalPath(rosterCopy) == canonicalPath(out) || (historyOut != "" && canonicalPath(rosterCopy) == canonicalPath(historyOut)) {
+			return refuse("--roster-copy needs its own output file")
+		}
+		if _, _, err := renderRosterCopy(); err != nil {
+			return refuse("%v", err)
 		}
 	}
 	// The Runner cell is derived here, on the host, where the home's git
@@ -686,6 +713,12 @@ func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record string,
 			return refuse("%v", err)
 		}
 	}
+	var roster *receiptRoster
+	if rosterCopy != "" {
+		if roster, err = writeRosterCopy(rosterCopy); err != nil {
+			return refuse("%v", err)
+		}
+	}
 	quoted := func(s string) string { b, _ := json.Marshal(s); return string(b) }
 	body := `{"check":` + string(check) + `,"tree":"` + tree + `","opened":"` + opened +
 		`","runner":` + quoted(cell.Runner) + `,"runner_source":` + quoted(cell.RunnerSource) +
@@ -696,6 +729,13 @@ func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record string,
 			return refuse("%v", err)
 		}
 		body += `,"module_cache":` + string(m)
+	}
+	if roster != nil {
+		m, err := json.Marshal(roster)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		body += `,"roster":` + string(m)
 	}
 	if acceptance != nil {
 		a, err := json.Marshal(acceptance)
@@ -712,6 +752,10 @@ func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record string,
 	if mc != nil {
 		fmt.Fprintf(stdout, "module-cache %s digest=%s roots=%s\n", moduleCache, mc.Digest, strings.Join(mc.Roots, ","))
 		fmt.Fprintf(stdout, "container flags: %s\n", strings.Join(containerModuleCacheFlags(moduleCache), " "))
+	}
+	if roster != nil {
+		fmt.Fprintf(stdout, "roster-copy %s digest=%s keys=%s\n", rosterCopy, roster.Digest, strings.Join(roster.Keys, ","))
+		fmt.Fprintf(stdout, "container flags: %s\n", strings.Join(containerRosterFlags(rosterCopy), " "))
 	}
 	return verifyrunExitPass
 }
