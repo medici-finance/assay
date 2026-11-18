@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/medici-finance/assay/perfrec"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -762,7 +763,14 @@ func (o dispatchOpts) notLaunched(plan dispatchPlan, repo, home string) {
 // shellWord spells s as one POSIX shell word: bare when it holds only characters no shell
 // treats specially, otherwise single-quoted with each embedded quote closed and escaped.
 func shellWord(s string) string {
-	if s != "" && strings.Trim(s, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789/._-+=:@,") == "" {
+	plain := s != ""
+	for _, r := range s {
+		if !(r < 0x80 && (unicode.IsLetter(r) || unicode.IsDigit(r) || strings.ContainsRune("/._-+=:@,", r))) {
+			plain = false
+			break
+		}
+	}
+	if plain {
 		return s
 	}
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
