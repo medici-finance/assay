@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // Per-session verifier roots.
@@ -113,7 +115,7 @@ func (c *Cell) refreshSessionRootsPass() error {
 // isRootCheckout: the path is the top of a git work tree — not merely a directory somewhere
 // inside one, whose fetch would land in an unrelated repository.
 func isRootCheckout(p string) bool {
-	top, err := gitOut(p, "rev-parse", "--show-toplevel")
+	top, err := gitcore.Toplevel(p)
 	return err == nil && samePath(top, p)
 }
 
@@ -128,7 +130,7 @@ func refreshSessionRoot(r sessionRoot) (string, error) {
 	if err := fetch.Run(); err != nil {
 		return "", fmt.Errorf("fetch of origin main in %s failed: %v", r.Src, err)
 	}
-	sha, err := gitOut(r.Src, "rev-parse", "--verify", "-q", "refs/remotes/origin/main^{commit}")
+	sha, err := remoteMainCommit(r.Src)
 	if err != nil || sha == "" {
 		return "", fmt.Errorf("%s has no refs/remotes/origin/main after the fetch", r.Src)
 	}
@@ -145,17 +147,21 @@ func refreshSessionRoot(r sessionRoot) (string, error) {
 	if err := sameRepository(r.Src, r.WT); err != nil {
 		return "", err
 	}
-	if st, _ := gitOut(r.WT, "status", "--porcelain", "--untracked-files=no"); st != "" {
-		return "", fmt.Errorf("%s has uncommitted changes — left as is", r.WT)
+	wt, err := gitcore.Open(r.WT)
+	if err != nil {
+		return "", fmt.Errorf("cannot open %s: %v", r.WT, err)
 	}
-	head, err := gitOut(r.WT, "rev-parse", "HEAD")
+	if st, err := wt.DirtyTrackedPorcelain(); err != nil || st != "" {
+		return "", fmt.Errorf("%s has uncommitted changes (or its status is unreadable) — left as is", r.WT)
+	}
+	head, err := wt.HeadID()
 	if err != nil {
 		return "", fmt.Errorf("cannot read HEAD of %s: %v", r.WT, err)
 	}
 	if head == sha {
 		return sha, nil
 	}
-	if exec.Command("git", "-C", r.WT, "merge-base", "--is-ancestor", head, sha).Run() != nil {
+	if ok, err := wt.IsAncestor(head, sha); err != nil || !ok {
 		return "", fmt.Errorf("%s is at %s, which origin/main does not contain — left as is", r.WT, short8(head))
 	}
 	if out, err := exec.Command("git", "-C", r.WT, "checkout", "--quiet", "--detach", sha).CombinedOutput(); err != nil {
@@ -167,13 +173,31 @@ func refreshSessionRoot(r sessionRoot) (string, error) {
 // sameRepository refuses a path at the tree's location that is not a worktree of the root's
 // own repository — a stray directory is never adopted or moved.
 func sameRepository(src, wt string) error {
-	a, err1 := gitOut(src, "rev-parse", "--path-format=absolute", "--git-common-dir")
-	b, err2 := gitOut(wt, "rev-parse", "--path-format=absolute", "--git-common-dir")
-	top, err3 := gitOut(wt, "rev-parse", "--show-toplevel")
+	a, err1 := gitcore.CommonDir(src)
+	b, err2 := gitcore.CommonDir(wt)
+	top, err3 := gitcore.Toplevel(wt)
 	if err1 != nil || err2 != nil || err3 != nil || a == "" || a != b || !samePath(top, wt) {
 		return fmt.Errorf("%s exists and is not a worktree of %s — move it aside", wt, src)
 	}
 	return nil
+}
+
+// remoteMainCommit is `git rev-parse --verify -q refs/remotes/origin/main^{commit}`, read
+// in-process: the full ref name, so a local branch of that name never shadows it.
+func remoteMainCommit(dir string) (string, error) {
+	repo, err := gitcore.Open(dir)
+	if err != nil {
+		return "", err
+	}
+	const ref = "refs/remotes/origin/main"
+	if ok, _ := repo.CommitVerifyQuiet(ref); !ok {
+		return "", fmt.Errorf("%s does not name a commit", ref)
+	}
+	h, err := repo.Resolve(ref)
+	if err != nil {
+		return "", err
+	}
+	return h.String(), nil
 }
 
 func samePath(a, b string) bool {
