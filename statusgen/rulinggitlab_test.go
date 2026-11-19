@@ -55,9 +55,17 @@ func glrItem(kind string, n int, payload string) string {
 	return fmt.Sprintf(`{"schema":%d,"kind":%q,"items":[{"repo":%q,"number":%d,%s}],"partial":[]}`, deskreadSchema, kind, glrProject, n, payload)
 }
 
+// glrNoteJSON is a note whose author account type reads User — the shape a
+// deskread that reports GitLab account types would emit.
 func glrNoteJSON(id int, author, body, created, updated string) string {
-	return fmt.Sprintf(`{"databaseId":%d,"authorLogin":%q,"authorId":7,"createdAt":%q,"updatedAt":%q,"body":%s,"url":""}`,
-		id, author, created, updated, glJSON(body))
+	return glrNoteTyped(id, author, `"authorType":"User",`, body, created, updated)
+}
+
+// glrNoteTyped is glrNoteJSON with the author-type member given raw (with its
+// trailing comma), or "" to leave it out as today's GitLab note read does.
+func glrNoteTyped(id int, author, typ, body, created, updated string) string {
+	return fmt.Sprintf(`{"databaseId":%d,"authorLogin":%q,"authorId":7,%s"createdAt":%q,"updatedAt":%q,"body":%s,"url":""}`,
+		id, author, typ, created, updated, glJSON(body))
 }
 
 // glrWorld is the all-conditions-hold forge: a mapped human's unedited note
@@ -152,6 +160,56 @@ func TestGLRulingBotWriter(t *testing.T) {
 	}
 }
 
+// Condition 3b on GitLab: a note whose author account type was not read is
+// could-not-check, never read as User — even from a mapped human whose
+// unedited note names the record on its decision issue (every other condition
+// holds). Today's GitLab note read reports no type, so this is every note.
+// regression: #7252 (review F1)
+func TestGLRulingUntypedAuthor(t *testing.T) {
+	glrRoster(t, "gitlab")
+	text := "Ruled on " + rlRecordID + ": option 1."
+	for name, typ := range map[string]string{"absent": "", "empty": `"authorType":"",`, "blank": `"authorType":" ",`} {
+		t.Run(name, func(t *testing.T) {
+			w := glrRecordWorld(glrNoteTyped(glrNote, rlHuman, typ, text, glrPosted, glrPosted))
+			got := glrResolve(t, w, glrRuling)
+			glrWant(t, got, rulingUnresolvable)
+			wantContains(t, "refusal", got.Detail, "no account type")
+		})
+	}
+}
+
+// A stated account type other than User is a non-human author, whatever the
+// login map says about the login. regression: #7252 (review F1)
+func TestGLRulingNonUserType(t *testing.T) {
+	glrRoster(t, "gitlab")
+	text := "Ruled on " + rlRecordID + ": option 1."
+	for _, typ := range []string{"Bot", "Organization", "Mannequin"} {
+		w := glrRecordWorld(glrNoteTyped(glrNote, rlHuman, `"authorType":"`+typ+`",`, text, glrPosted, glrPosted))
+		glrWant(t, glrResolve(t, w, glrRuling), rulingBotAuthor)
+	}
+}
+
+// Every gap in the note or issue read is could-not-check, never a pass: a note
+// with no author, unreadable times, an item with no comment list, an issue
+// read that carries no issue. regression: #7252 (review A1)
+func TestGLRulingEnvelopeGaps(t *testing.T) {
+	glrRoster(t, "gitlab")
+	text := "Ruled on " + rlRecordID + ": option 1."
+	target := fmt.Sprintf("%s#%d", glrProject, glrIssue)
+	cases := map[string]*glWorld{
+		"no author":      glrRecordWorld(glrNoteJSON(glrNote, "", text, glrPosted, glrPosted)),
+		"bad createdAt":  glrRecordWorld(glrNoteJSON(glrNote, rlHuman, text, "yesterday", glrPosted)),
+		"bad updatedAt":  glrRecordWorld(glrNoteJSON(glrNote, rlHuman, text, glrPosted, "")),
+		"no comments":    glrRecordWorld(),
+		"no issue field": glrRecordWorld(),
+	}
+	cases["no comments"].set(glrItem("comments", glrIssue, `"title":"t"`), "comments", "--issue", target)
+	cases["no issue field"].set(glrItem("issue", glrIssue, `"title":"t"`), "issue", "--issue", target)
+	for name, w := range cases {
+		t.Run(name, func(t *testing.T) { glrWant(t, glrResolve(t, w, glrRuling), rulingUnresolvable) })
+	}
+}
+
 // regression: #7252
 func TestGLRulingUnreadableNote(t *testing.T) {
 	glrRoster(t, "gitlab")
@@ -212,4 +270,22 @@ func TestGLRulingLiftsGateHold(t *testing.T) {
 		t.Fatalf("--decision-gate exit %d, want 0:\n%s", code, out)
 	}
 	wantContains(t, "--decision-gate report", out, dhBoardID+" RULED — ruled by "+rlHuman)
+}
+
+// An acceptance transition's approval stays a GitHub comment: a well-formed
+// GitLab ruling note on the configured host is no approval URL there, while
+// the GitHub form still is. regression: #7252 (review A2)
+func TestGLRulingNoApproval(t *testing.T) {
+	glrRoster(t, "gitlab")
+	at := func(u string) string {
+		return "Acceptance-Transition: link=1 amendment=" + strings.Repeat("a", 40) + " approval=" + u
+	}
+	if _, why := transitionLinks(at(rlURL(rlRepo, rlIssue, rlComment))); why != "" {
+		t.Fatalf("a GitHub approval comment was refused: %s", why)
+	}
+	if _, ok := parseRulingURL(glrRuling); !ok {
+		t.Fatal("the GitLab note did not parse, so the refusal below proves nothing")
+	}
+	_, why := transitionLinks(at(glrRuling))
+	wantContains(t, "transition refusal", why, "a valid approval URL is required")
 }

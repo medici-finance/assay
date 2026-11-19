@@ -204,6 +204,48 @@
       "file": "decisionruling.go",
       "old": "if strings.TrimSpace(cm.User.Type) == \"\" {",
       "new": "if false {"
+    },
+    {
+      "name": "empty account type read as User on the GitLab note path",
+      "file": "rulinggitlab.go",
+      "old": "if strings.TrimSpace(cm.AuthorType) == \"\" {",
+      "new": "if false {"
+    },
+    {
+      "name": "non-User account type no longer a bot on the GitLab note path",
+      "file": "rulinggitlab.go",
+      "old": "if t := strings.TrimSpace(typ); t != \"\" && !strings.EqualFold(t, \"User\") {",
+      "new": "if t := strings.TrimSpace(typ); false && t != \"\" && !strings.EqualFold(t, \"User\") {"
+    },
+    {
+      "name": "authorless GitLab note no longer refused",
+      "file": "rulinggitlab.go",
+      "old": "if cm.AuthorLogin == \"\" {",
+      "new": "if false {"
+    },
+    {
+      "name": "unparseable GitLab note timestamps no longer a could-not-check",
+      "file": "rulinggitlab.go",
+      "old": "if cerr != nil || uerr != nil {",
+      "new": "if false && (cerr != nil || uerr != nil) {"
+    },
+    {
+      "name": "GitLab comments item with no comment list admitted",
+      "file": "rulinggitlab.go",
+      "old": "if cs == nil {",
+      "new": "if false {"
+    },
+    {
+      "name": "GitLab issue item with no issue read as an empty issue",
+      "file": "rulinggitlab.go",
+      "old": "if iss == nil {",
+      "new": "if iss == nil && false {"
+    },
+    {
+      "name": "acceptance transition admits a GitLab note as its approval",
+      "file": "acceptancetransition.go",
+      "old": "if !ok || parsed.GitLab {",
+      "new": "if !ok {"
     }
   ]
 }

@@ -86,8 +86,9 @@ var deskreadReaderFn = newDeskreadReader
 var gitlabBotLoginRe = regexp.MustCompile(`^(project|group)_[0-9]+_bot(_[0-9a-f]+)?$`)
 
 // gitlabRulingBot reports whether a GitLab note author is a bot: GitHub's
-// suffix, GitLab's bot-user shape, an account type other than User, or a login
-// the roster binds to a bot identity.
+// suffix, GitLab's bot-user shape, a stated account type other than User, or a
+// login the roster binds to a bot identity. It is condition 3 only: an EMPTY
+// type is not a bot here, and is refused by condition 3b, never read as User.
 func gitlabRulingBot(login, typ string) bool {
 	l := strings.ToLower(login)
 	if strings.HasSuffix(l, "[bot]") || gitlabBotLoginRe.MatchString(l) {
@@ -106,7 +107,15 @@ func gitlabRulingBot(login, typ string) bool {
 
 // resolveGitLabRuling is resolveRulingOn's GitLab arm, entered after the link's
 // grammar, host and repository have been checked. The conditions and their
-// order are the GitHub arm's; only the reads differ.
+// order are the GitHub arm's (1, 2b, 3, 3b, 4, 5, 6; condition 2's parent check
+// is the read itself, the note is looked up in the linked issue's own thread);
+// only the reads differ.
+//
+// Condition 3b binds here too: a note whose author account type was not read is
+// unresolvable-link, never read as User (deskread's CommentJSON contract). The
+// deskread GitLab backend does not report a note author's account type yet, so
+// until it does every GitLab ruling note stops at 3b and the record stays
+// unruled: the arm is closed, never open on a guess about who wrote the note.
 func resolveGitLabRuling(out rulingOutcome, link rulingLink, rec decisionRecordStamp, humanLogins map[string]string, binding rulingIssueBinding) rulingOutcome {
 	refuse := func(r rulingReason, format string, a ...any) rulingOutcome {
 		out.Reason = r
@@ -152,7 +161,7 @@ func resolveGitLabRuling(out rulingOutcome, link rulingLink, rec decisionRecordS
 		}
 	}
 
-	// 2. The note is unedited; unreadable times are could-not-check.
+	// 2b. The note is unedited; unreadable times are could-not-check.
 	created, cerr := time.Parse(time.RFC3339, cm.CreatedAt)
 	updated, uerr := time.Parse(time.RFC3339, cm.UpdatedAt)
 	if cerr != nil || uerr != nil {
@@ -162,10 +171,16 @@ func resolveGitLabRuling(out rulingOutcome, link rulingLink, rec decisionRecordS
 		return refuse(rulingEditedComment, "note %d on %s was edited after it was posted (createdAt %s, updatedAt %s) — link an unedited ruling note; to correct a ruling, the human posts a new note", link.CommentID, where, cm.CreatedAt, cm.UpdatedAt)
 	}
 
-	// 3. A bot never rules. GitLab's notes carry no account type, so the bot
-	// test is the login shape and the roster's bot identities.
+	// 3. A bot never rules: a stated type other than User, GitLab's bot-user
+	// login shape, GitHub's [bot] suffix, or a roster bot identity. Checked
+	// before 3b so a known bot is named as one even when its type is unread.
 	if bot {
 		return refuse(rulingBotAuthor, "note %d is authored by %s (type %q) — a bot account is not a human allowed to decide", link.CommentID, cm.AuthorLogin, cm.AuthorType)
+	}
+	// 3b. Only a personal account rules: the account type must read User. A
+	// type the read leaves out could not be checked — never read as User.
+	if strings.TrimSpace(cm.AuthorType) == "" {
+		return refuse(rulingUnresolvable, "note %d on %s: the read names no account type for %s — whether a personal account wrote it could not be checked (the GitLab note read does not report an author account type yet)", link.CommentID, where, cm.AuthorLogin)
 	}
 
 	// 4. The author maps to a human allowed to decide.
