@@ -11,7 +11,7 @@ package main
 //	MergedPRForCommit  commit-changes --repo R --sha S, then change --change R#N per number,
 //	                   and change-commits --change R#N for the intermediate-commit path
 //	PRShape            change, change-files, default-branch
-//	ReviewState        change, reviews (approvals: APPROVED with no body), comments --change (notes)
+//	ReviewState        change, reviews (approvals: APPROVED with no body; notes: APPROVED with a body)
 //	PRsNamingBrief     changes --repo R --state merged, filtered on the `Brief:` trailer text
 //	PRBodyEditedAt     change-trust --change R#N
 //
@@ -155,8 +155,15 @@ func (s deskreadModelFlipSource) PRShape(repo string, pr int) (prShape, error) {
 // facts decideGitLabFlip judges. The `reviews` kind serves GitLab's approvals AND its non-system
 // notes in one list, and renders a "Verdict: approve" note APPROVED too; only an APPROVED entry
 // with NO body is an approval (the approvals endpoint carries no body, a note always has one),
-// so a note can never stand in for the approval. The notes themselves are read from
-// `comments --change`, which carries every note's author and body.
+// so a note can never stand in for the approval.
+//
+// The notes decideGitLabFlip scans for the pinned head are the entries WITH a body whose State
+// is APPROVED — deskread reduced each note with deskkit.VerdictNoteState, so only a
+// `Verdict: approve` line counts. Any other reviewer note that merely names the head (a
+// `Security-Review: pass`, a "re-review pending at <sha>" relay) is COMMENTED and never
+// corroborates; read as a plain substring match it would turn a stale approval into a flip.
+// A later request-changes note by the same author (CHANGES_REQUESTED with a body) withdraws
+// that author's earlier approve notes.
 func (s deskreadModelFlipSource) ReviewState(repo string, pr int) (prReviewState, error) {
 	c, err := s.change(repo, pr)
 	if err != nil {
@@ -174,21 +181,24 @@ func (s deskreadModelFlipSource) ReviewState(repo string, pr int) (prReviewState
 	if rs == nil {
 		return prReviewState{}, fmt.Errorf("%s reviews --change %s#%d: could-not-check: the item carries no review list", s.r.bin, repo, pr)
 	}
+	// The list is ascending, so the last verdict note by an author governs: a request-changes
+	// note withdraws that author's earlier approve notes.
 	for _, r := range *rs {
-		if r.State == "APPROVED" && r.Body == "" && r.AuthorLogin != "" {
+		switch {
+		case r.AuthorLogin == "":
+		case r.State == "APPROVED" && r.Body == "":
 			st.Approvals = append(st.Approvals, r.AuthorLogin)
+		case r.State == "APPROVED":
+			st.Notes = append(st.Notes, glNote{Author: r.AuthorLogin, Body: r.Body})
+		case r.State == "CHANGES_REQUESTED" && r.Body != "":
+			kept := st.Notes[:0]
+			for _, n := range st.Notes {
+				if !strings.EqualFold(n.Author, r.AuthorLogin) {
+					kept = append(kept, n)
+				}
+			}
+			st.Notes = kept
 		}
-	}
-	env, i, err = s.r.readItemAt("--change", "comments", repo, pr)
-	if err != nil {
-		return prReviewState{}, err
-	}
-	cs := env.Items[i].Comments
-	if cs == nil {
-		return prReviewState{}, fmt.Errorf("%s comments --change %s#%d: could-not-check: the item carries no note list", s.r.bin, repo, pr)
-	}
-	for _, n := range *cs {
-		st.Notes = append(st.Notes, glNote{Author: n.AuthorLogin, Body: n.Body})
 	}
 	return st, nil
 }

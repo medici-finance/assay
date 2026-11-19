@@ -38,6 +38,18 @@ func (g glLiveSource) CommitsTouching(root, relPath string, limit int) ([]string
 type glWorld struct {
 	answers map[string]string
 	codes   map[string]int
+	revs    []string  // the reviews read's approval entries, raw JSON
+	notes_  []glVNote // the MR notes, rendered into BOTH the reviews and the comments reads
+}
+
+// glVNote is one MR note as deskread renders it: its author, body, and the State the reviews
+// read reduces it to (deskkit.VerdictNoteState: APPROVED for a `Verdict: approve` line,
+// CHANGES_REQUESTED for request-changes or a security fail, COMMENTED otherwise). The fixture
+// states it explicitly, the way the real verb would emit it.
+type glVNote struct{ Author, Body, State string }
+
+func approveNote(author, sha string) glVNote {
+	return glVNote{author, "Verdict: approve at " + sha, "APPROVED"}
 }
 
 func glArgKey(args ...string) string {
@@ -72,7 +84,7 @@ func newGLWorld() *glWorld {
 	w.set(fmt.Sprintf(`{"schema":%d,"kind":"default-branch","repos":[{"repo":%q,"defaultBranch":"main"}],"partial":[]}`, deskreadSchema, glRepo),
 		"default-branch", "--repo", glRepo)
 	w.reviews(`{"authorLogin":` + glJSON(glReviewer) + `,"state":"APPROVED"}`)
-	w.notes(glNote{Author: glReviewer, Body: "Verdict: approve at " + afHeadSHA})
+	w.notes(approveNote(glReviewer, afHeadSHA))
 	w.merged(`[]`, false)
 	return w
 }
@@ -89,15 +101,23 @@ func (w *glWorld) change(n int, merged bool, head, body string) {
 		"change", "--change", fmt.Sprintf("%s#%d", glRepo, n))
 }
 
-func (w *glWorld) reviews(entries ...string) {
-	w.set(glItem("reviews", 101, `"reviews":[`+strings.Join(entries, ",")+`]`), "reviews", "--change", glRepo+"#101")
-}
+func (w *glWorld) reviews(entries ...string) { w.revs = entries; w.feeds() }
 
-func (w *glWorld) notes(ns ...glNote) {
+func (w *glWorld) notes(ns ...glVNote) { w.notes_ = ns; w.feeds() }
+
+// feeds renders the approvals and notes into the two reads that carry them: the reviews read
+// (approvals, then every note with its reduced State) and the comments read (every note). The
+// source reads notes from the reviews read only; the comments feed stays so a build that still
+// read notes from it (the substring-only corroboration) sees the same notes and fails the
+// refusal cases.
+func (w *glWorld) feeds() {
+	entries := append([]string(nil), w.revs...)
 	var parts []string
-	for _, n := range ns {
+	for _, n := range w.notes_ {
+		entries = append(entries, fmt.Sprintf(`{"authorLogin":%q,"state":%q,"submittedAt":"2026-09-09T00:00:00Z","body":%s}`, n.Author, n.State, glJSON(n.Body)))
 		parts = append(parts, fmt.Sprintf(`{"authorLogin":%q,"authorId":7,"createdAt":"2026-09-09T00:00:00Z","body":%s}`, n.Author, glJSON(n.Body)))
 	}
+	w.set(glItem("reviews", 101, `"reviews":[`+strings.Join(entries, ",")+`]`), "reviews", "--change", glRepo+"#101")
 	w.set(glItem("comments", 101, `"comments":[`+strings.Join(parts, ",")+`]`), "comments", "--change", glRepo+"#101")
 }
 
@@ -182,10 +202,25 @@ func TestGitLabLiveRefusals(t *testing.T) {
 		{"no approval", func(w *glWorld) { w.reviews() }, "no approval"},
 		{"approval but no note", func(w *glWorld) { w.notes() }, "no note"},
 		{"note pins a stale sha", func(w *glWorld) {
-			w.notes(glNote{Author: glReviewer, Body: "Verdict: approve at " + afStaleSHA})
+			w.notes(approveNote(glReviewer, afStaleSHA))
 		}, "no note"},
 		{"pinning note by another login", func(w *glWorld) {
-			w.notes(glNote{Author: "someone-else", Body: "Verdict: approve at " + afHeadSHA})
+			w.notes(approveNote("someone-else", afHeadSHA))
+		}, "no note"},
+		// A note only corroborates when it IS an approve verdict: a stale approval plus any
+		// other reviewer note naming the head (a security pass, a relay) must not flip.
+		{"security pass note at head", func(w *glWorld) {
+			w.notes(approveNote(glReviewer, afStaleSHA),
+				glVNote{glReviewer, "Security-Review: pass\n\nReviewed at " + afHeadSHA, "COMMENTED"})
+		}, "no note"},
+		{"plain comment naming head", func(w *glWorld) {
+			w.notes(approveNote(glReviewer, afStaleSHA),
+				glVNote{glReviewer, "re-review pending at " + afHeadSHA, "COMMENTED"})
+		}, "no note"},
+		// The last verdict governs: a request-changes note after the at-head approve withdraws it.
+		{"rejection after approve", func(w *glWorld) {
+			w.notes(approveNote(glReviewer, afHeadSHA),
+				glVNote{glReviewer, "Verdict: request-changes at " + afHeadSHA, "CHANGES_REQUESTED"})
 		}, "no note"},
 		{"approval by another login", func(w *glWorld) { w.reviews(approval("someone-else")) }, "no approval"},
 		// GitLab's reviews read renders a "Verdict: approve" note APPROVED too; with a body it
@@ -199,6 +234,16 @@ func TestGitLabLiveRefusals(t *testing.T) {
 			c.mutate(w)
 			wantGL(t, runGL(t, w), flipRefused, c.reason)
 		})
+	}
+}
+
+// regression: #7202
+func TestGitLabLiveReapproved(t *testing.T) {
+	w := newGLWorld()
+	w.notes(glVNote{glReviewer, "Verdict: request-changes at " + afStaleSHA, "CHANGES_REQUESTED"},
+		approveNote(glReviewer, afHeadSHA))
+	if got := runGL(t, w); got.Outcome != flipDone {
+		t.Fatalf("af/01 = %v (%s), want FLIPPED: an approve after the rejection governs", got.Outcome, got.Reason)
 	}
 }
 
@@ -224,10 +269,6 @@ func TestGitLabLiveCouldNotCheck(t *testing.T) {
 		{"reviews partial", func(w *glWorld) {
 			w.set(partial("reviews"), "reviews", "--change", glRepo+"#101")
 			w.codes[glArgKey("reviews", "--change", glRepo+"#101")] = 6
-		}, nil, "forge 503"},
-		{"notes partial", func(w *glWorld) {
-			w.set(partial("comments"), "comments", "--change", glRepo+"#101")
-			w.codes[glArgKey("comments", "--change", glRepo+"#101")] = 6
 		}, nil, "forge 503"},
 		{"truncated file list", func(w *glWorld) {
 			w.set(glItem("change-files", 101, `"changeFiles":{"complete":false,"changedFiles":3,"files":[{"filename":"internal/example/example.go","patchAbsent":true}]}`),
