@@ -30,6 +30,7 @@ _DISPATCH_PREFIX = '''
 case $1 in
   seed)
     [ -d "$CACHE/clone/.git" ] || die "no clone on the PVC"
+    mkdir -p "$WORK" || die "could not create the checkout directory"
     cp -a "$CACHE/clone/." "$WORK/" || die "could not copy the clone"
     ;;
   seed-probe)
@@ -44,8 +45,8 @@ case $1 in
 def probe(helper, witness):
     with tempfile.TemporaryDirectory(prefix='proof-probe-') as tmp:
         base = Path(tmp)
-        root = base / 'work'
-        root.mkdir()
+        root = base / 'cache' / 'clone'
+        root.mkdir(parents=True)
         env = {'PATH': '/usr/bin:/bin', 'HOME': str(base / 'empty-home'),
                'GIT_CONFIG_GLOBAL': os.devnull, 'GIT_CONFIG_NOSYSTEM': '1',
                'GIT_CONFIG_COUNT': '0', 'GIT_CONFIG_PARAMETERS': ''}
@@ -114,6 +115,14 @@ readlink() { [ "$1" = /proc/self/ns/net ] || return 1; printf 'net:[123]\n'; }
                       VR_TEST_ROWS=str(marker), VR_TEST_DELIVERY=str(base / 'delivery'),
                       VR_TEST_NETWORK=str(network),
                       ASSAY_DELIVERY_SHA='ambient-poison', ASSAY_DELIVERY_BASE_SHA='ambient-poison')
+        # Seed into a fresh checkout beneath a work volume before exercising the
+        # same source and admission checks the witness container uses.
+        root = base / 'work' / 'checkout'
+        root.parent.mkdir()
+        runenv['VR_WORK_DIR'] = str(root)
+        subprocess.run(['/bin/bash', str(script), 'seed'], env=runenv, check=True, capture_output=True)
+        require(git('rev-parse', 'HEAD') == sha and not (root.parent / '.git').exists(), 'seed:checkout')
+        brief = root / 'docs/streams/proof/brief-01-probe.md'
         def run(flags=(), good=True, case='source', source=None, proof=True, usage=False, key='proof/01'):
             marker.unlink(missing_ok=True)
             network.unlink(missing_ok=True)

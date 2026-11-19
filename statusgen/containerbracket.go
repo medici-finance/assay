@@ -802,6 +802,9 @@ func findContainerBlock(text string) (containerBlock, error) {
 	}
 	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 	for _, l := range lines {
+		if strings.HasPrefix(strings.TrimSpace(l), "Kubernetes-Observation:") {
+			return containerBlock{}, fmt.Errorf("the container witness already carries a host Kubernetes observation")
+		}
 		if strings.HasPrefix(strings.TrimSpace(l), strings.TrimSpace(admissionBracketPrefix)) {
 			return containerBlock{}, fmt.Errorf("this witness already carries an %sline", admissionBracketPrefix)
 		}
@@ -905,11 +908,7 @@ func witnessSeparatorLine(l string) bool {
 // exactly the run the witness and the receipt name AND the home's recomputed
 // tree digest equals both the receipt's tree and the witness's Tree-Digest.
 // Any mismatch or refusal writes nothing.
-func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stderr io.Writer, records ...string) int {
-	record := ""
-	if len(records) > 0 {
-		record = records[0]
-	}
+func runCloseBracket(home, brief, receiptPath, witnessPath, record, observation string, stdout, stderr io.Writer) int {
 	refuse := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "statusgen verifyrun --close-bracket: refused, nothing appended: "+format+"\n", a...)
 		return verifyrunExitCouldNot
@@ -1063,6 +1062,11 @@ func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stder
 		return refuse("the close at %s is not after the receipt's opened time %s; the bracket's opened= must precede its closed=, so re-run the close once the clock has passed the open", closed.Format(time.RFC3339), receipt.Opened)
 	}
 	above := strings.Join(block.lines, "\n") + "\n"
+	// The host supplies the observation only after validating the complete,
+	// unmodified container witness. Include it in the same atomic close.
+	if observation != "" {
+		above += "Kubernetes-Observation: " + observation + "\n"
+	}
 	witness, err := bracketDigest(above)
 	if err != nil {
 		return refuse("%v", err)

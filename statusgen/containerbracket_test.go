@@ -441,6 +441,31 @@ func TestCloseBracket(t *testing.T) {
 	putFile(t, fx.check, validCheck)
 	putFile(t, fx.witness, witness)
 	t.Setenv("FAKE_DD_EXIT", "0")
+	t.Run("host Kubernetes observation", func(t *testing.T) {
+		const flag = "--kubernetes-observation"
+		observation := "sha256:" + strings.Repeat("7", 64)
+		for _, bad := range []string{"", "sha256:short", observation + "\nextra"} {
+			if res, _ := captureVerifyrun(t, append(closeArgs, flag, bad)); res.code == verifyrunExitPass || getFile(t, fx.witness) != witness {
+				t.Fatalf("invalid observation %q changed or accepted the witness", bad)
+			}
+		}
+		planted := "Kubernetes-Observation: " + observation + "\n" + witness
+		putFile(t, fx.witness, planted)
+		if res, _ := captureVerifyrun(t, closeArgs); res.code == verifyrunExitPass || getFile(t, fx.witness) != planted {
+			t.Fatal("accepted a container-supplied observation")
+		}
+		putFile(t, fx.witness, witness)
+		if res, stderr := captureVerifyrun(t, append(closeArgs, flag, observation)); res.code != verifyrunExitPass {
+			t.Fatalf("close with observation: %s", stderr)
+		}
+		closed := getFile(t, fx.witness)
+		if !strings.Contains(closed, "Kubernetes-Observation: "+observation+"\nAdmission-Bracket: ") {
+			t.Fatalf("observation not sealed before the bracket: %s", closed)
+		}
+		verbLines(t, closed, verifyrunExitPass)
+		verbLines(t, strings.Replace(closed, observation, "sha256:"+strings.Repeat("6", 64), 1), verifyrunExitFail)
+		putFile(t, fx.witness, witness)
+	})
 	preClose := digestOf(t, witness)
 	if err := os.Chmod(fx.witness, 0o640); err != nil {
 		t.Fatal(err)
