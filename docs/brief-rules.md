@@ -326,13 +326,33 @@ nothing measured.
       something other than a clean repo-wide lint (one brief's lint, a named NOTICE, a
       problem count) is outside this rule.
     - **The row is not rewritten.** The Verify row keeps its authored command, because
-      editing a protected row needs its own transition. The Evidence entry records the
-      forge-enabled run beside the row's offline witness and cites this rule.
-    - **The record is not a rule-36 witness, and it is not written as a table row.** No tool
-      writes it. `statusgen` reads every `|` table row in an `## Evidence` section, so a
-      row in the witness columns would become the Verify row's newest witness, recording a
+      editing a protected row needs its own transition.
+    - **The tool writes the witness: `statusgen verifyrun --rule51`.**
+      Ruling A: https://github.com/medici-finance/assay/issues/4823#issuecomment-7015568405
+      The class is exact, never a substring: the command is, token for token,
+      `statusgen` with `--lint` and at most one `--root .` (or `--root=.`), or
+      `cd statusgen && go run .` with `--lint` and `--root ..`, and nothing else (no
+      `--diff-base`, `--acceptance-forge`, `--json`, redirection, pipe or `;`). The Expect
+      decides on exit 0 with no count bound and no required line but `LINT: PASS`. For
+      each such row the offline run records red, an admitted host run with `--rule51` also
+      runs its own binary as `--root . --lint --acceptance-forge` under the run's verifier
+      read credential. The row's witness keeps its authored command and offline result
+      and gains a stamp in its Result cell: `rule51=<state> forge-rc=<n>
+      forge-out=sha256:<12> pin=<version> cred=verifier-run-read cred-digest=sha256:<12>
+      stamp=sha256:<64>`. The stamp's digest binds it to the row's id, command, offline
+      result and output hash, tree and date. `verifyrun --check` and the closure gate
+      (`brief --check-verified`, which `deskevidence` runs) credit the row only when that
+      digest holds, the forge state is `pass` with rc 0, the credential class is the
+      verifier's run-scoped read credential, the pin is a release tag (a `dev` build is
+      not a pin) and the tree is a clean revision. Anything else stays the recorded
+      failure. The digest is unkeyed: it is a tool format, not a signature, so a
+      hand-written stamp is held to admission and review like any witness row.
+    - **A hand record is not a rule-36 witness, and it is never credited.** A prose or
+      hand-table citation of a forge run does not clear the row. Where one is still
+      written for a reader, it is never a table row: `statusgen` reads every `|` table
+      row in an `## Evidence` section, so a row in the witness columns would become the Verify row's newest witness, recording a
       command the row does not carry. `verifyrun --check` would then report the row
-      `could-not-run`, and the witness gate would refuse the close. Record the run as
+      `could-not-run`, and the witness gate would refuse the close. Write it as
       prose or a fenced block outside any table, with no line starting with `|`. State
       the command as run, its exit status and the state decided above, the revision, the
       date, who ran it, and the `sha256:` fingerprint of the combined output. Include the
