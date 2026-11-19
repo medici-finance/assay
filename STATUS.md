@@ -152,7 +152,7 @@ _Held by per-stream caps: 13 brief(s) across 1 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 62a6169dc 2026-11-18T23:48:12Z_
+_last regen: 9a582c51e 2026-11-19T02:28:58Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +173,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 62a6169dc 2026-11-18T23:48:12Z_
+_last regen: 9a582c51e 2026-11-19T02:28:58Z_
 
 **Progress:** 36/100 brief items done.
 
@@ -389,8 +389,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 13 [exec:strong] | implemented | 2030 | 2 | 3d | operator | environment blocker, cite medici-finance/assay#7103 | — | — |
 | forge-neutral | 14 [exec:strong] | implemented | 2030 | 0 | 3d | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | measured-status | 01 | implemented | 2030 | 0 | 3d | operator | environment blocker, cite #4823 | — | — |
-| desk-tools | 50 [exec:strong] | implemented | 2010 | 2 | 38h | operator | environment blocker, cite medici-finance/assay#7036 | — | — |
-| desk-tools | 62 [exec:strong] | implemented | 2010 | 2 | 34h | operator | environment blocker, cite medici-finance/assay#6444 | — | — |
+| desk-tools | 50 [exec:strong] | implemented | 2010 | 2 | 39h | operator | environment blocker, cite medici-finance/assay#7036 | — | — |
+| desk-tools | 62 [exec:strong] | implemented | 2010 | 2 | 35h | operator | environment blocker, cite medici-finance/assay#6444 | — | — |
 | intake-class-routing | 01 [exec:strong] | implemented | 2010 | 0 | 35h | operator | environment blocker, cite medici-finance/assay#6851 | — | — |
 | intake-class-routing | 03 | implemented | 2010 | 0 | 35h | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | intake-class-routing | 05 | implemented | 2010 | 0 | 35h | operator | environment blocker, cite medici-finance/assay#6851 | — | — |
