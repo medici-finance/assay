@@ -492,15 +492,15 @@ the 13 unchecked entries remain review judgments, not passes. Rows 1–6 exit 0,
 ends with a grep that needs its named `--- PASS:` line. The bracket digest for the container block reports verdict=match with
 one Tree-Digest, Container-Image and attestation line.
 
-Row 9 FAIL: exit 1 with `LINT: FAIL 3 problem(s)`. The three PROBLEM lines, read from a hand
+Row 9 offline witness: exit 1 with `LINT: FAIL 3 problem(s)`. The three PROBLEM lines, read from a hand
 re-run of the same command in this home just after its witness (no credit; the witness keeps
 only an output digest), were:
 `PROBLEM: desk-tools/37: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required`,
 the same line for desktools-v2/65, and the same line for forge-neutral/54. None names
 derived-board/11. The admitted row command does not pass --acceptance-forge and was not
-changed. The Expect cell asks for exit 0 and LINT PASS, so the row fails as written. The
-earlier 2026-11-02 ruling covered two problems at an older commit; this run observes a third
-(forge-neutral/54), and no ruling for this commit is recorded here.
+changed.
+
+Ruling basis (row 9): docs/brief-rules.md rule 51 (driver ruling https://github.com/medici-finance/assay/issues/4823#issuecomment-6725046323). At medici-finance/assay dec9c4dba7d8 the desk ran `statusgen --root . --lint --acceptance-forge` (statusgen v1.0.88) as the verifier App in the host lane, in a clean detached tree, with DESK_LOOP naming the verify loop and the App's GH_TOKEN set explicitly: LINT: PASS, rc=0 (output sha256 6b9e6adad25046d08547a74255699dab9695aa37389e3fc798ca7117a78a5178, assay-config lines excluded). Plain `statusgen --root . --lint` in the same tree gave rc=1 with exactly the three acceptance-transition could-not-check PROBLEMs named above, and no PROBLEM line names derived-board/11. The row keeps its authored command and its offline witness above.
 
 No row is risk-bearing under the fail-first definition (every brief risk field is no and no
 row tag is risk-bearing, live, mutating or end-to-end), so no fail-first witness is owed.
@@ -513,7 +513,7 @@ delivery commits 92315c7fa and 85fe81678, read at this source:
 - RISK-VALUE: DERIVED — version = 3 at delivery (now 4 @ the same brief, line 14, after later maintenance) — one increment from 2 for the added delivery metadata, as the brief-v2 metadata contract requires.
 - Test-only bounds (members want 10 @ statusgen/boardcohort_test.go:136, reviews want 2 @ line 139, collection cutoff 3803 @ line 371, applied want 9 @ line 442, drift seen want 9 @ line 476) match the ten-row fixed cohort, its two reviews, the recorded collection and its nine full members; they are reversible test constants and rank last.
 
-**VERIFY: FAIL** — row 9 (`statusgen --root . --lint`) exits 1 with 3 PROBLEMs on other briefs; rows 1–8 pass (rows 1–6 bracketed container witness, rows 7–9 host witness)
+**VERIFY: PASS** — 9 of 9 rows pass (row 9 credited under rule 51 per the ruling basis above; rows 1–8 pass as written; rows 1–6 bracketed container witness, rows 7–9 host witness)
 
 
 ## Review
