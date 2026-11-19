@@ -146,3 +146,36 @@ func TestDeskevidenceReadSetAlreadyLanded(t *testing.T) {
 		t.Fatalf("exit %d, writes %+v; want the new row alone", code, f.writes)
 	}
 }
+
+// regression: #2026
+// TestReadSetStateDirPerWorktree — in a linked worktree the state directory is
+// that worktree's own git dir, where the recorder writes, never the common dir.
+func TestReadSetStateDirPerWorktree(t *testing.T) {
+	base := t.TempDir()
+	main, linked := filepath.Join(base, "main"), filepath.Join(base, "linked")
+	git := func(dir string, args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-c", "commit.gpgsign=false"}, args...)...)
+		cmd.Env = deskkit.VerifierReadEnv()
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	if err := os.MkdirAll(main, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git(main, "init", "-q")
+	git(main, "commit", "-q", "--allow-empty", "-m", "base")
+	git(main, "worktree", "add", "-q", "--detach", linked)
+	want := filepath.Join(git(linked, "rev-parse", "--absolute-git-dir"), "assay-read-sets")
+	common := filepath.Join(git(main, "rev-parse", "--absolute-git-dir"), "assay-read-sets")
+	got, err := readSetStateDir(linked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want || got == common {
+		t.Fatalf("state dir %s; want the linked worktree's own %s, never the common %s", got, want, common)
+	}
+}

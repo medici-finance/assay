@@ -28,7 +28,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -67,12 +66,16 @@ type readSetCapture struct {
 // readSetStateDirFn resolves root's state directory; a test seam.
 var readSetStateDirFn = readSetStateDir
 
+// readSetStateDir asks git through deskkit's verifier read seam (no new git
+// spawn), so the answer is the per-worktree git dir the recorder writes under,
+// never the common dir. root is made absolute first, so the process cwd never
+// decides which checkout is asked.
 func readSetStateDir(root string) (string, error) {
-	cmd := exec.Command("git", "-C", root, "rev-parse", "--path-format=absolute", "--git-path", evaluation.ReadSetStateDir)
-	cmd.Dir = os.TempDir()
-	cmd.Env = deskkit.VerifierReadEnv()
-	out, err := cmd.Output()
-	dir := strings.TrimSpace(string(out))
+	abs, aerr := filepath.Abs(root)
+	if aerr != nil {
+		return "", fmt.Errorf("git rev-parse --git-path %s in %s did not name a directory", evaluation.ReadSetStateDir, root)
+	}
+	dir, err := deskkit.VerifierGitPath(abs, evaluation.ReadSetStateDir)
 	if err != nil || !filepath.IsAbs(dir) {
 		return "", fmt.Errorf("git rev-parse --git-path %s in %s did not name a directory", evaluation.ReadSetStateDir, root)
 	}
