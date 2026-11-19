@@ -58,14 +58,20 @@
     {
       "name": "wrong-author (unmapped login) check disabled",
       "file": "decisionruling.go",
-      "old": "if name == \"\" {",
-      "new": "if false && name == \"\" {"
+      "old": "if name = humanNameForLogin(humanLogins, login); name == \"\" {",
+      "new": "if name = humanNameForLogin(humanLogins, login); false && name == \"\" {"
     },
     {
       "name": "wrong-author (other mapped human) check disabled",
       "file": "decisionruling.go",
-      "old": "if matched == \"\" {",
-      "new": "if false && matched == \"\" {"
+      "old": "return \"\", \"but decided-by names \" + strings.Join(want, \", \")",
+      "new": "return \"\", \"\""
+    },
+    {
+      "name": "wrong-author refusal disabled on the GitLab note path",
+      "file": "rulinggitlab.go",
+      "old": "return refuse(rulingWrongAuthor, \"note %d is authored by %s, %s\", link.CommentID, cm.AuthorLogin, why)",
+      "new": "_ = why"
     },
     {
       "name": "comment-sits-on-linked-issue check disabled",
