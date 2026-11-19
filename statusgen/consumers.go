@@ -875,14 +875,16 @@ func corroborateBriefWithSnapshot(root string, streams []*Stream, changed map[st
 }
 
 // isSelfRoute reports whether follow-up target t names the referring brief
-// itself. Either spelling of the referrer counts: its filename-derived
-// <stream>/<NN> id, or its `brief:` id reduced to that form (a brief-v2
-// hierarchical id), so a v2 brief cannot dodge the check by spelling.
+// itself. The referrer is identified by its filename-derived <stream>/<NN> id,
+// which is the same for a brief-v1 and a brief-v2 file, so a v2 brief cannot
+// dodge the check by spelling its `brief:` id hierarchically. That id drops no
+// repo alias (TestAliasDropGuard); followUpReferencesBack keys the referrer the
+// same way. A raw `brief:` equal to t (a v1 id) also counts.
 func isSelfRoute(t string, bf *BriefFile) bool {
 	if short, _, ok := expectedBriefID(bf.Path); ok && short == t {
 		return true
 	}
-	return normalizeBriefKey(bf.Brief) == t
+	return bf.Brief == t // briefid:raw the v1 id is itself the <stream>/<NN> ref form
 }
 
 // selfRouteVerdict judges a self-route (`follow-up <stream>/<NN>` naming the

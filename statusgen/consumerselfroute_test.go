@@ -140,11 +140,12 @@ func TestSelfRouteSiteShapes(t *testing.T) {
 
 // regression: #4560
 func TestSelfRouteSpelling(t *testing.T) {
-	// A brief-v2 id must not dodge the self-route check by spelling.
+	// A brief-v2 id must not dodge the self-route check by spelling: the
+	// referrer is keyed by its filename-derived id, which drops no repo alias.
 	for _, bf := range []*BriefFile{
 		{Brief: "alpha/01", Path: "docs/streams/alpha/brief-01-claims.md"},
 		{Brief: "cell:repo:alpha:01", Path: "docs/streams/alpha/brief-01-claims.md"},
-		{Brief: "cell:repo:alpha:01", Path: "elsewhere/notabrief.md"},
+		{Brief: "alpha/01", Path: "elsewhere/notabrief.md"},
 	} {
 		if !isSelfRoute("alpha/01", bf) {
 			t.Fatalf("%+v: alpha/01 is a self-route", bf)
