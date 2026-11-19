@@ -131,7 +131,12 @@ readlink() { [ "$1" = /proc/self/ns/net ] || return 1; printf 'net:[123]\n'; }
                 args += ['--source-proof']
             if source is not False:
                 args += ['--sha=' + (sha if source is None else source)]
-            result = subprocess.run(['/bin/bash', str(script), *args, *flags], env=dict(runenv, VR_TEST_KEY=key), capture_output=True)
+            row_env = dict(runenv, VR_TEST_KEY=key)
+            if key == 'seed':
+                # Invalid seed arguments must be refused before touching the volume.
+                row_env['VR_WORK_DIR'] = str(base / 'forbidden-seed-checkout')
+            result = subprocess.run(['/bin/bash', str(script), *args, *flags], env=row_env, capture_output=True)
+            require(not (base / 'forbidden-seed-checkout').exists(), 'seed:unexpected-copy')
             # No fixture path, including a guard regression, may attempt a
             # network seam. The operational probe is a local sentinel instead.
             require(not network.exists(), 'seams:probe-network')
