@@ -21,6 +21,9 @@ packaging review does not supply it. Agent-execution/09 owns managed boot and
 isolation; desk-containers/28 owns the managed operator; /29 owns real-profile
 qualification. A Running Pod does not acquire a role lease or authorize effects.
 
+The [five-role lifecycle rehearsal](../../docs/kubernetes-compatibility-qualification.md)
+exercises the compiled CLI against a local Kubernetes fixture.
+
 Each desk's container log is also a session transcript: `tty: true` sends terminal
 output, including echoed input and anything a command prints, to the runtime log.
 Treat logs as compatibility key-custody material even if a session normally prints
