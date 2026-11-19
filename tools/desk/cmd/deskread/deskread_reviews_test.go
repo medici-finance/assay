@@ -90,3 +90,26 @@ func TestDeskreadReviewsKind(t *testing.T) {
 		}
 	})
 }
+
+// regression: #7202
+// TestFlipFixtureBodies pins the note bodies statusgen's GitLab auto-flip fixtures
+// (statusgen/autoflip_gitlab_test.go) feed through a stub `reviews` read to the State the real
+// reduction gives them, so a fixture cannot claim a verdict the forge read would not report.
+// Keep the bodies byte-identical to that file's verdictBody and refusal cases.
+func TestFlipFixtureBodies(t *testing.T) {
+	const head = "1111111111111111111111111111111111111111"
+	verdictBody := func(verdict string) string {
+		return "Verdict: " + verdict + "\n\n## Summary\n\nReviewed at head " + head + ".\n\nOn-behalf-of: human:example-driver\n"
+	}
+	for body, want := range map[string]string{
+		verdictBody("approve"):                     "APPROVED",
+		verdictBody("request-changes"):             "CHANGES_REQUESTED",
+		"Verdict: request-changes at " + head:      "",
+		"Security-Review: pass at " + head:         "",
+		"Re-review pending: head moved to " + head: "",
+	} {
+		if got := deskkit.VerdictNoteState(body); got != want {
+			t.Errorf("VerdictNoteState(%q) = %q, want %q", body, got, want)
+		}
+	}
+}

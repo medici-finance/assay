@@ -43,13 +43,26 @@ type glWorld struct {
 }
 
 // glVNote is one MR note as deskread renders it: its author, body, and the State the reviews
-// read reduces it to (deskkit.VerdictNoteState: APPROVED for a `Verdict: approve` line,
-// CHANGES_REQUESTED for request-changes or a security fail, COMMENTED otherwise). The fixture
-// states it explicitly, the way the real verb would emit it.
+// read reduces it to (deskkit.VerdictNoteState: APPROVED for a whole `Verdict: approve` line,
+// CHANGES_REQUESTED for a whole `Verdict: request-changes` line or a security fail, COMMENTED
+// otherwise). The fixture states it explicitly, the way the real verb would emit it; the
+// bodies below are pinned to those states by deskread's TestFlipFixtureBodies, so a fixture
+// cannot claim a state the real reduction would not give.
 type glVNote struct{ Author, Body, State string }
 
+// verdictBody is the shape `deskpost review` posts as a GitLab note: the caller's body, whose
+// verdict marker is a line of its own, naming the head it reviewed, plus the On-behalf-of
+// trailer deskpost appends. `Verdict: approve at <sha>` on one line is NOT a verdict line.
+func verdictBody(verdict, sha string) string {
+	return "Verdict: " + verdict + "\n\n## Summary\n\nReviewed at head " + sha + ".\n\nOn-behalf-of: human:example-driver\n"
+}
+
 func approveNote(author, sha string) glVNote {
-	return glVNote{author, "Verdict: approve at " + sha, "APPROVED"}
+	return glVNote{author, verdictBody("approve", sha), "APPROVED"}
+}
+
+func rejectNote(author, sha string) glVNote {
+	return glVNote{author, verdictBody("request-changes", sha), "CHANGES_REQUESTED"}
 }
 
 func glArgKey(args ...string) string {
@@ -209,18 +222,21 @@ func TestGitLabLiveRefusals(t *testing.T) {
 		}, "no note"},
 		// A note only corroborates when it IS an approve verdict: a stale approval plus any
 		// other reviewer note naming the head (a security pass, a relay) must not flip.
+		{"request-changes text at head", func(w *glWorld) {
+			w.notes(approveNote(glReviewer, afStaleSHA),
+				glVNote{glReviewer, "Verdict: request-changes at " + afHeadSHA, "COMMENTED"})
+		}, "no note"},
 		{"security pass note at head", func(w *glWorld) {
 			w.notes(approveNote(glReviewer, afStaleSHA),
-				glVNote{glReviewer, "Security-Review: pass\n\nReviewed at " + afHeadSHA, "COMMENTED"})
+				glVNote{glReviewer, "Security-Review: pass at " + afHeadSHA, "COMMENTED"})
 		}, "no note"},
-		{"plain comment naming head", func(w *glWorld) {
+		{"re-review relay at head", func(w *glWorld) {
 			w.notes(approveNote(glReviewer, afStaleSHA),
-				glVNote{glReviewer, "re-review pending at " + afHeadSHA, "COMMENTED"})
+				glVNote{glReviewer, "Re-review pending: head moved to " + afHeadSHA, "COMMENTED"})
 		}, "no note"},
-		// The last verdict governs: a request-changes note after the at-head approve withdraws it.
+		// The newest verdict governs: a request-changes note after the at-head approve withdraws it.
 		{"rejection after approve", func(w *glWorld) {
-			w.notes(approveNote(glReviewer, afHeadSHA),
-				glVNote{glReviewer, "Verdict: request-changes at " + afHeadSHA, "CHANGES_REQUESTED"})
+			w.notes(approveNote(glReviewer, afHeadSHA), rejectNote(glReviewer, afHeadSHA))
 		}, "no note"},
 		{"approval by another login", func(w *glWorld) { w.reviews(approval("someone-else")) }, "no approval"},
 		// GitLab's reviews read renders a "Verdict: approve" note APPROVED too; with a body it
@@ -240,8 +256,7 @@ func TestGitLabLiveRefusals(t *testing.T) {
 // regression: #7202
 func TestGitLabLiveReapproved(t *testing.T) {
 	w := newGLWorld()
-	w.notes(glVNote{glReviewer, "Verdict: request-changes at " + afStaleSHA, "CHANGES_REQUESTED"},
-		approveNote(glReviewer, afHeadSHA))
+	w.notes(rejectNote(glReviewer, afStaleSHA), approveNote(glReviewer, afHeadSHA))
 	if got := runGL(t, w); got.Outcome != flipDone {
 		t.Fatalf("af/01 = %v (%s), want FLIPPED: an approve after the rejection governs", got.Outcome, got.Reason)
 	}
@@ -270,8 +285,10 @@ func TestGitLabLiveCouldNotCheck(t *testing.T) {
 			w.set(partial("reviews"), "reviews", "--change", glRepo+"#101")
 			w.codes[glArgKey("reviews", "--change", glRepo+"#101")] = 6
 		}, nil, "forge 503"},
+		// complete:false alone: the listed count matches changedFiles, so only the completeness
+		// guard can refuse it (shapeFromListing's count check would catch a mismatch on its own).
 		{"truncated file list", func(w *glWorld) {
-			w.set(glItem("change-files", 101, `"changeFiles":{"complete":false,"changedFiles":3,"files":[{"filename":"internal/example/example.go","patchAbsent":true}]}`),
+			w.set(glItem("change-files", 101, `"changeFiles":{"complete":false,"changedFiles":1,"files":[{"filename":"internal/example/example.go","patch":"@@ -1 +1 @@","patchAbsent":false}]}`),
 				"change-files", "--change", glRepo+"#101")
 		}, nil, "truncated"},
 		{"intermediate commit list incomplete", func(w *glWorld) {
