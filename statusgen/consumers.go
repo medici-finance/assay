@@ -844,6 +844,9 @@ func corroborateBriefWithSnapshot(root string, streams []*Stream, changed map[st
 				switch {
 				case !briefIndex[t]:
 					add(stateDisproved, raw, fmt.Sprintf("routes to follow-up %s, which is not a brief in any stream README", t))
+				case isSelfRoute(t, bf):
+					state, reason := selfRouteVerdict(root, e.Site, changed, resolve, isDir)
+					add(state, raw, reason)
 				case !followUpReferencesBack(streams, t, bf.Brief, bf.Path):
 					add(stateUnchecked, raw, fmt.Sprintf("%s exists but never references %s — coverage is claimed, not shown", t, bf.Brief))
 				default:
@@ -869,6 +872,66 @@ func corroborateBriefWithSnapshot(root string, streams []*Stream, changed map[st
 		}
 	}
 	return out
+}
+
+// isSelfRoute reports whether follow-up target t names the referring brief
+// itself. Either spelling of the referrer counts: its filename-derived
+// <stream>/<NN> id, or its `brief:` id reduced to that form (a brief-v2
+// hierarchical id), so a v2 brief cannot dodge the check by spelling.
+func isSelfRoute(t string, bf *BriefFile) bool {
+	if short, _, ok := expectedBriefID(bf.Path); ok && short == t {
+		return true
+	}
+	return normalizeBriefKey(bf.Brief) == t
+}
+
+// selfRouteVerdict judges a self-route (`follow-up <stream>/<NN>` naming the
+// brief that carries the entry) against the diff (#4560).
+//
+// A self-route defers the site to this brief's own implementation, so the
+// target always exists and always "references back" — those two checks prove
+// nothing about it. Pinned to an unrelated delivery, every self-routed brief
+// used to print the same all-corroborated summary as at its real delivery. The
+// only evidence that the implementation carried the site is the diff, so the
+// site is read the way fixed-here reads it, with one difference in direction:
+//
+//   - every resolved path is touched (or the site is absent but named by the
+//     diff, a delete/rename) → CORROBORATED;
+//   - anything else → UNCHECKED, never CORROBORATED: a prose/foreign/escaping
+//     site the diff cannot judge, a path not yet created, an untouched site, or
+//     a set only partly touched.
+//
+// Untouched is UNCHECKED rather than DISPROVED on purpose. The self-route is
+// the disposition fixed-here's own refusal recommends for an authoring PR that
+// declares a path its implementation will create, and a real delivery may keep
+// a declared site as it is (desktools-v2/47 kept eight documented invocation
+// forms). In a delivery-pinned run a brief whose self-routes are all UNCHECKED
+// corroborates nothing and exits COULD-NOT-CHECK, so the unrelated delivery and
+// the pre-delivery base both fail.
+func selfRouteVerdict(root, raw string, changed map[string]bool, resolve func(string, string) ([]string, error), isDir func(string) bool) (string, string) {
+	st := classifySiteUsing(root, raw, resolve)
+	if st.Kind != siteRepoPath {
+		return stateUnchecked, "self-route: " + st.Reason + " — the diff cannot show this brief carried it"
+	}
+	if len(st.Matches) == 0 {
+		if changed[filepath.ToSlash(strings.TrimSuffix(st.Token, "/"))] {
+			return stateCorroborated, "self-route: path is absent from the tree but present in the diff (deleted/renamed here)"
+		}
+		return stateUnchecked, fmt.Sprintf("self-route: %q resolves to nothing under the root and the diff does not name it — the deferral is still open, not carried", st.Token)
+	}
+	missing := untouchedUsing(changed, st.Matches, isDir)
+	switch {
+	case len(missing) == 0:
+		reason := directoryEvidenceUsing(changed, st.Matches, isDir)
+		if reason == "" {
+			return stateCorroborated, "self-route: carried by this diff"
+		}
+		return stateCorroborated, "self-route: " + reason
+	case len(missing) == len(st.Matches):
+		return stateUnchecked, fmt.Sprintf("self-route to this brief, but the diff touches none of %s — the target brief and its reference-back are the entry itself, so nothing shows this delivery carried the site", strings.Join(st.Matches, ", "))
+	default:
+		return stateUnchecked, fmt.Sprintf("self-route to this brief, but the diff leaves %d of %d path(s) untouched: %s — a site naming a set claims the whole set", len(missing), len(st.Matches), strings.Join(missing, ", "))
+	}
 }
 
 // ---------------------------------------------------------------------------
