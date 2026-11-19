@@ -575,6 +575,17 @@ as the planner and acts on its rows.
   here; there is no override flag, no un-ready verb, no merge verb. Exit 5 = a condition failed
   (fix it, or leave the PR parked); exit 6 = a condition could not be READ (blind, never green).
 - **A ready-flip is an authority-bearing write, so it needs a strong-tier session** — deskflip's model-capability floor refuses a flip whose dispatch is ATTESTED below the strong tier, and admits with a NOTICE any session carrying no strength attestation: an unattested or human-driven one, a `dispatched-tier:any` dispatch (since `any` records that the brief demanded no particular tier rather than that a weak runner ran), and a stamp that has AGED OUT because the dispatch claim behind it was released — a dead cycle's stamp attests nothing about the write in front of you, so the PR reads unstamped rather than being bricked by an attestation nobody can repair. The NOTICE is not a clearance — delegate work downward freely, but escalate the flip upward rather than issue it from a below-tier session.
+- **An attested worker PR leaves draft only with its authoring stamp (`authoring-stamp`).** When the
+  PR body carries a `Worker-Attestation:` line, both flip verbs (`deskflip` and `deskpost ready`)
+  read that record and refuse, exit 5, unless the PR carries the `authored-model:` /
+  `authored-tier:` pair the record selected, applied by a stamp authority. An unstamped,
+  incomplete, foreign-applied or mismatched pair all refuse, and the refusal prints the exact
+  `deskdispatch --stamp-only … --attestation <N> --model … --tier … --kit …` line built from the
+  record. An unreadable record is exit 6. A PR with no line is unaffected. Ready is the last
+  machine gate before the human's merge, and `--stamp-only` refuses a merged change, so a stamp
+  that misses this gate can never land. That stamp is the coordinator's act, not this desk's:
+  hand the refused PR and its printed line to `the-desk` and leave the PR parked. Never apply an
+  `authored-*` label yourself.
 - **Your dispatch is what makes a review verdict attestable — stamp it.** The floor accepts a `dispatched-*` stamp only from the App that DISPATCHED the session, and for the review lane that App is the reviewer App, not the desk App: this loop drives its own reviewers, so it is this loop's dispatch that must carry the model attestation. `deskdispatch --kit review` mints the reviewer identity and applies the stamp for you; a reviewer launched by any path that skips it carries no attestation, and its verdict clears the floor only on the unstamped NOTICE branch. **That NOTICE branch is RISK-CONDITIONAL (ruling 3):** on a risk-classed PR — every public-repo PR, and any diff touching a security path — a security-review-bearing verdict must carry a trustable strong-tier attestation, so an UNSTAMPED verdict there REFUSES rather than proceeds. Dispatch such reviewers strong-tier through `deskdispatch --kit review`; the NOTICE-proceed is left only for unstamped NON-risk PRs. Never apply a `dispatched-*` label by hand — a stamp the session could have written for itself is the self-report the whole mechanism exists to defeat.
   Only the human's explicit waiver substitutes for a missing security artifact. Post the wrap-up
   comment listing filed follow-ups as `<repo>#<N>` pointers. **Merge stays the human's.**
