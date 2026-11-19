@@ -737,5 +737,48 @@ Risk-bearing value: the frontmatter risk fields are present and all no; irrevers
 
 **VERIFY: FAIL** — row 7: exit 1, the report carries no decision: adopt-candidate or decision: reject line (decision: could-not-check at 08-report.md line 96; #2816 open); 8 of 10 rows meet Expect; row 2 could-not-run (the admitted row environment has no roster, so deskdispatch --dry-run refuses with exit 6).
 
+### Verifier re-run — 2026-11-19 (desk-supervision/08, source 08834a1a6e12)
+
+Non-implementer verifier (claude-opus-5-5, tier strong) at merged main 08834a1a6e12, admitted by attestation medici-finance/assay#7226 (pre-work deskdispatch --check-verifier rc 0). deskpathguard rederive: 10 original rows, 0 author-added. All ten rows are class check (none is check:ci), so they ran in the host lane: statusgen verifyrun --rows 1,2,3,4,5,6,7,8,9,10 (statusgen v1.0.88, darwin arm64), with KUBECONFIG=/dev/null and the verifier Git environment, one attempt 16:40:23Z–16:40:36Z. The witness below is that run's output. Since source 1a259b85f7b5, the delivery (kits.go, worker-prompt-objective.md, common-clauses.md, fixtures, 08-arms, 08-report.md, verify.d) is unchanged; deskdispatch changed only in dispatch, prompt and attestation code.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --kits` | pass exit=0 | sha256:62a34e5296d6 | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `bash -o pipefail -c 'cd tools/desk && GOWORK=off GOPROXY=off go run ./cmd/deskdispatch assay/desk-supervision/08 --dry-run --kit worker-objective --root ../.. \| grep -F "KUBECONFIG=/dev/null" >/dev/null'` | fail exit=1 | sha256:7cc0b06c270f | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk/cmd/deskdispatch/references && awk '/<!-- common-clauses:begin -->/,/<!-- common-clauses:end -->/' worker-prompt-objective.md \| diff - common-clauses.md` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `ls tools/skillbench/fixtures/worker-kit/ \| wc -l` | pass exit=0 | sha256:30179a803d48 | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `bash docs/streams/desk-supervision/verify.d/08-reduction.sh` | pass exit=0 | sha256:baa30936e74d | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `for a in with-overlay without-overlay; do ls docs/streams/desk-supervision/08-arms/$a \| wc -l; done` | pass exit=0 | sha256:9be9b418f3b8 | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -E -e '^decision: adopt-candidate — ' -e '^decision: reject — ' docs/streams/desk-supervision/08-report.md` | fail exit=1 | sha256:e3b0c44298fc | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `grep -c 'wedges' docs/streams/desk-supervision/08-report.md` | fail exit=0 | sha256:06e9d52c1720 | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 9 | `python3 docs/streams/desk-supervision/verify.d/08-consumers.py` | pass exit=0 | sha256:5cffef493b51 | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 10 | `python3 docs/streams/desk-supervision/verify.d/08-mutations.py` | pass exit=0 | sha256:fe939745f9de | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7226 run=676eccae420ccedf260c79b6c87e3835fd243d7edae0cbf8023897fee3cd1a81 source=08834a1a6e1226100404e8479e6473d607629260 brief=docs/streams/desk-supervision/brief-08-objectives-over-transitions.md model=claude-opus-5-5 tier=strong
+
+statusgen verifyrun --check: 6 pass, 3 fail, 1 could-not-run/missing (of 10 Verify rows); exit 2.
+
+Key output, from a supplemental host pass of the same commands (no acceptance credit; the witness above is the record):
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 2 | `bash -o pipefail -c 'cd tools/desk && GOWORK=off GOPROXY=off go run ./cmd/deskdispatch assay/desk-supervision/08 --dry-run --kit worker-objective --root ../.. \| grep -F "KUBECONFIG=/dev/null" >/dev/null'` | exit 0 | Witness: fail exit=1. Supplemental: with an empty HOME, the setting verifyrun gives an admitted row, deskdispatch prints "assay-config: REFUSED — no roster configured" and "could-not-check: assay/desk-tools inactive", exits 6, and go run exits 1. With the verifier's ordinary HOME the same command exits 0. The fail is recorded as observed; the row needs a roster the admitted environment does not supply (check-definition gap, class of #6770 and #6904). | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (model verifier) (on-behalf-of human:ian) |
+| 3 | `cd tools/desk/cmd/deskdispatch/references && awk '/<!-- common-clauses:begin -->/,/<!-- common-clauses:end -->/' worker-prompt-objective.md \| diff - common-clauses.md` | exit 0, byte-identical | Witness: pass exit=0, empty diff (sha256:e3b0c44298fc). verifyrun --check reports it could-not-run because the witness records a different command, the known cell-parser issue (#2679). | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (model verifier) (on-behalf-of human:ian) |
+| 5 | `bash docs/streams/desk-supervision/verify.d/08-reduction.sh` | exit 0; Safety floor held | exit 0; "- Safety floor (task-check pass rate): held — with-overlay pass rate 100% >= without-overlay 100%" | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (model verifier) (on-behalf-of human:ian) |
+| 7 | `grep -E -e '^decision: adopt-candidate — ' -e '^decision: reject — ' docs/streams/desk-supervision/08-report.md` | exit 0; exactly one line | FAILED: exit 1, no matching line. The report's only decision line (08-report.md line 96) reads "decision: could-not-check — check_pass_rate 100%/15 vs 100%/15; wedges could-not-check in both arms (observer logs absent)" (#2816). | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (model verifier) (on-behalf-of human:ian) |
+| 8 | `grep -c 'wedges' docs/streams/desk-supervision/08-report.md` | output is 1 or more | Witness: fail exit=0, "no output line equals 1". The observed output is 6, which meets the Expect cell as written; the witness's Expect reader takes "1 or more" as an exact match (#1702). | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (model verifier) (on-behalf-of human:ian) |
+
+Rows 1, 4, 6, 9 and 10 also showed their expected key output in the supplemental pass: worker-objective listed; 5 fixtures; 15 and 15 runs; "CORROBORATED: 3 consumer routes"; "2 planted defects rejected".
+
+Totals: 10 required rows, 10 run. Witness: 7 pass, 3 fail (2, 7, 8). verifyrun --check: 6 pass, 3 fail (2, 7, 8), 1 could-not-run (3).
+
+Risk-bearing value: the frontmatter risk fields are present and all no, so the trigger does not fire. The enumeration over delivery badd7b58c (#1266) and rework 41f875fc2 (#3239), re-read at this source:
+
+- RISK-VALUE: DERIVED — kitFile["worker-objective"] = "references/worker-prompt-objective.md" @ tools/desk/cmd/deskdispatch/kits.go:53 — registered by name only; the default stays str("kit", "worker", ...) @ tools/desk/cmd/deskdispatch/cli.go:73, so the kit is opt-in.
+- RISK-VALUE: DERIVED — grep -Fc '100% (n=15/15)' must equal 2 @ docs/streams/desk-supervision/verify.d/08-reduction.sh:11 — 5 tasks times 3 runs gives 15 per arm, and there are two arms (rows 4 and 6).
+- RISK-VALUE: NAMED, NOT DERIVED — HeartbeatGap = 20 * time.Minute @ tools/desk/internal/loopengine/liveness.go:92 — the wedge threshold the report cites; no observer log exists in either arm, so no wedge count derives from it (row 7).
+- Ranked last, not derived: --date 2026-09-17 @ 08-reduction.sh:9; subprocess timeouts in 08-consumers.py and 08-mutations.py.
+
+**VERIFY: FAIL** — row 7: exit 1, the report has no decision: adopt-candidate or decision: reject line (#2816 open); rows 2 and 8 also fail in the witness (row 2: no roster in the admitted environment; row 8: Expect reader); row 3 could-not-run under --check (#2679).
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
