@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -29,10 +30,10 @@ func TestPRsListsWorkerStampGap(t *testing.T) {
 			ch(9, "no line here\n"),
 		}}, nil
 	})
-	reads := 0
+	var reads atomic.Int64
 	prev := readWorkerRecordFn
 	readWorkerRecordFn = func(_ deskkit.Forge, fr deskkit.ForgeRepo, n int) (deskkit.WorkerReceipt, error) {
-		reads++
+		reads.Add(1)
 		return deskkit.WorkerReceipt{Issue: n, Binding: deskkit.WorkerBinding{Run: listRun, Repo: fr.Slug(),
 			Kit: "worker", Model: "m", Tier: "strong"}}, nil
 	}
@@ -61,8 +62,8 @@ func TestPRsListsWorkerStampGap(t *testing.T) {
 			}
 		}
 	}
-	if reads != len(repos) {
-		t.Errorf("records read = %d, want one per nominated change (%d)", reads, len(repos))
+	if got := reads.Load(); got != int64(len(repos)) {
+		t.Errorf("records read = %d, want one per nominated change (%d)", got, len(repos))
 	}
 	var buf bytes.Buffer
 	rep.render(&buf)

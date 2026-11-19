@@ -338,8 +338,8 @@ func originalDefinitionDrift(baseline, delivered string) string {
 // closure and the consumer-delivery derivation (consumerdelivery.go) both call
 // it, so a triple that fails here fails both. It does NOT choose which marker
 // supplies the triple: the closure reads the current run's marker, the
-// derivation reads every marker in the committed Evidence and refuses
-// distinct triples. why is empty on success.
+// derivation authenticates each distinct triple in the committed Evidence
+// and requires them all to name one delivery. why is empty on success.
 func deliveryCoordinates(dir, delivery, base, original string) (parents []string, why string) {
 	head, ok := (coverageRepo{root: dir}).ResolveCommit("HEAD")
 	if !ok || !isObjectID(head) {

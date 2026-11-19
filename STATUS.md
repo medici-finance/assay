@@ -70,7 +70,7 @@ _gate:model briefs at `verified` that the model auto-flip has not moved to `done
 | [desktools-v2/12](docs/streams/desktools-v2/README.md) | platform compatibility suite — Windows and GitLab semantics as pure-logic tests runnable on Linux/macOS | 4d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [desktools-v2/14](docs/streams/desktools-v2/README.md) | regression floor — the behavior the desk tools pass today, pinned as tests seeded from resolved issues, which desktools-v2 must keep green | 4d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [desktools-v2/15](docs/streams/desktools-v2/README.md) | Cobra and Viper foundation and complete CLI migration routing | 4d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
-| [desktools-v2/46](docs/streams/desktools-v2/README.md) | Migrate the release and provenance verbs to Cobra and Viper | 8h | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
+| [desktools-v2/46](docs/streams/desktools-v2/README.md) | Migrate the release and provenance verbs to Cobra and Viper | 9h | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [desktools-v2/61](docs/streams/desktools-v2/README.md) | Version shared performance boundaries and keep legacy reports comparable | 4d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [desktools-v2/65](docs/streams/desktools-v2/README.md) | Measure own forge request timing and GraphQL cost | 4d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [graph-execution/02](docs/streams/graph-execution/README.md) | Workflow-pattern schema, node contract, and the implementation and research patterns | 4d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
@@ -153,7 +153,7 @@ _Held by per-stream caps: 14 brief(s) across 1 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: d138a8f4f 2026-11-19T21:44:07Z_
+_last regen: 9f994f206 2026-11-19T23:32:27Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -174,7 +174,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: d138a8f4f 2026-11-19T21:44:07Z_
+_last regen: 9f994f206 2026-11-19T23:32:27Z_
 
 **Progress:** 37/100 brief items done.
 
@@ -238,18 +238,19 @@ _last regen: d138a8f4f 2026-11-19T21:44:07Z_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (11 for the desk · 56 for the driver · 51 for workers · 52 for an operator · 47 runner-pending — of 220 total; 3 could-not-check)
+## Awaiting verification / review (11 for the desk · 57 for the driver · 50 for workers · 52 for an operator · 47 runner-pending — of 220 total; 3 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
 _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a live/mutating check with no completed Evidence row behind it. UNRUN is DERIVED from Verify-vs-Evidence coverage — a row counts as run only when an Evidence row names it with a date and a runner, so silence reads as unrun. `--lint` names each one and whether it was routed to a follow-up._
 
-### Awaiting human gate (56)
+### Awaiting human gate (57)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
 | desktools-v2 | 16 [exec:strong] | implemented | 29540 | 57 | 4d | driver | resolve the recorded blocker before sign-off: hold (human-action), cite #2240 | — | — |
 | graph-execution | 16 [exec:strong] | implemented | 29040 | 54 | 4d | driver | resolve the recorded blocker before sign-off: hold (environment), cite medici-finance/assay#4823 | — | — |
+| desk-tools | 39 [exec:strong] | implemented | 20540 | 39 | 4d | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#4521 | — | — |
 | forge-neutral | 36 [exec:strong] | implemented | 17540 | 31 | 4d | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#5721 | — | — |
 | forge-neutral | 46 [exec:strong] | implemented | 16020 | 28 | 2d | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
 | graph-execution | 31 [exec:strong] | implemented | 15540 | 27 | 4d | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
@@ -305,11 +306,10 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 16 [exec:strong] | implemented | 1040 | 0 | 4d | driver | resolve the recorded blocker before sign-off: hold (human-action), cite medici-finance/assay#3398 | — | — |
 | windows-port | 10 [exec:strong] | implemented | 1040 | 0 | 4d | driver | sign off the PASS verdict (no sign-off card is raised for this brief) | — | — |
 
-### Awaiting implementer rework (51)
+### Awaiting implementer rework (50)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| desk-tools | 39 [exec:strong] | implemented | 20540 | 39 | 4d | worker | fix, cite medici-finance/assay#4560 | — | — |
 | graph-execution | 03 [exec:strong] | implemented | 18040 | 32 | 4d | worker | fix, cite medici-finance/assay#2715 | — | — |
 | desk-containers | 15 [exec:strong] | implemented | 14540 | 27 | 4d | worker | fix, cite medici-finance/assay#4823 | — | — |
 | forge-neutral | 51 [exec:strong] | implemented | 14520 | 25 | 2d | worker | fix, cite medici-finance/assay#6099 | — | — |
@@ -317,7 +317,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 39 [exec:strong] | implemented | 12040 | 20 | 4d | worker | fix, cite medici-finance/assay#4560 | — | — |
 | desk-tools | 40 [exec:strong] | implemented | 11020 | 20 | 2d | worker | fix, cite medici-finance/assay#4560 | — | — |
 | desk-tools | 41 [exec:strong] | implemented | 11020 | 20 | 2d | worker | fix, cite medici-finance/assay#4560 | — | — |
-| desktools-v2 | 58 [exec:strong] | implemented | 11010 | 20 | 46h | worker | fix, cite medici-finance/assay#6099 | — | — |
+| desktools-v2 | 58 [exec:strong] | implemented | 11010 | 20 | 47h | worker | fix, cite medici-finance/assay#6099 | — | — |
 | forge-neutral | 55 [exec:strong] | implemented | 10040 | 16 | 4d | worker | fix, cite medici-finance/assay#5752 | — | — |
 | forge-neutral | 57 [exec:strong] | implemented | 10040 | 16 | 4d | worker | fix, cite medici-finance/assay#5817 | — | — |
 | desk-containers | 16 [exec:strong] | implemented | 8040 | 14 | 4d | worker | fix, cite #4560 | — | — |
@@ -416,7 +416,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | iso-9001 | 06 [exec:strong] | implemented | 1040 | 0 | 4d | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
 | statusgen | 18 | implemented | 1040 | 0 | 4d | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
 | statusgen | 26 [exec:strong] | implemented | 1040 | 0 | 4d | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
-| agent-execution | 10 [exec:strong] | implemented | 1010 | 0 | 42h | operator | environment blocker, cite medici-finance/assay#6208 | — | — |
+| agent-execution | 10 [exec:strong] | implemented | 1010 | 0 | 43h | operator | environment blocker, cite medici-finance/assay#6208 | — | — |
 
 ### Runner-pending (47)
 
@@ -449,7 +449,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | build-less-brittle | 14 [exec:strong] | verified | 3040 | 0 | 4d | CI auto-flip | none; stuck after one main run → file | 2026-10-26 assay-verifier-app[bot] @ e07782de22a5 (forge-identity) | — |
 | cell-api | 08 [exec:strong] | verified | 3040 | 4 | 4d | CI auto-flip | none; stuck after one main run → file | 2026-11-06 assay-verifier-app[bot] @ 7ded00183785 (forge-identity) | — |
 | statusgen | 19 [exec:strong] | verified | 3040 | 4 | 4d | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 4b15482af5c6 (claude-opus-5-5) | — |
-| desktools-v2 | 46 [exec:strong] | verified | 3000 | 4 | 8h | CI auto-flip | none; stuck after one main run → file | 2026-11-19 assay-verifier-app[bot] @ 44a02f3dc7ab (claude-opus-5-5) | — |
+| desktools-v2 | 46 [exec:strong] | verified | 3000 | 4 | 9h | CI auto-flip | none; stuck after one main run → file | 2026-11-19 assay-verifier-app[bot] @ 44a02f3dc7ab (claude-opus-5-5) | — |
 | statusgen | 20 [exec:strong] | verified | 2540 | 3 | 4d | CI auto-flip | none; stuck after one main run → file | 2026-10-25 assay-verifier-app[bot] @ 0c3b558efec3 (forge-identity) | — |
 | derived-board | 11 [exec:strong] | verified | 2040 | 0 | 4d | CI auto-flip | none; stuck after one main run → file | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
 | graph-execution | 32 [exec:strong] | verified | 2040 | 0 | 4d | CI auto-flip | none; stuck after one main run → file | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
@@ -474,7 +474,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| graph-execution | 36 [exec:strong] | implemented | 21000 | 38 | 23h | verify-desk | triage, then re-bucket | — | — |
+| graph-execution | 36 [exec:strong] | implemented | 21010 | 38 | 24h | verify-desk | triage, then re-bucket | — | — |
 | composability | 02 | implemented | 2540 | 3 | 4d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2540 | 1 | 4d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 06 | implemented | 2540 | 1 | 4d | verify-desk | dispatch one judge | — | — |
