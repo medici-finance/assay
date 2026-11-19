@@ -19,9 +19,13 @@ an independently reviewed claim.
 Every evaluated delivery writes a separate `PRODUCER-DELIVERY: COULD-NOT-CHECK`
 qualification to stderr. The stdout report stays byte-identical, preserving its header
 and pinned report hashes. The routing counts on stdout and exit status concern declared consumer routes
-only. In particular, `follow-up` corroborates that a target brief exists and references
-back; it does not require that the selected diff contains the producer's implementation.
-Two different producer deliveries can therefore corroborate the same follow-up routes.
+only. In particular, a `follow-up` to another brief corroborates that the target brief
+exists and references back; it does not require that the selected diff contains the
+producer's implementation. Two different producer deliveries can therefore corroborate the
+same follow-up routes to other briefs. A self-route (a `follow-up` naming the brief that
+carries the entry) corroborates only where the selected diff touches every path its site
+resolves to; otherwise it is unchecked. Sibling deliveries that share sites can still
+corroborate some of the same self-routes, so assert the exact summary line.
 Even `fixed-here` establishes path changes, not producer identity or implementation
 completeness. Independently inspect the actual delivery mapping and relevant changes
 before using these results as acceptance evidence. This limit also applies when the
