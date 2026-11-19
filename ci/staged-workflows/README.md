@@ -100,12 +100,9 @@ reviewable artifact, not a run.
   the live workflow commits nothing, but the refusal reaches its generic first-attempt branch.
   That branch leaves the card closed and comments a reason that does not name the decision
   issue or the remedy.
-- The live `assay-statusgen.yml` regenerates the board and then runs a separate
-  `--record` pass. The staged twin uses `--write-and-record` on the initial
-  checkout and each retry. Once the binary change is on main, a maintainer can
-  promote just these two call sites with
-  `git apply ci/staged-workflows/assay-statusgen-write-and-record.patch`. The
-  commit guard and staged paths remain the same, including history-only updates.
+- Both the live and staged `assay-statusgen.yml` use `--write-and-record` to
+  regenerate the board and record history on the initial checkout and each retry.
+  The commit guard includes history-only updates.
 
 - `loopadmin.yml` — the loopadmin module's test job (graph-execution/20): `gofmt`, `go vet`,
   `go test` and the mutation gate (`go run ./mutate`) from `loopadmin/`, on path triggers for the
