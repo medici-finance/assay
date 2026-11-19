@@ -15,7 +15,8 @@ package main
 // in the same clause, by `(forge-neutral/<NN>)` — where that brief's frontmatter
 // `consumers:` block does not route the citing file to itself (`fixed-here`, or
 // `follow-up forge-neutral/<NN>` naming itself). A brief that does not claim the file
-// cannot be the one that lands the deferred read there.
+// cannot be the one that lands the deferred read there. (The GitLab notice itself retired when
+// the live read landed; the guard stays for the next deferral.)
 
 import (
 	"go/ast"
@@ -168,18 +169,28 @@ func TestDeferralNoticesNameOwningBrief(t *testing.T) {
 		}
 	}
 	if checked == 0 {
-		t.Fatalf("could-not-check: no forge-neutral deferral found in any statusgen string literal — the scan matched nothing, so it proves nothing (the GitLab auto-flip notice is one)")
+		// The GitLab auto-flip notice, the deferral this guard was written for, retired with
+		// the live read (#7202), so an empty scan is now a real answer — but only if the
+		// matcher still matches. A plant that must be found keeps "matched nothing" from
+		// passing on a matcher that silently stopped working.
+		plant := []byte("package main\n\nvar p = \"x lands with the read verb (forge-neutral/18)\"\n")
+		if got := deferralCitesIn(t, "autoflip.go", plant); len(got) != 1 {
+			t.Fatalf("could-not-check: the scan found no deferral in statusgen AND missed a planted one (%+v) — the matcher is broken, so the empty scan proves nothing", got)
+		}
+		t.Log("no forge-neutral deferral notice remains in statusgen; the matcher still finds a planted one")
 	}
 }
 
-// regression: #7202
-func TestGitLabFlipNoticeNamesForgeNeutral18(t *testing.T) {
-	msg := errGitLabFlipReadUnavailable.Error()
-	if strings.Contains(msg, "forge-neutral/10") {
-		t.Errorf("GitLab auto-flip notice still names forge-neutral/10, which carries no statusgen read: %q", msg)
+// regression: #7202 — the GitLab live read was a standing could-not-check stub; it now reads
+// through deskread (autoflip_gitlab.go), and GitHub keeps its own source.
+func TestGitLabFlipSourceIsDeskread(t *testing.T) {
+	if _, ok := liveModelFlipSource(forgeGitLab, "").(deskreadModelFlipSource); !ok {
+		t.Errorf("liveModelFlipSource(gitlab) = %T, want the deskread-backed source", liveModelFlipSource(forgeGitLab, ""))
 	}
-	if !strings.Contains(msg, "(forge-neutral/18)") {
-		t.Errorf("GitLab auto-flip notice does not name forge-neutral/18, the brief that moves auto-flip's reads onto deskread: %q", msg)
+	for _, f := range []forgeKind{forgeGitHub, forgeUnknown} {
+		if _, ok := liveModelFlipSource(f, "").(ghModelFlipSource); !ok {
+			t.Errorf("liveModelFlipSource(%v) = %T, want the GitHub source", f, liveModelFlipSource(f, ""))
+		}
 	}
 }
 
