@@ -388,6 +388,53 @@ RISK-VALUE: DERIVED — negative-cost rejection `n < 0` → failed @ tools/desk/
 
 **VERIFY: PASS**
 
+### Independent re-verification, release v1.0.88 — 2026-11-19 (dispatched verifier, claude-opus-5-5, tier strong)
+
+Subject: merged source 84af92982ad6ec1bbbd39473440bc7eba9833707. The Verify section is byte-identical to the approved amendment e2b00ebe0f49 (merge of PR #4228) and to the section the 2026-10-30 run checked, so this re-runs the whole table at the new source under installed statusgen v1.0.88. Admission: `deskdispatch --check-verifier` exited 0 before the first row (attestation #7195, run f307fd44a08f), and the bracket open and close steps each re-ran it. `deskpathguard rederive` re-derived 4 rows, 0 author-added. The runner is not the implementer.
+
+Transition coordinates, checked independently before execution: delivery 578a9f39d73e is the two-parent merge of PR #3583 (parents 1b00388fb9c5 and e4c3c2499e2d) on the first-parent chain of the source, and the parents' unique merge-base is 331aba8f343c. Original 2dbc1d762d07 is the last commit touching the brief at or before base. Amendment e2b00ebe0f49 is on the first-parent chain, and the Verify section at the source hashes identically to the amendment's.
+
+Environment: macOS host (darwin arm64), git 2.56.1, installed desk shims and statusgen v1.0.88, KUBECONFIG=/dev/null, no GH_TOKEN in any verifyrun environment, offline apart from the read-only approval lookup and the release-asset download.
+
+Row 4 (check) ran first, on the host, under the approved acceptance transition (#4230), selected with `--rows 4`, with `--acceptance-record` naming the coordinates below and `--acceptance-forge`. verifyrun printed `acceptance transition: reading approval https://github.com/medici-finance/assay/issues/4230#issuecomment-6373797887` and executed the approved amended row 4. One earlier invocation of the same command refused before any row ran (`transition execution requires a clean immutable source`) because this section's prose was already in the home; the prose was removed, the home was clean (no modified, untracked or ignored file), and the command was re-issued unchanged.
+
+Acceptance-Changes: 4=Command
+Verification-Table: delivery=578a9f39d73ec48bdc07fbdfd3938edb463e7b9b base=331aba8f343c828763a1fae23c4cba26abff7560 original=2dbc1d762d07ac2a2eb7575de2ddd40bf48dc081
+Acceptance-Transition: amendment=e2b00ebe0f495037dcfd1483429cfe8ef3c24570 approval=https://github.com/medici-finance/assay/issues/4230#issuecomment-6373797887
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `statusgen --root . --consumers --brief desktools-v2/65 --delivery 578a9f39d73ec48bdc07fbdfd3938edb463e7b9b --base 1b00388fb9c5bd17c0817ae3a49751607b0d9cae` | pass exit=0 | sha256:c5e8280849e6 | 2026-11-19 | assay-verifier-app[bot] @ 84af92982ad6ec1bbbd39473440bc7eba9833707 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7195 run=f307fd44a08f273a45c23db8d38730ba55ff35b7c5f710ea1eb4a9747ac70808 source=84af92982ad6ec1bbbd39473440bc7eba9833707 brief=docs/streams/desktools-v2/brief-65-measure-own-forge-request-timing-and-graphql-cost.md model=claude-opus-5-5 tier=strong
+
+Rows 1–3 (check:ci) ran last, in the container lane under rule 45, selected with `--rows 1,2,3`; the darwin host has no `unshare`. Image: the v1.0.88 release pin ghcr.io/medici-finance/verify-runner:v1.0.88@sha256:dd758003b77fc718ec5b9b3e3a34529a422eb87316a605207bdad2560ca169bc. The release's verify-runner-image.txt names that reference and its sha256 matched the release checksums file; the local image carries that repo digest. The container ran linux/arm64 under the image's own statusgen and go1.27.4, with `--network none`, the engine's default seccomp profile, a read-only root filesystem, all capabilities dropped, no-new-privileges, the home mounted read-only at its own path, no gitdir mount, and the module cache that `--open-bracket --module-cache` downloaded into a new directory outside the home mounted read-only, with GOPROXY=off, GOFLAGS=-mod=readonly and GOTOOLCHAIN=local. `--open-bracket` and `--close-bracket` ran on the host with no edit to the home between the steps, and `--bracket-digest` on the closed witness file reported verdict=match with span-lines=tree-digest:1,container-image:1,attestation:1.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3ForgeAttemptTimingFlow$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestPerfV3ForgeAttemptTimingFlow ' "$out")` | pass exit=0 sandbox=container-netns | sha256:5865960fdaad | 2026-11-19 | assay-verifier-app[bot] @ 84af92982ad6 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3GraphQLCostCoverage$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestPerfV3GraphQLCostCoverage ' "$out")` | pass exit=0 sandbox=container-netns | sha256:b05409c300df | 2026-11-19 | assay-verifier-app[bot] @ 84af92982ad6 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3ForgeObservationParity$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestPerfV3ForgeObservationParity ' "$out")` | pass exit=0 sandbox=container-netns | sha256:72a684e855d8 | 2026-11-19 | assay-verifier-app[bot] @ 84af92982ad6 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:ecd32fc9c6a206b0f99336cabf4aae6ed010fb32eea7087a527a2e3ec08a5ea8
+Container-Image: sha256:dd758003b77fc718ec5b9b3e3a34529a422eb87316a605207bdad2560ca169bc
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7195 run=f307fd44a08f273a45c23db8d38730ba55ff35b7c5f710ea1eb4a9747ac70808 source=84af92982ad6ec1bbbd39473440bc7eba9833707 brief=docs/streams/desktools-v2/brief-65-measure-own-forge-request-timing-and-graphql-cost.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=f307fd44a08f273a45c23db8d38730ba55ff35b7c5f710ea1eb4a9747ac70808 source=84af92982ad6ec1bbbd39473440bc7eba9833707 tree=sha256:ecd32fc9c6a206b0f99336cabf4aae6ed010fb32eea7087a527a2e3ec08a5ea8 witness=sha256:fb43c9929710f252acd530438471b3b739add80f4e1e5ab4e432f8e4769fd679 opened=2026-11-19T14:31:21Z closed=2026-11-19T14:32:43Z before=receipt after=check-verifier
+
+Results: row 4 passes exit 0 on the host (output hash c5e8280849e6). Rows 1–3 pass exit 0 in the container lane, each command ending in its own named `--- PASS:` grep, with output hashes 5865960fdaad, b05409c300df and 72a684e855d8.
+
+Supplemental, no acceptance credit:
+- Row 4's command re-run on the host at the source for primary-output inspection: exit 0, `consumers corroboration — base 1b00388fb9c5bd17c0817ae3a49751607b0d9cae..578a9f39d73ec48bdc07fbdfd3938edb463e7b9b (immutable delivered snapshot), 1 brief(s)` and `summary: 8 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing`. The one unchecked entry is statusgen/ (out-of-scope), a reviewer judgement the row's Expect leaves to review. Its PRODUCER-DELIVERY could-not-check notice is answered independently above: 578a9f39d73e is the merge of PR #3583 from the brief's own feature branch.
+
+Totals: 4 required original rows; 4 pass, 0 fail, 0 could-not-run. No Verify row carries a risk-bearing, live, mutating or end-to-end tag and every brief-wide risk answer is no, so no row owes a fail-first witness.
+
+Risk-bearing values. The enumeration is over the delivery diff of #3583 (1b00388fb9c5..578a9f39d73e), as in the 2026-10-30 run, with each literal re-resolved at this source. The outcome-class split `status / 100` @ tools/desk/internal/deskkit/forgeobserve.go:118 with 304 split out @ :115, and the GraphQL cost deferral `status/100 == 2` @ forgeobserve.go:157, are reversible classification knobs and rank last. The top-ranked values are the metadata selections that change what is sent to a provider, and the guard on what is recorded as measured:
+
+RISK-VALUE: DERIVED — GitHub same-operation metadata selection = ` _assayPerf:rateLimit{cost}` @ tools/desk/internal/deskkit/forgepoints.go:28 — GitHub's GraphQL rate-limit documentation returns the point cost of the enclosing query through `rateLimit { cost }`; the brief (Task 2) names exactly this field and forbids a separate request. The `_assayPerf` alias keeps it apart from business fields. It is appended only to the closed compiled query list (forgepoints.go:15), and only when the base is `GitHubAPIBase = "https://api.github.com"` @ tools/desk/internal/credential/github.go:40 (gate @ tools/desk/internal/deskkit/forge_github.go:310).
+RISK-VALUE: DERIVED — GitLab metadata selection = ` _assayPerf:queryComplexity{score}` @ tools/desk/internal/deskkit/forge_gitlab.go:1402, read key `"score"` @ tools/desk/internal/deskkit/forgepoints.go:76, gated on `GitLabAPIBase = "https://gitlab.com"` @ tools/desk/internal/deskkit/forge_gitlab.go:65 (gate @ forge_gitlab.go:1400) — GitLab's GraphQL `queryComplexity { score }` is the query's complexity in GitLab's own unit. The code records it as unit gitlab-complexity and never as GitHub points, as the brief requires.
+RISK-VALUE: DERIVED — negative-cost rejection `n < 0` → failed @ tools/desk/internal/deskkit/forgepoints.go:83, and missing or null metadata → unknown @ forgepoints.go:66 and :79 (default unknown @ :56) — provider cost and complexity are non-negative counts. The brief requires that missing is never recorded as zero, and that numeric zero is recorded only when measured.
+
+**VERIFY: PASS**
+
 ## Review
 
 Gate: model. Reject changed legacy meanings, guessed identity/cost, lost coverage or optional measurement that changes an operation.
