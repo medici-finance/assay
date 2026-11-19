@@ -1457,7 +1457,7 @@ Accounting: this dispatch ran the Verify table once. Attempt 1 (started 2026-11-
 
 Result: rows_passed=15, rows_total=15. No acceptance obligation failed. The only gap is row 7's fail-first base run, which the tooling conflict above prevented and which could only have come back `unproven` at this base.
 
-**VERIFY: PASS** — 15/15 pass in one container-netns bracket at 62a6169dc364; the row 7 fail-first base run could not run (a v1.0.87 `--delivering-commit` refusal under the required `GIT_CONFIG_COUNT=0`), and at that base it is unproven by construction.
+**VERIFY: BLOCKED** — 15/15 rows pass in one container-netns bracket at 62a6169dc364, and closure is held on row 7's fail-first witness (medici-finance/assay#7007): the row 7 fail-first base run could not run (a v1.0.87 `--delivering-commit` refusal under the required `GIT_CONFIG_COUNT=0`), and at that base it is unproven by construction.
 
 ## Review
 Gate: model (all four risk answers no — a new cell kind plus three verbs on a host launcher;
