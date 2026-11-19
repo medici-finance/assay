@@ -454,6 +454,68 @@ Row 9's output, read from a hand re-run of the same command in this home just af
 
 **VERIFY: PASS** — 9 of 9 rows pass (row 9 passing per the ruling above; all other rows pass as written)
 
+Fresh re-verification, 2026-11-19, on merged main source
+dec9c4dba7d8b4fe2c00d81179f424829ef1d45a (non-implementer verifier, claude-opus-5-5, strong
+tier, attestation medici-finance/assay#7213 run 804d067b4dc1). Delivery: PR #3812 (merge
+8167da1e87ed; source commits 92315c7fa and 85fe81678). Every row was re-run fresh with the
+installed statusgen v1.0.88; no locally built binary. Rows 7–9 need Git history and ran on
+the host first through a disjoint row selection. Rows 1–6 (check:ci) ran last inside the
+admission bracket in a network-off container on the release-pinned verify-runner v1.0.88
+image (linux/arm64; its digest equals the release's verify-runner-image.txt, whose checksum
+matches checksums.txt), with a freshly downloaded module cache mounted read-only.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 7 | `o=$(mktemp); git diff --name-only 44829891e8f74b1520b64f4180910d96e17be96a^1 44829891e8f74b1520b64f4180910d96e17be96a > "$o" && python3 -c 'import pathlib,sys; actual=set(pathlib.Path(sys.argv[1]).read_text().splitlines()); expected={"changelog/statusgen-26-v3.md","docs/streams/statusgen/README.md","docs/telemetry.md","statusgen/brieffile.go","statusgen/dispatchqueue.go","statusgen/forgeread.go","statusgen/load.go","statusgen/main.go","statusgen/parse.go","statusgen/perfrecord.go","statusgen/perfrecord_test.go"}; assert actual==expected, actual; print("PR 3759: exact eleven delivery paths confirmed")' "$o"` | pass exit=0 | sha256:ea0361a76ccf | 2026-11-19 | assay-verifier-app[bot] @ dec9c4dba7d8 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --consumers --brief derived-board/11 --delivery "$DELIVERY" --base 5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7` | pass exit=0 | sha256:95c233b6f36b | 2026-11-19 | assay-verifier-app[bot] @ dec9c4dba7d8 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --lint` | fail exit=1 | sha256:fe0c6415d718 | 2026-11-19 | assay-verifier-app[bot] @ dec9c4dba7d8 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7213 run=804d067b4dc16497cd175c2b1021dd85f3ed45b6bdd2ead18c366264bde11003 source=dec9c4dba7d8b4fe2c00d81179f424829ef1d45a brief=docs/streams/derived-board/brief-11-preserve-incomplete-delivery-in-the-audited-board-cohort.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && o=$(mktemp); go test . -run '^TestBoardCohortSource$' -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- '--- PASS: TestBoardCohortSource' "$o")` | pass exit=0 sandbox=container-netns | sha256:1e0bd0adbb53 | 2026-11-19 | assay-verifier-app[bot] @ dec9c4dba7d8 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && o=$(mktemp); go test . -run '^TestBoardCohortFlow$' -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- '--- PASS: TestBoardCohortFlow' "$o")` | pass exit=0 sandbox=container-netns | sha256:2106fd216c08 | 2026-11-19 | assay-verifier-app[bot] @ dec9c4dba7d8 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && o=$(mktemp); go test . -run '^TestBoardCohortPlant$' -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- '--- PASS: TestBoardCohortPlant' "$o")` | pass exit=0 sandbox=container-netns | sha256:1079bcd14595 | 2026-11-19 | assay-verifier-app[bot] @ dec9c4dba7d8 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && o=$(mktemp); go test . -run '^TestBoardCohortFloors$' -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- '--- PASS: TestBoardCohortFloors' "$o")` | pass exit=0 sandbox=container-netns | sha256:68883c75e884 | 2026-11-19 | assay-verifier-app[bot] @ dec9c4dba7d8 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `(cd statusgen && o=$(mktemp); go test . -run '^TestBoardCohortFull$' -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- '--- PASS: TestBoardCohortFull' "$o")` | pass exit=0 sandbox=container-netns | sha256:2c8be1d962cd | 2026-11-19 | assay-verifier-app[bot] @ dec9c4dba7d8 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `(cd statusgen && for t in TestRolloutSourceAdmission TestCISliceSourceAdmission TestOwedTaskSourceAdmission TestEvidenceAdmission TestAdmissionCacheAndDelivery TestPartialBackfillSkips TestPartialRegenDriftAgrees TestApplyReconcileWrites; do o=$(mktemp); go test . -run "^$t" -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- "--- PASS: $t" "$o"; r=$?; if test "$r" -ne 0; then exit "$r"; fi; done)` | pass exit=0 sandbox=container-netns | sha256:170276ecdb1a | 2026-11-19 | assay-verifier-app[bot] @ dec9c4dba7d8 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:6b93b20618624622c2035a284446fde9d3c63eef8053105e82a5e6d6d5c8a4e6
+Container-Image: sha256:dd758003b77fc718ec5b9b3e3a34529a422eb87316a605207bdad2560ca169bc
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7213 run=804d067b4dc16497cd175c2b1021dd85f3ed45b6bdd2ead18c366264bde11003 source=dec9c4dba7d8b4fe2c00d81179f424829ef1d45a brief=docs/streams/derived-board/brief-11-preserve-incomplete-delivery-in-the-audited-board-cohort.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=804d067b4dc16497cd175c2b1021dd85f3ed45b6bdd2ead18c366264bde11003 source=dec9c4dba7d8b4fe2c00d81179f424829ef1d45a tree=sha256:6b93b20618624622c2035a284446fde9d3c63eef8053105e82a5e6d6d5c8a4e6 witness=sha256:a6c0077457a02e5af1817c4863ad4d7d34b48cab03547bb41b03f2d5b256d458 opened=2026-11-19T15:37:29Z closed=2026-11-19T15:38:52Z before=receipt after=check-verifier
+
+Key output lines. Row 7 printed `PR 3759: exact eleven delivery paths confirmed`. Row 8 ran
+with DELIVERY set to the recorded delivery commit 92315c7fa0f0b1e9a5e66a3c6dfdabc8a1d0cde7
+and printed `summary: 4 corroborated, 0 disproved, 13 unchecked, 0 brief(s) claiming nothing`;
+the 13 unchecked entries remain review judgments, not passes. Rows 1–6 exit 0, and each row
+ends with a grep that needs its named `--- PASS:` line. The bracket digest for the container block reports verdict=match with
+one Tree-Digest, Container-Image and attestation line.
+
+Row 9 FAIL: exit 1 with `LINT: FAIL 3 problem(s)`. The three PROBLEM lines, read from a hand
+re-run of the same command in this home just after its witness (no credit; the witness keeps
+only an output digest), were:
+`PROBLEM: desk-tools/37: protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required`,
+the same line for desktools-v2/65, and the same line for forge-neutral/54. None names
+derived-board/11. The admitted row command does not pass --acceptance-forge and was not
+changed. The Expect cell asks for exit 0 and LINT PASS, so the row fails as written. The
+earlier 2026-11-02 ruling covered two problems at an older commit; this run observes a third
+(forge-neutral/54), and no ruling for this commit is recorded here.
+
+No row is risk-bearing under the fail-first definition (every brief risk field is no and no
+row tag is risk-bearing, live, mutating or end-to-end), so no fail-first witness is owed.
+
+Risk-bearing values. The fail-safe trigger does not fire: risk metadata is present with every
+field no, the brief is not irreversible, and no risk-classed path changed. Enumeration over the
+delivery commits 92315c7fa and 85fe81678, read at this source:
+
+- RISK-VALUE: DERIVED — covers = partial @ docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md:16 — PR 3759's eleven files, confirmed by row 7, deliver only sub-split (a); partial is that PR's true scope and full would be a false completion.
+- RISK-VALUE: DERIVED — version = 3 at delivery (now 4 @ the same brief, line 14, after later maintenance) — one increment from 2 for the added delivery metadata, as the brief-v2 metadata contract requires.
+- Test-only bounds (members want 10 @ statusgen/boardcohort_test.go:136, reviews want 2 @ line 139, collection cutoff 3803 @ line 371, applied want 9 @ line 442, drift seen want 9 @ line 476) match the ten-row fixed cohort, its two reviews, the recorded collection and its nine full members; they are reversible test constants and rank last.
+
+**VERIFY: FAIL** — row 9 (`statusgen --root . --lint`) exits 1 with 3 PROBLEMs on other briefs; rows 1–8 pass (rows 1–6 bracketed container witness, rows 7–9 host witness)
+
+
 ## Review
 
 Gate model: all four risks are no for a reversible public source declaration and hermetic controls; no live operation, sensitive data, regulatory or irreversible change is authorized. Human merge remains required. Strong execution follows the cross-artifact flow and recurring class. The fixed cohort and per-member semantic dispositions require full independent review. This is the required bounded design amendment, not an implementation retry or a class-stop waiver.
