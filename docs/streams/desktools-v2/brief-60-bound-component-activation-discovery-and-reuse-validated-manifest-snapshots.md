@@ -628,7 +628,9 @@ All are reversible, and the item is marked irreversible: no. Ranked by what brea
 RISK-VALUE: DERIVED — manifestLimit = 1 << 20 @ tools/desk/internal/deskkit/activationindex.go:18 — the brief's declared fallback fixes "one slot and 1 MiB source/payload limits", and 1 << 20 bytes is exactly 1 MiB. It is applied at lines 72, 89, 97, 139 and 167, and every over-limit path falls back to fresh reference discovery, so the value bounds memory to one 1 MiB slot and cannot change an activation result.
 RISK-VALUE: DERIVED — manifestRevision = "activation-discovery/1" @ tools/desk/internal/deskkit/activationindex.go:17 — the derivation-revision tag the snapshot contract requires. It is hashed into every source digest (line 65) and compared on decode (line 182), so a mismatch falls back to fresh discovery; the slot is process-local, so no snapshot carries across binaries.
 
-**VERIFY: PASS** — 5 of 5 rows pass with admitted witnesses at merged source 44a02f3dc7ab. Rows 1-4 passed network-off inside a closed admission bracket (verdict=match), and row 5 passed on the host as written. No row is risk-bearing, so no fail-first witness is required. The gate is model, and all risk answers are no.
+Row 5 disclosure: row 5 exits 0 on the host as written, but its consumers command pins no `--delivery` and no first-parent `--base`. `deskevidence --outcome-record` refuses to close the brief on it ("consumer command has no explicit --base (the default becomes HEAD on merged main)"): an unpinned post-merge consumers row cannot be the basis of a new closure. That is the open check-definition class medici-finance/assay#1927. Row 5 is therefore recorded as deferred, with no acceptance credit.
+
+**VERIFY: BLOCKED** — 4 of 5 rows pass with admitted witnesses at merged source 44a02f3dc7ab. Rows 1-4 passed network-off inside a closed admission bracket (verdict=match, credit=credited). Row 5 (consumers, unpinned) → deferred, check-definition (medici-finance/assay#1927). No obligation was observed to fail. No row is risk-bearing, so no fail-first witness is required. The gate is model, and all risk answers are no.
 
 ## Review
 
