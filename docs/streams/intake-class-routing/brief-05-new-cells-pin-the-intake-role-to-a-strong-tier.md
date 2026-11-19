@@ -159,15 +159,15 @@ Verification-Attestation: medici-finance/assay#7222 run=327c05933d7abac2a1097b71
 Admission-Bracket: run=327c05933d7abac2a1097b71fd12dbcaaf4f45b4e0a9e66766d3e3da3f018ae7 source=08834a1a6e1226100404e8479e6473d607629260 tree=sha256:72e2edc6428fb57790afb1b8545c8d3eb22d0f686d85a9cd3aae5892b094f7aa witness=sha256:72add141f2a36cb291c88899961dfa326979de8468addfff3d3b927226a2172b opened=2026-11-19T16:53:02Z closed=2026-11-19T16:55:11Z before=receipt after=check-verifier
 
 Row observations (diagnostic re-runs in the same image, no credit):
-- Row 4 fails as admitted. TestDeskdCoordinateUsesCellOriginNotCallerDirectory (helper_custody_test.go:80) dies with "deskd: cannot read the cell repository coordinate" whenever the admitted row env's GIT_CONFIG_COUNT=2 grep pins are set, and passes with GIT_CONFIG_COUNT=0. The test predates this brief (medici-finance/assay#2510). The same package run without the admitted env exits 0.
-- Row 5 fails with exit 2: `tools/cellctl/tests/parity.test.sh: 38: set: Illegal option -o pipefail`. The authored command runs a bash script under `sh`, which is dash in the runner image.
-- Row 6 fails with exit 2: `--consumers: COULD-NOT-CHECK: ... is not in the diff against 08834a1a..., and the brief's delivery could not be derived ... record the Verification-Table marker or pass --delivery and --base`.
+- Row 4: fail (observed). The package's tests ran, and TestDeskdCoordinateUsesCellOriginNotCallerDirectory (helper_custody_test.go:80) failed its assertion with "deskd: cannot read the cell repository coordinate" under the admitted row env's GIT_CONFIG_COUNT=2 grep pins. The same test passes with GIT_CONFIG_COUNT=0. The test predates this brief (medici-finance/assay#2510). The same package run without the admitted env exits 0.
+- Row 5: could-not-run (check-definition). The witness records exit 2, but dash stopped at `tools/cellctl/tests/parity.test.sh: 38: set: Illegal option -o pipefail` before any assertion ran. The authored command runs a bash script under `sh`, which is dash in the runner image.
+- Row 6: could-not-run (tool refusal). The witness records exit 2, but the tool stopped with `--consumers: COULD-NOT-CHECK: ... is not in the diff against 08834a1a..., and the brief's delivery could not be derived ... record the Verification-Table marker or pass --delivery and --base` before observing the property.
 
 Risk-bearing value enumeration (risk metadata is present and all four answers are no; this is a fail-safe enumeration of the delivered diff's literals):
 - RISK-VALUE: DERIVED — DESK_MODEL_intake_desk = opus @ tools/desk/cmd/cellctl/new.go:225 (also :321, :549). policy.go:32 maps opus to tier strong, and intake judgment work requires a strong tier. It is a reversible seed default.
 - RISK-VALUE: DERIVED — "intake-desk": {"tier": "strong"} @ tools/desk/cmd/cellctl/providers.json:74 (also 137, 200, 263). This matches pr-review-desk and verify-desk in the same seed. It is a reversible seed default.
 
-**VERIFY: FAIL** — rows 1, 2, 3 and 7 pass (4/7) in the closed bracket (bracket-digest verdict=match). Rows 4, 5 and 6 fail as admitted, and the faults are in the check definitions and the lane rather than in an observed assertion about the intake pin.
+**VERIFY: FAIL** — rows 1, 2, 3 and 7 pass (4/7) in the closed bracket (bracket-digest verdict=match). Row 4 fails as admitted, on a pre-existing test that is sensitive to the admitted git env. Rows 5 and 6 could not run, because of check-definition defects.
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.
