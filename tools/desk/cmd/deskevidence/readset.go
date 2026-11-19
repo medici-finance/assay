@@ -9,8 +9,9 @@ package main
 // so the landing takes it from there and commits it with the row:
 //
 //   - captureReadSets runs before any forge call. It resolves the state
-//     directory of --root with `git rev-parse --git-path` and copies every
-//     named file into memory, checking its digest. This is the copy before
+//     directory of --root, its git dir (`git rev-parse --absolute-git-dir`,
+//     answered by gitcore without spawning git), and copies every named file
+//     into memory, checking its digest. This is the copy before
 //     cleanup: a linked worktree's git dir, and the state directory in it, is
 //     deleted with the worktree, so nothing after this point reads the disk.
 //   - pairReadSets runs before the write. Each digest the commit introduces
@@ -25,15 +26,17 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
-	"os"
+	"io/fs"
 	"path"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/statusgen/evaluation"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -66,20 +69,22 @@ type readSetCapture struct {
 // readSetStateDirFn resolves root's state directory; a test seam.
 var readSetStateDirFn = readSetStateDir
 
-// readSetStateDir asks git through deskkit's verifier read seam (no new git
-// spawn), so the answer is the per-worktree git dir the recorder writes under,
-// never the common dir. root is made absolute first, so the process cwd never
-// decides which checkout is asked.
+// readSetStateDir is <git dir>/assay-read-sets for root: the per-worktree git
+// dir the recorder writes under (it joins the name onto
+// `git rev-parse --absolute-git-dir`), never the common dir. gitcore.GitDir
+// reads the .git entry itself, so no git process is spawned and the git-exec
+// ratchet (scripts/count-git-exec.sh) does not grow. root is made absolute
+// first, so the process cwd never decides which checkout is asked.
 func readSetStateDir(root string) (string, error) {
 	abs, aerr := filepath.Abs(root)
 	if aerr != nil {
-		return "", fmt.Errorf("git rev-parse --git-path %s in %s did not name a directory", evaluation.ReadSetStateDir, root)
+		return "", fmt.Errorf("the git dir of %s, which holds %s, could not be located", root, evaluation.ReadSetStateDir)
 	}
-	dir, err := deskkit.VerifierGitPath(abs, evaluation.ReadSetStateDir)
-	if err != nil || !filepath.IsAbs(dir) {
-		return "", fmt.Errorf("git rev-parse --git-path %s in %s did not name a directory", evaluation.ReadSetStateDir, root)
+	gitDir, err := gitcore.GitDir(abs)
+	if err != nil || !filepath.IsAbs(gitDir) {
+		return "", fmt.Errorf("the git dir of %s, which holds %s, could not be located", root, evaluation.ReadSetStateDir)
 	}
-	return dir, nil
+	return filepath.Join(gitDir, evaluation.ReadSetStateDir), nil
 }
 
 // captureReadSets copies, before any forge call, every read-set file content
@@ -110,26 +115,60 @@ func captureReadSets(content []byte, root string) *readSetCapture {
 	return c
 }
 
-// readStateFile reads one regular file without following a link at its name.
+// readSetFileCap bounds one read-set file the landing copies into memory. A
+// read-set file holds one line per file a verify run read, so 16 MiB is far
+// above any real run (about 100,000 paths); it bounds memory, not judgement.
+// A file over it is refused like a broken one: the landing stops before any
+// write.
+const readSetFileCap = 16 << 20
+
+// errNotRegularStateFile and errStateFileChanged are openStateFile's refusals:
+// the name holds a link or other non-regular entry, or (where the open cannot
+// refuse a link itself) the file changed between the check and the open.
+var (
+	errNotRegularStateFile = errors.New("not a regular file")
+	errStateFileChanged    = errors.New("changed while it was opened")
+)
+
+// stateFileOpening is called with the path just before readStateFile opens
+// it; a test seam that swaps what the name points at.
+var stateFileOpening = func(string) {}
+
+// readStateFile reads one regular file of at most readSetFileCap bytes. The
+// open itself refuses a link at the name and never blocks on a FIFO
+// (openStateFile), and every check after it is made on the open descriptor,
+// so nothing swapped in at the name between a check and the read is read.
 func readStateFile(p string) ([]byte, string) {
-	fi, err := os.Lstat(p)
-	if err != nil {
+	stateFileOpening(p)
+	f, err := openStateFile(p)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
 		return nil, "is absent"
+	case errors.Is(err, errNotRegularStateFile):
+		return nil, "is not a regular file"
+	case errors.Is(err, errStateFileChanged):
+		return nil, "changed while it was read"
+	case err != nil:
+		return nil, "cannot be read"
+	}
+	defer f.Close()
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, "cannot be read"
 	}
 	if !fi.Mode().IsRegular() {
 		return nil, "is not a regular file"
 	}
-	f, err := os.Open(p)
-	if err != nil {
-		return nil, "cannot be read"
-	}
-	defer f.Close()
-	if held, err := f.Stat(); err != nil || !os.SameFile(fi, held) {
-		return nil, "changed while it was read"
+	over := fmt.Sprintf("is larger than the %d-byte cap", readSetFileCap)
+	if fi.Size() > readSetFileCap {
+		return nil, over
 	}
 	var buf bytes.Buffer
-	if _, err := io.Copy(&buf, f); err != nil {
+	if _, err := io.Copy(&buf, io.LimitReader(f, readSetFileCap+1)); err != nil {
 		return nil, "cannot be read"
+	}
+	if buf.Len() > readSetFileCap {
+		return nil, over
 	}
 	return buf.Bytes(), ""
 }

@@ -107,14 +107,7 @@ func verifierGit(root string, args ...string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 func verifierRecordPath(root string) (string, error) {
-	return VerifierGitPath(root, verifierRecordName)
-}
-
-// VerifierGitPath answers `git rev-parse --path-format=absolute --git-path name`
-// in root under the verifier read environment: the per-worktree git dir's
-// entry for name, not the common dir's, for a name git does not share.
-func VerifierGitPath(root, name string) (string, error) {
-	return verifierGit(root, "rev-parse", "--path-format=absolute", "--git-path", name)
+	return verifierGit(root, "rev-parse", "--path-format=absolute", "--git-path", verifierRecordName)
 }
 func verifierSave(root string, r verifierLocal) error {
 	path, err := verifierRecordPath(root)

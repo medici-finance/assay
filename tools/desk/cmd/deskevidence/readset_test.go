@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -177,5 +178,29 @@ func TestReadSetStateDirPerWorktree(t *testing.T) {
 	}
 	if got != want || got == common {
 		t.Fatalf("state dir %s; want the linked worktree's own %s, never the common %s", got, want, common)
+	}
+}
+
+// regression: #2026
+// TestReadStateFileOverCapRefused — a state file larger than readSetFileCap
+// is refused, never read into memory whole; one exactly at the cap is read.
+// The file is sparse, so the test writes no 16 MiB.
+func TestReadStateFileOverCapRefused(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "state")
+	if err := os.WriteFile(p, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(p, readSetFileCap+1); err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("is larger than the %d-byte cap", readSetFileCap)
+	if b, why := readStateFile(p); why != want || b != nil {
+		t.Fatalf("over the cap: read %d bytes, why %q; want refusal %q", len(b), why, want)
+	}
+	if err := os.Truncate(p, readSetFileCap); err != nil {
+		t.Fatal(err)
+	}
+	if b, why := readStateFile(p); why != "" || len(b) != readSetFileCap {
+		t.Fatalf("at the cap: read %d bytes, why %q; want all %d bytes", len(b), why, readSetFileCap)
 	}
 }
