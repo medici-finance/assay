@@ -60,14 +60,16 @@ func TestDeskreadReviewsKind(t *testing.T) {
 		}
 	})
 
-	t.Run("the review body is not carried", func(t *testing.T) {
+	// regression: #7202 — the GitLab auto-flip tells an approval (no body) from a verdict note
+	// (a body) by it; a body-less review still renders without the key.
+	t.Run("the review body is carried, omitted when empty", func(t *testing.T) {
 		stubRec(t)
 		s, code, _ := rawOut("reviews", "--change", "example-org/alpha#9")
 		if code != deskkit.ExitOK || s == "" {
 			t.Fatalf("exit=%d out=%q", code, s)
 		}
-		if strings.Contains(s, "fix it") {
-			t.Errorf("the envelope carries a review body:\n%s", s)
+		if !strings.Contains(s, `"body": "fix it"`) || strings.Count(s, `"body"`) != 1 {
+			t.Errorf("want the one non-empty body carried and the empty one omitted:\n%s", s)
 		}
 	})
 
