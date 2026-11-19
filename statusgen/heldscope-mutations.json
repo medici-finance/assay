@@ -1586,10 +1586,16 @@
       "new": "\t\t\tif isWitnessRow(r.Text) && false {\n\t\t\t\treturn true"
     },
     {
-      "name": "#4294 3c: a protected-table marker no longer keeps 3c off",
+      "name": "#4294 3c: a protected-table marker in a record read whole no longer keeps 3c off",
       "file": "heldscope.go",
-      "old": "\tif hasProtectedTableMarker(evidence) {\n\t\treturn true\n\t}\n\tif rows, _ := flipDateRunnerRows(above)",
+      "old": "\tif hasProtectedTableMarker(evidence) && !protectedSelectsRun(evidence) {\n\t\treturn true\n\t}\n\tif rows, _ := flipDateRunnerRows(above)",
       "new": "\tif rows, _ := flipDateRunnerRows(above)"
+    },
+    {
+      "name": "#5541 3c: a protected-table marker keeps 3c off although the audit reads only the latest PASS run",
+      "file": "heldscope.go",
+      "old": "\tif hasProtectedTableMarker(evidence) && !protectedSelectsRun(evidence) {",
+      "new": "\tif hasProtectedTableMarker(evidence) {"
     },
     {
       "name": "#4294 3c: a run the witness check strips again no longer keeps 3c off",

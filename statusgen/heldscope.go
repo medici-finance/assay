@@ -1956,10 +1956,13 @@ func heldStripHidesLive(evidence string) bool {
 // heading hold any row a witness reader the flip runs could credit: a
 // Date/Runner row (flipDateRunnerRows), or any Evidence row the witness
 // check reads as a witness (parseEvidenceRows, isWitnessRow), whatever its
-// table's header says. A protected-table marker anywhere makes the witness
-// check read the full history (closureRunWitnesses), so it counts too.
+// table's header says. A protected-table marker anywhere hands the witness
+// check the full record (closureRunWitnesses); the protected audit then reads
+// witnesses only from the run flipLatestPass selects, the run this gate reads,
+// whenever the record holds a verdict (protectedSelectsRun). Only a protected
+// record it would read whole keeps 3c off on the marker alone (#5541).
 func heldCreditedAbove(above []string, evidence string) bool {
-	if hasProtectedTableMarker(evidence) {
+	if hasProtectedTableMarker(evidence) && !protectedSelectsRun(evidence) {
 		return true
 	}
 	if rows, _ := flipDateRunnerRows(above); len(rows) > 0 {

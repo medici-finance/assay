@@ -1,0 +1,3 @@
+### Fixed
+
+- `statusgen verifyflip`, the reconcile fold and the autoflip no longer refuse a brief whose Evidence carries a `Verification-Table:` or `Acceptance-Transition:` marker just because an earlier, superseded run there reads HELD or could-not-check. Before, a protected marker always kept the latest-PASS-run reading (rule 3c) off, on the belief that the protected witness audit reads the full record. It actually reads only the latest PASS run once the record holds a verdict, so an earlier run's hold blocked the flip for good. The 3c gate now asks the audit's own run selector. A hold inside the latest PASS run, a row that run did not re-run, a witness row above its last heading, and the sha and runner checks still refuse as before.
