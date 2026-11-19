@@ -1237,7 +1237,7 @@ Row 14 correction. The witness records pass exit=0 because the command ends in `
 
 Rows not meeting their Expect, and what clears each:
 
-- Row 12 clears on an exit 0 witness. #4683 holds the container-lane causes; S1's red set differs from 2026-11-18's host set and needs its own triage. None of it is in this brief's files.
+- Row 12 clears on an exit 0 witness. S1's red set is triaged on #7192; internal/deskkit's panic is #4329. Modules resolved (120 ok), so #4683 does not describe it. None of it is in this brief's files.
 - Row 14 clears when `statusgen --lint` prints 0 at the source (#4823, #4599; forge-neutral/54 has the same shape).
 - Row 7's fail-first clears when #7007 and #4689 both clear.
 
@@ -1251,9 +1251,9 @@ Risk-bearing value. The enumeration and ranking are unchanged from 2026-11-18, a
 - RISK-VALUE: DERIVED — EnvAllowCluster = "ASSAY_ALLOW_CLUSTER" @ tools/desk/internal/deskkit/rosterconfig.go:291; ExitOK=0, ExitDisabled=3, ExitRefused=5, ExitUnverifiable=6 @ tools/desk/internal/deskkit/exitcodes.go:41-55.
 - RISK-VALUE: NAMED, NOT DERIVED — the remaining readOnlyVerbs entries @ tools/desk/cmd/clusterguard/shim.go:43-52, because no live CLIs are available offline.
 
-Attempts: one, uncredited (credit-unchecked; the credit check needs the landed witness). Attempt 1 ran all 15 rows from 2026-11-19T06:10:09Z to 2026-11-19T06:20:29Z, inside the bracket opened 06:06:28Z and closed 06:20:49Z. The fail-first try ran no row, and the supplemental rows ran after the bracket closed; neither earns credit.
+Attempts: one, credited (`--credit` on the landed bracket above: credit=credited). Attempt 1 ran all 15 rows from 2026-11-19T06:10:09Z to 2026-11-19T06:20:29Z, inside the bracket opened 06:06:28Z and closed 06:20:49Z. The fail-first try ran no row, and the supplemental rows ran after the bracket closed; neither earns credit.
 
-**VERIFY: BLOCKED** — 13 of 15 rows meet their Expect. Row 12 exits 1 in packages outside this brief's files. Row 14 prints 1 on #4823 and #4599. Row 7's fail-first was refused before any row (#7007, #4689). No failure was observed in this brief's deliverable: cmd/clusterguard is ok in rows 2 to 10 and S1, and row 15's mutation harness exits 0. Status stays implemented.
+**VERIFY: BLOCKED** — 13 of 15 rows meet their Expect. Row 12 exits 1 in packages outside this brief's files (#7192, #4329). Row 14 prints 1 on #4823 and #4599. Row 7's fail-first was refused before any row (#7007, #4689). No failure was observed in this brief's deliverable: cmd/clusterguard is ok in rows 2 to 10 and S1, and row 15's mutation harness exits 0. Status stays implemented.
 
 ## Review
 
