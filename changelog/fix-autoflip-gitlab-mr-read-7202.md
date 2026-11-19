@@ -1,0 +1,2 @@
+### Fixed
+- `statusgen --auto-flip-model` on a GitLab reviewer now names the right owner in its could-not-check notice. The GitLab merge-request read lands when auto-flip's reads move onto `deskread` (forge-neutral/18), not with the conformance round trip (forge-neutral/10), which has no statusgen task. A new test checks that every statusgen notice deferring work to a forge-neutral brief cites a brief whose `consumers:` block claims the citing file.
