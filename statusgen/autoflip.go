@@ -1660,13 +1660,15 @@ func autoFlipCheckExit(errw io.Writer, results []modelFlipResult, code int, chec
 // conformance round trip (forge-neutral/10) carries no statusgen read (#7202). The
 // corroboration DECISION for GitLab is implemented and unit-tested
 // (decideGitLabFlip); only the live reader that would feed it real MR state is
-// deferred. One read it needs is not on `deskread` at this writing: a
-// commit-to-change resolution (MergedPRForCommit; no kind wraps ListCommitChanges).
-// The merge-request notes the GitLab rule scans (glNote: login and body) are already
-// served by `deskread comments --change`, which reads a change's notes; `deskread
-// reviews` is not where they live and carries no body. forgeUnknown keeps GitHub (a
-// legacy roster with no forge-qualified reviewer ident resolves to GitHub, per
-// modelReviewer).
+// deferred. Reads it needs that `deskread` does not yet offer include a
+// commit-to-change resolution (MergedPRForCommit; no kind wraps ListCommitChanges)
+// and a change's body-edited time (PRBodyEditedAt, which trailerBodyProblem reads on
+// every forge; `deskread trust` addresses issues only, and no kind wraps
+// PRTrustEvents). This is not a full audit of the reads. The merge-request notes
+// the GitLab rule scans (glNote: login and body) are already served by `deskread
+// comments --change`, which reads a change's notes; `deskread reviews` is not where
+// they live and carries no body. forgeUnknown keeps GitHub (a legacy roster with no
+// forge-qualified reviewer ident resolves to GitHub, per modelReviewer).
 func liveModelFlipSource(forge forgeKind, githubToken string) modelFlipSource {
 	if forge == forgeGitLab {
 		return gitlabModelFlipUnavailable{}
