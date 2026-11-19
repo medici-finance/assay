@@ -2307,6 +2307,8 @@ Flags:
   --witness <file>  container-netns: a NEW file outside the home the witness
                     (table, Tree-Digest, Container-Image, attestation) is written
                     to. --close-bracket and --bracket-digest: that file.
+  --kubernetes-observation <sha256:digest>
+                    host close only: bind the observed Kubernetes execution to the witness.
   --close-bracket   host step after a container run: re-run the check, recompute
                     the home's tree digest, and append one Admission-Bracket line
                     to --witness only when the check re-admits the run the
@@ -2509,6 +2511,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	moduleCacheDir := fs.String("module-cache", "", "with --open-bracket: download the home's Go module roots into this new directory outside the home and record its digest in the receipt")
 	rosterCopy := fs.String("roster-copy", "", "with --open-bracket: write the host roster's statusgen keys to this new file outside the home for the container, and record its digest in the receipt")
 	historyPack := fs.String("history-pack", "", "container-netns --fail-first: read-only admitted-source Git object pack for isolated baseline checkouts")
+	kubeObservation := fs.String("kubernetes-observation", "", "host close only: sha256 digest of observed Kubernetes execution")
 	closeBracket := fs.Bool("close-bracket", false, "host close step of a container run: re-check admission and the tree digest, then append Admission-Bracket to --witness")
 	witnessFile := fs.String("witness", "", "container-netns: the new file outside the home the witness is written to; with --close-bracket or --bracket-digest: that file")
 	creditMode := fs.Bool("credit", false, "with --bracket-digest and --source: judge each bracket's credit (provenance, record, binding)")
@@ -2538,12 +2541,19 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// --rows (desktools-v2/74) narrows which Verify rows a run executes and
 	// records; it never narrows an audit. It is checked before any mode runs, so
 	// a refused selector runs no row and writes nothing, --dry-run included.
-	rowsSet := false
+	rowsSet, observationSet := false, false
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "rows" {
 			rowsSet = true
 		}
+		if f.Name == "kubernetes-observation" {
+			observationSet = true
+		}
 	})
+	if observationSet && (!*closeBracket || *kubeObservation == "") {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --kubernetes-observation requires --close-bracket and a sha256 digest")
+		return verifyrunExitUsageError
+	}
 	var selectedIDs []string
 	var selectedSet map[string]bool
 	if rowsSet {
@@ -2688,7 +2698,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		if *openBracket {
 			return runOpenAcceptance(*rootDir, path, *openOut, *moduleCacheDir, *historyOut, *transitionRecord, *rosterCopy, stdout, stderr)
 		}
-		return runCloseBracket(*rootDir, path, *admissionReceipt, *witnessFile, stdout, stderr, *transitionRecord)
+		return runCloseBracket(*rootDir, path, *admissionReceipt, *witnessFile, *transitionRecord, *kubeObservation, stdout, stderr)
 	}
 	if *sandbox == sandboxContainerNetns && *transitionRecord != "" {
 		if *rootDir == "" {
