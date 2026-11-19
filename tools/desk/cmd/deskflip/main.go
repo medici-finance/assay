@@ -88,6 +88,13 @@ nothing is mutated:
                     toggle DESK_MODEL_FLOOR_OVERRIDE=1 bypasses the floor, and every bypass
                     is logged loudly (a silent one would nullify the layer). It is an env
                     toggle, never a wave-past-me flag on the verb.
+  authoring-stamp   a PR whose description carries a "Worker-Attestation:" line must carry
+                    the authored-model / authored-tier pair that record selected, applied by
+                    a stamp authority. UNSTAMPED, MISMATCHED, or unattributable refuses and
+                    prints the exact "deskdispatch --stamp-only ..." line (values read from
+                    the record) that lands it; an unreadable record is could-not-check. A PR
+                    with no such line is unaffected. Merge is human and --stamp-only refuses
+                    a merged change, so ready is the last point the stamp can still land.
   reviewer-approved the reviewer App's latest CORRECTNESS verdict is APPROVED and was
                     submitted AT THE CURRENT HEAD. A verdict at an earlier head is STALE,
                     which is a distinct answer from "no verdict". A CHANGES_REQUESTED at

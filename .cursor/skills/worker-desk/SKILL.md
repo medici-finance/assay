@@ -509,6 +509,14 @@ and the coordinator's `--stamp-only` call (optionally `--attestation <N>`) refus
 whose branch, kit or model/tier disagrees with that record. The record constrains the PR
 stamp; it never stands in for it.
 
+This hand-off is the FAST path, not the only one. `--stamp-only` refuses a merged change, so a
+dropped hand-off used to leave a PR that could never be stamped. Two backstops now close that
+gap. The coordinator's every-sweep authoring-stamp step (`the-desk` §The loop) lists each open PR
+whose `Worker-Attestation:` line has no complete `authored-*` pair (`deskboard prs`,
+`authoringStamp` / `stampOnly`) and runs the printed line. And both ready-flip verbs refuse that
+PR (condition `authoring-stamp`) until the pair stands and matches the record. Send the hand-off
+anyway: it lands the stamp a sweep earlier, and nothing in this desk's own lane changes.
+
 ## Dispatch — `deskdispatch <item-key>` runs the ceremony
 
 The per-item ceremony is mechanical and lives in the verb: claim-acquire → worktree-create in the
