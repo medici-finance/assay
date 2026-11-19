@@ -135,9 +135,9 @@ nothing measured.
 
    | State | Meaning | Effect |
    |---|---|---|
-   | `CORROBORATED` | every path the `fixed-here` site resolves to is in the diff; `follow-up <stream>/<NN>` exists **and** references back | — |
+   | `CORROBORATED` | every path the `fixed-here` site resolves to is in the diff; `follow-up <stream>/<NN>` to another brief exists **and** references back; a self-route (`follow-up` naming this brief) only when the diff touches every path its site resolves to, or names a site absent from the tree (deleted or renamed here) | — |
    | `DISPROVED` | the diff contradicts the claim: a path the site names is absent from the diff, the target brief does not exist, `out-of-scope` names a file this same diff edits, or the entry states no routing at all | **exit 1 — the gate** |
-   | `UNCHECKED` | the evidence is not visible here: an out-of-repo path, a component named in prose, `out-of-scope` whose truth is a judgement no diff settles, or an entry **inherited unchanged from the merge-base** (some earlier branch made that claim) | printed and counted, never a pass |
+   | `UNCHECKED` | the evidence is not visible here: an out-of-repo path, a component named in prose, `out-of-scope` whose truth is a judgement no diff settles, a self-route whose site the diff leaves wholly or partly untouched (an open deferral, never `DISPROVED`), or an entry **inherited unchanged from the merge-base** (some earlier branch made that claim) | printed and counted, never a pass |
 
    For post-merge verification, pin the delivery and its first parent with the explicit
    [delivery-check contract](consumer-delivery-checks.md); the branch default is not a
