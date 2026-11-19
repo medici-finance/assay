@@ -8,7 +8,7 @@ unblocks: []
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
-gate-why: "Offline verification can exercise the admitted head and still miss every baseline assertion because only head dependencies were fetched. A bounded delivery-specific cache lets verify-desk distinguish a real before/after result from a setup failure."
+gate-why: "A human approves the bounded input to the networked preparation step: historical module paths from one verifier-selected merged delivery of this repository and its exact first parent, screened by the existing public-module and checksum rules. Egress of historical dependency requests is a scope decision, and an unavailable or ambiguous delivery binding must return could-not-check rather than widen it."
 issues: [7036]
 schema: brief-v2
 version: 1
@@ -83,7 +83,6 @@ Run offline fixtures from the repository root. Check each named test actually ra
 | 2 | check:ci +dereference | `out=$(GOWORK=off GOPROXY=off go -C statusgen test -count=1 -v -run '^TestBaseCacheDelivery$' . 2>&1) && case "$out" in *'--- PASS: TestBaseCacheDelivery ('*) true;; *) false;; esac` | Exit 0. Correct merged PR succeeds. An unrelated ancestor, a different repository or brief, an unmerged change, mismatched SHA, a missing explicit selection on a multi-delivery brief and a swapped receipt each refuse before new module egress or credit. |
 | 3 | check:ci | `out=$(GOWORK=off GOPROXY=off go -C statusgen test -count=1 -v -run '^TestBaseCacheHistoricalRoots$' . 2>&1) && case "$out" in *'--- PASS: TestBaseCacheHistoricalRoots ('*) true;; *) false;; esac` | Exit 0. A missing historical manifest with the documented legacy shape succeeds. Missing required inputs, partial pairs, an out-of-tree replacement, unapproved historical dependency, changed pins or conflicting checksums refuse. The fixture records zero proxy requests when screening refuses. |
 | 4 | check:ci | `out=$(GOWORK=off GOPROXY=off go -C statusgen test -count=1 -v -run '^TestBaseCacheRefusals$' . 2>&1) && case "$out" in *'--- PASS: TestBaseCacheRefusals ('*) true;; *) false;; esac` | Exit 0. A missing historical version yields unproven, green/green stays non-discriminating, an altered cache refuses, legacy head-only reads keep their meaning, and protected container fail-first still refuses before rows. |
-
 | 5 | check:ci +flow | `delivery=$(git log --first-parent --diff-filter=A --format=%H HEAD -- statusgen/basecache.go) && test "${#delivery}" -eq 40 && base=$(git rev-parse "$delivery^1") && statusgen --root . --consumers --brief statusgen/45 --delivery "$delivery" --base "$base"` | Exit 0. The routing report evaluates the single first-parent change introducing the shared baseline-cache implementation and that commit's actual first parent. Record each routed consumer and require zero unchecked obligations. Missing or multiple introduction commits refuse. |
 
 ## Evidence
