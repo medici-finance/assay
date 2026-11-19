@@ -220,8 +220,12 @@ credited.
   A verified outcome lints the entire landed tree, so a protected transition on another
   brief also needs this permission. The flag permits fresh read-only approval reads;
   it grants no approval, row credit or lifecycle advancement. Keep authored Verify commands
-  and network-off execution unchanged. An unavailable repository origin or approval read
-  still holds the landing, and a refuted approval still refuses it. Retain the diagnostic
+  and network-off execution unchanged. Submit the verified outcome to `deskevidence`:
+  lint PROBLEMs on other briefs are notices there. A PROBLEM on a brief the record closes
+  or one with no recognizable brief key refuses the record. A Verify row requiring clean
+  repo-wide lint still needs its own pinned host witness under brief rule 51. For the
+  closure being recorded, an unavailable repository origin or approval read still holds
+  the landing, and a refuted approval still refuses it. Retain the diagnostic
   and route the missing capability; never clear Git configuration, substitute an origin
   or borrow a stored human login to make authority pass.
   The landing tool binds its own minted GitHub verifier credential to opted-in host audits,

@@ -1,0 +1,1 @@
+- Corrected verifier instructions and command help for publishing verified outcomes when landed-tree lint reports a problem on another brief. Verify rows that require clean repository-wide lint still need a clean host witness.

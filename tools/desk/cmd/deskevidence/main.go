@@ -105,8 +105,11 @@ statusgen --root <dir> --lint against the landing worktree, before vs. after the
 write) — both refused before the write, a pre-existing red elsewhere in the repo never
 blocks a clean landing.
 
-New verified outcome records additionally require a lint-clean tree and
-statusgen brief --check-verified (verified/done, dated stamp, passing witnesses).
+For a new verified outcome, the writer lints the landed tree. A PROBLEM naming a
+brief the record closes, or lacking a recognizable brief key, refuses the record.
+A PROBLEM naming another brief prints as a notice. The writer also requires
+statusgen brief --check-verified --check-attribution (verified/done, dated stamp,
+passing witnesses and accepted Evidence attribution).
 The brief and stream README must already match the target branch. Evidence-only
 implemented landings must not append verified outcomes; verify-fail is unchanged.
 
