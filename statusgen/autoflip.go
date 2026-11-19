@@ -1653,12 +1653,17 @@ func autoFlipCheckExit(errw io.Writer, results []modelFlipResult, code int, chec
 // liveModelFlipSource selects the production read seam for the reviewer's forge.
 // GitHub reads through `gh` (ghModelFlipSource). A GitLab reviewer selects
 // gitlabModelFlipUnavailable: statusgen has no GitLab merge-request read path yet —
-// the forge-aware LIVE read lands with the conformance round trip
-// (forge-neutral/10), where a real GitLab deployment exists — so the GitLab live
-// read reports an honest could-not-check rather than shelling `gh`, which cannot
-// read a GitLab MR. The corroboration DECISION for GitLab is implemented and
-// unit-tested (decideGitLabFlip); only the live reader that would feed it real MR
-// state is deferred. forgeUnknown keeps GitHub (a legacy roster with no
+// the forge-aware LIVE read lands when auto-flip's reads move off `gh` and onto
+// `deskread`, the seam's read verb (forge-neutral/18, Task 6; the seam reads it
+// consumes are forge-neutral/33's) — so the GitLab live read reports an honest
+// could-not-check rather than shelling `gh`, which cannot read a GitLab MR. The
+// conformance round trip (forge-neutral/10) carries no statusgen read (#7202). The
+// corroboration DECISION for GitLab is implemented and unit-tested
+// (decideGitLabFlip); only the live reader that would feed it real MR state is
+// deferred. Two reads it needs are not on `deskread` at this writing: a
+// commit-to-change resolution (MergedPRForCommit) and the note BODY the GitLab rule
+// matches the head SHA against (`deskread reviews` emits login, state, commit and
+// time, no body). forgeUnknown keeps GitHub (a legacy roster with no
 // forge-qualified reviewer ident resolves to GitHub, per modelReviewer).
 func liveModelFlipSource(forge forgeKind, githubToken string) modelFlipSource {
 	if forge == forgeGitLab {
@@ -1668,12 +1673,12 @@ func liveModelFlipSource(forge forgeKind, githubToken string) modelFlipSource {
 }
 
 // errGitLabFlipReadUnavailable is the honest could-not-check a GitLab auto-flip
-// reports until the forge-aware live merge-request read lands with the conformance
-// round trip (forge-neutral/10). It is structural, not a misconfiguration: no
+// reports until the forge-aware live merge-request read lands with auto-flip's move
+// onto deskread (forge-neutral/18). It is structural, not a misconfiguration: no
 // operator setting resolves it, so it is a non-fatal NOTICE (reportAutoFlipModel),
 // never a fatal error and never a silent flip.
 var errGitLabFlipReadUnavailable = errors.New(
-	"statusgen has no GitLab merge-request read path yet — the forge-aware live read lands with the conformance round trip (forge-neutral/10); a GitLab auto-flip is could-not-check until then, never a flip")
+	"statusgen has no GitLab merge-request read path yet — the forge-aware live read lands when auto-flip's reads move onto deskread (forge-neutral/18); a GitLab auto-flip is could-not-check until then, never a flip")
 
 // gitlabModelFlipUnavailable is the live source for a GitLab reviewer. Commit
 // history is plain git and works on any forge, so CommitsTouching is served; the
