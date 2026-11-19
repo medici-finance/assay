@@ -13,6 +13,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 	"unicode"
 )
 
@@ -413,21 +414,8 @@ func prepareModuleCache(home, cache string, owners []string, stdout io.Writer) (
 	}
 	for _, r := range roots {
 		dir := filepath.Join(home, filepath.FromSlash(r))
-		before := snaps[r]
-		for i, f := range moduleRootFiles {
-			b, err := os.ReadFile(filepath.Join(dir, f))
-			if err != nil || !bytes.Equal(b, before[i]) {
-				return receiptModuleCache{}, fmt.Errorf("could-not-check — module root %s changed its %s after the egress screen; nothing was downloaded for it and no receipt was written", r, f)
-			}
-		}
-		if out, err := goModDownload(dir, env); err != nil {
-			return receiptModuleCache{}, fmt.Errorf("could-not-check — `go mod download` for %s failed (%v): %s. No receipt was written and the image's baked cache is not a substitute", r, err, lastLines(string(out), 5))
-		}
-		for i, f := range moduleRootFiles {
-			b, err := os.ReadFile(filepath.Join(dir, f))
-			if err != nil || !bytes.Equal(b, before[i]) {
-				return receiptModuleCache{}, fmt.Errorf("could-not-check — `go mod download` for %s changed its %s; the download must be bound to the source's go.sum as committed", r, f)
-			}
+		if err := downloadScreenedModuleRoot(dir, r, snaps[r], env, stdout); err != nil {
+			return receiptModuleCache{}, err
 		}
 	}
 	digest, err := homeTreeDigest(cache)
@@ -435,6 +423,53 @@ func prepareModuleCache(home, cache string, owners []string, stdout io.Writer) (
 		return receiptModuleCache{}, fmt.Errorf("could-not-check — %v", err)
 	}
 	return receiptModuleCache{Digest: digest, Roots: roots, PublicAssay: proof}, nil
+}
+
+// Retrying is safe only within this invocation's fresh cache. A failed run
+// can report multiple modules; an unrelated diagnostic in that output must
+// retain its immediate refusal, even when another module lost its stream.
+var moduleProxyStreamReset = regexp.MustCompile(
+	`^go: \S+@\S+: read "` + regexp.QuoteMeta(moduleDownloadProxy) + `/[^"[:space:]]+": stream error: stream ID [0-9]+; INTERNAL_ERROR; received from peer$`,
+)
+
+func onlyModuleProxyStreamResets(out []byte) bool {
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+		if !moduleProxyStreamReset.MatchString(strings.TrimSpace(line)) {
+			return false
+		}
+	}
+	return true
+}
+
+func changedModuleRootFile(dir string, snapshot [2][]byte) string {
+	for i, name := range moduleRootFiles {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil || !bytes.Equal(data, snapshot[i]) {
+			return name
+		}
+	}
+	return ""
+}
+
+func downloadScreenedModuleRoot(dir, root string, snapshot [2][]byte, env []string, stdout io.Writer) error {
+	const maxAttempts = 3
+	for attempt := 1; ; attempt++ {
+		if f := changedModuleRootFile(dir, snapshot); f != "" {
+			return fmt.Errorf("could-not-check — module root %s changed its %s after the egress screen; no receipt was written", root, f)
+		}
+		out, err := goModDownload(dir, env)
+		if f := changedModuleRootFile(dir, snapshot); f != "" {
+			return fmt.Errorf("could-not-check — `go mod download` for %s changed its %s; the download must be bound to the source's go.sum as committed", root, f)
+		}
+		if err == nil {
+			return nil
+		}
+		if attempt == maxAttempts || !onlyModuleProxyStreamResets(out) {
+			return fmt.Errorf("could-not-check — `go mod download` for %s failed (%v): %s. No receipt was written and the image's baked cache is not a substitute", root, err, lastLines(string(out), 5))
+		}
+		fmt.Fprintf(stdout, "module-download root=%s proxy stream interrupted; retrying in the same cache (attempt %d/%d)\n", root, attempt+1, maxAttempts)
+		time.Sleep(time.Duration(attempt) * time.Second)
+	}
 }
 
 // moduleRootFiles are the two files of a module root the download is bound to.
