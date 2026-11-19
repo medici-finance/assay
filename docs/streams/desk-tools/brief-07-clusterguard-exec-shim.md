@@ -1197,6 +1197,64 @@ Attempts: one, uncredited (credit-unchecked; the credit check needs the landed w
 
 **VERIFY: BLOCKED** — 13 of 15 rows meet their Expect. Row 12 exits 1 on #4683 causes outside this brief's files. Row 14 prints 1 on #4823 and #4599. Row 7's fail-first obligation has no admissible pre-change base (#4689). No failure was observed in this brief's deliverable: cmd/clusterguard is ok in the witnessed rows 2 to 10, and row 15's mutation harness exits 0. Status stays implemented.
 
+### Non-implementer verifier run — 2026-11-19 (UTC) claude-opus-5-5 verifier at 44a02f3dc7ab (BLOCKED — 13 of 15 rows meet their Expect; row 12 exits 1 outside this brief's files, row 14 prints 1, and row 7's fail-first was refused before any row)
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/clusterguard/... -count=1` | pass exit=0 sandbox=container-netns | sha256:8acd0c70a190 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestRefusesWithoutOptIn$' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:531bdfc48a24 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestRefusesScriptWrappedCall$' -count=1` | pass exit=0 sandbox=container-netns | sha256:fc68a6c4509a | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestPassesThroughWithOptIn$' -count=1 && go test ./cmd/clusterguard/ -run '^TestPassThroughSkipsTheShimDirectory$' -count=1` | pass exit=0 sandbox=container-netns | sha256:892f71d51e53 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestSymlinkNameDispatch$' -count=1 -v` | pass exit=0 sandbox=container-netns | sha256:ad3d1508c756 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestVerbClassification$' -count=1 && go test ./cmd/clusterguard/ -run '^TestReadOnlyTierRefusesMutatingVerbs$' -count=1 && go test ./cmd/clusterguard/ -run '^TestUnlistedFlagNotReadOnly$' -count=1 && go test ./cmd/clusterguard/ -run '^TestROTierUnlistedFlagRefuses$' -count=1` | pass exit=0 sandbox=container-netns | sha256:d87c09163baa | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestUnrecognisedOptInValueRefuses$' -count=1 && go test ./cmd/clusterguard/ -run '^TestNoRealBinaryIsUnverifiable$' -count=1 && go test ./cmd/clusterguard/ -run '^TestUnknownInvocationNameIsUnverifiable$' -count=1` | pass exit=0 sandbox=container-netns | sha256:7c6037af2a0f | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestStopFlagRefusesEvenWithOptIn$' -count=1` | pass exit=0 sandbox=container-netns | sha256:2f260b6c1b04 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/clusterguard/ -run '^TestAbsolutePathInvocationBypassesTheShim$' -count=1 && go test ./cmd/clusterguard/ -run '^TestLogRecordsBothVerdicts$' -count=1 && go test ./cmd/clusterguard/ -run '^TestLogRedactsCredentialArguments$' -count=1` | pass exit=0 sandbox=container-netns | sha256:5959c972068e | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && d=$(mktemp -d) && go build -o "$d/clusterguard" ./cmd/clusterguard && "$d/clusterguard" > "$d/usage.out" 2>&1; rc=$?; grep -q 'ASSAY_ALLOW_CLUSTER' "$d/usage.out"; g1=$?; grep -q 'talosctl' "$d/usage.out"; g2=$?; [ "$rc" -eq 0 ] && [ "$g1" -eq 0 ] && [ "$g2" -eq 0 ]` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd tools/desk && go test ./... -count=1` | fail exit=1 sandbox=container-netns | sha256:9383dc9fc4f9 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 13 | `gofmt -l tools/desk/cmd/clusterguard > /tmp/cg-fmt.out; test ! -s /tmp/cg-fmt.out` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 14 | `cd statusgen && go run . --root .. --lint; echo $?` | pass exit=0 sandbox=container-netns | sha256:08ac3d011286 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 15 | `cd tools/desk && go run ./cmd/muhar -spec cmd/clusterguard/mutations.json` | pass exit=0 sandbox=container-netns | sha256:05f749788b0b | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:eaacf725b2f3d1ebdc71c4d0e9450a8495567b4b004086ad057e724d82cb6c52
+Container-Image: sha256:dd758003b77fc718ec5b9b3e3a34529a422eb87316a605207bdad2560ca169bc
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7167 run=9b59e27e2702469ff8dbe243e6d3958414cb64ada4012288fd86325183511e63 source=44a02f3dc7ab850eec2143981f060769ca9b492c brief=docs/streams/desk-tools/brief-07-clusterguard-exec-shim.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=9b59e27e2702469ff8dbe243e6d3958414cb64ada4012288fd86325183511e63 source=44a02f3dc7ab850eec2143981f060769ca9b492c tree=sha256:eaacf725b2f3d1ebdc71c4d0e9450a8495567b4b004086ad057e724d82cb6c52 witness=sha256:1bf9f8bebc315b93d71f80475f1a7ff14fe516bcae1b15caa2c89b7f5921090d opened=2026-11-19T06:06:28Z closed=2026-11-19T06:20:49Z before=receipt after=check-verifier
+
+Execution witness: all fifteen rows ran in one closed container-netns admission bracket, in the release-pinned verify-runner image for v1.0.88 (the image.lock reference), run by digest on linux/arm64, with no network, a read-only root, all capabilities dropped, a fresh module cache and the roster copy mounted read-only. The home was mounted read-only with its git directory read-only, and `git status --porcelain` in it was empty before and after. Only tools/desk/cmd/clusterguard was overlaid with a writable copy, byte-identical to the source before and after, so row 15's harness can mutate and restore shim.go. The container ran from 06:10:09Z to 06:20:29Z with `--timeout 30m`. The bracket digest verdict is match.
+
+Since 9c845402c8c0 nothing under tools/desk/cmd/clusterguard, deskkit's exitcodes.go or the clusterguard forgeban entry changed. The opt-in declaration stays at rosterconfig.go:291.
+
+Fail-first. Row 7 is the risk-bearing row. `statusgen verifyrun --rows 7 --fail-first --base a4a6f70277 --delivering-commit 73cd88a688` exited 2 before any row, verbatim: `--fail-first: --delivering-commit "73cd88a688" is refused: it cannot be read through the library read path (native discovery/config/shallow environment profile): GIT_CONFIG_COUNT is set in the environment, which selects a native Git profile the library does not qualify; unset it (with any GIT_CONFIG_KEY_<n>/GIT_CONFIG_VALUE_<n> it carries) and re-run`. That is #7007 under the kit's required GIT_CONFIG_COUNT=0, and it was not worked around. The base itself also stays inadmissible on #4689: the brief and its implementation arrived together in ad726983f.
+
+Row 14 correction. The witness records pass exit=0 because the command ends in `; echo $?` (#1906). The Expect is the printed value 0. S2 printed 1, so row 14 does not meet its Expect. No PROBLEM names desk-tools/07.
+
+| # | Supplemental observation (no acceptance credit) | Result | Date | Runner |
+|---|---|---|---|---|
+| S1 | Row 12's command re-run after the bracket closed, in the same image, network off, home read-only | exit 1. 120 ok packages, including cmd/clusterguard and internal/forgeban. Red: cmd/deskinbox, cmd/deskperf, cmd/deskpreflight, cmd/desksourceguard, cmd/deskwt (role-init and transport tests), internal/deskkit (a nil-pointer panic in TestOverrideIdentityResolvesRosterLogin) and internal/forgeservice/auth. None is in this brief's files | 2026-11-19 | claude-opus-5-5 verifier (assay-verifier-app[bot]) |
+| S2 | Row 14's command on the darwin/arm64 host in the home at the source, with the configured roster | printed 1. LINT: FAIL 3 problem(s), each "protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required": desk-tools/37, desktools-v2/65 and forge-neutral/54 | 2026-11-19 | claude-opus-5-5 verifier (assay-verifier-app[bot]) |
+
+Rows not meeting their Expect, and what clears each:
+
+- Row 12 clears on an exit 0 witness. #4683 holds the container-lane causes; S1's red set differs from 2026-11-18's host set and needs its own triage. None of it is in this brief's files.
+- Row 14 clears when `statusgen --lint` prints 0 at the source (#4823, #4599; forge-neutral/54 has the same shape).
+- Row 7's fail-first clears when #7007 and #4689 both clear.
+
+Risk-bearing value. The enumeration and ranking are unchanged from 2026-11-18, and every literal was re-read at 44a02f3dc7ab at the same lines.
+
+- RISK-VALUE: DERIVED — flagRestrictedVerbs @ tools/desk/cmd/clusterguard/shim.go:71, enforced by unlistedArg @ shim.go:240 and unlistedIn @ shim.go:256, checked @ shim.go:291. Every argument outside the listed flags is refused, and row 15's spec reddens a weakened version.
+- RISK-VALUE: DERIVED — bareOnlyVerbs = talosctl services @ tools/desk/cmd/clusterguard/shim.go:60, checked @ shim.go:288. The allowlist vouches only for the bare form.
+- RISK-VALUE: DERIVED — verbScan{unlisted: a} @ tools/desk/cmd/clusterguard/shim.go:201. An unknown arity costs a false refusal, never a wider allow.
+- RISK-VALUE: DERIVED — parseTier @ tools/desk/cmd/clusterguard/shim.go:150; off-allowlist, invalid and default all ExitRefused @ shim.go:330, 368 and 376. Empty is tierNone, and "readonly" cannot widen to mutate.
+- RISK-VALUE: DERIVED — "k9s": {} @ tools/desk/cmd/clusterguard/shim.go:51, an empty allowlist as specified.
+- RISK-VALUE: DERIVED — EnvAllowCluster = "ASSAY_ALLOW_CLUSTER" @ tools/desk/internal/deskkit/rosterconfig.go:291; ExitOK=0, ExitDisabled=3, ExitRefused=5, ExitUnverifiable=6 @ tools/desk/internal/deskkit/exitcodes.go:41-55.
+- RISK-VALUE: NAMED, NOT DERIVED — the remaining readOnlyVerbs entries @ tools/desk/cmd/clusterguard/shim.go:43-52, because no live CLIs are available offline.
+
+Attempts: one, uncredited (credit-unchecked; the credit check needs the landed witness). Attempt 1 ran all 15 rows from 2026-11-19T06:10:09Z to 2026-11-19T06:20:29Z, inside the bracket opened 06:06:28Z and closed 06:20:49Z. The fail-first try ran no row, and the supplemental rows ran after the bracket closed; neither earns credit.
+
+**VERIFY: BLOCKED** — 13 of 15 rows meet their Expect. Row 12 exits 1 in packages outside this brief's files. Row 14 prints 1 on #4823 and #4599. Row 7's fail-first was refused before any row (#7007, #4689). No failure was observed in this brief's deliverable: cmd/clusterguard is ok in rows 2 to 10 and S1, and row 15's mutation harness exits 0. Status stays implemented.
+
 ## Review
 
 Gate: model (all four risk answers no). The reviewer records verdict + date in the stream README
