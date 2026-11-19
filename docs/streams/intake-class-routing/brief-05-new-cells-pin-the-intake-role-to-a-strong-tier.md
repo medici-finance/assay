@@ -139,5 +139,35 @@ Verdict: rows 1, 2, 3 and 7 pass inside the closed container-netns bracket (brac
 
 **VERIFY: BLOCKED** — rows 1-3, 7 pass (4/7); rows 4, 5, 6 not dischargeable in the container lane (environment; same class as medici-finance/assay#6851); supplemental host observations pass but carry no credit.
 
+### Verification pass 2026-11-19 (medici-finance/assay#7222, source 08834a1a6e12, strong tier)
+
+Every row ran fresh inside a closed container-netns admission bracket (verify-runner v1.0.88). An earlier bracket in this same pass, opened 2026-11-19T16:42:37Z, is discarded as an environment fault: its 8g tmpfs /tmp was under cellctl's 10 GiB free-space floor. The bracket below, run with a host-backed /tmp, is the credited one. No host attempt was made, because every row is check:ci and darwin cannot unshare.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestSeedIntakeTierStrong$' ./cmd/cellctl > "$o" && grep -q -- '--- PASS: TestSeedIntakeTierStrong ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestNewPinsIntakeStrong$' ./cmd/cellctl > "$o" && grep -q -- '--- PASS: TestNewPinsIntakeStrong ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestIntakePinSurvivesReset$' ./cmd/cellctl > "$o" && grep -q -- '--- PASS: TestIntakePinSurvivesReset ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd tools/desk && GOWORK=off go test -count=1 ./cmd/cellctl)` | fail exit=1 sandbox=container-netns | sha256:6a57849aca2c | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `sh tools/cellctl/tests/parity.test.sh` | fail exit=2 sandbox=container-netns | sha256:de5d53a24fff | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --consumers --brief assay:assay:intake-class-routing:05` | fail exit=2 sandbox=container-netns | sha256:b633440b9279 | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestSetShadowedPinNotice$' ./cmd/cellctl > "$o" && grep -q -- '--- PASS: TestSetShadowedPinNotice ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:72e2edc6428fb57790afb1b8545c8d3eb22d0f686d85a9cd3aae5892b094f7aa
+Container-Image: sha256:dd758003b77fc718ec5b9b3e3a34529a422eb87316a605207bdad2560ca169bc
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7222 run=327c05933d7abac2a1097b71fd12dbcaaf4f45b4e0a9e66766d3e3da3f018ae7 source=08834a1a6e1226100404e8479e6473d607629260 brief=docs/streams/intake-class-routing/brief-05-new-cells-pin-the-intake-role-to-a-strong-tier.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=327c05933d7abac2a1097b71fd12dbcaaf4f45b4e0a9e66766d3e3da3f018ae7 source=08834a1a6e1226100404e8479e6473d607629260 tree=sha256:72e2edc6428fb57790afb1b8545c8d3eb22d0f686d85a9cd3aae5892b094f7aa witness=sha256:72add141f2a36cb291c88899961dfa326979de8468addfff3d3b927226a2172b opened=2026-11-19T16:53:02Z closed=2026-11-19T16:55:11Z before=receipt after=check-verifier
+
+Row observations (diagnostic re-runs in the same image, no credit):
+- Row 4 fails as admitted. TestDeskdCoordinateUsesCellOriginNotCallerDirectory (helper_custody_test.go:80) dies with "deskd: cannot read the cell repository coordinate" whenever the admitted row env's GIT_CONFIG_COUNT=2 grep pins are set, and passes with GIT_CONFIG_COUNT=0. The test predates this brief (medici-finance/assay#2510). The same package run without the admitted env exits 0.
+- Row 5 fails with exit 2: `tools/cellctl/tests/parity.test.sh: 38: set: Illegal option -o pipefail`. The authored command runs a bash script under `sh`, which is dash in the runner image.
+- Row 6 fails with exit 2: `--consumers: COULD-NOT-CHECK: ... is not in the diff against 08834a1a..., and the brief's delivery could not be derived ... record the Verification-Table marker or pass --delivery and --base`.
+
+Risk-bearing value enumeration (risk metadata is present and all four answers are no; this is a fail-safe enumeration of the delivered diff's literals):
+- RISK-VALUE: DERIVED — DESK_MODEL_intake_desk = opus @ tools/desk/cmd/cellctl/new.go:225 (also :321, :549). policy.go:32 maps opus to tier strong, and intake judgment work requires a strong tier. It is a reversible seed default.
+- RISK-VALUE: DERIVED — "intake-desk": {"tier": "strong"} @ tools/desk/cmd/cellctl/providers.json:74 (also 137, 200, 263). This matches pr-review-desk and verify-desk in the same seed. It is a reversible seed default.
+
+**VERIFY: FAIL** — rows 1, 2, 3 and 7 pass (4/7) in the closed bracket (bracket-digest verdict=match). Rows 4, 5 and 6 fail as admitted, and the faults are in the check definitions and the lane rather than in an observed assertion about the intake pin.
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.
