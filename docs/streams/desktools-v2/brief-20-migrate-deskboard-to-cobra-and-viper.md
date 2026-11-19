@@ -536,7 +536,9 @@ RISK-VALUE: DERIVED — `--version --json` encode failure returns deskkit.ExitUn
 RISK-VALUE: DERIVED — queueContractVersion = verifyqueue.Version (1) @ tools/desk/cmd/deskboard/roots.go:146, constant at statusgen/verifyqueue/queue.go:6 — unchanged since 5d0fa120d3da, so the board accepts the same queue contract version the producer emits
 RISK-VALUE: DERIVED — manifest fixture count 600 @ tools/desk/cmd/deskboard/clihelp_discovery_test.go:199 — unchanged since 5d0fa120d3da; row 10's positive control proves the same tree triggers discovery on an execution form, so any count of at least one discriminates, and 600 makes the "large manifest fixture" the Expect names
 
-**VERIFY: PASS** — 10 of 10 Verify rows pass at 44a02f3dc7ab (rows 1-9 on the host, row 10 sandbox=container-netns in a closed admission bracket, bracket-digest verdict=match).
+Row 9 disclosure: the witnessed command exits 0 and disproves nothing, but on merged main it judges no delivery range: it printed 0 corroborated, 0 disproved, 8 unchecked, and unchecked entries are not passes. Its Command pins no `--delivery` or first-parent `--base`, so the closing lint promotes Verify row 9 [consumer-delivery-range] to a PROBLEM and refuses the verified closure (check-definition, medici-finance/assay#1927). Row 9 stays deferred until its Command is amended to the delivery-pinned form, a reviewed Verify-row change for the human driver. Status stays implemented.
+
+**VERIFY: BLOCKED** — 9 of 10 Verify rows pass at 44a02f3dc7ab (rows 1-8 on the host, row 10 sandbox=container-netns in a closed admission bracket, bracket-digest verdict=match, credited). `statusgen --root . --consumers` (row 9) → could-not-run: unpinned consumers check judges no delivery range on merged main (medici-finance/assay#1927).
 
 
 ## Review
