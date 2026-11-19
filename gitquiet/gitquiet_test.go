@@ -177,3 +177,97 @@ func TestHostileGitConfig(t *testing.T) {
 		t.Fatalf("negative control did not inherit hostile config: %q", got)
 	}
 }
+
+// plantEnv is the switch that makes TestPlantedSetURL run: only the reexecuted child of
+// TestRunRefusesTempInRepo sets it.
+const plantEnv = "GITQUIET_PLANT_SET_URL"
+
+// TestPlantedSetURL is the planted instance of the defect, run only as that child: a
+// fixture that runs `git remote set-url` in an empty t.TempDir() with every inherited
+// GIT_* variable removed, expecting no repository there. It writes to whatever
+// repository discovery finds above the temporary root.
+func TestPlantedSetURL(t *testing.T) {
+	if os.Getenv(plantEnv) != "1" {
+		t.Skip("run only as TestRunRefusesTempInRepo's child")
+	}
+	cmd := exec.Command("git", "-C", t.TempDir(), "remote", "set-url", "origin", "https://example.invalid/planted.git")
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(strings.ToUpper(kv), "GIT_") {
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
+	out, err := cmd.CombinedOutput()
+	t.Logf("planted set-url: err=%v %s", err, out)
+}
+
+// TestRunRefusesTempInRepo — the behaviour. A test binary whose temporary roots sit
+// inside a repository refuses to run, so the planted fixture never writes the enclosing
+// repository's origin URL; the same binary with its roots outside every repository runs
+// the planted test (the control). Before the fix the child runs and the URL is rewritten.
+//
+// regression: F-temp-root-in-repo
+func TestRunRefusesTempInRepo(t *testing.T) {
+	const want = "https://example.invalid/o/r.git"
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	git(t, root, "", "init", "-q", repo)
+	git(t, repo, "", "remote", "add", "origin", want)
+	child := func(tmp, gotmp string) (string, error) {
+		t.Helper()
+		for _, d := range []string{tmp, gotmp} {
+			if err := os.MkdirAll(d, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		cmd := exec.Command(os.Args[0], "-test.run=^TestPlantedSetURL$", "-test.count=1", "-test.v")
+		cmd.Env = append(os.Environ(), plantEnv+"=1", "TMPDIR="+tmp, "TMP="+tmp, "TEMP="+tmp, "GOTMPDIR="+gotmp)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	inside, outside := filepath.Join(repo, "tmp"), filepath.Join(root, "outside")
+	// Each root alone: os.MkdirTemp("", …) creates under TMPDIR, t.TempDir() under GOTMPDIR.
+	for _, c := range [][2]string{{inside, inside}, {inside, outside}, {outside, inside}} {
+		out, err := child(c[0], c[1])
+		if got := git(t, repo, "", "config", "--get", "remote.origin.url"); got != want {
+			t.Errorf("TMPDIR=%s GOTMPDIR=%s: the planted fixture rewrote the enclosing repository's origin URL to %q", c[0], c[1], got)
+			git(t, repo, "", "remote", "set-url", "origin", want)
+		}
+		if err == nil || !strings.Contains(out, "gitquiet: refusing to run the tests") || !strings.Contains(out, repo) {
+			t.Errorf("TMPDIR=%s GOTMPDIR=%s: the binary ran instead of refusing (err %v):\n%s", c[0], c[1], err, out)
+		}
+	}
+	out, err := child(outside, outside)
+	if err != nil || !strings.Contains(out, "--- PASS: TestPlantedSetURL") {
+		t.Errorf("control: roots outside every repository, the binary did not run the test (err %v):\n%s", err, out)
+	}
+}
+
+// TestEnclosingRepo — the probe. A directory below a work tree or a bare repository is
+// inside it, whatever GIT_CEILING_DIRECTORIES the caller set; a directory outside both is
+// not; a directory git cannot enter is an error.
+//
+// regression: F-temp-root-in-repo
+func TestEnclosingRepo(t *testing.T) {
+	root := t.TempDir()
+	work, bare, out := filepath.Join(root, "work"), filepath.Join(root, "bare.git"), filepath.Join(root, "out")
+	git(t, root, "", "init", "-q", work)
+	git(t, root, "", "init", "-q", "--bare", bare)
+	for _, d := range []string{filepath.Join(work, "a", "b"), filepath.Join(bare, "tmp"), out} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// A ceiling at each repository hides it from a probe that honours the caller's GIT_*
+	// variables; an isolating child's environment drops the ceiling, so the probe must too.
+	t.Setenv("GIT_CEILING_DIRECTORIES", work+string(os.PathListSeparator)+bare)
+	for dir, inside := range map[string]bool{filepath.Join(work, "a", "b"): true, filepath.Join(bare, "tmp"): true, out: false} {
+		got, err := enclosingRepo(dir)
+		if err != nil || (got != "") != inside {
+			t.Errorf("enclosingRepo(%s) = %q, %v; want inside=%v", dir, got, err, inside)
+		}
+	}
+	// A root git cannot even enter is could-not-check, never "outside every repository".
+	if got, err := enclosingRepo(filepath.Join(out, "absent")); err == nil || got != "" {
+		t.Errorf("enclosingRepo(absent dir) = %q, %v; want a could-not-check error", got, err)
+	}
+}

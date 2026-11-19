@@ -21,6 +21,19 @@ manifest's test command inside `tools/desk`. The existing CI desk suite exercise
 the adapter and shared implementation; general module discovery also builds and
 vets this module.
 
+## Temporary roots outside every repository
+
+`Run` also refuses to run a package's tests when the temporary root (`os.TempDir()`,
+from `TMPDIR`, or `TMP`/`TEMP` on Windows) or `GOTMPDIR` (where `t.TempDir()` creates
+directories when it is set) is inside a git repository. A fixture that runs git in an
+empty temporary directory and expects "not a git repository" would otherwise discover
+the enclosing repository and write to it; from a linked worktree that is the shared
+checkout's config. The probe asks git itself with every inherited `GIT_*` variable
+removed, because an isolating child drops `GIT_CEILING_DIRECTORIES` too. A root git
+cannot check is refused as could-not-check; with no git on `PATH` there is nothing that
+could discover a repository, and the probe passes. Point `TMPDIR` and `GOTMPDIR` at a
+directory outside every repository to clear the refusal.
+
 ## Go telemetry in a scratch home (`goquiet`)
 
 The `goquiet` subpackage closes the same class of defect for the go command. Unless
