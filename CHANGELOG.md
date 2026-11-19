@@ -23,6 +23,30 @@ Pending notable changes are recorded as one-file-per-PR fragments under
 here at release time. This section is written only by the release workflow;
 do not add highlight bullets to it directly.
 
+## v1.0.89 — 2026-11-19
+
+### Added
+- The five-role Kubernetes qualification harness runs the compiled cellctl CLI against an offline fixture and checks each desk’s execution identity through reconnect, controlled stop and explicit restart.
+- `deskboard prs` lists each open attested PR that lacks its authoring stamp (`authoringStamp`, `stampOnly`), and the coordinator's loop runs that listing on every sweep, so a dropped worker hand-off is stamped before merge.
+
+### Fixed
+- Cross-repository verifier dispatch now resolves the tracking repository and its forge from the same checkout. A conflicting repository identity holds the run before it takes a claim. If the planned and admitted destinations differ, the refusal names both valid repository slugs.
+- The verifier's generated publication command preserves paths containing spaces or apostrophes.
+- When a witness names a read-set file missing from the landing checkout, the Evidence writer now tells the operator where the verifier recorded the bytes and how to include them with the rows in one Evidence PR commit.
+- `deskevidence --evidence-file` now accepts a brief file up to 1 MiB (was 256 KiB), so completed verifications on briefs that have accumulated many Evidence passes can land their Evidence byte-for-byte. A single outcome record keeps its 256 KiB bound.
+- `deskevidence --outcome-record` now checks overall results against the same vocabulary as the verification queue. A row-level `pass` gets an actionable refusal before admission. Recognized verified spellings receive the existing closure checks.
+- `deskflip` and `deskpost ready` refuse to flip a PR whose body names a `Worker-Attestation:` record until it carries the matching `authored-model:` / `authored-tier:` pair (condition `authoring-stamp`). The refusal prints the exact `deskdispatch --stamp-only` line built from the record. A PR with no attestation line is unaffected.
+- `scanloop`: a bare `issue-N.md` placeholder now credits only the configured home repo's (`ASSAY_HOME_REPO`) issue N. Before, a batch member numbered N from any repository was credited with the placeholder exit from it, and the local "already has a placeholder" check matched on the number alone.
+- `statusgen --auto-flip-model` on a GitLab reviewer now names the right owner in its could-not-check notice. The GitLab merge-request read lands when auto-flip's reads move onto `deskread` (forge-neutral/18), not with the conformance round trip (forge-neutral/10), which has no statusgen task. A new test checks that every statusgen notice deferring work to a forge-neutral brief cites a brief whose `consumers:` block claims the citing file.
+- `statusgen --consumers --brief <id>` with no `--base` or `--delivery` no longer treats an uncommitted edit to the brief (for example a verifier's Evidence insertion) as delivery. The brief counts as "in the diff" only through committed changes, so the bare form keeps its derived-delivery or could-not-check verdict instead of exiting 0 with nothing checked.
+- `statusgen --consumers` no longer corroborates a self-route (`follow-up <stream>/<NN>` naming the brief that carries the entry) from the brief text alone. Such an entry's target always exists and always references back, so it used to corroborate at any pin: a brief whose consumers were all self-routes printed the same summary at its real delivery, at an unrelated delivery and at the pre-delivery base. A self-route is now judged against the diff. It corroborates only when the diff touches every path its site resolves to, or names a deleted site. Otherwise it is UNCHECKED, never DISPROVED, so an authoring branch that defers a not-yet-created path still passes. A delivery-pinned run that corroborates nothing exits 2, as before. A follow-up to another brief keeps its existence and reference-back rule. Pinned rows that assert exact counts for self-routed briefs will print fewer corroborated entries on re-run.
+- `statusgen verifyflip`, the reconcile fold and the autoflip no longer refuse a brief whose Evidence carries a `Verification-Table:` or `Acceptance-Transition:` marker just because an earlier, superseded run there reads HELD or could-not-check. Before, a protected marker always kept the latest-PASS-run reading (rule 3c) off, on the belief that the protected witness audit reads the full record. It actually reads only the latest PASS run once the record holds a verdict, so an earlier run's hold blocked the flip for good. The 3c gate now asks the audit's own run selector. A hold inside the latest PASS run, a row that run did not re-run, a witness row above its last heading, and the sha and runner checks still refuse as before.
+- forge-neutral/17's Verify rows 3 and 8 can now pass as written: row 3 expects the `go test` command's own exit 0 (the verb's exit-5 refusal stays as the description), and row 8 runs a real `grep` over `tools/desk/README.md` instead of a prose placeholder.
+- gitcore and statusgen's typed reader now accept the verifier's own Git config env: `GIT_CONFIG_COUNT=0` (the declared verifier env) and exactly the two `grep.*` pins an admitted Verify row carries. Admitted rows that run deskdispatch or deskkit origin reads, `verifyrun --fail-first --delivering-commit`, and `verifyflip`'s outcome-record check no longer refuse that env. Any other command-priority config is refused as before, including a pin set with one key or value added, removed or changed (#7007).
+
+### Changed
+- CI batches Windows test compilation and stamped desk builds. Board regeneration records history in the same pass, and the release bodycheck sweep runs in its own test job.
+
 ## v1.0.88 — 2026-11-18
 
 ### Added

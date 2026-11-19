@@ -105,6 +105,13 @@ statusgen --root <dir> --lint against the landing worktree, before vs. after the
 write) — both refused before the write, a pre-existing red elsewhere in the repo never
 blocks a clean landing.
 
+A row whose Runner cell carries (reads sha256:<hex>) lands in ONE commit with its
+read-set file docs/streams/<stream>/reads/<hex>. The file is taken from the run's
+state directory (git rev-parse --git-path assay-read-sets under --root), never from
+the worktree, and is copied before any forge call. If the file is absent there, or
+hashes to another digest, the landing is refused before any write. Land before the
+verifier worktree is removed. A digest the branch already names needs no file.
+
 New verified outcome records additionally require a lint-clean tree and
 statusgen brief --check-verified (verified/done, dated stamp, passing witnesses).
 The brief and stream README must already match the target branch. Evidence-only

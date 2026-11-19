@@ -517,14 +517,14 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			" resolves outside docs/streams/ — deskevidence only writes under that tree")
 	}
 	// A witness row naming a read-set file lands only with that file in one
-	// commit (the read-set introduction binding); refuse before any forge call.
+	// commit (the read-set introduction binding). Copy every named file from
+	// the run's state directory now, before any forge call and so before any
+	// worktree cleanup; pairReadSets refuses a missing one before the write.
 	readSetRoot := evidenceRoot
 	if readSetRoot == "" {
 		readSetRoot = "."
 	}
-	if rerr := refuseUnpairedReadSets(localContent, readSetRoot, targetRepoPath); rerr != nil {
-		return rerr
-	}
+	readSets := captureReadSets(localContent, readSetRoot)
 
 	// The source was admitted independently of the conditional-write destination.
 	// Judge its immutable identity boundary against fetched main, never an older
@@ -774,6 +774,12 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		}
 	}
 
+	// The read-set files this commit introduces, from the copy taken above.
+	companions, perr := pairReadSets(readSets, commitContent, remoteContent, targetRepoPath)
+	if perr != nil {
+		return perr
+	}
+
 	// statusgen PROBLEM-diff guard (deskevidence: refuse a landing that adds a statusgen
 	// PROBLEM or lands outside docs/streams/). Diffs the PROBLEM set statusgen --lint
 	// reports for the landing worktree BEFORE this write against the set it reports AFTER
@@ -919,6 +925,9 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		for _, row := range rows {
 			fmt.Fprintf(stdout, "dry-run: on-behalf-of principal stamped by this tool (lands as): %s\n", row)
 		}
+		for _, c := range companions {
+			fmt.Fprintf(stdout, "dry-run: read-set file in the same commit: %s\n", c.File)
+		}
 		return nil
 	}
 
@@ -964,6 +973,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		AppendOnly:  appendOnly,
 		AllowShrink: *allowShrink,
 		ExpectedSHA: rowScopeSHA,
+		Companions:  companions,
 	}
 	writeInput.ExpectedHead = landedHead
 	res, cerr := fg.WriteFile(fr, writeInput)
@@ -979,7 +989,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		if landedHead != "" {
 			return deskkit.Unverifiable("pinned verified outcome cannot fall back to a different branch", nil)
 		}
-		return landEvidenceAsChange(fg, fr, repoSlug, branch, targetRepoPath, commitContent, appendOnly, *allowShrink, remoteContent, rowScopeSHA, ac)
+		return landEvidenceAsChange(fg, fr, repoSlug, branch, targetRepoPath, commitContent, appendOnly, *allowShrink, remoteContent, rowScopeSHA, companions, ac)
 	}
 
 	if reportWriteNoop(res, targetRepoPath, ac) {
@@ -1020,7 +1030,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 // against the earlier, now-stale read) silently reverts the row(s) that moved in that window, in
 // a diff no merge can surface because the side branch's parent already carries the reversion.
 // Empty (no row-scope rows named) means no such precondition applies, exactly as before.
-func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base, target string, content []byte, appendOnly, allowShrink bool, remoteContent []byte, rowScopeSHA string, ac *auditCtx) error {
+func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base, target string, content []byte, appendOnly, allowShrink bool, remoteContent []byte, rowScopeSHA string, companions []deskkit.CompanionFile, ac *auditCtx) error {
 	dig := deskkit.Sha256Hex(content)
 	side := "evidence/" + sanitizeBranchComponent(path.Base(target)) + "-" + dig[:8]
 
@@ -1043,6 +1053,7 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 		AppendOnly:  appendOnly,
 		AllowShrink: allowShrink,
 		ExpectedSHA: rowScopeSHA,
+		Companions:  companions,
 	})
 	if werr != nil {
 		return werr

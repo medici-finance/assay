@@ -779,6 +779,19 @@ type WriteFileInput struct {
 	// path as a pinned write and never as a local commit. A backend without that
 	// pinned path refuses it. Consumer: cmd/deskevidence --remove-superseded.
 	Delete bool
+	// Companions are further files committed in the SAME commit as File: a
+	// witness row's read-set file, which coverage honours only when it
+	// arrives with its row. Each is create-only: one already on the base
+	// with the same bytes is left as it is, and one with other bytes refuses
+	// the write. A backend that cannot commit them with File atomically
+	// refuses; it never lands File alone.
+	Companions []CompanionFile
+}
+
+// CompanionFile is one file WriteFileInput.Companions adds in File's commit.
+type CompanionFile struct {
+	File    string
+	Content []byte
 }
 
 // expectedSHAPrecondition is the backend-neutral half of WriteFileInput.ExpectedSHA and
