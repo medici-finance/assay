@@ -1654,17 +1654,19 @@ func autoFlipCheckExit(errw io.Writer, results []modelFlipResult, code int, chec
 // GitHub reads through `gh` (ghModelFlipSource). A GitLab reviewer selects
 // gitlabModelFlipUnavailable: statusgen has no GitLab merge-request read path yet —
 // the forge-aware LIVE read lands when auto-flip's reads move off `gh` and onto
-// `deskread`, the seam's read verb (forge-neutral/18, Task 6; the seam reads it
-// consumes are forge-neutral/33's) — so the GitLab live read reports an honest
+// `deskread`, the seam's read verb (forge-neutral/18, Task 6; some of the seam reads
+// it consumes are forge-neutral/33's) — so the GitLab live read reports an honest
 // could-not-check rather than shelling `gh`, which cannot read a GitLab MR. The
 // conformance round trip (forge-neutral/10) carries no statusgen read (#7202). The
 // corroboration DECISION for GitLab is implemented and unit-tested
 // (decideGitLabFlip); only the live reader that would feed it real MR state is
-// deferred. Two reads it needs are not on `deskread` at this writing: a
-// commit-to-change resolution (MergedPRForCommit) and the note BODY the GitLab rule
-// matches the head SHA against (`deskread reviews` emits login, state, commit and
-// time, no body). forgeUnknown keeps GitHub (a legacy roster with no
-// forge-qualified reviewer ident resolves to GitHub, per modelReviewer).
+// deferred. One read it needs is not on `deskread` at this writing: a
+// commit-to-change resolution (MergedPRForCommit; no kind wraps ListCommitChanges).
+// The merge-request notes the GitLab rule scans (glNote: login and body) are already
+// served by `deskread comments --change`, which reads a change's notes; `deskread
+// reviews` is not where they live and carries no body. forgeUnknown keeps GitHub (a
+// legacy roster with no forge-qualified reviewer ident resolves to GitHub, per
+// modelReviewer).
 func liveModelFlipSource(forge forgeKind, githubToken string) modelFlipSource {
 	if forge == forgeGitLab {
 		return gitlabModelFlipUnavailable{}
