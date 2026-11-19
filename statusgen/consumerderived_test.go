@@ -168,6 +168,36 @@ func TestDerivedDeliveryRequiresLandedDelivery(t *testing.T) {
 	}
 }
 
+// regression: #5949
+func TestDerivedRepeatedMarkers(t *testing.T) {
+	for _, name := range []string{"valid originals", "later original", "earlier original", "different base"} {
+		t.Run(name, func(t *testing.T) {
+			root, base, delivery := deliveryFixture(t, []string{"web/fixed.go: fixed-here"})
+			ancestor := mustGitOut(t, root, "rev-parse", base+"^1")
+			first, second := goodMarker(base, delivery), derivedMarker(delivery, base, ancestor)
+			switch name {
+			case "later original":
+				second = derivedMarker(delivery, base, delivery)
+			case "earlier original":
+				first = derivedMarker(delivery, base, delivery)
+			case "different base":
+				second = derivedMarker(delivery, ancestor, ancestor)
+			}
+			appendBrief(t, root, "\n## Evidence\n\n"+first+second)
+			mustGitCommitAll(t, root, "record two verifier histories")
+			runGit(t, root, "update-ref", remoteMainRef, "HEAD")
+			got, parent, why := deriveConsumerDelivery(root, derivedBrief)
+			if name == "valid originals" {
+				if why != "" || got != delivery || parent != base {
+					t.Fatalf("got delivery %q parent %q reason %q, want %s against %s", got, parent, why, delivery, base)
+				}
+			} else if why == "" || got != "" || parent != "" {
+				t.Fatalf("got delivery %q parent %q reason %q, want a refusal", got, parent, why)
+			}
+		})
+	}
+}
+
 // regression: #1281
 func TestDerivedDeliveryRefusalBranches(t *testing.T) {
 	// One case per refusal branch of deriveConsumerDelivery, each reached with
