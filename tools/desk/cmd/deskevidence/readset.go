@@ -1,7 +1,7 @@
 package main
 
-// readset.go — the landing half of the read-set introduction binding (brief
-// build-less-brittle/15, Task step 7). A witness row whose Runner cell carries
+// readset.go — the landing half of the read-set introduction binding
+// (#2026). A witness row whose Runner cell carries
 // a `(reads sha256:<hex>)` token names a read-set file
 // `<brief dir>/reads/<hex>`; coverage honours that file only when it arrives
 // in the same commit as its row. The recorder writes the file under the run's

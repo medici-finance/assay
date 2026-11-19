@@ -14,7 +14,7 @@ import (
 
 // regression: #2026
 // TestDeskevidenceLandsReadSetWithRow — the read-set introduction binding,
-// landing half (brief build-less-brittle/15, Task step 7): a row naming a
+// landing half (#2026): a row naming a
 // read-set file lands in ONE commit with that file, taken from the run's state
 // directory `<git dir>/assay-read-sets/`, never from the worktree. The file is
 // copied before the write, so a worktree removed while the landing is in
