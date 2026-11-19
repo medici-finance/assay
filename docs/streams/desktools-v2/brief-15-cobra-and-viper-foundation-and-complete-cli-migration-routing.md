@@ -205,5 +205,36 @@ The desk established that at medici-finance/assay 2c6c21336a60 `statusgen --root
 
 **VERIFY: PASS** — 6 of 6 rows pass (row 4 passing per the ruling above; all other rows pass as written)
 
+### Re-witness at merged main dec9c4dba7d8 — 2026-11-19 claude-opus-5-5-verifier
+
+Fresh non-implementer run of all 6 Verify rows at merged main dec9c4dba7d8b4fe2c00d81179f424829ef1d45a (delivered by medici-finance/assay#2147), admitted by deskdispatch --check-verifier (record medici-finance/assay#7214). All rows are class check, so they ran in one host statusgen verifyrun (v1.0.88). TMPDIR, GOCACHE and logs were kept outside the home.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test -count=1 -v ./internal/cli` | pass exit=0 | sha256:9fd5100c2458 | 2026-11-19 | assay-verifier-app[bot] @ dec9c4dba7d8 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./internal/clicontract -run '^TestCLIInventory$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIInventory " "$f"` | pass exit=0 | sha256:56041f65afaa | 2026-11-19 | assay-verifier-app[bot] @ dec9c4dba7d8 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd tools/desk && go test -count=1 -v ./internal/clicontract -run '^TestCLIRoutingMutations$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIRoutingMutations " "$f"` | pass exit=0 | sha256:5e2a6d92fdd0 | 2026-11-19 | assay-verifier-app[bot] @ dec9c4dba7d8 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `statusgen --root . --lint --diff-base refs/remotes/origin/main` | fail exit=5 | sha256:957fd3c71c15 | 2026-11-19 | assay-verifier-app[bot] @ dec9c4dba7d8 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:ca9df6079b2c | 2026-11-19 | assay-verifier-app[bot] @ dec9c4dba7d8 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --root . --consumers` | pass exit=0 | sha256:cbfcbcbed947 | 2026-11-19 | assay-verifier-app[bot] @ dec9c4dba7d8 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7214 run=bc5ac69d7c831db1247b9c008ee3cabb8dba98a2291b83a6adab880217eaffbb source=dec9c4dba7d8b4fe2c00d81179f424829ef1d45a brief=docs/streams/desktools-v2/brief-15-cobra-and-viper-foundation-and-complete-cli-migration-routing.md model=claude-opus-5-5 tier=strong
+
+verifyrun --check: 5 pass, 1 fail, 0 could-not-run/missing (of 6 Verify rows).
+
+**Observations (supplemental, no acceptance credit):**
+
+- Row 4 failed with exit 5. statusgen gives exit 5 for "LINT: REFUSED configuration; trust-dependent checks could-not-check". An admitted verifyrun gives every row a fresh empty HOME. This run put the installed desk-tools bin directory first on PATH, so the row's statusgen was the installed binary itself, not the cell shim that sets HOME to the cell home. It found no roster and refused. A supplemental run of the same command outside verifyrun, with an empty HOME and the ASSAY_*/GH_* variables removed, reproduced it: rc=5, "assay-config: REFUSED — no roster configured". A second supplemental run with the cell roster gave rc=1, "LINT: FAIL 3 problem(s)". The three PROBLEMs were desk-tools/37, desktools-v2/65 and forge-neutral/54, each "protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required", and none names desktools-v2/15. The base resolves to HEAD, so the diff-lint comparison was unavailable and every problem was reported at full strength. Row 4 fails at this source with the roster (exit 1) and without it (exit 5). The fail is recorded as observed.
+- Rows 1–3, 5 and 6 passed as written.
+
+**Risk-bearing values** (risk answers all "no", not irreversible; re-read at dec9c4dba7d8):
+
+- RISK-VALUE: DERIVED — final_gate = "desktools-v2/17", reference = "desktools-v2/16" @ docs/streams/desktools-v2/cli-migration.json:5-6 — spec section 9 rollout: /16 is the reference adapter and /17 the finish gate; row 3's missing-final-gate mutation enforces it.
+- RISK-VALUE: DERIVED — MaxSimple = 5 @ tools/desk/internal/clicontract/validate.go:17 — spec section 9 and Task 4: at most five simple binaries per child.
+- RISK-VALUE: DERIVED — ExitUsage = 2 @ tools/desk/internal/cli/cli.go:20 — the same as the usage-error exit of Go's flag package, which keeps the existing exit semantics.
+- RISK-VALUE: DERIVED — viper.KeyDelimiter("::") @ tools/desk/internal/cli/bind.go:262 with keyRE ^[a-z][a-z0-9-]*$ @ tools/desk/internal/cli/bind.go:87 — no declared key can contain ':', so none splits into a nested path.
+- Dependency pins cobra v1.10.2 and viper v1.20.1 @ tools/desk/go.mod:24,26 — reversible, ranked last.
+
+**VERIFY: FAIL** — row 4: statusgen --root . --lint --diff-base refs/remotes/origin/main exit 5 (roster-refused configuration under the admitted empty HOME; with the roster it is exit 1 on three other briefs' acceptance-transition PROBLEMs); rows 1–3, 5, 6 pass
+
 ## Review
 Gate: model. Check full inventory coverage, bounded child scope and unchanged domain ownership.
