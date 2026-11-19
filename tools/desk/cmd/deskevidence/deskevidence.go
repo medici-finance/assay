@@ -259,6 +259,10 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// for a BLOCKED or could-not-check re-run of a verified or done brief, whose Evidence
 	// append the verdict gate refuses (outcomeonly.go).
 	outcomeOnly := fs.Bool("outcome-only", false, "with --outcome-record: record a non-decisive re-run of a verified or done brief whose Evidence append is refused; the record states evidence_withheld and its sha is the admitted observation commit")
+	// --remove-superseded removes ONE outcome record that the --superseded-by record for the
+	// same brief supersedes, as a pinned conditional forge write (removesuperseded.go).
+	removeSuperseded := fs.String("remove-superseded", "", "repo-relative path of an outcome record to remove; it must be superseded by the --superseded-by record for the same brief (lands as a pinned conditional forge write)")
+	supersededBy := fs.String("superseded-by", "", "with --remove-superseded: repo-relative path of the newer outcome record for the same brief")
 	outcomeRecord := fs.String("outcome-record", "", "local JSON file holding ONE new verify-outcome record to commit at the path RecordName derives; with --root, an absolute file outside --root (mutually exclusive with --evidence-file/--brief-path)")
 	// --root binds the LOCAL read of a repo-relative --evidence-file to an explicit
 	// checkout, instead of the current working directory. #1709: a writeguard can reset a
@@ -333,6 +337,18 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// rather than merging into or replacing an existing whole file. Checked (and mutual
 	// exclusivity enforced) BEFORE --evidence-file is required below, so this branch never
 	// needs one.
+	if *removeSuperseded != "" || *supersededBy != "" {
+		if *removeSuperseded == "" || *supersededBy == "" {
+			return deskkit.Refused("refused: --remove-superseded and --superseded-by are given together")
+		}
+		if *outcomeRecord != "" || *evidenceFile != "" || *briefPath != "" {
+			return deskkit.Refused("refused: --remove-superseded is mutually exclusive with --outcome-record/--evidence-file/--brief-path")
+		}
+		if ferr := refuseUnhonouredFlags(fs, routeRemoveSuperseded); ferr != nil {
+			return ferr
+		}
+		return cmdOutcomeRecordRemove(*removeSuperseded, *supersededBy, repoSlug, owner, name, branch, *root, *dryRun, ac)
+	}
 	if *outcomeRecord != "" {
 		if *evidenceFile != "" || *briefPath != "" {
 			return deskkit.Refused("refused: --outcome-record is mutually exclusive with --evidence-file/--brief-path")

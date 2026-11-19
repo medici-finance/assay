@@ -773,6 +773,12 @@ type WriteFileInput struct {
 	// A backend lacking an atomic branch-head precondition must refuse it;
 	// file-level ExpectedSHA alone cannot protect closure in other files.
 	ExpectedHead string
+	// Delete removes File instead of writing it: Content must be empty, and the removal
+	// is accepted only as a conditional, pinned commit (ExpectedSHA on the file AND
+	// ExpectedHead on the branch), so it lands through the same forge-signed commit
+	// path as a pinned write and never as a local commit. A backend without that
+	// pinned path refuses it. Consumer: cmd/deskevidence --remove-superseded.
+	Delete bool
 	// Companions are further files committed in the SAME commit as File: a
 	// witness row's read-set file, which coverage honours only when it
 	// arrives with its row. Each is create-only: one already on the base

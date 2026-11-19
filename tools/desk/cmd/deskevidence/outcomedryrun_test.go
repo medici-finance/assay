@@ -50,6 +50,23 @@ var dryRunFixtures = map[string]func(t *testing.T, f *fakeForge) []string{
 		line := completeFail(t, `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`)
 		return []string{fixtureRepo, "main", "--outcome-record", writeRepoFile(t, "record.json", line+"\n")}
 	},
+	routeRemoveSuperseded: func(t *testing.T, f *fakeForge) []string {
+		oldLine := completeFail(t, `{"ts":"2026-09-07T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000002"}`)
+		newLine := completeFail(t, `{"ts":"2026-09-08T02:00:00Z","brief":"example-stream/14","outcome":"verify-fail","sha":"0000003"}`)
+		older, err := deskkit.RecordName([]byte(oldLine))
+		if err != nil {
+			t.Fatal(err)
+		}
+		newer, err := deskkit.RecordName([]byte(newLine))
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.setFile(older, oldLine+"\n")
+		f.setFile(newer, newLine+"\n")
+		f.commitSHAs = map[string]string{"main": strings.Repeat("c", 40)}
+		f.commitAuthorLogin = "assay-verifier-app[bot]"
+		return []string{fixtureRepo, "main", "--remove-superseded", older, "--superseded-by", newer}
+	},
 }
 
 // regression: #4554
@@ -247,6 +264,8 @@ func TestUnhonouredFlagRefused(t *testing.T) {
 		"evidence-file": "docs/streams/x/brief.md", "brief-path": "docs/streams/x/brief.md",
 		"outcome-record": "/nonexistent/record.json", "root": "/nonexistent", "row": "01",
 		deskkit.ScanOverrideFlag: "fixture reason",
+		"remove-superseded":      "docs/streams/verify-outcomes/x/old.json",
+		"superseded-by":          "docs/streams/verify-outcomes/x/new.json",
 	}
 	all := map[string]bool{}
 	for _, flags := range routeHonours {
@@ -257,6 +276,8 @@ func TestUnhonouredFlagRefused(t *testing.T) {
 	base := map[string][]string{
 		routeEvidenceFile:  {"--evidence-file", "docs/streams/x/brief.md"},
 		routeOutcomeRecord: {"--outcome-record", "/nonexistent/record.json"},
+		routeRemoveSuperseded: {"--remove-superseded", "docs/streams/verify-outcomes/x/old.json",
+			"--superseded-by", "docs/streams/verify-outcomes/x/new.json"},
 	}
 	cases := map[string]int{}
 	for route, honours := range routeHonours {
@@ -288,11 +309,13 @@ func TestUnhonouredFlagRefused(t *testing.T) {
 			}
 			// The two routes' selector flags are already mutually exclusive, refused by
 			// their own check. --outcome-only off its route keeps its own, earlier refusal.
-			if fl == "evidence-file" || fl == "brief-path" || fl == "outcome-record" {
+			if fl == "evidence-file" || fl == "brief-path" || fl == "outcome-record" ||
+				fl == "remove-superseded" || fl == "superseded-by" {
 				continue
 			}
 			want := "--" + fl + " has no effect"
-			if fl == "outcome-only" {
+			// --remove-superseded routes before that check and refuses it as ignored.
+			if fl == "outcome-only" && route != routeRemoveSuperseded {
 				want = "--outcome-only is valid only with --outcome-record"
 			}
 			cases[route]++
