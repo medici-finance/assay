@@ -51,7 +51,7 @@ consumers:
   - "statusgen/reconcilefold.go: fixed-here"
   - "statusgen/evaluation/coverage.go: fixed-here"
   - "statusgen/evaluation/coverage_api.go: fixed-here"
-  - "tools/desk/cmd/deskevidence/main.go: follow-up build-less-brittle/15 (this brief; flips to fixed-here when the implementation edits the path)"
+  - "tools/desk/cmd/deskevidence/main.go: fixed-here"
   - "docs/contracts.md: fixed-here"
   - "statusgen/domain/assess.go: out-of-scope (a fourth library entry, imported only by tests; it passes its own coverage input, and the library's go-run rule in Task step 6 makes it fail closed without an edit)"
   - "statusgen/evaluation/coverage_inputs.go: out-of-scope (the command-text parser stays until the measurement in Task step 10 shows it releases nothing on its own; its retirement is a later brief)"
