@@ -1387,6 +1387,77 @@ Accounting: this dispatch ran the Verify table once. Attempt 1 (started 2026-11-
 Result: rows_passed=15, rows_total=15. No defect was found, so no issue was filed. The fixes for #6171, #4317 and #4316 are confirmed at this commit by rows 2, 4, 8 and 15.
 
 **VERIFY: PASS** — 15/15 pass in one container-netns bracket at 0240956217eb; rows 2, 4, 8 and 15, which failed at 876ca4bca37c, now pass after the fixes for #6171, #4317 and #4316 (#6184).
+### Non-implementer verifier re-run — 2026-11-19 assay-verifier-app[bot] @ 62a6169dc364 (claude-opus-5-5)
+
+This is a fresh verify pass on merged main 62a6169dc364b3d2968b0ab3144c70eac9743778, in a clean detached worktree cut at that commit, under desk tools v1.0.87. The verifier did not implement this item and reused no results from earlier runs. Admission (`deskdispatch --check-verifier`, record medici-finance/assay#7102) passed before any row ran, at the bracket open, and at the bracket close. Gate: model; all four risk answers are no.
+
+Why this re-pass: the claim was re-admitted under desk tools v1.0.87. Since the previous landed pass at 0240956217eb, the shell oracle and docs/cellctl.md changed with the retirement of the per-tier provider models (21fbb48436, #6183), and tools/desk/cmd/cellctl/ changed (per-session stream roots, the hotfix id-map read, the launch re-measure, the codex stamp-timing prompt). The scrubbed-cell and house-cell suites are byte-identical. Every row was run again.
+
+Expected values, taken from the brief before any row ran: every row exits 0, and row 13 prints 1.
+
+How the rows ran. All 15 rows ran in one closed admission bracket, under the interim container-lane ruling.
+- The host opened the bracket with `statusgen verifyrun --open-bracket --history-out --module-cache`. The module cache was a new empty directory outside the worktree, digest sha256:7f8fa9800956.
+- The container ran `statusgen verifyrun --sandbox=container-netns` over the whole table, with no `--rows` filter and without `--fail-first` (see Fail-first below).
+- The image was the release-pinned v1.0.87 verify-runner, ghcr.io/medici-finance/verify-runner@sha256:c67baa7a3c8b (the Container-Image line below), running linux/arm64 with statusgen v1.0.87, git 2.56.1, go 1.27.4 and ShellCheck 0.9.0.
+- It ran on OrbStack with `--network none`, a read-only root, all capabilities dropped, no-new-privileges, uid 501, a fresh tmpfs at /tmp, the module cache mounted read-only at /go/pkg/mod, `GOPROXY=off`, `GOTOOLCHAIN=local`, `GOFLAGS=-mod=readonly`, and the declared verifier Git environment (`GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_COUNT=0`, `GIT_TERMINAL_PROMPT=0`).
+- The worktree and its git common directory were bind-mounted read-only at their host paths, so row 14's `git merge-base` resolved. The only writable bind mount was a new directory for the witness file.
+- The container step exited 0, and every row printed pass.
+- The host closed the bracket with `--close-bracket` from inside the worktree. `--bracket-digest` reports `verdict=match`, with one Tree-Digest line, one Container-Image line and one attestation line in the span. The worktree was clean after the container step and after the close.
+
+The witness follows as the tool wrote it.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `shellcheck tools/cellctl/testdata/cellctl-shell-oracle.sh` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-pass` | pass exit=0 sandbox=container-netns | sha256:1671b0e17981 | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case env-scrub` | pass exit=0 sandbox=container-netns | sha256:060acf87d1cd | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case plan-grammar` | pass exit=0 sandbox=container-netns | sha256:ea5b02b5a052 | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case smoke-ready` | pass exit=0 sandbox=container-netns | sha256:ffe0fc02199a | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case smoke-not-ready` | pass exit=0 sandbox=container-netns | sha256:75434b257259 | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case lock` | pass exit=0 sandbox=container-netns | sha256:98d859828b9a | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-pem` | pass exit=0 sandbox=container-netns | sha256:01001ee90144 | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 9 | `bash tools/cellctl/tests/house-cell.test.sh` | pass exit=0 sandbox=container-netns | sha256:42357ffdc08e | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 10 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-roster` | pass exit=0 sandbox=container-netns | sha256:98f07031cd37 | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 11 | `d=$(mktemp -d); mkdir -p "$d/x"; printf 'CELL_KIND=scrubbed\nCELL_REPO=%s\nCELL_REPO_SLUG=example-org/example-repo\nCELL_HARNESS=codex\n' "$PWD" > "$d/x/cell.env"; b="$(mktemp -d)/cellctl"; (cd tools/desk && go build -o "$b" ./cmd/cellctl); CELLS_ROOT="$d" "$b" check x; test $? -eq 1` | pass exit=0 sandbox=container-netns | sha256:831090b7fb14 | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 12 | `for k in HOME ZDOTDIR PATH TMPDIR KUBECONFIG ASSAY_CONFIG_HOME GH_CONFIG_DIR GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM GIT_TERMINAL_PROMPT CODEX_HOME CLAUDE_CONFIG_DIR DESK_LOOP DESK_SESSION DESK_ROOTS; do grep -qF "\| $k \|" docs/cellctl.md \|\| { echo "missing env row: $k"; exit 1; }; done` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 13 | `grep -c '^## Scrubbed cells' docs/cellctl.md` | pass exit=0 sandbox=container-netns | sha256:4355a46b19d3 | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 14 | `statusgen --consumers --root . --base $(git merge-base origin/main HEAD)` | pass exit=0 sandbox=container-netns | sha256:e5063f886d1a | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 15 | `bash tools/cellctl/tests/scrubbed-cell.test.sh --case check-home-mode` | pass exit=0 sandbox=container-netns | sha256:6d62b83fd53a | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:7cfc256c7b4590e7e5b1a9f54296a203f927f0f91b9585705d579af019d71098
+Container-Image: sha256:c67baa7a3c8ba3d514128f31340489146525a50c29ebb641a68899c650d354a1
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7102 run=9e56499352531c1edd57d59ab807388b83ecb8be14397286b0a2ca6c8a4535bf source=62a6169dc364b3d2968b0ab3144c70eac9743778 brief=docs/streams/desk-containers/brief-09-scrubbed-host-cell.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=9e56499352531c1edd57d59ab807388b83ecb8be14397286b0a2ca6c8a4535bf source=62a6169dc364b3d2968b0ab3144c70eac9743778 tree=sha256:7cfc256c7b4590e7e5b1a9f54296a203f927f0f91b9585705d579af019d71098 witness=sha256:941069cae8ed2bad868e10182aa787ed7ad7c82d58cf0ebf677e4a1c4bbb5ce2 opened=2026-11-19T00:55:55Z closed=2026-11-19T01:01:47Z before=receipt after=check-verifier
+
+Compared with the previous landed pass at 0240956217eb, every row still passes. The output digests of rows 1 to 10, 12, 13 and 15 are identical to that pass. The digest of row 11 changed with the launcher sources, and the digest of row 14 changed with the diff base; both rows still pass. Row 13's output digest, sha256:4355a46b19d3, is the sha256 of `1` followed by a newline.
+
+Fail-first. In the 2026-11-16 pass the tool selected row 7 as risk-bearing, because its Expect contains the word "live"; no other row matches, and all four brief-wide risk answers are no. This dispatch tried the fail-first run twice inside the same open bracket, against base 4e213c78271b, the first parent of the squash commit 58a019271393 (#1263) that delivered this item. Both tries were refused as usage errors before any row ran, so neither counts as an attempt:
+- With `--fail-first --base 4e213c78271b` alone, the tool said: `--base "4e213c78271bb82baec36dbb0bdb6762e0a0fdac" is refused: it is not the merge-base of HEAD and origin/main, and the witness records no delivering commit; an older base is accepted only as the parent of a recorded --delivering-commit`.
+- With `--delivering-commit 58a019271393` added, the tool said: `--delivering-commit "58a019271393631e2f57b7b7a94887082d2618a6" is refused: it cannot be read through the library read path (native discovery/config/shallow environment profile): GIT_CONFIG_COUNT is set in the environment, which selects a native Git profile the library does not qualify; unset it (with any GIT_CONFIG_KEY_<n>/GIT_CONFIG_VALUE_<n> it carries) and re-run`.
+
+The dispatch requires `GIT_CONFIG_COUNT=0` for every row and forbids a retry with stripped Git configuration, so the variable was kept and the table ran without `--fail-first`. Row 7's base run could not be done in this dispatch. At that base the suite tools/cellctl/tests/scrubbed-cell.test.sh does not exist, which is why the 2026-11-16 pass recorded row 7 as `unproven` at 4e213c78271b; no admissible base can show the row red. The conflict between the required Git environment and the v1.0.87 `--delivering-commit` read is a tooling defect for the desk to route.
+
+RISK-BEARING VALUE. Risk metadata is present, and all four answers are no, including irreversible: no. The literals enumerated over the deliverable at 62a6169dc364 (the Go launcher under tools/desk/cmd/cellctl and the shell oracle) are below. None of their values changed since 0240956217eb; only the oracle line numbers moved.
+- pem-mode = 0o600 @ tools/desk/cmd/cellctl/check.go:542 (oracle :1719, `scrubbed_mode_is "$f" 600`)
+- config-home-mode = 0o700 @ tools/desk/cmd/cellctl/check.go:502 (oracle :1695, `scrubbed_mode_is "$CELL_CONFIG" 700`)
+- run-dir mode = 0o700 @ tools/desk/cmd/cellctl/check.go:584
+- scrubbedPathTail = "/usr/bin:/bin:/usr/sbin:/sbin" @ tools/desk/cmd/cellctl/envkeys.go:89
+- SCRUBBED_ENV_KEYS (20 keys) @ tools/cellctl/testdata/cellctl-shell-oracle.sh:2030
+- lock refusal exit code 4 @ tools/desk/cmd/cellctl/lock.go:28
+- smoke prompt "Reply with the single word READY and nothing else." @ tools/desk/cmd/cellctl/smoke.go:58
+
+Ranking, highest first: (1) the two custody modes, because a widened mode exposes an App private key and a key once read stays read; (2) the PATH tail and the allowlist, because a mistake leaks parent authority into the harness, fixable by an edit and a redeploy; (3) the run-dir mode, the exit code and the smoke prompt, reversible local contracts.
+
+- RISK-VALUE: DERIVED — pem-mode = 0o600 @ tools/desk/cmd/cellctl/check.go:542 — owner read and write is the narrowest mode that still lets the owning user's desk tools read an App private key; any group or other bit lets a second local principal read it. Rows 2 and 8 exercise it (0644 is a MISS, 0600 is ok) and both pass.
+- RISK-VALUE: DERIVED — config-home-mode = 0o700 @ tools/desk/cmd/cellctl/check.go:502 — owner list and traverse is the least the owner needs on the directory that holds the keys; a group or world bit exposes key names and mtimes, as the brief's facts state. Rows 2 and 15 exercise it (0755 is a MISS, 0700 is ok) and both pass.
+- RISK-VALUE: DERIVED — scrubbedPathTail = "/usr/bin:/bin:/usr/sbin:/sbin" @ tools/desk/cmd/cellctl/envkeys.go:89 — the four standard system directories and nothing from the parent PATH; this is the brief's seven-element contract minus the shim, the desk-tools bindir and the harness dir, and row 3, which asserts the exact composed PATH, passed.
+- RISK-VALUE: NAMED, NOT DERIVED — SCRUBBED_ENV_KEYS, run-dir mode 0o700, lock exit code 4 and the smoke prompt rank lower and can be reversed by an edit and a redeploy; rows 4, 7 and 5/6 pin their behaviour.
+
+Accounting: this dispatch ran the Verify table once. Attempt 1 (started 2026-11-19T01:01:14Z, finished 2026-11-19T01:01:38Z) ran all 15 rows under one bracket (opened 00:55:55Z, closed 01:01:47Z, `verdict=match`) and is the witness above. The two fail-first tries described above ran no row. Before landing, `--bracket-digest --credit --source 62a6169dc364` printed `verdict=match credit=could-not-check` ("--credit needs a --witness file inside a git work tree"), because the witness file sits outside the worktree until the Evidence lands. No credit check could be completed before landing, so the attempt is recorded as uncredited (credit-unchecked). No attempt was discarded.
+
+Result: rows_passed=15, rows_total=15. No acceptance obligation failed. The only gap is row 7's fail-first base run, which the tooling conflict above prevented and which could only have come back `unproven` at this base.
+
+**VERIFY: PASS** — 15/15 pass in one container-netns bracket at 62a6169dc364; the row 7 fail-first base run could not run (a v1.0.87 `--delivering-commit` refusal under the required `GIT_CONFIG_COUNT=0`), and at that base it is unproven by construction.
 
 ## Review
 Gate: model (all four risk answers no — a new cell kind plus three verbs on a host launcher;
