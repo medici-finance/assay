@@ -1,0 +1,2 @@
+### Fixed
+- gitcore and statusgen's typed reader now accept the verifier's own Git config env: `GIT_CONFIG_COUNT=0` (the declared verifier env) and exactly the two `grep.*` pins an admitted Verify row carries. Admitted rows that run deskdispatch or deskkit origin reads, `verifyrun --fail-first --delivering-commit`, and `verifyflip`'s outcome-record check no longer refuse that env. Any other command-priority config is refused as before, including a pin set with one key or value added, removed or changed (#7007).
