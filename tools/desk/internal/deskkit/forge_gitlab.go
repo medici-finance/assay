@@ -4474,9 +4474,31 @@ func (g *GitLabForge) writeEvidenceFile(repo ForgeRepo, in WriteFileInput, proje
 	if exists && priorSHA != "" {
 		entry.LastCommitID = gitlab.Ptr(priorSHA)
 	}
+	actions := []*gitlab.CommitActionOptions{entry}
+	// Companions ride the same commit as create actions: GitLab applies a
+	// commit's actions together or not at all, and refuses a create whose
+	// path appeared after the probe below.
+	if len(in.Companions) > 0 {
+		if err := companionPlan(in); err != nil {
+			return nil, err
+		}
+		read := func(r ReadFileInput) (*FileContent, error) { return g.ReadFile(repo, r) }
+		for _, c := range in.Companions {
+			want, err := companionWanted(read, c, in.Branch, gitlabWriteProbeRef(in))
+			if err != nil {
+				return nil, err
+			}
+			if want {
+				actions = append(actions, &gitlab.CommitActionOptions{
+					Action: gitlab.Ptr(gitlab.FileCreate), FilePath: gitlab.Ptr(c.File),
+					Content: gitlab.Ptr(base64.StdEncoding.EncodeToString(c.Content)), Encoding: gitlab.Ptr("base64"),
+				})
+			}
+		}
+	}
 	opt := &gitlab.CreateCommitOptions{
 		Branch: gitlab.Ptr(in.Branch), CommitMessage: gitlab.Ptr(in.Message),
-		Actions: []*gitlab.CommitActionOptions{entry},
+		Actions: actions,
 	}
 	if in.StartBranch != "" {
 		opt.StartBranch = gitlab.Ptr(in.StartBranch)

@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -79,11 +81,29 @@ func qualifyPublication(t *testing.T, bin, dispatch string, split bool) {
 	api := &attestationAPI{files: map[string]string{brief: body}, head: trackingHead}
 	var prReads []string
 	changedFiles := []map[string]string{{"filename": brief, "status": "modified"}}
+	// pairedCommit applies one createCommitOnBranch write to the tracking
+	// history; it is bound once the fixture's remote exists.
+	var pairedCommit func(files map[string]string) string
+	var paired []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
 		enc := json.NewEncoder(w)
+		if r.Method == http.MethodPost && path == "/graphql" {
+			raw, _ := io.ReadAll(r.Body)
+			if strings.Contains(string(raw), "createCommitOnBranch") {
+				sha, ok := servePairedEvidence(t, api, raw, pairedCommit, enc)
+				if ok {
+					paired = append(paired, sha)
+				}
+				return
+			}
+			r.Body = io.NopCloser(bytes.NewReader(raw))
+		}
 		if r.Method == "GET" {
 			switch {
+			case path == "/repos/"+tracker+"/git/ref/heads/main":
+				_ = enc.Encode(map[string]any{"ref": "refs/heads/main", "object": map[string]any{"sha": api.head, "type": "commit"}})
+				return
 			case path == "/repos/"+tracker+"/commits/main":
 				_ = enc.Encode(map[string]any{"sha": api.head, "files": []any{}})
 				return
@@ -202,6 +222,16 @@ func qualifyPublication(t *testing.T, bin, dispatch string, split bool) {
 		api.head = sha
 		return sha
 	}
+	pairedCommit = func(files map[string]string) string {
+		for file, content := range files {
+			writeFixtureFile(t, filepath.Join(remote, filepath.FromSlash(file)), content)
+			crossLandGit(t, remote, "add", "--", file)
+		}
+		crossLandGit(t, remote, "commit", "-m", "record verification and its read sets")
+		sha := crossLandGit(t, remote, "rev-parse", "HEAD")
+		crossLandGit(t, briefRoot, "fetch", remote, "HEAD")
+		return sha
+	}
 	oldMint := mintTokenFn
 	t.Cleanup(func() { mintTokenFn = oldMint; ghToken = "" })
 	mintTokenFn = func(string) (deskkit.RoleCredential, error) {
@@ -221,18 +251,19 @@ func qualifyPublication(t *testing.T, bin, dispatch string, split bool) {
 	stderr = &messages
 	t.Cleanup(func() { stderr = oldStderr })
 	land := func(argv ...string) int { messages.Reset(); return run(argv) }
+	landBase := crossLandGit(t, remote, "rev-parse", "HEAD")
 	code := land(tracker, "main", "--root", source, "--brief-path", brief, "--evidence-file", fragment)
 	digests := readSetDigests([]byte(rows))
 	if len(digests) == 0 {
-		if code != 0 || len(api.puts) != 1 || api.puts[0].File != brief {
-			t.Fatalf("single-file Evidence: exit %d, writes %v: %s", code, api.puts, &messages)
+		if code != 0 || len(api.puts) != 1 || api.puts[0].File != brief || len(paired) != 0 {
+			t.Fatalf("single-file Evidence: exit %d, writes %v, paired %v: %s", code, api.puts, paired, &messages)
 		}
 	} else {
-		// The Contents API cannot introduce a row and its read-set blobs in
-		// one commit. The fixture represents the reviewed Evidence PR as a
-		// local branch, merged into the same tracking history the writer reads.
-		if code != deskkit.ExitRefused || !strings.Contains(messages.String(), "read-set") || len(api.puts) != 0 {
-			t.Fatalf("unpaired Evidence: exit %d, writes %v: %s", code, api.puts, &messages)
+		// regression: #2026. A row naming read-set files lands with exactly
+		// those files, copied from the run's state directory, in one commit
+		// parented on the inspected head; never through the one-file Contents API.
+		if code != 0 || len(api.puts) != 0 || len(paired) != 1 {
+			t.Fatalf("paired Evidence: exit %d, contents writes %v, paired commits %v: %s\nunexpected=%v", code, api.puts, paired, &messages, api.unexpected)
 		}
 		admitted, err := deskkit.CheckVerifierEvidence(source, tracker, brief)
 		if err != nil || admitted.EvidenceBinding() != receipt.EvidenceBinding() {
@@ -241,7 +272,7 @@ func qualifyPublication(t *testing.T, bin, dispatch string, split bool) {
 		if err := admitted.CheckEvidenceContent(brief, observed, nil); err != nil {
 			t.Fatal(err)
 		}
-		changedFiles = append(changedFiles, mergeHandoffEvidencePR(t, api, remote, source, briefRoot, brief, observed, digests)...)
+		changedFiles = append(changedFiles, checkPairedEvidenceCommit(t, remote, source, brief, landBase, paired[0], digests)...)
 	}
 	if !strings.Contains(api.files[brief], receipt.EvidenceBinding()) {
 		t.Fatal("tracking history lost the dispatched Evidence binding")
@@ -297,58 +328,48 @@ func qualifyPublication(t *testing.T, bin, dispatch string, split bool) {
 	}
 }
 
-// mergeHandoffEvidencePR publishes only the verified brief and the recorder
-// files its actual witnesses name. Read sets live in the execution worktree's
-// Git directory until a single Evidence commit introduces them beside the brief.
-func mergeHandoffEvidencePR(t *testing.T, api *attestationAPI, remote, source, briefRoot, brief string, observed []byte, digests []string) []map[string]string {
+// servePairedEvidence answers the paired write's createCommitOnBranch: it
+// refuses a parent other than the branch head the fixture holds, then applies
+// every addition as one commit through commit and returns its receipt.
+func servePairedEvidence(t *testing.T, api *attestationAPI, raw []byte, commit func(map[string]string) string, enc *json.Encoder) (string, bool) {
 	t.Helper()
-	base := crossLandGit(t, remote, "rev-parse", "HEAD")
-	prior, err := gitShowAt(remote, base, brief)
-	if err != nil || len(readSetDigests(prior)) != 0 {
-		t.Fatalf("parent of paired Evidence already names a read set or is unreadable: %v", err)
-	}
-	state := crossLandGit(t, source, "rev-parse", "--absolute-git-dir")
-	crossLandGit(t, remote, "checkout", "-b", "fixture-evidence")
-	writeFixtureFile(t, filepath.Join(remote, brief), string(observed))
-	crossLandGit(t, remote, "add", "--", brief)
-	blobs := map[string]string{brief: string(observed)}
-	var additions []map[string]string
-	for _, d := range digests {
-		data, err := os.ReadFile(filepath.Join(state, evaluation.ReadSetStateDir, d))
-		if err != nil || evaluation.ReadSetDigest(data) != d {
-			t.Fatalf("recorder bytes for %s: %v", d, err)
-		}
-		path := evaluation.ReadSetPath(filepath.ToSlash(filepath.Dir(brief)), d)
-		writeFixtureFile(t, filepath.Join(remote, filepath.FromSlash(path)), string(data))
-		crossLandGit(t, remote, "add", "--", path)
-		blobs[path] = string(data)
-		additions = append(additions, map[string]string{"filename": path, "status": "added"})
-	}
-	crossLandGit(t, remote, "commit", "-m", "Record verifier Evidence and its read sets")
-	sha := crossLandGit(t, remote, "rev-parse", "HEAD")
-	crossLandGit(t, remote, "checkout", "--detach", base)
-	crossLandGit(t, remote, "merge", "--ff-only", "fixture-evidence")
-	// Reading the introducing commit back catches an unstaged file or one
-	// already present in a parent. The same commit must contain the witness.
-	for path, want := range blobs {
-		got, err := gitShowAt(remote, sha, path)
-		if err != nil || string(got) != want {
-			t.Fatalf("merged Evidence blob %s differs: %v", path, err)
+	var in struct {
+		Variables struct {
+			Input struct {
+				Branch          struct{ BranchName string }
+				ExpectedHeadOid string
+				FileChanges     struct {
+					Additions []struct{ Path, Contents string }
+				}
+			}
 		}
 	}
-	added := strings.Split(crossLandGit(t, remote, "diff", "--diff-filter=A", "--name-only", base, sha), "\n")
-	if len(added) != len(digests) {
-		t.Fatalf("Evidence commit introduced %v for %d read sets", added, len(digests))
+	if err := json.Unmarshal(raw, &in); err != nil || commit == nil {
+		t.Errorf("paired write before the fixture can take it: %v", err)
+		_ = enc.Encode(map[string]any{"errors": []any{map[string]any{"type": "UNPROCESSABLE"}}})
+		return "", false
 	}
-	for _, path := range added {
-		if path == brief || blobs[path] == "" {
-			t.Fatalf("unexpected path in Evidence commit: %q", path)
-		}
-	}
-	crossLandGit(t, briefRoot, "fetch", remote, sha)
+	input := in.Variables.Input
 	api.mu.Lock()
-	defer api.mu.Unlock()
-	for path, data := range blobs {
+	head := api.head
+	api.mu.Unlock()
+	if input.Branch.BranchName != "main" || input.ExpectedHeadOid != head {
+		_ = enc.Encode(map[string]any{"errors": []any{map[string]any{"type": "STALE_DATA"}}})
+		return "", false
+	}
+	files := map[string]string{}
+	for _, a := range input.FileChanges.Additions {
+		data, err := base64.StdEncoding.DecodeString(a.Contents)
+		if err != nil {
+			t.Errorf("paired addition %s: %v", a.Path, err)
+			_ = enc.Encode(map[string]any{"errors": []any{map[string]any{"type": "UNPROCESSABLE"}}})
+			return "", false
+		}
+		files[a.Path] = string(data)
+	}
+	sha := commit(files)
+	api.mu.Lock()
+	for path, data := range files {
 		api.files[path] = data
 	}
 	if api.commits == nil {
@@ -356,5 +377,52 @@ func mergeHandoffEvidencePR(t *testing.T, api *attestationAPI, remote, source, b
 	}
 	api.commits[sha] = true
 	api.head = sha
+	api.mu.Unlock()
+	_ = enc.Encode(map[string]any{"data": map[string]any{"createCommitOnBranch": map[string]any{
+		"commit": map[string]any{"oid": sha, "parents": map[string]any{"nodes": []any{map[string]any{"oid": head}}}}}}})
+	return sha, true
+}
+
+// checkPairedEvidenceCommit reads the landed commit back from the tracking
+// history: its parent is the head the landing inspected, it changes the brief,
+// and it introduces exactly the read-set files the witnesses name, each holding
+// the recorder bytes from the execution worktree's Git directory.
+func checkPairedEvidenceCommit(t *testing.T, remote, source, brief, base, sha string, digests []string) []map[string]string {
+	t.Helper()
+	if got := crossLandGit(t, remote, "rev-parse", sha+"^"); got != base {
+		t.Fatalf("paired Evidence commit %s is parented on %s; want the inspected head %s", sha, got, base)
+	}
+	prior, err := gitShowAt(remote, base, brief)
+	if err != nil || len(readSetDigests(prior)) != 0 {
+		t.Fatalf("parent of paired Evidence already names a read set or is unreadable: %v", err)
+	}
+	state := crossLandGit(t, source, "rev-parse", "--absolute-git-dir")
+	want := map[string]bool{}
+	var additions []map[string]string
+	for _, d := range digests {
+		data, err := os.ReadFile(filepath.Join(state, evaluation.ReadSetStateDir, d))
+		if err != nil || evaluation.ReadSetDigest(data) != d {
+			t.Fatalf("recorder bytes for %s: %v", d, err)
+		}
+		path := evaluation.ReadSetPath(filepath.ToSlash(filepath.Dir(brief)), d)
+		got, err := gitShowAt(remote, sha, path)
+		if err != nil || string(got) != string(data) {
+			t.Fatalf("paired Evidence blob %s differs from the recorder's: %v", path, err)
+		}
+		want[path] = true
+		additions = append(additions, map[string]string{"filename": path, "status": "added"})
+	}
+	added := strings.Split(crossLandGit(t, remote, "diff", "--diff-filter=A", "--name-only", base, sha), "\n")
+	if len(added) != len(want) {
+		t.Fatalf("Evidence commit introduced %v for %d read sets", added, len(want))
+	}
+	for _, path := range added {
+		if !want[path] {
+			t.Fatalf("unexpected path in Evidence commit: %q", path)
+		}
+	}
+	if changed := crossLandGit(t, remote, "diff", "--diff-filter=M", "--name-only", base, sha); changed != brief {
+		t.Fatalf("Evidence commit modified %q; want only %s", changed, brief)
+	}
 	return additions
 }

@@ -58,6 +58,8 @@ type fakeForge struct {
 	// onPut runs at the top of WriteFile, inside deskevidence's audit flock — the
 	// serialisation tests use it to observe what a concurrent invocation can do.
 	onPut func()
+	// onRead runs at the top of ReadFile, before any lock.
+	onRead func()
 
 	// cmpFiles are the files CompareRefs reports the branch changed since the base ref;
 	// cmpErr is its error; cmpIncomplete marks the commit interval as not fully read;
@@ -220,6 +222,9 @@ func (f *fakeForge) setFile(path, content string) {
 }
 
 func (f *fakeForge) ReadFile(_ deskkit.ForgeRepo, in deskkit.ReadFileInput) (*deskkit.FileContent, error) {
+	if f.onRead != nil {
+		f.onRead()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.hits = append(f.hits, "GET "+in.File)
@@ -266,6 +271,9 @@ func (f *fakeForge) WriteFile(_ deskkit.ForgeRepo, in deskkit.WriteFileInput) (*
 		f.files = map[string]string{}
 	}
 	f.files[in.File] = string(in.Content)
+	for _, c := range in.Companions {
+		f.files[c.File] = string(c.Content)
+	}
 	author := f.writeAuthor
 	if f.emptyAuthor {
 		author = ""

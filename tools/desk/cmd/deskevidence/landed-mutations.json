@@ -53,7 +53,7 @@
     {
       "name": "whole parent condition dropped",
       "file": "internal/deskkit/evidencepinned.go",
-      "old": "\"expectedHeadOid\": in.ExpectedHead,",
+      "old": "\"expectedHeadOid\": parent,",
       "new": "\"expectedHeadOid\": \"\","
     },
     {
