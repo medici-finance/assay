@@ -196,3 +196,28 @@ func checkRule51Refused(t *testing.T, w witness, state string) {
 		t.Errorf("closure = %v, want a refused rule-51 stamp", err)
 	}
 }
+
+// TestRule51CreditRequiresRecordedFailure pins the guard that a stamp sits on
+// a recorded offline failure. checkWitnesses and the coverage adapter call
+// rule51Credit only for a failure, so through them the guard is unreachable;
+// here a stamp whose digest does bind (over the failure fields) sits on a pass
+// and on a could-not-run Result, and must not be credited, so a new caller
+// cannot credit a row whose offline run was not red.
+func TestRule51CreditRequiresRecordedFailure(t *testing.T) {
+	const cmd = "statusgen --root . --lint"
+	s := rule51Stamp{State: statePass, ForgeRC: 0, ForgeOut: "aaaaaaaaaaaa", Pin: r51Pin, CredClass: rule51CredClass, CredSum: "0f0f0f0f0f0f"}
+	stamp := "rule51=pass forge-rc=0 forge-out=sha256:aaaaaaaaaaaa pin=" + r51Pin + " cred=" + rule51CredClass +
+		" cred-digest=sha256:0f0f0f0f0f0f stamp=sha256:" + rule51Digest(s, "1", cmd, stateFail, "0", r51OutHash, r51Tree, r51Date)
+	rows := briefVerifyRows(r51Verify(cmd))
+	if len(rows) != 1 {
+		t.Fatalf("fixture Verify table parsed to %d rows", len(rows))
+	}
+	for _, offline := range []string{statePass, stateCouldNotRun} {
+		row := "| 1 | `" + cmd + "` | " + offline + " exit=0 " + stamp + " | sha256:" + r51OutHash + " | " + r51Date +
+			" | assay-verifier-app[bot] @ " + r51Tree + " |"
+		stamped, credited, why := rule51Credit(rows[0], row)
+		if !stamped || credited || !strings.Contains(why, "not a recorded failure") {
+			t.Errorf("offline %s: stamped=%v credited=%v why=%q, want a refusal naming the offline result", offline, stamped, credited, why)
+		}
+	}
+}

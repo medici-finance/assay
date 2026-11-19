@@ -5343,8 +5343,10 @@ path, branch and record digest and exits 0. It makes no commits-API write and sp
 budget. Before #4554 this route parsed `--dry-run` and ignored it, so a dry run committed the
 record for real.
 
-**`--remove-superseded <record> --superseded-by <newer>`** (#4823). The only way a
-verify-outcome record leaves the tree. Both paths must be outcome records under
+**`--remove-superseded <record> --superseded-by <newer>`** (#4823). The sanctioned way a
+verify-outcome record leaves the tree. No gate enforces that: a reviewed pull request that
+deletes a record still merges, so what binds a desk is the verify-desk rule (never remove a
+record with a local commit) and review. Both paths must be outcome records under
 `docs/streams/verify-outcomes/` for the same brief slot, each path must be the one its own
 bytes derive, and at the pinned branch tip the newer record must be the one the latest-per-brief
 reading selects. Any other path, a record that is not superseded, or a newer record for another

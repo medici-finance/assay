@@ -304,12 +304,12 @@ nothing measured.
     - **What counts.** The same pinned statusgen release, at the revision the row's witness
       names, run with `--acceptance-forge` in the host lane (a network-off `check:ci`
       sandbox cannot reach the forge), exits 0 with `LINT: PASS`.
-    - **Which credential reads the approval.** The run is made under a verifier-admission
-      signal (an admitted `statusgen verifyrun`, a `DESK_LOOP` naming a verify loop, or a
-      working repository holding the verifier attestation file) or with
-      `GH_TOKEN`/`GITHUB_TOKEN` set explicitly. Under those conditions the binary reads the
-      approval with that credential only and never falls back to a stored forge login. The
-      binary does not enforce this outside them, so a run made outside them is not credited.
+    - **Which credential reads the approval.** Only the run that `statusgen verifyrun
+      --rule51` makes inside an admitted run, under that run's verifier read credential. Its
+      stamp records `cred=verifier-run-read` and the credential's digest, and a stamp naming
+      any other class, or no credential digest, is not credited. A forge-enabled run made any
+      other way (by hand, under an explicitly set forge credential variable, or under a stored
+      forge login) writes no stamp and is never credited, whatever it printed.
     - **What does not count.** A forge-enabled run is `could-not-run` when any PROBLEM
       says an authority read did not complete: `could-not-check repository authority: …`,
       or `human approval could not be corroborated: …` because the record could not be read
