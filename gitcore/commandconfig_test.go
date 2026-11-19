@@ -27,7 +27,8 @@ func withPin(i int, v string) [][2]string {
 // TestScopedRemoteQualifiedConfig: a scoped remote read accepts exactly
 // GIT_CONFIG_COUNT=0 and the admitted row's two grep pins, and still refuses
 // any other command-priority config, including a pin set with one entry
-// added, removed or changed.
+// added, removed, changed or reordered, and GIT_CONFIG_PARAMETERS or
+// GIT_CONFIG beside either qualified form.
 // regression: #7007
 func TestScopedRemoteQualifiedConfig(t *testing.T) {
 	const origin = "https://example.com/example-org/example-repo.git"
@@ -47,11 +48,20 @@ func TestScopedRemoteQualifiedConfig(t *testing.T) {
 		{"count-padded", withPin(0, "02"), false},
 		{"count-zero-parameters", [][2]string{{"GIT_CONFIG_COUNT", "0"}, {"GIT_CONFIG_PARAMETERS", "'remote.origin.url'='" + foreign + "'"}}, false},
 		{"pins-parameters", append(withPin(0, "2"), [2]string{"GIT_CONFIG_PARAMETERS", "'remote.origin.url'='" + foreign + "'"}), false},
+		{"count-zero-git-config", [][2]string{{"GIT_CONFIG_COUNT", "0"}, {"GIT_CONFIG", "injected.config"}}, false},
+		{"pins-git-config", append(withPin(0, "2"), [2]string{"GIT_CONFIG", "injected.config"}), false},
+		{"pins-reordered", [][2]string{
+			{"GIT_CONFIG_COUNT", "2"},
+			{"GIT_CONFIG_KEY_0", "grep.extendedRegexp"}, {"GIT_CONFIG_VALUE_0", "false"},
+			{"GIT_CONFIG_KEY_1", "grep.patternType"}, {"GIT_CONFIG_VALUE_1", "default"},
+		}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 			t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 			t.Setenv("GIT_CONFIG_PARAMETERS", "")
+			t.Setenv("GIT_CONFIG", "") // restored after the test
+			os.Unsetenv("GIT_CONFIG")  // git config would write to an empty path
 			f := gittest.NewFixture(t)
 			mustOut(t, f, "remote", "add", "origin", origin)
 			for _, kv := range tc.env {

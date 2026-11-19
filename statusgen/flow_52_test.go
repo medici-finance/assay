@@ -93,7 +93,11 @@ func flowCardIdentity(t *testing.T) {
 		})
 	}
 	t.Run("unsupported source profile", func(t *testing.T) {
-		t.Setenv("GIT_CONFIG_COUNT", "0")
+		// A count the library does not qualify (#7007 qualifies 0 and the
+		// admitted grep pins), so the source profile stays native.
+		t.Setenv("GIT_CONFIG_COUNT", "1")
+		t.Setenv("GIT_CONFIG_KEY_0", "core.worktree")
+		t.Setenv("GIT_CONFIG_VALUE_0", "/")
 		if got := makeGateCard(root, bf, cardAcceptance); got.SourceRevision != "" || got.Unavailable == "" {
 			t.Fatalf("unsupported source profile must remain unknown: %+v", got)
 		}

@@ -36,6 +36,11 @@ var qgcNative = []struct {
 		{"GIT_CONFIG_KEY_1", "grep.extendedRegexp"}, {"GIT_CONFIG_VALUE_1", "false"},
 	}},
 	{"core-key", [][2]string{{"GIT_CONFIG_COUNT", "1"}, {"GIT_CONFIG_KEY_0", "core.worktree"}, {"GIT_CONFIG_VALUE_0", "/"}}},
+	{"pins-reordered", [][2]string{
+		{"GIT_CONFIG_COUNT", "2"},
+		{"GIT_CONFIG_KEY_0", "grep.extendedRegexp"}, {"GIT_CONFIG_VALUE_0", "false"},
+		{"GIT_CONFIG_KEY_1", "grep.patternType"}, {"GIT_CONFIG_VALUE_1", "default"},
+	}},
 }
 
 func qgcSetenv(t *testing.T, env [][2]string) {
@@ -82,6 +87,19 @@ func TestGitCoreQualifiedConfig(t *testing.T) {
 			}
 			if vars := nativeGitEnvSet(); !slices.Contains(vars, "GIT_CONFIG_COUNT") {
 				t.Errorf("unqualified count not named: %v", vars)
+			}
+		})
+	}
+	// A qualified count never excuses GIT_CONFIG_PARAMETERS beside it.
+	for _, tc := range qgcQualified {
+		t.Run(tc.name+"-parameters", func(t *testing.T) {
+			qgcSetenv(t, tc.env)
+			t.Setenv("GIT_CONFIG_PARAMETERS", "'core.worktree'='/'")
+			if read := gitCoreFor(root); read.native == "" {
+				t.Fatal("GIT_CONFIG_PARAMETERS kept on the library path beside a qualified count")
+			}
+			if vars := nativeGitEnvSet(); !slices.Contains(vars, "GIT_CONFIG_PARAMETERS") || slices.Contains(vars, "GIT_CONFIG_COUNT") {
+				t.Errorf("native selectors = %v, want GIT_CONFIG_PARAMETERS only", vars)
 			}
 		})
 	}
