@@ -31,6 +31,8 @@ class ProofTests(unittest.TestCase):
              '--check-clone "$WORK" "$(/usr/bin/git -C "$WORK" rev-parse HEAD)"', 'refusal:requested-sha'),
             ('required source', 'witness.sh', '[ -n "$SOURCE_SHA" ] || usage', ':', 'usage:no-sha'),
             ('delivery proof guard', 'witness.sh', '[ -z "$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" ] || usage', ':', 'refusal:delivery-without-proof'),
+            ('seed mount root', 'witness.sh', 'WORK=${VR_WORK_DIR:-/work/checkout}',
+             'WORK=${VR_WORK_DIR:-/work}', 'seed:checkout'),
             ('seed flags', 'witness.sh', '[ "$SOURCE_PROOF$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" = 0 ] || usage', ':', 'seed:unexpected-copy'),
             ('source shape', 'witness.sh', '[[ $SOURCE_SHA =~ ^[0-9a-f]{40}$ ]] || usage', ':', 'usage:malformed-sha'),
             ('probe-only flags', 'witness.sh',
@@ -38,7 +40,7 @@ class ProofTests(unittest.TestCase):
              'seed|seed-probe) [ "$SOURCE_PROOF$SOURCE_SHA$DELIVERY_SHA$DELIVERY_BASE" = 0 ] || usage ;;\n  probe) ;;',
              'refusal:seed-flags'),
         ]
-        self.assertEqual(len(mutants), 13)
+        self.assertEqual(len(mutants), 14)
         for name, file, old, new, message in mutants:
             with self.subTest(name=name), tempfile.TemporaryDirectory(prefix='proof-mutant-') as tmp:
                 root = Path(tmp)

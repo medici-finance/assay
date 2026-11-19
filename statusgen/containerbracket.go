@@ -913,6 +913,9 @@ func runCloseBracket(home, brief, receiptPath, witnessPath, record, observation 
 		fmt.Fprintf(stderr, "statusgen verifyrun --close-bracket: refused, nothing appended: "+format+"\n", a...)
 		return verifyrunExitCouldNot
 	}
+	if observation != "" && !sha256DigestRe.MatchString(observation) {
+		return refuse("Kubernetes observation must be a sha256 digest")
+	}
 	if rel, ok := relWithin(home, witnessPath); ok {
 		return refuse("the witness %s sits inside the home (%s)", witnessPath, rel)
 	}

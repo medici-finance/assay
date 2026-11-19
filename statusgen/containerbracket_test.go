@@ -444,6 +444,9 @@ func TestCloseBracket(t *testing.T) {
 	t.Run("host Kubernetes observation", func(t *testing.T) {
 		const flag = "--kubernetes-observation"
 		observation := "sha256:" + strings.Repeat("7", 64)
+		if res, stderr := captureVerifyrun(t, []string{"--bracket-digest", "--witness", fx.witness, flag, observation}); res.code == verifyrunExitPass || !strings.Contains(stderr, "requires --close-bracket") {
+			t.Fatalf("accepted or misdiagnosed an observation outside close: %s", stderr)
+		}
 		for _, bad := range []string{"", "sha256:short", observation + "\nextra"} {
 			if res, _ := captureVerifyrun(t, append(closeArgs, flag, bad)); res.code == verifyrunExitPass || getFile(t, fx.witness) != witness {
 				t.Fatalf("invalid observation %q changed or accepted the witness", bad)

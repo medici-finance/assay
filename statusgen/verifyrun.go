@@ -2550,7 +2550,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			observationSet = true
 		}
 	})
-	if observationSet && (!*closeBracket || !sha256DigestRe.MatchString(*kubeObservation)) {
+	if observationSet && (!*closeBracket || *kubeObservation == "") {
 		fmt.Fprintln(stderr, "statusgen verifyrun: --kubernetes-observation requires --close-bracket and a sha256 digest")
 		return verifyrunExitUsageError
 	}
