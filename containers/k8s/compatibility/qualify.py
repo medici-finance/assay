@@ -25,10 +25,13 @@ def main():
     expected = {LIFECYCLE, *(f"{LIFECYCLE}/{role}" for role in roles)}
     env = dict(os.environ, KUBECONFIG=os.devnull, GOPROXY="off", GOSUMDB="off",
                GOTOOLCHAIN="local", GOWORK="off", GOFLAGS="")
-    run = subprocess.run(
-        ["go", "test", "-json", "-count=1", "-timeout=5m", "-run", f"^{LIFECYCLE}$", "./cmd/cellctl"],
-        cwd=ROOT / "tools" / "desk", env=env, capture_output=True, text=True,
-    )
+    try:
+        run = subprocess.run(
+            ["go", "test", "-json", "-count=1", "-timeout=5m", "-run", f"^{LIFECYCLE}$", "./cmd/cellctl"],
+            cwd=ROOT / "tools" / "desk", env=env, capture_output=True, text=True,
+        )
+    except FileNotFoundError:
+        raise SystemExit("could-not-check: the Go toolchain and tools/desk checkout are required")
     passed = set()
     for line in run.stdout.splitlines():
         event = json.loads(line)

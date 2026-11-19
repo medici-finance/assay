@@ -19,6 +19,10 @@ The JSON result names each role that passed. A failed command, skipped role or
 missing test leaves the milestone incomplete. Image digests and process identities
 in this run belong to the fixture. Keep the result alongside its source revision.
 
+Run `python3 -I containers/k8s/compatibility/qualify.test.py` to replay the
+runner's failure cases. The test feeds recorded Go events to the ordinary
+qualification command and checks its exit code and diagnostic for each case.
+
 The five-role useful-work and resize exercise, container-level restart evidence,
 and witnessed operator run remain open in
 [desk-containers/32](streams/desk-containers/brief-32-qualify-the-compatibility-kubernetes-desk-cell.md).
