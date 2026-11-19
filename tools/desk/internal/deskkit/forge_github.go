@@ -3369,8 +3369,11 @@ func (g *GitHubForge) writeEvidenceFileFromSnapshot(repo ForgeRepo, in WriteFile
 			in.File, in.Branch, res.PriorRows, res.Rows))
 	}
 
+	if len(in.Companions) > 0 {
+		return g.writePairedEvidence(repo, in, exists, priorSHA, res)
+	}
 	if in.ExpectedHead != "" {
-		return g.writePinnedEvidence(repo, in, res)
+		return g.writePinnedEvidence(repo, in, in.ExpectedHead, nil, res)
 	}
 	body := map[string]any{
 		"message": in.Message,

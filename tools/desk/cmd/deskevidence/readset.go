@@ -1,24 +1,34 @@
 package main
 
-// readset.go — the landing half of the read-set introduction binding. A
-// witness row whose Runner cell carries a
-// `(reads sha256:<hex>)` token names a read-set file
-// `<brief dir>/reads/<hex>`; coverage honours that file only when it
-// arrives in the same commit as the row. The Contents-API write this tool
-// lands through commits one file, so it cannot pair the two, and the landing
-// refuses before any forge call:
+// readset.go — the landing half of the read-set introduction binding (brief
+// build-less-brittle/15, Task step 7). A witness row whose Runner cell carries
+// a `(reads sha256:<hex>)` token names a read-set file
+// `<brief dir>/reads/<hex>`; coverage honours that file only when it arrives
+// in the same commit as its row. The recorder writes the file under the run's
+// state directory, `<git dir>/assay-read-sets/<hex>`, never beside the brief,
+// so the landing takes it from there and commits it with the row:
 //
-//   - a named file absent from the local tree, or whose content hashes to
-//     another digest, refuses as a broken pairing;
-//   - a present and matching file still refuses, because the row and its file
-//     cannot land in one commit here. Landing the row alone would leave a
-//     token that names a file the branch does not hold.
+//   - captureReadSets runs before any forge call. It resolves the state
+//     directory of --root with `git rev-parse --git-path` and copies every
+//     named file into memory, checking its digest. This is the copy before
+//     cleanup: a linked worktree's git dir, and the state directory in it, is
+//     deleted with the worktree, so nothing after this point reads the disk.
+//   - pairReadSets runs before the write. Each digest the commit introduces
+//     (named by the landed content, not by the branch's) must have a verified
+//     copy; one absent from the state directory, or hashing to another digest,
+//     refuses the landing before any write. The rest ride the write as
+//     companions, which the forge commits with the brief in ONE commit.
 //
-// A could-not-check token names no file and lands as any other row does.
+// A digest the branch already names was introduced by an earlier commit and
+// needs no file here. A could-not-check token names no file and lands as any
+// other row does.
 
 import (
+	"bytes"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -46,37 +56,125 @@ func readSetDigests(content []byte) []string {
 	return out
 }
 
-// refuseUnpairedReadSets is the pre-write landing check: nil when content
-// names no read-set file, a refusal otherwise (see the file comment). root is
-// the local tree the read-set files resolve against; target is the
-// repository path the brief lands at.
-func refuseUnpairedReadSets(content []byte, root, target string) error {
+// readSetCapture is what captureReadSets copied from the state directory.
+type readSetCapture struct {
+	dir    string            // the resolved state directory, for messages
+	files  map[string][]byte // digest -> the bytes that hash to it
+	broken map[string]string // digest -> why no verified copy exists
+	err    error             // the state directory could not be resolved
+}
+
+// readSetStateDirFn resolves root's state directory; a test seam.
+var readSetStateDirFn = readSetStateDir
+
+func readSetStateDir(root string) (string, error) {
+	cmd := exec.Command("git", "-C", root, "rev-parse", "--path-format=absolute", "--git-path", evaluation.ReadSetStateDir)
+	cmd.Dir = os.TempDir()
+	cmd.Env = deskkit.VerifierReadEnv()
+	out, err := cmd.Output()
+	dir := strings.TrimSpace(string(out))
+	if err != nil || !filepath.IsAbs(dir) {
+		return "", fmt.Errorf("git rev-parse --git-path %s in %s did not name a directory", evaluation.ReadSetStateDir, root)
+	}
+	return dir, nil
+}
+
+// captureReadSets copies, before any forge call, every read-set file content
+// names from root's state directory (see the file comment).
+func captureReadSets(content []byte, root string) *readSetCapture {
+	c := &readSetCapture{files: map[string][]byte{}, broken: map[string]string{}}
 	digests := readSetDigests(content)
 	if len(digests) == 0 {
-		return nil
+		return c
+	}
+	dir, err := readSetStateDirFn(root)
+	if err != nil {
+		c.err = err
+		return c
+	}
+	c.dir = dir
+	for _, d := range digests {
+		b, why := readStateFile(filepath.Join(dir, d))
+		switch {
+		case why != "":
+			c.broken[d] = why
+		case evaluation.ReadSetDigest(b) != d:
+			c.broken[d] = "hashes to " + evaluation.ReadSetDigest(b)
+		default:
+			c.files[d] = b
+		}
+	}
+	return c
+}
+
+// readStateFile reads one regular file without following a link at its name.
+func readStateFile(p string) ([]byte, string) {
+	fi, err := os.Lstat(p)
+	if err != nil {
+		return nil, "is absent"
+	}
+	if !fi.Mode().IsRegular() {
+		return nil, "is not a regular file"
+	}
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, "cannot be read"
+	}
+	defer f.Close()
+	if held, err := f.Stat(); err != nil || !os.SameFile(fi, held) {
+		return nil, "changed while it was read"
+	}
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, f); err != nil {
+		return nil, "cannot be read"
+	}
+	return buf.Bytes(), ""
+}
+
+// pairReadSets returns the read-set files the landing commits with target, or
+// a refusal before any write when one the commit introduces has no verified
+// copy (see the file comment).
+func pairReadSets(c *readSetCapture, commit, remote []byte, target string) ([]deskkit.CompanionFile, error) {
+	landed := map[string]bool{}
+	for _, d := range readSetDigests(remote) {
+		landed[d] = true
+	}
+	var introduced []string
+	for _, d := range readSetDigests(commit) {
+		if !landed[d] {
+			introduced = append(introduced, d)
+		}
+	}
+	if len(introduced) == 0 {
+		return nil, nil
+	}
+	if c == nil || c.err != nil {
+		why := "no state directory was read"
+		if c != nil {
+			why = c.err.Error()
+		}
+		return nil, deskkit.Refused("refused: " + target + " introduces read-set file(s) " + strings.Join(introduced, ",") +
+			" and the run's state directory cannot be located: " + why + ". Land from the verifier execution checkout, before the worktree is removed")
 	}
 	stream := path.Dir(target)
 	var broken []string
-	for _, d := range digests {
-		rel := evaluation.ReadSetPath(stream, d)
-		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
-		switch {
-		case err != nil:
-			broken = append(broken, rel+" is absent locally")
-		default:
-			if got := evaluation.ReadSetDigest(b); got != d {
-				broken = append(broken, fmt.Sprintf("%s hashes to %s", rel, got))
+	var out []deskkit.CompanionFile
+	for _, d := range introduced {
+		b, ok := c.files[d]
+		if !ok {
+			why := c.broken[d]
+			if why == "" {
+				why = "was not read"
 			}
+			broken = append(broken, filepath.Join(c.dir, d)+" "+why)
+			continue
 		}
+		out = append(out, deskkit.CompanionFile{File: evaluation.ReadSetPath(stream, d), Content: b})
 	}
-	dir := path.Join(stream, evaluation.ReadSetDir)
-	paired := "use an Evidence PR to commit the rows and their matching read-set files together"
 	if len(broken) > 0 {
-		return deskkit.Refused("refused: " + target + " names read-set files it cannot land with: " +
-			strings.Join(broken, "; ") + ". In the verifier execution checkout, git rev-parse --git-path " +
-			evaluation.ReadSetStateDir + " locates the recorded files. Check their digests, copy them into " +
-			dir + ", and " + paired)
+		return nil, deskkit.Refused("refused: " + target + " names read-set files it cannot land with: " +
+			strings.Join(broken, "; ") + ". The landing takes each file from the run's state directory (git rev-parse --git-path " +
+			evaluation.ReadSetStateDir + "), which is deleted with a linked worktree: land before the worktree is removed")
 	}
-	return deskkit.Refused("refused: " + target + " names read-set file(s) " + dir + "/{" + strings.Join(digests, ",") +
-		"} and this landing commits one file, so the row and its read-set file cannot land in one commit. " + paired)
+	return out, nil
 }
