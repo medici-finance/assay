@@ -13,7 +13,7 @@ const listRun = "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabc
 
 // The `prs` stamp-sweep listing (#6855): an attested change missing its authored-* pair is
 // listed with the record's own fix line; a stamped change and a change with no line are not.
-func TestPRsListsAuthoringStampGap(t *testing.T) {
+func TestPRsListsWorkerStampGap(t *testing.T) {
 	installFakeGH(t)
 	stubForgeList(t, func(repo string) (*deskkit.OpenChanges, error) {
 		line := deskkit.WorkerAttestationLinePrefix + " " + repo + "#41 run=" + listRun + "\n"

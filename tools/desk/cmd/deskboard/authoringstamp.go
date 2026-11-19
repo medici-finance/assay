@@ -10,14 +10,14 @@ var readWorkerRecordFn = deskkit.ReadWorkerAttestation
 
 // authoringStampListing is the `prs` row's stamp-sweep listing (#6855): the coordinator's
 // pull-side backstop for a dropped worker hand-off. It is READ-ONLY: it nominates a change from
-// its description and present labels (deskkit.AuthoringStampGap), and only for a nominated change
+// its description and present labels (deskkit.WorkerStampGap), and only for a nominated change
 // reads the record, so the fix line it prints carries the record's own values. It never applies
 // a label; `deskdispatch --stamp-only` does that and reads its own result back.
 //
 // A record that does not validate is reported on the row, never fatal to the board: the other
 // rows are still true, and the row says plainly that this one has no fix line.
 func authoringStampListing(repo string, p prBase) (state, fix string) {
-	ref, gap := deskkit.AuthoringStampGap(p.Body, p.labelNames())
+	ref, gap := deskkit.WorkerStampGap(p.Body, p.labelNames())
 	if !gap {
 		return "", ""
 	}

@@ -94,12 +94,12 @@ func AuthoringStampGate(repo ForgeRepo, pr int, body string, tl StampTimeline, r
 		ref.Repo, ref.Issue), nil
 }
 
-// AuthoringStampGap is the read-only listing's cheap test (#6855): from a change's description
+// WorkerStampGap is the read-only listing's cheap test (#6855): from a change's description
 // and PRESENT label set alone, does it name a worker attestation without a complete authored-*
 // pair? It makes no forge read and attributes nothing, so it can only NOMINATE a change for the
 // stamp; the ready-flip gate (AuthoringStampGate) and `--stamp-only`'s own read-back are the
 // authority-aware checks. A malformed line nominates too: the gate will refuse it.
-func AuthoringStampGap(body string, labels []string) (WorkerAttestationRef, bool) {
+func WorkerStampGap(body string, labels []string) (WorkerAttestationRef, bool) {
 	ref, found, err := ParseWorkerAttestationLine(body)
 	if err != nil {
 		return ref, true

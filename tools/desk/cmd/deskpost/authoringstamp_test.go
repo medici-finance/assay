@@ -114,3 +114,20 @@ func TestReadyAuthoringNoLine(t *testing.T) {
 		t.Errorf("no line must read no record (read %d) and say the condition does not apply:\n%s", *reads, out)
 	}
 }
+
+// The pre-flip re-read re-runs the condition: a Worker-Attestation line added between the reads
+// moves no head, so a first-read-only check would flip an unstamped attested PR.
+func TestReadyAuthoringReRead(t *testing.T) {
+	f := postAttested(t, false)
+	postRecord(t)
+	f.onSecondPullRead = func() {
+		f.prBody = "Summary.\n\n" + deskkit.WorkerAttestationLinePrefix + " " + exampleRepo + "#41 run=" + postAttestRun + "\n"
+	}
+	if code := run(readyArgs(exampleRepo)); code != deskkit.ExitRefused || f.flips != 0 {
+		t.Fatalf("a line added before the re-read: exit = %d flips = %d, want %d and no flip:\n%s",
+			code, f.flips, deskkit.ExitRefused, errText(t))
+	}
+	if out := errText(t); !strings.Contains(out, "UNSTAMPED") {
+		t.Errorf("the re-read refusal must say UNSTAMPED:\n%s", out)
+	}
+}

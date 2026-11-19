@@ -90,7 +90,7 @@ func TestStampOnlyFixLine(t *testing.T) {
 	}
 }
 
-func TestAuthoringStampGap(t *testing.T) {
+func TestWorkerStampGap(t *testing.T) {
 	body := gateBody(gateRepo.Slug(), gateRun)
 	stamped := []string{AuthoredModelPrefix + "m", AuthoredTierPrefix + "strong"}
 	for _, c := range []struct {
@@ -105,7 +105,7 @@ func TestAuthoringStampGap(t *testing.T) {
 		{"stamped", body, stamped, false},
 		{"malformed line", WorkerAttestationLinePrefix + " nonsense\n", stamped, true},
 	} {
-		if _, got := AuthoringStampGap(c.body, c.labels); got != c.want {
+		if _, got := WorkerStampGap(c.body, c.labels); got != c.want {
 			t.Errorf("%s: gap = %t, want %t", c.name, got, c.want)
 		}
 	}
