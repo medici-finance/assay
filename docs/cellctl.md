@@ -2484,8 +2484,9 @@ prints one JSON line per target on stdout: `target`, `outcome` (`planned`, `appl
 target reports no figure), and an optional `items` and `detail`. The targets are:
 
 - `scratch`: the managed task scratch sweep ([Managed task scratch](cellctl-scratch.md));
-- `go-cache`: Go cache maintenance ([Managed Go caches](cellctl-go-cache.md));
-  `skipped` while `CELL_GO_CACHE` is off;
+- `go-cache`: Go cache maintenance ([Managed Go caches](cellctl-go-cache.md)); a dry
+  run reports the cache's recorded measurement and walks nothing; `skipped` while
+  `CELL_GO_CACHE` is off;
 - `worktrees:<owner/repo>`: the installed `deskwt prune --repo <path> --no-cache`,
   once per `CELL_ROOTS` checkout, run as the role's loop (`DESK_LOOP`) when `--role`
   is given. `--no-cache` leaves Go cache pressure to the `go-cache` target; every other

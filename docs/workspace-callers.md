@@ -96,6 +96,7 @@ A missing census or missing source tree is a skipped (could-not-check) run, neve
 | `statusgen/registers.go` | `registerBaseFallbackNotices` | prompt | temporary-compatibility | WS-09 | the message names the allocator verb (or the returned workspace) instead of a raw git recipe |
 | `statusgen/scanguard.go` | `scanIsolationRefusal` | prompt | temporary-compatibility | WS-09 | the message names the allocator verb (or the returned workspace) instead of a raw git recipe |
 | `tools/desk/cmd/cellctl/check.go` | `cmdCheck` | prompt | temporary-compatibility | WS-05 | the message names the allocator verb (or the returned workspace) instead of a raw git recipe |
+| `tools/desk/cmd/cellctl/gc.go` | `Cell.gcWorktreeTargets` | delegate | managed | WS-04 | gc collection runs the allocator's retention-aware collection for the desk, not a raw prune |
 | `tools/desk/cmd/cellctl/git.go` | `Cell.worktreeViaDeskwt` | delegate | managed | WS-05 | cellctl launch, reset and role setup request and retire desk workspaces through the allocator; no raw worktree effect or deskwt delegation left |
 | `tools/desk/cmd/cellctl/help/concepts.txt` | `-` | recipe | temporary-compatibility | WS-05 | the help text describes allocator-owned desk homes |
 | `tools/desk/cmd/cellctl/launch.go` | `Cell.deskLaunch` | create | managed | WS-05 | cellctl launch, reset and role setup request and retire desk workspaces through the allocator; no raw worktree effect or deskwt delegation left |

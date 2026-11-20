@@ -47,12 +47,10 @@ func startupWalkSites(name string, src []byte) ([]string, error) {
 							bad = append(bad, name+":"+fn.Name.Name)
 						}
 					case "Check":
-						// gcCacheTarget is `cellctl gc`'s dry run, the
-						// explicit maintenance verb (#5371).
 						// launchCacheClean is a launch's one clean after a
 						// reclaimable (#6117) or stale (#6593) deferral; its
 						// callers are pinned below.
-						if fn.Name.Name != "cmdCache" && fn.Name.Name != "resetCell" && fn.Name.Name != "launchCacheClean" && fn.Name.Name != "gcCacheTarget" {
+						if fn.Name.Name != "cmdCache" && fn.Name.Name != "resetCell" && fn.Name.Name != "launchCacheClean" {
 							bad = append(bad, name+":"+fn.Name.Name)
 						}
 					case "CheckRecorded", "Admit", "AdmitRecorded", "Wipe":

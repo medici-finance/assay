@@ -10,7 +10,7 @@
     {
       "name": "omit between-pass cache trigger",
       "file": "cmd/cellctl/cadence.go",
-      "old": "BetweenPasses: c.cadenceCacheMaintenance,",
+      "old": "BetweenPasses: func(ctx context.Context) error { _, err := c.cadenceCacheMaintenance(ctx); return err },",
       "new": "BetweenPasses: nil,"
     },
     {

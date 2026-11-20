@@ -9,7 +9,7 @@ package main
 //     supervisor's periodic sweep (deferredScratchSweep) under the scratch root's own
 //     maintenance lease and stamp, so it never sweeps twice per CELL_SCRATCH_SWEEP_INTERVAL;
 //   - go-cache:  the cadence supervisor's between-pass maintenance (cadenceCacheMaintenance),
-//     or the dry `cache status` check;
+//     or, in a dry run, its recorded measurement;
 //   - worktrees: the installed `deskwt prune --no-cache` for each CELL_ROOTS checkout, as the
 //     role's loop when --role is given.
 //
@@ -147,7 +147,7 @@ func (c *Cell) gcScratchTarget(scope string, apply, scheduled bool) gcTarget {
 	}}
 }
 
-// gcCacheTarget is Go cache maintenance: the dry check that `cache status` runs, or the
+// gcCacheTarget is Go cache maintenance: in a dry run, the recorded measurement; else the
 // between-pass maintenance a cadence supervisor runs. That maintenance clears cheaply,
 // without a walk, while the recorded measurement is fresh and under budget, so a pass
 // right after a cadence supervisor's own does not walk the cache again.
@@ -168,7 +168,9 @@ func (c *Cell) gcCacheTarget(apply bool) gcTarget {
 				r = *rp
 			}
 		} else {
-			r, err = cellcache.Check(*p, true)
+			// The dry run reads the cache's recorded measurement (report.json) and walks
+			// nothing; launches and dispatches keep the cache lock to themselves.
+			r, err = recordedCacheReport(*p)
 		}
 		line := gcLine{Target: "go-cache", Outcome: gcOutcome(apply), Bytes: r.Before.LogicalBytes, Reclaimed: i64(r.Reclaimed), Detail: r.Outcome}
 		if r.After.LogicalBytes != nil && apply {
@@ -181,6 +183,23 @@ func (c *Cell) gcCacheTarget(apply bool) gcTarget {
 	}}
 }
 
+// recordedCacheReport reads the last measurement the cache recorded. A missing report means
+// the cache has not been measured yet.
+func recordedCacheReport(p cellcache.Policy) (cellcache.Report, error) {
+	b, err := os.ReadFile(p.ReportPath())
+	if errors.Is(err, os.ErrNotExist) {
+		return cellcache.Report{Outcome: "not measured yet"}, nil
+	}
+	if err != nil {
+		return cellcache.Report{}, err
+	}
+	var r cellcache.Report
+	if err := json.Unmarshal(b, &r); err != nil {
+		return cellcache.Report{}, fmt.Errorf("recorded cache report unreadable: %w", err)
+	}
+	return r, nil
+}
+
 // gcToolPath resolves an installed desk tool: the cell's DESK_TOOLS_BIN directory first
 // (the pinned install path), then PATH. Only an absolute, executable path is returned.
 func (c *Cell) gcToolPath(name string) (string, error) {
@@ -191,7 +210,16 @@ func (c *Cell) gcToolPath(name string) (string, error) {
 	if filepath.IsAbs(p) && isExecFile(p) {
 		return p, nil
 	}
-	found, err := exec.LookPath(name)
+	var found string
+	var err error
+	switch name {
+	case "deskwt", "deskwt.exe":
+		found, err = exec.LookPath("deskwt")
+	case "cellctl", "cellctl.exe":
+		found, err = exec.LookPath("cellctl")
+	default:
+		err = fmt.Errorf("not a gc tool")
+	}
 	if err != nil {
 		return "", fmt.Errorf("no installed %s in %s or on PATH", name, deskToolsBin(c.Env))
 	}
