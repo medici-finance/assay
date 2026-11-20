@@ -6,9 +6,9 @@
 // system default). Nothing removes a session's directory when the session ends, and the
 // managed task scratch sweep never looks there, so ended sessions keep everything.
 //
-// Sessions is the one decision: it lists every session directory, classifies each from a
-// durable liveness record supplied by the caller, and holds any directory that contains Git
-// data. A dry run and an apply run make the same decision; only an apply run removes, and
+// Sessions is the one decision, scoped to one desk: it lists that desk's session
+// directories, classifies each from a durable liveness record supplied by the caller, and
+// holds any directory that contains Git data. A dry run and an apply run make the same decision; only an apply run removes, and
 // it removes only directories whose session a durable record proves ended. A PID, a
 // modification time or an age is never evidence here. The function is not scheduled by
 // anything in this package.
@@ -80,46 +80,53 @@ var walkLimit = 262144
 
 var sessionID = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
-// Sessions lists the session directories under root and classifies each. With apply false
-// nothing is removed; with apply true each candidate is checked again (liveness and Git
-// data) right before it is removed through a root-confined handle, so a symlink cannot
-// redirect the removal outside root. The returned error reports a root that could not be
-// listed or a removal that failed; rows are returned either way.
-func Sessions(root string, live Liveness, apply bool) ([]Entry, error) {
+// Sessions lists ONE desk's session directories, <root>/<project>/<session id>, and
+// classifies each. root is the harness temp root (the `claude-<uid>` directory) and project
+// is the desk's own project slug. It never walks other projects under root: each desk
+// cleans up its own sessions, so the pass is correct where the desk is the only thing on
+// the filesystem, and a host carrying several desks calls it once per desk.
+//
+// With apply false nothing is removed; with apply true each candidate is checked again
+// (liveness and Git data) right before it is removed through a root-confined handle, so a
+// symlink cannot redirect the removal outside root. The returned error reports a project
+// directory that could not be listed or a removal that failed; rows are returned either way.
+// An absent project directory is an empty report, not an error.
+func Sessions(root, project string, live Liveness, apply bool) ([]Entry, error) {
 	if live == nil {
 		return nil, errors.New("harness scratch: a liveness record reader is required")
+	}
+	if project == "" || project == "." || project == ".." || strings.ContainsAny(project, `/\`) {
+		return nil, fmt.Errorf("harness scratch: %q is not one project slug", project)
 	}
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return nil, fmt.Errorf("harness scratch: open %s: %w", root, err)
 	}
 	defer r.Close()
-	projects, err := fs.ReadDir(r.FS(), ".")
+	fi, err := r.Lstat(project)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
 	if err != nil {
-		return nil, fmt.Errorf("harness scratch: list %s: %w", root, err)
+		return nil, fmt.Errorf("harness scratch: inspect %s: %w", project, err)
+	}
+	if !fi.IsDir() {
+		return []Entry{{Path: filepath.Join(root, project), Project: project, State: Unknown.String(), Action: ActionKeep, Reason: "not a project directory (links are never followed)"}}, nil
+	}
+	sessions, err := fs.ReadDir(r.FS(), project)
+	if err != nil {
+		return nil, fmt.Errorf("harness scratch: list %s: %w", project, err)
 	}
 	var out []Entry
 	var errs []error
-	for _, p := range projects {
-		if !p.IsDir() {
-			out = append(out, Entry{Path: filepath.Join(root, p.Name()), Project: p.Name(), State: Unknown.String(), Action: ActionKeep, Reason: "not a project directory (links are never followed)"})
-			continue
-		}
-		sessions, lerr := fs.ReadDir(r.FS(), p.Name())
-		if lerr != nil {
-			out = append(out, Entry{Path: filepath.Join(root, p.Name()), Project: p.Name(), State: Unknown.String(), Action: ActionKeep, Reason: "could-not-check: " + lerr.Error()})
-			errs = append(errs, lerr)
-			continue
-		}
-		for _, s := range sessions {
-			e := classify(r, root, p.Name(), s, live)
-			if apply && e.Action == ActionCandidate {
-				if rerr := remove(r, p.Name()+"/"+s.Name(), live, &e); rerr != nil {
-					errs = append(errs, rerr)
-				}
+	for _, s := range sessions {
+		e := classify(r, root, project, s, live)
+		if apply && e.Action == ActionCandidate {
+			if rerr := remove(r, project+"/"+s.Name(), live, &e); rerr != nil {
+				errs = append(errs, rerr)
 			}
-			out = append(out, e)
 		}
+		out = append(out, e)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out, errors.Join(errs...)

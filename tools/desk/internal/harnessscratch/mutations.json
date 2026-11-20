@@ -42,6 +42,12 @@
       "file": "internal/harnessscratch/sessions.go",
       "old": "if age > window {",
       "new": "if age >= 0 {"
+    },
+    {
+      "name": "accept a path as the project",
+      "file": "internal/harnessscratch/sessions.go",
+      "old": "|| strings.ContainsAny(project, ",
+      "new": "|| false && strings.ContainsAny(project, "
     }
   ]
 }

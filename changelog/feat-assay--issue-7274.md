@@ -4,7 +4,7 @@
 
 ### Added
 
-- `internal/harnessscratch.Sessions` lists the session directories under a harness temp root, classifies each as live, ended or unknown from a durable record (roster beacon), reports a directory holding Git data as held, and removes ended ones only when asked to apply. Nothing schedules it yet.
+- `internal/harnessscratch.Sessions` lists one desk's own session directories under a harness temp root (its project slug only, so each desk cleans up after itself), classifies each as live, ended or unknown from a durable record (roster beacon), reports a directory holding Git data as held, and removes ended ones only when asked to apply. Nothing schedules it yet.
 
 ### Changed
 

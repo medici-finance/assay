@@ -15,6 +15,7 @@ const (
 	idWorktr  = "44444444-4444-4444-8444-444444444444"
 	idRepo    = "55555555-5555-4555-8555-555555555555"
 	idLinked  = "66666666-6666-4666-8666-666666666666"
+	idOther   = "88888888-8888-4888-8888-888888888888"
 	project   = "-fixture-project"
 	freshness = time.Hour
 )
@@ -48,6 +49,9 @@ func fixture(t *testing.T) (root, roster, outside string) {
 	write(t, filepath.Join(s(idRepo), "scratchpad", "clone", ".git", "HEAD"), "ref: refs/heads/main\n")
 	write(t, filepath.Join(root, project, "not-a-session", "d"), "x")
 	write(t, filepath.Join(outside, "keep-me"), "x")
+	// Another desk's session with a stale beacon: never listed, never touched.
+	write(t, filepath.Join(root, "-other-desk", idOther, "e"), "x")
+	beacon(t, roster, idOther, now.Add(-72*time.Hour))
 	if err := os.Symlink(outside, s(idLinked)); err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +80,7 @@ func exists(p string) bool { _, err := os.Lstat(p); return err == nil }
 // regression: #7274
 func TestSessionsDryRunRemovesNothing(t *testing.T) {
 	root, roster, _ := fixture(t)
-	rows, err := Sessions(root, BeaconLiveness(roster, freshness, now), false)
+	rows, err := Sessions(root, project, BeaconLiveness(roster, freshness, now), false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,7 +117,7 @@ func TestSessionsDryRunRemovesNothing(t *testing.T) {
 // regression: #7274
 func TestSessionsApplyRemovesOnlyEnded(t *testing.T) {
 	root, roster, outside := fixture(t)
-	rows, err := Sessions(root, BeaconLiveness(roster, freshness, now), true)
+	rows, err := Sessions(root, project, BeaconLiveness(roster, freshness, now), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,6 +132,25 @@ func TestSessionsApplyRemovesOnlyEnded(t *testing.T) {
 	}
 	if !exists(filepath.Join(outside, "keep-me")) {
 		t.Error("removal followed a link out of the root")
+	}
+	if _, listed := got[idOther]; listed || !exists(filepath.Join(root, "-other-desk", idOther)) {
+		t.Error("the pass reached another desk's project directory")
+	}
+}
+
+// regression: #7274 — the pass is one desk's: it refuses anything but one project slug and
+// treats a desk with no sessions yet as an empty report.
+func TestSessionsScopedToOneDesk(t *testing.T) {
+	root, roster, _ := fixture(t)
+	l := BeaconLiveness(roster, freshness, now)
+	for _, bad := range []string{"", ".", "..", "a/b", "../x"} {
+		if rows, err := Sessions(root, bad, l, true); err == nil || rows != nil {
+			t.Errorf("project %q accepted: %d rows, err %v", bad, len(rows), err)
+		}
+	}
+	rows, err := Sessions(root, "-no-sessions-yet", l, true)
+	if err != nil || len(rows) != 0 {
+		t.Errorf("absent project: %v %v", rows, err)
 	}
 }
 
@@ -144,7 +167,7 @@ func TestSessionsRecheckBeforeRemoval(t *testing.T) {
 		}
 		return base(id)
 	}
-	rows, err := Sessions(root, live, true)
+	rows, err := Sessions(root, project, live, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +181,7 @@ func TestSessionsWalkLimitKeeps(t *testing.T) {
 	saved := walkLimit
 	walkLimit = 1
 	defer func() { walkLimit = saved }()
-	rows, err := Sessions(root, BeaconLiveness(roster, freshness, now), true)
+	rows, err := Sessions(root, project, BeaconLiveness(roster, freshness, now), true)
 	if err != nil {
 		t.Fatal(err)
 	}
