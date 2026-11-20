@@ -387,6 +387,22 @@ func resolveVerifyClaimV1(x *evalCtx, scope witnessScope, r VerifyRow, witnesses
 		return ResultError, "the witness records a different command than the Verify row now carries — its acceptance definition changed after it was run, so the recorded result proves nothing about the row as it stands today", ""
 	}
 
+	// A recorded failure the caller's closure gate credits under rule 51
+	// (Witness.Rule51Credit) is judged exactly as a pass would be, so coverage
+	// agrees with that gate and holds it to every revision, read-set, Expect
+	// and dependency check a pass gets; a held result keeps its own reason.
+	if latest.State == StateFail && latest.Rule51Credit != "" {
+		credited := latest
+		credited.State = StatePass
+		credited.Rule51Credit = ""
+		ws := append(witnesses[:len(witnesses)-1:len(witnesses)-1], credited)
+		result, reason, revision = resolveVerifyClaimV1(x, scope, r, ws, targetRevision, acceptanceRevision)
+		if result == ResultPass {
+			reason = latest.Rule51Credit + "; " + reason
+		}
+		return result, reason, revision
+	}
+
 	wrev := latest.Tree
 	switch latest.State {
 	case StatePass:

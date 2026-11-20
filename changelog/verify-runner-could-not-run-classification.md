@@ -1,2 +1,0 @@
-### Fixed
-- `statusgen verifyrun`: the could-not-run note for an admitted row that reads a scrubbed `ASSAY_*` input no longer reads as permission to run the row outside admission; it says that path sees the full environment admission removes and needs the row reviewed first. A test now pins that could-not-run is never green: a could-not-run row never reads as pass, and it holds the run's exit at could-not-run beside a passing or failing row.
