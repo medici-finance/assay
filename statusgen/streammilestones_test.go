@@ -132,6 +132,11 @@ func TestMilestoneStreamProjection(t *testing.T) {
 	if sec.Provenance.Availability != streamview.Partial || sec.Coverage != streamview.CoverageUnknown || len(sec.Unknowns) != 1 || len(sec.Items) == 0 {
 		t.Errorf("a gap must make coverage unknown and list it: %+v", sec)
 	}
+	notIn := *opted.Milestones
+	notIn.OptedIn = false
+	if sec = streamMilestoneSection(&notIn, nil, "example/assay", src, observed); sec.Provenance.Availability != streamview.NotAssessed || len(sec.Items) != 0 {
+		t.Errorf("a plan that did not opt in must not project records: %+v", sec)
+	}
 	if sec = streamMilestoneSection(nil, nil, "example/assay", src, observed); sec.Provenance.Availability != streamview.NotAssessed || len(sec.Items) != 0 {
 		t.Errorf("non-opted-in stream must not get invented milestones: %+v", sec)
 	}
