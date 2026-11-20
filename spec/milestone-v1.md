@@ -125,6 +125,22 @@ A target date, estimate, priority and wave summary MAY be displayed as projectio
 existing planning sources. They are not required milestone fields or separate scheduling
 authority. “Later” work MUST be identified as excluded, not quietly required for acceptance.
 
+### Staged capability delivery
+
+Authors SHOULD distinguish the first useful supported outcome from later automation,
+scale, generalisation or migration. The earlier outcome MUST identify its actual users,
+environment, remaining manual steps, limitations and independently observable joined
+acceptance. Required correctness and security controls remain part of that outcome;
+manual or simulated operation supplies only the evidence its explicit scope permits.
+An earlier outcome is a separately scoped promise, not a partial acceptance of a broader
+one. Retain later requirements in named follow-on work and preserve the broader promise.
+
+Apply brief §1.2 when a contributor bundles capabilities needed at different times.
+Changing internal contribution boundaries can preserve a promise version; changing scope,
+criteria or prerequisite promises follows §7. Consumer capability references stay stable
+only when their required promise is preserved. Do not silently redirect a consumer of a
+broader promise to a narrower early outcome.
+
 ## 4. The three dependency relationships
 
 All authored lists mean AND: every listed requirement is required. Alternatives require

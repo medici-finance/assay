@@ -107,6 +107,56 @@ scripted launch/observe/cancel journey. It cannot establish real model execution
 cluster deployment. Replacing that runner preserves the old fake evidence and requires
 new provider-contract and end-to-end evidence for the real subject.
 
+## Capability-sized delivery and prerequisite splits
+
+Apply this reasoning to staged work and delivery-blocking dependencies even before
+operational milestone support. Brief §1.2 owns the delivery-unit contract; use existing
+Context, Task, DoD and Verify prose, not new frontmatter or a second task system.
+
+For specs, distinguish the first useful supported journey from later automation,
+scale or generalisation. State who can use it, in which environment, which steps remain
+manual, and what joined evidence establishes that exact outcome. Keep later capabilities
+explicitly planned. Do not weaken security/correctness controls to manufacture an early
+outcome. A real integration target needs real integration evidence; fixture success is
+not deployed capability. Leave brief scheduling to author-brief.
+
+For brief authoring or a proposed split:
+
+1. Identify one coherent capability or enabling contribution per brief, with its
+   consumer and independently testable contract. Not every brief needs an end-user
+   interface. Prefer a usable journey over a collection of completed layers; retain
+   necessary library/contract work and explicitly assign joined qualification.
+2. For each dependency controlling delivery order, name what the consumer needs, why it
+   needs it before starting, and the interface/profile and evidence that establish it.
+   Inspect the producer and its actual consumers. Ask whether the consumer needs the
+   producer's whole scope or only an earlier deliverable. Keep final-only acceptance
+   needs separate; a dependency is not justified by shared theme or wave alone.
+3. Split a broad prerequisite when the required capability can be delivered and verified
+   separately and this enables earlier use, useful parallel work or a clearer acceptance
+   boundary. Retain it intact when splitting would create an unusable intermediate
+   state, break a required invariant or cost more coordination than it saves; record
+   the reason where material. Do not recursively split every ancestor or optimise for
+   brief counts. Delivery splits produce separate briefs, unlike `parallel-streams:`,
+   which shards implementation of one brief without an earlier completion boundary.
+4. Before changing active scope, map every original deliverable/criterion and consumer
+   to its resulting brief or existing evidence; assign remaining features and joined
+   checks explicitly. Record this mapping in the existing source/authoring change.
+   Preserve required controls and risk gates; use normal amendment/version/withdrawal
+   and active-owner acknowledgement procedures. A changed promise needs the source
+   decision and explicit consumer adoption; a split does not grant that authority.
+5. Rewire only consumers needing the extracted capability, preserve inverse edges and
+   derive affected waves again. Check cycles, coverage and the actual critical-path
+   head. Show the previous wait, the proposed earlier delivery and what can proceed;
+   if the real blocker remains unchanged, say so. A brief dependency still requires
+   completion of its named brief; a merged subtask does not satisfy the old broad brief.
+   Keep completed identities/Evidence intact and bind any new claim to its real subject.
+
+For example, producer A promises X, Y and Z while consumer B needs only X. A1 can
+provide X and its contract checks; B and A2 (Y/Z) can proceed after A1 only if their
+actual prerequisites permit it. Any joined outcome check remains assigned. Consumers
+requiring all of A still wait for all required work. Existing accepted milestone refs
+stay unchanged when their promise is preserved; do not repoint them to A1 by implication.
+
 ## Author-spec: establish the promises
 
 1. Identify independently useful outcomes and owning streams from the requested scope.

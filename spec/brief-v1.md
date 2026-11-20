@@ -18,6 +18,33 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
 "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
 interpreted as described in RFC 2119.
 
+### 1.2 Delivery units and prerequisite boundaries
+
+A brief SHOULD deliver one coherent, independently testable capability or enabling
+contribution. It need not be independently useful to an end user; a bounded library,
+contract or qualification contribution can enable a useful outcome. File boundaries,
+equal effort and the complete end-state feature set are not sufficient reasons to group
+work. A milestone owns the usable outcome; a wave orders actual dependencies.
+
+For a dependency that controls delivery order, authors SHOULD identify the capability
+consumed, its supported interface/environment and the acceptance evidence needed before
+the consumer starts. If the prerequisite bundles that capability with unrelated later
+work, assess a separate delivery that lets the consumer proceed earlier. Split only at
+a coherent, testable boundary with a material delivery or coordination benefit; do not
+fragment work merely to increase completion counts. A dependency remains a whole-brief
+completion requirement: an implemented subtask or partial Evidence does not satisfy it.
+Do not introduce implicit sub-brief readiness semantics.
+
+A split MUST account for all original deliverables, acceptance obligations, consumers
+and necessary correctness/security prerequisites. Allocate them explicitly to the
+resulting briefs, including joined qualification and deferred work; do not silently drop
+requirements or make them optional. Apply existing Task/Verify amendment, version,
+risk-conservation, withdrawal and active-work acknowledgement rules. Preserve identities,
+completed Evidence and acceptance history. Recalculate affected inverse edges, waves,
+criterion coverage and critical paths; a split alone establishes no completion or
+acceptance. Use existing Context, Task and Verify prose and supported dependency fields;
+this guidance adds no schema field, lint rule or scheduling behavior.
+
 ## 2. File location and naming
 
 A brief-v1 file MUST reside at `docs/streams/<stream>/brief-<NN>-<slug>.md`.
@@ -702,9 +729,11 @@ implementation checks only partly, and section 9.2 says which:
 
 ### 5.5 Data-first decomposition
 
-A brief implementing two distinct roles SHOULD be split into two. A brief whose Task
-section exceeds approximately five steps or touches more than two subsystems SHOULD
-be split at authoring time.
+Apply §1.2's capability and prerequisite boundaries. A brief implementing distinct,
+separately deliverable roles SHOULD be split. Task length and subsystem count are cues
+to review scope, not automatic split criteria: one coherent delivery may cross several
+subsystems, while a short brief may still bundle capabilities needed at different times.
+Do not split a required invariant or joined acceptance merely to meet a size heuristic.
 
 ## 6. Execution tiering
 
