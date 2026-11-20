@@ -844,7 +844,7 @@ func runRemove(o removeOpts) (err error) {
 	// read — is a live run's, and is refused whether or not anything locked it. A home whose
 	// claim is RELEASED has no owner left, so a lock its agent left behind no longer refuses
 	// it; the untracked-inclusive status read below still does, exactly as for an own lock.
-	claim := claimForRemove(dir, rt)
+	claim := claimForRemove(guard, dir, rt)
 	if claim.holds() {
 		if claim.state == claimUnknown {
 			return deskkit.Unverifiable("cannot remove "+rt+": "+claim.why, nil)

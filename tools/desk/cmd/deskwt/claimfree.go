@@ -173,21 +173,10 @@ func (sc *sweepCtx) claimFor(guard *pathGuard, dir, rt string) runClaim {
 	return runClaim{key: key, state: st, why: why}
 }
 
-// claimForRemove is `remove`'s claim verdict for its one target, read through git's own
-// worktree-config resolution (the target is a single path, so no sweep index exists).
-func claimForRemove(dir, rt string) runClaim {
-	gitDir, err := runGit(rt, "rev-parse", "--path-format=absolute", "--git-dir")
-	if err != nil {
-		return runClaim{key: "?", state: claimUnknown, why: "could-not-check: run key (" + errText(err) + ")"}
-	}
-	key, kerr := runKeyInAdmin(strings.TrimSpace(gitDir))
-	if kerr != nil {
-		return runClaim{key: "?", state: claimUnknown, why: "could-not-check: run key (" + errText(kerr) + ")"}
-	}
-	if key == "" {
-		return runClaim{}
-	}
-	l := &claimListing{}
-	st, why := l.state(dir, key)
-	return runClaim{key: key, state: st, why: why}
+// claimForRemove is `remove`'s claim verdict for its one target. It reads the run key from the
+// same admin index a sweep uses (no git process: the git-exec ratchet), through a one-target
+// sweep context on the guard's common store, so `remove` and `prune` judge one home alike.
+func claimForRemove(guard *pathGuard, dir, rt string) runClaim {
+	sc := &sweepCtx{commonDir: guard.commonDir}
+	return sc.claimFor(guard, dir, rt)
 }
