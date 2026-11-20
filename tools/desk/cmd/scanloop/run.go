@@ -408,6 +408,7 @@ func renderPassReport(w io.Writer, loop *ScanLoop) {
 				hint += " --kind " + kind
 			}
 			fmt.Fprintf(w, "    record it: %s --exit <exit> --artifact <ref> --tier any|strong\n", hint)
+			fmt.Fprintf(w, "      a bug or placeholder exit also needs --handoff <intake-handoff-v1 JSON> --handoff-reader <version> (else refused, exit 5)\n")
 		}
 		fmt.Fprintf(w, "  these are NOT recorded as exited — the item leaves the front door when its exit is recorded, not when it is emitted.\n")
 	}
