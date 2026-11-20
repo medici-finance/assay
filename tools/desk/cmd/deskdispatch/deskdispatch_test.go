@@ -353,6 +353,13 @@ func TestStaleClaimIsNotReportedAsLive(t *testing.T) {
 		{"a young historic age cannot hide an expired claim", strings.Replace(held("claimed", 21), " at=", " note=old_age=2m at=", 1), true},
 		{"a diagnostic before the primary record", "claim store notice\n" + held("claimed", 21), true},
 		{"age missing on primary held line", strings.Replace(held("claimed", 5), "age=5m", "age=?m", 1) + "\ndispatch-claim: ALIAS-HELD other — state=claimed age=45m", false},
+		// A steal reason's newline (sanitized to a space by older writers) or tab leaves a
+		// standalone age= token in the note, ahead of the tool's own trailing age= field.
+		{"newline-split note age on a young claim", strings.Replace(held("claimed", 8), " at=", " note=reclaim age=35m at=", 1), false},
+		{"tab-split note age on a young claim", strings.Replace(held("claimed", 8), " at=", " note=reclaim\tage=35m at=", 1), false},
+		{"newline-split young note age on an old claim", strings.Replace(held("claimed", 25), " at=", " note=reclaim age=2m at=", 1), true},
+		{"note age cannot stand in for an unreadable age", strings.Replace(strings.Replace(held("claimed", 5), "age=5m", "age=?m", 1), " at=", " note=x age=35m at=", 1), false},
+		{"note state cannot stand in for the claim's state", "dispatch-claim: HELD assay--item-1 — dispatch-claim assay--item-1 owner=other-session note=x state=claimed at=2026-08-24T00:00:00Z age=45m", false},
 	}
 	for _, c := range cases {
 		t.Run(c.why, func(t *testing.T) {
@@ -370,6 +377,10 @@ func TestStaleClaimIsNotReportedAsLive(t *testing.T) {
 			}
 			if deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
 				t.Fatalf("rc = %d, want %d (refused)", deskkit.ExitCodeOf(err), deskkit.ExitRefused)
+			}
+			// The refusal names the requested key's own HELD line, never a diagnostic before it.
+			if !strings.Contains(err.Error(), "Existing claim: dispatch-claim: HELD assay--item-1 ") {
+				t.Errorf("the refusal does not name the primary HELD line: %s", err.Error())
 			}
 			isStale := strings.Contains(err.Error(), "STALE")
 			isLive := strings.Contains(err.Error(), "already claimed by a LIVE holder")

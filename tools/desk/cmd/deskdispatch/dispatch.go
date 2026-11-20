@@ -1886,17 +1886,37 @@ func resolveClaimAuthGitLab(role, repo string, isScript bool) (claimAuth, error)
 // is named here against the same contract rather than as a bare literal.
 const claimedClaimTTL = 20 * time.Minute
 
-// claimStateFieldRe / claimAgeFieldRe pull the `state=` and `age=<N>m` fields out of the claim
-// tool's primary HELD line. A reclaim note can include a previous holder's
-// state and age inside a single token (dispatch-claim.sh cmd_show prints
-// `HELD <id> — ... state=<state> ... age=<N>m`).
-var (
-	claimStateFieldRe = regexp.MustCompile(`(?:^|[[:blank:]])state=([A-Za-z]+)(?:[[:blank:]]|$)`)
-	claimAgeFieldRe   = regexp.MustCompile(`(?:^|[[:blank:]])age=(\d+)m(?:[[:blank:]]|$)`)
-)
+// claimLineFields reads the `state=` and `age=<N>m` fields from the claim tool's primary HELD
+// line by their POSITION in the wire grammar, never by the first match anywhere on the line.
+// The tool prints `HELD <id> — dispatch-claim <id> owner=… state=… branch=… [note=…] at=<date>
+// age=<N>m[ PREPARED-NOT-LAUNCHED …]`. The note is holder-written text: a steal reason, or a tag
+// minted by another writer, can leave whitespace in it, so a note may hold standalone `state=`
+// or `age=` words (medici-finance/assay#7305). So:
+//
+//   - state is the first `state=` word BEFORE the first `note=` word, where the builder writes
+//     it; one found only after the note is not the claim's own and reads as absent;
+//   - age is the LAST `age=` word on the line: the tool writes its own after the whole claim
+//     message, and the PREPARED-NOT-LAUNCHED suffix carries no `age=` word. An unreadable last
+//     age (`age=?m`) stays unreadable; it never falls back to an earlier, note-supplied one.
+func claimLineFields(line string) (state, age string) {
+	inNote := false
+	for _, word := range strings.Fields(line) {
+		if strings.HasPrefix(word, "note=") {
+			inNote = true
+		}
+		if v, ok := strings.CutPrefix(word, "state="); ok && !inNote && state == "" {
+			state = v
+		}
+		if v, ok := strings.CutPrefix(word, "age="); ok {
+			age = v
+		}
+	}
+	return state, age
+}
 
-// holderIsStale reports whether a claim `show` output describes a holder past its state's TTL —
-// a DEAD claim the two-phase dispatch-claim contract makes reclaimable, not a live holder.
+// holderIsStale reports whether a claim tool's primary HELD line describes a holder past its
+// state's TTL — a DEAD claim the two-phase dispatch-claim contract makes reclaimable, not a live
+// holder. The fields come from claimLineFields, never from a first match on the line.
 //
 // The TTLs are that contract: state=dispatched → deskkit.DefaultStaleClaim (120m),
 // state=claimed → claimedClaimTTL (20m). A missing or unparseable state/age, or an
@@ -1904,17 +1924,15 @@ var (
 // and never reported as reclaimable, the same fail-closed direction deskkit's own isStale
 // takes (never steal a claim you cannot prove is dead). state and ageMin are returned for the
 // message even when stale is false, so the caller can name what it read.
-func holderIsStale(showOut string) (stale bool, state string, ageMin int) {
+func holderIsStale(line string) (stale bool, state string, ageMin int) {
 	ageMin = -1
-	sm := claimStateFieldRe.FindStringSubmatch(showOut)
-	am := claimAgeFieldRe.FindStringSubmatch(showOut)
-	if sm != nil {
-		state = strings.ToLower(sm[1])
-	}
-	if am == nil {
+	rawState, rawAge := claimLineFields(line)
+	state = strings.ToLower(rawState)
+	digits, ok := strings.CutSuffix(rawAge, "m")
+	if !ok || digits == "" || strings.Trim(digits, "0123456789") != "" {
 		return false, state, ageMin
 	}
-	n, err := strconv.Atoi(am[1])
+	n, err := strconv.Atoi(digits)
 	if err != nil {
 		return false, state, ageMin
 	}
