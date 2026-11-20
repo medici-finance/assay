@@ -33,6 +33,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/medici-finance/assay/statusgen/evaluation"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -62,10 +63,10 @@ func evidenceWithheld(raw []byte) (string, bool) {
 // nonDecisiveVerdictWord maps a non-decisive outcome to the Evidence verdict
 // word a run with that outcome records; "" for a decisive or unknown outcome.
 func nonDecisiveVerdictWord(outcome string) string {
-	switch strings.ToLower(strings.TrimSpace(outcome)) {
-	case "blocked":
+	switch evaluation.ParseVerificationOutcome(outcome) {
+	case evaluation.OutcomeBlocked:
 		return "BLOCKED"
-	case "needs_context", "needs-context":
+	case evaluation.OutcomeNeedsContext:
 		return "NEEDS-CONTEXT"
 	}
 	return ""

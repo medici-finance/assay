@@ -24,6 +24,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/statusgen/evaluation"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -133,6 +134,9 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	var submitted deskkit.WakeReceipt
 	if uerr := json.Unmarshal(rec.Raw, &submitted); uerr != nil {
 		return deskkit.Refused("refused: invalid --outcome-record JSON: " + uerr.Error())
+	}
+	if evaluation.ParseVerificationOutcome(submitted.Outcome) == evaluation.OutcomeUnknown {
+		return deskkit.Refused(fmt.Sprintf("refused: outcome %q must be verified, verify-fail (or fail), blocked, or needs-context (or needs_context)", submitted.Outcome))
 	}
 	// A record that already claims verify-wake-v1 is complete as submitted, whatever its outcome:
 	// Complete() true (the first failing field named) plus the join keys every new such record

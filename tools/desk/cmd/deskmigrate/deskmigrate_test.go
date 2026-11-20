@@ -190,3 +190,46 @@ func TestDeskmigrate_PrintsSelectedAndPlannedCounts(t *testing.T) {
 		})
 	}
 }
+
+// regression: #7243
+// TestDeskmigrate_RefusalNamesStatusgenWhenVendored: migrations/ is present but the
+// span excludes 0001, so vendoring again is no remedy; the hint names statusgen.
+func TestDeskmigrate_RefusalNamesStatusgenWhenVendored(t *testing.T) {
+	root := fxRoot(t)
+	writeBriefV1(t, root, "svc", "brief-01-a.md")
+	var out, errb bytes.Buffer
+	code := run([]string{"--from", "v1.0.87", "--to", "v1.0.89", "--root", root, "--dry-run"}, &out, &errb)
+	if code != deskkit.ExitRefused {
+		t.Fatalf("exit = %d, want %d; stderr=%s", code, deskkit.ExitRefused, errb.String())
+	}
+	msg := errb.String()
+	for _, want := range []string{"statusgen migrate brief-v1-to-v2", "graph-repos.yaml"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("refusal does not name %q:\n%s", want, msg)
+		}
+	}
+	if strings.Contains(msg, "vendor the release") {
+		t.Errorf("refusal tells the operator to vendor although migrations are present:\n%s", msg)
+	}
+}
+
+// regression: #7243
+// TestDeskmigrate_RefusalKeepsVendorHintWhenAbsent: with no migrations/ the
+// vendor-and-re-run hint is unchanged and statusgen is not named.
+func TestDeskmigrate_RefusalKeepsVendorHintWhenAbsent(t *testing.T) {
+	root := t.TempDir()
+	writeBriefV1(t, root, "svc", "brief-01-a.md")
+	var out, errb bytes.Buffer
+	code := run([]string{"--from", "v1.0.87", "--to", "v1.0.89", "--root", root, "--dry-run"}, &out, &errb)
+	if code != deskkit.ExitRefused {
+		t.Fatalf("exit = %d, want %d; stderr=%s", code, deskkit.ExitRefused, errb.String())
+	}
+	dir := filepath.Join(root, deskkit.MigrationsDir)
+	want := "  " + dir + " holds no migration for this span (vendor the release's migrations/ directory into the tree — copy the migration files shipped with the target version under " + dir + " — then re-run).\n"
+	if !strings.Contains(errb.String(), want) {
+		t.Errorf("vendor hint changed:\n%s", errb.String())
+	}
+	if strings.Contains(errb.String(), "statusgen migrate") {
+		t.Errorf("absent-dir refusal must not name statusgen migrate:\n%s", errb.String())
+	}
+}

@@ -106,6 +106,84 @@ Verdict correction for the run above (same run, same witness rows, nothing re-ru
 
 **VERIFY: BLOCKED** — check-definition: rows 1-2 credited, row 3 deferred to #6659; status stays implemented.
 
+### Non-implementer verifier run — VERIFY: BLOCKED — 2026-11-18 — claude-opus-5-5 (strong) as assay-verifier-app[bot]
+
+Merged main 9c845402c8c00d7c14bda75cd5222fff907fd05d; delivering change medici-finance/assay#5917 (merge 1e55fa42a2f4, first parent 7d119c295ffd). statusgen and desk-tools v1.0.87, verify-runner v1.0.87 index digest sha256:c67baa7a3c8b (linux/arm64). Re-run because declared inputs changed after the 2026-11-16 blocked record (muhar runner.go and README, docs/contracts.md). Admission: deskdispatch check-verifier rc=0 before the rows; deskpathguard rederive listed 3 original rows, 0 author-added, all run as delivered.
+
+Rows 1 and 2 (check:ci) ran inside one closed container-netns admission bracket: docker --network none, read-only root and source mount, module cache downloaded by the open step and mounted read-only, GOPROXY=off, GOTOOLCHAIN=local, selected with --rows 1,2. The close step re-admitted the run, and bracket-digest reported verdict=match with span-lines=tree-digest:1,container-image:1,attestation:1.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./cmd/muhar -run '^TestState' -count=1 -v > "${TMPDIR:-/tmp}/dt56-state.log" 2>&1 && grep -F -- '--- PASS: TestStateResume ' "${TMPDIR:-/tmp}/dt56-state.log" && grep -F -- '--- PASS: TestStateRejectsNewTree ' "${TMPDIR:-/tmp}/dt56-state.log" && grep -F -- '--- PASS: TestStateSkipsNoErrors ' "${TMPDIR:-/tmp}/dt56-state.log" && grep -F -- '--- PASS: TestStateEndToEnd ' "${TMPDIR:-/tmp}/dt56-state.log"` | pass exit=0 sandbox=container-netns | sha256:9d005734e57b | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/muhar -run '^TestSpecAnchorsLand$' -count=1 -v > "${TMPDIR:-/tmp}/dt56-anchors.log" 2>&1 && grep -F -- '--- PASS: TestSpecAnchorsLand ' "${TMPDIR:-/tmp}/dt56-anchors.log"` | pass exit=0 sandbox=container-netns | sha256:c7d3b30ab991 | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:2ded1bc2b15c8ec9dd8a3fa08a545caa03889f4360b13d60c31e628b8a9b2715
+Container-Image: sha256:c67baa7a3c8ba3d514128f31340489146525a50c29ebb641a68899c650d354a1
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6963 run=bd3b76a8c6b54be84bd3539d3a2e0207e6551483db40227bb472bccf290a3adb source=9c845402c8c00d7c14bda75cd5222fff907fd05d brief=docs/streams/desk-tools/brief-56-make-mutation-reports-resumable-and-measurable.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=bd3b76a8c6b54be84bd3539d3a2e0207e6551483db40227bb472bccf290a3adb source=9c845402c8c00d7c14bda75cd5222fff907fd05d tree=sha256:2ded1bc2b15c8ec9dd8a3fa08a545caa03889f4360b13d60c31e628b8a9b2715 witness=sha256:1fb000255709616ca7c0c58b8f1bc3a54728faaa0e59bca74622cc4bcb12b63f opened=2026-11-18T17:27:16Z closed=2026-11-18T17:28:52Z before=receipt after=check-verifier
+
+Row 3 (class check, it needs git history) ran on the host through statusgen verifyrun with --rows 3 and --dry-run, with DELIVERY_HEAD = 9c845402c8c00d7c14bda75cd5222fff907fd05d (the verified HEAD, which the row requires) and DELIVERY_BASE = 7d119c295ffd26e069c4fedee55171437ec9d2f3 (the first parent of the delivering merge 1e55fa42a2f4).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 3 | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$(git rev-parse HEAD)" = "$DELIVERY_HEAD" && git merge-base --is-ancestor "$DELIVERY_BASE" "$DELIVERY_HEAD" && ! grep -q -e '[:] follow-up ' docs/streams/desk-tools/brief-56-make-mutation-reports-resumable-and-measurable.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/56 --base "$DELIVERY_BASE" > "$o" 2>&1 && grep -F -e 'summary: 1 corroborated, 0 disproved, 0 unchecked' "$o"` | pass exit=0 | sha256:6378c2f1c28a | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6963 run=bd3b76a8c6b54be84bd3539d3a2e0207e6551483db40227bb472bccf290a3adb source=9c845402c8c00d7c14bda75cd5222fff907fd05d brief=docs/streams/desk-tools/brief-56-make-mutation-reports-resumable-and-measurable.md model=claude-opus-5-5 tier=strong
+
+Per-row summary (these rows earn no extra credit; the witness tables above are the run records):
+
+- Row 1 (check:ci +mutation +flow): expected exit 0 and four named PASS lines; observed pass exit=0 sandbox=container-netns, output sha256:9d005734e57b; the and-chain requires every grep to match.
+- Row 2 (check:ci +neighbour): expected exit 0 and the anchors PASS line; observed pass exit=0 sandbox=container-netns, output sha256:c7d3b30ab991.
+- Row 3 (check +flow +dereference): expected exit 0 and consumers corroborated; observed pass exit=0 on the host, output sha256:6378c2f1c28a. Held for closure: the command is unchanged at this source and pins --base without --delivery, and statusgen v1.0.87 lint still reports Verify row 3 [consumer-delivery-range] for this brief. Same check-definition blocker as the 2026-11-16 run (medici-finance/assay#6659).
+
+Supplemental observations (no acceptance credit, outside every attempt). In the same image under the same network-none flags, go test ./cmd/muhar -run '^(TestState|TestSpecAnchorsLand$)' -count=1 -v in tools/desk exited 0 with zero SKIP lines; it listed PASS for TestStateResume (identity-interrupt), TestStateRejectsNewTree (source, tests, select, shard-change, shard-remove, runner-build, command-words, descriptor-type, descriptor-error, unsafe-state, Go-inputs), TestStateSkipsNoErrors (external-signal, fault-signals, restore-error), TestStateEndToEnd (shard-indices, selection-timing, schemata-timing) and TestSpecAnchorsLand. On the host, statusgen --consumers for desk-tools/56 with base 7d119c295ffd printed CORROBORATED for the muhar README fixed-here entry.
+
+Fail-first: not required. Every risk answer in the frontmatter is "no", and no row carries a risk-bearing, live, mutating or end-to-end tag, so no row is risk-bearing.
+
+Risk-bearing value enumeration (delivering diff 7d119c295ffd..1e55fa42a2f4, muhar sources; the state source is byte-identical at this HEAD). The trigger does not fire: irreversible is no and all risk fields are present and no. Enumerated anyway: stateSchema = 1 at tools/desk/cmd/muhar/state.go:25; group/world-write mask 0o022 at tools/desk/cmd/muhar/state.go:81; create mode 0o600 at tools/desk/cmd/muhar/state.go:94; definitive-record bounds (test-timeout reuse only for CAUGHT with LimitNS > 0; BuildNS >= 0, TestNS >= 0, Index >= 0) at tools/desk/cmd/muhar/state.go:167-169; interrupt exit 130 in the harness. All are reversible by an edit and a redeploy, because the state file is local and caller-owned.
+RISK-VALUE: DERIVED — stateSchema = 1 @ tools/desk/cmd/muhar/state.go:25 — first version of a new on-disk contract, hashed into the header identity (state.go:323), so a later schema change refuses an older file rather than misreading it.
+RISK-VALUE: DERIVED — group/world-writable mask = 0o022 @ tools/desk/cmd/muhar/state.go:81 — the state file is trusted verdict input, so a file other users can write could plant reusable CAUGHT verdicts; refusing the group and world write bits is exactly that exclusion, paired with the owner-only 0o600 create mode at state.go:94.
+
+**VERIFY: BLOCKED** — check-definition: rows 1-2 passed in a matching closed bracket (credit was could-not-check before landing), row 3 met its Expect but is held on consumer-delivery-range (medici-finance/assay#6659); status stays implemented.
+
+### Non-implementer verifier run — 2026-11-19 — claude-opus-5-5 (strong) as assay-verifier-app[bot]
+
+Merged main 08834a1a6e1226100404e8479e6473d607629260; delivering change medici-finance/assay#5917 (merge 1e55fa42a2f4, first parent 7d119c295ffd). statusgen and desk-tools v1.0.88. Re-run because a declared input changed after the 2026-11-18 record (docs/contracts.md); the muhar sources are byte-identical to that run. Admission: deskdispatch check-verifier rc=0 before any row.
+
+Row 3 (class check, it needs git history) ran first, on the host, through statusgen verifyrun with --rows 3, with DELIVERY_HEAD = 08834a1a6e1226100404e8479e6473d607629260 (the verified HEAD, which the row requires) and DELIVERY_BASE = 7d119c295ffd26e069c4fedee55171437ec9d2f3 (the first parent of the delivering merge 1e55fa42a2f4).
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 3 | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$(git rev-parse HEAD)" = "$DELIVERY_HEAD" && git merge-base --is-ancestor "$DELIVERY_BASE" "$DELIVERY_HEAD" && ! grep -q -e '[:] follow-up ' docs/streams/desk-tools/brief-56-make-mutation-reports-resumable-and-measurable.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/56 --base "$DELIVERY_BASE" > "$o" 2>&1 && grep -F -e 'summary: 1 corroborated, 0 disproved, 0 unchecked' "$o"` | pass exit=0 | sha256:6378c2f1c28a | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7224 run=d76015f0cf4270cbee7c4d084405b3c19f39ecc5cb891de71e9b0f4c68b37d63 source=08834a1a6e1226100404e8479e6473d607629260 brief=docs/streams/desk-tools/brief-56-make-mutation-reports-resumable-and-measurable.md model=claude-opus-5-5 tier=strong
+
+Rows 1 and 2 (check:ci) ran last, inside one closed container-netns admission bracket: verify-runner v1.0.88 index digest sha256:dd758003b77f (linux/arm64), docker --network none, read-only root and source mount, module cache downloaded by the open step and mounted read-only, GOPROXY=off, GOTOOLCHAIN=local, selected with --rows 1,2. The close step re-admitted the run, and bracket-digest reported verdict=match with span-lines=tree-digest:1,container-image:1,attestation:1.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test ./cmd/muhar -run '^TestState' -count=1 -v > "${TMPDIR:-/tmp}/dt56-state.log" 2>&1 && grep -F -- '--- PASS: TestStateResume ' "${TMPDIR:-/tmp}/dt56-state.log" && grep -F -- '--- PASS: TestStateRejectsNewTree ' "${TMPDIR:-/tmp}/dt56-state.log" && grep -F -- '--- PASS: TestStateSkipsNoErrors ' "${TMPDIR:-/tmp}/dt56-state.log" && grep -F -- '--- PASS: TestStateEndToEnd ' "${TMPDIR:-/tmp}/dt56-state.log"` | pass exit=0 sandbox=container-netns | sha256:95123e112c5d | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/muhar -run '^TestSpecAnchorsLand$' -count=1 -v > "${TMPDIR:-/tmp}/dt56-anchors.log" 2>&1 && grep -F -- '--- PASS: TestSpecAnchorsLand ' "${TMPDIR:-/tmp}/dt56-anchors.log"` | pass exit=0 sandbox=container-netns | sha256:c94a03fd7302 | 2026-11-19 | assay-verifier-app[bot] @ 08834a1a6e12 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:d9f8f2e4dd8764322dbc45d950a8b2e30cb0903e1a3d41cdced4efb81cc79aae
+Container-Image: sha256:dd758003b77fc718ec5b9b3e3a34529a422eb87316a605207bdad2560ca169bc
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7224 run=d76015f0cf4270cbee7c4d084405b3c19f39ecc5cb891de71e9b0f4c68b37d63 source=08834a1a6e1226100404e8479e6473d607629260 brief=docs/streams/desk-tools/brief-56-make-mutation-reports-resumable-and-measurable.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=d76015f0cf4270cbee7c4d084405b3c19f39ecc5cb891de71e9b0f4c68b37d63 source=08834a1a6e1226100404e8479e6473d607629260 tree=sha256:d9f8f2e4dd8764322dbc45d950a8b2e30cb0903e1a3d41cdced4efb81cc79aae witness=sha256:13bf218347df343e2152088faf0c3dd4495ad71da9c9ce4a3c9a2b5c9404748b opened=2026-11-19T16:44:10Z closed=2026-11-19T16:45:40Z before=receipt after=check-verifier
+
+Per-row summary (these rows earn no extra credit; the witness tables above are the run records):
+
+- Row 1 (check:ci +mutation +flow): expected exit 0 and four named PASS lines; observed pass exit=0 sandbox=container-netns, output sha256:95123e112c5d; the and-chain requires every grep to match.
+- Row 2 (check:ci +neighbour): expected exit 0 and the anchors PASS line; observed pass exit=0 sandbox=container-netns, output sha256:c94a03fd7302.
+- Row 3 (check +flow +dereference): expected exit 0 and consumers corroborated; observed pass exit=0 on the host, output sha256:6378c2f1c28a. Held for closure: the command is unchanged at this source and pins --base without --delivery. statusgen v1.0.88 lint reports Verify row 3 [consumer-delivery-range] for this brief as a NOTICE, and the rule is in promotedRowRules (statusgen strength.go), so it becomes a PROBLEM on the closing transition. Same check-definition blocker as the 2026-11-16 and 2026-11-18 runs (medici-finance/assay#6659, still open).
+
+Supplemental observation (no acceptance credit, outside every attempt): on the host, statusgen --consumers for desk-tools/56 with base 7d119c295ffd printed CORROBORATED for the muhar README fixed-here entry and summary 1 corroborated, 0 disproved, 0 unchecked.
+
+Fail-first: not required. Every risk answer in the frontmatter is "no", and no row carries a risk-bearing, live, mutating or end-to-end tag, so no row is risk-bearing.
+
+Risk-bearing value enumeration (delivering diff 7d119c295ffd..1e55fa42a2f4, muhar sources; the state source is byte-identical at this HEAD, and the docs/contracts.md change since the last run touches no muhar line). The trigger does not fire: irreversible is no and all risk fields are present and no. Enumerated anyway: stateSchema = 1 at tools/desk/cmd/muhar/state.go:25; group/world-write mask 0o022 at tools/desk/cmd/muhar/state.go:81; create mode 0o600 at tools/desk/cmd/muhar/state.go:94; definitive-record bounds (test-timeout reuse only for CAUGHT with LimitNS > 0; BuildNS >= 0, TestNS >= 0, Index >= 0) at tools/desk/cmd/muhar/state.go:167-169. All are reversible by an edit and a redeploy, because the state file is local and caller-owned.
+RISK-VALUE: DERIVED — stateSchema = 1 @ tools/desk/cmd/muhar/state.go:25 — first version of a new on-disk contract, hashed into the header identity (state.go:323), so a later schema change refuses an older file rather than misreading it.
+RISK-VALUE: DERIVED — group/world-writable mask = 0o022 @ tools/desk/cmd/muhar/state.go:81 — the state file is trusted verdict input, so a file other users can write could plant reusable CAUGHT verdicts; refusing the group and world write bits is exactly that exclusion, paired with the owner-only 0o600 create mode at state.go:94.
+
+**VERIFY: BLOCKED** — check-definition: rows 1-2 passed in a matching closed bracket, row 3 met its Expect but is held on consumer-delivery-range (medici-finance/assay#6659); status stays implemented.
+
 ## Failure map
 - A changed tree reuses an old verdict: TestStateRejectsNewTree fails.
 - An interrupted or failed run becomes a completed result: TestStateSkipsNoErrors fails.

@@ -4,6 +4,8 @@ import (
 	"path"
 	"strconv"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 // written.go — a placeholder exit is recorded only for a member the scan actually wrote (#6601).
@@ -32,12 +34,40 @@ func placeholderStemOf(repo string) string {
 	return repo
 }
 
-// placeholderNamesFor is every file name that carries this issue's placeholder: the repo-stemmed
-// form, and the bare `issue-N.md` form the scanner uses for the home repo. The bare form is accepted
-// for any repo, as HasPlaceholder accepts it — this package has no reader for the home repo.
+// isHomeRepo reports whether repo is the configured home repo (ASSAY_HOME_REPO), the one repository
+// statusgen names with the bare `issue-N.md`. Unset, no repository is: statusgen then gives no repo
+// the bare filename either.
+func isHomeRepo(repo string) bool {
+	home := deskkit.EffectiveConfig().HomeRepo
+	return home != "" && strings.EqualFold(repo, home)
+}
+
+// placeholderNamesFor is every file name that carries THIS repository's issue N: the repo-stemmed
+// form, and — for the home repo only — the bare `issue-N.md` form the scanner uses for it. The
+// scanner's own name for the issue comes first.
+//
+// THE CLASS (#7023, the same class as #6601): crediting a member from evidence that is not scoped to
+// the member. A bare `issue-N.md` names a number, not a repository; matched on the number alone it
+// credited issue N of every repository in the batch. This is the one place a placeholder file name
+// is tied to a member — creditMembers and HasPlaceholder both go through matchesPlaceholder.
 func placeholderNamesFor(repo string, number int) []string {
 	n := strconv.Itoa(number)
-	return []string{placeholderStemOf(repo) + "-issue-" + n + ".md", "issue-" + n + ".md"}
+	stemmed := placeholderStemOf(repo) + "-issue-" + n + ".md"
+	if isHomeRepo(repo) {
+		return []string{"issue-" + n + ".md", stemmed}
+	}
+	return []string{stemmed}
+}
+
+// matchesPlaceholder reports whether the file name (a base name, any case) carries this repository's
+// issue N placeholder.
+func matchesPlaceholder(name, repo string, number int) bool {
+	for _, want := range placeholderNamesFor(repo, number) {
+		if strings.EqualFold(name, want) {
+			return true
+		}
+	}
+	return false
 }
 
 // splitMember parses an inbound item id `owner/repo#N`. ok is false for anything else.
@@ -57,17 +87,13 @@ func splitMember(id string) (repo string, number int, ok bool) {
 // with no such path is returned in unwritten, in input order. Only changed paths count: a file the
 // scan did not touch is not this pass's write.
 func creditMembers(members []string, changed []statusEntry) (credited map[string]string, unwritten []string) {
-	byName := map[string]string{}
-	for _, c := range changed {
-		byName[strings.ToLower(path.Base(c.path))] = c.path
-	}
 	credited = map[string]string{}
 	for _, m := range members {
 		repo, number, ok := splitMember(m)
 		if ok {
-			for _, name := range placeholderNamesFor(repo, number) {
-				if p, hit := byName[strings.ToLower(name)]; hit {
-					credited[m] = p
+			for _, c := range changed {
+				if matchesPlaceholder(path.Base(c.path), repo, number) {
+					credited[m] = c.path
 					break
 				}
 			}

@@ -324,13 +324,17 @@ func remoteLocation(raw string) (scheme, host, path string, ok bool) {
 // global config do not. err is non-nil when dir is not a git worktree, has no origin, the
 // URL does not parse, or SlugRemoteURL refuses; callers that must fail closed surface it.
 func OriginRepoSlug(dir string) (string, error) {
-	repo, err := gitcore.Open(dir)
-	if err != nil {
-		return "", err
-	}
-	raw, err := SlugRemoteURL(repo, "origin")
+	raw, err := originFetchURL(dir)
 	if err != nil {
 		return "", err
 	}
 	return RemoteRepoSlug(raw)
+}
+
+func originFetchURL(dir string) (string, error) {
+	repo, err := gitcore.Open(dir)
+	if err != nil {
+		return "", err
+	}
+	return SlugRemoteURL(repo, "origin")
 }
