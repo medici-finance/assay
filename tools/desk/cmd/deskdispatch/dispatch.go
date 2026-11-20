@@ -577,6 +577,12 @@ func dispatch(o dispatchOpts) error {
 	// and is REPORTED, never silent — but it never fails the dispatch, which is already claimed,
 	// homed and identity-stamped.
 	if ext := runCmd(home, "git", "config", "extensions.worktreeConfig", "true"); ext.err == nil {
+		// Where the claim was taken, recorded BEFORE the key so a key never exists without
+		// its namespace unless the write failed (deskwt holds a key with no recorded namespace:
+		// "absent from this repo's claim listing" proves a release only for the repo and
+		// store the claim was taken in). A cross-repository verifier claims in the TRACKING
+		// repo while its home is cut from the deliverable checkout.
+		recordClaimNamespace(o, home, plan)
 		if rk := runCmd(home, "git", "config", "--worktree", "assay.runKey", plan.claimKey); rk.err == nil {
 			o.say("%s OK: recorded run key %s (assay.runKey) in %s", stepWorktreeCreate, plan.claimKey, home)
 		} else {

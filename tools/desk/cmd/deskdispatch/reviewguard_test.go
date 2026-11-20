@@ -231,7 +231,7 @@ func guardSafeGit(args []ast.Expr, i int) bool {
 		// assay.dispatchRef is a data-only key in the
 		// assay.* namespace like assay.runKey: git interprets no assay.* key,
 		// so it cannot select an executable for a later call.
-		case "user.name", "user.email", "assay.runKey", "assay.dispatchRef":
+		case "user.name", "user.email", "assay.runKey", "assay.dispatchRef", "assay.claimRepo", "assay.claimStore":
 			return true
 		}
 	}

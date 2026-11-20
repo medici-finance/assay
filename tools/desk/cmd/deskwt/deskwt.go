@@ -877,6 +877,13 @@ func runRemove(o removeOpts) (err error) {
 		}
 		lockNote = "; lock retired: " + why
 	}
+	if claim.releasedOwner() {
+		// The claim was read before the status gate above; a resume may have re-acquired it
+		// since. Re-read the one key just before the unlock and the delete.
+		if why := claimStillFree(dir, claim.key); why != "" {
+			return deskkit.Unverifiable("cannot remove "+rt+": "+why, nil)
+		}
+	}
 
 	// before_remove — runs before deletion. LOGGED failure class: a hook failure is reported
 	// but the deletion PROCEEDS (a cleanup hook that fails must never strand a worktree the

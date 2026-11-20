@@ -14,10 +14,28 @@ import (
 // --- fixtures ------------------------------------------------------------------
 
 // runKeyed records a run key in a fixture home exactly where deskdispatch records one: the
-// worktree-scoped assay.runKey (addWorktree has already enabled the worktree-config extension).
+// worktree-scoped assay.runKey (addWorktree has already enabled the worktree-config
+// extension), with the claim namespace deskdispatch records beside it for an ordinary dispatch:
+// this checkout's origin, in the forge-ref store.
 func runKeyed(t *testing.T, target, key string) {
 	t.Helper()
+	repo, err := currentRepo(target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runKeyedIn(t, target, key, repo, deskkit.ClaimStoreForgeRef)
+}
+
+// runKeyedIn records a run key with an explicit claim namespace; "" leaves that key unrecorded.
+func runKeyedIn(t *testing.T, target, key, claimRepo, claimStore string) {
+	t.Helper()
 	mustGit(t, target, "config", "--worktree", "assay.runKey", key)
+	if claimRepo != "" {
+		mustGit(t, target, "config", "--worktree", "assay.claimRepo", claimRepo)
+	}
+	if claimStore != "" {
+		mustGit(t, target, "config", "--worktree", "assay.claimStore", claimStore)
+	}
 }
 
 // bareLock is the lock an agent writes on its own home at boot: no reason, no session.

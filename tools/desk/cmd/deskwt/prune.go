@@ -646,6 +646,12 @@ type sweepCtx struct {
 	admins     *worktreeAdminIndex
 	claims     *claimListing // the sweep's one dispatch-claim listing, read lazily (claimfree.go)
 
+	// origin is this checkout's origin as owner/name, read lazily (claimfree.go): a claim is
+	// proved released only against the repository it was taken in.
+	origin     string
+	originErr  error
+	originRead bool
+
 	// mainAncestors is nil when the set could not be built; ancestorErr then says why.
 	mainAncestors map[string]struct{}
 	ancestorErr   error
@@ -1012,8 +1018,17 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 
 		if opts.reapDeadSessions && !protected && admHold == "" && idleHold == "" {
 			mt, haveMtime := reapMtimes[rt]
-			v := judgeReap(sc, rt, reason, isLocked, mt, haveMtime, opts.lockTTL, reapRoster, reapNow,
-				sc.claimFor(guard, dir, rt))
+			rc := sc.claimFor(guard, dir, rt)
+			v := judgeReap(sc, rt, reason, isLocked, mt, haveMtime, opts.lockTTL, reapRoster, reapNow, rc)
+			if v.reap && rc.releasedOwner() && !opts.dryRun {
+				// The sweep's listing may be minutes old by now: a resume that re-acquired the
+				// claim and adopted this home since is a live run. Re-read the one key just
+				// before the unlock and the delete (claimStillFree).
+				if why := claimStillFree(dir, rc.key); why != "" {
+					v.reap = false
+					v.reason += "; " + why
+				}
+			}
 			if v.reap {
 				// --dry-run stops here exactly as the ordinary arm does: count the
 				// would-be reap, record the plan row, delete nothing and unlock nothing.

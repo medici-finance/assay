@@ -24,16 +24,27 @@ package main
 // A tree that records no run key is untouched by this file: it was not dispatched, so it has
 // no claim to consult, and the gates that judged it before still judge it.
 //
+// "Absent from the listing" proves a release only for the claim namespace the listing reads. So
+// a key counts as released only when the home also records WHERE its claim was taken, and that
+// is this checkout's origin, in the forge-ref store the listing reads: deskdispatch records
+// `assay.claimRepo` and `assay.claimStore` beside `assay.runKey`. A cross-repository verifier
+// claims in the TRACKING repo while its home is cut from the deliverable checkout, so its live
+// claim is absent from this checkout's listing; it, a home recorded before the namespace was
+// recorded, and a home whose store is not forge-ref are could-not-check, which holds.
+//
 // The claim listing is ONE `git ls-remote` per sweep, made lazily (only once a candidate with
-// a run key is reached), against the repository's own origin — the repo the dispatcher took
-// the claim in. Both namespaces are read: the one claims are acquired in today and the
-// branch-shaped one the fleet's readers list (deskkit/claimref.go).
+// a run key is reached), against the checkout's own origin. Both namespaces are read: the one
+// claims are acquired in today and the branch-shaped one the fleet's readers list
+// (deskkit/claimref.go). Just before a destructive step the key is re-read once more
+// (claimStillFree), so a resume that re-acquired the claim after the sweep's listing is seen.
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/go-git/go-git/v5/plumbing/format/config"
 
@@ -71,18 +82,33 @@ type claimListing struct {
 	err  error
 }
 
+// claimListTimeout bounds one claim listing, so an unresponsive forge is a could-not-check and
+// never a hung sweep.
+const claimListTimeout = 60 * time.Second
+
+// claimListEnv is the environment of the claim listing: the caller's own with every GIT_*
+// variable dropped (an inherited GIT_DIR or GIT_CONFIG_* could point `origin` at a readable but
+// wrong listing, which reads every live claim as released), then the two switches that make an
+// unattended read fail instead of wait: no credential prompt, and ssh in batch mode so a
+// passphrase or host-key question is an error, not a hang.
+func claimListEnv() []string {
+	return append(scrubbedGitEnv(), "GIT_TERMINAL_PROMPT=0", "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
+}
+
 // listDispatchClaims lists the dispatch-claim keys present on dir's origin. It is a
-// package-level var so a test can count the reads (one per sweep) and simulate an unreadable
-// forge; the default reads the fixture's or the real origin with git itself.
+// package-level var so a test can count the reads and simulate an unreadable forge; the
+// default reads the fixture's or the real origin with git itself, under claimListEnv and
+// claimListTimeout.
 var listDispatchClaims = func(dir string) (map[string]bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), claimListTimeout)
+	defer cancel()
 	r := deskkit.Run(deskkit.ToolCall{
-		Name: "git",
+		Context: ctx,
+		Name:    "git",
 		Args: []string{"ls-remote", "origin",
 			deskkit.DispatchClaimActiveRefsPrefix + "*", deskkit.ClaimRefsPattern},
-		Dir: dir,
-		// A sweep runs unattended: a credential prompt would hang it, so a forge that wants
-		// one is a could-not-check, never a wait.
-		Env:   append(os.Environ(), "GIT_TERMINAL_PROMPT=0"),
+		Dir:   dir,
+		Env:   claimListEnv(),
 		Start: execCommand,
 	})
 	if r.Failed() {
@@ -133,23 +159,68 @@ func (l *claimListing) state(dir, key string) (claimState, string) {
 	return claimFree, "dispatch claim " + key + " is released"
 }
 
-// runKeyInAdmin reads the worktree-scoped assay.runKey from a worktree's admin directory
-// (<common>/worktrees/<name>/config.worktree) without starting git: "" when the file or the
-// key is absent. A file that exists but cannot be read or parsed is an error — the caller
-// treats it as a run key it could not read, which holds the tree.
-func runKeyInAdmin(admin string) (string, error) {
+// runRecord is what deskdispatch recorded in a home about its run: the run key and where that
+// run's dispatch claim was taken ("" for a field the home does not record).
+type runRecord struct {
+	key   string // assay.runKey
+	repo  string // assay.claimRepo: the repository whose claim namespace holds the claim
+	store string // assay.claimStore: the resolved claim store
+}
+
+// runRecordInAdmin reads the worktree-scoped assay.runKey, assay.claimRepo and
+// assay.claimStore from a worktree's admin directory (<common>/worktrees/<name>/config.worktree)
+// without starting git: all empty when the file or the keys are absent. A file that exists but
+// cannot be read or parsed is an error — the caller treats it as a run key it could not read,
+// which holds the tree.
+func runRecordInAdmin(admin string) (runRecord, error) {
 	data, err := os.ReadFile(filepath.Join(admin, "config.worktree"))
 	if os.IsNotExist(err) {
-		return "", nil
+		return runRecord{}, nil
 	}
 	if err != nil {
-		return "", deskkit.Unverifiable("cannot read the worktree's config.worktree", err)
+		return runRecord{}, deskkit.Unverifiable("cannot read the worktree's config.worktree", err)
 	}
 	cfg := config.New()
 	if derr := config.NewDecoder(bytes.NewReader(data)).Decode(cfg); derr != nil {
-		return "", deskkit.Unverifiable("cannot parse the worktree's config.worktree", nil)
+		return runRecord{}, deskkit.Unverifiable("cannot parse the worktree's config.worktree", nil)
 	}
-	return strings.TrimSpace(cfg.Section("assay").Option("runKey")), nil
+	sec := cfg.Section("assay")
+	return runRecord{
+		key:   strings.TrimSpace(sec.Option("runKey")),
+		repo:  strings.TrimSpace(sec.Option("claimRepo")),
+		store: strings.TrimSpace(sec.Option("claimStore")),
+	}, nil
+}
+
+// originSlug is this checkout's origin as owner/name, read once per sweep without starting git.
+func (sc *sweepCtx) originSlug(dir string) (string, error) {
+	if !sc.originRead {
+		sc.originRead = true
+		sc.origin, sc.originErr = currentRepo(dir)
+	}
+	return sc.origin, sc.originErr
+}
+
+// namespaceHold is "" when the home's claim was taken where the listing reads (this checkout's
+// origin, in the forge-ref store), else the could-not-check reason that holds the tree.
+func (sc *sweepCtx) namespaceHold(dir string, rec runRecord) string {
+	pre := "could-not-check: dispatch claim " + rec.key
+	switch {
+	case rec.store == "":
+		return pre + " (the home records no claim store, so a listing here proves nothing about it)"
+	case rec.store != deskkit.ClaimStoreForgeRef:
+		return pre + " (taken in the " + rec.store + " store; only the " + deskkit.ClaimStoreForgeRef + " listing is read here)"
+	case rec.repo == "":
+		return pre + " (the home records no claim repository, so a listing here proves nothing about it)"
+	}
+	origin, err := sc.originSlug(dir)
+	if err != nil {
+		return pre + " (this checkout's origin cannot be read: " + errText(err) + ")"
+	}
+	if !strings.EqualFold(origin, rec.repo) {
+		return pre + " (taken in " + rec.repo + ", not in this checkout's origin " + origin + ")"
+	}
+	return ""
 }
 
 // claimFor is the sweep's claim verdict for rt. An unreadable admin entry or run key is
@@ -159,24 +230,89 @@ func (sc *sweepCtx) claimFor(guard *pathGuard, dir, rt string) runClaim {
 	if err != nil {
 		return runClaim{key: "?", state: claimUnknown, why: "could-not-check: run key (" + errText(err) + ")"}
 	}
-	key, kerr := runKeyInAdmin(admin)
-	if kerr != nil {
-		return runClaim{key: "?", state: claimUnknown, why: "could-not-check: run key (" + errText(kerr) + ")"}
+	return sc.claimFromAdmin(dir, admin)
+}
+
+// claimFromAdmin is the claim verdict for the home whose admin entry is admin.
+func (sc *sweepCtx) claimFromAdmin(dir, admin string) runClaim {
+	rec, err := runRecordInAdmin(admin)
+	if err != nil {
+		return runClaim{key: "?", state: claimUnknown, why: "could-not-check: run key (" + errText(err) + ")"}
 	}
-	if key == "" {
+	if rec.key == "" {
 		return runClaim{}
+	}
+	if why := sc.namespaceHold(dir, rec); why != "" {
+		return runClaim{key: rec.key, state: claimUnknown, why: why}
 	}
 	if sc.claims == nil {
 		sc.claims = &claimListing{}
 	}
-	st, why := sc.claims.state(dir, key)
-	return runClaim{key: key, state: st, why: why}
+	st, why := sc.claims.state(dir, rec.key)
+	return runClaim{key: rec.key, state: st, why: why}
 }
 
-// claimForRemove is `remove`'s claim verdict for its one target. It reads the run key from the
-// same admin index a sweep uses (no git process: the git-exec ratchet), through a one-target
-// sweep context on the guard's common store, so `remove` and `prune` judge one home alike.
+// ownAdminEntry is the admin directory of rt itself, found from rt's own `.git` file and
+// confirmed from the entry's `gitdir` back-pointer. It reads nothing of any sibling, so a
+// malformed sibling entry cannot change the verdict on rt. Any link it cannot confirm is an
+// error, which holds rt.
+func ownAdminEntry(guard *pathGuard, rt string) (string, error) {
+	if guard.commonDir == "" {
+		return "", deskkit.Unverifiable("the shared git-common-dir is not resolved", nil)
+	}
+	raw, err := os.ReadFile(filepath.Join(rt, ".git"))
+	if err != nil {
+		return "", deskkit.Unverifiable("cannot read the worktree's .git file", err)
+	}
+	target, ok := strings.CutPrefix(strings.TrimSpace(string(raw)), "gitdir:")
+	target = strings.TrimSpace(target)
+	if !ok || target == "" {
+		return "", deskkit.Unverifiable("the worktree's .git file names no admin directory", nil)
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(rt, target)
+	}
+	admin := resolvePath(target)
+	if filepath.Dir(admin) != filepath.Join(guard.commonDir, "worktrees") {
+		return "", deskkit.Unverifiable("the worktree's admin directory is not under this repository's registry", nil)
+	}
+	back, err := os.ReadFile(filepath.Join(admin, "gitdir"))
+	pointer := strings.TrimSpace(string(back))
+	if err != nil || pointer == "" {
+		return "", deskkit.Unverifiable("cannot read the worktree's admin back-pointer", err)
+	}
+	if !filepath.IsAbs(pointer) {
+		pointer = filepath.Join(admin, pointer)
+	}
+	if resolvePath(filepath.Dir(pointer)) != rt {
+		return "", deskkit.Unverifiable("the worktree's admin entry points at another path", nil)
+	}
+	return admin, nil
+}
+
+// claimForRemove is `remove`'s claim verdict for its one target. It reads the run record from
+// the target's OWN admin entry (no git process: the git-exec ratchet, and no read of any
+// sibling entry), so a broken sibling cannot change the verdict on a home with no run key,
+// while `remove` and `prune` still read one home's run record the same way.
 func claimForRemove(guard *pathGuard, dir, rt string) runClaim {
+	admin, err := ownAdminEntry(guard, rt)
+	if err != nil {
+		return runClaim{key: "?", state: claimUnknown, why: "could-not-check: run key (" + errText(err) + ")"}
+	}
 	sc := &sweepCtx{commonDir: guard.commonDir}
-	return sc.claimFor(guard, dir, rt)
+	return sc.claimFromAdmin(dir, admin)
+}
+
+// claimStillFree re-reads the claim listing for key, bypassing the sweep's cached read, just
+// before a destructive step. It is "" only when the fresh listing is readable and does not
+// hold key; otherwise the reason the step must not go ahead.
+func claimStillFree(dir, key string) string {
+	keys, err := listDispatchClaims(dir)
+	if err != nil {
+		return "could-not-check: dispatch claim " + key + " (re-read before removal failed: " + errText(err) + ")"
+	}
+	if keys[key] {
+		return "dispatch claim " + key + " was re-acquired after the sweep's listing; kept"
+	}
+	return ""
 }

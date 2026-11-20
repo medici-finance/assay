@@ -119,3 +119,59 @@ func TestDryRunPrintsTheRunKey(t *testing.T) {
 		t.Errorf("the dry-run plan did not name the run key it would record:\n%s", out)
 	}
 }
+
+// TestDispatchRecordsClaimNamespaceBeforeKey: the run key alone does not say WHERE the claim
+// was taken. A cross-repository verifier claims in the tracking repo while its home is cut from
+// the deliverable checkout, so deskwt reads the key's liveness only in the repo recorded here.
+// The namespace is written BEFORE the key, so a key never exists without it unless the write
+// failed (which deskwt holds on).
+// regression: #6863
+func TestDispatchRecordsClaimNamespaceBeforeKey(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	home := t.TempDir()
+	s.replies = happyReplies(home)
+
+	const key = "run-key--02"
+	promptFile := filepath.Join(t.TempDir(), "p.md")
+	if rc := run([]string{key, "--root", root, "--prompt-file", promptFile}); rc != deskkit.ExitOK {
+		t.Fatalf("dispatch rc = %d, want 0", rc)
+	}
+	repoIdx, keyIdx := -1, -1
+	for i, c := range s.calls {
+		j := strings.Join(c, " ")
+		if strings.Contains(j, "git config --worktree assay.claimRepo medici-finance/assay") {
+			repoIdx = i
+		}
+		if strings.Contains(j, "git config --worktree assay.runKey "+key) {
+			keyIdx = i
+		}
+	}
+	if repoIdx < 0 {
+		t.Fatalf("the claim repository was never recorded (assay.claimRepo); calls: %v", s.calls)
+	}
+	if keyIdx < 0 || repoIdx > keyIdx {
+		t.Errorf("assay.claimRepo (call %d) must be written before assay.runKey (call %d)", repoIdx, keyIdx)
+	}
+}
+
+// A failed namespace write is reported and never fails the dispatch: deskwt holds a key with no
+// recorded namespace, so the failure leaves the home kept, not removable.
+// regression: #6863
+func TestDispatchClaimNamespaceFailureNeverFailsTheDispatch(t *testing.T) {
+	s := &stub{}
+	_, root := s.install(t)
+	plantScripts(t, root)
+	home := t.TempDir()
+	s.replies = append([]reply{
+		{match: "assay.claimRepo", stderr: "error: could not lock config file", code: 1},
+	}, happyReplies(home)...)
+	promptFile := filepath.Join(t.TempDir(), "p.md")
+	if rc := run([]string{"run-key--03", "--root", root, "--prompt-file", promptFile}); rc != deskkit.ExitOK {
+		t.Fatalf("a claim-namespace recording failure failed the dispatch (rc=%d)", rc)
+	}
+	if _, err := os.Stat(emittedPathFor(promptFile)); err != nil {
+		t.Errorf("no prompt was emitted despite the dispatch succeeding: %v", err)
+	}
+}
