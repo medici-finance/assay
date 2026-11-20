@@ -27,6 +27,7 @@ gate-why: >-
   before any later brief widens an entry.
 decision-trigger: creation
 issues: [4284]
+decision-issue: 6804
 outcome: none
 design: DR-scan-admission
 schema: brief-v2

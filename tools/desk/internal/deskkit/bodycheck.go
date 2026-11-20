@@ -12,7 +12,6 @@ import (
 // GitHub. It is a seatbelt plus friction against ACCIDENTAL credential paste,
 // not a complete exfiltration defence — a deliberately encoding adversary can evade
 // pattern filters. There is NO override flag anywhere.
-
 var (
 	reGitHubToken = regexp.MustCompile(`(ghp_|github_pat_|ghs_|gho_|ghu_|ghr_)[A-Za-z0-9_]+`)
 	reAWSKeyID    = regexp.MustCompile(`AKIA[0-9A-Z]{16}`)
@@ -221,76 +220,6 @@ const (
 	maxVersionDigits = 2
 )
 
-// numeronyms are the closed list of letter-digit-letter abbreviations an identifier may
-// carry as ONE CamelCase word unit (#1642): `…Under|K8s|Is…`. The lone capital and the
-// short lowercase tail would otherwise each sink the run. A closed list, like
-// twoLetterWords, rather than a shape rule: a general "capital, digits, letter" unit is
-// common in random base62, an exact four-entry list is not.
-var numeronyms = []string{"K8s", "I18n", "L10n", "A11y"}
-
-// mixedCaseWords are the closed list of established mixed-case terms an identifier may
-// carry as ONE CamelCase word unit, on the same terms as numeronyms (identifier callers
-// only, must end the run or be followed by a capital). `OAuth` opens with a lone capital
-// followed by another capital-led unit, which wordDecomposition otherwise admits only for
-// the English words `A` and `I`; a `TestOAuth…` name therefore refused as a whole. A
-// closed one-entry list, not an "any lone capital" relaxation: a lone `O` (or any other
-// letter) before a capital-led word stays debris, so random base62 gains nothing but the
-// exact five-letter spelling (TestOAuthWordControls, TestNewRulesCostOnRandom).
-var mixedCaseWords = []string{"OAuth"}
-
-// digestKeys are the closed list of env-var name TAILS isDigestKeyAssign will strip in
-// front of a git-SHA-shaped value (#1642). A closed list, not an ALL-CAPS shape rule: a
-// shape rule admits `TOKEN=<64 hex>`, and a 64-hex value is exactly what `openssl rand -hex
-// 32` prints, so the key is the only thing telling a digest from a credential (#1643 review).
-// `HEX` is not on the list: it names an encoding, not a digest, so it is admitted only
-// directly behind one of these (`…_DIGEST_HEX`, `…_SHA256_HEX`).
-var digestKeys = []string{"SHA", "SHA1", "SHA256", "DIGEST", "CHECKSUM", "COMMIT"}
-
-// credentialStems refuse the digest-key strip when any of them appears ANYWHERE in the
-// full env-var name, so `SIGNING_SECRET_SHA=` or `ENCRYPTION_KEY_DIGEST_HEX=` never pass on
-// their digest-looking tail. This is a second fence behind digestKeys, not a substitute:
-// a stem nobody listed still has to get past the closed tail list and the SHA-only value.
-var credentialStems = []string{
-	"SECRET", "TOKEN", "PASS", "PWD", "KEY", "AUTH", "CRED", "PRIV", "SESSION",
-	"COOKIE", "SIGN", "HMAC", "SALT", "API", "CERT", "BEARER", "JWT", "SEED",
-}
-
-// twoLetterWords are the two-letter units that count as WORDS in a CamelCase
-// decomposition even though they carry only one lowercase letter after the capital
-// (see wordDecomposition's capital branch, which otherwise requires two).
-//
-// The membership rule is deliberately a CLOSED LIST OF ENGLISH WORDS rather than the
-// broader "a capital followed by any single lowercase letter", and the difference is
-// measurable rather than stylistic. Both spellings clear the reported false positives
-// equally well, so the only thing that can choose between them is what each costs on real
-// token material: against 2,000,000 uniformly random 32-char base64 runs the blanket
-// relaxation exempts 35, while this list exempts 0 — the same as the stricter rule it
-// replaces. The list buys back the whole false-positive class without measurably loosening
-// the scanner's grip. TestTwoLetterWordsCostAlmostNothing pins that comparison against a
-// fixed seed, so a future widening to "any capital plus one lowercase" — or a list grown
-// long enough to amount to the same thing — cannot be waved through on intuition.
-//
-// The list is grounded in this repo's own identifiers, not guessed: the units that
-// actually block real long CamelCase names here are, in frequency order, Is (124),
-// No (48), On (41), At, By, In, To, As, An, Of, Up, Do, Or, It, So, Me, Be — every one an
-// English function word. The debris further down that same frequency table (Ym, Jl, Vh,
-// Zm, Qx, Px, Xo) comes from base64 test fixtures, and an English-word list leaves all of
-// it on the opaque budget where it belongs.
-//
-// `Id` and `Ok` are the only two non-words admitted: both are universal Go identifier
-// idioms (`UserIdIsStable`, `ReportsOkOnEmptyInput`) and both are English-lexicon enough
-// to be indistinguishable in cost from the rest of the list. Do NOT extend this to
-// general abbreviations (`Db`, `Ui`, `Io`, `Pr`, `Cd`, `Tx`) — each addition is another
-// face on the die that random base64 gets to roll, and the frequency table above shows
-// they buy back almost nothing: one or two identifiers each.
-var twoLetterWords = map[string]bool{
-	"Am": true, "An": true, "As": true, "At": true, "Be": true, "By": true,
-	"Do": true, "Go": true, "He": true, "If": true, "In": true, "Is": true,
-	"It": true, "Me": true, "My": true, "No": true, "Of": true, "On": true,
-	"Or": true, "So": true, "To": true, "Up": true, "Us": true, "Vs": true,
-	"We": true, "Id": true, "Ok": true,
-}
-
 // sopsCiteRemedy is appended to every sops-block refusal, on every surface (#2060). It is
 // the one sanctioned way to refer to sops material in prose: cite where it is and say what
 // is wrong with it. It is deliberately surface-agnostic — the same arm refuses a review
@@ -324,53 +253,14 @@ const SurfaceBody = "body"
 //     scheme://:<password>@host with no username) that is not a placeholder (see
 //     urlUserinfoAt). It runs after every other arm, so a surface that
 //     trips another arm too keeps that arm's rule id.
-//   - any run of ≥32 base64ish chars, EXCEPT:
-//   - an exactly-40- or exactly-64-char lowercase-hex run (git SHAs — the
-//     methodology quotes them constantly; refusing them would brick every verdict).
-//   - a run shaped like a filesystem or module path, absolute OR repo-relative,
-//     built out of word-shaped segments (see isPathLike). This exempts
-//     `/Users/operator/work/example/slides` (#1052), the mandated `file:line`
-//     finding format `tools/desk/internal/deskkit/bodycheck.go:45`, and Go module
-//     paths (#209) while still refusing opaque token material carried
-//     between slashes — including an AWS secret access key, whose `/` characters
-//     defeat a purely length-based segment gate.
-//   - that same path-shaped run behind ONE leading `+` (see isQuantifierGluedPath). `+`
-//     is in the base64 alphabet and so in the run's character class, which means a regex
-//     quantifier (`grep -E '^FRESH +plugins/…'`, the Verify-row idiom) or a unified-diff
-//     add marker is read as the path's first character — and isPathLike refuses any run
-//     containing `+` outright. The exemption is earned by the REMAINDER being path-like,
-//     never by the `+`, which carries no payload (#879).
-//   - a run that is itself a single bare identifier built entirely out of words (see
-//     isIdentifierLike). This exempts long CamelCase Go identifiers — test names like
-//     `HonoredFilterLeavesTripwireSilent` routinely clear the 32-char run threshold
-//     with no `/` to trigger the path exemption above (#253) — while
-//     still refusing a bare random token. MIXED-case token material fails the
-//     word-decomposition almost immediately (a lone capital, an ALL-CAPS stretch, or
-//     1-2 char lowercase debris); LOWERCASE token material — hex or base36, whose
-//     digit groups split it into several letter-word units — is kept out by the
-//     requirement that at least one word unit be capital-led (#582
-//     review; see isIdentifierLike). A two-letter English word inside such an
-//     identifier (`…IsOn…`, `…VsScheduled…`) counts as a word rather than as debris —
-//     see twoLetterWords, which is what unblocked the #781 class.
-//   - a `key=<path>` shell assignment whose VALUE is itself exempt by one of the two
-//     rules above (see isAssignmentLike). This is the Verify/Evidence command idiom
-//     `f=docs/streams/…; test -f "$f" && …` (#775), which could not be
-//     reworded without desyncing a recorded audit trail from what was actually run.
-//     An ALL-CAPS env-var key (`TEST=`, `PGDATA=`, `DELIVERY_HEAD=`) in front of such a
-//     value is admitted too, unless the full name carries a credential or digest stem
-//     (see isCapsKeyAssign, #1642).
-//   - a run composed ENTIRELY of `=` (see isAllEquals): a console-banner separator
-//     line (`echo "===================="`, #781) is base64 padding with no
-//     payload, so it cannot carry a credential. This does NOT exempt a `VAR=secret`
-//     shell assignment, whose run carries the secret's own base64 after the `=`.
-//   - the marker-anchored digest fields of a RECOGNISED structured format (see
-//     structuredExemptSpans in structured.go, #778): go.sum `h1:` checksums, SRI
-//     integrity digests, and — inside a SANCTIONED sops document only — the ciphertext
-//     payloads of complete envelopes, the generated `sops:` metadata block, and armored
-//     ciphertext bodies. The sops pass is earned by the FULL envelope grammar PLUS the
-//     document signature, never by a bracket or a BEGIN line in isolation: a lone
-//     envelope pasted into prose, a bare `sops:` footer, and an armored blob outside any
-//     sops document all still refuse.
+//   - any run of ≥32 base64ish chars, EXCEPT a run an entry of the benign-shape
+//     registry admits (benignShapes in benignshapes.go). Each entry declares its context
+//     (the run alone, its line, or a recognised artifact such as go.sum, an SRI integrity
+//     field or a sanctioned sops document), the issue that admitted it, the corpus or
+//     in-test examples it admits, and the refusals that bound it; the registry's tests
+//     prove every entry is bounded and that no entry reaches a literal arm. The refusal
+//     message and the tools README render their list of exempt shapes from the same
+//     entries.
 //
 // Test vectors for BOTH directions (SHAs and paths pass, every credential pattern —
 // including one wearing a path disguise — refuses) are exercised by this package's tests.
@@ -391,7 +281,7 @@ func BodyCheck(body []byte) error { return ScanSurface(SurfaceBody, body) }
 // "branch diff vs origin/main"). The DETECTION is identical on every surface; only the
 // message differs.
 func ScanSurface(surface string, content []byte) error {
-	return scanSurface(surface, content, true)
+	return scanSurface(surface, content, true, benignShapes)
 }
 
 // ScanSurfaceSecrets is ScanSurface WITHOUT the impersonated-human-ruling guard: every
@@ -415,7 +305,7 @@ func ScanSurface(surface string, content []byte) error {
 // removal direction, and ScanSurface (which includes the ruling-claim guard) is the
 // correct scan there.
 func ScanSurfaceSecrets(surface string, content []byte) error {
-	return scanSurface(surface, content, false)
+	return scanSurface(surface, content, false, benignShapes)
 }
 
 // ScanSurfaceRulingClaim runs ONLY the impersonated-human-ruling guard
@@ -442,15 +332,19 @@ func ScanSurfaceRulingClaim(surface string, content []byte) error {
 // in the arm order — after the literal-marker arms, before the high-entropy loop — is
 // unchanged from when it was inlined, so refusal precedence on a surface tripping more
 // than one arm is exactly what it was.
+//
+// reg is the benign-shape registry the high-entropy loop walks. Production passes the one
+// registry value, benignShapes; a test passes a modified copy to prove each entry is
+// bounded (benignshapes_test.go).
 // semantic: S-publication-scan
-func scanSurface(surface string, content []byte, rulingClaim bool) error {
+func scanSurface(surface string, content []byte, rulingClaim bool, reg []benignShape) error {
 	if surface == "" {
 		surface = SurfaceBody
 	}
 	// TWO VIEWS OF THE SAME SURFACE.
 	//
 	//   raw  every byte, exactly as the caller handed it over. The high-entropy-run loop at
-	//        the bottom reads this, minus whatever structuredExemptSpans accounts for.
+	//        the bottom reads this, minus whatever the registry's artifact entries account for.
 	//   s    the MARKER SURFACE: raw with every marker that structured recognition has
 	//        already accounted for neutralised. The literal-marker arms below read this.
 	//
@@ -572,103 +466,27 @@ func scanSurface(surface string, content []byte, rulingClaim bool) error {
 			return impersonationRefusal(surface, name)
 		}
 	}
-	// Structured-format spans are computed ONCE over the whole surface, before the loop, so
-	// a recognised field is judged by its FORMAT rather than by the run's own shape. See
-	// structured.go for why every span is anchored on a field marker and length-exact.
+	// The high-entropy loop. A run is admitted only when an entry of the benign-shape
+	// registry admits it (benignshapes.go); every other run of the class refuses. The
+	// registry's artifact entries find their spans ONCE over the whole surface, before the
+	// loop, so a recognised field is judged by its FORMAT rather than by the run's own shape.
 	//
-	// The ciphertext exemption is structuredExemptSpans' ALONE. An earlier draft of #778
+	// The ciphertext exemption is the sops-document entry's ALONE. An earlier draft of #778
 	// also exempted anything inside a complete `ENC[AES256_GCM,…]` bracket or a complete
 	// armor block (isEncryptedMaterial). That is too wide, and the corpus proves it: a
 	// lone envelope pasted into prose, a sops footer whose only envelope is its own `mac:`,
 	// and an armored blob outside any sops document were all ADMITTED. The pass has to be
 	// earned by the FULL envelope grammar PLUS the document signature — see
 	// sanctionedSopsDocument — never by a bracket or a BEGIN line in isolation.
-	exempt := structuredExemptSpans(raw)
+	walk := newBenignWalk(reg, raw)
 	for _, loc := range reBase64ish.FindAllStringIndex(raw, -1) {
+		if _, ok := walk.admitting(raw, loc[0], loc[1]); ok {
+			continue
+		}
 		run := raw[loc[0]:loc[1]]
-		if coveredBy(exempt, loc[0], loc[1]) {
-			continue
-		}
-		if isGitSHA(run) || isPathLike(run) || isIdentifierLike(run) || isAssignmentLike(run) || isAllEquals(run) {
-			continue
-		}
-		if isDigestKeyAssign(raw, loc[0], run) || isCapsKeyAssign(raw, loc[0], run) {
-			continue
-		}
-		// Rule 1 (doc-extension arm) and Rule 2. Both are NARROWER than the
-		// class they clear and each is bounded by a paired positive fixture that stays
-		// refused: isDocPathHexSegment admits a 32-hex doc-path FILENAME stem
-		// (pos-hex-token-wearing-a-doc-path keeps every other length and the no-neighbour
-		// case refused); isIssueNumberList admits a slash-list of short numeric groups
-		// (pos-digit-token-wearing-slashes keeps 8-digit+ groups and bare numeric tokens
-		// refused). Rule 1's SLASH arm lives in isPathLike, where the run keeps its '/'.
-		if isDocPathHexSegment(raw, loc[0], loc[1]) || isIssueNumberList(run) {
-			continue
-		}
-		// Rule 5 (enum/status slash-list arm) and Rule 6 (Kubernetes generated-name hex
-		// arm), both #966. Bounded the same way Rules 1-2 are: isEnumSlashList admits a
-		// slash-list of short ALL-CAPS words (a stream/status enum already reviewed and
-		// merged, e.g. a Verify row citing `PENDING/RUNNING/BLOCKED/DONE`), bounded by the
-		// paired positive pos-enum-word-too-long (an out-of-bounds group, or one carrying
-		// anything but A-Z, stays refused); isK8sUIDHexSegment admits a 32-hex run directly
-		// behind a hyphen and a CLOSED list of Kubernetes object-kind prefixes (a
-		// PersistentVolumeClaim's bound PersistentVolume name, `pvc-<uid>`), bounded by the
-		// paired positive pos-hex-after-unlisted-prefix (a prefix not in k8sUIDPrefixes —
-		// `token-`, `key-` — stays refused, so a real secret pasted as `key-<32hex>` is not
-		// laundered by this rule).
-		if isEnumSlashList(run) || isK8sUIDHexSegment(raw, loc[0], loc[1]) {
-			continue
-		}
-		// Rule 3 (PGP-key-fingerprint arm). NARROWER than the class it clears and bounded by
-		// paired positive fixtures (TestPGPFingerprintExemption,
-		// TestBodyCheckPGPFingerprintAnnotatedLine): isPGPFingerprint admits a 40-char
-		// UPPERCASE-hex OpenPGP key fingerprint ONLY when a `pgp:`/`fp:` recipient key anchors
-		// it — a `.sops.yaml` creation-rules recipient and a sops `fp:` field both take that
-		// shape — or when the SAME LINE names it as one (`fingerprint`, `fpr`, `pgp`, `gpg`;
-		// #1161). A bare uppercase-hex run, a lowercase/mixed 40-char run, and a genuine
-		// secret wearing the same field or word all stay refused.
-		if isPGPFingerprint(raw, loc[0], loc[1]) {
-			continue
-		}
-		// Rule 4 (quantifier-glued-path arm). NARROWER than the class it clears and bounded
-		// by the paired positive pos-token-wearing-a-leading-plus: isQuantifierGluedPath
-		// strips ONE leading '+' — a regex quantifier or a unified-diff add marker, neither
-		// of which carries payload — and admits the run only if the REMAINDER is already
-		// exempt under Rule 1. A '+' on opaque material, and a second '+', both stay refused.
-		if isQuantifierGluedPath(run) {
-			continue
-		}
-		// Rule 7 (Go subtest-name arm) and Rule 8 (diffstat-bar arm). Each is NARROWER than
-		// the class it clears and bounded by paired positive controls: isGoSubtestName admits
-		// `TestX/sub` only when the head is already an exempt identifier and the tail is
-		// at most 16 characters of words plus at most four other characters
-		// (TestSubtestNameControls and TestSubtestTailCostOnRandom keep a token
-		// glued behind a test name refused); isDiffstatBar admits a run of nothing but '+'
-		// (TestDiffstatBarControls keeps a mixed run and a repeated letter refused).
-		if isGoSubtestName(run) || isDiffstatBar(run) {
-			continue
-		}
 		return RefusedFinding(fmt.Sprintf(
-			"refused: %s contains a %d-char high-entropy run (possible secret); "+
-				"only git SHAs (40/64 lowercase hex), slash-separated paths built from "+
-				"word-shaped segments (optionally behind one leading '+' quantifier or "+
-				"diff marker), bare word-shaped CamelCase identifiers (a 2-4 letter "+
-				"acronym, optionally plural like PRs, a V plus 1-2 digits like V1, the "+
-				"numeronyms K8s/I18n/L10n/A11y and OAuth "+
-				"count as words), Go subtest names (TestX/sub) whose head is such an "+
-				"identifier and whose subtest path is words of at most 16 chars, "+
-				"key=<sha|path|identifier> assignments whose key is short "+
-				"or word-shaped (an ALL-CAPS env-var key of up to 16 letters counts as "+
-				"word-shaped unless the variable's name carries a credential stem such as "+
-				"TOKEN, SECRET, KEY or PASS, or a digest stem), a git SHA behind an ALL-CAPS digest key (…_SHA, …_DIGEST, "+
-				"…_DIGEST_HEX; never a credential-named variable), all-'=' banner separators, "+
-				"all-'+' diffstat bars, a PGP key fingerprint (40 "+
-				"uppercase hex after a pgp:/fp: field, or on a line that names it with "+
-				"fingerprint/fpr/pgp/gpg), a slash-list of short ALL-CAPS "+
-				"enum words, a 32-hex run behind a recognised Kubernetes object-kind "+
-				"prefix and hyphen (pvc-<uid>…), and the marker-anchored digest fields "+
-				"of a recognised structured format (go.sum h1:, SRI integrity, a "+
-				"complete sops envelope) are exempt", surface, len(run)),
+			"refused: %s contains a %d-char high-entropy run (possible secret); %s",
+			surface, len(run), benignRefusalText(reg)),
 			&ScanFinding{Rule: "high-entropy-run", Line: lineOf(raw, loc[0]), Length: len(run), Shape: redactShape(run)})
 	}
 	// The url-userinfo arm runs LAST, so every refusal above keeps its rule id and message;
@@ -886,10 +704,6 @@ func isQuantifierGluedPath(run string) bool {
 	}
 	return isPathLike(rest)
 }
-
-// goTestPrefixes are the function-name prefixes `go test` discovers. A subtest name is
-// always `<TopLevel>/<sub>[/<sub>…]`, and the top level carries one of these.
-var goTestPrefixes = []string{"Test", "Benchmark", "Fuzz", "Example"}
 
 // maxSubtestOpaque bounds the characters a Go subtest name may carry in tail segments
 // that are NOT word-shaped: the same 2-4 letter budget a short acronym gets
@@ -1152,20 +966,6 @@ func isEnumSlashList(run string) bool {
 		sawGroup = true
 	}
 	return sawGroup
-}
-
-// k8sUIDPrefixes are the short Kubernetes object-KIND prefixes isK8sUIDHexSegment's
-// anchor recognises immediately before the hyphen — a CLOSED list, the same discipline
-// twoLetterWords uses for the same reason (see its comment): an anchor that admitted "any
-// lowercase word before a hyphen" would just as happily launder a real secret pasted as
-// `token-<32hex>` or `key-<32hex>`, so the list is grounded in Kubernetes' OWN
-// generated-name convention rather than widened to anything word-shaped. `pvc`/`pv` are
-// #966's own repro (a PersistentVolumeClaim's bound PersistentVolume); the rest are the
-// other object kinds whose default name generator suffixes a hash or a UID onto a base
-// name the same way.
-var k8sUIDPrefixes = map[string]bool{
-	"pvc": true, "pv": true, "pod": true, "rs": true, "rc": true,
-	"ds": true, "sts": true, "job": true, "cm": true, "svc": true,
 }
 
 // reK8sNamePrefix anchors isK8sUIDHexSegment's lookbehind: a lowercase-alnum word,
