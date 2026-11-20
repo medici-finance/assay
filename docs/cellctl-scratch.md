@@ -5,6 +5,10 @@ Command-line forms (flags, precedence, exit codes) are listed in [the `cellctl` 
 `cellctl` owns disposable task scratch under the cell's private `run/scratch`
 directory. House-cell cadence passes and interactive launches enroll automatically,
 set `TMPDIR`/`TMP`/`TEMP`, and propagate that owner to Codex command environments.
+They also set `CLAUDE_CODE_TMPDIR`, the claude harness's documented temp-root override,
+to the same work directory: on macOS that root otherwise stays under `/tmp` whatever
+`TMPDIR` says, so the harness's per-session scratchpads would land outside every task
+record. Codex documents no separate temp-root override and uses `TMPDIR`.
 Each invocation records its session, role/task, immutable source revision, creation
 and finish times, lifecycle, exit status, child process group, and evidence status.
 Git role/worker worktrees remain with `deskwt`.

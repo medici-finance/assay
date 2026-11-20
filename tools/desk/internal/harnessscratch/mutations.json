@@ -1,0 +1,47 @@
+{
+  "test": "go test ./internal/harnessscratch -count=1 -timeout=60s",
+  "control": {
+    "name": "dry run removes",
+    "file": "internal/harnessscratch/sessions.go",
+    "old": "if apply && e.Action == ActionCandidate {",
+    "new": "if e.Action == ActionCandidate {"
+  },
+  "mutations": [
+    {
+      "name": "delete Git worktrees",
+      "file": "internal/harnessscratch/sessions.go",
+      "old": "\tcase held:\n",
+      "new": "\tcase false && held:\n"
+    },
+    {
+      "name": "absent beacon reads as ended",
+      "file": "internal/harnessscratch/sessions.go",
+      "old": "return Unknown, \"no roster beacon names this session; absence proves nothing\"",
+      "new": "return Ended, \"no roster beacon names this session; absence proves nothing\""
+    },
+    {
+      "name": "remove unknown sessions",
+      "file": "internal/harnessscratch/sessions.go",
+      "old": "\tif st != Ended {\n\t\treturn e\n\t}",
+      "new": "\tif st == Live {\n\t\treturn e\n\t}"
+    },
+    {
+      "name": "skip liveness re-read",
+      "file": "internal/harnessscratch/sessions.go",
+      "old": "if st, why := live(e.Session); st != Ended {",
+      "new": "if st, why := live(e.Session); false && st != Ended {"
+    },
+    {
+      "name": "judge an over-limit walk",
+      "file": "internal/harnessscratch/sessions.go",
+      "old": "\t\treturn false, err.Error(), false",
+      "new": "\t\treturn false, err.Error(), true"
+    },
+    {
+      "name": "fresh beacon reads as ended",
+      "file": "internal/harnessscratch/sessions.go",
+      "old": "if age > window {",
+      "new": "if age >= 0 {"
+    }
+  ]
+}

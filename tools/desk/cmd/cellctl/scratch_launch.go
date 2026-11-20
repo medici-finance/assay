@@ -60,7 +60,10 @@ func (c *Cell) beginScratch(role string, env []string) (*scratchLaunch, []string
 		return nil, env, err
 	}
 	cellsRoot, cellName := c.reenter()
-	for k, v := range map[string]string{"TMPDIR": r.Work(), "TMP": r.Work(), "TEMP": r.Work(), "ASSAY_SCRATCH_ID": r.Record.ID, "ASSAY_SCRATCH_ROOT": s.Path, "ASSAY_SCRATCH_CELL": cellName, "CELLS_ROOT": cellsRoot} {
+	// CLAUDE_CODE_TMPDIR is the claude harness's own temp root (its per-session
+	// scratchpads). On macOS it defaults to /tmp and ignores TMPDIR, so without it
+	// the harness's bytes land outside every task record (#7274).
+	for k, v := range map[string]string{"TMPDIR": r.Work(), "TMP": r.Work(), "TEMP": r.Work(), harnessTempRootKey: r.Work(), "ASSAY_SCRATCH_ID": r.Record.ID, "ASSAY_SCRATCH_ROOT": s.Path, "ASSAY_SCRATCH_CELL": cellName, "CELLS_ROOT": cellsRoot} {
 		env = envSet(env, k, v)
 	}
 	return &scratchLaunch{s, r, r.Tail()}, env, nil
@@ -79,8 +82,16 @@ func (s *scratchLaunch) finish(result *cellcadence.Result) {
 	}
 }
 
+// harnessTempRootKey is the claude harness's documented temp-root override
+// (code.claude.com/docs/en/env-vars, CLAUDE_CODE_TMPDIR). Codex's configuration
+// reference documents no temp-root override; it names $TMPDIR as the temp
+// location, which the launch already sets. Its state stays under CODEX_HOME.
+const harnessTempRootKey = "CLAUDE_CODE_TMPDIR"
+
 // Append overrides after the original command environment and before the prompt:
 // Codex commands must inherit the SAME scratch owner as the harness process.
+// The claude temp root crosses too, so a claude run started from a Codex command
+// keeps its session scratch inside the same task.
 func scratchArgv(harness string, args, env []string) []string {
 	if harness != "codex" || len(args) == 0 {
 		return args
@@ -88,7 +99,7 @@ func scratchArgv(harness string, args, env []string) []string {
 	out := append([]string{}, args[:len(args)-1]...)
 	for _, kv := range env {
 		k, v, ok := strings.Cut(kv, "=")
-		if ok && (strings.HasPrefix(k, "ASSAY_SCRATCH_") || k == "TMPDIR" || k == "TMP" || k == "TEMP" || k == "CELLS_ROOT" || k == "ASSAY_SOURCE_REVISION") {
+		if ok && (strings.HasPrefix(k, "ASSAY_SCRATCH_") || k == "TMPDIR" || k == "TMP" || k == "TEMP" || k == harnessTempRootKey || k == "CELLS_ROOT" || k == "ASSAY_SOURCE_REVISION") {
 			b, _ := json.Marshal(v)
 			out = append(out, "-c", "shell_environment_policy.set."+k+"="+string(b))
 		}

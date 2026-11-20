@@ -107,6 +107,9 @@ scratch automatically. For a bounded standalone command, use `cellctl scratch <c
 with its source revision, snapshot/input budget and command. Never recursively copy a
 working directory containing generated output; use the bounded tracked snapshot and
 explicit required inputs. Git worktree pruning remains with `deskwt`.
+The task's `TMPDIR` is the only scratch location: never a harness session scratchpad or
+another system temp path. Never create a private Go build or module cache; pass the
+inherited `GOCACHE` and `GOMODCACHE` values on every Go command.
 
 Before the final completion message, persist required outcomes/evidence at their canonical
 destination and read them back. If this session owns `ASSAY_SCRATCH_ID`, and every task
