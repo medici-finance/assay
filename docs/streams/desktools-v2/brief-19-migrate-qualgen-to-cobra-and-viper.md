@@ -363,5 +363,49 @@ Old parser gone, re-checked at 6f3592da5f19: the non-test qualgen Go files have 
 
 **VERIFY: BLOCKED** — 8/9 rows checked-clean, row 4 mutation `Totals: 8 caught, 0 NOT CAUGHT, 0 could-not-mutate.`, 0 acceptance obligations of this brief failed, row 8 could-not-check (the deskdispatch decision-child floor seed resolves the host-installed deskdecision on PATH; passes with it off PATH); gate: model
 
+### Non-implementer verifier re-run — 2026-11-17 claude-opus-5-5 verifier at 567f05b8d75f (9/9 rows exit 0; mutation 8/8 caught; floor seed passes=26 with the host PATH unchanged; consumers row vacuous at merged main)
+
+This is a fresh non-implementer run on merged main 567f05b8d75f, in a detached home. It ran offline: KUBECONFIG=/dev/null, GOPROXY=off, GOTOOLCHAIN=local, no forge credential in the run environment, and the declared verifier Git environment. Tools were go1.27.4 darwin/arm64, statusgen v1.0.86 and git 2.56.1. `deskdispatch --check-verifier` admitted the run (exit 0) before the first row and again after the rows. The witness below is the output of `statusgen verifyrun --dry-run --timeout 30m`, copied unchanged. The home's brief was not touched while the rows ran. No row is classed check:ci, so no container bracket applies.
+
+Why this re-run: the 2026-11-17 run at 6f3592da5f19 was BLOCKED on row 8. The deskdispatch floor seed TestDecisionChildReceivesTheMintedRoleTokenInItsEnvironment resolved the host-installed deskdecision on PATH (issue 6791). The test-only fix (commit c05638296, merged as #6800) builds the planted claim child's PATH from scratch. This source is that merge. Row 8 ran with the host PATH unchanged: the house shim and /opt/desk-tools/bin were both on PATH, and `command -v deskdecision` resolved to the house shim during the run. From 6f3592da5f19 to this source, nothing changed under qualgen, tools/desk/internal/clicontract or tools/desk/internal/regression.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `f=$(mktemp) && cd qualgen && go test -count=1 -v . -run '^TestCLIHelpOffline$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIHelpOffline " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-17 | assay-verifier-app[bot] @ 567f05b8d75f (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `f=$(mktemp) && cd qualgen && go test -count=1 -v . -run '^TestCLIConfigFlow$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLIConfigFlow " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-17 | assay-verifier-app[bot] @ 567f05b8d75f (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `f=$(mktemp) && cd qualgen && go test -count=1 -v . -run '^TestCLILegacyForms$' > "$f" 2>&1; test "$(grep -c -F -e "--- PASS: TestCLILegacyForms " "$f")" -eq 1` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-17 | assay-verifier-app[bot] @ 567f05b8d75f (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd tools/desk && s=internal/clicontract/testdata/mutations/desktools-v2-19.json && n=$(jq -e '.mutations \| length' "$s") && test "$n" -gt 0 && o=$(mktemp) && trap 'rm -f "$o"' 0 && { go run ./cmd/muhar -j 1 -spec "$s" > "$o"; r=$?; cat "$o"; test "$r" -eq 0; } && test "$(tail -n 1 "$o")" = "Totals: $n caught, 0 NOT CAUGHT, 0 could-not-mutate.")` | pass exit=0 | sha256:b42815df0fd4 | 2026-11-17 | assay-verifier-app[bot] @ 567f05b8d75f (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd qualgen && go test -count=1 ./...` | pass exit=0 | sha256:06e8b4df96bd | 2026-11-17 | assay-verifier-app[bot] @ 567f05b8d75f (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd qualgen && GOOS=windows go vet .` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-17 | assay-verifier-app[bot] @ 567f05b8d75f (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/19 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | pass exit=0 | sha256:68f41fd49043 | 2026-11-17 | assay-verifier-app[bot] @ 567f05b8d75f (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `bash tools/desk/internal/regression/check-floor.sh` | pass exit=0 | sha256:5fbf7501d2a7 | 2026-11-17 | assay-verifier-app[bot] @ 567f05b8d75f (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 9 | `statusgen --root . --consumers` | pass exit=0 | sha256:79600045501b | 2026-11-17 | assay-verifier-app[bot] @ 567f05b8d75f (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6805 run=e4c2157b817ceb531f6e2b4759d74104125fda44d74d47fd480afa44d0c72008 source=567f05b8d75fe2ce314092ead42778f4d3c62123 brief=docs/streams/desktools-v2/brief-19-migrate-qualgen-to-cobra-and-viper.md model=claude-opus-5-5 tier=strong
+
+Key output per row. The witness keeps only an output digest. sha256:e3b0c44298fc is the empty output of rows 1, 2, 3 and 6, whose commands send the test log to a file.
+- Rows 1, 2 and 3: exit 0, so each log held exactly one top-level PASS line for its test.
+- Row 4: exit 0. The command reads n = 8 from the spec (jq), requires muhar's own exit 0, and then requires muhar's last line to equal the Totals string for n. Exit 0 therefore means the last line was `Totals: 8 caught, 0 NOT CAUGHT, 0 could-not-mutate.`
+- Row 5: exit 0. Output has 11 `ok` package lines and no FAIL line, including `ok github.com/medici-finance/assay/qualgen 16.490s`.
+- Row 6: exit 0, with no output.
+- Row 7: exit 0. It printed `--- PASS: TestCLIOwnerMigrated (15.58s)`.
+- Row 8: exit 0. All 26 floor seeds passed, including `--- PASS: TestDecisionChildReceivesTheMintedRoleTokenInItsEnvironment (0.53s)`, and the last line is `seed passes=26`.
+- Row 9: exit 0, printing `consumers: no brief files in the diff against 567f05b8d75fe2ce314092ead42778f4d3c62123 — nothing to corroborate`. The diff at merged main is empty, so this row is vacuous (the known shape, #1915).
+
+The row 4, 5, 7, 8 and 9 lines above come from a supplemental re-run in the same home straight after the witness, with logs written outside the home. Rows 5, 7, 8 and 9 were re-run with their exact commands. Row 4 was re-run as muhar alone on the same spec: it exited 0 and its last line was `Totals: 8 caught, 0 NOT CAUGHT, 0 could-not-mutate.` The re-run earns no credit; it only shows what the digests stand for. After every run, git status in the home was empty, ignored files included.
+
+Fail-first: the selection set is empty. Every field in the brief's risk block is "no". No Verify row's Command or Expect text matches the risk-bearing row tag (risk-bearing, live, mutating or end-to-end) that statusgen's fail-first selection uses (riskBearingRowRe @ statusgen/unrun.go:106, applied in failFirstRiskyIDs @ statusgen/failfirst.go:178). No row is risk-bearing, so no base run is owed.
+
+Row accounting: 9 required rows, all 9 checked-clean (row 9 vacuous). 0 could-not-check, 0 failed.
+
+Risk-bearing values. The enumeration covers the delivery diff (8122f1904, #3152) and later qualgen changes up to 567f05b8d75f. Nothing under qualgen changed since 6f3592da5f19. Every line below was re-read at this commit.
+RISK-VALUE: DERIVED — ciWriterToken = "ci" @ qualgen/report.go:38. It is bound only through the env setting quality-writer @ qualgen/cli.go:230 (ciWriterEnv = "QUALGEN_QUALITY_WRITER" @ qualgen/report.go:37), with no flag and no default. The pre-migration code used the same authority (getenv(ciWriterEnv) == ciWriterToken). Because the binding has no flag source, a quality-writer flag is refused as an unknown flag. Unset and empty both resolve to "", and "" does not authorize the committed-view write.
+RISK-VALUE: DERIVED — exitUsage = 2 @ qualgen/cli.go:35. The old dispatcher returned 2 on a usage error, as Go's flag package does. cli-contract.md says an unknown input exits 2 (ExitUsage).
+RISK-VALUE: DERIVED — DefaultBlockMin = 4 @ qualgen/taxonomy.go:40 and DefaultChurnWindowDays = 14 @ qualgen/churn.go:22. The migration changed neither value. Both are still the mine defaults (qualgen/cli.go lines 190-191), as in the old FlagSet, and both are reversible metric knobs.
+RISK-VALUE: NAMED, NOT DERIVED — defect-labels default = "bug,defect,incident" @ qualgen/cli.go:195. PR #3226 added it after this brief's delivery, so it is outside this brief's contract. It is a reversible label filter and is active only with fix-source. Deriving it belongs to that change's own brief. Derivation question filed as #6806.
+
+The old parser is gone, re-checked at 567f05b8d75f. The non-test qualgen Go files make no flag-package calls (no flag.NewFlagSet, flag.Parse or flag-definition calls). The only quoted "flag" in them is a string literal naming a setting source (qualgen/cli.go:438). Each invocation builds its own Viper (viper.NewWithOptions @ qualgen/cli.go:505). Cobra's completion command is disabled (DisableDefaultCmd @ qualgen/cli.go:121).
+
+**VERIFY: PASS** — 9/9 rows checked-clean, row 4 mutation `Totals: 8 caught, 0 NOT CAUGHT, 0 could-not-mutate.`, row 8 floor `seed passes=26` with host PATH unchanged; gate: model
+
 ## Review
 Gate: model. Check legacy-form coverage against the consumers and that the old parser is gone.
