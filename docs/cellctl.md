@@ -2485,7 +2485,8 @@ target reports no figure), and an optional `items` and `detail`. The targets are
 
 - `scratch`: the managed task scratch sweep ([Managed task scratch](cellctl-scratch.md));
 - `go-cache`: Go cache maintenance ([Managed Go caches](cellctl-go-cache.md)); a dry
-  run reports the cache's recorded measurement and walks nothing; `skipped` while
+  run reports the cache's recorded measurement, read through the cache's bounded
+  metadata reader, and walks nothing; `skipped` while
   `CELL_GO_CACHE` is off;
 - `worktrees:<owner/repo>`: the installed `deskwt prune --repo <path> --no-cache`,
   once per `CELL_ROOTS` checkout, run as the role's loop (`DESK_LOOP`) when `--role`
@@ -2496,7 +2497,8 @@ gc adds no delete logic of its own: each target is the existing guarded entry po
 under the lock that entry point already takes. A target that fails or could not check
 is reported, the remaining targets still run, and the exit code is 1. Plain `gc` is a
 dry run. `--apply` acts, holding the scope's own lock (`run/gc/<role>.stamp`, or
-`run/gc/cell.stamp` with no `--role`) for the pass, so a manual pass and the same
+`run/gc/cell.stamp` with no `--role`; a private `run/gc` directory, and an owner-only
+regular file reached through no link) for the pass, so a manual pass and the same
 desk's scheduled pass never overlap; a second one reports `skipped` and exits 1. Like
 every maintenance verb, gc holds the cell's admission lock shared, so it is refused
 while `cellctl reset` runs.
@@ -2543,7 +2545,7 @@ No cron, launchd or daemon is involved, and it stops when the supervisor stops.
   pass admissible; gc's `go-cache` target calls the same maintenance, which clears
   without a walk while the recorded measurement is fresh and under budget.
 - **Logs.** Each tick appends the child's report lines and one `gc-schedule` summary
-  line (role, the cellctl path it ran, exit code) to `run/gc.log`, which keeps one
+  line (role, the cellctl path it ran, exit code) to the desk's own `run/gc/<role>.log`, which keeps one
   previous generation past 1 MiB. A cadenced supervisor also prints them on stderr; an
   interactive one leaves the terminal to its harness.
 
