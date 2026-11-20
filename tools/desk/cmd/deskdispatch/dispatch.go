@@ -1424,6 +1424,15 @@ func stepClaim(o dispatchOpts, repo, script string, isScript bool, auth claimAut
 	case deskkit.ExitRefused:
 		show := runCmdEnv(o.root, auth.env, script, append([]string{"show", claimKey, "--repo", repo}, auth.args...)...)
 		holder := firstLine(show.stdout)
+		var primary string
+		for line := range strings.SplitSeq(show.stdout, "\n") {
+			fields := strings.Fields(strings.TrimPrefix(line, "dispatch-claim: "))
+			if len(fields) >= 2 && fields[0] == "HELD" && fields[1] == claimKey {
+				primary = line
+				holder = line
+				break
+			}
+		}
 		// ALIAS-HELD: the key itself reads FREE but another spelling of the same PR is live
 		// (medici-finance/assay#3700). That is a live holder by definition, so it is named as
 		// one and never run through the staleness read below, which would take state/age from
@@ -1456,7 +1465,7 @@ func stepClaim(o dispatchOpts, repo, script string, isScript bool, auth claimAut
 		// a ref the claim tool would reclaim on its very next acquire.
 		if show.err == nil && strings.TrimSpace(show.stdout) != "" &&
 			!strings.Contains(show.stdout, "FREE "+claimKey) {
-			if stale, state, ageMin := holderIsStale(show.stdout); stale {
+			if stale, state, ageMin := holderIsStale(primary); stale {
 				return deskkit.Refused(fmt.Sprintf(
 					"step %s: %s is held by a STALE claim (state=%s age=%dm, past its TTL) — a dead "+
 						"dispatcher's claim, NOT a live holder. It is reclaimable: the claim tool reclaims a "+
@@ -1878,11 +1887,12 @@ func resolveClaimAuthGitLab(role, repo string, isScript bool) (claimAuth, error)
 const claimedClaimTTL = 20 * time.Minute
 
 // claimStateFieldRe / claimAgeFieldRe pull the `state=` and `age=<N>m` fields out of the claim
-// tool's `show` output (dispatch-claim.sh cmd_show prints
+// tool's primary HELD line. A reclaim note can include a previous holder's
+// state and age inside a single token (dispatch-claim.sh cmd_show prints
 // `HELD <id> — ... state=<state> ... age=<N>m`).
 var (
-	claimStateFieldRe = regexp.MustCompile(`state=([A-Za-z]+)`)
-	claimAgeFieldRe   = regexp.MustCompile(`age=(\d+)m`)
+	claimStateFieldRe = regexp.MustCompile(`(?:^|[[:blank:]])state=([A-Za-z]+)(?:[[:blank:]]|$)`)
+	claimAgeFieldRe   = regexp.MustCompile(`(?:^|[[:blank:]])age=(\d+)m(?:[[:blank:]]|$)`)
 )
 
 // holderIsStale reports whether a claim `show` output describes a holder past its state's TTL —

@@ -349,6 +349,10 @@ func TestStaleClaimIsNotReportedAsLive(t *testing.T) {
 		{"dispatched within the 120m TTL is a genuine live holder", held("dispatched", 42), false},
 		{"claimed past the shorter 20m TTL (never reached progress)", held("claimed", 25), true},
 		{"claimed within the 20m TTL is still setting up — live", held("claimed", 5), false},
+		{"reclaim note describes the previous holder", strings.Replace(held("claimed", 8), " at=", " note=TTL:_state=claimed_age=35m_>=_20m at=", 1), false},
+		{"a young historic age cannot hide an expired claim", strings.Replace(held("claimed", 21), " at=", " note=old_age=2m at=", 1), true},
+		{"a diagnostic before the primary record", "claim store notice\n" + held("claimed", 21), true},
+		{"age missing on primary held line", strings.Replace(held("claimed", 5), "age=5m", "age=?m", 1) + "\ndispatch-claim: ALIAS-HELD other — state=claimed age=45m", false},
 	}
 	for _, c := range cases {
 		t.Run(c.why, func(t *testing.T) {
