@@ -522,6 +522,12 @@ func dispatch(o dispatchOpts) error {
 				"is the isolation floor every other clause rests on, so a home this verb cannot state is a "+
 				"dispatch it must not make. The claim was %s.", stepWorktreeCreate, wtName, wt.stdout, released), nil))
 	}
+	// From here an abort also removes the home this run created (abortHome), so a refused
+	// dispatch leaves no full checkout behind. A resumed worker's adopted home and a
+	// verifier's custody home are never this run's to discard.
+	if !workerResume(o) && !verifierKit(o.kit) {
+		held.home = home
+	}
 	// IDENTITY, worktree-scoped (#1490). The dispatched agent's worktree must commit under its
 	// OWN role's App identity, not the identity the shared checkout carries — otherwise a
 	// verifier dispatched from a desk checkout reports the desk App as its runner and statusgen
@@ -571,6 +577,12 @@ func dispatch(o dispatchOpts) error {
 	// and is REPORTED, never silent — but it never fails the dispatch, which is already claimed,
 	// homed and identity-stamped.
 	if ext := runCmd(home, "git", "config", "extensions.worktreeConfig", "true"); ext.err == nil {
+		// Where the claim was taken, recorded BEFORE the key so a key never exists without
+		// its namespace unless the write failed (deskwt holds a key with no recorded namespace:
+		// "absent from this repo's claim listing" proves a release only for the repo and
+		// store the claim was taken in). A cross-repository verifier claims in the TRACKING
+		// repo while its home is cut from the deliverable checkout.
+		recordClaimNamespace(o, home, plan)
 		if rk := runCmd(home, "git", "config", "--worktree", "assay.runKey", plan.claimKey); rk.err == nil {
 			o.say("%s OK: recorded run key %s (assay.runKey) in %s", stepWorktreeCreate, plan.claimKey, home)
 		} else {
@@ -653,6 +665,7 @@ func dispatch(o dispatchOpts) error {
 		// stays open, which never binds a change and is never listed as work.
 		receipt, aerr := attestWorkerDispatchFn(o, plan, repo, home)
 		if aerr != nil {
+			held.home = "" // the attestation record names this home: keep it for recovery
 			released := held.release()
 			return held.settle(deskkit.Unverifiable(fmt.Sprintf("step %s: worker pre-work attestation failed; NO prompt emitted. "+
 				"The claim was %s; the worktree %s is kept. Re-dispatch for a new run after investigating: %v",
@@ -1563,6 +1576,9 @@ type heldClaim struct {
 	tool, key    string
 	repo, phrase string
 	auth         claimAuth
+	// home is the worktree this run created, set once it stands; "" when there is none or
+	// it must be kept. A release that succeeds removes it (abortHome).
+	home string
 }
 
 // release releases the claim once and returns releaseClaim's phrase; later calls return the
@@ -1570,8 +1586,24 @@ type heldClaim struct {
 func (h *heldClaim) release() string {
 	if h.phrase == "" {
 		h.phrase = releaseClaim(h.o, h.tool, h.auth, h.key, h.repo)
+		if h.home != "" && h.phrase == "released" {
+			h.phrase += abortHome(h.o, h.home)
+		}
 	}
 	return h.phrase
+}
+
+// abortHome removes the home an aborted dispatch created, through `deskwt remove` so every
+// one of its gates (dirty, unpushed, a live claim, a foreign lock) still applies — never a
+// raw delete. It runs only after the claim release succeeded: with the claim still held,
+// deskwt would rightly refuse, and a home whose claim could not be released is evidence.
+// A refusal is reported, never fatal: the abort's own error is what the caller acts on.
+func abortHome(o dispatchOpts, home string) string {
+	r := runCmd(o.root, "deskwt", "remove", home)
+	if r.err != nil {
+		return "; its worktree " + home + " was NOT removed (" + r.run.Said() + ") — remove it with `deskwt remove " + home + "`"
+	}
+	return "; its worktree " + home + " was removed"
 }
 
 // settle passes a nil error through (the dispatch succeeded and the claim is the agent's). A
