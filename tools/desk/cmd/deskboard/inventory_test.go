@@ -893,6 +893,9 @@ var verbScopeClass = map[string]scopeClass{
 	"awaiting":     sweepsRoots,
 	"nextup":       sweepsRoots,
 	"stalled":      sweepsRepos,
+	// milestones reads caller-named stream-view documents in process; it sweeps
+	// neither repos nor roots, so it states no scope.
+	"milestones": nonSweeping,
 	// throughput spans BOTH coverage axes: it sweeps the repo set for its review depth and
 	// the configured ROOTS for its dispatch/verify depths. It is declared repo-sweeping
 	// because that is the obligation with teeth — `scope` must be present and must agree
@@ -1003,7 +1006,11 @@ func TestDispatch_VerbInventory(t *testing.T) {
 			argv := []string{v}
 			switch class {
 			case nonSweeping:
-				argv = append(argv, repo, "1")
+				if v == "milestones" {
+					argv = append(argv, "testdata/milestones/stream-view-v2.json")
+				} else {
+					argv = append(argv, repo, "1")
+				}
 			case sweepsRoots:
 				installFakeStatusgen(t)
 			}

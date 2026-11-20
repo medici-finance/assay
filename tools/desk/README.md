@@ -67,7 +67,7 @@ changed or discarded.
 
 | Tool | Verb(s) | Class | Write budget + breaker |
 |------|---------|-------|------------------------|
-| `deskboard` | `review-queue`, `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `diff`, `files` | read-only | no |
+| `deskboard` | `review-queue`, `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `milestones`, `diff`, `files` | read-only | no |
 | `issueboard` | `board`, `issues`, `intake` | read-only | no |
 | `verifyloop` | `plan` | read-only (spawns nothing, writes nothing) | no |
 | `scanloop` | `plan` (read-only queue print), `run` (one drain pass), `land` (record a judgment exit for a parked item) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item, each also appended as an `intake-exit-v1` record to `<state dir>/intake-exits.jsonl` (schema: `spec/intake-exit-v1.md`) | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) / local state (`land`) | yes (`run`) |
@@ -1638,7 +1638,7 @@ The same probe rides on `deskboard actions`: its header carries `mainHealth`, th
 merge onto it), and each row on an affected repo is flagged `baseBranchRed` with a note.
 An **absent** `mainHealth` field means the verb did not probe — never that it found
 nothing wrong. `review-queue`, `prs`, `queue`, `awaiting`, `nextup`, `dispatch`, `todo`, `next`,
-`next-up`, `throughput`, `scope`, `policydrift`, `stalled`,
+`next-up`, `throughput`, `scope`, `policydrift`, `stalled`, `milestones`,
 `reviews`, `diff` and `files` do not probe. That list is not prose upkeep: `TestNonProbingVerbs_OmitMainHealth` asserts
 the absence for every verb on it (JSON **and** `--table`), `TestVerbInventory_Complete`
 fails if a verb is added without being classified, and `TestREADME_NamesEveryNonProbingVerb`
@@ -1760,6 +1760,27 @@ filter — the PR's changed files. It never errors the board: a failed probe deg
 its one row to `unverified`, the same contract as branch health. deskpost's ready
 gate is unchanged (a `ciEmpty` on a CI-required repo is still exit 6 there); making
 the gate consume the same distinction is the natural follow-up, not this PR.
+
+## deskboard milestones — milestone state from stream-view documents
+
+`deskboard milestones <stream-view.json>... ` renders the milestone section of one or
+more `stream-view/v2` documents (`-` reads one from stdin). It is a pure, in-process
+consumer of the versioned projection (`docs/stream-view-contract.md`): it decodes with
+`statusgen/streamview`, fetches nothing and writes nothing.
+
+- It shows what the wire says and derives nothing. Supported scope, work remaining,
+  acceptance, availability, prerequisites, holds and evidence are separate facts; zero
+  work remaining prints as `0 remaining` beside the acceptance state and is never
+  summarized as done.
+- Source coverage and every listed unknown print first. A `stream-view/v1` document is
+  shown as `not-assessed` (it predates milestones), never as "no milestones".
+- A document whose contract version this build cannot decode, or that fails
+  validation, is **refused** (exit 5) naming the file; nothing is partly rendered.
+- Legacy aliases collapse onto the canonical milestone: no extra row, no change to
+  approval state; a disagreement between views is printed as `CONFLICT`.
+- Untrusted text is printed quoted (control characters and escape sequences are inert).
+  Views from, and evidence or source locators naming, a repository outside the board's
+  allow-list are `[withheld]` and counted.
 
 ## deskboard stalled — the stalled-draft detector
 
@@ -2115,8 +2136,8 @@ structurally invisible, and nothing knows to alert. Two halves:
 
 - **Every sweeping verb states its scope.** `review-queue` (requested/admitted/population in its observation), `prs`, `actions`, `queue`, `health`, `scope`,
   `policydrift`, `stalled` and `throughput` carry a `scope` object in the JSON header (repos, count, source) and
-  print one scope line on `--table`. Verbs taking an explicit repo (`reviews`, `diff`,
-  `files`) **omit** the field entirely — absent means "swept nothing", never "the set was
+  print one scope line on `--table`. Verbs taking an explicit repo or document (`reviews`, `diff`,
+  `files`, `milestones`) **omit** the field entirely — absent means "swept nothing", never "the set was
   empty". This sentence is not prose upkeep: `TestReadme_SweepingVerbSentence_359` fails
   if it names a subset of the verbs `verbScopeClass` declares as repo-sweeping — the
   defect this whole section is about, committed in its own documentation.
