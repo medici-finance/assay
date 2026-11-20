@@ -1,0 +1,3 @@
+### Added
+- `drainloop` gains `RoleCapacity`, a per-desk approximate role-capacity estimate for bounded refill. It counts every instance and draining predecessors, ages out stale readings, treats missing data as unknown rather than zero, and never takes a cross-desk lock or lets a failed refresh block work. Per-item claims stay exact.
+- `RoleCapacity.Observe` refuses a reading dated more than `MaxSkew` (default 5s) ahead of the local clock, so a future-dated reading cannot outlive `MaxAge` or block its source's later corrections. `Burst` may not exceed `Target`, the burst bound is documented as per refill decision, and summed counts saturate instead of wrapping negative.
