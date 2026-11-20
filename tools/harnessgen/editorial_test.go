@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -17,9 +19,12 @@ func TestEditorialPluginContents(t *testing.T) {
 	root := filepath.Join("..", "..")
 	pkg := filepath.Join(root, "plugins", "editorial")
 	files := map[string]string{
-		"LICENSE":   "LICENSE",
-		"NOTICE":    "NOTICE",
-		"README.md": "",
+		"LICENSE":                      "LICENSE",
+		"NOTICE":                       "NOTICE",
+		"README.md":                    "",
+		"skills/humanizer/SKILL.md":    "",
+		"skills/humanizer/LICENSE.txt": "",
+		"skills/humanizer/references/writing-patterns.md": "",
 	}
 	for _, skill := range []string{"article-craft", "prose-cadence"} {
 		source := filepath.Join("plugins", "assay", "skills", skill)
@@ -98,6 +103,18 @@ func TestEditorialPluginContents(t *testing.T) {
 	}
 	for name := range files {
 		t.Errorf("missing editorial package member %q", name)
+	}
+}
+
+// Project-local installs also redistribute this notice.
+func TestEditorialHumanizerLicense(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "plugins", "editorial", "skills", "humanizer", "LICENSE.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const upstream = "4ac4810254ab36d45419141aeb8e69bf50652cfafe5b2dab947d06d44e5cbf96"
+	if fmt.Sprintf("%x", sha256.Sum256(data)) != upstream {
+		t.Error("Humanizer license differs from its pinned upstream notice")
 	}
 }
 
