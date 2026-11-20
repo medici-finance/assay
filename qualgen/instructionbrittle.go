@@ -11,6 +11,7 @@ import (
 	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // instructionbrittle.go is the instruction-layer brittleness pass (spec §4.6):
@@ -137,13 +138,9 @@ func RunInstructionBrittleness(repoPath string, store *Store, cfg InstructionBri
 		}, nil
 	}
 
-	// EnableDotGitCommonDir: the miner drives this pass over the repo it just
-	// mined, which in the desk's operating model is a linked worktree (a `.git`
-	// file pointing at the common dir, per mine.go's own PlainOpenWithOptions).
-	// Plain PlainOpen does not follow the worktree's commondir, so r.Head() would
-	// fail to resolve the branch ref living in the common dir — the same failure
-	// mine.go already guards against.
-	r, err := git.PlainOpenWithOptions(repoPath, &git.PlainOpenOptions{EnableDotGitCommonDir: true})
+	// The miner drives this pass over the repo it just mined, usually a linked
+	// worktree; open it the way mine.go does (gitcore.OpenGoGit).
+	r, err := gitcore.OpenGoGit(repoPath)
 	if err != nil {
 		return BrittleReport{}, fmt.Errorf("qualgen: instructionbrittle: open repo: %w", err)
 	}

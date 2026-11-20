@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	git "github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing/object"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // check.go is the `check <paths>` mode (spec §9.2): an authoring-time or
@@ -158,7 +158,7 @@ func expandCheckPaths(repoPath string, args []string) ([]string, error) {
 // live reference-rot check) and screens every path in the set against
 // store's persisted M1/M2 families plus that HEAD tree.
 func screenPaths(repoPath string, store *Store, paths []string) (CheckResult, error) {
-	r, err := git.PlainOpenWithOptions(repoPath, &git.PlainOpenOptions{EnableDotGitCommonDir: true})
+	r, err := gitcore.OpenGoGit(repoPath)
 	if err != nil {
 		return CheckResult{}, fmt.Errorf("open repository %q: %w", repoPath, err)
 	}
