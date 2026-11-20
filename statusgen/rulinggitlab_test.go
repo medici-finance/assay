@@ -249,8 +249,10 @@ func TestGLRulingNeedsGitLabForge(t *testing.T) {
 	wantContains(t, "refusal", got.Detail, "gitlab")
 }
 
-// The decision-gate hold lifts on a GitLab ruling note, as on a GitHub one.
-// regression: #7252
+// The decision-gate hold lifts on a GitLab ruling note, as on a GitHub one,
+// once deskread reports the note author's account type. The fixture reports
+// "User"; the GitLab note read reports no type yet, so today every GitLab
+// ruling stops at condition 3b and the hold stays. regression: #7252
 func TestGLRulingLiftsGateHold(t *testing.T) {
 	glrRoster(t, "gitlab")
 	dhSeams(t, &rlForge{commentStatus: 404, issueStatus: 404})

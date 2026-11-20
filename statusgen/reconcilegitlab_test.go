@@ -182,8 +182,8 @@ func TestGLReconcileDraftMR(t *testing.T) {
 // Every envelope guard on the MR reads is could-not-check, never a short or
 // guessed list: a partial for the repo (even beside a full entry), no
 // completeness field, a merged MR with no merge time, a state this build does
-// not know, a file list not marked complete. Each world would flip dg/03
-// without its guard. regression: #7252 (review A1)
+// not know, a `change` read that fails, a file list not marked complete.
+// Each world would flip dg/03 without its guard. regression: #7252 (review A1)
 func TestGLReconcileEnvelopeGuards(t *testing.T) {
 	merged := "[" + glrcMR(30, "MERGED", "Brief: dg/03\n") + "]"
 	entry := func(changes, rest string) string {
@@ -201,6 +201,9 @@ func TestGLReconcileEnvelopeGuards(t *testing.T) {
 		},
 		"unknown state": func(w *glWorld) {
 			w.set(entry("["+glrcMR(30, "LOCKED", "Brief: dg/03\n")+"]", `,"incomplete":false,"pageCap":10`), glrcChangesKey()...)
+		},
+		"change unread": func(w *glWorld) {
+			delete(w.answers, glArgKey("change", "--change", fmt.Sprintf("%s#%d", glrProject, 30)))
 		},
 		"files incomplete": func(w *glWorld) {
 			w.set(glrcFiles(30, false), "change-files", "--change", fmt.Sprintf("%s#%d", glrProject, 30))
