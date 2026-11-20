@@ -244,7 +244,19 @@ type deskreadItemEnvelope struct {
 			AuthorID    int64  `json:"authorId"`
 			CreatedAt   string `json:"createdAt"`
 			Body        string `json:"body"`
+			// DatabaseID, AuthorType, URL and UpdatedAt are what a GitLab
+			// ruling note is checked on (rulinggitlab.go, #7252).
+			DatabaseID int64  `json:"databaseId"`
+			AuthorType string `json:"authorType"`
+			URL        string `json:"url"`
+			UpdatedAt  string `json:"updatedAt"`
 		} `json:"comments"`
+		// Issue is the `issue` kind: the decision issue a GitLab ruling note
+		// sits on (rulinggitlab.go). A pointer: no payload is not an answer.
+		Issue *struct {
+			State string `json:"state"`
+			Body  string `json:"body"`
+		} `json:"issue"`
 		// Reviews is the `reviews` kind. A pointer: an item with no review list at all is not an
 		// answer, while an empty list is ("nobody has reviewed").
 		Reviews *[]struct {
@@ -286,6 +298,7 @@ type deskreadItemEnvelope struct {
 // build does not understand, never zero.
 type deskreadChange struct {
 	State          string `json:"state"`
+	Draft          bool   `json:"draft"`
 	Merged         bool   `json:"merged"`
 	MergedAt       string `json:"mergedAt"`
 	MergeCommitSHA string `json:"mergeCommitSha"`
@@ -313,6 +326,7 @@ type deskreadChangeFiles struct {
 	Files        []struct {
 		Filename         string `json:"filename"`
 		PreviousFilename string `json:"previousFilename"`
+		Status           string `json:"status"`
 		Patch            string `json:"patch"`
 		PatchAbsent      bool   `json:"patchAbsent"`
 	} `json:"files"`
@@ -560,6 +574,10 @@ type deskreadChangesEnvelope struct {
 			BaseRef   string `json:"baseRef"`
 			MergedAt  string `json:"mergedAt"`
 			UpdatedAt string `json:"updatedAt"`
+			// HeadSHA and HeadRef feed reconcile's GitLab pull list
+			// (reconcilegitlab.go, #7252).
+			HeadSHA string `json:"headSha"`
+			HeadRef string `json:"headRef"`
 		} `json:"changes"`
 		Incomplete *bool `json:"incomplete"`
 		PageCap    int   `json:"pageCap"`
