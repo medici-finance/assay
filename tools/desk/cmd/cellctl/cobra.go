@@ -498,7 +498,7 @@ func buildRoot() *cobra.Command {
 	}
 	root.AddCommand(
 		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(), pauseCmd(), resumeCmd(), drainCmd(), cycleCmd(),
-		smokeCmd(), statusCmd(), attachCmd(), compatPrepareCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
+		smokeCmd(), statusCmd(), attachCmd(), compatPrepareCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), gcCmd(), commsCmd(), resetCmd(), modelsCmd(),
 		providersCmd(), defaultsCmd(), hotfixCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(), scrubbedRunCmd(),
 	)
 	// The cellopfixture build adds the fixture verb and the stand-ins; the release build adds nothing.
@@ -1047,6 +1047,32 @@ func commsCmd() *cobra.Command {
 		}
 		words := legacyWords(verbWords, "--confirm-stopped")
 		cmdComms(cellArg(words), words[1:])
+		return nil
+	}
+	return cmd
+}
+
+func gcCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "gc <cell> [--role <role>] [--apply] [--scheduled]",
+		Short: "one maintenance pass over a desk's reclaim targets (dry run unless --apply)",
+		Long: "Runs each existing reclaim target in turn and prints one JSON line per target (target, outcome,\n" +
+			"bytes, reclaimed): the scratch sweep, Go cache maintenance, and `deskwt prune --no-cache` for each\n" +
+			"CELL_ROOTS checkout. A failed target is reported and the rest still run; exit 1 when any failed.\n" +
+			"--role scopes the pass to one desk (its lock and stamp, run/gc/<role>.stamp; deskwt runs as that\n" +
+			"loop). --scheduled is the running desk supervisor's form: it skips while the desk's last pass is\n" +
+			"younger than CELL_GC_INTERVAL. See docs/cellctl.md, `cellctl gc`.",
+		Annotations: map[string]string{leadingArgsKey: "1"},
+		Args:        cobra.ExactArgs(1),
+	}
+	set := declare(cmd, bBool("apply", "act; default is a dry run"),
+		bStr("role", "the desk role this pass is for (its own lock and stamp)"),
+		bBool("scheduled", "with --apply: skip when this desk's last gc finished less than CELL_GC_INTERVAL ago"))
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		v := resolve(set, nil)
+		if code := cmdGC(loadCell(args[0]), v.String("role"), v.Bool("apply"), v.Bool("scheduled")); code != 0 {
+			exitWith(code)
+		}
 		return nil
 	}
 	return cmd

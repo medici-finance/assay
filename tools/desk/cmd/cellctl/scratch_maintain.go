@@ -43,7 +43,18 @@ func (c *Cell) scratchSweepInterval() (time.Duration, error) {
 	return value, nil
 }
 
-// startScratchMaintenance is the only scheduler of scratch maintenance. It runs beside
+// startMaintenance starts the supervisor's periodic maintenance beside its child: the
+// scheduled `cellctl gc` (gc_schedule.go) while CELL_GC_INTERVAL is on, which then
+// owns the scratch sweep, else the in-process scratch sweep below. Never both.
+func (c *Cell) startMaintenance(parent context.Context, role string, log io.Writer) (stop func()) {
+	if interval, err := c.gcInterval(); err == nil && interval > 0 {
+		return c.startGCSchedule(parent, role, interval, log)
+	}
+	return c.startScratchMaintenance(parent, role, log)
+}
+
+// startScratchMaintenance is the in-process scheduler of scratch maintenance, used
+// when CELL_GC_INTERVAL=0 turns the scheduled gc off. It runs beside
 // a supervised child, never on the launch path: the first sweep waits
 // scratchSweepDelay, later ones follow the interval, and the stamp under the
 // maintenance lease coalesces sibling supervisors onto one finished sweep per
@@ -71,7 +82,7 @@ func (c *Cell) startScratchMaintenance(parent context.Context, role string, log 
 			case <-timer.C:
 			}
 			wait = min(scratchSweepDelay, interval)
-			if ran, _ := c.deferredScratchSweep(ctx, role, interval, log); ran {
+			if _, ran, _ := c.deferredScratchSweep(ctx, role, interval, log); ran {
 				wait = interval
 			}
 		}
@@ -82,9 +93,8 @@ func (c *Cell) startScratchMaintenance(parent context.Context, role string, log 
 // deferredScratchSweep runs one periodic sweep on its own store handle, so the
 // launch's admission handle never walks history. The maintenance handle bounds its
 // lock waits and writes no lock-wait lines to a terminal the child may own.
-func (c *Cell) deferredScratchSweep(ctx context.Context, role string, interval time.Duration, log io.Writer) (ran bool, err error) {
+func (c *Cell) deferredScratchSweep(ctx context.Context, role string, interval time.Duration, log io.Writer) (rep cellscratch.Report, ran bool, err error) {
 	began := time.Now()
-	var rep cellscratch.Report
 	defer func() {
 		if value := recover(); value != nil {
 			err = fmt.Errorf("scratch maintenance panic: %v", value)
@@ -96,15 +106,15 @@ func (c *Cell) deferredScratchSweep(ctx context.Context, role string, interval t
 	}()
 	p, err := c.scratchPolicy()
 	if err != nil {
-		return false, err
+		return rep, false, err
 	}
 	s, err := cellscratch.OpenMaintenance(ctx, filepath.Join(c.Dir, "run", "scratch"))
 	if err != nil {
-		return false, err
+		return rep, false, err
 	}
 	s.Label(c.Name, role)
 	rep, ran, err = s.SweepIfDue(p, interval, true)
-	return ran, errors.Join(err, s.Close())
+	return rep, ran, errors.Join(err, s.Close())
 }
 
 // logScratchMaintenance appends one summary line to run/scratch-maintenance.log, beside

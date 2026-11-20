@@ -199,6 +199,10 @@ The default entry budget covers the representative fixture with 150,000 compiler
 
 A desk launched by `cellctl` runs the scratch sweep itself while its supervisor is
 alive, so a long-running cell does not depend on an operator remembering to sweep.
+By default the supervisor does this through its desk's scheduled `cellctl gc`
+([`cellctl gc`](cellctl.md#cellctl-gc--one-maintenance-pass)), which runs the
+installed binary's sweep below on the same lease and stamp; with
+`CELL_GC_INTERVAL=0` the supervisor runs the sweep in its own process.
 The first sweep runs ten minutes after launch and later ones follow
 `CELL_SCRATCH_SWEEP_INTERVAL` in `cell.env` (a Go duration of at least `1m`;
 default `6h`; `0` turns periodic maintenance off). The sweep never runs on the

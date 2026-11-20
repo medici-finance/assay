@@ -143,6 +143,16 @@ pause, wait for in-flight work to finish, hand off, then stop each targeted role
   --timeout                  duration how long to wait for in-flight work before giving up (the roles stay up)
 ```
 
+## `cellctl gc <cell> [--role <role>] [--apply] [--scheduled]`
+
+one maintenance pass over a desk's reclaim targets (dry run unless --apply)
+
+```
+  --apply                             act; default is a dry run
+  --role                     string   the desk role this pass is for (its own lock and stamp)
+  --scheduled                         with --apply: skip when this desk's last gc finished less than CELL_GC_INTERVAL ago
+```
+
 ## `cellctl hotfix install|status|clear`
 
 install, inspect or clear a local desk-tools hotfix (install and clear need sudo)

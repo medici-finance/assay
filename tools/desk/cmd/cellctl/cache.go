@@ -141,11 +141,13 @@ func logicalBytes(m cellcache.Measurement) string {
 }
 
 // cadenceCacheMaintenance belongs to the existing supervisor between completed
-// passes. Interactive launches, startup and Finish never call this lifecycle.
-func (c *Cell) cadenceCacheMaintenance(ctx context.Context) error {
+// passes, and to `cellctl gc --apply` (gc.go), which reads its report. Interactive
+// launches, startup and Finish never call this lifecycle. A nil report means the
+// managed cache is off.
+func (c *Cell) cadenceCacheMaintenance(ctx context.Context) (*cellcache.Report, error) {
 	p, err := c.cachePolicy()
 	if err != nil || p == nil {
-		return err
+		return nil, err
 	}
 	r, err := cellcache.Maintain(ctx, *p)
 	if err != nil && r.Outcome == "" {
@@ -153,7 +155,7 @@ func (c *Cell) cadenceCacheMaintenance(ctx context.Context) error {
 	}
 	b, _ := json.Marshal(r)
 	fmt.Fprintf(os.Stderr, "cadence-cache-maintenance %s\n", b)
-	return err
+	return &r, err
 }
 
 func cmdCache(cell string, args []string) {

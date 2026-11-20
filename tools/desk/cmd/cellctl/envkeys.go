@@ -123,6 +123,8 @@ func buildEnvKeys() []envKey {
 			desc: "Total size past which managed task scratch is swept oldest first, in bytes (256 MiB)."},
 		{key: "CELL_SCRATCH_SWEEP_INTERVAL", class: envMachine, group: envGroupCache, def: "6h",
 			desc: "How often a running desk supervisor sweeps managed task scratch, as a duration of at least 1m; 0 turns it off."},
+		{key: "CELL_GC_INTERVAL", class: envMachine, group: envGroupCache, def: "1h",
+			desc: "How often a running desk supervisor runs the installed `cellctl gc <cell> --apply --scheduled`, as a duration of at least 1m; 0 turns it off and restores the in-process scratch sweep."},
 
 		{key: envAssayTelemetry, class: envMachine, group: envGroupHarness, def: "0",
 			desc: "Local desk-tool performance logging: exactly 1 opts in; any other value is off. No upload."},

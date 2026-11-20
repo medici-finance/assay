@@ -152,7 +152,8 @@ func TestScratchMaintainFixture(t *testing.T) {
 	}
 	scratchSweepDelay = 20 * time.Millisecond
 	dir := os.Getenv("CELL_MAINT_DIR")
-	c := &Cell{Name: "fixture", Dir: dir, Config: filepath.Join(dir, "config"), Env: &Env{vals: map[string]string{"CELL_SCRATCH_SWEEP_INTERVAL": "1m"}}}
+	// CELL_GC_INTERVAL=0: the in-process sweep, which the scheduled gc replaces when on.
+	c := &Cell{Name: "fixture", Dir: dir, Config: filepath.Join(dir, "config"), Env: &Env{vals: map[string]string{"CELL_SCRATCH_SWEEP_INTERVAL": "1m", "CELL_GC_INTERVAL": "0"}}}
 	l, err := cellcadence.Acquire(c.cadenceDir("worker-desk"))
 	if err != nil {
 		os.Exit(91)
