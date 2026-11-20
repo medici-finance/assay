@@ -5,6 +5,10 @@ Command-line forms (flags, precedence, exit codes) are listed in [the `cellctl` 
 `cellctl` owns disposable task scratch under the cell's private `run/scratch`
 directory. House-cell cadence passes and interactive launches enroll automatically,
 set `TMPDIR`/`TMP`/`TEMP`, and propagate that owner to Codex command environments.
+They, and every `scratch run` task, also set `CLAUDE_CODE_TMPDIR`, the claude harness's
+documented temp-root override, to the same work directory: on macOS that root otherwise stays under `/tmp` whatever
+`TMPDIR` says, so the harness's per-session scratchpads would land outside every task
+record. Codex documents no separate temp-root override and uses `TMPDIR`.
 Each invocation records its session, role/task, immutable source revision, creation
 and finish times, lifecycle, exit status, child process group, and evidence status.
 Git role/worker worktrees remain with `deskwt`.
@@ -152,7 +156,9 @@ delete existing user scratch during installation.
 Automatic enrollment covers the house launcher process paths, both interactive
 and cadence. Scrubbed tmux sessions, container/cluster runtimes, external IDE
 sessions, and harness owned roots that ignore inherited temporary-directory
-settings require explicit `scratch run` or remain report-only. A nested managed
+settings require explicit `scratch run` or remain report-only. `scratch run` sets the
+same temp-root variables as a launch, `CLAUDE_CODE_TMPDIR` included; a root with no
+documented override stays report-only. A nested managed
 task keeps its own lease and receipt; the parent must wait for it before handing
 off its own scratch. All Git repositories (including bare clones, detached metadata
 directories, and clean worktrees) are conservatively kept, with their working files.

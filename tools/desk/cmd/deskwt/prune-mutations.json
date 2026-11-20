@@ -70,8 +70,8 @@
     {
       "name": "the dead-session arm stops holding a LIVE session's worktree (the lock's whole purpose is gone and a working agent's tree is deleted under it)",
       "file": "cmd/deskwt/deadsession.go",
-      "old": "\t\tif !lv.stale {\n\t\t\tv.reason = \"held: \" + lv.why\n\t\t\treturn v\n\t\t}",
-      "new": "\t\tif false {\n\t\t\tv.reason = \"held: \" + lv.why\n\t\t\treturn v\n\t\t}"
+      "old": "\t\tdefault:\n\t\t\tv.reason = \"held: \" + lv.why\n\t\t\treturn v\n\t\t}",
+      "new": "\t\tdefault:\n\t\t\tv.reason = \"held: \" + lv.why\n\t\t}"
     },
     {
       "name": "the reap arm's clean gate stops holding a dirty worktree (uncommitted work is deleted)",
