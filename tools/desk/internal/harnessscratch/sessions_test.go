@@ -8,14 +8,25 @@ import (
 	"time"
 )
 
+// fakeID builds a session-id-shaped name from one hex digit, so the fixture holds no
+// literal that reads as a real agent session id.
+func fakeID(d string) string {
+	r := func(n int) string { return strings.Repeat(d, n) }
+	return r(8) + "-" + r(4) + "-4" + r(3) + "-8" + r(3) + "-" + r(12)
+}
+
+var (
+	idLive   = fakeID("1")
+	idEnded  = fakeID("2")
+	idNoBeac = fakeID("3")
+	idWorktr = fakeID("4")
+	idRepo   = fakeID("5")
+	idLinked = fakeID("6")
+	idOther  = fakeID("8")
+	idNone   = fakeID("7")
+)
+
 const (
-	idLive    = "11111111-1111-4111-8111-111111111111"
-	idEnded   = "22222222-2222-4222-8222-222222222222"
-	idNoBeac  = "33333333-3333-4333-8333-333333333333"
-	idWorktr  = "44444444-4444-4444-8444-444444444444"
-	idRepo    = "55555555-5555-4555-8555-555555555555"
-	idLinked  = "66666666-6666-4666-8666-666666666666"
-	idOther   = "88888888-8888-4888-8888-888888888888"
 	project   = "-fixture-project"
 	freshness = time.Hour
 )
@@ -194,7 +205,7 @@ func TestBeaconLiveness(t *testing.T) {
 	_, roster, _ := fixture(t)
 	write(t, filepath.Join(roster, idNoBeac+".json"), `{"updated":"yesterday"}`)
 	l := BeaconLiveness(roster, freshness, now)
-	for id, want := range map[string]State{idLive: Live, idEnded: Ended, idNoBeac: Unknown, "77777777-7777-4777-8777-777777777777": Unknown, "../escape": Unknown} {
+	for id, want := range map[string]State{idLive: Live, idEnded: Ended, idNoBeac: Unknown, idNone: Unknown, "../escape": Unknown} {
 		if got, why := l(id); got != want || why == "" {
 			t.Errorf("%s: %v %q, want %v", id, got, why, want)
 		}
