@@ -69,7 +69,7 @@
       "name": "v2-offered-to-every-stream",
       "target": "statusgen/streammilestones.go",
       "old": "if optedIn {",
-      "new": "if true {",
+      "new": "if optedIn || len(s.Name) >= 0 {",
       "module": "statusgen",
       "package": ".",
       "test": "TestMilestoneStreamProjection"
@@ -96,7 +96,7 @@
       "name": "hand-edit-not-detected",
       "target": "statusgen/readmemilestones.go",
       "old": "case strings.TrimSpace(region) != strings.TrimSpace(renderMilestoneRegion(s)):",
-      "new": "case false:",
+      "new": "case region == \"\\x00\":",
       "module": "statusgen",
       "package": ".",
       "test": "TestMilestoneReadmeRegion"
