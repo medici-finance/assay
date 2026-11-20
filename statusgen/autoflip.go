@@ -157,7 +157,6 @@ import (
 	"github.com/medici-finance/assay/statusgen/workref/trailers"
 
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -200,9 +199,10 @@ type glNote struct {
 	Body   string
 }
 
-// modelFlipSource supplies those facts. The live implementation shells out to
-// git and gh (ghModelFlipSource below); tests substitute a fake, so no test
-// ever touches the network or a real brief.
+// modelFlipSource supplies those facts. The live implementations shell out to
+// git and gh (ghModelFlipSource below) or, for a GitLab reviewer, to git and
+// deskread (deskreadModelFlipSource, autoflip_gitlab.go); tests substitute a
+// fake or a stub deskread, so no test ever touches the network or a real brief.
 type modelFlipSource interface {
 	// CommitsTouching returns commit SHAs that touched relPath, newest first,
 	// at most limit of them.
@@ -835,9 +835,6 @@ func (t trailerResolution) predates(m time.Time) bool {
 func resolveByTrailer(res modelFlipResult, repo string, bfiles briefFiles, src modelFlipSource, rev reviewerIdentity) trailerResolution {
 	t := trailerResolution{files: bfiles}
 	hits, err := src.PRsNamingBrief(repo, canonicalBriefKey(res.Brief))
-	if errors.Is(err, errGitLabFlipReadUnavailable) {
-		return t // the walk reports the same structural could-not-check; one note is enough
-	}
 	if err != nil {
 		t.searchErr = fmt.Sprintf("the `Brief:`-trailer search for %s could not be read (%v), so only the brief file's history was consulted",
 			canonicalBriefKey(res.Brief), err)
@@ -1651,58 +1648,16 @@ func autoFlipCheckExit(errw io.Writer, results []modelFlipResult, code int, chec
 }
 
 // liveModelFlipSource selects the production read seam for the reviewer's forge.
-// GitHub reads through `gh` (ghModelFlipSource). A GitLab reviewer selects
-// gitlabModelFlipUnavailable: statusgen has no GitLab merge-request read path yet —
-// the forge-aware LIVE read lands with the conformance round trip
-// (forge-neutral/10), where a real GitLab deployment exists — so the GitLab live
-// read reports an honest could-not-check rather than shelling `gh`, which cannot
-// read a GitLab MR. The corroboration DECISION for GitLab is implemented and
-// unit-tested (decideGitLabFlip); only the live reader that would feed it real MR
-// state is deferred. forgeUnknown keeps GitHub (a legacy roster with no
-// forge-qualified reviewer ident resolves to GitHub, per modelReviewer).
+// GitHub reads through `gh` (ghModelFlipSource). A GitLab reviewer reads every
+// merge-request fact through `deskread`, the seam's read verb
+// (deskreadModelFlipSource, autoflip_gitlab.go), and decideGitLabFlip judges it.
+// forgeUnknown keeps GitHub (a legacy roster with no forge-qualified reviewer ident
+// resolves to GitHub, per modelReviewer).
 func liveModelFlipSource(forge forgeKind, githubToken string) modelFlipSource {
 	if forge == forgeGitLab {
-		return gitlabModelFlipUnavailable{}
+		return deskreadModelFlipSource{r: newDeskreadReader()}
 	}
 	return ghModelFlipSource{githubToken: githubToken}
-}
-
-// errGitLabFlipReadUnavailable is the honest could-not-check a GitLab auto-flip
-// reports until the forge-aware live merge-request read lands with the conformance
-// round trip (forge-neutral/10). It is structural, not a misconfiguration: no
-// operator setting resolves it, so it is a non-fatal NOTICE (reportAutoFlipModel),
-// never a fatal error and never a silent flip.
-var errGitLabFlipReadUnavailable = errors.New(
-	"statusgen has no GitLab merge-request read path yet — the forge-aware live read lands with the conformance round trip (forge-neutral/10); a GitLab auto-flip is could-not-check until then, never a flip")
-
-// gitlabModelFlipUnavailable is the live source for a GitLab reviewer. Commit
-// history is plain git and works on any forge, so CommitsTouching is served; the
-// merge-request reads report errGitLabFlipReadUnavailable, which decideModelFlip
-// surfaces as a structural could-not-check.
-type gitlabModelFlipUnavailable struct{}
-
-func (gitlabModelFlipUnavailable) CommitsTouching(root, relPath string, limit int) ([]string, error) {
-	return ghModelFlipSource{}.CommitsTouching(root, relPath, limit)
-}
-
-func (gitlabModelFlipUnavailable) MergedPRForCommit(repo, sha string) (int, bool, error) {
-	return 0, false, errGitLabFlipReadUnavailable
-}
-
-func (gitlabModelFlipUnavailable) PRShape(repo string, pr int) (prShape, error) {
-	return prShape{}, errGitLabFlipReadUnavailable
-}
-
-func (gitlabModelFlipUnavailable) ReviewState(repo string, pr int) (prReviewState, error) {
-	return prReviewState{}, errGitLabFlipReadUnavailable
-}
-
-func (gitlabModelFlipUnavailable) PRsNamingBrief(repo, briefKey string) ([]int, error) {
-	return nil, errGitLabFlipReadUnavailable
-}
-
-func (gitlabModelFlipUnavailable) PRBodyEditedAt(repo string, pr int) (time.Time, error) {
-	return time.Time{}, errGitLabFlipReadUnavailable
 }
 
 // reportAutoFlipModel prints the per-candidate report and returns the process

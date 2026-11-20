@@ -18,6 +18,16 @@
     },
     {
       "class": "test",
+      "pattern": "containers/k8s/compatibility/qualify.sh",
+      "reason": "desk-containers/32 source-checkout entrypoint for the offline five-role CLI qualification fixture; it is not installed in the release."
+    },
+    {
+      "class": "test",
+      "pattern": "containers/k8s/compatibility/qualify.py",
+      "reason": "desk-containers/32 test runner invoked by qualify.sh to check named go test results from the synthetic lifecycle fixture."
+    },
+    {
+      "class": "test",
       "pattern": "containers/k8s/compatibility/desk-session.test.sh",
       "reason": "desk-containers/31 offline private-Linux-PID1 regression fixture; synthetic agent, explicit local daemon, cached image and no network"
     },
@@ -80,6 +90,11 @@
       "class": "test",
       "pattern": "docs/streams/desk-supervision/verify.d/08-mutations.py",
       "reason": "offline planted defects that prove the brief-08 acceptance assertions reject broken inputs; run only by desk-supervision/08 Verify rows, never installed or released as an operator CLI (#1363)"
+    },
+    {
+      "class": "test",
+      "pattern": "docs/streams/desk-tools/verify.d/39-consumer-routes.sh",
+      "reason": "desk-tools/39 Verify row 3 executes this pinned source-only helper to check the landed consumer routes against three local Git diffs"
     },
     {
       "class": "test",

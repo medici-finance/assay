@@ -144,6 +144,65 @@ Evidence is inferred from this implementation checkpoint.
 
 <!-- Independent verifier appends one row per Verify command after implementation. -->
 
+### Container verification — 2026-11-18 (source 1a259b85f7b5)
+
+Observed source: merged main 1a259b85f7b5, in a detached home admitted by `deskdispatch --check-verifier` (attestation medici-finance/assay#6917).
+
+- The delivery is merged PR #4259: two-parent merge 8a6d345ed3c3, first parent 1f579542d540. The first parent is the fail-first base.
+- `deskpathguard rederive` at the observed source reports 3 rows and 0 author-added, so the Verify rows run here are the original rows.
+- The frontmatter declares `sensitive-data: yes`. Every row is therefore risk-bearing and owes a fail-first witness at the base.
+
+The table directly below is the execution witness. It was produced by `statusgen verifyrun` v1.0.87, non-dry, with `--sandbox=container-netns` and `--fail-first` against the delivering merge, inside a closed admission bracket:
+
+- The bracket was opened on the host at 2026-11-18T15:49:25Z and closed on the host at 16:10:46Z.
+- `statusgen verifyrun --bracket-digest` on the closed witness reports `verdict=match`.
+- The witness bytes follow unchanged, including the `Admission-Bracket:` line and the tool-written Runner and Base cells.
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewPrepareFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestReviewPrepareFlow ' "$o")` | pass exit=0 sandbox=container-netns | sha256:93f10218f7d6 | 2026-11-18 | assay-verifier-app[bot] @ 1a259b85f7b5 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=1f579542d540 unproven · head=1a259b85f7b5 |
+| 2 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewPrepareInvalidation$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestReviewPrepareInvalidation ' "$o")` | pass exit=0 sandbox=container-netns | sha256:a0aaf716d13b | 2026-11-18 | assay-verifier-app[bot] @ 1a259b85f7b5 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=1f579542d540 unproven · head=1a259b85f7b5 |
+| 3 | `statusgen --root . --consumers --brief desk-tools/41` | fail exit=2 sandbox=container-netns | sha256:4321273847e4 | 2026-11-18 | assay-verifier-app[bot] @ 1a259b85f7b5 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=1f579542d540 red rc=2 · head=1a259b85f7b5 · delivering=8a6d345ed3c3 |
+Tree-Digest: sha256:19179b2cba9b5a822c9cfdb867bd8fcbf7ae470db462e893cb8805b79cbe1453
+Container-Image: sha256:c67baa7a3c8ba3d514128f31340489146525a50c29ebb641a68899c650d354a1
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6917 run=d97e495d3edb3a0f3eebe81241cef14a6aa4ed11372cafd1f0ec054203fb8004 source=1a259b85f7b59b39d2d6663c7965a9cc0b1c5e6c brief=docs/streams/desk-tools/brief-41-share-exact-source-review-preparation-context.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=d97e495d3edb3a0f3eebe81241cef14a6aa4ed11372cafd1f0ec054203fb8004 source=1a259b85f7b59b39d2d6663c7965a9cc0b1c5e6c tree=sha256:19179b2cba9b5a822c9cfdb867bd8fcbf7ae470db462e893cb8805b79cbe1453 witness=sha256:2d1040237625d3ced6a5ebf1e2d7d6693155cb3c92f3f0ef793ebc3ad9c96dd6 opened=2026-11-18T15:49:25Z closed=2026-11-18T16:10:46Z before=receipt after=check-verifier
+
+Environment: the container used the published verify-runner image pinned by digest (sha256:c67baa7a3c8b, linux/arm64), which carries statusgen v1.0.87. It ran with no network and `GOPROXY=off`, against the module cache that the bracket open provisioned from the head tree (the Module-Cache digest above). The container run lasted from 15:53:32Z to 15:55:01Z.
+
+Disclosure: verifyrun refused a first container invocation at 15:52:55Z before any row ran. The verifier had passed Git configuration environment variables into the container, and they select a native Git profile that the library read path refuses for the delivering commit. That was a verifier invocation error, not a deliverable or tool fault. It ran no rows, wrote no witness and is not counted as an attempt. The run witnessed above used only the container flags printed by the bracket open.
+
+#### Per-row accounting
+
+| # | At head (source 1a259b85f7b5) | Fail-first at base 1f579542d540 | Disposition | Date | Runner |
+|---|---|---|---|---|---|
+| 1 | pass, exit 0, named PASS line present | unproven: the row could not run at the base in the container | BLOCKED: the fail-first obligation is not witnessed (environment capability, see below). No deliverable obligation was observed failing. | 2026-11-18 | verifier App, claude-opus-5-5 (strong) |
+| 2 | pass, exit 0, named PASS line present | unproven: the row could not run at the base in the container | BLOCKED: same as row 1 | 2026-11-18 | verifier App, claude-opus-5-5 (strong) |
+| 3 | exit 2: `--consumers: COULD-NOT-CHECK`. The brief is not in the diff against the observed source, and the delivery could not be derived: the committed Evidence has no Verification-Table marker naming it, and the history cannot be searched through the library read path. The tool asks for `--delivery` and `--base`. No routing claim was corroborated or disproved. | red, rc 2 | could-not-check: a Verify-command definition defect (a consumers row with no pinned delivery or base, the class tracked in #4560). It is not a deliverable failure. | 2026-11-18 | verifier App, claude-opus-5-5 (strong) |
+
+Why rows 1 and 2 are unproven at the base: the bracket open provisions the module cache only for the modules named by the head tree's go.sum files. The base tree's Go module names modules the head no longer requires, for example golang.org/x/crypto v0.56.0 and golang.org/x/mod v0.38.0. With `GOPROXY=off`, the base build cannot resolve them, so the base row cannot run. This is a gap in the admitted lane's capability. It says nothing about the delivered code.
+
+#### Supplemental observations (no acceptance credit)
+
+These were run on the host outside the admission bracket. They inform the dispositions above and earn no acceptance credit.
+
+| Observation | Command | Result | Date | Runner |
+|---|---|---|---|---|
+| S1: row 3 with the delivery pinned, at the observed source | `statusgen --root . --consumers --brief desk-tools/41 --delivery 8a6d345ed3c38c0c0efe9d7a10e56b6d8e8b9a88 --base 1f579542d540633425d6fd4fe647d5805f1c9cfb` | exit 0; 5 corroborated, 0 disproved, 0 unchecked. The corroborated consumers are the deskdispatch command, its embedded review prompt, the pr-review-desk skill in both harness skill trees, and the Cursor managed-files manifest. | 2026-11-18 | verifier App, claude-opus-5-5 (strong); host, no credit |
+| S2: rows 1 and 2 at the base, in a scratch checkout of 1f579542d540 with modules available | the row 1 and row 2 commands, verbatim | both red: `go test` exits 0 with `[no tests to run]`, and the named-PASS grep exits 1. The rows discriminate between base and delivery, but no admitted lane witnessed it. | 2026-11-18 | verifier App, claude-opus-5-5 (strong); host, no credit |
+
+#### Risk values
+
+RISK-VALUE: DERIVED — the exact commit id is 40 lowercase hex characters that must round-trip as a canonical object id @ gitcore/filebounded.go:125. The repository object format is SHA-1, so 40 characters is the full id. This refuses ref names and abbreviations as keys, which the brief requires: a branch name or a worktree HEAD is not the assigned source.
+RISK-VALUE: DERIVED — prepared-subject reuse compares head SHA, base SHA, base ref, body, state and the decision label @ tools/desk/cmd/deskdispatch/reviewcontext.go:69. The brief requires head, base and body changes to invalidate. Row 2's mutations exercise this, and it passes at head.
+RISK-VALUE: DERIVED — a saved observation whose head or base differs from the live subject is refused ("observed head/base differs from current subject") @ tools/desk/cmd/deskdispatch/reviewcontext.go:158. This keeps an observation file from bypassing the live freshness recheck.
+RISK-VALUE: DERIVED — the preparation key version is "review-prepare-v2" @ tools/desk/cmd/deskdispatch/reviewcontext.go:49. It is a key component, so any format change invalidates reuse. Reuse is in-process only.
+RISK-VALUE: NAMED, NOT DERIVED — the diff input cap is 4 << 20 (4 MiB) @ tools/desk/cmd/deskdispatch/packet_review.go:50, and the read budget is 60 * time.Second @ packet_review.go:55, also used as the stage budget @ reviewcontext.go:51. Both are reversible tuning values that bound work. Exceeding the diff cap records a stated refusal of the local diff, and running out of the read budget omits the file with a stated reason. Neither yields a silent success.
+RISK-VALUE: NAMED, NOT DERIVED — the observation file cap is 16<<20 (16 MiB) @ tools/desk/cmd/deskdispatch/reviewcontext.go:138 and :142, and an oversized file is refused. The diff context is 3 lines @ reviewcontext.go:240, Git's default unified context. Both are reversible. None of the values is irreversible.
+
+**VERIFY: BLOCKED** — rows 1 and 2 pass at source 1a259b85f7b5 in the network-off container witness, inside a closed admission bracket (`verdict=match`), and no deliverable obligation was observed failing. Closure is blocked on two counts. Row 3 is could-not-check because the command does not pin the delivery and base (#4560 class); with them pinned, a host probe outside the bracket corroborates all 5 consumers. Rows 1 and 2 have no admitted fail-first witness because the container module cache cannot build the base. This brief is `sensitive-data: yes`, so every row owes that witness.
+
 ## Review
 
 Retain the derived frontmatter gate. Approval of the source spec is recorded; this brief

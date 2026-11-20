@@ -866,7 +866,7 @@ func flipDateRunnerRows(lines []string) (rows [][2]string, at []int) {
 		// of the run's runner and sha agreement, nor of the stamp. Only a token
 		// verifyrun writes, where it writes it, is removed (review S21); any
 		// other token-shaped text stays and takes part in that agreement.
-		rows = append(rows, [2]string{strings.TrimSpace(cells[len(cells)-2-trail]), stripWriterReadSetToken(strings.TrimSpace(cells[len(cells)-1-trail]))})
+		rows = append(rows, [2]string{strings.TrimSpace(cells[len(cells)-2-trail]), stripLeadingReadSetToken(strings.TrimSpace(cells[len(cells)-1-trail]), writerReadsAtRe)})
 		at = append(at, i)
 	}
 	return rows, at

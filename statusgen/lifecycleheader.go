@@ -50,6 +50,12 @@ type specLifecycleHeader struct {
 // is never owed-eligible nor Routes-to-required.
 func (h *specLifecycleHeader) Classified() bool { return h.State != "" }
 
+// hasApproval reports whether the plan has crossed the approval transition.
+// Authoring owed specifically needs the approved state; routed closes that edge.
+func (h *specLifecycleHeader) hasApproval() bool {
+	return h.State == lifecycleApproved || h.State == lifecycleRouted
+}
+
 // parseSpecLifecycleHeader reads a spec/scoping document's §8 header block.
 //
 // The header block is everything before the first H2 section heading (`## `).

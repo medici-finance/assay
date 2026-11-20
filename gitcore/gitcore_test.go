@@ -1,6 +1,7 @@
 package gitcore
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -422,6 +423,44 @@ func TestCommonDirFromLinkedWorktree(t *testing.T) {
 	if common != filepath.Join(resolvedMainDir, ".git") {
 		t.Fatalf("CommonDir (linked worktree) = %q, want the MAIN checkout's .git (%q), not the per-worktree admin dir",
 			common, filepath.Join(resolvedMainDir, ".git"))
+	}
+}
+
+// TestGitDirMatchesAbsoluteGitDir — GitDir answers what `git rev-parse
+// --absolute-git-dir` answers, in the main checkout, a subdirectory of it and a
+// linked worktree, where it is that worktree's own admin dir, not the common dir.
+func TestGitDirMatchesAbsoluteGitDir(t *testing.T) {
+	f := gittest.NewFixture(t)
+	wtDir := t.TempDir() + "-wt"
+	if _, err := f.Git("worktree", "add", "--detach", wtDir, "HEAD"); err != nil {
+		t.Fatal(err)
+	}
+	sub := filepath.Join(f.Dir, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	common, err := CommonDir(wtDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{f.Dir, sub, wtDir} {
+		got, err := GitDir(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, err := (&gittest.Fixture{Dir: dir}).Git("rev-parse", "--absolute-git-dir")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != want {
+			t.Fatalf("GitDir(%s) = %q, want %q", dir, got, want)
+		}
+		if dir == wtDir && got == common {
+			t.Fatalf("GitDir(linked worktree) = the common dir %q, want the worktree's own admin dir", got)
+		}
+	}
+	if _, err := GitDir(t.TempDir()); !errors.Is(err, ErrNotRepository) {
+		t.Fatalf("GitDir outside any checkout: err = %v, want ErrNotRepository", err)
 	}
 }
 

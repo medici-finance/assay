@@ -33,8 +33,9 @@ import (
 // pickupHeldMarker opens the refusal a pickup hold returns.
 const pickupHeldMarker = "dispatch HELD on context pickup"
 
-// pickupMaxReceipt bounds the receipt read, like `statusgen context`'s own input bound.
-const pickupMaxReceipt = 8 << 20
+// pickupMaxReceipt bounds the receipt read. It is `statusgen context`'s own input bound,
+// shared from contexthandoff.MaxInputBytes so a receipt valid for one is valid for the other.
+const pickupMaxReceipt = contexthandoff.MaxInputBytes
 
 // pickupSchemas are the context-handoff versions this build validates.
 var pickupSchemas = []string{contexthandoff.HandoffSchema, contexthandoff.HandoffSchemaV2, contexthandoff.HandoffSchemaV3}

@@ -60,14 +60,16 @@ func TestDeskreadReviewsKind(t *testing.T) {
 		}
 	})
 
-	t.Run("the review body is not carried", func(t *testing.T) {
+	// regression: #7202 — the GitLab auto-flip tells an approval (no body) from a verdict note
+	// (a body) by it; a body-less review still renders without the key.
+	t.Run("the review body is carried, omitted when empty", func(t *testing.T) {
 		stubRec(t)
 		s, code, _ := rawOut("reviews", "--change", "example-org/alpha#9")
 		if code != deskkit.ExitOK || s == "" {
 			t.Fatalf("exit=%d out=%q", code, s)
 		}
-		if strings.Contains(s, "fix it") {
-			t.Errorf("the envelope carries a review body:\n%s", s)
+		if !strings.Contains(s, `"body": "fix it"`) || strings.Count(s, `"body"`) != 1 {
+			t.Errorf("want the one non-empty body carried and the empty one omitted:\n%s", s)
 		}
 	})
 
@@ -87,4 +89,27 @@ func TestDeskreadReviewsKind(t *testing.T) {
 			t.Errorf("a refused run made forge calls: %+v", c)
 		}
 	})
+}
+
+// regression: #7202
+// TestFlipFixtureBodies pins the note bodies statusgen's GitLab auto-flip fixtures
+// (statusgen/autoflip_gitlab_test.go) feed through a stub `reviews` read to the State the real
+// reduction gives them, so a fixture cannot claim a verdict the forge read would not report.
+// Keep the bodies byte-identical to that file's verdictBody and refusal cases.
+func TestFlipFixtureBodies(t *testing.T) {
+	const head = "1111111111111111111111111111111111111111"
+	verdictBody := func(verdict string) string {
+		return "Verdict: " + verdict + "\n\n## Summary\n\nReviewed at head " + head + ".\n\nOn-behalf-of: human:example-driver\n"
+	}
+	for body, want := range map[string]string{
+		verdictBody("approve"):                     "APPROVED",
+		verdictBody("request-changes"):             "CHANGES_REQUESTED",
+		"Verdict: request-changes at " + head:      "",
+		"Security-Review: pass at " + head:         "",
+		"Re-review pending: head moved to " + head: "",
+	} {
+		if got := deskkit.VerdictNoteState(body); got != want {
+			t.Errorf("VerdictNoteState(%q) = %q, want %q", body, got, want)
+		}
+	}
 }

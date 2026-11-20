@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // statusgen is a separate module. Admission delegates to the installed shared
@@ -178,12 +180,12 @@ func admittedRowEnv(environ []string) []string {
 			env = append(env, kv)
 		}
 	}
-	return append(env,
+	// The grep pins come from gitcore, the owner that qualifies exactly them
+	// for its library reads, so a row's own scoped origin reads accept them.
+	env = append(env,
 		"GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1",
-		"GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=",
-		"GIT_CONFIG_COUNT=2",
-		"GIT_CONFIG_KEY_0=grep.patternType", "GIT_CONFIG_VALUE_0=default",
-		"GIT_CONFIG_KEY_1=grep.extendedRegexp", "GIT_CONFIG_VALUE_1=false")
+		"GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=")
+	return append(env, gitcore.GrepPinEnv()...)
 }
 
 // admittedRowGlobal reports whether an inherited GIT_* variable is a global
@@ -268,7 +270,11 @@ func admittedRowScrubbedRefs(command string, env []string) []string {
 // and tools find no user config and no stored login there, and nothing an
 // earlier row of the same run left behind. It returns that directory, which
 // the caller removes when the row ends, and the two variables to set.
-func admittedRowDirs(scratch string) (string, []string, error) {
+//
+// With roster (a container run whose receipt carries the open step's roster
+// copy, rostercopy.go) the fresh HOME also holds that copy as its config-home
+// roster, and nothing else.
+func admittedRowDirs(scratch string, roster []byte) (string, []string, error) {
 	dir, err := os.MkdirTemp(scratch, "row-")
 	if err != nil {
 		return "", nil, err
@@ -276,6 +282,12 @@ func admittedRowDirs(scratch string) (string, []string, error) {
 	home, tmp := filepath.Join(dir, "home"), filepath.Join(dir, "tmp")
 	for _, d := range []string{home, tmp} {
 		if err := os.Mkdir(d, 0o700); err != nil {
+			removeRowScratch(dir)
+			return "", nil, err
+		}
+	}
+	if roster != nil {
+		if err := installRowRoster(home, roster); err != nil {
 			removeRowScratch(dir)
 			return "", nil, err
 		}

@@ -171,6 +171,54 @@ Default if no answer: option 1 after 2026-11-17. Neither option changes what is 
 ## Evidence
 <!-- Independent verifier appends exact commands, outputs, source/run identity, date and runner. This authoring PR claims no future implementation test executed. -->
 
+### Post-merge verification — 2026-11-18
+
+Independent post-merge verifier, not the implementer. Delivering PR #6766, merged as 6335d2d8e3cdaac8897d21f8603d99ff3a0edcae (first parent 41aaa64abad93ce902e5024346dc5c90a93e8f85). Verified at main source 10b5d50b7a4ff0ed604608455bab2e1dd2028389. Risk line has `sensitive-data: yes`, so every row was run `--fail-first` against the first parent of the delivering merge.
+
+Rows 1–4 ran in one admitted container-netns bracket (network none, read-only root and source mount, release-pinned runner image). The closed witness bytes follow verbatim. `--bracket-digest` on them reports `verdict=match span-lines=tree-digest:1,container-image:1,attestation:1`.
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestDiffLineIndex' -count=1 -v > "${TMPDIR:-/tmp}/dt62-idx.log" 2>&1 && grep -F -e '--- PASS: TestDiffLineIndex ' "${TMPDIR:-/tmp}/dt62-idx.log" && grep -F -e '--- PASS: TestDiffLineIndexStrips ' "${TMPDIR:-/tmp}/dt62-idx.log" && go test ./internal/deskkit/ -run '^TestAddedLinesParity$' -count=1 -v > "${TMPDIR:-/tmp}/dt62-par.log" 2>&1 && grep -F -e '--- PASS: TestAddedLinesParity ' "${TMPDIR:-/tmp}/dt62-par.log"` | pass exit=0 sandbox=container-netns | sha256:e8166d77ccd2 | 2026-11-18 | assay-verifier-app[bot] @ 10b5d50b7a4f (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=41aaa64abad9 red rc=1 · head=10b5d50b7a4f · delivering=6335d2d8e3cd |
+| 2 | `cd tools/desk && go test ./cmd/deskpr -run '^TestDiffFinding' -count=1 -v > "${TMPDIR:-/tmp}/dt62-find.log" 2>&1 && grep -F -e '--- PASS: TestDiffFindingFileLine ' "${TMPDIR:-/tmp}/dt62-find.log" && grep -F -e '--- PASS: TestDiffFindingVerdicts ' "${TMPDIR:-/tmp}/dt62-find.log"` | pass exit=0 sandbox=container-netns | sha256:a8ad99f38ff6 | 2026-11-18 | assay-verifier-app[bot] @ 10b5d50b7a4f (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=41aaa64abad9 red rc=1 · head=10b5d50b7a4f · delivering=6335d2d8e3cd |
+| 3 | `O=$(mktemp) && trap 'rm -f "$O"' 0 && cd tools/desk && go run ./cmd/muhar -spec cmd/deskpr/difffinding-mutations.json > "$O" 2>&1 && grep -F -e 'Harness healthy: baseline GREEN, positive control CAUGHT.' "$O" && grep -F -e 'Totals: 4 caught, 0 NOT CAUGHT, 0 could-not-mutate.' "$O"` | fail exit=1 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ 10b5d50b7a4f (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=41aaa64abad9 red rc=1 · head=10b5d50b7a4f · delivering=6335d2d8e3cd |
+| 4 | `cd tools/desk && test -f internal/deskkit/difflines_test.go && go test ./internal/deskkit/ -count=1 && go test ./cmd/deskpr -count=1 && go test ./cmd/muhar -run '^TestSpecAnchorsLand$' -count=1 -v > "${TMPDIR:-/tmp}/dt62-anch.log" 2>&1 && grep -F -e '--- PASS: TestSpecAnchorsLand ' "${TMPDIR:-/tmp}/dt62-anch.log"` | fail exit=1 sandbox=container-netns | sha256:e9df66579ca6 | 2026-11-18 | assay-verifier-app[bot] @ 10b5d50b7a4f (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=41aaa64abad9 red rc=1 · head=10b5d50b7a4f · delivering=6335d2d8e3cd |
+Tree-Digest: sha256:770bbc0b6ff600a8be94b7502ecee59b1266bd1562c594b0b2dbbfb8d346b86a
+Container-Image: sha256:c67baa7a3c8ba3d514128f31340489146525a50c29ebb641a68899c650d354a1
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6942 run=9c7790d77390e027f932ba7a7651705769ebbb6a2ae3aab49fb74c3077ebea95 source=10b5d50b7a4ff0ed604608455bab2e1dd2028389 brief=docs/streams/desk-tools/brief-62-diff-finding-file-line.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=9c7790d77390e027f932ba7a7651705769ebbb6a2ae3aab49fb74c3077ebea95 source=10b5d50b7a4ff0ed604608455bab2e1dd2028389 tree=sha256:770bbc0b6ff600a8be94b7502ecee59b1266bd1562c594b0b2dbbfb8d346b86a witness=sha256:2cf567efef79925bb390c2cee2c58d097f216eabe8ae3e14188808512c3bd22b opened=2026-11-18T16:51:30Z closed=2026-11-18T17:01:37Z before=receipt after=check-verifier
+
+Row 5 is host-only (it reads git history). It ran no command. `statusgen verifyrun --rows 5 --fail-first --delivering-commit 6335d2d8e3cdaac8897d21f8603d99ff3a0edcae --dry-run`, in the declared verifier Git environment, exited 2 before running the row. Its output, verbatim:
+
+```
+statusgen verifyrun: --fail-first: --delivering-commit "6335d2d8e3cdaac8897d21f8603d99ff3a0edcae" is refused: it cannot be read through the library read path (native discovery/config/shallow environment profile): GIT_CONFIG_COUNT is set in the environment, which selects a native Git profile the library does not qualify; unset it (with any GIT_CONFIG_KEY_<n>/GIT_CONFIG_VALUE_<n> it carries) and re-run
+```
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 5 | see Verify row 5 | could-not-run: tool refusal before the row ran (rc=2); the declared verifier Git environment sets GIT_CONFIG_COUNT=0, which the fail-first library read path refuses | none | 2026-11-18 | assay-verifier-app[bot] @ 10b5d50b7a4f (host) (on-behalf-of human:ian) | unproven: not run |
+
+This is the open class #6851. The declared row environment was not changed to get past the refusal. Row 5's definition also has a separate defect, independent of the refusal. Its guard requires `HEAD = DELIVERY_HEAD`, so post-merge DELIVERY_HEAD has to be the verified source, not the delivering merge. Its `git diff --quiet DELIVERY_BASE DELIVERY_HEAD -- <scanner and fixtures>` then also covers later main commits that changed the scanner. Those commits are unrelated to this delivery. So the row cannot express "untouched by the delivering diff" after merge (compare the class #6099). Static reading aid, not evidence: the delivering diff 41aaa64..6335d2d8 does not list the scanner, the structured-body module or the deskkit fixtures.
+
+### Rows held
+
+- **Row 3** (mutation harness) failed at head inside the container (exit 1, empty matched output). The harness's default `-j 1` mode edits the source tree in place and restores it. The admitted bracket mounts the source tree read-only, so the row as declared may not be witnessable in this sandbox. This matches the open class #6444. A supplemental diagnostic was not run, so the cause is unconfirmed. The row is held, not judged.
+- **Row 4** (neighbour packages) failed at head inside the container (exit 1). The full deskkit and deskpr test packages include tests that drive git and read files above the module root. The cause was not diagnosed, so whether this is the environment or the deliverable is unconfirmed. The row is held, not judged.
+- **Row 5**: tool refusal plus a definition defect, as above.
+- Rows 1 and 2 discriminate: red at the base, green at head.
+
+### Risk values (sensitive-data)
+
+ENUMERATE, then RANK by effect on the scanned bytes, then DERIVE:
+
+1. RISK-VALUE: hunk-header range pattern `^(@@ -[0-9]+(?:,[0-9]+)? \+[0-9]+(?:,[0-9]+)? @@)` (outboundpush.go, moved byte-identical from deskpr.go) — DERIVED: the unified-diff hunk range grammar, with the count optional because git omits a count of 1. A line that does not match is kept whole, so the pattern can only add scanning, never remove it.
+2. RISK-VALUE: maxPlacedLine = 200000 (outboundpush.go; existed before this delivery and is now reused as the file-line cap) — NAMED, NOT DERIVED: no derivation is recorded. Above the cap, only the reported location changes, to unknown. The scanned bytes do not.
+3. RISK-VALUE: finding lookup bounds 1 <= line <= len(refs) — DERIVED: from the 1-based line number indexing the line-ref slice.
+4. RISK-VALUE: side labels added/removed/context and the scan-explain format string — N/A: these are report labels and do not decide what is scanned.
+
+**VERIFY: BLOCKED** — rows 1 and 2 pass and are red at the base. Rows 3 and 4 failed in the admitted container and their cause is undiagnosed (possibly a read-only sandbox fault, since row 3 mutates the tree in place), so both are held. Row 5 was refused by the tool before it ran, and its definition cannot express "untouched by the delivering diff" after merge. No row is a FAIL of the deliverable.
+
 ## Threat model and detection
 
 | Failure mode | Caught by |

@@ -436,12 +436,30 @@ row(s)`, never `all preconditions met`.
 `deskd` is reported `n/a` unless `cell.env` sets `DESKD=1`, in which case the cell is checked, stood
 and torn down exactly as a k8s cell's is.
 
-`desk` and `up` on a house cell differ from a k8s cell in three ways and no others: no `deskd`
+`desk` and `up` on a house cell differ from a k8s cell in four ways and no others: no `deskd`
 window or "deskd is not up" notice unless `DESKD=1`; `DESK_ROOTS` is exported from `CELL_ROOTS`
-(on a k8s cell too, when `cell.env` carries one); and `DESK_SESSION` — also the `claude --name` —
-is `<cell>-<role>-<UTC boot stamp>` rather than `<cell>-<short role>`, because house windows are
-re-booted by hand across days and the roster beacon should tell one boot from the next. The
-worktree, the shims, the pinned model and the `/assay:<role>` first prompt are the same code path.
+(on a k8s cell too, when `cell.env` carries one); the `verify-desk` window's `DESK_ROOTS` names
+per-session trees rather than the shared checkouts (below); and `DESK_SESSION` — also the
+`claude --name` — is `<cell>-<role>-<UTC boot stamp>` rather than `<cell>-<short role>`, because
+house windows are re-booted by hand across days and the roster beacon should tell one boot from the
+next. The worktree, the shims, the pinned model and the `/assay:<role>` first prompt are the same
+code path.
+
+**Per-session verify roots.** The verifier's queue read refuses a stream root whose `HEAD` is not
+that root's fetched `refs/remotes/origin/main`. A shared checkout fails that whenever its operator
+is on a branch, and again whenever another session's fetch moves `origin/main` in the shared
+object database. So a house `verify-desk` boot fetches `main` into each `CELL_ROOTS` checkout
+(explicit refspec `+refs/heads/main:refs/remotes/origin/main`) and cuts one detached, locked
+worktree per root at that commit, under `<cell>/worktrees/verify-desk-roots/<owner>--<repo>`. The
+window's `DESK_ROOTS` keeps every name and points it at that tree. Before every cadence pass the
+trees are fetched and moved to `origin/main` again; a tree that cannot be makes the pass
+`could-not-check`. A later boot reuses a tree only when moving it loses nothing: tracked changes,
+or a `HEAD` that `origin/main` does not contain, stop the boot with the path named. A root that is
+not a git checkout keeps its shared path, with a notice. The shared checkouts are fetched into and
+never moved. `CELL_VERIFY_SHARED_ROOTS=1` in `cell.env` restores the shared checkouts; the dry run
+prints the planned map on a `[dry-run] verify roots:` line. The trees share the root's object
+database, so the refresh before each pass is what keeps them current: a window without a cadence
+gets the boot refresh only.
 
 ---
 
@@ -1812,6 +1830,7 @@ is refused rather than launching codex against Anthropic with a provider the ope
 | `CODEX_MODEL_<role>` | **codex**-namespace per-role model override, same `-`-as-`_` role naming; the Opus refusal does NOT apply here (Opus is a Claude-only concept) |
 | `TIER_MODEL_TOP_CLAUDE` / `_MID_CLAUDE` / `_FAST_CLAUDE` | overrides one entry of the claude column of the tier-map fallback (compiled defaults `fable`/`sonnet`/`haiku`) |
 | `TIER_MODEL_TOP_CODEX` / `_MID_CODEX` / `_FAST_CODEX` | overrides one entry of the codex column of the tier-map fallback (compiled default `gpt-5.6-terra` for all three today) |
+| `TIER_MODEL_TOP_CURSOR` / `_MID_CURSOR` / `_FAST_CURSOR` | overrides one entry of the cursor column of the tier-map fallback (no compiled default). `TIER_MODEL_TOP_CURSOR` has a second meaning: it is the strong-tier model id the standing Cursor desk boot prompt names for a strong subagent; unset or `auto`, the prompt names no id and the hold stays unless the session's own model is confirmed strong |
 | `CELL_HARNESS` | the harness every role window boots on: `claude` (default) or `codex`; `--harness` overrides it per run (see *Harnesses*); `--set` persists the override, `cellctl set --harness` the same without a boot |
 | `CELL_KIND` / `CELL_COCKPIT` / `CELL_PROVIDER` | overridable per run with `--kind` / `--cockpit` / `--provider` on `desk`/`up`, persisted by `--set` or `cellctl set --kind/--cockpit/--provider`, read back by `cellctl show` (see *Every per-run choice*) |
 | `CELL_PROVIDER` | the default provider name for `cellctl desk`/`up` (unset = Anthropic); `--provider` overrides it per run — see *Providers* |

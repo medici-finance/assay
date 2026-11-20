@@ -188,3 +188,38 @@ func TestPickupFlagMisuse(t *testing.T) {
 		t.Error("a review dispatch admitted a context receipt")
 	}
 }
+
+// regression: #6189 — the pickup receipt bound is statusgen context's input bound
+func TestPickupReceiptBound(t *testing.T) {
+	if pickupMaxReceipt != contexthandoff.MaxInputBytes {
+		t.Fatalf("pickupMaxReceipt = %d, want the shared contexthandoff.MaxInputBytes %d", pickupMaxReceipt, contexthandoff.MaxInputBytes)
+	}
+	for _, tc := range []struct {
+		name string
+		size int64
+		ok   bool
+	}{
+		{"just over the old 8 MiB bound", 8<<20 + 1, true},
+		{"exactly the shared bound", contexthandoff.MaxInputBytes, true},
+		{"one past the shared bound", contexthandoff.MaxInputBytes + 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := filepath.Join(t.TempDir(), "receipt.json")
+			f, err := os.Create(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := f.Truncate(tc.size); err != nil {
+				t.Fatal(err)
+			}
+			f.Close()
+			b, err := readPickupFile(p)
+			if tc.ok && (err != nil || int64(len(b)) != tc.size) {
+				t.Fatalf("size %d: read %d bytes, err %v; want it read whole", tc.size, len(b), err)
+			}
+			if !tc.ok && err == nil {
+				t.Fatalf("size %d: read without error, want a larger-than refusal", tc.size)
+			}
+		})
+	}
+}

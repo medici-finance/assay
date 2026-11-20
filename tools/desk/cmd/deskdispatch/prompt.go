@@ -115,9 +115,17 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 		fmt.Fprintf(&b, "- **Target repo:** `%s` — the PR opens THERE, not anywhere else.\n", repo)
 	}
 	if plan.dl.crossRepo(o.root) {
+		readOnly := "The tracking checkout is READ-ONLY for you."
+		if verifier {
+			// A verifier DOES write the tracking side — its Evidence — but only in the isolated
+			// tracking clone admission binds, never the dispatcher's shared checkout (#5999).
+			readOnly = fmt.Sprintf("Your claim, Evidence and outcome record land in %s. The shared tracking checkout "+
+				"is READ-ONLY for you; the brief's Evidence is edited only in the isolated tracking clone the "+
+				"Specification line names.", trackingLabel(plan.dl))
+		}
 		fmt.Fprintf(&b, "- **Tracked in:** %s — the brief and its board row live there; the deliverable lands in `%s` "+
-			"(alias `%s`, resolved from %s through the alias registry). The tracking checkout is READ-ONLY for you.\n",
-			trackingLabel(plan.dl), repo, plan.dl.alias, plan.dl.source)
+			"(alias `%s`, resolved from %s through the alias registry). %s\n",
+			trackingLabel(plan.dl), repo, plan.dl.alias, plan.dl.source, readOnly)
 	}
 	fmt.Fprintf(&b, "- **Checkout base:** `%s` — the `git -C` source your worktree is cut FROM. It is not your writable root.\n", base)
 	fmt.Fprintf(&b, "- **Your home worktree:** `%s` — every file operation stays under it.\n", home)
@@ -132,11 +140,22 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	fmt.Fprintf(&b, "- **Execution tier:** `%s`\n", o.tier)
 	if strings.TrimSpace(o.brief) != "" {
 		spec := briefArg(o)
-		if spec == o.brief && filepath.IsAbs(spec) && plan.dl.crossRepo(o.root) {
+		switch {
+		case verifier && plan.dl.crossRepo(o.root) && plan.verifierBriefRoot != "":
+			// The admitted, isolated tracking clone: the ONE tree whose brief Evidence a cross-repo
+			// verifier edits. Calling it read-only and "implement to its contract" contradicted the
+			// Evidence instruction below (#5999).
+			fmt.Fprintf(&b, "- **Specification:** `%s` (the isolated tracking clone admission bound) — run its Verify "+
+				"table against the target repo; its Evidence section is the only thing you edit, here and nowhere else.\n", spec)
+		case verifier && plan.dl.crossRepo(o.root):
+			fmt.Fprintf(&b, "- **Specification:** `%s` (the shared tracking checkout — READ-ONLY for you) — run its Verify "+
+				"table against the target repo. The real dispatch names the isolated tracking clone admission binds; "+
+				"its Evidence section is the only thing you edit, and only there.\n", spec)
+		case spec == o.brief && filepath.IsAbs(spec) && plan.dl.crossRepo(o.root):
 			// Found only in the tracking checkout — name it there, and say it is a READ source.
 			fmt.Fprintf(&b, "- **Specification:** `%s` (in the tracking checkout — READ-ONLY for you) — implement to "+
 				"its contract; do not expand scope.\n", spec)
-		} else {
+		default:
 			fmt.Fprintf(&b, "- **Specification:** `%s` — implement to its contract; do not expand scope.\n", spec)
 		}
 	}
@@ -529,7 +548,7 @@ func writeVerifierAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPl
 		"branch for implementation changes. An Evidence-only draft follows the deskevidence lane after verification. Do not adopt the implementer's `DESK_LOOP=worker-desk` identity — those belong to the "+
 		"worker kit, not this one. A verifier never sets verified/done itself and never flips a PR ready "+
 		"(per the standing verifier clauses below).\n\n", o.item, repo)
-	writeOutcomeRecordLine(b, plan, repo, home)
+	writeOutcomeRecordLine(b, plan, home)
 	b.WriteString("Release the dispatch claim once your verdict has LANDED — Evidence recorded and the item " +
 		"advanced or routed to the human gate — not on a branch push, which is not this class's output:\n\n")
 	writeReleaseClaim(b, o, plan, repo)
@@ -566,6 +585,9 @@ func writeReleaseClaim(b *strings.Builder, o dispatchOpts, plan dispatchPlan, re
 		releaseTool = claimScriptRel
 	}
 	role, _ := kitRole(o.kit)
+	if plan.claimRepo != "" {
+		repo = plan.claimRepo // the claim namespace, not the deliverable (#5999)
+	}
 	fmt.Fprintf(b, "```\n%s release %q --repo %s%s\n```\n", releaseTool, plan.claimKey, repo,
 		claimCredArg(releaseTool, role, repo, agentLoop(role)))
 }

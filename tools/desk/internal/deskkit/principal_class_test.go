@@ -60,6 +60,7 @@ var onBehalfOfCallSites = map[string]int{
 	"cmd/deskevidence/deskevidence.go:landEvidenceAsChange:OnBehalfOfCommitSuffix(repoSlug)":       1,
 	"cmd/deskevidence/outcomerecord.go:cmdOutcomeRecordWrite:OnBehalfOfCommitSuffix(repoSlug)":     1,
 	"cmd/deskevidence/outcomerecord.go:landOutcomeRecordAsChange:OnBehalfOfCommitSuffix(repoSlug)": 1,
+	"cmd/deskevidence/removesuperseded.go:cmdOutcomeRecordRemove:OnBehalfOfCommitSuffix(repoSlug)": 1,
 	"cmd/deskevidence/principalstamp.go:resolveStampSubject:ResolvePrincipal(repo)":                1,
 	"cmd/deskfile/deskfile.go:cmdNew:AppendOnBehalfOf(*repo)":                                      1,
 	"cmd/deskfile/deskfile.go:postAttach:AppendOnBehalfOf(repo)":                                   1,

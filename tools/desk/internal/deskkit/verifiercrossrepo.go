@@ -40,6 +40,73 @@ func verifierOrigin(root string) (string, error) {
 	return RemoteRepoSlug(raw)
 }
 
+// verifierTrackingBrief finds the Git checkout that actually supplies the brief.
+func verifierTrackingBrief(brief, expectedRoot string) (string, string, error) {
+	// Resolve the actual containing repository, never a caller-supplied repo
+	// label or a lexical ../ allowance. Symlinks cannot select a different brief.
+	abs, err := filepath.Abs(brief)
+	if err != nil {
+		return "", "", err
+	}
+	real, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", "", err
+	}
+	parent, err := filepath.EvalSymlinks(filepath.Dir(abs))
+	if err != nil || filepath.Join(parent, filepath.Base(abs)) != real {
+		return "", "", Refused("verifier tracking brief must not be a symlink")
+	}
+	tracking, err := verifierGit(filepath.Dir(real), "rev-parse", "--show-toplevel")
+	if err != nil {
+		return "", "", Unverifiable("missing tracking repository provenance", err)
+	}
+	_, tracking, err = verifierHome(tracking)
+	if err != nil {
+		return "", "", err
+	}
+	if expectedRoot != "" && !verifierSameDir(expectedRoot, tracking) {
+		return "", "", Refused("verifier brief belongs to a different tracking checkout than --claim-root")
+	}
+	return real, tracking, nil
+}
+
+// verifierTrackingOrigin binds the repository-local fetch URL used for forge
+// selection to the identity the attestation admits. A transport alias may
+// preserve an identity, but a rewrite to a different repository cannot.
+func verifierTrackingOrigin(root string) (ForgeRepo, string, error) {
+	url, err := originFetchURL(root)
+	if err != nil {
+		return ForgeRepo{}, "", Unverifiable("cannot read the tracking checkout's fetch origin", nil)
+	}
+	owner, name, err := ParseRemoteRepo(url)
+	if err != nil {
+		return ForgeRepo{}, "", Refused("tracking fetch origin must identify a repository")
+	}
+	repo := ForgeRepo{Owner: owner, Name: name}
+	declared, err := verifierOrigin(root)
+	if err != nil {
+		return ForgeRepo{}, "", Unverifiable("cannot read the tracking checkout's declared identity", nil)
+	}
+	if declared != repo.Slug() {
+		return ForgeRepo{}, "", Refused("tracking fetch origin differs from the declared repository")
+	}
+	return repo, url, nil
+}
+
+// VerifierTrackingForge resolves the preview's destination from the same
+// checkout observation used to prepare the verifier's tracking tree.
+func VerifierTrackingForge(root, brief string) (ForgeResolution, error) {
+	_, tracking, err := verifierTrackingBrief(brief, root)
+	if err != nil {
+		return ForgeResolution{}, err
+	}
+	repo, url, err := verifierTrackingOrigin(tracking)
+	if err != nil {
+		return ForgeResolution{}, err
+	}
+	return ForgeKindForRepoRemote(repo, url)
+}
+
 // verifierVisibility refuses a binding whose tracking destination is MORE visible than the
 // deliverable repository it names: writing the binding there would publish it to readers
 // the source repository does not admit. Exposure is ranked private < internal < public, so
@@ -79,7 +146,7 @@ func verifierRepoIdentity(home, repo string) error {
 	return nil
 }
 
-func prepareVerifierCrossRepo(root, repo, brief, model, tier string) error {
+func prepareVerifierCrossRepo(root, repo, brief, model, tier, expectedTrackingRoot string) error {
 	desk, _ := RoleAppLogin(DispatcherRole)
 	if !verifierAuthority(desk) {
 		return Refused("pre-work attestation requires distinct configured desk and verifier actors")
@@ -105,32 +172,15 @@ func prepareVerifierCrossRepo(root, repo, brief, model, tier string) error {
 	if err := verifierRepoIdentity(home, repo); err != nil {
 		return err
 	}
-	// Resolve the actual containing repository, never a caller-supplied repo
-	// label or a lexical ../ allowance. Symlinks cannot select a different brief.
-	abs, err := filepath.Abs(brief)
+	real, tracking, err := verifierTrackingBrief(brief, expectedTrackingRoot)
 	if err != nil {
 		return err
 	}
-	real, err := filepath.EvalSymlinks(abs)
+	trackingOrigin, originURL, err := verifierTrackingOrigin(tracking)
 	if err != nil {
 		return err
 	}
-	parent, err := filepath.EvalSymlinks(filepath.Dir(abs))
-	if err != nil || filepath.Join(parent, filepath.Base(abs)) != real {
-		return Refused("verifier tracking brief must not be a symlink")
-	}
-	tracking, err := verifierGit(filepath.Dir(real), "rev-parse", "--show-toplevel")
-	if err != nil {
-		return Unverifiable("missing tracking repository provenance", err)
-	}
-	_, tracking, err = verifierHome(tracking)
-	if err != nil {
-		return err
-	}
-	trackingRepo, err := verifierOrigin(tracking)
-	if err != nil {
-		return Unverifiable("missing tracking repository identity", err)
-	}
+	trackingRepo := trackingOrigin.Slug()
 	if !IsAllowedRepo(trackingRepo) || strings.EqualFold(repo, trackingRepo) {
 		return Refused("external verifier brief must belong to a distinct allowed tracking repository")
 	}
@@ -193,12 +243,8 @@ func prepareVerifierCrossRepo(root, repo, brief, model, tier string) error {
 	if _, err := verifierGit(tracking, "clone", "--no-hardlinks", "--no-checkout", "--", tracking, trackingHome); err != nil {
 		return err
 	}
-	origin, err := verifierGit(tracking, "remote", "get-url", "origin")
-	if err != nil {
-		return err
-	}
-	if _, err := verifierGit(trackingHome, "remote", "set-url", "origin", origin); err != nil {
-		return err
+	if _, err := verifierGit(trackingHome, "remote", "set-url", "origin", originURL); err != nil {
+		return Unverifiable("cannot set the admitted tracking origin on the verifier checkout", nil)
 	}
 	if err := checkoutVerifierTracking(trackingHome, trackingHead); err != nil {
 		return err
@@ -386,13 +432,20 @@ func verifierCrossRepoCheck(root, brief string, r verifierLocal, phase verifierP
 
 // VerifierBriefLocation reads local dispatch provenance without granting admission.
 // Packet/prompt construction uses it; execution still requires the forge check.
-func VerifierBriefLocation(root string) (briefRoot, brief, revision string, err error) {
+func VerifierBriefLocation(root, trackingRepo string) (briefRoot, brief, revision string, err error) {
 	r, err := verifierLoad(root)
 	if err != nil {
 		return "", "", "", err
 	}
 	if err := verifierLocalCheck(root, r.Binding.Brief, r, verifierExecution); err != nil {
 		return "", "", "", err
+	}
+	if r.Binding.Repo != trackingRepo {
+		message := "verifier outcome destination differs from the admitted tracking repository"
+		if ValidRepoSlug(trackingRepo) && ValidRepoSlug(r.Binding.Repo) {
+			message += fmt.Sprintf(": planned %q, admitted %q", trackingRepo, r.Binding.Repo)
+		}
+		return "", "", "", Refused(message)
 	}
 	if r.Binding.Version == 2 {
 		return r.TrackingHome, r.Binding.Brief, r.Binding.TrackingSource, nil
