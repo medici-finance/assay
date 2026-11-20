@@ -201,9 +201,10 @@ func TestVerifySnapDispatchHook(t *testing.T) {
 	base := snapFixture(t)
 	cache := filepath.Dir(filepath.Dir(base))
 	real := time.Now()
-	oldCache, oldNow := packetCacheDir, packetNow
-	t.Cleanup(func() { packetCacheDir, packetNow = oldCache, oldNow })
+	oldCache, oldNow, oldRoot := packetCacheDir, packetNow, verifySnapRoot
+	t.Cleanup(func() { packetCacheDir, packetNow, verifySnapRoot = oldCache, oldNow, oldRoot })
 	packetCacheDir = func() (string, error) { return cache, nil }
+	verifySnapRoot = verifySnapBase
 	packetNow = func() time.Time { return real.Add(verifySnapMaxAge + 24*time.Hour) }
 	for _, name := range []string{"idle--01", "own--02"} {
 		snapWrite(t, filepath.Join(base, name, "f"), real.Add(-time.Hour))

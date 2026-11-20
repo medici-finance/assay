@@ -48,6 +48,11 @@ type snapVerdict struct {
 	reason string
 }
 
+// verifySnapRoot is the seam for where the dispatch hook looks. The test binary's TestMain
+// points it nowhere, so no dispatch test can prune the real user cache directory; a test of
+// the hook sets its own.
+var verifySnapRoot = verifySnapBase
+
 // verifySnapBase is "<cache>/assay/verify-snap", or "" when there is no usable cache directory.
 func verifySnapBase() string {
 	cache, err := packetCacheDir()
@@ -226,7 +231,7 @@ func snapAge(now, t time.Time) string {
 // durable act the operator must be able to see. It never fails the dispatch; a prune it could
 // not run says so.
 func reportVerifySnaps(claimKey string, dry bool) {
-	base := verifySnapBase()
+	base := verifySnapRoot()
 	if base == "" {
 		return
 	}
