@@ -162,7 +162,7 @@ apply_mutation() {
 	collided-scope) subst "$fx/repo-b/docs/streams/shared/README.md" "priority: P2" "priority: P2"$'\n'"repo: example-org/repo-a" ;;
 	renamed-key) subst "$fx/expect.json" '"key": "example-org/repo-a:shared-v2"' '"key": "example-org/repo-a:shared"' ;;
 	fixed-negative) subst "$fx/negative/unknown-key/README.md" "  sucess:" "  success:" ;;
-	accept-version) subst "$fx/expect.json" '"unsupported_contract": "stream-view/v2"' '"unsupported_contract": "stream-view/v1"' ;;
+	accept-version) subst "$fx/expect.json" '"unsupported_contract": "stream-view/v3"' '"unsupported_contract": "stream-view/v1"' ;;
 	wrong-commitment) subst "$fx/repo-a/docs/streams/shared/README.md" "Keep the stream readable without the chat history." "Keep the stream short." ;;
 	wrong-reference) subst "$fx/repo-a/docs/streams/shared/README.md" "- docs/evidence/acceptance.md" "- docs/evidence/acceptance-report.md" ;;
 	missing-file) rm "$fx/repo-a/docs/evidence/acceptance.md" || fail "missing-file: fixture file absent" ;;
