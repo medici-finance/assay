@@ -45,8 +45,8 @@
 #                                 its own version when its tree changes between releases.
 #                                 --have names the version the tagged tree WILL carry (the dispatch
 #                                 path stamps before tagging); default: the working tree's
-#                                 plugin.json. An empty --prev means "no previous tag": (a) is
-#                                 skipped and said so, (b) and (c) still apply.
+#                                 plugin.json. With no previous tag, the two change checks are
+#                                 skipped. The target version and Cursor checks still apply.
 #   paths                         print the files `stamp` writes, one per line (for a path-scoped
 #                                 `git add`).
 #
@@ -78,7 +78,7 @@ HEADER_FILES=(
 ALL_PATHS=("$MANIFEST" "$MARKETPLACE" "$PAIRED" "$CODEX_MANIFEST" "$CURSOR_MANIFEST" "${HEADER_FILES[@]}")
 
 usage() {
-  sed -n '2,59p' "$0" | sed 's/^# \{0,1\}//' >&2
+  awk 'NR == 1 { next } !/^#/ { exit } { sub(/^# ?/, ""); print }' "$0" >&2
   exit 2
 }
 die_usage() { printf 'FAIL %s\n' "$1" >&2; exit 2; }
@@ -289,7 +289,7 @@ cmd_gate() {
 
   local fail=0
   if [[ -z "$prev" ]]; then
-    printf 'note no previous umbrella tag — the plugins/assay change check has nothing to compare against and is skipped\n'
+    printf 'note no previous umbrella tag — skipping version change checks for plugins/assay and plugins/editorial\n'
   else
     # The previous tag's manifest version, read from ITS tree.
     local prev_manifest prev_have
