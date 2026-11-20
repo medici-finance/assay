@@ -3,6 +3,7 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -131,15 +132,24 @@ func TestCellLifecyclePlanFlow(t *testing.T) {
 		if err := os.Remove(filepath.Join(dir, "owner.lock.holder")); err != nil {
 			t.Fatal(err)
 		}
+		// The model refuses these before the writer is reached: the checkpoint writer would
+		// also refuse them, and a refusal from there means the attribution let them through.
+		atModel := func(why string, err error) {
+			t.Helper()
+			if err == nil {
+				t.Fatalf("%s: settled", why)
+			}
+			if errors.Is(err, cellcadence.ErrNotOwnersCheckpoint) {
+				t.Fatalf("%s: refused only by the checkpoint writer, so the settle attribution admitted it: %v", why, err)
+			}
+		}
 		stale := owner
 		stale.Sequence++
-		if _, err := c.settleOnce(stale, dir); err == nil {
-			t.Fatal("settled a checkpoint of another generation")
-		}
+		_, err = c.settleOnce(stale, dir)
+		atModel("stale generation", err)
 		unchanged("stale generation")
-		if _, err := c.settleOnce(interactiveOwner{Role: role, PID: dead}, dir); err == nil {
-			t.Fatal("settled with no owner generation named")
-		}
+		_, err = c.settleOnce(interactiveOwner{Role: role, PID: dead}, dir)
+		atModel("unnamed generation", err)
 		unchanged("unnamed generation")
 
 		if why, err := c.settleOnce(owner, dir); why != "" || err != nil {
