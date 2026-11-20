@@ -16,6 +16,13 @@ import (
 
 func landedFixture(t *testing.T, wrong bool) (string, string, string, map[string]string) {
 	t.Helper()
+	return landedFixtureRow(t, wrong, "true", func(string) string { return "pass exit=0" })
+}
+
+// landedFixtureRow is landedFixture with the one Verify row's command and its
+// witness Result cell chosen by the caller; result receives the witness tree.
+func landedFixtureRow(t *testing.T, wrong bool, command string, result func(tree string) string) (string, string, string, map[string]string) {
+	t.Helper()
 	root := t.TempDir()
 	workerName, workerEmail, err := deskkit.RoleWorktreeCommitIdentity("worker")
 	if err != nil {
@@ -31,7 +38,7 @@ func landedFixture(t *testing.T, wrong bool) (string, string, string, map[string
 	flGit(t, root, "config", "user.email", workerEmail)
 	files := map[string]string{
 		"docs/streams/vf/README.md":         "---\nstream: vf\nstatus: active\npriority: P1\ntrack: platform\n---\n\n# VF\n\n| # | Brief | Wave | Effort | Status | Verified | Reviewed |\n|---|---|---|---|---|---|---|\n| 01 | [check](brief-01-check.md) | 0 | S | implemented | — | 2026-09-22 human:alex |\n",
-		"docs/streams/vf/brief-01-check.md": "---\nbrief: vf/01\ntitle: Check\nwave: 0\ndepends: []\nunblocks: []\neffort: S\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nissues: []\nschema: brief-v1\nauthored: 2026-09-22 by assay-worker-app[bot]\nsources: [fixture]\n---\n\n# Check\n\n## Verify\n| # | Command | Expect |\n|---|---|---|\n| 1 | `true` | exit 0 |\n\n## Evidence\n\n## Review\nGate: model.\n",
+		"docs/streams/vf/brief-01-check.md": "---\nbrief: vf/01\ntitle: Check\nwave: 0\ndepends: []\nunblocks: []\neffort: S\ngate: model\nrisk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}\nissues: []\nschema: brief-v1\nauthored: 2026-09-22 by assay-worker-app[bot]\nsources: [fixture]\n---\n\n# Check\n\n## Verify\n| # | Command | Expect |\n|---|---|---|\n| 1 | `" + command + "` | exit 0 |\n\n## Evidence\n\n## Review\nGate: model.\n",
 	}
 	write := func() {
 		t.Helper()
@@ -51,7 +58,7 @@ func landedFixture(t *testing.T, wrong bool) (string, string, string, map[string
 	flGit(t, root, "update-ref", "refs/remotes/origin/main", source)
 	runner := verifierName + " @ " + source[:12]
 	files["docs/streams/vf/README.md"] = strings.Replace(files["docs/streams/vf/README.md"], "| implemented | — |", "| verified | 2026-09-22 "+runner+" |", 1)
-	evidence := "\n| # | Command | Result | Output | Date | Runner |\n|---|---|---|---|---|---|\n| 1 | `true` | pass exit=0 | sha256:abcdef012345 | 2026-09-22 | " + runner + " (on-behalf-of human:alex) |\n\n**VERIFY: PASS**\n"
+	evidence := "\n| # | Command | Result | Output | Date | Runner |\n|---|---|---|---|---|---|\n| 1 | `" + command + "` | " + result(source[:12]) + " | sha256:abcdef012345 | 2026-09-22 | " + runner + " (on-behalf-of human:alex) |\n\n**VERIFY: PASS**\n"
 	files["docs/streams/vf/brief-01-check.md"] = strings.Replace(files["docs/streams/vf/brief-01-check.md"], "## Evidence\n", "## Evidence\n"+evidence, 1)
 	if !wrong {
 		flGit(t, root, "config", "user.name", verifierName)

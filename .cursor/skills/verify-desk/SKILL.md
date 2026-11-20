@@ -256,6 +256,18 @@ wins, and the credit rule above is unchanged. A bad selector (an unknown, empty,
 shared ID, a table with no `#` column, or `--rows` with an audit or bracket step) is refused
 before any row runs.
 
+A row in the rule-51 class (`docs/brief-rules.md` rule 51: its command is exactly a repo-wide
+`statusgen [--root .] --lint`, or `cd statusgen && go run . --root .. --lint`, with no
+`--diff-base` and no other text, and its Expect is a clean exit) is red offline wherever a
+closed brief carries an `Acceptance-Transition:` record. Run the admitted host run with
+`statusgen verifyrun --rule51`. For each such row the offline run records red, it also runs
+`--root . --lint --acceptance-forge` under the run's verifier read credential and stamps the
+row's own witness (`rule51=… forge-rc=… pin=… cred=verifier-run-read cred-digest=… stamp=…`).
+The authored command and its offline result are unchanged. `verifyrun --check` and the
+closure gate credit that row only when the stamp binds to the witness, the forge run exited 0
+with `LINT: PASS`, the pin is a release tag and the tree is clean. A prose or hand-table
+citation of a forge run is never credited.
+
 For cross-repository coverage, host witnesses bind the whole tracking tree at the
 admitted tracking-source. Any non-bookkeeping change there holds them at closure
 and every later board read, requiring a fresh admitted run. Keep summaries in prose
@@ -746,7 +758,10 @@ computable from prose). Write the record to the dispatcher-named outcome path fr
 never invent one, and never write it inside the home, where it is an untracked file that refuses
 admission; with `--root`, `deskevidence` refuses a relative or in-home `--outcome-record`. The record carries
 `attempts`: one entry per run of the Verify table in the dispatch, as the verifier reported them (window,
-`rows_run`, disposition and reason; a discarded run keeps its entry). `deskperf reruns` counts them. On PASS write the same row's shape with `"outcome":"verified"` only AFTER
+`rows_run`, disposition and reason; a discarded run keeps its entry). `deskperf reruns` counts them. A record a newer record for the same brief supersedes leaves the tree only through `deskevidence
+--remove-superseded <record> --superseded-by <newer record>`: one pinned, conditional forge commit
+under the same identity and attestation, refused for any path that is not a superseded outcome
+record. Never remove a record with a local commit. On PASS write the same row's shape with `"outcome":"verified"` only AFTER
 the Evidence, execution witnesses, Status `verified` (or `done`), and dated Verified stamp have
 landed on the target branch and `statusgen --lint --acceptance-forge` accepts that same tree
 on the host. Before writing,

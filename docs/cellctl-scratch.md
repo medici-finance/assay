@@ -5,6 +5,10 @@ Command-line forms (flags, precedence, exit codes) are listed in [the `cellctl` 
 `cellctl` owns disposable task scratch under the cell's private `run/scratch`
 directory. House-cell cadence passes and interactive launches enroll automatically,
 set `TMPDIR`/`TMP`/`TEMP`, and propagate that owner to Codex command environments.
+They, and every `scratch run` task, also set `CLAUDE_CODE_TMPDIR`, the claude harness's
+documented temp-root override, to the same work directory: on macOS that root otherwise stays under `/tmp` whatever
+`TMPDIR` says, so the harness's per-session scratchpads would land outside every task
+record. Codex documents no separate temp-root override and uses `TMPDIR`.
 Each invocation records its session, role/task, immutable source revision, creation
 and finish times, lifecycle, exit status, child process group, and evidence status.
 Git role/worker worktrees remain with `deskwt`.
@@ -26,8 +30,9 @@ This is an explicit attestation by the caller, not an automatic forge upload or 
 claim that a zero process exit proves handoff. Do not acknowledge while evidence,
 resumption state, a running delegated task, or work not yet committed/pushed still
 depends on scratch. Do not generate further required output after acknowledgment.
-A missing receipt preserves the tree, including after successful exit. The one
-exception is abandoned build output, described under "Periodic maintenance" below.
+A missing receipt preserves the tree, including after successful exit. The
+exceptions are the work dir of a finished task left past its handoff grace and
+abandoned build output, both described under "Periodic maintenance" below.
 An acknowledgment alone never overrides a live execution lease or surviving child.
 
 Successful acknowledged tasks become eligible for explicit maintenance after child-tree cleanup. Failed or
@@ -38,7 +43,8 @@ diagnostic bundle records that terminal output could not be captured; redirected
 streams and non-interactive launches retain their bounded output tail. Capture
 any other required diagnostic file at its canonical destination *before* acknowledgment.
 Failed tasks without a receipt keep their workspace until an operator/desk completes
-that handoff, apart from abandoned build output. Mark an inactive run resumable with `ack --resumable`; sweeps always
+that handoff or its handoff grace (24 hours) runs out; after that a sweep reclaims the
+workspace and keeps the record and tail. Mark an inactive run resumable with `ack --resumable`; sweeps always
 preserve it. Finish resumption in a new managed run; an old resumable directory is
 intentionally not automatically released.
 
@@ -104,9 +110,11 @@ Logical bytes are not allocated blocks or filesystem free-space measurements.
 Directory entries and filesystem metadata are not counted.
 
 Maintenance serializes other sweeps with a maintenance lease. Recursive inventory runs outside the root admission lock; each eligible run's execution lease remains held through revalidation and deletion. Short root transactions cover enrollment and lifecycle metadata. Live,
-resumable, unacknowledged, unverified, and Git-containing trees stay intact, with a
-reason in the report. Abandoned build output is the only part of an unacknowledged
-tree a sweep can remove. The root and destructive operations use Go's confined
+resumable, unacknowledged, and unverified trees stay intact, with a reason in the
+report, and so does Git data: a work dir that is itself a Git repository stays whole,
+and any other work entry holding Git data stays as that entry (see below). The work
+dir of a finished task past its handoff grace and abandoned build output are the
+only parts of an unacknowledged tree a sweep can remove. The root and destructive operations use Go's confined
 `os.Root`, so a symlink cannot redirect deletion outside the scratch root. While
 planning, the sweep pins the identity (device and inode) of every path it may
 delete through, the task, its `work` and each planned entry, before measuring
@@ -148,10 +156,16 @@ delete existing user scratch during installation.
 Automatic enrollment covers the house launcher process paths, both interactive
 and cadence. Scrubbed tmux sessions, container/cluster runtimes, external IDE
 sessions, and harness owned roots that ignore inherited temporary-directory
-settings require explicit `scratch run` or remain report-only. A nested managed
+settings require explicit `scratch run` or remain report-only. `scratch run` sets the
+same temp-root variables as a launch, `CLAUDE_CODE_TMPDIR` included; a root with no
+documented override stays report-only. A nested managed
 task keeps its own lease and receipt; the parent must wait for it before handing
 off its own scratch. All Git repositories (including bare clones, detached metadata
-directories, and clean worktrees) are conservatively kept. The filesystem classifier recognizes
+directories, and clean worktrees) are conservatively kept, with their working files.
+A task's work dir whose root is itself a repository (a `.git` entry, or a bare
+repository's `HEAD` beside its storage) is kept whole. Otherwise Git data is judged per
+top-level work entry: an entry holding Git data anywhere inside it stays whole, while
+entries beside it that hold no Git data can be reclaimed under the rules below. The filesystem classifier recognizes
 Git markers and repository storage/reference layouts without running Git or
 following metadata links; partial or damaged layouts can therefore remain protected.
 An ordinary output file named `HEAD` alone is not a repository marker. Use
@@ -189,9 +203,9 @@ surviving children, pending/resumable/foreign/Git paths, path escapes, competing
 sweeps, partial deletion and retry, snapshot completeness and bounds, and repeated
 worker/reviewer/verifier passes across the supported host harnesses.
 
-Maintenance streams directory entries and retains at most 262,144 inventory entries per walk/list and 64 directory levels. Exceeding either limit reports partial accounting. When the scratch root's own listing is over the limit, the sweep reclaims nothing. When one entry's walk is over either limit, that entry alone is kept, with the reason `over the maintenance inventory limit` in its report row and its name in the sweep's error, and the rest of the plan still runs: fully measured tasks beside it are reclaimed by the usual rules. A task whose execution lease is live or unavailable is kept for that reason before its walk is judged, so it is neither named nor makes the sweep partial. The kept entry's bytes are what the walk counted before it stopped, a lower bound, so the budget rules can only reclaim less, never more. Any other failed inspection still withholds reclamation from the whole sweep. A sweep with a contained over-limit entry is partial, so the periodic sweep records a failed attempt rather than a stamp. A wider legacy inventory returns an error rather than presenting a prefix as complete. These are reversible local safety defaults, not latency objectives.
+Maintenance streams directory entries and retains at most 262,144 inventory entries per list and 64 directory levels. A walk that only measures bytes retains no entries, so it pages through a tree of any width: after each page of 262,144 entries it checks for cancellation and carries on. A task's work dir is listed the same way, but planning retains a pin and a name for each entry it may delete, so at most 262,144 work entries are examined per task per sweep: a wider work dir is reclaimed one bounded batch per sweep, and the report row says so. Removal empties a directory a page at a time, for at most 64 pages; a directory still not empty after that fails that removal, which reports an error and is retried by a later sweep. Only depth past 64 levels, or the scratch root's own listing past the entry limit, reports partial accounting. When the scratch root's own listing is over the limit, the sweep reclaims nothing. When one entry's walk is over the depth limit, that entry alone is kept, with the reason `over the maintenance inventory limit` in its report row and its name in the sweep's error, and the rest of the plan still runs: fully measured tasks beside it are reclaimed by the usual rules. A task whose execution lease is live or unavailable is kept for that reason before its walk is judged, so it is neither named nor makes the sweep partial. The kept entry's bytes are what the walk counted before it stopped, a lower bound, so the budget rules can only reclaim less, never more. Any other failed inspection still withholds reclamation from the whole sweep. A sweep with a contained over-limit entry is partial, so the periodic sweep records a failed attempt rather than a stamp. A wider legacy inventory returns an error rather than presenting a prefix as complete. These are reversible local safety defaults, not latency objectives.
 
-For an inventory wider than the default, explicitly raise the maintenance-only budget, for example `ASSAY_MAINTENANCE_ENTRY_LIMIT=524288 cellctl cache house clean` (or the existing scratch sweep command). Values must be 1 through 1,048,576. Invalid values and exhausted budgets fail closed; there is no unlimited fallback. This setting does not change retained-data protections, per-role authority or launch pressure policy. Trees beyond the finite ceiling or depth limit remain incomplete and require owner-assisted layout correction.
+For a scratch root listing wider than the default, explicitly raise the maintenance-only budget, for example `ASSAY_MAINTENANCE_ENTRY_LIMIT=524288 cellctl cache house clean` (or the existing scratch sweep command). Values must be 1 through 1,048,576. Invalid values and exhausted budgets fail closed; there is no unlimited fallback. This setting does not change retained-data protections, per-role authority or launch pressure policy. A scratch root listing beyond the finite ceiling, or a tree beyond the depth limit, remains incomplete and requires owner-assisted layout correction.
 
 The default entry budget covers the representative fixture with 150,000 compiler-cache entries and 75,000 module-cache entries. The override remains finite; it is a maintenance resource budget, not a launch-policy or retention override.
 
@@ -227,8 +241,21 @@ the scratch root (rotated once past 1 MiB), and a cadenced supervisor also
 prints it on stderr. A failed sweep is logged and never stops the desk.
 
 The periodic sweep applies the same policy as `sweep --apply`. That policy has
-one narrow rule for tasks whose session died without acknowledging them. Such a task loses
-only its compiler and test-binary output, and only when all of these hold:
+two narrow rules for tasks that were never acknowledged.
+
+A task that finished without a receipt, whether it failed (non-zero exit) or exited
+zero, loses its whole work dir once its handoff grace has passed. The grace is 24 hours from the
+task's last recorded activity, whatever the retention max-age, so an operator still has
+a day to complete or inspect the handoff. The same lease, process-group and Git
+checks as below apply. A work dir that is itself a Git repository, with a `.git`
+entry or a bare repository layout at its root, is kept whole, and the report says
+`work dir is a Git repository; retained for its owner`; this is checked again right
+before removal. Otherwise Git data is judged entry by entry: an entry holding Git
+data stays, and the other entries go. The record,
+diagnostics and output tail stay. The report row's action is `reclaim-work`.
+
+A task whose session died while it was still running loses only its compiler and
+test-binary output, and only when all of these hold:
 
 - it has no receipt and is not resumable;
 - its execution lease is free, so its owner is gone;

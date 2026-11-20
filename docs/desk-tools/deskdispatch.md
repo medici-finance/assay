@@ -36,6 +36,19 @@ equal what it binds: a mismatch refuses (exit 5), an unreadable record is exit 6
 nothing is written. The model is still the coordinator's explicit selection, never taken
 from the record. With no attestation named the path is unchanged.
 
+STAMP BEFORE READY (#6855). An open change is required, so an authoring stamp that has not
+landed by merge never can. Two read-side checks keep the hand-off above from being the only
+route. `deskboard prs` lists, per open change, `authoringStamp` and `stampOnly` when the
+description names a Worker-Attestation: record and the labels lack a complete authored-model /
+authored-tier pair. `stampOnly` is this verb's exact --stamp-only line, with --attestation,
+--model, --tier and --kit taken from the validated record. A record that does not validate is
+listed as refused or could-not-check, with no line. The coordinator runs that listing on every
+sweep. Both ready-flip verbs (deskflip and deskpost ready) then hold the change in draft under
+the condition authoring-stamp. A change naming a record must carry the stamp-authority
+authored-* pair equal to the record's Model and Tier. An unstamped, indeterminate or mismatched
+pair refuses (exit 5) and prints the same line; an unreadable record is exit 6. A change with
+no line is unaffected. The shared implementation is deskkit.AuthoringStampGate.
+
 The shared model vocabulary is open: gpt-6-astra and gpt-6.1-sol round-trip unchanged.
 gpt-6-1-sol is also a valid opaque slug, not an alias for gpt-6.1-sol. Use the identifier
 actually selected by the harness, never a guessed provider/model mapping.

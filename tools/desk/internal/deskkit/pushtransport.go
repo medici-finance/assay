@@ -390,14 +390,13 @@ func setPushURLCommand(cfg map[string][]string, dir, remote, target, replace str
 	if replace != "" && containsString(pushurls, replace) {
 		// A value carrying userinfo is quoted masked: the pattern then matches nothing and git
 		// changes nothing, which is safer than printing the credential into a command line.
-		return cmd + " " + shellSingleQuote("^"+regexp.QuoteMeta(RedactRemoteURL(replace))+"$")
+		return cmd + " " + ShellSingleQuote("^"+regexp.QuoteMeta(RedactRemoteURL(replace))+"$")
 	}
 	return fmt.Sprintf("git -C %s config --unset-all remote.%s.pushurl && %s", orDot(dir), remote, cmd)
 }
 
-// shellSingleQuote quotes s for a POSIX shell, so a pasted remedy line passes a regex
-// pattern through verbatim.
-func shellSingleQuote(s string) string {
+// ShellSingleQuote renders one literal argument for a command printed for a POSIX shell.
+func ShellSingleQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
