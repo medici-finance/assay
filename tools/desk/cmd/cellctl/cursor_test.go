@@ -145,12 +145,41 @@ func TestCursorBootNamesStrongModel(t *testing.T) {
 		"CURSOR_MODEL_default": "auto", "TIER_MODEL_TOP_CURSOR": "strong-model-x",
 	})}
 	for _, role := range knownRoles {
+		if role == "verify-desk" {
+			continue // the routine verify drain never launches a strong model: TestCursorVerifyBootHolds
+		}
 		got := cell.cursorLaunchArgv(role, "auto", wt)
 		prompt := got[len(got)-1]
 		for _, want := range []string{`"strong-model-x"`, "not by itself a reason to hold", "unconfirmed, weaker, or an unconfirmed inherit"} {
 			if !strings.Contains(prompt, want) {
 				t.Fatalf("%s boot prompt lacks %q: %q", role, want, prompt)
 			}
+		}
+	}
+}
+
+// regression: #6646
+func TestCursorVerifyBootHolds(t *testing.T) {
+	wt := t.TempDir()
+	for _, env := range []map[string]string{
+		{"CURSOR_MODEL_default": "auto", "TIER_MODEL_TOP_CURSOR": "strong-model-x"},
+		{"CURSOR_MODEL_default": "auto"},
+		{"TIER_MODEL_TOP_CURSOR": "Auto"},
+	} {
+		got := (&Cell{Env: envWith(env)}).cursorLaunchArgv("verify-desk", "auto", wt)
+		p := got[len(got)-1]
+		for _, bad := range []string{"set the subagent to the configured", "and launch it", "not by itself a reason to hold"} {
+			if strings.Contains(p, bad) {
+				t.Fatalf("verify-desk boot prompt carries the general launch text %q (%v): %q", bad, env, p)
+			}
+		}
+		for _, want := range []string{"never launches a stronger configured model", "holds an exec-tier: strong brief", "gate: human"} {
+			if !strings.Contains(p, want) {
+				t.Fatalf("verify-desk boot prompt lacks %q (%v): %q", want, env, p)
+			}
+		}
+		if env["TIER_MODEL_TOP_CURSOR"] == "strong-model-x" && !strings.Contains(p, `"strong-model-x"`) {
+			t.Fatalf("verify-desk boot prompt does not name the configured id for the gate: human re-verify: %q", p)
 		}
 	}
 }
