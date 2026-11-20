@@ -181,7 +181,11 @@ func buildEnvKeys() []envKey {
 	for _, harness := range []string{"claude", "codex", "cursor"} {
 		for _, level := range []string{"TOP", "MID", "FAST"} {
 			k := "TIER_MODEL_" + level + "_" + strings.ToUpper(harness)
-			keys = append(keys, envKey{key: k, class: envMachine, group: envGroupModels, def: tierModelDefaults[k], desc: tier})
+			desc := tier
+			if k == "TIER_MODEL_TOP_CURSOR" {
+				desc = tier + " On cursor it is also the strong-tier model id the standing desk boot prompt names for a strong subagent; unset or auto names none."
+			}
+			keys = append(keys, envKey{key: k, class: envMachine, group: envGroupModels, def: tierModelDefaults[k], desc: desc})
 		}
 	}
 	keys = append(keys,

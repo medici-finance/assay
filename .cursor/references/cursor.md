@@ -208,9 +208,28 @@ launches a stronger configured model (see its row).
   the verifier's `deskdispatch --check-verifier` receipt, and the review dispatch's
   model stamp that the ready-flip floor reads. Never self-attest or replace an
   unresolved model identity with the requested one.
+- **Cell default is not the live session model.** `CURSOR_MODEL_default=auto` (or any
+  value) is the cell's launch pin for the windows it starts; it says nothing about
+  whether this desk may launch a configured strong subagent. A desk reading `auto` there
+  does not conclude the cell cannot run strong work: it resolves `strong` to the
+  adopter's configured strong-tier model id (the cell's `TIER_MODEL_TOP_CURSOR`, which
+  `cellctl desk` names in the boot prompt), sets the subagent to that id and launches
+  per the IDE or headless bullet above. The routine verify drain is the exception: it
+  runs at its local session model and never launches the configured id (see its row). A session whose live model the desk has
+  confirmed is already strong (the session's own model line or the CLI `system` / `init`
+  `model` field names a strong-tier model) is not held for an `exec-tier: strong` item
+  solely because the cell default is `auto`. A parent that is strong still does not set
+  a subagent whose definition pins another model.
 - **Hold:** a missing pin, Auto, an unconfirmed inherit, a weaker fallback, an
-  unresolvable identity or a pickup tier failure holds the item, for every loop. File
-  it under that loop's own escalation procedure. A session below the floor does
+  unresolvable identity or a pickup tier failure holds the item, for every loop. The
+  hold is judged on the model that will run the work. A launched subagent is held
+  when its served model (the task card, or the CLI `system` / `init` `model` field) is
+  unconfirmed, a weaker fallback or an unconfirmed inherit, whatever strong id the cell
+  configures. When the session itself runs the work, it is held when its live model is
+  unconfirmed, weaker or an unconfirmed inherit and there is no configured strong id
+  to launch instead; the routine verify drain never launches one, so its session is
+  held on its own model whatever id is configured (see its row). The hold does not apply merely because the cell default reads
+  `auto`. File it under that loop's own escalation procedure. A session below the floor does
   only the work its skill allows below it: intake queues the judgment work instead of
   doing it inline, the review loop escalates a ready-flip instead of issuing it, and
   the verify drain holds an `exec-tier: strong` brief its local session model cannot
