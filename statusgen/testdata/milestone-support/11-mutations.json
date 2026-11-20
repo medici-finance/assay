@@ -1,0 +1,177 @@
+{
+  "schema": "milestone-mutations-v1",
+  "runner": "python3 statusgen/testdata/milestone-support/11-mutate.py",
+  "cases": [
+    {
+      "name": "unknown-coverage-lists-no-unknown",
+      "target": "statusgen/streamview/milestones.go",
+      "old": "if len(m.Unknowns) == 0 {",
+      "new": "if false {",
+      "module": "statusgen",
+      "package": "./streamview",
+      "test": "TestMilestoneStreamView"
+    },
+    {
+      "name": "supported-without-acceptance",
+      "target": "statusgen/streamview/milestones.go",
+      "old": "if it.Acceptance.State != AcceptanceAccepted {",
+      "new": "if false {",
+      "module": "statusgen",
+      "package": "./streamview",
+      "test": "TestMilestoneStreamView"
+    },
+    {
+      "name": "outstanding-with-work-remaining",
+      "target": "statusgen/streamview/milestones.go",
+      "old": "case AcceptanceOutstanding:\n\t\tif it.Work.State != WorkKnown || it.Work.Remaining != 0 {",
+      "new": "case AcceptanceOutstanding:\n\t\tif false {",
+      "module": "statusgen",
+      "package": "./streamview",
+      "test": "TestMilestoneStreamView"
+    },
+    {
+      "name": "unknown-work-carries-count",
+      "target": "statusgen/streamview/milestones.go",
+      "old": "if it.Work.Remaining != 0 || len(it.Work.Pending) > 0 {",
+      "new": "if false {",
+      "module": "statusgen",
+      "package": "./streamview",
+      "test": "TestMilestoneStreamView"
+    },
+    {
+      "name": "acceptance-inferred-from-zero-work",
+      "target": "statusgen/streammilestones.go",
+      "old": "case r.AcceptedForSubject && r.WorkComplete:",
+      "new": "case r.WorkComplete:",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneStreamProjection"
+    },
+    {
+      "name": "unknown-coverage-reported-known",
+      "target": "statusgen/streammilestones.go",
+      "old": "m.Coverage, m.Unknowns = streamview.CoverageUnknown, unknowns",
+      "new": "m.Coverage = streamview.CoverageKnown",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneStreamProjection"
+    },
+    {
+      "name": "non-opted-in-stream-gets-milestones",
+      "target": "statusgen/streammilestones.go",
+      "old": "if plan == nil || !plan.OptedIn {",
+      "new": "if plan == nil {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneStreamProjection"
+    },
+    {
+      "name": "v2-offered-to-every-stream",
+      "target": "statusgen/streammilestones.go",
+      "old": "if optedIn {",
+      "new": "if true {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneStreamProjection"
+    },
+    {
+      "name": "membership-not-generated",
+      "target": "statusgen/streammilestones.go",
+      "old": "byBrief[c.LogicalKey] = append(byBrief[c.LogicalKey], it.Ref)",
+      "new": "_ = c",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneStreamProjection"
+    },
+    {
+      "name": "region-written-for-non-opted-in-stream",
+      "target": "statusgen/readmemilestones.go",
+      "old": "if s.Milestones == nil || !s.Milestones.OptedIn {\n\t\treturn false, fmt.Errorf(\"%s: milestone region present",
+      "new": "if false {\n\t\treturn false, fmt.Errorf(\"%s: milestone region present",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneReadmeRegion"
+    },
+    {
+      "name": "hand-edit-not-detected",
+      "target": "statusgen/readmemilestones.go",
+      "old": "case strings.TrimSpace(region) != strings.TrimSpace(renderMilestoneRegion(s)):",
+      "new": "case false:",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneReadmeRegion"
+    },
+    {
+      "name": "cell-text-not-escaped",
+      "target": "statusgen/readmemilestones.go",
+      "old": "return escapeTableCell(s)\n}\n\nfunc mdCode",
+      "new": "return s\n}\n\nfunc mdCode",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneReadmeRegion"
+    },
+    {
+      "name": "renderer-infers-done-from-zero-work",
+      "target": "tools/desk/cmd/deskboard/milestones.go",
+      "old": "return fmt.Sprintf(\"%d remaining\", w.Remaining)",
+      "new": "if w.Remaining == 0 {\n\t\treturn \"done\"\n\t}\n\treturn fmt.Sprintf(\"%d remaining\", w.Remaining)",
+      "module": "tools/desk",
+      "package": "./cmd/deskboard",
+      "test": "TestDeskboardMilestones"
+    },
+    {
+      "name": "alias-does-not-collapse",
+      "target": "tools/desk/cmd/deskboard/milestones.go",
+      "old": "canonical[a] = p.item.Ref",
+      "new": "canonical[a] = a",
+      "module": "tools/desk",
+      "package": "./cmd/deskboard",
+      "test": "TestDeskboardMilestones"
+    },
+    {
+      "name": "alias-row-supplies-state",
+      "target": "tools/desk/cmd/deskboard/milestones.go",
+      "old": "return resolve(ordered[i].item.Ref) == ordered[i].item.Ref && resolve(ordered[j].item.Ref) != ordered[j].item.Ref",
+      "new": "return false",
+      "module": "tools/desk",
+      "package": "./cmd/deskboard",
+      "test": "TestDeskboardMilestones"
+    },
+    {
+      "name": "private-locator-shown",
+      "target": "tools/desk/cmd/deskboard/milestones.go",
+      "old": "\t\tif deskkit.IsAllowedRepo(e.Repo) {\n\t\t\ts := e.Repo",
+      "new": "\t\tif true {\n\t\t\ts := e.Repo",
+      "module": "tools/desk",
+      "package": "./cmd/deskboard",
+      "test": "TestDeskboardMilestones"
+    },
+    {
+      "name": "inaccessible-view-rendered",
+      "target": "tools/desk/cmd/deskboard/milestones.go",
+      "old": "if !deskkit.IsAllowedRepo(v.Identity.Key.Repo) {",
+      "new": "if false {",
+      "module": "tools/desk",
+      "package": "./cmd/deskboard",
+      "test": "TestDeskboardMilestones"
+    },
+    {
+      "name": "unsupported-contract-skipped",
+      "target": "tools/desk/cmd/deskboard/milestones.go",
+      "old": "return nil, deskkit.Refused(\"refused: milestones: \" + inert(f, 80) + \": \" + flatMilestoneErr(err.Error()))",
+      "new": "continue",
+      "module": "tools/desk",
+      "package": "./cmd/deskboard",
+      "test": "TestDeskboardMilestones"
+    },
+    {
+      "name": "v1-view-read-as-assessed",
+      "target": "tools/desk/cmd/deskboard/milestones.go",
+      "old": "row.Availability = string(streamview.NotAssessed)",
+      "new": "row.Availability = string(streamview.Available)",
+      "module": "tools/desk",
+      "package": "./cmd/deskboard",
+      "test": "TestDeskboardMilestones"
+    }
+  ]
+}
