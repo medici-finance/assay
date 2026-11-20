@@ -200,6 +200,10 @@ type witness struct {
 	// naming the recorded read-set file, or `(reads could-not-check: <why>)`.
 	// "" (a row that did not execute) adds nothing.
 	Reads string
+	// Rule51 is the rule-51 lane's stamp (rule51.go): the tokens `verifyrun
+	// --rule51` writes into the Result cell of an in-class row whose offline
+	// run failed. "" for every other row, which then renders byte-identical.
+	Rule51 string
 	// Note is console-only commentary (why could-not-run, which Expect
 	// constraints were undecidable). It is deliberately NOT written into the
 	// row: the row is a record, and free text in a record is where a caption
@@ -224,6 +228,9 @@ func (w witness) row() string {
 	}
 	if w.Sandbox != "" {
 		result += " sandbox=" + w.Sandbox
+	}
+	if w.Rule51 != "" {
+		result += " " + w.Rule51
 	}
 	if w.State == stateAuthorAdded {
 		result += "; no acceptance credit"
@@ -656,6 +663,8 @@ type shellPlan struct {
 	// rowRoster, when set (a container run under a roster receipt), is the
 	// verified roster copy each row's fresh HOME holds (rostercopy.go).
 	rowRoster []byte
+	// rule51 turns on the rule-51 lane (verifyrun --rule51, rule51.go).
+	rule51 bool
 }
 
 // admittedScrubbedNote is the could-not-run note for an admitted row that
@@ -1826,7 +1835,7 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 				note = ran + "; " + note
 			}
 		}
-		out = append(out, witness{
+		w := witness{
 			ID:           r.ID,
 			Command:      r.Command,
 			State:        state,
@@ -1839,7 +1848,22 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 			Sandbox:      rowSandbox,
 			Note:         note,
 			Reads:        rowReads(tree, res),
-		})
+		}
+		// The rule-51 lane (rule51.go): an in-class row the offline run
+		// recorded red also gets the forge form's stamp. The row itself, its
+		// command and its offline result are unchanged.
+		if plan.rule51 && state == stateFail && !captureFailed && plan.interruption() == "" && rule51Class(r.Command, r.Expect) {
+			forgePlan := rowPlan
+			forgePlan.readSet = nil
+			var n51 string
+			w.Rule51, n51 = runRule51(forgePlan, sandbox, root, w, timeout)
+			if w.Note == "" {
+				w.Note = n51
+			} else {
+				w.Note += "; " + n51
+			}
+		}
+		out = append(out, w)
 		if captureFailed {
 			break
 		}
@@ -1994,7 +2018,17 @@ func checkWitnesses(verifySection, evidenceSection string) []checkFinding {
 				}
 				out = append(out, checkFinding{r.ID, statePass, "witness matches the row and passed"})
 			case stateFail:
-				out = append(out, checkFinding{r.ID, stateFail, "the witness records a failure"})
+				// A rule-51 lane witness (rule51.go) is credited only when its
+				// stamp holds; an unstamped failure is unchanged.
+				stamped, credited, why := rule51Credit(r, latest)
+				switch {
+				case credited:
+					out = append(out, checkFinding{r.ID, statePass, why})
+				case stamped:
+					out = append(out, checkFinding{r.ID, stateFail, "the witness records a failure; its rule-51 stamp is not credited: " + why})
+				default:
+					out = append(out, checkFinding{r.ID, stateFail, "the witness records a failure"})
+				}
 			default:
 				out = append(out, checkFinding{r.ID, stateCouldNotRun,
 					"the witness records could-not-run — the row produced no verdict"})
@@ -2259,6 +2293,8 @@ Flags:
   --witness <file>  container-netns: a NEW file outside the home the witness
                     (table, Tree-Digest, Container-Image, attestation) is written
                     to. --close-bracket and --bracket-digest: that file.
+  --kubernetes-observation <sha256:digest>
+                    host close only: bind the observed Kubernetes execution to the witness.
   --close-bracket   host step after a container run: re-run the check, recompute
                     the home's tree digest, and append one Admission-Bracket line
                     to --witness only when the check re-admits the run the
@@ -2342,6 +2378,21 @@ Flags:
                     unpinned/placeholder digest. Bind-mounts the checkout at /work,
                     maps --user to the host uid:gid (POSIX) so Evidence lands
                     host-owned, and passes ONLY --env-file through for credentials.
+  --rule51          rule-51 lane (docs/brief-rules.md rule 51): for a row whose command
+                    is exactly a repo-wide ` + "`statusgen [--root .] --lint`" + ` (or
+                    ` + "`cd statusgen && go run . --root .. --lint`" + `; no --diff-base,
+                    no other flag or shell text) and whose Expect is a clean exit,
+                    when the offline run records it fail, an admitted host run also
+                    runs this binary as ` + "`--root . --lint --acceptance-forge`" + ` under
+                    the run's verifier read credential. The row's witness keeps its
+                    authored command and offline result and gains a stamp in its
+                    Result cell: ` + "`rule51=<state> forge-rc=<n> forge-out=sha256:<12>`" + `
+                    ` + "`pin=<version> cred=verifier-run-read cred-digest=sha256:<12>`" + `
+                    ` + "`stamp=sha256:<64>`" + `. --check and the closure gate credit the row
+                    only when that stamp binds to the witness, the forge run exited 0
+                    with LINT: PASS, the pin is a release tag and the tree is clean.
+                    A hand citation is never credited. Not with --check,
+                    --in-container, --sandbox container-netns or the bracket steps
   --fail-first      fail-first audit (verify-integrity/03): BEFORE the head run, check
                     the base out into a temporary worktree and run each
                     RISK-BEARING row there (brief-wide risk yes, or a
@@ -2446,11 +2497,13 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	moduleCacheDir := fs.String("module-cache", "", "with --open-bracket: download the home's Go module roots into this new directory outside the home and record its digest in the receipt")
 	rosterCopy := fs.String("roster-copy", "", "with --open-bracket: write the host roster's statusgen keys to this new file outside the home for the container, and record its digest in the receipt")
 	historyPack := fs.String("history-pack", "", "container-netns --fail-first: read-only admitted-source Git object pack for isolated baseline checkouts")
+	kubeObservation := fs.String("kubernetes-observation", "", "host close only: sha256 digest of observed Kubernetes execution")
 	closeBracket := fs.Bool("close-bracket", false, "host close step of a container run: re-check admission and the tree digest, then append Admission-Bracket to --witness")
 	witnessFile := fs.String("witness", "", "container-netns: the new file outside the home the witness is written to; with --close-bracket or --bracket-digest: that file")
 	creditMode := fs.Bool("credit", false, "with --bracket-digest and --source: judge each bracket's credit (provenance, record, binding)")
 	creditSource := fs.String("source", "", "with --credit: the 40-hex source commit under verification")
 	bracketDigestMode := fs.Bool("bracket-digest", false, "read-only: check every Admission-Bracket line of --witness <file> against the digest of its span, one line per bracket")
+	rule51Mode := fs.Bool("rule51", false, "rule-51 lane: an admitted host run also runs `--lint --acceptance-forge` for each repo-wide lint row the offline run recorded red, and stamps that row's witness with the result")
 	rowsFlag := fs.String("rows", "", "comma-separated Verify row IDs (the # column) to run and record; every other row is reported not selected")
 	// --help is handled by ContinueOnError returning flag.ErrHelp; print the
 	// usage and exit 0, because asking for help is not an error.
@@ -2462,6 +2515,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		fmt.Fprint(stderr, verifyrunUsage)
 		return verifyrunExitUsageError
 	}
+	if *rule51Mode && (*checkMode || *inContainer || *sandbox == sandboxContainerNetns || *openBracket || *closeBracket || *bracketDigestMode) {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --rule51 runs rows in the host lane only: it does not combine with --check, --in-container, --sandbox "+sandboxContainerNetns+" or the bracket steps; no row ran")
+		return verifyrunExitUsageError
+	}
 	if *baseLog != "" && (!*failFirstMode || *checkMode || *inContainer || *openBracket || *closeBracket || *bracketDigestMode) {
 		fmt.Fprintln(stderr, "statusgen verifyrun: --base-log requires --fail-first row execution; no row ran")
 		return verifyrunExitUsageError
@@ -2470,12 +2527,19 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// --rows (desktools-v2/74) narrows which Verify rows a run executes and
 	// records; it never narrows an audit. It is checked before any mode runs, so
 	// a refused selector runs no row and writes nothing, --dry-run included.
-	rowsSet := false
+	rowsSet, observationSet := false, false
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "rows" {
 			rowsSet = true
 		}
+		if f.Name == "kubernetes-observation" {
+			observationSet = true
+		}
 	})
+	if observationSet && (!*closeBracket || *kubeObservation == "") {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --kubernetes-observation requires --close-bracket and a sha256 digest")
+		return verifyrunExitUsageError
+	}
 	var selectedIDs []string
 	var selectedSet map[string]bool
 	if rowsSet {
@@ -2620,7 +2684,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		if *openBracket {
 			return runOpenAcceptance(*rootDir, path, *openOut, *moduleCacheDir, *historyOut, *transitionRecord, *rosterCopy, stdout, stderr)
 		}
-		return runCloseBracket(*rootDir, path, *admissionReceipt, *witnessFile, stdout, stderr, *transitionRecord)
+		return runCloseBracket(*rootDir, path, *admissionReceipt, *witnessFile, *transitionRecord, *kubeObservation, stdout, stderr)
 	}
 	if *sandbox == sandboxContainerNetns && *transitionRecord != "" {
 		if *rootDir == "" {
@@ -3045,6 +3109,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	if !*dryRun && !netnsContainer {
 		plan.readSet = newReadSetTarget(root, path, plan.rowEnv())
 	}
+	// The rule-51 lane stamps the head run only, never a fail-first base run.
+	plan.rule51 = *rule51Mode
 	ws := runWitnessesSandboxed(plan, *sandbox, root, rows, runner, runnerSource, executionTree, nowFunc().Format("2006-01-02"), *timeout, *ci)
 	if ff != nil {
 		for i := range ws {

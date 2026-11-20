@@ -5353,6 +5353,18 @@ path, branch and record digest and exits 0. It makes no commits-API write and sp
 budget. Before #4554 this route parsed `--dry-run` and ignored it, so a dry run committed the
 record for real.
 
+**`--remove-superseded <record> --superseded-by <newer>`** (#4823). The sanctioned way a
+verify-outcome record leaves the tree. No gate enforces that: a reviewed pull request that
+deletes a record still merges, so what binds a desk is the verify-desk rule (never remove a
+record with a local commit) and review. Both paths must be outcome records under
+`docs/streams/verify-outcomes/` for the same brief slot, each path must be the one its own
+bytes derive, and at the pinned branch tip the newer record must be the one the latest-per-brief
+reading selects. Any other path, a record that is not superseded, or a newer record for another
+brief is refused (exit 5) before any write. The removal runs the same admission, identity gate,
+public-repo gate and attestation as `--outcome-record`, then lands as one conditional forge
+deletion pinned to both the record's blob and the branch head, so the commit is forge-signed
+and never a local commit. `--dry-run` prints the plan and writes nothing.
+
 **Flags a route does not read are refused.** Each landing shape declares the flags it honours.
 A flag set on the command line that the selected shape does not read (for example
 `--append-only`, `--allow-shrink` or `--row` with `--outcome-record`) is refused (exit 5) before

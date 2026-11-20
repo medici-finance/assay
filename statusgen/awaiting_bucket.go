@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/statusgen/briefdoc"
+	"github.com/medici-finance/assay/statusgen/evaluation"
 	"github.com/medici-finance/assay/statusgen/verifyqueue"
 )
 
@@ -278,7 +279,7 @@ func bucketAwaiting(b awaitBrief, rows awaitRows, ev awaitEvidence, oc awaitOutc
 		return bucketCouldNotCheck, ownerVerifyDesk, couldNotCheckLabel +
 			"a verify-outcome record for this brief is dated beyond the clock-skew tolerance — it never wins, so the latest state is unknown"
 	}
-	if oc.Latest != nil && classifyOutcome(oc.Latest.Outcome) == outcomeUnrecognised {
+	if oc.Latest != nil && evaluation.ParseVerificationOutcome(oc.Latest.Outcome) == evaluation.OutcomeUnknown {
 		return bucketCouldNotCheck, ownerVerifyDesk, couldNotCheckLabel +
 			fmt.Sprintf("the latest verify-outcome record has an unrecognised outcome %q", oc.Latest.Outcome)
 	}
@@ -415,10 +416,10 @@ func recordedBlocker(latest *awaitOutcome, verdict, evidence string) (blocker *a
 	if latest == nil {
 		return nil, ""
 	}
-	switch classifyOutcome(latest.Outcome) {
-	case outcomeHold:
+	switch evaluation.ParseVerificationOutcome(latest.Outcome) {
+	case evaluation.OutcomeBlocked, evaluation.OutcomeNeedsContext:
 		return latest, ""
-	case outcomeFail:
+	case evaluation.OutcomeFailed:
 		if verdict != verdictPass {
 			return latest, ""
 		}
@@ -490,7 +491,7 @@ func heldSignOffAct(blocker *awaitOutcome) string {
 		kind = "no recognised kind"
 	}
 	outcome := "fail"
-	if classifyOutcome(blocker.Outcome) == outcomeHold {
+	if evaluation.ParseVerificationOutcome(blocker.Outcome).Held() {
 		outcome = "hold"
 	}
 	ref := blockerRefText(blocker.BlockerRef)
@@ -522,33 +523,6 @@ func blockerRefText(ref string) string {
 
 // noBlockerRef is blockerRefText's text for a record with no blocker ref.
 const noBlockerRef = "no blocker ref recorded"
-
-// outcomeClass is the meaning of a verify-outcome record's `outcome` value.
-type outcomeClass int
-
-const (
-	outcomeUnrecognised outcomeClass = iota
-	outcomePass
-	outcomeFail
-	outcomeHold
-)
-
-// classifyOutcome reads an outcome value. This mirrors the vocabulary of
-// deskkit's WakeReceipt.IsFailedOrBlocked (tools/desk/internal/deskkit/verifywake.go):
-// statusgen is a separate Go module and keeps its own copy of the pure record
-// rules, byte-identical by hand (see verifyoutcomes.go). A value neither list
-// names is unrecognised, which the bucketing treats as could-not-check.
-func classifyOutcome(outcome string) outcomeClass {
-	switch strings.ToLower(strings.TrimSpace(outcome)) {
-	case "verified":
-		return outcomePass
-	case "verify-fail", "fail":
-		return outcomeFail
-	case "blocked", "needs_context", "needs-context":
-		return outcomeHold
-	}
-	return outcomeUnrecognised
-}
 
 // blockerIssueRef returns the blocker_ref verbatim (trimmed) when it names an
 // issue, else "".

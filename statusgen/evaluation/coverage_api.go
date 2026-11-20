@@ -110,6 +110,14 @@ type Witness struct {
 	Result string
 	Output string
 	Date   string
+	// Rule51Credit is the caller's rule-51 verdict on this witness (#4823):
+	// non-empty, it is the reason the caller's closure gate credits this
+	// recorded failure (a stamped, forge-clean repo-wide lint row), and the
+	// claim is then judged as a pass, under every check a pass gets. The
+	// statusgen adapter fills it from the same function the closure gate
+	// runs, so the two readers agree; any other caller leaves it empty, and
+	// a failure stays a failure.
+	Rule51Credit string
 	// ReadSet is the caller's observation of the read-set file the Runner
 	// cell's `(reads sha256:…)` token names, and of the commit that
 	// introduced this row (readset.go); nil when none was observed.

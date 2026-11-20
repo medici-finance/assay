@@ -75,8 +75,10 @@ func transitionLinks(run string) ([]transitionLink, string) {
 		if !isObjectID(a) {
 			return fail("a separate immutable amendment is required")
 		}
+		// The approval stays a GitHub comment: the transition requires a
+		// github.com origin, so a GitLab note is no approval here (#7252).
 		parsed, ok := parseRulingURL(u)
-		if !ok {
+		if !ok || parsed.GitLab {
 			return fail("a valid approval URL is required")
 		}
 		key := fmt.Sprintf("%s/%d", strings.ToLower(parsed.Repo), parsed.CommentID)

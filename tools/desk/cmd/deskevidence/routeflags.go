@@ -24,6 +24,8 @@ import (
 const (
 	routeEvidenceFile  = "--evidence-file"
 	routeOutcomeRecord = "--outcome-record"
+	// routeRemoveSuperseded removes one superseded outcome record (removesuperseded.go).
+	routeRemoveSuperseded = "--remove-superseded"
 )
 
 // routeHonours lists, per landing route, every flag name the route reads. The outbound
@@ -35,6 +37,10 @@ var routeHonours = map[string][]string{
 	},
 	routeOutcomeRecord: {
 		"outcome-record", "outcome-only", "root", "dry-run",
+		deskkit.ScanOverrideFlag,
+	},
+	routeRemoveSuperseded: {
+		"remove-superseded", "superseded-by", "root", "dry-run",
 		deskkit.ScanOverrideFlag,
 	},
 }
