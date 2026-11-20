@@ -44,14 +44,18 @@ track: platform
 	// decision authority are separate gates; this makes no network call or write.
 	at := time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC)
 	brief := filepath.Join(dir, name)
-	// The record as landed closes on a later VERIFY: FAIL entry: the latest
-	// run is not a PASS, so the one-step close must refuse rather than stamp
-	// the earlier PASS run (#5229).
+	// The record as landed closes on later non-PASS entries (a 2026-11-01
+	// VERIFY: FAIL, then a 2026-11-20 VERIFY: BLOCKED), so the one-step close
+	// must refuse rather than stamp the earlier PASS run (#5229). Which check
+	// refuses first depends on the latest entry: the verdict check names the
+	// FAIL, and the held check fires on the BLOCKED entry's could-not-check
+	// text. Either refusal is correct; only a nil error is a regression.
 	if err := os.WriteFile(brief, raw, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, _, err := closeVerifyFlipPlan(root, "desk-containers/15", at); err == nil || !strings.Contains(err.Error(), "VERIFY: FAIL, not PASS") {
-		t.Fatalf("completion reader must refuse a record whose latest verdict is a FAIL; got %v", err)
+	if _, _, _, err := closeVerifyFlipPlan(root, "desk-containers/15", at); err == nil ||
+		!(strings.Contains(err.Error(), "VERIFY: FAIL, not PASS") || strings.Contains(err.Error(), "still says HELD/could-not-check")) {
+		t.Fatalf("completion reader must refuse a record whose latest verdict is not a PASS; got %v", err)
 	}
 	// The retained verifier record itself — every entry up to the later FAIL
 	// entry — must stay consumable.
