@@ -1084,7 +1084,8 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 		}
 		// Claim gate: a dispatched home whose dispatch claim is held (or unreadable) is a
 		// live run's, whatever its content would prove (claimfree.go). A tree recording no
-		// run key passes untouched, and its listing is never read.
+		// run key passes untouched, and its listing is never read; a broken sibling admin
+		// entry does not change that (the run key is then read from the tree's own entry).
 		if c := sc.claimFor(guard, dir, rt); c.holds() {
 			res.skips = append(res.skips, skipEntry{rt, "held: " + c.why})
 			continue

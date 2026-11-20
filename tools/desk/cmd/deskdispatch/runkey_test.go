@@ -138,11 +138,16 @@ func TestDispatchRecordsClaimNamespaceBeforeKey(t *testing.T) {
 	if rc := run([]string{key, "--root", root, "--prompt-file", promptFile}); rc != deskkit.ExitOK {
 		t.Fatalf("dispatch rc = %d, want 0", rc)
 	}
-	repoIdx, keyIdx := -1, -1
+	repoIdx, storeIdx, keyIdx := -1, -1, -1
 	for i, c := range s.calls {
 		j := strings.Join(c, " ")
 		if strings.Contains(j, "git config --worktree assay.claimRepo medici-finance/assay") {
 			repoIdx = i
+		}
+		// The store this test's dispatch resolves is forge-ref; any other value recorded here
+		// would make deskwt hold every new home as could-not-check (F9).
+		if strings.HasSuffix(j, "git config --worktree assay.claimStore "+deskkit.ClaimStoreForgeRef) {
+			storeIdx = i
 		}
 		if strings.Contains(j, "git config --worktree assay.runKey "+key) {
 			keyIdx = i
@@ -151,8 +156,12 @@ func TestDispatchRecordsClaimNamespaceBeforeKey(t *testing.T) {
 	if repoIdx < 0 {
 		t.Fatalf("the claim repository was never recorded (assay.claimRepo); calls: %v", s.calls)
 	}
-	if keyIdx < 0 || repoIdx > keyIdx {
-		t.Errorf("assay.claimRepo (call %d) must be written before assay.runKey (call %d)", repoIdx, keyIdx)
+	if storeIdx < 0 {
+		t.Fatalf("the claim store was never recorded as %s (assay.claimStore); calls: %v", deskkit.ClaimStoreForgeRef, s.calls)
+	}
+	if keyIdx < 0 || repoIdx > keyIdx || storeIdx > keyIdx {
+		t.Errorf("assay.claimRepo (call %d) and assay.claimStore (call %d) must be written before assay.runKey (call %d)",
+			repoIdx, storeIdx, keyIdx)
 	}
 }
 

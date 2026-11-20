@@ -163,7 +163,8 @@ func TestRunKeyUnreadableHolds(t *testing.T) {
 	assertExists(t, target)
 }
 
-// A sweep whose admin registry cannot be read holds every home as an unknown claim.
+// A sweep whose admin registry cannot be read holds a home whose OWN admin entry cannot be
+// confirmed either, as an unknown claim (F8 keeps this hold; only a confirmed own entry lifts it).
 // regression: #6863
 func TestSweepClaimAdminRegistryUnreadable(t *testing.T) {
 	work := newRepo(t)
@@ -173,11 +174,13 @@ func TestSweepClaimAdminRegistryUnreadable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Break the target's own back-pointer: its entry no longer confirms it.
+	writeFile(t, filepath.Join(work, ".git", "worktrees", filepath.Base(target), "gitdir"), "")
 	sc := &sweepCtx{commonDir: guard.commonDir,
 		admins: &worktreeAdminIndex{paths: map[string]string{}, ambiguous: map[string]bool{}, err: errors.New("registry unreadable")}}
 	c := sc.claimFor(guard, work, resolvePath(target))
 	if c.state != claimUnknown || !c.holds() || !strings.Contains(c.why, "could-not-check: run key") {
-		t.Fatalf("an unreadable registry must hold as could-not-check; got %+v", c)
+		t.Fatalf("an unreadable registry with an unconfirmable own entry must hold as could-not-check; got %+v", c)
 	}
 }
 
@@ -223,15 +226,18 @@ func TestParseClaimListing(t *testing.T) {
 	got, err := parseClaimListing(strings.Join([]string{
 		oid + "\trefs/dispatch/active-one",
 		oid + "\trefs/heads/dispatch/branch-shaped",
-		oid + "\trefs/dispatch/nested/key", // not exactly one component: never a claim
-		oid + "\trefs/heads/dispatch/nested/key",
+		// A nested key is a claim the claim tool accepts and lists verbatim: dropping it
+		// would read a held claim as released (SEC-5).
+		oid + "\trefs/dispatch/item--stream/07",
+		oid + "\trefs/heads/dispatch/item--stream/08",
 		oid + "\trefs/heads/other/foreign",
 		"",
 	}, "\n"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := map[string]bool{"active-one": true, "branch-shaped": true}
+	want := map[string]bool{"active-one": true, "branch-shaped": true,
+		"item--stream/07": true, "item--stream/08": true}
 	if len(got) != len(want) {
 		t.Fatalf("keys = %v, want exactly %v", got, want)
 	}

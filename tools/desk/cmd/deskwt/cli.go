@@ -557,7 +557,9 @@ A DISPATCHED home records its run's claim key (worktree config assay.runKey), an
 decides ownership ahead of any lock, in every arm: while the claim is held the tree is held
 (locked or not); once it is released a lock left on the tree (a bare one included, but never
 git's "initializing" lock) no longer holds it, and the safety gates above decide. A claim
-listing that cannot be read holds the tree. A tree with no run key is judged as before.`
+listing that cannot be read holds the tree. A tree with no run key is judged as before. The
+run key is read from the tree's own admin entry when another entry cannot be inventoried, and
+a tree whose own entry cannot be confirmed either way is held.`
 
 	rootLong = `deskwt — safe worktree lifecycle and coordinated offline Git maintenance.
 

@@ -119,6 +119,11 @@ var listDispatchClaims = func(dir string) (map[string]bool, error) {
 
 // parseClaimListing turns `git ls-remote` output into the set of claim keys it names. A line
 // that is not "<oid>\t<ref>" is an error: a listing this reader cannot parse is unread.
+//
+// Every ref under either claim prefix is a key, nested ones included: the claim tool accepts a
+// key containing `/` and lists it verbatim (deskclaim-ref's List), so a reader that dropped
+// nested refs would read such a held claim as released (SEC-5). Keeping too many keys only
+// holds trees; dropping one would free a live run's home.
 func parseClaimListing(out string) (map[string]bool, error) {
 	keys := map[string]bool{}
 	for _, line := range strings.Split(out, "\n") {
@@ -130,15 +135,11 @@ func parseClaimListing(out string) (map[string]bool, error) {
 		if len(fields) != 2 {
 			return nil, deskkit.Unverifiable("unparseable dispatch-claim listing line", nil)
 		}
-		ref := fields[1]
-		if rest, ok := strings.CutPrefix(ref, deskkit.DispatchClaimActiveRefsPrefix); ok {
-			if rest != "" && !strings.Contains(rest, "/") {
+		ref := strings.TrimSuffix(fields[1], "^{}")
+		for _, prefix := range []string{deskkit.DispatchClaimActiveRefsPrefix, deskkit.ClaimRefsPrefix} {
+			if rest, ok := strings.CutPrefix(ref, prefix); ok && rest != "" {
 				keys[rest] = true
 			}
-			continue
-		}
-		if key, ok := deskkit.ClaimKeyFromRef(ref); ok {
-			keys[key] = true
 		}
 	}
 	return keys, nil
@@ -225,12 +226,38 @@ func (sc *sweepCtx) namespaceHold(dir string, rec runRecord) string {
 
 // claimFor is the sweep's claim verdict for rt. An unreadable admin entry or run key is
 // reported as a held claim on an unknown key, so it holds the tree like any could-not-check.
+//
+// When the sweep's admin inventory is incomplete (one sibling entry could not be read), the
+// candidate's run record is read from its OWN admin entry instead, confirmed both ways exactly
+// as `remove` does (ownAdminEntry). A broken sibling therefore cannot hold every other tree
+// (F8), while a candidate whose own entry cannot be confirmed is still held. Any other index
+// error (a different common store, two entries naming rt, no entry naming rt) still holds.
 func (sc *sweepCtx) claimFor(guard *pathGuard, dir, rt string) runClaim {
 	admin, err := sc.adminEntryFor(guard, rt)
 	if err != nil {
-		return runClaim{key: "?", state: claimUnknown, why: "could-not-check: run key (" + errText(err) + ")"}
+		if !sc.claimForFallbackOK(guard, rt) {
+			return runClaim{key: "?", state: claimUnknown, why: "could-not-check: run key (" + errText(err) + ")"}
+		}
+		own, oerr := ownAdminEntry(guard, rt)
+		if oerr != nil {
+			return runClaim{key: "?", state: claimUnknown,
+				why: "could-not-check: run key (" + errText(err) + "; own admin entry: " + errText(oerr) + ")"}
+		}
+		admin = own
 	}
 	return sc.claimFromAdmin(dir, admin)
+}
+
+// adminIndexIncomplete reports whether the sweep's admin inventory, for guard's own common
+// store, was loaded and failed as a whole (some entry could not be inventoried).
+func (sc *sweepCtx) adminIndexIncomplete(guard *pathGuard) bool {
+	return guard.commonDir == sc.commonDir && sc.admins != nil && sc.admins.err != nil
+}
+
+// claimForFallbackOK reports whether rt may take the own-entry fallback: the inventory is
+// incomplete, and the part that WAS read does not already name rt twice.
+func (sc *sweepCtx) claimForFallbackOK(guard *pathGuard, rt string) bool {
+	return sc.adminIndexIncomplete(guard) && !sc.admins.ambiguous[rt]
 }
 
 // claimFromAdmin is the claim verdict for the home whose admin entry is admin.
