@@ -27,6 +27,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -183,21 +184,14 @@ func (c *Cell) gcCacheTarget(apply bool) gcTarget {
 	}}
 }
 
-// recordedCacheReport reads the last measurement the cache recorded. A missing report means
-// the cache has not been measured yet.
+// recordedCacheReport reads the last measurement through cellcache's bounded reader. A
+// missing report means the cache has not been measured yet.
 func recordedCacheReport(p cellcache.Policy) (cellcache.Report, error) {
-	b, err := os.ReadFile(p.ReportPath())
-	if errors.Is(err, os.ErrNotExist) {
+	r, err := cellcache.RecordedReport(p)
+	if errors.Is(err, fs.ErrNotExist) {
 		return cellcache.Report{Outcome: "not measured yet"}, nil
 	}
-	if err != nil {
-		return cellcache.Report{}, err
-	}
-	var r cellcache.Report
-	if err := json.Unmarshal(b, &r); err != nil {
-		return cellcache.Report{}, fmt.Errorf("recorded cache report unreadable: %w", err)
-	}
-	return r, nil
+	return r, err
 }
 
 // gcToolPath resolves an installed desk tool: the cell's DESK_TOOLS_BIN directory first
@@ -270,13 +264,9 @@ func (c *Cell) gcWorktreeTargets(role string, apply bool) []gcTarget {
 			if !apply {
 				argv = append(argv, "--dry-run")
 			}
-			env := envUnset(os.Environ(), cellcache.EnvPolicy)
-			for k, v := range map[string]string{"HOME": c.Home, "ASSAY_CONFIG_HOME": c.Config, "DESK_ROOTS": c.Env.Get("CELL_ROOTS"), "DESK_LOOP": role} {
-				if v != "" {
-					env = envSet(env, k, v)
-				}
-			}
-			out, code, err := gcRunTool(ctx, argv, c.telemetryEnv(env), path)
+			// The same helper identity every other deskwt call of cellctl gets.
+			env := c.deskHelperEnv(envUnset(os.Environ(), cellcache.EnvPolicy), role, "")
+			out, code, err := gcRunTool(ctx, argv, env, path)
 			line := gcLine{Target: name, Outcome: gcOutcome(apply), Detail: lastLine([]byte(out))}
 			if err != nil || code != 0 {
 				line.Outcome = "failed"

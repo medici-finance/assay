@@ -142,7 +142,7 @@ func TestGCScheduleResolvesEachTick(t *testing.T) {
 	if c.scheduledGCTick(ctx, "worker-desk", time.Hour, nil) {
 		t.Fatal("tick started with no installed cellctl")
 	}
-	log, err := os.ReadFile(filepath.Join(c.Dir, "run", "gc.log"))
+	log, err := os.ReadFile(c.gcLogPath("worker-desk"))
 	if err != nil || !strings.Contains(string(log), "could-not-check: no installed cellctl") {
 		t.Fatalf("missing install not logged: %s %v", log, err)
 	}
@@ -357,4 +357,31 @@ func gcParse(t *testing.T, out string) map[string]gcLine {
 		lines[l.Target] = l
 	}
 	return lines
+}
+
+// The stamp and log are reached through no link, as the cell's admission lock is.
+//
+// regression: #5371
+func TestGCStampCustody(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink fixture")
+	}
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	must(t, err)
+	path := filepath.Join(dir, "run", "gc", "worker-desk.stamp")
+	must(t, os.MkdirAll(filepath.Dir(path), 0o700))
+	target := filepath.Join(dir, "elsewhere")
+	must(t, os.WriteFile(target, nil, 0o600))
+	must(t, os.Symlink(target, path))
+	if l, o, detail := acquireGCLock(path, time.Hour, time.Now()); o != gcLockUnavailable || l != nil {
+		t.Fatalf("a linked stamp was opened: %v %q", o, detail)
+	}
+	c := &Cell{Name: "fixture", Dir: dir}
+	must(t, os.Symlink(target, c.gcLogPath("the-desk")))
+	if w := c.openGCLog("the-desk"); w != io.Discard {
+		t.Fatal("a linked log was opened")
+	}
+	if b, _ := os.ReadFile(target); len(b) != 0 {
+		t.Fatal("a link target was written")
+	}
 }

@@ -126,7 +126,7 @@ const (
 
 // acquireGCLock takes the cell's gc lock. ttl > 0 adds the recency check (scheduled form).
 func acquireGCLock(path string, ttl time.Duration, now time.Time) (*gcLock, gcLockOutcome, string) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := gcCustody(path); err != nil {
 		return nil, gcLockUnavailable, "gc lock unavailable: " + err.Error()
 	}
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
@@ -216,7 +216,7 @@ func (c *Cell) scheduledGCTick(ctx context.Context, role string, interval time.D
 		Seconds int64  `json:"seconds"`
 		Error   string `json:"error,omitempty"`
 	}{Time: began.UTC().Format(time.RFC3339), Role: role, Exit: -1}
-	out := c.openGCLog()
+	out := c.openGCLog(role)
 	defer func() {
 		record.Seconds = int64(time.Since(began).Seconds())
 		b, _ := json.Marshal(record)
@@ -251,15 +251,41 @@ func (c *Cell) scheduledGCTick(ctx context.Context, role string, interval time.D
 	return true
 }
 
-// openGCLog opens run/gc.log for append, keeping one previous generation past 1 MiB. A log
-// that cannot be opened discards: logging never stops maintenance.
-func (c *Cell) openGCLog() io.Writer {
-	path := filepath.Join(c.Dir, "run", "gc.log")
-	if st, err := os.Stat(path); err == nil && st.Size() > gcLogLimit {
-		_ = os.Rename(path, path+".1")
+// gcCustody prepares a gc stamp or log path: its directory (run/gc) is a private real
+// directory, and an existing file is an owner-only regular file reached through no link,
+// the custody the cell's admission lock already has (privateCommsFile).
+func gcCustody(path string) error {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	if err := privateCommsDir(dir); err != nil {
+		return fmt.Errorf("gc directory custody: %w", err)
+	}
+	if _, err := os.Lstat(path); err == nil {
+		if err := privateCommsFile(path); err != nil {
+			return fmt.Errorf("gc file custody: %w", err)
+		}
+	} else if !os.IsNotExist(err) {
+		return err
+	}
+	return nil
+}
+
+// gcLogPath is the desk's own log; one log per role keeps two desks sharing a cell
+// directory from rotating the same file.
+func (c *Cell) gcLogPath(role string) string { return filepath.Join(c.Dir, "run", "gc", role+".log") }
+
+// openGCLog opens the desk's gc log for append, keeping one previous generation past 1 MiB.
+// A log that cannot be opened, or fails its custody check, discards: logging never stops
+// maintenance.
+func (c *Cell) openGCLog(role string) io.Writer {
+	path := c.gcLogPath(role)
+	if gcCustody(path) != nil {
 		return io.Discard
+	}
+	if st, err := os.Lstat(path); err == nil && st.Size() > gcLogLimit {
+		_ = os.Rename(path, path+".1")
 	}
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
