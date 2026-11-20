@@ -275,10 +275,10 @@ The fact underneath is usually sound. Keep it and remove the dressing.
 **Problem:** The text says two things are connected without saying how. "He was associated with the leadership of ExampleCorp" hides whether he was the CEO, a board member, or a consultant. Name the relationship. If you do not know it, keep the vague wording.
 
 **Before:**
-> The benchmark report described the new scheduler as a milestone, demonstrating an enduring commitment to faster recovery. In the published trace, the queue drained in eight seconds.
+> The queue spike was linked to the scheduler change. The trace shows queue depth rising eight seconds after the change. The team is still investigating the cause.
 
 **After:**
-> The benchmark report shows the queue draining in eight seconds in its published trace.
+> In the trace, queue depth rose eight seconds after the scheduler change. The team is still investigating the cause.
 
 ### 15. Shallow -ing phrases
 
