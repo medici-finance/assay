@@ -222,3 +222,77 @@ func TestVerifySnapDispatchHook(t *testing.T) {
 		t.Errorf("the dispatch removed its own claim's snapshot: %v", err)
 	}
 }
+
+// Where the build reads no inode change time (every platform but macOS and Linux), the prune
+// cannot tell a timestamp-preserving copy from an idle tree, so it keeps everything and says so.
+//
+// regression: #7275
+func TestVerifySnapNoChangeTimeKeeps(t *testing.T) {
+	old := snapChangeTimeKnown
+	t.Cleanup(func() { snapChangeTimeKnown = old })
+	snapChangeTimeKnown = false
+	base := snapFixture(t)
+	real := time.Now()
+	snapWrite(t, filepath.Join(base, "idle--01", "f"), real.Add(-time.Hour))
+	snapAgeTree(t, filepath.Join(base, "idle--01"), real.Add(-time.Hour))
+	plan, err := pruneVerifySnaps(base, "", real.Add(verifySnapMaxAge+24*time.Hour), 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := snapVerdictFor(t, plan, "idle--01"); v.remove || !strings.HasPrefix(v.reason, "could-not-check") {
+		t.Fatalf("a platform with no change time removed or did not report could-not-check: %+v", v)
+	}
+	if _, err := os.Stat(filepath.Join(base, "idle--01", "f")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A snapshot a run touches after the plan judged it idle is kept: removal reads its activity
+// again through the same root.
+//
+// regression: #7275
+func TestVerifySnapRecheckBeforeRemoval(t *testing.T) {
+	base := snapFixture(t)
+	real := time.Now()
+	now := real.Add(verifySnapMaxAge + 24*time.Hour)
+	snapWrite(t, filepath.Join(base, "idle--01", "f"), real.Add(-time.Hour))
+	snapAgeTree(t, filepath.Join(base, "idle--01"), real.Add(-time.Hour))
+	root, err := openSnapBase(base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	plan, err := planSnapsIn(root, "", now, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v := snapVerdictFor(t, plan, "idle--01"); !v.remove {
+		t.Fatalf("fixture not idle: %+v", v)
+	}
+	snapWrite(t, filepath.Join(base, "idle--01", "row.out"), now) // a run writes after the plan
+	if err := removeVerifySnap(root, "idle--01", now, 1000); err != errSnapActive {
+		t.Fatalf("removal of a snapshot touched after the plan: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(base, "idle--01", "row.out")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The hook has exactly two call sites in dispatch(): the dry-run plan (lists, removes nothing)
+// and the real verifier dispatch. Dropping or swapping either would not be caught by the
+// direct hook test above.
+func TestVerifySnapCallSites(t *testing.T) {
+	src, err := os.ReadFile("dispatch.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(src)
+	if n := strings.Count(s, "reportVerifySnaps("); n != 2 {
+		t.Fatalf("dispatch.go calls reportVerifySnaps %d times, want 2", n)
+	}
+	for _, call := range []string{"reportVerifySnaps(plan.claimKey, true)", "reportVerifySnaps(plan.claimKey, false)"} {
+		if !strings.Contains(s, call) {
+			t.Errorf("dispatch.go lacks %s", call)
+		}
+	}
+}

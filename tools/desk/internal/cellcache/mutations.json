@@ -448,8 +448,8 @@
     {
       "name": "GOTMPDIR sweep judges a work directory by its top-level time only",
       "file": "internal/cellcache/tmpsweep.go",
-      "old": "return total, newest.Before(cut), nil",
-      "new": "return total, newest.Before(cut) || true, nil"
+      "old": "return total, newest, newest.Before(ageCut), nil",
+      "new": "return total, newest, newest.Before(ageCut) || true, nil"
     },
     {
       "name": "GOTMPDIR sweep selects names cmd/go never created",
@@ -480,6 +480,12 @@
       "file": "internal/cellcache/tmpsweep.go",
       "old": "return []string{\"build\", \"mod\", \"gopath\", tmpDir}",
       "new": "return []string{\"build\", \"mod\", \"gopath\"}"
+    },
+    {
+      "name": "a held work directory is reported without its holding record",
+      "file": "internal/cellcache/tmpsweep.go",
+      "old": "res.Held = append(res.Held, fmt.Sprintf(",
+      "new": "_ = append(res.Held, fmt.Sprintf("
     }
   ]
 }

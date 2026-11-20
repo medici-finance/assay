@@ -19,7 +19,10 @@ package main
 // removed only when EVERY entry in it, walked without following a link, has both times older
 // than the retention age: a week, against a dispatch claim that goes stale after two hours.
 // The snapshot of the claim being dispatched right now is never removed, however old, because
-// this very run is about to use it. Anything that cannot be read in full — a walk that fails or
+// this very run is about to use it. On a platform whose build reads no change time
+// (changeTimeKnown false: everything but macOS and Linux), modification time alone cannot
+// prove a snapshot idle, so the prune fails closed there: every snapshot is kept and reported
+// could-not-check. Anything that cannot be read in full — a walk that fails or
 // passes the entry bound — is kept and reported, never removed on a partial view.
 
 import (
@@ -48,6 +51,10 @@ type snapVerdict struct {
 	reason string
 }
 
+// snapChangeTimeKnown is the seam over changeTimeKnown, so a test on macOS or Linux can drive
+// the fail-closed path a Windows or BSD build takes.
+var snapChangeTimeKnown = changeTimeKnown
+
 // verifySnapRoot is the seam for where the dispatch hook looks. The test binary's TestMain
 // points it nowhere, so no dispatch test can prune the real user cache directory; a test of
 // the hook sets its own.
@@ -62,11 +69,11 @@ func verifySnapBase() string {
 	return filepath.Join(cache, "assay", verifySnapDirName)
 }
 
-// planVerifySnaps decides, without changing anything, which snapshots under base go. keep is
-// the claim key being dispatched; its snapshot is always kept. limit bounds each snapshot's
-// walk. A missing base is no snapshots; a base that is a symlink or not a directory is refused
-// (and nothing is pruned through it), as the outcome base is.
-func planVerifySnaps(base, keep string, now time.Time, limit int) ([]snapVerdict, error) {
+// openSnapBase verifies base and its parent and opens base as a root. A missing base returns a
+// nil root and no error. A base that is a symlink or not a directory is refused (and nothing is
+// pruned through it), as the outcome base is. The plan and every removal then act through this
+// ONE open root, never by reopening the path.
+func openSnapBase(base string) (*os.Root, error) {
 	if base == "" {
 		return nil, nil
 	}
@@ -81,8 +88,42 @@ func planVerifySnaps(base, keep string, now time.Time, limit int) ([]snapVerdict
 	if err != nil {
 		return nil, err
 	}
+	// The opened directory must still be the one realOutcomeDir judged.
+	opened, err := root.Stat(".")
+	if err == nil {
+		var current os.FileInfo
+		if current, err = os.Lstat(base); err == nil && !os.SameFile(opened, current) {
+			err = fmt.Errorf("%s changed while it was opened", base)
+		}
+	}
+	if err != nil {
+		root.Close()
+		return nil, err
+	}
+	return root, nil
+}
+
+// planVerifySnaps decides, without changing anything, which snapshots under base go. keep is
+// the claim key being dispatched; its snapshot is always kept (the verifier's snapshot
+// directory is named by the same claim key the dispatch holds, plan.claimKey). limit bounds
+// each snapshot's walk.
+func planVerifySnaps(base, keep string, now time.Time, limit int) ([]snapVerdict, error) {
+	root, err := openSnapBase(base)
+	if err != nil || root == nil {
+		return nil, err
+	}
 	defer root.Close()
-	entries, err := os.ReadDir(base)
+	return planSnapsIn(root, keep, now, limit)
+}
+
+// planSnapsIn is planVerifySnaps over an already opened base.
+func planSnapsIn(root *os.Root, keep string, now time.Time, limit int) ([]snapVerdict, error) {
+	dir, err := root.Open(".")
+	if err != nil {
+		return nil, err
+	}
+	entries, err := dir.ReadDir(-1)
+	dir.Close()
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +138,8 @@ func planVerifySnaps(base, keep string, now time.Time, limit int) ([]snapVerdict
 			v.reason = "not a directory: never removed"
 		case e.Name() == keep:
 			v.reason = "the snapshot of the claim being dispatched now"
+		case !snapChangeTimeKnown:
+			v.reason = "could-not-check: this platform's build reads no inode change time, and modification time alone cannot prove a snapshot idle: kept"
 		default:
 			newest, werr := newestSnapActivity(root, e.Name(), cutoff, limit)
 			switch {
@@ -149,27 +192,36 @@ func newestSnapActivity(root *os.Root, name string, cutoff time.Time, limit int)
 	return newest, err
 }
 
-// removeVerifySnap removes one idle snapshot through root. Directories are made owner-writable
-// first (a snapshot can hold a module cache, whose directories are read-only), on the
-// directories the walk reaches through root, never through a link.
-func removeVerifySnap(base, name string, limit int) error {
-	root, err := os.OpenRoot(base)
-	if err != nil {
+// errSnapActive refuses a removal whose snapshot changed after the plan judged it idle.
+var errSnapActive = errors.New("it changed after it was judged idle")
+
+// removeVerifySnap removes one idle snapshot through root, the same root the plan listed. Its
+// activity is read again first, so a snapshot a run touched after the plan is kept. Directories
+// are then made owner-writable (a snapshot can hold a module cache, whose directories are
+// read-only) through a descriptor opened without following a link, never by path.
+func removeVerifySnap(root *os.Root, name string, now time.Time, limit int) error {
+	cutoff := now.Add(-verifySnapMaxAge)
+	if newest, err := newestSnapActivity(root, name, cutoff, limit); err != nil {
 		return err
+	} else if !newest.Before(cutoff) {
+		return errSnapActive
 	}
-	defer root.Close()
-	err = deskkit.BoundedWalkDir(root.FS(), name, limit, func(path string, d fs.DirEntry, err error) error {
+	err := deskkit.BoundedWalkDir(root.FS(), name, limit, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
 		if d.Type()&os.ModeSymlink != 0 || !d.IsDir() {
 			return nil
 		}
-		st, err := root.Lstat(path)
-		if err != nil || !st.IsDir() {
+		f, err := root.OpenFile(path, os.O_RDONLY|snapNoFollow, 0)
+		if err != nil {
 			return err
 		}
-		return root.Chmod(path, st.Mode().Perm()|0o700)
+		st, err := f.Stat()
+		if err == nil && st.IsDir() {
+			err = f.Chmod(st.Mode().Perm() | 0o700)
+		}
+		return errors.Join(err, f.Close())
 	})
 	if err != nil {
 		return err
@@ -181,7 +233,12 @@ func removeVerifySnap(base, name string, limit int) error {
 // with any removal failure folded into that snapshot's reason. Best effort, like the sibling
 // prunes: a failure is reported, never fatal to the dispatch.
 func pruneVerifySnaps(base, keep string, now time.Time, limit int) ([]snapVerdict, error) {
-	plan, err := planVerifySnaps(base, keep, now, limit)
+	root, err := openSnapBase(base)
+	if err != nil || root == nil {
+		return nil, err
+	}
+	defer root.Close()
+	plan, err := planSnapsIn(root, keep, now, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -189,7 +246,7 @@ func pruneVerifySnaps(base, keep string, now time.Time, limit int) ([]snapVerdic
 		if !v.remove {
 			continue
 		}
-		if rerr := removeVerifySnap(base, v.name, limit); rerr != nil {
+		if rerr := removeVerifySnap(root, v.name, now, limit); rerr != nil {
 			plan[i].remove = false
 			plan[i].reason += "; removal failed: " + rerr.Error()
 		}

@@ -240,13 +240,19 @@ the user cache directory ("assay/verify-snap/<claim key>/"), beside the packets 
 records. Each --kit verifier dispatch prunes them on the same one-week retention: a snapshot
 goes only when nothing in it, walked without following a link, has a modification time or an
 inode change time inside the week. The change time is what marks an archive extracted into a
-snapshot as new even though it keeps the archive's modification times. Nothing records which
+snapshot as new even though it keeps the archive's modification times. That holds on macOS and
+Linux, whose builds read the change time. A build for any other platform (Windows, the BSDs)
+reads none, and modification time alone cannot prove a snapshot idle, so there the prune keeps
+every snapshot and reports each as could-not-check: snapshots are not pruned on those
+platforms. Nothing records which
 snapshot a running verifier holds, so recent activity is the liveness signal; a week is far
 past the two-hour stale age of a dispatched claim. The claim being dispatched never loses its
 own snapshot, a symlink or a plain file there is never removed, and a snapshot that cannot be
 walked in full (an error, or more entries than the maintenance bound) is kept and named on
-stderr. --dry-run lists every snapshot with "keep" or "would remove" and the reason; a real
-dispatch names on stderr each one it removed. A failure never fails the dispatch.
+stderr. A real dispatch reads each candidate's activity again, through the same opened
+directory, just before removing it, and keeps one that changed since. --dry-run lists every
+snapshot with "keep" or "would remove" and the reason; a real dispatch names on stderr each one
+it removed. A failure never fails the dispatch.
 
 A WORKER dispatch (--kit worker, --kit worker-objective) gets a packet too, smaller because a
 worker run re-reads it on every later request: 32 KiB an item, 64 KiB for the brief and for

@@ -118,11 +118,18 @@ removed only when both hold:
 
 A directory that is not named `go-build*`, or that fails either test, is kept.
 The sweep never holds admission: a refusal is reported in the pass's
-`tmp_sweep` object (`removed`, `removed_bytes`, `kept` and a `reason` starting
-`could-not-check`), never as a pass failure. A dry run (`status`) lists what it
-would remove and removes nothing. A long-lived role window keeps its own
-leftovers until it ends, because its record predates them; they go at the
-first pass after it finishes. A policy recorded before this setting existed
+`tmp_sweep` object (`removed`, `removed_bytes`, `kept`, `held` and a `reason`
+starting `could-not-check`), never as a pass failure. A dry run (`status`) lists
+what it would remove and removes nothing.
+
+The bound this gives is the oldest live record's lifetime, not the trim age
+alone. A standing role window is an active record for as long as it runs, so
+every work directory created after it enrolled is kept, whichever consumer
+created it, including consumers that have already exited: the sweep cannot tell
+whose directory it is, and no PID or age is accepted as proof. Each such
+directory is listed in `held` with the record that holds it, so a window holding
+the sweep is visible in the report. They go at the first pass after that record
+is released. A policy recorded before this setting existed
 exports no `GOTMPDIR`, creates no `tmp/` and is never swept, so consumers it
 launched keep their custody; relaunch them to move their work directories.
 

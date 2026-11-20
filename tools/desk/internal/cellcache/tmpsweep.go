@@ -29,12 +29,17 @@ func (p Policy) consumerDirs() []string {
 // TmpSweep is what one GOTMPDIR sweep did. Removed names the work
 // directories removed (a dry run: those it would remove) and RemovedBytes
 // their logical size. Kept counts the go-build directories left in place.
-// Reason is set when the sweep could not run or refused a directory: it is
-// could-not-check for what it names, never a clean result.
+// Held names each one of those that is past the build trim age and is kept
+// only because a live consumer record predates it, with the record that holds
+// it: a standing window holds every work directory created after it enrolled,
+// whoever created it, so the bound is the oldest live record's lifetime and
+// the report says so. Reason is set when the sweep could not run or refused a
+// directory: it is could-not-check for what it names, never a clean result.
 type TmpSweep struct {
 	Removed      []string `json:"removed,omitempty"`
 	RemovedBytes int64    `json:"removed_bytes"`
 	Kept         int      `json:"kept"`
+	Held         []string `json:"held,omitempty"`
 	Reason       string   `json:"reason,omitempty"`
 }
 
@@ -79,7 +84,8 @@ func (m *manager) sweepTmp(now time.Time, dry bool) *TmpSweep {
 	if err = checkEntry(st, m.dev); err != nil || !st.IsDir() {
 		return &TmpSweep{Reason: "could-not-check: invalid managed GOTMPDIR"}
 	}
-	cut, err := m.tmpCut(now)
+	ageCut := now.Add(-m.p.BuildAge())
+	cut, holder, err := m.tmpCut(ageCut)
 	if err != nil {
 		return &TmpSweep{Reason: "could-not-check: consumer records: " + err.Error()}
 	}
@@ -94,7 +100,7 @@ func (m *manager) sweepTmp(now time.Time, dry bool) *TmpSweep {
 			continue
 		}
 		path := tmpDir + "/" + name
-		size, removable, err := m.idleWorkDir(path, cut)
+		size, newest, removable, err := m.idleWorkDir(path, ageCut)
 		switch {
 		case err != nil:
 			res.Kept++
@@ -102,6 +108,10 @@ func (m *manager) sweepTmp(now time.Time, dry bool) *TmpSweep {
 			continue
 		case !removable:
 			res.Kept++
+			continue
+		case !newest.Before(cut):
+			res.Kept++
+			res.Held = append(res.Held, fmt.Sprintf("%s: past the %s build trim age, but last changed after active record %s enrolled; kept until it is released", name, m.p.BuildAge(), holder))
 			continue
 		}
 		if !dry {
@@ -120,60 +130,63 @@ func (m *manager) sweepTmp(now time.Time, dry bool) *TmpSweep {
 	return res
 }
 
-// tmpCut is the time before which a work directory may go: the build trim
-// age, or the earliest active record's enrollment less AdmitMtimeSlack when
-// that is earlier. A record's enrollment is the earlier of its recorded
-// timestamp and its modification time; one that cannot be read refuses the
-// sweep.
-func (m *manager) tmpCut(now time.Time) (time.Time, error) {
-	cut := now.Add(-m.p.BuildAge())
+// tmpCut is the time before which a work directory may go: ageCut (now less
+// the build trim age), or the earliest active record's enrollment less
+// AdmitMtimeSlack when that is earlier, with that record's name and
+// enrollment time as the holder ("" when no record lowers the cut). A
+// record's enrollment is the earlier of its recorded timestamp and its
+// modification time; one that cannot be read refuses the sweep.
+func (m *manager) tmpCut(ageCut time.Time) (time.Time, string, error) {
+	cut, holder := ageCut, ""
 	active, err := m.active()
 	if err != nil {
-		return time.Time{}, err
+		return time.Time{}, "", err
 	}
 	for _, name := range active {
 		st, err := m.r.Lstat(name)
 		if err != nil {
-			return time.Time{}, err
+			return time.Time{}, "", err
 		}
 		b, err := readMetaBounded(m.r, m.dev, name, 128)
 		if err != nil {
-			return time.Time{}, err
+			return time.Time{}, "", err
 		}
 		at, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(string(b)))
 		if err != nil {
-			return time.Time{}, fmt.Errorf("unreadable enrollment time in %s", name)
+			return time.Time{}, "", fmt.Errorf("unreadable enrollment time in %s", name)
 		}
 		if st.ModTime().Before(at) {
 			at = st.ModTime()
 		}
 		if held := at.Add(-AdmitMtimeSlack); held.Before(cut) {
 			cut = held
+			holder = fmt.Sprintf("%s (at %s)", name, at.UTC().Format(time.RFC3339))
 		}
 	}
-	return cut, nil
+	return cut, holder, nil
 }
 
-// idleWorkDir reports whether the work directory at path is removable: a
-// directory whose own modification time and every member's are before cut,
-// every member passing checkEntry (verifiedTreeSize, the trim's custody
-// walk). It returns the directory's logical size.
-func (m *manager) idleWorkDir(path string, cut time.Time) (int64, bool, error) {
+// idleWorkDir reports whether the work directory at path is past the build
+// trim age: a directory whose own modification time and every member's are
+// before ageCut, every member passing checkEntry (verifiedTreeSize, the
+// trim's custody walk). It returns the directory's logical size and its
+// newest member time, which the caller compares with the records' cut.
+func (m *manager) idleWorkDir(path string, ageCut time.Time) (int64, time.Time, bool, error) {
 	st, err := m.r.Lstat(path)
 	if err != nil {
-		return 0, false, err
+		return 0, time.Time{}, false, err
 	}
 	if err = checkEntry(st, m.dev); err != nil || !st.IsDir() {
-		return 0, false, fmt.Errorf("not an owned directory")
+		return 0, time.Time{}, false, fmt.Errorf("not an owned directory")
 	}
-	if !st.ModTime().Before(cut) {
-		return 0, false, nil
+	if !st.ModTime().Before(ageCut) {
+		return 0, st.ModTime(), false, nil
 	}
 	total, newest, err := m.verifiedTreeSize(path)
 	if err != nil {
-		return 0, false, err
+		return 0, time.Time{}, false, err
 	}
-	return total, newest.Before(cut), nil
+	return total, newest, newest.Before(ageCut), nil
 }
 
 // sweepTmpLocked is sweepTmp for the lock-free maintenance path: it takes

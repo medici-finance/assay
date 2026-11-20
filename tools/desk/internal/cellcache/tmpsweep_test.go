@@ -158,7 +158,7 @@ func TestCacheTmpSweep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if dry.Tmp == nil || !slices.Equal(dry.Tmp.Removed, []string{"go-build111"}) || dry.Tmp.Kept != 2 || dry.Tmp.Reason != "" {
+	if dry.Tmp == nil || !slices.Equal(dry.Tmp.Removed, []string{"go-build111"}) || dry.Tmp.Kept != 2 || dry.Tmp.Reason != "" || len(dry.Tmp.Held) != 0 {
 		t.Fatalf("dry sweep: %+v", dry.Tmp)
 	}
 	if !present(t, idle) {
@@ -214,6 +214,10 @@ func TestCacheTmpSweepHeldByRecord(t *testing.T) {
 	}
 	if !present(t, held) || present(t, orphan) {
 		t.Fatalf("held kept=%v orphan kept=%v", present(t, held), present(t, orphan))
+	}
+	// The keep is visible: the held directory is named with the record that holds it.
+	if len(r.Tmp.Held) != 1 || !strings.HasPrefix(r.Tmp.Held[0], "go-build444: ") || !strings.Contains(r.Tmp.Held[0], l.record) {
+		t.Fatalf("held directory not reported with its holding record: %q", r.Tmp.Held)
 	}
 
 	orphan = workDir(t, p, "go-build666", now.Add(-4*p.BuildAge()))
