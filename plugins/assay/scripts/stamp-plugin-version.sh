@@ -41,6 +41,8 @@
 #                                       as-is), the Cursor plugin manifest's version differs from
 #                                       plugin.json's — a tag whose Cursor manifest lags is a
 #                                       Cursor install that reports the wrong release.
+#                                 The independently versioned editorial package must advance
+#                                 its own version when its tree changes between releases.
 #                                 --have names the version the tagged tree WILL carry (the dispatch
 #                                 path stamps before tagging); default: the working tree's
 #                                 plugin.json. An empty --prev means "no previous tag": (a) is
@@ -237,6 +239,30 @@ cmd_check() {
   printf 'stamp-plugin-version: OK — every file carries %s\n' "${tag#v}"
 }
 
+# Editorial is published through the same repository, with its own cache key.
+# Compare the committed trees; an umbrella --have value cannot bump this plugin.
+check_editorial_change() {
+  local base="$1" dir=plugins/editorial manifest=plugins/editorial/.claude-plugin/plugin.json
+  local before after old new
+  before=$(git -C "$ROOT" ls-tree "$base" -- "$dir") || cnc "cannot read $dir at $base"
+  after=$(git -C "$ROOT" ls-tree HEAD -- "$dir") || cnc "cannot read $dir at HEAD"
+  [[ "$before" != "$after" && -n "$after" ]] || return 0
+  new=$(git -C "$ROOT" show "HEAD:$manifest" | json_version /dev/stdin) || cnc "cannot read $manifest at HEAD"
+  [[ "$new" =~ $bare_re ]] || cnc "$manifest at HEAD needs MAJOR.MINOR.PATCH"
+  [[ -n "$before" ]] || return 0  # First publication has no prior cache key.
+  old=$(git -C "$ROOT" show "$base:$manifest" | json_version /dev/stdin) || cnc "cannot read $manifest at $base"
+  [[ "$old" =~ $bare_re ]] || cnc "$manifest at $base needs MAJOR.MINOR.PATCH"
+  if awk -v old="$old" -v new="$new" 'BEGIN {
+    split(old, a, /[.]/); split(new, b, /[.]/)
+    for (i = 1; i <= 3; i++) if (b[i]+0 != a[i]+0) exit !(b[i]+0 > a[i]+0)
+    exit 1
+  }'; then
+    return 0
+  fi
+  printf 'FAIL %s changed since %s; its version must advance from %s (found %s)\n' "$dir" "$base" "$old" "$new" >&2
+  return 1
+}
+
 cmd_gate() {
   local tag="" prev="" have="" prev_set=0
   local -a pass
@@ -272,6 +298,8 @@ cmd_gate() {
     fi
     prev_have=$(printf '%s\n' "$prev_manifest" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | sed -n 1p)
     [[ -n "$prev_have" ]] || cnc "${MANIFEST} at ${prev} has no \`version\` field"
+
+    check_editorial_change "$prev" || fail=1
 
     # Did plugins/assay/ change between the previous tag and the tree being tagged?
     local changed

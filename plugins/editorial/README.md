@@ -32,4 +32,4 @@ Give Article Craft a source note and a draft claim. For example, a benchmark mea
 
 ## Updating this package
 
-Article Craft and Prose Cadence are shared with the methodology plugin. Edit their canonical directories under `plugins/assay/skills/`, then copy the complete changed directories here, including references. When the published payload changes, increment the version in all three editorial plugin manifests. The `tools/harnessgen` tests compare the complete skill trees, notices, manifests, and marketplace entries.
+Article Craft and Prose Cadence are shared with the methodology plugin. Edit their canonical directories under `plugins/assay/skills/`, then copy the complete changed directories here, including references. When the published payload changes, increment the version in all three editorial plugin manifests. The umbrella release gate checks for a version increase when the editorial package changes between releases. The `tools/harnessgen` tests compare the complete skill trees, notices, manifests, and marketplace entries.
