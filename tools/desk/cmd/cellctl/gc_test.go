@@ -9,7 +9,9 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/medici-finance/assay/tools/desk/internal/cellcache"
 	"github.com/medici-finance/assay/tools/desk/internal/cellop"
 )
 
@@ -121,4 +123,47 @@ func gcParse(t *testing.T, out string) map[string]gcLine {
 		lines[l.Target] = l
 	}
 	return lines
+}
+
+// The go-cache line reports the recorded measurement and nothing it cannot know: no forecast
+// figure, and an outcome that follows the record, so a partial or missing measurement exits 1.
+//
+// regression: #5371
+func TestGCCacheLine(t *testing.T) {
+	size := int64(4096)
+	at := time.Date(2026, 11, 20, 12, 0, 0, 0, time.UTC)
+	for outcome, want := range map[string]string{"checked-clean": "planned", "storage-deferred": "planned", "could-not-check": "could-not-check", "something-new": "could-not-check"} {
+		l := gcCacheLine(cellcache.Report{Outcome: outcome, Reason: "why", Reclaimed: 999, After: cellcache.Measurement{At: at, LogicalBytes: &size}})
+		if l.Outcome != want || l.Bytes == nil || *l.Bytes != size || !strings.Contains(l.Detail, "recorded "+outcome+" at 2026-11-20T12:00:00Z: why") {
+			t.Fatalf("%s -> %+v", outcome, l)
+		}
+		b, _ := json.Marshal(l)
+		if strings.Contains(string(b), "999") || strings.Contains(string(b), "reclaim") {
+			t.Fatalf("%s line carries a past reclaim figure: %s", outcome, b)
+		}
+	}
+	if runtime.GOOS != "darwin" && runtime.GOOS != "linux" {
+		t.Skip("managed Go cache")
+	}
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	must(t, err)
+	c := &Cell{Name: "fixture", Dir: dir, Env: &Env{vals: map[string]string{"CELL_GO_CACHE": "on", "CELL_GO_CACHE_MIN_FREE": "0"}}}
+	line := func() gcLine {
+		lines := c.gcCacheTarget().run(context.Background())
+		if len(lines) != 1 {
+			t.Fatalf("lines = %+v", lines)
+		}
+		return lines[0]
+	}
+	if l := line(); l.Outcome != "could-not-check" || l.Bytes != nil || !strings.Contains(l.Detail, "not measured yet") {
+		t.Fatalf("unmeasured cache = %+v", l)
+	}
+	p, err := c.cachePolicy()
+	must(t, err)
+	if _, err := cellcache.Check(*p, false); err != nil {
+		t.Fatal(err)
+	}
+	if l := line(); l.Outcome != "planned" || l.Bytes == nil || !strings.Contains(l.Detail, "recorded checked-clean") {
+		t.Fatalf("measured cache = %+v", l)
+	}
 }

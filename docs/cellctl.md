@@ -2480,20 +2480,27 @@ cells, whose launch is delegated to the operator's own launcher.
 
 `cellctl gc <cell> [--role <role>]` runs the dry form of each existing reclaim target and
 prints one JSON line per target on stdout: `target`, `outcome` (`planned`, `skipped`,
-`failed` or `could-not-check`), `bytes` and `reclaimed` (what the target measured and
-would reclaim; null where the target reports no figure), and an optional `items` and
-`detail`. The targets are:
+`failed` or `could-not-check`), `bytes` (what the target measured in its scope; null where
+it measured no figure), and an optional `items` and `detail`. There is no "would reclaim"
+byte figure: no target's dry run forecasts one. The targets are:
 
-- `scratch`: the managed task scratch sweep's dry run ([Managed task scratch](cellctl-scratch.md));
+- `scratch`: the managed task scratch sweep's dry run
+  ([Managed task scratch](cellctl-scratch.md)); `items` is how many entries it would act
+  on. The dry run takes the sweep's own locks, so while a sibling's sweep holds them the
+  line can report `failed`; on a cell with no scratch root yet, the dry run creates the
+  empty root and its owner record, as `cellctl scratch <cell> sweep` does;
 - `go-cache`: the managed Go cache's recorded measurement
   ([Managed Go caches](cellctl-go-cache.md)), read through the cache's bounded metadata
-  reader; nothing is walked and no cache lock is taken; `skipped` while `CELL_GO_CACHE`
-  is off;
+  reader; nothing is walked and no cache lock is taken. `bytes` is the recorded logical
+  size, and `detail` names the recorded outcome and when it was measured. A recorded
+  `storage-deferred` (over budget or floor) is `planned`, with the reason in `detail`; a
+  recorded `could-not-check`, or no recorded measurement at all, is `could-not-check`.
+  `skipped` while `CELL_GO_CACHE` is off;
 - `worktrees:<owner/repo>`: the installed `deskwt prune --repo <path> --no-cache --dry-run`,
   once per `CELL_ROOTS` checkout, run as the role's loop (`DESK_LOOP`) when `--role` is given.
 
 gc adds no delete logic of its own. A target that fails or could not check is reported, the
-remaining targets still run, and the exit code is 1.
+remaining targets still run, and the exit code is 1. `--role` applies to this report only.
 
 **Apply is held.** `gc --plan [--json]` writes a plan and changes nothing else. `gc --run`
 and `gc --apply <plan-id>` are the state-changing forms

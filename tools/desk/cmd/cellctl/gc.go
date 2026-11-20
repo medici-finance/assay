@@ -41,15 +41,17 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/cellscratch"
 )
 
-// gcLine is one target's report line. Bytes is what the target measured in its scope and
-// Reclaimed what it would reclaim or did; nil (JSON null) means the target reports no figure.
+// gcLine is one target's report line. Bytes is what the target measured in its scope (for
+// go-cache, the recorded measurement); nil (JSON null) means the target measured no figure.
+// Items is how many entries the target's dry run would act on, where it plans per entry.
+// There is no "would reclaim" byte figure: no target's dry run forecasts one, and a recorded
+// past reclaim is not a forecast.
 type gcLine struct {
-	Target    string `json:"target"`
-	Outcome   string `json:"outcome"` // planned | skipped | failed | could-not-check
-	Bytes     *int64 `json:"bytes"`
-	Reclaimed *int64 `json:"reclaimed"`
-	Items     *int   `json:"items,omitempty"`
-	Detail    string `json:"detail,omitempty"`
+	Target  string `json:"target"`
+	Outcome string `json:"outcome"` // planned | skipped | failed | could-not-check
+	Bytes   *int64 `json:"bytes"`
+	Items   *int   `json:"items,omitempty"`
+	Detail  string `json:"detail,omitempty"`
 }
 
 func (l gcLine) failed() bool { return l.Outcome == "failed" || l.Outcome == "could-not-check" }
@@ -108,7 +110,7 @@ func (c *Cell) gcScratchTarget(scope string) gcTarget {
 				items++
 			}
 		}
-		line := gcLine{Target: "scratch", Outcome: "planned", Bytes: i64(rep.Bytes), Reclaimed: i64(rep.Reclaimed), Items: &items}
+		line := gcLine{Target: "scratch", Outcome: "planned", Bytes: i64(rep.Bytes), Items: &items}
 		switch {
 		case err != nil:
 			line.Outcome, line.Detail = "failed", err.Error()
@@ -119,7 +121,10 @@ func (c *Cell) gcScratchTarget(scope string) gcTarget {
 	}}
 }
 
-// gcCacheTarget reports the Go cache's recorded measurement.
+// gcCacheTarget reports the Go cache's recorded measurement. The line's outcome follows the
+// record: a measurement that was partial (could-not-check), a missing one, or one in an
+// outcome this verb does not know is could-not-check, so the exit code says so; a cache
+// over its budget or floor (storage-deferred) is planned, with the reason in the detail.
 func (c *Cell) gcCacheTarget() gcTarget {
 	return gcTarget{name: "go-cache", run: func(context.Context) []gcLine {
 		p, err := c.cachePolicy()
@@ -129,26 +134,35 @@ func (c *Cell) gcCacheTarget() gcTarget {
 		if p == nil {
 			return []gcLine{{Target: "go-cache", Outcome: "skipped", Detail: "CELL_GO_CACHE is off"}}
 		}
-		r, err := recordedCacheReport(*p)
+		r, err := cellcache.RecordedReport(*p)
+		if errors.Is(err, fs.ErrNotExist) {
+			return []gcLine{{Target: "go-cache", Outcome: "could-not-check", Detail: "not measured yet; cellctl cache <cell> status measures it"}}
+		}
 		if err != nil {
 			return []gcLine{{Target: "go-cache", Outcome: "could-not-check", Detail: err.Error()}}
 		}
-		bytes := r.After.LogicalBytes
-		if bytes == nil {
-			bytes = r.Before.LogicalBytes
-		}
-		return []gcLine{{Target: "go-cache", Outcome: "planned", Bytes: bytes, Reclaimed: i64(r.Reclaimed), Detail: r.Outcome}}
+		return []gcLine{gcCacheLine(r)}
 	}}
 }
 
-// recordedCacheReport reads the last measurement through cellcache's bounded reader. A
-// missing report means the cache has not been measured yet.
-func recordedCacheReport(p cellcache.Policy) (cellcache.Report, error) {
-	r, err := cellcache.RecordedReport(p)
-	if errors.Is(err, fs.ErrNotExist) {
-		return cellcache.Report{Outcome: "not measured yet"}, nil
+// gcCacheLine maps a recorded cache report to the go-cache line.
+func gcCacheLine(r cellcache.Report) gcLine {
+	line := gcLine{Target: "go-cache", Bytes: r.After.LogicalBytes}
+	detail := "recorded " + r.Outcome
+	if !r.After.At.IsZero() {
+		detail += " at " + r.After.At.UTC().Format("2006-01-02T15:04:05Z")
 	}
-	return r, err
+	if r.Reason != "" {
+		detail += ": " + r.Reason
+	}
+	line.Detail = detail
+	switch r.Outcome {
+	case "checked-clean", "storage-deferred":
+		line.Outcome = "planned"
+	default:
+		line.Outcome = "could-not-check"
+	}
+	return line
 }
 
 // gcDeskwtPath resolves the installed deskwt: the cell's DESK_TOOLS_BIN directory first

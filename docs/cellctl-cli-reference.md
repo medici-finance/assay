@@ -145,7 +145,7 @@ pause, wait for in-flight work to finish, hand off, then stop each targeted role
 
 ## `cellctl gc <cell> [--role <role>] [--plan [--json] | --run | --apply <plan-id>]`
 
-report what each reclaim target of a desk would reclaim (read-only; apply is held)
+report each reclaim target's dry run for a desk (read-only; apply is held)
 
 ```
   --apply                    string   apply the stored plan with this id, on this terminal, after the typed confirm (apply is held)

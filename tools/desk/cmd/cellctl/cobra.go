@@ -1055,11 +1055,12 @@ func commsCmd() *cobra.Command {
 func gcCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "gc <cell> [--role <role>] [--plan [--json] | --run | --apply <plan-id>]",
-		Short: "report what each reclaim target of a desk would reclaim (read-only; apply is held)",
+		Short: "report each reclaim target's dry run for a desk (read-only; apply is held)",
 		Long: "Bare gc is read-only: it runs each existing reclaim target's dry form and prints one JSON line per\n" +
-			"target (target, outcome, bytes, reclaimed): the scratch sweep, the Go cache's recorded measurement, and\n" +
+			"target (target, outcome, bytes measured, items): the scratch sweep, the Go cache's recorded measurement, and\n" +
 			"`deskwt prune --dry-run --no-cache` for each CELL_ROOTS checkout. A failed target is reported and the rest\n" +
-			"still run; exit 1 when any failed. --role runs deskwt as that desk's loop. --plan writes a plan; --run and\n" +
+			"still run; exit 1 when any failed or could not check. --role runs deskwt as that desk's loop (the bare\n" +
+			"report only). --plan writes a plan; --run and\n" +
 			"--apply <plan-id> are the state-changing forms of spec/cell-op-v1.md, and their apply is HELD until\n" +
 			"cell-op-v1 specifies a non-interactive maintenance class: a confirmed apply reclaims nothing. See\n" +
 			"docs/cellctl.md, `cellctl gc`.",
