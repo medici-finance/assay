@@ -197,7 +197,7 @@
       "name": "reclaim recent build output",
       "file": "internal/cellscratch/store.go",
       "old": "if time.Since(last) <= age {",
-      "new": "if false {"
+      "new": "if false && time.Since(last) <= age {"
     },
     {
       "name": "reclaim under a live execution lease",
@@ -438,6 +438,18 @@
       "file": "internal/cellscratch/store.go",
       "old": "s.inventoryLimit(), s.stopped, func(",
       "new": "s.inventoryLimit(), func() error { return deskkit.ErrScanLimit }, func("
+    },
+    {
+      "name": "retain unbounded work candidates",
+      "file": "internal/cellscratch/store.go",
+      "old": "if examined >= limit {",
+      "new": "if false && examined >= limit {"
+    },
+    {
+      "name": "unbounded removal pages",
+      "file": "internal/cellscratch/store.go",
+      "old": "if err == nil && pages >= RemovalPages {",
+      "new": "if false && err == nil && pages >= RemovalPages {"
     }
   ]
 }

@@ -10,8 +10,10 @@ import (
 	"strconv"
 )
 
-// MaintenanceEntries bounds retained accounting/candidate state. Exceeding it
-// makes accounting incomplete; it must never authorize admission or reclamation.
+// MaintenanceEntries bounds retained accounting/candidate state. For
+// ReadDirBounded and BoundedWalkDir, exceeding it makes accounting incomplete; it
+// must never authorize admission or reclamation. For PagedWalkDir, which retains
+// nothing per entry, it is only the page size between cancellation checks.
 const MaintenanceEntries = 262144
 const maintenanceDepth = 64
 

@@ -1,8 +1,11 @@
 package cellscratch
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -91,12 +94,108 @@ func TestScratchPagedInventory(t *testing.T) {
 	if rows[wide.Record.ID].Action != "remove" || exists(t, filepath.Join(s.Path, wide.Record.ID)) {
 		t.Fatalf("wide acknowledged task not removed: %+v", rows[wide.Record.ID])
 	}
-	if rows[old.Record.ID].Action != "reclaim-work" || exists(t, filepath.Join(old.Work(), "cache")) {
-		t.Fatalf("wide finished task not reclaimed: %+v", rows[old.Record.ID])
+	// old's work holds 75 top-level entries: build, the 3 finishedOld plants, cache
+	// and 70 top-level files. One sweep plans and reclaims one batch of 32.
+	row := rows[old.Record.ID]
+	if row.Action != "reclaim-work" || !strings.Contains(row.Reason, "bounded batch") {
+		t.Fatalf("wide finished task not reclaimed in a bounded batch: %+v", row)
+	}
+	if left := workWidth(t, old); left != 75-32 {
+		t.Fatalf("one sweep retained %d candidates, want the bound 32", 75-left)
+	}
+	reclaimed := row.Reclaimed
+	for i := 0; i < 5 && workWidth(t, old) > 0; i++ {
+		rep, err = s.Sweep(DefaultPolicy(), true)
+		if err != nil || rep.Partial {
+			t.Fatalf("later batch: %v %+v", err, rep)
+		}
+		reclaimed += rowsByID(rep)[old.Record.ID].Reclaimed
+	}
+	if left := workWidth(t, old); left != 0 {
+		t.Fatalf("wide finished task never fully reclaimed: %d entries left", left)
 	}
 	// 70 cache files, 70 top-level files and the 3 planted by finishedOld, 4 bytes
-	// each, plus the 1000-byte build.
-	if want := int64(1000 + 143*4); rows[old.Record.ID].Reclaimed != want {
-		t.Fatalf("wide task measured %d, want %d", rows[old.Record.ID].Reclaimed, want)
+	// each, plus the 1000-byte build: every byte is measured once across the batches.
+	if want := int64(1000 + 143*4); reclaimed != want {
+		t.Fatalf("wide task measured %d, want %d", reclaimed, want)
+	}
+}
+
+// workWidth counts the entries directly under a task's work dir.
+func workWidth(t *testing.T, r *Run) int {
+	t.Helper()
+	entries, err := os.ReadDir(r.Work())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return len(entries)
+}
+
+// Removal empties a directory a bounded number of pages at a time: a directory
+// wider than the bound fails that removal, partial and retried, instead of the
+// loop running for as long as something refills it. Later sweeps finish the job.
+//
+// regression: #5560
+func TestScratchRemovalPageBound(t *testing.T) {
+	s := scratchStore(t)
+	old := finishedOld(t, s, 1)
+	var names []string
+	for i := 0; i < 70; i++ {
+		names = append(names, fmt.Sprintf("cache/%02d", i))
+	}
+	plantFiles(t, old.Work(), names...)
+	t.Setenv("ASSAY_MAINTENANCE_ENTRY_LIMIT", "32")
+	saved := RemovalPages
+	RemovalPages = 1
+	t.Cleanup(func() { RemovalPages = saved })
+	rep, err := s.Sweep(DefaultPolicy(), true)
+	if row := rowsByID(rep)[old.Record.ID]; !errors.Is(err, errRefilled) || !rep.Partial || row.Action != "error" {
+		t.Fatalf("removal ran past its page bound: %v %+v", err, row)
+	}
+	cache, err := os.ReadDir(filepath.Join(old.Work(), "cache"))
+	if err != nil || len(cache) != 70-32 {
+		t.Fatalf("bounded removal emptied %d entries, want one page of 32: %v", 70-len(cache), err)
+	}
+	for i := 0; i < 5 && exists(t, filepath.Join(old.Work(), "cache")); i++ {
+		if _, err := s.Sweep(DefaultPolicy(), true); err != nil && !errors.Is(err, errRefilled) {
+			t.Fatal(err)
+		}
+	}
+	if exists(t, filepath.Join(old.Work(), "cache")) {
+		t.Fatal("later sweeps did not finish the bounded removal")
+	}
+}
+
+// A finished task's work dir that becomes a link to a live task's work after
+// planning is caught again right before removal, on the reclaim-work path too.
+//
+// regression: #5560
+func TestScratchFinishedLinkAtDelete(t *testing.T) {
+	s := scratchStore(t)
+	p := DefaultPolicy()
+	live := scratchRun(t, s)
+	plantFiles(t, live.Work(), "notes.txt", "checkout-copy/main.go")
+	older, swapped := finishedOld(t, s, 1), finishedOld(t, s, 0)
+	backdate(t, s, older, time.Hour)
+	original, once := s.remove, false
+	s.remove = func(path string, seen pins) error {
+		if !once {
+			once = true
+			must(t, os.Rename(swapped.Work(), swapped.Work()+".moved"))
+			linkWork(t, swapped, live)
+		}
+		return original(path, seen)
+	}
+	rows := rowsByID(sweep(t, s, p, true))
+	if rows[older.Record.ID].Action != "reclaim-work" || exists(t, filepath.Join(older.Work(), "notes.txt")) {
+		t.Fatal("unchanged finished task was not reclaimed", rows[older.Record.ID])
+	}
+	if row := rows[swapped.Record.ID]; row.Action != "keep" || row.Reason != "workspace is not a real directory at deletion" {
+		t.Fatal("finished workspace swapped to a link was not caught at deletion", row)
+	}
+	for _, kept := range []string{"build", "notes.txt", "checkout-copy/main.go"} {
+		if !exists(t, filepath.Join(live.Work(), kept)) {
+			t.Fatal("live task lost work through a swapped link", kept)
+		}
 	}
 }
