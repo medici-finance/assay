@@ -18,7 +18,9 @@ const rowCredMarker = "planted-stored-login-marker"
 // XDG_CONFIG_HOME), a role key file named by an ASSAY_* variable, the verify
 // loop's DESK_LOOP, a cell's CELLCTL_GH_AMBIENT copy of the login, and the
 // marker itself in an ASSAY_* and a GH_* variable, and in a row input that
-// passes the scrub by name only when it holds a commit id. Stub `gh` and `desktoken`
+// passes the scrub by name only when it holds a commit id. It also plants a
+// pointer at that key directory under a family no list names, and an agent
+// socket path: the pass list drops both by default. Stub `gh` and `desktoken`
 // on PATH answer with the marker whenever their inputs lead them to it. It
 // returns the planted home.
 func rowCredPlant(t *testing.T) string {
@@ -58,6 +60,8 @@ func rowCredPlant(t *testing.T) string {
 	t.Setenv("GH_FIXTURE_LOGIN", rowCredMarker)
 	t.Setenv("CELLCTL_GH_AMBIENT", rowCredMarker)
 	t.Setenv("ASSAY_DELIVERY_BASE_SHA", rowCredMarker)
+	t.Setenv("EXAMPLE_TOOL_CONFIG_DIR", keyDir)
+	t.Setenv("SSH_AUTH_SOCK", filepath.Join(home, "agent.sock"))
 	return home
 }
 
@@ -69,7 +73,7 @@ func rowCredProbe(t *testing.T, rec string) string {
 	t.Helper()
 	probe := filepath.Join(t.TempDir(), "probe.sh")
 	script := "printf '%s' \"$HOME\" > '" + rec + "'\n" +
-		"for v in DESK_LOOP GH_CONFIG_DIR XDG_CONFIG_HOME ASSAY_ROLE_KEY_FILE ASSAY_FIXTURE_LOGIN GH_FIXTURE_LOGIN CELLCTL_GH_AMBIENT; do\n" +
+		"for v in DESK_LOOP GH_CONFIG_DIR XDG_CONFIG_HOME ASSAY_ROLE_KEY_FILE ASSAY_FIXTURE_LOGIN GH_FIXTURE_LOGIN CELLCTL_GH_AMBIENT EXAMPLE_TOOL_CONFIG_DIR SSH_AUTH_SOCK; do\n" +
 		"  eval \"[ -z \\\"\\${$v+set}\\\" ]\" || { echo \"$v reached the row\" >&2; exit 11; }\n" +
 		"done\n" +
 		"out=$(gh auth token 2>/dev/null; desktoken worker 2>/dev/null; cat \"$HOME/.config/gh/hosts.yml\" \"$HOME/.config/assay/role.key\" 2>/dev/null; env)\n" +
@@ -128,24 +132,65 @@ func TestAdmittedRowsNoCred(t *testing.T) {
 }
 
 // TestAdmittedEnvScrubsCred pins the scrub one variable at a time, whatever
-// its case, beside variables that only resemble one.
+// its case. Each credential pointer is refused by the deny layer itself
+// (admittedRowDenied), not only left off the pass list, so a pass-list entry
+// added later cannot carry one through. A variable that only resembles one is
+// not refused by that layer.
 func TestAdmittedEnvScrubsCred(t *testing.T) {
 	gone := []string{"HOME=/h", "Home=/h", "DESK_LOOP=verify-desk", "desk_loop=x",
 		"XDG_CONFIG_HOME=/h/.config", "CELLCTL_GH_AMBIENT=x", "GH_CONFIG_DIR=/h/gh",
 		"GH_HOST=example.invalid", "gh_anything=x", "ASSAY_APP_PEM_FILE=/k", "Assay_Roster=x",
 		"GIT_CONFIG_GLOBAL=/h/.gitconfig", runCredentialEnv + "=/elsewhere",
-		rowreadSocketVar + "=/elsewhere/sock"}
-	kept := []string{"PATH=/bin", "HOMEBREW_PREFIX=/opt", "EXAMPLE_SETTING=s", "XDG_CACHE_HOME=/c",
+		rowreadSocketVar + "=/elsewhere/sock", "BASH_ENV=/h/rc", "GITHUB_TOKEN=x"}
+	lookalike := []string{"PATH=/bin", "HOMEBREW_PREFIX=/opt", "EXAMPLE_SETTING=s", "XDG_CACHE_HOME=/c",
 		"GHOST=x", "MY_ASSAY_NOTE=x", "GIT_CONFIG_GLOBAL=" + os.DevNull}
-	env := admittedRowEnv(append(append([]string{}, gone...), kept...))
+	env := admittedRowEnv(append(append([]string{}, gone...), lookalike...))
 	for _, kv := range gone {
 		if slices.Contains(env, kv) {
 			t.Errorf("admitted row environment carries %s", kv)
 		}
+		if !admittedRowDenied(kv) {
+			t.Errorf("the deny layer does not refuse %s", kv)
+		}
 	}
-	for _, kv := range kept {
+	for _, kv := range lookalike {
+		if admittedRowDenied(kv) {
+			t.Errorf("the deny layer refuses %s, which only resembles a credential pointer", kv)
+		}
+	}
+	for _, kv := range []string{"PATH=/bin", "GIT_CONFIG_GLOBAL=" + os.DevNull} {
 		if !slices.Contains(env, kv) {
 			t.Errorf("admitted row environment dropped %s", kv)
+		}
+	}
+}
+
+// regression: #6792
+// TestAdmittedEnvPassList: the scrub is an allow-list. A variable reaches an
+// admitted row only when it is on the pass list (admittedRowPassNames, or a
+// locale LC_* setting), so a family nobody listed is dropped by default: an
+// agent socket, a runtime directory, another tool's config pointer, a CI
+// runtime variable, the Windows profile, and a name that only extends a
+// listed one. A listed proxy or module proxy that carries a user name in its
+// URL is dropped too.
+func TestAdmittedEnvPassList(t *testing.T) {
+	kept := []string{"PATH=/bin", "Path=C:\\bin", "LANG=C.UTF-8", "LC_ALL=C", "TERM=dumb", "TZ=UTC",
+		"CI=true", "SSL_CERT_FILE=/etc/ssl/cert.pem", "GOFLAGS=-mod=readonly", "GOMODCACHE=/go/pkg/mod",
+		"GOPROXY=off", "GOTOOLCHAIN=local", "GODEBUG=multipathtcp=0", "GOCACHE=/c", "GOPATH=/g",
+		"HTTPS_PROXY=http://proxy.example.invalid:3128", "no_proxy=localhost", "SystemRoot=C:\\Windows"}
+	gone := []string{"SSH_AUTH_SOCK=/tmp/agent", "SSH_ASKPASS=/bin/ask", "XDG_RUNTIME_DIR=/run/user/1",
+		"DOCKER_CONFIG=/h/.docker", "KUBECONFIG=/h/.kube/config", "EXAMPLE_TOOL_CONFIG_DIR=/h/tool",
+		"OTHERFORGE_LOGIN=x", "ACTIONS_RUNTIME_URL=https://example.invalid", "CI_EXAMPLE_LOGIN=x",
+		"PATHEXTRA=x", "GOAUTH=git", "GOENV=/h/go.env", "APPDATA=D:\\prof\\AppData", "USERPROFILE=D:\\prof",
+		"LCX=x", "HTTPS_PROXY=http://fixture@proxy.example.invalid:3128", "GOPROXY=https://fixture@mod.example.invalid"}
+	for _, kv := range kept {
+		if !slices.Contains(admittedRowEnv([]string{kv}), kv) {
+			t.Errorf("admitted row environment dropped the listed %s", kv)
+		}
+	}
+	for _, kv := range gone {
+		if slices.Contains(admittedRowEnv([]string{kv}), kv) {
+			t.Errorf("admitted row environment carries %q, which is not on the pass list", kv)
 		}
 	}
 }

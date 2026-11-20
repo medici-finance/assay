@@ -304,6 +304,59 @@ skill allows beside the Verify table, a `Row | The mutation that must redden it`
 (`Class | Meaning`) are not Verify-shaped, so they stay where the skill tells authors to put them.
 Registry entry: `verify-unplaced-rows`.
 
+### What an admitted row can reach
+
+An admitted run (one with a verifier admission receipt) does not hand its rows the invoking
+environment. Each row gets a fresh, empty `HOME` and `TMPDIR` of its own, and its environment is
+built from an allow-list: an inherited variable reaches the row only when it is the search path
+(`PATH`), the account and shell names (`USER`, `LOGNAME`, `SHELL`), the bare `CI` flag, a locale
+or terminal setting (`LANG`, `LC_*`, `TERM`, `TZ` and similar), a Go toolchain
+setting (`GOFLAGS`, `GOPROXY`, `GOMODCACHE`, `GOTOOLCHAIN` and the rest of the build settings), a
+proxy or trust-root setting, a Windows system location, or one of the two delivery coordinates
+(`ASSAY_DELIVERY_SHA`, `ASSAY_DELIVERY_BASE_SHA`, and only while each holds a full commit id).
+Every other variable is dropped, whatever its family: a forge token, another tool's config
+pointer, an agent socket, a runtime directory, a Windows profile location and a CI runtime
+variable (`GITHUB_ACTIONS`, `RUNNER_TEMP` and the like) alike. A listed proxy or module proxy whose
+URL carries a user name is dropped too; one that carries a secret elsewhere in its URL (a path or
+query) is not checked for it and passes. The run then adds what it hands the
+row itself: the git narrowing settings, its row-read socket, and its read-only credential path for
+a row that passes `--acceptance-forge`. A row that reads a dropped `ASSAY_*` variable by name is
+recorded could-not-run, never fail; a row that reads any other dropped variable sees it unset.
+
+What a row can still reach today, because it runs as the invoking user:
+
+- **Files by path.** The scrub removes pointers, not files. A row can open any file the user can,
+  a stored forge login or a key file included, at a path it already knows.
+- **Git configuration in the checkout.** A credential helper configured in the checkout's own git
+  config still applies to the row's git.
+- **The account's home directory.** A tool that resolves home from the user's account record
+  rather than from `HOME` (ssh does) finds the real one.
+- **The user's Windows temp directory.** On a Windows host, `TEMP` and `TMP` are on the pass
+  list, so a row inherits the invoking user's temp directory (under the user profile); only
+  `TMPDIR` is replaced per row.
+- **Same-user local endpoints.** An agent socket, another run's row-read socket, or any other
+  local service the user can connect to, at a path the row knows or can list.
+- **Other processes' environments.** A same-user process can generally read another's startup
+  environment (`ps -E` on macOS, `/proc/<pid>/environ` on Linux), including the invoking
+  process's, which still holds every variable the scrub removed.
+
+So a row that looks for a credential on purpose can still find one; the scrub stops one being
+found by default. The container lane narrows some of this (a fresh filesystem and no network),
+not all of it.
+
+**Design note: a credential-less runner.** Containment needs a runner that holds no credential
+but the verifier's own run-scoped read-only one. The intended shape: rows execute as a separate,
+unprivileged identity (a dedicated user or a user namespace) that owns no stored login, no key
+file and no home of the invoking user, in a filesystem view where the invoking user's home and
+runtime directories are absent, not merely unnamed. The verifier's process stays outside that
+boundary and answers forge reads over the run's row-read socket, which is the only endpoint
+mounted in. Process listing across the boundary is denied, so the invoking process's environment
+is out of reach. The open questions are portability (macOS has no user namespaces, so the host
+lane needs a separate user or the container lane), how a row's Go build and module caches are
+provided without sharing the invoking user's, and whether host-lane admitted runs are retired in
+favour of the container lane. Until that runner exists, the reach listed above stands, and no
+change here widens it.
+
 ## Notice ratchet on changed briefs (`--diff-base`)
 
 `statusgen --lint --diff-base <ref>` compares problems: a problem the diff introduces fires, one

@@ -1,9 +1,9 @@
 {
-  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred|TestAdmittedRowInputsPass|TestAdmittedRowSeesDelivery|TestAdmittedScrubbedInputCouldNotRun|TestAdmittedRowScrubbedRefs|TestScrubbedRowNeverGreen)$' -count=1 -timeout 600s",
+  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvPassList|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred|TestAdmittedRowInputsPass|TestAdmittedRowSeesDelivery|TestAdmittedScrubbedInputCouldNotRun|TestAdmittedRowScrubbedRefs|TestScrubbedRowNeverGreen)$' -count=1 -timeout 600s",
   "control": {
     "name": "admitted rows keep every credential pointer",
     "file": "verifieradmission.go",
-    "old": "\t\tcase admittedRowCredential(key):\n",
+    "old": "\tcase admittedRowCredential(key):\n",
     "new": ""
   },
   "mutations": [
@@ -106,7 +106,7 @@
     {
       "name": "an inherited row-read socket passes through",
       "file": "verifieradmission.go",
-      "old": "\t\tcase strings.EqualFold(key, rowreadSocketVar):\n",
+      "old": "\tcase strings.EqualFold(key, rowreadSocketVar):\n",
       "new": ""
     },
     {
@@ -168,6 +168,30 @@
       "file": "verifieradmission.go",
       "old": "\t\t\treturn strings.EqualFold(key, name)\n",
       "new": "\t\t\treturn strings.EqualFold(key, name) && false\n"
+    },
+    {
+      "name": "an unlisted variable passes through to the rows",
+      "file": "verifieradmission.go",
+      "old": "\t\tcase admittedRowGlobal(kv), admittedRowPass(kv):\n\t\t\tenv = append(env, kv)\n",
+      "new": "\t\tdefault:\n\t\t\tenv = append(env, kv)\n"
+    },
+    {
+      "name": "a pass-list name matches as a prefix",
+      "file": "verifieradmission.go",
+      "old": "return strings.HasPrefix(key, \"LC_\") || slices.Contains(admittedRowPassNames, key)",
+      "new": "return strings.HasPrefix(key, \"LC_\") || slices.ContainsFunc(admittedRowPassNames, func(n string) bool { return strings.HasPrefix(key, n) })"
+    },
+    {
+      "name": "the locale prefix widens past LC_",
+      "file": "verifieradmission.go",
+      "old": "return strings.HasPrefix(key, \"LC_\") ||",
+      "new": "return strings.HasPrefix(key, \"LC\") ||"
+    },
+    {
+      "name": "a listed proxy URL carrying a user name passes",
+      "file": "verifieradmission.go",
+      "old": "slices.Contains(admittedRowURLNames, key) && strings.Contains(value, \"@\")",
+      "new": "slices.Contains(admittedRowURLNames, key) && value == \"\\x00\""
     },
     {
       "name": "a could-not-run row reads as pass",
