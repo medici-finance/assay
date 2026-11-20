@@ -5,9 +5,9 @@
 # root-owned and mode 0755. Neither container sets a command: each one's args are this path and
 # a mode word, plus explicit proof/source/delivery flags for a brief run only.
 #
-#   witness.sh seed              init container: copy the clone from /cache/clone into /work
+#   witness.sh seed              init container: copy the clone from /cache/clone into /work/checkout
 #   witness.sh seed-probe        init container of the probe variant: an empty /work
-#   witness.sh <stream>/<NN>     the whole run of the one brief /work/docs/streams/<stream>/
+#   witness.sh <stream>/<NN>     the whole run of the one brief /work/checkout/docs/streams/<stream>/
 #                                brief-<NN>-<slug>.md (exactly one such regular file, else exit 2)
 #   witness.sh probe             the probe measurements
 #
@@ -27,7 +27,7 @@
 # The run enters the empty network namespace as ONE process tree: this script records its own
 # namespace id, then runs
 #   unshare --user --map-root-user --net statusgen __verifyrun-netns <outer-id> \
-#     statusgen verifyrun --sandbox container-netns --brief <path> --root /work \
+#     statusgen verifyrun --sandbox container-netns --brief <path> --root /work/checkout \
 #       --admission-receipt <receipt> --container-image-digest <digest> --witness <file>
 # statusgen's own helper raises lo inside the new namespace (a new namespace starts with lo
 # DOWN) and proves lo is up, no other interface is up and the namespace differs from <outer-id>,
@@ -76,7 +76,8 @@ set -- "$KEY"
 # VR_CACHE_DIR, VR_WORK_DIR, VR_ADMISSION_DIR and VR_SCRATCH_DIR are test hooks; the Job's env
 # allowlist never sets them
 CACHE=${VR_CACHE_DIR:-/cache}
-WORK=${VR_WORK_DIR:-/work}
+# The volume root belongs to kubelet. Seed owns the checkout within it.
+WORK=${VR_WORK_DIR:-/work/checkout}
 ADMIT=${VR_ADMISSION_DIR:-/run/verify-admission}
 SCRATCH=${VR_SCRATCH_DIR:-/tmp}
 FX=$SCRATCH/vr-fx
@@ -227,6 +228,7 @@ admission() {
 case $1 in
   seed)
     [ -d "$CACHE/clone/.git" ] || die "no clone on the PVC"
+    mkdir -p "$WORK" || die "could not create the checkout directory"
     cp -a "$CACHE/clone/." "$WORK/" || die "could not copy the clone"
     ;;
   seed-probe)

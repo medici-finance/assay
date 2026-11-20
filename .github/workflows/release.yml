@@ -486,7 +486,7 @@ jobs:
   # dispatched tag is pushed inside `release`, so a red suite stops the run
   # before a version number can be burned.
   #
-  # SPLIT ACROSS RUNNERS — the suite is a matrix of six legs run concurrently on
+  # SPLIT ACROSS RUNNERS — the suite runs independent test legs concurrently on
   # the `medici-builder-release` pool (its scale set allows several runners; with
   # fewer available the legs simply queue — correctness never depends on pool
   # size). Each test/vet/gate-bar/sweep step below runs in EXACTLY ONE leg (its
@@ -496,7 +496,8 @@ jobs:
   # sit behind the full suite.
   #   statusgen    — statusgen test/vet + the three named gate bars
   #   desk-tools   — desk-tools test/vet
-  #   muhar-light  — the six short mutation sweeps (bodycheck, desksourceguard,
+  #   muhar-bodycheck — the bodycheck mutation sweep
+  #   muhar-light  — the other five mutation sweeps (desksourceguard,
   #                  loopengine ×2, reviewloop, deskclose)
   #   deskmerge ×3 — the deskmerge mutation sweep, the long pole, SHARDED across
   #                  three legs via muhar's `-shard i/n` (each leg runs the
@@ -522,6 +523,7 @@ jobs:
           - leg: drainloop
           - leg: qualgen
           - leg: muhar-light
+          - leg: muhar-bodycheck
           - leg: deskmerge
             shard: 0/3
           - leg: deskmerge
@@ -671,7 +673,7 @@ jobs:
       # positive control, same per-mutation verdicts in the same order, same
       # totals line. Only the wall time moves.
       - name: Gate bar — mutate every bodycheck refusal and require the suite to catch it
-        if: matrix.leg == 'muhar-light'
+        if: matrix.leg == 'muhar-bodycheck'
         run: |
           set -euo pipefail
           cd tools/desk
@@ -853,13 +855,13 @@ jobs:
       # reports so the `release` job can assemble the pack from them WITHOUT
       # re-running any mutation (a second sweep would double a long CPU-bound
       # step and create two verdicts that could disagree). Only the legs that run
-      # mutation sweeps produce reports: muhar-light (six specs) and the three
+      # mutation sweeps produce reports: bodycheck, the five other specs and the three
       # deskmerge shards (one shard report each). Each leg uploads its own reports
       # under a name unique to the leg (job index), and the release job merges
       # them. `if-no-files-found: error` makes a leg that was expected to capture
       # but produced nothing fail loudly rather than ship a quietly smaller pack.
       - name: Upload captured mutation reports (tool-validation pack)
-        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'
+        if: matrix.leg == 'muhar-bodycheck' || matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: tv-reports-${{ matrix.leg }}-${{ strategy.job-index }}
@@ -1394,7 +1396,7 @@ jobs:
           cat checksums.txt
 
       # TOOL-VALIDATION EVIDENCE PACK (iso-9001/01) — collect the mutation reports
-      # the `test` job captured (muhar-light's six + the three deskmerge shards),
+      # the `test` job captured (bodycheck, five others and three deskmerge shards),
       # merged into one directory. merge-multiple flattens every tv-reports-*
       # artifact into ${RUNNER_TEMP}/tv-reports.
       - name: Download captured mutation reports (tool-validation pack)

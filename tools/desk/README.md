@@ -5343,6 +5343,18 @@ path, branch and record digest and exits 0. It makes no commits-API write and sp
 budget. Before #4554 this route parsed `--dry-run` and ignored it, so a dry run committed the
 record for real.
 
+**`--remove-superseded <record> --superseded-by <newer>`** (#4823). The sanctioned way a
+verify-outcome record leaves the tree. No gate enforces that: a reviewed pull request that
+deletes a record still merges, so what binds a desk is the verify-desk rule (never remove a
+record with a local commit) and review. Both paths must be outcome records under
+`docs/streams/verify-outcomes/` for the same brief slot, each path must be the one its own
+bytes derive, and at the pinned branch tip the newer record must be the one the latest-per-brief
+reading selects. Any other path, a record that is not superseded, or a newer record for another
+brief is refused (exit 5) before any write. The removal runs the same admission, identity gate,
+public-repo gate and attestation as `--outcome-record`, then lands as one conditional forge
+deletion pinned to both the record's blob and the branch head, so the commit is forge-signed
+and never a local commit. `--dry-run` prints the plan and writes nothing.
+
 **Flags a route does not read are refused.** Each landing shape declares the flags it honours.
 A flag set on the command line that the selected shape does not read (for example
 `--append-only`, `--allow-shrink` or `--row` with `--outcome-record`) is refused (exit 5) before
@@ -7087,7 +7099,9 @@ under `--claim-root` when given, else under `--root`, and only when their port i
 a repo that keeps the scripts but runs without the ports points `--claim-root` at the checkout
 that carries them while `--root` stays the item's own repo — the worktree is always cut from
 `--root`, and the claim itself is a ref in the target repo (`--repo`) regardless of where the
-script file sits.
+script file sits — except for a cross-repository VERIFIER dispatch, whose claim (with its
+admission lease and occupancy count) is taken, released and inspected in the TRACKING repo,
+`--claim-root`'s origin, where the brief, its Evidence and its outcome record land (#5999).
 
 **Cross-repo items resolve through the alias registry, and a mismatch is a hard fail.** An item
 may name the repo its deliverable lands in by ALIAS — the brief's `deliverable_repo: <alias>` or

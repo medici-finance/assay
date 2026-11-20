@@ -1,0 +1,684 @@
+{
+  "repository": "medici-finance/assay",
+  "source": "bec90193ce916b2d5b11433f25970867a1b7ef95",
+  "units": "seconds unless indicated",
+  "local_go": {
+    "go": "1.27.4",
+    "host": "darwin/arm64",
+    "parallelism": 4,
+    "windows_test_compile": {
+      "packages": 136,
+      "serial_wall_s": 91.67,
+      "serial_cpu_s": 237.88,
+      "batch_wall_s": 28.38,
+      "batch_cpu_s": 164.09
+    },
+    "linux_stamped_build": {
+      "outputs": 72,
+      "identical_sha256": 72,
+      "bytes": 1380330468,
+      "serial_wall_s": 50.62,
+      "serial_cpu_s": 93.44,
+      "batch_wall_s": 10.23,
+      "batch_cpu_s": 50.66,
+      "inventory_digest_sha256": "ede659ce149b99923271889b9afdd0a20e5490f1fd4e2dfd465c8b82077ee4c3",
+      "digest_input": "Lines sorted by binary name, joined by LF with no trailing LF. Each line is name, bytes and SHA-256 separated by single spaces.",
+      "inventory": [
+        {
+          "name": "cellctl",
+          "bytes": 71106190,
+          "sha256": "2843f2acacf597990cf968662293af9a035ecf24871de381dc143010b31db4a7"
+        },
+        {
+          "name": "clusterguard",
+          "bytes": 11750207,
+          "sha256": "e1a1c547e7d19e572cbecebc54be97b6bad461e6be82a72170d0fef5645f9e4f"
+        },
+        {
+          "name": "commsgw",
+          "bytes": 14699785,
+          "sha256": "c0a0b8a1ed5f3c9f92cc0c09c20f65e2a046b70d25bf73ec12349c0219cbd12e"
+        },
+        {
+          "name": "commsloop",
+          "bytes": 12400501,
+          "sha256": "3b3233bf6fde014157111d46936cea270a70e4222fb46debe8afe6e6f3d8379e"
+        },
+        {
+          "name": "deskack",
+          "bytes": 11916938,
+          "sha256": "f02104fb8e30cf47d84182b729f2e1861364ba444dbfa9132f1f1ad6a6930ef9"
+        },
+        {
+          "name": "deskadvisory",
+          "bytes": 16148958,
+          "sha256": "814d2446a5af819c0abf7ffb741c2e393cdd9e94ab5159301ec6c40da2f95968"
+        },
+        {
+          "name": "deskapps",
+          "bytes": 21307549,
+          "sha256": "d21b007736ca04bb2f61b5e2b7b2977d2011ff377855167df68038de612d654d"
+        },
+        {
+          "name": "deskaudit",
+          "bytes": 21562974,
+          "sha256": "717a1b528c15e96c0f5e21d050358d6ecefadabb7fda8ef6cd7d34e0c2e9bd51"
+        },
+        {
+          "name": "deskautolane",
+          "bytes": 16942473,
+          "sha256": "80f078606bd97ccfcaa5fc682fbcc22266e132ee66282558bd16c1565bc63f6b"
+        },
+        {
+          "name": "deskavatar",
+          "bytes": 13566791,
+          "sha256": "f662c64892184599599da7691f0e4389def74b995d1db19ba2409e66cf101ca6"
+        },
+        {
+          "name": "deskboard",
+          "bytes": 30525198,
+          "sha256": "15a4068709ecdd9ac12dd52f9a759f56d7a5a9dc79b817a9ed741bf019728614"
+        },
+        {
+          "name": "deskboot",
+          "bytes": 13540196,
+          "sha256": "c470157f75f0937175b13c823f9cec3e98c9e35690fcd0663614efd7f25aaa0d"
+        },
+        {
+          "name": "deskcalibrate",
+          "bytes": 22238596,
+          "sha256": "7cdce2f4158ab14aafa36c336d6aef20fc08f948e19839b7c051f8b79de54a45"
+        },
+        {
+          "name": "deskclaim",
+          "bytes": 12578607,
+          "sha256": "ab69fa61e9138276749a03d8716e3dddccdb69170857f3bbbbda456d45f96dfd"
+        },
+        {
+          "name": "deskclaim-ref",
+          "bytes": 16386081,
+          "sha256": "bf154075f84b8fa77f1cff8390f5b088ffa5263fc1ea289c76869c86fa6c525a"
+        },
+        {
+          "name": "deskclose",
+          "bytes": 16964839,
+          "sha256": "fff7af8a94d2c76f67578ba8d3b02f5186bdfe13a477b68dc12814bb64bca2af"
+        },
+        {
+          "name": "deskcomms",
+          "bytes": 12675022,
+          "sha256": "ca30bb40d29abc87da6d55df1fa6fca3ecea48b278413ffa64c60965d8f95fcf"
+        },
+        {
+          "name": "deskdecision",
+          "bytes": 29269701,
+          "sha256": "a4fbb25cba7f2c3e189b94b2af8207592430784d8d54544445be1b4fc435e327"
+        },
+        {
+          "name": "deskdigest",
+          "bytes": 12689038,
+          "sha256": "8f071ba47e6674a6d3c3081cdc83b26bf8247f35dea144743a8ca997b60c691a"
+        },
+        {
+          "name": "deskdisable",
+          "bytes": 22006477,
+          "sha256": "ed1d70e1cdbd4db05b5ad92ab0267ddd62e478b9bf271ae57777e5ae947224ce"
+        },
+        {
+          "name": "deskdispatch",
+          "bytes": 33485502,
+          "sha256": "50c1f74fce46f6dddec692967da7eb71f105462e35474cb23f7ad8597021035f"
+        },
+        {
+          "name": "deskdisposition",
+          "bytes": 16276568,
+          "sha256": "a7c4b3da9b0478a1f19d3477b1b6b68cbe7f5ebd470d8b33c4f033d51c0c90c3"
+        },
+        {
+          "name": "deskevidence",
+          "bytes": 21220157,
+          "sha256": "29eb7f8aa01f428bed7d2183ebf440d308d07c6668527a997d1a6da4c5f90975"
+        },
+        {
+          "name": "deskfile",
+          "bytes": 17008033,
+          "sha256": "4966946162fd626b87efa86a02537d49afc295e776ce5aaa278f67d2e5389a34"
+        },
+        {
+          "name": "deskfleet",
+          "bytes": 22314763,
+          "sha256": "d4ae6babb4fafeb2cc59fa150d241e845a6efcffb46f28a9f23e74ccfbffe1bc"
+        },
+        {
+          "name": "deskflip",
+          "bytes": 17206676,
+          "sha256": "2f1981a764638acfc2bd11bd2528d19b825dd4b524a47779534c8548ed4c0245"
+        },
+        {
+          "name": "deskgit",
+          "bytes": 17217435,
+          "sha256": "3548e3f95716b00219d728791b296f10e02442d1c3daddc36f49577be5c10a17"
+        },
+        {
+          "name": "deskgitlab",
+          "bytes": 22174115,
+          "sha256": "aff803b17e2a2fc56220807d2167dfe9d9d7396dca04de7a5b68a61cf6c0312b"
+        },
+        {
+          "name": "deskinbox",
+          "bytes": 29462491,
+          "sha256": "ed53836c5063475bd4f57d105aa7d0299cd602d55b6ee586620263ff13e4bd36"
+        },
+        {
+          "name": "deskinstall",
+          "bytes": 22441467,
+          "sha256": "a0c1c86193718689249da342316e25475b6831ae241ab14a37843644a2715003"
+        },
+        {
+          "name": "desklabel",
+          "bytes": 16411585,
+          "sha256": "43e675eca781d87e05d656fa6a7827cd8ff376f9dbd581bab1ae25a22cf51083"
+        },
+        {
+          "name": "deskmanifest",
+          "bytes": 22030744,
+          "sha256": "d5195673ed3287c088bd9be0b40fcebe2caca09e78f6b3686f91d650256756ba"
+        },
+        {
+          "name": "deskmerge",
+          "bytes": 19993281,
+          "sha256": "6ae12b113dec1b6cc9cb55349ec07f06e150ebfc0ce23d51d3de69574dd2c838"
+        },
+        {
+          "name": "deskmigrate",
+          "bytes": 22430908,
+          "sha256": "12184548eb40878179b48167ca5eae46da9184a582c654d0debea19eee090ac4"
+        },
+        {
+          "name": "deskmonitor",
+          "bytes": 16134313,
+          "sha256": "f2e863a18185353cb89cd64317d4aa59a9e049e74d02f9b17bc020697d5d8bfd"
+        },
+        {
+          "name": "deskpathguard",
+          "bytes": 16453308,
+          "sha256": "c76177bf7ae383265d4716cb394d9b0486fa6d5df612dffe2e93641bbedf45d0"
+        },
+        {
+          "name": "deskperf",
+          "bytes": 12563312,
+          "sha256": "d782c2beb3a05c749b9f458de82f2999639929cfca24d04540be83bd85532a6a"
+        },
+        {
+          "name": "deskpins",
+          "bytes": 21963741,
+          "sha256": "73ebbfba695e0da8941c7913ee0a5caf21fc60c155539a85aeecccec20c8b2a8"
+        },
+        {
+          "name": "deskpost",
+          "bytes": 17504883,
+          "sha256": "f900696baa598f5a7e101afd518705f857f44922c47205c346cfa41f4f8a4292"
+        },
+        {
+          "name": "deskpr",
+          "bytes": 20202698,
+          "sha256": "e86da682029e435cb0ad2335771d50ec7686f0fe422cee9d1f7f28cf56d316d3"
+        },
+        {
+          "name": "deskpreflight",
+          "bytes": 11559497,
+          "sha256": "7c7cee06b985b5ca2283fa5f510a89e527b29c2055fc2897b6fb5b397225d559"
+        },
+        {
+          "name": "deskprovenance",
+          "bytes": 28969769,
+          "sha256": "d16af338af8bb0898111132de0e4d40e68bfcc170d42f4c25721cbbe1e25ef1c"
+        },
+        {
+          "name": "deskpushguard",
+          "bytes": 14016489,
+          "sha256": "62344a2db8787a6f7536258ab5771afe44ea5f299fcee161f30f93f29d25d229"
+        },
+        {
+          "name": "deskread",
+          "bytes": 29205617,
+          "sha256": "2499245d86f57acc43e01c86d47a69df874350a13ac56b70ece41a99a6fd7988"
+        },
+        {
+          "name": "deskrebaseline",
+          "bytes": 22316728,
+          "sha256": "d620b878ebb18a3f42712f1d6aa18d018e5442db6a1f7b69ff3a0d96032d2baf"
+        },
+        {
+          "name": "deskreconcile",
+          "bytes": 22437577,
+          "sha256": "ac810eaff38b6862d8435eeb3b01647e8f960643969d8af08d5fbbe71b3f5f25"
+        },
+        {
+          "name": "deskrelease",
+          "bytes": 22020531,
+          "sha256": "3df8fdca49556c4b34427606f4f4cce9b3d8fad35046615b9232e1df48634d95"
+        },
+        {
+          "name": "deskreply",
+          "bytes": 17441797,
+          "sha256": "10eeb1f59af7f1ee7af4c6255f5bb1fcdc04b3934d6fe604138e4c6783706ec9"
+        },
+        {
+          "name": "deskrestamp",
+          "bytes": 16468815,
+          "sha256": "19337f43bc7a06d530ef403ed285aa665688544f99c4f311d0029a8752b4416a"
+        },
+        {
+          "name": "deskroster",
+          "bytes": 18358424,
+          "sha256": "f19864fc6e88343e71a76722e3731fb2764dfa420093e7877fb412f639134a78"
+        },
+        {
+          "name": "deskrun",
+          "bytes": 16284718,
+          "sha256": "137c0031244c72f64710cc9ca17d5d15fcc5ce8756aa97386f745a935a306402"
+        },
+        {
+          "name": "deskscanbody",
+          "bytes": 12964437,
+          "sha256": "5db8fca3551f298dd08cccdabde571786e03487a6891df59f53d80c24b3b5068"
+        },
+        {
+          "name": "deskscanuntrusted",
+          "bytes": 11914383,
+          "sha256": "5109f9650bf6d87640c9e5fd99430605e25d53bdadfa4e338baa666572da336e"
+        },
+        {
+          "name": "desksourceguard",
+          "bytes": 12403026,
+          "sha256": "89dec758cb2a6acf70ffb9956fa516d976d84b66122e319414fbd1a464df187d"
+        },
+        {
+          "name": "desksupervise",
+          "bytes": 18883728,
+          "sha256": "a9bb8ba6b1a7f03258d9a11f97136466dc42b7f2a0187146a137627258c0a05f"
+        },
+        {
+          "name": "desktick",
+          "bytes": 11489170,
+          "sha256": "d6d5f7ce2c48d980b9695d31a4fae4f08a4da4af834c426b682f716717297dca"
+        },
+        {
+          "name": "desktoken",
+          "bytes": 14046846,
+          "sha256": "c9691dea5d9f015bb7dec1a4b0f40c96de29fac949a053025040523173e198f0"
+        },
+        {
+          "name": "deskusage",
+          "bytes": 21766901,
+          "sha256": "cfe3d86359902f51424b78db0ccd8e5fbcbcae0d271e656847550f47cad0b1e4"
+        },
+        {
+          "name": "deskverdict",
+          "bytes": 12005761,
+          "sha256": "60d48ca3dd5aa31f53ce438715d3e25aa55a758de935f34bf05c4e482e9c1b29"
+        },
+        {
+          "name": "deskversion",
+          "bytes": 22425719,
+          "sha256": "e944e1d5cd7d40e21c1cab8270df9cac5f8316f6f1516972f1a6dc9751efcd08"
+        },
+        {
+          "name": "deskwt",
+          "bytes": 24564000,
+          "sha256": "523bb0ebaf5472f44bb567d0bb97544b64a56ca0eaa22df621a858509517af89"
+        },
+        {
+          "name": "fanoutloop",
+          "bytes": 16902602,
+          "sha256": "7c4bebb3a610cef4681115b31db0b2b10f4b11f1b5660d8f78c3c02dbb1fb2ff"
+        },
+        {
+          "name": "issueboard",
+          "bytes": 29318458,
+          "sha256": "38d417221e542800cfcbe8ecab486a7e5e7948955f62c9160a3ceb883b2355a7"
+        },
+        {
+          "name": "muhar",
+          "bytes": 22685152,
+          "sha256": "6f26c68ddf338a9512be981d4fa3b6326a02ff9d83092df953bf2d8e713a6dab"
+        },
+        {
+          "name": "opmetrics",
+          "bytes": 22270638,
+          "sha256": "0cd2151c561c6bfb483858e1d8916e3859b272c0c535a704b15dc012dd12a3ad"
+        },
+        {
+          "name": "repohardenguard",
+          "bytes": 15979966,
+          "sha256": "b31633cc6bf60422aca56f129030a256fce34d4925486657c1676164a6841308"
+        },
+        {
+          "name": "reviewloop",
+          "bytes": 12611175,
+          "sha256": "5ae92b7ce8bc5fdbfdd43bebd25497464559ba78682cec4ac0e796fb377b25aa"
+        },
+        {
+          "name": "scanloop",
+          "bytes": 16957386,
+          "sha256": "94cc38617356a61476d8101cbc4a82a2c5737525c43acd54dfffed341fdc611b"
+        },
+        {
+          "name": "untrustcorpus",
+          "bytes": 12122140,
+          "sha256": "408b804c45ec73b16673193b3af6f55587351639b1c1544449f27bbb82f41714"
+        },
+        {
+          "name": "upgrade-assay",
+          "bytes": 13244149,
+          "sha256": "c0e28b1d0a8edd0f3904a54a5158d9c549934cf3427b4d48862a97b71ae900e9"
+        },
+        {
+          "name": "verifyloop",
+          "bytes": 19580816,
+          "sha256": "5e60aecc87318918b6a42cc22b39dd74386de4fd283828133b1fbc658711f276"
+        },
+        {
+          "name": "writeguard",
+          "bytes": 12341952,
+          "sha256": "134fb307c4a7743bf39a2406bcf81038f8b7dd67cd850f8ff6717a2ed1620fba"
+        }
+      ]
+    }
+  },
+  "board": {
+    "runs": [
+      {
+        "label": "write",
+        "rc": 0,
+        "wall": 89.949,
+        "cpu": 90.711,
+        "git": 3934
+      },
+      {
+        "label": "record",
+        "rc": 0,
+        "wall": 77.488,
+        "cpu": 83.725,
+        "git": 3935
+      },
+      {
+        "label": "combined",
+        "rc": 0,
+        "wall": 83.016,
+        "cpu": 86.874,
+        "git": 3935
+      }
+    ],
+    "files": {
+      "normal": {
+        "STATUS.md": "36a9e33f4c81e4447964ae99efe8f3e31e5c3c2243db1f2bd0492cdeaef0269f",
+        "docs/streams/INTAKE.md": "488b72e7e5d09f5d2b7025778680f71ff87d89a55df55178cdec5fe8128032f6",
+        "docs/streams/FINDINGS.md": "04ec92058446e4b672b629c941bcb4acf70c53b90bfae46efd47ffcf0e59736f",
+        "docs/streams/.history.jsonl": "777cccd6f597315aaace79d18c4f60b44d4b8425a8ea92506cd4de321e40a042",
+        "docs/streams/.dora-timing.jsonl": null
+      },
+      "candidate": {
+        "STATUS.md": "36a9e33f4c81e4447964ae99efe8f3e31e5c3c2243db1f2bd0492cdeaef0269f",
+        "docs/streams/INTAKE.md": "488b72e7e5d09f5d2b7025778680f71ff87d89a55df55178cdec5fe8128032f6",
+        "docs/streams/FINDINGS.md": "04ec92058446e4b672b629c941bcb4acf70c53b90bfae46efd47ffcf0e59736f",
+        "docs/streams/.history.jsonl": "777cccd6f597315aaace79d18c4f60b44d4b8425a8ea92506cd4de321e40a042",
+        "docs/streams/.dora-timing.jsonl": null
+      },
+      "equal": true,
+      "initial": {
+        "STATUS.md": "59a8c15af85e67edf9e3e35d958a4b2458b01a448586223a46319f5d7e5caea5",
+        "docs/streams/INTAKE.md": "488b72e7e5d09f5d2b7025778680f71ff87d89a55df55178cdec5fe8128032f6",
+        "docs/streams/FINDINGS.md": "c5d1b2a4c54c9a7c65a3f7673d7969731ca9fc8d28390fc19347943af5079f71",
+        "docs/streams/.history.jsonl": "777cccd6f597315aaace79d18c4f60b44d4b8425a8ea92506cd4de321e40a042",
+        "docs/streams/.dora-timing.jsonl": null
+      }
+    },
+    "positive_dora_fixture": [
+      {
+        "tick": 1,
+        "matching_files": 7,
+        "stdout_sha": "cd022b941ff36b8f7c2b01dca7335cc7168e0fb83cc73cf0c6e259e0561f764a",
+        "dora_sha": "2fa42643121259bdf9baa40c563c88d02b0e2240f30ee16e72bc6357f40c5e9d",
+        "rows": [
+          {
+            "type": "restore_episode",
+            "ts": "2026-11-18T15:20:00Z",
+            "workflow": "*",
+            "failed_run_id": 100,
+            "failed_at": "2026-11-17T20:00:00Z",
+            "failed_sha": "red",
+            "restored_run_id": 101,
+            "restored_at": "2026-11-17T21:30:00Z",
+            "restored_sha": "green",
+            "restore_seconds": 5400
+          },
+          {
+            "type": "pr_lead_time",
+            "ts": "2026-11-18T15:20:00Z",
+            "repo": "owner/repo",
+            "pr": 1616,
+            "merged_sha": "9c34",
+            "first_commit_at": "2026-11-17T17:10:00Z",
+            "opened_at": "2026-11-17T17:30:00Z",
+            "merged_at": "2026-11-17T18:37:51Z",
+            "anchor": "first_commit",
+            "lead_seconds": 5271
+          }
+        ],
+        "history_sha": "a6c228bbcbe31252aec065bedbf79d0471290a4210722c6a815264a8778adb1f"
+      },
+      {
+        "tick": 2,
+        "matching_files": 7,
+        "stdout_sha": "5f333b8f298e77ac585a2fa76b3c32accd8aa09823f7e5654525446b6d19df07",
+        "dora_sha": "2fa42643121259bdf9baa40c563c88d02b0e2240f30ee16e72bc6357f40c5e9d",
+        "rows": [
+          {
+            "type": "restore_episode",
+            "ts": "2026-11-18T15:20:00Z",
+            "workflow": "*",
+            "failed_run_id": 100,
+            "failed_at": "2026-11-17T20:00:00Z",
+            "failed_sha": "red",
+            "restored_run_id": 101,
+            "restored_at": "2026-11-17T21:30:00Z",
+            "restored_sha": "green",
+            "restore_seconds": 5400
+          },
+          {
+            "type": "pr_lead_time",
+            "ts": "2026-11-18T15:20:00Z",
+            "repo": "owner/repo",
+            "pr": 1616,
+            "merged_sha": "9c34",
+            "first_commit_at": "2026-11-17T17:10:00Z",
+            "opened_at": "2026-11-17T17:30:00Z",
+            "merged_at": "2026-11-17T18:37:51Z",
+            "anchor": "first_commit",
+            "lead_seconds": 5271
+          }
+        ],
+        "history_sha": "a6c228bbcbe31252aec065bedbf79d0471290a4210722c6a815264a8778adb1f"
+      }
+    ]
+  },
+  "release": {
+    "window_utc": [
+      "2026-10-19",
+      "2026-11-17"
+    ],
+    "runs": 70,
+    "attempts": 76,
+    "allocated_jobs": 922,
+    "runner_seconds": 327973.0,
+    "publications_after_compression": [
+      {
+        "run_id": 44178215778,
+        "artifacts_job_id": 134392675988,
+        "run_elapsed_s": 5882,
+        "bodycheck_s": 1104,
+        "modeled_extra_setup_s": 14,
+        "modeled_gate_improvement_s": 532,
+        "cache_result": "cold build (Miss)",
+        "cache_steps_s": {
+          "Restore release Go cache": 61.0,
+          "Package release Go cache": 24.0,
+          "Save release Go cache": 62.0,
+          "Record release cache receipt": 0
+        }
+      },
+      {
+        "run_id": 43966131138,
+        "artifacts_job_id": 133660946046,
+        "run_elapsed_s": 5622,
+        "bodycheck_s": 1038,
+        "modeled_extra_setup_s": 15,
+        "modeled_gate_improvement_s": 491,
+        "cache_result": "cold build (Miss)",
+        "cache_steps_s": {
+          "Restore release Go cache": 1.0,
+          "Package release Go cache": 26.0,
+          "Save release Go cache": 63.0,
+          "Record release cache receipt": 0
+        }
+      },
+      {
+        "run_id": 43747638212,
+        "artifacts_job_id": 132922186367,
+        "run_elapsed_s": 4802,
+        "bodycheck_s": 1108,
+        "modeled_extra_setup_s": 15,
+        "modeled_gate_improvement_s": 502,
+        "cache_result": "cold build (Miss)",
+        "cache_steps_s": {
+          "Restore release Go cache": 1.0,
+          "Package release Go cache": 32.0,
+          "Save release Go cache": 59.0,
+          "Record release cache receipt": 0
+        }
+      },
+      {
+        "run_id": 43472249002,
+        "artifacts_job_id": 132060741098,
+        "run_elapsed_s": 19378,
+        "bodycheck_s": 949,
+        "modeled_extra_setup_s": 12,
+        "modeled_gate_improvement_s": 475,
+        "cache_result": "cold build (Miss)",
+        "cache_steps_s": {
+          "Restore release Go cache": 61.0,
+          "Package release Go cache": 26.0,
+          "Save release Go cache": 55.0,
+          "Record release cache receipt": 0
+        }
+      },
+      {
+        "run_id": 43127517845,
+        "artifacts_job_id": 130892840061,
+        "run_elapsed_s": 6415,
+        "bodycheck_s": 887,
+        "modeled_extra_setup_s": 16,
+        "modeled_gate_improvement_s": 375,
+        "cache_result": "cold build (Miss)",
+        "cache_steps_s": {
+          "Restore release Go cache": 60.0,
+          "Package release Go cache": 30.0,
+          "Save release Go cache": 57.0,
+          "Record release cache receipt": 0
+        }
+      },
+      {
+        "run_id": 42940106485,
+        "artifacts_job_id": 130304820584,
+        "run_elapsed_s": 9777,
+        "bodycheck_s": 886,
+        "modeled_extra_setup_s": 16,
+        "modeled_gate_improvement_s": 340,
+        "cache_result": "cold build (Miss)",
+        "cache_steps_s": {
+          "Restore release Go cache": 60.0,
+          "Package release Go cache": 19.0,
+          "Save release Go cache": 31.0,
+          "Record release cache receipt": 0
+        }
+      },
+      {
+        "run_id": 42658550524,
+        "artifacts_job_id": 129316044804,
+        "run_elapsed_s": 6568,
+        "bodycheck_s": 809,
+        "modeled_extra_setup_s": 18,
+        "modeled_gate_improvement_s": 215,
+        "cache_result": "cold build (Miss)",
+        "cache_steps_s": {
+          "Restore release Go cache": 60.0,
+          "Package release Go cache": 27.0,
+          "Save release Go cache": 49.0,
+          "Record release cache receipt": 0
+        }
+      },
+      {
+        "run_id": 42540247346,
+        "artifacts_job_id": 128919440305,
+        "run_elapsed_s": 8586,
+        "bodycheck_s": 797,
+        "modeled_extra_setup_s": 13,
+        "modeled_gate_improvement_s": 303,
+        "cache_result": "cold build (Miss)",
+        "cache_steps_s": {
+          "Restore release Go cache": 60.0,
+          "Package release Go cache": 28.0,
+          "Save release Go cache": 59.0,
+          "Record release cache receipt": 0
+        }
+      },
+      {
+        "run_id": 42498572518,
+        "artifacts_job_id": 128791858810,
+        "run_elapsed_s": 6819,
+        "bodycheck_s": 809,
+        "modeled_extra_setup_s": 11,
+        "modeled_gate_improvement_s": 331,
+        "cache_result": "cold build (Miss)",
+        "cache_steps_s": {
+          "Restore release Go cache": 1.0,
+          "Package release Go cache": 29.0,
+          "Save release Go cache": 60.0,
+          "Record release cache receipt": 0
+        }
+      },
+      {
+        "run_id": 42387771943,
+        "artifacts_job_id": 128452675367,
+        "run_elapsed_s": 6559,
+        "bodycheck_s": 507,
+        "modeled_extra_setup_s": 11,
+        "modeled_gate_improvement_s": 24,
+        "cache_result": "cold build (Miss)",
+        "cache_steps_s": {
+          "Restore release Go cache": 61.0,
+          "Package release Go cache": 27.0,
+          "Save release Go cache": 60.0,
+          "Record release cache receipt": 0
+        }
+      },
+      {
+        "run_id": 42313350346,
+        "artifacts_job_id": 128225293330,
+        "run_elapsed_s": 4025,
+        "bodycheck_s": 524,
+        "modeled_extra_setup_s": 10,
+        "modeled_gate_improvement_s": 0,
+        "cache_result": "cold build (Miss)",
+        "cache_steps_s": {
+          "Restore release Go cache": 1.0,
+          "Package release Go cache": 29.0,
+          "Save release Go cache": 51.0,
+          "Record release cache receipt": 0
+        }
+      }
+    ]
+  }
+}

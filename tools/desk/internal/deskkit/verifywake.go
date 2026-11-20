@@ -31,6 +31,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // SchemaWakeV1 is the schema tag a complete wake receipt carries. A row without it is legacy.
@@ -167,12 +169,7 @@ func ParseWakeReceipt(line []byte) (WakeReceipt, bool) {
 // IsFailedOrBlocked reports whether the receipt's observed outcome is one this brief's wake
 // scheduling governs. A verified outcome is the stuck-flip lane's concern, not this one.
 func (r WakeReceipt) IsFailedOrBlocked() bool {
-	switch strings.ToLower(strings.TrimSpace(r.Outcome)) {
-	case "verify-fail", "fail", "blocked", "needs_context", "needs-context":
-		return true
-	default:
-		return false
-	}
+	return evaluation.ParseVerificationOutcome(r.Outcome).NeedsWake()
 }
 
 // Complete reports whether the receipt carries a full, well-formed verify-wake-v1 payload: the

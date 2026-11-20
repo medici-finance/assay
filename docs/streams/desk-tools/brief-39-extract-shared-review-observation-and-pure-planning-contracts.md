@@ -13,7 +13,7 @@ ruling: "https://github.com/medici-finance/assay/issues/4521#issuecomment-661560
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2
-version: 2
+version: 3
 authored: 2026-10-17 by statusgen newbrief
 sources:
   - "Planning amendment 2026-10-23; source checked on App-fetched main 9c4307a19a190964db084104ecc1f7bd62cba433; candidate-plus-priority parity and GH-call audit"
@@ -125,7 +125,7 @@ is asserted. Each test covers production flow plus the stated wrong-but-plausibl
 |---|-------|---------|--------|
 | 1 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewContractFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestReviewContractFlow ' "$o")` | exit 0; named PASS. Existing and extracted production classifiers/planners match independent oracle across heads/body/reviews/checks/lanes/order/holds/uncapped depths. Mutation of one applicability or idle input fails. |
 | 2 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewBoundary$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestReviewBoundary ' "$o")` | exit 0; named PASS. Root contract/planner runs with provider effects and credentials forbidden; schema rejects wrong versions, missing scope and incomplete-as-empty. Cross-module import probe cannot consume desk internal packages. |
-| 3 | check:ci +dereference | `statusgen --root . --consumers --brief desk-tools/39` | exit 0; implementation consumer routing is corroborated against the actual diff. Out-of-scope judgments remain review obligations. |
+| 3 | check:ci +dereference | `git grep -qF PlanCandidates HEAD -- spec/review-observation-v1.md && routes=$(statusgen --root . --consumers --brief desk-tools/39 --delivery 790003516c1fb4ea99d0a6d5eb6e67e9123b3c2a --base 4b7f4847f7f3531185fdfb23fbf978ae9551a242) && h=$(mktemp) && trap 'rm -f "$h"' 0 && git cat-file blob c488296801fcdc542108c955d92e85e63d16067a > "$h" && sh "$h" "$routes"` | exit 0; implementation consumer routing is corroborated against the actual diff. Out-of-scope judgments remain review obligations. |
 | 4 | check:ci +flow +mutation | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewPriorityJoin$' ./... > "$o" && grep -F -- '--- PASS: TestReviewPriorityJoin ' "$o")` | exit 0; named PASS. the extracted pure contract matches an independent oracle for identical observation/policy/time/capacity, selected head/lane/order and held/unknown sets. Actual driver integration is accepted downstream in /43 and graph-execution/27; it is not a prerequisite here. Permute identity keys against rank, include unmapped and capped candidates, change policy only and deny provider/process/file reads; a second sorter or any provider call fails. |
 
 ## Pre-mortem and detection
@@ -174,6 +174,61 @@ RISK-VALUE: DERIVED — `SelectionEvaluator = "review-selection-v1"` @ tools/des
 RISK-VALUE: DERIVED — `capacity < 0` refusal @ tools/desk/internal/reviewflow/selection.go:94 — spec/review-observation-v1.md line 180 makes zero capacity valid (it preserves every row and source depth), so 0 is the correct lower bound and only negative values are refused.
 
 **VERIFY: BLOCKED** — rows 1, 2 and 4 not run to a verdict: the pinned verify-runner image's module cache predates the tools/desk go.sum (#4683). Row 3's consumers check exited 2 (COULD-NOT-CHECK: the delivery could not be derived, and the refusal branch taken was not captured) and needs a pinned delivery/base amendment (#4560). No acceptance obligation was observed failing.
+
+Acceptance-Changes: 3=Command
+Verification-Table: delivery=f9cba0a88d39085831c86717aab04736c562a774 base=d41670bde8b11276639b860b7ea775f6cda8970b original=d41670bde8b11276639b860b7ea775f6cda8970b
+Acceptance-Transition: amendment=65c2f44b31a2d5526652a116fe9afb8831c69c59 approval=https://github.com/medici-finance/assay/issues/6856#issuecomment-6989040118
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewContractFlow$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestReviewContractFlow ' "$o")` | pass exit=0 sandbox=unshare | sha256:bdb10a8662d4 | 2026-11-19 | assay-verifier-app[bot] @ 5649360b6fa405a9239de442136db48e21bc1eee (reads could-not-check: a system call from another ABI) (on-behalf-of human:ian) (forge-identity) | base=85fcd48feaf0 red rc=1 · head=5649360b6fa405a9239de442136db48e21bc1eee · delivering=8c2f9706c9d5 output=sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 log=row-000001.log |
+| 2 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewBoundary$' ./internal/reviewtest/... > "$o" && grep -F -- '--- PASS: TestReviewBoundary ' "$o")` | pass exit=0 sandbox=unshare | sha256:ff5abec2956d | 2026-11-19 | assay-verifier-app[bot] @ 5649360b6fa405a9239de442136db48e21bc1eee (reads could-not-check: a system call from another ABI) (on-behalf-of human:ian) (forge-identity) | base=85fcd48feaf0 red rc=1 · head=5649360b6fa405a9239de442136db48e21bc1eee · delivering=8c2f9706c9d5 output=sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 log=row-000002.log |
+| 3 | `git grep -qF PlanCandidates HEAD -- spec/review-observation-v1.md && routes=$(statusgen --root . --consumers --brief desk-tools/39 --delivery 790003516c1fb4ea99d0a6d5eb6e67e9123b3c2a --base 4b7f4847f7f3531185fdfb23fbf978ae9551a242) && h=$(mktemp) && trap 'rm -f "$h"' 0 && git cat-file blob c488296801fcdc542108c955d92e85e63d16067a > "$h" && sh "$h" "$routes"` | pass exit=0 sandbox=unshare | sha256:d7526b183d3a | 2026-11-19 | assay-verifier-app[bot] @ 5649360b6fa405a9239de442136db48e21bc1eee (reads could-not-check: a system call from another ABI) (on-behalf-of human:ian) (forge-identity) | base=85fcd48feaf0 red rc=1 · head=5649360b6fa405a9239de442136db48e21bc1eee · delivering=8c2f9706c9d5 output=sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 log=row-000003.log |
+| 4 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewPriorityJoin$' ./... > "$o" && grep -F -- '--- PASS: TestReviewPriorityJoin ' "$o")` | pass exit=0 sandbox=unshare | sha256:326ddc22e707 | 2026-11-19 | assay-verifier-app[bot] @ 5649360b6fa405a9239de442136db48e21bc1eee (reads could-not-check: a system call from another ABI) (on-behalf-of human:ian) (forge-identity) | base=85fcd48feaf0 red rc=1 · head=5649360b6fa405a9239de442136db48e21bc1eee · delivering=8c2f9706c9d5 output=sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 log=row-000004.log |
+Verification-Attestation: medici-finance/assay#7245 run=c4e8d126bbf0268397a492ffa0ac3b08766fe623677fe392bcff7716548f19c2 source=5649360b6fa405a9239de442136db48e21bc1eee brief=docs/streams/desk-tools/brief-39-extract-shared-review-observation-and-pure-planning-contracts.md model=claude-opus-5-5 tier=strong
+
+### Independent re-verification — 2026-11-19, desk tools v1.0.89, Linux host lane
+
+Verifier: non-implementer, model claude-opus-5-5, tier strong. The witness table directly above is the tool-stamped output of attempt 3, the credited attempt. Host: the OrbStack Linux VM assay-verify-amd64-20261021 (Ubuntu 24.04 amd64, go1.27.4, git 2.56.1, desk tools v1.0.89 from /opt/desk-tools/bin), with KUBECONFIG=/dev/null, every inherited GIT_* variable unset, GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_NOSYSTEM=1, GIT_CONFIG_COUNT=0 and GIT_TERMINAL_PROMPT=0. Every row ran in the host lane under the unshare network sandbox (sandbox=unshare in each row), not the container-netns bracket. Source 5649360b6fa405a9239de442136db48e21bc1eee on main, detached and clean apart from this Evidence section; attestation #7245. Each Runner cell carries the tool's own annotation "(reads could-not-check: a system call from another ABI)", which is printed as stamped.
+
+An earlier container-lane pass for this item on 2026-11-19 (attestation #7242) was discarded and never landed. No row result from it is used here.
+
+Admission witness before attempt 3: `deskdispatch --check-verifier --root <home> --brief <this brief>` exit 0, binding run=c4e8d126bbf0 source=5649360b6fa4 model=claude-opus-5-5 tier=strong. The same check also exited 0 before attempt 1.
+
+Invocation (all three attempts): `statusgen verifyrun --root <home> --brief <this brief> --acceptance-record <descriptor> --acceptance-forge --fail-first --delivering-commit 8c2f9706c9d5b26b14ad3a8123878563896e27fd --base 85fcd48feaf08c69a0c878939702b30f2b608546 --base-log <fresh dir>`. The descriptor holds the two marker lines printed in the witness: Verification-Table delivery=f9cba0a88d39 base=original=d41670bde8b1, and Acceptance-Transition amendment=65c2f44b31a2 with the approval medici-finance/assay#6856 issuecomment-6989040118. verifyrun read that approval itself (line "acceptance transition: reading approval …6856#issuecomment-6989040118"), accepted the transition and printed Acceptance-Changes: 3=Command. Row 3 therefore ran as the approved acceptance transition. The base and delivering commit are re-derived: #3570 (8c2f9706c9d5) is the earliest of the three deliveries (#3570, #3593 at 790003516c1f, #4235 at f9cba0a88d39), and its first parent is 85fcd48feaf0.
+
+Environment preparation, disclosed (no credit): the VM had no Go module cache. `go mod download` filled it from git-archive copies of the source and of base 85fcd48feaf0 made outside the home, and an offline `go list -deps -test ./...` (GOPROXY=off) in tools/desk then exited 0 for both trees. Before attempt 2 the build cache was warmed in the home's tools/desk with `go test -p 1 -count=1 -run '^$' ./...` (GOPROXY=off, -mod=readonly). The tree was unchanged by it. Both caches live on the VM's disk and survived the VM restart before attempt 3.
+
+Attempts:
+
+- Attempt 1, 2026-11-19T20:44:32Z to 2026-11-19T21:13:07Z, 4 rows, verifyrun exit=2. Discarded (env-fault). Go compiles were killed under the VM's container memory cap, then 2 GiB (memory.max 2147483648): the base log for row 1 read "gitlab.com/gitlab-org/api/client-go: …/compile: signal: killed". It recorded row 1 fail exit=1 with empty output, rows 2 and 3 pass, and row 4 fail exit=137. Its retained witness copy was under the VM's /tmp and did not survive the VM restart. The result lines here are as observed at the time.
+- Between attempts 1 and 2, one verifyrun invocation refused on its flags before any row ran ("statusgen verifyrun: --base-log: mkdirat baselog2: file exists", exit 2). No row ran, so it is not an attempt.
+- Attempt 2, 2026-11-19T21:29:55Z to 2026-11-19T21:43:38Z, 4 rows, verifyrun exit=1. Discarded (env-fault). Rows 1, 2 and 3 passed, each red at base. Row 4 recorded fail exit=1 because the compile of the tools/desk/internal/deskkit test build in its `./...` scope was killed under the same 2 GiB cap: the base log named the deskkit and cmd/cellctl compiles as killed, and the container's oom_kill counter went from 31 to 34. A direct re-run of row 4's go test at head, with no credit, showed "--- PASS: TestReviewPriorityJoin" with the killed deskkit build as the only cause of exit 1. Its witness copy is kept outside the home. This section was returned to its committed bytes before attempt 3.
+- The driver then restarted the VM with memory.max raised to 8589934592 (8 GiB).
+- Attempt 3, 2026-11-19T22:31:29Z to 2026-11-19T22:40:41Z, 4 rows, verifyrun exit=0. Credited; this is the witness above. Memory before: memory.max 8589934592, memory.peak 1192030208, oom_kill 0. After: memory.peak 3487895552, oom_kill 0. No process was killed during the attempt, and every base log is empty.
+
+Row accounting (attempt 3): 4 rows, 4 pass, 0 fail, 0 could-not-run.
+
+- Row 1: pass exit=0 (sha256:bdb10a8662d4). Fail-first: red rc=1 at base 85fcd48feaf0, pass at head.
+- Row 2: pass exit=0 (sha256:ff5abec2956d). Fail-first: red rc=1 at base, pass at head.
+- Row 3: pass exit=0 (sha256:d7526b183d3a), run as the approved acceptance transition. Fail-first: red rc=1 at base, pass at head.
+- Row 4: pass exit=0 (sha256:326ddc22e707). Fail-first: red rc=1 at base, pass at head.
+
+Fail-first: all four rows red at base 85fcd48feaf0 and pass at head, with no compile killed at either side. The reds discriminate: at base, none of TestReviewContractFlow, TestReviewBoundary or TestReviewPriorityJoin exists anywhere under tools/desk, and spec/review-observation-v1.md does not contain PlanCandidates (git grep at 85fcd48feaf0 exits 1).
+
+Risk-bearing values, enumerated over the production files of the delivered reviewflow package (#3570, #3593, #4235) and ranked by irreversibility. The item is `irreversible: no`, and every entry can be undone by an edit and a redeploy. Enumerated: the security pass marker, the lane count and lane names, the observation schema and evaluator ids, the selection evaluator id, the capacity lower bound, the board-age bound, the head-unresolved marker, the action names and the unmapped-policy values. Ranked top five, then derived:
+RISK-VALUE: DERIVED — `SecurityPassMarker = "Security-Review: pass"` @ tools/desk/internal/reviewflow/reviews.go:16 — byte-identical to the pre-extraction `securityPassMarker` at tools/desk/cmd/deskboard/board.go:62 on base 85fcd48feaf0; Task 4 requires the extraction to preserve the existing action table and exact-head verdicts, so the literal must move unchanged.
+RISK-VALUE: DERIVED — `len(v.Lanes) != 2` @ tools/desk/internal/reviewflow/observation.go:286 — spec/review-observation-v1.md line 99 defines correctness and security as two explicit independent lane conclusions, and observation.go:289-291 admits only those two names, each once.
+RISK-VALUE: DERIVED — `ObservationSchema = "review-observation-v1"` @ tools/desk/internal/reviewflow/observation.go:12 and `ObservationEvaluator = "reviewflow-v1"` @ tools/desk/internal/reviewflow/observation.go:13 — equal to the `const` values at schemas/review-observation-v1.json:264 and :327, the published contract this item specifies.
+RISK-VALUE: DERIVED — `SelectionEvaluator = "review-selection-v1"` @ tools/desk/internal/reviewflow/selection.go:9 — the evaluator spec/review-observation-v1.md line 161 requires for selection.
+RISK-VALUE: DERIVED — `capacity < 0` refusal @ tools/desk/internal/reviewflow/selection.go:94 — spec/review-observation-v1.md line 180 makes zero capacity valid (it preserves every row and source depth), so 0 is the correct lower bound and only negative values are refused.
+The board-age bound `MaxBoardAge = 7 * time.Minute` @ tools/desk/internal/reviewflow/idlegate.go:63 moved unchanged from base tools/desk/cmd/reviewloop/idlegate.go:63 and is an operational knob, ranked below the five above.
+
+Post-Evidence witness: `deskdispatch --check-verifier --root <home> --brief <this brief>` exit 0 after this Evidence edit, same binding run=c4e8d126bbf0 source=5649360b6fa4 model=claude-opus-5-5 tier=strong.
+
+The brief is gate: human with decision issue #4521, so this Evidence makes no lifecycle flip; the item awaits the human acceptance.
+
+**VERIFY: PASS** — all 4 rows pass at 5649360b6fa4 in the host lane, each red at base 85fcd48feaf0 and pass at head; row 3 ran as the approved acceptance transition (medici-finance/assay#6856).
 
 ## Review
 
@@ -237,3 +292,25 @@ substitute consumer routing for delivery qualification.
 All four original Verify rows, Evidence and the existing human gate are unchanged. Named tests were inspected as source, not run as
 independent verification. Runtime collection/adoption remains with the declared
 follow-on briefs, and final human acceptance stays separate.
+
+
+## Proposed command amendment for Verify row 3
+
+Version 3 binds the routing check to the three implementation ranges above. The
+row reads the selection contract from the subject tree, runs the native historical
+consumer report on #3593 and executes the pinned Git blob of
+`verify.d/39-consumer-routes.sh`. The helper checks added adapter calls at #3570
+and #3593 and the four selection sites added at #4235. It also checks the native
+report names both implemented adapters and both deferred routes. #5404 recorded
+the delivery mapping. #5780 recorded the blocked independent run.
+
+The three #3570 self-routes establish no implementation. At #3593 the report
+counts four corroborated declarations, including two follow-up references. At
+#4235 the raw report counts six corroborated and two disproved because that diff
+does not touch the inherited adapters. Each adapter is assessed at the delivery
+where its code changed. Runtime collection, dispatch preparation and caller
+adoption remain with /40, /41, /43 and graph-execution/27. The original Expect
+continues to reserve out-of-scope judgments for review.
+
+Applying the amended Command requires the exact post-merge human approval for
+row 3 and fresh independent verification under the protected-table procedure.

@@ -417,10 +417,10 @@ def tolerance_problems(entries):
     return problems
 
 
-# Every release test leg, in order; muhar-light and the deskmerge shards are the
+# Every release test leg, in order; muhar-bodycheck, muhar-light and the deskmerge shards are the
 # mutation harnesses, the rest are the suites a release must also pass.
 TEST_MATRIX = [('statusgen', ''), ('desk-tools', ''), ('drainloop', ''), ('qualgen', ''),
-               ('muhar-light', ''), ('deskmerge', '0/3'), ('deskmerge', '1/3'),
+               ('muhar-light', ''), ('muhar-bodycheck', ''), ('deskmerge', '0/3'), ('deskmerge', '1/3'),
                ('deskmerge', '2/3')]
 # The whole live body of one mutation harness step. Anything added, dropped or
 # reordered fails the match, so the checks below never rest on a substring.
@@ -595,6 +595,8 @@ def mutation_routing_problems(text):
         if gate.group('report') != MUTATION_REPORTS[spec]:
             problems.append('mutation report identity changed: ' + spec)
         leg = gate.group('leg')
+        if (leg == 'muhar-bodycheck') != (spec == 'internal/deskkit/mutations.json'):
+            problems.append('bodycheck must run alone in its own matrix leg')
         if leg not in upload_legs:
             problems.append('mutation harness report is not uploaded: ' + spec)
         sharded = bool(gate.group('env')) and bool(gate.group('shard'))
@@ -901,18 +903,18 @@ SPELLING_PLANTS = {
         'test', '    runs-on: medici-builder-release\n',
         '    runs-on: medici-builder-release\n    <<: *tolerate\n', UNREAD + '<<: *tolerate'),
     'upload-tolerates-failure': (
-        'test', "        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n",
-        "        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n"
+        'test', "        if: matrix.leg == 'muhar-bodycheck' || matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n",
+        "        if: matrix.leg == 'muhar-bodycheck' || matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n"
         '        continue-on-error: true\n',
         'a test job step must not tolerate failure'),
     'upload-tolerates-other-case': (
-        'test', "        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n",
-        "        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n"
+        'test', "        if: matrix.leg == 'muhar-bodycheck' || matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n",
+        "        if: matrix.leg == 'muhar-bodycheck' || matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n"
         '        Continue-On-Error: true\n',
         'a test job step must not tolerate failure'),
     'harness-shell-quoted-key': (
-        'test', "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-light'\n",
-        "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-light'\n"
+        'test', "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-bodycheck'\n",
+        "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-bodycheck'\n"
         "        'shell': bash -c 'exit 0' {0}\n",
         UNREAD + "'shell': bash -c 'exit 0' {0}"),
     'defaults-after-jobs': (
@@ -1888,7 +1890,7 @@ if args[:2] == ['image', 'inspect']:
     def test_mutation_routing_omission_and_duplication_controls(self):
         main = workflow_keys.load(HERE.parents[1] / '.github/workflows/release.yml')
         self.assertEqual(mutation_routing_problems(main), [])
-        bodycheck = "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-light'\n"
+        bodycheck = "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-bodycheck'\n"
         once = 'matrix must execute every full harness and deskmerge shard exactly once'
         gate = 'internal/deskkit/mutations.json'
         mutants = {
@@ -1901,12 +1903,17 @@ if args[:2] == ['image', 'inspect']:
                                     'deskmerge must retain its exact three shards'),
             'fail-fast': ('      fail-fast: false\n', '      fail-fast: true\n',
                           'all matrix verdicts must run without fail-fast cancellation'),
+            'missing-bodycheck-leg': ('          - leg: muhar-bodycheck\n', '', once),
+            'bodycheck-shares-light-leg': (bodycheck, bodycheck.replace("'muhar-bodycheck'", "'muhar-light'"),
+                                           'bodycheck must run alone in its own matrix leg'),
+            'missing-bodycheck-upload': ("matrix.leg == 'muhar-bodycheck' || ", '',
+                                         'mutation harness report is not uploaded: ' + gate),
             'missing-light-upload': ("matrix.leg == 'muhar-light' || ", '',
-                                     'mutation harness report is not uploaded: ' + gate),
+                                     'mutation harness report is not uploaded: cmd/desksourceguard/mutations.json'),
             'upload-name-collision': ('tv-reports-${{ matrix.leg }}-${{ strategy.job-index }}',
                                       'tv-reports-${{ matrix.leg }}',
                                       'each mutation leg must upload its reports without collision or omission'),
-            'misrouted-bodycheck': (bodycheck, bodycheck.replace("'muhar-light'", "'statusgen'"),
+            'misrouted-bodycheck': (bodycheck, bodycheck.replace("'muhar-bodycheck'", "'statusgen'"),
                                     'mutation harness report is not uploaded: ' + gate),
             'missing-caught-gate': ("grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<\"$report\"; then\n"
                                     "            echo \"::error::a bodycheck",
@@ -1925,10 +1932,10 @@ if args[:2] == ['image', 'inspect']:
         # Each plant weakens the gate in one way only, often keeping the
         # correct text in a comment, and must draw its own named refusal.
         harness = 'internal/deskkit/mutations.json'
-        light = "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-light'\n"
+        light = "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-bodycheck'\n"
         grep = ("          if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' "
                 "<<<\"$report\"; then\n            echo \"::error::a bodycheck")
-        upload_if = "        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n"
+        upload_if = "        if: matrix.leg == 'muhar-bodycheck' || matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n"
         plants = {
             'job-tolerates-failure': ('test', '    runs-on: medici-builder-release\n',
                                       '    runs-on: medici-builder-release\n    continue-on-error: true\n',

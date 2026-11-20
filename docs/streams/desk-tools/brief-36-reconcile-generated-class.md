@@ -434,6 +434,57 @@ line 34).
 
 **VERIFY: FAIL** — row 3: at 40925e823 the reconcile class still lands as a pull request; reconcile PRs #4806 and #4886 took dispatched reviewer verdicts and human merges under the approval-needed label, and the 2026-10-30T01:55Z tick opened PR #4952 the same way. The direct-CI conversion is unapplied and its carried diff still does not apply to main (tracked on open issues #2688 and #4129). Row 1 PASS; row 2 is could-not-check (not applicable under mechanism B); row 4 is could-not-check (the only lint PROBLEM is neighbour desktools-v2/65 needing --acceptance-forge, open bug #4823).
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -rq '2688' docs/streams/issue-flow/rulings.md && echo ok` | pass exit=0 | sha256:dc51b8c96c2d | 2026-11-19 | assay-verifier-app[bot] @ 37483b76bfad (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `shasum -a 256 docs/runsheets/reconcile-lane-hunk.diff \| grep -q '^1c9cb1953c9b9a8bd11d3a73d09a1ae2f43f2a0c3d093a25c2641fe2f210b680 ' && { git apply --check docs/runsheets/reconcile-lane-hunk.diff 2>/dev/null \|\| git apply --reverse --check docs/runsheets/reconcile-lane-hunk.diff; } && echo ok` | pass exit=0 | sha256:dc51b8c96c2d | 2026-11-19 | assay-verifier-app[bot] @ 37483b76bfad (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `git fetch -q origin main && test "$(gh pr list -R medici-finance/assay --head board/reconcile --state open --json number --jq length)" = 0 && git log FETCH_HEAD --first-parent --no-merges --since=7.days --format=%s \| grep -q '^chore(board): reconcile' && echo ok` | fail exit=1 | sha256:69f5519080ea | 2026-11-19 | assay-verifier-app[bot] @ 37483b76bfad (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt36-sg" . && "${TMPDIR:-/tmp}/dt36-sg" --root .. --lint 2>&1 \| grep -q 'LINT: PASS' && echo ok` | fail exit=1 | sha256:e3b0c44298fc | 2026-11-19 | assay-verifier-app[bot] @ 37483b76bfad (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7136 run=621f752da533431be8d73236e5630685bd32a09ad14d7714f8ccb861c1b1e4a1 source=37483b76bfad14f33b00940feb4115b6ea1340ec brief=docs/streams/desk-tools/brief-36-reconcile-generated-class.md model=claude-opus-5-5 tier=strong
+
+**Verifier pass — 2026-11-19, dispatched non-implementer verifier (verify-desk), merged main
+37483b76b.** The witness table above is the `statusgen verifyrun` (v1.0.88) host run of all four
+rows. It is one attempt, 2026-11-19T03:46:21Z to 03:46:29Z, with the verifier App's minted
+credential passed to the run for row 3's forge read. No row is classed check:ci, so no container
+bracket was needed. All four risk fields are `no`, and no row carries a risk-bearing, live,
+mutating or end-to-end tag, so no fail-first run was required. The rows run against the Verify
+table that the re-serialization commit 83809c637 rewrote; that commit also re-pinned the runsheet
+diff onto base fe3ec16a4. The probes below were run separately and earn no acceptance credit.
+
+- **Row 1:** pass. The rulings register cites 2688 in its R-8 section. Its Sign-off line
+  (line 36) is still empty.
+- **Row 2:** pass. The diff's sha256 is the pinned 1c9cb195…b680, at 113409 bytes.
+  `git apply --check` exits 0 on the source tree and the reverse check exits 1, so the diff
+  applies forward and is not yet applied. Probe: an apply check against a temporary index read
+  from base fe3ec16a4 also exits 0. Commits 88654b888 and 6c47c718c touched the target files
+  after that base, and the diff still applies at the source.
+- **Row 3:** fail, which is the failure the row's Expect predicts until the driver's apply lands.
+  Probe at fetched main 44a02f3dc: no `board/reconcile` pull request is open. The first-parent
+  line holds zero direct `chore(board): reconcile` commits in the last 7 days. It does hold three
+  reconcile merges from the board/reconcile branch: #6078 (2026-11-17T15:14Z), #6807
+  (2026-11-18T00:04Z) and #7063 (2026-11-18T23:08Z). The live workflow still has its step "Push
+  board/reconcile and open or refresh its draft PR" (line 912), and that step runs
+  `gh pr create --draft` (line 977). So the class still lands as a pull request, and the direct-CI
+  conversion is still unapplied.
+- **Row 4:** fail exit 1. Probe: the build succeeds. The lint ends `LINT: FAIL 3 problem(s)`, and
+  all three PROBLEMs are neighbour briefs: desk-tools/37, desktools-v2/65 and forge-neutral/54.
+  Each one reads "protected table: acceptance transition: could-not-check human authority:
+  --acceptance-forge is required". This brief has no PROBLEM. The same binary run with
+  `--lint --acceptance-forge` and the verifier credential exits 0 and prints `LINT: PASS`. This is
+  the class tracked on open bug #4823: the lint instrument declines a forge read that the row
+  does not grant.
+
+**Risk-bearing value.** The enumeration covers commit 83809c637: the runsheet, its diff file,
+the changelog fragment and this brief's Verify table. It also covers the rulings register from
+the original delivery. The literals, ranked by irreversibility:
+
+- RISK-VALUE: DERIVED — R-8 Sign-off = (empty) @ docs/streams/issue-flow/rulings.md:36 — under mechanism B the class stays out of the auto-lane, so nothing may be enacted. The line is still empty at 37483b76b.
+- RISK-VALUE: DERIVED — reconcile-lane-hunk.diff sha256 = 1c9cb1953c9b9a8bd11d3a73d09a1ae2f43f2a0c3d093a25c2641fe2f210b680, size = 113,409 @ docs/runsheets/reconcile-lane-hunk.md:29-30 — `shasum -a 256` and `wc -c` at 37483b76b give the same digest and 113409 bytes. Row 2 pins the same digest.
+- RISK-VALUE: DERIVED — runsheet base = fe3ec16a4c705beaf6518296f8bdb567277128fa @ docs/runsheets/reconcile-lane-hunk.md:31 — the base is an ancestor of the source, and a cached apply check against its tree exits 0. The runsheet's clean-apply claim also holds at the source.
+- Ranked last, no derivation needed (reversible): the mutants count 37 @ docs/runsheets/reconcile-lane-hunk.md:60 and :138, and row 3's 7-day window (`--since=7.days`, Verify row 3).
+
+**VERIFY: FAIL** — row 3: at 37483b76b (fetched main 44a02f3dc) the reconcile class still lands as a pull request, with no direct first-parent reconcile commit in 7 days and merges #6078, #6807 and #7063 from board/reconcile; the driver's apply of the runsheet (open ruling issue #2688) has not landed. Rows 1 and 2 pass, and the re-serialized diff applies to main again. Row 4's witness fails only on three neighbour lint PROBLEMs that need --acceptance-forge (open bug #4823); with that flag the lint passes.
+
 ## Review
 Gate: model (from frontmatter). The reviewer answers, in the verdict: (1) is the lane
 membership exactly the ruled class (title + author), with no widening? (2) does the R-8

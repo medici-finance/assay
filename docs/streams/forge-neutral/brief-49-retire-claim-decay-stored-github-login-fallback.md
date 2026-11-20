@@ -165,5 +165,37 @@ RISK-VALUE: DERIVED — public and operator-endpoint vars = GH_TOKEN, GITHUB_TOK
 RISK-VALUE: DERIVED — derived-enterprise vars = GH_ENTERPRISE_TOKEN, GITHUB_ENTERPRISE_TOKEN @ statusgen/claimdecay_github.go:70 — a host guessed from origin gets only an enterprise credential, so a lookalike host never receives the github.com token; unchanged and exercised by row 2.
 RISK-VALUE: NAMED, NOT DERIVED — githubDecayClient Timeout = 30s @ statusgen/claimdecay_github.go:57 and githubDecayMaxPages = 1000 @ statusgen/claimdecay_github.go:52 — reversible operational knobs, not changed by the delivery, ranked last.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -timeout=90s -v -run '^TestDecayNoStoredLogin$' . > "$o" && grep -F -- '--- PASS: TestDecayNoStoredLogin ' "$o")` | pass exit=0 sandbox=container-netns | sha256:b514dee5226d | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -timeout=90s -v -run '^TestDecayTokenStaysOnItsHost$' . > "$o" && grep -F -- '--- PASS: TestDecayTokenStaysOnItsHost ' "$o")` | fail exit=1 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:2ded1bc2b15c8ec9dd8a3fa08a545caa03889f4360b13d60c31e628b8a9b2715
+Container-Image: sha256:3cfd931fc8fb2277df25eafbc68eccfe84ce7d7b92379b927b8c1841d99854d1
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6967 run=c94bb8180414d888e4233f3163516f15084a85a6f60fa700db4e5ae25469596b source=9c845402c8c00d7c14bda75cd5222fff907fd05d brief=docs/streams/forge-neutral/brief-49-retire-claim-decay-stored-github-login-fallback.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=c94bb8180414d888e4233f3163516f15084a85a6f60fa700db4e5ae25469596b source=9c845402c8c00d7c14bda75cd5222fff907fd05d tree=sha256:2ded1bc2b15c8ec9dd8a3fa08a545caa03889f4360b13d60c31e628b8a9b2715 witness=sha256:a3fd571abb5d86010a53149612a6457b011d63cad221d82eae80d3e757e3f11e opened=2026-11-18T17:53:58Z closed=2026-11-18T17:57:22Z before=receipt after=check-verifier
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 3 | `sh tools/desk/scripts/forge-ban.sh` | could-not-run | host execution refused by the session's permission classifier (Undermining Oversight); stopped without retry | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (on-behalf-of human:ian) (forge-identity) |
+| 4 | `statusgen --root . --consumers --brief forge-neutral/49 --base "$(git merge-base refs/remotes/origin/main HEAD)"` | could-not-run | host execution refused by the session's permission classifier (Undermining Oversight); stopped without retry | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6967 run=c94bb8180414d888e4233f3163516f15084a85a6f60fa700db4e5ae25469596b source=9c845402c8c00d7c14bda75cd5222fff907fd05d brief=docs/streams/forge-neutral/brief-49-retire-claim-decay-stored-github-login-fallback.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: BLOCKED** — row 1 pass; row 2 environment-held (admitted-row markers refuse the test's explicit tokens); rows 3-4 could-not-run (host permission refusal). No obligation was observed failing.
+
+Re-verification by claude-opus-5-5 (strong, non-implementer) at merged main 9c845402c8c0, statusgen v1.0.87, verify-runner v1.0.87 image named above, KUBECONFIG=/dev/null, GH_TOKEN unset. Delivery: PR 5391, merge 32f85d97060e, first parent 6bceac0fa40e. Rows 1 and 2 ran in the container admission bracket (network none, read-only root, fresh module cache, bracket-digest verdict=match).
+
+Row 2 is held by its environment. The grep found no PASS line because the test failed. Inside an admitted Verify row the environment carries the grep-pin git config variables (GIT_CONFIG_COUNT=2 with grep.patternType and grep.extendedRegexp) that admittedRowEnv appends. Since PR 6749 (issue medici-finance/assay#6746, commit 0184ed5f117a, after the 2026-11-10 pass), githubDecayCredential treats those pins as an admitted context and takes only the run-scoped credential, so the test's own explicit GH_TOKEN and GH_ENTERPRISE_TOKEN values are never read. Seven subtests fail with "could-not-check: inside an admitted Verify row the forge is read only with the verifier's run-scoped read-only credential, and the run handed this row none". The test does not clear those pins, so it cannot pass inside any admitted row. Supplemental probes in the same image, no acceptance credit: run directly without the admitted-row variables, all nine subtests pass, including stored-login-is-not-a-credential-source; with those variables set by hand, the same seven fail. The delivered behaviour is unchanged. The row fails only in admission. Next actor: the owner of the PR 6749 change (test hermeticity) or the brief owner (row definition).
+
+Rows 3 and 4 were refused on the host before any command ran, by the session's permission classifier: "Permission for this action was denied by the Claude Code auto mode classifier. Reason: [Undermining Oversight]." That refusal is a stop, so there was no retry. Row 4 also keeps the check-definition hold tracked in medici-finance/assay#5564: after the merge, the merge-base is HEAD.
+
+Supplemental, no acceptance credit: at main, statusgen/claimdecay_github.go has no os/exec import, executable lookup or gh subprocess (its only "gh" text is in a comment at line 9).
+
+Fail-first: owed on no row. Risk fields are all no, and no row is marked risk-bearing, live, mutating or end-to-end.
+
+RISK-VALUE: DERIVED — public and operator-endpoint vars = GH_TOKEN, GITHUB_TOKEN @ statusgen/claimdecay_github.go:83 — Task 1 requires these explicit names and this order unchanged; the line moved from 68 when PR 6749 landed, with its content unchanged.
+RISK-VALUE: DERIVED — derived-enterprise vars = GH_ENTERPRISE_TOKEN, GITHUB_ENTERPRISE_TOKEN @ statusgen/claimdecay_github.go:85 — a host guessed from origin gets only an enterprise credential, so a lookalike host never receives the github.com token; content unchanged.
+RISK-VALUE: NAMED, NOT DERIVED — githubDecayClient Timeout = 30s @ statusgen/claimdecay_github.go:59 and githubDecayMaxPages = 1000 @ statusgen/claimdecay_github.go:54 — reversible operational knobs, not changed by the delivery, ranked last.
+
 ## Review
 Gate: model. Apply the security-review skill to the authentication lookup boundary and trace selected tokens to the existing request sink. Confirm the CLI path is absent, explicit tokens stay on their current host, missing data remains unavailable and every parent obligation remains. The original /18 delivery is still partial after this contribution.

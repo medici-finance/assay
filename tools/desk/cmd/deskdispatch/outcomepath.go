@@ -193,12 +193,12 @@ func pruneOutcomeDirs(dir string, cutoff time.Time) {
 
 // writeOutcomeRecordLine names the outcome directory and the exact landing command. Only the
 // verifier assignment calls it, and only when a directory was resolved.
-func writeOutcomeRecordLine(b *strings.Builder, plan dispatchPlan, repo, home string) {
+func writeOutcomeRecordLine(b *strings.Builder, plan dispatchPlan, home string) {
 	if plan.outcomePath == "" {
 		return
 	}
 	approvalFlag := ""
-	if plan.forgeKind == deskkit.ForgeGitHub {
+	if plan.outcomeTarget.Kind == deskkit.ForgeGitHub {
 		approvalFlag = " --acceptance-forge"
 	}
 	fmt.Fprintf(b, "## Outcome record — write it OUTSIDE the home\n\n"+
@@ -211,5 +211,5 @@ func writeOutcomeRecordLine(b *strings.Builder, plan dispatchPlan, repo, home st
 		"It supplies no approval and does not repair unknown repository authority. "+
 		"Other forges retain the ordinary landing command; unsupported GitHub approval reads remain held. "+
 		"Retain every refusal; do not retry with stripped Git configuration, another origin or a stored human login.\n\n",
-		plan.outcomePath, home, repo, filepath.Join(plan.outcomePath, "<file>.json"), home, approvalFlag)
+		plan.outcomePath, home, plan.outcomeTarget.Repo.Slug(), deskkit.ShellSingleQuote(filepath.Join(plan.outcomePath, "<file>.json")), deskkit.ShellSingleQuote(home), approvalFlag)
 }
