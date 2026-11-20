@@ -3,6 +3,7 @@ package drainloop
 import (
 	"context"
 	"errors"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -281,6 +282,62 @@ func TestDeskRoleCapacity(t *testing.T) {
 		}
 		if got := d.Estimate(); got.Active != 3 {
 			t.Fatalf("active = %d, want the newer reading 3", got.Active)
+		}
+	})
+
+	t.Run("a future-dated reading is refused so corrections land", func(t *testing.T) {
+		clock := &capClock{t: t0}
+		d := capDesk(t, clock, "w1", 8)
+		if err := d.Observe(capObs(clock, "claims", "w1", 10)); err != nil {
+			t.Fatal(err)
+		}
+		ahead := capObs(clock, "claims", "w1", 100)
+		ahead.ObservedAt = t0.Add(24 * time.Hour)
+		if err := d.Observe(ahead); err == nil || !strings.Contains(err.Error(), "skew") {
+			t.Errorf("reading dated 24h ahead: err = %v, want a skew refusal", err)
+		}
+		far := capObs(clock, "other", "w2", 50)
+		far.ObservedAt = time.Date(2099, 1, 1, 0, 0, 0, 0, time.UTC)
+		if err := d.Observe(far); err == nil {
+			t.Error("reading dated 2099 was accepted")
+		}
+		if got := d.Estimate(); got.Active != 10 || got.Fresh != 1 {
+			t.Fatalf("estimate = %+v, want only the held reading of 10", got)
+		}
+		// The source's genuine correction still replaces the held reading.
+		clock.t = t0.Add(5 * time.Second)
+		if err := d.Observe(capObs(clock, "claims", "w1", 0)); err != nil {
+			t.Fatal(err)
+		}
+		if got, n := d.Estimate(), d.Refill(0, 0); got.Active != 0 || n != 1 {
+			t.Fatalf("after correction estimate = %+v refill = %d, want active 0 refill 1", got, n)
+		}
+		// Ordinary skew inside the tolerance is accepted and ages out on time.
+		near := capObs(clock, "skewed", "w2", 3)
+		near.ObservedAt = clock.t.Add(2 * time.Second)
+		if err := d.Observe(near); err != nil {
+			t.Fatalf("reading 2s ahead (inside default skew): %v", err)
+		}
+		clock.t = clock.t.Add(2 * time.Minute)
+		if got := d.Estimate(); got.Known {
+			t.Fatalf("skewed reading still fresh past MaxAge: %+v", got)
+		}
+	})
+
+	t.Run("burst above target and huge counts are bounded", func(t *testing.T) {
+		clock := &capClock{t: t0}
+		if _, err := NewRoleCapacity(CapacityConfig{Cell: "c", Role: "r", Target: 2, Burst: 5, MaxAge: time.Minute}); err == nil {
+			t.Fatal("Burst 5 above Target 2 was accepted")
+		}
+		d := capDesk(t, clock, "w1", 8)
+		_ = d.Observe(capObs(clock, "a", "w1", math.MaxInt))
+		_ = d.Observe(capObs(clock, "b", "w2", math.MaxInt))
+		got := d.Estimate()
+		if got.Active != math.MaxInt || got.Gap >= 0 {
+			t.Fatalf("estimate = %+v, want a saturated active and a negative gap", got)
+		}
+		if n := d.Refill(0, 0); n != 0 {
+			t.Fatalf("refill with huge readings = %d, want 0", n)
 		}
 	})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"time"
 )
@@ -43,9 +44,16 @@ type CapacityConfig struct {
 	// target, so adding an instance does not multiply it.
 	Target int
 	// MaxAge is how long one observation stays usable. An older one ages out, so
-	// a stale overestimate cannot starve the role permanently.
+	// a stale overestimate cannot starve the role permanently. That holds because
+	// Observe refuses a reading dated more than MaxSkew ahead of Now: a reading
+	// stamped in the future would otherwise stay fresh past MaxAge and outrank
+	// every later correction from its source.
 	MaxAge time.Duration
-	// Burst bounds one refill decision. Zero means DefaultRefillBurst.
+	// MaxSkew is how far ahead of Now an observation may be dated, to absorb
+	// ordinary clock skew between hosts. Zero means DefaultCapacitySkew.
+	MaxSkew time.Duration
+	// Burst bounds one refill decision (per call, not per period of unknown
+	// data). Zero means DefaultRefillBurst; it may not exceed Target.
 	Burst int
 	// Now is a test seam. nil uses time.Now.
 	Now func() time.Time
@@ -55,6 +63,10 @@ type CapacityConfig struct {
 // is zero. The estimate is re-read before every decision, so a small bound
 // converges without a reservation.
 const DefaultRefillBurst = 1
+
+// DefaultCapacitySkew is the future-dating tolerance when CapacityConfig.MaxSkew
+// is zero.
+const DefaultCapacitySkew = 5 * time.Second
 
 // CapacityObservation is one source's latest reading of active role work. Source
 // is the stable observer key (a claim summary, a heartbeat, a supervisor process
@@ -108,9 +120,16 @@ func NewRoleCapacity(cfg CapacityConfig) (*RoleCapacity, error) {
 		return nil, errors.New("drainloop: capacity MaxAge must be positive")
 	case cfg.Burst < 0:
 		return nil, errors.New("drainloop: capacity Burst must not be negative")
+	case cfg.Burst > cfg.Target:
+		return nil, fmt.Errorf("drainloop: capacity Burst %d exceeds Target %d", cfg.Burst, cfg.Target)
+	case cfg.MaxSkew < 0:
+		return nil, errors.New("drainloop: capacity MaxSkew must not be negative")
 	}
 	if cfg.Burst == 0 {
 		cfg.Burst = DefaultRefillBurst
+	}
+	if cfg.MaxSkew == 0 {
+		cfg.MaxSkew = DefaultCapacitySkew
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -119,10 +138,12 @@ func NewRoleCapacity(cfg CapacityConfig) (*RoleCapacity, error) {
 }
 
 // Observe records one reading. A foreign cell or role, an empty source, a
-// negative count or a missing time is refused and changes nothing. A reading
-// older than the one held for the same source is dropped as an out-of-order
-// delivery; a newer one replaces it even when it is smaller, which is how an
-// overestimate is corrected.
+// negative count, a missing time or a time more than MaxSkew ahead of Now is
+// refused and changes nothing. A reading older than the one held for the same
+// source is dropped as an out-of-order delivery; a newer one replaces it even
+// when it is smaller, which is how an overestimate is corrected. Refusing
+// future-dated readings is what keeps that true: an accepted reading is never
+// dated past Now+MaxSkew, so any later reading from its source replaces it.
 func (c *RoleCapacity) Observe(o CapacityObservation) error {
 	switch {
 	case o.Source == "":
@@ -133,6 +154,8 @@ func (c *RoleCapacity) Observe(o CapacityObservation) error {
 		return fmt.Errorf("drainloop: capacity observation %q has a negative count", o.Source)
 	case o.ObservedAt.IsZero():
 		return fmt.Errorf("drainloop: capacity observation %q has no time", o.Source)
+	case o.ObservedAt.After(c.cfg.Now().Add(c.cfg.MaxSkew)):
+		return fmt.Errorf("drainloop: capacity observation %q is dated %s, beyond the %s skew tolerance ahead of now", o.Source, o.ObservedAt.Format(time.RFC3339), c.cfg.MaxSkew)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -182,12 +205,12 @@ func (c *RoleCapacity) Estimate() CapacityEstimate {
 			continue
 		}
 		est.Fresh++
-		est.Active += o.Active
+		est.Active = satAdd(est.Active, o.Active)
 		if o.Instance == c.cfg.Instance {
-			est.Own += o.Active
+			est.Own = satAdd(est.Own, o.Active)
 		}
 		if o.Draining {
-			est.Draining += o.Active
+			est.Draining = satAdd(est.Draining, o.Active)
 		}
 		if age > est.OldestAge {
 			est.OldestAge = age
@@ -204,9 +227,12 @@ func (c *RoleCapacity) Estimate() CapacityEstimate {
 // Refill returns how many more items this desk may start now: 0 at or above
 // target, otherwise the gap capped by the burst bound. With no fresh observation
 // it returns one burst, since missing data is not a measured zero and must not
-// refill the whole target, nor hold the role. A positive instanceTarget further
-// caps the desk to instanceTarget-instanceActive; it shapes this desk's refill
-// and does not partition the role target.
+// refill the whole target in one decision, nor hold the role. The burst bound is
+// per call: repeated calls under prolonged unknown data each return a burst, so
+// only a positive instanceTarget (and the budget brakes) bound a desk's total
+// then, and callers should always pass one. A positive instanceTarget caps the
+// desk to instanceTarget-instanceActive; it shapes this desk's refill and does
+// not partition the role target.
 func (c *RoleCapacity) Refill(instanceActive, instanceTarget int) int {
 	est := c.Estimate()
 	n := c.cfg.Burst
@@ -226,4 +252,13 @@ func (c *RoleCapacity) Refill(instanceActive, instanceTarget int) int {
 		n = 0
 	}
 	return n
+}
+
+// satAdd adds two non-negative counts, saturating at math.MaxInt so a huge
+// reading reads as "far above target" instead of wrapping negative.
+func satAdd(a, b int) int {
+	if b > math.MaxInt-a {
+		return math.MaxInt
+	}
+	return a + b
 }

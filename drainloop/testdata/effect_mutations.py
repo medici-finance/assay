@@ -216,13 +216,16 @@ mutations += [
  ("cell-record-intent-discarded", "ownership.go", "return j.CommitIntent(context.Background(), Intent{Event: e})", "return nil", "TestCellCompletionGeneration"),
  ("cell-completion-receipt-dropped", "ownership.go", "s.Receipts = append(s.Receipts, e)", "s.Receipts = s.Receipts", "TestCellCompletionGeneration"),
  ("cell-completion-generation-ignored", "ownership.go", "r.Intent.Event.Generation == e.Generation &&", "true &&", "TestCellCompletionGeneration"),
- ("capacity-draining-not-counted", "capacity.go", "est.Active += o.Active", "if !o.Draining {\n\t\t\test.Active += o.Active\n\t\t}", "TestDeskRoleCapacity"),
+ ("capacity-draining-not-counted", "capacity.go", "est.Active = satAdd(est.Active, o.Active)", "if !o.Draining {\n\t\t\test.Active = satAdd(est.Active, o.Active)\n\t\t}", "TestDeskRoleCapacity"),
  ("capacity-stale-never-expires", "capacity.go", "if age > c.cfg.MaxAge {", "if false && age > c.cfg.MaxAge {", "TestDeskRoleCapacity"),
  ("capacity-unknown-fills-target", "capacity.go", "case !est.Known:\n\tcase est.Gap <= 0:", "case !est.Known:\n\t\tn = c.cfg.Target\n\tcase est.Gap <= 0:", "TestDeskRoleCapacity"),
  ("capacity-refresh-failure-fatal", "capacity.go", "n := c.cfg.Burst\n", "n := c.cfg.Burst\n\tif est.RefreshErr != \"\" {\n\t\treturn 0\n\t}\n", "TestDeskRoleCapacity"),
  ("capacity-central-leased-slot", "capacity.go", [("const DefaultRefillBurst = 1\n", "const DefaultRefillBurst = 1\n\nvar centralLeased int\n"), ("est := c.Estimate()\n\tn := c.cfg.Burst", "est := c.Estimate()\n\tcentralLeased++\n\tif centralLeased > 1 {\n\t\treturn 0\n\t}\n\tn := c.cfg.Burst")], None, "TestDeskRoleCapacity"),
  ("capacity-out-of-order-replaces", "capacity.go", "o.ObservedAt.Before(prev.ObservedAt)", "false && o.ObservedAt.Before(prev.ObservedAt)", "TestDeskRoleCapacity"),
  ("capacity-foreign-scope-counted", "capacity.go", "case o.Cell != c.cfg.Cell || o.Role != c.cfg.Role:", "case false && (o.Cell != c.cfg.Cell || o.Role != c.cfg.Role):", "TestDeskRoleCapacity"),
+ ("capacity-future-reading-kept", "capacity.go", "case o.ObservedAt.After(c.cfg.Now().Add(c.cfg.MaxSkew)):", "case false && o.ObservedAt.After(c.cfg.Now().Add(c.cfg.MaxSkew)):", "TestDeskRoleCapacity"),
+ ("capacity-burst-over-target", "capacity.go", "case cfg.Burst > cfg.Target:", "case false && cfg.Burst > cfg.Target:", "TestDeskRoleCapacity"),
+ ("capacity-active-sum-wraps", "capacity.go", "est.Active = satAdd(est.Active, o.Active)", "est.Active += o.Active", "TestDeskRoleCapacity"),
 ]
 selected = sys.argv[1:]
 if selected:

@@ -167,9 +167,16 @@ target capped by a small burst.
 It is deliberately approximate. There is no cross-desk mutex, semaphore, leased
 slot or count-and-reserve step, so two desks that read the same gap may both fill
 it and briefly overshoot; the next observation corrects that and refill stops
-until completions bring the role back under target. A failed refresh is reported
-but never blocks refill. Missing or aged-out data is "unknown", not zero, and
-yields one bounded burst rather than the whole target. Per-item claims
+until completions bring the role back under target. That correction relies on
+`Observe` refusing any reading dated more than `MaxSkew` (default 5s) ahead of the
+local clock: a future-dated reading would otherwise stay fresh past `MaxAge` and
+outrank every later correction from its source. Counts are summed with
+saturation, so a huge reading reads as far above target rather than wrapping
+negative. A failed refresh is reported but never blocks refill. Missing or
+aged-out data is "unknown", not zero, and yields one bounded burst per refill
+decision rather than the whole target; `Burst` may not exceed `Target`. The burst
+bound is per call, so under prolonged unknown data only the caller's per-desk
+`instanceTarget` and the budget brakes bound the total. Per-item claims
 (`Claimer`), claim generations, effect identity and the budget brakes are exact
 and never consult the estimate. `TestDeskRoleCapacity` covers these behaviours
 and the mutation harness carries a named control for each.
