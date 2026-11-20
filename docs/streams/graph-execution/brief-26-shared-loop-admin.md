@@ -27,6 +27,8 @@ risk:
 gate-why: Adds an authenticated launch endpoint and moves the process runner the process-launch audit scans; the owner confirms callers cannot change role, profile or limits and that the audit keeps sight of every exec site.
 decision-issue: 5492
 ruling: "https://github.com/medici-finance/assay/issues/5492#issuecomment-6673407324"
+delivery:
+  - {in: "assay#7062", covers: partial, note: "Verify row I2 only (drainloop RoleCapacity, a per-desk role-capacity gauge); rows 1-13 and I1 remain owed"}
 issues: [3353]
 schema: brief-v2
 authored: 2026-10-02 by task-workflow authoring session

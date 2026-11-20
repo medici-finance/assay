@@ -145,8 +145,9 @@ func (c *RoleCapacity) Observe(o CapacityObservation) error {
 
 // Refresh reads the shared observations and folds them in. Its error is for the
 // caller's log: it is retained on the estimate for visibility and never makes
-// Refill refuse. Readings that arrive with the error are still applied, and
-// readings already held stay usable until they age out.
+// Refill refuse. When the observer itself fails, nothing is applied: readings
+// already held stay usable until they age out. When the observer succeeds,
+// each reading is folded in and a refused one is reported in the joined error.
 func (c *RoleCapacity) Refresh(ctx context.Context, src CapacityObserver) error {
 	obs, err := src.ObserveCapacity(ctx)
 	if err != nil {
