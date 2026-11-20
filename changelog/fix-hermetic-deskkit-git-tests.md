@@ -1,0 +1,2 @@
+### Fixed
+- Test binaries that use the shared `gitquiet` harness now refuse to run when `TMPDIR` or `GOTMPDIR` is inside a git repository. Before, a fixture that ran git in an empty temporary directory could discover the enclosing repository and rewrite its config: from a linked worktree, the shared checkout's `remote.origin.url`. `TestVerifierGitRedacts` no longer depends on what encloses the temporary root.

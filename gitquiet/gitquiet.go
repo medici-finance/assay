@@ -27,11 +27,26 @@
 // or one with every GIT_* key removed) is outside this cover; such a fixture sets the
 // keys itself, as `-c` flags or written into the repository's config, or passes its own
 // template explicitly with TemplateDir.
+//
+// THE SECOND DEFECT IT CLOSES: a temporary root inside a repository. A test that runs git
+// in a bare t.TempDir() and expects "not a git repository" relies on there being no
+// repository above the temporary root. When TMPDIR or GOTMPDIR (t.TempDir's root when
+// set) points inside a work tree, git's discovery walks up from the empty directory and
+// finds it, and a write meant to fail lands there instead. In a linked worktree that is
+// the shared checkout's own config: a `git remote set-url origin` fixture once rewrote
+// the shared checkout's fetch URL this way. GIT_CEILING_DIRECTORIES does not close it,
+// because a child whose environment drops every inherited GIT_* variable (a deliberate
+// isolation rule) never sees the ceiling. So Run asks git, with every inherited GIT_*
+// variable removed, whether each temporary root is inside a repository, and refuses to
+// run the tests when one is: the fault is the caller's environment, and it is reported
+// before any test can write through it.
 package gitquiet
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -100,9 +115,73 @@ func Install() (restore func(), err error) {
 	}, nil
 }
 
-// Run installs the template, runs the package's tests, and restores the environment.
-// A package's TestMain calls it in place of m.Run and hands the result to os.Exit.
+// tempRoots names the directories a test binary creates its temporary files under:
+// os.TempDir() (TMPDIR, or TMP/TEMP on Windows: os.MkdirTemp("", …)) and GOTMPDIR when
+// it is set, which is where t.TempDir() creates its directories.
+func tempRoots() [][2]string {
+	roots := [][2]string{{"the temporary directory (TMPDIR)", os.TempDir()}}
+	if d := os.Getenv("GOTMPDIR"); d != "" {
+		roots = append(roots, [2]string{"GOTMPDIR", d})
+	}
+	return roots
+}
+
+// enclosingRepo returns the git directory git discovers from dir, or "" when dir is in
+// no repository. It asks git itself, in the environment most likely to find one: every
+// inherited GIT_* variable removed (GIT_CEILING_DIRECTORIES included, as an isolating
+// child's environment removes it), discovery allowed across filesystems, and ownership
+// checks off, so a repository owned by another account still counts. With no git on
+// PATH there is nothing that could discover a repository, and it returns "".
+func enclosingRepo(dir string) (string, error) {
+	cmd := exec.Command("git", "-c", "safe.directory=*", "-C", dir, "rev-parse", "--absolute-git-dir")
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(strings.ToUpper(kv), "GIT_") {
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
+	cmd.Env = append(cmd.Env, "LC_ALL=C", "GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull,
+		"GIT_DISCOVERY_ACROSS_FILESYSTEM=1")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	switch {
+	case err == nil:
+		return strings.TrimSpace(string(out)), nil
+	case errors.Is(err, exec.ErrNotFound):
+		return "", nil
+	case strings.Contains(stderr.String(), "not a git repository"):
+		return "", nil
+	}
+	return "", fmt.Errorf("could-not-check whether %s is inside a git repository: git rev-parse: %v: %s",
+		dir, err, strings.TrimSpace(stderr.String()))
+}
+
+// checkTempRoots refuses a temporary root that is inside a git repository, and one it
+// could not check.
+func checkTempRoots() error {
+	for _, r := range tempRoots() {
+		gitDir, err := enclosingRepo(r[1])
+		if err != nil {
+			return fmt.Errorf("%s: %w", r[0], err)
+		}
+		if gitDir != "" {
+			return fmt.Errorf("%s %s is inside the git repository %s. A test that runs git in an "+
+				"empty temporary directory would discover that repository and could write to it "+
+				"(for a linked worktree, to the shared checkout's config). Point TMPDIR and GOTMPDIR "+
+				"at a directory outside every git repository", r[0], r[1], gitDir)
+		}
+	}
+	return nil
+}
+
+// Run refuses a temporary root inside a git repository (checkTempRoots), then installs
+// the template, runs the package's tests, and restores the environment. A package's
+// TestMain calls it in place of m.Run and hands the result to os.Exit.
 func Run(m *testing.M) int {
+	if err := checkTempRoots(); err != nil {
+		fmt.Fprintf(os.Stderr, "gitquiet: refusing to run the tests: %v\n", err)
+		return 1
+	}
 	restore, err := Install()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "gitquiet: cannot install the git template: %v\n", err)

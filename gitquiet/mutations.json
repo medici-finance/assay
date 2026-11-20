@@ -1,5 +1,5 @@
 {
-  "test": "go test . -count=1 -timeout 120s -run '^Test(NewReposForkNoMaintenance|TemplateConfigParses|TemplateDirExplicit|HostileGitConfig)$'",
+  "test": "go test . -count=1 -timeout 120s -run '^Test(NewReposForkNoMaintenance|TemplateConfigParses|TemplateDirExplicit|HostileGitConfig|RunRefusesTempInRepo|EnclosingRepo)$'",
   "control": {
     "name": "CONTROL — the template carries no settings: every fixture repository forks automatic maintenance again (the #1608 race)",
     "file": "gitquiet.go",
@@ -24,6 +24,30 @@
       "file": "gitquiet.go",
       "old": "\tif err := writeTemplate(dir); err != nil {\n\t\tt.Fatal(err)\n\t}\n\treturn dir\n",
       "new": "\treturn dir\n"
+    },
+    {
+      "name": "Run never checks the temporary roots — a binary whose TMPDIR/GOTMPDIR sit inside a repository runs, and the planted set-url rewrites that repository's origin URL",
+      "file": "gitquiet.go",
+      "old": "\tif err := checkTempRoots(); err != nil {",
+      "new": "\tif err := error(nil); err != nil {"
+    },
+    {
+      "name": "GOTMPDIR (t.TempDir's root) is not checked — only os.TempDir() is",
+      "file": "gitquiet.go",
+      "old": "if d := os.Getenv(\"GOTMPDIR\"); d != \"\" {",
+      "new": "if d := os.Getenv(\"GITQUIET_UNUSED\"); d != \"\" {"
+    },
+    {
+      "name": "the probe keeps the caller's GIT_* variables — a GIT_CEILING_DIRECTORIES that an isolating child drops hides the enclosing repository",
+      "file": "gitquiet.go",
+      "old": "\t\tif !strings.HasPrefix(strings.ToUpper(kv), \"GIT_\") {\n\t\t\tcmd.Env = append(cmd.Env, kv)\n\t\t}\n\t}\n\tcmd.Env = append(cmd.Env, \"LC_ALL=C\"",
+      "new": "\t\tif true {\n\t\t\tcmd.Env = append(cmd.Env, kv)\n\t\t}\n\t}\n\tcmd.Env = append(cmd.Env, \"LC_ALL=C\""
+    },
+    {
+      "name": "could-not-check rounds to clean — every git failure reads as 'outside every repository'",
+      "file": "gitquiet.go",
+      "old": "\tcase strings.Contains(stderr.String(), \"not a git repository\"):\n",
+      "new": "\tdefault:\n"
     }
   ]
 }
