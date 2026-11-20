@@ -187,8 +187,10 @@ The top-level owner waits for every task sharing that scratch, persists required
 outcomes/evidence to the existing canonical destination, reads them back, then calls
 `cellctl scratch <ASSAY_SCRATCH_CELL> ack --id <ASSAY_SCRATCH_ID>
 --receipt <canonical-evidence-reference>` before the final completion message.
-A delegated agent never acknowledges its parent's scratch. Pending evidence and
-resumable work stay protected. No further required output may be created after ack.
+A delegated agent never acknowledges its parent's scratch. Resumable work stays
+protected. A finished task with no receipt keeps its work dir only through a 24-hour
+handoff grace; a sweep then reclaims it, keeping its record, output tail and Git data.
+No further required output may be created after ack.
 On failures, publish required diagnostics before acknowledgment too; the runtime
 retains only its bounded output tail, receipt and result after handoff.
 
