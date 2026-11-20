@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 	"github.com/medici-finance/assay/statusgen/evaluation"
 
 	"fmt"
@@ -1102,7 +1103,7 @@ func evidenceHasIndependentRow(evidence string) bool {
 		// skip both rows.
 		if i+1 < len(lines) && separatorRowRe.MatchString(strings.Trim(strings.TrimSpace(lines[i+1]), "|")) {
 			runnerIdx = -1
-			headerRow := splitRowEscaped(line)
+			headerRow := briefdoc.SplitRowEscaped(line)
 			headerCells = len(headerRow)
 			for j, c := range headerRow {
 				if strings.EqualFold(strings.TrimSpace(c), "runner") {
@@ -1112,7 +1113,7 @@ func evidenceHasIndependentRow(evidence string) bool {
 			i++
 			continue
 		}
-		cells := splitRowEscaped(line)
+		cells := briefdoc.SplitRowEscaped(line)
 		if len(cells) == 0 {
 			continue
 		}

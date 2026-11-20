@@ -34,6 +34,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 const proseLedRule = "prose-led-command"
@@ -91,7 +93,7 @@ func TestVerifyRunNoMarkerUnchanged(t *testing.T) {
 			if rows[0].Command != c.want {
 				t.Errorf("lifted command = %q, want the legacy first-span lift %q", rows[0].Command, c.want)
 			}
-			if got := codeSpan(c.cell); got != c.want {
+			if got := briefdoc.CodeSpan(c.cell); got != c.want {
 				t.Errorf("fixture drift: codeSpan(%q) = %q, want %q", c.cell, got, c.want)
 			}
 		})
@@ -382,18 +384,12 @@ func TestTranscribeVerdictRefusesProseLedCheckCI(t *testing.T) {
 // function-keyed allow-list cannot tell a message-text call from a lift inside
 // one function, so the lint function must hold no call at all.
 var liftPrimitiveAllowList = map[string]map[string]string{
-	"codeSpan": {
-		"verifyCommand":    "the one Verify-cell lift (#1805)",
+	"CodeSpan": {
 		"witnessCommandOf": "reads a WITNESS row's Command cell, which verifyrun wrote as exactly one span",
 	},
-	"codeSpans": {
-		"proseLedCommandWhy": "judges whether the cell's first span is a mention; returns that span for the NOTICE text",
-		"rawMarkerPresent":   "the lint's hidden-marker check: a raw marker the rendered scan does not honour",
-	},
-	"renderedCodeSpans": {
-		"markedCommands":             "the honoured-marker scan verifyCommand consults",
-		"transitionContext":          "judges unique visible span and unchanged context; the executable Command remains verifyCommand output",
-		"markerOverridesCommandSpan": "the lint's check that a marker replaces a command-shaped first span",
+	"CodeSpans": {},
+	"RenderedCodeSpans": {
+		"transitionContext": "judges unique visible span and unchanged context; the executable Command remains briefdoc.VerifyCommand output",
 	},
 }
 
@@ -426,9 +422,14 @@ func primitiveCallers(t *testing.T, dir string, allow map[string]map[string]stri
 				if !ok {
 					return true
 				}
-				if id, ok := call.Fun.(*ast.Ident); ok {
-					if _, watched := allow[id.Name]; watched {
-						out[id.Name] = append(out[id.Name], n+":"+fn.Name.Name)
+				// The span primitives live in briefdoc (tool-refactoring/03): a
+				// call is a briefdoc.<Name> selector. A local identifier of the
+				// same name is not the primitive.
+				if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+					if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "briefdoc" {
+						if _, watched := allow[sel.Sel.Name]; watched {
+							out[sel.Sel.Name] = append(out[sel.Sel.Name], n+":"+fn.Name.Name)
+						}
 					}
 				}
 				return true
@@ -459,7 +460,7 @@ func TestVerifyCommandLiftHasOneChokePoint(t *testing.T) {
 		}
 	}
 	// Positive controls: the choke point and the marker scan must be visible.
-	for prim, fn := range map[string]string{"codeSpan": "verifyCommand", "renderedCodeSpans": "markedCommands"} {
+	for prim, fn := range map[string]string{"CodeSpan": "witnessCommandOf", "RenderedCodeSpans": "transitionContext"} {
 		seen := false
 		for _, c := range callers[prim] {
 			if strings.HasSuffix(c, ":"+fn) {
@@ -508,18 +509,18 @@ func loadCmdMarkerVectors(t *testing.T) []cmdMarkerVector {
 func TestCmdMarkerSharedVectors(t *testing.T) {
 	for _, v := range loadCmdMarkerVectors(t) {
 		t.Run(v.Name, func(t *testing.T) {
-			m := markedCommands(v.Cell)
+			m := briefdoc.MarkedCommands(v.Cell)
 			switch {
 			case v.Marked == nil && len(m) != 0:
 				t.Errorf("markedCommands(%q) = %q, want no honoured marker", v.Cell, m)
 			case v.Marked != nil && (len(m) == 0 || m[0] != *v.Marked):
 				t.Errorf("markedCommands(%q) = %q, want first %q", v.Cell, m, *v.Marked)
 			}
-			want := codeSpan(v.Cell)
+			want := briefdoc.CodeSpan(v.Cell)
 			if v.Marked != nil {
 				want = *v.Marked
 			}
-			if got := verifyCommand(v.Cell); got != want {
+			if got := briefdoc.VerifyCommand(v.Cell); got != want {
 				t.Errorf("verifyCommand(%q) = %q, want %q", v.Cell, got, want)
 			}
 		})

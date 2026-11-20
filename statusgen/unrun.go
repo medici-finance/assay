@@ -75,6 +75,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // staleImplementedThreshold is how long a brief may sit at `implemented` with
@@ -168,7 +170,7 @@ func parseVerifyItems(section string) []verifyItem {
 		if separatorRowRe.MatchString(strings.Trim(line, "|")) {
 			continue
 		}
-		cells := splitRowEscaped(line)
+		cells := briefdoc.SplitRowEscaped(line)
 		if cmdIdx < 0 || expIdx < 0 {
 			for j, c := range cells {
 				switch strings.ToLower(strings.TrimSpace(c)) {
@@ -193,7 +195,7 @@ func parseVerifyItems(section string) []verifyItem {
 		ordinal++
 		id := strconv.Itoa(ordinal)
 		if numIdx >= 0 && numIdx < len(cells) {
-			if v := normalizeRowID(cells[numIdx]); v != "" {
+			if v := briefdoc.NormalizeRowID(cells[numIdx]); v != "" {
 				id = v
 			}
 		}
@@ -224,7 +226,7 @@ func parseEvidenceRows(section string) map[string][]evidenceRow {
 		if separatorRowRe.MatchString(strings.Trim(line, "|")) {
 			continue
 		}
-		cells := splitRowEscaped(line)
+		cells := briefdoc.SplitRowEscaped(line)
 		// A header row is the one immediately followed by a separator row.
 		if i+1 < len(lines) && separatorRowRe.MatchString(strings.Trim(strings.TrimSpace(lines[i+1]), "|")) {
 			numIdx, dateIdx, runnerIdx, ordinal = -1, -1, -1, 0
@@ -247,7 +249,7 @@ func parseEvidenceRows(section string) map[string][]evidenceRow {
 		ordinal++
 		id := strconv.Itoa(ordinal)
 		if numIdx >= 0 && numIdx < len(cells) {
-			if v := normalizeRowID(cells[numIdx]); v != "" {
+			if v := briefdoc.NormalizeRowID(cells[numIdx]); v != "" {
 				id = v
 			}
 		}
@@ -276,11 +278,6 @@ func parseEvidenceRows(section string) map[string][]evidenceRow {
 		})
 	}
 	return out
-}
-
-// normalizeRowID trims a row's "#" cell to a bare identifier ("`3`" → "3").
-func normalizeRowID(cell string) string {
-	return strings.TrimSpace(strings.Trim(strings.TrimSpace(cell), "`*_"))
 }
 
 // evidenceRowComplete reports whether an Evidence row PROVES its Verify row was

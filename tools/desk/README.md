@@ -424,6 +424,16 @@ no tool reinvents it with holes:
 | `Version()` / `WarnIfUnpinned(w)` | Reports the embedded `sourceSHA`/`builtAt`; warns loudly when unpinned (C-1). |
 | exit codes | `ExitOK 0`, `ExitDisabled 3`, `ExitRateLimited 4`, `ExitRefused 5`, `ExitUnverifiable 6`. `ExitCodeOf(err)` maps a typed error, failing **closed** to 6 for any unexpected error. |
 
+**Verify rows and declared inputs.** deskkit and `internal/verifycmd` keep no reader of a
+brief's `## Verify` table or its `## Context` `files:` declaration. `BriefDeclaredFiles`
+projects `statusgen/briefdoc.DeclaredFiles` (the strict grammar, one `*briefdoc.Refusal`
+mapped onto exit 5), and `verifycmd.Lift`, `Marked`, `CommentOnly`, `NoOp` and `Refused` call
+`briefdoc.VerifyCommand`, `MarkedCommands`, `ShellCommentOnly`, `ShellNoOp` and
+`ProseLedMention`. A change to what a Command cell may name is a change in `briefdoc`, held
+by `briefdoc.TestVerificationDefinitionClassGuard` and the shared vector tables under
+`statusgen/testdata/`; `deskkit.TestVerificationDefinitionFlow` follows one brief from the
+runner to the landing scope.
+
 **Fail-closed (C-10):** any state a helper cannot positively verify (unreadable/malformed
 audit file, missing HOME, unparseable timestamp) is a typed `Unverifiable` refusal
 (exit 6), never a silent default toward success.

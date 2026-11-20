@@ -4,6 +4,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // TestSplitRowEscaped pins the escape-aware cell split. The package-wide splitRow
@@ -33,7 +35,7 @@ func TestSplitRowEscaped(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := splitRowEscaped(tc.line)
+			got := briefdoc.SplitRowEscaped(tc.line)
 			if len(got) != len(tc.want) {
 				t.Fatalf("splitRowEscaped(%q) = %d cells %q, want %d %q", tc.line, len(got), got, len(tc.want), tc.want)
 			}
@@ -50,7 +52,7 @@ func TestSplitRowEscaped(t *testing.T) {
 // lint nearly shipped with: resolving `\|` to `|` at split time left the checker
 // structurally unable to see the defect it reports on.
 func TestSplitRowEscapedPreservesBackslash(t *testing.T) {
-	cells := splitRowEscaped("| 2 | `grep -ciE \"arm64\\|amd64\"` | 1 |")
+	cells := briefdoc.SplitRowEscaped("| 2 | `grep -ciE \"arm64\\|amd64\"` | 1 |")
 	if len(cells) < 2 || !strings.Contains(cells[1], `\|`) {
 		t.Fatalf("the `\\|` must survive the split verbatim; got %q", cells)
 	}
@@ -65,7 +67,7 @@ func TestCodeSpan(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := codeSpan(tc.cell); got != tc.want {
+			if got := briefdoc.CodeSpan(tc.cell); got != tc.want {
 				t.Errorf("codeSpan(%q) = %q, want %q", tc.cell, got, tc.want)
 			}
 		})

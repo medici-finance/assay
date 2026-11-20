@@ -21,6 +21,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // emptyOutputFingerprint is the 12-hex sha256 prefix of empty combined output —
@@ -42,7 +44,7 @@ var commentOnlyCells = []struct{ name, cell string }{
 func TestCommentLedRowIsFlaggedProseLed(t *testing.T) {
 	for _, c := range commentOnlyCells {
 		t.Run(c.name, func(t *testing.T) {
-			span, why := proseLedCommandWhy(c.cell)
+			span, why := briefdoc.ProseLedCommandWhy(c.cell)
 			if why == "" || !strings.Contains(why, "shell comment") {
 				t.Fatalf("proseLedCommandWhy(%q) = %q,%q; want a shell-comment reason", c.cell, span, why)
 			}
@@ -66,7 +68,7 @@ func TestCommentLedLintSparesRealCommands(t *testing.T) {
 		{"command then a heading mention", "`go test ./x -count=1` and read `## Coverage`"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			if span, why := proseLedCommandWhy(c.cell); why != "" {
+			if span, why := briefdoc.ProseLedCommandWhy(c.cell); why != "" {
 				t.Errorf("proseLedCommandWhy(%q) = %q,%q; a real command must not be flagged", c.cell, span, why)
 			}
 		})
@@ -143,7 +145,7 @@ func TestCommentLedMarkedIsRefused(t *testing.T) {
 		"`cmd: #coverage`",
 		"`cmd: # don't forget the quote`",
 	} {
-		span, why := proseLedCommandWhy(cell)
+		span, why := briefdoc.ProseLedCommandWhy(cell)
 		if !strings.Contains(why, "`cmd:`-marked shell comment") {
 			t.Errorf("proseLedCommandWhy(%q) = %q,%q; want the marked shell-comment reason", cell, span, why)
 		}
@@ -227,7 +229,7 @@ func TestShellCommentSharedVectors(t *testing.T) {
 		t.Fatalf("positive control: only %d vectors loaded", len(doc.Vectors))
 	}
 	for _, v := range doc.Vectors {
-		if got := shellCommentOnly(v.Cmd); got != v.CommentOnly {
+		if got := briefdoc.ShellCommentOnly(v.Cmd); got != v.CommentOnly {
 			t.Errorf("%s: shellCommentOnly(%q) = %v, want %v", v.Name, v.Cmd, got, v.CommentOnly)
 		}
 	}
@@ -273,21 +275,21 @@ func TestCommentCellSharedVectors(t *testing.T) {
 		if v.Statusgen != v.Desk {
 			t.Errorf("%s: the table lets the tools/desk executors (%s) differ from statusgen (%s)", v.Name, v.Desk, v.Statusgen)
 		}
-		if got := codeSpan(v.Cell); got != v.FirstSpan {
+		if got := briefdoc.CodeSpan(v.Cell); got != v.FirstSpan {
 			t.Errorf("%s: codeSpan(%q) = %q, want %q", v.Name, v.Cell, got, v.FirstSpan)
 		}
-		if got := len(markedCommands(v.Cell)) > 0; got != v.Marked {
+		if got := len(briefdoc.MarkedCommands(v.Cell)) > 0; got != v.Marked {
 			t.Errorf("%s: marked = %v, want %v", v.Name, got, v.Marked)
 		}
-		if got := verifyCommand(v.Cell); got != v.Lift {
+		if got := briefdoc.VerifyCommand(v.Cell); got != v.Lift {
 			t.Errorf("%s: verifyCommand(%q) = %q, want %q", v.Name, v.Cell, got, v.Lift)
 		}
-		_, why := proseLedCommandWhy(v.Cell)
+		_, why := briefdoc.ProseLedCommandWhy(v.Cell)
 		got := "runs"
 		switch {
 		case strings.Contains(why, "shell comment"):
 			got = "comment-refused"
-		case why != "" || strings.TrimSpace(verifyCommand(v.Cell)) == "":
+		case why != "" || strings.TrimSpace(briefdoc.VerifyCommand(v.Cell)) == "":
 			got = "refused"
 		}
 		if got != v.Statusgen {
@@ -322,8 +324,8 @@ func TestCommentCellSharedVectors(t *testing.T) {
 // no-op is reported as the marked command, not the first span.
 // regression: #3147
 func TestShellNoOpRemedy(t *testing.T) {
-	for _, why := range []string{shellNoOpWhy, shellNoOpMarkedWhy} {
-		if got := proseLedRemedy(why); !strings.HasPrefix(got, "Replace the no-op") {
+	for _, why := range []string{briefdoc.ShellNoOpWhy, briefdoc.ShellNoOpMarkedWhy} {
+		if got := briefdoc.ProseLedRemedy(why); !strings.HasPrefix(got, "Replace the no-op") {
 			t.Errorf("proseLedRemedy(%q) = %q; want the replace-the-no-op remedy", why, got)
 		}
 	}
