@@ -1,5 +1,5 @@
 {
-  "test": "go test ./cmd/scanloop/ -count=1 -timeout 300s -run 'TestUnwritten_|TestCredit|TestHasPlaceholder_|TestCarriers_'",
+  "test": "go test ./cmd/scanloop/ -count=1 -timeout 300s -run 'TestUnwritten_|TestCredit|TestHasPlaceholder_|TestCarriers_|TestBatch_Bare'",
   "control": {
     "name": "CONTROL — every member is credited whatever the scan wrote (the reported defect)",
     "file": "cmd/scanloop/written.go",
@@ -50,10 +50,16 @@
       "new": "\tif i := strings.Index(repo, \"/\"); i >= 0 {"
     },
     {
-      "name": "HasPlaceholder goes back to the first-slash cut",
+      "name": "the bare issue-N.md credits a member of any repository again (#7023)",
+      "file": "cmd/scanloop/written.go",
+      "old": "\treturn home != \"\" && strings.EqualFold(repo, home)",
+      "new": "\t_ = home\n\treturn true"
+    },
+    {
+      "name": "HasPlaceholder matches on the number alone (#7023)",
       "file": "cmd/scanloop/adapter.go",
-      "old": "\tshort := placeholderStemOf(repo)",
-      "new": "\tshort := repo[strings.Index(repo, \"/\")+1:]"
+      "old": "\t\tif !e.IsDir() && matchesPlaceholder(e.Name(), repo, number) {",
+      "new": "\t\tif !e.IsDir() && strings.HasSuffix(e.Name(), \"issue-\"+strconv.Itoa(number)+\".md\") {"
     }
   ]
 }

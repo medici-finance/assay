@@ -58,6 +58,8 @@ type fakeForge struct {
 	// onPut runs at the top of WriteFile, inside deskevidence's audit flock — the
 	// serialisation tests use it to observe what a concurrent invocation can do.
 	onPut func()
+	// onRead runs at the top of ReadFile, before any lock.
+	onRead func()
 
 	// cmpFiles are the files CompareRefs reports the branch changed since the base ref;
 	// cmpErr is its error; cmpIncomplete marks the commit interval as not fully read;
@@ -220,6 +222,9 @@ func (f *fakeForge) setFile(path, content string) {
 }
 
 func (f *fakeForge) ReadFile(_ deskkit.ForgeRepo, in deskkit.ReadFileInput) (*deskkit.FileContent, error) {
+	if f.onRead != nil {
+		f.onRead()
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.hits = append(f.hits, "GET "+in.File)
@@ -265,7 +270,14 @@ func (f *fakeForge) WriteFile(_ deskkit.ForgeRepo, in deskkit.WriteFileInput) (*
 	if f.files == nil {
 		f.files = map[string]string{}
 	}
-	f.files[in.File] = string(in.Content)
+	if in.Delete {
+		delete(f.files, in.File)
+	} else {
+		f.files[in.File] = string(in.Content)
+		for _, c := range in.Companions {
+			f.files[c.File] = string(c.Content)
+		}
+	}
 	author := f.writeAuthor
 	if f.emptyAuthor {
 		author = ""
@@ -678,12 +690,26 @@ func TestSecretScanRefusedNoRemote(t *testing.T) {
 	}
 }
 
+// TestBriefOverOldCapLands: a brief file between the old 256 KiB cap and the raised bound
+// is no longer refused for size (#6861).
+// regression: #6861
+func TestBriefOverOldCapLands(t *testing.T) {
+	f, errBuf := setupFake(t)
+	content := strings.Repeat("witness line\n", maxBytes/13+1)
+	evidencePath := "docs/streams/x/brief.md"
+	root := rootWithFile(t, evidencePath, content)
+	f.setFile(evidencePath, "old\n")
+	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitOK {
+		t.Fatalf("brief over old cap exit = %d (stderr %q), want 0", code, errBuf.String())
+	}
+}
+
 // TestOversizeRefused: a local file over the byte cap is refused before the landing reads the
 // branch. It runs after the mint and admission (admitLanding), which this suite stubs, so
 // "reached the forge" below means the landing's own forge, not admission's record read.
 func TestOversizeRefused(t *testing.T) {
 	f, _ := setupFake(t)
-	big := strings.Repeat("x", maxBytes+1)
+	big := strings.Repeat("x", maxEvidenceFileBytes+1)
 	evidencePath := "docs/streams/x/big.md"
 	root := rootWithFile(t, evidencePath, big)
 	if code := run([]string{"example-org/tracker", "main", "--evidence-file", evidencePath, "--root", root}); code != deskkit.ExitRefused {
@@ -720,7 +746,7 @@ func TestVerifyOutcomesJsonlWriteRefusedRegardlessOfSize(t *testing.T) {
 // judged by the general maxBytes cap alone — unchanged by #1338's retirement.
 func TestVerifyOutcomesSidecarNameNotOverridenOutsideDocsStreamsRoot(t *testing.T) {
 	f, _ := setupFake(t)
-	content := strings.Repeat("x", maxBytes+1)
+	content := strings.Repeat("x", maxEvidenceFileBytes+1)
 	evidencePath := "docs/streams/some-stream/verify-outcomes.jsonl"
 	root := rootWithFile(t, evidencePath, content)
 

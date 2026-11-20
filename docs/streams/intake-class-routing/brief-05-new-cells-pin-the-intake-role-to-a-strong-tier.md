@@ -107,5 +107,37 @@ Failure modes mapped: the seed left on mid, so the cell-file pin is overridden o
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestSeedIntakeTierStrong$' ./cmd/cellctl > "$o" && grep -q -- '--- PASS: TestSeedIntakeTierStrong ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ c5df2f7f09bb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestNewPinsIntakeStrong$' ./cmd/cellctl > "$o" && grep -q -- '--- PASS: TestNewPinsIntakeStrong ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ c5df2f7f09bb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestIntakePinSurvivesReset$' ./cmd/cellctl > "$o" && grep -q -- '--- PASS: TestIntakePinSurvivesReset ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ c5df2f7f09bb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd tools/desk && GOWORK=off go test -count=1 ./cmd/cellctl)` | fail exit=1 sandbox=container-netns | sha256:11a44982c501 | 2026-11-18 | assay-verifier-app[bot] @ c5df2f7f09bb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `sh tools/cellctl/tests/parity.test.sh` | fail exit=2 sandbox=container-netns | sha256:de5d53a24fff | 2026-11-18 | assay-verifier-app[bot] @ c5df2f7f09bb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --consumers --brief assay:assay:intake-class-routing:05` | fail exit=2 sandbox=container-netns | sha256:10acebaa8cea | 2026-11-18 | assay-verifier-app[bot] @ c5df2f7f09bb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestSetShadowedPinNotice$' ./cmd/cellctl > "$o" && grep -q -- '--- PASS: TestSetShadowedPinNotice ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ c5df2f7f09bb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:7c7e183bae944b0f117d30fa67dcb4c314e684db1bf5f58d432e001ea5a208ec
+Container-Image: sha256:3cfd931fc8fb2277df25eafbc68eccfe84ce7d7b92379b927b8c1841d99854d1
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7058 run=09f8799875f59b4db3207d6c8b2337ea529ddb6d2e6d2fe6d580a76975f776e7 source=c5df2f7f09bb355c9fcd4aad94994a781112c191 brief=docs/streams/intake-class-routing/brief-05-new-cells-pin-the-intake-role-to-a-strong-tier.md model=claude-sonnet-5-5 tier=any
+Admission-Bracket: run=09f8799875f59b4db3207d6c8b2337ea529ddb6d2e6d2fe6d580a76975f776e7 source=c5df2f7f09bb355c9fcd4aad94994a781112c191 tree=sha256:7c7e183bae944b0f117d30fa67dcb4c314e684db1bf5f58d432e001ea5a208ec witness=sha256:00740c59f5aec597f5f2a7704ebea75ab95ef3476de3cc52d735782817fef169 opened=2026-11-18T21:09:56Z closed=2026-11-18T21:21:02Z before=receipt after=check-verifier
+
+Supplemental host observations (NO acceptance credit; diagnostic only, labelled as such). Rows 4, 5 and 6 above failed inside the container lane for lane reasons, not on an observed assertion about the deliverable: the home's git file points at a host-side git directory that the container cannot see (rows 4 and 6: workspace git calls exit 128; consumers check reads origin/main), and the image's sh is dash (row 5: "set: Illegal option -o pipefail").
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 4 (supplemental, host, no credit) | (cd tools/desk && GOWORK=off go test -count=1 ./cmd/cellctl) | exit 0, ok | exit 0; ok github.com/medici-finance/assay/tools/desk/cmd/cellctl 508.406s (darwin host, KUBECONFIG=/dev/null, declared verifier Git env; an earlier host attempt with a symlinked TMPDIR failed only TestFixturePolicyControl, discarded as env-fault of that TMPDIR choice) | 2026-11-18 | claude-sonnet-5-5 as assay-verifier-app[bot] (host) |
+| 5 (supplemental, host, no credit) | bash tools/cellctl/tests/parity.test.sh | exit 0 | exit 0; parity: 200 cells, 0 divergent (the authored command is sh, which on this host is a bash 3.2 that rejects the script syntax at line 404 with exit 2) | 2026-11-18 | claude-sonnet-5-5 as assay-verifier-app[bot] (host) |
+| 6 (supplemental, host, no credit) | statusgen --consumers --brief assay:assay:intake-class-routing:05 --delivery 48f213f2ee5542f698219422806517248dd45552 --base <its first parent> | exit 0, 0 disproved | exit 0; summary: 6 corroborated, 0 disproved, 3 unchecked. The authored command without --delivery exits 2 COULD-NOT-CHECK (delivery not derivable under the declared verifier Git environment; same class as medici-finance/assay#6851) | 2026-11-18 | claude-sonnet-5-5 as assay-verifier-app[bot] (host) |
+
+Risk-bearing value enumeration (risk metadata present, all four answers no; fail-safe enumeration of the diff's literals):
+- RISK-VALUE: DERIVED — DESK_MODEL_intake_desk = opus @ tools/desk/cmd/cellctl/new.go:225 (also new.go:321 and new.go:549) — policy.go:32 maps opus to tier strong, and the intake skill requires a strong tier for judgment work; a hand edit and a restart undo it, so it is reversible.
+- RISK-VALUE: DERIVED — intake-desk tier = strong (four providers) @ tools/desk/cmd/cellctl/providers.json:74 (also lines 137, 200, 263) — pr-review-desk and verify-desk are already strong in the same seed; TestSeedIntakeTierStrong (row 1) shows worker-desk stays mid.
+- Reversibility: both are reversible operational defaults; no irreversible act.
+
+Verdict: rows 1, 2, 3 and 7 pass inside the closed container-netns bracket (bracket-digest verdict=match). Rows 4, 5 and 6 recorded fail inside the lane for lane reasons stated above, with no assertion against the deliverable observed; their authored commands could not be discharged as admitted, so 3 of 7 required rows lack admissible acceptance evidence.
+
+**VERIFY: BLOCKED** — rows 1-3, 7 pass (4/7); rows 4, 5, 6 not dischargeable in the container lane (environment; same class as medici-finance/assay#6851); supplemental host observations pass but carry no credit.
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.

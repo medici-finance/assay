@@ -1077,16 +1077,19 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// so its claim does too — one invocation that claims, verifies and lands, all keyed to the repo
 	// the verify queue names the item by. Worker and review dispatches keep the deliverable claim.
 	if verifierKit(o.kit) && dl.crossRepo(o.root) {
-		tracking, terr := verifierTrackingRepo(o, dl)
+		target, terr := verifierTrackingTarget(o, dl)
 		if terr != nil {
 			return plan, terr
 		}
+		tracking := target.Repo.Slug()
 		if !deskkit.IsAllowedRepo(tracking) {
 			return plan, deskkit.Refused(fmt.Sprintf(
 				"step %s: the tracking repo %s is not in the desk repo set — a cross-repository verifier "+
 					"claims there, so it must be rostered. Nothing was claimed.", stepClaimAcquire, tracking))
 		}
 		plan.claimRepo = tracking
+		plan.claimForgeKind = target.Kind
+		plan.outcomeTarget = target
 	}
 	store, serr := deskkit.ResolveClaimStore(plan.claimNamespace())
 	if serr != nil {
@@ -1123,19 +1126,8 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 			return plan, ferr
 		}
 		plan.forgeKind = target.Kind
-		if verifierKit(o.kit) {
+		if verifierKit(o.kit) && !dl.crossRepo(o.root) {
 			plan.outcomeTarget = target
-			if dl.crossRepo(o.root) {
-				tracking, err := verifierTrackingRepo(o, dl)
-				if err != nil {
-					return plan, err
-				}
-				plan.outcomeTarget, err = resolveTargetForge(tracking, dl.trackingRoot)
-				if err != nil {
-					return plan, err
-				}
-				plan.claimForgeKind = plan.outcomeTarget.Kind
-			}
 		}
 	}
 

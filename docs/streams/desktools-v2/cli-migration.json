@@ -18,6 +18,16 @@
     },
     {
       "class": "test",
+      "pattern": "containers/k8s/compatibility/qualify.sh",
+      "reason": "desk-containers/32 source-checkout entrypoint for the offline five-role CLI qualification fixture; it is not installed in the release."
+    },
+    {
+      "class": "test",
+      "pattern": "containers/k8s/compatibility/qualify.py",
+      "reason": "desk-containers/32 test runner invoked by qualify.sh to check named go test results from the synthetic lifecycle fixture."
+    },
+    {
+      "class": "test",
       "pattern": "containers/k8s/compatibility/desk-session.test.sh",
       "reason": "desk-containers/31 offline private-Linux-PID1 regression fixture; synthetic agent, explicit local daemon, cached image and no network"
     },
