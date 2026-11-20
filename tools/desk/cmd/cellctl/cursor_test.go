@@ -161,6 +161,7 @@ func TestCursorBootNeverNamesAutoStrong(t *testing.T) {
 	for _, env := range []map[string]string{
 		{"CURSOR_MODEL_default": "auto"},
 		{"CURSOR_MODEL_default": "auto", "TIER_MODEL_TOP_CURSOR": "auto"},
+		{"TIER_MODEL_TOP_CURSOR": "Auto"},
 		{"TIER_MODEL_TOP_CURSOR": "  "},
 	} {
 		prompt := (&Cell{Env: envWith(env)}).cursorLaunchArgv("worker-desk", "auto", wt)
