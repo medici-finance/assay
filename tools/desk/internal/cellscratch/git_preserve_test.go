@@ -131,7 +131,7 @@ func TestScratchGitKeepSites(t *testing.T) {
 			sites = append(sites, entry.Name()+":"+site)
 		}
 	}
-	want := []string{"store.go:Open:remove", "store.go:Store.Sweep:remove", "store.go:Store.measure:gitMarker"}
+	want := []string{"store.go:Open:remove", "store.go:Store.Sweep:remove", "store.go:Store.measure:gitMarker", "store.go:Store.workRepo:gitMarker"}
 	if !reflect.DeepEqual(sites, want) {
 		t.Fatal("unclassified Git cleanup site", sites)
 	}

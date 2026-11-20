@@ -106,9 +106,11 @@ Logical bytes are not allocated blocks or filesystem free-space measurements.
 Directory entries and filesystem metadata are not counted.
 
 Maintenance serializes other sweeps with a maintenance lease. Recursive inventory runs outside the root admission lock; each eligible run's execution lease remains held through revalidation and deletion. Short root transactions cover enrollment and lifecycle metadata. Live,
-resumable, unacknowledged, unverified, and Git-containing trees stay intact, with a
-reason in the report. The work dir of a finished task past its handoff grace and
-abandoned build output are the only parts of an unacknowledged tree a sweep can remove. The root and destructive operations use Go's confined
+resumable, unacknowledged, and unverified trees stay intact, with a reason in the
+report, and so does Git data: a work dir that is itself a Git repository stays whole,
+and any other work entry holding Git data stays as that entry (see below). The work
+dir of a finished task past its handoff grace and abandoned build output are the
+only parts of an unacknowledged tree a sweep can remove. The root and destructive operations use Go's confined
 `os.Root`, so a symlink cannot redirect deletion outside the scratch root. While
 planning, the sweep pins the identity (device and inode) of every path it may
 delete through, the task, its `work` and each planned entry, before measuring
@@ -153,7 +155,11 @@ sessions, and harness owned roots that ignore inherited temporary-directory
 settings require explicit `scratch run` or remain report-only. A nested managed
 task keeps its own lease and receipt; the parent must wait for it before handing
 off its own scratch. All Git repositories (including bare clones, detached metadata
-directories, and clean worktrees) are conservatively kept. The filesystem classifier recognizes
+directories, and clean worktrees) are conservatively kept, with their working files.
+A task's work dir whose root is itself a repository (a `.git` entry, or a bare
+repository's `HEAD` beside its storage) is kept whole. Otherwise Git data is judged per
+top-level work entry: an entry holding Git data anywhere inside it stays whole, while
+entries beside it that hold no Git data can be reclaimed under the rules below. The filesystem classifier recognizes
 Git markers and repository storage/reference layouts without running Git or
 following metadata links; partial or damaged layouts can therefore remain protected.
 An ordinary output file named `HEAD` alone is not a repository marker. Use
@@ -235,7 +241,11 @@ A task that finished without a receipt, whether it failed (non-zero exit) or exi
 zero, loses its whole work dir once its handoff grace has passed. The grace is 24 hours from the
 task's last recorded activity, whatever the retention max-age, so an operator still has
 a day to complete or inspect the handoff. The same lease, process-group and Git
-checks as below apply, entry by entry: an entry holding Git data stays. The record,
+checks as below apply. A work dir that is itself a Git repository, with a `.git`
+entry or a bare repository layout at its root, is kept whole, and the report says
+`work dir is a Git repository; retained for its owner`; this is checked again right
+before removal. Otherwise Git data is judged entry by entry: an entry holding Git
+data stays, and the other entries go. The record,
 diagnostics and output tail stay. The report row's action is `reclaim-work`.
 
 A task whose session died while it was still running loses only its compiler and

@@ -199,3 +199,70 @@ func TestScratchFinishedLinkAtDelete(t *testing.T) {
 		}
 	}
 }
+
+// A finished task whose work dir is itself a Git repository keeps the whole work dir
+// on the reclaim-work path: a bare repository's objects, refs and config are not
+// separate entries to reclaim around HEAD, and a checkout's working files stay with
+// its .git. The marker is found however wide work is, not only in the first batch.
+//
+// regression: #5560
+func TestScratchRootRepoKept(t *testing.T) {
+	s := scratchStore(t)
+	bare, checkout, plain := finishedOld(t, s, 0), finishedOld(t, s, 1), finishedOld(t, s, 0)
+	bareFiles := []string{"HEAD", "config", "objects/aa/obj", "refs/heads/main"}
+	checkoutFiles := []string{".git/HEAD", ".git/objects/aa/obj", "main.go"}
+	plantFiles(t, bare.Work(), bareFiles...)
+	plantFiles(t, checkout.Work(), checkoutFiles...)
+	for i := 0; i < 12; i++ {
+		plantFiles(t, bare.Work(), fmt.Sprintf("top-%02d", i))
+		plantFiles(t, checkout.Work(), fmt.Sprintf("top-%02d", i))
+	}
+	t.Setenv("ASSAY_MAINTENANCE_ENTRY_LIMIT", "12")
+	rows := rowsByID(sweep(t, s, DefaultPolicy(), true))
+	for _, c := range []struct {
+		r     *Run
+		files []string
+	}{{bare, bareFiles}, {checkout, checkoutFiles}} {
+		if row := rows[c.r.Record.ID]; row.Action != "keep" || row.Reason != "work dir is a Git repository; retained for its owner" {
+			t.Fatalf("repository work root reclaimed: %+v", row)
+		}
+		for _, f := range append(c.files, "notes.txt", "top-11") {
+			if !exists(t, filepath.Join(c.r.Work(), f)) {
+				t.Fatal("repository work root lost", c.r.Record.ID, f)
+			}
+		}
+	}
+	if row := rows[plain.Record.ID]; row.Action != "reclaim-work" {
+		t.Fatalf("plain finished task not reclaimed: %+v", row)
+	}
+}
+
+// A finished task's work dir that becomes a repository after planning (a bare layout
+// written at its root) is caught again right before removal and kept whole.
+//
+// regression: #5560
+func TestScratchRootRepoAtDelete(t *testing.T) {
+	s := scratchStore(t)
+	older, later := finishedOld(t, s, 1), finishedOld(t, s, 0)
+	backdate(t, s, older, time.Hour)
+	original, once := s.remove, false
+	s.remove = func(path string, seen pins) error {
+		if !once {
+			once = true
+			plantFiles(t, later.Work(), "HEAD", "objects/aa/obj", "refs/heads/main")
+		}
+		return original(path, seen)
+	}
+	rows := rowsByID(sweep(t, s, DefaultPolicy(), true))
+	if rows[older.Record.ID].Action != "reclaim-work" {
+		t.Fatal("unchanged finished task was not reclaimed", rows[older.Record.ID])
+	}
+	if row := rows[later.Record.ID]; row.Action != "keep" || row.Reason != "Git retention or unknown tree at deletion" {
+		t.Fatal("repository written at the work root not caught at deletion", row)
+	}
+	for _, kept := range []string{"notes.txt", "checkout-copy/main.go", "objects/aa/obj"} {
+		if !exists(t, filepath.Join(later.Work(), kept)) {
+			t.Fatal("work root repository lost an entry after its recheck", kept)
+		}
+	}
+}

@@ -680,6 +680,8 @@ func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 					build, n, whole, more, buildErr := s.abandonedBuild(r, p, seen)
 					if errors.Is(buildErr, errNotRealDir) {
 						row.Reason = "workspace is not a real directory; retained"
+					} else if errors.Is(buildErr, errWorkRepo) {
+						row.Reason = "work dir is a Git repository; retained for its owner"
 					} else if buildErr != nil {
 						row.Reason = "could-not-check abandoned build output"
 						errs = append(errs, buildErr)
@@ -800,6 +802,10 @@ func (s *Store) Sweep(p Policy, apply bool) (rep Report, err error) {
 		for _, next := range recheck {
 			_, found, e := s.measure(next)
 			git, checkErr = git || found, errors.Join(checkErr, e)
+		}
+		if build && c.whole {
+			repo, e := s.workRepo(c.r.ID + "/work")
+			git, checkErr = git || repo, errors.Join(checkErr, e)
 		}
 		if checkErr != nil || git {
 			row.Action, row.Reason = "keep", "Git retention or unknown tree at deletion"
@@ -972,6 +978,11 @@ func (s *Store) measure(name string) (int64, bool, error) {
 // verified against seen. The record, the receipt and the output tail are never
 // candidates.
 //
+// Git data is judged per entry, except that a finished task's work dir that is itself
+// a Git repository (workRepo) is kept whole: a bare repository's objects, refs and
+// config are not separate entries to reclaim around its HEAD, and a checkout's
+// working files stay with its .git. That returns errWorkRepo.
+//
 // At most inventoryLimit entries are examined (pinned) per task per sweep, so the
 // retained candidate state stays within the maintenance budget however wide work is.
 // When work holds more, more is true: this sweep reclaims that bounded batch and a
@@ -1012,6 +1023,15 @@ func (s *Store) abandonedBuild(r Record, p Policy, seen pins) ([]string, int64, 
 	}
 	if err != nil {
 		return nil, 0, false, false, err
+	}
+	if whole {
+		repo, err := s.workRepo(r.ID + "/work")
+		if err != nil {
+			return nil, 0, false, false, err
+		}
+		if repo {
+			return nil, 0, false, false, errWorkRepo
+		}
 	}
 	f, err := s.root.Open(r.ID + "/work")
 	if err != nil {
@@ -1055,6 +1075,38 @@ func (s *Store) abandonedBuild(r Record, p Policy, seen pins) ([]string, int64, 
 		}
 		if err := s.stopped(); err != nil {
 			return nil, 0, false, false, err
+		}
+	}
+}
+
+var errWorkRepo = errors.New("work dir is a Git repository")
+
+// workRepo reports whether the work dir itself carries a Git marker: a .git entry, or
+// a HEAD beside repository storage (a bare repository at the work root). It pages
+// through the whole listing and retains nothing, so a marker past the first batch of
+// a wide work dir is still found. Any listing error fails the plan closed.
+func (s *Store) workRepo(work string) (bool, error) {
+	f, err := s.root.Open(work)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	for {
+		entries, err := f.ReadDir(s.inventoryLimit())
+		for _, e := range entries {
+			marked, markErr := s.gitMarker(work+"/"+e.Name(), e.Name())
+			if markErr != nil || marked {
+				return marked, markErr
+			}
+		}
+		if err == io.EOF || err == nil && len(entries) == 0 {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		if err := s.stopped(); err != nil {
+			return false, err
 		}
 	}
 }
