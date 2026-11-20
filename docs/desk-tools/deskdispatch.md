@@ -235,6 +235,19 @@ line, "Packet: <absolute path>". It is not a step and cannot fail the dispatch: 
 cannot be built, stderr says why and the assignment carries no such line. Not built on
 --dry-run. No flag and no configuration.
 
+VERIFICATION SNAPSHOTS. A verifier run keeps the tree it verifies and its rows' files under
+the user cache directory ("assay/verify-snap/<claim key>/"), beside the packets and outcome
+records. Each --kit verifier dispatch prunes them on the same one-week retention: a snapshot
+goes only when nothing in it, walked without following a link, has a modification time or an
+inode change time inside the week. The change time is what marks an archive extracted into a
+snapshot as new even though it keeps the archive's modification times. Nothing records which
+snapshot a running verifier holds, so recent activity is the liveness signal; a week is far
+past the two-hour stale age of a dispatched claim. The claim being dispatched never loses its
+own snapshot, a symlink or a plain file there is never removed, and a snapshot that cannot be
+walked in full (an error, or more entries than the maintenance bound) is kept and named on
+stderr. --dry-run lists every snapshot with "keep" or "would remove" and the reason; a real
+dispatch names on stderr each one it removed. A failure never fails the dispatch.
+
 A WORKER dispatch (--kit worker, --kit worker-objective) gets a packet too, smaller because a
 worker run re-reads it on every later request: 32 KiB an item, 64 KiB for the brief and for
 the diff, 192 KiB in all, 12 named files. With no --pr it holds the run's facts (worktree,
