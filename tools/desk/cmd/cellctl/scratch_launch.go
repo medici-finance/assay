@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -60,10 +61,8 @@ func (c *Cell) beginScratch(role string, env []string) (*scratchLaunch, []string
 		return nil, env, err
 	}
 	cellsRoot, cellName := c.reenter()
-	// CLAUDE_CODE_TMPDIR is the claude harness's own temp root (its per-session
-	// scratchpads). On macOS it defaults to /tmp and ignores TMPDIR, so without it
-	// the harness's bytes land outside every task record (#7274).
-	for k, v := range map[string]string{"TMPDIR": r.Work(), "TMP": r.Work(), "TEMP": r.Work(), harnessTempRootKey: r.Work(), "ASSAY_SCRATCH_ID": r.Record.ID, "ASSAY_SCRATCH_ROOT": s.Path, "ASSAY_SCRATCH_CELL": cellName, "CELLS_ROOT": cellsRoot} {
+	env = taskTempEnv(env, r.Work())
+	for k, v := range map[string]string{"ASSAY_SCRATCH_ID": r.Record.ID, "ASSAY_SCRATCH_ROOT": s.Path, "ASSAY_SCRATCH_CELL": cellName, "CELLS_ROOT": cellsRoot} {
 		env = envSet(env, k, v)
 	}
 	return &scratchLaunch{s, r, r.Tail()}, env, nil
@@ -82,10 +81,24 @@ func (s *scratchLaunch) finish(result *cellcadence.Result) {
 	}
 }
 
+// taskTempKeys are every temp-root variable a managed task points at its work
+// dir. taskTempEnv is the one place a task environment gets them, so a launch
+// site cannot set TMPDIR and leave a harness's own root under the system temp dir.
+var taskTempKeys = []string{"TMPDIR", "TMP", "TEMP", harnessTempRootKey}
+
+func taskTempEnv(env []string, work string) []string {
+	for _, k := range taskTempKeys {
+		env = envSet(env, k, work)
+	}
+	return env
+}
+
 // harnessTempRootKey is the claude harness's documented temp-root override
 // (code.claude.com/docs/en/env-vars, CLAUDE_CODE_TMPDIR). Codex's configuration
 // reference documents no temp-root override; it names $TMPDIR as the temp
 // location, which the launch already sets. Its state stays under CODEX_HOME.
+// On macOS the claude root defaults to /tmp and ignores TMPDIR, so without the
+// key the harness's per-session scratch lands outside every task record (#7274).
 const harnessTempRootKey = "CLAUDE_CODE_TMPDIR"
 
 // Append overrides after the original command environment and before the prompt:
@@ -99,7 +112,7 @@ func scratchArgv(harness string, args, env []string) []string {
 	out := append([]string{}, args[:len(args)-1]...)
 	for _, kv := range env {
 		k, v, ok := strings.Cut(kv, "=")
-		if ok && (strings.HasPrefix(k, "ASSAY_SCRATCH_") || k == "TMPDIR" || k == "TMP" || k == "TEMP" || k == harnessTempRootKey || k == "CELLS_ROOT" || k == "ASSAY_SOURCE_REVISION") {
+		if ok && (strings.HasPrefix(k, "ASSAY_SCRATCH_") || slices.Contains(taskTempKeys, k) || k == "CELLS_ROOT" || k == "ASSAY_SOURCE_REVISION") {
 			b, _ := json.Marshal(v)
 			out = append(out, "-c", "shell_environment_policy.set."+k+"="+string(b))
 		}
