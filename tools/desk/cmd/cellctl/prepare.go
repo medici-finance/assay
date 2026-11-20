@@ -23,9 +23,6 @@ func (c *Cell) prepareLaunch() (bool, error) {
 	if _, err := c.scratchSweepInterval(); err != nil {
 		return false, err
 	}
-	if _, err := c.gcInterval(); err != nil {
-		return false, err
-	}
 	if err := c.cacheAdmission(); err != nil {
 		return false, err
 	}

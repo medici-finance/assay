@@ -2476,78 +2476,33 @@ compose this variable — their launch environment is exactly the allowlist in
 [The composed environment](#the-composed-environment) — and neither do container
 cells, whose launch is delegated to the operator's own launcher.
 
-## `cellctl gc` — one maintenance pass
+## `cellctl gc` — a read-only reclaim report
 
-`cellctl gc <cell> [--role <role>]` runs each existing reclaim target in turn and
-prints one JSON line per target on stdout: `target`, `outcome` (`planned`, `applied`,
-`skipped`, `failed` or `could-not-check`), `bytes` and `reclaimed` (null where the
-target reports no figure), and an optional `items` and `detail`. The targets are:
+`cellctl gc <cell> [--role <role>]` runs the dry form of each existing reclaim target and
+prints one JSON line per target on stdout: `target`, `outcome` (`planned`, `skipped`,
+`failed` or `could-not-check`), `bytes` and `reclaimed` (what the target measured and
+would reclaim; null where the target reports no figure), and an optional `items` and
+`detail`. The targets are:
 
-- `scratch`: the managed task scratch sweep ([Managed task scratch](cellctl-scratch.md));
-- `go-cache`: Go cache maintenance ([Managed Go caches](cellctl-go-cache.md)); a dry
-  run reports the cache's recorded measurement, read through the cache's bounded
-  metadata reader, and walks nothing; `skipped` while
-  `CELL_GO_CACHE` is off;
-- `worktrees:<owner/repo>`: the installed `deskwt prune --repo <path> --no-cache`,
-  once per `CELL_ROOTS` checkout, run as the role's loop (`DESK_LOOP`) when `--role`
-  is given. `--no-cache` leaves Go cache pressure to the `go-cache` target; every other
-  prune gate is unchanged.
+- `scratch`: the managed task scratch sweep's dry run ([Managed task scratch](cellctl-scratch.md));
+- `go-cache`: the managed Go cache's recorded measurement
+  ([Managed Go caches](cellctl-go-cache.md)), read through the cache's bounded metadata
+  reader; nothing is walked and no cache lock is taken; `skipped` while `CELL_GO_CACHE`
+  is off;
+- `worktrees:<owner/repo>`: the installed `deskwt prune --repo <path> --no-cache --dry-run`,
+  once per `CELL_ROOTS` checkout, run as the role's loop (`DESK_LOOP`) when `--role` is given.
 
-gc adds no delete logic of its own: each target is the existing guarded entry point,
-under the lock that entry point already takes. A target that fails or could not check
-is reported, the remaining targets still run, and the exit code is 1. Plain `gc` is a
-dry run. `--apply` acts, holding the scope's own lock (`run/gc/<role>.stamp`, or
-`run/gc/cell.stamp` with no `--role`; a private `run/gc` directory, and an owner-only
-regular file reached through no link) for the pass, so a manual pass and the same
-desk's scheduled pass never overlap; a second one reports `skipped` and exits 1. Like
-every maintenance verb, gc holds the cell's admission lock shared, so it is refused
-while `cellctl reset` runs.
+gc adds no delete logic of its own. A target that fails or could not check is reported, the
+remaining targets still run, and the exit code is 1.
 
-### The scheduled gc — per desk
-
-Every running `cellctl desk` supervisor, interactive or cadenced, runs
-`cellctl gc <cell> --role <role> --apply --scheduled` for its own desk on
-`CELL_GC_INTERVAL` (a Go duration of at least `1m`; default `1h`; `0` turns it off).
-No cron, launchd or daemon is involved, and it stops when the supervisor stops.
-
-- **Each desk cleans for itself.** A desk may run alone, for example one desk per
-  container with no shared host filesystem and no sibling supervisor, so no desk relies
-  on another to clean for it, and no cell-wide gc lock exists. A pass covers what the
-  desk's own filesystem holds. Where several desks on one host share a store (the
-  cell's scratch root, the managed Go cache, the repository `deskwt prune` walks),
-  mutual exclusion is that store's existing lock, and the store's existing stamp (the
-  scratch `maintenance.stamp`, the prune singleton's recency window, the cache's
-  recorded measurement) saves repeating the same work within an interval. Those
-  stamps only save work; correctness does not depend on them.
-- **The installed binary runs, as a child.** At every tick the supervisor resolves
-  `cellctl` afresh, from `DESK_TOOLS_BIN` and then `PATH`, and executes it. It never
-  runs the maintenance in its own process, so a re-pinned install takes effect at the
-  next tick with no window restart. When no installed `cellctl` resolves, the tick runs
-  nothing and logs `could-not-check`; the next tick tries again. An installed binary
-  older than the supervisor runs as itself: one without the `gc` verb fails its tick,
-  and the failure is logged. Set `CELL_GC_INTERVAL=0` to return to the supervisor's
-  in-process scratch sweep.
-- **Once per interval per desk.** A `--scheduled` pass that finds the desk's own last
-  pass finished less than `CELL_GC_INTERVAL` ago skips with exit 0. A damaged or
-  future-dated stamp counts as no stamp; a busy lock never counts as free. A pass with
-  a failed target still records its finish, so the failure is retried at the next
-  interval.
-- **Never during launch or stop.** The first check waits ten minutes after the window
-  starts, so it does not compete with the launch's admission and scratch transaction;
-  later checks follow every ten minutes (or the interval, if shorter). A supervisor
-  whose context is done, or whose role a stop flag covers, starts no gc, and stopping
-  the supervisor cancels a running one.
-- **What it replaces.** While the scheduled gc is on, the supervisor does not start its
-  in-process scratch timer: gc's `scratch` target is the same periodic sweep, under the
-  same maintenance lease and `maintenance.stamp`, so the root is still swept at most
-  once per `CELL_SCRATCH_SWEEP_INTERVAL` and the target reports `skipped` in between. A
-  cadenced supervisor keeps its between-pass Go cache maintenance, which keeps the next
-  pass admissible; gc's `go-cache` target calls the same maintenance, which clears
-  without a walk while the recorded measurement is fresh and under budget.
-- **Logs.** Each tick appends the child's report lines and one `gc-schedule` summary
-  line (role, the cellctl path it ran, exit code) to the desk's own `run/gc/<role>.log`, which keeps one
-  previous generation past 1 MiB. A cadenced supervisor also prints them on stderr; an
-  interactive one leaves the terminal to its harness.
+**Apply is held.** `gc --plan [--json]` writes a plan and changes nothing else. `gc --run`
+and `gc --apply <plan-id>` are the state-changing forms
+[cell-op-v1](../spec/cell-op-v1.md) §5 names: they are refused off a terminal and in a desk
+session, and on a terminal they show the plan and ask for its confirm code. Every gc plan
+action then refuses, so a confirmed apply reclaims nothing. Apply stays held until
+cell-op-v1 specifies a non-interactive maintenance class. Reclamation stays with the
+existing verbs (`cellctl scratch <cell> sweep --apply`, `cellctl cache <cell> clean`,
+`deskwt prune`) and the desk supervisor's own periodic scratch sweep.
 
 ## Host desk cadence
 

@@ -286,13 +286,13 @@
     {
       "name": "disconnect interactive maintenance",
       "file": "cmd/cellctl/cadence.go",
-      "old": "stopMaintenance := c.startMaintenance(child, role, nil)",
+      "old": "stopMaintenance := c.startScratchMaintenance(child, role, nil)",
       "new": "stopMaintenance := func() {}"
     },
     {
       "name": "disconnect cadenced maintenance",
       "file": "cmd/cellctl/cadence.go",
-      "old": "stopMaintenance := c.startMaintenance(ctx, role, os.Stderr)",
+      "old": "stopMaintenance := c.startScratchMaintenance(ctx, role, os.Stderr)",
       "new": "stopMaintenance := func() {}"
     },
     {

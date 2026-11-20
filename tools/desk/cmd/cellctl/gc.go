@@ -1,26 +1,25 @@
 package main
 
-// `cellctl gc <cell> [--role <role>]` — one maintenance pass over a desk's reclaim targets.
+// `cellctl gc <cell> [--role <role>]` — a read-only report over a desk's reclaim targets.
 //
-// gc adds no delete logic of its own. Each target is an existing, already-guarded entry
-// point, called as its own caller calls it:
+// Bare gc is the dry run spec/cell-op-v1.md §5 calls read-only. It runs each existing,
+// already-guarded entry point in its dry form and prints one JSON line per target:
 //
-//   - scratch:   the explicit sweep (sweepScratch), or, for a --scheduled pass, the
-//     supervisor's periodic sweep (deferredScratchSweep) under the scratch root's own
-//     maintenance lease and stamp, so it never sweeps twice per CELL_SCRATCH_SWEEP_INTERVAL;
-//   - go-cache:  the cadence supervisor's between-pass maintenance (cadenceCacheMaintenance),
-//     or, in a dry run, its recorded measurement;
-//   - worktrees: the installed `deskwt prune --no-cache` for each CELL_ROOTS checkout, as the
-//     role's loop when --role is given.
+//   - scratch:   the explicit sweep (sweepScratch) without --apply;
+//   - go-cache:  the cache's recorded measurement, read through cellcache.RecordedReport
+//     (the package's bounded metadata reader); nothing is walked and no lock is taken;
+//   - worktrees: the installed `deskwt prune --dry-run --no-cache` for each CELL_ROOTS
+//     checkout, run as the role's loop when --role is given.
 //
-// Each target covers what this desk's filesystem holds, and takes the existing lock of the
-// store it touches; gc adds no cell-wide lock (gc_schedule.go says why). One JSON line per
-// target goes to stdout. A target that fails or could not check is reported and the next
-// one still runs; the exit code is 1 when any did.
+// A target that fails or could not check is reported and the next one still runs; the exit
+// code is 1 when any did. gc adds no delete logic of its own.
 //
-// Plain gc is a dry run. --apply acts, under the scope's own lock (run/gc/<role>.stamp).
-// --scheduled is the supervisor's form (gc_schedule.go): it also skips, exit 0, when that
-// stamp records a pass finished less than CELL_GC_INTERVAL ago.
+// The state-changing forms §5 names, `gc --run` and `gc --apply <plan-id>`, are registered
+// and annotated cellop:state-changing, so they are refused off a terminal and in a desk
+// session, and on a terminal they go through the one apply path (cellopApply) and its typed
+// confirm. Apply itself is HELD: the driver's ruling on #7280 holds gc's apply until
+// cell-op-v1 specifies a non-interactive maintenance class, so every action of a gc plan
+// refuses at run time and nothing is reclaimed through gc.
 
 import (
 	"context"
@@ -33,18 +32,20 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"time"
+
+	"github.com/spf13/cobra"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcache"
+	"github.com/medici-finance/assay/tools/desk/internal/cellop"
 	"github.com/medici-finance/assay/tools/desk/internal/cellrunner"
 	"github.com/medici-finance/assay/tools/desk/internal/cellscratch"
 )
 
 // gcLine is one target's report line. Bytes is what the target measured in its scope and
-// Reclaimed what it removed; nil (JSON null) means the target does not report that figure.
+// Reclaimed what it would reclaim or did; nil (JSON null) means the target reports no figure.
 type gcLine struct {
 	Target    string `json:"target"`
-	Outcome   string `json:"outcome"` // planned | applied | skipped | failed | could-not-check
+	Outcome   string `json:"outcome"` // planned | skipped | failed | could-not-check
 	Bytes     *int64 `json:"bytes"`
 	Reclaimed *int64 `json:"reclaimed"`
 	Items     *int   `json:"items,omitempty"`
@@ -84,76 +85,43 @@ func runGCTarget(ctx context.Context, t gcTarget) (lines []gcLine) {
 	return t.run(ctx)
 }
 
-func gcOutcome(apply bool) string {
-	if apply {
-		return "applied"
-	}
-	return "planned"
-}
-
 func i64(v int64) *int64 { return &v }
 
-// gcScratchTarget is the scratch sweep. A scheduled pass uses the periodic form, which
-// skips while the scratch root's own maintenance stamp is younger than
-// CELL_SCRATCH_SWEEP_INTERVAL (0 turns it off), exactly as the in-process timer did.
-func (c *Cell) gcScratchTarget(scope string, apply, scheduled bool) gcTarget {
+// gcScratchTarget is the scratch sweep's dry run.
+func (c *Cell) gcScratchTarget(scope string) gcTarget {
 	return gcTarget{name: "scratch", run: func(ctx context.Context) []gcLine {
-		line := gcLine{Target: "scratch"}
-		var rep cellscratch.Report
-		var err error
-		if scheduled {
-			interval, ierr := c.scratchSweepInterval()
-			if ierr != nil {
-				return []gcLine{{Target: "scratch", Outcome: "could-not-check", Detail: ierr.Error()}}
-			}
-			if interval == 0 {
-				return []gcLine{{Target: "scratch", Outcome: "skipped", Detail: "CELL_SCRATCH_SWEEP_INTERVAL=0"}}
-			}
-			var ran bool
-			rep, ran, err = c.deferredScratchSweep(ctx, scope, interval, nil)
-			if err == nil && !ran {
-				return []gcLine{{Target: "scratch", Outcome: "skipped", Detail: "swept less than CELL_SCRATCH_SWEEP_INTERVAL ago, or a sibling holds the maintenance lease"}}
-			}
-		} else {
-			p, perr := c.scratchPolicy()
-			if perr != nil {
-				return []gcLine{{Target: "scratch", Outcome: "could-not-check", Detail: perr.Error()}}
-			}
-			s, oerr := cellscratch.Open(filepath.Join(c.Dir, "run", "scratch"))
-			if oerr != nil {
-				return []gcLine{{Target: "scratch", Outcome: "could-not-check", Detail: oerr.Error()}}
-			}
-			s.Label(c.Name, scope)
-			s.Bind(ctx)
-			rep, err = sweepScratch(s, p, apply)
-			err = errors.Join(err, s.Close())
+		p, err := c.scratchPolicy()
+		if err != nil {
+			return []gcLine{{Target: "scratch", Outcome: "could-not-check", Detail: err.Error()}}
 		}
+		s, err := cellscratch.Open(filepath.Join(c.Dir, "run", "scratch"))
+		if err != nil {
+			return []gcLine{{Target: "scratch", Outcome: "could-not-check", Detail: err.Error()}}
+		}
+		s.Label(c.Name, scope)
+		s.Bind(ctx)
+		rep, err := sweepScratch(s, p, false)
+		err = errors.Join(err, s.Close())
 		items := 0
 		for _, e := range rep.Entries {
 			if e.Action != "keep" {
 				items++
 			}
 		}
-		line.Bytes, line.Reclaimed, line.Items = i64(rep.Bytes), i64(rep.Reclaimed), &items
-		line.Outcome = gcOutcome(apply)
+		line := gcLine{Target: "scratch", Outcome: "planned", Bytes: i64(rep.Bytes), Reclaimed: i64(rep.Reclaimed), Items: &items}
 		switch {
 		case err != nil:
 			line.Outcome, line.Detail = "failed", err.Error()
 		case rep.Partial:
 			line.Outcome, line.Detail = "could-not-check", "partial accounting"
-		case rep.OverBudget:
-			line.Detail = "over budget after the sweep"
 		}
 		return []gcLine{line}
 	}}
 }
 
-// gcCacheTarget is Go cache maintenance: in a dry run, the recorded measurement; else the
-// between-pass maintenance a cadence supervisor runs. That maintenance clears cheaply,
-// without a walk, while the recorded measurement is fresh and under budget, so a pass
-// right after a cadence supervisor's own does not walk the cache again.
-func (c *Cell) gcCacheTarget(apply bool) gcTarget {
-	return gcTarget{name: "go-cache", run: func(ctx context.Context) []gcLine {
+// gcCacheTarget reports the Go cache's recorded measurement.
+func (c *Cell) gcCacheTarget() gcTarget {
+	return gcTarget{name: "go-cache", run: func(context.Context) []gcLine {
 		p, err := c.cachePolicy()
 		if err != nil {
 			return []gcLine{{Target: "go-cache", Outcome: "could-not-check", Detail: err.Error()}}
@@ -161,26 +129,15 @@ func (c *Cell) gcCacheTarget(apply bool) gcTarget {
 		if p == nil {
 			return []gcLine{{Target: "go-cache", Outcome: "skipped", Detail: "CELL_GO_CACHE is off"}}
 		}
-		var r cellcache.Report
-		if apply {
-			var rp *cellcache.Report
-			rp, err = c.cadenceCacheMaintenance(ctx)
-			if rp != nil {
-				r = *rp
-			}
-		} else {
-			// The dry run reads the cache's recorded measurement (report.json) and walks
-			// nothing; launches and dispatches keep the cache lock to themselves.
-			r, err = recordedCacheReport(*p)
-		}
-		line := gcLine{Target: "go-cache", Outcome: gcOutcome(apply), Bytes: r.Before.LogicalBytes, Reclaimed: i64(r.Reclaimed), Detail: r.Outcome}
-		if r.After.LogicalBytes != nil && apply {
-			line.Bytes = r.After.LogicalBytes
-		}
+		r, err := recordedCacheReport(*p)
 		if err != nil {
-			line.Outcome, line.Detail = "failed", err.Error()
+			return []gcLine{{Target: "go-cache", Outcome: "could-not-check", Detail: err.Error()}}
 		}
-		return []gcLine{line}
+		bytes := r.After.LogicalBytes
+		if bytes == nil {
+			bytes = r.Before.LogicalBytes
+		}
+		return []gcLine{{Target: "go-cache", Outcome: "planned", Bytes: bytes, Reclaimed: i64(r.Reclaimed), Detail: r.Outcome}}
 	}}
 }
 
@@ -194,37 +151,28 @@ func recordedCacheReport(p cellcache.Policy) (cellcache.Report, error) {
 	return r, err
 }
 
-// gcToolPath resolves an installed desk tool: the cell's DESK_TOOLS_BIN directory first
+// gcDeskwtPath resolves the installed deskwt: the cell's DESK_TOOLS_BIN directory first
 // (the pinned install path), then PATH. Only an absolute, executable path is returned.
-func (c *Cell) gcToolPath(name string) (string, error) {
+func (c *Cell) gcDeskwtPath() (string, error) {
+	name := "deskwt"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	p := filepath.Join(deskToolsBin(c.Env), name)
-	if filepath.IsAbs(p) && isExecFile(p) {
+	if p := filepath.Join(deskToolsBin(c.Env), name); filepath.IsAbs(p) && isExecFile(p) {
 		return p, nil
 	}
-	var found string
-	var err error
-	switch name {
-	case "deskwt", "deskwt.exe":
-		found, err = exec.LookPath("deskwt")
-	case "cellctl", "cellctl.exe":
-		found, err = exec.LookPath("cellctl")
-	default:
-		err = fmt.Errorf("not a gc tool")
-	}
+	found, err := exec.LookPath("deskwt")
 	if err != nil {
-		return "", fmt.Errorf("no installed %s in %s or on PATH", name, deskToolsBin(c.Env))
+		return "", fmt.Errorf("no installed deskwt in %s or on PATH", deskToolsBin(c.Env))
 	}
 	if !filepath.IsAbs(found) {
-		return "", fmt.Errorf("%s resolves to a relative path on PATH", name)
+		return "", errors.New("deskwt resolves to a relative path on PATH")
 	}
 	return found, nil
 }
 
-// gcRunTool runs one installed tool to completion and returns its combined output. A test
-// replaces it to observe the argv without a real deskwt.
+// gcRunTool runs one installed tool to completion and returns the tail of its output. A
+// test replaces it to observe the argv without a real deskwt.
 var gcRunTool = func(ctx context.Context, argv, env []string, dir string) (string, int, error) {
 	w := &tailWriter{limit: 64 * 1024}
 	code, uncertain, err := cellrunner.Run(ctx, argv, env, dir, w, w)
@@ -234,10 +182,8 @@ var gcRunTool = func(ctx context.Context, argv, env []string, dir string) (strin
 	return w.String(), code, err
 }
 
-// gcWorktreeTargets runs `deskwt prune` once per stream root. --no-cache leaves Go cache
-// pressure to the go-cache target; every other prune gate, its singleton included, is
-// deskwt's own and unchanged.
-func (c *Cell) gcWorktreeTargets(role string, apply bool) []gcTarget {
+// gcRoots is each distinct CELL_ROOTS checkout.
+func (c *Cell) gcRoots() [][2]string {
 	var roots [][2]string
 	seen := map[string]bool{}
 	for _, e := range rootEntries(c.Env.Get("CELL_ROOTS")) {
@@ -247,6 +193,13 @@ func (c *Cell) gcWorktreeTargets(role string, apply bool) []gcTarget {
 		seen[e[1]] = true
 		roots = append(roots, e)
 	}
+	return roots
+}
+
+// gcWorktreeTargets runs `deskwt prune --dry-run` once per stream root. --no-cache leaves Go
+// cache pressure to the go-cache target; every other prune gate is deskwt's own.
+func (c *Cell) gcWorktreeTargets(role string) []gcTarget {
+	roots := c.gcRoots()
 	if len(roots) == 0 {
 		return []gcTarget{{name: "worktrees", run: func(context.Context) []gcLine {
 			return []gcLine{{Target: "worktrees", Outcome: "skipped", Detail: "CELL_ROOTS names no checkout"}}
@@ -256,21 +209,18 @@ func (c *Cell) gcWorktreeTargets(role string, apply bool) []gcTarget {
 	for _, root := range roots {
 		name, path := "worktrees:"+root[0], root[1]
 		targets = append(targets, gcTarget{name: name, run: func(ctx context.Context) []gcLine {
-			bin, err := c.gcToolPath("deskwt")
+			bin, err := c.gcDeskwtPath()
 			if err != nil {
 				return []gcLine{{Target: name, Outcome: "could-not-check", Detail: err.Error()}}
 			}
-			argv := []string{bin, "prune", "--repo", path, "--no-cache"}
-			if !apply {
-				argv = append(argv, "--dry-run")
-			}
+			argv := []string{bin, "prune", "--repo", path, "--no-cache", "--dry-run"}
 			// The same helper identity every other deskwt call of cellctl gets.
 			env := c.deskHelperEnv(envUnset(os.Environ(), cellcache.EnvPolicy), role, "")
 			out, code, err := gcRunTool(ctx, argv, env, path)
-			line := gcLine{Target: name, Outcome: gcOutcome(apply), Detail: lastLine([]byte(out))}
+			line := gcLine{Target: name, Outcome: "planned", Detail: lastLine([]byte(out))}
 			if err != nil || code != 0 {
 				line.Outcome = "failed"
-				line.Detail = strings.TrimSpace(fmt.Sprintf("exit %d %v %s", code, errOrEmpty(err), lastLine([]byte(out))))
+				line.Detail = strings.TrimSpace(fmt.Sprintf("exit %d %s %s", code, errOrEmpty(err), lastLine([]byte(out))))
 			}
 			return []gcLine{line}
 		}})
@@ -286,70 +236,87 @@ func errOrEmpty(err error) string {
 }
 
 // gcTargets is every target, in report order. role is "" for a pass with no role.
-func (c *Cell) gcTargets(role string, apply, scheduled bool) []gcTarget {
-	return append([]gcTarget{c.gcScratchTarget(gcScope(role), apply, scheduled), c.gcCacheTarget(apply)}, c.gcWorktreeTargets(role, apply)...)
+func (c *Cell) gcTargets(role string) []gcTarget {
+	scope := role
+	if scope == "" {
+		scope = "cell"
+	}
+	return append([]gcTarget{c.gcScratchTarget(scope), c.gcCacheTarget()}, c.gcWorktreeTargets(role)...)
 }
 
-func gcScope(role string) string {
-	if role == "" {
-		return "cell"
-	}
-	return role
-}
-
-// cmdGC is the verb. It returns the exit code: 0 when every target was planned, applied or
-// skipped, 1 when any failed or could not check, or when the scope's lock was not available.
-func cmdGC(c *Cell, role string, apply, scheduled bool) int {
-	if scheduled && !apply {
-		die("gc: --scheduled requires --apply")
-	}
+// cmdGC is the dry run. It returns the exit code: 0 when every target was planned or
+// skipped, 1 when any failed or could not check.
+func cmdGC(c *Cell, role string) int {
 	if role != "" && !valueIn(role, knownRoles) {
 		die("gc: unknown role %q", role)
 	}
-	emit := func(l gcLine) {
-		b, _ := json.Marshal(l)
-		fmt.Println(string(b))
-	}
 	ctx, stop := cellrunner.NotifyContext(context.Background())
 	defer stop()
-	var lock *gcLock
-	if apply {
-		interval := time.Duration(0)
-		if scheduled {
-			var err error
-			if interval, err = c.gcInterval(); err != nil {
-				die("gc: %v", err)
-			}
-			if interval == 0 {
-				emit(gcLine{Target: "gc", Outcome: "skipped", Detail: "CELL_GC_INTERVAL=0"})
-				return 0
-			}
-		}
-		var outcome gcLockOutcome
-		var detail string
-		lock, outcome, detail = acquireGCLock(c.gcStampPath(gcScope(role)), interval, time.Now())
-		switch outcome {
-		case gcLockHeld, gcLockRecent:
-			emit(gcLine{Target: "gc", Outcome: "skipped", Detail: detail})
-			if scheduled {
-				return 0
-			}
-			return 1
-		case gcLockUnavailable:
-			emit(gcLine{Target: "gc", Outcome: "could-not-check", Detail: detail})
-			return 1
-		}
-	}
-	lines := runGC(ctx, c.gcTargets(role, apply, scheduled))
 	code := 0
-	for _, l := range lines {
-		emit(l)
+	for _, l := range runGC(ctx, c.gcTargets(role)) {
+		b, _ := json.Marshal(l)
+		fmt.Println(string(b))
 		if l.failed() {
 			code = 1
 		}
 	}
-	if lock != nil {
-		lock.release(code == 0, time.Now())
-	}
 	return code
+}
+
+// gcApplyHeld is the run-time answer of every gc plan action: apply is held by the ruling
+// on #7280. It is the only Run gc gives the apply path, so a confirmed apply reclaims nothing.
+const gcApplyHeld = "gc apply is held until cell-op-v1 specifies a non-interactive maintenance class (ruling on #7280); nothing was reclaimed"
+
+// gcHeldPrecondition is what every gc action records and re-measures: nothing gc applies can
+// change between plan and apply, because nothing is applied.
+var gcHeldPrecondition = cellop.Precondition{Key: "gc/apply", Value: "held"}
+
+// gcVerb is gc's cell operation: its actions name the targets, and running one refuses.
+var gcVerb = cellopVerb{
+	Verb: "gc",
+	Measure: func(*Cell, cellop.Action) ([]cellop.Precondition, error) {
+		return []cellop.Precondition{gcHeldPrecondition}, nil
+	},
+	Run: func(*Cell, cellop.Action) (string, error) { return "", errors.New(gcApplyHeld) },
+}
+
+// gcActions is the plan of a gc: one held action per target, built without running any.
+func (c *Cell) gcActions() []cellop.Action {
+	ids := []string{"scratch", "go-cache"}
+	for _, r := range c.gcRoots() {
+		ids = append(ids, "worktrees:"+r[0])
+	}
+	var actions []cellop.Action
+	for _, id := range ids {
+		actions = append(actions, cellop.Action{ID: id, Cell: c.Name,
+			Summary:       "gc " + id + " (apply held: ruling on #7280)",
+			Preconditions: []cellop.Precondition{gcHeldPrecondition}})
+	}
+	return actions
+}
+
+// gcRun is the verb's handler: --plan writes a plan, --apply <id> and --run go through the
+// one apply path (whose actions refuse, held), and the bare form is the dry-run report.
+func gcRun(cmd *cobra.Command, c *Cell, role string) {
+	if role != "" && !valueIn(role, knownRoles) {
+		die("gc: unknown role %q", role)
+	}
+	plan, apply, run := cmd.Flags().Changed("plan"), cmd.Flags().Changed("apply"), cmd.Flags().Changed("run")
+	switch {
+	case plan && (apply || run):
+		die("gc: --plan is exclusive with --apply and --run")
+	case apply && run:
+		die("gc: --apply and --run are exclusive")
+	case plan:
+		cellopPlan(cmd, c, "gc", c.gcActions())
+	case apply:
+		cellopApply(cmd, c, gcVerb, cmd.Flags().Lookup("apply").Value.String())
+	case run:
+		p := cellopNewPlan(c, "gc", c.gcActions())
+		cellopApply(cmd, c, gcVerb, p.ID)
+	default:
+		if code := cmdGC(c, role); code != 0 {
+			exitWith(code)
+		}
+	}
 }

@@ -143,14 +143,16 @@ pause, wait for in-flight work to finish, hand off, then stop each targeted role
   --timeout                  duration how long to wait for in-flight work before giving up (the roles stay up)
 ```
 
-## `cellctl gc <cell> [--role <role>] [--apply] [--scheduled]`
+## `cellctl gc <cell> [--role <role>] [--plan [--json] | --run | --apply <plan-id>]`
 
-one maintenance pass over a desk's reclaim targets (dry run unless --apply)
+report what each reclaim target of a desk would reclaim (read-only; apply is held)
 
 ```
-  --apply                             act; default is a dry run
-  --role                     string   the desk role this pass is for (its own lock and stamp)
-  --scheduled                         with --apply: skip when this desk's last gc finished less than CELL_GC_INTERVAL ago
+  --apply                    string   apply the stored plan with this id, on this terminal, after the typed confirm (apply is held)
+  --json                              print the plan or the result as cell-op-v1 JSON
+  --plan                              write a plan and change nothing else; works off a terminal
+  --role                     string   the desk role this report is for (deskwt runs as that loop)
+  --run                               plan and apply on this terminal after the typed confirm (apply is held)
 ```
 
 ## `cellctl hotfix install|status|clear`
