@@ -1,0 +1,2 @@
+### Fixed
+- `deskboard actions` no longer recommends FLIP or MERGE-NOW for a PR whose ready gate will refuse on an open desk-decided declaration hold (an undeclared-desk-decision finding standing in either review lane, or a label and `## Desk-decided` block that disagree). The row reads BLOCKED and names the hold; a later decisive verdict in the same lane clears it. The classifier shares `DeskDecidedRefusal` with `deskflip` and `deskpost ready`,.
