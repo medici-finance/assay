@@ -29,23 +29,8 @@ on:
     # included: a job skipped by its `if:` still posts a `skipped` check run on
     # the same head, which would sit beside, and hide, an earlier red.
     types: [opened, synchronize, reopened, edited]
-    # Fire on anything --lint reads: the stream docs, STATUS.md itself, the
-    # statusgen source (the lint binary is built from it), and this workflow.
-    paths:
-      - "docs/**"
-      - "changelog/**"
-      - "STATUS.md"
-      - "statusgen/**"
-      # statusgen resolves the forgeread module through a sibling `replace`, so a change
-      # there changes what the lint binary is built from.
-      - "forgeread/**"
-      - "gitcore/**"
-      # Likewise the perfrec module (the shared perf-v1 writer, #3101).
-      - "perfrec/**"
-      - ".github/workflows/assay-statusgen.yml"
-      # The reconcile job's run: texts below are what statusgen's job tests
-      # execute, so a change to this file's staged copy runs those tests too.
-      - "ci/staged-workflows/assay-statusgen.yml"
+    # No `paths:` filter: the decision-key lint must run on every pull request,
+    # since a PR that touched only unlisted paths would skip it.
   push:
     branches: [main]
     # STATUS.md is deliberately NOT listed and lives at the repo root (outside
