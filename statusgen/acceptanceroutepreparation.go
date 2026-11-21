@@ -3,10 +3,19 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/medici-finance/assay/deskcore/attestation"
 )
+
+var acceptancePreparationAttribution = regexp.MustCompile(`\n\nOn-behalf-of: human:[A-Za-z0-9_-]+(?: mode:unattended)?\n?$`)
+
+// The native verifier filing tool appends an attribution line. It is not a
+// ruling and is deliberately outside the exact manifest JSON.
+func acceptancePreparationPayload(body string) string {
+	return strings.TrimSuffix(acceptancePreparationAttribution.ReplaceAllString(body, ""), "\n")
+}
 
 func acceptancePreparationBody(m acceptanceManifest) (string, error) {
 	raw, err := json.MarshalIndent(m, "", "  ")
@@ -50,7 +59,7 @@ func verifyAcceptancePreparation(m acceptanceManifest, issue int, ciWorkflowToke
 			!strings.EqualFold(a.Login, policy.Verifier.Login+"[bot]") || a.ID != policy.Verifier.ID {
 			return fmt.Errorf("acceptance preparation: issue is not authored by the pinned verifier App")
 		}
-		if record.Title != title || strings.TrimSuffix(record.Body, "\n") != want {
+		if record.Title != title || acceptancePreparationPayload(record.Body) != want {
 			return fmt.Errorf("acceptance preparation: issue does not carry the exact manifest")
 		}
 		return nil
@@ -80,7 +89,7 @@ func loadAcceptancePreparation(repo string, issue int, ciWorkflowToken bool) (ac
 	if err != nil {
 		return acceptanceManifest{}, err
 	}
-	_, section, ok := strings.Cut(record.Body, "\n\n```json\n")
+	_, section, ok := strings.Cut(acceptancePreparationPayload(record.Body), "\n\n```json\n")
 	raw, tail, ended := strings.Cut(section, "\n```")
 	if !ok || !ended || strings.TrimSpace(tail) != "" {
 		return acceptanceManifest{}, fmt.Errorf("acceptance preparation: issue does not contain a single manifest")
@@ -96,7 +105,7 @@ func loadAcceptancePreparation(repo string, issue int, ciWorkflowToken bool) (ac
 	if err != nil {
 		return acceptanceManifest{}, err
 	}
-	if strings.TrimSuffix(record.Body, "\n") != want {
+	if acceptancePreparationPayload(record.Body) != want {
 		return acceptanceManifest{}, fmt.Errorf("acceptance preparation: issue is not the canonical manifest rendering")
 	}
 	return m, nil

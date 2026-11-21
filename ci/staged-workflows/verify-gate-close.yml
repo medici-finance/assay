@@ -186,10 +186,13 @@ jobs:
           set -euo pipefail
           go version
           ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
+          ( cd tools/desk && go build -o "${RUNNER_TEMP}/deskread" ./cmd/deskread )
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
 
       - name: Advance the brief to done and push
         env:
           GH_TOKEN: ${{ github.token }}
+          DESKREAD_CI_WORKFLOW_TOKEN: ${{ github.token }}
           ISSUE_BODY: ${{ github.event.issue.body }}
           ISSUE: ${{ github.event.issue.number }}
           CLOSER: ${{ github.event.sender.login }}
@@ -261,7 +264,19 @@ jobs:
             git fetch --no-tags origin main
             git reset --hard FETCH_HEAD
 
-            if ! out=$("${RUNNER_TEMP}/statusgen" --root . --close-verify "$brief" --acceptance-forge 2>&1); then
+            close_status=0
+            if [ "$brief" = "verification-handoff/03" ]; then
+              out=$("${RUNNER_TEMP}/statusgen" acceptance-route close --root . --brief "$brief" \
+                --card "$ISSUE" --acceptance-forge 2>&1) || close_status=$?
+              if [ "$close_status" -ne 0 ]; then
+                printf '%s\n' "$out"
+                echo "::error::The adjudicated card did not pass close revalidation; no change was committed."
+                exit "$close_status"
+              fi
+            else
+              out=$("${RUNNER_TEMP}/statusgen" --root . --close-verify "$brief" --acceptance-forge 2>&1) || close_status=$?
+            fi
+            if [ "$close_status" -ne 0 ]; then
               printf '%s\n' "$out"
               # Idempotency (already done): the brief is ALREADY `done`, so this
               # close is a benign replay of an earlier successful sign-off (the

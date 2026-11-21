@@ -70,6 +70,7 @@ func TestLoadAcceptancePreparationRequiresCanonicalBody(t *testing.T) {
 		pass       bool
 	}{
 		{"exact", body, true},
+		{"native attribution", body + "\n\nOn-behalf-of: human:example mode:unattended\n", true},
 		{"unknown field", strings.Replace(body, `"source": {`, `"source": {"extra":true,`, 1), false},
 		{"noncanonical marker", strings.Replace(body, creditBriefRel, creditBriefRel+".extra", 1), false},
 		{"foreign repository", strings.Replace(body, creditRepo, "example-org/other", 1), false},
