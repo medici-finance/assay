@@ -18,7 +18,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/perfrec"
 )
 
@@ -313,8 +312,7 @@ func perfrecClosure(t *testing.T, dir, goos string) []string {
 	t.Helper()
 	cmd := exec.Command("go", "list", "-deps", ".")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GOWORK=off", "GOFLAGS=-mod=mod", "GOOS="+goos)
-	out, err := goquiet.Cmd(cmd).Output()
+	out, err := offlineFixtureGo(t, cmd, "GOFLAGS=-mod=mod", "GOOS="+goos).Output()
 	if err != nil {
 		t.Fatalf("go list -deps (GOOS=%s) in %s: %v", goos, dir, err)
 	}

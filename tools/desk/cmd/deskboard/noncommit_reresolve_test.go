@@ -12,6 +12,7 @@ package main
 // lastReviewAt baseline).
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -176,4 +177,88 @@ func TestReduceReviews_CapturesLastReviewAt(t *testing.T) {
 	if !st.lastReviewAt.Equal(want) {
 		t.Fatalf("lastReviewAt = %v, want %v", st.lastReviewAt, want)
 	}
+}
+
+// trustForge serves only the typed trust read, with a pinned payload and a read counter.
+type trustForge struct {
+	deskkit.Forge
+	payload *deskkit.TrustPayload
+	reads   int
+}
+
+func (f *trustForge) PRTrustEvents(deskkit.ForgeRepo, int) (*deskkit.TrustPayload, error) {
+	f.reads++
+	return f.payload, nil
+}
+
+// regression: #6669
+// TestDetectNonCommitResolution_GitLabEdit — a GitLab change list carries no edit time, so a
+// description edit after a blocking verdict used to read as "never edited" and the row stayed
+// BLOCKED at the same head. The detector must take the edit time from the forge's trust read
+// there, and must NOT spend that read on a forge whose list already answers.
+func TestDetectNonCommitResolution_GitLabEdit(t *testing.T) {
+	reviewAt := time.Date(2026, 11, 1, 12, 0, 0, 0, time.UTC)
+	run := func(t *testing.T, kind deskkit.ForgeKind, payload *deskkit.TrustPayload) (bool, error, *trustForge) {
+		t.Helper()
+		tf := &trustForge{payload: payload}
+		prevFor, prevKind := forgeFor, forgeKindOf
+		forgeFor = func(string) (deskkit.Forge, deskkit.ForgeRepo, error) { return tf, deskkit.ForgeRepo{}, nil }
+		forgeKindOf = func(string) (deskkit.ForgeKind, error) { return kind, nil }
+		t.Cleanup(func() { forgeFor, forgeKindOf = prevFor, prevKind })
+		var p prBase
+		p.Number = 7
+		got, _, err := detectNonCommitResolution("grp/proj", p, reviewAt)
+		return got, err, tf
+	}
+	t.Run("gitlab description edited after the verdict re-flags", func(t *testing.T) {
+		got, err, _ := run(t, deskkit.ForgeGitLab, &deskkit.TrustPayload{Complete: true, BodyHistoryKnown: true, BodyEdited: reviewAt.Add(time.Hour)})
+		if err != nil || !got {
+			t.Fatalf("got=%v err=%v, want a re-flag", got, err)
+		}
+	})
+	t.Run("gitlab description edited before the verdict does not", func(t *testing.T) {
+		got, err, _ := run(t, deskkit.ForgeGitLab, &deskkit.TrustPayload{Complete: true, BodyHistoryKnown: true, BodyEdited: reviewAt.Add(-time.Hour)})
+		if err != nil || got {
+			t.Fatalf("got=%v err=%v, want no re-flag", got, err)
+		}
+	})
+	t.Run("gitlab never edited does not", func(t *testing.T) {
+		got, err, _ := run(t, deskkit.ForgeGitLab, &deskkit.TrustPayload{Complete: true, BodyHistoryKnown: true})
+		if err != nil || got {
+			t.Fatalf("got=%v err=%v, want no re-flag", got, err)
+		}
+	})
+	t.Run("gitlab incomplete read is could-not-check, not unedited", func(t *testing.T) {
+		if _, err, _ := run(t, deskkit.ForgeGitLab, &deskkit.TrustPayload{Complete: false, BodyHistoryKnown: true}); err == nil {
+			t.Fatal("an incomplete activity read must surface as an error")
+		}
+	})
+	t.Run("gitlab unknown history is could-not-check", func(t *testing.T) {
+		if _, err, _ := run(t, deskkit.ForgeGitLab, &deskkit.TrustPayload{Complete: true}); err == nil {
+			t.Fatal("an activity read of unknown provenance must surface as an error")
+		}
+	})
+	t.Run("gitlab nil payload is could-not-check", func(t *testing.T) {
+		if _, err, _ := run(t, deskkit.ForgeGitLab, nil); err == nil {
+			t.Fatal("a nil trust payload must surface as an error, not panic or read as unedited")
+		}
+	})
+	t.Run("unresolvable forge kind is could-not-check", func(t *testing.T) {
+		tf := &trustForge{payload: &deskkit.TrustPayload{Complete: true, BodyHistoryKnown: true}}
+		prevFor, prevKind := forgeFor, forgeKindOf
+		forgeFor = func(string) (deskkit.Forge, deskkit.ForgeRepo, error) { return tf, deskkit.ForgeRepo{}, nil }
+		forgeKindOf = func(string) (deskkit.ForgeKind, error) { return "", errors.New("no forge kind") }
+		t.Cleanup(func() { forgeFor, forgeKindOf = prevFor, prevKind })
+		var p prBase
+		p.Number = 7
+		if _, _, err := detectNonCommitResolution("grp/proj", p, reviewAt); err == nil {
+			t.Fatal("an unresolvable forge kind must surface as an error, not read as never edited")
+		}
+	})
+	t.Run("github empty edit time pays no extra read", func(t *testing.T) {
+		got, err, tf := run(t, deskkit.ForgeGitHub, &deskkit.TrustPayload{Complete: true, BodyHistoryKnown: true, BodyEdited: reviewAt.Add(time.Hour)})
+		if err != nil || got || tf.reads != 0 {
+			t.Fatalf("got=%v err=%v reads=%d, want no re-flag and zero reads", got, err, tf.reads)
+		}
+	})
 }

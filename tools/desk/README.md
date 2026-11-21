@@ -67,7 +67,7 @@ changed or discarded.
 
 | Tool | Verb(s) | Class | Write budget + breaker |
 |------|---------|-------|------------------------|
-| `deskboard` | `review-queue`, `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `milestones`, `diff`, `files` | read-only | no |
+| `deskboard` | `change`, `review-queue`, `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `milestones`, `diff`, `files` | read-only | no |
 | `issueboard` | `board`, `issues`, `intake` | read-only | no |
 | `verifyloop` | `plan` | read-only (spawns nothing, writes nothing) | no |
 | `scanloop` | `plan` (read-only queue print), `run` (one drain pass), `land` (record a judgment exit for a parked item) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item, each also appended as an `intake-exit-v1` record to `<state dir>/intake-exits.jsonl` (schema: `spec/intake-exit-v1.md`) | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) / local state (`land`) | yes (`run`) |
@@ -1650,7 +1650,7 @@ merge onto it), and each row on an affected repo is flagged `baseBranchRed` with
 An **absent** `mainHealth` field means the verb did not probe — never that it found
 nothing wrong. `review-queue`, `prs`, `queue`, `awaiting`, `nextup`, `dispatch`, `todo`, `next`,
 `next-up`, `throughput`, `scope`, `policydrift`, `stalled`, `milestones`,
-`reviews`, `diff` and `files` do not probe. That list is not prose upkeep: `TestNonProbingVerbs_OmitMainHealth` asserts
+`change`, `reviews`, `diff` and `files` do not probe. That list is not prose upkeep: `TestNonProbingVerbs_OmitMainHealth` asserts
 the absence for every verb on it (JSON **and** `--table`), `TestVerbInventory_Complete`
 fails if a verb is added without being classified, and `TestREADME_NamesEveryNonProbingVerb`
 fails if this sentence drifts from the guard.
@@ -2147,7 +2147,7 @@ structurally invisible, and nothing knows to alert. Two halves:
 
 - **Every sweeping verb states its scope.** `review-queue` (requested/admitted/population in its observation), `prs`, `actions`, `queue`, `health`, `scope`,
   `policydrift`, `stalled` and `throughput` carry a `scope` object in the JSON header (repos, count, source) and
-  print one scope line on `--table`. Verbs taking an explicit repo or document (`reviews`, `diff`,
+  print one scope line on `--table`. Verbs taking an explicit repo or document (`change`, `reviews`, `diff`,
   `files`, `milestones`) **omit** the field entirely — absent means "swept nothing", never "the set was
   empty". This sentence is not prose upkeep: `TestReadme_SweepingVerbSentence_359` fails
   if it names a subset of the verbs `verbScopeClass` declares as repo-sweeping — the
@@ -7883,6 +7883,16 @@ a fail-open in the tier policy cannot leak a risk-bearing brief into DISPATCH). 
 gather Evidence for such a brief — its member line reads `Evidence-only (never flip-eligible)` —
 but never flips it; the Evidence-only lane in `Land` writes Evidence with no status flip and the
 human's merge of the checkpoint PR is the flip.
+
+**One outcome protocol for the writer and its readers**. The outcome words, the
+row-result reduction and the record codec the verifier writes and the queue reads are defined once in
+`statusgen/evaluation/outcome.go` (the codec in its subpackage `statusgen/evaluation/outcomerecord`);
+`deskkit` keeps only the adapters. The writer's existing outcome-word checks are unchanged:
+`--outcome-record` lands only a word the readers recognise (`verified`, `verify-fail`, `fail`,
+`blocked`, `needs-context`, `needs_context`, ignoring case and surrounding space as the readers do), and
+the verified-closure guard and the sidecar gate count `Verified` or ` verified ` as a pass. What is new is
+that a `verified` record that holds or fails rows is refused at the writer. The record layout, the
+numeric exit codes and the wake-receipt schema are unchanged.
 
 **`plan` does not re-run an unchanged failure — wake receipts** (`verify-wake-v1`;
 `docs/streams/example-stream/verify-wake-v1.md`). A `verify-fail`/`blocked` verifier run lands a

@@ -1335,6 +1335,9 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "witnessdigest" {
 		exitProcess(runWitnessDigest(os.Args[2:], os.Stdout, os.Stderr))
 	}
+	if len(os.Args) > 1 && os.Args[1] == "preview-stamps" {
+		exitProcess(runPreviewStamps(os.Args[2:], os.Stdout, os.Stderr))
+	}
 	if len(os.Args) > 1 && os.Args[1] == "verifyrun" {
 		exitProcess(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))
 	}
@@ -1647,7 +1650,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, evidenceverdict, verifyflip, mergecheck, shardcheck, conform, brief, context, backfill, reconcile, regen, migrate, lint, verify-gate-close, acceptance-route, enforcement-status, phantoms, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, evidenceverdict, verifyflip, mergecheck, shardcheck, conform, brief, context, backfill, reconcile, regen, migrate, lint, verify-gate-close, acceptance-route, enforcement-status, phantoms, preview-stamps, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			exitProcess(2)
 		}

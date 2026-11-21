@@ -169,7 +169,7 @@ output: a versioned JSON envelope on stdout
   "issueStates", "labelEvents", "change", "changeCommits", "changeFiles", "reviews"; change-trust
   answers "trust", the trust kind's shape read on the change.
 
-  reviews answers a list, [{"authorLogin": …, "authorId": …, "state": "APPROVED|CHANGES_REQUESTED|
+  reviews answers a list, [{"authorLogin": …, "authorId": …, "submissionId": …, "url": …, "state": "APPROVED|CHANGES_REQUESTED|
   COMMENTED|DISMISSED|PENDING", "commitId": …, "submittedAt": …, "body": …}], every submission oldest first
   (an empty list is a real answer: nobody has reviewed). It is transport: it carries no verdict.
 
@@ -998,12 +998,14 @@ type CommentJSON struct {
 // which ReviewsAtHead also renders APPROVED. An empty CommitID or SubmittedAt is could-not-check,
 // never "at the current head" or "just now".
 type ReviewJSON struct {
-	AuthorLogin string `json:"authorLogin,omitempty"`
-	AuthorID    int64  `json:"authorId,omitempty"`
-	State       string `json:"state"`
-	CommitID    string `json:"commitId,omitempty"`
-	SubmittedAt string `json:"submittedAt,omitempty"`
-	Body        string `json:"body,omitempty"`
+	SubmissionID int64  `json:"submissionId,omitempty"`
+	URL          string `json:"url,omitempty"`
+	AuthorLogin  string `json:"authorLogin,omitempty"`
+	AuthorID     int64  `json:"authorId,omitempty"`
+	State        string `json:"state"`
+	CommitID     string `json:"commitId,omitempty"`
+	SubmittedAt  string `json:"submittedAt,omitempty"`
+	Body         string `json:"body,omitempty"`
 }
 
 // IssueDetailJSON is one deskkit.Issue read through GetIssueTyped(issue kind). ClosedBy is set
@@ -1319,7 +1321,7 @@ func readItem(kind string, target deskkit.TargetKind, tgt issueTarget, o readOpt
 		for _, r := range rs {
 			out = append(out, ReviewJSON{
 				AuthorLogin: r.Author.Login, AuthorID: r.Author.ID, State: r.State,
-				CommitID: r.CommitID, SubmittedAt: r.SubmittedAt, Body: r.Body,
+				CommitID: r.CommitID, SubmittedAt: r.SubmittedAt, Body: r.Body, SubmissionID: r.SubmissionID(), URL: r.URL,
 			})
 		}
 		res.Reviews = &out

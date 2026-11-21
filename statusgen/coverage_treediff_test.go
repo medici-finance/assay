@@ -257,7 +257,7 @@ func TestNoAncestryWitnessJudge(t *testing.T) {
 		"failfirst_ancestry.go":      "fail-first BASE provenance (verify-integrity/03), not witness applicability: the closure gate and the runner ask whether the base a row was shown red on is the merge-base of HEAD and the default branch, or the first parent of a recorded delivering commit that is HEAD or an ancestor of HEAD (compared as resolved object ids, #2721), because a red on a sibling, branch or stale tree proves nothing about this change. Closures already on main are grandfathered by closedAtBase before the question is asked. Applicability stays witnessTreeApplies' tree comparison",
 	}
 	var files []string
-	for _, pat := range []string{"*.go", "evaluation/*.go"} {
+	for _, pat := range []string{"*.go", "evaluation/*.go", "evaluation/*/*.go"} {
 		m, err := filepath.Glob(pat)
 		if err != nil {
 			t.Fatal(err)
