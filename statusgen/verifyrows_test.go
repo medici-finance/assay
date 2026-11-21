@@ -68,7 +68,7 @@ func TestCodeSpan(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := briefdoc.CodeSpan(tc.cell); got != tc.want {
-				t.Errorf("codeSpan(%q) = %q, want %q", tc.cell, got, tc.want)
+				t.Errorf("briefdoc.CodeSpan(%q) = %q, want %q", tc.cell, got, tc.want)
 			}
 		})
 	}

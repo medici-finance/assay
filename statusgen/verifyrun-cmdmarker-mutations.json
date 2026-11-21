@@ -1,7 +1,7 @@
 {
   "test": "go test . -run 'CmdMarker|NoMarkerUnchanged|ProseLedCommand|MarkedRowRoundTrips|ReexecutesLiftedCommand|RefusesProseLedCheckCI|ProseLedPassIsNotPass|OneChokePoint|HiddenMarker|RowLintJudges|ProseLedRow|WitnessRowRoundTrips|CommentLed|CommentCell|ShellComment|CommentOnly|ShellNoOp' -count=1 -timeout 300s",
   "control": {
-    "name": "CONTROL — verifyCommand ignores the marker (the pre-#1805 first-span lift)",
+    "name": "CONTROL — briefdoc.VerifyCommand ignores the marker (the pre-#1805 first-span lift)",
     "file": "briefdoc/verification.go",
     "old": "\tif m := MarkedCommands(cell); len(m) > 0 {\n\t\treturn m[0]\n\t}\n\treturn CodeSpan(cell)",
     "new": "\treturn CodeSpan(cell)"
@@ -20,7 +20,7 @@
       "new": "\t\treturn m[len(m)-1]\n"
     },
     {
-      "name": "briefVerifyRows lifts with codeSpan again (verifyrun runs the first span)",
+      "name": "briefVerifyRows lifts with briefdoc.CodeSpan again (verifyrun runs the first span)",
       "file": "briefdoc/verification.go",
       "old": "\t\tcmd := VerifyCommand(r.Command)",
       "new": "\t\tcmd := CodeSpan(r.Command)"
@@ -260,7 +260,7 @@
       "new": "\tif false && ShellCommentOnly(lifted) {"
     },
     {
-      "name": "#2684: shellCommentOnly never matches (the shared comment vectors stop holding)",
+      "name": "#2684: briefdoc.ShellCommentOnly never matches (the shared comment vectors stop holding)",
       "file": "briefdoc/verification.go",
       "old": "\treturn strings.HasPrefix(strings.TrimSpace(cmd), \"#\")",
       "new": "\treturn false"

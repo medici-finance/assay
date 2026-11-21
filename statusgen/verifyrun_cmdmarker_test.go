@@ -7,7 +7,7 @@ package main
 //
 // These tests pin both halves of the fix:
 //
-//   - the explicit `cmd:` marker, which verifyCommand (and so verifyrun, the
+//   - the explicit `cmd:` marker, which briefdoc.VerifyCommand (and so verifyrun, the
 //     check:ci re-execution lane, newbrief and the row lint) prefers over the
 //     first span;
 //   - the `prose-led-command` lint NOTICE, which flags the #1805 shapes and
@@ -19,7 +19,7 @@ package main
 // tests fail on their assertions — the fail-first run the PR body quotes.
 //
 // The class guard (TestVerifyCommandLiftHasOneChokePoint) is the other half:
-// it fails when any new site lifts a command out of a cell with codeSpan
+// it fails when any new site lifts a command out of a cell with briefdoc.CodeSpan
 // directly, instead of through briefdoc.VerifyCommand. Its mutation spec is
 // verifyrun-cmdmarker-mutations.json.
 
@@ -94,7 +94,7 @@ func TestVerifyRunNoMarkerUnchanged(t *testing.T) {
 				t.Errorf("lifted command = %q, want the legacy first-span lift %q", rows[0].Command, c.want)
 			}
 			if got := briefdoc.CodeSpan(c.cell); got != c.want {
-				t.Errorf("fixture drift: codeSpan(%q) = %q, want %q", c.cell, got, c.want)
+				t.Errorf("fixture drift: briefdoc.CodeSpan(%q) = %q, want %q", c.cell, got, c.want)
 			}
 		})
 	}
@@ -372,15 +372,15 @@ func TestTranscribeVerdictRefusesProseLedCheckCI(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // liftPrimitiveAllowList is, per span-scanning primitive, every non-test
-// function permitted to call it. verifyCommand is THE Verify-cell lift; every
+// function permitted to call it. briefdoc.VerifyCommand is THE Verify-cell lift; every
 // other entry reads spans for a purpose that is not "the command to run": a
 // witness row's own Command cell, the lint's JUDGEMENT of a cell (never the
 // text it then lints), or the marker scan itself. A new entry needs the same
-// justification — a site that lifts a Verify command must call verifyCommand.
+// justification — a site that lifts a Verify command must call briefdoc.VerifyCommand.
 //
 // rowFindings is deliberately NOT on any list (#1808 review, CR-1808-1): it
-// lints whatever verifyCommand returns, and the NOTICE text names the span
-// proseLedCommandWhy hands back, so it never calls a primitive itself. A
+// lints whatever briefdoc.VerifyCommand returns, and the NOTICE text names the span
+// briefdoc.ProseLedCommandWhy hands back, so it never calls a primitive itself. A
 // function-keyed allow-list cannot tell a message-text call from a lift inside
 // one function, so the lint function must hold no call at all.
 var liftPrimitiveAllowList = map[string]map[string]string{
@@ -443,7 +443,7 @@ func primitiveCallers(t *testing.T, dir string, allow map[string]map[string]stri
 }
 
 // TestVerifyCommandLiftHasOneChokePoint — the #1805 CLASS guard: "a site lifts
-// the command out of a Verify Command cell by a rule other than verifyCommand's"
+// the command out of a Verify Command cell by a rule other than briefdoc.VerifyCommand's"
 // (the verifyrun first-span lift was one; the check:ci re-execution lane handing
 // the RAW cell to the shell was a second). Any caller of a span-scanning
 // primitive outside its allow-list fails here, naming the site. The positive
@@ -512,9 +512,9 @@ func TestCmdMarkerSharedVectors(t *testing.T) {
 			m := briefdoc.MarkedCommands(v.Cell)
 			switch {
 			case v.Marked == nil && len(m) != 0:
-				t.Errorf("markedCommands(%q) = %q, want no honoured marker", v.Cell, m)
+				t.Errorf("briefdoc.MarkedCommands(%q) = %q, want no honoured marker", v.Cell, m)
 			case v.Marked != nil && (len(m) == 0 || m[0] != *v.Marked):
-				t.Errorf("markedCommands(%q) = %q, want first %q", v.Cell, m, *v.Marked)
+				t.Errorf("briefdoc.MarkedCommands(%q) = %q, want first %q", v.Cell, m, *v.Marked)
 			}
 			want := briefdoc.CodeSpan(v.Cell)
 			if v.Marked != nil {
