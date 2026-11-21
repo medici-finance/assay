@@ -21,6 +21,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 const (
@@ -77,7 +79,7 @@ func rowFindingsCtx(cmdCell, expect string, declared []string) []rowFinding {
 	if hasFinding(out, ruleCmdMarkerVacuous) || hasFinding(out, ruleShreddedCell) {
 		return out // already reported as a command that cannot fail / was cut
 	}
-	cmd := verifyCommand(cmdCell)
+	cmd := briefdoc.VerifyCommand(cmdCell)
 	if cmd == "" {
 		return out
 	}

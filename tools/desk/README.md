@@ -425,6 +425,16 @@ no tool reinvents it with holes:
 | `OperationContext(work, trackingRoot, deliveryRoot, targets)` | Observation adapter for the `statusgen/domain` operation subject. Reads the tracking checkout's origin and HEAD and the delivery checkout's origin, binds the decision target and Evidence destination to the tracking observation and the selected brief path, and returns the subject. Its `Dispatch`, `Review`, `PRPublication` and `EvidencePublication` projections are the only reads. A missing coordinate is `ExitUnverifiable` (6), never another repository; a coordinate that disagrees with the selected brief (a moved tracking checkout, a review or candidate in the wrong repository) is `ExitRefused` (5). It authorizes no effect. No desk verb routes through it yet: deskdispatch, deskpr, deskfile, deskevidence and verifyloop keep their own coordinate derivation until their follow-up migrations move them onto the projections. |
 | exit codes | `ExitOK 0`, `ExitDisabled 3`, `ExitRateLimited 4`, `ExitRefused 5`, `ExitUnverifiable 6`. `ExitCodeOf(err)` maps a typed error, failing **closed** to 6 for any unexpected error. |
 
+**Verify rows and declared inputs.** deskkit and `internal/verifycmd` keep no reader of a
+brief's `## Verify` table or its `## Context` `files:` declaration. `BriefDeclaredFiles`
+projects `statusgen/briefdoc.DeclaredFiles` (the strict grammar, one `*briefdoc.Refusal`
+mapped onto exit 5), and `verifycmd.Lift`, `Marked`, `CommentOnly`, `NoOp` and `Refused` call
+`briefdoc.VerifyCommand`, `MarkedCommands`, `ShellCommentOnly`, `ShellNoOp` and
+`ProseLedMention`. A change to what a Command cell may name is a change in `briefdoc`, held
+by `briefdoc.TestVerificationDefinitionClassGuard` and the shared vector tables under
+`statusgen/testdata/`; `deskkit.TestVerificationDefinitionFlow` follows one brief from the
+runner to the landing scope.
+
 **Fail-closed (C-10):** any state a helper cannot positively verify (unreadable/malformed
 audit file, missing HOME, unparseable timestamp) is a typed `Unverifiable` refusal
 (exit 6), never a silent default toward success.
