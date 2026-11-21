@@ -28,7 +28,7 @@ import (
 // here reads a forge, a roster or the kill switch.
 
 // visibleVerbs is every subcommand the root help lists.
-var visibleVerbs = []string{"walk", "html", "flow"}
+var visibleVerbs = []string{"walk", "html", "flow", "changes"}
 
 var (
 	binOnce sync.Once
