@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvPassList|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred|TestAdmittedRowInputsPass|TestAdmittedRowSeesDelivery|TestAdmittedScrubbedInputCouldNotRun|TestAdmittedRowScrubbedRefs|TestScrubbedRowNeverGreen)$' -count=1 -timeout 600s",
+  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvPassList|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred|TestAdmittedRowInputsPass|TestAdmittedRowSeesDelivery|TestAdmittedRowBareDelivery|TestAdmittedScrubbedInputCouldNotRun|TestAdmittedRowScrubbedRefs|TestScrubbedRowNeverGreen)$' -count=1 -timeout 600s",
   "control": {
     "name": "admitted rows keep every credential pointer",
     "file": "verifieradmission.go",
@@ -144,6 +144,12 @@
       "file": "verifieradmission.go",
       "old": "\treturn slices.Contains(admittedRowInputs, key) && fullObjectIDRe.MatchString(value)\n",
       "new": "\treturn slices.Contains(admittedRowInputs, key) && value != \"\"\n"
+    },
+    {
+      "name": "the unprefixed delivery pair is dropped from the rows",
+      "file": "verifieradmission.go",
+      "old": "\"ASSAY_DELIVERY_BASE_SHA\", \"DELIVERY_HEAD\", \"DELIVERY_BASE\"}",
+      "new": "\"ASSAY_DELIVERY_BASE_SHA\"}"
     },
     {
       "name": "an admitted row that reads a scrubbed ASSAY_* input runs and records fail",

@@ -312,8 +312,9 @@ built from an allow-list: an inherited variable reaches the row only when it is 
 (`PATH`), the account and shell names (`USER`, `LOGNAME`, `SHELL`), the bare `CI` flag, a locale
 or terminal setting (`LANG`, `LC_*`, `TERM`, `TZ` and similar), a Go toolchain
 setting (`GOFLAGS`, `GOPROXY`, `GOMODCACHE`, `GOTOOLCHAIN` and the rest of the build settings), a
-proxy or trust-root setting, a Windows system location, or one of the two delivery coordinates
-(`ASSAY_DELIVERY_SHA`, `ASSAY_DELIVERY_BASE_SHA`, and only while each holds a full commit id).
+proxy or trust-root setting, a Windows system location, or a delivery coordinate
+(`ASSAY_DELIVERY_SHA`, `ASSAY_DELIVERY_BASE_SHA`, or the unprefixed `DELIVERY_HEAD` and
+`DELIVERY_BASE` that older consumer-diff rows read, and only while each holds a full commit id).
 Every other variable is dropped, whatever its family: a forge token, another tool's config
 pointer, an agent socket, a runtime directory, a Windows profile location and a CI runtime
 variable (`GITHUB_ACTIONS`, `RUNNER_TEMP` and the like) alike. A listed proxy or module proxy whose

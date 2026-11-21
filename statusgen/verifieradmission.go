@@ -124,8 +124,10 @@ func sameDirectory(a, b string) bool {
 // is on the pass list (admittedRowPass): the search path, the account and
 // shell names (USER, LOGNAME, SHELL), the bare CI flag, locale and terminal
 // settings, the Go toolchain settings, proxy and trust-root settings and the
-// Windows system locations, each by exact name. Every other variable is
-// dropped, whatever its family, so a credential pointer nobody has thought to
+// Windows system locations, each by exact name, and the named delivery
+// coordinates while each holds a full commit id (admittedRowInput: the
+// ASSAY_DELIVERY_* pair and the unprefixed DELIVERY_HEAD/DELIVERY_BASE pair).
+// Every other variable is dropped, whatever its family, so a credential pointer nobody has thought to
 // name (another forge's or another tool's, an agent socket, a runtime
 // directory, a profile location) does not reach a row by default. A listed
 // proxy or module proxy whose URL carries a user name is dropped as well.
@@ -274,12 +276,16 @@ func admittedRowCredential(key string) bool {
 		slices.Contains([]string{"HOME", "XDG_CONFIG_HOME", "DESK_LOOP", "CELLCTL_GH_AMBIENT"}, key)
 }
 
-// admittedRowInputs are the only ASSAY_* variables an admitted row still
-// receives: the delivery coordinates the container verify runner
-// (images/verify-runner/witness.sh) exports from its own argv before it starts
-// an admitted run, which delivery-coordinate Verify rows read. They are commit
+// admittedRowInputs are the delivery coordinates an admitted row receives as
+// named row inputs. The ASSAY_* pair are the only ASSAY_* variables a row still
+// gets: the container verify runner (images/verify-runner/witness.sh) exports
+// them from its own argv before it starts an admitted run. DELIVERY_HEAD and
+// DELIVERY_BASE are the unprefixed pair older consumer-diff Verify rows read
+// (the desk-tools briefs' "Consumer-diff provenance" rows); they are on no
+// family's deny list, so before the allow-list they passed through, and they
+// are kept here under the same rule rather than dropped. All four are commit
 // ids, not credentials. Each is named exactly: no prefix, no other case.
-var admittedRowInputs = []string{"ASSAY_DELIVERY_SHA", "ASSAY_DELIVERY_BASE_SHA"}
+var admittedRowInputs = []string{"ASSAY_DELIVERY_SHA", "ASSAY_DELIVERY_BASE_SHA", "DELIVERY_HEAD", "DELIVERY_BASE"}
 
 // admittedRowInput reports whether an inherited variable is one of the named
 // row inputs (admittedRowInputs) holding a full commit id, the shape the runner

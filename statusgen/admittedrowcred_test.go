@@ -203,13 +203,15 @@ const (
 )
 
 // regression: F5
-// TestAdmittedRowInputsPass: the two named delivery coordinates reach an
-// admitted row, by exact name and only with a full commit id as the value.
-// Every other ASSAY_* variable is still dropped: one that only extends or
-// shortens an allowed name, a lower-case copy, a database DSN, a cell API
-// setting, a role key path, and an allowed name carrying any other value.
+// TestAdmittedRowInputsPass: the named delivery coordinates (the ASSAY_* pair
+// and the unprefixed DELIVERY_HEAD/DELIVERY_BASE pair) reach an admitted row,
+// by exact name and only with a full commit id as the value. Every other
+// ASSAY_* variable is still dropped: one that only extends or shortens an
+// allowed name, a lower-case copy, a database DSN, a cell API setting, a role
+// key path, and an allowed name carrying any other value.
 func TestAdmittedRowInputsPass(t *testing.T) {
-	kept := []string{"ASSAY_DELIVERY_SHA=" + rowInputSHA, "ASSAY_DELIVERY_BASE_SHA=" + rowInputBase}
+	kept := []string{"ASSAY_DELIVERY_SHA=" + rowInputSHA, "ASSAY_DELIVERY_BASE_SHA=" + rowInputBase,
+		"DELIVERY_HEAD=" + rowInputSHA, "DELIVERY_BASE=" + rowInputBase}
 	for _, kv := range kept {
 		if !slices.Contains(admittedRowEnv([]string{kv}), kv) {
 			t.Errorf("admitted row environment dropped the named row input %s", kv)
@@ -219,7 +221,9 @@ func TestAdmittedRowInputsPass(t *testing.T) {
 		"ASSAY_DELIVERY_REF=" + rowInputSHA, "assay_delivery_sha=" + rowInputSHA, "Assay_Delivery_Base_Sha=" + rowInputSHA,
 		"ASSAY_TEST_POSTGRES_DSN=postgres://example.invalid/db", "ASSAY_CELL_API_URL=https://example.invalid",
 		"ASSAY_ROLE_KEY_FILE=/k", "ASSAY_DELIVERY_SHA=" + rowCredMarker, "ASSAY_DELIVERY_SHA=" + rowInputSHA[:12],
-		"ASSAY_DELIVERY_BASE_SHA=" + strings.ToUpper(rowInputSHA), "ASSAY_DELIVERY_BASE_SHA=" + rowInputSHA + "\nx"}
+		"ASSAY_DELIVERY_BASE_SHA=" + strings.ToUpper(rowInputSHA), "ASSAY_DELIVERY_BASE_SHA=" + rowInputSHA + "\nx",
+		"DELIVERY_HEAD=" + rowInputSHA[:12], "DELIVERY_BASE=" + rowCredMarker, "delivery_head=" + rowInputSHA,
+		"DELIVERY_HEAD_EXTRA=" + rowInputSHA, "DELIVERY=" + rowInputSHA}
 	for _, kv := range gone {
 		if slices.Contains(admittedRowEnv([]string{kv}), kv) {
 			t.Errorf("admitted row environment carries %q, which is outside the named row inputs", kv)
@@ -250,6 +254,28 @@ func TestAdmittedRowSeesDelivery(t *testing.T) {
 			}
 			if !admit && code != verifyrunExitFail {
 				t.Fatalf("plant did not land: the unadmitted row did not see the DSN (exit %d)", code)
+			}
+		})
+	}
+}
+
+// regression: #6802
+// TestAdmittedRowBareDelivery: end to end through verifyrun, an admitted row
+// written against the unprefixed delivery pair (DELIVERY_HEAD, DELIVERY_BASE),
+// the form older consumer-diff Verify rows read, still sees both while each
+// holds a full commit id. The allow-list would otherwise drop them, and such a
+// row would fail at its own test -n instead of checking the delivery. The
+// unadmitted control proves the row itself passes with the pair set.
+func TestAdmittedRowBareDelivery(t *testing.T) {
+	row := `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$DELIVERY_HEAD" = ` + rowInputSHA +
+		` && test "$DELIVERY_BASE" = ` + rowInputBase
+	for _, admit := range []bool{true, false} {
+		t.Run(map[bool]string{true: "admitted", false: "control"}[admit], func(t *testing.T) {
+			root, _ := admittedFixture(t, admit)
+			t.Setenv("DELIVERY_HEAD", rowInputSHA)
+			t.Setenv("DELIVERY_BASE", rowInputBase)
+			if code := verifyrunRow(t, root, row); code != verifyrunExitPass {
+				t.Fatalf("row lost the unprefixed delivery pair (exit %d)", code)
 			}
 		})
 	}
