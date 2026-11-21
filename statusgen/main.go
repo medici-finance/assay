@@ -273,6 +273,8 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	readmeTableProblems, readmeTableNotices := checkReadmeTables(checkStreams)
 	problems = append(problems, readmeTableProblems...)
 	notices = append(notices, readmeTableNotices...)
+	// milestone-support/11: the separate generated milestone region.
+	problems = append(problems, checkMilestoneRegions(checkStreams)...)
 	// #1250 ordering-gate lint (dependency-graph-design.md §6): flags gate-shaped
 	// README/brief prose ("no X before Y", "blocked on", "gated on") whose real
 	// ordering prerequisite is encoded in no `depends:`/`unblocks:` edge, so an

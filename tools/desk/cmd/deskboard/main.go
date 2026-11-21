@@ -43,7 +43,7 @@ import (
 // release, where the namespaced ReleaseTag stamp supplies the version instead.
 var version string
 
-var perfVerbs = []string{"prs", "actions", "review-queue", "queue", "health", "awaiting", "nextup", "scope", "dispatch", "throughput", "policydrift", "stalled", "reviews", "diff", "files"}
+var perfVerbs = []string{"prs", "actions", "review-queue", "queue", "health", "awaiting", "nextup", "scope", "dispatch", "throughput", "policydrift", "stalled", "milestones", "reviews", "diff", "files"}
 
 func main() {
 	args := os.Args[1:]
@@ -208,10 +208,15 @@ func executeRecorded(args []string, stdout, stderr io.Writer, pre func(io.Writer
 			{"awaiting", "awaiting-verification queue", nil}, {"nextup", "deprecated alias for awaiting", nil},
 			{"scope", "reconcile watched repos against open PRs", nil}, {"policydrift", "repo visibility drift", nil},
 			{"stalled", "stalled drafts and shepherd candidates", nil},
+			{"milestones", "milestone state from stream-view documents", nil},
 			{"reviews", "review states at each head", nil}, {"diff", "PR diff", nil}, {"files", "changed files or one file's content", nil},
 		} {
 			name := v.name
 			cmd := &cobra.Command{Use: name, Short: v.short, Aliases: v.aliases, Args: cobra.NoArgs}
+			if name == "milestones" {
+				cmd.Use += " <stream-view.json>..."
+				cmd.Args = cobra.MinimumNArgs(1)
+			}
 			if name == "reviews" || name == "diff" || name == "files" {
 				cmd.Use += " <repo> <pr>"
 				if name == "files" {
@@ -483,6 +488,8 @@ func dispatch(sub string, rest []string, hdr Header, mergeNowThreshold, unreview
 		return cmdPolicyDrift(hdr)
 	case "stalled":
 		return cmdStalled(hdr, minAgeHours)
+	case "milestones":
+		return cmdMilestones(hdr, rest)
 	case "reviews", "diff", "files":
 		repo, num, path, err := parseRepoPR(sub, rest)
 		if err != nil {

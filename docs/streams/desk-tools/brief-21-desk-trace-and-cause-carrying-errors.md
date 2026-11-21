@@ -1676,7 +1676,7 @@ cover all 16 rows.
 - Bracket close, disclosed: the first `statusgen verifyrun --close-bracket`, issued from a working directory
   outside the home, refused with exit 2 and appended nothing ("the receipt admits brief
   docs/streams/desk-tools/brief-21-desk-trace-and-cause-carrying-errors.md, but this run's brief is
-  docs/streams/desk-tools/brief-21-desk-trace-and-cause-carrying-errors.md"; the two paths are identical; #7323). The
+  docs/streams/desk-tools/brief-21-desk-trace-and-cause-carrying-errors.md"; the two paths are identical; #4396, of which #7323 was closed as a duplicate). The
   same command, with the same arguments, was issued once more from the home and exited 0 (closed 23:05:39Z).
   `--bracket-digest` then read bracket=L21 verdict=match. The second table below, with its Tree-Digest,
   Container-Image, Module-Cache, attestation and Admission-Bracket lines, is that witness file's bytes
@@ -1772,7 +1772,7 @@ How each row is counted:
   roleboottransport_test.go, rolefetch_isolation_test.go, rolefetch_test.go and roletransport_test.go in
   cmd/deskwt, plus verifierattestation_test.go in internal/deskkit (the test running at the deskkit timeout).
   None of these is among this brief's declared files or the files #729 delivered. The four config-write
-  failures stop in test-fixture setup, before deskwt code runs. blocker_kind environment, blocker_ref #7027;
+  failures stop in test-fixture setup, before deskwt code runs. blocker_kind check-definition, blocker_ref #7027 (its remedy is a change to the row's fixed budget);
   the fixture conflict is #7322.
 
 Risk-bearing values, enumerated over trace.go, runtool.go, scrub.go and exitcodes.go at this source:
@@ -1798,7 +1798,9 @@ ran again at 23:28:14Z and exited 0, with the same binding: run=94da4cf494fe7b62
 source=d74c225614b92d177d2da4bb70759829f63a29a7 model=claude-opus-5-5 tier=strong, attestation #7316. After
 review, rows 12 and 15 were re-classified as could-not-run and the counting bullets, tally and verdict were
 edited to match; the witness bytes are unchanged. After that edit, at 2026-11-21T00:09:59Z, the same
-`deskdispatch --check-verifier` exited 0 with the same binding.
+`deskdispatch --check-verifier` exited 0 with the same binding. The entry was then re-cut as new PRs
+(#7329, then the PR that carries this text) to correct its issue citations and the record's blocker kind;
+each re-cut re-ran the same check, which exited 0 with the same binding.
 `statusgen verifyrun --bracket-digest --witness` on this brief exited 0, reading verdict=match for every bracket,
 this run's included (bracket=L1715, witness sha256:0c030e57f551).
 

@@ -89,6 +89,12 @@ func CheckBindings(v *StreamView, r Resolver) BindingReport {
 		{"evidence", v.Evidence.Provenance},
 		{"outcomes", v.Outcomes.Provenance},
 	}
+	if v.Milestones != nil {
+		sections = append(sections, struct {
+			name string
+			p    Provenance
+		}{"milestones", v.Milestones.Provenance})
+	}
 	for _, sec := range sections {
 		for _, s := range sec.p.Sources {
 			checkSource(sec.name, s)
@@ -151,6 +157,13 @@ func CheckBindings(v *StreamView, r Resolver) BindingReport {
 	}
 	for i, it := range v.Evidence.Items {
 		checkRef(fmt.Sprintf("evidence.items[%d]", i), it.Ref, it.Revision)
+	}
+	if v.Milestones != nil {
+		for i, it := range v.Milestones.Items {
+			for j, e := range it.Evidence {
+				checkRef(fmt.Sprintf("milestones.items[%d].evidence[%d]", i, j), e, "")
+			}
+		}
 	}
 	sort.Strings(rep.Problems)
 	return rep

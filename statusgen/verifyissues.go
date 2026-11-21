@@ -993,9 +993,25 @@ func verifyPassHeldWitnessed(evidence, path string) (bool, string) {
 // HELD) is a hold on each read line it spans, with no negation, routing or
 // quoting excuse, and Evidence whose comments do not settle is refused.
 func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
+	refusals := scanHeldRefusals(evidence, latestRun)
+	if len(refusals) == 0 {
+		return false, ""
+	}
+	return true, refusals[0].reason
+}
+
+type heldRefusalSignal struct {
+	// line is the one-based Evidence line, or zero for a whole-document refusal.
+	line   int
+	reason string
+}
+
+// scanHeldRefusals returns every line-level refusal in source order. The
+// ordinary gates project the first reason from this same result.
+func scanHeldRefusals(evidence string, latestRun bool) []heldRefusalSignal {
 	joinText, joinSrc, settled := heldCommentJoins(evidence)
 	if !settled {
-		return true, "HTML comments that still change after repeated stripping"
+		return []heldRefusalSignal{{reason: "HTML comments that still change after repeated stripping"}}
 	}
 	joined := heldJoinedLines(evidence, joinSrc, heldOrCouldNotCheckRe.FindAllStringIndex(joinText, -1))
 	inFence := false
@@ -1150,13 +1166,14 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 		}
 	}
 	superseded := scope.supersedes(hits)
+	var refusals []heldRefusalSignal
 	for k, i := range hits {
 		if superseded && i < scope.from {
 			continue
 		}
-		return true, quotes[k]
+		refusals = append(refusals, heldRefusalSignal{line: i + 1, reason: quotes[k]})
 	}
-	return false, ""
+	return refusals
 }
 
 // evidenceVerifierInfo returns the date and the Runner cell, verbatim, of the

@@ -16,7 +16,7 @@ Both report the same version: the Claude manifest's `version`, which the release
 stamp copies into every Cursor surface.
 
 **Route 1: Cursor plugin, from a team marketplace import (follows a branch).**
-The repo carries a Cursor marketplace at `.cursor-plugin/marketplace.json`. Its one
+The repo carries a Cursor marketplace at `.cursor-plugin/marketplace.json`. Its methodology
 entry points at `plugins/assay`, whose `.cursor-plugin/plugin.json` names the rule
 (`cursor/assay.mdc`) and `skills/`. The marketplace entry carries no version. Cursor
 merges the plugin manifest over the entry, so `plugins/assay/.cursor-plugin/plugin.json`
