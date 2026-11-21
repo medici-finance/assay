@@ -164,7 +164,11 @@ the existing boundaries. It adds no new grammar, store, binary or subprocess sea
    revisions are equal. Revision zero means "no revision was supplied". It never equals
    a positive revision and is never filled in from the current brief. A milestone subject
    is never equal to a brief subject. The value fetches nothing and decides nothing
-   beyond the comparison.
+   beyond the comparison. A caller compares two subjects only after building both under
+   the same revision regime: both sides carry a revision, or neither does. Each caller
+   below names how it builds its two sides, so the strict rule never meets a revisioned
+   side and an unrevisioned side by accident. The one place the two regimes meet on
+   purpose is point 3's `could-not-check` case.
 2. **Handoff edge adapter.** `contexthandoff` gains `ResolveWorkSubject(ref, declaring,
    registry)`. It resolves `ref` with the `TypedBrief` profile, gets the `QID` by passing
    `Compatibility()` to the unchanged `ResolveQualifiedID`, and returns that `QID` with
@@ -179,7 +183,16 @@ the existing boundaries. It adds no new grammar, store, binary or subprocess sea
    `CheckSubject(approved, presented Subject)` is refused with `checked-failed`
    `work-subject` when the two differ. It is `could-not-check` `work-subject` when the
    approved side has a revision and the presented side has none, so a normalized legacy
-   id can never erase a requested revision. It runs alongside the existing
+   id can never erase a requested revision. The approved side is not read from any
+   record, because points 2 and 3 persist no revision. At Evidence time it is rebuilt
+   from the brief itself: the logical key resolved from the brief's board id, and the
+   revision taken from the brief's `version:` frontmatter at the judged base, the same
+   commit the decision-gate hold judges. The presented side is the reference the
+   Evidence names, resolved through `ResolveWorkSubject`. A brief with no `version:`
+   yields approved revision zero, so only an unrevisioned presented reference matches
+   it. The check runs only on a landing whose Verify row or Evidence names the work by a
+   typed reference. A landing whose references are all legacy unprefixed ids keeps
+   today's path unchanged, as point 7 requires. It runs alongside the existing
    `AcceptanceBinding.Validate(candidate)` and replaces nothing: a stale or substituted
    candidate is still refused by the candidate check, even when the subject matches.
 4. **Ruling subject in statusgen.** The decision-gate hold and the ruling-link lane keep
@@ -202,11 +215,19 @@ the existing boundaries. It adds no new grammar, store, binary or subprocess sea
    card. Layer two applies them again after the network read, so bypassing either layer
    still leaves the other.
 5. **Ruling subject in tools/desk.** `deskkit` gains a pure `RulingSubjectGate`. It
-   takes the ruled subject (from the decision issue's card or marker), the brief's board
-   id, permanent id and aliases, the registry, the decision-issue number the brief
-   records, the linked comment's issue number, and the comment author with its account
-   type. It refuses with three different reasons: a subject mismatch through
-   `SameSubject`, an issue mismatch, and an author who is a bot, an App or unmapped. It
+   takes the ruled subject (from the decision issue's card or marker, with which of the
+   two it came from), the brief's board id, permanent id and aliases, the brief's
+   `version:`, the registry, the decision-issue number the brief records, the linked
+   comment's issue number, and the comment author with its account type. It builds the
+   two sides under point 4's rule, so the two modules apply one rule:
+   - when the ruled subject comes from a typed gate card, the ruled side is
+     `{key, card version}` and the presented side is `{key, brief version:}`;
+   - when it comes from a legacy marker with no card, both sides are built at revision
+     zero, so only the logical keys are compared and the past ruling keeps its meaning.
+
+   `SameSubject` is called only on subjects built this way. It refuses with three
+   different reasons: a subject mismatch through `SameSubject`, an issue mismatch, and
+   an author who is a bot, an App or unmapped. It
    reuses the roster's existing human mapping, and never trusts a login string handed
    to it. `deskevidence` calls it in-process on a landing for a gate-human brief, in
    addition to, and independently of, the existing `statusgen --decision-gate` run.
@@ -258,8 +279,8 @@ unchanged.
 |---|---|
 | `TestPrefixedHandoffSubject` (planned) | Recorded handoff fixtures keep their canonical bytes and digests. `ResolveQualifiedID` still refuses `b-09` and `@2` spellings. Mutations: broadening the legacy grammar, or adding a revision field to the digested record, fail. |
 | `TestPrefixedHandoffSubject` (planned) | `ResolveWorkSubject` on `b-09@2` returns the legacy `QID` and revision 2. A milestone reference is refused. A wrong-subject input is refused by `SameSubject` called directly, with the adapter bypassed. Mutation: comparing `Compatibility()` instead of the logical key passes a re-bound alias, so the test fails. |
-| `TestRulingAliasAuthority` (planned) | The real `RulingSubjectGate` accepts a human ruling on the same issue for an alias that resolves to the same key and revision. It refuses a ruling copied from another brief, a card for revision 1 on a revision-2 brief, a marker from another cell or root, a bot or App author, and an unmapped login, each with its own reason. Mutations: dropping the revision comparison, matching on stream and number alone, and accepting a `[bot]` author each fail. |
-| `TestRulingAliasAuthority` (planned) | With the upper parser and capability check bypassed, the gate still refuses a mismatched subject. A legacy marker with no card keeps its current acceptance, which is the compatibility control. |
+| `TestRulingAliasAuthority` (planned) | The real `RulingSubjectGate` accepts a human ruling on the same issue, through a typed card at revision 1 on a revision-1 brief, for an alias that resolves to the same key. It refuses a ruling copied from another brief, a card for revision 1 on a revision-2 brief, a marker from another cell or root, a bot or App author, and an unmapped login, each with its own reason. Mutations: dropping the revision comparison, matching on stream and number alone, and accepting a `[bot]` author each fail. |
+| `TestRulingAliasAuthority` (planned) | With the upper parser and capability check bypassed, the gate still refuses a mismatched subject. A legacy marker with no card on a revision-2 brief keeps its current acceptance, because both sides are built at revision zero; this is the compatibility control. Mutation: building the presented side from the brief's `version:` when no card is present refuses that legacy ruling, so the test fails. |
 | `TestPrefixedVerifySubject` (planned) | `NewWorkAt` on `b-09@3` returns the existing `WorkIdentity` and revision 3. Evidence presented for revision 2, or for the legacy id with no revision, is refused (`checked-failed` and `could-not-check` respectively). Mutation: building the subject from the normalized `fullId` erases the revision, so the test fails. |
 | `TestPrefixedVerifySubject` (planned) | A matching subject with a stale or substituted candidate is still refused by `AcceptanceBinding.Validate`. Mutation: letting a matching subject short-circuit the candidate check fails. |
 
