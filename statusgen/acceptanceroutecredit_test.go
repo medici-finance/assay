@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -15,8 +17,13 @@ func TestCreditAcceptanceRuns(t *testing.T) {
 	}
 	witness := landed(t, vfMailVerifier, line)
 	selected := acceptanceRun{Run: attestation.run, Source: fixtureSource}
-	if err := creditAcceptanceRuns(witness.brief, []acceptanceRun{selected}, true); err != nil {
-		t.Fatalf("credit selected run: %v", err)
+	second := acceptanceRun{Run: strings.Repeat("d", 64), Source: strings.Repeat("c", 40)}
+	secondRecord := filepath.Join(os.Getenv("CREDIT_FAKE_DIR"), "issue-42.json")
+	putFile(t, secondRecord, strings.ReplaceAll(getFile(t, secondRecord), fixtureSource, second.Source))
+	secondLine := creditAtt(creditRepo, 42, second.Run, second.Source, creditBriefRel, "claude-opus-4", "strong")
+	witness.commit(t, vfMailVerifier, getFile(t, witness.brief)+"\n"+creditBlock(t, secondLine, creditClosed))
+	if err := creditAcceptanceRuns(witness.brief, []acceptanceRun{selected, second}, true); err != nil {
+		t.Fatalf("credit selected runs on different sources: %v", err)
 	}
 
 	for _, tc := range []struct {
