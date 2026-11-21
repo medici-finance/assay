@@ -154,22 +154,28 @@ const reasonEmbeddedPatchRemoved = "removed (-) side of a diff embedded in a com
 
 // walkAddedDiffLines is the ONE diff walker every --corroborate lane reads
 // through (stamps, citations, decision records). It tracks the current file from
-// the "diff --git" / "+++ " headers, keeps only ADDED lines (a "+" that is not the
-// "+++" header), skips a declared fixture corpus (isExcludedFixturePath) exactly as
-// each lane did, and sets aside the removed side of an embedded patch's hunks as
-// quoted.
+// structured "diff --git" / "+++ " headers, keeps only ADDED hunk lines, skips a
+// declared fixture corpus (isExcludedFixturePath) exactly as each lane did, and
+// sets aside the removed side of an embedded patch's hunks as quoted. A raw
+// "+++ " line is ambiguous by text alone: outside a hunk it is a destination-file
+// header, while inside a hunk it is an added payload line whose content begins
+// "++ ". Hunk counts decide which one it is.
 //
 // excluded resolves fixture declarations against the tree supplying the patch.
 func walkAddedDiffLines(diff string, excluded func(string) bool) (added []diffAddedLine, quoted []quotedDiffLine) {
 	curFile := ""
 	section := 0
 	nextLine := 0
-	// inHunk tracks, inside an embedded patch file, whether the walk is in the body
+	// outerInHunk is the enclosing PR/local diff's hunk state. Counts are what
+	// distinguish a real destination-file header from a +++-shaped added line.
+	outerInHunk := false
+	oldRemaining, newRemaining := 0, 0
+	// embeddedInHunk tracks, inside an embedded patch file, whether the walk is in the body
 	// of one of ITS hunks — after an "@@" line, while each line is a hunk line
 	// (" ", "+", "-" or "\"). Only there is a "-" line the removed side; before the
 	// first hunk (a `git format-patch` commit-message preamble) or after a hunk
 	// ends, a "-" line is ordinary added text and stays scanned (fail-closed).
-	inHunk := false
+	embeddedInHunk := false
 	for _, line := range strings.Split(diff, "\n") {
 		trimmed := strings.TrimRight(line, "\r")
 		if strings.HasPrefix(trimmed, "diff --git ") {
@@ -178,29 +184,59 @@ func walkAddedDiffLines(diff string, excluded func(string) bool) (added []diffAd
 				curFile = strings.TrimPrefix(fields[3], "b/")
 			}
 			section++
+			outerInHunk = false
 			nextLine = 0
-			inHunk = false
+			embeddedInHunk = false
 			continue
 		}
-		if strings.HasPrefix(trimmed, "+++ ") {
-			curFile = strings.TrimPrefix(trimmed, "+++ b/")
+		if !outerInHunk && strings.HasPrefix(trimmed, "+++ ") {
+			curFile = strings.TrimPrefix(trimmed, "+++ ")
+			curFile = strings.TrimPrefix(curFile, "b/")
 			section++
 			nextLine = 0
-			inHunk = false
+			embeddedInHunk = false
 			continue
 		}
-		// Only added lines (not the "+++" header itself).
 		if strings.HasPrefix(trimmed, "@@ ") {
 			if m := hunkHeaderRe.FindStringSubmatch(trimmed); m != nil {
 				nextLine, _ = strconv.Atoi(m[3])
+				oldRemaining, newRemaining = 1, 1
+				if m[2] != "" {
+					oldRemaining, _ = strconv.Atoi(m[2])
+				}
+				if m[4] != "" {
+					newRemaining, _ = strconv.Atoi(m[4])
+				}
+				outerInHunk = oldRemaining > 0 || newRemaining > 0
 			}
 			continue
 		}
 		number := nextLine
-		if nextLine > 0 && (strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, " ")) {
-			nextLine++
+		if outerInHunk {
+			switch {
+			case strings.HasPrefix(trimmed, "+"):
+				nextLine++
+				newRemaining--
+			case strings.HasPrefix(trimmed, "-"):
+				oldRemaining--
+			case strings.HasPrefix(trimmed, " "):
+				nextLine++
+				oldRemaining--
+				newRemaining--
+			case strings.HasPrefix(trimmed, `\`):
+				// "No newline at end of file" consumes neither side.
+			default:
+				// A malformed/truncated hunk cannot safely confer header meaning on
+				// this line. End its line-number scope and keep the old fail-closed
+				// behavior for any later headerless additions.
+				outerInHunk = false
+				nextLine = 0
+			}
+			if outerInHunk && oldRemaining <= 0 && newRemaining <= 0 {
+				outerInHunk = false
+			}
 		}
-		if !strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, "+++") {
+		if !strings.HasPrefix(trimmed, "+") {
 			continue
 		}
 		if excluded(curFile) {
@@ -210,14 +246,14 @@ func walkAddedDiffLines(diff string, excluded func(string) bool) (added []diffAd
 		if isEmbeddedPatchFile(curFile) {
 			switch {
 			case strings.HasPrefix(content, "@@"):
-				inHunk = true
-			case inHunk && content != "" && strings.ContainsRune(" +-\\", rune(content[0])):
+				embeddedInHunk = true
+			case embeddedInHunk && content != "" && strings.ContainsRune(" +-\\", rune(content[0])):
 				if content[0] == '-' {
 					quoted = append(quoted, quotedDiffLine{File: curFile, Content: content, Reason: reasonEmbeddedPatchRemoved})
 					continue
 				}
 			default:
-				inHunk = false
+				embeddedInHunk = false
 			}
 		}
 		added = append(added, diffAddedLine{File: curFile, Section: section, Content: content, Number: number})
