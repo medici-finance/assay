@@ -24,10 +24,11 @@ func TestBriefCheckoutHandoff(t *testing.T) {
 	up := "refs/remotes/origin/feature"
 	mustGit(t, work, "update-ref", up, head)
 	add := []string{"add", "source", "--branch", "feature", "--base", head, "--upstream", up}
-	if rc, stderr := runCapErr(t, add); rc != 0 {
+	rc, allocated, stderr := runCapBoth(t, add)
+	if rc != 0 {
 		t.Fatal(stderr)
 	}
-	home := resolvePath(filepath.Join(tmpBaseDir, "tracker-source"))
+	home := resolvePath(strings.TrimSpace(allocated))
 	mustGit(t, home, "config", "extensions.worktreeConfig", "true")
 	for k, v := range map[string]string{"assay.runKey": prev, "assay.dispatchRef": ref, "assay.claimRepo": repo, "assay.claimStore": deskkit.ClaimStoreForgeRef} {
 		mustGit(t, home, "config", "--worktree", k, v)
