@@ -38,7 +38,7 @@ func (m acceptanceManifest) digest() (string, error) {
 
 // checkDispositions only checks coverage and shape. The effect entrypoints
 // must independently corroborate the preparation, ruling and cited evidence.
-func (m acceptanceManifest) checkDispositions(current acceptanceSource) error {
+func (m acceptanceManifest) checkDispositions(current acceptanceSource, requireResolved bool) error {
 	if !reflect.DeepEqual(m.Source, current) {
 		return fmt.Errorf("acceptance adjudication: the recorded source and scan do not match")
 	}
@@ -50,13 +50,14 @@ func (m acceptanceManifest) checkDispositions(current acceptanceSource) error {
 		if d.Line != refusal.Line || d.Digest != refusal.Digest {
 			return fmt.Errorf("acceptance adjudication: disposition %d does not bind refusal %d", i+1, i+1)
 		}
-		if refusal.Line == 0 || d.Kind == "unresolved" {
+		if (refusal.Line == 0 && d.Kind != "unresolved") || (requireResolved && d.Kind == "unresolved") {
 			return fmt.Errorf("acceptance adjudication: refusal %d is unresolved", i+1)
 		}
 		if strings.TrimSpace(d.Explanation) == "" {
 			return fmt.Errorf("acceptance adjudication: disposition %d lacks an explanation", i+1)
 		}
 		switch d.Kind {
+		case "unresolved":
 		case "diagnostic-only":
 			// The explanation must name the original obligation or explain
 			// why this span is outside it. Independent review checks the claim.

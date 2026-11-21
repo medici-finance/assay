@@ -20,7 +20,7 @@ func TestAcceptanceManifestBindsOrderedRefusals(t *testing.T) {
 		{Line: 1, Digest: source.Refusals[0].Digest, Kind: "diagnostic-only", Explanation: "Example output"},
 		{Line: 3, Digest: source.Refusals[1].Digest, Kind: "resolved", Explanation: "Confirmed outcome", EvidenceRevision: source.Revision, Owner: "verify-desk"},
 	}}
-	if err := valid.checkDispositions(source); err != nil {
+	if err := valid.checkDispositions(source, true); err != nil {
 		t.Fatal(err)
 	}
 	digest, err := valid.digest()
@@ -44,10 +44,19 @@ func TestAcceptanceManifestBindsOrderedRefusals(t *testing.T) {
 			m, current := valid, source
 			m.Dispositions = append([]acceptanceDisposition(nil), valid.Dispositions...)
 			tc.change(&m, &current)
-			if err := m.checkDispositions(current); err == nil {
+			if err := m.checkDispositions(current, true); err == nil {
 				t.Fatal("expected refusal")
 			}
 		})
+	}
+	m := valid
+	m.Dispositions = append([]acceptanceDisposition(nil), valid.Dispositions...)
+	m.Dispositions[0].Kind = "unresolved"
+	if err := m.checkDispositions(source, false); err != nil {
+		t.Fatalf("preparation may record an unresolved disposition: %v", err)
+	}
+	if err := m.checkDispositions(source, true); err == nil {
+		t.Fatal("unresolved disposition must block an effect")
 	}
 	valid.Dispositions[0].Explanation += " with context"
 	changed, err := valid.digest()
