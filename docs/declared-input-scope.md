@@ -4,6 +4,19 @@ Issue #2798 closes a shared parsing/expansion defect: declarations silently beca
 an empty or partial wake input scope. A single error-returning parser and tree
 resolver now own the writer, coverage and Source-to-Evidence shape contract.
 
+## Authoring diagnostics
+
+`statusgen --lint` reads each opted-in brief with the shared declared-file grammar.
+A refusal names the source line. A missing root-level literal names the entry and
+line, unless the entry carries a `(planned)` or `(new)` annotation. Lint also
+reports when this grammar and the permissive authoring diagnostics read different
+path sets. These findings are advisory while existing declarations are repaired.
+
+Repository tags use the same reader as dispatch. Differential lint
+(`--lint --diff-base`) reports a new, unknown alias on a changed brief as a
+problem. A previously reported alias stays a notice. An unreadable registry
+produces a could-not-check notice.
+
 ## Declaration grammar
 
 Only an exact, column-zero `files:` inside one unfenced `## Context` declares inputs.
