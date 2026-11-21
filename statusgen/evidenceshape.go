@@ -17,7 +17,7 @@ package main
 // one of:
 //
 //   - STATUS.md, the generated board (a status-only PR);
-//   - a verify-outcome record: anything under evaluation.OutcomeRecordsDir, or a legacy
+//   - a verify-outcome record: anything under outcomerecord.OutcomeRecordsDir, or a legacy
 //     outcome log matching verifyOutcomesGlob (both named in verifyoutcomes.go,
 //     the module's one place that spells those paths);
 //   - a stream README (docs/streams/<stream>/README.md) whose every changed line
@@ -55,7 +55,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/medici-finance/assay/statusgen/evaluation"
+	"github.com/medici-finance/assay/statusgen/evaluation/outcomerecord"
 )
 
 // evidenceOnlyWhy is the walked-list note for a PR set aside by diff shape.
@@ -112,7 +112,7 @@ func evidenceOnlyPathProblem(shape prShape, p string) string {
 }
 
 func isVerifyOutcomePath(p string) bool {
-	if strings.HasPrefix(p, evaluation.OutcomeRecordsDir+"/") {
+	if strings.HasPrefix(p, outcomerecord.OutcomeRecordsDir+"/") {
 		return true
 	}
 	m, err := pathpkg.Match("docs/streams/"+verifyOutcomesGlob, p)

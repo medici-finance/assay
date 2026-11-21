@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/medici-finance/assay/statusgen/evaluation"
+	"github.com/medici-finance/assay/statusgen/evaluation/outcomerecord"
 )
 
 const outcomesSplitFixtureLog = `{"ts":"2026-09-07T01:19:23Z","brief":"example-stream/20","outcome":"verified","sha":"67abbac"}
@@ -40,7 +40,7 @@ func TestOutcomesSplit(t *testing.T) {
 
 		lines := splitFixtureLines(t)
 		for _, line := range lines {
-			name, err := evaluation.RecordName([]byte(line))
+			name, err := outcomerecord.RecordName([]byte(line))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -78,7 +78,7 @@ func TestOutcomesSplit(t *testing.T) {
 
 		lines := splitFixtureLines(t)
 		deletedLine := lines[1] // "example-stream/09" verify-fail row
-		name, err := evaluation.RecordName([]byte(deletedLine))
+		name, err := outcomerecord.RecordName([]byte(deletedLine))
 		if err != nil {
 			t.Fatal(err)
 		}

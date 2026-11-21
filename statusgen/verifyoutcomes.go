@@ -7,7 +7,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/medici-finance/assay/statusgen/evaluation"
+	"github.com/medici-finance/assay/statusgen/evaluation/outcomerecord"
 )
 
 // verifyoutcomes.go — the READ side of #1338 part 2: a rotation-aware
@@ -107,19 +107,19 @@ func outcomeFS(root string) fs.FS {
 }
 
 // readVerifyOutcomeRecords reads every verify-outcome record under root (see
-// evaluation.ReadRecords for the three-state contract).
-func readVerifyOutcomeRecords(root string) ([]evaluation.Record, error) {
+// outcomerecord.ReadRecords for the three-state contract).
+func readVerifyOutcomeRecords(root string) ([]outcomerecord.Record, error) {
 	records, _, err := readVerifyOutcomeRecordsSkips(root)
 	return records, err
 }
 
 // readVerifyOutcomeRecordsSkips is readVerifyOutcomeRecords that also returns every legacy log
 // line the legacy tolerance skipped, so a gate can refuse to read past one (#6734).
-func readVerifyOutcomeRecordsSkips(root string) ([]evaluation.Record, []evaluation.Skipped, error) {
-	return evaluation.ReadRecords(outcomeFS(root), root)
+func readVerifyOutcomeRecordsSkips(root string) ([]outcomerecord.Record, []outcomerecord.Skipped, error) {
+	return outcomerecord.ReadRecords(outcomeFS(root), root)
 }
 
 // latestOutcomePerBrief reduces records to one winner per brief key at the wall clock now.
-func latestOutcomePerBrief(records []evaluation.Record) (map[string]evaluation.Record, map[string]bool) {
-	return evaluation.LatestPerBrief(records, time.Now())
+func latestOutcomePerBrief(records []outcomerecord.Record) (map[string]outcomerecord.Record, map[string]bool) {
+	return outcomerecord.LatestPerBrief(records, time.Now())
 }

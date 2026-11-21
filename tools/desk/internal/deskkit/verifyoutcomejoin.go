@@ -299,8 +299,9 @@ func checkRunMetadataShape(f map[string]json.RawMessage) error {
 		return n, true, nil
 	}
 
-	// The outcome word is written only in a spelling every reader classifies the same way; a
-	// value a reader would treat as unrecognised is refused, never normalised.
+	// The outcome word is written only when the readers recognise it (case and surrounding space
+	// ignored, as they ignore them); a value a reader would treat as unrecognised is refused, and
+	// the submitted bytes are never normalised.
 	outcome, hasOutcome, err := str("outcome")
 	if err != nil {
 		return err

@@ -132,6 +132,24 @@ not own.
   coordinator is the only reader that can turn it into an act. A stream head that ages there
   silently is a desk miss, not a planner miss: on 2026-09-11 a 16-day-old head with three
   dependents sat unoffered while the desk read the table as context.
+- **Authoring-stamp sweep — every sweep, ticks included. The coordinator PULLS the stamp.**
+  `worker-desk`'s post-open hand-off is the fast path; this sweep is the backstop for a dropped
+  one, because `deskdispatch --stamp-only` refuses a merged change and a stamp missed before merge
+  can never land. Run `deskboard prs` (its JSON rows; `--table` prints the two fields under the
+  row). It reads the desk's whole repo set and writes nothing. A row carrying
+  `authoringStamp` is an open PR whose body names a `Worker-Attestation:` record and whose labels
+  lack a complete `authored-model:` / `authored-tier:` pair:
+  - `authoringStamp: missing`: run the row's `stampOnly` line exactly as printed
+    (`deskdispatch --stamp-only --repo <r> --pr <N> --attestation <record> --model <record Model>
+    --tier <record Tier> --kit <record Kit>`). The verb built it from the validated record, so
+    never type or edit a model, tier or kit by hand. Require the applied-and-verified receipt.
+  - `refused: …` or `could-not-check: …` (no `stampOnly` line), or a `--stamp-only` refusal:
+    STOP for that PR. Report it with the refusal line verbatim (a filed issue, per the noise
+    floor) and never route around it: no hand-applied label, no other identity, no re-dispatch.
+    Every other PR in the sweep continues.
+  The ready-flip enforces the same thing from the other side: both flip verbs refuse an attested
+  PR that is unstamped or whose pair disagrees with its record (`authoring-stamp`), and print
+  this same line. A refusal that reaches you that way is handled by this bullet.
 - **HARD GATE — no state-of-play claim without a fresh sweep.** Before this desk EVER reports
   state-of-play ("N mid-flight", "nothing awaiting", "current", "idle", "caught up") it is a HARD
   PRECONDITION that it has *just* run that sweep and confirmed `awaiting == 0` with no actionable

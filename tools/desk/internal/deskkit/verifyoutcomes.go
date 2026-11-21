@@ -43,32 +43,33 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/statusgen/evaluation"
+	"github.com/medici-finance/assay/statusgen/evaluation/outcomerecord"
 )
 
 // OutcomeRecordsDir is the repo-relative directory verify-outcome records live under, one file
 // per outcome, per-stream subdirectory (docs/streams/verify-outcomes/<stream>/*.json).
-const OutcomeRecordsDir = evaluation.OutcomeRecordsDir
+const OutcomeRecordsDir = outcomerecord.OutcomeRecordsDir
 
 // MaxClockSkew bounds how far ahead of "now" a verify-outcome record's `ts` may be before it is
 // treated as untrustworthy rather than merely "the newest" (#1803 SR-1803-2). The writer
 // (cmdOutcomeRecordWrite) refuses to land a record whose `ts` is more than MaxClockSkew ahead
 // of its own clock; the shared reduction additionally never lets a future-dated record already
 // on disk win the comparison.
-const MaxClockSkew = evaluation.MaxClockSkew
+const MaxClockSkew = outcomerecord.MaxClockSkew
 
-// OutcomeRecord is one verify outcome (the shared evaluation.Record). Raw is the CANONICAL
+// OutcomeRecord is one verify outcome (the shared outcomerecord.Record). Raw is the CANONICAL
 // line — the record's single JSON object, trimmed of surrounding whitespace, with NO trailing
 // newline.
-type OutcomeRecord = evaluation.Record
+type OutcomeRecord = outcomerecord.Record
 
-// ParseRecord parses one verify-outcome record's raw bytes; see evaluation.ParseRecord.
-func ParseRecord(raw []byte) (OutcomeRecord, error) { return evaluation.ParseRecord(raw) }
+// ParseRecord parses one verify-outcome record's raw bytes; see outcomerecord.ParseRecord.
+func ParseRecord(raw []byte) (OutcomeRecord, error) { return outcomerecord.ParseRecord(raw) }
 
 // RecordDigest is the first 12 hex digits of the SHA-256 of canonicalLine plus a newline.
-func RecordDigest(canonicalLine []byte) string { return evaluation.RecordDigest(canonicalLine) }
+func RecordDigest(canonicalLine []byte) string { return outcomerecord.RecordDigest(canonicalLine) }
 
 // CanonicalBytes returns the exact bytes a record file holds for canonicalLine.
-func CanonicalBytes(canonicalLine []byte) []byte { return evaluation.CanonicalBytes(canonicalLine) }
+func CanonicalBytes(canonicalLine []byte) []byte { return outcomerecord.CanonicalBytes(canonicalLine) }
 
 // SplitBriefKey splits a "<stream>/<NN>" brief key, refusing any other shape.
 func SplitBriefKey(brief string) (stream, num string, err error) {
@@ -76,35 +77,35 @@ func SplitBriefKey(brief string) (stream, num string, err error) {
 }
 
 // RecordName computes the repo-relative path a verify-outcome record's bytes land at; a pure
-// function of the bytes (see evaluation.RecordName).
-func RecordName(recordBytes []byte) (string, error) { return evaluation.RecordName(recordBytes) }
+// function of the bytes (see outcomerecord.RecordName).
+func RecordName(recordBytes []byte) (string, error) { return outcomerecord.RecordName(recordBytes) }
 
 // FutureTS reports whether ts lands more than MaxClockSkew ahead of now.
-func FutureTS(ts string, now time.Time) bool { return evaluation.FutureTS(ts, now) }
+func FutureTS(ts string, now time.Time) bool { return outcomerecord.FutureTS(ts, now) }
 
 // ReadVerifyOutcomes reads every verify-outcome record under root, both layouts, deduped by
 // digest. Three-state (common-clause C4): absent history is an empty set; an unreadable file or
 // directory is an error (could-not-check); the legacy log keeps its tolerance for a malformed
-// LINE. The rules live in evaluation.ReadRecords; this is the filesystem-root adapter.
+// LINE. The rules live in outcomerecord.ReadRecords; this is the filesystem-root adapter.
 func ReadVerifyOutcomes(root string) ([]OutcomeRecord, error) {
 	fsRoot := root
 	if fsRoot == "" {
 		fsRoot = "."
 	}
-	records, _, err := evaluation.ReadRecords(os.DirFS(fsRoot), root)
+	records, _, err := outcomerecord.ReadRecords(os.DirFS(fsRoot), root)
 	return records, err
 }
 
 // LatestPerBrief reduces records to one winner per brief key at the current wall clock; see
-// evaluation.LatestPerBrief for the rules (newest ts, name tie-break, future-ts exclusion).
+// outcomerecord.LatestPerBrief for the rules (newest ts, name tie-break, future-ts exclusion).
 func LatestPerBrief(records []OutcomeRecord) (latest map[string]OutcomeRecord, futureByBrief map[string]bool) {
-	return evaluation.LatestPerBrief(records, time.Now())
+	return outcomerecord.LatestPerBrief(records, time.Now())
 }
 
 // LatestPerBriefAt is LatestPerBrief with an explicit "now", so a test never depends on
 // wall-clock time.
 func LatestPerBriefAt(records []OutcomeRecord, now time.Time) (latest map[string]OutcomeRecord, futureByBrief map[string]bool) {
-	return evaluation.LatestPerBrief(records, now)
+	return outcomerecord.LatestPerBrief(records, now)
 }
 
 // UnderOutcomeRecordsDir is the writer's INDEPENDENT, defense-in-depth check on a record target

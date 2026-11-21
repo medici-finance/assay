@@ -12,8 +12,8 @@ import (
 // TestOutcomeProtocolFlow follows ONE outcome word through the producer and the guards that
 // read it, to pin that they share a single meaning (statusgen/evaluation/outcome.go):
 //
-//   - the writer lands only the exact canonical spellings, so a record no reader would classify
-//     the same way never reaches the sidecar, and a record with no outcome never lands;
+//   - the writer lands only a word the readers recognise, so a record a reader would classify as
+//     unrecognised never reaches the sidecar, and a record with no outcome never lands;
 //   - the closure guard and the sidecar gate treat every spelling a READER counts as a pass
 //     ("Verified", " verified ") as a pass, so a case or whitespace variant cannot walk past the
 //     closure requirement;
@@ -50,8 +50,8 @@ func TestOutcomeProtocolFlow(t *testing.T) {
 		}
 	})
 
-	t.Run("the writer refuses a spelling a reader would read differently", func(t *testing.T) {
-		for _, bad := range []string{"Verified", " verified", "verified ", "VERIFIED", "pass", "ok", "done", "Fail"} {
+	t.Run("the writer refuses a word no reader recognises", func(t *testing.T) {
+		for _, bad := range []string{"pass", "ok", "done", "verified!", ""} {
 			code, puts, errs := land(t, record(bad, ""))
 			if code != deskkit.ExitRefused || puts != 0 {
 				t.Errorf("outcome %q: exit=%d puts=%d, want a refusal that lands nothing: %s", bad, code, puts, errs)
@@ -122,4 +122,34 @@ func TestOutcomeProtocolFlow(t *testing.T) {
 			}
 		}
 	})
+}
+
+// regression: #6002
+func TestOutcomeRecordRefusesUnrecognisedOverallResult(t *testing.T) {
+	for _, value := range []string{"pass", "new-outcome", ""} {
+		t.Run(value, func(t *testing.T) {
+			f, admissions := joinFake(t)
+			code, message := jland(t, jlegacy(t, map[string]any{"outcome": value}))
+			wantRefused(t, value, code, message, "outcome", "verified", "verify-fail", "blocked", "needs-context")
+			wantNothingWritten(t, value, f)
+			if *admissions != 0 {
+				t.Errorf("admission calls = %d, want zero for unknown outcome", *admissions)
+			}
+		})
+	}
+}
+
+// The queue already reads case and surrounding whitespace compatibly.
+func TestVerifiedSpellingRunsClosureGate(t *testing.T) {
+	f, _ := setupFake(t)
+	calls := 0
+	verifiedClosureCheckFn = func(_, _ string, _ childOptions) (closureVerdict, string, error) {
+		calls++
+		return closureNotAccepted, "missing closure", nil
+	}
+	code, message := jland(t, jlegacy(t, map[string]any{"outcome": " Verified "}))
+	if code != deskkit.ExitRefused || calls != 1 {
+		t.Errorf("exit=%d closure checks=%d, want refusal after one check: %s", code, calls, message)
+	}
+	wantNothingWritten(t, "verified", f)
 }

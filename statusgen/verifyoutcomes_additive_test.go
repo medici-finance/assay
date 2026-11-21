@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/medici-finance/assay/statusgen/evaluation"
+	"github.com/medici-finance/assay/statusgen/evaluation/outcomerecord"
 )
 
 // TestVerifyOutcomes_AdditiveKeys pins that the join keys a verify-outcome record now carries
@@ -31,7 +31,7 @@ func TestVerifyOutcomes_AdditiveKeys(t *testing.T) {
 	latest := func(record string) awaitOutcome {
 		t.Helper()
 		root := t.TempDir()
-		dir := filepath.Join(root, filepath.FromSlash(evaluation.OutcomeRecordsDir), "example-stream")
+		dir := filepath.Join(root, filepath.FromSlash(outcomerecord.OutcomeRecordsDir), "example-stream")
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
 		}
