@@ -168,9 +168,7 @@ func runInteraction(t *testing.T, role, mutation string) {
 	t.Helper()
 	w, server := kubeWorld(t)
 	f := prepareInteraction(t, role, server.Profile.Roles[role], mutation)
-	server.Profile.Roles[role] = f.binding
-	server.Save(t)
-	server.AfterStart = func(started string) {
+	server.BindTerminal(role, f.binding, func(started string) {
 		if started != role {
 			t.Errorf("unexpected start: %s", started)
 			return
@@ -178,8 +176,8 @@ func runInteraction(t *testing.T, role, mutation string) {
 		if err := f.start(); err != nil {
 			t.Error(err)
 		}
-	}
-	server.Terminal = f.terminal
+	}, f.terminal)
+	server.Save(t)
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
