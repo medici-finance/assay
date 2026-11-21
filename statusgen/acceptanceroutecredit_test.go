@@ -49,6 +49,18 @@ func TestCreditAcceptanceRuns(t *testing.T) {
 	if err := creditAcceptanceRuns(witness.brief, stale, []acceptanceRun{selected, second}, true); err == nil || !strings.Contains(err.Error(), "original row 1") {
 		t.Fatalf("changed original row must refuse, got %v", err)
 	}
+	t.Run("same model on two runs", func(t *testing.T) {
+		issueText, labelText := getFile(t, secondRecord), getFile(t, labels)
+		t.Cleanup(func() { putFile(t, secondRecord, issueText); putFile(t, labels, labelText) })
+		putFile(t, secondRecord, record)
+		putFile(t, labels, strings.ReplaceAll(labelText, "claude-sonnet-4", "claude-opus-4"))
+		sameModel := landed(t, vfMailVerifier, line)
+		secondLine := creditAtt(creditRepo, 42, second.Run, second.Source, creditBriefRel, "claude-opus-4", "strong")
+		sameModel.commit(t, vfMailVerifier, getFile(t, sameModel.brief)+"\n"+creditBlock(t, secondLine, creditClosed))
+		if err := creditAcceptanceRuns(sameModel.brief, verify, []acceptanceRun{selected, second}, true); err == nil || !strings.Contains(err.Error(), "distinct verifier models") {
+			t.Fatalf("different runs from the same model must refuse, got %v", err)
+		}
+	})
 	t.Setenv("CREDIT_FAKE_FAIL", "label-events")
 	if err := creditAcceptanceRuns(witness.brief, verify, []acceptanceRun{selected, second}, true); err == nil || !strings.Contains(err.Error(), "could-not-check") {
 		t.Fatalf("missing label history must fail closed, got %v", err)

@@ -58,6 +58,15 @@ func TestAcceptanceManifestBindsOrderedRefusals(t *testing.T) {
 	if err := m.checkDispositions(source, true); err == nil {
 		t.Fatal("unresolved disposition must block an effect")
 	}
+	unkeyed := source
+	unkeyed.Refusals = append([]acceptanceRefusal(nil), source.Refusals...)
+	unkeyed.Refusals[0].Line = 0
+	m.Source = unkeyed
+	m.Dispositions[0].Line, m.Dispositions[0].Kind = 0, "diagnostic-only"
+	if err := m.checkDispositions(unkeyed, true); err == nil || !strings.Contains(err.Error(), "unresolved") {
+		t.Fatalf("unkeyed signal must stay unresolved, got %v", err)
+	}
+
 	valid.Dispositions[0].Explanation += " with context"
 	changed, err := valid.digest()
 	if err != nil || changed == digest {

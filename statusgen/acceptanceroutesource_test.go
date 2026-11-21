@@ -25,6 +25,12 @@ func TestReadAcceptanceSource(t *testing.T) {
 		got.Refusals[0].Digest == got.Refusals[1].Digest {
 		t.Fatalf("wanted two distinct refusals in source order, got %+v", got.Refusals)
 	}
+	vfGit(t, fx.root, vfMailVerifier, "commit", "--allow-empty", "-q", "-m", "unlanded same-tree snapshot")
+	offBranch := vfRev(t, fx.root, "HEAD")
+	vfGit(t, fx.root, vfMailVerifier, "checkout", "--quiet", "--detach", got.Revision)
+	if _, err := readAcceptanceSourceAt(fx.root, fx.brief, offBranch); err == nil || !strings.Contains(err.Error(), "ancestor") {
+		t.Fatalf("same-content unlanded revision must refuse, got %v", err)
+	}
 	putFile(t, readme, "# Edited stream\n")
 	if _, err := readAcceptanceSource(fx.root, fx.brief); err == nil || !strings.Contains(err.Error(), "README.md differs") {
 		t.Fatalf("uncommitted README must refuse, got %v", err)

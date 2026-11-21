@@ -28,6 +28,7 @@ func TestClosedAdjudicatedCardRequiresCanonicalIssuerAndPinnedHuman(t *testing.T
 		{"open card", func(i *creditIssue) { i.State = "open" }},
 		{"different issuer", func(i *creditIssue) { i.Author = &creditAccount{Login: "github-actions[bot]", ID: 1, Type: "Bot"} }},
 		{"bot close", func(i *creditIssue) { i.ClosedBy = i.Author }},
+		{"wrong account type only", func(i *creditIssue) { i.ClosedBy = &creditAccount{Login: rlHuman, ID: 1234, Type: "Bot"} }},
 		{"wrong human id", func(i *creditIssue) { i.ClosedBy = &creditAccount{Login: rlHuman, ID: 2345, Type: "User"} }},
 		{"missing label", func(i *creditIssue) { i.Labels = nil }},
 		{"ambiguous marker", func(i *creditIssue) { i.Body += "\n" + verifyMarker("vf/02") }},

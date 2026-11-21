@@ -26,6 +26,11 @@ func TestAdjudicatedHoldRechecksBoundSource(t *testing.T) {
 	if err := closeVerifyAdjudicatedHold(fx.root, "demo/01", "implemented", bf, proof); err != nil {
 		t.Fatalf("bound hold check: %v", err)
 	}
+	mismatched := *proof
+	mismatched.source.ReadmeBlob = source.BriefBlob
+	if err := closeVerifyAdjudicatedHold(fx.root, "demo/01", "implemented", bf, &mismatched); err == nil || !strings.Contains(err.Error(), "adjudicated hold scan") {
+		t.Fatalf("unmodified checkout with a different receipt must refuse, got %v", err)
+	}
 	putFile(t, fx.brief, getFile(t, fx.brief)+"\n**VERIFY: COULD-NOT-CHECK**\n")
 	if err := closeVerifyAdjudicatedHold(fx.root, "demo/01", "implemented", bf, proof); err == nil {
 		t.Fatal("source changed after adjudication")
@@ -47,15 +52,22 @@ func TestAdjudicatedCloseProofHasSingleConstructor(t *testing.T) {
 				owner = fn.Name.Name
 			}
 			ast.Inspect(decl, func(n ast.Node) bool {
-				literal, ok := n.(*ast.CompositeLit)
-				if !ok {
-					return true
+				var expr ast.Expr
+				switch node := n.(type) {
+				case *ast.CompositeLit:
+					expr = node.Type
+				case *ast.CallExpr:
+					if calledName(node) == "new" && len(node.Args) == 1 {
+						expr = node.Args[0]
+					}
+				case *ast.ValueSpec:
+					expr = node.Type
 				}
-				id, ok := literal.Type.(*ast.Ident)
+				id, ok := expr.(*ast.Ident)
 				if ok && id.Name == "verifiedAcceptanceAdjudication" {
 					count++
 					if owner != "planAdjudicatedClose" {
-						bad = append(bad, fset.Position(literal.Pos()).String())
+						bad = append(bad, fset.Position(n.Pos()).String())
 					}
 				}
 				return true
@@ -81,11 +93,17 @@ func TestAdjudicatedCloseProofHasSingleConstructor(t *testing.T) {
 	if count != 1 {
 		t.Errorf("found %d proof construction sites, want one", count)
 	}
-	plant, err := parser.ParseFile(fset, "plant.go", "package main; func plant() { _ = verifiedAcceptanceAdjudication{} }", 0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, bad := check(plant); len(bad) != 1 {
-		t.Fatal("guard failed to reject a second constructor")
+	for _, statement := range []string{
+		"_ = verifiedAcceptanceAdjudication{}",
+		"_ = new(verifiedAcceptanceAdjudication)",
+		"var receipt verifiedAcceptanceAdjudication; _ = receipt",
+	} {
+		plant, err := parser.ParseFile(fset, "plant.go", "package main; func plant() { "+statement+" }", 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, bad := check(plant); len(bad) != 1 {
+			t.Fatalf("guard failed to reject %q", statement)
+		}
 	}
 }
