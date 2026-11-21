@@ -3,8 +3,8 @@ id: DR-cell-lifecycle
 date: "2026-11-20"
 title: "Consolidate the cell role lifecycle judgments (process identity, owner generation, settle outcome, plan class) into one pure model in the existing cellcadence owner, after the independent owner and process controls pass"
 consequence: major  # the transcriber's classification, not part of the ruling
-decided-by: "human:Ian"
-ruling: "https://github.com/medici-finance/assay/issues/7066#issuecomment-7053556919"
+decided-by: "human:ian"
+ruling: "https://github.com/medici-finance/assay/issues/7066#issuecomment-7054036135"
 alternatives:
   - "Keep the current paths and request a narrower change (option 2 on the decision issue). Not chosen: the ruling selected option 1. Under option 2, up, reconcile, down and the interactive-owner settle would each keep their own judgment of whether a recorded owner is the running process and whether a checkpoint is that owner's, which is the duplication the brief's `why` names as the way a sibling path reintroduces the holder-loss class."
 accepted:
