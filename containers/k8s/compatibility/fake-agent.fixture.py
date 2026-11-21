@@ -1,4 +1,4 @@
-#!/usr/local/bin/python3
+#!/usr/bin/env python3
 import os,signal,sys,termios,tty,json,time
 from pathlib import Path
 work=Path('/work')
@@ -13,6 +13,9 @@ try:
 except OSError as e: controlling=False; error=str(e)
 event('agent',cell=os.environ.get('ASSAY_CELL'),role=os.environ.get('ASSAY_CELL_ROLE'),loop=os.environ.get('DESK_LOOP'),session=os.environ.get('DESK_SESSION'),argv=sys.argv[1:],isatty=os.isatty(0),controlling_tty=controlling,error=error)
 mode=(work/'mode').read_text().strip()
+retained = work/'retained-work.bin'
+if mode == 'retained-work' and retained.exists():
+ event('retained-read',session=os.environ['DESK_SESSION'],hex=retained.read_bytes().hex())
 if mode in ('detached','stubborn'):
  pid=os.fork()
  if pid==0:
@@ -28,5 +31,7 @@ print('FAKE_READY',flush=True)
 while True:
  b=os.read(0,1)
  if not b: time.sleep(.1); continue
+ if mode == 'retained-work':
+  with retained.open('ab') as f: f.write(b)
  event('byte',hex=b.hex())
  print('FAKE_BYTE '+b.hex(),flush=True)

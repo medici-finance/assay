@@ -91,6 +91,12 @@ type Limits struct {
 // DefaultLimits are the limits LoadSnapshot applies when given a zero Limits.
 var DefaultLimits = Limits{MaxFiles: 20000, MaxFileBytes: 1 << 20, MaxTotalBytes: 256 << 20, MaxResults: 2000}
 
+// MaxInputBytes bounds every receipt, manifest or patch file a caller reads before
+// handing it to this package (`statusgen context` and deskdispatch's context pickup).
+// It is the one value both readers use, so the two bounds cannot drift apart; the
+// snapshot has its own Limits.
+const MaxInputBytes = 16 << 20
+
 func (l Limits) orDefault() Limits {
 	if l == (Limits{}) {
 		return DefaultLimits

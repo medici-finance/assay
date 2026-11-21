@@ -1,2 +1,0 @@
-### Fixed
-- The harness-portability brief 15 Verify table is re-authored so every row can be witnessed: each command exits non-zero when its check fails (no trailing `echo` masking the status), each Command cell is a single code span, and the CI-wiring, changelog and diff rows follow the sharded `build-test-shard` job, avoid a `pipefail` SIGPIPE, and pin to the delivering commits. No delivered code changes.

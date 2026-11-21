@@ -80,5 +80,27 @@ Failure modes mapped: the new knob ignored → row 1; the fallback changed for i
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReplayCapOwnKnob$' ./cmd/scanloop > "$o" && grep -q -- '--- PASS: TestReplayCapOwnKnob ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ 1a259b85f7b5 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReplayCapLeavesBurst$' ./cmd/deskmonitor > "$o" && grep -q -- '--- PASS: TestReplayCapLeavesBurst ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ 1a259b85f7b5 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd tools/desk && GOWORK=off go test -count=1 ./cmd/scanloop ./cmd/deskmonitor)` | fail exit=1 sandbox=container-netns | sha256:5c64d2bff2d0 | 2026-11-18 | assay-verifier-app[bot] @ 1a259b85f7b5 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `statusgen --consumers --brief assay:assay:intake-class-routing:03` | fail exit=2 sandbox=container-netns | sha256:d032281632f3 | 2026-11-18 | assay-verifier-app[bot] @ 1a259b85f7b5 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:19179b2cba9b5a822c9cfdb867bd8fcbf7ae470db462e893cb8805b79cbe1453
+Container-Image: sha256:3cfd931fc8fb2277df25eafbc68eccfe84ce7d7b92379b927b8c1841d99854d1
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6919 run=444a752eb996eb8bc4d0adf266f53779b438cd54057c1ada5f5eabf538cc855d source=1a259b85f7b59b39d2d6663c7965a9cc0b1c5e6c brief=docs/streams/intake-class-routing/brief-03-give-intake-replay-its-own-bound.md model=claude-sonnet-5-5 tier=any
+Admission-Bracket: run=444a752eb996eb8bc4d0adf266f53779b438cd54057c1ada5f5eabf538cc855d source=1a259b85f7b59b39d2d6663c7965a9cc0b1c5e6c tree=sha256:19179b2cba9b5a822c9cfdb867bd8fcbf7ae470db462e893cb8805b79cbe1453 witness=sha256:7adc616990516f3543ddb049ac2cb2b50262a6d555f10a9d15cb8f91ebd1db7c opened=2026-11-18T16:49:06Z closed=2026-11-18T16:50:29Z before=receipt after=check-verifier
+
+Row notes (observer: assay-verifier-app[bot], 2026-11-18). The table above is the closed container-netns witness, bytes verbatim.
+
+- Row 1: pass. Row 2: pass. Both named PASS lines were found by the row's own grep.
+- Row 3: the witness records fail exit=1. A supplemental probe (no acceptance credit, same container image, same flags) showed deskmonitor `ok` and the one failure in scanloop to be `TestClassify_UnreadableLocalStateRoutesToJudgment` (scanloop_test.go:131, lane = scan-carrier-pr, want the judgment lane). That test makes a directory unreadable with chmod 0000 and skips only if chmod errors; the container most likely runs rows as root (not separately confirmed), which can still read such a directory, so the failure is probably a property of the runner, not of this brief's change (the test file is not among the files the delivery touched, and the new replay tests are not involved). Not credited as pass; could not be re-run as a non-root user without changing the declared row environment.
+- Row 4: the witness records fail exit=2. The supplemental probe printed `statusgen: --consumers: COULD-NOT-CHECK: git diff --name-only refs/remotes/origin/main...HEAD ... fatal: gitfile does not point to a valid repository` because the linked work tree's git directory is not visible inside the container, and "No routing claim was corroborated and none was disproved." A host re-run through `statusgen verifyrun --rows 4` was refused on this darwin host (check:ci needs `unshare --net`): could-not-run, observed 2026-11-18 by assay-verifier-app[bot], no execution witness. Row 4 is therefore could-not-run, not a failed obligation.
+
+RISK-VALUE: N/A — risk line is all no and the delivery adds one environment knob name (INTAKE_REPLAY_CAP) with the pre-existing default 25 unchanged; no irreversible act; the new knob is opt-in and reversible by unsetting it.
+
+**VERIFY: BLOCKED** — rows 1 and 2 pass (2 of 4); row 3 failed only on a root-readable chmod 0000 fixture in an unrelated pre-existing scanloop test (runner fault, not the deliverable); row 4 could not be run (no git history in the container, host lane refused on darwin). No acceptance obligation was observed to fail. Needs a Linux host or a container that exposes git history and runs rows as non-root.
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.

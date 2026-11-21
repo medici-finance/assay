@@ -43,7 +43,7 @@ import (
 // release, where the namespaced ReleaseTag stamp supplies the version instead.
 var version string
 
-var perfVerbs = []string{"prs", "actions", "review-queue", "queue", "health", "awaiting", "nextup", "scope", "dispatch", "throughput", "policydrift", "stalled", "reviews", "diff", "files"}
+var perfVerbs = []string{"prs", "actions", "review-queue", "queue", "health", "awaiting", "nextup", "scope", "dispatch", "throughput", "policydrift", "stalled", "milestones", "change", "reviews", "diff", "files"}
 
 func main() {
 	args := os.Args[1:]
@@ -208,18 +208,26 @@ func executeRecorded(args []string, stdout, stderr io.Writer, pre func(io.Writer
 			{"awaiting", "awaiting-verification queue", nil}, {"nextup", "deprecated alias for awaiting", nil},
 			{"scope", "reconcile watched repos against open PRs", nil}, {"policydrift", "repo visibility drift", nil},
 			{"stalled", "stalled drafts and shepherd candidates", nil},
+			{"milestones", "milestone state from stream-view documents", nil},
+			{"change", "review findings and checks for one observed change head", nil},
 			{"reviews", "review states at each head", nil}, {"diff", "PR diff", nil}, {"files", "changed files or one file's content", nil},
 		} {
 			name := v.name
 			cmd := &cobra.Command{Use: name, Short: v.short, Aliases: v.aliases, Args: cobra.NoArgs}
-			if name == "reviews" || name == "diff" || name == "files" {
+			if name == "milestones" {
+				cmd.Use += " <stream-view.json>..."
+				cmd.Args = cobra.MinimumNArgs(1)
+			}
+			if name == "change" || name == "reviews" || name == "diff" || name == "files" {
 				cmd.Use += " <repo> <pr>"
 				if name == "files" {
 					cmd.Use += " [path]"
+				} else if name == "change" {
+					cmd.Use += " [expected-head]"
 				}
 				cmd.Args = func(c *cobra.Command, a []string) error {
 					max := 2
-					if name == "files" {
+					if name == "files" || name == "change" {
 						max = 3
 					}
 					if err := cobra.RangeArgs(2, max)(c, a); err != nil {
@@ -483,12 +491,16 @@ func dispatch(sub string, rest []string, hdr Header, mergeNowThreshold, unreview
 		return cmdPolicyDrift(hdr)
 	case "stalled":
 		return cmdStalled(hdr, minAgeHours)
-	case "reviews", "diff", "files":
+	case "milestones":
+		return cmdMilestones(hdr, rest)
+	case "change", "reviews", "diff", "files":
 		repo, num, path, err := parseRepoPR(sub, rest)
 		if err != nil {
 			return nil, err
 		}
 		switch sub {
+		case "change":
+			return cmdChange(hdr, repo, num, rest[2:])
 		case "reviews":
 			return cmdReviews(hdr, repo, num)
 		case "diff":

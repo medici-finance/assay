@@ -143,6 +143,18 @@ pause, wait for in-flight work to finish, hand off, then stop each targeted role
   --timeout                  duration how long to wait for in-flight work before giving up (the roles stay up)
 ```
 
+## `cellctl gc <cell> [--role <role>] [--plan [--json] | --run | --apply <plan-id>]`
+
+report each reclaim target's dry run for a desk (read-only; apply is held)
+
+```
+  --apply                    string   apply the stored plan with this id, on this terminal, after the typed confirm (apply is held)
+  --json                              print the plan or the result as cell-op-v1 JSON
+  --plan                              write a plan and change nothing else; works off a terminal
+  --role                     string   the desk role this report is for (deskwt runs as that loop)
+  --run                               plan and apply on this terminal after the typed confirm (apply is held)
+```
+
 ## `cellctl hotfix install|status|clear`
 
 install, inspect or clear a local desk-tools hotfix (install and clear need sudo)

@@ -30,6 +30,7 @@ func rowReadSetToken() string { return evaluation.ReadSetCellToken("", readSetRe
 // newReadSetTarget is the run's recorder target: the brief at repository path
 // brief, recorded against the tree at root. nil (no recorder; every row then
 // records a could-not-check cell) when the session context cannot be read.
+// A brief outside this checkout carries its own reason and stays untraced.
 func newReadSetTarget(root, briefPath string, rowEnv []string) *readSetTarget {
 	env, commit, err := newRecordEnv(root, rowEnv, time.Now())
 	if err != nil {
@@ -41,7 +42,10 @@ func newReadSetTarget(root, briefPath string, rowEnv []string) *readSetTarget {
 	}
 	abs = resolveBest(abs)
 	rel, ok := env.inTree(abs)
-	if !ok || rel == "." {
+	if !ok {
+		return &readSetTarget{unavailable: reasonBriefOutsideTree}
+	}
+	if rel == "." {
 		return nil
 	}
 	return &readSetTarget{env: env, brief: filepath.ToSlash(rel), commit: commit}
@@ -59,6 +63,9 @@ type rowTrace struct {
 // records reads (always a could-not-check cell). wrapped says the row runs
 // under the network-off wrapper, whose two execs precede the row's shell.
 func traceRow(ctx context.Context, cmd *exec.Cmd, target *readSetTarget, wrapped bool) (rowTrace, bool) {
+	if target != nil && target.unavailable != "" {
+		return rowTrace{reads: evaluation.ReadSetCellToken("", target.unavailable)}, false
+	}
 	if target == nil || target.env == nil {
 		return rowTrace{reads: evaluation.ReadSetCellToken("", readSetRecorderAbsent)}, false
 	}

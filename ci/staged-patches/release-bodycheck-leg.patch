@@ -1,0 +1,240 @@
+diff --git a/.github/workflows/release.yml b/.github/workflows/release.yml
+index 4134b4783..4ab6b034a 100644
+--- a/.github/workflows/release.yml
++++ b/.github/workflows/release.yml
+@@ -487,5 +487,5 @@ jobs:
+   # before a version number can be burned.
+   #
+-  # SPLIT ACROSS RUNNERS — the suite is a matrix of six legs run concurrently on
++  # SPLIT ACROSS RUNNERS — the suite runs independent test legs concurrently on
+   # the `medici-builder-release` pool (its scale set allows several runners; with
+   # fewer available the legs simply queue — correctness never depends on pool
+@@ -497,5 +497,6 @@ jobs:
+   #   statusgen    — statusgen test/vet + the three named gate bars
+   #   desk-tools   — desk-tools test/vet
+-  #   muhar-light  — the six short mutation sweeps (bodycheck, desksourceguard,
++  #   muhar-bodycheck — the bodycheck mutation sweep
++  #   muhar-light  — the other five mutation sweeps (desksourceguard,
+   #                  loopengine ×2, reviewloop, deskclose)
+   #   deskmerge ×3 — the deskmerge mutation sweep, the long pole, SHARDED across
+@@ -523,4 +524,5 @@ jobs:
+           - leg: qualgen
+           - leg: muhar-light
++          - leg: muhar-bodycheck
+           - leg: deskmerge
+             shard: 0/3
+@@ -672,5 +674,5 @@ jobs:
+       # totals line. Only the wall time moves.
+       - name: Gate bar — mutate every bodycheck refusal and require the suite to catch it
+-        if: matrix.leg == 'muhar-light'
++        if: matrix.leg == 'muhar-bodycheck'
+         run: |
+           set -euo pipefail
+@@ -854,5 +856,5 @@ jobs:
+       # re-running any mutation (a second sweep would double a long CPU-bound
+       # step and create two verdicts that could disagree). Only the legs that run
+-      # mutation sweeps produce reports: muhar-light (six specs) and the three
++      # mutation sweeps produce reports: bodycheck, the five other specs and the three
+       # deskmerge shards (one shard report each). Each leg uploads its own reports
+       # under a name unique to the leg (job index), and the release job merges
+@@ -860,5 +862,5 @@ jobs:
+       # but produced nothing fail loudly rather than ship a quietly smaller pack.
+       - name: Upload captured mutation reports (tool-validation pack)
+-        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'
++        if: matrix.leg == 'muhar-bodycheck' || matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'
+         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+         with:
+@@ -1395,5 +1397,5 @@ jobs:
+
+       # TOOL-VALIDATION EVIDENCE PACK (iso-9001/01) — collect the mutation reports
+-      # the `test` job captured (muhar-light's six + the three deskmerge shards),
++      # the `test` job captured (bodycheck, five others and three deskmerge shards),
+       # merged into one directory. merge-multiple flattens every tv-reports-*
+       # artifact into ${RUNNER_TEMP}/tv-reports.
+diff --git a/ci/staged-workflows/release.yml b/ci/staged-workflows/release.yml
+index 4134b4783..4ab6b034a 100644
+--- a/ci/staged-workflows/release.yml
++++ b/ci/staged-workflows/release.yml
+@@ -487,5 +487,5 @@ jobs:
+   # before a version number can be burned.
+   #
+-  # SPLIT ACROSS RUNNERS — the suite is a matrix of six legs run concurrently on
++  # SPLIT ACROSS RUNNERS — the suite runs independent test legs concurrently on
+   # the `medici-builder-release` pool (its scale set allows several runners; with
+   # fewer available the legs simply queue — correctness never depends on pool
+@@ -497,5 +497,6 @@ jobs:
+   #   statusgen    — statusgen test/vet + the three named gate bars
+   #   desk-tools   — desk-tools test/vet
+-  #   muhar-light  — the six short mutation sweeps (bodycheck, desksourceguard,
++  #   muhar-bodycheck — the bodycheck mutation sweep
++  #   muhar-light  — the other five mutation sweeps (desksourceguard,
+   #                  loopengine ×2, reviewloop, deskclose)
+   #   deskmerge ×3 — the deskmerge mutation sweep, the long pole, SHARDED across
+@@ -523,4 +524,5 @@ jobs:
+           - leg: qualgen
+           - leg: muhar-light
++          - leg: muhar-bodycheck
+           - leg: deskmerge
+             shard: 0/3
+@@ -672,5 +674,5 @@ jobs:
+       # totals line. Only the wall time moves.
+       - name: Gate bar — mutate every bodycheck refusal and require the suite to catch it
+-        if: matrix.leg == 'muhar-light'
++        if: matrix.leg == 'muhar-bodycheck'
+         run: |
+           set -euo pipefail
+@@ -854,5 +856,5 @@ jobs:
+       # re-running any mutation (a second sweep would double a long CPU-bound
+       # step and create two verdicts that could disagree). Only the legs that run
+-      # mutation sweeps produce reports: muhar-light (six specs) and the three
++      # mutation sweeps produce reports: bodycheck, the five other specs and the three
+       # deskmerge shards (one shard report each). Each leg uploads its own reports
+       # under a name unique to the leg (job index), and the release job merges
+@@ -860,5 +862,5 @@ jobs:
+       # but produced nothing fail loudly rather than ship a quietly smaller pack.
+       - name: Upload captured mutation reports (tool-validation pack)
+-        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'
++        if: matrix.leg == 'muhar-bodycheck' || matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'
+         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+         with:
+@@ -1395,5 +1397,5 @@ jobs:
+
+       # TOOL-VALIDATION EVIDENCE PACK (iso-9001/01) — collect the mutation reports
+-      # the `test` job captured (muhar-light's six + the three deskmerge shards),
++      # the `test` job captured (bodycheck, five others and three deskmerge shards),
+       # merged into one directory. merge-multiple flattens every tv-reports-*
+       # artifact into ${RUNNER_TEMP}/tv-reports.
+diff --git a/tools/release/images_test.py b/tools/release/images_test.py
+index db3703849..ee76db7ab 100644
+--- a/tools/release/images_test.py
++++ b/tools/release/images_test.py
+@@ -418,8 +418,8 @@ def tolerance_problems(entries):
+
+
+-# Every release test leg, in order; muhar-light and the deskmerge shards are the
++# Every release test leg, in order; muhar-bodycheck, muhar-light and the deskmerge shards are the
+ # mutation harnesses, the rest are the suites a release must also pass.
+ TEST_MATRIX = [('statusgen', ''), ('desk-tools', ''), ('drainloop', ''), ('qualgen', ''),
+-               ('muhar-light', ''), ('deskmerge', '0/3'), ('deskmerge', '1/3'),
++               ('muhar-light', ''), ('muhar-bodycheck', ''), ('deskmerge', '0/3'), ('deskmerge', '1/3'),
+                ('deskmerge', '2/3')]
+ # The whole live body of one mutation harness step. Anything added, dropped or
+@@ -596,4 +596,6 @@ def mutation_routing_problems(text):
+             problems.append('mutation report identity changed: ' + spec)
+         leg = gate.group('leg')
++        if (leg == 'muhar-bodycheck') != (spec == 'internal/deskkit/mutations.json'):
++            problems.append('bodycheck must run alone in its own matrix leg')
+         if leg not in upload_legs:
+             problems.append('mutation harness report is not uploaded: ' + spec)
+@@ -902,16 +904,16 @@ SPELLING_PLANTS = {
+         '    runs-on: medici-builder-release\n    <<: *tolerate\n', UNREAD + '<<: *tolerate'),
+     'upload-tolerates-failure': (
+-        'test', "        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n",
+-        "        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n"
++        'test', "        if: matrix.leg == 'muhar-bodycheck' || matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n",
++        "        if: matrix.leg == 'muhar-bodycheck' || matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n"
+         '        continue-on-error: true\n',
+         'a test job step must not tolerate failure'),
+     'upload-tolerates-other-case': (
+-        'test', "        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n",
+-        "        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n"
++        'test', "        if: matrix.leg == 'muhar-bodycheck' || matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n",
++        "        if: matrix.leg == 'muhar-bodycheck' || matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n"
+         '        Continue-On-Error: true\n',
+         'a test job step must not tolerate failure'),
+     'harness-shell-quoted-key': (
+-        'test', "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-light'\n",
+-        "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-light'\n"
++        'test', "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-bodycheck'\n",
++        "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-bodycheck'\n"
+         "        'shell': bash -c 'exit 0' {0}\n",
+         UNREAD + "'shell': bash -c 'exit 0' {0}"),
+@@ -1889,5 +1891,5 @@ if args[:2] == ['image', 'inspect']:
+         main = workflow_keys.load(HERE.parents[1] / '.github/workflows/release.yml')
+         self.assertEqual(mutation_routing_problems(main), [])
+-        bodycheck = "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-light'\n"
++        bodycheck = "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-bodycheck'\n"
+         once = 'matrix must execute every full harness and deskmerge shard exactly once'
+         gate = 'internal/deskkit/mutations.json'
+@@ -1902,10 +1904,15 @@ if args[:2] == ['image', 'inspect']:
+             'fail-fast': ('      fail-fast: false\n', '      fail-fast: true\n',
+                           'all matrix verdicts must run without fail-fast cancellation'),
++            'missing-bodycheck-leg': ('          - leg: muhar-bodycheck\n', '', once),
++            'bodycheck-shares-light-leg': (bodycheck, bodycheck.replace("'muhar-bodycheck'", "'muhar-light'"),
++                                           'bodycheck must run alone in its own matrix leg'),
++            'missing-bodycheck-upload': ("matrix.leg == 'muhar-bodycheck' || ", '',
++                                         'mutation harness report is not uploaded: ' + gate),
+             'missing-light-upload': ("matrix.leg == 'muhar-light' || ", '',
+-                                     'mutation harness report is not uploaded: ' + gate),
++                                     'mutation harness report is not uploaded: cmd/desksourceguard/mutations.json'),
+             'upload-name-collision': ('tv-reports-${{ matrix.leg }}-${{ strategy.job-index }}',
+                                       'tv-reports-${{ matrix.leg }}',
+                                       'each mutation leg must upload its reports without collision or omission'),
+-            'misrouted-bodycheck': (bodycheck, bodycheck.replace("'muhar-light'", "'statusgen'"),
++            'misrouted-bodycheck': (bodycheck, bodycheck.replace("'muhar-bodycheck'", "'statusgen'"),
+                                     'mutation harness report is not uploaded: ' + gate),
+             'missing-caught-gate': ("grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' <<<\"$report\"; then\n"
+@@ -1926,8 +1933,8 @@ if args[:2] == ['image', 'inspect']:
+         # correct text in a comment, and must draw its own named refusal.
+         harness = 'internal/deskkit/mutations.json'
+-        light = "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-light'\n"
++        light = "every bodycheck refusal and require the suite to catch it\n        if: matrix.leg == 'muhar-bodycheck'\n"
+         grep = ("          if ! grep -qE 'Totals: [0-9]+ caught, 0 NOT CAUGHT, 0 could-not-mutate' "
+                 "<<<\"$report\"; then\n            echo \"::error::a bodycheck")
+-        upload_if = "        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n"
++        upload_if = "        if: matrix.leg == 'muhar-bodycheck' || matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'\n"
+         plants = {
+             'job-tolerates-failure': ('test', '    runs-on: medici-builder-release\n',
+diff --git a/tools/release/release.yml.proposed b/tools/release/release.yml.proposed
+index b94a8d319..2698ea15a 100644
+--- a/tools/release/release.yml.proposed
++++ b/tools/release/release.yml.proposed
+@@ -435,5 +435,5 @@ jobs:
+   # before a version number can be burned.
+   #
+-  # SPLIT ACROSS RUNNERS — the suite is a matrix of six legs run concurrently on
++  # SPLIT ACROSS RUNNERS — the suite runs independent test legs concurrently on
+   # the `medici-builder-release` pool (its scale set allows several runners; with
+   # fewer available the legs simply queue — correctness never depends on pool
+@@ -445,5 +445,6 @@ jobs:
+   #   statusgen    — statusgen test/vet + the three named gate bars
+   #   desk-tools   — desk-tools test/vet
+-  #   muhar-light  — the six short mutation sweeps (bodycheck, desksourceguard,
++  #   muhar-bodycheck — the bodycheck mutation sweep
++  #   muhar-light  — the other five mutation sweeps (desksourceguard,
+   #                  loopengine ×2, reviewloop, deskclose)
+   #   deskmerge ×3 — the deskmerge mutation sweep, the long pole, SHARDED across
+@@ -471,4 +472,5 @@ jobs:
+           - leg: qualgen
+           - leg: muhar-light
++          - leg: muhar-bodycheck
+           - leg: deskmerge
+             shard: 0/3
+@@ -606,5 +608,5 @@ jobs:
+       # totals line. Only the wall time moves.
+       - name: Gate bar — mutate every bodycheck refusal and require the suite to catch it
+-        if: matrix.leg == 'muhar-light'
++        if: matrix.leg == 'muhar-bodycheck'
+         run: |
+           set -euo pipefail
+@@ -788,5 +790,5 @@ jobs:
+       # re-running any mutation (a second sweep would double a long CPU-bound
+       # step and create two verdicts that could disagree). Only the legs that run
+-      # mutation sweeps produce reports: muhar-light (six specs) and the three
++      # mutation sweeps produce reports: bodycheck, the five other specs and the three
+       # deskmerge shards (one shard report each). Each leg uploads its own reports
+       # under a name unique to the leg (job index), and the release job merges
+@@ -794,5 +796,5 @@ jobs:
+       # but produced nothing fail loudly rather than ship a quietly smaller pack.
+       - name: Upload captured mutation reports (tool-validation pack)
+-        if: matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'
++        if: matrix.leg == 'muhar-bodycheck' || matrix.leg == 'muhar-light' || matrix.leg == 'deskmerge'
+         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+         with:
+@@ -1269,5 +1271,5 @@ jobs:
+
+       # TOOL-VALIDATION EVIDENCE PACK (iso-9001/01) — collect the mutation reports
+-      # the `test` job captured (muhar-light's six + the three deskmerge shards),
++      # the `test` job captured (bodycheck, five others and three deskmerge shards),
+       # merged into one directory. merge-multiple flattens every tv-reports-*
+       # artifact into ${RUNNER_TEMP}/tv-reports.

@@ -36,6 +36,19 @@ equal what it binds: a mismatch refuses (exit 5), an unreadable record is exit 6
 nothing is written. The model is still the coordinator's explicit selection, never taken
 from the record. With no attestation named the path is unchanged.
 
+STAMP BEFORE READY (#6855). An open change is required, so an authoring stamp that has not
+landed by merge never can. Two read-side checks keep the hand-off above from being the only
+route. `deskboard prs` lists, per open change, `authoringStamp` and `stampOnly` when the
+description names a Worker-Attestation: record and the labels lack a complete authored-model /
+authored-tier pair. `stampOnly` is this verb's exact --stamp-only line, with --attestation,
+--model, --tier and --kit taken from the validated record. A record that does not validate is
+listed as refused or could-not-check, with no line. The coordinator runs that listing on every
+sweep. Both ready-flip verbs (deskflip and deskpost ready) then hold the change in draft under
+the condition authoring-stamp. A change naming a record must carry the stamp-authority
+authored-* pair equal to the record's Model and Tier. An unstamped, indeterminate or mismatched
+pair refuses (exit 5) and prints the same line; an unreadable record is exit 6. A change with
+no line is unaffected. The shared implementation is deskkit.AuthoringStampGate.
+
 The shared model vocabulary is open: gpt-6-astra and gpt-6.1-sol round-trip unchanged.
 gpt-6-1-sol is also a valid opaque slug, not an alias for gpt-6.1-sol. Use the identifier
 actually selected by the harness, never a guessed provider/model mapping.
@@ -110,7 +123,11 @@ STEPS, in order. Each prints one line; the first red one stops the dispatch and 
                       root (--claim-root when given, else --root) carries it. The OK line
                       names which one ran. The claim itself is a ref in the TARGET repo
                       (--repo) either way — the flag names where the TOOL lives, never where
-                      the claim lands. The child runs as the DISPATCHING role: this step
+                      the claim lands — with ONE exception: a cross-repository VERIFIER
+                      dispatch claims in the TRACKING repo (--claim-root's origin), where its
+                      brief, Evidence and outcome record live, so its claim is inspected,
+                      released or stolen there, never in --repo (#5999; see CROSS-REPO
+                      below). The child runs as the DISPATCHING role: this step
                       mints (or reuses) that role's App token exactly as the model-stamp step
                       does and hands it over as --token-file <0600 path> (deskclaim-ref) or
                       GH_TOKEN in the child's environment (the script); a GH_TOKEN already
@@ -218,6 +235,26 @@ line, "Packet: <absolute path>". It is not a step and cannot fail the dispatch: 
 cannot be built, stderr says why and the assignment carries no such line. Not built on
 --dry-run. No flag and no configuration.
 
+VERIFICATION SNAPSHOTS. A verifier run keeps the tree it verifies and its rows' files under
+the user cache directory ("assay/verify-snap/<claim key>/"), beside the packets and outcome
+records. Each --kit verifier dispatch prunes them on the same one-week retention: a snapshot
+goes only when nothing in it, walked without following a link, has a modification time or an
+inode change time inside the week. The change time is what marks an archive extracted into a
+snapshot as new even though it keeps the archive's modification times. That holds on macOS and
+Linux, whose builds read the change time. A build for any other platform (Windows, the BSDs)
+reads none, and modification time alone cannot prove a snapshot idle, so there the prune keeps
+every snapshot and names each on stderr as could-not-check, on every verifier dispatch as well
+as under --dry-run: snapshots are not pruned on those platforms. Nothing records which
+snapshot a running verifier holds, so recent activity is the liveness signal; a week is far
+past the two-hour stale age of a dispatched claim. The claim being dispatched never loses its
+own snapshot, a symlink or a plain file there is never removed, and a snapshot that cannot be
+walked in full (an error, or more entries than the maintenance bound) is kept and named on
+stderr. A real dispatch reads each candidate's activity again, through the same opened
+directory, just before removing it, and keeps one that changed since. --dry-run lists every
+snapshot with "keep" or "would remove" and the reason; a real dispatch names on stderr each one
+it removed and each one it kept as could-not-check or could not read. A failure never fails
+the dispatch.
+
 A WORKER dispatch (--kit worker, --kit worker-objective) gets a packet too, smaller because a
 worker run re-reads it on every later request: 32 KiB an item, 64 KiB for the brief and for
 the diff, 192 KiB in all, 12 named files. With no --pr it holds the run's facts (worktree,
@@ -268,8 +305,13 @@ through the alias registry (graph-repos.yaml, schema graph-repos-v1) of the stre
 --claim-root (else --root), and nothing else. Before
 anything durable: no registry, or an alias reserved but unpublished there = exit 6; an alias the
 registry does not define = exit 5 naming it; a resolved repo that is not --repo or not --root's own
-origin = HARD FAIL exit 5 naming both repos — no claim, no worktree. The resolved repo is the claim
-repo and the token's repo; a cross-repo claim key carries the TRACKING alias; the prompt tells the
+origin = HARD FAIL exit 5 naming both repos and the `--repo` to re-run with — no claim, no worktree.
+The resolved repo is the claim repo and the token's repo for a worker or review dispatch; a
+cross-repo claim key carries the TRACKING alias. A cross-repository VERIFIER dispatch has one shape,
+`--repo <deliverable> --root <deliverable checkout> --claim-root <tracking checkout> --brief <abs
+tracking brief>` (the line `verifyloop plan` prints for the item): its Verify rows run against the
+deliverable, and its claim, its release, its Evidence and its outcome record all land in the
+TRACKING repo (`--claim-root`'s origin), where the brief lives (#5999). The prompt tells the
 worker to run `deskpr create --root <tracking checkout>` so its Brief: trailer resolves there.
 Under --cross-repo (a brief homed in one repo, its PR opened in --repo) the prompt instead names the
 exact `Cross-repo-brief: <alias>:<stream>/<NN>` line and plain `deskpr create` (fresh) or

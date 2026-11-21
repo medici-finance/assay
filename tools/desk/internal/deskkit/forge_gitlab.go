@@ -1673,10 +1673,11 @@ func (g *GitLabForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 		r := Review{
 			// GitLab mints no per-approval id; the approver's user id is the only stable
 			// identifier the approvals payload carries.
-			ID:          a.User.ID,
-			Author:      gitlabAccount(a.User.ID, a.User.Username),
-			State:       "APPROVED",
-			SubmittedAt: gitlabTime(approvedAt[a.User.ID]),
+			ID:            a.User.ID,
+			accountIDOnly: true,
+			Author:        gitlabAccount(a.User.ID, a.User.Username),
+			State:         "APPROVED",
+			SubmittedAt:   gitlabTime(approvedAt[a.User.ID]),
 		}
 		if approvalsArePinned {
 			r.CommitID = headSHA
@@ -1711,6 +1712,9 @@ func (g *GitLabForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 			State:       state,
 			Body:        n.Body,
 			SubmittedAt: gitlabTime(n.CreatedAt),
+		}
+		if mr.WebURL != "" && n.ID > 0 {
+			r.URL = fmt.Sprintf("%s#note_%d", mr.WebURL, n.ID)
 		}
 		if headArrivedAt != nil && n.CreatedAt != nil && !n.CreatedAt.Before(*headArrivedAt) {
 			r.CommitID = headSHA
@@ -1909,7 +1913,7 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 			out.Statuses = append(out.Statuses, StatusContext{
 				State:     gitlabBuildState(s.Status),
 				Context:   s.Name,
-				CreatedAt: gitlabTime(s.CreatedAt),
+				CreatedAt: gitlabTime(s.CreatedAt), URL: s.TargetURL, RunID: checkRunID(s.PipelineID),
 			})
 		}
 		if resp == nil || resp.NextPage == 0 {
@@ -1942,6 +1946,7 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 		// which against a pipeline-gated project is could-not-check — never a pass.
 		return out, nil
 	}
+	sc.URL, sc.RunID = pipe.WebURL, checkRunID(pipe.ID)
 	out.Statuses = append(out.Statuses, sc)
 	// The forge's own asserted total is raised by the one entry mapped from the pipeline,
 	// so the caller's short-read reconcile (asserted total vs. entries served) stays exact
@@ -1972,7 +1977,7 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 				// GitHub's check-run id carries: a retried job gets a new one, so a
 				// citation of "the run that turned green" cannot be satisfied by an
 				// earlier execution of the same job name.
-				ID:   checkRunID(j.ID),
+				ID: checkRunID(j.ID), JobID: checkRunID(j.ID), RunID: checkRunID(pipe.ID), URL: j.WebURL,
 				Name: j.Name, Status: status, Conclusion: conclusion,
 				// GitLab's finished_at is the job's true end — the same fact GitHub's
 				// completed_at carries — so the latest-run-per-name reduction orders both
@@ -4390,6 +4395,9 @@ func gitlabWriteProbeRef(in WriteFileInput) string {
 // writeEvidenceFile shares the native write implementation with a scoped landing.
 // known binds prior to the validator snapshot; LastCommitID remains enforced by GitLab.
 func (g *GitLabForge) writeEvidenceFile(repo ForgeRepo, in WriteFileInput, project *gitlab.Project, prior *FileContent, known bool) (*WriteFileResult, error) {
+	if in.Delete {
+		return nil, Unverifiable("a pinned removal requires an atomic branch-head write precondition; this GitLab writer supports only file revisions", nil)
+	}
 	if in.ExpectedHead != "" {
 		return nil, Unverifiable("verified outcome requires an atomic branch-head write precondition; this GitLab writer supports only file revisions", nil)
 	}
@@ -4474,9 +4482,31 @@ func (g *GitLabForge) writeEvidenceFile(repo ForgeRepo, in WriteFileInput, proje
 	if exists && priorSHA != "" {
 		entry.LastCommitID = gitlab.Ptr(priorSHA)
 	}
+	actions := []*gitlab.CommitActionOptions{entry}
+	// Companions ride the same commit as create actions: GitLab applies a
+	// commit's actions together or not at all, and refuses a create whose
+	// path appeared after the probe below.
+	if len(in.Companions) > 0 {
+		if err := companionPlan(in); err != nil {
+			return nil, err
+		}
+		read := func(r ReadFileInput) (*FileContent, error) { return g.ReadFile(repo, r) }
+		for _, c := range in.Companions {
+			want, err := companionWanted(read, c, in.Branch, gitlabWriteProbeRef(in))
+			if err != nil {
+				return nil, err
+			}
+			if want {
+				actions = append(actions, &gitlab.CommitActionOptions{
+					Action: gitlab.Ptr(gitlab.FileCreate), FilePath: gitlab.Ptr(c.File),
+					Content: gitlab.Ptr(base64.StdEncoding.EncodeToString(c.Content)), Encoding: gitlab.Ptr("base64"),
+				})
+			}
+		}
+	}
 	opt := &gitlab.CreateCommitOptions{
 		Branch: gitlab.Ptr(in.Branch), CommitMessage: gitlab.Ptr(in.Message),
-		Actions: []*gitlab.CommitActionOptions{entry},
+		Actions: actions,
 	}
 	if in.StartBranch != "" {
 		opt.StartBranch = gitlab.Ptr(in.StartBranch)

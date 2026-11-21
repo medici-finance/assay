@@ -21,7 +21,7 @@ Schema identifier: `go-analysis/v1`. The corresponding reviewed debt file uses
 | `scanned_at` | UTC observation time in ISO 8601 format. This is not the date a defect was introduced. |
 | `family` | `lint` for this implementation. Security families require their declared extension before ingestion. |
 | `contract` | SHA-256 over the exact analyzer config bytes, pin bytes and fingerprint version, joined with NUL separators in that order. Changed contracts are not silently comparable. |
-| `fingerprint` | `source-window/v2`; a change requires a reviewed contract migration. |
+| `fingerprint` | `source-window/v3` (v3 drops staticcheck related-information notes, which annotate a primary finding); a change requires a reviewed contract migration. |
 | `tool` | Acquired-tool receipt: pins digest, analyzer binary digest, analyzer version, build-Go version and analysis-Go version. Absent if qualification could not complete. |
 | `module_count`, `expected_scans` | Discovered tracked modules and planned module/configuration scans. Absent when discovery itself failed. |
 | `coverage` | Every attempted module/configuration scan and its outcome. |

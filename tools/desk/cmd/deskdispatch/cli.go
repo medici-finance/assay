@@ -72,7 +72,7 @@ func dispatchBindings(mode string) []cli.Binding {
 		return append(common,
 			str("tier", "any", "execution tier the item demands: strong|any"), str("kit", "worker", "prompt kit: "+joinKits()),
 			str("repo", "", "owner/name (default: --root's origin)"), str("root", ".", "item's own repo root"),
-			str("claim-root", "", "checkout carrying consumer scripts (default: --root); claims still land in --repo"),
+			str("claim-root", "", "checkout carrying consumer scripts (default: --root); claims land in --repo, except a cross-repo verifier's, which land in this checkout's origin"),
 			str("model", "", "exact model selected by the dispatcher"), str("branch", "", "fresh branch, or verified resume source branch"),
 			str("observation", "", "advisory review observation file (review kit only)"),
 			str("brief", "", "item specification path"), boolean("gate-human", "ensure the human decision issue exists"),

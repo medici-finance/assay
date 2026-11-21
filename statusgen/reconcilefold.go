@@ -345,6 +345,9 @@ func (c *ghClient) listOpenIssueLabels(repo string) (byNumber map[int][]string, 
 }
 
 func (c *ghClient) listOpenIssueLabelsN(repo string, maxPages int) (byNumber map[int][]string, lookedAt bool, reason string) {
+	if c.gl != nil {
+		return gitlabOpenIssueLabels(*c.gl, repo)
+	}
 	const perPage = 100
 	byNumber = map[int][]string{}
 	for page := 1; page <= maxPages; page++ {

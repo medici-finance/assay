@@ -1,2 +1,0 @@
-### Changed
-- `cellctl`: the per-tier provider models are retired — the `CELL_PROVIDER_<NAME>_MODEL_TOP/MID/FAST` keys, the glm preset's flash mid tier, the `--model-top/mid/fast` flags and `CELL_TIER_MODEL_<TIER>` are gone from the shell oracle and the docs, so every provider alias runs the flat provider model; a model per tier or role is routed by model policy (`CELL_MODEL_POLICY`). `provider.test.sh` now also runs against the Go binary in `go test`.

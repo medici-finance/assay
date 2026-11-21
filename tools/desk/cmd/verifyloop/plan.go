@@ -26,6 +26,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/verifyflow"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -101,6 +102,10 @@ type planItem struct {
 	Authority   string `json:"authority"`
 	Wake        string `json:"wake,omitempty"`
 	Prompt      string `json:"prompt,omitempty"`
+	// Invocation is the ONE deskdispatch command line for a cross-repository item (#5999): it
+	// claims and lands in the tracking repo (Repo/Root) and verifies the deliverable. Empty for a
+	// same-repository item, whose dispatch shape is the verify-desk skill's ordinary one.
+	Invocation string `json:"invocation,omitempty"`
 	// Overlay is the disposition the verifyloop overlays gave BEFORE the canonical base was
 	// composed in; it differs from Disposition only when the base demoted the item.
 	Overlay string    `json:"overlay,omitempty"`
@@ -419,6 +424,7 @@ func buildPlan(v *VerifyLoop, o planOpts) (*planDoc, error) {
 				return nil, deskkit.Refused(err.Error())
 			}
 			pi.Kind, pi.Prompt, pi.Authority = kindForEvidence, prompt, authEvidenceOnly
+			pi.Invocation = crossRepoInvocation(it)
 			pi.Tier = loopengine.TierLocal.String()
 			doc.Counts.ForEvidence++
 		case dispDispatch:
@@ -427,6 +433,7 @@ func buildPlan(v *VerifyLoop, o planOpts) (*planDoc, error) {
 				return nil, deskkit.Refused(err.Error())
 			}
 			pi.Kind, pi.Prompt, pi.Authority = kindDispatch, prompt, authFlip
+			pi.Invocation = crossRepoInvocation(it)
 			pi.Wake = payloadValue(it, "wake_reason")
 			doc.Counts.Dispatchable++
 		default:
@@ -507,7 +514,7 @@ func renderPlanText(p *planDoc) {
 		case kindTierError:
 			fmt.Printf("\n-- %s: tier error: %s\n", it.ID, it.Reason)
 		case kindDispatch:
-			fmt.Printf("\n=== DISPATCH %s (tier=%s)%s ===\n%s\n", it.ID, it.Tier, rootSuffix(it), it.Prompt)
+			fmt.Printf("\n=== DISPATCH %s (tier=%s)%s ===\n%s%s\n", it.ID, it.Tier, rootSuffix(it), invocationLine(it), it.Prompt)
 			if it.Wake != "" {
 				fmt.Printf("wake: %s\n", it.Wake)
 			}
@@ -519,13 +526,49 @@ func renderPlanText(p *planDoc) {
 			continue
 		}
 		forEvidence++
-		fmt.Printf("\n=== DISPATCH-FOR-EVIDENCE %s (tier=%s)%s — ROUTE-HUMAN: %s — %s ===\n%s\n",
-			it.ID, it.Tier, rootSuffix(it), it.Reason, evidenceOnlyMarker, it.Prompt)
+		fmt.Printf("\n=== DISPATCH-FOR-EVIDENCE %s (tier=%s)%s — ROUTE-HUMAN: %s — %s ===\n%s%s\n",
+			it.ID, it.Tier, rootSuffix(it), it.Reason, evidenceOnlyMarker, invocationLine(it), it.Prompt)
 	}
 	if forEvidence > 0 {
 		fmt.Printf("\nverify-desk plan: %d dispatch-for-evidence (Evidence rows + outcome sidecar only; flip never)\n", forEvidence)
 	}
 	printBuckets(p.Counts.Dispatchable, p.bucketed)
+}
+
+// crossRepoInvocation is the single deskdispatch command a cross-repository item is dispatched
+// with (#5999). The association pass (association.go) set the tracking side (repo, root) and the
+// deliverable side (source_repo, source_root); deskdispatch claims in the tracking repo, cuts the
+// verifier's home from the deliverable checkout, and lands Evidence and the outcome record back in
+// the tracking repo. "" for a same-repository item. The model and tier stay placeholders: the
+// dispatcher selects them, exactly as in the skill's ordinary dispatch shape.
+func crossRepoInvocation(it loopengine.Item) string {
+	source, sourceRoot := payloadValue(it, "source_repo"), payloadValue(it, "source_root")
+	tracking := payloadValue(it, "root")
+	if source == "" || sourceRoot == "" || tracking == "" || strings.TrimSpace(it.BriefPath) == "" {
+		return ""
+	}
+	return fmt.Sprintf("deskdispatch %s --kit verifier --repo %s --root %s --claim-root %s --brief %s "+
+		"--model <actual-model> --tier <selected-tier>",
+		shellWord(itemKey(it)), shellWord(source), shellWord(sourceRoot), shellWord(tracking),
+		shellWord(filepath.Join(tracking, it.BriefPath)))
+}
+
+// shellWord quotes a word for the printed command only when it needs it.
+func shellWord(w string) string {
+	if w != "" && strings.IndexFunc(w, func(r rune) bool {
+		return !(r == '/' || r == '-' || r == '_' || r == '.' || r == ':' || r == '+' || r == '@' ||
+			(r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9'))
+	}) < 0 {
+		return w
+	}
+	return "'" + strings.ReplaceAll(w, "'", `'\''`) + "'"
+}
+
+func invocationLine(it planItem) string {
+	if it.Invocation == "" {
+		return ""
+	}
+	return "cross-repository dispatch (claims and lands in " + it.Repo + "; verifies the deliverable): " + it.Invocation + "\n"
 }
 
 func rootSuffix(it planItem) string {

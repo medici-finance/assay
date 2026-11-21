@@ -158,11 +158,78 @@ func TestHasPlaceholder_NestedGroup(t *testing.T) {
 // regression: #6601
 func TestCreditMembers_ByName(t *testing.T) {
 	changed := parseStatusZ("?? " + deskkit.ScanDir + "/project-issue-3.md\x00?? " + deskkit.ScanDir + "/issue-4.md\x00")
-	credited, unwritten := creditMembers([]string{"group/sub/project#3", "group/sub/project#5", "o/home#4", "not-an-id"}, changed)
-	if len(credited) != 2 || credited["group/sub/project#3"] == "" || credited["o/home#4"] == "" {
+	// The bare issue-4.md is the home repo's (the fixture roster's ASSAY_HOME_REPO); see #7023.
+	credited, unwritten := creditMembers([]string{"group/sub/project#3", "group/sub/project#5", "medici-finance/assay#4", "not-an-id"}, changed)
+	if len(credited) != 2 || credited["group/sub/project#3"] == "" || credited["medici-finance/assay#4"] == "" {
 		t.Fatalf("credited = %v", credited)
 	}
 	if strings.Join(unwritten, ",") != "group/sub/project#5,not-an-id" {
 		t.Fatalf("unwritten = %v", unwritten)
+	}
+}
+
+// Two batch members share an issue number in two repositories, and the scan wrote only the home
+// repo's bare `issue-N.md`. Only the home member is credited: the bare name is the home repo's
+// placeholder and carries nothing for the other repository's issue of the same number (#7023).
+// regression: #7023
+func TestCreditMembers_BareIsHomeOnly(t *testing.T) {
+	const home, other = "medici-finance/assay#601", "example-org/tracker#601"
+	changed := parseStatusZ("?? " + deskkit.ScanDir + "/issue-601.md\x00")
+	credited, unwritten := creditMembers([]string{home, other}, changed)
+	if len(credited) != 1 || credited[home] == "" {
+		t.Fatalf("credited = %v, want only %s", credited, home)
+	}
+	if strings.Join(unwritten, ",") != other {
+		t.Fatalf("unwritten = %v, want %s", unwritten, other)
+	}
+}
+
+// The same shape driven through a whole pass: the home member leaves by the placeholder exit, and
+// the other repository's member keeps its real disposition — no exit, parked under EMITTED.
+// regression: #7023
+func TestBatch_BareCreditsHomeOnly(t *testing.T) {
+	const home, other = "medici-finance/assay#601", "example-org/tracker#601"
+	g := newFakeGit()
+	g.wrote = "?? " + deskkit.ScanDir + "/issue-601.md\x00"
+	loop := batchLoop(t, "INBOUND: "+home+" 2026-08-24T11:50:00Z\n"+
+		"INBOUND: "+other+" 2026-08-24T11:51:00Z\n", g)
+	var sb strings.Builder
+	if err := drainPass(passConfig(t), loop, &sb); err != nil {
+		t.Fatalf("pass errored: %v\n%s", err, sb.String())
+	}
+	renderPassReport(&sb, loop)
+	out := sb.String()
+	recs := loop.Ledger().Records()
+	if len(recs) != 1 || recs[0].ItemID != home || recs[0].Exit != ExitPlaceholder {
+		t.Fatalf("ledger = %+v, want only %s's placeholder exit:\n%s", recs, home, out)
+	}
+	if !strings.Contains(out, "scanloop land --item "+other) {
+		t.Fatalf("%s is not parked under EMITTED:\n%s", other, out)
+	}
+}
+
+// Local state: a bare `issue-N.md` is the home repo's placeholder, so another repository's issue of
+// the same number is not "already known" from it.
+// regression: #7023
+func TestHasPlaceholder_BareIsHomeOnly(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, deskkit.ScanDir)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "issue-601.md"), []byte("---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		repo string
+		want bool
+	}{
+		{"medici-finance/assay", true},
+		{"example-org/tracker", false},
+	} {
+		got, err := HasPlaceholder(root, c.repo, 601)
+		if err != nil || got != c.want {
+			t.Fatalf("HasPlaceholder(%s, 601) = %v, %v; want %v", c.repo, got, err, c.want)
+		}
 	}
 }

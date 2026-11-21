@@ -1,0 +1,6 @@
+# corpus: a GODEBUG-headed run whose value is token material, which must STILL refuse
+# expect: refused
+# refs:   the paired positive that bounds the GODEBUG settings-list rule (#6821)
+# shape:  the build-info DefaultGODEBUG= head followed by 40 characters of synthetic mixed-case base64
+# why:    the settings-list exemption admits only lowercase name=<digits> items; a mixed-case run with no =<digits> tail is a token behind a familiar key, not a setting
+	build	DefaultGODEBUG=kP3vQ8xLm2{{+}}Rt7WnY4bZcHs6JdF9aE1uG5oVyTqXi
