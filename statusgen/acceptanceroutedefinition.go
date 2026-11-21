@@ -10,6 +10,7 @@ type acceptanceDefinition struct {
 	version   int
 	original  string
 	tableHash string
+	verify    string
 }
 
 // readAcceptanceDefinition uses the same protected-table provenance as the
@@ -41,7 +42,7 @@ func readAcceptanceDefinition(root string, source acceptanceSource) (acceptanceD
 	}
 	return acceptanceDefinition{
 		version: max(bf.Version, 1), original: plan.Original,
-		tableHash: fmt.Sprintf("%x", sha256.Sum256([]byte(plan.Verify))),
+		tableHash: fmt.Sprintf("%x", sha256.Sum256([]byte(plan.Verify))), verify: plan.Verify,
 	}, nil
 }
 
