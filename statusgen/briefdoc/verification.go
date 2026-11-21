@@ -534,19 +534,10 @@ func ProseLedCommandWhy(cell string) (span, why string) {
 	if ShellNoOp(lifted) {
 		return lifted, ShellNoOpWhy
 	}
-	spans := CodeSpans(cell)
-	if len(spans) == 0 {
-		return "", ""
-	}
-	if len(spans) == 1 && proseOutsideSpans(cell) == "" {
-		return "", ""
-	}
-	first := spans[0]
-	if first == "" || strings.ContainsAny(first, " \t") {
-		return "", ""
-	}
-	if w := proseLedShape(first, spans[1:]); w != "" {
-		return first, w
+	// The shape test has one home, ProseLedMention; a flagged cell always has a
+	// first span, which is the span this reports.
+	if w := ProseLedMention(cell); w != "" {
+		return CodeSpans(cell)[0], w
 	}
 	return "", ""
 }
