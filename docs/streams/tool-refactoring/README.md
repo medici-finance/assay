@@ -42,7 +42,7 @@ sanctioned lane. Activation of the plan supplies no new environment access.
 <!-- statusgen:briefs:begin -->
 | # | Brief | Wave | Effort | Status | Verified | Reviewed |
 |---|-------|------|--------|--------|----------|----------|
-| 01 | [Bind operation subjects to explicit tracking, delivery and evidence repositories](brief-01-bind-operation-subjects-to-explicit-tracking-delivery-and-evidence-repositories.md) | 0 | M | todo | — | — |
+| 01 | [Bind operation subjects to explicit tracking, delivery and evidence repositories](brief-01-bind-operation-subjects-to-explicit-tracking-delivery-and-evidence-repositories.md) | 0 | M | implemented | — | — |
 | 02 | [Make dispatch planning and execution consume one validated operation subject](brief-02-make-dispatch-planning-and-execution-consume-one-validated-operation-subject.md) | 1 | M | todo | — | — |
 | 03 | [Compile Verify rows and declared inputs through the existing document owner](brief-03-compile-verify-rows-and-declared-inputs-through-the-existing-document-owner.md) | 0 | M | todo | — | — |
 | 04 | [Produce bounded row observations with base and head provenance](brief-04-produce-bounded-row-observations-with-base-and-head-provenance.md) | 1 | M | todo | — | — |
