@@ -17,10 +17,10 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [cell-api](docs/streams/cell-api/README.md) | P2 | active | 0/10 | 2026-11-19 |  |
 | [cellctl-windows](docs/streams/cellctl-windows/README.md) | P1 | active | 0/8 | 2026-11-06 |  |
 | [comms-core](docs/streams/comms-core/README.md) | P1 | active | 1/4 | 2026-11-15 |  |
-| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-11-16 |  |
+| [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-11-18 |  |
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 1/9 | 2026-11-19 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/11 | 2026-11-18 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 3/39 | 2026-11-20 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 3/39 | 2026-11-21 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 9/37 | 2026-11-19 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/63 | 2026-11-21 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-11-19 |  |
@@ -32,7 +32,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [intake-class-routing](docs/streams/intake-class-routing/README.md) | P1 | active | 0/5 | 2026-11-20 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-11-20 |  |
 | [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-11-18 |  |
-| [milestone-support](docs/streams/milestone-support/README.md) | P2 | active | 1/14 | 2026-11-19 |  |
+| [milestone-support](docs/streams/milestone-support/README.md) | P2 | active | 1/14 | 2026-11-21 |  |
 | [performance-collection](docs/streams/performance-collection/README.md) | P2 | active | 0/9 | 2026-11-02 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-11-02 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/45 | 2026-11-19 |  |
@@ -122,7 +122,7 @@ _Shelved streams: excluded from Next-up and every dispatch view, briefs kept. Re
 
 > **COULD NOT CHECK — main-red arm could not check — no `--main-health` input was supplied, so whether main is red is unknown here (statusgen does not read live CI). A main-red fix cannot be lifted into the critical tier on this run; this is not a reading that main is green.**
 
-_Next-up: 20 of 45 eligible — 25 held back (14 by per-stream caps, 11 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
+_Next-up: 20 of 44 eligible — 24 held back (14 by per-stream caps, 10 by the span-of-control cap 20). Overflow is itself an alarm (EEMUA-191): clear WIP before pulling more._
 
 _Held by per-stream caps: 14 brief(s) across 1 stream(s) — top: desktools-v2. By stream: desktools-v2 (14). A stream at its dispatch cap (perStreamCap 4, a declared max-concurrent, or in-flight claims) offers nothing more until a claiming branch or PR clears — this backlog is capped here, not drained._
 
@@ -146,14 +146,14 @@ _Held by per-stream caps: 14 brief(s) across 1 stream(s) — top: desktools-v2. 
 | derived-board | 07 — this repo's rollout — brief-v2 migration, scheduled reconcile, historical backfill as a drift-report PR; --backfill kept for the reconcile verb | 4 | 2050 |
 | desk-tools | 52 — Link decision and verification cards without conflating their authority [exec:strong] | 1 | 2050 |
 | intake-class-routing | 02 — The scan publishes recorded handoffs and land stops a judged exit without one [exec:strong] | 0 | 2050 |
-| milestone-support | 11 — Project milestone state into stream views and deskboard [exec:strong] | 6 | 2050 |
 | statusgen | 32 — Connect board drift notices to the existing reconciliation owners [exec:strong] | 1 | 2050 |
+| desk-tools | 34 — Pinned golangci-lint across every Go module [exec:strong] | 1 | 1550 |
 
 ## Drive: `build-less-brittle`
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 47bae630d 2026-11-21T02:57:51Z_
+_last regen: 7756a11cf 2026-11-21T15:30:55Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -174,7 +174,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 47bae630d 2026-11-21T02:57:51Z_
+_last regen: 7756a11cf 2026-11-21T15:30:55Z_
 
 **Progress:** 37/100 brief items done.
 
@@ -238,7 +238,7 @@ _last regen: 47bae630d 2026-11-21T02:57:51Z_
 
 _0 untriaged entries — the front door is clear._
 
-## Awaiting verification / review (12 for the desk · 57 for the driver · 51 for workers · 54 for an operator · 44 runner-pending — of 221 total; 3 could-not-check)
+## Awaiting verification / review (12 for the desk · 57 for the driver · 51 for workers · 54 for an operator · 45 runner-pending — of 222 total; 3 could-not-check)
 
 _Gate-queue ordered by score: priorityWeight + staleness×stalenessPerDay + valueWeight + unblocksWeight×blockedCount. The weights are an evolving heuristic (F-09 discipline) — not a claim of truth. Board bucketed by owner (docs/board.md): four owned queues — the driver's human gate, workers' implementer rework, an operator's environment-blocked rows, and runner-pending rows CI or the verify runner moves — then the desk's judgement queue. Each row names its owner and its next act; a row whose inputs cannot be read is could-not-check, never a bucket. Paused and parked streams are not bucketed and count only in the total._
 
@@ -393,9 +393,9 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 14 [exec:strong] | implemented | 2050 | 0 | 5d | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | measured-status | 01 | implemented | 2050 | 0 | 5d | operator | environment blocker, cite #4823 | — | — |
 | desk-tools | 50 [exec:strong] | implemented | 2040 | 2 | 4d | operator | environment blocker, cite medici-finance/assay#7036 | — | — |
+| desk-tools | 62 [exec:strong] | implemented | 2040 | 2 | 4d | operator | environment blocker, cite medici-finance/assay#6444 | — | — |
 | intake-class-routing | 01 [exec:strong] | implemented | 2040 | 0 | 4d | operator | environment blocker, cite medici-finance/assay#6851 | — | — |
 | intake-class-routing | 03 | implemented | 2040 | 0 | 4d | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
-| desk-tools | 62 [exec:strong] | implemented | 2030 | 2 | 3d | operator | environment blocker, cite medici-finance/assay#6444 | — | — |
 | desk-supervision | 31 [exec:strong] | implemented | 1550 | 1 | 5d | operator | environment blocker, cite medici-finance/assay#6547 | — | — |
 | desk-supervision | 32 [exec:strong] | implemented | 1550 | 1 | 5d | operator | environment blocker, cite medici-finance/assay#6547 | — | — |
 | desk-supervision | 33 [exec:strong] | implemented | 1550 | 1 | 5d | operator | environment blocker, cite medici-finance/assay#6298 | — | — |
@@ -421,7 +421,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 26 [exec:strong] | implemented | 1050 | 0 | 5d | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
 | agent-execution | 10 [exec:strong] | implemented | 1030 | 0 | 3d | operator | environment blocker, cite medici-finance/assay#6208 | — | — |
 
-### Runner-pending (44)
+### Runner-pending (45)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
@@ -454,6 +454,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 20 [exec:strong] | verified | 2550 | 3 | 5d | CI auto-flip | none; stuck after one main run → file | 2026-10-25 assay-verifier-app[bot] @ 0c3b558efec3 (forge-identity) | — |
 | graph-execution | 32 [exec:strong] | verified | 2050 | 0 | 5d | CI auto-flip | none; stuck after one main run → file | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
 | measured-status | 04 [exec:strong] | verified | 2050 | 0 | 5d | CI auto-flip | none; stuck after one main run → file | 2026-10-22 assay-verifier-app[bot] @ 05dc9fbc88f2 (claude-opus-5-5) | — |
+| milestone-support | 11 [exec:strong] | implemented | 2050 | 2 | — | verify runner | none | — | — |
 | statusgen | 23 [exec:strong] | verified | 2050 | 2 | 5d | CI auto-flip | none; stuck after one main run → file | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
 | desk-supervision | 19 [exec:strong] | verified | 1550 | 1 | 5d | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ 70deba75a577 (claude-opus-5-5) | — |
 | statusgen | 17 | verified | 1550 | 1 | 5d | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 54c024fca36e (claude-opus-5-5) | — |
@@ -475,7 +476,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
 | graph-execution | 36 [exec:strong] | implemented | 21020 | 38 | 2d | verify-desk | triage, then re-bucket | — | — |
-| tool-refactoring | 06 [exec:strong] | implemented | 3000 | 2 | 14h | verify-desk | triage, then re-bucket | — | — |
+| tool-refactoring | 06 [exec:strong] | implemented | 3000 | 2 | 15h | verify-desk | triage, then re-bucket | — | — |
 | composability | 02 | implemented | 2550 | 3 | 5d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2550 | 1 | 5d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 06 | implemented | 2550 | 1 | 5d | verify-desk | dispatch one judge | — | — |
@@ -522,7 +523,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | statusgen | 5d | 05 |
 | verification-handoff | 5d | 01 |
 | windows-port | 5d | 03 |
-| tool-refactoring | 14h | 06 |
+| tool-refactoring | 15h | 06 |
 
 ## Unresolved findings
 
@@ -1044,7 +1045,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 - 08 Normalize PR trailers and claims through the shared resolver — implemented (wave 3)
 - 09 Preserve workflow subjects and human rulings across aliases — todo (wave 4)
 - 10 Enforce milestone capabilities at dispatch and pickup — todo (wave 6)
-- 11 Project milestone state into stream views and deskboard — todo (wave 6)
+- 11 Project milestone state into stream views and deskboard — implemented (wave 6)
 - 12 Preserve milestone scope and identity in history and exports — todo (wave 6)
 - 13 Trace and report a selected milestone through canonical readers — todo (wave 7)
 - 14 Qualify the two-binary rollout and prepare release adoption — todo (wave 8)
