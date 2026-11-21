@@ -690,6 +690,17 @@ needs no marker.
 
 ### Quoted notation is not a claim (`--corroborate`)
 
+`statusgen preview-stamps` shows the human sign-off claims in the diff from the
+local merge base to the committed branch head. Commit the edits you intend to
+push before running it. The preview prints both revisions and reads decisions
+and fixture declarations from the committed tree. The default base ref is
+`refs/remotes/origin/main`. Set `--base-ref refs/remotes/origin/<branch>` to
+match the intended PR target. The preview prints the destination file and line of
+each added stamp, and identifies the decision field for an edited decision record.
+Exit 0 means zero stamp claims need online corroboration, 1 lists prospective
+claims, and 2 means the preview could not run. The online check separately
+examines the PR's human evidence, register transitions, citations and decision gates.
+
 `--corroborate` reads the pull request's added lines as claims that a human
 acted. Some added lines only quote the notation, and it does not read them as
 claims (`corroboratescope.go`):

@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"path"
+	"strconv"
 	"strings"
 )
 
@@ -137,6 +138,7 @@ func stampClaimSurface(file, content string) (ok bool, reason string) {
 type diffAddedLine struct {
 	File    string
 	Section int
+	Number  int // destination line from the enclosing hunk, zero for headerless patches
 	Content string
 }
 
@@ -157,12 +159,11 @@ const reasonEmbeddedPatchRemoved = "removed (-) side of a diff embedded in a com
 // each lane did, and sets aside the removed side of an embedded patch's hunks as
 // quoted.
 //
-// root is the checkout root a declared fixture-corpus marker is resolved against;
-// "" means no checkout, in which case only the hardcoded education prefix
-// excludes (the marker mechanism fails closed to "fully scanned").
-func walkAddedDiffLines(root, diff string) (added []diffAddedLine, quoted []quotedDiffLine) {
+// excluded resolves fixture declarations against the tree supplying the patch.
+func walkAddedDiffLines(diff string, excluded func(string) bool) (added []diffAddedLine, quoted []quotedDiffLine) {
 	curFile := ""
 	section := 0
+	nextLine := 0
 	// inHunk tracks, inside an embedded patch file, whether the walk is in the body
 	// of one of ITS hunks — after an "@@" line, while each line is a hunk line
 	// (" ", "+", "-" or "\"). Only there is a "-" line the removed side; before the
@@ -177,20 +178,32 @@ func walkAddedDiffLines(root, diff string) (added []diffAddedLine, quoted []quot
 				curFile = strings.TrimPrefix(fields[3], "b/")
 			}
 			section++
+			nextLine = 0
 			inHunk = false
 			continue
 		}
 		if strings.HasPrefix(trimmed, "+++ ") {
 			curFile = strings.TrimPrefix(trimmed, "+++ b/")
 			section++
+			nextLine = 0
 			inHunk = false
 			continue
 		}
 		// Only added lines (not the "+++" header itself).
+		if strings.HasPrefix(trimmed, "@@ ") {
+			if m := hunkHeaderRe.FindStringSubmatch(trimmed); m != nil {
+				nextLine, _ = strconv.Atoi(m[3])
+			}
+			continue
+		}
+		number := nextLine
+		if nextLine > 0 && (strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, " ")) {
+			nextLine++
+		}
 		if !strings.HasPrefix(trimmed, "+") || strings.HasPrefix(trimmed, "+++") {
 			continue
 		}
-		if isExcludedFixturePath(root, curFile) {
+		if excluded(curFile) {
 			continue
 		}
 		content := strings.TrimPrefix(trimmed, "+")
@@ -207,14 +220,14 @@ func walkAddedDiffLines(root, diff string) (added []diffAddedLine, quoted []quot
 				inHunk = false
 			}
 		}
-		added = append(added, diffAddedLine{File: curFile, Section: section, Content: content})
+		added = append(added, diffAddedLine{File: curFile, Section: section, Content: content, Number: number})
 	}
 	return added, quoted
 }
 
 // addedDiffLines is walkAddedDiffLines without the quoted set — what a lane reads.
 func addedDiffLines(root, diff string) []diffAddedLine {
-	added, _ := walkAddedDiffLines(root, diff)
+	added, _ := walkAddedDiffLines(diff, func(file string) bool { return isExcludedFixturePath(root, file) })
 	return added
 }
 
@@ -245,7 +258,7 @@ func quotedClaimNotices(root, diff string) []string {
 			add(fmt.Sprintf("human:%s in %s NOT-A-CLAIM — %s", n, file, reason))
 		}
 	}
-	added, quoted := walkAddedDiffLines(root, diff)
+	added, quoted := walkAddedDiffLines(diff, func(file string) bool { return isExcludedFixturePath(root, file) })
 	for _, q := range quoted {
 		stampNotices(q.File, q.Content, q.Reason)
 		for _, c := range detectCitations(q.File, q.Content) {

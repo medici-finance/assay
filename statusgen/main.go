@@ -1335,6 +1335,9 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "witnessdigest" {
 		exitProcess(runWitnessDigest(os.Args[2:], os.Stdout, os.Stderr))
 	}
+	if len(os.Args) > 1 && os.Args[1] == "preview-stamps" {
+		exitProcess(runPreviewStamps(os.Args[2:], os.Stdout, os.Stderr))
+	}
 	if len(os.Args) > 1 && os.Args[1] == "verifyrun" {
 		exitProcess(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))
 	}

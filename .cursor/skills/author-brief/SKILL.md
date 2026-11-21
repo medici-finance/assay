@@ -137,6 +137,11 @@ head: brief 01 settles it". "That makes 01 the head", "established from the stat
 
 ## Carry quality obligations into execution
 
+When adding a requirement register entry, identify the requester in plain text (for example,
+`asked-by: Project driver`) and start with `status: proposed`. Record acceptance once the
+project's evidence supports that transition. Before publishing, commit the changes and run
+`statusgen preview-stamps`; inspect each named sign-off and its source line.
+
 Carry applicable quality attributes and cost-model obligations from the controlling spec
 into the brief's existing Context, Task, DoD and Verify fields. Name the affected path or
 quality scenario, operating conditions, acceptance target or unresolved decision, behaviour
