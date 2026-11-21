@@ -116,13 +116,15 @@ remediation work. Review the initial inventory once. Subsequently:
 4. Tool, configuration and fingerprint changes require a separately reviewed
    migration with before/after evidence. CI never automatically rebaselines.
 
-The current baseline is itself such a migration, and no admission lane for it exists
-yet. Main's committed baseline was measured under the first loader pin; since the loader
-pin moved, its contract matches neither main's own policy nor this one. The shipped action
-takes the trusted baseline from main, so a branch run of it refuses with
-`tool/config migration requires reviewed baseline`. That refusal is correct. The CI job
-is applied only after a maintainer records how this baseline is admitted (see the
-[CI runsheet](runsheets/go-analysis-ci-hunk.md)).
+The current baseline is itself such a migration. Main's first baseline was measured
+under the earlier loader pin, so its contract no longer matches the current pins. A
+maintainer ruled that the pull request carrying this re-measurement and the
+`source-window/v3` fingerprint is the reviewed migration:
+https://github.com/medici-finance/assay/issues/7370#issuecomment-7066967298
+The shipped action takes its trusted baseline from main, so a branch run before merge
+refuses with `tool/config migration requires reviewed baseline`. That refusal is by
+design. The CI job is applied after merge, and the gate is measured on the first pull
+request after merge (see the [CI runsheet](runsheets/go-analysis-ci-hunk.md)).
 
 Identity uses source content and distinguishing context, not line numbers or
 counts. The anchor is scoped to the enclosing top-level declaration: fixing,

@@ -2,4 +2,4 @@
 - The pinned golangci-lint ratchet's debt baseline is re-measured against the current analysis pins (Go 1.27.1 package loader): 30 modules, 36 scans, 13,487 recorded findings. Records whose identity and diagnostic did not change keep their first-observed date.
 - The runner drops staticcheck "related information" notes before identity, so two notes at one position no longer make the gate refuse an ambiguous duplicate. A note with no primary finding of its rule still refuses. The fingerprint contract is now `source-window/v3`.
 - The human CI runsheet fetches and pushes this brief's branch.
-- The runsheet and docs say the CI job waits for a recorded admission of the baseline migration; the shipped action refuses it against main's baseline, by design.
+- The runsheet and docs record that this change is the reviewed baseline migration: the branch run refuses by design, and the CI job is applied after merge.
