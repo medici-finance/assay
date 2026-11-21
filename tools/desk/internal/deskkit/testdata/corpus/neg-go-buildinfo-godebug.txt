@@ -1,0 +1,11 @@
+# corpus: a Go build-info settings row and the GODEBUG environment form of the same list
+# expect: clean
+# refs:   #6821 — a committed `go version -m` build-info dump refused on its DefaultGODEBUG row
+# shape:  DefaultGODEBUG= or GODEBUG= then comma-joined lowercase name=<digits> settings
+# why:    a GODEBUG list is Go runtime compatibility settings; each name is a lowercase setting name and each value a small number, so the run carries no payload
+app: go1.27.4
+	path	example.com/app
+	build	-trimpath=true
+	build	DefaultGO{{+}}DEBUG=cryptocustomrand=1,httpservecontentmaxranges=1,tlssecpmlkem=0,tracebacklabels=0,urlstrictcolons=0,x509sslcertoverrideplatform=0
+	build	CGO_ENABLED=0
+Reproduce with GODEBUG=httpservecontent{{+}}keepheaders=1 go test ./... locally.

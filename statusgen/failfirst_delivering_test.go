@@ -294,11 +294,14 @@ func TestFailFirstBaseIsHeadAfterMerge(t *testing.T) {
 
 // TestFailFirstDeliveringNamesEnv — review F5. A variable that selects the
 // native Git profile makes the delivering arm refuse; the refusal names the
-// variable and the remedy.
+// variable and the remedy. A count of 0 selects none (#7007), so the case
+// injects one key.
 // regression: #2721
 func TestFailFirstDeliveringNamesEnv(t *testing.T) {
 	root, _, _, deliv, _, _, briefPath := ffDeliveredRepo(t, false)
-	t.Setenv("GIT_CONFIG_COUNT", "0")
+	t.Setenv("GIT_CONFIG_COUNT", "1")
+	t.Setenv("GIT_CONFIG_KEY_0", "core.worktree")
+	t.Setenv("GIT_CONFIG_VALUE_0", "/")
 	_, _, err := failFirstBaseRev(root, "", deliv, briefPath)
 	if err == nil || !strings.Contains(err.Error(), "GIT_CONFIG_COUNT is set") || !strings.Contains(err.Error(), "unset it") {
 		t.Errorf("want a refusal naming GIT_CONFIG_COUNT and the remedy; err=%v", err)

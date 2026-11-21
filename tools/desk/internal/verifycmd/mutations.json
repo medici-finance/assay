@@ -1,90 +1,12 @@
 {
-  "test": "go test ./internal/verifycmd/ -count=1 -timeout 120s -run 'TestMarkedSharedVectors|TestLiftUnmarkedIsFirstSpan|TestCommentOnlySharedVectors|TestCommentCellSharedVectors|TestCommandRefusedBareLifts|TestCommandColumnLiftsViaLift|TestProseLedRuleMatchesStatusgen'",
+  "test": "go test ./internal/verifycmd/ -count=1 -timeout 120s -run 'TestMarkedSharedVectors|TestLiftUnmarkedIsFirstSpan|TestCommentOnlySharedVectors|TestCommentCellSharedVectors|TestCommandRefusedBareLifts|TestCommandColumnLiftsViaLift'",
   "control": {
-    "name": "CONTROL — Marked never honours a marker (the pre-#1805 legacy lift)",
+    "name": "CONTROL — Marked never honours a marker",
     "file": "internal/verifycmd/verifycmd.go",
-    "old": "\tif c, ok := Marked(cell); ok {\n\t\treturn c\n\t}\n\treturn firstSpan(cell)",
-    "new": "\treturn firstSpan(cell)"
+    "old": "\tif m := briefdoc.MarkedCommands(cell); len(m) > 0 {\n\t\treturn m[0], true\n\t}\n\treturn \"\", false",
+    "new": "\treturn \"\", false"
   },
   "mutations": [
-    {
-      "name": "an unescaped dollar no longer taints the cell (a marker inside inline math is honoured)",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "\t\tcase c == '$':\n\t\t\tplain = false",
-      "new": "\t\tcase false:\n\t\t\tplain = false"
-    },
-    {
-      "name": "raw HTML / links no longer taint the cell (a marker in an HTML comment is honoured)",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "\t\tcase c == '<' || c == '[':\n\t\t\tplain = false",
-      "new": "\t\tcase false:\n\t\t\tplain = false"
-    },
-    {
-      "name": "a backslash no longer escapes (an escaped dollar or bracket taints the cell)",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "\t\tcase c == '\\\\' && i+1 < len(cell) && isASCIIPunct(cell[i+1]):",
-      "new": "\t\tcase false && c == '\\\\':"
-    },
-    {
-      "name": "a non-plain cell still honours its marker",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "\tif !plain {\n\t\treturn \"\", false\n\t}",
-      "new": "\tif false && !plain {\n\t\treturn \"\", false\n\t}"
-    },
-    {
-      "name": "SR-1808-1 rr4: an escaped dollar no longer taints the cell (spaced escaped dollars honour the marker)",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "\t\t\tif cell[i+1] == '$' {\n\t\t\t\tplain = false",
-      "new": "\t\t\tif false {\n\t\t\t\tplain = false"
-    },
-    {
-      "name": "SR-1808-1 rr4: a character reference no longer taints the cell (spaced reference dollars honour the marker)",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "\t\tcase c == '&' && charRefRe.MatchString(cell[i:]):",
-      "new": "\t\tcase false && c == '&':"
-    },
-    {
-      "name": "SR-1808-1 rr4: a span opener fused to the prose before it no longer taints the cell (an autolink-glued marker is honoured)",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "\t\t\tif !parenLed(cell, i) {\n\t\t\t\tplain = false",
-      "new": "\t\t\tif false {\n\t\t\t\tplain = false"
-    },
-    {
-      "name": "SR-1808-1 rr4: the marker opener need not follow whitespace (a paren-led marker is honoured)",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "\t\tif !sp.spaceLed {\n\t\t\treturn \"\", false",
-      "new": "\t\tif false {\n\t\t\treturn \"\", false"
-    },
-    {
-      "name": "SR-1808-1 rr4: the marker closer need not stand clear (a marker glued to the text after it is honoured)",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "\t\tif !sp.cleanEnd {\n\t\t\treturn \"\", false",
-      "new": "\t\tif false {\n\t\t\treturn \"\", false"
-    },
-    {
-      "name": "SR-1808-1 rr4 over-taint: a `(` no longer allowed before a span opener (a parenthesised mention taints the cell)",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "\tfor j > 0 && cell[j-1] == '(' {",
-      "new": "\tfor false && j > 0 && cell[j-1] == '(' {"
-    },
-    {
-      "name": "SR-1808-1 rr4 over-taint: plain punctuation after the marker closer no longer allowed",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "|| strings.IndexByte(\".,;:!?)\", cell[k]) >= 0",
-      "new": "|| false"
-    },
-    {
-      "name": "CR-1808-4: Marked stops at the first good marker (a later marker not set apart is never checked)",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "\t\tif !found {\n\t\t\tfirst, found = c, true\n\t\t}",
-      "new": "\t\treturn c, true"
-    },
-    {
-      "name": "#2684: CommentOnly never matches (a lone heading span lifts as a passing command)",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "\treturn strings.HasPrefix(strings.TrimSpace(cmd), \"#\")",
-      "new": "\treturn false"
-    },
     {
       "name": "#2684 review S1: CommentLed judges the whole cell, not the first span (a comment span after prose runs)",
       "file": "internal/verifycmd/verifycmd.go",
@@ -98,52 +20,22 @@
       "new": "\t\tif false && CommentOnly(c) {\n\t\t\treturn MarkedCommentWhy"
     },
     {
-      "name": "#2684 review S1: the firstSpan port closes an N-tick fence on a single backtick (it drifts from statusgen's lift)",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "\tfence := strings.Repeat(\"`\", backtickRun(s, start))",
-      "new": "\tfence := \"`\""
-    },
-    {
       "name": "#3147: Lift runs the whole unwrapped cell again (\"`false`: confirm\" runs as the : no-op)",
       "file": "internal/verifycmd/verifycmd.go",
-      "old": "\treturn firstSpan(cell)\n}",
-      "new": "\treturn strings.Trim(strings.TrimSpace(cell), \"`\")\n}"
+      "old": "func Lift(cell string) string { return briefdoc.VerifyCommand(cell) }",
+      "new": "func Lift(cell string) string { return strings.Trim(strings.TrimSpace(cell), \"`\") }"
     },
     {
       "name": "#3147: a prose-led first span is no longer refused (the executors run a file mention statusgen refuses)",
       "file": "internal/verifycmd/verifycmd.go",
-      "old": "\t\tif why := proseLed(cell); why != \"\" {",
-      "new": "\t\tif why := proseLed(cell); false && why != \"\" {"
+      "old": "\t\tif why := briefdoc.ProseLedMention(cell); why != \"\" {",
+      "new": "\t\tif why := briefdoc.ProseLedMention(cell); false && why != \"\" {"
     },
     {
       "name": "#3147: a blank lift is no longer refused (sh -c \"\" exits 0)",
       "file": "internal/verifycmd/verifycmd.go",
       "old": "\tif strings.TrimSpace(lift) == \"\" {\n\t\treturn NoCommandWhy",
       "new": "\tif false {\n\t\treturn NoCommandWhy"
-    },
-    {
-      "name": "#3147 A2: the : builtin is no longer a no-op",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "\treturn f[0] == \":\" && !strings.ContainsAny(c, \";&|\\n\")",
-      "new": "\treturn false"
-    },
-    {
-      "name": "#3147 A2 over-refusal: a : followed by a real command is refused",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "f[0] == \":\" && !strings.ContainsAny(c, \";&|\\n\")",
-      "new": "f[0] == \":\""
-    },
-    {
-      "name": "#3147 A2: a cmd.exe REM remark is no longer a no-op",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "\tif strings.ToLower(strings.TrimPrefix(f[0], \"@\")) == \"rem\" {",
-      "new": "\tif false {"
-    },
-    {
-      "name": "#3147 A2: a cmd.exe :: remark is no longer a no-op",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "\tif strings.HasPrefix(c, \"::\") {",
-      "new": "\tif false {"
     },
     {
       "name": "#3147 A2: the no-op is judged on the first span, not the lift (a marked : runs)",
@@ -158,16 +50,10 @@
       "new": "\tcase false:\n\t\treturn NoOpWhy"
     },
     {
-      "name": "ported prose-led table drops an extension statusgen keeps",
+      "name": "Marked never honours a marker (the delegation to the shared scan is dropped)",
       "file": "internal/verifycmd/verifycmd.go",
-      "old": "\t\".pdf\": true,\n}",
-      "new": "}"
-    },
-    {
-      "name": "ported bare-word pattern drifts from statusgen",
-      "file": "internal/verifycmd/verifycmd.go",
-      "old": "bareWordRe  = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)",
-      "new": "bareWordRe  = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)"
+      "old": "\tif m := briefdoc.MarkedCommands(cell); len(m) > 0 {\n\t\treturn m[0], true\n\t}\n\treturn \"\", false",
+      "new": "\treturn \"\", false"
     }
   ]
 }

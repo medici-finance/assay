@@ -498,7 +498,7 @@ func buildRoot() *cobra.Command {
 	}
 	root.AddCommand(
 		versionCmd(), lsCmd(), newCmd(), setCmd(), showCmd(), checkCmd(), deskdCmd(), deskCmd(), upCmd(), downCmd(), pauseCmd(), resumeCmd(), drainCmd(), cycleCmd(),
-		smokeCmd(), statusCmd(), attachCmd(), compatPrepareCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), commsCmd(), resetCmd(), modelsCmd(),
+		smokeCmd(), statusCmd(), attachCmd(), compatPrepareCmd(), cadenceCmd(), scratchCmd(), cacheCmd(), gcCmd(), commsCmd(), resetCmd(), modelsCmd(),
 		providersCmd(), defaultsCmd(), hotfixCmd(), modelPolicyCmd(), cacheRunCmd(), containerRunCmd(), commsReaderCmd(), scrubbedRunCmd(),
 	)
 	// The cellopfixture build adds the fixture verb and the stand-ins; the release build adds nothing.
@@ -1047,6 +1047,37 @@ func commsCmd() *cobra.Command {
 		}
 		words := legacyWords(verbWords, "--confirm-stopped")
 		cmdComms(cellArg(words), words[1:])
+		return nil
+	}
+	return cmd
+}
+
+func gcCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "gc <cell> [--role <role>] [--plan [--json] | --run | --apply <plan-id>]",
+		Short: "report each reclaim target's dry run for a desk (read-only; apply is held)",
+		Long: "Bare gc is read-only: it runs each existing reclaim target's dry form and prints one JSON line per\n" +
+			"target (target, outcome, bytes measured, items): the scratch sweep, the Go cache's recorded measurement, and\n" +
+			"`deskwt prune --dry-run --no-cache` for each CELL_ROOTS checkout. A failed target is reported and the rest\n" +
+			"still run; exit 1 when any failed or could not check. --role runs deskwt as that desk's loop (the bare\n" +
+			"report only). --plan writes a plan; --run and\n" +
+			"--apply <plan-id> are the state-changing forms of spec/cell-op-v1.md, and their apply is HELD until\n" +
+			"cell-op-v1 specifies a non-interactive maintenance class: a confirmed apply reclaims nothing. See\n" +
+			"docs/cellctl.md, `cellctl gc`.",
+		Annotations: map[string]string{leadingArgsKey: "1"},
+		Args:        cobra.ExactArgs(1),
+	}
+	set := declare(cmd,
+		bStr("role", "the desk role this report is for (deskwt runs as that loop)"),
+		bBool("plan", "write a plan and change nothing else; works off a terminal"),
+		bBool("json", "print the plan or the result as cell-op-v1 JSON"),
+		bBool("run", "plan and apply on this terminal after the typed confirm (apply is held)"),
+		bStr("apply", "apply the stored plan with this id, on this terminal, after the typed confirm (apply is held)"))
+	markStateChangingFlag(cmd, "apply")
+	markStateChangingFlag(cmd, "run")
+	cmd.RunE = func(cmd *cobra.Command, args []string) error {
+		v := resolve(set, nil)
+		gcRun(cmd, loadCell(args[0]), v.String("role"))
 		return nil
 	}
 	return cmd

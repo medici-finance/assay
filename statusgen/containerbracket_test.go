@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // The container bracket (desktools-v2/71). Every test here runs on fixtures:
@@ -441,6 +443,34 @@ func TestCloseBracket(t *testing.T) {
 	putFile(t, fx.check, validCheck)
 	putFile(t, fx.witness, witness)
 	t.Setenv("FAKE_DD_EXIT", "0")
+	t.Run("host Kubernetes observation", func(t *testing.T) {
+		const flag = "--kubernetes-observation"
+		observation := "sha256:" + strings.Repeat("7", 64)
+		if res, stderr := captureVerifyrun(t, []string{"--bracket-digest", "--witness", fx.witness, flag, observation}); res.code == verifyrunExitPass || !strings.Contains(stderr, "requires --close-bracket") {
+			t.Fatalf("accepted or misdiagnosed an observation outside close: %s", stderr)
+		}
+		for _, bad := range []string{"", "sha256:short", observation + "\nextra"} {
+			if res, _ := captureVerifyrun(t, append(closeArgs, flag, bad)); res.code == verifyrunExitPass || getFile(t, fx.witness) != witness {
+				t.Fatalf("invalid observation %q changed or accepted the witness", bad)
+			}
+		}
+		planted := "Kubernetes-Observation: " + observation + "\n" + witness
+		putFile(t, fx.witness, planted)
+		if res, _ := captureVerifyrun(t, closeArgs); res.code == verifyrunExitPass || getFile(t, fx.witness) != planted {
+			t.Fatal("accepted a container-supplied observation")
+		}
+		putFile(t, fx.witness, witness)
+		if res, stderr := captureVerifyrun(t, append(closeArgs, flag, observation)); res.code != verifyrunExitPass {
+			t.Fatalf("close with observation: %s", stderr)
+		}
+		closed := getFile(t, fx.witness)
+		if !strings.Contains(closed, "Kubernetes-Observation: "+observation+"\nAdmission-Bracket: ") {
+			t.Fatalf("observation not sealed before the bracket: %s", closed)
+		}
+		verbLines(t, closed, verifyrunExitPass)
+		verbLines(t, strings.Replace(closed, observation, "sha256:"+strings.Repeat("6", 64), 1), verifyrunExitFail)
+		putFile(t, fx.witness, witness)
+	})
 	preClose := digestOf(t, witness)
 	if err := os.Chmod(fx.witness, 0o640); err != nil {
 		t.Fatal(err)
@@ -492,7 +522,7 @@ func TestCloseBracket(t *testing.T) {
 	// layout, and sees every other byte of the span.
 	lines := strings.Split(witness, "\n")
 	row := lines[2]
-	if witnessRunnerColumn(lines[0]) != 5 || len(splitRowEscaped(row)) < 6 {
+	if witnessRunnerColumn(lines[0]) != 5 || len(briefdoc.SplitRowEscaped(row)) < 6 {
 		t.Fatalf("fixture row is not a witness row: %q", row)
 	}
 	withRow := func(r string) string {
@@ -538,7 +568,7 @@ func TestCloseBracket(t *testing.T) {
 			t.Fatalf("%s is not the exact stamp form but was removed from the digest", ann)
 		}
 	}
-	cells := splitRowEscaped(row)
+	cells := briefdoc.SplitRowEscaped(row)
 	for name, col := range map[string]int{"Command": 1, "Result": 2, "Date": 4} {
 		v := strings.TrimSpace(cells[col])
 		edited := strings.Replace(row, "| "+v+" |", "| "+v+"X |", 1)
@@ -561,7 +591,7 @@ func TestCloseBracket(t *testing.T) {
 	if len(out) != 2 || !strings.HasPrefix(out[0], fmt.Sprintf("bracket=L%d header=L3 ", n+2)) || !strings.HasPrefix(out[1], fmt.Sprintf("bracket=L%d header=L%d ", h2+n-1, h2)) {
 		t.Fatalf("two bracketed tables: %q", out)
 	}
-	cells0 := splitRowEscaped(row)
+	cells0 := briefdoc.SplitRowEscaped(row)
 	res0 := strings.TrimSpace(cells0[2])
 	editedTwo := strings.Replace(two, "| "+res0+" |", "| "+res0+"X |", 1)
 	out = verbLines(t, editedTwo, verifyrunExitFail)
@@ -655,7 +685,7 @@ func TestCloseBracket(t *testing.T) {
 	// in the Runner cell outside the digest.
 	cmd := strings.TrimSpace(cells[1])
 	escRow := strings.Replace(row, "| "+cmd+" |", "| "+cmd+` \| cat |`, 1)
-	if escRow == row || len(splitRowEscaped(escRow)) != len(splitRowEscaped(row)) {
+	if escRow == row || len(briefdoc.SplitRowEscaped(escRow)) != len(briefdoc.SplitRowEscaped(row)) {
 		t.Fatalf("fixture: could not put an escaped pipe in the Command cell: %q", escRow)
 	}
 	if digestOf(t, withRow(escRow)) != digestOf(t, withRow(stamp(escRow, "(on-behalf-of human:someone)"))) {

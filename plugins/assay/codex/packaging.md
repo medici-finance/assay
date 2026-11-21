@@ -33,6 +33,7 @@ harness-portability/14 Verify table.
 
 <!-- assay:codex-packaging
 adopt
+article-craft
 ask-decision
 author-brief
 author-spec
@@ -43,6 +44,7 @@ intake-desk
 pdfingest
 pr-review-desk
 pr-shepherd
+prose-cadence
 session-coach
 system-demo
 the-desk

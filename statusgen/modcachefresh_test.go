@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -237,6 +238,75 @@ func TestModCacheDownloadFails(t *testing.T) {
 	}
 	if _, err := os.Stat(fx.receipt); err == nil {
 		t.Fatal("a download that rewrote go.sum wrote a receipt")
+	}
+}
+
+// regression: #4683
+func TestModCacheInterruptedDownload(t *testing.T) {
+	const reset = "go: golang.org/x/text@v0.43.0: read \"https://proxy.golang.org/golang.org/x/text/@v/v0.43.0.zip\": stream error: stream ID 495; INTERNAL_ERROR; received from peer\n"
+	for _, tc := range []struct {
+		name        string
+		diagnostic  string
+		failures    int
+		changeSum   bool
+		wantCalls   int
+		wantReceipt bool
+	}{
+		{"recover within the same cache", reset + reset, 1, false, 2, true},
+		{"persistent reset", reset, 10, false, 3, false},
+		{"mixed checksum and reset", reset + "verifying module: checksum mismatch\n", 1, false, 1, false},
+		{"other endpoint", strings.Replace(reset, "proxy.golang.org", "example.org", 1), 1, false, 1, false},
+		{"changed pin on failed attempt", reset, 1, true, 1, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fx := newContainerFixture(t)
+			t.Setenv("DESK_LOOP", "")
+			withModuleRoots(t, fx)
+			stubAmbient(t)
+			putFile(t, fx.check, validCheck)
+			cache := filepath.Join(t.TempDir(), "modcache")
+			marker := filepath.Join(cache, "completed-first")
+			dl := stubDownload(t)
+			complete := goModDownload
+			calls := 0
+			goModDownload = func(dir string, env []string) ([]byte, error) {
+				calls++
+				if !slices.Contains(env, "GOMODCACHE="+cache) {
+					t.Fatalf("attempt %d used another cache", calls)
+				}
+				if calls == 1 {
+					putFile(t, marker, "partial download")
+				} else if data, err := os.ReadFile(marker); err != nil || string(data) != "partial download" {
+					t.Fatalf("attempt %d lost the cache from the first attempt", calls)
+				}
+				if calls <= tc.failures {
+					if tc.changeSum {
+						putFile(t, filepath.Join(dir, "go.sum"), "changed pin")
+					}
+					return []byte(tc.diagnostic), fmt.Errorf("exit status 1")
+				}
+				return complete(dir, env)
+			}
+			res, stderr := captureVerifyrun(t, []string{"--open-bracket", "--root", fx.home, "--brief", fx.brief, "--module-cache", cache, "--out", fx.receipt})
+			if calls != tc.wantCalls {
+				t.Fatalf("got %d download attempts, want %d: %s", calls, tc.wantCalls, stderr)
+			}
+			if tc.wantReceipt {
+				if res.code != 0 || len(dl.calls) != 1 {
+					t.Fatalf("open after recovery: exit %d, completed downloads %d: %s", res.code, len(dl.calls), stderr)
+				}
+				if _, err := os.Stat(fx.receipt); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				if res.code != verifyrunExitCouldNot {
+					t.Fatalf("expected refusal, got exit %d: %s", res.code, stderr)
+				}
+				if _, err := os.Stat(fx.receipt); !os.IsNotExist(err) {
+					t.Fatalf("unexpected receipt after failed download: %v", err)
+				}
+			}
+		})
 	}
 }
 

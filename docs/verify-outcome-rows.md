@@ -1,5 +1,12 @@
 # Outcome row identities and producer migration
 
+The overall `outcome` field names the result of the run. The writer and queue
+recognize `verified`, `verify-fail` (also `fail`), `blocked`, and `needs-context`
+(also `needs_context`), ignoring case and surrounding whitespace. Use `pass` in a
+row's `result` field. If the rows passed but closure is blocked, record `blocked`
+and the applicable wake receipt. Unknown outcomes in historical records remain
+visible to the queue as could-not-check.
+
 `rows` is the exact held set for a wake receipt. `row_results` is the full covered
 inventory, with `rows_total` and `rows_passed` derived from observed results.
 Positive integer IDs retain JSON number form; suffix IDs use exact strings such

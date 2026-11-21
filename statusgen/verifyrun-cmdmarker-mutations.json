@@ -1,63 +1,63 @@
 {
   "test": "go test . -run 'CmdMarker|NoMarkerUnchanged|ProseLedCommand|MarkedRowRoundTrips|ReexecutesLiftedCommand|RefusesProseLedCheckCI|ProseLedPassIsNotPass|OneChokePoint|HiddenMarker|RowLintJudges|ProseLedRow|WitnessRowRoundTrips|CommentLed|CommentCell|ShellComment|CommentOnly|ShellNoOp' -count=1 -timeout 300s",
   "control": {
-    "name": "CONTROL — verifyCommand ignores the marker (the pre-#1805 first-span lift)",
-    "file": "verifyrows.go",
-    "old": "\tif m := markedCommands(cell); len(m) > 0 {\n\t\treturn m[0]\n\t}\n\treturn codeSpan(cell)",
-    "new": "\treturn codeSpan(cell)"
+    "name": "CONTROL — briefdoc.VerifyCommand ignores the marker (the pre-#1805 first-span lift)",
+    "file": "briefdoc/verification.go",
+    "old": "\tif m := MarkedCommands(cell); len(m) > 0 {\n\t\treturn m[0]\n\t}\n\treturn CodeSpan(cell)",
+    "new": "\treturn CodeSpan(cell)"
   },
   "mutations": [
     {
       "name": "the marker prefix never matches (a `cmd:` span is just another span)",
-      "file": "verifyrows.go",
-      "old": "\tif !strings.HasPrefix(span, verifyCommandMarker) {",
+      "file": "briefdoc/verification.go",
+      "old": "\tif !strings.HasPrefix(span, CommandMarker) {",
       "new": "\tif true {"
     },
     {
       "name": "the LAST marked span wins instead of the first",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "\t\treturn m[0]\n",
       "new": "\t\treturn m[len(m)-1]\n"
     },
     {
-      "name": "briefVerifyRows lifts with codeSpan again (verifyrun runs the first span)",
-      "file": "verifyrun.go",
-      "old": "\t\tcmd := verifyCommand(r.Command)",
-      "new": "\t\tcmd := codeSpan(r.Command)"
+      "name": "briefVerifyRows lifts with briefdoc.CodeSpan again (verifyrun runs the first span)",
+      "file": "briefdoc/verification.go",
+      "old": "\t\tcmd := VerifyCommand(r.Command)",
+      "new": "\t\tcmd := CodeSpan(r.Command)"
     },
     {
       "name": "check:ci re-execution hands the RAW cell to the shell",
       "file": "transcribeverdict.go",
-      "old": "res := runCheckCI(root, verifyCommand(row.Command))",
+      "old": "res := runCheckCI(root, briefdoc.VerifyCommand(row.Command))",
       "new": "res := runCheckCI(root, row.Command)"
     },
     {
       "name": "prose-led-command rule never added",
       "file": "verifyrows.go",
-      "old": "\tif first, why := proseLedCommandWhy(cmdCell); why != \"\" {",
-      "new": "\tif first, why := proseLedCommandWhy(cmdCell); why != \"\" && false {"
+      "old": "\tif first, why := briefdoc.ProseLedCommandWhy(cmdCell); why != \"\" {",
+      "new": "\tif first, why := briefdoc.ProseLedCommandWhy(cmdCell); why != \"\" && false {"
     },
     {
       "name": "the single-span exemption dropped (every lone identifier span is flagged)",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "\tif len(spans) == 1 && proseOutsideSpans(cell) == \"\" {",
       "new": "\tif false && len(spans) == 1 && proseOutsideSpans(cell) == \"\" {"
     },
     {
       "name": "the marker exemption dropped from the lint (a marked row is still flagged)",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "\t\treturn \"\", \"\" // a marked real command: the author named it",
       "new": "\t\t// mutated: the marker exemption dropped"
     },
     {
       "name": "the path arm stops firing (owner/repo and stream/NN mentions pass)",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "\tcase strings.Contains(first, \"/\") && !scriptExtensions[ext] &&",
       "new": "\tcase false && strings.Contains(first, \"/\") && !scriptExtensions[ext] &&"
     },
     {
       "name": "the lone-word arm stops requiring a later multi-word span (a lone `make` in prose is flagged)",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "\t\tfor _, sp := range later {\n\t\t\tif strings.ContainsAny(strings.TrimSpace(sp), \" \\t\") {",
       "new": "\t\tfor _, sp := range append([]string{first}, later...) {\n\t\t\tif true || strings.ContainsAny(strings.TrimSpace(sp), \" \\t\") {"
     },
@@ -70,84 +70,84 @@
     {
       "name": "CR-1808-1: rowFindings lints the first span again instead of the lifted command",
       "file": "verifyrows.go",
-      "old": "\tcmd := verifyCommand(cmdCell)\n\tif cmd == \"\" {",
-      "new": "\tcmd := codeSpan(cmdCell)\n\tif cmd == \"\" {"
+      "old": "\tcmd := briefdoc.VerifyCommand(cmdCell)\n\tif cmd == \"\" {",
+      "new": "\tcmd := briefdoc.CodeSpan(cmdCell)\n\tif cmd == \"\" {"
     },
     {
       "name": "the marker matches anywhere in a span (HasPrefix -> Contains)",
-      "file": "verifyrows.go",
-      "old": "\tif !strings.HasPrefix(span, verifyCommandMarker) {",
-      "new": "\tif !strings.Contains(span, verifyCommandMarker) {"
+      "file": "briefdoc/verification.go",
+      "old": "\tif !strings.HasPrefix(span, CommandMarker) {",
+      "new": "\tif !strings.Contains(span, CommandMarker) {"
     },
     {
       "name": "the marker matches case-insensitively",
-      "file": "verifyrows.go",
-      "old": "\tif !strings.HasPrefix(span, verifyCommandMarker) {",
-      "new": "\tif !strings.HasPrefix(strings.ToLower(span), verifyCommandMarker) {"
+      "file": "briefdoc/verification.go",
+      "old": "\tif !strings.HasPrefix(span, CommandMarker) {",
+      "new": "\tif !strings.HasPrefix(strings.ToLower(span), CommandMarker) {"
     },
     {
       "name": "SR-1808-1: backslash escapes ignored (escaped backticks delimit a span)",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "\t\tcase c == '\\\\' && i+1 < len(cell) && isASCIIPunct(cell[i+1]):",
       "new": "\t\tcase false && c == '\\\\':"
     },
     {
       "name": "SR-1808-1: raw HTML / links no longer taint the cell (a marker in an HTML comment is honoured)",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "\t\tcase c == '<' || c == '[':\n\t\t\tplain = false",
       "new": "\t\tcase false:\n\t\t\tplain = false"
     },
     {
       "name": "SR-1808-1 rr3: an unescaped dollar no longer taints the cell (a marker inside inline math is honoured)",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "\t\tcase c == '$':\n\t\t\tplain = false",
       "new": "\t\tcase false:\n\t\t\tplain = false"
     },
     {
       "name": "a fence closes on a longer run too",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "\t\t\t\tif m == n {\n\t\t\t\t\tcloseAt = j",
       "new": "\t\t\t\tif m >= n {\n\t\t\t\t\tcloseAt = j"
     },
     {
       "name": "an unclosed opener's tail counted as a span",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "\t\t\tif closeAt < 0 {\n\t\t\t\ti += n // an unclosed opener is literal backticks\n\t\t\t\tcontinue\n\t\t\t}",
       "new": "\t\t\tif closeAt < 0 {\n\t\t\t\tcloseAt = len(cell)\n\t\t\t}"
     },
     {
       "name": "leading space inside a span no longer trimmed",
-      "file": "verifyrows.go",
-      "old": "\t\t\t\ttext:     strings.TrimSpace(cell[i+n : closeAt]),",
-      "new": "\t\t\t\ttext:     cell[i+n : closeAt],"
+      "file": "briefdoc/verification.go",
+      "old": "\t\t\t\tText:     strings.TrimSpace(cell[i+n : closeAt]),",
+      "new": "\t\t\t\tText:     cell[i+n : closeAt],"
     },
     {
       "name": "cmd-marker-overrides-command never raised",
       "file": "verifyrows.go",
-      "old": "\tif first := markerOverridesCommandSpan(cmdCell); first != \"\" {",
-      "new": "\tif first := markerOverridesCommandSpan(cmdCell); first != \"\" && false {"
+      "old": "\tif first := briefdoc.MarkerOverridesCommandSpan(cmdCell); first != \"\" {",
+      "new": "\tif first := briefdoc.MarkerOverridesCommandSpan(cmdCell); first != \"\" && false {"
     },
     {
       "name": "cmd-marker-overrides-command fires on a one-token first span too",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "\tif !strings.ContainsAny(first, \" \\t\") {\n\t\treturn \"\"\n\t}\n\treturn first",
       "new": "\treturn first"
     },
     {
       "name": "cmd-marker-not-honoured never raised",
       "file": "verifyrows.go",
-      "old": "\tif len(m) == 0 && rawMarkerPresent(cmdCell) {",
-      "new": "\tif len(m) == 0 && rawMarkerPresent(cmdCell) && false {"
+      "old": "\tif len(m) == 0 && briefdoc.RawMarkerPresent(cmdCell) {",
+      "new": "\tif len(m) == 0 && briefdoc.RawMarkerPresent(cmdCell) && false {"
     },
     {
       "name": "the bare `cmd:` mention arm dropped",
-      "file": "verifyrows.go",
-      "old": "\tcase first == verifyCommandMarker:",
+      "file": "briefdoc/verification.go",
+      "old": "\tcase first == CommandMarker:",
       "new": "\tcase false:"
     },
     {
       "name": "the source/doc extension arm dropped",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "\tcase nonExecExtensions[ext]:",
       "new": "\tcase false && nonExecExtensions[ext]:"
     },
@@ -159,9 +159,9 @@
     },
     {
       "name": "prose-led reason never set on the row",
-      "file": "verifyrun.go",
-      "old": "proseLedCommandWhy(r.Command); why != \"\" {",
-      "new": "proseLedCommandWhy(r.Command); false && why != \"\" {"
+      "file": "briefdoc/verification.go",
+      "old": "ProseLedCommandWhy(r.Command); why != \"\" {",
+      "new": "ProseLedCommandWhy(r.Command); false && why != \"\" {"
     },
     {
       "name": "cmd-marker-vacuous never raised",
@@ -190,8 +190,8 @@
     {
       "name": "CR-1808-3: transcribe-verdict re-executes a prose-led check:ci row (prose-led gate dropped)",
       "file": "transcribeverdict.go",
-      "old": "\t\t\t\tif first, why := proseLedCommandWhy(row.Command); why != \"\" {",
-      "new": "\t\t\t\tif first, why := proseLedCommandWhy(row.Command); false && why != \"\" {"
+      "old": "\t\t\t\tif first, why := briefdoc.ProseLedCommandWhy(row.Command); why != \"\" {",
+      "new": "\t\t\t\tif first, why := briefdoc.ProseLedCommandWhy(row.Command); false && why != \"\" {"
     },
     {
       "name": "A2: --check audits a pass witness on a prose-led row as pass",
@@ -213,117 +213,117 @@
     },
     {
       "name": "SR-1808-1 rr4: an escaped dollar no longer taints the cell (spaced escaped dollars honour the marker)",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "\t\t\tif cell[i+1] == '$' {\n\t\t\t\tplain = false",
       "new": "\t\t\tif false {\n\t\t\t\tplain = false"
     },
     {
       "name": "SR-1808-1 rr4: a character reference no longer taints the cell (spaced reference dollars honour the marker)",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "\t\tcase c == '&' && charRefRe.MatchString(cell[i:]):",
       "new": "\t\tcase false && c == '&':"
     },
     {
       "name": "SR-1808-1 rr4: a span opener fused to the prose before it no longer taints the cell (an autolink-glued marker is honoured)",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "\t\t\tif !parenLed(cell, i) {\n\t\t\t\tplain = false",
       "new": "\t\t\tif false {\n\t\t\t\tplain = false"
     },
     {
       "name": "SR-1808-1 rr4: the marker opener need not follow whitespace (a paren-led marker is honoured)",
-      "file": "verifyrows.go",
-      "old": "\t\tif !sp.spaceLed {\n\t\t\treturn nil",
+      "file": "briefdoc/verification.go",
+      "old": "\t\tif !sp.SpaceLed {\n\t\t\treturn nil",
       "new": "\t\tif false {\n\t\t\treturn nil"
     },
     {
       "name": "SR-1808-1 rr4: the marker closer need not stand clear (a marker glued to the text after it is honoured)",
-      "file": "verifyrows.go",
-      "old": "\t\tif !sp.cleanEnd {\n\t\t\treturn nil",
+      "file": "briefdoc/verification.go",
+      "old": "\t\tif !sp.CleanEnd {\n\t\t\treturn nil",
       "new": "\t\tif false {\n\t\t\treturn nil"
     },
     {
       "name": "SR-1808-1 rr4 over-taint: a `(` no longer allowed before a span opener (a parenthesised mention taints the cell)",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "\tfor j > 0 && cell[j-1] == '(' {",
       "new": "\tfor false && j > 0 && cell[j-1] == '(' {"
     },
     {
       "name": "SR-1808-1 rr4 over-taint: plain punctuation after the marker closer no longer allowed",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "|| strings.IndexByte(\".,;:!?)\", cell[k]) >= 0",
       "new": "|| false"
     },
     {
       "name": "#2684: the comment-only arm is dropped (an inline `## Coverage` heading lifts as the command and passes empty)",
-      "file": "verifyrows.go",
-      "old": "\tif shellCommentOnly(lifted) {",
-      "new": "\tif false && shellCommentOnly(lifted) {"
+      "file": "briefdoc/verification.go",
+      "old": "\tif ShellCommentOnly(lifted) {",
+      "new": "\tif false && ShellCommentOnly(lifted) {"
     },
     {
-      "name": "#2684: shellCommentOnly never matches (the shared comment vectors stop holding)",
-      "file": "verifyrows.go",
+      "name": "#2684: briefdoc.ShellCommentOnly never matches (the shared comment vectors stop holding)",
+      "file": "briefdoc/verification.go",
       "old": "\treturn strings.HasPrefix(strings.TrimSpace(cmd), \"#\")",
       "new": "\treturn false"
     },
     {
       "name": "#2684 review F2: a marked command that is all comment is exempt again (statusgen runs it, verifyloop refuses it)",
-      "file": "verifyrows.go",
-      "old": "\t\tif shellCommentOnly(m[0]) {",
-      "new": "\t\tif false && shellCommentOnly(m[0]) {"
+      "file": "briefdoc/verification.go",
+      "old": "\t\tif ShellCommentOnly(m[0]) {",
+      "new": "\t\tif false && ShellCommentOnly(m[0]) {"
     },
     {
       "name": "#2684 review F2: a marked comment's remedy is the generic one (it tells a marked row to add the marker)",
-      "file": "verifyrows.go",
-      "old": "\tcase strings.HasSuffix(why, shellCommentMarkedWhy):",
+      "file": "briefdoc/verification.go",
+      "old": "\tcase strings.HasSuffix(why, ShellCommentMarkedWhy):",
       "new": "\tcase false:"
     },
     {
       "name": "#3147 A2: an unmarked no-op lift (`:`, REM, ::) is no longer refused",
-      "file": "verifyrows.go",
-      "old": "\tif shellNoOp(lifted) {",
-      "new": "\tif false && shellNoOp(lifted) {"
+      "file": "briefdoc/verification.go",
+      "old": "\tif ShellNoOp(lifted) {",
+      "new": "\tif false && ShellNoOp(lifted) {"
     },
     {
       "name": "#3147 A2: a `cmd:`-marked no-op is accepted as the author's command",
-      "file": "verifyrows.go",
-      "old": "\t\tif shellNoOp(m[0]) {",
-      "new": "\t\tif false && shellNoOp(m[0]) {"
+      "file": "briefdoc/verification.go",
+      "old": "\t\tif ShellNoOp(m[0]) {",
+      "new": "\t\tif false && ShellNoOp(m[0]) {"
     },
     {
       "name": "#3147 A2: a cmd.exe REM remark is not a no-op",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "== \"rem\" {",
       "new": "== \"rem-never\" {"
     },
     {
       "name": "#3147 A2: a cmd.exe :: remark is not a no-op",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "strings.HasPrefix(c, \"::\")",
       "new": "false"
     },
     {
       "name": "#3147 A2: a colon followed by a real command (`: ; test -d .`) is refused as a no-op",
-      "file": "verifyrows.go",
+      "file": "briefdoc/verification.go",
       "old": "!strings.ContainsAny(c, \";&|\\n\")",
       "new": "true"
     },
     {
       "name": "#3147 A2: a no-op's remedy is the generic marker remedy",
-      "file": "verifyrows.go",
-      "old": "\tcase strings.HasSuffix(why, shellNoOpDetail):",
+      "file": "briefdoc/verification.go",
+      "old": "\tcase strings.HasSuffix(why, ShellNoOpDetail):",
       "new": "\tcase false:"
     },
     {
       "name": "#3147 A2: the row finding for a no-op gives the prose-mention (marker) text",
       "file": "verifyrows.go",
-      "old": "|| why == shellNoOpWhy || why == shellNoOpMarkedWhy {",
+      "old": "|| why == briefdoc.ShellNoOpWhy || why == briefdoc.ShellNoOpMarkedWhy {",
       "new": "{"
     },
     {
       "name": "#3147 A2: a marked no-op is reported as the first span",
-      "file": "verifyrun.go",
-      "old": "why == shellCommentMarkedWhy || why == shellNoOpMarkedWhy {",
-      "new": "why == shellCommentMarkedWhy {"
+      "file": "briefdoc/verification.go",
+      "old": "why == ShellCommentMarkedWhy || why == ShellNoOpMarkedWhy {",
+      "new": "why == ShellCommentMarkedWhy {"
     }
   ]
 }
