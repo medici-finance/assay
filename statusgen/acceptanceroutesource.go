@@ -29,6 +29,13 @@ type acceptanceRefusal struct {
 // readAcceptanceSource binds the full close scan to a committed brief and its
 // stream README. Callers must resolve the canonical brief before calling it.
 func readAcceptanceSource(root, briefPath string) (acceptanceSource, error) {
+	return readAcceptanceSourceAt(root, briefPath, "")
+}
+
+// readAcceptanceSourceAt rechecks an already bound revision against the current
+// checkout. Unrelated descendant commits do not stale an unchanged brief and
+// stream README. A replaced or off-branch source is refused.
+func readAcceptanceSourceAt(root, briefPath, revision string) (acceptanceSource, error) {
 	repo, err := attestationTrackingRepo(root)
 	if err != nil {
 		return acceptanceSource{}, err
@@ -37,7 +44,14 @@ func readAcceptanceSource(root, briefPath string) (acceptanceSource, error) {
 	if err != nil {
 		return acceptanceSource{}, fmt.Errorf("acceptance source: read HEAD: %w", err)
 	}
-	rev := strings.TrimSpace(string(head))
+	current := strings.TrimSpace(string(head))
+	rev := revision
+	if rev == "" {
+		rev = current
+	}
+	if !isObjectID(rev) || historyGit(root, "merge-base", "--is-ancestor", rev, current).Run() != nil {
+		return acceptanceSource{}, fmt.Errorf("acceptance source: bound revision is not a committed ancestor of HEAD")
+	}
 	rel, inside := relWithin(root, briefPath)
 	if !inside {
 		return acceptanceSource{}, fmt.Errorf("acceptance source: brief is outside the repository")
@@ -81,7 +95,11 @@ func readAcceptanceBlob(root, rev, rel string) (string, []byte, error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("acceptance source: read %s at %s: %w", rel, rev, err)
 	}
-	working, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+	path := filepath.Join(root, filepath.FromSlash(rel))
+	if resolved, inside := relWithin(root, path); !inside || resolved != rel {
+		return "", nil, fmt.Errorf("acceptance source: %s does not resolve to its canonical path", rel)
+	}
+	working, err := os.ReadFile(path)
 	if err != nil {
 		return "", nil, fmt.Errorf("acceptance source: read %s: %w", rel, err)
 	}

@@ -9,12 +9,12 @@ import (
 )
 
 type acceptanceManifest struct {
-	Source             acceptanceSource        `json:"source"`
-	AcceptanceVersion  int                     `json:"acceptanceVersion"`
-	Original           string                  `json:"original"`
-	OriginalVerifyHash string                  `json:"originalVerifyHash"`
-	Runs               []acceptanceRun         `json:"runs"`
-	Dispositions       []acceptanceDisposition `json:"dispositions"`
+	Source              acceptanceSource        `json:"source"`
+	AcceptanceVersion   int                     `json:"acceptanceVersion"`
+	Original            string                  `json:"original"`
+	ProtectedVerifyHash string                  `json:"protectedVerifyHash"`
+	Runs                []acceptanceRun         `json:"runs"`
+	Dispositions        []acceptanceDisposition `json:"dispositions"`
 }
 
 type acceptanceDisposition struct {
