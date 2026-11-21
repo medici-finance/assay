@@ -127,12 +127,10 @@ func TestKubeCompatRestartHolds(t *testing.T) {
 					t.Fatal("absence was accepted as clean termination")
 				}
 			case "wrong-candidate-image":
-				// Leave the original on-disk profile in place; the fake now reports a different role image.
+				// The configured and Pod-spec images match. Only observed container status differs.
 				wantAttach, wantStart = "execution could not be measured", "execution could not be measured"
-				s.Change(role, func(_ *testfixture.RoleState) {
-					v := s.Profile.Roles[role]
-					v.Image = s.Profile.Roles["intake-desk"].Image
-					s.Profile.Roles[role] = v
+				s.Change(role, func(r *testfixture.RoleState) {
+					r.ObservedImageID = "docker-pullable://" + s.Profile.Roles["intake-desk"].Image
 				})
 			}
 			if got := w.run(t, nil, "attach", "example", role); got.Code == 0 {

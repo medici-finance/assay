@@ -91,11 +91,11 @@ try:
  results.append(dict(test='positive',exit=rc,byte_without_newline=immediate,state=json.loads((w/'.assay-compat/state.json').read_text()),events=events(w),stdout=out,stderr=err))
  before=len(events(w));name,p,m=launch('samepod',w,lid,base)
  rc,out,err=finish(name,p);assert rc==78 and len(events(w))==before,(rc,out,err);results.append(dict(test='samePod-history-hold',exit=rc,agent_event_count_unchanged=len(events(w))==before,stderr=err))
- assert immediate and (w/'retained-work.bin').read_bytes()==b'q'
+ assert immediate and (w/'retained-work.bin').read_bytes()==b'q', 'first execution did not write the terminal byte'
  name,p,m=launch('newpod',w,lid,base,pod='pod-b')
  assert wait_for(lambda:any(e['kind']=='retained-read' for e in events(w)[before:])), events(w)[before:]
  readback=next(e for e in events(w)[before:] if e['kind']=='retained-read')
- assert readback['session']=='example-worker-desk-pod-b' and readback['hex']=='71', readback
+ assert readback['session']=='example-worker-desk-pod-b' and readback['hex']=='71', ('new execution did not read the retained terminal byte',readback)
  p.stdin.write(frame(lid,'pod-b'));p.stdin.flush();rc,out,err=finish(name,p);assert rc==0 and json.loads((w/'.assay-compat/state.json').read_text())['state']=='clean' and len([e for e in events(w) if e['kind']=='agent'])==2,(rc,out,err);results.append(dict(test='clean-newPod-restart',exit=rc,state=json.loads((w/'.assay-compat/state.json').read_text()),stderr=err))
  w,lid,base=case('dirty');s=w/'.assay-compat/state.json';v=json.loads(s.read_text());v.update(state='intent',pod_uid='prior-pod');s.write_text(json.dumps(v))
  name,p,m=launch('dirty',w,lid,base);rc,out,err=finish(name,p);assert rc==78 and not events(w),(rc,out,err);results.append(dict(test='dirty-history-hold',exit=rc,events=events(w),state=json.loads(s.read_text()),stderr=err))
@@ -133,7 +133,7 @@ try:
  before_unclean_retry=len(events(w))
  name,p,m=launch('retry-unclean',w,lid,base,pod='new-pod')
  rc,out,err=finish(name,p)
- assert rc==78 and len(events(w))==before_unclean_retry,(rc,out,err)
+ assert rc==78 and len(events(w))==before_unclean_retry,('unclean predecessor must hold with zero additional launches',rc,out,err)
  for label,content in [('failed-exec','#!/not-a-real-interpreter\n'),('instant-exit','#!/bin/sh\nexit 0\n')]:
   agent=root/(label+'-agent');agent.write_text(content);agent.chmod(0o755)
   w,lid,base=case(label);profile_path=w/'profile.json';v=json.loads(profile_path.read_text());v['agent']='/qa/'+agent.name;v['agent_sha256']=sha(agent);profile_path.write_text(json.dumps(v));lid=hashlib.sha256(json.dumps(v,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()

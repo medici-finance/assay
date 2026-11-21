@@ -77,6 +77,9 @@ def main():
     results = [json.loads(line) for line in run.stdout.splitlines() if line.startswith("{")]
     if len(results) != 1 or results[0].get("suite") != "pid1-controlled-restart":
         raise SystemExit("could-not-check: missing PID-1 controlled restart result")
+    if args.self_test:
+        controls = HERE / "testdata/qualification/restart_controls.py"
+        subprocess.run([sys.executable, "-I", str(controls), "--offline"], env=env, check=True)
     source = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, env=env, text=True).strip()
     go_version = subprocess.check_output(["go", "version"], env=env, text=True).strip()
     print(json.dumps({"source": source, "go": go_version, "python": sys.version.split()[0],
