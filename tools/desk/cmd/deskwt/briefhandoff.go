@@ -7,7 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/gitexec"
 )
 
 // The forge read is made only for an explicitly requested brief handoff, after the
@@ -28,19 +30,21 @@ var handoffChange = func(repo string, pr int) (*deskkit.PullRequest, error) {
 // A present ref alone does not identify the new holder. Read the claim tool's
 // HELD wire line and match only the fixed owner/state fields, never the note.
 var handoffOwnedClaim = func(dir, repo, key, session string) (bool, error) {
-	owner, name, _ := strings.Cut(repo, "/")
-	url, err := runGit(dir, "remote", "get-url", "origin")
+	urls, err := originURLs(dir, false)
 	if err != nil {
 		return false, err
 	}
-	cred, err := deskkit.ResolveRoleCredential("worker", deskkit.ForgeRepo{Owner: owner, Name: name}, url)
+	if len(urls) == 0 {
+		return false, fmt.Errorf("no fetch URL for the claim repository")
+	}
+	credentialPath, err := roleCredentialPath("worker", repo, urls[0])
 	if err != nil {
 		return false, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), claimListTimeout)
 	defer cancel()
 	r := deskkit.Run(deskkit.ToolCall{Context: ctx, Dir: dir, Name: "deskclaim-ref", Start: execCommand,
-		Args: []string{"show", key, "--repo", repo, "--token-file", cred.Path}, Env: claimListEnv()})
+		Args: []string{"show", key, "--repo", repo, "--token-file", credentialPath}, Env: claimListEnv()})
 	if r.Failed() {
 		return false, r.Fail(deskkit.ExitUnverifiable, "cannot confirm the PR claim owner")
 	}
@@ -72,14 +76,19 @@ func briefHandoff(g *pathGuard, dir, candidate, repo, branch, head, next string)
 	if why, locked := locks[rt]; locked && sessionFromLockReason(why) != session {
 		return "", deskkit.Refused("the checkout has another owner's lock")
 	}
-	if ext, err := runGit(rt, "config", "--bool", "--get", "extensions.worktreeConfig"); err != nil || ext != "true" {
+	if !worktreeConfigEnabled(rt) {
 		return "", deskkit.Refused("the checkout has no worktree-scoped configuration")
 	}
-	ref, err := runGit(rt, "symbolic-ref", "-q", "HEAD")
+	checkout, err := gitcore.Open(rt)
+	if err != nil {
+		return "", deskkit.Unverifiable("cannot open the registered checkout", err)
+	}
+	ref, err := checkout.SymbolicRefTarget("HEAD")
 	if err != nil || ref != "refs/heads/"+branch {
 		return "", deskkit.Refused("the checkout no longer holds the PR branch")
 	}
-	tip, err := runGit(rt, "rev-parse", "--verify", "HEAD^{commit}")
+	// runAdd already checked that head names a commit in this common object store.
+	tip, err := checkout.HeadID()
 	if err != nil || tip != head {
 		return "", deskkit.Refused("the checkout is not at the confirmed PR head")
 	}
@@ -90,15 +99,14 @@ func briefHandoff(g *pathGuard, dir, candidate, repo, branch, head, next string)
 	if rec.repo != repo || rec.store != deskkit.ClaimStoreForgeRef {
 		return "", deskkit.Refused("the original dispatch's claim repository or store cannot be confirmed")
 	}
-	refKey := "assay.dispatchRef"
+	sourceRef := rec.dispatchRef
 	if rec.key == next {
 		// An interrupted handoff may already have written the PR key. The
 		// original receipt survives both that write and the next dispatch ref.
-		refKey = "assay.handoffSourceRef"
+		sourceRef = rec.handoffSourceRef
 	}
-	sourceRef, err := runGit(rt, "config", "--file", filepath.Join(admin, "config.worktree"), "--no-includes", "--get", refKey)
 	sourceKey, _, ok := strings.Cut(sourceRef, "@")
-	if err != nil || !ok || sourceKey == next || (rec.key != sourceKey && rec.key != next) || !deskkit.ValidDispatchRef(sourceKey, sourceRef) {
+	if !ok || sourceKey == next || (rec.key != sourceKey && rec.key != next) || !deskkit.ValidDispatchRef(sourceKey, sourceRef) {
 		return "", deskkit.Refused("the checkout has no matching original brief dispatch receipt")
 	}
 	previous, err := deskkit.LatestUsageDispatch(sourceKey)
@@ -145,7 +153,7 @@ func briefHandoff(g *pathGuard, dir, candidate, repo, branch, head, next string)
 	if !owned {
 		return "", deskkit.Refused("the new PR claim does not belong to this session")
 	}
-	if _, err := runGit(rt, "config", "--worktree", "assay.handoffSourceRef", sourceRef); err != nil {
+	if _, err := gitexec.Run("deskwt", rt, "config", "--file", filepath.Join(admin, "config.worktree"), "assay.handoffSourceRef", sourceRef); err != nil {
 		return "", deskkit.Unverifiable("could not preserve the original dispatch receipt for retry", err)
 	}
 	return rt, nil
