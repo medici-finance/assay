@@ -913,5 +913,217 @@ The rest are reversible and ranked last, not derived:
 
 **VERIFY: BLOCKED** — 8/9 rows pass: rows 1-8 in the network-off container bracket. Row 9 passes every local stage, but its last stage needs a forge read that admitted verifier rows cannot make, and it exits 6 at both base and head (#4691). I observed no failed obligation. Clearing it is a driver act: move row 9's forge read to a lane an admitted row can use (#4691).
 
+### Non-implementer verifier re-run: 2026-11-18, assay-verifier-app[bot] (claude-opus-5-5 verifier), merged main 9c845402c8c00d7c14bda75cd5222fff907fd05d
+
+Window: 2026-11-18T16:59Z to 2026-11-18T17:25Z, under desk-tools and statusgen v1.0.87. Delivering change: #2427, squash commit 8164deac5a712b5209d8434ac3007857a001bd0b, an ancestor of 9c845402c. Pre-work admission: `deskdispatch --check-verifier` exited 0 for this home and brief before any row, and again before landing. The binding is run 8253f8469ebc, source 9c845402c8c0, model claude-opus-5-5, tier strong; the attestation issue is #6951.
+
+What changed since the 2026-11-14 run (48e6fddbe):
+- Unchanged: the Verify table, byte for byte. The record code is also byte-identical: `deskkit`'s `dispatchrecord.go`, `dispatchrecord_test.go` and `dispatchinstructions.go`; `deskdispatch`'s `dispatchrecord.go`, `dispatchrecord_test.go` and `brief.go`; and `deskclaim-ref`'s `claim.go`.
+- Changed: `deskdispatch/dispatch.go` and other `deskkit` files, which are on the plan's wake list. The verify-runner image moved to v1.0.87. `gitcore` changed: 1c9de34e2 (2026-11-16) makes scoped remote reads refuse command-priority config. That change matters to row 1 below.
+
+Rows 1-8 (check:ci) ran in one container bracket with `--rows 1,2,3,4,5,6,7,8`, in the verify-runner v1.0.87 image.
+- Image: run by the index digest sha256:c67baa7a3c8ba3d514128f31340489146525a50c29ebb641a68899c650d354a1, natively on linux/arm64. It carries go 1.27.4, git 2.56.1 and statusgen v1.0.87.
+- Sandbox: the container flags the open step printed (`--network none`, a `--read-only` root, the module cache read-only at /go/pkg/mod, `GOPROXY=off`, `GOTOOLCHAIN=local`, `GOFLAGS=-mod=readonly`). On top of those: `KUBECONFIG=/dev/null`, all capabilities dropped, and no-new-privileges. Rows ran as non-root uid 501, with mounted passwd and group entries.
+- Mounts:
+  - The source tree was mounted read-only at its own path, as the work directory.
+  - The repository's git dir was mounted read-only at its own path, so the home's `.git` file resolves unchanged.
+  - A fresh module cache was mounted read-only. The open step downloaded it into a new empty directory, and the witness's Module-Cache line records its digest.
+  - GOCACHE and HOME were on tmpfs. In this bracket, /tmp was a host directory outside the home rather than tmpfs, so a failing row's own files could be inspected afterwards.
+- Limits: `--timeout 30m` per row. The bracket opened at 17:10:55Z and closed at 17:22:39Z.
+- Bracket: opened and closed on the host. `--bracket-digest` reads `verdict=match`, `span-lines=tree-digest:1,container-image:1,attestation:1`; with `--credit` it reads `credit=could-not-check`, because the witness file sits outside a work tree. The home's `git status --porcelain` was empty after the container step and after the close step.
+
+Row 9 (gate:model) ran on the host after the bracket closed, as `--rows 9`. No forge credential was exported into any row.
+
+Rows 1-8, as the bracket wrote them:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test -count=1 -timeout 1200s -v ./cmd/deskdispatch/... ./cmd/deskclaim-ref/... ./internal/deskkit/... > "${TMPDIR:-/tmp}/b28-all.out" 2>&1 && test "$(grep -c -e '^--- PASS: TestDispatchRecord_Refusals ' -e '^--- PASS: TestDispatchRecordWrittenAtModelStamp ' -e '^--- PASS: TestDispatchRefRecordedInWorktree ' -e '^--- PASS: TestReleaseWritesReleasedRecord ' -e '^--- PASS: TestDispatchRecordFailureNeverFailsDispatch ' "${TMPDIR:-/tmp}/b28-all.out")" -eq 5` | fail exit=1 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestDispatchRecord_Refusals$' -v > "${TMPDIR:-/tmp}/b28-refusals.out" 2>&1 && grep -F -e '--- PASS: TestDispatchRecord_Refusals' "${TMPDIR:-/tmp}/b28-refusals.out"` | pass exit=0 sandbox=container-netns | sha256:67af7983c330 | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDispatchRecordWrittenAtModelStamp$' -v > "${TMPDIR:-/tmp}/b28-write.out" 2>&1 && grep -F -e '--- PASS: TestDispatchRecordWrittenAtModelStamp' "${TMPDIR:-/tmp}/b28-write.out"` | pass exit=0 sandbox=container-netns | sha256:9ae18b3098b6 | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDispatchRefRecordedInWorktree$' -v > "${TMPDIR:-/tmp}/b28-wt.out" 2>&1 && grep -F -e '--- PASS: TestDispatchRefRecordedInWorktree' "${TMPDIR:-/tmp}/b28-wt.out"` | pass exit=0 sandbox=container-netns | sha256:42e7817d9809 | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/deskclaim-ref/ -run '^TestReleaseWritesReleasedRecord$' -v > "${TMPDIR:-/tmp}/b28-rel.out" 2>&1 && grep -F -e '--- PASS: TestReleaseWritesReleasedRecord' "${TMPDIR:-/tmp}/b28-rel.out"` | pass exit=0 sandbox=container-netns | sha256:adda8bbd379d | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDispatchRecordFailureNeverFailsDispatch$' -v > "${TMPDIR:-/tmp}/b28-nonfatal.out" 2>&1 && grep -F -e '--- PASS: TestDispatchRecordFailureNeverFailsDispatch' "${TMPDIR:-/tmp}/b28-nonfatal.out"` | pass exit=0 sandbox=container-netns | sha256:78811cccad2d | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test -count=1 -timeout 300s ./cmd/deskdispatch/ -run '^TestDispatchRecordsRunKey$' -v > "${TMPDIR:-/tmp}/b28-runkey.out" 2>&1 && go test -count=1 -timeout 300s ./cmd/deskdispatch/ -run '^TestDispatchRefRecordedInWorktree$' -v >> "${TMPDIR:-/tmp}/b28-runkey.out" 2>&1 && grep -e '^--- PASS: TestDispatchRecordsRunKey ' "${TMPDIR:-/tmp}/b28-runkey.out" && grep -e '^--- PASS: TestDispatchRefRecordedInWorktree ' "${TMPDIR:-/tmp}/b28-runkey.out"` | pass exit=0 sandbox=container-netns | sha256:75203d2298c5 | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `D=$(git log -1 --diff-filter=A --format=%H HEAD -- tools/desk/internal/deskkit/dispatchrecord.go) && test -n "$D" && statusgen --consumers --root . --brief desk-supervision/28 --delivery "$D" --base "$(git rev-parse "$D^")" > "${TMPDIR:-/tmp}/b28-cons.out" 2>&1 && test "$(sed -n 's/^summary: \([0-9]*\) corroborated, 0 disproved.*/\1/p' "${TMPDIR:-/tmp}/b28-cons.out")" -ge 5` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:2ded1bc2b15c8ec9dd8a3fa08a545caa03889f4360b13d60c31e628b8a9b2715
+Container-Image: sha256:c67baa7a3c8ba3d514128f31340489146525a50c29ebb641a68899c650d354a1
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6951 run=8253f8469ebce4ffc767028036cfcd2f8920f2022b7ae7a21fb154220748e08e source=9c845402c8c00d7c14bda75cd5222fff907fd05d brief=docs/streams/desk-supervision/brief-28-dispatch-record.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=8253f8469ebce4ffc767028036cfcd2f8920f2022b7ae7a21fb154220748e08e source=9c845402c8c00d7c14bda75cd5222fff907fd05d tree=sha256:2ded1bc2b15c8ec9dd8a3fa08a545caa03889f4360b13d60c31e628b8a9b2715 witness=sha256:139abec06b11f4a7c51c9f0f72f50eb908e7a1137da6f2eedfc52cdc4e86e138 opened=2026-11-18T17:10:55Z closed=2026-11-18T17:22:39Z before=receipt after=check-verifier
+
+Row 9, on the host:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 9 | `R0=$(git config --get assay.dispatchRef) && L=$(jq -c -R --arg r "$R0" 'fromjson? \| select(.event == "dispatched" and .dispatch_ref == $r)' "$HOME/.config/assay/dispatch-records.jsonl") && test "$(printf '%s\n' "$L" \| grep -c .)" -eq 1 && K=$(printf '%s' "$L" \| jq -r .claim_key) && R=$(printf '%s' "$L" \| jq -r .repo) && printf '%s' "$L" \| jq -e --arg k "$K" '.event == "dispatched" and (.dispatch_ref \| startswith($k + "@"))' && deskclaim-ref show "$K" --repo "$R"` | fail exit=2 | sha256:fc410c817892 | 2026-11-18 | assay-verifier-app[bot] @ 9c845402c8c0 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#6951 run=8253f8469ebce4ffc767028036cfcd2f8920f2022b7ae7a21fb154220748e08e source=9c845402c8c00d7c14bda75cd5222fff907fd05d brief=docs/streams/desk-supervision/brief-28-dispatch-record.md model=claude-opus-5-5 tier=strong
+
+Observed against Expect. Every row's Date and Runner cells are in the tables above: 2026-11-18, assay-verifier-app[bot] @ 9c845402c8c0, with a claude-opus-5-5 verifier.
+
+- Row 1: Expect exit 0. Observed: fail exit=1 in the bracket; the chained `go test` exited non-zero, so the PASS-line count never ran.
+  - Disposition: could-not-run (instrument), not FAIL.
+  - Cause: statusgen's admitted-row environment always sets `GIT_CONFIG_COUNT=2`, carrying two grep keys (`admittedRowEnv`, statusgen/verifieradmission.go, since #2324). Since 1c9de34e2, gitcore's scoped remote reads refuse while any command-priority config is set. So every test in the three package trees that reads a fixture origin fails closed with "origin could be changed by worktree-scope or include config … command-priority config (GIT_CONFIG_COUNT, GIT_CONFIG_PARAMETERS or GIT_CONFIG) is set".
+  - Supplemental diagnostic, no credit: in the same image and sandbox, I ran the row's `go test` in a copy of the admitted row environment (fresh HOME and TMPDIR, statusgen's Git variables).
+    - Result: 16 tests outside this brief failed, in `deskdispatch` (resume, rework and cross-repository verifier tests) and `deskkit` (work-source, origin-slug, beacon-store and attestation tests).
+    - The row's five anchored PASS lines were all present (count 5).
+    - Removing only `GIT_CONFIG_COUNT` and its keys turns green all nine origin-reading tests I bisected: three in `deskdispatch` and six in `deskkit`.
+    - Two bisected tests stayed red without it (`TestBeaconStoreConcurrentProcessesPreserveFields`, `TestAttestCaseVariantRoot`). They came from the diagnostic's own TMPDIR on a case-insensitive host directory. They did not occur with TMPDIR on tmpfs: the same `go test` with no Git variables passed every package (rc 0) earlier today. I did not bisect the other five `deskdispatch` failures (resume and rework).
+  - None of the failing tests is one of the five record tests this row counts. The record code is byte-identical to the 2026-11-14 run, where row 1 passed.
+- Rows 2-6: Expect exit 0, plus each row's named behaviour: the listed refusals; a single `dispatched` line; the worktree ref; the `released` record; and a record failure that never fails the dispatch. Observed: each passed exit=0 in the bracket, run as non-root uid 501, with each row's anchored PASS line found.
+- Row 7: Expect exit 0. Observed: pass exit=0 in the bracket. Both anchored PASS lines were found (TestDispatchRecordsRunKey, TestDispatchRefRecordedInWorktree).
+- Row 8: Expect exit 0, with every `consumers:` routing corroborated by the implementation diff. Observed: pass exit=0 in the bracket. `--delivery` resolved to the commit that added `dispatchrecord.go` (8164deac5), with its parent as `--base`. The command's own assertion held: a summary with 0 disproved and at least 5 corroborated.
+- Row 9: Expect exit 0, jq printing `true`, and `deskclaim-ref show` printing `HELD` followed by the same key.
+  - Observed: fail exit=2 at 17:24Z, output sha256:fc410c817892; the row did not complete.
+  - Disposition: could-not-run (instrument), not FAIL.
+  - Cause: an admitted run now gives each row a fresh, empty HOME (`admittedRowDirs`). The row's second stage reads `$HOME/.config/assay/dispatch-records.jsonl`, which that HOME does not hold, so `jq` exits 2. With an empty HOME, the same stage reproduces exit 2 ("Could not open file"). The last stage's forge read is still #4691, which I read as OPEN on 2026-11-18 as the verifier App.
+  - Local diagnostic (no credit, no forge call), on the host, 2026-11-18, assay-verifier-app[bot] @ 9c845402c8c0:
+    - `git config --get assay.dispatchRef` returns `assay--desk-supervision--28@20261118T165557Z.487b482ba5ac` from this home's worktree config.
+    - Exactly 1 line in the verifier's own store matches it. Its fields: event `dispatched`, claim_key `assay--desk-supervision--28`, repo `medici-finance/assay`, kit `verifier`, brief `assay:assay:desk-supervision:28`, tier `strong`, brief_exec_tier `strong`, brief_effort `M`, model_stamp `applied`, attempt_local 18.
+    - The row's `jq -e` stage prints `true` with exit 0. The store file reads `-rw-------`.
+
+Fail-first: not owed, because the frontmatter risk answers are all no. I first tried `--fail-first --delivering-commit 8164deac5a71` on row 9. statusgen refused it with exit 2 before any row ran: `GIT_CONFIG_COUNT` from the declared verifier Git environment selects a native Git profile its library read does not qualify. I kept that environment unchanged. Row 9 then ran in the declared host lane, `--rows 9`.
+
+Attempts:
+- Attempt 1, 2026-11-18T16:59:12Z to 2026-11-18T17:04:40Z: the container bracket for rows 1-8, with /tmp on tmpfs. Row 1 fail exit=1; rows 2-8 pass. Its bracket closed with `verdict=match`. Discarded (superseded): I re-ran it so row 1's own output could be inspected. Its witness is not landed.
+- Attempt 2, 2026-11-18T17:10:17Z to 2026-11-18T17:24:35Z: the container bracket for rows 1-8 above, then the host run of row 9. Uncredited (credit-unchecked).
+
+Risk-bearing value: the frontmatter risk answers are all no, but the delivering diff touches `tools/desk/internal/deskkit/`, which is a security-path trigger. The record code in `deskkit` at 9c845402c is byte-identical to 48e6fddbe, so its literals and line numbers are unchanged. The production entropy binding moved one line, to `dispatch.go:204`.
+
+Enumerated literals:
+- `dispatchrecord.go`:
+  - `dispatchRecordMaxBytes = 256` (:74)
+  - `dispatchRefNonceBytes = 6` (:77)
+  - `dispatchRefTimeLayout = "20060102T150405Z"` (:80)
+  - the `claimKeyRe` bound `{1,226}` (:85)
+  - the `dispatchRefSuffixRe` nonce width `{12}` (:88)
+  - identifier bounds (:103-:108)
+  - the effort set S/M/L (:296)
+  - directory mode `0o700` (:359)
+  - file mode `0o600` (:378)
+  - the scanner's maximum line size, `1024*1024` (:404, :442)
+- `dispatchinstructions.go` (deskkit): `dispatchInstructionsDigestRe` `{64}` (:30).
+- Production entropy: `dispatchEntropy io.Reader = rand.Reader` from crypto/rand @ tools/desk/cmd/deskdispatch/dispatch.go:204.
+
+The top three, derived:
+
+RISK-VALUE: DERIVED — dispatchRefNonceBytes = 6 @ tools/desk/internal/deskkit/dispatchrecord.go:77 — 6 bytes is 48 bits, written as 12 lowercase hex characters. The bytes come from crypto/rand (dispatch.go:204) through `io.ReadFull` in MintDispatchRef (:163). That matches dispatchRefSuffixRe's `{12}` at :88 and the brief's definition. A collision needs the same claim key, the same UTC second and the same 48 random bits.
+RISK-VALUE: DERIVED — claimKeyRe bound {1,226} @ tools/desk/internal/deskkit/dispatchrecord.go:85 — 226 = 256 − (1 for "@" + 16 for the timestamp + 1 for "." + 12 for the nonce), so every ref minted from an accepted key fits within dispatchRecordMaxBytes = 256 @ tools/desk/internal/deskkit/dispatchrecord.go:74. The key's byte range excludes "@" and space, so the key/suffix split is unambiguous.
+RISK-VALUE: DERIVED — record file mode 0o600 @ tools/desk/internal/deskkit/dispatchrecord.go:378 — owner-only, matching the audit log, as the brief's visibility rule requires. The live store reads `-rw-------`.
+
+The rest are reversible and ranked last, not derived:
+- directory mode `0o700` at :359
+- the scanner's maximum line size at :404 and :442
+- the identifier bounds at :103-:108, which follow the brief's grammar
+- `dispatchRefTimeLayout` at :80, the brief's literal ISO-8601 basic form
+- `dispatchInstructionsDigestRe` `{64}` at dispatchinstructions.go:30, the hex width of a SHA-256 digest
+
+**VERIFY: BLOCKED** — 7/9 rows pass: rows 2-8 in the network-off container bracket. Row 1 could not run as an instrument check, because statusgen's admitted-row `GIT_CONFIG_COUNT` trips gitcore's command-priority refusal in tests outside this brief; this brief's five named tests passed. Row 9 could not run: an admitted row's fresh HOME hides the record store, and its forge read is #4691. I observed no failed obligation. Clearing it needs the statusgen/gitcore conflict resolved, and row 9 re-authored as a driver act (#4691).
+
+### Non-implementer verifier re-run: 2026-11-19, assay-verifier-app[bot] (claude-opus-5-5 verifier), merged main 62a6169dc364b3d2968b0ab3144c70eac9743778
+
+Window: 2026-11-19T02:00Z to 2026-11-19T02:13Z, under desk-tools and statusgen v1.0.87. Delivering change: #2427, squash commit 8164deac5a712b5209d8434ac3007857a001bd0b, an ancestor of 62a6169dc. Pre-work admission: `deskdispatch --check-verifier` exited 0 for this home and brief before any row, and again after the bracket closed, before row 9. The binding is run 0c8952d3d321, source 62a6169dc364, model claude-opus-5-5, tier strong; the attestation issue is #7111.
+
+What changed since the 2026-11-18 run (9c845402c):
+- Unchanged: the Verify table, byte for byte. The record code is also byte-identical: `deskkit`'s `dispatchrecord.go`, `dispatchrecord_test.go` and `dispatchinstructions.go`; `deskdispatch`'s `dispatchrecord.go`, `dispatchrecord_test.go` and `brief.go`; and everything under `deskclaim-ref`.
+- Changed: `deskdispatch/dispatch.go`, where the cross-repository verifier now resolves its tracking target once (`verifierTrackingTarget`) before it claims. The production entropy binding stays at line 204.
+- The installed statusgen is still v1.0.87, so its admitted-row environment still sets `GIT_CONFIG_COUNT=2` (statusgen/verifieradmission.go:184). That is #7007, which I read as OPEN on 2026-11-19.
+
+Rows 1-8 (check:ci) ran in one container bracket with `--rows 1,2,3,4,5,6,7,8`, in the verify-runner v1.0.87 image.
+- Image: run by the index digest sha256:c67baa7a3c8ba3d514128f31340489146525a50c29ebb641a68899c650d354a1, natively on linux/arm64. It carries go 1.27.4, git 2.56.1 and statusgen v1.0.87.
+- Sandbox: the container flags the open step printed (`--network none`, a `--read-only` root, the module cache read-only at /go/pkg/mod, `GOPROXY=off`, `GOTOOLCHAIN=local`, `GOFLAGS=-mod=readonly`). On top of those: `KUBECONFIG=/dev/null`, all capabilities dropped, no-new-privileges, and the declared verifier Git environment. Rows ran as non-root uid 501, with mounted passwd and group entries.
+- Mounts: the source tree read-only at its own path, as the work directory; the repository's git dir read-only at its own path, so the home's `.git` file resolves unchanged; the fresh module cache read-only (the open step downloaded it into a new empty directory, and the witness's Module-Cache line records its digest). /tmp, HOME and GOCACHE were tmpfs. Every mount used the `--mount type=bind,...,readonly` form.
+- Limits: `--timeout 30m` per row. The bracket opened at 02:01:01Z and closed at 02:07:09Z.
+- Bracket: opened and closed on the host. `--bracket-digest` reads `verdict=match`, `span-lines=tree-digest:1,container-image:1,attestation:1`. With `--credit --source 62a6169dc364b3d2968b0ab3144c70eac9743778` it reads `credit=could-not-check`, because the witness file sits outside a work tree. The home's `git status --porcelain` was empty after the container step and after the close step.
+
+Rows 1-8, as the bracket wrote them:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go test -count=1 -timeout 1200s -v ./cmd/deskdispatch/... ./cmd/deskclaim-ref/... ./internal/deskkit/... > "${TMPDIR:-/tmp}/b28-all.out" 2>&1 && test "$(grep -c -e '^--- PASS: TestDispatchRecord_Refusals ' -e '^--- PASS: TestDispatchRecordWrittenAtModelStamp ' -e '^--- PASS: TestDispatchRefRecordedInWorktree ' -e '^--- PASS: TestReleaseWritesReleasedRecord ' -e '^--- PASS: TestDispatchRecordFailureNeverFailsDispatch ' "${TMPDIR:-/tmp}/b28-all.out")" -eq 5` | fail exit=1 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestDispatchRecord_Refusals$' -v > "${TMPDIR:-/tmp}/b28-refusals.out" 2>&1 && grep -F -e '--- PASS: TestDispatchRecord_Refusals' "${TMPDIR:-/tmp}/b28-refusals.out"` | pass exit=0 sandbox=container-netns | sha256:67af7983c330 | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDispatchRecordWrittenAtModelStamp$' -v > "${TMPDIR:-/tmp}/b28-write.out" 2>&1 && grep -F -e '--- PASS: TestDispatchRecordWrittenAtModelStamp' "${TMPDIR:-/tmp}/b28-write.out"` | pass exit=0 sandbox=container-netns | sha256:077b81000f8c | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDispatchRefRecordedInWorktree$' -v > "${TMPDIR:-/tmp}/b28-wt.out" 2>&1 && grep -F -e '--- PASS: TestDispatchRefRecordedInWorktree' "${TMPDIR:-/tmp}/b28-wt.out"` | pass exit=0 sandbox=container-netns | sha256:f024f7ad38bc | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/deskclaim-ref/ -run '^TestReleaseWritesReleasedRecord$' -v > "${TMPDIR:-/tmp}/b28-rel.out" 2>&1 && grep -F -e '--- PASS: TestReleaseWritesReleasedRecord' "${TMPDIR:-/tmp}/b28-rel.out"` | pass exit=0 sandbox=container-netns | sha256:237482445247 | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestDispatchRecordFailureNeverFailsDispatch$' -v > "${TMPDIR:-/tmp}/b28-nonfatal.out" 2>&1 && grep -F -e '--- PASS: TestDispatchRecordFailureNeverFailsDispatch' "${TMPDIR:-/tmp}/b28-nonfatal.out"` | pass exit=0 sandbox=container-netns | sha256:02c90123cccd | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test -count=1 -timeout 300s ./cmd/deskdispatch/ -run '^TestDispatchRecordsRunKey$' -v > "${TMPDIR:-/tmp}/b28-runkey.out" 2>&1 && go test -count=1 -timeout 300s ./cmd/deskdispatch/ -run '^TestDispatchRefRecordedInWorktree$' -v >> "${TMPDIR:-/tmp}/b28-runkey.out" 2>&1 && grep -e '^--- PASS: TestDispatchRecordsRunKey ' "${TMPDIR:-/tmp}/b28-runkey.out" && grep -e '^--- PASS: TestDispatchRefRecordedInWorktree ' "${TMPDIR:-/tmp}/b28-runkey.out"` | pass exit=0 sandbox=container-netns | sha256:70039187ed38 | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `D=$(git log -1 --diff-filter=A --format=%H HEAD -- tools/desk/internal/deskkit/dispatchrecord.go) && test -n "$D" && statusgen --consumers --root . --brief desk-supervision/28 --delivery "$D" --base "$(git rev-parse "$D^")" > "${TMPDIR:-/tmp}/b28-cons.out" 2>&1 && test "$(sed -n 's/^summary: \([0-9]*\) corroborated, 0 disproved.*/\1/p' "${TMPDIR:-/tmp}/b28-cons.out")" -ge 5` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:7cfc256c7b4590e7e5b1a9f54296a203f927f0f91b9585705d579af019d71098
+Container-Image: sha256:c67baa7a3c8ba3d514128f31340489146525a50c29ebb641a68899c650d354a1
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7111 run=0c8952d3d321521f660ee0f9335acf7756e3a250385c2b995157188bfec71a57 source=62a6169dc364b3d2968b0ab3144c70eac9743778 brief=docs/streams/desk-supervision/brief-28-dispatch-record.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=0c8952d3d321521f660ee0f9335acf7756e3a250385c2b995157188bfec71a57 source=62a6169dc364b3d2968b0ab3144c70eac9743778 tree=sha256:7cfc256c7b4590e7e5b1a9f54296a203f927f0f91b9585705d579af019d71098 witness=sha256:40a75106ec746d9712c5f2e3586d0337938082e951d5e36b1e6c8273f76197fb opened=2026-11-19T02:01:01Z closed=2026-11-19T02:07:09Z before=receipt after=check-verifier
+
+Row 9 (gate:model) ran on the host after the bracket closed, as `--rows 9`, at 02:08:12Z. No forge credential was exported into any row.
+
+Row 9, on the host:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 9 | `R0=$(git config --get assay.dispatchRef) && L=$(jq -c -R --arg r "$R0" 'fromjson? \| select(.event == "dispatched" and .dispatch_ref == $r)' "$HOME/.config/assay/dispatch-records.jsonl") && test "$(printf '%s\n' "$L" \| grep -c .)" -eq 1 && K=$(printf '%s' "$L" \| jq -r .claim_key) && R=$(printf '%s' "$L" \| jq -r .repo) && printf '%s' "$L" \| jq -e --arg k "$K" '.event == "dispatched" and (.dispatch_ref \| startswith($k + "@"))' && deskclaim-ref show "$K" --repo "$R"` | fail exit=2 | sha256:6c141c50c616 | 2026-11-19 | assay-verifier-app[bot] @ 62a6169dc364 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7111 run=0c8952d3d321521f660ee0f9335acf7756e3a250385c2b995157188bfec71a57 source=62a6169dc364b3d2968b0ab3144c70eac9743778 brief=docs/streams/desk-supervision/brief-28-dispatch-record.md model=claude-opus-5-5 tier=strong
+
+Observed against Expect. Every row's Date and Runner cells are in the tables above: 2026-11-19, assay-verifier-app[bot] @ 62a6169dc364, with a claude-opus-5-5 verifier.
+
+- Row 1: Expect exit 0. Observed: fail exit=1 in the bracket; the chained `go test` exited non-zero, so the PASS-line count never ran.
+  - Disposition: could-not-run (instrument), not FAIL.
+  - Cause: #7007, unchanged since the 2026-11-18 run. statusgen's admitted-row environment always sets `GIT_CONFIG_COUNT=2` with two grep keys (statusgen/verifieradmission.go:184-186). gitcore's scoped remote reads refuse while any command-priority config is set, so every test in the three package trees that reads a fixture origin fails closed with "remote URL could be changed by config the repository-local reader does not merge: command-priority config (GIT_CONFIG_COUNT, GIT_CONFIG_PARAMETERS or GIT_CONFIG) is set".
+  - Supplemental diagnostic, no credit, 2026-11-19T02:07Z to 02:12Z: in the same image, sandbox, mounts and tmpfs layout, I ran the row's `go test` twice in parallel, once with statusgen's admitted Git variables and once with the same variables minus `GIT_CONFIG_COUNT` and its keys.
+    - With them: rc 1. 22 top-level tests failed, none of them this brief's: 8 in `deskdispatch` (TestResumeRealAllocator, four TestRework* tests, TestCrossVerifierClaimsTracking, TestCrossRepoDispatchExecution, TestCrossRepoClaimRootOrigin) and 14 in `deskkit` (origin-slug, sibling, cross-repository verifier and work-source tests). `deskclaim-ref` passed. The row's five anchored PASS lines were all present (count 5).
+    - Without them: rc 0. Every package passed, and the five anchored PASS lines were present (count 5).
+  - So the only thing that separates red from green here is the instrument's own injected variable. The record code is byte-identical to the 2026-11-14 run, where row 1 passed.
+- Rows 2-6: Expect exit 0, plus each row's named behaviour: the listed refusals; a single `dispatched` line; the worktree ref; the `released` record; and a record failure that never fails the dispatch. Observed: each passed exit=0 in the bracket, run as non-root uid 501, with each row's anchored PASS line found.
+- Row 7: Expect exit 0. Observed: pass exit=0 in the bracket. Both anchored PASS lines were found (TestDispatchRecordsRunKey, TestDispatchRefRecordedInWorktree).
+- Row 8: Expect exit 0, with every `consumers:` routing corroborated by the implementation diff. Observed: pass exit=0 in the bracket. `--delivery` resolved to the commit that added `dispatchrecord.go` (8164deac5), with its parent 40b45182b as `--base`. The command's own assertion held: a summary with 0 disproved and at least 5 corroborated.
+- Row 9: Expect exit 0, jq printing `true`, and `deskclaim-ref show` printing `HELD` followed by the same key.
+  - Observed: fail exit=2 at 02:08Z, output sha256:6c141c50c616; the row did not complete.
+  - Disposition: could-not-run (instrument), not FAIL.
+  - Cause: an admitted run gives each row a fresh, empty HOME, so the row's second stage cannot open the record store under HOME and `jq` exits 2. With an empty HOME the same stage reproduces exit 2 ("Could not open file"). The same empty-HOME class is #7103. The last stage's forge read is still #4691, which I read as OPEN on 2026-11-19 as the verifier App.
+  - Local diagnostic (no credit, no forge call), on the host, 2026-11-19, assay-verifier-app[bot] @ 62a6169dc364:
+    - `git config --get assay.dispatchRef` returns `assay--desk-supervision--28@20261119T015621Z.2f4e985709ce` from this home's worktree config.
+    - Exactly 1 line in the verifier's own store matches it. Its fields: event `dispatched`, claim_key `assay--desk-supervision--28`, repo `medici-finance/assay`, kit `verifier`, brief `assay:assay:desk-supervision:28`, tier `strong`, brief_exec_tier `strong`, brief_effort `M`, model_stamp `applied`, attempt_local 19.
+    - The row's `jq -e` stage prints `true` with exit 0. The store file reads `-rw-------`.
+
+Fail-first: not owed. The frontmatter risk answers are all no, and no row carries a risk-bearing, live, mutating or end-to-end tag. I still tried it on row 9, under the declared verifier Git environment, and statusgen refused both times with exit 2 before any row ran:
+- `--fail-first --base 40b45182b3c011cef823309c4e1c8d1aecbf6967`: "--base ... is refused: it is not the merge-base of HEAD and origin/main, and the witness records no delivering commit; an older base is accepted only as the parent of a recorded --delivering-commit".
+- The same with `--delivering-commit 8164deac5a712b5209d8434ac3007857a001bd0b`: "it cannot be read through the library read path (native discovery/config/shallow environment profile): GIT_CONFIG_COUNT is set in the environment, which selects a native Git profile the library does not qualify". That is #6851. I kept the environment unchanged.
+
+Attempts:
+- Attempt 1, 2026-11-19T02:00:41Z to 2026-11-19T02:08:16Z: the container bracket for rows 1-8 above, then the host run of row 9. Uncredited (credit-unchecked). The two fail-first refusals ran no row and are not attempts.
+
+Risk-bearing value: the frontmatter risk answers are all no, but the delivering diff touches `tools/desk/internal/deskkit/`, which is a security-path trigger. The record code in `deskkit` at 62a6169dc is byte-identical to 9c845402c, so its literals and line numbers are unchanged. The production entropy binding is still at `dispatch.go:204`.
+
+Enumerated literals:
+- `dispatchrecord.go`:
+  - `dispatchRecordMaxBytes = 256` (:74)
+  - `dispatchRefNonceBytes = 6` (:77)
+  - `dispatchRefTimeLayout = "20060102T150405Z"` (:80)
+  - the `claimKeyRe` bound `{1,226}` (:85)
+  - the `dispatchRefSuffixRe` nonce width `{12}` (:88)
+  - identifier bounds (:103-:108)
+  - the effort set S/M/L (:296)
+  - directory mode `0o700` (:359)
+  - file mode `0o600` (:378)
+  - the scanner's maximum line size, `1024*1024` (:404, :442)
+- `dispatchinstructions.go` (deskkit): `dispatchInstructionsDigestRe` `{64}` (:30).
+- Production entropy: `dispatchEntropy io.Reader = rand.Reader` from crypto/rand @ tools/desk/cmd/deskdispatch/dispatch.go:204.
+
+The top three, derived:
+
+RISK-VALUE: DERIVED — dispatchRefNonceBytes = 6 @ tools/desk/internal/deskkit/dispatchrecord.go:77 — 6 bytes is 48 bits, written as 12 lowercase hex characters. The bytes come from crypto/rand (dispatch.go:204) through `io.ReadFull` in MintDispatchRef (:163). That matches dispatchRefSuffixRe's `{12}` at :88 and the brief's definition. A collision needs the same claim key, the same UTC second and the same 48 random bits.
+RISK-VALUE: DERIVED — claimKeyRe bound {1,226} @ tools/desk/internal/deskkit/dispatchrecord.go:85 — 226 = 256 − (1 for "@" + 16 for the timestamp + 1 for "." + 12 for the nonce), so every ref minted from an accepted key fits within dispatchRecordMaxBytes = 256 @ tools/desk/internal/deskkit/dispatchrecord.go:74. The key's byte range excludes "@" and space, so the key/suffix split is unambiguous.
+RISK-VALUE: DERIVED — record file mode 0o600 @ tools/desk/internal/deskkit/dispatchrecord.go:378 — owner-only, matching the audit log, as the brief's visibility rule requires. The live store reads `-rw-------`.
+
+The rest are reversible and ranked last, not derived:
+- directory mode `0o700` at :359
+- the scanner's maximum line size at :404 and :442
+- the identifier bounds at :103-:108, which follow the brief's grammar
+- `dispatchRefTimeLayout` at :80, the brief's literal ISO-8601 basic form
+- `dispatchInstructionsDigestRe` `{64}` at dispatchinstructions.go:30, the hex width of a SHA-256 digest
+
+**VERIFY: BLOCKED** — 7/9 rows pass: rows 2-8 in the network-off container bracket. Row 1 could not run as an instrument check: statusgen's admitted-row `GIT_CONFIG_COUNT` trips gitcore's command-priority refusal in 22 tests outside this brief (#7007); this brief's five named tests passed, and the same run without that variable is green. Row 9 could not run: an admitted row's fresh HOME hides the record store, and its forge read is #4691. I observed no failed obligation. Clearing it needs #7007 fixed in a released statusgen, and row 9 re-authored as a driver act (#4691).
+
+
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.

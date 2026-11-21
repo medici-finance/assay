@@ -99,9 +99,14 @@ func TestDeliveryNoEvidence(t *testing.T) {
 }
 
 // regression: #5375
+// regression: #4560
 func TestDeliveryIdentitySwapped(t *testing.T) {
-	// Each producer's follow-up routes corroborate at either delivery. That
-	// topology must not be presented as proof of which producer was delivered.
+	// Each producer self-routes one site. Before #4560 those routes corroborated
+	// at either delivery from the brief text alone, so stderr had to say the
+	// topology proves nothing about which producer was delivered. A self-route
+	// is now judged against the delivered diff: the swapped pins corroborate
+	// nothing and fail COULD-NOT-CHECK. The stderr qualification stays, because
+	// a delivery that happens to touch a declared site still names no producer.
 	root := consumersFixture(t, []string{"web/fixed.go: follow-up alpha/01", "web/excluded.go: out-of-scope (unchanged reader contract)"}, map[string]string{"web/fixed.go": "before\n", "web/untouched.go": "before\n", "web/excluded.go": "before\n"})
 	p := filepath.Join(root, "docs/streams/alpha/brief-02-target.md")
 	text := readFileT(t, p)
@@ -115,11 +120,16 @@ func TestDeliveryIdentitySwapped(t *testing.T) {
 	mustWrite(t, filepath.Join(root, "web/untouched.go"), "producer two\n")
 	mustGitCommitAll(t, root, "second producer delivery")
 	two := mustGitOut(t, root, "rev-parse", "HEAD")
-	for _, tc := range []struct{ name, brief, base, delivery string }{
-		{"first-correct", "alpha/01", base, one},
-		{"second-correct", "alpha/02", one, two},
-		{"first-swapped", "alpha/01", one, two},
-		{"second-swapped", "alpha/02", base, one},
+	correct, swapped := "summary: 1 corroborated, 0 disproved, 1 unchecked", "summary: 0 corroborated, 0 disproved, 2 unchecked"
+	for _, tc := range []struct {
+		name, brief, base, delivery string
+		code                        int
+		summary                     string
+	}{
+		{"first-correct", "alpha/01", base, one, 0, correct},
+		{"second-correct", "alpha/02", one, two, 0, correct},
+		{"first-swapped", "alpha/01", one, two, 2, swapped},
+		{"second-swapped", "alpha/02", base, one, 2, swapped},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var code int
@@ -127,10 +137,10 @@ func TestDeliveryIdentitySwapped(t *testing.T) {
 			diagnostic := captureStderr(t, func() {
 				out = captureStdout(t, func() { code = runDeliveryConsumers(root, tc.base, tc.brief, tc.delivery) })
 			})
-			if code != 0 || !strings.Contains(out, "summary: 1 corroborated, 0 disproved, 1 unchecked") {
-				t.Fatalf("routing semantics changed: exit %d\n%s", code, out)
+			if code != tc.code || !strings.Contains(out, tc.summary) {
+				t.Fatalf("self-route at this delivery: exit %d, want %d with %q\n%s", code, tc.code, tc.summary, out)
 			}
-			if strings.Contains(out, "PRODUCER-DELIVERY:") || !strings.Contains(diagnostic, "PRODUCER-DELIVERY: COULD-NOT-CHECK") || !strings.Contains(diagnostic, "follow-up routes prove target existence and reference-back only") {
+			if strings.Contains(out, "PRODUCER-DELIVERY:") || !strings.Contains(diagnostic, "PRODUCER-DELIVERY: COULD-NOT-CHECK") || !strings.Contains(diagnostic, "a self-route corroborates only where this delivery's diff touches its site") {
 				t.Fatalf("producer identity needs stderr qualification without changing stdout:\nstdout: %s\nstderr: %s", out, diagnostic)
 			}
 		})

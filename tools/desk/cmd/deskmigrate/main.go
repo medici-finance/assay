@@ -224,11 +224,20 @@ func migrate(o migrateOptions, stdout, stderr io.Writer) int {
 		}
 		if len(v1) > 0 {
 			fmt.Fprintf(stdout, "  0 planned file action(s)\n")
+			// Two causes, two remedies. With no migration files in the tree the
+			// release's migrations were never vendored; with them present, the
+			// span simply excludes migration 0001 (brief-v1 -> brief-v2), which
+			// no later span re-selects — vendoring again cannot help there.
+			hint := fmt.Sprintf("%s holds no migration for this span (vendor the release's migrations/ directory into the tree — copy the migration files shipped with the target version under %s — then re-run).", migrationsDir, migrationsDir)
+			if len(migs) > 0 {
+				hint = fmt.Sprintf("%s holds migrations, but none falls in this span: the brief-v1 -> brief-v2 migration (0001, v0.28.0 -> v1.0.0) lies outside it, so re-running with the same span cannot help. "+
+					"Run `statusgen migrate brief-v1-to-v2 --root .` (add --dry-run to preview) from the tree root; it needs docs/streams/graph-repos.yaml (schema graph-repos-v1, a cell, and a `self` alias naming this repo) written first, and refuses (exit 5) without it.", migrationsDir)
+			}
 			fmt.Fprintf(stderr,
 				"deskmigrate: refusing a silent no-op — no migration covers %s -> %s, but %s carries %d file(s) still on `schema: brief-v1` (e.g. %s).\n"+
-					"  %s holds no migration for this span (vendor the release's migrations/ directory into the tree — copy the migration files shipped with the target version under %s — then re-run).\n"+
+					"  %s\n"+
 					"  Exiting non-zero so this is not read as a completed migration.\n",
-				o.from, o.to, o.root, len(v1), relOrAbs(o.root, v1[0]), migrationsDir, migrationsDir)
+				o.from, o.to, o.root, len(v1), relOrAbs(o.root, v1[0]), hint)
 			return deskkit.ExitRefused
 		}
 		fmt.Fprintf(stdout, "no migrations for %s -> %s (clean no-op) — 0 planned file action(s)\n", o.from, o.to)

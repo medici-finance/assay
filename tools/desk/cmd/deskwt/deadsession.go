@@ -97,9 +97,20 @@ func (v reapVerdict) planLine() string {
 // mt/haveMtime from its single admin-file stat; rosterDir and now are passed in so the
 // judgement takes no clock and reads no environment of its own.
 func judgeReap(sc *sweepCtx, rt, lockReason string, isLocked bool, mt time.Time, haveMtime bool,
-	ttl time.Duration, rosterDir string, now time.Time) reapVerdict {
+	ttl time.Duration, rosterDir string, now time.Time, claim runClaim) reapVerdict {
 
 	v := reapVerdict{path: rt}
+
+	// --- CLAIM -------------------------------------------------------------------
+	// A dispatched home's run is live while its dispatch claim is (claimfree.go): held, or
+	// unreadable, holds the tree before its lock or content is asked anything.
+	if claim.holds() {
+		v.reason = "held: " + claim.why
+		if isLocked {
+			v.session = sessionFromLockReason(lockReason)
+		}
+		return v
+	}
 
 	// --- OWNERSHIP ---------------------------------------------------------------
 	if isLocked {
@@ -109,11 +120,20 @@ func judgeReap(sc *sweepCtx, rt, lockReason string, isLocked bool, mt time.Time,
 		// both retiring a lock and reaping the tree behind it, so the two can never
 		// disagree about the same session in the same sweep.
 		lv := judgeLock(lockReason, mt, haveMtime, ttl, rosterDir, now)
-		if !lv.stale {
+		switch {
+		case lv.stale:
+			v.reason = "dead session: " + lv.why
+		case claim.releasedOwner() && strings.TrimSpace(lockReason) != gitInitLockReason:
+			// The run this home was dispatched for is over: its claim is released. A lock
+			// its agent left behind (bare, or naming a session that outlives the run) is
+			// no longer an owner. git's in-flight add lock is never retired.
+			v.reason = "released run: " + claim.why + " (lock: " + lv.why + ")"
+		default:
 			v.reason = "held: " + lv.why
 			return v
 		}
-		v.reason = "dead session: " + lv.why
+	} else if claim.releasedOwner() {
+		v.reason = "released run: " + claim.why
 	} else {
 		// No lock means no session ever claimed this tree — a LIVE desk session takes the
 		// lock at boot (role-init), which is the cooperative half of this guard. An
@@ -136,7 +156,9 @@ func judgeReap(sc *sweepCtx, rt, lockReason string, isLocked bool, mt time.Time,
 		return v
 	}
 
-	pushed, why, perr := pushedState(sc, rt, isLocked && v.session != "")
+	// A released claim names the run that owned the tree and proves it inactive — the same
+	// standing a dead session's named lock gives the detached-head remote proof.
+	pushed, why, perr := pushedState(sc, rt, (isLocked && v.session != "") || claim.releasedOwner())
 	if perr != nil {
 		v.reason += "; could-not-check: " + errText(perr)
 		return v

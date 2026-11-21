@@ -43,6 +43,9 @@ type ghClient struct {
 	doer  httpDoer
 	base  string // API base, e.g. https://api.github.com
 	token string
+	// gl, when set, reads a GitLab-hosted repository's merge requests, their
+	// files and its open issues' labels through deskread instead (#7252).
+	gl *deskreadReader
 }
 
 // githubAPIBase is the default REST base.
@@ -130,6 +133,9 @@ var fetchAllPullsMaxPages = 1000
 // past 2,000 pull requests silently lost its oldest witnesses (#1969). Reaching
 // the safety bound is now a could-not-check with the count read so far.
 func (c *ghClient) fetchAllPulls(repo string) (pulls []ghPull, lookedAt bool, reason string) {
+	if c.gl != nil {
+		return gitlabAllPulls(*c.gl, repo)
+	}
 	const perPage = 100
 	for page := 1; page <= fetchAllPullsMaxPages; page++ {
 		url := fmt.Sprintf("%s/repos/%s/pulls?state=all&per_page=%d&page=%d", c.base, repo, perPage, page)
