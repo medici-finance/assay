@@ -89,10 +89,11 @@ func readVerifyOutcomesUnion(root string) ([]byte, error) {
 
 // --- verify-outcome record layer: an adapter over the shared protocol -----------------------
 //
-// The record codec, naming rule, vocabulary, per-brief reduction and the fs.FS reader live in
-// statusgen/evaluation (outcome.go) — the ONE owner of how an outcome record is read
-//. What remains here is the source adapter: it names a filesystem root
-// and a wall clock and hands them to the shared reader as an io/fs port and a parameter.
+// The vocabulary and row reduction live in statusgen/evaluation (outcome.go), and the record
+// codec, naming rule, per-brief reduction and fs.FS reader in its subpackage
+// statusgen/evaluation/outcomerecord. Together they are the ONE owner of how an outcome record
+// is read. What remains here is the source adapter: it names a filesystem root and a wall
+// clock and hands them to the shared reader as an io/fs port and a parameter.
 // TestVerifyOutcomesSingleReader pins that this module has exactly one place that opens the
 // verify-outcomes path, and TestOutcomeProtocolClassGuard pins that no second copy of the
 // protocol's rules reappears.

@@ -7876,14 +7876,12 @@ human's merge of the checkpoint PR is the flip.
 **One outcome protocol for the writer and its readers**. The outcome words, the
 row-result reduction and the record codec the verifier writes and the queue reads are defined once in
 `statusgen/evaluation/outcome.go` (the codec in its subpackage `statusgen/evaluation/outcomerecord`);
-`deskkit` keeps only the adapters. Consequences an operator can see: `--outcome-record` lands only a word
-the readers recognise (`verified`, `verify-fail`, `fail`, `blocked`, `needs-context`, `needs_context`,
-ignoring case and surrounding space as the readers do) and refuses a record that names no `outcome` or
-any other word, so the writer cannot create a record the readers would classify as unrecognised; the
-verified-closure guard and the sidecar gate count `Verified` or ` verified ` as the pass a reader counts,
-so a case or whitespace variant never skips the closure check; and a `verified` record that holds or
-fails rows is refused at
-the writer. The record layout, the numeric exit codes and the wake-receipt schema are unchanged.
+`deskkit` keeps only the adapters. The writer's existing outcome-word checks are unchanged:
+`--outcome-record` lands only a word the readers recognise (`verified`, `verify-fail`, `fail`,
+`blocked`, `needs-context`, `needs_context`, ignoring case and surrounding space as the readers do), and
+the verified-closure guard and the sidecar gate count `Verified` or ` verified ` as a pass. What is new is
+that a `verified` record that holds or fails rows is refused at the writer. The record layout, the
+numeric exit codes and the wake-receipt schema are unchanged.
 
 **`plan` does not re-run an unchanged failure — wake receipts** (`verify-wake-v1`;
 `docs/streams/example-stream/verify-wake-v1.md`). A `verify-fail`/`blocked` verifier run lands a
