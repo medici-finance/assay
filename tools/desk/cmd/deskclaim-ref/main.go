@@ -105,7 +105,8 @@ GITHUB_TOKEN / GITLAB_TOKEN. The forge (github/gitlab) resolves from ASSAY_REPO_
 origin remote host; every forge call is an in-process git-smart-HTTP request (no gh/glab CLI).
 
 acquire   take the claim if free; reclaim it if the holder is past its TTL; refuse (exit 5)
-          if a live holder owns it. Never steals a live claim inline.
+          if a live holder owns it. An explicit steal offers its identified owner one
+          ordinary acquire of the reclaimed lease.
 progress  advance an acquired claim to state=dispatched (TTL 20m -> 120m).
 release   delete the claim ref (branch-as-claim takes over). A missing claim is a no-op.
 steal     forcibly take the claim, recording --reason in the replacement — an auditable

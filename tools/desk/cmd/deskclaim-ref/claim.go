@@ -259,7 +259,27 @@ func cmdAcquire(id, owner, branch string) int {
 	}
 	if hage >= ttl {
 		logf("stale claim on %s: state=%s age=%dm >= %dm TTL — reclaiming", id, dashOrValue(state), hage, ttl)
-		return cmdSteal(id, owner, fmt.Sprintf("TTL: state=%s age=%dm >= %dm", dashOrValue(state), hage, ttl))
+		reason := fmt.Sprintf("TTL: state=%s age=%dm >= %dm", dashOrValue(state), hage, ttl)
+		return cmdSteal(id, owner, reason, &ref)
+	}
+	if state == "claimed" && hbranch == "-" && owner != "unknown" && fieldOf(ref.Msg, "owner") == owner && fieldOf(ref.Msg, "handoff") == "dispatch" {
+		// Only an explicit steal offers a handoff. The ordinary claimed message
+		// consumes its marker, so two dispatchers sharing a session still compete
+		// on the same exact revision and only one can enter worktree creation.
+		switch store.UpdateFrom(id, ref.Version, msg) {
+		case deskkit.ClaimWriteApplied:
+			if rc, stop := checkAliases(id, "post"); stop {
+				return rc
+			}
+			logf("acquired %s (owner=%s state=claimed) — consumed reclaimed lease", id, owner)
+			return exitOK
+		case deskkit.ClaimWriteRejected:
+			errf("refused: the claim on %s changed before dispatch acquired it", id)
+			return exitRefused
+		default:
+			errf("unverifiable: could not acquire reclaimed lease %s%s", id, causeSuffix())
+			return exitUnverifiable
+		}
 	}
 	reportHolder(id, ref.Msg, ref.Date)
 	logf("  live (age %dm < %dm TTL for state=%s)", hage, ttl, dashOrValue(state))
@@ -349,7 +369,7 @@ func writeReleasedRecord(id, repo string) {
 	}
 }
 
-func cmdSteal(id, owner, reason string) int {
+func cmdSteal(id, owner, reason string, expired *deskkit.ClaimStoreRecord) int {
 	if reason == "" {
 		errf("refused: steal requires --reason (a takeover with no recorded reason is a hand-delete)")
 		return exitRefused
@@ -363,7 +383,18 @@ func cmdSteal(id, owner, reason string) int {
 		errf("%v", err)
 		return exitRefused
 	}
-	ref, status := store.Read(id)
+	var ref deskkit.ClaimStoreRecord
+	status := deskkit.ClaimReadHeld
+	if expired != nil {
+		// An automatic takeover during acquire already authorizes a dispatch.
+		// Compare the revision whose TTL was evaluated, and never offer it again.
+		ref = *expired
+	} else {
+		// An explicit steal still needs a dispatch. Keep the reason in its own
+		// note and mark the offered handoff before it, in the structural fields.
+		msg = strings.Replace(msg, " note=", " handoff=dispatch note=", 1)
+		ref, status = store.Read(id)
+	}
 	switch status {
 	case deskkit.ClaimReadUnverifiable:
 		errf("unverifiable: could not read %s before stealing it%s", id, causeSuffix())

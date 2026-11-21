@@ -784,3 +784,29 @@ func claimTestMessage(id, owner, state, branch, note string) string {
 	}
 	return msg
 }
+
+// regression: #3724
+func TestDispatchAcquireAfterExplicitReclaim(t *testing.T) {
+	const id = "example--stream--01"
+	const repo = "example/project"
+	f := newStore()
+	f.seedClaim(id, "expired", "claimed", "", time.Hour)
+	run, _, _ := harness(t, f)
+	if rc := run("steal", id, "--repo", repo, "--owner", "returning", "--reason", "no live worker"); rc != exitOK {
+		t.Fatalf("reclaim rc=%d", rc)
+	}
+	claimed := f.claims[id]
+	if rc := run("acquire", id, "--repo", repo, "--owner", "other"); rc != exitRefused || f.claims[id] != claimed {
+		t.Fatalf("foreign dispatch rc=%d, claim changed=%t", rc, f.claims[id] != claimed)
+	}
+	if rc := run("acquire", id, "--repo", repo, "--owner", "returning", "--branch", "feat/test"); rc != exitOK {
+		t.Fatalf("first holder dispatch rc=%d", rc)
+	}
+	prepared := f.claims[id]
+	if prepared.sha == claimed.sha || fieldOf(prepared.msg, "branch") != "feat/test" {
+		t.Fatal("dispatch did not consume the reclaimed lease")
+	}
+	if rc := run("acquire", id, "--repo", repo, "--owner", "returning"); rc != exitRefused || f.claims[id] != prepared {
+		t.Fatalf("second holder dispatch rc=%d, claim changed=%t", rc, f.claims[id] != prepared)
+	}
+}
