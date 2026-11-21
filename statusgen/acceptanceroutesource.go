@@ -40,16 +40,25 @@ func readAcceptanceSourceAt(root, briefPath, revision string) (acceptanceSource,
 	if err != nil {
 		return acceptanceSource{}, err
 	}
-	head, err := historyGit(root, "rev-parse", "--verify", "HEAD^{commit}").Output()
+	reader := ordinaryGitCore(root)
+	if reader.err != nil || reader.native != "" {
+		return acceptanceSource{}, fmt.Errorf("acceptance source: could not open the canonical Git reader")
+	}
+	current, err := reader.repo.HeadID()
 	if err != nil {
 		return acceptanceSource{}, fmt.Errorf("acceptance source: read HEAD: %w", err)
 	}
-	current := strings.TrimSpace(string(head))
 	rev := revision
 	if rev == "" {
 		rev = current
 	}
-	if !isObjectID(rev) || historyGit(root, "merge-base", "--is-ancestor", rev, current).Run() != nil {
+	if !isObjectID(rev) {
+		return acceptanceSource{}, fmt.Errorf("acceptance source: bound revision is not a full object id")
+	}
+	// This is the adjudication record's provenance, not a witness's
+	// applicability. The exact source bytes and credited run are checked apart.
+	landed, err := reader.repo.IsAncestor(rev, current)
+	if err != nil || !landed {
 		return acceptanceSource{}, fmt.Errorf("acceptance source: bound revision is not a committed ancestor of HEAD")
 	}
 	rel, inside := relWithin(root, briefPath)
@@ -86,12 +95,15 @@ func readAcceptanceSourceAt(root, briefPath, revision string) (acceptanceSource,
 }
 
 func readAcceptanceBlob(root, rev, rel string) (string, []byte, error) {
-	obj := rev + ":" + rel
-	blob, err := historyGit(root, "rev-parse", "--verify", obj).Output()
+	reader := ordinaryGitCore(root)
+	if reader.err != nil || reader.native != "" {
+		return "", nil, fmt.Errorf("acceptance source: could not open the canonical Git reader")
+	}
+	blob, err := reader.repo.TreeishID(rev, reader.prefix+rel)
 	if err != nil {
 		return "", nil, fmt.Errorf("acceptance source: resolve %s at %s: %w", rel, rev, err)
 	}
-	committed, err := historyGit(root, "cat-file", "blob", obj).Output()
+	content, err := reader.repo.FileAt(rev, reader.prefix+rel)
 	if err != nil {
 		return "", nil, fmt.Errorf("acceptance source: read %s at %s: %w", rel, rev, err)
 	}
@@ -103,8 +115,9 @@ func readAcceptanceBlob(root, rev, rel string) (string, []byte, error) {
 	if err != nil {
 		return "", nil, fmt.Errorf("acceptance source: read %s: %w", rel, err)
 	}
+	committed := []byte(content)
 	if !bytes.Equal(working, committed) {
 		return "", nil, fmt.Errorf("acceptance source: %s differs from the committed blob", rel)
 	}
-	return strings.TrimSpace(string(blob)), committed, nil
+	return blob, committed, nil
 }

@@ -35,18 +35,22 @@ func verifyAcceptanceReadiness(root, path string, m acceptanceManifest, preparat
 	if err != nil || !ok {
 		return fmt.Errorf("acceptance adjudication: could not read canonical brief: %v", err)
 	}
+	local, _, ok := expectedBriefID(path)
+	if !ok {
+		return fmt.Errorf("acceptance adjudication: cannot bind the canonical brief id")
+	}
 	p, err := flipLatestPass(bf.Evidence)
 	if err != nil {
 		return fmt.Errorf("acceptance adjudication: latest verification is not a strict passing run: %w", err)
 	}
-	if err := closeVerifyFailRefusal(bf.Brief, "verified", bf.Evidence); err != nil {
+	if err := closeVerifyFailRefusal(local, "verified", bf.Evidence); err != nil {
 		return err
 	}
 	date, runner := evidenceVerifierInfo(bf.Evidence)
 	if date == "" || runner == "" {
 		return fmt.Errorf("acceptance adjudication: latest verification has no coherent date and runner")
 	}
-	if err := closeVerifyFloorRefusal(bf.Brief, bf, date+" "+runner); err != nil {
+	if err := closeVerifyFloorRefusal(local, bf, date+" "+runner); err != nil {
 		return err
 	}
 	if err := checkAcceptanceLatestRun(p.Run, m.Runs); err != nil {

@@ -131,7 +131,11 @@ func closeAdjudicatedCard(root, brief, repo string, issue int, forge *ghClient, 
 	if err != nil {
 		return err
 	}
-	ref, err := checkClosedAdjudicatedCard(first, bf.Brief, cfg.Bless)
+	local, _, ok := expectedBriefID(bf.Path)
+	if !ok {
+		return fmt.Errorf("acceptance card: cannot bind the canonical brief id")
+	}
+	ref, err := checkClosedAdjudicatedCard(first, local, cfg.Bless)
 	if err != nil {
 		return err
 	}

@@ -80,9 +80,18 @@ func (m acceptanceManifest) checkResolvedEvidence(root string, cfg scanConfig) e
 		if d.Kind != "resolved" {
 			continue
 		}
-		resolved, err := historyGit(root, "rev-parse", "--verify", "--end-of-options", d.EvidenceRevision+"^{commit}").Output()
-		if err != nil || strings.TrimSpace(string(resolved)) != d.EvidenceRevision ||
-			historyGit(root, "merge-base", "--is-ancestor", d.EvidenceRevision, m.Source.Revision).Run() != nil {
+		reader := ordinaryGitCore(root)
+		if reader.err != nil || reader.native != "" {
+			return fmt.Errorf("acceptance adjudication: could not open the canonical Git reader")
+		}
+		commit, err := reader.repo.CommitVerifyQuiet(d.EvidenceRevision)
+		if err != nil || !commit {
+			return fmt.Errorf("acceptance adjudication: resolved disposition %d has no landed evidence at the bound source", i+1)
+		}
+		// A cited resolution record must have landed. This does not certify
+		// the applicability or outcome of any verification witness.
+		landed, err := reader.repo.IsAncestor(d.EvidenceRevision, m.Source.Revision)
+		if err != nil || !landed {
 			return fmt.Errorf("acceptance adjudication: resolved disposition %d has no landed evidence at the bound source", i+1)
 		}
 		var known bool
