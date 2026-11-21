@@ -47,7 +47,7 @@ sanctioned lane. Activation of the plan supplies no new environment access.
 | 03 | [Compile Verify rows and declared inputs through the existing document owner](brief-03-compile-verify-rows-and-declared-inputs-through-the-existing-document-owner.md) | 0 | M | todo | — | — |
 | 04 | [Produce bounded row observations with base and head provenance](brief-04-produce-bounded-row-observations-with-base-and-head-provenance.md) | 1 | M | todo | — | — |
 | 05 | [Share outcome decoding and reduction between verification producers and readers](brief-05-share-outcome-decoding-and-reduction-between-verification-producers-and-readers.md) | 0 | M | todo | — | — |
-| 06 | [Model local cell lifecycle transitions using the existing cell-operation contract](brief-06-model-local-cell-lifecycle-transitions-using-the-existing-cell-operation-contract.md) | 0 | M | todo | — | — |
+| 06 | [Model local cell lifecycle transitions using the existing cell-operation contract](brief-06-model-local-cell-lifecycle-transitions-using-the-existing-cell-operation-contract.md) | 0 | M | implemented | — | — |
 | 07 | [Qualify the real cellctl binary with isolated lifecycle and environment fixtures](brief-07-qualify-the-real-cellctl-binary-with-isolated-lifecycle-and-environment-fixtures.md) | 1 | L | todo | — | — |
 | 08 | [Separate immutable publication preparation from fresh effect admission](brief-08-separate-immutable-publication-preparation-from-fresh-effect-admission.md) | 1 | M | todo | — | — |
 | 09 | [Migrate PR create, update and edit to the shared publication plan](brief-09-migrate-pr-create-update-and-edit-to-the-shared-publication-plan.md) | 2 | M | todo | — | — |
