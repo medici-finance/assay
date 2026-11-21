@@ -3,7 +3,7 @@
 # Assert a green pristine baseline, require one anchor and an assertion kill per
 # control, and restore the original source after every probe, including failure.
 #
-# tool-refactoring/03 moved the strict Context files: grammar to its owner,
+# The strict Context files: grammar now lives in its owner,
 # statusgen/briefdoc/declared.go; deskkit's declared-scope projection calls it
 # (tools/desk resolves statusgen through its local replace), so these deskkit
 # tests still kill a mutant planted in the owner. Path resolution and its work
