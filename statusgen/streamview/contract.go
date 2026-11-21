@@ -24,14 +24,20 @@ import (
 	"time"
 )
 
-// Version is the one contract version this package produces and accepts.
-// A document carrying any other value fails Decode with an
-// *UnsupportedVersionError — never a best-effort read.
+// Version is the original contract version. A v1 document carries no
+// milestone section and decodes exactly as it always did.
 const Version = "stream-view/v1"
 
+// Version2 adds the mandatory milestones section (milestone-support/11).
+// A consumer that needs milestone semantics accepts only this version.
+const Version2 = "stream-view/v2"
+
 // SupportedVersions is the default accept list for Decode and Negotiate, in
-// consumer preference order.
-var SupportedVersions = []string{Version}
+// consumer preference order. A document carrying any other value fails Decode
+// with an *UnsupportedVersionError — never a best-effort read.
+var SupportedVersions = []string{Version2, Version}
+
+func supportedVersion(v string) bool { return v == Version || v == Version2 }
 
 // Availability is the state of one section's source. Missing is never zero,
 // empty, done or healthy: a section that could not be read says so here and
@@ -567,14 +573,24 @@ type StreamView struct {
 	NeedsYou     NeedsYou      `json:"needs_you"`
 	Evidence     Evidence      `json:"evidence"`
 	Outcomes     Outcomes      `json:"outcomes"`
+	// Milestones is absent in v1 and mandatory in v2.
+	Milestones *Milestones `json:"milestones,omitempty"`
 }
 
 // Validate checks every contract invariant and returns all violations joined,
 // or nil.
 func (v *StreamView) Validate() error {
 	var errs []error
-	if v.Contract != Version {
+	if !supportedVersion(v.Contract) {
 		errs = append(errs, &UnsupportedVersionError{Got: v.Contract, Supported: SupportedVersions})
+	}
+	switch {
+	case v.Contract == Version && v.Milestones != nil:
+		errs = append(errs, errors.New("milestones: a v1 view cannot carry a milestone section"))
+	case v.Contract == Version2 && v.Milestones == nil:
+		errs = append(errs, errors.New("milestones: the section is mandatory in v2 — state not-assessed rather than omit it"))
+	case v.Milestones != nil:
+		errs = append(errs, v.Milestones.validate()...)
 	}
 	if err := v.Identity.Key.Validate(); err != nil {
 		errs = append(errs, err)
@@ -694,7 +710,7 @@ func Decode(data []byte, accept ...string) (*StreamView, error) {
 	if !ok {
 		return nil, &UnsupportedVersionError{Got: got, Supported: accept}
 	}
-	if got != Version {
+	if !supportedVersion(got) {
 		// accept named a version this package cannot decode.
 		return nil, &UnsupportedVersionError{Got: got, Supported: SupportedVersions}
 	}

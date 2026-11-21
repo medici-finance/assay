@@ -266,6 +266,24 @@ if command -v git >/dev/null 2>&1; then
     no "G8 push path: a Cursor manifest lagging plugin.json is REFUSED" "rc=$rc; output: $(printf '%s' "$out" | tr '\n' '|')"
   fi
   expect 0 "G8 dispatch path (--have): the stamp that follows moves the Cursor manifest, so the gate defers to check" gate --tag v1.0.2 --prev v1.0.1 --have 1.0.2 --root "$g"
+  # Editorial has its own marketplace cache key, independent of --tag and --have.
+  editorial_dir=plugins/editorial/.claude-plugin
+  mkdir -p "$g/$editorial_dir"
+  printf '{"name":"editorial","version":"1.0.0"}\n' > "$g/$editorial_dir/plugin.json"
+  gitc add plugins/editorial && gitc commit -q -m 'example: publish editorial'
+  expect 0 "G9 first editorial publication passes" gate --tag v1.0.2 --prev v1.0.1 --have 1.0.2 --root "$g"
+  gitc tag editorial-base
+  expect 0 "G9 unchanged editorial keeps its own version" gate --tag v1.0.2 --prev editorial-base --have 1.0.2 --root "$g"
+  printf 'new example\n' > "$g/plugins/editorial/example.md"
+  gitc add plugins/editorial && gitc commit -q -m 'example: editorial change without bump'
+  expect 1 "G9 an umbrella bump cannot cover unchanged editorial version" gate --tag v1.0.2 --prev editorial-base --have 1.0.2 --root "$g"
+  printf '{"name":"editorial","version":"0.9.9"}\n' > "$g/$editorial_dir/plugin.json"
+  gitc commit -q -am 'example: editorial version rollback'
+  expect 1 "G9 editorial version rollback is refused" gate --tag v1.0.2 --prev editorial-base --have 1.0.2 --root "$g"
+  printf '{"name":"editorial","version":"1.1.0"}\n' > "$g/$editorial_dir/plugin.json"
+  gitc commit -q -am 'example: bump editorial independently'
+  expect 0 "G9 advancing editorial version allows changed payload" gate --tag v1.0.2 --prev editorial-base --have 1.0.2 --root "$g"
+
 else
   printf '  skip G gate cases: git not on PATH\n'
 fi

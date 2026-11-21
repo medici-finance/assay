@@ -78,8 +78,8 @@ func TestDecodeVersionHandling(t *testing.T) {
 	s := string(enc)
 	var uv *UnsupportedVersionError
 
-	future := strings.Replace(s, `"contract": "stream-view/v1"`, `"contract": "stream-view/v2"`, 1)
-	if _, err := Decode([]byte(future)); !errors.As(err, &uv) || uv.Got != "stream-view/v2" {
+	future := strings.Replace(s, `"contract": "stream-view/v1"`, `"contract": "stream-view/v3"`, 1)
+	if _, err := Decode([]byte(future)); !errors.As(err, &uv) || uv.Got != "stream-view/v3" {
 		t.Errorf("unsupported version: got %v", err)
 	}
 	missing := strings.Replace(s, `"contract": "stream-view/v1",`, "", 1)

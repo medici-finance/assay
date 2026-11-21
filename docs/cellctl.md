@@ -1842,6 +1842,18 @@ is refused rather than launching codex against Anthropic with a provider the ope
 | `CELL_ROLE_SECRETS` | role-secret bindings for a native container cell, comma-separated `<owner>/<repo>:<role>:<service>=<absolute path>` entries: the project must be the container cell's repository, the role `worker-desk` or `verify-desk` (any other role refuses every launch), the service a `service:<name>` name. Each file is mounted read-only at `/run/secrets/role-<service>` into that role's container only, and `ASSAY_ROLE_SECRET_<SERVICE>_FILE` (`.` and `-` spelled `_`) names the path; no value is ever read, printed or exported. Read from `cell.env` only: a value from the shell or `defaults.env` is refused. See *Role secrets* below |
 | `CELL_ROLE_SECRET_SURFACE` | the read-isolation surface the cell declares for its role secrets; only `container` is accepted this release. Unset, `host` (per-role OS identity launch is not built yet) or anything else binds no role secret: `check` reports a MISS and `desk` refuses |
 
+**Reserved key, not yet a lever: `CELL_DEV_ENV_FILE`.** It is kept out of the table above
+because `cellctl` does not read it yet: no surface binds the file until the design-decision
+record `DR-desk-containers-35` is approved, and the launcher behaviour (the
+`ASSAY_CELL_DEV_ENV_FILE` path, the coordinator's write verb and its change receipts) lands with
+brief desk-containers/37, which also makes it a lever. The key names the cell's one dev-env
+file, an absolute path outside every git checkout and worktree: `NAME=value` and `#` comment
+lines only, every name in the `DEVENV_[A-Z0-9_]+` namespace, every value dev-only and at least 8
+characters. The coordinator role is its only writer; worker, reviewer and verifier read it only;
+intake neither. A Verify row receives only the names its `Env` cell declares
+(`service:<name>:<NAME>[,<NAME>…]`). It is read from `cell.env` only, never `defaults.env` or
+the launching shell. The contract is [`containers/secrets.md`](../containers/secrets.md) §4.5.
+
 ### Machine-wide defaults — `defaults.env`
 
 A setting every cell on a machine should share is written once, in `defaults.env` directly
