@@ -1,0 +1,2 @@
+### Added
+- `statusgen/domain` gains an immutable operation subject (`NewOperationSubject`) that keeps a brief's tracking source, delivery candidate, review target, decision target and Evidence destination as separate coordinates, read only through dispatch, review, PR-publication and Evidence-publication projections. A missing coordinate is could-not-check and never falls back to another repository. deskkit `OperationContext` is its observation adapter; no desk verb is routed through it yet (tool-refactoring/02, /09, /10).
