@@ -701,7 +701,7 @@ func plainCommandRowContext(table string, row verifyRow) []string {
 	}
 	var context []string
 	for line := range strings.SplitSeq(table, "\n") {
-		cells := splitRowEscaped(strings.TrimSpace(line))
+		cells := briefdoc.SplitRowEscaped(strings.TrimSpace(line))
 		if len(cells) == 0 || strings.TrimSpace(cells[0]) != row.ID {
 			continue
 		}
