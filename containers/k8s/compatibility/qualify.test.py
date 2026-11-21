@@ -52,6 +52,26 @@ class RunnerControls(unittest.TestCase):
             check([*complete, {"Action": "output", "Output": "synthetic package failure\n"}],
                   7, 7, "synthetic package failure")
             check(complete, 0, 2, "unrecognized arguments: --allow-cluster-queries", "--allow-cluster-queries")
+            interaction = "TestKubeCompatCellctlInteraction"
+            interact_rows = [{"Action": "pass", "Test": row["Test"].replace(TEST, interaction)} for row in complete]
+            check(interact_rows, 0, 0, '"suite": "interaction"', "--offline", "--suite", "interaction")
+            check(complete, 0, 1, "missing named test passes", "--suite", "interaction")
+            check(interact_rows[:-1], 0, 1, f"{interaction}/{roles[-1]}", "--suite", "interaction")
+            check(complete, 0, 2, "requires a suite", "--self-test")
+            check([], 0, 2, "invalid choice", "--suite", "real-profile")
+            check([], 0, 2, "invalid choice", "--suite", "../controlled-restart")
+            for name in ("controlled-restart", "custody-target"):
+                check([], 0, 2, "invalid choice", "--suite", name)
+                companion = runner / ("qualify_" + name.replace("-", "_") + ".py")
+                companion.write_text(
+                    "import os, sys\nassert sys.flags.isolated\n"
+                    "assert os.environ['KUBECONFIG'] == os.devnull\n"
+                    "print(sys.argv[1:])\n")
+                check([], 0, 0, "['--offline']", "--suite", name)
+                check([], 0, 0, "['--offline', '--self-test']", "--offline", "--suite", name, "--self-test")
+                check([], 0, 2, "unrecognized arguments", "--suite", name, "--context", "other")
+                companion.write_text("raise SystemExit(6)\n")
+                check([], 0, 6, "", "--suite", name)
             record["images"].pop(roles[-1])
             target.write_text(json.dumps(record))
             check(complete, 0, 1, "qualification requires the five-role candidate inventory")
