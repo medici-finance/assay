@@ -50,6 +50,10 @@ type Report struct {
 	// lock-free test cleared it, "locked: <why>" when the full check ran
 	// because the test could not. Empty for every other caller.
 	Admission string `json:"admission,omitempty"`
+	// Tmp is what this pass's GOTMPDIR sweep found and removed (sweepTmp). It
+	// is absent when the policy exports no GOTMPDIR or the directory does not
+	// exist yet, so such a pass serializes exactly as before the sweep existed.
+	Tmp *TmpSweep `json:"tmp_sweep,omitempty"`
 	// reclaimable marks a bounded launch refusal that one explicit clean can
 	// clear: the recorded size or free-space margin, or a measurement that is
 	// aged, unstamped, future-dated, missing or overtaken by a top-level
@@ -383,6 +387,9 @@ func (m *manager) checkMode(dry, wipe bool) Report {
 	if err != nil {
 		r.Failures = append(r.Failures, "active custody: "+err.Error())
 	}
+	// Leftover build work directories, under the same custody; outside the
+	// byte budget, so the sweep never changes the measurement below.
+	r.Tmp = m.sweepTmp(time.Now(), dry)
 	removed := false
 	// acted is set the moment any trim or removal is attempted, even one that
 	// fails part way: a partial removal changes what a second measurement sees.
@@ -691,7 +698,7 @@ func (m *manager) trimEntry(path string, cutoff time.Time) (int64, bool, error) 
 		return 0, false, nil
 	}
 	if st.IsDir() {
-		size, err := m.verifiedTreeSize(path)
+		size, _, err := m.verifiedTreeSize(path)
 		if err != nil {
 			return 0, false, fmt.Errorf("refused compiler cache directory %s: %w", path, err)
 		}
@@ -710,10 +717,12 @@ func (m *manager) trimEntry(path string, cutoff time.Time) (int64, bool, error) 
 }
 
 // verifiedTreeSize walks a directory entry through the verified root, applying
-// checkEntry to every member, and sums its regular files. Any violation
-// refuses the whole directory before a byte of it is removed.
-func (m *manager) verifiedTreeSize(name string) (int64, error) {
+// checkEntry to every member, and sums its regular files. It also returns the
+// latest modification time of the entry or any member. Any violation refuses
+// the whole directory before a byte of it is removed.
+func (m *manager) verifiedTreeSize(name string) (int64, time.Time, error) {
 	var total int64
+	var newest time.Time
 	err := deskkit.BoundedWalkDir(m.r.FS(), name, m.inventoryLimit(), func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -725,12 +734,15 @@ func (m *manager) verifiedTreeSize(name string) (int64, error) {
 		if err = checkEntry(st, m.dev); err != nil {
 			return err
 		}
+		if st.ModTime().After(newest) {
+			newest = st.ModTime()
+		}
 		if st.Mode().IsRegular() {
 			total += st.Size()
 		}
 		return nil
 	})
-	return total, err
+	return total, newest, err
 }
 
 // Go module directories are read-only. Open each verified directory and chmod
@@ -974,7 +986,7 @@ func Acquire(env []string) (*Lease, error) {
 	if admitted.Admission == "precheck-stale" {
 		stale = admitted.Reason
 	}
-	for _, name := range []string{"build", "mod", "gopath"} {
+	for _, name := range p.consumerDirs() {
 		if err = m.r.MkdirAll(name, 0700); err != nil {
 			return nil, err
 		}
