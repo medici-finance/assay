@@ -200,6 +200,17 @@ func (g *gogitStore) mintAndPush(id, msg string, old plumbing.Hash) deskkit.Clai
 	return deskkit.ClaimWriteApplied
 }
 
+func (g *gogitStore) Remove(id string) (deskkit.ClaimWriteOutcome, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
+	defer cancel()
+	res, err := gitcore.DeleteRefTrace(ctx, g.url, g.auth, g.refName(id), claimTrace)
+	if err != nil {
+		g.fail(err)
+		return deskkit.ClaimWriteUnverifiable, false
+	}
+	return deskkit.ClaimWriteApplied, res == gitcore.DeleteDone
+}
+
 func (g *gogitStore) RemoveFrom(id, old string) deskkit.ClaimWriteOutcome {
 	if !plumbing.IsHash(old) || plumbing.NewHash(old).IsZero() {
 		g.fail(fmt.Errorf("invalid expected claim revision"))
