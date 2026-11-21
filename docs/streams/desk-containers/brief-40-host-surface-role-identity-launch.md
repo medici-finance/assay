@@ -32,6 +32,7 @@ sources:
   - "PR #6516: the first independent verification of desk-containers/34 (VERIFY: FAIL; rows 5 and 9 name tests not defined on main)."
   - "docs/streams/decisions/DR-desk-containers-34.md: the approved design record, which already covers per-role OS identity on a host."
   - "freshness-checked 2026-11-17 @ e259796bb (origin/main): tools/desk/cmd/cellctl/{rolesecret.go,rolesecret_test.go,launch.go,desk.go,cell.go,envkeys.go,hotfix_unix.go}."
+  - "freshness-checked 2026-11-21 @ 09c51fcf7 (origin/main): tools/desk/cmd/cellctl/{launch.go,git.go,sessionroots.go,cadence.go,envkeys.go,rolesecret.go} (the launcher's git calls, the run directory mode, both host-refusal texts)."
 exec-tier: strong
 exec-tier-why: >-
   Yes to (a) the launch mechanism is a design choice the facts leave open, (b) the checks span
@@ -57,7 +58,7 @@ files: `tools/desk/cmd/cellctl/{rolesecret.go,rolesecret_test.go,envkeys.go,chec
 `containers/secrets.md`, `docs/cellctl.md`,
 `changelog/role-secrets-host-surface.md` (planned).
 
-facts (freshness-checked 2026-11-17 @ e259796bb):
+facts (freshness-checked 2026-11-17 @ e259796bb; the launcher-git fact 2026-11-21 @ 09c51fcf7):
 
 - `rolesecret.go` `roleSecretSurfaceProblem()` refuses the host surface outright:
   `CELL_ROLE_SECRET_SURFACE=host is not built yet (per-role OS identity launch is a follow-up)`.
@@ -74,6 +75,10 @@ facts (freshness-checked 2026-11-17 @ e259796bb):
   `<cell dir>/run/tmux.sock` (`launch.go`), and gives desk verbs ONE home, `<cell dir>/home`
   (`cell.go`). The tmux server's identity is every window's identity, and anyone who can
   reach a window's socket can type into it.
+- The launcher runs git as itself in checkouts other identities may write: in the cell repo
+  at launch (`launch.go` `worktree add` and `worktree lock`; `git.go` fetch of main), in the
+  stream roots (`git.go`), and in every `CELL_ROOTS` checkout, which `sessionroots.go`
+  fetches into at boot and before every cadence pass (`cadence.go`).
 - Precedent for running a child as another uid: `hotfix_unix.go` `hotfixDropAttr` sets
   `syscall.Credential` when cellctl runs as root under sudo. Nothing else in cellctl switches
   identity.
@@ -92,7 +97,7 @@ design-fit:
   owner: cellctl (it already owns role-secret custody and window launch)
   contract: none — extends the cell config key registry and `containers/secrets.md`
   retires: [the blanket host-surface refusal in roleSecretSurfaceProblem]
-  weight: verbs +0, flags +0, config keys +1 (the role-to-identity map, counted in desk-containers/34's design-fit and not built there), refusal predicates +identity/elevation/root-equivalent/launcher-writable/host-writable/socket/home
+  weight: verbs +0, flags +0, config keys +1 (the role-to-identity map, counted in desk-containers/34's design-fit and not built there), refusal predicates +identity/elevation/root-equivalent/launcher-writable/host-writable/ancestor/socket/home
   why-add: The map and the checks were approved in DR-desk-containers-34 as part of the custody path; leaving the host surface refused was the considered alternative, and the driver chose to build it (#6301).
 
 ## Read first
@@ -177,8 +182,14 @@ Default if no answer: none — blocks until answered. Until it is answered the h
      socket present on the host: Docker's, rootful Podman's, containerd's, and any socket
      that identity's `DOCKER_HOST` or `CONTAINER_HOST` names. A success refuses with a reason
      naming root-equivalent access and the socket. A rootless runtime socket that runs as the
-     probed identity itself is not root-equivalent and is not refused. A probe that cannot
-     run refuses.
+     probed identity itself is not root-equivalent and is not refused. A runtime socket that
+     belongs to a holder or to the launching identity (a rootless runtime under that user's
+     runtime directory) is holder-equivalent instead: the same probe must fail on it, so in
+     effect every container runtime socket not owned by the probed identity is probed. A
+     probe that cannot run refuses. This list is not exhaustive. A daemon listening on
+     unauthenticated loopback TCP, and membership of groups such as `lxd`, `libvirt` or
+     `disk`, also give root without a prompt and no socket probe sees them; the host recipe
+     (Task 7) names their absence as an operator precondition.
    - **Launching identity.** Under either launch option in the Human decision, the launching
      identity can become every holder without a prompt (root under option 2), so the check
      treats it as holder-equivalent. Besides the elevation target above, as each non-holding
@@ -187,7 +198,15 @@ Default if no answer: none — blocks until answered. Until it is answered the h
      directory; every directory on the launcher's PATH, where the switch command and `tmux`
      resolve; the launcher's home and the shell startup and configuration files its shell
      reads there; the files the switch reads its rule from (for example a sudoers drop-in);
-     and the cell directory with its `run` directory and `<cell dir>/home`. A non-holding
+     the cell directory with its `run` directory and `<cell dir>/home`; and the git common
+     directory, its `config` and `hooks`, of every checkout the launching identity runs git
+     in. Those are the cell repo (where the launch fetches main and runs `worktree add` and
+     `worktree lock`), each stream root, and each `CELL_ROOTS` checkout the session-root
+     refresh fetches into at boot and before every cadence pass. Git runs repository-controlled
+     code in those commands: a `post-checkout` hook on `worktree add`, a
+     `reference-transaction` hook on fetch, and command-valued config such as
+     `core.sshCommand`, `core.fsmonitor` and a credential helper. So a non-holder that can
+     write any of them runs code as the launcher. A non-holding
      identity also must not be able to connect to the launcher-owned `<cell dir>/run/tmux.sock`
      (probed as `W_OK` on the socket and `X_OK` on `run`). A success, or a probe that cannot
      run, refuses.
@@ -198,6 +217,17 @@ Default if no answer: none — blocks until answered. Until it is answered the h
      identity map; every directory on the holder window's PATH, the cell's shim directory
      included; the holder's home; and the directory holding each secret file. A probe that
      cannot run refuses.
+   - **Ancestors and ownership.** A probe of the named path alone is not enough. A non-holder
+     that can write a directory's parent can rename the directory and put its own in its
+     place, and a non-holder that owns a path whose write bit is cleared fails `W_OK` yet can
+     `chmod u+w` it at any time. So for every path in the Root-equivalent access, Launching
+     identity and Writable paths sets, and for each of that path's ancestors up to `/`, the
+     check refuses when a non-holding identity can write it (the same `W_OK` probe, run as
+     that identity) or owns it (its owner uid is that identity's). One exemption: an ancestor
+     with the sticky bit set (such as `/tmp`) that a non-holder can write is allowed only when
+     the child under it on the path is owned by a trusted identity: root, the holder, or the
+     launching identity. Each refusal names the path, the ancestor and whether it was write
+     access or ownership.
    - **Window separation.** A holder role's window gets its own tmux server and socket, and
      its own home, both owned by the holder identity, writable by no other identity, and not
      reachable by any non-holding identity (the socket's directory is owner-only). The one
@@ -207,14 +237,20 @@ Default if no answer: none — blocks until answered. Until it is answered the h
      launcher, a process in a non-holding window cannot reach the server it was started in;
      the Launching identity probe above checks that this holds. On a host surface no window
      uses the launcher-owned `<cell dir>/home`: each non-holding window gets a home owned by
-     its own role identity, separate from the launcher's and every holder's.
+     its own role identity, separate from the launcher's and every holder's. A window's
+     terminal still belongs to the launcher-owned server, so the pane command is the switch
+     itself, run directly, and the pane closes when it exits (no `remain-on-exit`, no respawn
+     into a launcher shell): no launcher shell is ever left in a pane to read input that a
+     lower-privileged process injected.
    - **Dev-env file.** If the cell sets `CELL_DEV_ENV_FILE` (the cell dev-env file contract
      of desk-containers/35; desk-containers/37 Task 1 adds the key), probe as each holder identity: that file must be unreadable to
      every holder, else refuse. Where the key does not exist yet, this check is a no-op with a
      comment naming the contract.
    - **Seam.** All identity probes go through one package seam, `roleSecretIdentityProbe`, so
      the in-tree tests inject results. The real probe runs as the identity through the switch
-     the Human decision picks; it never reads mode bits as a stand-in.
+     the Human decision picks; it never reads mode bits as a stand-in. The owner of a path
+     and an ancestor's sticky bit (Ancestors and ownership) are read with `stat` as well as,
+     never instead of, the probe.
 3. **Launch under the role identity.** On a verified host surface, `cellctl desk` re-runs the
    Task 2 check, then starts the role's window under the mapped identity through the switch
    the Human decision picks. A holder window's environment carries its role-secret path
@@ -225,7 +261,9 @@ Default if no answer: none — blocks until answered. Until it is answered the h
    and path.
 4. **Lift the refusal.** `roleSecretSurfaceProblem()` accepts `host` only once Task 2's check
    passes. `roleSecretLaunchGate()` and every other call site keep refusing an unverified
-   host surface.
+   host surface. The `CELL_ROLE_SECRET_SURFACE` description in `envkeys.go` also says
+   `host is not built yet`; rewrite it to describe the host surface, since Verify row 7
+   greps the whole package.
 5. **Checkouts.** A holder role works in checkouts its own identity owns. If the dispatcher
    would create a holder's worktree from a checkout a non-holder can write, Task 2's
    writable-path check refuses; it does not create a separate clone. Record the operator
@@ -248,7 +286,9 @@ Default if no answer: none — blocks until answered. Until it is answered the h
      identity, is refused by the real elevation probe.
 7. **Docs.** `containers/secrets.md`: the host-surface recipe (provision one OS user per role,
    the switch rule from the Human decision, one clone per holder identity, the identity-map
-   key) beside the container recipe. `docs/cellctl.md`: the identity-map key and what the host
+   key) beside the container recipe, with its operator preconditions the check cannot see: no
+   container daemon on unauthenticated loopback TCP, and no non-holding user in a group such
+   as `lxd`, `libvirt` or `disk`. `docs/cellctl.md`: the identity-map key and what the host
    check refuses. A changelog fragment.
 
 ## Interface contract
@@ -258,7 +298,8 @@ Default if no answer: none — blocks until answered. Until it is answered the h
 - `roleSecretIdentityProbe` is the only way the check learns whether an identity can write a
   path or elevate. Its in-tree fakes answer per (identity, path) and per (identity, target); a target is
   root, a holder identity or the launching identity, and a path includes each container
-  runtime socket.
+  runtime socket and each ancestor of a probed path. The fakes also give each path's owner
+  and sticky bit, so the ancestor and ownership cases run in-tree.
 - The refusal text for an unmapped host surface keeps the prefix in Task 2, which
   desk-containers/34 row 8 matches.
 - Test-only: `CELLCTL_TEST_ROLE_IDS` is read by `_test.go` files only, never by the binary.
@@ -278,7 +319,7 @@ Named tests must execute; zero matches or a skip fails independent verification.
 
 | # | Class | Env | Command | Expect |
 |---|---|---|---|---|
-| 1 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretHostSurface$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretHostSurface ' "$o")` | Named PASS with the identity probe injected; each case refuses with its own reason: no map, a role missing from the map, a reviewer on a holder's identity or the file owner's, a reviewer at uid 0, a reviewer that elevates without a prompt to root, to a holder or to the launching identity, a reviewer that can write a rootful container runtime socket (a rootless socket of its own passes), a coordinator or intake on a holder's identity, the launcher being a role identity, a writable git common directory, hooks, cell config, identity map, PATH directory, holder home or secret directory, a writable cellctl binary or its directory, launcher PATH directory, launcher home or shell startup file, switch rule file, cell directory, `run` directory or launcher-owned cell home, a launcher tmux socket a non-holder can connect to, a non-holding window handed the launcher-owned cell home, a shared tmux socket or home for a holder, a dev-env file a holder can read, and a probe that cannot run; a fully separated map passes and the expected owner is the role's identity. |
+| 1 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretHostSurface$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretHostSurface ' "$o")` | Named PASS with the identity probe injected; each case refuses with its own reason: no map, a role missing from the map, a reviewer on a holder's identity or the file owner's, a reviewer at uid 0, a reviewer that elevates without a prompt to root, to a holder or to the launching identity, a reviewer that can write a rootful container runtime socket or a holder's or the launcher's rootless one (a rootless socket of its own passes), a coordinator or intake on a holder's identity, the launcher being a role identity, a writable git common directory, hooks, cell config, identity map, PATH directory, holder home or secret directory, a writable cellctl binary or its directory, launcher PATH directory, launcher home or shell startup file, switch rule file, cell directory, `run` directory or launcher-owned cell home, a writable git common directory, `config` or `hooks` of the cell repo, a stream root or a `CELL_ROOTS` checkout the launcher runs git in, a probed path whose ancestor a reviewer can write, a probed path or ancestor a reviewer owns with its write bit cleared, a reviewer-writable sticky ancestor over a reviewer-owned child (a sticky ancestor over a trusted-owned child passes), a launcher tmux socket a non-holder can connect to, a non-holding window handed the launcher-owned cell home, a shared tmux socket or home for a holder, a dev-env file a holder can read, and a probe that cannot run; a fully separated map passes and the expected owner is the role's identity. |
 | 2 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretHostLaunch$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretHostLaunch ' "$o")` | Named PASS with the switch seam injected; a verified host cell launches each window under its mapped identity, the worker window alone carries the path variable and no value, reviewer, intake and coordinator windows carry none, a window that cannot be switched refuses rather than falling back to the launcher's identity, and the receipt names the identity login. |
 | 3 | check +flow | host:multi-user | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretLaunchFlow$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretLaunchFlow ' "$o")` | Named PASS on a POSIX host provisioned per Task 6; the compiled cellctl checks a host-surface scratch cell, launches a worker window whose dispatched child sees only the path variable, then refuses once the fixture is group-readable; no output contains the fixture contents. The same command as desk-containers/34 row 5. |
 | 4 | check +flow | host:multi-user | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretReadDenyFlow$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretReadDenyFlow ' "$o")` | Named PASS on a POSIX host provisioned per Task 6; a reviewer child fails to open the fixture with a permission error and a worker child opens it; a map putting the reviewer on the worker's identity is refused at check before any window starts; a reviewer mapped to the elevating identity is refused by the real elevation probe; no output contains the fixture contents. The same command as desk-containers/34 row 9. |
@@ -313,8 +354,23 @@ Named tests must execute; zero matches or a skip fails independent verification.
   cellctl binary, the switch rule file, or the launcher-owned cell directory and home. The
   next launcher shell runs the code and switches to the worker: row 1 (the launcher is
   holder-equivalent; probes and elevation target).
+- A reviewer that can write the shared cell repo, a stream root or a `CELL_ROOTS` checkout
+  plants a `post-checkout` or `reference-transaction` hook, or sets `core.sshCommand` there.
+  The next launch or cadence pass runs `git worktree add` or `git fetch` as the launcher, which
+  runs the planted code and switches to the worker: row 1 (the git common directory, `config`
+  and `hooks` of every checkout the launcher runs git in are in the launcher probe set).
+- A reviewer cannot write a holder's PATH directory but can write its parent, so it renames
+  the directory and puts its own in its place after the check has passed; or it owns a probed
+  path with the write bit cleared and restores the bit later: row 1 (every probed path's
+  ancestors up to `/` are probed, and a non-holder-owned path or ancestor refuses).
 - A non-holding window started inside the launcher-owned tmux server reaches that server and
   types into a holder's launch: row 1 (the launcher socket is unreachable to non-holders).
+  A pane left running a launcher shell after the role process exits would read injected
+  input as the launcher: review-only (the pane command is the switch itself and the pane
+  closes on exit).
+- Root without a prompt by a route no socket probe sees (a daemon on unauthenticated loopback
+  TCP, `lxd`, `libvirt` or `disk` group membership): no row; the host recipe names these as
+  operator preconditions.
 - The operator's switch rule grants more than the role users (for example root): no row;
   review-only. The check refuses non-holders that can elevate, not an over-broad rule on the
   launcher; the recipe in `containers/secrets.md` states the narrow rule.
