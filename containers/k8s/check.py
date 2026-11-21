@@ -57,7 +57,7 @@ def offline_env(*, docker_fixture=False):
         names += ('ASSAY_TEST_DOCKER_HOST', 'ASSAY_TEST_FIXTURE_IMAGE')
     env = {name: os.environ[name] for name in names if name in os.environ}
     env.update(KUBECONFIG=os.devnull, GOPROXY='off', GOSUMDB='off', GONOPROXY='none',
-               GOVCS='*:off', GOAUTH='off', GOTOOLCHAIN='local', GOWORK='off', GOFLAGS='',
+               GOVCS='*:off', GOAUTH='off', GOENV='off', GOTOOLCHAIN='local', GOWORK='off', GOFLAGS='',
                GIT_TERMINAL_PROMPT='0', GIT_ALLOW_PROTOCOL='file')
     return env
 

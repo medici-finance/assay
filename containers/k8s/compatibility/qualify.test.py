@@ -36,6 +36,7 @@ class RunnerControls(unittest.TestCase):
 set -eu
 test -z "${QUALIFY_TEST_UNRELATED+x}"
 test "$KUBECONFIG" = /dev/null
+test "$GOENV" = off
 test "$GOMODCACHE" = "$PWD/modules"
 if [ "${ASSAY_QUALIFY_INTERACTION:-}" = 1 ]; then
     test "$ASSAY_TEST_DOCKER_HOST" = unix:///fixture.sock
@@ -100,6 +101,7 @@ exit "$(cat status)"
                 companion.write_text(
                     "import os, sys\nassert sys.flags.isolated\n"
                     "assert os.environ['KUBECONFIG'] == os.devnull\n"
+                    "assert os.environ['GOENV'] == 'off'\n"
                     f"assert os.environ.get('ASSAY_TEST_DOCKER_HOST') == {expected_host!r}\n"
                     f"assert os.environ.get('ASSAY_TEST_FIXTURE_IMAGE') == {expected_image!r}\n"
                     "assert 'QUALIFY_TEST_UNRELATED' not in os.environ\n"
