@@ -44,13 +44,29 @@ def bytecode_state():
             for path in base.rglob('*.pyc')}
 
 
+def offline_env(*, docker_fixture=False):
+    """Environment for local qualification tools and synthetic test children."""
+    names = (
+        'PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'XDG_CACHE_HOME',
+        'GOPATH', 'GOROOT', 'GOCACHE', 'GOMODCACHE', 'GOTMPDIR',
+        'SDKROOT', 'DEVELOPER_DIR', 'MACOSX_DEPLOYMENT_TARGET',
+        'LANG', 'LANGUAGE', 'LC_ALL', 'LC_CTYPE', 'LC_COLLATE', 'LC_MESSAGES',
+        'LC_MONETARY', 'LC_NUMERIC', 'LC_TIME', 'TZ',
+    )
+    if docker_fixture:
+        names += ('ASSAY_TEST_DOCKER_HOST', 'ASSAY_TEST_FIXTURE_IMAGE')
+    env = {name: os.environ[name] for name in names if name in os.environ}
+    env.update(KUBECONFIG=os.devnull, GOPROXY='off', GOSUMDB='off', GONOPROXY='none',
+               GOVCS='*:off', GOAUTH='off', GOTOOLCHAIN='local', GOWORK='off', GOFLAGS='',
+               GIT_TERMINAL_PROMPT='0', GIT_ALLOW_PROTOCOL='file')
+    return env
+
+
 def run(args, data=None, cwd=ROOT):
     try:
         return subprocess.run(args, input=data, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, cwd=cwd, timeout=90,
-                              env={**os.environ, 'KUBECONFIG': '/dev/null',
-                                   'GOPROXY': 'off', 'GOSUMDB': 'off',
-                                   'GOTOOLCHAIN': 'local'})
+                              env=offline_env())
     except (OSError, subprocess.TimeoutExpired) as err:
         raise Unavailable(f'{args[0]} could not complete') from err
 

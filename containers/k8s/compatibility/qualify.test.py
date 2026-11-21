@@ -15,12 +15,14 @@ TEST = "TestKubeCompatCellctlLifecycle"
 class RunnerControls(unittest.TestCase):
     def test_role_coverage_and_process_result(self):
         with tempfile.TemporaryDirectory() as scratch:
-            root = Path(scratch)
-            (root / "tools/desk").mkdir(parents=True)
+            root = Path(scratch).resolve()
+            go_cwd = root / "tools/desk"
+            go_cwd.mkdir(parents=True)
             runner = root / "containers/k8s/compatibility"
             runner.mkdir(parents=True)
             for name in ("qualify.py", "qualify.sh"):
                 shutil.copyfile(HERE / name, runner / name)
+            shutil.copyfile(HERE.parent / "check.py", runner.parent / "check.py")
             candidate = Path("components/compatibility-cellctl/candidate.json")
             target = runner.parent / candidate
             target.parent.mkdir(parents=True)
@@ -30,18 +32,40 @@ class RunnerControls(unittest.TestCase):
             bin_dir = root / "bin"
             bin_dir.mkdir()
             go = bin_dir / "go"
-            go.write_text('#!/bin/sh\ncat "$FIXTURE_EVENTS" || exit 1\nexit "$FIXTURE_EXIT"\n')
+            go.write_text("""#!/bin/sh
+set -eu
+test -z "${QUALIFY_TEST_UNRELATED+x}"
+test "$KUBECONFIG" = /dev/null
+test "$GOMODCACHE" = "$PWD/modules"
+if [ "${ASSAY_QUALIFY_INTERACTION:-}" = 1 ]; then
+    test "$ASSAY_TEST_DOCKER_HOST" = unix:///fixture.sock
+    test "$ASSAY_TEST_FIXTURE_IMAGE" = fixture-id
+else
+    test -z "${ASSAY_TEST_DOCKER_HOST+x}${ASSAY_TEST_FIXTURE_IMAGE+x}"
+fi
+cat events.jsonl
+exit "$(cat status)"
+""")
             go.chmod(0o755)
-            events = root / "events.jsonl"
-            env = dict(os.environ, PATH=str(bin_dir) + os.pathsep + os.environ["PATH"], FIXTURE_EVENTS=str(events))
+            events = go_cwd / "events.jsonl"
+            status_file = go_cwd / "status"
+            env = {
+                "HOME": str(root),
+                "PATH": str(bin_dir) + os.pathsep + os.environ["PATH"],
+                "GOMODCACHE": str(go_cwd / "modules"),
+                "ASSAY_TEST_DOCKER_HOST": "unix:///fixture.sock",
+                "ASSAY_TEST_FIXTURE_IMAGE": "fixture-id",
+                "QUALIFY_TEST_UNRELATED": "inert",
+            }
             parent = {"Action": "pass", "Test": TEST}
             children = [{"Action": "pass", "Test": TEST + "/" + role} for role in roles]
             complete = [parent, *children]
 
             def check(rows, status, want, message, *args):
                 events.write_text("".join(json.dumps(row) + "\n" for row in rows))
+                status_file.write_text(str(status))
                 run = subprocess.run(["sh", str(runner / "qualify.sh"), *args],
-                                     env=dict(env, FIXTURE_EXIT=str(status)), capture_output=True, text=True)
+                                     env=env, capture_output=True, text=True)
                 self.assertEqual(run.returncode, want, run.stderr)
                 self.assertIn(message, run.stderr if want else run.stdout)
                 print(f"exit {run.returncode}: {message}")
@@ -70,9 +94,15 @@ class RunnerControls(unittest.TestCase):
             for name in ("controlled-restart", "custody-target"):
                 check([], 0, 2, "invalid choice", "--suite", name)
                 companion = runner / ("qualify_" + name.replace("-", "_") + ".py")
+                uses_docker = name == "controlled-restart"
+                expected_host = env["ASSAY_TEST_DOCKER_HOST"] if uses_docker else None
+                expected_image = env["ASSAY_TEST_FIXTURE_IMAGE"] if uses_docker else None
                 companion.write_text(
                     "import os, sys\nassert sys.flags.isolated\n"
                     "assert os.environ['KUBECONFIG'] == os.devnull\n"
+                    f"assert os.environ.get('ASSAY_TEST_DOCKER_HOST') == {expected_host!r}\n"
+                    f"assert os.environ.get('ASSAY_TEST_FIXTURE_IMAGE') == {expected_image!r}\n"
+                    "assert 'QUALIFY_TEST_UNRELATED' not in os.environ\n"
                     "print(sys.argv[1:])\n")
                 check([], 0, 0, "['--offline']", "--suite", name)
                 check([], 0, 0, "['--offline', '--self-test']", "--offline", "--suite", name, "--self-test")

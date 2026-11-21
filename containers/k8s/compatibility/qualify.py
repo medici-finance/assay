@@ -1,7 +1,7 @@
 """Run the offline Kubernetes compatibility qualification suites."""
 import argparse
 import json
-import os
+import runpy
 from pathlib import Path
 import subprocess
 import sys
@@ -26,8 +26,8 @@ def main():
     parser.add_argument("--suite", choices=[*GO_TESTS, *installed], default="lifecycle")
     parser.add_argument("--self-test", action="store_true", help="run the selected companion suite's controls")
     args = parser.parse_args()
-    env = dict(os.environ, KUBECONFIG=os.devnull, GOPROXY="off", GOSUMDB="off",
-               GOTOOLCHAIN="local", GOWORK="off", GOFLAGS="")
+    offline_env = runpy.run_path(str(HERE.parent / "check.py"))["offline_env"]
+    env = offline_env(docker_fixture=args.suite in ("interaction", "controlled-restart"))
     if args.suite in installed:
         command = [sys.executable, "-I", str(installed[args.suite]), "--offline"]
         if args.self_test:
