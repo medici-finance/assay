@@ -1,0 +1,10 @@
+{
+  "name": "editorial",
+  "version": "1.0.0",
+  "description": "Write and revise technical articles with Article Craft, Prose Cadence, and Humanizer.",
+  "author": {
+    "name": "medici-finance"
+  },
+  "license": "Apache-2.0 AND MIT",
+  "skills": "./skills/"
+}

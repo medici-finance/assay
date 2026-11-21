@@ -555,6 +555,7 @@ func nonProbingVerbs() []nonProbingVerb {
 			prList(t)
 			t.Setenv("DESKBOARD_GH_PUBLIC_REPOS", strings.Join(publicRepos(), " "))
 		}},
+		{verb: "milestones", args: []string{"milestones", "testdata/milestones/stream-view-v2.json"}},
 		{verb: "reviews", args: []string{"reviews", repo, "1"}, setup: prList},
 		{verb: "diff", args: []string{"diff", repo, "1"}, setup: prList},
 		{verb: "files", args: []string{"files", repo, "1"}, setup: prList},

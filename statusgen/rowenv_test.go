@@ -138,3 +138,81 @@ func TestRowEnv_ColumnParsed(t *testing.T) {
 		t.Fatalf("no Env column: got %+v", got)
 	}
 }
+
+// The two tests below carry the names the desk-containers/35 Verify table runs
+// by (`-run '^TestEnvDeclaredNames$'`, `-run '^TestEnvNameAllowList$/^<class>$'`),
+// so they do not share the `RowEnv` substring above.
+
+// regression: desk-containers/35 — the Env grammar named a service but had no
+// way to name the variables a row needs, so a row saw whatever the window's
+// environment carried and nothing recorded which names it read.
+func TestEnvDeclaredNames(t *testing.T) {
+	base, names, declared := splitRowEnvNames("service:pg-local:DEVENV_PGHOST,DEVENV_PGPORT")
+	env, kind, known := resolveRowEnv(base)
+	if !declared || !known || kind != rowEnvService || env != "service:pg-local" ||
+		len(names) != 2 || names[0] != "DEVENV_PGHOST" || names[1] != "DEVENV_PGPORT" {
+		t.Fatalf("parse: base=%q env=%q kind=%q known=%v names=%v declared=%v", base, env, kind, known, names, declared)
+	}
+	if probs := rowEnvProblems(t, envHeader, envSep,
+		"| 1 | check | service:pg-local:DEVENV_PGHOST,DEVENV_PGPORT | `true` | exit 0 |",
+		"| 2 | check | `service:pg-local:DEVENV_PGHOST` | `true` | exit 0 |",
+		"| 3 | check | service:pg-local | `true` | exit 0 |"); len(probs) != 0 {
+		t.Fatalf("clean declared names: got %v, want none", probs)
+	}
+	if _, _, declared := splitRowEnvNames("service:pg-local"); declared {
+		t.Fatalf("a cell with no names segment declares names")
+	}
+	for name, tc := range map[string]struct {
+		cell  string
+		frags []string
+	}{
+		"malformed":  {"service:pg-local:DEVENV_PGHOST,devenv-port", []string{"Verify row 1", `"devenv-port"`, "not a well-formed variable name"}},
+		"empty":      {"service:pg-local:DEVENV_PGHOST,", []string{"Verify row 1", `""`, "not a well-formed variable name"}},
+		"duplicate":  {"service:pg-local:DEVENV_PGHOST,DEVENV_PGHOST", []string{"Verify row 1", `"DEVENV_PGHOST"`, "twice"}},
+		"on host":    {"host:windows:DEVENV_PGHOST", []string{"Verify row 1", "only a `service:<name>` environment may carry declared names", `"host"`}},
+		"on cluster": {"cluster:devnet:DEVENV_PGHOST", []string{"Verify row 1", "only a `service:<name>` environment may carry declared names", `"cluster"`}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			cls := "check"
+			if strings.HasPrefix(tc.cell, "cluster:") {
+				cls = "check:cluster"
+			}
+			wantOneEnvProblem(t, rowEnvProblems(t, envHeader, envSep,
+				"| 1 | "+cls+" | "+tc.cell+" | `true` | exit 0 |"), tc.frags...)
+		})
+	}
+	// Declared names do not exempt the row from the class rules: a check:ci row
+	// naming a service is still red, alongside nothing else.
+	wantOneEnvProblem(t, rowEnvProblems(t, envHeader, envSep,
+		"| 1 | check:ci | service:pg-local:DEVENV_PGHOST | `true` | exit 0 |"), "check:ci", "#6065")
+}
+
+// regression: desk-containers/35 — the allow-list denies by default; each named
+// class is refused and named in the PROBLEM, and a name in no class still refuses.
+func TestEnvNameAllowList(t *testing.T) {
+	for _, tc := range []struct {
+		sub, class string
+		names      []string
+	}{
+		{"path", "path-and-home", []string{"PATH", "HOME", "XDG_CONFIG_HOME"}},
+		{"loader", "dynamic-loader", []string{"LD_PRELOAD", "LD_LIBRARY_PATH", "DYLD_INSERT_LIBRARIES"}},
+		{"interpreter", "interpreter-options", []string{"NODE_OPTIONS", "PYTHONPATH", "PERL5LIB"}},
+		{"toolconfig", "tool-configuration", []string{"GH_CONFIG_DIR", "GH_TOKEN", "GITHUB_TOKEN", "GIT_DIR", "BASH_ENV"}},
+		{"socket", "agent-socket", []string{"SSH_AUTH_SOCK"}},
+		{"assay", "Assay", []string{"ASSAY_ROLE_SECRET_PG_FILE", "ASSAY_CELL_DEV_ENV_FILE", "ASSAY_DELIVERY_SHA"}},
+	} {
+		t.Run(tc.sub, func(t *testing.T) {
+			for _, n := range tc.names {
+				wantOneEnvProblem(t, rowEnvProblems(t, envHeader, envSep,
+					"| 1 | check | service:pg-local:"+n+" | `true` | exit 0 |"),
+					"Verify row 1", `"`+n+`"`, "outside the dev-env allow-list", "the "+tc.class+" class")
+			}
+			if tc.sub == "assay" {
+				// Deny by default: a name in no class and outside DEVENV_ refuses.
+				wantOneEnvProblem(t, rowEnvProblems(t, envHeader, envSep,
+					"| 1 | check | service:pg-local:PGHOST | `true` | exit 0 |"),
+					`"PGHOST"`, "outside the dev-env allow-list", "deny by default")
+			}
+		})
+	}
+}

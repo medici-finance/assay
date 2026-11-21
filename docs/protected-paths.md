@@ -364,7 +364,7 @@ original=<sha>
 link=<k>
 predecessor=<previous amendment; delivery for link 1>
 amendment=<sha>
-rows=<id>:<Command|Expect|Command+Expect>,...
+rows=<id>:<Command|Expect|Command+Expect|PlainCommand>,...
 ```
 
 Rows appear in table order with their exact changed-column token. Every changed
@@ -372,9 +372,20 @@ Command must be named. An unnamed Expect drift retains the prior effective Expec
 Each link is applied to the preceding effective rows, so a previously corrected row
 may be corrected again. A `Command+Expect` approval may replace the whole Command
 cell, including prose and multiple spans; row ID, order, class, shell and obligations
-remain fixed. Command-only corrections retain the one-span/context rule. Link 1
+remain fixed. The `Command` token retains the one-span/context rule. Link 1
 alone may reuse a v1 approval under the unchanged v1 rules, without combined cells.
 Legacy one-line descriptors retain their original rules and refusal verdicts.
+
+Use `PlainCommand` in a v2 approval when both Git revisions contain an entire
+unformatted shell command in an explicitly classed `check` or `check:ci` row
+using `sh`. Inspect both raw cells at the immutable revisions named in the
+approval. Each must equal the command the runner extracts. This form excludes
+backticks, hash signs, markup-like tags, links and character references, and
+invisible formatting. Shell variables, redirections and table-escaped pipes
+can be part of the command. Every other cell, including Expect, environment
+and obligation annotations, must agree across the original effective row, the
+predecessor and the amendment. For example, `rows=5:PlainCommand` approves
+only that replacement. The receipt reports the affected column as `Command`.
 
 Every first-parent Verify or version change from delivery through HEAD must be
 exactly one ordered amendment, with one exception, the byte-identical round trip

@@ -74,7 +74,7 @@ a bump that skips the re-pin is red before it lands. It also fails once a newer 
 un-pinned for more than seven days, so a re-pin that never happens turns red instead of leaving
 adopters on old tools.
 
-**The plugin version is the umbrella tag.** Since #789 the release workflow stamps
+**The Assay methodology plugin version follows the umbrella tag.** Since #789 the release workflow stamps
 `plugins/assay/.claude-plugin/plugin.json` — and with it the marketplace entry, `paired-versions.yaml`'s
 `plugin:`, and the generated Codex / Cursor / hook artifacts — to `X.Y.Z` in the tree that tag `vX.Y.Z` is
 cut from (`plugins/assay/scripts/stamp-plugin-version.sh`), and its gate refuses a tag whose
@@ -83,6 +83,10 @@ plugin cache on the string, so an unchanged version is an update adopters never 
 releases the default branch carries the next patch version, so a dispatch of exactly that version finds
 the tree already stamped. The pairing above is unchanged by the stamp: `plugin:` moves with the
 manifest, the paired `tag`/`sha256` lines move only with a re-pin.
+
+The Editorial plugin has its own version. When `plugins/editorial/` changes after its first
+release, the next umbrella release requires a higher version in the Editorial manifest.
+The release stamp only updates the methodology plugin.
 
 ## The `.assay-versions` pin file
 
