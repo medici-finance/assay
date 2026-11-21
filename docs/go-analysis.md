@@ -116,6 +116,14 @@ remediation work. Review the initial inventory once. Subsequently:
 4. Tool, configuration and fingerprint changes require a separately reviewed
    migration with before/after evidence. CI never automatically rebaselines.
 
+The current baseline is itself such a migration, and no admission lane for it exists
+yet. Main's committed baseline was measured under the first loader pin; since the loader
+pin moved, its contract matches neither main's own policy nor this one. The shipped action
+takes the trusted baseline from main, so a branch run of it refuses with
+`tool/config migration requires reviewed baseline`. That refusal is correct. The CI job
+is applied only after a maintainer records how this baseline is admitted (see the
+[CI runsheet](runsheets/go-analysis-ci-hunk.md)).
+
 Identity uses source content and distinguishing context, not line numbers or
 counts. The anchor is scoped to the enclosing top-level declaration: fixing,
 adding or removing a finding in another function never re-identifies an untouched
@@ -140,7 +148,7 @@ gate result. Incomplete scans cannot resolve debt or report measured zero.
 Desk-tools/35 consumes this same artifact into qualgen; ingestion, vulnerability
 analysis and historical rendering are not implemented by this correctness change.
 
-The committed harness runs 16 tests and 16 guard mutations, with real upstream
+The committed harness runs 16 tests and 17 guard mutations, with real upstream
 analyzer red/green controls. It proves module discovery, source movement, baseline
 monotonicity, duplicate refusal, policy changes, checksum rejection and failure
 propagation in the first/middle/last scan. The action has its own separate wrapper

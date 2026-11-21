@@ -318,7 +318,8 @@ class Harness(unittest.TestCase):
                     Pos=dict(Filename='a.go', Line=4, Column=2))
         cases = {'paired': ([dict(note), dict(note),
                              dict(note, Text='SA4023: this comparison is always true', Pos=dict(Filename='a.go', Line=5, Column=6)),
-                             dict(note, Text='SA4023: this comparison is never true', Pos=dict(Filename='a.go', Line=6, Column=6))], 1),
+                             dict(note, Text='SA4023: this comparison is never true', Pos=dict(Filename='a.go', Line=6, Column=6)),
+                             dict(note, FromLinter='govet', Text='SA4023(related information): other linter', Pos=dict(Filename='a.go', Line=7, Column=2))], 1),
                  'orphan': ([dict(note)], 2)}
         real_run = subprocess.run
         for name, (issues, expected) in cases.items():
@@ -335,7 +336,7 @@ class Harness(unittest.TestCase):
             self.assertEqual(code, expected, name)
             if name == 'paired':
                 self.assertEqual(report['state'], 'complete')
-                self.assertEqual(sorted(f['line'] for f in report['findings']), [5, 6])
+                self.assertEqual(sorted(f['line'] for f in report['findings']), [5, 6, 7])
                 self.assertEqual(report['coverage'][0]['related'], 2)
             else:
                 self.assertEqual(report['state'], 'could-not-check')

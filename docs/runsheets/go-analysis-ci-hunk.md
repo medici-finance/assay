@@ -28,6 +28,18 @@ this first action refuses changed tool/config/fingerprint contracts against the
 old baseline, and bootstrap cannot be reused as an upgrade bypass. This first
 hunk does not claim that ingestion or that migration lane already exists.
 
+## Precondition: a recorded migration admission
+
+Do not apply this hunk yet. This branch re-measures the baseline under the current pins
+and moves the fingerprint to `source-window/v3`. Against main's baseline, the action at
+this branch's head refuses with `tool/config migration requires reviewed baseline`.
+It refuses on purpose, and the refusal must not be loosened. Main's own baseline also no
+longer matches main's pins, so pinning the action to main instead gives the same refusal.
+
+Apply the hunk only after a maintainer records how this migration is admitted, on this
+brief's pull request or its decision issue. Follow what that ruling says the first branch
+run is expected to show. Until then, Verify rows 6 and 7 are could-not-check, not failed.
+
 ## Prepare in an isolated checkout
 
 Set `REVIEWED_HEAD` to the full implementation commit you reviewed. Run with your
