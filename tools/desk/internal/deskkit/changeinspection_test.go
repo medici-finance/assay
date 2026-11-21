@@ -39,7 +39,7 @@ func TestInspectChangeGitHubReadCost(t *testing.T) {
 			if len(s.requests) != 4 {
 				t.Fatalf("want four HTTP requests for %d checks: %+v", jobs, s.requests)
 			}
-			if r.ExpectedHead != inspectionHead || r.Head != inspectionHead || r.MergeState != "BLOCKED" || r.CheckRead != "observed" || len(r.Checks) != jobs || r.Checks[0].Result != "failed" || r.Checks[0].ID != "101" || r.Checks[0].RunID != "90" || r.Checks[0].JobID != "1" {
+			if r.ExpectedHead != inspectionHead || r.Head != inspectionHead || r.MergeState != "BLOCKED" || r.CheckRead != "observed" || len(r.Checks) != jobs || r.Checks[0].Conclusion != "FAILURE" || r.Checks[0].ID != "101" || r.Checks[0].RunID != "90" || r.Checks[0].JobID != "1" {
 				t.Fatalf("bad subject or checks: %+v", r)
 			}
 			if r.ReviewRead != "provider-window" || r.InlineDiscussions != "not-read" || len(r.Reviews) != 3 || r.Reviews[0].Binding != "other-head" || r.Reviews[1].Binding != "at-head" || r.Reviews[1].ID != 27 || r.Reviews[1].URL != reviewLink || r.Reviews[1].Body != "" || r.Reviews[2].Lane != "security" || r.Reviews[2].Binding != "unknown" || r.Reviews[2].Body != "Security-Review: fail\nF1: retain the original reason." {
@@ -180,7 +180,7 @@ func TestInspectChangeGitLabReadCost(t *testing.T) {
 	var seen bool
 	for _, c := range r.Checks {
 		if c.Name == "build-32" {
-			seen = c.JobID == "32" && c.RunID == "77" && c.URL != "" && c.Result == "failed"
+			seen = c.JobID == "32" && c.RunID == "77" && c.URL != "" && c.Conclusion == "FAILURE"
 		}
 	}
 	if !seen || len(s.requests) != 9 {
@@ -203,7 +203,7 @@ func TestInspectChangeCheckIdentifiers(t *testing.T) {
 		{ID: "17", Name: "build", Status: "completed", Conclusion: "failure", CompletedAt: "2026-02-21T00:00:00Z"},
 		{ID: "18", Name: "build", Status: "completed", Conclusion: "success", CompletedAt: "2026-02-22T00:00:00Z"},
 	}})
-	if len(rows) != 1 || rows[0].ID != "18" || rows[0].Result != "passed" || rows[0].RunID != "" || rows[0].JobID != "" {
+	if len(rows) != 1 || rows[0].ID != "18" || rows[0].Conclusion != "SUCCESS" || rows[0].RunID != "" || rows[0].JobID != "" {
 		t.Fatalf("older failure or fabricated IDs: %+v", rows)
 	}
 }

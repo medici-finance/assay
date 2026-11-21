@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/medici-finance/assay/tools/desk/internal/reviewflow"
 )
 
 // These are source observations for a worker investigating one change. Readiness,
@@ -49,7 +47,6 @@ type InspectedCheck struct {
 	Status     string `json:"status,omitempty"`
 	Conclusion string `json:"conclusion,omitempty"`
 	State      string `json:"state,omitempty"`
-	Result     string `json:"result"`
 	ID         string `json:"checkId,omitempty"`
 	JobID      string `json:"jobId,omitempty"`
 	RunID      string `json:"runId,omitempty"`
@@ -187,19 +184,7 @@ func changeChecks(cs *ChecksAtHead) []InspectedCheck {
 	}
 	out := make([]InspectedCheck, 0, len(rows))
 	for _, c := range LatestRunPerName(rows, observedCheck.groupKey, observedCheck.recencyKey) {
-		pass, pending, fail, unknown := reviewflow.CountChecks([]reviewflow.CheckFact{{Status: c.Status, Conclusion: c.Conclusion, State: c.state}})
-		result := "skipped-or-neutral"
-		switch {
-		case fail > 0:
-			result = "failed"
-		case pass > 0:
-			result = "passed"
-		case pending > 0:
-			result = "pending"
-		case unknown > 0:
-			result = "unknown"
-		}
-		out = append(out, InspectedCheck{Name: c.groupKey(), Status: c.Status, Conclusion: c.Conclusion, State: c.state, Result: result, ID: c.id,
+		out = append(out, InspectedCheck{Name: c.groupKey(), Status: c.Status, Conclusion: c.Conclusion, State: c.state, ID: c.id,
 			JobID: c.job, RunID: c.run, URL: c.url})
 	}
 	return out

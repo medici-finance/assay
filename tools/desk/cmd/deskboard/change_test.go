@@ -35,7 +35,7 @@ func TestChangeCommandUsesRequestedSubject(t *testing.T) {
 		case "/repos/" + repo + "/commits/" + head + "/status":
 			result = map[string]any{"statuses": []any{}}
 		case "/repos/" + repo + "/commits/" + head + "/check-runs":
-			result = map[string]any{"check_runs": []any{}}
+			result = map[string]any{"total_count": 1, "check_runs": []any{map[string]any{"id": 11, "name": "build", "status": "completed", "conclusion": "failure"}}}
 		default:
 			t.Errorf("unexpected request %s", r.URL.Path)
 			http.NotFound(w, r)
@@ -47,8 +47,11 @@ func TestChangeCommandUsesRequestedSubject(t *testing.T) {
 	forgeAPIBase = srv.URL
 	var out, errout bytes.Buffer
 	code := run([]string{"change", repo, "7", head, "--json"}, &out, &errout)
-	var result deskkit.ChangeInspection
-	if code != 0 || json.Unmarshal(out.Bytes(), &result) != nil || result.Head != head || len(result.Reviews) != 1 || result.Reviews[0].Body != "Retain this finding." || result.CheckRead != "empty" {
+	var result struct {
+		deskkit.ChangeInspection
+		Checks []changeCheck `json:"checks"`
+	}
+	if code != 0 || json.Unmarshal(out.Bytes(), &result) != nil || result.Head != head || len(result.Reviews) != 1 || result.Reviews[0].Body != "Retain this finding." || result.CheckRead != "observed" || len(result.Checks) != 1 || result.Checks[0].Result != "failed" || result.Checks[0].ID != "11" {
 		t.Fatalf("code=%d stdout=%s stderr=%s", code, &out, &errout)
 	}
 	if calls != 4 {
@@ -66,5 +69,18 @@ func inspectionSubjectFixture(t *testing.T) {
 	t.Helper()
 	forgeHooks.getPR = func(_ string, number int) (*deskkit.PullRequest, error) {
 		return &deskkit.PullRequest{Number: number, State: "open", HeadSHA: strings.Repeat("a", 40)}, nil
+	}
+}
+
+func TestChangeCheckResultsPreserveCoverage(t *testing.T) {
+	if changeCheckResults(nil) != nil || changeCheckResults([]deskkit.InspectedCheck{}) == nil {
+		t.Fatal("unknown and observed-empty checks collapsed")
+	}
+	facts := []deskkit.InspectedCheck{{Status: "COMPLETED", Conclusion: "NEUTRAL"}, {Status: "COMPLETED", Conclusion: "SUCCESS"}, {State: "EXPECTED"}, {Status: "COMPLETED"}}
+	got := changeCheckResults(facts)
+	for i, want := range []string{"skipped-or-neutral", "passed", "pending", "unknown"} {
+		if got[i].Result != want {
+			t.Errorf("check %d: got %s, want %s", i, got[i].Result, want)
+		}
 	}
 }
