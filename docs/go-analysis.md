@@ -150,7 +150,7 @@ gate result. Incomplete scans cannot resolve debt or report measured zero.
 Desk-tools/35 consumes this same artifact into qualgen; ingestion, vulnerability
 analysis and historical rendering are not implemented by this correctness change.
 
-The committed harness runs 16 tests and 17 guard mutations, with real upstream
+The committed harness runs 16 tests and 19 guard mutations, with real upstream
 analyzer red/green controls. It proves module discovery, source movement, baseline
 monotonicity, duplicate refusal, policy changes, checksum rejection and failure
 propagation in the first/middle/last scan. The action has its own separate wrapper

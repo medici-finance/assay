@@ -43,10 +43,14 @@ merge, and its run is where the gate is measured.
 
 Set `REVIEWED_HEAD` to the full main commit you reviewed, at or after the merge of
 the implementation PR. Run with your own permitted Git identity, from a checkout of
-this repository. The ancestry check ties the pin to a commit that is on main and
+this repository. Each block starts with `set -eu`, so a failed guard stops it. Run both
+blocks in one fresh `bash` session started for this (not your login shell): a failed
+guard ends that session, and the second block runs in the checkout the first enters.
+The ancestry check ties the pin to a commit that is on main and
 already carries the migrated baseline.
 
 ```sh
+set -eu
 : "${REVIEWED_HEAD:?Set the full implementation commit you reviewed}"
 case "$REVIEWED_HEAD" in *[!0-9a-f]*|'') exit 1 ;; esac
 test "${#REVIEWED_HEAD}" -eq 40
@@ -79,6 +83,7 @@ Inspect the diff and the bootstrap SHA, then commit and push that workflow-only
 change using the human account's configured identity and credentials:
 
 ```sh
+set -eu
 test "$(git diff --name-only)" = '.github/workflows/ci.yml'
 git add .github/workflows/ci.yml
 git commit -m 'ci: enable ratcheted Go lint reporting'

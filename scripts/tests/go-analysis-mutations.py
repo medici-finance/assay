@@ -23,6 +23,8 @@ cases = [
     ('network', "GOPROXY='https://proxy.golang.org' if network else 'off'", "GOPROXY='https://proxy.golang.org'", 'Harness.test_offline'),
     ('sumdb', "GOSUMDB=sumdb", "GOSUMDB='sum.golang.org'", 'Harness.test_offline'),
     ('related-linter', "if i.get('FromLinter') == 'staticcheck' and RELATED.match(str(i.get('Text')))]", "if RELATED.match(str(i.get('Text')))]", 'Harness.test_related_notes'),
+    ('related-rules', "for i in kept if i.get('FromLinter') == 'staticcheck'}", 'for i in kept}', 'Harness.test_related_notes'),
+    ('related-anchor', "RELATED = re.compile(r'(", "RELATED = re.compile(r'.*?(", 'Harness.test_related_notes'),
     ('related', "if any(RELATED.match(n['Text']).group(1) not in rules for n in notes):", 'if False:', 'Harness.test_related_notes'),
     ('exit', "if proc.returncode not in [0, 1] or (proc.returncode == 0 and issues) or (proc.returncode == 1 and not issues):", 'if False:', 'Harness.test_scan_failures'),
 ]

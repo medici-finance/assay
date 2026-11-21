@@ -304,7 +304,7 @@ class Harness(unittest.TestCase):
     # regression: F-go-analysis-related-notes
     def test_related_notes(self):
         target = self.module('mod')
-        (target / 'a.go').write_text('package a\n\nfunc F() {\n\tc, e := g()\n\t_ = e != nil\n\t_ = e == nil\n\t_ = c\n}\n')
+        (target / 'a.go').write_text('package a\n\nfunc F() {\n\tc, e := g()\n\t_ = e != nil\n\t_ = e == nil\n\t_ = c\n\t_ = c\n}\n')
         for filename in r.POLICY:
             path = self.root / filename
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -319,8 +319,10 @@ class Harness(unittest.TestCase):
         cases = {'paired': ([dict(note), dict(note),
                              dict(note, Text='SA4023: this comparison is always true', Pos=dict(Filename='a.go', Line=5, Column=6)),
                              dict(note, Text='SA4023: this comparison is never true', Pos=dict(Filename='a.go', Line=6, Column=6)),
-                             dict(note, FromLinter='govet', Text='SA4023(related information): other linter', Pos=dict(Filename='a.go', Line=7, Column=2))], 1),
-                 'orphan': ([dict(note)], 2)}
+                             dict(note, FromLinter='govet', Text='SA4023(related information): other linter', Pos=dict(Filename='a.go', Line=7, Column=2)),
+                             dict(note, Text='SA4006: see SA4023(related information): mid-text', Pos=dict(Filename='a.go', Line=8, Column=2))], 1),
+                 'orphan': ([dict(note)], 2),
+                 'foreign': ([dict(note), dict(note, FromLinter='govet', Text='SA4023: other linter primary', Pos=dict(Filename='a.go', Line=5, Column=6))], 2)}
         real_run = subprocess.run
         for name, (issues, expected) in cases.items():
             def scan(cmd, **kwargs):
@@ -336,7 +338,7 @@ class Harness(unittest.TestCase):
             self.assertEqual(code, expected, name)
             if name == 'paired':
                 self.assertEqual(report['state'], 'complete')
-                self.assertEqual(sorted(f['line'] for f in report['findings']), [5, 6, 7])
+                self.assertEqual(sorted(f['line'] for f in report['findings']), [5, 6, 7, 8])
                 self.assertEqual(report['coverage'][0]['related'], 2)
             else:
                 self.assertEqual(report['state'], 'could-not-check')
