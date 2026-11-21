@@ -63,6 +63,7 @@ func inWorktreeWithRef(t *testing.T, ref string) {
 
 // TestReleaseWritesReleasedRecord is Verify row 5.
 func TestReleaseWritesReleasedRecord(t *testing.T) {
+	t.Setenv("DESK_SESSION", "sess-A")
 	const id = "at--stream--28"
 	const repo = "medici-finance/assay"
 
@@ -170,6 +171,7 @@ func TestReleaseWritesReleasedRecord(t *testing.T) {
 // `_` or `-`, or has a long name up to the 256-byte record cap, still writes its released line;
 // a 257-byte repo exits 0 and loses the line with a WARNING (declared).
 func TestReleaseOddRepoRecorded(t *testing.T) {
+	t.Setenv("DESK_SESSION", "sess-A")
 	const id = "at--stream--28"
 	for _, repo := range []string{"example-org/.github", "example-org/_template", "_owner/-x",
 		"example-org/" + strings.Repeat("n", 101), "example-org/" + strings.Repeat("n", 244)} {
@@ -206,4 +208,23 @@ func TestReleaseOddRepoRecorded(t *testing.T) {
 			t.Error("the claim was not released")
 		}
 	})
+}
+
+// regression: #2488
+func TestLateReleasePreservesSuccessor(t *testing.T) {
+	const id = "example--pr-12"
+	home := recordHome(t)
+	f := newStore()
+	f.seedClaim(id, "successor", "dispatched", "feat/current", time.Minute)
+	run, _, _ := harness(t, f)
+	before := f.claims[id]
+	if rc := run("release", id, "--repo", "example/repo", "--owner", "former"); rc != exitRefused {
+		t.Fatalf("late release returned %d", rc)
+	}
+	if after := f.claims[id]; after != before {
+		t.Fatal("late release changed the successor's claim")
+	}
+	if records := readRecords(t, home); len(records) != 0 {
+		t.Fatalf("late release recorded %d releases", len(records))
+	}
 }

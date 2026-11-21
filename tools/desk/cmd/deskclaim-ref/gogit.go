@@ -200,15 +200,31 @@ func (g *gogitStore) mintAndPush(id, msg string, old plumbing.Hash) deskkit.Clai
 	return deskkit.ClaimWriteApplied
 }
 
-func (g *gogitStore) Remove(id string) (deskkit.ClaimWriteOutcome, bool) {
+func (g *gogitStore) RemoveFrom(id, old string) deskkit.ClaimWriteOutcome {
+	if !plumbing.IsHash(old) || plumbing.NewHash(old).IsZero() {
+		g.fail(fmt.Errorf("invalid expected claim revision"))
+		return deskkit.ClaimWriteUnverifiable
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
 	defer cancel()
-	res, err := gitcore.DeleteRefTrace(ctx, g.url, g.auth, g.refName(id), claimTrace)
+	res, reason, err := gitcore.PushRefUpdateDetail(ctx, gitcore.RefUpdate{
+		URL: g.url, Auth: g.auth, Ref: g.refName(id), Old: plumbing.NewHash(old), New: plumbing.ZeroHash, Trace: claimTrace,
+	})
 	if err != nil {
 		g.fail(err)
-		return deskkit.ClaimWriteUnverifiable, false
+		return deskkit.ClaimWriteUnverifiable
 	}
-	return deskkit.ClaimWriteApplied, res == gitcore.DeleteDone
+	if res == gitcore.RefUpdateApplied {
+		return deskkit.ClaimWriteApplied
+	}
+	// A policy refusal is not evidence of a new holder. Distinguish the two
+	// before reporting the result and retain the server's refusal for diagnostics.
+	ref, status := g.Read(id)
+	g.fail(fmt.Errorf("server refused %s: %s", g.refName(id), reason))
+	if status == deskkit.ClaimReadFree || (status == deskkit.ClaimReadHeld && ref.Version != old) {
+		return deskkit.ClaimWriteRejected
+	}
+	return deskkit.ClaimWriteUnverifiable
 }
 
 func (g *gogitStore) List() ([]string, deskkit.ClaimReadStatus) {
