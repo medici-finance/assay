@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 )
 
 const adjudicatedCardPrefix = "<!-- verify-gate-adjudication: "
@@ -97,8 +98,8 @@ func renderAdjudicatedCard(root string, bf *BriefFile, m acceptanceManifest, pre
 }
 
 // makeAdjudicatedVerifyIssue is the issuer's readiness boundary. It renders
-// only, leaving deduplication, decision-gate preflight and publication to the
-// canonical workflow adapter.
+// only, leaving deduplication and publication to the canonical workflow
+// adapter. It also preflights the same decision gate used on close.
 func makeAdjudicatedVerifyIssue(root, briefRef string, preparation int, ruling string,
 	forge *ghClient, humanLogins map[string]string, ciWorkflowToken bool) (verifyIssue, error) {
 	bf, err := locateAcceptanceBrief(root, briefRef)
@@ -113,7 +114,7 @@ func makeAdjudicatedVerifyIssue(root, briefRef string, preparation int, ruling s
 	if err != nil {
 		return verifyIssue{}, err
 	}
-	if err := verifyAcceptanceReadiness(root, bf.Path, m, preparation, ruling, forge, humanLogins, ciWorkflowToken); err != nil {
+	if _, _, _, err := planAdjudicatedClose(root, briefRef, m, preparation, ruling, time.Now(), forge, humanLogins, ciWorkflowToken); err != nil {
 		return verifyIssue{}, err
 	}
 	return renderAdjudicatedCard(root, bf, m, preparation, ruling)
