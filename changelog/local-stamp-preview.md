@@ -1,0 +1,1 @@
+- Preview prospective human sign-off claims with `statusgen preview-stamps` before opening a PR. Requirement authoring guidance now starts new asks as proposed.
