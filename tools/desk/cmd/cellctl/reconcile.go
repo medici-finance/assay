@@ -37,10 +37,10 @@ import (
 // There is deliberately no --yes flag: clearing stays a human act, as --confirm-stopped intends.
 
 const (
-	reconcileOwned = "owned"
-	reconcileDead  = "dead"
-	reconcileAlive = "alive"
-	reconcileCNC   = "could-not-check"
+	reconcileOwned = cellcadence.ClassOwned
+	reconcileDead  = cellcadence.ClassDead
+	reconcileAlive = cellcadence.ClassAlive
+	reconcileCNC   = cellcadence.ClassCouldNotCheck
 )
 
 // orphanGrace is how long a SIGTERMed orphan has before SIGKILL.
@@ -394,29 +394,28 @@ func (c *Cell) inventoryRecord(role, dir string, isComms bool) (e *reconcileEntr
 			return e, true
 		}
 	}
-	alive, unknown := false, false
+	// The judgment is cellcadence's (JudgeProcess, ClassifyProcesses); this closure is the adapter:
+	// it reads the process table and words the evidence.
+	var verdicts []cellcadence.ProcessVerdict
 	check := func(what string, pid int, start string) {
 		now, gone, err := deskkit.ProcessStart(pid)
-		switch {
-		case gone:
+		v := cellcadence.JudgeProcess(start, cellcadence.ProcessProbe{Start: now, Gone: gone, Err: err})
+		verdicts = append(verdicts, v)
+		switch v {
+		case cellcadence.ProcessGone:
 			e.Evidence = append(e.Evidence, fmt.Sprintf("%s pid %d has exited", what, pid))
-		case err != nil:
-			unknown = true
+		case cellcadence.ProcessUnreadable:
 			e.Evidence = append(e.Evidence, fmt.Sprintf("%s pid %d could not be checked: %v", what, pid, err))
-		case start == "":
-			unknown = true
+		case cellcadence.ProcessNoRecordedStart:
 			e.Evidence = append(e.Evidence, fmt.Sprintf("%s pid %d is running and no start time was recorded to tell it from a reused pid", what, pid))
-		case now != start:
+		case cellcadence.ProcessReused:
 			e.Evidence = append(e.Evidence, fmt.Sprintf("%s pid %d now belongs to a different process (start time differs: pid reuse); it is never signalled", what, pid))
-		default:
-			alive = true
+		case cellcadence.ProcessSame:
 			e.PIDs = append(e.PIDs, pid)
 			e.Evidence = append(e.Evidence, fmt.Sprintf("%s pid %d is still running (pid and start time match)", what, pid))
 		}
 	}
-	ownRecord := holder != nil && holder.PID == state.PID &&
-		(holder.Cell == "" && holder.Role == "" || holder.Cell == c.Name && holder.Role == role)
-	if ownRecord {
+	if cellcadence.OwnsCheckpointPID(holder, state, c.Name, role) {
 		e.Start = holder.Start
 		check("supervisor", holder.PID, holder.Start)
 		if holder.ChildPID > 0 {
@@ -429,14 +428,7 @@ func (c *Cell) inventoryRecord(role, dir string, isComms bool) (e *reconcileEntr
 		e.Evidence = append(e.Evidence, "no owner record survived with a start time for the checkpoint's pid")
 		check("supervisor", state.PID, "")
 	}
-	switch {
-	case alive:
-		e.Class = reconcileAlive
-	case unknown:
-		e.Class = reconcileCNC
-	default:
-		e.Class = reconcileDead
-	}
+	e.Class = cellcadence.ClassifyProcesses(verdicts...)
 	return e, true
 }
 
@@ -455,7 +447,8 @@ func (c *Cell) liveLeaseHolders() []int {
 			continue
 		}
 		if h, err := cellcadence.Holder(d); err == nil {
-			if start, gone, err := deskkit.ProcessStart(h.PID); err == nil && !gone && start == h.Start {
+			start, gone, err := deskkit.ProcessStart(h.PID)
+			if cellcadence.JudgeProcess(h.Start, cellcadence.ProcessProbe{Start: start, Gone: gone, Err: err}).Alive() {
 				pids = append(pids, h.PID)
 			}
 		}
