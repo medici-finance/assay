@@ -68,3 +68,36 @@ func verifyAcceptancePreparation(m acceptanceManifest, issue int, ciWorkflowToke
 	}
 	return read()
 }
+
+// loadAcceptancePreparation reads by the checkout's repository, never an
+// address taken from the issue's body. Admission re-reads and authenticates it.
+func loadAcceptancePreparation(repo string, issue int, ciWorkflowToken bool) (acceptanceManifest, error) {
+	if !repoFrontmatterRe.MatchString(repo) || issue <= 0 {
+		return acceptanceManifest{}, fmt.Errorf("acceptance preparation: invalid issue coordinate")
+	}
+	cc := creditContext{ciWorkflowToken: ciWorkflowToken}
+	record, err := cc.readIssue(fmt.Sprintf("%s#%d", repo, issue))
+	if err != nil {
+		return acceptanceManifest{}, err
+	}
+	_, section, ok := strings.Cut(record.Body, "\n\n```json\n")
+	raw, tail, ended := strings.Cut(section, "\n```")
+	if !ok || !ended || strings.TrimSpace(tail) != "" {
+		return acceptanceManifest{}, fmt.Errorf("acceptance preparation: issue does not contain a single manifest")
+	}
+	var m acceptanceManifest
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		return acceptanceManifest{}, fmt.Errorf("acceptance preparation: decode manifest: %w", err)
+	}
+	if !strings.EqualFold(m.Source.Repository, repo) {
+		return acceptanceManifest{}, fmt.Errorf("acceptance preparation: manifest names another repository")
+	}
+	want, err := acceptancePreparationBody(m)
+	if err != nil {
+		return acceptanceManifest{}, err
+	}
+	if strings.TrimSuffix(record.Body, "\n") != want {
+		return acceptanceManifest{}, fmt.Errorf("acceptance preparation: issue is not the canonical manifest rendering")
+	}
+	return m, nil
+}

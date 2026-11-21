@@ -54,3 +54,37 @@ func TestAcceptancePreparationRequiresPinnedVerifierAndUneditedBody(t *testing.T
 		})
 	}
 }
+
+func TestLoadAcceptancePreparationRequiresCanonicalBody(t *testing.T) {
+	creditFakeDeskread(t)
+	t.Setenv("CREDIT_FAKE_CI", "1")
+	m := acceptanceManifest{Source: acceptanceSource{
+		Repository: creditRepo, BriefPath: creditBriefRel, Revision: strings.Repeat("a", 40),
+	}}
+	body, err := acceptancePreparationBody(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name, body string
+		pass       bool
+	}{
+		{"exact", body, true},
+		{"unknown field", strings.Replace(body, `"source": {`, `"source": {"extra":true,`, 1), false},
+		{"noncanonical marker", strings.Replace(body, creditBriefRel, creditBriefRel+".extra", 1), false},
+		{"foreign repository", strings.Replace(body, creditRepo, "example-org/other", 1), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			item := map[string]any{"repo": creditRepo, "number": 41, "issue": creditIssue{Body: tc.body}}
+			raw, err := json.Marshal(map[string]any{"schema": deskreadSchema, "kind": "issue", "items": []any{item}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			putFile(t, filepath.Join(os.Getenv("CREDIT_FAKE_DIR"), "issue-41.json"), string(raw))
+			got, err := loadAcceptancePreparation(creditRepo, 41, true)
+			if (err == nil) != tc.pass || (tc.pass && got.Source.BriefPath != m.Source.BriefPath) {
+				t.Fatalf("pass=%v, got %+v (%v)", tc.pass, got, err)
+			}
+		})
+	}
+}
