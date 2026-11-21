@@ -153,7 +153,7 @@ _Held by per-stream caps: 14 brief(s) across 1 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 7756a11cf 2026-11-21T15:30:55Z_
+_last regen: 6dc564709 2026-11-21T16:22:39Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -174,7 +174,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 7756a11cf 2026-11-21T15:30:55Z_
+_last regen: 6dc564709 2026-11-21T16:22:39Z_
 
 **Progress:** 37/100 brief items done.
 
@@ -454,8 +454,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | statusgen | 20 [exec:strong] | verified | 2550 | 3 | 5d | CI auto-flip | none; stuck after one main run → file | 2026-10-25 assay-verifier-app[bot] @ 0c3b558efec3 (forge-identity) | — |
 | graph-execution | 32 [exec:strong] | verified | 2050 | 0 | 5d | CI auto-flip | none; stuck after one main run → file | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
 | measured-status | 04 [exec:strong] | verified | 2050 | 0 | 5d | CI auto-flip | none; stuck after one main run → file | 2026-10-22 assay-verifier-app[bot] @ 05dc9fbc88f2 (claude-opus-5-5) | — |
-| milestone-support | 11 [exec:strong] | implemented | 2050 | 2 | — | verify runner | none | — | — |
 | statusgen | 23 [exec:strong] | verified | 2050 | 2 | 5d | CI auto-flip | none; stuck after one main run → file | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
+| milestone-support | 11 [exec:strong] | implemented | 2000 | 2 | <1h | verify runner | none | — | — |
 | desk-supervision | 19 [exec:strong] | verified | 1550 | 1 | 5d | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ 70deba75a577 (claude-opus-5-5) | — |
 | statusgen | 17 | verified | 1550 | 1 | 5d | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 54c024fca36e (claude-opus-5-5) | — |
 | statusgen | 24 [exec:strong] | verified | 1550 | 1 | 5d | CI auto-flip | none; stuck after one main run → file | 2026-10-29 assay-verifier-app[bot] @ 4264d1027198 (forge-identity) | — |
