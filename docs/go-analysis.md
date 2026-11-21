@@ -87,7 +87,7 @@ strict generated-file detection is the only generated-code exclusion. Default
 exclusion presets, path exclusions and issue truncation are disabled.
 
 The complete measurement at the current migration source (named by the baseline's
-`source_sha`) contains **13,435 occurrences**: 11,549 errcheck, 1,445 staticcheck,
+`source_sha`) contains **13,487 occurrences**: 11,599 errcheck, 1,447 staticcheck,
 416 unused, 13 govet and 12 nolintlint. These counts include separate configurations
 of the same source, not distinct physical defects. Staticcheck "related information"
 notes annotate a primary finding and are dropped before identity (a note without its
