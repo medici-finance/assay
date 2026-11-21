@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -15,7 +16,9 @@ import (
 
 // regression: class issue-projection
 func TestChangesDeliveryAndWithdrawal(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	const repo = "example/repo"
 	f := &fakeForge{issues: []deskkit.IssueSummary{
 		{Number: 7, Labels: []string{deskkit.VerifyGateLabel}},
@@ -58,6 +61,9 @@ func TestChangesDeliveryAndWithdrawal(t *testing.T) {
 		if _, code := call(now, "--ack", receipt); code != want {
 			t.Fatalf("ack exit=%d want %d", code, want)
 		}
+	}
+	if _, code := call(now, "--ack="); code != deskkit.ExitRefused {
+		t.Fatalf("empty receipt exit=%d", code)
 	}
 	poll("", now)
 	current.State, current.Owner, current.Act, current.Evidence = "ready", "human", "approve the revision", "proof-A"
@@ -159,4 +165,68 @@ func TestChangesBrokenPipeReplaysAndContendedCursorIsUntouched(t *testing.T) {
 	if err := withChangesState(dir, func(string, *changeState) error { t.Fatal("used corrupt cursor"); return nil }); err == nil {
 		t.Fatal("accepted corrupt cursor")
 	}
+}
+
+// regression: class issue-projection
+func TestChangesKeepsUrgentActsFirstAfterWithdrawals(t *testing.T) {
+	state := changeState{Version: 1, Delivered: map[string]deliveredAction{"withdrawn": {Digest: "old"}}}
+	live := map[string]changeAction{
+		"question":     {rank: 2, createdAt: "2021", Act: "question"},
+		"urgent newer": {rank: 0, createdAt: "2024", Act: "urgent"},
+		"urgent older": {rank: 0, createdAt: "2023", Act: "urgent"},
+	}
+	var out bytes.Buffer
+	if err := deliverChanges(&out, filepath.Join(t.TempDir(), "cursor.json"), &state, live, time.Now(), 0); err != nil {
+		t.Fatal(err)
+	}
+	var result changeBatch
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Events) != 4 {
+		t.Fatalf("events=%+v", result.Events)
+	}
+	for i, want := range []string{"withdrawn", "urgent older", "urgent newer", "question"} {
+		if got := result.Events[i].ID; got != want {
+			t.Fatalf("event %d: got %q want %q", i, got, want)
+		}
+	}
+}
+
+// regression: class verification-provenance
+func TestChangesWithLandedRunsheet(t *testing.T) {
+	f := readyDecisionFixture(t)
+	const repo = "example-org/tracker"
+	f.issue.Labels = []string{"help wanted"}
+	f.issue.Body = "[Runsheet](https://github.com/" + repo + "/blob/" + strings.Repeat("b", 40) + "/docs/run.md)"
+	f.Forge = &fakeForge{issues: []deskkit.IssueSummary{{Number: 7, Labels: f.issue.Labels}}}
+	f.pinnedFile = &deskkit.FileContent{Exists: true, Kind: deskkit.FileKindRegular, Content: []byte(repo + "#7\n! perform-reviewed-task\nWhy: only the account holder can approve.\nResume: read the receipt.")}
+	f.branchFile = &deskkit.FileContent{Exists: false}
+	poll := func(want string) changeBatch {
+		t.Helper()
+		var out, diag bytes.Buffer
+		if code := run([]string{"changes", repo}, &out, &diag, time.Now()); code != 0 {
+			t.Fatalf("changes exit %d: %s", code, diag.String())
+		}
+		var batch changeBatch
+		if err := json.Unmarshal(out.Bytes(), &batch); err != nil {
+			t.Fatal(err)
+		}
+		if want == "" && len(batch.Events) != 0 || want != "" && (len(batch.Events) != 1 || batch.Events[0].Kind != want) {
+			t.Fatalf("wanted %q, got %+v", want, batch)
+		}
+		return batch
+	}
+	poll("")
+	f.branchFile = f.pinnedFile
+	ready := poll("ready")
+	if a := ready.Events[0].Action; a == nil || !strings.Contains(a.Evidence, "/docs/run.md") || !strings.Contains(a.Act, "reviewed act") {
+		t.Fatalf("missing verified evidence and act: %+v", a)
+	}
+	if code := run([]string{"changes", repo, "--ack", ready.Receipt}, io.Discard, io.Discard, time.Now()); code != 0 {
+		t.Fatalf("ack exit %d", code)
+	}
+	poll("")
+	f.branchFile = &deskkit.FileContent{Exists: true, Kind: deskkit.FileKindRegular, Content: []byte("superseded instructions")}
+	poll("withdrawn")
 }

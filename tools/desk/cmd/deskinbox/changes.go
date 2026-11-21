@@ -101,12 +101,14 @@ func digest(value string) string {
 // The payload includes the current issue title for context. Event identity uses
 // the required act and its proof; cosmetic title edits cannot re-page a consumer.
 type changeAction struct {
-	Title    string `json:"title,omitempty"`
-	Owner    string `json:"owner"`
-	Act      string `json:"act"`
-	Verify   string `json:"verify,omitempty"`
-	Evidence string `json:"evidence,omitempty"`
-	URL      string `json:"url,omitempty"`
+	rank      int
+	createdAt string
+	Title     string `json:"title,omitempty"`
+	Owner     string `json:"owner"`
+	Act       string `json:"act"`
+	Verify    string `json:"verify,omitempty"`
+	Evidence  string `json:"evidence,omitempty"`
+	URL       string `json:"url,omitempty"`
 }
 
 var readChangeAction = readInboxAction
@@ -131,7 +133,10 @@ func actionableSnapshot(repos []string, observer deskkit.RequestObserver) (map[s
 		switch a.State {
 		case "ready":
 			if a.Owner == "human" {
-				live[id] = changeAction{Title: a.Title, Owner: a.Owner, Act: a.Act, Verify: a.Verify, Evidence: a.Evidence, URL: a.URL}
+				live[id] = changeAction{
+					rank: row.Rank, createdAt: row.CreatedAt,
+					Title: a.Title, Owner: a.Owner, Act: a.Act, Verify: a.Verify, Evidence: a.Evidence, URL: a.URL,
+				}
 			}
 		case "prepare", "stale", "closed", "screened":
 			// Withdraw a previously announced act once it leaves the human.

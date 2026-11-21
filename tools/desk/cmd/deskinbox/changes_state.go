@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -99,7 +100,7 @@ func saveChanges(path string, state *changeState) error {
 }
 
 func acknowledgeChanges(path string, state *changeState, receipt string, now time.Time) error {
-	if receipt == state.LastAck {
+	if receipt != "" && receipt == state.LastAck {
 		return nil
 	}
 	if receipt == "" || receipt != state.Receipt {
@@ -173,7 +174,22 @@ func deliverChanges(out io.Writer, path string, s *changeState, live map[string]
 		}
 	}
 	result := changeBatch{Receipt: s.Receipt, Events: make([]changeEvent, 0, len(next))}
-	for _, id := range slices.Sorted(maps.Keys(next)) {
+	// Withdraw stale instructions first, then present live acts in the inbox's
+	// urgency/age order. A stable ID breaks ties across repositories.
+	ids := slices.Collect(maps.Keys(next))
+	slices.SortFunc(ids, func(x, y string) int {
+		a, xLive := live[x]
+		b, yLive := live[y]
+		switch {
+		case xLive && !yLive:
+			return 1
+		case !xLive && yLive:
+			return -1
+		default:
+			return cmp.Or(cmp.Compare(a.rank, b.rank), cmp.Compare(a.createdAt, b.createdAt), cmp.Compare(x, y))
+		}
+	})
+	for _, id := range ids {
 		e := changeEvent{ID: id, Kind: next[id].Kind}
 		if action, ok := live[id]; ok {
 			e.Action = &action
