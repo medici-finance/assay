@@ -45,3 +45,31 @@ func TestStagedAcceptanceRouteWorkflowPair(t *testing.T) {
 		})
 	}
 }
+
+func TestStagedAcceptanceCloseKeepsOrdinaryRefusalReport(t *testing.T) {
+	const workflow = "verify-gate-close.yml"
+	refusalReport := func(path string) string {
+		t.Helper()
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		const start = "# First attempt refusal, not already-done, not the floor: genuine"
+		const end = `echo "::error::close-verify refused for $brief"`
+		_, report, ok := strings.Cut(string(raw), start)
+		if !ok {
+			t.Fatalf("%s is missing the ordinary close refusal branch", path)
+		}
+		report, _, ok = strings.Cut(report, end)
+		if !ok || !strings.Contains(report, `--body-file "$body_file"`) {
+			t.Fatalf("%s is missing the ordinary close refusal report", path)
+		}
+		return report
+	}
+
+	live := refusalReport("../.github/workflows/" + workflow)
+	staged := refusalReport("../ci/staged-workflows/" + workflow)
+	if staged != live {
+		t.Fatal("promotion would change the live ordinary close refusal report")
+	}
+}
