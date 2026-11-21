@@ -4,7 +4,6 @@ from copy import deepcopy
 import hashlib
 import importlib.util
 import json
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -110,11 +109,9 @@ def check_mutations(docs, pins, custody, markers):
 
 
 def check_targets():
-    env = dict(os.environ, KUBECONFIG=os.devnull, GOPROXY='off', GOSUMDB='off',
-               GOTOOLCHAIN='local', GOWORK='off', GOFLAGS='')
     run = subprocess.run(['go', 'test', '-json', '-count=1', '-timeout=5m',
                           '-run', '^' + TEST + '$', './cmd/cellctl'],
-                         cwd=ROOT / 'tools/desk', env=env, capture_output=True, text=True)
+                         cwd=ROOT / 'tools/desk', env=check.offline_env(), capture_output=True, text=True)
     required = {TEST} | {f'{TEST}/{case}' for case in TARGET_CASES}
     passed, failed = set(), set()
     for line in run.stdout.splitlines():
