@@ -120,6 +120,48 @@
       "file": "internal/deskkit/verifierattestation.go",
       "old": "\t\tif phase == verifierEvidence {\n\t\t\t// Evidence admission",
       "new": "\t\tif false && phase == verifierEvidence {\n\t\t\t// Evidence admission"
+    },
+    {
+      "name": "#7353 control 1b: a run admitted under an unstamped build is an upgrade",
+      "file": "internal/deskkit/toolupgrade.go",
+      "old": "\tcase !okFrom:\n",
+      "new": "\tcase false && !okFrom:\n"
+    },
+    {
+      "name": "#7353 control 1c: the stamped-release shape is unanchored at its start",
+      "file": "internal/deskkit/toolupgrade.go",
+      "old": "regexp.MustCompile(`^v(0|",
+      "new": "regexp.MustCompile(`v(0|"
+    },
+    {
+      "name": "#7353 control 3b: main's pin matches the running tag by prefix",
+      "file": "internal/deskkit/toolupgrade.go",
+      "old": "\tif norm(tag) != norm(running) {",
+      "new": "\tif !strings.HasPrefix(norm(running), norm(tag)) {"
+    },
+    {
+      "name": "#7353 control 6: an accepted upgrade clears unread inputs",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\t\t\tupgrade = &u\n",
+      "new": "\t\t\tupgrade = &u\n\t\t\tunread = nil\n"
+    },
+    {
+      "name": "#7353 a malformed pin line on main is ignored",
+      "file": "internal/deskkit/toolupgrade.go",
+      "old": "\t\t\t\tif lerr != nil {",
+      "new": "\t\t\t\tif false && lerr != nil {"
+    },
+    {
+      "name": "#7353 an unparsable release manifest on main is ignored",
+      "file": "internal/deskkit/toolupgrade.go",
+      "old": "yaml.Unmarshal(raw, &pv); yerr != nil {",
+      "new": "yaml.Unmarshal(raw, &pv); false && yerr != nil {"
+    },
+    {
+      "name": "#7353 a landing recheck with no pin reader falls back to strict",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\tif mainPin == nil {\n\t\treturn nil, Refused(",
+      "new": "\tif false && mainPin == nil {\n\t\treturn nil, Refused("
     }
   ]
 }

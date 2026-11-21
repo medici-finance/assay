@@ -59,10 +59,19 @@ func TestToolUpgradeRecheck(t *testing.T) {
 
 	t.Run("control 1: an unstamped or pre-release build refuses", func(t *testing.T) {
 		w, fake, _ := upgWorld(t)
-		for _, running := range []string{"dev", "v1.0.91-rc1", "1.0.91"} {
+		for _, running := range []string{"dev", "v1.0.91-rc1", "1.0.91", "xv1.0.91"} {
 			fake.tool = running
 			_, err := w.RecheckLanding(fake.probes(), pinOnMain(running))
 			upgCode(t, err, ExitRefused, "is not a stamped release")
+		}
+	})
+
+	t.Run("control 1b: a run admitted under an unstamped build refuses", func(t *testing.T) {
+		w, fake, _ := upgWorld(t)
+		for _, admitted := range []string{"dev", "v1.0.89-rc1", "1.0.89"} {
+			w.Inputs[WorldTool] = admitted
+			_, err := w.RecheckLanding(fake.probes(), pinOnMain(upgTo))
+			upgCode(t, err, ExitRefused, "the admitted desk-tools "+admitted+" is not a stamped release")
 		}
 	})
 
@@ -80,6 +89,23 @@ func TestToolUpgradeRecheck(t *testing.T) {
 		fake.tool = "v1.0.91"
 		_, err := w.RecheckLanding(fake.probes(), pinOnMain(upgTo))
 		upgCode(t, err, ExitRefused, "is not the v1.0.90 pinned at")
+	})
+
+	t.Run("control 3b: pin equality is exact, never a prefix or a build variant", func(t *testing.T) {
+		for _, c := range []struct{ running, pin string }{
+			{"v1.0.91", "v1.0.9"},
+			{"v1.0.90+h1", "v1.0.90"},
+			{"v1.0.90", "v1.0.90+h1"},
+		} {
+			w, fake, _ := upgWorld(t)
+			fake.tool = c.running
+			_, err := w.RecheckLanding(fake.probes(), pinOnMain(c.pin))
+			upgCode(t, err, ExitRefused, "is not the "+c.pin+" pinned at")
+		}
+		w, fake, _ := upgWorld(t)
+		if u, err := w.RecheckLanding(fake.probes(), pinOnMain("desk-tools/"+upgTo)); err != nil || u == nil {
+			t.Fatalf("a prefixed pin of the running release refused: %+v %v", u, err)
+		}
 	})
 
 	t.Run("control 4: main unreadable is could-not-check and refuses", func(t *testing.T) {
@@ -100,8 +126,17 @@ func TestToolUpgradeRecheck(t *testing.T) {
 		fake.revs[sib] = "3333333333333333333333333333333333333333"
 		_, err := w.RecheckLanding(fake.probes(), pinOnMain(upgTo))
 		upgCode(t, err, ExitRefused, "changed since admission: sibling:../tracker")
-		if _, err = w.RecheckLanding(fake.probes(), nil); err == nil {
-			t.Fatal("a landing recheck with no main-pin reader admitted")
+		_, err = w.RecheckLanding(fake.probes(), nil)
+		upgCode(t, err, ExitRefused, "needs a reader for the desk-tools pin on main")
+	})
+
+	t.Run("control 6: an accepted upgrade leaves an unread input could-not-check", func(t *testing.T) {
+		w, fake, sib := upgWorld(t)
+		delete(fake.revs, sib)
+		u, err := w.RecheckLanding(fake.probes(), pinOnMain(upgTo))
+		upgCode(t, err, ExitUnverifiable, "could-not-check since admission: sibling:../tracker")
+		if u != nil {
+			t.Fatalf("an unread sibling returned an upgrade: %+v", u)
 		}
 	})
 }
@@ -171,6 +206,12 @@ func TestForgeMainToolPin(t *testing.T) {
 		upgCode(t, err, ExitUnverifiable, "is not a regular file")
 		_, _, err = ForgeMainToolPin(nil, repo, "example-org/one", "linux-amd64")()
 		upgCode(t, err, ExitUnverifiable, "no forge")
+	})
+	t.Run("a malformed pin line or manifest is could-not-check", func(t *testing.T) {
+		_, _, err := read(&upgForge{files: map[string]*FileContent{AssayVersionsFile: regular("desk-tools v1.0.90\n")}})
+		upgCode(t, err, ExitUnverifiable, "malformed desk-tools pin")
+		_, _, err = read(&upgForge{files: map[string]*FileContent{PairedVersionsPath: regular("desk-tools: [\n")}})
+		upgCode(t, err, ExitUnverifiable, "cannot parse example-org/one@main:"+PairedVersionsPath)
 	})
 }
 
