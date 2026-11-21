@@ -186,12 +186,23 @@ func TestClaimListOptsUnlistedRepoIsCouldNotCheck(t *testing.T) {
 func TestWithoutAliasLinesKeepsOwnerOfTheKeyItself(t *testing.T) {
 	free := "dispatch-claim: FREE a--pr-5 (no ref)\n" +
 		"dispatch-claim: ALIAS-HELD b--pr-5 — owner=other state=claimed (same PR as a--pr-5)"
-	if got := claimShowField(claimOwnerFieldRe, withoutAliasLines(free)); got != "" {
+	if got := claimShowOwner(withoutAliasLines(free)); got != "" {
 		t.Errorf("a FREE key took the alias's owner: %q", got)
 	}
 	held := "dispatch-claim: HELD a--pr-5 owner=me state=dispatched\n" +
 		"dispatch-claim: ALIAS-HELD b--pr-5 — owner=other (same PR as a--pr-5)"
-	if got := claimShowField(claimOwnerFieldRe, withoutAliasLines(held)); got != "me" {
+	if got := claimShowOwner(withoutAliasLines(held)); got != "me" {
 		t.Errorf("owner = %q, want me", got)
+	}
+}
+
+// regression: #7305
+// TestShowOwnerNotFromNote: an owner= word that only a holder-written note supplies (a tag
+// from a writer that kept the note's whitespace) is not the claim's holder.
+func TestShowOwnerNotFromNote(t *testing.T) {
+	show := "dispatch-claim: HELD a--pr-5 — dispatch-claim a--pr-5 state=dispatched branch=- " +
+		"note=handover owner=intruder at=2026-09-20T00:00:00Z age=3m"
+	if got := claimShowOwner(withoutAliasLines(show)); got != "" {
+		t.Errorf("owner = %q, want empty: it came from the note", got)
 	}
 }
