@@ -108,7 +108,7 @@ func msRun(t *testing.T, args ...string) (int, string, string) {
 	return code, out.String(), errb.String()
 }
 
-// regression: milestone-support/11 — the board must show what the versioned
+// regression: the milestones verb — the board must show what the versioned
 // projection says: zero work with acceptance outstanding is NOT done, aliases
 // never add a row or change approval, hostile labels are inert, private
 // locators are withheld, and a contract it cannot decode is refused.

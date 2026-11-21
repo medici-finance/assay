@@ -20,7 +20,7 @@ dispositions, not completion or independent verification evidence.
 | `statusgen/streammilestones.go` (new producer) | fixed here: pure projection of loader and readiness results; acceptance is never inferred from work, so production (which supplies no acceptance observation) projects could-not-check; offers v2 only for opted-in streams |
 | `statusgen/streammission.go` (`streamViewSeed`) | unchanged by design: the v1 seed stays byte-identical for streams that did not opt in |
 | `statusgen/readmetable.go` (Briefs region) | unchanged: the Briefs table keeps its ownership and markers; the milestone region is a separate file and marker pair |
-| `statusgen/readmemilestones.go`, `regen.go`, `main.go` | fixed here: separately marked generated region, rewritten by `--regen`, drift and misplaced markers reported by `--lint`; no region for non-opted-in, fixture or outline streams |
+| `statusgen/readmemilestones.go`, `regen.go`, `main.go` | fixed here: separately marked generated region, rewritten by `--regen`, drift and misplaced markers (any overlap with the Briefs region) refused by `--regen` and reported by `--lint`; no region for non-opted-in, fixture or outline streams |
 | `tools/desk/cmd/deskboard/` | fixed here: `milestones` verb decodes the versioned projection in process, refuses unsupported contracts, shows source coverage and unknowns, quotes untrusted text, withholds inaccessible locators, collapses aliases |
 | `tools/desk/askassay` read-verb allow-list, `tools/desk/README.md` | fixed here: `milestones` classified read-only; verb row and section added; inventory and parity tests updated |
 | `docs/stream-view-contract.md`, `docs/streams/README.md`, `docs/contracts.md` | fixed here: v2, negotiation, the milestone section and the generated region documented |
@@ -29,6 +29,8 @@ dispositions, not completion or independent verification evidence.
 | production reader advertisement (`statusgenReaderCaps`) | follow-up /10 and /14: `milestone-v1` is still unadvertised, so a real opted-in stream projects an unknown plan with no records (could-not-check), never an invented milestone |
 | acceptance and subject observation in production (`Stream.MilestoneReadiness`) | follow-up /13: the lint scan retains readiness, but no subject or acceptance record is supplied, so acceptance stays could-not-check |
 | wire `aliases` | tolerant-ingest only: milestone records carry no alias spellings, so the producer emits none; deskboard folds any it receives |
+| `deskboard milestones` refs other than locators | follow-up: an allowed view's milestone, scope, prerequisite, hold and membership refs print as given even when one names a repository outside the board's allow-list; only evidence and source locators are withheld |
+| generated README gap bullets | follow-up: loader diagnostic and unknown `path: reason` text is whitespace-folded but not markdown-escaped; it comes from the stream's own committed records, the README's own trust boundary |
 | brief 13 trace and report | follow-up /13: consumes this projection; exact runtime readers enumerated at its pickup |
 | external viewers of README milestone text | could-not-check: none in this repository; the region is documented as generated and carries no live state |
 

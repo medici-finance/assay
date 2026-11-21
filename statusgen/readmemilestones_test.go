@@ -87,3 +87,48 @@ func TestMilestoneReadmeRegion(t *testing.T) {
 		t.Errorf("pipe in a title was not escaped:\n%s", out)
 	}
 }
+
+// regression: an overlapping milestone region — a region that starts inside
+// the Briefs region, encloses it or ends inside it is malformed in both regen
+// and lint, and regen leaves the README (and its Briefs table) untouched.
+func TestMilestoneRegionOverlap(t *testing.T) {
+	opted, _ := milestoneStreams(t)
+	path := opted.Dir + "/README.md"
+	base, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mb, me := milestonesMarkerBegin+"\nstale\n", milestonesMarkerEnd+"\n"
+	bb, be := briefsMarkerBegin+"\n| # | Brief |\n", briefsMarkerEnd+"\n"
+	layouts := map[string]string{
+		"begin-inside":  bb + mb + me + be,
+		"enclosing":     mb + bb + be + me,
+		"overlap-end":   mb + bb + me + be,
+		"overlap-start": bb + mb + be + me,
+	}
+	for name, body := range layouts {
+		content := string(base) + "\n" + body
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		changed, err := rewriteMilestoneRegion(opted, path)
+		if err == nil || changed || !strings.Contains(err.Error(), "malformed milestone region") {
+			t.Errorf("%s: regen must refuse an overlapping region: changed=%v err=%v", name, changed, err)
+		}
+		if got, _ := os.ReadFile(path); string(got) != content {
+			t.Errorf("%s: regen wrote the README despite the overlap", name)
+		}
+		if p := checkMilestoneRegions([]*Stream{opted}); len(p) != 1 || !strings.Contains(p[0], "malformed milestone region") {
+			t.Errorf("%s: lint must report the overlap as malformed: %v", name, p)
+		}
+	}
+	// Control: the same markers with the regions apart are accepted.
+	for name, body := range map[string]string{"before": mb + me + bb + be, "after": bb + be + mb + me} {
+		if err := os.WriteFile(path, []byte(string(base)+"\n"+body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := rewriteMilestoneRegion(opted, path); err != nil {
+			t.Errorf("%s: separate regions refused: %v", name, err)
+		}
+	}
+}

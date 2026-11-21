@@ -1,6 +1,6 @@
 package main
 
-// milestones.go — `deskboard milestones` (milestone-support/11).
+// milestones.go — the `deskboard milestones` verb.
 //
 // The verb is a pure consumer of the versioned stream-view projection. It
 // decodes stream-view documents IN PROCESS through statusgen/streamview (no

@@ -34,8 +34,12 @@ const (
 )
 
 // extractMilestoneRegion locates the milestone region. present reports whether
-// either marker appears; ok that both do, in order. A begin marker inside the
-// Briefs region is a malformed layout and reported as not ok.
+// either marker appears; ok that both do, in order, and that the region shares
+// no byte with the Briefs region. Any overlap is a malformed layout and
+// reported as not ok: a milestone region that starts inside the Briefs region,
+// encloses it, or ends inside it would let a rewrite of one region erase the
+// other. So the whole milestone span must lie before every Briefs marker or
+// after every one, and never contain a Briefs marker.
 func extractMilestoneRegion(content string) (prefix, region, suffix string, present, ok bool) {
 	bi := strings.Index(content, milestonesMarkerBegin)
 	ei := strings.Index(content, milestonesMarkerEnd)
@@ -43,12 +47,34 @@ func extractMilestoneRegion(content string) (prefix, region, suffix string, pres
 	if bi < 0 || ei < bi+len(milestonesMarkerBegin) || strings.Count(content, milestonesMarkerBegin) != 1 || strings.Count(content, milestonesMarkerEnd) != 1 {
 		return "", "", "", present, false
 	}
-	if b0 := strings.Index(content, briefsMarkerBegin); b0 >= 0 {
-		if b1 := strings.Index(content, briefsMarkerEnd); b1 > b0 && bi > b0 && bi < b1 {
-			return "", "", "", present, false
-		}
+	if overlapsBriefsRegion(content, bi, ei+len(milestonesMarkerEnd)) {
+		return "", "", "", present, false
 	}
 	return content[:bi+len(milestonesMarkerBegin)], content[bi+len(milestonesMarkerBegin) : ei], content[ei:], present, true
+}
+
+// overlapsBriefsRegion reports whether the span [start, end) touches the Briefs
+// region: it contains any Briefs marker, or it lies between the first Briefs
+// begin marker and the Briefs end marker after it.
+func overlapsBriefsRegion(content string, start, end int) bool {
+	for _, m := range []string{briefsMarkerBegin, briefsMarkerEnd} {
+		for off := 0; ; {
+			i := strings.Index(content[off:], m)
+			if i < 0 {
+				break
+			}
+			if at := off + i; at < end && at+len(m) > start {
+				return true
+			}
+			off += i + len(m)
+		}
+	}
+	b0 := strings.Index(content, briefsMarkerBegin)
+	if b0 < 0 {
+		return false
+	}
+	b1 := strings.Index(content[b0:], briefsMarkerEnd)
+	return b1 >= 0 && start > b0 && start < b0+b1
 }
 
 // mdCell makes untrusted record text safe inside one table cell.

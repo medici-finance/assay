@@ -111,6 +111,24 @@
       "test": "TestMilestoneReadmeRegion"
     },
     {
+      "name": "region-overlap-guard-removed",
+      "target": "statusgen/readmemilestones.go",
+      "old": "if overlapsBriefsRegion(content, bi, ei+len(milestonesMarkerEnd)) {",
+      "new": "if false {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRegionOverlap"
+    },
+    {
+      "name": "region-begin-inside-briefs-accepted",
+      "target": "statusgen/readmemilestones.go",
+      "old": "return b1 >= 0 && start > b0 && start < b0+b1",
+      "new": "return false",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestMilestoneRegionOverlap"
+    },
+    {
       "name": "renderer-infers-done-from-zero-work",
       "target": "tools/desk/cmd/deskboard/milestones.go",
       "old": "return fmt.Sprintf(\"%d remaining\", w.Remaining)",
