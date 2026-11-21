@@ -231,3 +231,60 @@ func TestOfflineWakesRetainOnHeldCollection(t *testing.T) {
 	batch.Rows[key] = deskkit.MonitorFeedback{Checks: strings.Repeat("2", 64)}
 	check(0, "#3 checks")
 }
+
+// A corrupt companion holds every classified cycle, so the error must name the file.
+// regression: #7384
+func TestCorruptFeedbackNamesFile(t *testing.T) {
+	const repo = "example-org/portal"
+	row := prRow{number: 1, line: "1 abc ready OPEN CLEAN"}
+	snap := prSnapshot{source: "github", rows: []prRow{row}, feedback: map[int]deskkit.MonitorFeedback{1: {Checks: strings.Repeat("a", 64)}}}
+	for _, tc := range []struct {
+		name  string
+		plant func(path string) error
+	}{
+		{"malformed entry", func(path string) error { return os.WriteFile(path, []byte("1 github abc not-a-mark -\n"), 0600) }},
+		{"unreadable file", func(path string) error { return os.Mkdir(path, 0700) }},
+	} {
+		name := tc.name
+		dir := t.TempDir()
+		side := filepath.Join(dir, "feedback-v1")
+		if err := os.MkdirAll(side, 0700); err != nil {
+			t.Fatal(err)
+		}
+		path := statePath(side, repo)
+		if err := tc.plant(path); err != nil {
+			t.Fatal(err)
+		}
+		var out bytes.Buffer
+		err := checkpointFeedback(dir, repo, snap, []string{row.line}, &out)
+		if err == nil || !strings.Contains(diagnostic(err), "'"+path+"'") {
+			t.Errorf("%s: error does not name %s: %v", name, path, err)
+		}
+		if out.Len() != 0 {
+			t.Errorf("%s: emitted events from a corrupt baseline: %s", name, &out)
+		}
+	}
+}
+
+// A head whose checks were never complete records its first result without a wake.
+// regression: #7384
+func TestFirstChecksSeedSilently(t *testing.T) {
+	const repo = "example-org/portal"
+	dir := t.TempDir()
+	row := prRow{number: 1, line: "1 abc ready OPEN CLEAN"}
+	snap := prSnapshot{source: "github", rows: []prRow{row}, feedback: map[int]deskkit.MonitorFeedback{}}
+	review := strings.Repeat("c", 64)
+	for i, tc := range []struct {
+		checks string
+		wake   bool
+	}{{"", false}, {strings.Repeat("a", 64), false}, {"", false}, {strings.Repeat("b", 64), true}} {
+		snap.feedback[1] = deskkit.MonitorFeedback{Reviews: review, Checks: tc.checks}
+		var out bytes.Buffer
+		if err := checkpointFeedback(dir, repo, snap, []string{row.line}, &out); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(out.String(), "#1 checks") != tc.wake {
+			t.Fatalf("cycle %d, checks %q: %q", i, tc.checks, &out)
+		}
+	}
+}

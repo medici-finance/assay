@@ -1,5 +1,5 @@
 {
-  "test": "go test -count=1 -run '^(TestSameHeadWakes|TestFeedbackSourceSwitch|TestOfflineWakesRetainOnHeldCollection|TestReviewDriverParity)$' ./cmd/deskmonitor ./internal/reviewtest",
+  "test": "go test -count=1 -run '^(TestSameHeadWakes|TestFeedbackSourceSwitch|TestOfflineWakesRetainOnHeldCollection|TestCorruptFeedbackNamesFile|TestFirstChecksSeedSilently|TestReviewDriverParity)$' ./cmd/deskmonitor ./internal/reviewtest",
   "control": {
     "name": "discard same-head event output after persisting the checkpoint",
     "file": "cmd/deskmonitor/feedback.go",
@@ -12,6 +12,36 @@
       "file": "cmd/deskmonitor/pr.go",
       "old": "\t\t\t\tif err := checkpointFeedback(cfg.stateDir, repo, snap, nil, out); err != nil {\n\t\t\t\t\treturn degraded, err\n\t\t\t\t}\n",
       "new": ""
+    },
+    {
+      "name": "accept a feedback batch from another collection generation",
+      "file": "cmd/deskmonitor/feedback.go",
+      "old": " || batch.Generation != obs.Inputs.Collection.Start.Format(time.RFC3339Nano)",
+      "new": ""
+    },
+    {
+      "name": "drop a known dimension on a partial read instead of retaining it",
+      "file": "cmd/deskmonitor/feedback.go",
+      "old": "\t\t\t\tvalues[i] = known\n\t\t\t\tcontinue",
+      "new": "\t\t\t\tcontinue"
+    },
+    {
+      "name": "compare feedback across a provider switch",
+      "file": "cmd/deskmonitor/feedback.go",
+      "old": "prev[1] != snap.source || ",
+      "new": ""
+    },
+    {
+      "name": "wake on the first complete checks of a head",
+      "file": "cmd/deskmonitor/feedback.go",
+      "old": "if known != \"-\" && known != values[i] {",
+      "new": "if known != values[i] {"
+    },
+    {
+      "name": "return a companion checkpoint error without naming its file",
+      "file": "cmd/deskmonitor/feedback.go",
+      "old": "\t\treturn precondition(\"monitor feedback checkpoint '%s': %s; restore or remove that file to reseed %s\", path, diagnostic(err), repo)",
+      "new": "\t\treturn err"
     }
   ]
 }

@@ -98,21 +98,31 @@ func validFeedback(v string) bool {
 // Keep the original five-column checkpoint byte-compatible with previous binaries.
 // The companion stores no private feedback text. Incomplete dimensions inherit only
 // observations of the same source and head; a push already wakes the shepherd.
+//
+// Every failure is returned through this one wrapper, so each names the companion file
+// it concerns: an operator can then restore or remove exactly that file.
 func checkpointFeedback(dir, repo string, snap prSnapshot, primary []string, out io.Writer) error {
 	if snap.source == "" {
 		return nil
 	}
 	side := filepath.Join(dir, "feedback-v1")
 	path := statePath(side, repo)
+	if err := advanceFeedback(side, path, repo, snap, primary, out); err != nil {
+		return precondition("monitor feedback checkpoint '%s': %s; restore or remove that file to reseed %s", path, diagnostic(err), repo)
+	}
+	return nil
+}
+
+func advanceFeedback(side, path, repo string, snap prSnapshot, primary []string, out io.Writer) error {
 	lines, err := readStateLines(path)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
 	old := map[string][]string{}
-	for _, l := range lines {
+	for i, l := range lines {
 		f := strings.Fields(l)
 		if len(f) != 5 || (f[3] != "-" && !validFeedback(f[3])) || (f[4] != "-" && !validFeedback(f[4])) {
-			return fmt.Errorf("invalid monitor feedback baseline")
+			return fmt.Errorf("invalid baseline entry %d", i+1)
 		}
 		old[f[0]] = f
 	}
