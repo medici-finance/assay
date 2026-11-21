@@ -15,7 +15,7 @@ import (
 // and as a writer, the lifecycle disposition, the row reduction and the run reduction, and the
 // record reader over both layouts. Every producer and reader reaches these rules through this
 // package, so a row here is a row for all of them.
-// regression: F-outcome-protocol-copies
+// regression: #6002, F-outcome-protocol-copies
 func TestOutcomeProtocolMatrix(t *testing.T) {
 	t.Run("vocabulary: the reader classification of every spelling", func(t *testing.T) {
 		cases := []struct {
