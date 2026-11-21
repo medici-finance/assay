@@ -128,9 +128,10 @@ func (c check) recencyKey() string {
 }
 
 type prBase struct {
-	Number int    `json:"number"`
-	Title  string `json:"title"`
-	Body   string `json:"body"`
+	monitorFeedback deskkit.MonitorFeedback
+	Number          int    `json:"number"`
+	Title           string `json:"title"`
+	Body            string `json:"body"`
 	// State is gh's OPEN / CLOSED / MERGED. The enumeration below already filters to
 	// --state open, so this is belt-and-braces — but #247 is exactly the class of bug
 	// where merged-vs-closed stops being load-bearing by accident, and a verb that
@@ -288,7 +289,7 @@ func prBaseFromChange(c deskkit.OpenChange) prBase {
 //
 // A failure fails the whole run, named for the repo, exactly as fetchOpenPRs does — the
 // error text is the same so the out-of-installation scoping check still recognizes it.
-func fetchReviewQueue(repo string) (prs []prBase, reviews map[int][]review, truncated bool, visibility string, err error) {
+func fetchReviewQueue(repo string, monitor ...bool) (prs []prBase, reviews map[int][]review, truncated bool, visibility string, err error) {
 	f, fr, ferr := forgeFor(repo)
 	if ferr != nil {
 		return nil, nil, false, "", ferr
@@ -299,8 +300,17 @@ func fetchReviewQueue(repo string) (prs []prBase, reviews map[int][]review, trun
 	}
 	prs = make([]prBase, 0, len(q.Changes))
 	reviews = make(map[int][]review, len(q.Changes))
+	withFeedback := len(monitor) > 0 && monitor[0]
+	var reviewer string
+	if withFeedback {
+		reviewer, _ = deskkit.RoleAppLogin("reviewer")
+	}
 	for _, c := range q.Changes {
-		prs = append(prs, prBaseFromChange(c.OpenChange))
+		p := prBaseFromChange(c.OpenChange)
+		if withFeedback {
+			p.monitorFeedback = c.MonitorFeedback(reviewer)
+		}
+		prs = append(prs, p)
 		if c.ReviewsComplete {
 			reviews[c.Number] = reviewsFromForge(c.Reviews)
 		}
@@ -1761,6 +1771,11 @@ type prOutcome struct {
 	row      *actionRow
 }
 
+type reviewSweepOptions struct {
+	qualified    bool
+	withFeedback bool
+}
+
 // sweepActionsRepo computes one repo's actionsPartial. It is the per-repo unit of work
 // the bounded sweep runs concurrently; briefScore, knownBriefs, redBases and now are all
 // read-only shared inputs, safe to read from many workers at once.
@@ -1773,15 +1788,19 @@ type prOutcome struct {
 // any global semaphore. It fails CLOSED exactly as the old serial body did: any read/parse
 // error is wrapped-and-repo/PR-named and propagates to fail the whole run, deterministically
 // (lowest-index PR first).
-func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time, qualified ...bool) (actionsPartial, error) {
+func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time, opts ...reviewSweepOptions) (actionsPartial, error) {
 	var part actionsPartial
+	var mode reviewSweepOptions
+	if len(opts) > 0 {
+		mode = opts[0]
+	}
 	// repo-level: fetchReviewQueue lists ALL open PRs for the repo AND their reviews in one
 	// read — nothing about the repo can be classified without it, so failing the whole run
 	// here is correct (contrast classifyPR below, whose per-change reads are the opposite
 	// kind). The reviews it carries replace classifyPR's per-PR review read (N+1 → 1, and
 	// the head and its reviews come from one consistent instant); a PR it did not carry in
 	// full is read per-item as before.
-	prs, queued, truncated, visibility, err := fetchReviewQueue(repo)
+	prs, queued, truncated, visibility, err := fetchReviewQueue(repo, mode.withFeedback)
 	if err != nil {
 		return actionsPartial{}, err // fail the whole run, name the repo
 	}
@@ -1791,7 +1810,7 @@ func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []stri
 	// #2421: the previous sweep's per-PR facts for this repo (prfacts.go). Saved only when the
 	// whole repo classified, so a failed sweep never replaces good facts with partial ones.
 	facts := loadPRFacts(repo)
-	facts.qualified = len(qualified) > 0 && qualified[0]
+	facts.qualified = mode.qualified
 	outcomes, err := sweepConcurrent(prs, sweepConcurrency, func(p prBase) (prOutcome, error) {
 		rv, have := queued[p.Number]
 		return classifyPRFrom(repo, p, rv, have, ciRequired, briefScore, knownBriefs, redBases, now, facts)

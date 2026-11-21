@@ -122,7 +122,7 @@ requested scope, current time and a five-minute freshness cutoff to
 `reviewloop plan --snapshot FILE --selection JSON --now RFC3339`, and emits the
 complete private plan at `FILE.plan`, emitting `REVIEW-PLAN` and
 `REVIEW-OBSERVATION` artifact paths rather than full populations on each wake. The script never launches
-reviewers. Its event baseline comes from the same population. Keep its due cadence
+reviewers. With matching `deskboard review-queue --feedback-out` and `deskmonitor pr --from-review` support, the launcher also derives `review` and `checks` wakeups from that collection. The Go monitor compares submitted current-head reviewer verdicts and completed check attempts. It seeds a new head silently and retains a prior known dimension through partial reads. A rerun can remove a terminal result and later add its replacement. GitLab supplies its head pipeline through the existing per-MR pipeline read. Its bulk review dimension remains unavailable. Older adapter pairs keep the existing population event baseline. Keep its due cadence
 wake and stop/health checks even when the PR event dimensions did not change.
 
 Treat only a successful current cycle as reusable. On a selected-mode failure,

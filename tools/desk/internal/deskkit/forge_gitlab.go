@@ -980,7 +980,7 @@ func (g *GitLabForge) ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error) 
 	}
 	changes := make([]QueuedChange, 0, len(oc.Changes))
 	for _, c := range oc.Changes {
-		changes = append(changes, QueuedChange{OpenChange: c, ReviewsComplete: false})
+		changes = append(changes, QueuedChange{OpenChange: c, MonitorChecksComplete: len(c.Rollup) == 1 && c.Rollup[0].Typename == "StatusContext"})
 	}
 	return &ReviewQueue{Changes: changes, TruncatedAtCap: oc.TruncatedAtCap, Cap: oc.Cap}, nil
 }

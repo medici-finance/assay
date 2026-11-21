@@ -1169,6 +1169,14 @@ func (g *GitHubForge) ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error) 
 	changes := make([]QueuedChange, 0, len(nodes))
 	for _, n := range nodes {
 		qc := QueuedChange{OpenChange: ghOpenChange(n)}
+		// A full contexts page could be truncated. Retain the prior wake baseline
+		// rather than paying for per-PR pagination or treating a prefix as complete.
+		if len(n.Commits.Nodes) == 1 {
+			c := n.Commits.Nodes[0].Commit
+			if c.Oid != "" && c.Oid == n.HeadRefOid {
+				qc.MonitorChecksComplete = c.StatusCheckRollup != nil && c.StatusCheckRollup.Contexts.Nodes != nil && len(c.StatusCheckRollup.Contexts.Nodes) < 100
+			}
+		}
 		if rv := n.Reviews; rv != nil && !rv.PageInfo.HasNextPage && len(rv.Nodes) <= forgeQueueReviewsCap {
 			qc.ReviewsComplete = true
 			for _, r := range rv.Nodes {

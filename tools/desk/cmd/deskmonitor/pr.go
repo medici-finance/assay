@@ -11,7 +11,9 @@ package main
 // Unlike the issue monitor there is NO zero-where-it-had-some guard: an open-PR queue draining to
 // zero is a normal steady state for a review desk, and a PR leaving the set is a `closed` PR-EVENT.
 //
-// ONE DELIBERATE DIVERGENCE FROM THE ORACLE. pr-monitor.sh diffs with an awk `NR==FNR` idiom, and
+// The Go path additionally observes current-head review and terminal CI feedback.
+// The legacy script and previous binaries read only the primary five-column state file.
+// EMPTY BASELINE DIVERGENCE FROM THE ORACLE. pr-monitor.sh diffs with an awk `NR==FNR` idiom, and
 // when a repo's baseline file is EMPTY (seeded while it had no open PRs) that idiom reads the
 // CURRENT set as the baseline: every newly opened PR is then reported as `closed` and none as
 // `opened`. This verb reports them as `opened`. parity_test.go pins the divergence explicitly (the
@@ -29,9 +31,11 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-const prUsage = `Usage: deskmonitor pr [owner/repo ...]
+const prUsage = `Usage: deskmonitor pr [--from-review OBSERVATION FEEDBACK] [owner/repo ...]
 
 Stateful open-PR monitor across the given repos (or ./.assay/repos.txt, or the
 current repo's origin remote). Meant to be re-run on a cadence behind the harness
@@ -40,7 +44,12 @@ MONITOR-ARMED: <n> repos (pace <p>s, cap <c>)); on every run after that it
 prints one line per change:
 
   PR-EVENT: <slug>#<num> <kind> <old> -> <new>
-    kind ∈ opened | pushed | draft-flip | state | merge-state | closed
+    kind ∈ opened | pushed | draft-flip | state | merge-state | closed | review | checks
+
+A review or changed set of terminal check results at the same head is a wake hint.
+A rerun can remove an earlier terminal result before publishing its replacement. Read the current revision's
+findings and checks before acting. Incomplete dimensions retain the last known
+baseline. --from-review consumes one qualified collection and makes no forge call.
 
 It never silently goes blind:
   · it never polls as an inherited token (GH_TOKEN/GITHUB_TOKEN are unset); it
@@ -76,12 +85,15 @@ type prConfig struct {
 	limit    int
 	pace     int
 	maxRepos int
+	observed map[string]prSnapshot
 }
 
 // prSnapshot is one repo's open-PR read: the rows in the order the forge returned them (newest
 // first), and the forge's own page cap when the read came back AT it (0 = not truncated by the
 // forge). The page cap matters only when it sits BELOW the configured limit.
 type prSnapshot struct {
+	feedback   map[int]deskkit.MonitorFeedback
+	source     string
 	rows       []prRow
 	forgeCapAt int
 }
@@ -98,15 +110,21 @@ var fetchPRRows = func(repo string) (prSnapshot, error) {
 	if err != nil {
 		return prSnapshot{}, err
 	}
-	oc, err := f.ListOpenChanges(fr)
+	oc, err := f.ReviewQueueSnapshot(fr)
 	if err != nil {
 		return prSnapshot{}, err
 	}
-	snap := prSnapshot{}
+	resolution, err := deskkit.ForgeKindFor(fr)
+	if err != nil {
+		return prSnapshot{}, err
+	}
+	snap := prSnapshot{source: string(resolution.Kind), feedback: make(map[int]deskkit.MonitorFeedback)}
+	reviewer, _ := deskkit.RoleAppLogin("reviewer")
 	if oc.TruncatedAtCap {
 		snap.forgeCapAt = oc.Cap
 	}
 	for _, c := range oc.Changes {
+		snap.feedback[c.Number] = c.MonitorFeedback(reviewer)
 		draft := "ready"
 		if c.Draft {
 			draft = "draft"
@@ -146,6 +164,13 @@ func runPR(args []string, stdout, stderr io.Writer) int {
 		return fail(err)
 	}
 	explicitTokens = map[string]string{}
+	var observation, feedback string
+	if len(args) > 0 && args[0] == "--from-review" {
+		if len(args) < 3 || args[1] == "" || args[2] == "" {
+			return fail(precondition("--from-review requires observation and feedback files"))
+		}
+		observation, feedback, args = args[1], args[2], args[3:]
+	}
 	repos := resolveRepos(args)
 	if len(repos) == 0 {
 		_, _ = fmt.Fprintln(stdout, "MONITOR-DEGRADED: no repos to query (no repo args, no ./.assay/repos.txt, and no usable git origin remote)")
@@ -154,6 +179,16 @@ func runPR(args []string, stdout, stderr io.Writer) int {
 	if err := validateRepos(repos); err != nil {
 		_, _ = fmt.Fprintf(stdout, "MONITOR-DEGRADED: %s\n", diagnostic(err))
 		return fail(err)
+	}
+	if observation != "" {
+		if cfg.maxRepos != 0 {
+			return fail(precondition("--from-review requires complete scope"))
+		}
+		cfg.observed, err = readObservedFeedback(observation, feedback, repos)
+		if err != nil {
+			fmt.Fprintf(stdout, "MONITOR-DEGRADED: qualified feedback unavailable: %s\n", diagnostic(err))
+			return 2
+		}
 	}
 	cfg.stateDir = stateDirFrom("PR_MONITOR_STATE_DIR", "assay-pr-monitor")
 	if err := prepareStateDir(cfg.stateDir); err != nil {
@@ -220,10 +255,16 @@ func prCycle(cfg prConfig, repos []string, out io.Writer) (bool, error) {
 	armedTotal := 0
 	reads := 0
 	for idx, repo := range proc {
-		if reads > 0 && cfg.pace > 0 {
+		if cfg.observed == nil && reads > 0 && cfg.pace > 0 {
 			sleepFn(secondsOf(cfg.pace))
 		}
-		snap, rerr := fetchPRRows(repo)
+		snap, observed := cfg.observed[strings.ToLower(repo)]
+		var rerr error
+		if cfg.observed == nil {
+			snap, rerr = fetchPRRows(repo)
+		} else if !observed {
+			return true, precondition("repository missing from qualified feedback")
+		}
 		reads++
 
 		if rerr != nil && isRateLimited(rerr) {
@@ -246,17 +287,18 @@ func prCycle(cfg prConfig, repos []string, out io.Writer) (bool, error) {
 		curN, atLimit, forgeCapped := 0, false, false
 		if readOK {
 			rows := snap.rows
-			if len(rows) > cfg.limit {
+			if cfg.observed == nil && len(rows) > cfg.limit {
 				rows = rows[:cfg.limit] // gh --limit keeps the newest LIMIT; the forge returns newest first
 			}
 			cur = append([]prRow(nil), rows...)
 			sort.SliceStable(cur, func(a, b int) bool { return cur[a].number < cur[b].number })
 			curN = len(cur)
-			atLimit = curN >= cfg.limit
+			atLimit = cfg.observed == nil && curN >= cfg.limit
 			// A forge page cap BELOW the configured limit truncates the read where gh would not
 			// have: the same moving window, so the same fail-closed treatment.
 			forgeCapped = !atLimit && snap.forgeCapAt > 0 && snap.forgeCapAt < cfg.limit
 		}
+		snap.rows = cur
 		lines := make([]string, len(cur))
 		for i, r := range cur {
 			lines[i] = r.line
@@ -276,6 +318,9 @@ func prCycle(cfg prConfig, repos []string, out io.Writer) (bool, error) {
 			case readOK:
 				if err := writeState(cfg.stateDir, repo, lines); err != nil {
 					return degraded, precondition("cannot write state file '%s': %v", sf, err)
+				}
+				if err := checkpointFeedback(cfg.stateDir, repo, snap, nil, out); err != nil {
+					return degraded, err
 				}
 				armedTotal++
 			default:
@@ -309,6 +354,9 @@ func prCycle(cfg prConfig, repos []string, out io.Writer) (bool, error) {
 			continue
 		}
 
+		if err := checkpointFeedback(cfg.stateDir, repo, snap, prev, out); err != nil {
+			return degraded, err
+		}
 		for _, ev := range prEvents(repo, prev, lines) {
 			fmt.Fprintln(out, ev)
 		}

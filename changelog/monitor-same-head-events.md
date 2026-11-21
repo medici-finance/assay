@@ -1,0 +1,1 @@
+- The PR monitor can wake a shepherd when a reviewer submits a verdict or a CI check finishes at the same head. The qualified launcher reuses its existing review collection.
