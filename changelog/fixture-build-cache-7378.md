@@ -1,0 +1,1 @@
+- Desk launcher and command performance tests now reuse prepared Go caches while compiling child binaries under an isolated roster home.
