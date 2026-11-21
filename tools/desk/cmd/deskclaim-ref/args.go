@@ -45,7 +45,7 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 	}
 	for i := 0; i < len(rest); i++ {
 		// A value flag takes its value as the next argument or after "=". The spaced form never
-		// takes an empty value or another long option as its value: swallowing the next flag
+		// takes an empty or blank value or another long option as its value: swallowing the next flag
 		// shifts every later argument, so `--repo --branch -` would read "-" as a flag and
 		// `--repo --branch=-` would select a claim namespace named "--branch=-" (#6896). A
 		// single "-" stays a value: it is the dispatcher's placeholder for a branchless claim.
@@ -54,7 +54,7 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 			if !inline {
 				value, i = spacedValue(rest, i)
 			}
-			if value == "" {
+			if blank(value) {
 				errf("refused: %s requires a value", name)
 				return exitRefused
 			}
@@ -65,8 +65,9 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 		case "-h", "--help":
 			return dieUsage()
 		default:
-			// The performance flags read their spaced value under the same rule.
-			flag, missing := rest[i], false
+			// The performance flags follow the same rule. ManualPerformance reads an inline
+			// value itself, so a blank inline value is checked here.
+			flag, missing := rest[i], inline && blank(value)
 			if cli.ManualPerformance(&pc, flag, func() string {
 				v, j := spacedValue(rest, i)
 				i, missing = j, v == ""
@@ -182,11 +183,16 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 	return dieUsage()
 }
 
+// blank reports a value that carries nothing but whitespace. It counts as missing: the repo
+// and credential resolvers trim a flag value and treat an empty result as unset, falling back
+// to the origin remote and the ambient environment credential.
+func blank(v string) bool { return strings.TrimSpace(v) == "" }
+
 // spacedValue returns the value after the flag at position i and the advanced index. A
-// missing or empty value, or another long option in the value's place, yields "" and leaves
+// missing or blank value, or another long option in the value's place, yields "" and leaves
 // the index on the flag, so the caller refuses instead of shifting the arguments that follow.
 func spacedValue(rest []string, i int) (string, int) {
-	if i+1 >= len(rest) || rest[i+1] == "" || strings.HasPrefix(rest[i+1], "--") {
+	if i+1 >= len(rest) || blank(rest[i+1]) || strings.HasPrefix(rest[i+1], "--") {
 		return "", i
 	}
 	return rest[i+1], i + 1

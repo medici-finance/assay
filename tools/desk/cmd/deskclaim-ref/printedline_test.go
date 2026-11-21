@@ -147,3 +147,41 @@ func TestEveryFlagNeedsValue(t *testing.T) {
 		t.Fatalf("a refused argv wrote a claim: %v", f.claims)
 	}
 }
+
+// A value made only of whitespace is a missing value, in the spaced and the inline form alike.
+// The repo and credential resolvers trim it and fall back to the origin remote and the ambient
+// GH_TOKEN, so a blank --repo or --token-file accepted here would act on the wrong repo or
+// under the wrong credential. The performance flags follow the same rule.
+// regression: #6896
+func TestBlankValueRefused(t *testing.T) {
+	t.Setenv("GH_TOKEN", "ambient")
+	noWorkSource(t)
+	f := newStore()
+	run, _, se := harness(t, f)
+	const r = "medici-finance/assay"
+	for _, tc := range []struct {
+		flag string
+		argv []string
+	}{
+		{"--repo", []string{"acquire", "at--stream--09", "--repo", " "}},
+		{"--repo", []string{"acquire", "at--stream--09", "--repo= "}},
+		{"--repo", []string{"acquire", "at--stream--09", "--repo", "\t"}},
+		{"--repo", []string{"acquire", "at:stream/09", "--repo", " "}},
+		{"--token-file", []string{"acquire", "at--stream--09", "--repo", r, "--token-file", " "}},
+		{"--token-file", []string{"acquire", "at--stream--09", "--repo", r, "--token-file= "}},
+		{"--owner", []string{"acquire", "at--stream--09", "--repo", r, "--owner", " "}},
+		{"--branch", []string{"acquire", "at--stream--09", "--repo", r, "--branch= "}},
+		{"--reason", []string{"acquire", "at--stream--09", "--repo", r, "--reason", " "}},
+		{"--perf-role", []string{"acquire", "at--stream--09", "--repo", r, "--perf-role="}},
+		{"--perf-role", []string{"acquire", "at--stream--09", "--repo", r, "--perf-role= "}},
+		{"--perf-role", []string{"acquire", "at--stream--09", "--repo", r, "--perf-role", " "}},
+	} {
+		if rc := run(tc.argv...); rc != exitRefused || !strings.Contains(se.String(), tc.flag+" requires a value") {
+			t.Errorf("%q: rc = %d, want 5 naming %s: %s", tc.argv, rc, tc.flag, se.String())
+		}
+		if len(f.claims) != 0 {
+			t.Errorf("%q wrote a claim: %v", tc.argv, f.claims)
+			f.claims = map[string]fakeClaim{}
+		}
+	}
+}
