@@ -123,7 +123,7 @@
       "name": "region-begin-inside-briefs-accepted",
       "target": "statusgen/readmemilestones.go",
       "old": "return b1 >= 0 && start > b0 && start < b0+b1",
-      "new": "return false",
+      "new": "return b1 >= 0 && start < 0 && start < b0+b1",
       "module": "statusgen",
       "package": ".",
       "test": "TestMilestoneRegionOverlap"
