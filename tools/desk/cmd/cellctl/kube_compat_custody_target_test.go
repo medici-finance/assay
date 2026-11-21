@@ -11,6 +11,7 @@ import (
 
 	kc "github.com/medici-finance/assay/tools/desk/internal/kubecompat"
 	"github.com/medici-finance/assay/tools/desk/internal/kubecompat/native"
+	"github.com/medici-finance/assay/tools/desk/internal/kubecompat/testfixture"
 )
 
 // The qualification fixture owns this receipt. A role's running/clean-stopped
@@ -53,7 +54,7 @@ func TestKubeCompatCustodyTarget(t *testing.T) {
 	}{
 		{"admitted", nil, ""},
 		{"opt-in", nil, "explicit qualification opt-in required"},
-		{"endpoint", func(p *kc.Profile) { p.Endpoint += "/" }, "selected API/TLS identity differs"},
+		{"endpoint", nil, "selected API/TLS identity differs"},
 		{"tls-name", func(p *kc.Profile) { p.TLSServerName = "other.invalid" }, "selected API/TLS identity differs"},
 		{"ca-pin", func(p *kc.Profile) { p.CASHA256 = strings.Repeat("0", 64) }, "selected CA pin differs"},
 		{"context", func(p *kc.Profile) { p.Context = "other-fixture" }, "selected context or namespace differs"},
@@ -81,7 +82,12 @@ func TestKubeCompatCustodyTarget(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if tc.change != nil {
+			var otherAPI *testfixture.Server
+			if tc.name == "endpoint" {
+				otherAPI = testfixture.New(t)
+				api.Profile.Endpoint = otherAPI.HTTP.URL
+				api.Save(t)
+			} else if tc.change != nil {
 				tc.change(api.Profile)
 				api.Save(t)
 			}
@@ -106,11 +112,14 @@ func TestKubeCompatCustodyTarget(t *testing.T) {
 			}
 			// Exercise the compiled CLI directly for each native refusal too.
 			// The ownership receipt and qualification opt-in belong to the suite.
-			if tc.change != nil && tc.name != "valid-other-profile" {
+			if tc.name == "endpoint" || (tc.change != nil && tc.name != "valid-other-profile") {
 				result := w.run(t, nil, "desk", "example", "worker-desk")
 				if result.Code == 0 || !strings.Contains(result.Stderr, tc.reason) {
 					t.Fatalf("CLI did not report %q: %+v", tc.reason, result)
 				}
+			}
+			if otherAPI != nil && (otherAPI.ConnectionCount() != 0 || otherAPI.ContactCount() != 0) {
+				t.Fatalf("refusal contacted alternate fixture: connections=%d requests=%d", otherAPI.ConnectionCount(), otherAPI.ContactCount())
 			}
 			if api.ConnectionCount() != 0 || api.ContactCount() != 0 {
 				t.Fatalf("refusal contacted fixture: connections=%d requests=%d", api.ConnectionCount(), api.ContactCount())
