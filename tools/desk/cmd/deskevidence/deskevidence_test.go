@@ -270,9 +270,13 @@ func (f *fakeForge) WriteFile(_ deskkit.ForgeRepo, in deskkit.WriteFileInput) (*
 	if f.files == nil {
 		f.files = map[string]string{}
 	}
-	f.files[in.File] = string(in.Content)
-	for _, c := range in.Companions {
-		f.files[c.File] = string(c.Content)
+	if in.Delete {
+		delete(f.files, in.File)
+	} else {
+		f.files[in.File] = string(in.Content)
+		for _, c := range in.Companions {
+			f.files[c.File] = string(c.Content)
+		}
 	}
 	author := f.writeAuthor
 	if f.emptyAuthor {

@@ -102,8 +102,10 @@ the committed marker, or, on the history path, by whoever wrote the `Brief:` tra
 landed on the mainline ref, with its exact baseline), not against the brief's declared files
 or any record the verifier does not author. A marker that names a later mainline commit is
 accepted, so a reviewer still owns the claim that the named commit is the real delivery.
-The derivation reads every marker in the committed Evidence and refuses distinct triples;
-the protected-table closure reads only the current run's marker. Evidence that has not yet
+The consumer reader authenticates each distinct marker in committed Evidence. All markers
+must name the same delivery and its exact baseline. Each original revision must be an
+ancestor of that baseline and can differ between verifier runs. The protected-table
+closure reads the current run's marker. Evidence that has not yet
 recorded a marker falls back to the history search, which is could-not-check unless exactly
 one first-parent commit names the brief. The `consumer-delivery-range` lint below is
 unchanged and still asks for explicit pins in authored rows.

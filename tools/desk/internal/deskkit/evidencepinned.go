@@ -30,6 +30,9 @@ func (g *GitHubForge) writePinnedEvidence(repo ForgeRepo, in WriteFileInput, par
 		"message":         map[string]any{"headline": headline, "body": body},
 		"fileChanges":     map[string]any{"additions": additions},
 	}
+	if in.Delete {
+		input["fileChanges"] = map[string]any{"deletions": []any{map[string]any{"path": in.File}}}
+	}
 	var out struct {
 		Data struct {
 			CreateCommitOnBranch *struct {

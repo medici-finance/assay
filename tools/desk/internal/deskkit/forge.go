@@ -773,6 +773,12 @@ type WriteFileInput struct {
 	// A backend lacking an atomic branch-head precondition must refuse it;
 	// file-level ExpectedSHA alone cannot protect closure in other files.
 	ExpectedHead string
+	// Delete removes File instead of writing it: Content must be empty, and the removal
+	// is accepted only as a conditional, pinned commit (ExpectedSHA on the file AND
+	// ExpectedHead on the branch), so it lands through the same forge-signed commit
+	// path as a pinned write and never as a local commit. A backend without that
+	// pinned path refuses it. Consumer: cmd/deskevidence --remove-superseded.
+	Delete bool
 	// Companions are further files committed in the SAME commit as File: a
 	// witness row's read-set file, which coverage honours only when it
 	// arrives with its row. Each is create-only: one already on the base
@@ -1893,8 +1899,8 @@ type Forge interface {
 	// introduced, in the forge's order. Complete is true only when the read is known to hold
 	// every commit (GitHub: the listed count equals the change's own commit count, since the
 	// list stops at 250; GitLab: the walk ended below the page ceiling). Consumer: cmd/deskread's
-	// `change-commits` kind; statusgen's auto-flip owner check is the consumer to come
-	// (forge-neutral brief 18).
+	// `change-commits` kind, which statusgen's GitLab auto-flip reads for its owner check
+	// (forge-neutral brief 18, #7202).
 	ListChangeCommits(repo ForgeRepo, number int) (*ChangeCommits, error)
 	// RepoDefaultBranch (op 58, forge-neutral brief 33) reads the repository's default branch. An
 	// empty answer is could-not-check, never "main". It is its own operation, not a
@@ -1904,8 +1910,9 @@ type Forge interface {
 	RepoDefaultBranch(repo ForgeRepo) (string, error)
 	// PRTrustEvents reads a change's trust-gate content events: the body-edit time plus every
 	// comment, review and review-comment with its author identity and edit time, bounded to a
-	// single page and reporting completeness (see TrustPayload). Consumer: cmd/deskboard's
-	// prBlessed (freeze rule). A forge whose content-edit / numeric-actor-id semantics do not
+	// single page and reporting completeness (see TrustPayload). Consumers: cmd/deskboard's
+	// prBlessed, and cmd/deskread's `change-trust` kind for statusgen's GitLab auto-flip (freeze
+	// rule). A forge whose content-edit / numeric-actor-id semantics do not
 	// map 1:1 returns could-not-check naming the gap.
 	PRTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error)
 	// IssueTrustEvents is PRTrustEvents' issue twin (an issue has no reviews or review
@@ -2062,7 +2069,8 @@ type Forge interface {
 	// repository/commits/:sha/merge_requests`), in any state. An empty list is the ANSWER "no
 	// change is behind this commit". The caller reads each change with GetPullRequest for its
 	// merged state, merge time and base. Consumer: cmd/deskautolane's enactment gate, whose
-	// time check keys on the merging change's merge time, never a commit date (freeze rule).
+	// time check keys on the merging change's merge time, never a commit date, and cmd/deskread's
+	// `commit-changes` kind for statusgen's GitLab auto-flip (freeze rule).
 	ListCommitChanges(repo ForgeRepo, sha string) ([]int, error)
 	// CompareRefs compares two refs and returns the files that differ plus the divergence
 	// counts and the forge's own status word (see RefComparison). A forge that does not report

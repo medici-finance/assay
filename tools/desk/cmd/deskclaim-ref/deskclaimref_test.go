@@ -484,6 +484,35 @@ func TestClaimMessageGrammarRoundTrips(t *testing.T) {
 	}
 }
 
+// regression: #7305
+// TestNoteIsOneWireWord: whatever whitespace a steal reason carries, the note is ONE word of
+// the message, so no reader of the message or of the HELD line can find a standalone `age=`,
+// `state=`, `owner=` or `branch=` inside it ahead of the claim's own fields.
+func TestNoteIsOneWireWord(t *testing.T) {
+	for _, reason := range []string{"handover\nage=99m\nby operator", "handover\tage=99m", "a\r\nstate=dispatched\vowner=x\fbranch=y z"} {
+		msg := claimTestMessage("at--stream--07", "sess-A", "claimed", "", reason)
+		if words := strings.Fields(msg); len(words) != 6 {
+			t.Errorf("reason %q split the note into %d message words: %q", reason, len(words)-5, msg)
+		}
+		if got := fieldOf(msg, "owner"); got != "sess-A" {
+			t.Errorf("fieldOf(owner) = %q for reason %q", got, reason)
+		}
+	}
+}
+
+// regression: #7305
+// TestFieldOfStopsAtNote: a field present only inside a note (a tag minted by another writer
+// whose note kept its whitespace) is not the claim's field: it reads as absent.
+func TestFieldOfStopsAtNote(t *testing.T) {
+	msg := "dispatch-claim at--stream--07 state=claimed branch=- note=handover owner=intruder"
+	if got := fieldOf(msg, "owner"); got != "" {
+		t.Errorf("fieldOf(owner) = %q, want empty: the owner came from the note", got)
+	}
+	if got := fieldOf(msg, "note"); got != "handover" {
+		t.Errorf("fieldOf(note) = %q, want %q", got, "handover")
+	}
+}
+
 // --- argument-level refusals (no forge write) -------------------------------
 
 func TestInvalidKeyRefusedBeforeAnyForgeWrite(t *testing.T) {

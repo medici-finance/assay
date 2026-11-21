@@ -505,6 +505,20 @@ func writeSidecar(t *testing.T, root string, o deskkit.RepairObligation) {
 	}
 }
 
+// regression: #7305
+// TestCountLiveNoteAge: a young claim whose note carries a space- or tab-delimited age= past its
+// TTL is still an occupied slot. Reading the note's age would count it free and admit past width.
+func TestCountLiveNoteAge(t *testing.T) {
+	lease := "assay--" + admissionLoop + "--admission"
+	out := strings.Join([]string{
+		"dispatch-claim: HELD assay--s--1 — dispatch-claim assay--s--1 owner=c state=claimed branch=- note=handover age=99m by_operator at=2026-09-20T00:00:00Z age=3m",
+		"dispatch-claim: HELD assay--s--2 — dispatch-claim assay--s--2 owner=d state=claimed branch=- note=handover\tage=99m at=2026-09-20T00:00:00Z age=3m",
+	}, "\n")
+	if n := countLiveClaims(out, lease); n != 2 {
+		t.Fatalf("countLiveClaims = %d, want 2 (a note's age= must not make a live claim free)", n)
+	}
+}
+
 // regression: #2163
 // TestCountLiveSuffixItem: occupancy skips exactly this scope's admission lease. Another claim
 // whose id merely ends in "--admission" (another loop's lease, or an item named that way) is a

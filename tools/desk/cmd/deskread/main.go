@@ -106,14 +106,16 @@ var readKinds = map[string]string{
 	"change-files":   "a change's file list with patches, reconciled against its file count (deskkit.Forge.ListChangedFiles + GetPullRequest)",
 	"reviews":        "a change's whole review array, oldest first, one row per submission (deskkit.Forge.ReviewsAtHead)",
 	"default-branch": "a repository's default branch (deskkit.Forge.RepoDefaultBranch)",
+	"commit-changes": "the numbers of the changes the forge associates with one commit, any state (deskkit.Forge.ListCommitChanges)",
+	"change-trust":   "a change's trust-gate content events, its body-edit time included (deskkit.Forge.PRTrustEvents)",
 }
 
 // repoKinds are addressed by --repo; issueKinds by --issue; changeKinds by --change. `comments`
 // is in BOTH issueKinds and changeKinds and must be given exactly one of the two.
 var (
-	repoKinds   = map[string]bool{"issues": true, "issue-list": true, "changes": true, "default-branch": true}
+	repoKinds   = map[string]bool{"issues": true, "issue-list": true, "changes": true, "default-branch": true, "commit-changes": true}
 	issueKinds  = map[string]bool{"trust": true, "comments": true, "issue": true, "issue-states": true, "label-events": true}
-	changeKinds = map[string]bool{"comments": true, "change": true, "change-commits": true, "change-files": true, "reviews": true}
+	changeKinds = map[string]bool{"comments": true, "change": true, "change-commits": true, "change-files": true, "reviews": true, "change-trust": true}
 )
 
 // stateWords is the CLOSED --state vocabulary per kind that takes one. A kind absent from this
@@ -127,10 +129,11 @@ var stateWords = map[string][]string{
 // (desktools-v2/45); this is what the tree cannot say on its own.
 var helpLong = `deskread — read-only forge reads on the seam, as JSON
 
-addressing: per-repo kinds (issues, issue-list, changes, default-branch) take --repo
+addressing: per-repo kinds (issues, issue-list, changes, default-branch, commit-changes) take --repo
 <owner/repo>; per-issue kinds (trust, issue, issue-states, label-events) take --issue <owner/repo#N>;
-per-change kinds (change, change-commits, change-files, reviews) take --change <owner/repo#N>;
-comments takes exactly one of --issue and --change. Each address flag repeats, and ONE
+per-change kinds (change, change-commits, change-files, reviews, change-trust) take --change
+<owner/repo#N>; comments takes exactly one of --issue and --change. commit-changes also takes
+exactly one --sha <40-hex commit SHA>, and no other kind takes --sha. Each address flag repeats, and ONE
 invocation serves the whole set, read concurrently (--max-parallel, default 6).
 --state: issue-list (open|closed|all, default open) and changes (merged|closed|all,
 required); any other word, or --state on another kind, is refused. --label: issue-list
@@ -147,7 +150,8 @@ output: a versioned JSON envelope on stdout
   "incomplete" and "pageCap" (each change also carries "updatedAt", the forge's last-modified
   time, and the walk is most-recently-updated first, so a window older than every listed
   "updatedAt" is fully covered even when "incomplete" is true); default-branch answers
-  "defaultBranch".
+  "defaultBranch"; commit-changes answers "commitChanges", the change numbers in any state (an
+  empty list is the answer "no change is behind this commit").
 
   {"schema": 1, "kind": "trust",
    "items":   [{"repo": "o/n", "number": 7, "trust": {"bodyEditedAt": "…", "complete": true,
@@ -162,10 +166,11 @@ output: a versioned JSON envelope on stdout
    "partial": [{"repo": "o/n", "number": 7, "reason": "…"}]}
 
   per-issue and per-change kinds answer under "items", one key per kind: "issue",
-  "issueStates", "labelEvents", "change", "changeCommits", "changeFiles", "reviews".
+  "issueStates", "labelEvents", "change", "changeCommits", "changeFiles", "reviews"; change-trust
+  answers "trust", the trust kind's shape read on the change.
 
   reviews answers a list, [{"authorLogin": …, "authorId": …, "state": "APPROVED|CHANGES_REQUESTED|
-  COMMENTED|DISMISSED|PENDING", "commitId": …, "submittedAt": …}], every submission oldest first
+  COMMENTED|DISMISSED|PENDING", "commitId": …, "submittedAt": …, "body": …}], every submission oldest first
   (an empty list is a real answer: nobody has reviewed). It is transport: it carries no verdict.
 
   label-events answers {"complete": …, "events": [{"label": …, "removed": …, "createdAt": …,
@@ -290,6 +295,7 @@ func bindings() []cli.Binding {
 		{Key: "change", Kind: cli.StringArray, Flag: "change", Usage: "`owner/repo#N` change to read (repeatable; change, change-commits, change-files, comments)"},
 		{Key: "state", Kind: cli.StringArray, Flag: "state", Usage: "the state `word` (issue-list, changes; exactly one)"},
 		{Key: "label", Kind: cli.StringArray, Flag: "label", Usage: "ONE label `name` (issue-list only; exactly one)"},
+		{Key: "sha", Kind: cli.StringArray, Flag: "sha", Usage: "ONE full commit `sha` (commit-changes only; exactly one)"},
 		{Key: "ci-workflow-token", Kind: cli.Bool, Flag: strings.TrimPrefix(ciWorkflowTokenFlag, "--"),
 			Usage: "read as the CI job's own workflow token instead of an App role (CI only)"},
 		{Key: "max-parallel", Kind: cli.String, Flag: "max-parallel", Default: "6", Usage: "read at most `N` of the set concurrently"},
@@ -449,6 +455,18 @@ func checkAddressing(kind string, o *readOpts) error {
 		}
 	}
 
+	if o.shaSet && kind != "commit-changes" {
+		return fmt.Errorf("--sha does not apply to the %q kind", kind)
+	}
+	if kind == "commit-changes" {
+		if !o.shaSet {
+			return fmt.Errorf("the %q kind needs --sha <commit SHA> — the commit is stated, never defaulted", kind)
+		}
+		if !fullCommitSHA(o.sha) {
+			return fmt.Errorf("bad --sha %q — expected a full 40-character hex commit SHA", o.sha)
+		}
+	}
+
 	if repoKinds[kind] {
 		if len(o.issues) > 0 || len(o.changes) > 0 {
 			return fmt.Errorf("--issue/--change do not address the %q kind — it reads whole repos (--repo)", kind)
@@ -478,6 +496,20 @@ func checkAddressing(kind string, o *readOpts) error {
 		return fmt.Errorf("no %s given — an empty set is never reported as an empty result", addrFlags(kind))
 	}
 	return nil
+}
+
+// fullCommitSHA is a full 40-character hex commit SHA. An abbreviated SHA is refused: the forge
+// may resolve it to a different commit than the caller holds.
+func fullCommitSHA(s string) bool {
+	if len(s) != 40 {
+		return false
+	}
+	for _, c := range s {
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 func addrFlags(kind string) string {
@@ -523,6 +555,8 @@ type readOpts struct {
 	stateSet    bool
 	label       string
 	labelSet    bool
+	sha         string
+	shaSet      bool
 	maxParallel int
 
 	target deskkit.TargetKind
@@ -579,6 +613,11 @@ func optsFrom(v *cli.Values) (readOpts, error) {
 		return o, fmt.Errorf("--label needs exactly one value")
 	} else if len(lb) == 1 {
 		o.label, o.labelSet = lb[0], true
+	}
+	if sh := v.Strings("sha"); len(sh) > 1 {
+		return o, fmt.Errorf("--sha needs exactly one value")
+	} else if len(sh) == 1 {
+		o.sha, o.shaSet = strings.TrimSpace(sh[0]), true
 	}
 	o.ci = v.Bool("ci-workflow-token")
 	raw := v.String("max-parallel")
@@ -637,6 +676,9 @@ type RepoResult struct {
 	PageCap       int          `json:"pageCap,omitempty"`
 	Changes       []ChangeJSON `json:"changes,omitempty"`
 	DefaultBranch string       `json:"defaultBranch,omitempty"`
+	// CommitChanges is set by commit-changes only: non-nil there (an empty list is an answer),
+	// nil — and absent on the wire — on every other kind.
+	CommitChanges []int `json:"commitChanges,omitempty"`
 }
 
 // MarshalJSON keeps the `issues` kind's pinned output byte-identical — "issues" is ALWAYS present
@@ -651,6 +693,7 @@ func (r RepoResult) MarshalJSON() ([]byte, error) {
 		PageCap       int           `json:"pageCap,omitempty"`
 		Changes       *[]ChangeJSON `json:"changes,omitempty"`
 		DefaultBranch string        `json:"defaultBranch,omitempty"`
+		CommitChanges *[]int        `json:"commitChanges,omitempty"`
 	}
 	w := wire{Repo: r.Repo, Incomplete: r.Incomplete, PageCap: r.PageCap, DefaultBranch: r.DefaultBranch}
 	if r.Issues != nil {
@@ -658,6 +701,9 @@ func (r RepoResult) MarshalJSON() ([]byte, error) {
 	}
 	if r.Changes != nil {
 		w.Changes = &r.Changes
+	}
+	if r.CommitChanges != nil {
+		w.CommitChanges = &r.CommitChanges
 	}
 	return json.Marshal(w)
 }
@@ -829,6 +875,12 @@ func readRepo(kind, repo string, o readOpts) (*RepoResult, error) {
 			return nil, deskkit.Unverifiable("the forge reported no default branch for "+repo, nil)
 		}
 		res.DefaultBranch = b
+	case "commit-changes":
+		ns, nerr := f.ListCommitChanges(fr, o.sha)
+		if nerr != nil {
+			return nil, nerr
+		}
+		res.CommitChanges = append(make([]int, 0, len(ns)), ns...)
 	default:
 		return nil, deskkit.Refused("unknown per-repo kind " + kind)
 	}
@@ -936,14 +988,18 @@ type CommentJSON struct {
 
 // ReviewJSON is one deskkit.Review (the `reviews` kind), in the fields a review-history consumer
 // reads: who, the state word as the seam renders it, the commit the review was submitted against
-// and when. The body is not carried (no consumer reads it). An empty CommitID or SubmittedAt is
-// could-not-check, never "at the current head" or "just now".
+// and when, and the body as the seam served it (omitempty: a body-less review renders as it did
+// before the field). statusgen's GitLab auto-flip reads it to tell a GitLab approval (the
+// approvals endpoint carries no body) from a reviewer's verdict note (a note is never empty),
+// which ReviewsAtHead also renders APPROVED. An empty CommitID or SubmittedAt is could-not-check,
+// never "at the current head" or "just now".
 type ReviewJSON struct {
 	AuthorLogin string `json:"authorLogin,omitempty"`
 	AuthorID    int64  `json:"authorId,omitempty"`
 	State       string `json:"state"`
 	CommitID    string `json:"commitId,omitempty"`
 	SubmittedAt string `json:"submittedAt,omitempty"`
+	Body        string `json:"body,omitempty"`
 }
 
 // IssueDetailJSON is one deskkit.Issue read through GetIssueTyped(issue kind). ClosedBy is set
@@ -1109,8 +1165,14 @@ func readItem(kind string, target deskkit.TargetKind, tgt issueTarget, o readOpt
 	}
 	res := &ItemResult{Repo: tgt.Repo, Number: tgt.Number}
 	switch kind {
-	case "trust":
-		tp, terr := f.IssueTrustEvents(fr, tgt.Number)
+	case "trust", "change-trust":
+		// trust reads the issue's events, change-trust the change's (PRTrustEvents): two kinds,
+		// so the CI transport's closed kind set (which serves trust) never widens to a change.
+		read := f.IssueTrustEvents
+		if kind == "change-trust" {
+			read = f.PRTrustEvents
+		}
+		tp, terr := read(fr, tgt.Number)
 		if terr != nil {
 			return nil, terr
 		}
@@ -1253,7 +1315,7 @@ func readItem(kind string, target deskkit.TargetKind, tgt issueTarget, o readOpt
 		for _, r := range rs {
 			out = append(out, ReviewJSON{
 				AuthorLogin: r.Author.Login, AuthorID: r.Author.ID, State: r.State,
-				CommitID: r.CommitID, SubmittedAt: r.SubmittedAt,
+				CommitID: r.CommitID, SubmittedAt: r.SubmittedAt, Body: r.Body,
 			})
 		}
 		res.Reviews = &out

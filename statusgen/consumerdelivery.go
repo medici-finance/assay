@@ -208,6 +208,8 @@ func deriveConsumerDelivery(root, rel string) (delivery, base, why string) {
 	}
 	type triple struct{ delivery, base, original string }
 	var chosen *triple
+	var parents []string
+	checked := make(map[triple]bool)
 	for _, m := range markers {
 		if !m.literal {
 			return "", "", "Verification-Table must be literal live text, without code spans"
@@ -220,14 +222,21 @@ func deriveConsumerDelivery(root, rel string) (delivery, base, why string) {
 		if !consumerCommit.MatchString(t.delivery) || !consumerCommit.MatchString(t.base) || !consumerCommit.MatchString(t.original) {
 			return "", "", "the Verification-Table marker needs full 40-hex commit ids"
 		}
-		if chosen != nil && *chosen != t {
+		if chosen != nil && chosen.delivery != t.delivery {
 			return "", "", "the committed Evidence names more than one delivery; this instrument does not choose between them"
 		}
+		// A later verifier may name an earlier original for the same delivery.
+		// Authenticate each distinct set of coordinates against its Git history.
+		if checked[t] {
+			continue
+		}
+		var cwhy string
+		parents, cwhy = deliveryCoordinates(root, t.delivery, t.base, t.original)
+		if cwhy != "" {
+			return "", "", cwhy
+		}
+		checked[t] = true
 		chosen = &t
-	}
-	parents, cwhy := deliveryCoordinates(root, chosen.delivery, chosen.base, chosen.original)
-	if cwhy != "" {
-		return "", "", cwhy
 	}
 	// A commit made only in this checkout is not a landed delivery. The named
 	// delivery must be reachable from the fetched mainline ref; with no such ref
