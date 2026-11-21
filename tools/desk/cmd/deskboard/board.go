@@ -1380,7 +1380,20 @@ type Header struct {
 type Report struct {
 	value  any
 	render func(io.Writer)
-	detail string
+	// renderTo is a table renderer that returns its write error. A report sets it
+	// instead of render; table prefers it.
+	renderTo func(io.Writer) error
+	detail   string
+}
+
+// table writes the report's table to w and returns the write error a renderTo
+// renderer reports. A render renderer has no error to return.
+func (r *Report) table(w io.Writer) error {
+	if r.renderTo != nil {
+		return r.renderTo(w)
+	}
+	r.render(w)
+	return nil
 }
 
 // ---- prs ----
