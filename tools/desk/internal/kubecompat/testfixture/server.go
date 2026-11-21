@@ -2,13 +2,11 @@
 package testfixture
 
 import (
-	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -63,7 +61,7 @@ type Server struct {
 
 	// Terminal connects native attach streams to an optional retained offline process.
 	// Closing an operator connection cancels this presentation only.
-	Terminal func(context.Context, string, io.Reader, io.Writer, io.Reader) error
+	Terminal TerminalHandler
 }
 
 func New(t testing.TB) *Server {
@@ -275,25 +273,7 @@ func (s *Server) attach(w http.ResponseWriter, req *http.Request, role string, a
 		}
 	}
 	if s.Terminal != nil {
-		ctx, cancel := context.WithCancel(req.Context())
-		defer cancel()
-		go func() {
-			select {
-			case <-conn.CloseChan():
-				cancel()
-			case <-ctx.Done():
-			}
-		}()
-		err := s.Terminal(ctx, role, streams[core.StreamTypeStdin], streams[core.StreamTypeStdout], streams[core.StreamTypeResize])
-		if status := streams[core.StreamTypeError]; status != nil {
-			result := meta.Status{Status: meta.StatusSuccess}
-			if err != nil {
-				result.Status = meta.StatusFailure
-				result.Message = err.Error()
-			}
-			_ = json.NewEncoder(status).Encode(result)
-			_ = status.Close()
-		}
+		s.attachTerminal(req, conn, role, streams)
 		return
 	}
 	resized := make(chan struct{})
