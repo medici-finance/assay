@@ -1,6 +1,6 @@
 # Humanizer writing patterns
 
-Adapted from [Humanizer 4.0.0 by Siqi Chen](https://github.com/blader/humanizer/tree/b48c832f0f809c1b5658edbb838c2521b72f2413) under the [MIT license](../LICENSE.txt). The editorial edition includes technical examples in sections 1, 2, 4 to 6, 11 to 20, 23, 25 and 26.
+Adapted from [Humanizer 4.0.0 by Siqi Chen](https://github.com/blader/humanizer/tree/b48c832f0f809c1b5658edbb838c2521b72f2413) under the [MIT license](../LICENSE.txt). The editorial edition writes its own technical examples for sections 12, 14 to 19 and 23, and for some of the examples in sections 1, 4, 6, 13 and 20. Every other example is upstream's.
 
 Rewrite AI-sounding text so it reads like the writer, not a chatbot. Keep what it says.
 
@@ -239,10 +239,10 @@ The fact underneath is usually sound. Keep it and remove the dressing.
 **Problem:** Models use these words far more often than people do, especially in groups. The watch lists in §13 to §18 hold phrases that are tells because of how they are used; this list holds words that are tells wherever they appear. A formal word outside these lists is not a tell by itself.
 
 **Before:**
-> Additionally, a key feature of the new build system is its robust artifact cache. A testament to the team's meticulous work is the intricate interplay between the cache and the scheduler, highlighting how deploy times were enhanced across the engineering landscape.
+> The team delved into the intricacies of build caching and garnered a crucial win: a robust artifact cache that bolsters the scheduler and underscores how valuable meticulous build work can be.
 
 **After:**
-> The new build system also has an artifact cache. Deploys take 6 minutes instead of 14 because the scheduler reuses cached layers.
+> The new artifact cache lets the scheduler reuse built layers, so deploys take 6 minutes instead of 14.
 
 ### 13. Inflated significance
 
@@ -251,10 +251,10 @@ The fact underneath is usually sound. Keep it and remove the dressing.
 **Problem:** An ordinary detail is said to mark a change, prove a legacy, or promise a future. The habit shows up as a phrase, as a stock "challenges and outlook" section, or as a closing paragraph. Keep the fact and drop the significance. End on the last concrete fact; if the source states real plans, use those.
 
 **Before:**
-> The platform team completed the database migration in March 2024, marking a pivotal moment in the evolution of the company's data layer. The effort was part of a broader push across engineering to modernize legacy systems and enhance reliability.
+> With signed release artifacts in version 2.4, the project took a step that underscores its lasting dedication to supply-chain security and sets the stage for a more trustworthy ecosystem.
 
 **After:**
-> The platform team completed the database migration in March 2024, one of several legacy-system replacements that year.
+> Since version 2.4, every release artifact is signed.
 
 **Before (stock section):**
 > Despite promising progress, the queue still faces familiar challenges. With sustained investment the team can look forward to a bright future. In this test the queue filled after 12 seconds.
@@ -287,10 +287,10 @@ The fact underneath is usually sound. Keep it and remove the dressing.
 **Problem:** An -ing phrase is bolted onto a simple fact to make it sound deeper. Attaching it to a named source ("Roger Ebert highlighted the lasting influence") does not make it true. Keep the fact; keep the -ing phrase only when the source supports what it claims.
 
 **Before:**
-> The dashboard's red, amber, and green tiles reflect the on-call team's commitment to clarity, symbolizing the health of each service, underscoring the importance of fast triage, and ensuring engineers can respond quickly.
+> The release adds a `--dry-run` flag, highlighting the project's focus on safety, fostering confidence among operators, and contributing to a culture of careful change.
 
 **After:**
-> The dashboard shows one tile per service, colored red, amber, or green by its latest health check.
+> The release adds a `--dry-run` flag that prints the planned changes without applying them.
 
 ### 16. Sales language
 
@@ -299,10 +299,10 @@ The fact underneath is usually sound. Keep it and remove the dressing.
 **Problem:** The text reads like an advertisement, especially for places, culture, products, or organizations. State what the thing is.
 
 **Before:**
-> Nestled in the heart of the observability ecosystem, Quillspan is a groundbreaking open-source tracer with a rich feature set and a stunning interface, renowned for its commitment to developer happiness.
+> Teams who try Quillspan describe a profound change in how they debug. Its diverse array of exporters and its breathtaking span viewer make it a must-have for any observability stack.
 
 **After:**
-> Quillspan is an open-source tracer with a web interface for browsing spans.
+> Quillspan is an open-source tracer with several exporters and a web viewer for browsing spans.
 
 ### 17. Borrowed authority
 
@@ -311,13 +311,13 @@ The fact underneath is usually sound. Keep it and remove the dressing.
 **Problem:** A name or an unnamed authority stands in for what was said. Unnamed experts prop up a claim; a list of prestige outlets props up a person. When you know the real source and what it said, name it. Otherwise cut the unsupported claim or the list. A missing citation alone is not a tell; most writing is unsourced.
 
 **Before (unnamed authority):**
-> Owing to its distinctive design, the retrykit library is of interest to platform teams and reliability engineers. Industry observers believe it plays a crucial role in the modern resilience ecosystem.
+> Industry reports call Tarnwick the retry library of choice for serious platform teams, and some critics say no other tool handles backoff as well.
 
 **After:**
-> Platform teams use retrykit because it caps total retry time per request: the default budget is 30 seconds.
+> Tarnwick caps the total time a request may spend retrying. Its default budget is 30 seconds.
 
 **Before (prestige list):**
-> The tool has been featured in Backend Digest, The Deploy Review, and Platform Weekly. Its maintainer has an active social media presence with over 40,000 followers.
+> Backend Digest, The Deploy Review, and Platform Weekly have all profiled the tool, and its maintainer posts to more than 40,000 followers.
 
 **After:**
 > In a 2024 conference talk, the maintainer said the tool replaced a cron-based retry script that dropped jobs during deploys.
@@ -329,10 +329,10 @@ The fact underneath is usually sound. Keep it and remove the dressing.
 **Problem:** Simple verbs are replaced with longer phrases. Use *is*, *are*, and *has*.
 
 **Before:**
-> The ingest service functions as the pipeline's entry point. It features two worker pools and boasts a capacity of 5,000 events per second.
+> For operators, the `deploy` command represents the main way in and boasts support for staged rollouts, while `status` serves as its read-only companion.
 
 **After:**
-> The ingest service is the pipeline's entry point. It has two worker pools and handles up to 5,000 events per second.
+> `deploy` is the main command for operators and supports staged rollouts. `status` is its read-only companion.
 
 ## D. Formatting by rule
 
@@ -406,10 +406,10 @@ Remove these outright.
 **Problem:** The text mentions where the model's knowledge ends, or admits it found no source and then fills the gap with a plausible guess. State what the source does not show, or remove the sentence.
 
 **Before (cutoff disclaimer):**
-> While specific details about the company's founding are not extensively documented in readily available sources, it appears to have been established sometime in the 1990s.
+> Up to my last training update, the parser's maintainers had set no date for version 3, though a release in the first half of next year seems likely.
 
 **After:**
-> The sources do not give the company's founding date. (Or cut the sentence.)
+> The maintainers have not announced a date for version 3. (Or cut the sentence.)
 
 **Before (guess):**
 > Details of the outage are not publicly available, suggesting the vendor keeps a low profile. The root cause was likely a misconfigured load balancer, which shaped its later changes to the deploy process.
