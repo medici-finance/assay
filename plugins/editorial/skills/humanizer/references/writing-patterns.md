@@ -1,6 +1,6 @@
 # Humanizer writing patterns
 
-Adapted from [Humanizer 4.0.0 by Siqi Chen](https://github.com/blader/humanizer/tree/b48c832f0f809c1b5658edbb838c2521b72f2413) under the [MIT license](../LICENSE.txt). The editorial edition includes technical examples in sections 4, 13 and 14.
+Adapted from [Humanizer 4.0.0 by Siqi Chen](https://github.com/blader/humanizer/tree/b48c832f0f809c1b5658edbb838c2521b72f2413) under the [MIT license](../LICENSE.txt). The editorial edition includes technical examples in sections 1, 2, 4 to 6, 11 to 20, 23, 25 and 26.
 
 Rewrite AI-sounding text so it reads like the writer, not a chatbot. Keep what it says.
 
@@ -55,10 +55,10 @@ These are the strongest and most frequent tells in current model prose. Act on o
 **Problem:** The negative half names something no one claimed, so the positive half sounds larger. It adds weight without adding a claim. State the point directly. Keep a contrast only when the negative half corrects a belief the reader actually holds, or when both halves carry information.
 
 **Before:**
-> It's not just about the beat riding under the vocals; it's part of the aggression and atmosphere. It's not merely a song, it's a statement.
+> It's not just about the retry limit; it's part of the system's resilience and stability. It's not merely a config flag, it's a safety net.
 
 **After:**
-> The heavy beat makes the song sound more aggressive.
+> The retry limit stops one failing dependency from tying up every worker.
 
 **Before (split across sentences):**
 > This does not mean every choice is equal. It means there is no external system that confirms which choice is right.
@@ -161,10 +161,10 @@ Shapes and punctuation applied everywhere, whether or not the meaning asks for t
 **Problem:** Ideas arrive in threes to sound complete, whether the meaning has three parts or not. The tell can be one sentence ("innovation, inspiration, and insights"), three parallel examples, or three short facts followed by a lesson. Check that each item adds a distinct idea. Merge examples, develop the strongest one, or vary the structure when they do not. Keep three real items when the meaning needs three.
 
 **Before:**
-> The event features keynote sessions, panel discussions, and networking opportunities. Attendees can expect innovation, inspiration, and industry insights.
+> The release features a faster parser, clearer diagnostics, and improved error messages. Users can expect speed, clarity, and reliability.
 
 **After:**
-> The event includes talks and panels. There's also time for informal networking between sessions.
+> The release has a faster parser and clearer error messages.
 
 **Before (paragraph scale):**
 > A career can look promising and fail. A relationship can feel important and end. A skill can take years and remain useless. These decisions rarely explain themselves.
@@ -317,10 +317,10 @@ The fact underneath is usually sound. Keep it and remove the dressing.
 > Platform teams use retrykit because it caps total retry time per request: the default budget is 30 seconds.
 
 **Before (prestige list):**
-> Her views have been cited in The New York Times, BBC, Financial Times, and The Hindu. She maintains an active social media presence with over 500,000 followers.
+> The tool has been featured in Backend Digest, The Deploy Review, and Platform Weekly. Its maintainer has an active social media presence with over 40,000 followers.
 
 **After:**
-> In a 2024 New York Times interview, she argued that AI regulation should focus on outcomes rather than methods.
+> In a 2024 conference talk, the maintainer said the tool replaced a cron-based retry script that dropped jobs during deploys.
 
 ### 18. Avoiding is, are, and has
 
@@ -343,28 +343,28 @@ Templates and visual editors also produce clean formatting. The tell is decorati
 **Problem:** Words are bolded without a reason, and vertical lists give every item a bold label and a colon. Remove the bold. Turn a labeled list into prose when the labels carry no information of their own.
 
 **Before:**
-> It blends **OKRs (Objectives and Key Results)**, **KPIs (Key Performance Indicators)**, and visual strategy tools such as the **Business Model Canvas (BMC)** and **Balanced Scorecard (BSC)**.
+> The config file supports **YAML**, **TOML**, and **JSON**, and reads environment variables such as **LOG_LEVEL** and **CACHE_TTL**.
 
 **After:**
-> It blends OKRs, KPIs, and visual strategy tools like the Business Model Canvas and Balanced Scorecard.
+> The config file supports YAML, TOML, and JSON, and reads environment variables such as LOG_LEVEL and CACHE_TTL.
 
 **Before (labeled list):**
-> - **User Experience:** The user experience has been significantly improved with a new interface.
-> - **Performance:** Performance has been enhanced through optimized algorithms.
-> - **Security:** Security has been strengthened with end-to-end encryption.
+> - **Latency:** Latency has been significantly reduced with a new cache layer.
+> - **Reliability:** Reliability has been improved through automatic retries.
+> - **Observability:** Observability has been strengthened with structured logging.
 
 **After:**
-> The update adds a new interface, faster algorithms, and end-to-end encryption.
+> The update adds a cache layer, automatic retries, and structured logging.
 
 ### 20. Decorative headings
 
 **Problem:** Headings capitalize every main word, and headings or list items carry emojis or arrows (→) as decoration. A horizontal rule sits between every section, or the document opens with a top-level heading that repeats its own title. A heading written for effect ("The decision, on one screen") should name what the section holds ("How the six options compare"). Use sentence case, remove the decoration and the rules, and let the title stand once.
 
 **Before:**
-> ## Strategic Negotiations And Global Partnerships
+> ## Database Migration And Rollout Planning
 
 **After:**
-> ## Strategic negotiations and global partnerships
+> ## Database migration and rollout planning
 
 **Before (emojis):**
 > 🚀 **Launch Phase:** The product launches in Q3
@@ -412,10 +412,10 @@ Remove these outright.
 > The sources do not give the company's founding date. (Or cut the sentence.)
 
 **Before (guess):**
-> Information about her early life is not publicly available, suggesting she maintains a low profile. She likely grew up in a middle-class household, which shaped her later interest in education reform.
+> Details of the outage are not publicly available, suggesting the vendor keeps a low profile. The root cause was likely a misconfigured load balancer, which shaped its later changes to the deploy process.
 
 **After:**
-> The sources say nothing about her early life. (Or omit the section.)
+> The vendor has not published a root cause for the outage. (Or omit the section.)
 
 ### 24. A heading repeated in the first sentence
 
