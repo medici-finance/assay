@@ -5,6 +5,7 @@
 # The ratchet only goes down. Raising a ceiling needs the new site added to the row's
 # duplicates column with a design-fit finding in the same change; lowering one when a
 # duplicate is folded into its owner locks in the gain.
+S-cell-lifecycle 1
 S-claim 1
 S-component-activation 2
 S-eligibility 1

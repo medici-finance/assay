@@ -196,8 +196,8 @@
     {
       "name": "reclaim recent build output",
       "file": "internal/cellscratch/store.go",
-      "old": "if time.Since(last) <= p.MaxAge {",
-      "new": "if false {"
+      "old": "if time.Since(last) <= age {",
+      "new": "if false && time.Since(last) <= age {"
     },
     {
       "name": "reclaim under a live execution lease",
@@ -328,8 +328,8 @@
     {
       "name": "drop per-entry Git check",
       "file": "internal/cellscratch/store.go",
-      "old": "\t\tif git {\n\t\t\tcontinue",
-      "new": "\t\tif git && false {\n\t\t\tcontinue"
+      "old": "\t\t\tif git {\n\t\t\t\tcontinue",
+      "new": "\t\t\tif git && false {\n\t\t\t\tcontinue"
     },
     {
       "name": "recheck abandoned task whole",
@@ -420,6 +420,48 @@
       "file": "internal/cellscratch/store.go",
       "old": "if wait <= 0 {",
       "new": "if false {"
+    },
+    {
+      "name": "reclaim unfinished work wholesale",
+      "file": "internal/cellscratch/store.go",
+      "old": "whole := r.State == \"failed\" || r.State == \"pending\"",
+      "new": "whole := true"
+    },
+    {
+      "name": "skip handoff grace",
+      "file": "internal/cellscratch/store.go",
+      "old": "\t\tage = HandoffGrace",
+      "new": "\t\tage = 0"
+    },
+    {
+      "name": "abort inventory at the bound",
+      "file": "internal/cellscratch/store.go",
+      "old": "s.inventoryLimit(), s.stopped, func(",
+      "new": "s.inventoryLimit(), func() error { return deskkit.ErrScanLimit }, func("
+    },
+    {
+      "name": "retain unbounded work candidates",
+      "file": "internal/cellscratch/store.go",
+      "old": "if examined >= limit {",
+      "new": "if false && examined >= limit {"
+    },
+    {
+      "name": "unbounded removal pages",
+      "file": "internal/cellscratch/store.go",
+      "old": "if err == nil && pages >= RemovalPages {",
+      "new": "if false && err == nil && pages >= RemovalPages {"
+    },
+    {
+      "name": "reclaim around a repository work root",
+      "file": "internal/cellscratch/store.go",
+      "old": "\t\tif repo {",
+      "new": "\t\tif false && repo {"
+    },
+    {
+      "name": "skip work root recheck at deletion",
+      "file": "internal/cellscratch/store.go",
+      "old": "git, checkErr = git || repo, errors.Join(checkErr, e)",
+      "new": "git, checkErr = git || repo && false, errors.Join(checkErr, e)"
     }
   ]
 }

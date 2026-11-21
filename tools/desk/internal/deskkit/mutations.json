@@ -273,6 +273,60 @@
       "new": "\t\tif key[i] == 0 {"
     },
     {
+      "name": "#6821 godebug — accept any head, not only DefaultGODEBUG/GODEBUG (MYGODEBUG=<name>=1 scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "!ok || !slices.Contains(godebugHeads, head) || envNameAt(raw, start, head) != head {",
+      "new": "!ok || head == \"\" || envNameAt(raw, start, head) != head {"
+    },
+    {
+      "name": "#6821 godebug — drop the whole-env-name check (X_DefaultGODEBUG=<name>=1 scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "!slices.Contains(godebugHeads, head) || envNameAt(raw, start, head) != head {",
+      "new": "!slices.Contains(godebugHeads, head) {"
+    },
+    {
+      "name": "#6821 godebug — read only the first list item (a non-setting item after the comma scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "range strings.Split(strings.TrimSuffix(list, \",\"), \",\") {",
+      "new": "range strings.Split(strings.TrimSuffix(list, \",\"), \",\")[:1] {"
+    },
+    {
+      "name": "#6821 godebug — drop the lowercase name check (a mixed-case run in the name position scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "!isLowerAlnum(name) || !strings.ContainsAny(name, \"ghijklmnopqrstuvwxyz\") {",
+      "new": "!strings.ContainsAny(name, \"ghijklmnopqrstuvwxyz\") {"
+    },
+    {
+      "name": "#6821 godebug — drop the non-hex-letter check (a hex run in the name position scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "!isLowerAlnum(name) || !strings.ContainsAny(name, \"ghijklmnopqrstuvwxyz\") {",
+      "new": "!isLowerAlnum(name) {"
+    },
+    {
+      "name": "#6821 godebug — drop the name-length cap (a 29+ char name scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "name == \"\" || len(name) > maxGoDebugName ||",
+      "new": "name == \"\" ||"
+    },
+    {
+      "name": "#6821 godebug — drop the digits-only value check (a word as the value scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "len(value) > maxGoDebugValue || strings.Trim(value, \"0123456789\") != \"\" ||",
+      "new": "len(value) > maxGoDebugValue ||"
+    },
+    {
+      "name": "#6821 godebug — drop the name-digit cap (a digit-heavy name scans clean)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "return digits <= maxGoDebugNameDigits",
+      "new": "return digits >= 0"
+    },
+    {
+      "name": "#6821 godebug — admit on the head alone (any list behind DefaultGODEBUG=/GODEBUG= scans clean; reddens pos-godebug-token-value)",
+      "file": "internal/deskkit/bodycheck.go",
+      "old": "\t\tif !isGoDebugSetting(item) {",
+      "new": "\t\tif false && !isGoDebugSetting(item) {"
+    },
+    {
       "name": "#203 — make the public-repo self-containment scan a no-op on every repo",
       "file": "internal/deskkit/selfcontain.go",
       "old": "\tif !SelfContainApplies(o.Repo) {",

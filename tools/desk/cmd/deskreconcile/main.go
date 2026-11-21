@@ -120,8 +120,8 @@ func bindings() []cli.Binding {
 		{Key: "worktree", Kind: cli.String, Flag: "worktree", Usage: "the isolated linked worktree to run in (absolute, outside --root)"},
 		{Key: "branch", Kind: cli.String, Flag: "branch", Default: defaultBranch, Usage: "the fixed carry branch"},
 		{Key: "issue", Kind: cli.Int, Flag: "issue", Default: 0, Usage: "the tracking issue for the fresh-create PR body trailer"},
-		{Key: "repo", Kind: cli.String, Flag: "repo", Usage: "owner/name statusgen reads PRs from to witness a flip (default: the checkout's origin)"},
-		{Key: "token-file", Kind: cli.String, Flag: "token-file", Usage: "file holding the GitHub API token for the PR read (else GITHUB_TOKEN)"},
+		{Key: "repo", Kind: cli.String, Flag: "repo", Usage: "owner/name (on GitLab, group/project) statusgen reads PRs or merge requests from to witness a flip (default: the checkout's origin)"},
+		{Key: "token-file", Kind: cli.String, Flag: "token-file", Usage: "file holding the GitHub API token for the PR read (else GITHUB_TOKEN); unused when the roster binds the repo to GitLab, whose merge requests statusgen reads through deskread"},
 		{Key: "dry-run", Kind: cli.Bool, Flag: "dry-run", Default: false, Usage: "reconcile against origin/main and report the rows it would flip; write nothing"},
 	}
 }

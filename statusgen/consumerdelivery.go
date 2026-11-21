@@ -114,7 +114,7 @@ func runDeliveryConsumers(root, base, brief, delivery string) int {
 	// Both explicit and Evidence-derived pins reach this one historical path.
 	// A bounded snapshot authenticates the inputs, not the caller's assertion
 	// that this commit implements the producer. Keep that separate from routing.
-	fmt.Fprintln(os.Stderr, "PRODUCER-DELIVERY: COULD-NOT-CHECK — producer identity and implementation completeness are not evaluated; follow-up routes prove target existence and reference-back only. Independently establish the actual producer delivery. Routing counts on stdout and the exit status concern declared consumer routes only.")
+	fmt.Fprintln(os.Stderr, "PRODUCER-DELIVERY: COULD-NOT-CHECK — producer identity and implementation completeness are not evaluated; a follow-up route to another brief proves target existence and reference-back only, and a self-route corroborates only where this delivery's diff touches its site. Independently establish the actual producer delivery. Routing counts on stdout and the exit status concern declared consumer routes only.")
 	return emitConsumers(base+".."+delivery+" (immutable delivered snapshot)", 1, verdicts, nil, true)
 }
 
@@ -208,6 +208,8 @@ func deriveConsumerDelivery(root, rel string) (delivery, base, why string) {
 	}
 	type triple struct{ delivery, base, original string }
 	var chosen *triple
+	var parents []string
+	checked := make(map[triple]bool)
 	for _, m := range markers {
 		if !m.literal {
 			return "", "", "Verification-Table must be literal live text, without code spans"
@@ -220,14 +222,21 @@ func deriveConsumerDelivery(root, rel string) (delivery, base, why string) {
 		if !consumerCommit.MatchString(t.delivery) || !consumerCommit.MatchString(t.base) || !consumerCommit.MatchString(t.original) {
 			return "", "", "the Verification-Table marker needs full 40-hex commit ids"
 		}
-		if chosen != nil && *chosen != t {
+		if chosen != nil && chosen.delivery != t.delivery {
 			return "", "", "the committed Evidence names more than one delivery; this instrument does not choose between them"
 		}
+		// A later verifier may name an earlier original for the same delivery.
+		// Authenticate each distinct set of coordinates against its Git history.
+		if checked[t] {
+			continue
+		}
+		var cwhy string
+		parents, cwhy = deliveryCoordinates(root, t.delivery, t.base, t.original)
+		if cwhy != "" {
+			return "", "", cwhy
+		}
+		checked[t] = true
 		chosen = &t
-	}
-	parents, cwhy := deliveryCoordinates(root, chosen.delivery, chosen.base, chosen.original)
-	if cwhy != "" {
-		return "", "", cwhy
 	}
 	// A commit made only in this checkout is not a landed delivery. The named
 	// delivery must be reachable from the fetched mainline ref; with no such ref

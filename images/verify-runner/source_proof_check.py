@@ -4,6 +4,7 @@ Only local synthetic Git objects and fake row processes are used. No container,
 network, model, forge admission or acceptance is exercised by this probe.
 """
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -30,6 +31,7 @@ _DISPATCH_PREFIX = '''
 case $1 in
   seed)
     [ -d "$CACHE/clone/.git" ] || die "no clone on the PVC"
+    mkdir -p "$WORK" || die "could not create the checkout directory"
     cp -a "$CACHE/clone/." "$WORK/" || die "could not copy the clone"
     ;;
   seed-probe)
@@ -44,8 +46,8 @@ case $1 in
 def probe(helper, witness):
     with tempfile.TemporaryDirectory(prefix='proof-probe-') as tmp:
         base = Path(tmp)
-        root = base / 'work'
-        root.mkdir()
+        root = base / 'cache' / 'clone'
+        root.mkdir(parents=True)
         env = {'PATH': '/usr/bin:/bin', 'HOME': str(base / 'empty-home'),
                'GIT_CONFIG_GLOBAL': os.devnull, 'GIT_CONFIG_NOSYSTEM': '1',
                'GIT_CONFIG_COUNT': '0', 'GIT_CONFIG_PARAMETERS': ''}
@@ -72,6 +74,12 @@ def probe(helper, witness):
         script = base / 'witness.sh'
         candidate = Path(witness).read_text().replace(
             '/usr/local/lib/verify-runner/source_proof.py', str(helper))
+        # Relocate only the fixed mount prefix. The script still chooses its
+        # production checkout with VR_WORK_DIR unset, including in the seed.
+        mount = re.compile(r'^WORK=\$\{VR_WORK_DIR:-/work(?=/|\}$)', re.MULTILINE)
+        if len(mount.findall(candidate)) != 1:
+            raise RuntimeError('cannot relocate the fixed work volume')
+        candidate = mount.sub('WORK=${VR_WORK_DIR:-${VR_TEST_WORK_VOLUME}', candidate)
         dispatch = '\ncase $1 in\n  seed)'
         if candidate.count(dispatch) != 1:
             raise RuntimeError('cannot isolate the operational probe dispatch')
@@ -109,11 +117,19 @@ readlink() { [ "$1" = /proc/self/ns/net ] || return 1; printf 'net:[123]\n'; }
         admit.mkdir()
         (admit / 'receipt.json').write_text('{}')
         (admit / 'image-digest').write_text('sha256:' + 'a' * 64)
-        runenv = dict(env, PATH='/usr/bin:/bin', BASH_ENV=str(seams), VR_CACHE_DIR=str(base / 'cache'), VR_WORK_DIR=str(root),
-                      VR_ADMISSION_DIR=str(admit), VR_SCRATCH_DIR=str(base),
+        runenv = dict(env, PATH='/usr/bin:/bin', BASH_ENV=str(seams), VR_CACHE_DIR=str(base / 'cache'),
+                      VR_ADMISSION_DIR=str(admit), VR_SCRATCH_DIR=str(base), VR_TEST_WORK_VOLUME=str(base / 'work'),
                       VR_TEST_ROWS=str(marker), VR_TEST_DELIVERY=str(base / 'delivery'),
                       VR_TEST_NETWORK=str(network),
                       ASSAY_DELIVERY_SHA='ambient-poison', ASSAY_DELIVERY_BASE_SHA='ambient-poison')
+        # Seed into a fresh checkout beneath a work volume before exercising the
+        # same source and admission checks the witness container uses.
+        root = base / 'work' / 'checkout'
+        root.parent.mkdir()
+        subprocess.run(['/bin/bash', str(script), 'seed'], env=runenv, check=True, capture_output=True)
+        require((root / '.git').is_dir() and not (root.parent / '.git').exists(), 'seed:checkout')
+        require(git('rev-parse', 'HEAD') == sha, 'seed:source')
+        brief = root / 'docs/streams/proof/brief-01-probe.md'
         def run(flags=(), good=True, case='source', source=None, proof=True, usage=False, key='proof/01'):
             marker.unlink(missing_ok=True)
             network.unlink(missing_ok=True)
@@ -122,7 +138,12 @@ readlink() { [ "$1" = /proc/self/ns/net ] || return 1; printf 'net:[123]\n'; }
                 args += ['--source-proof']
             if source is not False:
                 args += ['--sha=' + (sha if source is None else source)]
-            result = subprocess.run(['/bin/bash', str(script), *args, *flags], env=dict(runenv, VR_TEST_KEY=key), capture_output=True)
+            row_env = dict(runenv, VR_TEST_KEY=key)
+            if key == 'seed':
+                # Invalid seed arguments must be refused before touching the volume.
+                row_env['VR_WORK_DIR'] = str(base / 'forbidden-seed-checkout')
+            result = subprocess.run(['/bin/bash', str(script), *args, *flags], env=row_env, capture_output=True)
+            require(not (base / 'forbidden-seed-checkout').exists(), 'seed:unexpected-copy')
             # No fixture path, including a guard regression, may attempt a
             # network seam. The operational probe is a local sentinel instead.
             require(not network.exists(), 'seams:probe-network')

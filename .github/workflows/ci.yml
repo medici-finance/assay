@@ -170,7 +170,10 @@ jobs:
           set -euo pipefail
           cd tools/desk
           GOOS=windows GOARCH=amd64 go vet ./...
-          for p in $(go list ./...); do GOOS=windows GOARCH=amd64 go test -c -o /dev/null "$p" || exit 1; done
+          packages="$(go list ./...)"
+          test -n "$packages"
+          mapfile -t desk_packages <<< "$packages"
+          GOOS=windows GOARCH=amd64 go test -c -o /dev/null "${desk_packages[@]}"
           GOOS=darwin GOARCH=arm64 go vet ./...
 
   # build-test, sharded. The suite that used to run serially in one job (~15
@@ -607,11 +610,7 @@ jobs:
           source_sha="$(git rev-parse --short HEAD)"
           built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           stamp="-X github.com/medici-finance/assay/tools/desk/internal/deskkit.SourceSHA=${source_sha} -X github.com/medici-finance/assay/tools/desk/internal/deskkit.BuiltAt=${built_at}"
-          for directory in tools/desk/cmd/*; do
-            test -d "$directory" || continue
-            name="$(basename "$directory")"
-            (cd tools/desk && go build -ldflags "$stamp" -o "dist/$name" "./cmd/$name")
-          done
+          (cd tools/desk && go build -ldflags "$stamp" -o dist/ ./cmd/...)
       - name: Build all tracked modules and desk executables (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

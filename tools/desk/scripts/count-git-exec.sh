@@ -5,10 +5,15 @@
 #   1. direct spawns:  exec.Command("git" ...) and exec.CommandContext(<ctx>, "git" ...)
 #      — the actual process launches (the context form counted since brief 06, whose
 #      deleted preflight probe was one; the earlier pattern missed it), and
-#   2. per-tool seam call sites: runGit( / gitOut( / execCommand( / execGit(
-#      — the named helpers behind which tools route their git argv. The pattern is
-#      textual: it also matches some execCommand( seams that launch gh, desktoken or
-#      ssh rather than git (a known over-count, named as follow-on work, not hidden).
+#   2. per-tool seam call sites: runGit( / gitOut( / execCommand( / execGit( /
+#      verifierGit( / verifierGitBytes( / VerifierGitPath( — the named helpers behind
+#      which tools route their git argv. The last three are deskkit's verifier read
+#      seam (one exec.Command("git" inside verifierGitBytes, counted above) and its
+#      exported `--git-path` wrapper name; every caller is a reachable git spawn path,
+#      so a new caller, inside deskkit or through the exported name, grows the count
+#      like any other seam's. The pattern is textual: it also matches some execCommand( seams
+#      that launch gh, desktoken or ssh rather than git (a known over-count, named as
+#      follow-on work, not hidden).
 # Both counts EXCLUDE tools/desk/internal/gitexec (the audited fallback home — its
 # spawn is the sanctioned one, and deskmerge's trial-merge fence routes through it)
 # and *_test.go files (fixture/harness noise, not production call sites). grep -r
@@ -51,7 +56,7 @@ DIRECT=$(grep -rEn -e 'exec\.Command\("git"' -e 'exec\.CommandContext\([^,]+, *"
   | grep -v '^[^:]*_test\.go:' \
   | wc -l | tr -d ' ')
 
-SEAMS=$(grep -rEn '(runGit|gitOut|execCommand|execGit)\(' cmd internal \
+SEAMS=$(grep -rEn '(runGit|gitOut|execCommand|execGit|verifierGit|verifierGitBytes|VerifierGitPath)\(' cmd internal \
   --include='*.go' \
   | grep -v '^internal/gitexec/' \
   | grep -v '^[^:]*_test\.go:' \

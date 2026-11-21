@@ -140,11 +140,17 @@ func claimMessage(id, owner, state, branch, note string) (string, error) {
 	return msg, nil
 }
 
-// fieldOf pulls `key=value` out of a space-separated claim message (bash `field_of`).
+// fieldOf pulls `key=value` out of a space-separated claim message (bash `field_of`). The
+// builder writes every structural field before `note=`, so the scan stops at the note: a field
+// present only inside a holder-written note (a tag from another writer whose note kept its
+// whitespace) is not the claim's and reads as absent (medici-finance/assay#7305).
 func fieldOf(msg, key string) string {
 	for _, tok := range strings.Fields(msg) {
 		if v, ok := strings.CutPrefix(tok, key+"="); ok {
 			return v
+		}
+		if strings.HasPrefix(tok, "note=") {
+			return ""
 		}
 	}
 	return ""
@@ -161,20 +167,17 @@ func ageMinutes(iso string) (int, bool) {
 	return int(time.Since(t).Minutes()), true
 }
 
-// sanitizeNote mirrors the bash `tr ' \n' '_ ' | tr -d '\n'`: space -> '_', newline -> ' '.
+// sanitizeNote makes the note ONE word of the claim message: every whitespace rune becomes '_'.
+// The bash `tr ' \n' '_ '` it once mirrored turned a newline into a space and kept a tab, which
+// let a steal reason plant standalone `age=`/`state=` words ahead of the HELD line's own fields
+// (medici-finance/assay#7305). Readers still guard against tags from writers that do not do this.
 func sanitizeNote(note string) string {
-	var b strings.Builder
-	for _, r := range note {
-		switch r {
-		case ' ':
-			b.WriteByte('_')
-		case '\n':
-			b.WriteByte(' ')
-		default:
-			b.WriteRune(r)
+	return strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return '_'
 		}
-	}
-	return b.String()
+		return r
+	}, note)
 }
 
 // reportHolder is the DEDUP LOG: a second dispatch attempt must say what it deduplicated
