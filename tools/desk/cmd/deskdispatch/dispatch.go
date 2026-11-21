@@ -524,6 +524,12 @@ func dispatch(o dispatchOpts) error {
 				"is the isolation floor every other clause rests on, so a home this verb cannot state is a "+
 				"dispatch it must not make. The claim was %s.", stepWorktreeCreate, wtName, wt.stdout, released), nil))
 	}
+	// From here an abort also removes the home this run created (abortHome), so a refused
+	// dispatch leaves no full checkout behind. A resumed worker's adopted home and a
+	// verifier's custody home are never this run's to discard.
+	if !workerResume(o) && !verifierKit(o.kit) {
+		held.home = home
+	}
 	// IDENTITY, worktree-scoped (#1490). The dispatched agent's worktree must commit under its
 	// OWN role's App identity, not the identity the shared checkout carries — otherwise a
 	// verifier dispatched from a desk checkout reports the desk App as its runner and statusgen
@@ -573,6 +579,12 @@ func dispatch(o dispatchOpts) error {
 	// and is REPORTED, never silent — but it never fails the dispatch, which is already claimed,
 	// homed and identity-stamped.
 	if ext := runCmd(home, "git", "config", "extensions.worktreeConfig", "true"); ext.err == nil {
+		// Where the claim was taken, recorded BEFORE the key so a key never exists without
+		// its namespace unless the write failed (deskwt holds a key with no recorded namespace:
+		// "absent from this repo's claim listing" proves a release only for the repo and
+		// store the claim was taken in). A cross-repository verifier claims in the TRACKING
+		// repo while its home is cut from the deliverable checkout.
+		recordClaimNamespace(o, home, plan)
 		if rk := runCmd(home, "git", "config", "--worktree", "assay.runKey", plan.claimKey); rk.err == nil {
 			o.say("%s OK: recorded run key %s (assay.runKey) in %s", stepWorktreeCreate, plan.claimKey, home)
 		} else {
@@ -655,6 +667,7 @@ func dispatch(o dispatchOpts) error {
 		// stays open, which never binds a change and is never listed as work.
 		receipt, aerr := attestWorkerDispatchFn(o, plan, repo, home)
 		if aerr != nil {
+			held.home = "" // the attestation record names this home: keep it for recovery
 			released := held.release()
 			return held.settle(deskkit.Unverifiable(fmt.Sprintf("step %s: worker pre-work attestation failed; NO prompt emitted. "+
 				"The claim was %s; the worktree %s is kept. Re-dispatch for a new run after investigating: %v",
@@ -1415,6 +1428,15 @@ func stepClaim(o dispatchOpts, repo, script string, isScript bool, auth claimAut
 	case deskkit.ExitRefused:
 		show := runCmdEnv(o.root, auth.env, script, append([]string{"show", claimKey, "--repo", repo}, auth.args...)...)
 		holder := firstLine(show.stdout)
+		var primary string
+		for line := range strings.SplitSeq(show.stdout, "\n") {
+			fields := strings.Fields(strings.TrimPrefix(line, "dispatch-claim: "))
+			if len(fields) >= 2 && fields[0] == "HELD" && fields[1] == claimKey {
+				primary = line
+				holder = line
+				break
+			}
+		}
 		// ALIAS-HELD: the key itself reads FREE but another spelling of the same PR is live
 		// (medici-finance/assay#3700). That is a live holder by definition, so it is named as
 		// one and never run through the staleness read below, which would take state/age from
@@ -1447,7 +1469,7 @@ func stepClaim(o dispatchOpts, repo, script string, isScript bool, auth claimAut
 		// a ref the claim tool would reclaim on its very next acquire.
 		if show.err == nil && strings.TrimSpace(show.stdout) != "" &&
 			!strings.Contains(show.stdout, "FREE "+claimKey) {
-			if stale, state, ageMin := holderIsStale(show.stdout); stale {
+			if stale, state, ageMin := holderIsStale(primary); stale {
 				return deskkit.Refused(fmt.Sprintf(
 					"step %s: %s is held by a STALE claim (state=%s age=%dm, past its TTL) — a dead "+
 						"dispatcher's claim, NOT a live holder. It is reclaimable: the claim tool reclaims a "+
@@ -1567,6 +1589,9 @@ type heldClaim struct {
 	tool, key    string
 	repo, phrase string
 	auth         claimAuth
+	// home is the worktree this run created, set once it stands; "" when there is none or
+	// it must be kept. A release that succeeds removes it (abortHome).
+	home string
 }
 
 // release releases the claim once and returns releaseClaim's phrase; later calls return the
@@ -1574,8 +1599,24 @@ type heldClaim struct {
 func (h *heldClaim) release() string {
 	if h.phrase == "" {
 		h.phrase = releaseClaim(h.o, h.tool, h.auth, h.key, h.repo)
+		if h.home != "" && h.phrase == "released" {
+			h.phrase += abortHome(h.o, h.home)
+		}
 	}
 	return h.phrase
+}
+
+// abortHome removes the home an aborted dispatch created, through `deskwt remove` so every
+// one of its gates (dirty, unpushed, a live claim, a foreign lock) still applies — never a
+// raw delete. It runs only after the claim release succeeded: with the claim still held,
+// deskwt would rightly refuse, and a home whose claim could not be released is evidence.
+// A refusal is reported, never fatal: the abort's own error is what the caller acts on.
+func abortHome(o dispatchOpts, home string) string {
+	r := runCmd(o.root, "deskwt", "remove", home)
+	if r.err != nil {
+		return "; its worktree " + home + " was NOT removed (" + r.run.Said() + ") — remove it with `deskwt remove " + home + "`"
+	}
+	return "; its worktree " + home + " was removed"
 }
 
 // settle passes a nil error through (the dispatch succeeded and the claim is the agent's). A
@@ -1849,16 +1890,37 @@ func resolveClaimAuthGitLab(role, repo string, isScript bool) (claimAuth, error)
 // is named here against the same contract rather than as a bare literal.
 const claimedClaimTTL = 20 * time.Minute
 
-// claimStateFieldRe / claimAgeFieldRe pull the `state=` and `age=<N>m` fields out of the claim
-// tool's `show` output (dispatch-claim.sh cmd_show prints
-// `HELD <id> — ... state=<state> ... age=<N>m`).
-var (
-	claimStateFieldRe = regexp.MustCompile(`state=([A-Za-z]+)`)
-	claimAgeFieldRe   = regexp.MustCompile(`age=(\d+)m`)
-)
+// claimLineFields reads the `state=` and `age=<N>m` fields from the claim tool's primary HELD
+// line by their POSITION in the wire grammar, never by the first match anywhere on the line.
+// The tool prints `HELD <id> — dispatch-claim <id> owner=… state=… branch=… [note=…] at=<date>
+// age=<N>m[ PREPARED-NOT-LAUNCHED …]`. The note is holder-written text: a steal reason, or a tag
+// minted by another writer, can leave whitespace in it, so a note may hold standalone `state=`
+// or `age=` words (medici-finance/assay#7305). So:
+//
+//   - state is the first `state=` word BEFORE the first `note=` word, where the builder writes
+//     it; one found only after the note is not the claim's own and reads as absent;
+//   - age is the LAST `age=` word on the line: the tool writes its own after the whole claim
+//     message, and the PREPARED-NOT-LAUNCHED suffix carries no `age=` word. An unreadable last
+//     age (`age=?m`) stays unreadable; it never falls back to an earlier, note-supplied one.
+func claimLineFields(line string) (state, age string) {
+	inNote := false
+	for _, word := range strings.Fields(line) {
+		if strings.HasPrefix(word, "note=") {
+			inNote = true
+		}
+		if v, ok := strings.CutPrefix(word, "state="); ok && !inNote && state == "" {
+			state = v
+		}
+		if v, ok := strings.CutPrefix(word, "age="); ok {
+			age = v
+		}
+	}
+	return state, age
+}
 
-// holderIsStale reports whether a claim `show` output describes a holder past its state's TTL —
-// a DEAD claim the two-phase dispatch-claim contract makes reclaimable, not a live holder.
+// holderIsStale reports whether a claim tool's primary HELD line describes a holder past its
+// state's TTL — a DEAD claim the two-phase dispatch-claim contract makes reclaimable, not a live
+// holder. The fields come from claimLineFields, never from a first match on the line.
 //
 // The TTLs are that contract: state=dispatched → deskkit.DefaultStaleClaim (120m),
 // state=claimed → claimedClaimTTL (20m). A missing or unparseable state/age, or an
@@ -1866,17 +1928,15 @@ var (
 // and never reported as reclaimable, the same fail-closed direction deskkit's own isStale
 // takes (never steal a claim you cannot prove is dead). state and ageMin are returned for the
 // message even when stale is false, so the caller can name what it read.
-func holderIsStale(showOut string) (stale bool, state string, ageMin int) {
+func holderIsStale(line string) (stale bool, state string, ageMin int) {
 	ageMin = -1
-	sm := claimStateFieldRe.FindStringSubmatch(showOut)
-	am := claimAgeFieldRe.FindStringSubmatch(showOut)
-	if sm != nil {
-		state = strings.ToLower(sm[1])
-	}
-	if am == nil {
+	rawState, rawAge := claimLineFields(line)
+	state = strings.ToLower(rawState)
+	digits, ok := strings.CutSuffix(rawAge, "m")
+	if !ok || digits == "" || strings.Trim(digits, "0123456789") != "" {
 		return false, state, ageMin
 	}
-	n, err := strconv.Atoi(am[1])
+	n, err := strconv.Atoi(digits)
 	if err != nil {
 		return false, state, ageMin
 	}
