@@ -17,6 +17,9 @@ func verifyAcceptanceReadiness(root, path string, m acceptanceManifest, preparat
 	if err := m.checkDispositions(source, true); err != nil {
 		return err
 	}
+	if err := m.checkResolvedEvidence(root, scanEffectiveConfig()); err != nil {
+		return err
+	}
 	definition, err := readAcceptanceDefinition(root, source)
 	if err != nil {
 		return err

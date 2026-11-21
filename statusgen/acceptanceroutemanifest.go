@@ -71,3 +71,29 @@ func (m acceptanceManifest) checkDispositions(current acceptanceSource, requireR
 	}
 	return nil
 }
+
+// checkResolvedEvidence binds a proposed resolution to a landed Git commit and
+// an owner the repository roster identifies. The verifier and human still
+// establish that the evidence resolves the exact scanned obligation.
+func (m acceptanceManifest) checkResolvedEvidence(root string, cfg scanConfig) error {
+	for i, d := range m.Dispositions {
+		if d.Kind != "resolved" {
+			continue
+		}
+		resolved, err := historyGit(root, "rev-parse", "--verify", "--end-of-options", d.EvidenceRevision+"^{commit}").Output()
+		if err != nil || strings.TrimSpace(string(resolved)) != d.EvidenceRevision ||
+			historyGit(root, "merge-base", "--is-ancestor", d.EvidenceRevision, m.Source.Revision).Run() != nil {
+			return fmt.Errorf("acceptance adjudication: resolved disposition %d has no landed evidence at the bound source", i+1)
+		}
+		var known bool
+		if human, ok := strings.CutPrefix(d.Owner, "human:"); ok {
+			known = cfg.HumanLogins[human] != ""
+		} else {
+			known = cfg.RoleBots[d.Owner] != ""
+		}
+		if !known {
+			return fmt.Errorf("acceptance adjudication: resolved disposition %d does not name a rostered accountable owner", i+1)
+		}
+	}
+	return nil
+}

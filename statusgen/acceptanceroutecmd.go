@@ -76,6 +76,9 @@ func prepareAcceptanceManifest(root string, bf *BriefFile, input acceptancePrepa
 	if err := m.checkDispositions(source, false); err != nil {
 		return acceptanceManifest{}, err
 	}
+	if err := m.checkResolvedEvidence(root, scanEffectiveConfig()); err != nil {
+		return acceptanceManifest{}, err
+	}
 	latest, err := flipLatestPass(bf.Evidence)
 	if err != nil {
 		return acceptanceManifest{}, err

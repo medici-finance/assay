@@ -64,3 +64,32 @@ func TestAcceptanceManifestBindsOrderedRefusals(t *testing.T) {
 		t.Fatalf("edited explanation must change the digest, got %q (%v)", changed, err)
 	}
 }
+
+func TestAcceptanceResolvedEvidenceRequiresLandedCommitAndOwner(t *testing.T) {
+	fx := newCreditRepo(t)
+	head := vfRev(t, fx.root, "HEAD")
+	m := acceptanceManifest{
+		Source: acceptanceSource{Revision: head},
+		Dispositions: []acceptanceDisposition{
+			{Kind: "resolved", EvidenceRevision: head, Owner: "verifier"},
+		},
+	}
+	cfg := scanConfig{RoleBots: map[string]string{"verifier": "example-verifier"}}
+	if err := m.checkResolvedEvidence(fx.root, cfg); err != nil {
+		t.Fatal(err)
+	}
+	m.Dispositions[0].Owner = "unassigned"
+	if err := m.checkResolvedEvidence(fx.root, cfg); err == nil || !strings.Contains(err.Error(), "owner") {
+		t.Fatalf("expected an unknown-owner refusal, got %v", err)
+	}
+	m.Dispositions[0].Owner = "verifier"
+	m.Dispositions[0].EvidenceRevision = strings.Repeat("9", 40)
+	if err := m.checkResolvedEvidence(fx.root, cfg); err == nil || !strings.Contains(err.Error(), "no landed evidence") {
+		t.Fatalf("expected missing evidence refusal, got %v", err)
+	}
+	fx.commit(t, vfMailVerifier, creditPreface+"later evidence\n")
+	m.Dispositions[0].EvidenceRevision = vfRev(t, fx.root, "HEAD")
+	if err := m.checkResolvedEvidence(fx.root, cfg); err == nil || !strings.Contains(err.Error(), "no landed evidence") {
+		t.Fatalf("expected evidence from after the binding to refuse, got %v", err)
+	}
+}
