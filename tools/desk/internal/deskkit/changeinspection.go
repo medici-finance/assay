@@ -67,23 +67,30 @@ type changeInspectionSource interface {
 	ChecksAtHead(ForgeRepo, string) (*ChecksAtHead, error)
 }
 
-// Only an adapter with a bounded inspection read can supply review history.
-// Owned wrappers delegate precisely this read; a future backend without it reports unknown.
-func inspectionReviews(f changeInspectionSource, repo ForgeRepo, number int) ([]Review, string, error) {
+type inspectionReviewRead func(ForgeRepo, int) ([]Review, string, error)
+
+// Resolve only this bounded read through owned decorators. The caller keeps its
+// original wrapper for metadata and checks; an unknown decorator cannot be bypassed.
+func inspectionReviewSource(f changeInspectionSource, repo ForgeRepo) (inspectionReviewRead, error) {
 	switch reader := f.(type) {
 	case *outboundForge:
-		return inspectionReviews(reader.Forge, repo, number)
+		return inspectionReviewSource(reader.Forge, repo)
 	case *readOnlyForge:
-		return inspectionReviews(reader.inner, repo, number)
+		return inspectionReviewSource(reader.inner, repo)
+	case *GitHubForge:
+		if reader.onlyRepo != "" && !strings.EqualFold(reader.onlyRepo, repo.Slug()) {
+			return nil, Refused("change inspection is outside the admitted repository")
+		}
+		return reader.inspectionReviewWindow, nil
 	case *GitLabForge:
-		reviews, err := reader.ReviewsAtHead(repo, number)
-		return reviews, "", err
-	case interface {
-		InspectionReviewWindow(ForgeRepo, int) ([]Review, string, error)
-	}:
-		return reader.InspectionReviewWindow(repo, number)
+		return func(repo ForgeRepo, number int) ([]Review, string, error) {
+			reviews, err := reader.ReviewsAtHead(repo, number)
+			return reviews, "", err
+		}, nil
 	default:
-		return nil, "", Unverifiable("bounded review history unavailable for this provider", nil)
+		return func(ForgeRepo, int) ([]Review, string, error) {
+			return nil, "", Unverifiable("bounded review history unavailable for this provider", nil)
+		}, nil
 	}
 }
 
@@ -92,6 +99,10 @@ func inspectionReviews(f changeInspectionSource, repo ForgeRepo, number int) ([]
 func InspectChange(f changeInspectionSource, fr ForgeRepo, number int, expected string) (*ChangeInspection, error) {
 	if !ValidRepoSlug(fr.Slug()) || number <= 0 || (expected != "" && !IsFullSHA(expected)) {
 		return nil, Refused("change: expected an owner/repo, a positive change number and an optional full commit SHA")
+	}
+	readReviews, err := inspectionReviewSource(f, fr)
+	if err != nil {
+		return nil, err
 	}
 	started := time.Now().UTC().Format(time.RFC3339Nano)
 	p, err := f.GetPullRequest(fr, number)
@@ -115,7 +126,7 @@ func InspectChange(f changeInspectionSource, fr ForgeRepo, number int, expected 
 			return nil, Unverifiable(fmt.Sprintf("change: expected %s, observed %s on %s#%d", r.ExpectedHead, r.Head, fr.Slug(), number), nil)
 		}
 	}
-	reviews, omission, err := inspectionReviews(f, fr, number)
+	reviews, omission, err := readReviews(fr, number)
 	if err != nil {
 		r.ReviewRead, r.ReviewError = "unknown", err.Error()
 	} else {

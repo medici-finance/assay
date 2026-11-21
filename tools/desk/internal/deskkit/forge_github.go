@@ -1515,9 +1515,9 @@ func (g *GitHubForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 	}
 }
 
-// InspectionReviewWindow uses the first page to locate GitHub's newest page. It
+// inspectionReviewWindow uses the first page to locate GitHub's newest page. It
 // never follows a URL from a header: only its page number enters the original route.
-func (g *GitHubForge) InspectionReviewWindow(repo ForgeRepo, number int) ([]Review, string, error) {
+func (g *GitHubForge) inspectionReviewWindow(repo ForgeRepo, number int) ([]Review, string, error) {
 	first, h, err := g.reviewPage(repo, number, 1)
 	if err != nil {
 		return nil, "", err

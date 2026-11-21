@@ -117,6 +117,28 @@ func TestInspectChangeLongReviewWindow(t *testing.T) {
 	}
 }
 
+func TestInspectChangePreservesReadScope(t *testing.T) {
+	s := newGoldenServer(t)
+	f := s.forge()
+	f.onlyRepo = "example-org/sample"
+	protected := ReadOnly(OutboundChecked(f, "worker"))
+	outside := ForgeRepo{Owner: "example-org", Name: "outside"}
+	if _, err := InspectChange(protected, outside, 7, ""); err == nil || len(s.requests) != 0 {
+		t.Fatalf("outside credential scope: requests=%v err=%v", s.requests, err)
+	}
+
+	// An unrecognized decorator may have extra read restrictions. Do not unwrap it
+	// or call the unbounded ReviewsAtHead as a fallback.
+	type opaque struct{ Forge }
+	s.pull = map[string]any{"number": 7, "state": "open", "head": map[string]string{"sha": inspectionHead}}
+	s.status = map[string]any{"statuses": []any{}}
+	s.checks = map[string]any{"check_runs": []any{}}
+	r, err := InspectChange(opaque{protected}, ForgeRepo{Owner: "example-org", Name: "sample"}, 7, inspectionHead)
+	if err != nil || r.ReviewRead != "unknown" || r.ReviewError == "" || r.CheckRead != "empty" || len(s.requests) != 3 {
+		t.Fatalf("opaque decorator: requests=%v result=%+v err=%v", s.requests, r, err)
+	}
+}
+
 func TestInspectChangeRetainsUncertainty(t *testing.T) {
 	repo := ForgeRepo{Owner: "example-org", Name: "sample"}
 	s := newGoldenServer(t)
