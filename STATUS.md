@@ -153,7 +153,7 @@ _Held by per-stream caps: 21 brief(s) across 3 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 0e5d78dae 2026-11-21T20:23:44Z_
+_last regen: 1860e3ec1 2026-11-21T20:54:26Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -174,7 +174,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 0e5d78dae 2026-11-21T20:23:44Z_
+_last regen: 1860e3ec1 2026-11-21T20:54:26Z_
 
 **Progress:** 37/100 brief items done.
 
@@ -374,7 +374,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-neutral | 33 [exec:strong] | implemented | 12060 | 20 | 6d | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
 | desk-supervision | 28 [exec:strong] | implemented | 11560 | 21 | 6d | operator | environment blocker, cite medici-finance/assay#7007 | — | — |
 | desktools-v2 | 66 [exec:strong] | implemented | 11560 | 21 | 6d | operator | environment blocker, cite medici-finance/assay#5112 | — | — |
-| desk-tools | 42 [exec:strong] | implemented | 10550 | 19 | 5d | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
+| desk-tools | 42 [exec:strong] | implemented | 10550 | 19 | 6d | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | desk-supervision | 34 [exec:strong] | verified | 10040 | 18 | 4d | operator | environment blocker, cite medici-finance/assay#7007 | 2026-11-16 assay-verifier-app[bot] @ 35ddd8767418 (model verifier) | — |
 | agent-execution | 01 [exec:strong] | implemented | 8060 | 14 | 6d | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | forge-neutral | 20 [exec:strong] | implemented | 7060 | 10 | 6d | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
@@ -478,7 +478,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 |---|---|---|---|---|---|---|---|---|---|
 | graph-execution | 36 [exec:strong] | implemented | 21020 | 38 | 2d | verify-desk | triage, then re-bucket | — | — |
 | tool-refactoring | 03 [exec:strong] | implemented | 3500 | 3 | 1h | verify-desk | triage, then re-bucket | — | — |
-| tool-refactoring | 05 [exec:strong] | implemented | 3050 | 2 | — | verify-desk | triage, then re-bucket | — | — |
+| tool-refactoring | 05 [exec:strong] | implemented | 3000 | 2 | <1h | verify-desk | triage, then re-bucket | — | — |
 | tool-refactoring | 06 [exec:strong] | implemented | 3000 | 2 | 19h | verify-desk | triage, then re-bucket | — | — |
 | composability | 02 | implemented | 2560 | 3 | 6d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2560 | 1 | 6d | verify-desk | triage, then re-bucket | — | — |
