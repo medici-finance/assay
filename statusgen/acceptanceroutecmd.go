@@ -89,12 +89,14 @@ func prepareAcceptanceManifest(root string, bf *BriefFile, input acceptancePrepa
 	return m, nil
 }
 
-// runAcceptanceRoute currently exposes preparation only. It performs no forge
-// writes. Consumer admission later derives authority from the verifier App's
-// immutable forge receipt, never from who claims to have run this command.
+// runAcceptanceRoute renders preparation or a card, or applies a verified
+// close locally. Only the canonical workflow publishes or pushes results.
 func runAcceptanceRoute(args []string, stdout, stderr io.Writer) int {
+	if len(args) != 0 && (args[0] == "issue" || args[0] == "close") {
+		return runAcceptanceRouteWorkflow(args, stdout, stderr)
+	}
 	if len(args) == 0 || args[0] != "prepare" {
-		fmt.Fprintln(stderr, "usage: statusgen acceptance-route prepare --root DIR --brief REF --input FILE")
+		fmt.Fprintln(stderr, "usage: statusgen acceptance-route {prepare|issue|close} --root DIR --brief REF")
 		return 2
 	}
 	fs := flag.NewFlagSet("acceptance-route prepare", flag.ContinueOnError)

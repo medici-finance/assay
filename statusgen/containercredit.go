@@ -498,11 +498,12 @@ type creditAccount struct {
 }
 
 type creditIssue struct {
-	State  string         `json:"state"`
-	Title  string         `json:"title"`
-	Body   string         `json:"body"`
-	Labels []string       `json:"labels"`
-	Author *creditAccount `json:"author"`
+	State    string         `json:"state"`
+	Title    string         `json:"title"`
+	Body     string         `json:"body"`
+	Labels   []string       `json:"labels"`
+	Author   *creditAccount `json:"author"`
+	ClosedBy *creditAccount `json:"closedBy"`
 }
 
 type creditTrust struct {
