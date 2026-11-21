@@ -1,9 +1,10 @@
 ---
 id: DR-tool-refactoring-03
 date: "2026-11-21"
-title: "Verify-row and declared-input syntax (tool-refactoring/03): one pure compilation in statusgen/briefdoc that every reader of a brief's Verify table and Context files: declaration calls, with the lexical copies in statusgen and tools/desk removed; proposed, not yet ratified as a design record"
+title: "Verify-row and declared-input syntax (tool-refactoring/03): one pure compilation in statusgen/briefdoc that every reader of a brief's Verify table and Context files: declaration calls, with the lexical copies in statusgen and tools/desk removed"
 consequence: major # Getting it wrong would execute or credit the wrong Verify command, or widen a declared scope; a route back exists (revert the move).
 decided-by: "human:<name>"
+ruling: "https://github.com/medici-finance/assay/issues/7060#issuecomment-7066535885"
 alternatives:
   - "Keep the existing behaviour and request a narrower migration (option 2 of the brief's `## Human decision` and decision issue #7060). Not taken: the driver's ruling on #7060 chose option 1, the bounded refactor."
   - "Keep the ported copies in `tools/desk/internal/verifycmd` and `deskkit` and pin them to statusgen with a drift test (the approach being retired). Ruled out by the brief's Task 4 (\"remove local lexical copies\"): a drift test compares copies, it does not stop a third reader from appearing."
@@ -18,20 +19,19 @@ accepted:
 
 ## State and provenance
 
-**Approval state: proposed, not ratified as a design record.** The `decided-by` stamp above is
-the public placeholder and names nobody. This record carries no `ruling:` link, so the
-corroboration check reports it `placeholder-unratified` until the driver posts, on decision
-issue [#7060](https://github.com/medici-finance/assay/issues/7060), an unedited comment from the
-driver's own login that names `DR-tool-refactoring-03`. The `ruling:` link to that comment is added
-only after it exists.
+**Approval state: ratified.** The `decided-by` stamp above is the public placeholder and names
+nobody; the record's authority is its `ruling:` link. On 2026-11-21 the driver's own login
+commented, unedited, on decision issue [#7060](https://github.com/medici-finance/assay/issues/7060)
+([ruling comment](https://github.com/medici-finance/assay/issues/7060#issuecomment-7066535885)):
+"DR-tool-refactoring-03: approved as the design record for tool-refactoring/03." That comment
+names this record, so it serves as the record's `ruling:` (`spec/registers-v1.md` §7.5).
 
 **What the driver has already ruled.** Decision issue #7060 carries the decision-gate marker for
 `assay:assay:tool-refactoring:03`. On 2026-11-21 the driver's own login commented, unedited:
 "tool-refactoring/03: 1 - approve the bounded refactor; #7065 may proceed once its independent
 class and caller controls pass." The brief cites that comment as its `ruling:`. That comment names
 the brief, not this record, so it serves the brief's decision-gate hold (`spec/lifecycle-v1.md`
-§4.5) and cannot serve as this record's `ruling:` link (`spec/registers-v1.md` §7.5,
-`record-not-named`).
+§4.5); the record's own ruling is the later comment cited above.
 
 This record does not mint a decision. It is taken from the brief, the ruling above and the
 delivering pull request [#7065](https://github.com/medici-finance/assay/pull/7065); nothing here
