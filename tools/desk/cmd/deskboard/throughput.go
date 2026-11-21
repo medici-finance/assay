@@ -282,7 +282,10 @@ func cmdThroughput(hdr Header, mergeNowThreshold, unreviewedThreshold time.Durat
 		//
 		// The rows held on an unruled human decision are subtracted: no worker takes one
 		// until the ruling lands (medici-finance/assay#1958, medici-finance/assay#2744).
-		dispatchStage.Depth = intp(dv.Eligible - dv.HeldByDecision)
+		dispatchStage.Depth = intp(dv.Eligible - dv.HeldByDecision - dv.HeldByIssuePR - dv.IssuePRUnknown)
+		if dv.IssuePRUnknown > 0 {
+			dispatchStage.Blind = appendBlind(dispatchStage.Blind, fmt.Sprintf("existing PRs could not be checked for %d issue rows; depth is a lower bound", dv.IssuePRUnknown))
+		}
 		rep.Roots = dv.Roots
 		if len(dv.ClaimsDegraded) > 0 {
 			dispatchStage.Blind = appendBlind(dispatchStage.Blind,

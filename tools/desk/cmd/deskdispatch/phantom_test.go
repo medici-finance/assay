@@ -214,3 +214,23 @@ func TestPhantomIsCaughtBeforeTheClaim(t *testing.T) {
 		t.Error("a worktree was cut for a phantom item")
 	}
 }
+
+// regression: #6908
+func TestIssuePRBeforeClaim(t *testing.T) {
+	withRepresentedPRs(t, func(repo string) ([]deskkit.PRRef, error) {
+		return []deskkit.PRRef{{Number: 61, State: "OPEN", Body: "Issue: #42"}, {Number: 62, State: "MERGED", Body: "Fixes: #43"}}, nil
+	})
+	root := t.TempDir()
+	for _, tc := range []struct{ key, hint string }{{"example--issue-42", "open PR example-org/example#61"}, {"example--issue-43", "merged PR example-org/example#62"}, {"example--issue-44", ""}} {
+		_, err := phantomCheck(dispatchOpts{kit: "worker", item: tc.key, root: root}, "example-org/example")
+		if tc.hint == "" {
+			if err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), tc.hint) || !strings.Contains(err.Error(), "nothing claimed") {
+			t.Errorf("%s: %v", tc.key, err)
+		}
+	}
+}
