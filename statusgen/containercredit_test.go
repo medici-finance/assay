@@ -84,7 +84,7 @@ func creditFakeDeskread(t *testing.T) {
 		}
 	}
 	writeStubBin(t, bin, "deskread", `#!/bin/sh
-if [ -n "$CREDIT_FAKE_FAIL" ]; then echo "deskread: the forge is unreachable" >&2; exit 4; fi
+if [ "$CREDIT_FAKE_FAIL" = "1" ] || [ "$CREDIT_FAKE_FAIL" = "$1" ]; then echo "deskread: the forge is unreachable" >&2; exit 4; fi
 if [ -n "$CREDIT_FAKE_CI" ] && [ "$4" != "--ci-workflow-token" ]; then exit 5; fi
 if [ -z "$CREDIT_FAKE_CI" ] && [ "$#" -ne 3 ]; then exit 5; fi
 n=${3##*#}
@@ -236,7 +236,7 @@ func TestBracketCredit(t *testing.T) {
 		if res, out := captureVerifyrunOut(t, args); res.code != verifyrunExitPass || !strings.Contains(out, " credit=credited") {
 			t.Fatalf("workflow credit: exit %d output %q, want credited", res.code, out)
 		}
-		t.Setenv("CREDIT_FAKE_FAIL", "1")
+		t.Setenv("CREDIT_FAKE_FAIL", "label-events")
 		if res, out := captureVerifyrunOut(t, args); res.code != verifyrunExitCouldNot || !strings.Contains(out, " credit=could-not-check") {
 			t.Fatalf("workflow credit unavailable: exit %d output %q, want could-not-check", res.code, out)
 		}

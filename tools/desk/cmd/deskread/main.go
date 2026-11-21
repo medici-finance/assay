@@ -198,8 +198,9 @@ identity: two transports, named in the envelope's "identity" object and on one s
   ci-workflow-token (opt-in): --ci-workflow-token alone selects it. It is CI-only (refused
   outside a CI job and on pull_request_target), read-only (every write method is refused),
   same-repository (only the job's own GITHUB_REPOSITORY is read; another --repo lands in
-  "partial" and a --issue/--change in another repository is refused) and limited to the kinds
-  issues, trust and comments. The token is read from DESKREAD_CI_WORKFLOW_TOKEN only and must be
+  "partial" and a --issue/--change in another repository is refused), and limited to these kinds:
+  ` + strings.Join(sortedCIKinds(), ", ") + `.
+  The token is read from DESKREAD_CI_WORKFLOW_TOKEN only and must be
   an installation token (ghs_); without the flag that variable is ignored. A refusal reads
   "deskread: refused [ci-transport:<layer>]: <reason>" and exits 5. The identity object's
   repository and runId are copied from the environment and are NOT verified: CI detection is a
@@ -294,7 +295,7 @@ func versionLine() string {
 func bindings() []cli.Binding {
 	return []cli.Binding{
 		{Key: "repo", Kind: cli.StringArray, Flag: "repo", Usage: "`owner/repo` to read (repeatable; per-repo kinds)"},
-		{Key: "issue", Kind: cli.StringArray, Flag: "issue", Usage: "`owner/repo#N` issue to read (repeatable; trust, issue, issue-states, comments)"},
+		{Key: "issue", Kind: cli.StringArray, Flag: "issue", Usage: "`owner/repo#N` issue to read (repeatable; trust, issue, issue-states, label-events, comments)"},
 		{Key: "change", Kind: cli.StringArray, Flag: "change", Usage: "`owner/repo#N` change to read (repeatable; change, change-commits, change-files, comments)"},
 		{Key: "state", Kind: cli.StringArray, Flag: "state", Usage: "the state `word` (issue-list, changes; exactly one)"},
 		{Key: "label", Kind: cli.StringArray, Flag: "label", Usage: "ONE label `name` (issue-list only; exactly one)"},

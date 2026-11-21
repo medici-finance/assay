@@ -2390,6 +2390,7 @@ Flags:
   --ci-workflow-token
                     with --credit: use deskread's explicit same-repository
                     CI workflow-token transport for attestation reads.
+                    Requires a CI job and DESKREAD_CI_WORKFLOW_TOKEN.
   --in-container    run the rows inside the PINNED harness container instead of on
                     the host — the supported execution-witness runner on Windows,
                     where a native pipefail bash is unreliable (#1418). Reads the
