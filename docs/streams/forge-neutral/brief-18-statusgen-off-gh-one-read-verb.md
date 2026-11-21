@@ -26,6 +26,7 @@ delivery:
   - {in: "assay#2312", covers: partial, note: "the stamp-validated read memo for --lint; the remaining gh sites need Forge reads that forge-neutral/33 authors"}
   - {in: "assay#4385", covers: partial, note: "decision-queue and issue-metric list reads onto deskread; the remaining statusgen forge reads are not delivered"}
   - {in: "assay#6200", covers: partial, note: "brief-flow metrics (review-rework, first-pass-yield, assayscore quality) read merged PRs and reviews through deskread; the remaining statusgen gh sites are not delivered"}
+  - {in: "assay#7246", covers: partial, note: "the GitLab auto-flip reads through deskread (commit-changes, change-trust kinds; #7202), retiring its could-not-check stub; the remaining statusgen gh sites are not delivered"}
 schema: brief-v2
 authored: 2026-09-14 by forge-neutral authoring session
 sources:

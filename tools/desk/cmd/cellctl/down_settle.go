@@ -130,35 +130,27 @@ func (c *Cell) settleInteractiveOwner(o interactiveOwner, deadline time.Time) er
 // settleOnce is one reading of settleInteractiveOwner. It returns "" when the role is settled, a
 // reason to read again before the deadline, or an error that no later reading can change.
 func (c *Cell) settleOnce(o interactiveOwner, dir string) (string, error) {
-	busy, err := cellcadence.Probe(dir)
-	if err != nil {
-		return "the role lease could not be probed: " + err.Error(), nil
-	}
-	if busy {
-		return "the interactive owner has not exited", nil
-	}
-	plan := c.reconcileInventory([]string{o.Role}, nil)
-	var e *reconcileEntry
-	for _, x := range plan.Entries {
-		if x.Role == o.Role {
-			e = x
+	busy, probeErr := cellcadence.Probe(dir)
+	in := cellcadence.SettleInput{Owner: o.generation(), LeaseBusy: busy, LeaseErr: probeErr}
+	if probeErr == nil && !busy {
+		plan := c.reconcileInventory([]string{o.Role}, nil)
+		for _, x := range plan.Entries {
+			if x.Role == o.Role {
+				in.Record = &cellcadence.SettleRecord{HasState: x.HasState, State: x.State, Start: x.Start, Class: x.Class}
+			}
 		}
+		in.ScanErr = plan.ScanErr
+		in.MarkedRunning = len(plan.Orphans) > 0 || len(plan.Live) > 0
 	}
-	switch {
-	case e == nil:
-		return "", nil // the owner finished its own cleanup and recorded it
-	case o.PID == 0:
-		return "", errors.New("the owner record did not identify the owner down signalled")
-	case e.HasState && (e.State.Mode != "interactive" || e.State.PID != o.PID) || e.Start != "" && e.Start != o.Start:
-		return "", errors.New("the record is not the one the signalled owner wrote")
-	case plan.ScanErr != nil:
-		return "the cell's processes could not be listed: " + plan.ScanErr.Error(), nil
-	case len(plan.Orphans) > 0 || len(plan.Live) > 0:
-		return "a process carrying the role's marker is still running", nil
-	case e.Class != reconcileDead:
-		return "the record is " + e.Class + ", not proven dead", nil
-	case !e.HasState || !c.recordIsOwners(o, e):
-		return "", errors.New("the record is not the one the signalled owner wrote")
+	// The decision is cellcadence's; what follows is the effect adapter, and RecordStopped
+	// re-checks the owner generation against the checkpoint under the lease it holds.
+	switch d := cellcadence.JudgeSettle(in); d.Action {
+	case cellcadence.SettleDone:
+		return "", nil
+	case cellcadence.SettleRetry:
+		return d.Reason, nil
+	case cellcadence.SettleRefuse:
+		return "", errors.New(d.Reason)
 	}
 	lease, err := cellcadence.Acquire(dir)
 	if errors.Is(err, cellcadence.ErrBusy) {
@@ -168,27 +160,15 @@ func (c *Cell) settleOnce(o interactiveOwner, dir string) (string, error) {
 		return "the role lease could not be taken: " + err.Error(), nil
 	}
 	defer lease.Close()
-	if err := lease.RecordStopped(o.PID, downStoppedSummary); err != nil {
+	if err := lease.RecordStopped(o.generation(), downStoppedSummary); err != nil {
 		return "", err
 	}
 	return "", nil
 }
 
-// recordIsOwners reports whether the role's checkpoint is the one o's owner wrote. While the owner
-// record survives, that is its start time matching the one down read. A launch that exits
-// releases its lease, and the release removes the owner record: nothing then carries a start
-// time, and requiring one refused every owner that exited on the hangup (#6251). That owner is
-// attributed by the checkpoint down read before it signalled anyone: the same interactive record
-// (sequence and start), written by the same pid. The caller has already established that the
-// checkpoint is Running, that the pid is gone (an unreadable start time is never dead), and that
-// the lease is free, so a replacement owner's record (another sequence) or an unread one (zero)
-// is never matched.
-func (c *Cell) recordIsOwners(o interactiveOwner, e *reconcileEntry) bool {
-	if e.Start != "" {
-		return e.Start == o.Start
-	}
-	s := e.State
-	return o.Sequence != 0 && s.Sequence == o.Sequence && s.PID == o.PID && s.LastStart.Equal(o.LastStart)
+// generation is the owner generation down read before it signalled anyone.
+func (o interactiveOwner) generation() cellcadence.Generation {
+	return cellcadence.Generation{PID: o.PID, Start: o.Start, Sequence: o.Sequence, LastStart: o.LastStart}
 }
 
 // settleInteractiveOwners settles each owner against one shared deadline, so the whole wait is

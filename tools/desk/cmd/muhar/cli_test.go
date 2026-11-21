@@ -28,6 +28,8 @@ var (
 	binOnce sync.Once
 	binPath string
 	binErr  error
+	// binDir is removed by TestMain when the test process exits.
+	binDir string
 )
 
 // toolBinary builds this package's binary once per test process.
@@ -39,6 +41,7 @@ func toolBinary(t *testing.T) string {
 			binErr = err
 			return
 		}
+		binDir = dir
 		out := filepath.Join(dir, "muhar")
 		if runtime.GOOS == "windows" {
 			out += ".exe"

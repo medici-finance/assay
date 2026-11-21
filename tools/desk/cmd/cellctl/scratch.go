@@ -103,7 +103,8 @@ func cmdScratch(name, action string, v *cli.Values, command []string) {
 		if runErr == nil {
 			env := c.telemetryEnv(os.Environ())
 			cellsRoot, cellName := c.reenter()
-			for k, v := range map[string]string{"TMPDIR": r.Work(), "TMP": r.Work(), "TEMP": r.Work(), "ASSAY_SCRATCH_ID": r.Record.ID, "ASSAY_SCRATCH_ROOT": root, "ASSAY_SCRATCH_CELL": cellName, "CELLS_ROOT": cellsRoot, "ASSAY_SOURCE_ROOT": abs, "ASSAY_SOURCE_REVISION": sha} {
+			env = taskTempEnv(env, r.Work())
+			for k, v := range map[string]string{"ASSAY_SCRATCH_ID": r.Record.ID, "ASSAY_SCRATCH_ROOT": root, "ASSAY_SCRATCH_CELL": cellName, "CELLS_ROOT": cellsRoot, "ASSAY_SOURCE_ROOT": abs, "ASSAY_SOURCE_REVISION": sha} {
 				env = envSet(env, k, v)
 			}
 			fmt.Fprintf(os.Stderr, "[scratch] id=%s work=%s source=%s revision=%s; evidence pending\n", r.Record.ID, r.Work(), abs, sha)

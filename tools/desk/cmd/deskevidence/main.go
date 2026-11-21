@@ -105,11 +105,18 @@ statusgen --root <dir> --lint against the landing worktree, before vs. after the
 write) — both refused before the write, a pre-existing red elsewhere in the repo never
 blocks a clean landing.
 
+A row whose Runner cell carries (reads sha256:<hex>) lands in ONE commit with its
+read-set file docs/streams/<stream>/reads/<hex>. The file is taken from the run's
+state directory (git rev-parse --git-path assay-read-sets under --root), never from
+the worktree, and is copied before any forge call. If the file is absent there, or
+hashes to another digest, the landing is refused before any write. Land before the
+verifier worktree is removed. A digest the branch already names needs no file.
+
 For a new verified outcome, the writer lints the landed tree. A PROBLEM naming a
 brief the record closes, or lacking a recognizable brief key, refuses the record.
 A PROBLEM naming another brief prints as a notice. The writer also requires
-statusgen brief --check-verified --check-attribution (verified/done, dated stamp,
-passing witnesses and accepted Evidence attribution).
+statusgen brief --check-verified with its Evidence attribution check (verified/done,
+dated stamp, passing witnesses and accepted Evidence attribution).
 The brief and stream README must already match the target branch. Evidence-only
 implemented landings must not append verified outcomes; verify-fail is unchanged.
 

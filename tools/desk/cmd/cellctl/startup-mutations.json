@@ -70,8 +70,8 @@
     {
       "name": "ignore finite scan inventory budget",
       "file": "internal/deskkit/boundedwalk.go",
-      "old": "if remaining <= 0 || depth >= maintenanceDepth {",
-      "new": "if false && (remaining <= 0 || depth >= maintenanceDepth) {"
+      "old": "if remaining == 0 || depth >= maintenanceDepth {",
+      "new": "if false && (remaining == 0 || depth >= maintenanceDepth) {"
     },
     {
       "name": "reclaim from partial scratch inventory",
