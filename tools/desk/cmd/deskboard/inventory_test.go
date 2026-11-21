@@ -904,6 +904,7 @@ var verbScopeClass = map[string]scopeClass{
 	// to be absent, and a verb that really does sweep the repo set would then be forbidden
 	// from stating the coverage it has.
 	"throughput": sweepsRepos,
+	"change":     nonSweeping,
 	"reviews":    nonSweeping,
 	"diff":       nonSweeping,
 	"files":      nonSweeping,
@@ -1027,6 +1028,9 @@ func TestDispatch_VerbInventory(t *testing.T) {
 				`[{"number":1,"title":"t","body":"","isDraft":true,"author":{"login":"shared-agent"},"createdAt":"`+
 					time.Now().UTC().Format(time.RFC3339)+`","labels":[],"headRefOid":"abc123",`+
 					`"headRefName":"b","mergeStateStatus":"CLEAN","statusCheckRollup":[]}]`)
+			if v == "change" {
+				inspectionSubjectFixture(t)
+			}
 			if v == "review-queue" {
 				t.Setenv("DESKBOARD_GH_PRLIST_JSON", "[]")
 			}

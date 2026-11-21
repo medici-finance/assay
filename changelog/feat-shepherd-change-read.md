@@ -1,0 +1,1 @@
+- Added a revision-bound `deskboard change` view for review findings, provider links and check diagnostics on an individual PR or MR.

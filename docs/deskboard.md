@@ -181,3 +181,11 @@ stage reports the observation cutoff, with current configured scope and local po
 checked and a five-minute freshness limit. Incompatible or unreadable inputs blind
 that stage, preserving the other independently measured stages. There is no silent
 provider fallback. See [compatibility and rollback](review-efficiency-compatibility.md).
+
+## Inspect one change during shepherding
+
+`deskboard change <owner/repo> <number> [expected-head] --json` reads one PR or MR with the normal repository allowlist and role credential. The optional full commit SHA stops a stale invocation after the subject read. The output identifies the repository, number, observed head, merge state, and collection interval. Reviews and CI can change during that interval. Before acting on a later revision, read that revision. The review desk’s existing gates still decide readiness.
+
+Each review carries its original body, author, submission ID, permalink and commit when supplied. Its binding is `at-head`, `other-head` or `unknown`. The lane describes the submitted content, including third-party submissions. Reviewer identity and authority are established by the existing review gates. `reviewRead: provider-window` covers submissions exposed by the adapter. GitLab’s historical notes window is bounded. For inline-only findings, open the review permalink or the change URL. `inlineDiscussions: not-read` makes this coverage explicit. Native GitLab approvals can lack both a submission ID and a pinned commit.
+
+Each check carries the latest reported execution for its name using the board’s existing latest-run ordering. `checkRead` is `observed`, `empty`, `partial` or `unknown`. `checkError` or `reviewError` gives the cause when available. An empty response can precede the start of CI. For a failed check with `runId`, `deskrun log <owner/repo> <runId>` reads its workflow or pipeline log. Third-party checks may supply only a details URL. The command makes no per-job or per-review enrichment calls and reads no other change.

@@ -458,8 +458,9 @@ type ghIssueWire struct {
 }
 
 type ghReviewWire struct {
-	ID   int64 `json:"id"`
-	User struct {
+	HTMLURL string `json:"html_url"`
+	ID      int64  `json:"id"`
+	User    struct {
 		Login string `json:"login"`
 		ID    int64  `json:"id"`
 	} `json:"user"`
@@ -482,6 +483,7 @@ type ghCombinedStatusWire struct {
 	State      string `json:"state"`
 	TotalCount int    `json:"total_count"`
 	Statuses   []struct {
+		TargetURL string `json:"target_url"`
 		State     string `json:"state"`
 		Context   string `json:"context"`
 		CreatedAt string `json:"created_at"`
@@ -491,6 +493,11 @@ type ghCombinedStatusWire struct {
 type ghCheckRunsWire struct {
 	TotalCount int `json:"total_count"`
 	CheckRuns  []struct {
+		HTMLURL    string `json:"html_url"`
+		DetailsURL string `json:"details_url"`
+		App        struct {
+			Slug string `json:"slug"`
+		} `json:"app"`
 		ID          int64  `json:"id"`
 		Name        string `json:"name"`
 		Status      string `json:"status"`
@@ -1490,6 +1497,7 @@ func (g *GitHubForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 		}
 		for _, r := range chunk {
 			all = append(all, Review{
+				URL:         r.HTMLURL,
 				ID:          r.ID,
 				Author:      Account{Login: r.User.Login, ID: r.User.ID},
 				State:       r.State,
@@ -1551,7 +1559,7 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 		}
 		for _, s := range cs.Statuses {
 			out.Statuses = append(out.Statuses, StatusContext{
-				State: s.State, Context: s.Context, CreatedAt: s.CreatedAt,
+				State: s.State, Context: s.Context, CreatedAt: s.CreatedAt, URL: s.TargetURL,
 			})
 		}
 		if len(cs.Statuses) < forgeCIPerPage {
@@ -1570,8 +1578,22 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 			out.CheckRunsTotalCount = cr.TotalCount
 		}
 		for _, c := range cr.CheckRuns {
+			details := c.DetailsURL
+			if details == "" {
+				details = c.HTMLURL
+			}
+			var runID, jobID string
+			if c.App.Slug == "github-actions" {
+				runID, jobID = g.actionsJobIDs(repo, details)
+				if jobID == "" {
+					alternateRun, alternateJob := g.actionsJobIDs(repo, c.HTMLURL)
+					if runID == "" || runID == alternateRun && alternateJob != "" {
+						runID, jobID = alternateRun, alternateJob
+					}
+				}
+			}
 			out.CheckRuns = append(out.CheckRuns, CheckRun{
-				ID:   checkRunID(c.ID),
+				ID: checkRunID(c.ID), URL: details, RunID: runID, JobID: jobID,
 				Name: c.Name, Status: c.Status, Conclusion: c.Conclusion,
 				StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
 			})
@@ -1581,6 +1603,42 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 		}
 	}
 	return out, nil
+}
+
+// Only an Actions-owned check and its repository-qualified job path identify the
+// parent workflow run. A third-party check-run ID is never a workflow run ID.
+func (g *GitHubForge) actionsJobIDs(repo ForgeRepo, raw string) (run, job string) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawPath != "" {
+		return "", ""
+	}
+	api, err := url.Parse(g.baseURL())
+	if err != nil {
+		return "", ""
+	}
+	webHost := api.Host
+	if strings.EqualFold(webHost, "api.github.com") {
+		webHost = "github.com"
+	}
+	if !strings.EqualFold(u.Host, webHost) {
+		return "", ""
+	}
+	path, ok := strings.CutPrefix(strings.ToLower(u.Path), "/"+strings.ToLower(repo.Slug())+"/actions/runs/")
+	if !ok {
+		return "", ""
+	}
+	run, job, hasJob := strings.Cut(path, "/job/")
+	ids := []string{run}
+	if hasJob {
+		ids = append(ids, job)
+	}
+	for _, id := range ids {
+		n, err := strconv.ParseUint(id, 10, 63)
+		if err != nil || n == 0 || strconv.FormatUint(n, 10) != id {
+			return "", ""
+		}
+	}
+	return run, job
 }
 
 // CheckSuitesAtHead reads GET /repos/{o}/{r}/commits/{sha}/check-suites, paginated under the
