@@ -330,6 +330,8 @@ func dispatch(o dispatchOpts) error {
 				return oerr
 			}
 			plan.outcomePath = dir
+			// The snapshot retention, listed and never applied: a dry run removes nothing.
+			reportVerifySnaps(plan.claimKey, true)
 		}
 		prompt, perr := assemblePrompt(o, plan, plan.home)
 		if perr != nil {
@@ -722,6 +724,8 @@ func dispatch(o dispatchOpts) error {
 			return held.settle(oerr)
 		}
 		plan.outcomePath = dir
+		// Idle verification snapshots go, as week-old outcome records just did; never this claim's.
+		reportVerifySnaps(plan.claimKey, false)
 		// The verifier's read-ahead packet is built only after provenance is established.
 		plan.packetPath = buildPacketFn(o, plan, repo, home)
 		plan.performancePath = writePerformanceHandoff(plan.childPerformance)

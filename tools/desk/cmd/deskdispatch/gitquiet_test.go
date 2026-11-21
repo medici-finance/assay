@@ -28,6 +28,9 @@ func TestMain(m *testing.M) {
 	}
 	roleSecretEnviron = func() []string { return nil }
 	roleSecretMountGlob = filepath.Join(os.DevNull, "role-*")
+	// A verifier dispatch prunes idle snapshots under the user cache directory; no test may
+	// reach the real one (TestVerifySnapDispatchHook sets its own).
+	verifySnapRoot = func() string { return "" }
 	if code, ok := admitHelperMain(); ok {
 		os.Exit(code)
 	}
