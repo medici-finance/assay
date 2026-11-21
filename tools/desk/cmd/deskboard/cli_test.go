@@ -20,7 +20,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-var cliVerbs = []string{"prs", "actions", "reviews", "queue", "throughput", "health", "dispatch", "todo", "next", "next-up", "awaiting", "nextup", "scope", "policydrift", "stalled", "diff", "files"}
+var cliVerbs = []string{"prs", "actions", "reviews", "queue", "throughput", "health", "dispatch", "todo", "next", "next-up", "awaiting", "nextup", "scope", "policydrift", "stalled", "milestones", "diff", "files"}
 
 type cliRecorder struct {
 	starts, guards, calls, reads int
@@ -217,6 +217,9 @@ func TestCLILegacyForms(t *testing.T) {
 			a := []string{sub}
 			if sub == "files" || sub == "diff" || sub == "reviews" {
 				a = append(a, "example-org/project", "42")
+			}
+			if sub == "milestones" {
+				a = append(a, "testdata/milestones/stream-view-v2.json")
 			}
 			n, out, e := r.exec(a...)
 			if n != 0 || r.sub != sub || r.calls != 1 || out == "" {

@@ -1,0 +1,205 @@
+{
+  "contract": "stream-view/v2",
+  "identity": {
+    "key": {
+      "repo": "example-org/tracker",
+      "slug": "shared"
+    },
+    "display_name": "shared"
+  },
+  "context": {},
+  "generated_at": "2026-11-01T12:00:00Z",
+  "mission": {
+    "provenance": {
+      "availability": "available",
+      "sources": [
+        {
+          "repo": "example-org/tracker",
+          "path": "docs/streams/shared/README.md",
+          "revision": "0123456789abcdef0123456789abcdef01234567"
+        }
+      ],
+      "observed_at": "2026-11-01T12:00:00Z"
+    },
+    "origin": "authored",
+    "outcome": "o",
+    "success": [
+      {
+        "criterion": "c",
+        "evidence": [
+          {
+            "kind": "path",
+            "repo": "example-org/tracker",
+            "path": "docs/r.md"
+          }
+        ]
+      }
+    ]
+  },
+  "current_state": {
+    "provenance": {
+      "availability": "available",
+      "sources": [
+        {
+          "repo": "example-org/tracker",
+          "path": "docs/streams/shared/README.md",
+          "revision": "0123456789abcdef0123456789abcdef01234567"
+        }
+      ],
+      "observed_at": "2026-11-01T12:00:00Z"
+    },
+    "status": "active",
+    "counts": null
+  },
+  "changes": {
+    "provenance": {
+      "availability": "could-not-check",
+      "observed_at": "2026-11-01T12:00:00Z",
+      "reason": "no history input"
+    },
+    "window": {
+      "kind": "trailing",
+      "label": "last 24 hours",
+      "start": "2026-10-31T12:00:00Z",
+      "end": "2026-11-01T12:00:00Z"
+    }
+  },
+  "needs_you": {
+    "provenance": {
+      "availability": "could-not-check",
+      "observed_at": "2026-11-01T12:00:00Z",
+      "reason": "no decision source"
+    }
+  },
+  "evidence": {
+    "provenance": {
+      "availability": "not-assessed",
+      "observed_at": "2026-11-01T12:00:00Z",
+      "reason": "no producer"
+    }
+  },
+  "outcomes": {
+    "provenance": {
+      "availability": "not-assessed",
+      "observed_at": "2026-11-01T12:00:00Z",
+      "reason": "no producer"
+    }
+  },
+  "milestones": {
+    "provenance": {
+      "availability": "available",
+      "sources": [
+        {
+          "repo": "example-org/tracker",
+          "path": "docs/streams/shared/README.md",
+          "revision": "0123456789abcdef0123456789abcdef01234567"
+        }
+      ],
+      "observed_at": "2026-11-01T12:00:00Z"
+    },
+    "coverage": "known",
+    "items": [
+      {
+        "ref": "cell:tracker:shared:m-01@1",
+        "title": "Ready for acceptance",
+        "scope": [
+          "cell:tracker:shared:01"
+        ],
+        "work": {
+          "state": "known",
+          "remaining": 0
+        },
+        "acceptance": {
+          "state": "outstanding"
+        },
+        "availability": "unknown",
+        "holds": [
+          {
+            "ref": "cell:tracker:shared:m-01@1",
+            "kind": "acceptance",
+            "state": "held",
+            "reason": "acceptance outstanding"
+          }
+        ],
+        "evidence": [
+          {
+            "kind": "path",
+            "repo": "example-org/tracker",
+            "path": "docs/report.md"
+          },
+          {
+            "kind": "path",
+            "repo": "hidden-org/private-repo",
+            "path": "secret/plan.md"
+          },
+          {
+            "kind": "forge",
+            "repo": "hidden-org/private-repo",
+            "number": 7
+          },
+          {
+            "kind": "url",
+            "url": "https://github.com/hidden-org/private-repo/pull/7"
+          }
+        ]
+      },
+      {
+        "ref": "cell:tracker:shared:m-02@1",
+        "title": "Work remains \u001b[31mRED\u001b[0m \"quoted\"\n# Heading",
+        "aliases": [
+          "legacy-m2"
+        ],
+        "scope": [
+          "cell:tracker:shared:01",
+          "cell:tracker:shared:02"
+        ],
+        "work": {
+          "state": "known",
+          "remaining": 1,
+          "pending": [
+            "cell:tracker:shared:02"
+          ]
+        },
+        "acceptance": {
+          "state": "not-due"
+        },
+        "availability": "blocked",
+        "prerequisites": [
+          "cell:tracker:shared:m-01@1"
+        ],
+        "holds": [
+          {
+            "ref": "cell:tracker:shared:02",
+            "kind": "work",
+            "state": "held",
+            "reason": "work remaining"
+          }
+        ]
+      },
+      {
+        "ref": "cell:tracker:shared:m-03@1",
+        "title": "Unread",
+        "scope": [],
+        "work": {
+          "state": "unknown",
+          "remaining": 0,
+          "reason": "plan coverage is unknown"
+        },
+        "acceptance": {
+          "state": "could-not-check",
+          "reason": "no acceptance observation supplied"
+        },
+        "availability": "unknown"
+      }
+    ],
+    "membership": [
+      {
+        "brief": "cell:tracker:shared:01",
+        "milestones": [
+          "cell:tracker:shared:m-01@1",
+          "cell:tracker:shared:m-02@1"
+        ]
+      }
+    ]
+  }
+}
