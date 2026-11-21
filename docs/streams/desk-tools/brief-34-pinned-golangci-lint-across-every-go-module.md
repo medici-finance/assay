@@ -214,6 +214,53 @@ code defects → row 3 plus review of each exception. Adequacy of exceptions sta
 | # | Command | Result | Output | Date | Runner |
 |---|---|---|---|---|---|
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 2 | `bash scripts/tests/go-analysis.sh lint` | pass exit=0 | sha256:c79a5e883279 | 2026-11-21 | assay-verifier-app[bot] @ 3eafc9acf039 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && GOOS=windows GOARCH=amd64 go vet ./... && GOOS=darwin GOARCH=arm64 go vet ./... && go test -count=1 -timeout 300s ./internal/deskkit/ ./cmd/deskdispatch/` | fail exit=1 | sha256:526622715420 | 2026-11-21 | assay-verifier-app[bot] @ 3eafc9acf039 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `statusgen --root . --lint && statusgen --root . --consumers --brief desk-tools/34` | fail exit=1 | sha256:89a813af7783 | 2026-11-21 | assay-verifier-app[bot] @ 3eafc9acf039 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `git diff --check && test -n "${VERIFY_BASE:?set to the implementation merge commit on main}" && git merge-base --is-ancestor "$VERIFY_BASE" HEAD && git log --format='%H %an %ae' "$VERIFY_BASE..HEAD" -- .github/workflows/ci.yml && gh run list --repo medici-finance/assay --workflow ci.yml --commit "$(git rev-parse HEAD)" --json databaseId,headSha,event,conclusion` | fail exit=4 | sha256:69f5519080ea | 2026-11-21 | assay-verifier-app[bot] @ 3eafc9acf039 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `gh run list --repo medici-finance/assay --workflow ci.yml --commit "$(git rev-parse HEAD)" --json databaseId,headSha,event,conclusion` | fail exit=4 | sha256:69f5519080ea | 2026-11-21 | assay-verifier-app[bot] @ 3eafc9acf039 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7400 run=024392d8b3a0f23ef68e3c3d6fad7597cb03d29c9c894274df5820861558cc2e source=3eafc9acf0396e2fee2a9d65dfc9cdf3d0253c7d brief=docs/streams/desk-tools/brief-34-pinned-golangci-lint-across-every-go-module.md model=claude-opus-5-5 tier=strong
+
+Post-merge verification, attempt 1. Non-implementer claude-opus-5-5 (strong tier), statusgen v1.0.90 on darwin-arm64, admitted at merged main 3eafc9acf039 under attestation medici-finance/assay#7400. The admitted run started 2026-11-21T20:24:01Z and finished 2026-11-21T20:32:39Z. It ran rows 2, 4, 5, 6 and 7 and exited 1. VERIFY_BASE was 8dc2df01bee97445f634a3374bd4dfcdf3ba869b, the merge of #7367. The earlier partial delivery is #2655, merged as 7efb00ce3fad. The rows also received GO_ANALYSIS_TEST_CACHE, pointing at a prepared analysis cache outside the home, and PYTHONDONTWRITEBYTECODE=1. Neither delivery touches any file under tools/desk.
+
+Tally: 1 pass, 1 fail, 1 deferred, 4 could-not-run, out of 7 Verify rows.
+
+- Row 1: could-not-run (check-definition). With no cache option, the runner creates its default cache directory, .go-analysis, inside the admitted root. That directory is not ignored, so admission refuses the dirty home. No environment variable overrides the location. The row was left out of the admitted run so the home stayed clean. Observed 2026-11-21 by assay-verifier-app[bot] (claude-opus-5-5).
+- Row 2: pass. The admitted witness records exit 0.
+- Row 3: could-not-run (check-definition), for the same default-cache reason as row 1. The lint mode also refuses without an explicit trusted base SHA in GO_ANALYSIS_BASE. Observed 2026-11-21 by assay-verifier-app[bot] (claude-opus-5-5).
+- Row 4: fail. The admitted witness records exit 1, and the neighbour suites are not green at this head on this host. Neither delivery touches tools/desk, so this failure is in neighbour code rather than this brief's diff. It is still the row's own obligation observed failing.
+- Row 5: deferred. The lint half printed LINT: FAIL with 3 PROBLEMs, and all three name other briefs: desk-tools/37, desktools-v2/65 and forge-neutral/54, each reporting that --acceptance-forge is required. Rule-51 credit comes only from a tool witness (ruling A on medici-finance/assay#4823), so the row does not count toward the pass tally. The consumers half was observed in a supplemental probe only (below).
+- Row 6: could-not-run, for two reasons. First, the row needs the head of the first pull request whose CI runs the go-lint job, and no such job exists yet. Main's ci.yml contains no go-lint or go-analysis job, because the human-applied hunk in the go-analysis CI runsheet has not landed (ruling: https://github.com/medici-finance/assay/issues/7370#issuecomment-7066967298). Second, gh exits 4 because admission strips HOME and the GH_* credential. The route for that is the in-tool read-only verb, under ruling A on medici-finance/assay#4700.
+- Row 7: could-not-run, for the same two reasons as row 6. No go-lint job runs on merged main, and the admitted row has no forge credential.
+
+Supplemental probes earn no acceptance credit. All of them ran on 2026-11-21 as assay-verifier-app[bot] (claude-opus-5-5), in a scratch clone at 3eafc9acf039 outside the home:
+
+- Row 1 shape, run with an explicit external cache: exit 0. It printed "qualified inputs; binary sha256 6da8712d00a514c310b6bd8e6994e37265d204591b94c68cfe23cac6352e472c", which matches the qualified darwin digest recorded in the go-analysis doc. Acquisition also changed the tracked file deskd/go.sum, adding one line for the gopkg.in/check.v1 go.mod hash. That is a defect: acquisition should not modify tracked source.
+- Row 5, consumers half: exit 0, with 11 corroborated, 0 disproved and 1 unchecked. The unchecked entry is the .github/workflows/ci.yml follow-up self-route. It also printed PRODUCER-DELIVERY: COULD-NOT-CHECK.
+- Row 4, go test leg: run twice in an environment matching admission, with GIT_*, GH_*, ASSAY_* and DESK_LOOP unset, a fresh HOME, and a TMPDIR with no symlinks.
+  - With the 300s timeout: exit 1, and deskkit timed out in TestVerifierCrossRepoTampering.
+  - With a longer timeout and a forge-hosted origin: exit 1. deskdispatch passed. deskkit took 350s, over the row's 300s, and two tests failed. TestCompiledStartupDiscoveryWorkload failed because the observed deskboard build wrote no trace file. TestReviewCallerRollback failed because TestReviewCallerFaults reported "mutation did not fail designated assertion".
+  - The admitted row's own failure output is not retained beyond its digest, so which of these the admitted run hit is not established. The host load average was between 10 and 22 throughout.
+
+RISK-VALUE ranking. All four risk answers are no, and every pinned literal can be reverted by an edit and a re-pin. All rank reversible and need no derivation:
+
+- LINT_VERSION = 2.14.0 at tools/go-analysis/pins.env:3
+- LINT_SOURCE_SHA256 = 654f34e1031fd4947ee7adb2d1dc6abf889ea24e07c0c01a14f3e5d754e6bf92 at tools/go-analysis/pins.env:4
+- LINT_MOD_SHA256 = 6db0e899ed1b16a09902237d2f5692f40e8bb394dc6ac4ba6f8ff4d12ea0a604 at tools/go-analysis/pins.env:5
+- LINT_SUM_SHA256 = b23d3f064abc027590dc6fa9945da04499e9fc465a6b518bf6ca7f1cb6045e79 at tools/go-analysis/pins.env:6
+- BUILD_GO = 1.27.1 at tools/go-analysis/pins.env:7
+- ANALYSIS_GO = 1.27.1 at tools/go-analysis/pins.env:8
+- BUILD_GO_darwin_arm64 = ee215d57e0ec269c60cc9ceca68e6bda321ba9ee5afe24f4b0988703c2d87d12 at tools/go-analysis/pins.env:9
+- BUILD_GO_linux_amd64 = 63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445 at tools/go-analysis/pins.env:10
+- ANALYSIS_GO_darwin_arm64 and ANALYSIS_GO_linux_amd64 repeat the two BUILD_GO digests, at tools/go-analysis/pins.env:11 and :12
+
+The acquisition probe fetched the pinned inputs without a digest refusal. That is consistency, not a derivation.
+
+**VERIFY: FAIL** — row 4: tools/desk neighbour suites exit 1 at 3eafc9acf039 on darwin-arm64. Rows 1, 3, 6 and 7 are could-not-run, and row 5 is deferred.
+
+
 ## Review
 
 Gate: model; all four risk answers are no because this adds development checks and changes no
