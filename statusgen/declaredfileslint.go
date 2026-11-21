@@ -32,6 +32,8 @@ func declaredFilesNotices(root, path string, bf *BriefFile, reg *graphRepos, tag
 		var refusal *briefdoc.Refusal
 		if errors.As(err, &refusal) {
 			notices = append(notices, fmt.Sprintf("%s: [declared-files] line %d: %s", path, bf.bodyLineOffset+refusal.Line, refusal.Msg))
+		} else {
+			notices = append(notices, fmt.Sprintf("%s: [declared-files] COULD-NOT-CHECK declaration: %v", path, err))
 		}
 		return notices
 	}
@@ -47,12 +49,35 @@ func declaredFilesNotices(root, path string, bf *BriefFile, reg *graphRepos, tag
 			notices = append(notices, fmt.Sprintf("%s: [declared-files] line %d: COULD-NOT-CHECK root path %q: %v", path, bf.bodyLineOffset+decl.Line, decl.Path, err))
 		}
 	}
-	diagnosticPaths := slices.Clone(bf.DeclaredPaths)
+	// Compare the paths the readers denote. The diagnostic reader preserves
+	// brace patterns, directory slashes and annotations in its raw strings.
+	var diagnosticPaths []string
+	for _, raw := range bf.DeclaredPaths {
+		expanded, err := briefdoc.ExpandDeclaration(briefdoc.TrimScopeAnnotation(raw))
+		if err != nil {
+			diagnosticPaths = append(diagnosticPaths, raw)
+		} else {
+			diagnosticPaths = append(diagnosticPaths, expanded...)
+		}
+	}
 	slices.Sort(diagnosticPaths)
-	slices.Sort(strictPaths)
 	diagnosticPaths = slices.Compact(diagnosticPaths)
-	if !slices.Equal(diagnosticPaths, strictPaths) {
-		notices = append(notices, fmt.Sprintf("%s: [declared-files] Context files resolve to different paths for declared inputs %q and authoring diagnostics %q", path, strictPaths, diagnosticPaths))
+	slices.Sort(strictPaths)
+	// Report the first disagreement, in stable order; dumping both lists can
+	// otherwise print thousands of entries for a single expanded declaration.
+	for i := 0; i < max(len(strictPaths), len(diagnosticPaths)); i++ {
+		if i < len(strictPaths) && i < len(diagnosticPaths) && strictPaths[i] == diagnosticPaths[i] {
+			continue
+		}
+		reader := "authoring diagnostics"
+		var entry string
+		if i == len(diagnosticPaths) || i < len(strictPaths) && strictPaths[i] < diagnosticPaths[i] {
+			reader, entry = "declared inputs", strictPaths[i]
+		} else {
+			entry = diagnosticPaths[i]
+		}
+		notices = append(notices, fmt.Sprintf("%s: [declared-files] Context files resolve to different paths: only %s includes %q", path, reader, entry))
+		break
 	}
 	return notices
 }
