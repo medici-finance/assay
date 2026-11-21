@@ -77,6 +77,12 @@ func (m *memForgeClaimStore) UpdateFrom(id, oldVersion, msg string) ClaimWriteOu
 	return ClaimWriteApplied
 }
 
+func (m *memForgeClaimStore) Remove(id string) (ClaimWriteOutcome, bool) {
+	_, existed := m.refs[id]
+	delete(m.refs, id)
+	return ClaimWriteApplied, existed
+}
+
 func (m *memForgeClaimStore) RemoveFrom(id, old string) ClaimWriteOutcome {
 	if r, ok := m.refs[id]; !ok || r.Version != old {
 		return ClaimWriteRejected

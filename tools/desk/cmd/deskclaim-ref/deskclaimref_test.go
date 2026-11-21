@@ -98,6 +98,12 @@ func (f *fakeStore) UpdateFrom(id, oldSHA, msg string) deskkit.ClaimWriteOutcome
 	return deskkit.ClaimWriteApplied
 }
 
+func (f *fakeStore) Remove(id string) (deskkit.ClaimWriteOutcome, bool) {
+	_, existed := f.claims[id]
+	delete(f.claims, id)
+	return deskkit.ClaimWriteApplied, existed
+}
+
 func (f *fakeStore) RemoveFrom(id, old string) deskkit.ClaimWriteOutcome {
 	if c, ok := f.claims[id]; !ok || c.sha != old {
 		return deskkit.ClaimWriteRejected
