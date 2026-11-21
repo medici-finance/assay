@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline mutation controls for graph-execution/28, /30 and /31. Run from any directory.
+"""Offline mutation controls for graph-execution/28, /30, /31 and tool-refactoring/01. Run from any directory.
 
 Copies only declared source and fixture inputs into an owned temporary directory.
 No Git, providers, repository edits, dependency downloads or environment discovery.
@@ -16,6 +16,7 @@ RECORDS = "statusgen/domain/records.go"
 ASSESS = "statusgen/domain/assess.go"
 CONTEXT = "statusgen/domain/context.go"
 PROVENANCE = "statusgen/domain/provenance.go"
+OPERATION = "statusgen/domain/operation.go"
 LINEAGE = "\tset := map[string]bool{p.Responsible: true}\n\tfor _, principal := range p.Delegation {\n\t\tset[principal] = true\n\t}\n\treturn set"
 SELECTED = '\tif !reflect.DeepEqual(trusted, claim) {\n\t\treturn Provenance{}, refuse("provenance-not-selected")\n\t}\n\treturn trusted, nil'
 MUTATIONS = [
@@ -58,6 +59,12 @@ MUTATIONS = [
     ("human-act-executor-only", "TestProofClass", [(PROVENANCE, 'p.Executor.Kind != "human" || p.Requester != p.Executor || p.Represented != p.Executor', 'p.Executor.Kind != "human"')]),
     ("attribution-hold", "TestProofClass", [(PROVENANCE, '} else if p.Corroboration.Attribution != corroborated {\n\t\t\tout.note("held", "attribution-uncorroborated")\n\t\t}', "}")]),
     ("drop-required-field","TestProvenanceSchema", [("schemas/evidence-provenance-v1.json", '    "environment",\n    "declared-proof",', '    "declared-proof",')]),
+    ("operation-decision-in-delivery", "TestOperationSubjectClassGuard", [(OPERATION, 'if dec := in.Decision.Repository; dec != "" && !sameRepo(dec, b.Repository) {', "if false {")]),
+    ("operation-decision-fallback", "TestOperationSubjectMatrix", [(OPERATION, 'if s.decision.Repository == "" {\n\t\treturn DispatchProjection{}, unknown("decision-target-unavailable")\n\t}', 'if s.decision.Repository == "" {\n\t\ts.decision.Repository = s.delivery.Repository\n\t}')]),
+    ("operation-path-locator", "TestOperationSubjectClassGuard", [(OPERATION, "!sameRepo(e.Repository, b.Repository) || e.Path != b.Path", "!sameRepo(e.Repository, b.Repository)")]),
+    ("operation-alias-override", "TestOperationSubjectClassGuard", [(OPERATION, "if in.Work.LogicalKey != b.UUID {", "if false {")]),
+    ("operation-shared-candidate", "TestOperationSubjectMatrix", [(OPERATION, "c := *d.Candidate\n\t\t\tin.Delivery.Candidate = &c", "_ = d")]),
+    ("operation-second-consumer", "TestOperationSubjectClassGuard", []),
 ]
 
 def snapshot(dest):
@@ -125,6 +132,9 @@ def main():
                 path.write_text(source.replace(before, after))
             if label == "effect-import":
                 (dest / "statusgen/domain/planted.go").write_text('package domain\nimport _ "os"\n')
+            if label == "operation-second-consumer":
+                (dest / "statusgen/domain/planted.go").write_text(
+                    "package domain\nfunc plantedDecision(s OperationSubject) string { return s.delivery.Repository }\n")
             run = subprocess.run(["go", "test", "-count=1", "-timeout=30s", "-run=^" + test + "$", "./domain"], cwd=dest / "statusgen", env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=60)
             if not is_kill(run, test):
                 print(run.stdout)

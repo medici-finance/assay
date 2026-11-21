@@ -82,6 +82,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // Base-run states. "unproven" (the row could not run at base) deliberately
@@ -221,7 +223,7 @@ func verifyUnplacedRows(section string) []string {
 		if separatorRowRe.MatchString(strings.Trim(line, "|")) {
 			continue
 		}
-		cells := splitRowEscaped(line)
+		cells := briefdoc.SplitRowEscaped(line)
 		if cmdIdx < 0 {
 			if first == "" {
 				first = line
@@ -249,7 +251,7 @@ var verifyRowIDCellRe = regexp.MustCompile(`^(?i)#?r?[0-9]+[a-z]?$`)
 // looks like a Verify table's header (an Expect/Expected column) or like a
 // Verify data row that lost its header (its first cell is a row id).
 func verifyShapedHeader(line string) bool {
-	cells := splitRowEscaped(line)
+	cells := briefdoc.SplitRowEscaped(line)
 	for j, c := range cells {
 		c = strings.ToLower(strings.TrimSpace(c))
 		if c == "expect" || c == "expected" {

@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/deskcore/attestation"
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // The container bracket (desktools-v2/71). A runner inside a --network none
@@ -1368,7 +1369,7 @@ func isWitnessHeaderLine(l string) bool {
 
 // witnessRunnerColumn is the Runner cell's index in a witness header line.
 func witnessRunnerColumn(header string) int {
-	for i, c := range splitRowEscaped(header) {
+	for i, c := range briefdoc.SplitRowEscaped(header) {
 		if strings.TrimSpace(c) == "Runner" {
 			return i
 		}
@@ -1384,7 +1385,7 @@ var onBehalfOfStampRe = regexp.MustCompile(`\(on-behalf-of human:[^\s()]+\)`)
 var cellWhitespaceRe = regexp.MustCompile(`[ \t]+`)
 
 // normaliseRunnerCell rewrites a table row's Runner cell (cell index col,
-// counted as splitRowEscaped counts them: `\|` is cell content): stamp
+// counted as briefdoc.SplitRowEscaped counts them: `\|` is cell content): stamp
 // removed, whitespace runs collapsed, trimmed. The rest of the row is kept
 // byte for byte. A row with too few cells is returned unchanged.
 func normaliseRunnerCell(row string, col int) string {

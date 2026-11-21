@@ -12,6 +12,7 @@ import (
 	"unicode"
 
 	"github.com/medici-finance/assay/gitcore"
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // The transport is deliberately unavailable until a command explicitly opts in.
@@ -594,7 +595,7 @@ func acceptanceStep(path, verify, full, run, delivery, base, original, baseline,
 	commandCol, expectCol := -1, -1
 	rewritten := map[string]bool{}
 	for i, line := range lines {
-		cells := splitRowEscaped(strings.TrimSpace(line))
+		cells := briefdoc.SplitRowEscaped(strings.TrimSpace(line))
 		for j := range cells {
 			cells[j] = strings.TrimSpace(cells[j])
 		}
@@ -700,7 +701,7 @@ func plainCommandRowContext(table string, row verifyRow) []string {
 	}
 	var context []string
 	for line := range strings.SplitSeq(table, "\n") {
-		cells := splitRowEscaped(strings.TrimSpace(line))
+		cells := briefdoc.SplitRowEscaped(strings.TrimSpace(line))
 		if len(cells) == 0 || strings.TrimSpace(cells[0]) != row.ID {
 			continue
 		}
@@ -720,8 +721,8 @@ func plainCommandRowContext(table string, row verifyRow) []string {
 // concatenating them would let context move across the command. Reuse the
 // renderer and execution parser; do not infer a command from surrounding prose.
 func transitionContext(row verifyRow) ([2]string, bool) {
-	spans, plain := renderedCodeSpans(row.CommandCell)
-	if !plain || len(spans) != 1 || !spans[0].cleanEnd || spans[0].text != row.Command || row.ProseLed != "" {
+	spans, plain := briefdoc.RenderedCodeSpans(row.CommandCell)
+	if !plain || len(spans) != 1 || !spans[0].CleanEnd || spans[0].Text != row.Command || row.ProseLed != "" {
 		return [2]string{}, false
 	}
 	before, after, found := strings.Cut(row.CommandCell, codeSpanOf(row.Command))
@@ -774,7 +775,7 @@ func transitionDeliveredEvidencePreserved(historical, delivered string) bool {
 // transitionLayout binds the explicit table header, including column order.
 func transitionLayout(table string) string {
 	for _, line := range strings.Split(table, "\n") {
-		cells := splitRowEscaped(strings.TrimSpace(line))
+		cells := briefdoc.SplitRowEscaped(strings.TrimSpace(line))
 		if len(cells) > 0 && strings.TrimSpace(cells[0]) == "#" {
 			for i := range cells {
 				cells[i] = strings.TrimSpace(cells[i])
