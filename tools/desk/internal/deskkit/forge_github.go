@@ -3349,6 +3349,16 @@ func (g *GitHubForge) writeEvidenceFileFromSnapshot(repo ForgeRepo, in WriteFile
 	if err := expectedSHAPrecondition(in, exists, priorSHA); err != nil {
 		return nil, err
 	}
+	if in.Delete {
+		// A removal is only ever the pinned, conditional commit: the file must be the exact
+		// blob the caller judged (ExpectedSHA) on the exact tree it judged (ExpectedHead).
+		if !exists || in.ExpectedSHA == "" || in.ExpectedHead == "" || len(in.Content) != 0 || len(in.Companions) != 0 || in.AppendOnly || in.ExpectAbsent {
+			return nil, Refused(fmt.Sprintf(
+				"refusing to remove %s on %s: a removal must name an existing file, its content id and the branch head it was judged on, and carry no content or companions",
+				in.File, in.Branch))
+		}
+		return g.writePinnedEvidence(repo, in, in.ExpectedHead, nil, res)
+	}
 
 	if in.AppendOnly {
 		res.PriorRows = forgeRowCount(priorContent)
@@ -3369,8 +3379,11 @@ func (g *GitHubForge) writeEvidenceFileFromSnapshot(repo ForgeRepo, in WriteFile
 			in.File, in.Branch, res.PriorRows, res.Rows))
 	}
 
+	if len(in.Companions) > 0 {
+		return g.writePairedEvidence(repo, in, exists, priorSHA, res)
+	}
 	if in.ExpectedHead != "" {
-		return g.writePinnedEvidence(repo, in, res)
+		return g.writePinnedEvidence(repo, in, in.ExpectedHead, nil, res)
 	}
 	body := map[string]any{
 		"message": in.Message,

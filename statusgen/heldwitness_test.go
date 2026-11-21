@@ -24,6 +24,7 @@ const (
 	// renders it.
 	witAttest = "Verification-Attestation: example-org/example-repo#4017 run=" + witHex64 +
 		" source=" + witHex40 + " brief=docs/streams/fixture/brief-02-fixture.md model=fixture-model tier=strong"
+	witObservation = "Kubernetes-Observation: sha256:" + witHex64
 	// witContainer is the block a container run writes under its table
 	// (containerWitnessLines) plus the bracket close's line.
 	witContainer = "Tree-Digest: sha256:" + witHex64 + "\n" +
@@ -124,6 +125,10 @@ func TestHeldScopeWitnessCover(t *testing.T) {
 		{"trailer only, hand-table latest", witOldBullet + handLatest, false},
 		// A witness with no sandbox and a bare attestation line.
 		{"host witness, attestation only", witOldHeading + unshareLatest, false},
+		{"observation inside an earlier closed witness",
+			witEntry("Run 1", witTable(4, sandboxContainerNetns, witRow3(stateFail, 1, ""),
+				strings.Replace(witContainer, "Admission-Bracket:", witObservation+"\nAdmission-Bracket:", 1)), witBullet, "VERIFY: BLOCKED") +
+				witLatest(witPass), false},
 		// Planted second instance: the container block under an earlier witness.
 		{"container block under earlier witness",
 			witEntry("Run 1", witTable(4, sandboxContainerNetns, witRow3(stateFail, 1, ""), witContainer), witBullet, "VERIFY: BLOCKED") +
@@ -212,6 +217,7 @@ func TestHeldScopeWitnessAnchors(t *testing.T) {
 		// Each trailer line is anchored at its end, not only the attestation.
 		{"Tree-Digest with a note appended", under(block[0]+note) + witLatest(witPass), true},
 		{"Container-Image with a note", under(block[1]+note) + witLatest(witPass), true},
+		{"Kubernetes-Observation with a note", under(witObservation+note) + witLatest(witPass), true},
 		{"Admission-Bracket with a note", under(block[3]+note) + witLatest(witPass), true},
 		// The witness header is matched as the tool writes it, byte for byte.
 		{"header with a trailing space", header("| Runner |\n", "| Runner | \n") + witLatest(witPass), true},
@@ -227,7 +233,7 @@ func TestHeldScopeWitnessAnchors(t *testing.T) {
 			strings.Replace(witContainer, "model=fixture-model", "model=HELD", 1)), "", "**VERIFY: PASS**"), true},
 	},
 		// The anchor is loosened in an earlier entry under a clean latest PASS.
-		"Tree-Digest with a note appended", "Container-Image with a note", "Admission-Bracket with a note",
+		"Tree-Digest with a note appended", "Container-Image with a note", "Kubernetes-Observation with a note", "Admission-Bracket with a note",
 		"header with a trailing space", "header with a leading space")
 }
 

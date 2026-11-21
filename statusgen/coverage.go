@@ -277,13 +277,17 @@ func observeBriefTexts(root, path, id string, bf *BriefFile) (evaluation.BriefOb
 		}
 		obs.VerifyRows = append(obs.VerifyRows, row)
 	}
+	rowByID := map[string]verifyRow{}
+	for _, r := range rows {
+		rowByID[r.ID] = r
+	}
 	for rowID, rows := range parseEvidenceRows(plan.Evidence) {
 		for _, er := range rows {
 			if !isWitnessRow(er.Text) {
 				continue
 			}
 			cells := witnessCells(er.Text)
-			obs.Witnesses[rowID] = append(obs.Witnesses[rowID], evaluation.Witness{
+			w := evaluation.Witness{
 				Command: witnessCommandOf(er.Text),
 				State:   witnessStateOf(er.Text),
 				Tree:    witnessTreeOf(er.Text),
@@ -291,7 +295,16 @@ func observeBriefTexts(root, path, id string, bf *BriefFile) (evaluation.BriefOb
 				Result:  strings.TrimSpace(cells[witnessCellResult]),
 				Output:  strings.TrimSpace(cells[witnessCellOutput]),
 				Date:    strings.TrimSpace(cells[witnessCellDate]),
-			})
+			}
+			// The rule-51 lane (rule51.go): the same verdict checkWitnesses
+			// reaches for a recorded failure, so coverage and the closure
+			// gate agree on it.
+			if r, ok := rowByID[rowID]; ok && w.State == stateFail {
+				if _, credited, why := rule51Credit(r, er.Text); credited {
+					w.Rule51Credit = why
+				}
+			}
+			obs.Witnesses[rowID] = append(obs.Witnesses[rowID], w)
 			texts[rowID] = append(texts[rowID], er.Text)
 		}
 	}

@@ -644,13 +644,17 @@ scratch automatically. For a bounded standalone command, use `cellctl scratch <c
 with its source revision, snapshot/input budget and command. Never recursively copy a
 working directory containing generated output; use the bounded tracked snapshot and
 explicit required inputs. Git worktree pruning remains with `deskwt`.
+The task's `TMPDIR` is the only scratch location: never a harness session scratchpad or
+another system temp path. Never create a private Go build or module cache; pass the
+inherited `GOCACHE` and `GOMODCACHE` values on every Go command.
 
 Before the final completion message, persist required outcomes/evidence at their canonical
 destination and read them back. If this session owns `ASSAY_SCRATCH_ID`, and every task
 sharing it has finished, call `cellctl scratch <ASSAY_SCRATCH_CELL> ack --id
 <ASSAY_SCRATCH_ID> --receipt <canonical-evidence-reference>`. Do not acknowledge a parent's
-scratch from a delegated worker. Pending evidence and resumable tasks remain protected;
-acknowledgment never overrides live ownership. The runtime alone reclaims disposable data
+scratch from a delegated worker. Resumable tasks remain protected. A finished task with no
+receipt keeps its work dir only through a 24-hour handoff grace; a sweep then reclaims it,
+keeping its record, output tail and Git data. Acknowledgment never overrides live ownership. The runtime alone reclaims disposable data
 and bounds failed-run diagnostics. No role adds a shell deletion hook. Older unmarked or
 harness owned scratch remains inventory-only until its ownership and evidence are proved.
 See `docs/cellctl-scratch.md` and the shipped desk-shell reference, "Managed task scratch".

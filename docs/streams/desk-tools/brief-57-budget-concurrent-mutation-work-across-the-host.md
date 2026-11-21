@@ -10,7 +10,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-24 by maintainer-directed mutation review
 sources:
   - medici-finance/assay#4359
@@ -66,7 +66,7 @@ design-fit:
 | 1 | `cd tools/desk && go test ./cmd/muhar -run '^TestBudget' -count=1 -v > "${TMPDIR:-/tmp}/dt57-budget.log" 2>&1 && grep -F -- '--- PASS: TestBudgetBoundsTotal ' "${TMPDIR:-/tmp}/dt57-budget.log" && grep -F -- '--- PASS: TestBudgetReleases ' "${TMPDIR:-/tmp}/dt57-budget.log" && grep -F -- '--- PASS: TestBudgetBadConfig ' "${TMPDIR:-/tmp}/dt57-budget.log"` | exit 0; all three named PASS lines; two processes never exceed the configured total, two over-demanding processes both complete within the bound, and cancellation releases every slot | check:ci +mutation +flow |
 | 2 | `cd tools/desk && go test ./cmd/cellctl -run '^TestMuharBudgetEnv$' -count=1 -v > "${TMPDIR:-/tmp}/dt57-cell.log" 2>&1 && grep -F -- '--- PASS: TestMuharBudgetEnv ' "${TMPDIR:-/tmp}/dt57-cell.log"` | exit 0; named PASS; explicit values propagate in both the scrubbed allowlist and the non-scrubbed launch environment, and unset configuration stays unset | check:ci +flow |
 | 3 | `cd tools/desk && go test ./cmd/muhar -run '^TestSpecAnchorsLand$' -count=1 -v > "${TMPDIR:-/tmp}/dt57-anchors.log" 2>&1 && grep -F -- '--- PASS: TestSpecAnchorsLand ' "${TMPDIR:-/tmp}/dt57-anchors.log"` | exit 0; existing specs and mutation sets remain unchanged | check:ci +neighbour |
-| 4 | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$(git rev-parse HEAD)" = "$DELIVERY_HEAD" && git merge-base --is-ancestor "$DELIVERY_BASE" "$DELIVERY_HEAD" && ! grep -q -e '[:] follow-up ' docs/streams/desk-tools/brief-57-budget-concurrent-mutation-work-across-the-host.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/57 --base "$DELIVERY_BASE" > "$o" 2>&1 && grep -F -e 'summary: 5 corroborated, 0 disproved, 0 unchecked' "$o"` | exit 0; runner, launcher and operator documentation are all in the delivering diff | check +flow +dereference |
+| 4 | `git merge-base --is-ancestor ecee257bd06719468d82522013ff160272e85c3e 18056ac181bcda0b96f2967950884cb63e64192a && ! grep -q -e '[:] follow-up ' docs/streams/desk-tools/brief-57-budget-concurrent-mutation-work-across-the-host.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/57 --delivery 18056ac181bcda0b96f2967950884cb63e64192a --base ecee257bd06719468d82522013ff160272e85c3e > "$o" 2>&1 && grep -F -e 'summary: 5 corroborated, 0 disproved, 0 unchecked' "$o"` | exit 0; runner, launcher and operator documentation are all in the delivering diff | check +flow +dereference |
 
 ## Evidence
 <!-- Independent verifier appends exact commands, outputs, source/run identity, date and runner. This authoring PR claims no future implementation test executed. -->
