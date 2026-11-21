@@ -67,7 +67,7 @@ changed or discarded.
 
 | Tool | Verb(s) | Class | Write budget + breaker |
 |------|---------|-------|------------------------|
-| `deskboard` | `review-queue`, `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `milestones`, `diff`, `files` | read-only | no |
+| `deskboard` | `change`, `review-queue`, `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `milestones`, `diff`, `files` | read-only | no |
 | `issueboard` | `board`, `issues`, `intake` | read-only | no |
 | `verifyloop` | `plan` | read-only (spawns nothing, writes nothing) | no |
 | `scanloop` | `plan` (read-only queue print), `run` (one drain pass), `land` (record a judgment exit for a parked item) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item, each also appended as an `intake-exit-v1` record to `<state dir>/intake-exits.jsonl` (schema: `spec/intake-exit-v1.md`) | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) / local state (`land`) | yes (`run`) |
@@ -424,6 +424,16 @@ no tool reinvents it with holes:
 | `Version()` / `WarnIfUnpinned(w)` | Reports the embedded `sourceSHA`/`builtAt`; warns loudly when unpinned (C-1). |
 | `OperationContext(work, trackingRoot, deliveryRoot, targets)` | Observation adapter for the `statusgen/domain` operation subject. Reads the tracking checkout's origin and HEAD and the delivery checkout's origin, binds the decision target and Evidence destination to the tracking observation and the selected brief path, and returns the subject. Its `Dispatch`, `Review`, `PRPublication` and `EvidencePublication` projections are the only reads. A missing coordinate is `ExitUnverifiable` (6), never another repository; a coordinate that disagrees with the selected brief (a moved tracking checkout, a review or candidate in the wrong repository) is `ExitRefused` (5). It authorizes no effect. No desk verb routes through it yet: deskdispatch, deskpr, deskfile, deskevidence and verifyloop keep their own coordinate derivation until their follow-up migrations move them onto the projections. |
 | exit codes | `ExitOK 0`, `ExitDisabled 3`, `ExitRateLimited 4`, `ExitRefused 5`, `ExitUnverifiable 6`. `ExitCodeOf(err)` maps a typed error, failing **closed** to 6 for any unexpected error. |
+
+**Verify rows and declared inputs.** deskkit and `internal/verifycmd` keep no reader of a
+brief's `## Verify` table or its `## Context` `files:` declaration. `BriefDeclaredFiles`
+projects `statusgen/briefdoc.DeclaredFiles` (the strict grammar, one `*briefdoc.Refusal`
+mapped onto exit 5), and `verifycmd.Lift`, `Marked`, `CommentOnly`, `NoOp` and `Refused` call
+`briefdoc.VerifyCommand`, `MarkedCommands`, `ShellCommentOnly`, `ShellNoOp` and
+`ProseLedMention`. A change to what a Command cell may name is a change in `briefdoc`, held
+by `briefdoc.TestVerificationDefinitionClassGuard` and the shared vector tables under
+`statusgen/testdata/`; `deskkit.TestVerificationDefinitionFlow` follows one brief from the
+runner to the landing scope.
 
 **Fail-closed (C-10):** any state a helper cannot positively verify (unreadable/malformed
 audit file, missing HOME, unparseable timestamp) is a typed `Unverifiable` refusal
@@ -1640,7 +1650,7 @@ merge onto it), and each row on an affected repo is flagged `baseBranchRed` with
 An **absent** `mainHealth` field means the verb did not probe — never that it found
 nothing wrong. `review-queue`, `prs`, `queue`, `awaiting`, `nextup`, `dispatch`, `todo`, `next`,
 `next-up`, `throughput`, `scope`, `policydrift`, `stalled`, `milestones`,
-`reviews`, `diff` and `files` do not probe. That list is not prose upkeep: `TestNonProbingVerbs_OmitMainHealth` asserts
+`change`, `reviews`, `diff` and `files` do not probe. That list is not prose upkeep: `TestNonProbingVerbs_OmitMainHealth` asserts
 the absence for every verb on it (JSON **and** `--table`), `TestVerbInventory_Complete`
 fails if a verb is added without being classified, and `TestREADME_NamesEveryNonProbingVerb`
 fails if this sentence drifts from the guard.
@@ -2137,7 +2147,7 @@ structurally invisible, and nothing knows to alert. Two halves:
 
 - **Every sweeping verb states its scope.** `review-queue` (requested/admitted/population in its observation), `prs`, `actions`, `queue`, `health`, `scope`,
   `policydrift`, `stalled` and `throughput` carry a `scope` object in the JSON header (repos, count, source) and
-  print one scope line on `--table`. Verbs taking an explicit repo or document (`reviews`, `diff`,
+  print one scope line on `--table`. Verbs taking an explicit repo or document (`change`, `reviews`, `diff`,
   `files`, `milestones`) **omit** the field entirely — absent means "swept nothing", never "the set was
   empty". This sentence is not prose upkeep: `TestReadme_SweepingVerbSentence_359` fails
   if it names a subset of the verbs `verbScopeClass` declares as repo-sweeping — the

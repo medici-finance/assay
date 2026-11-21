@@ -38,6 +38,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 	"gopkg.in/yaml.v3"
 )
 
@@ -327,7 +328,7 @@ func drillRowCounts(body string) (total, undrilled int) {
 		if separatorRowRe.MatchString(strings.Trim(line, "|")) {
 			continue
 		}
-		cells := splitRowEscaped(line)
+		cells := briefdoc.SplitRowEscaped(line)
 		if evIdx < 0 {
 			for j, c := range cells {
 				if strings.EqualFold(strings.TrimSpace(c), "evidence") {

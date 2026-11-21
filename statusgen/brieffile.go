@@ -1206,6 +1206,12 @@ var (
 	mdLinkTextRe = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
 )
 
+// PROFILE (tool-refactoring/03): this is the permissive DIAGNOSTIC reader of the
+// `files:` declaration, kept for the cross-read and lint, which must still
+// report on a malformed line. It is not the declared-input grammar: the strict
+// reader, which refuses what it cannot read, is briefdoc.DeclaredFiles. A
+// change to what a declaration may name belongs there, not here.
+//
 // extractContextDeclaredPaths reads the `files:` declared-paths line from a
 // brief's `## Context` section and returns the paths it names. This is the first
 // half of mistake-proofing/01: the declared-paths line is parsed by nothing else

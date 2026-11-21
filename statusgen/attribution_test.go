@@ -207,7 +207,7 @@ func TestEvidenceHasIndependentRow(t *testing.T) {
 	}
 	// An UNESCAPED pipe in a Command cell is the more
 	// common author mistake (forgetting to escape) and is the sibling of the
-	// escaped-pipe bug — splitRowEscaped correctly treats it as a real delimiter, so
+	// escaped-pipe bug — briefdoc.SplitRowEscaped correctly treats it as a real delimiter, so
 	// it still shifts every cell after it and would mis-locate the Runner
 	// column by index. Before the cell-count/row-alignment check, this row
 	// read cell 5 ("2026-07-08", the Date) as Runner — no "implementer"

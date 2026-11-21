@@ -366,12 +366,23 @@ type Issue struct {
 // Review is one review/approval on a change (GitHub review ↔ GitLab MR approval). CommitID
 // pins the verdict to a reviewed head — the property "read reviews at head" depends on.
 type Review struct {
-	ID          int64
-	Author      Account
-	State       string // APPROVED | CHANGES_REQUESTED | COMMENTED | DISMISSED | PENDING
-	CommitID    string
-	Body        string
-	SubmittedAt string
+	URL           string `json:",omitempty"` // provider permalink; absent when no review object exists
+	accountIDOnly bool   // native GitLab approval has an actor ID, no submission ID
+	ID            int64
+	Author        Account
+	State         string // APPROVED | CHANGES_REQUESTED | COMMENTED | DISMISSED | PENDING
+	CommitID      string
+	Body          string
+	SubmittedAt   string
+}
+
+// SubmissionID names a review or verdict note. A native GitLab approval identifies
+// its actor only; that number must never be cited as a review.
+func (r Review) SubmissionID() int64 {
+	if r.accountIDOnly {
+		return 0
+	}
+	return r.ID
 }
 
 // ChangedFile is one entry of a change's file list. PreviousFilename is set only on a
@@ -401,6 +412,8 @@ type ChangedFile struct {
 // stamp silently keeps whichever entry the forge happened to list last. Consumer:
 // cmd/deskflip's latest-run-per-name reduction.
 type StatusContext struct {
+	RunID     string `json:",omitempty"`
+	URL       string `json:",omitempty"`
 	State     string // success | pending | failure | error
 	Context   string
 	CreatedAt string // RFC3339, "" when the forge reported none
@@ -413,6 +426,9 @@ type StatusContext struct {
 // not stamped — sorts OLDEST at the consumer, which is the fail-safe direction: a stampless
 // queued orphan never supersedes a completed run. Consumer: cmd/deskflip.
 type CheckRun struct {
+	URL   string `json:",omitempty"` // provider details page
+	JobID string `json:",omitempty"`
+	RunID string `json:",omitempty"` // owning workflow run or pipeline, for deskrun log
 	// ID is the forge's own identifier for this RUN — GitHub's check-run id, GitLab's
 	// pipeline-job id — rendered as a string so the interface stays forge-neutral about
 	// how each forge numbers them. It identifies one EXECUTION, not the check: a re-run of
