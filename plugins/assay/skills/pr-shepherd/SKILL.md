@@ -293,8 +293,6 @@ arm a `capability:durable-monitor` on it:
 gh pr view <N> --json state,mergeable,reviews,statusCheckRollup
 ```
 
-Where the supervisor already runs the shipped PR monitor, subscribe to this PR’s `review` and `checks` events. Each event prompts a fresh read of the affected head. An unchanged head can acquire a new verdict or finish a check. Keep the due liveness sweep for missed events and unavailable observations.
-
 Three triggers: a new review → work the findings (§4); `mergeable: CONFLICTING` held across two
 reads → merge main, resolve, push immediately (§2); `state: MERGED|CLOSED` → STOP (§5).
 
