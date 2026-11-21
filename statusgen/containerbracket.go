@@ -1385,7 +1385,7 @@ var onBehalfOfStampRe = regexp.MustCompile(`\(on-behalf-of human:[^\s()]+\)`)
 var cellWhitespaceRe = regexp.MustCompile(`[ \t]+`)
 
 // normaliseRunnerCell rewrites a table row's Runner cell (cell index col,
-// counted as splitRowEscaped counts them: `\|` is cell content): stamp
+// counted as briefdoc.SplitRowEscaped counts them: `\|` is cell content): stamp
 // removed, whitespace runs collapsed, trimmed. The rest of the row is kept
 // byte for byte. A row with too few cells is returned unchanged.
 func normaliseRunnerCell(row string, col int) string {

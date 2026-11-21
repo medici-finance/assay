@@ -1561,7 +1561,7 @@ type verifyRow struct {
 	// this shell; a shell unavailable on the runner's OS is could-not-run.
 	Shell string
 	// Obligations are the row's KNOWN `+`-prefixed obligation tokens
-	// (rowclass.go's splitRowClassCell / verifyRowCells.obligations) — mutation,
+	// (briefdoc.SplitRowClassCell / verifyRowCells.obligations) — mutation,
 	// flow, dereference, neighbour. graph-execution/03's coverage rule reads
 	// `flow` here for the pattern join's integration check (Task item 2): a
 	// `+flow` row is the one obligation token that proves a Verify row exercises
@@ -1631,7 +1631,7 @@ func verifyRowsOf(verifySection string, numbered *[]bool, classCells *[]string) 
 }
 
 // parseRowSelector splits a --rows value into row IDs (desktools-v2/74). Each
-// element is read the way a Verify `#` cell is (normalizeRowID), so the selector
+// element is read the way a Verify `#` cell is (briefdoc.NormalizeRowID), so the selector
 // and the Evidence reader agree on what an ID is. It returns the IDs in
 // selector order and as a set, or the reason the value is refused.
 func parseRowSelector(value string) ([]string, map[string]bool, string) {

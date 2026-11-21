@@ -20,7 +20,7 @@ package main
 //
 // The class guard (TestVerifyCommandLiftHasOneChokePoint) is the other half:
 // it fails when any new site lifts a command out of a cell with codeSpan
-// directly, instead of through verifyCommand. Its mutation spec is
+// directly, instead of through briefdoc.VerifyCommand. Its mutation spec is
 // verifyrun-cmdmarker-mutations.json.
 
 import (
@@ -455,7 +455,7 @@ func TestVerifyCommandLiftHasOneChokePoint(t *testing.T) {
 		for _, c := range sites {
 			fn := c[strings.Index(c, ":")+1:]
 			if _, ok := liftPrimitiveAllowList[prim][fn]; !ok {
-				t.Errorf("%s calls %s directly — lift a Verify command through verifyCommand (the #1805 choke point), or add the site to liftPrimitiveAllowList with the reason it is not a Verify-command lift", c, prim)
+				t.Errorf("%s calls %s directly — lift a Verify command through briefdoc.VerifyCommand (the #1805 choke point), or add the site to liftPrimitiveAllowList with the reason it is not a Verify-command lift", c, prim)
 			}
 		}
 	}
@@ -521,7 +521,7 @@ func TestCmdMarkerSharedVectors(t *testing.T) {
 				want = *v.Marked
 			}
 			if got := briefdoc.VerifyCommand(v.Cell); got != want {
-				t.Errorf("verifyCommand(%q) = %q, want %q", v.Cell, got, want)
+				t.Errorf("briefdoc.VerifyCommand(%q) = %q, want %q", v.Cell, got, want)
 			}
 		})
 	}

@@ -154,9 +154,9 @@ type unrunFinding struct {
 
 // parseVerifyItems extracts the rows of a `## Verify` table. It locates the
 // header naming Command and Expect (the same anchor verifyTableHasRow uses) and
-// reads the data rows below it. Cells are split escape-aware (splitRowEscaped)
+// reads the data rows below it. Cells are split escape-aware (briefdoc.SplitRowEscaped)
 // so a command containing `\|` does not shred the row — the same hazard
-// verifyrows.go documents at length.
+// statusgen/briefdoc/verification.go documents.
 func parseVerifyItems(section string) []verifyItem {
 	var items []verifyItem
 	cmdIdx, expIdx, numIdx := -1, -1, -1
@@ -288,7 +288,7 @@ func parseEvidenceRows(section string) map[string][]evidenceRow {
 // unrunMarkerRe is matched against the row with inline code spans blanked out
 // (inlineCodeRe, shared with linkcheck.go), not the raw row text. Command and
 // Output/Result cells are conventionally backtick-quoted verbatim content
-// (codeSpan in verifyrows.go documents the same convention); a run-status
+// (briefdoc.CodeSpan documents the same convention); a run-status
 // declaration is unquoted prose. Scanning the raw row let verbatim CONTENT
 // trip the marker — a `grep -n 'DO NOT RUN' <file>` command cell, or a tool's
 // own `0 failed, 0 skipped` output — and read a genuinely-run, passing row as

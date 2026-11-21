@@ -37,7 +37,7 @@ func TestSplitRowEscaped(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			got := briefdoc.SplitRowEscaped(tc.line)
 			if len(got) != len(tc.want) {
-				t.Fatalf("splitRowEscaped(%q) = %d cells %q, want %d %q", tc.line, len(got), got, len(tc.want), tc.want)
+				t.Fatalf("briefdoc.SplitRowEscaped(%q) = %d cells %q, want %d %q", tc.line, len(got), got, len(tc.want), tc.want)
 			}
 			for i := range got {
 				if got[i] != tc.want[i] {

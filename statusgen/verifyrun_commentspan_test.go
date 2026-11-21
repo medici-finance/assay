@@ -282,7 +282,7 @@ func TestCommentCellSharedVectors(t *testing.T) {
 			t.Errorf("%s: marked = %v, want %v", v.Name, got, v.Marked)
 		}
 		if got := briefdoc.VerifyCommand(v.Cell); got != v.Lift {
-			t.Errorf("%s: verifyCommand(%q) = %q, want %q", v.Name, v.Cell, got, v.Lift)
+			t.Errorf("%s: briefdoc.VerifyCommand(%q) = %q, want %q", v.Name, v.Cell, got, v.Lift)
 		}
 		_, why := briefdoc.ProseLedCommandWhy(v.Cell)
 		got := "runs"

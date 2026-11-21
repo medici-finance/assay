@@ -137,7 +137,7 @@ var knownRowClasses = map[string]bool{
 // today's: the whole obligation axis lives INSIDE the one optional `Class` cell,
 // so a column-less legacy table is untouched, an execution-only cell parses
 // exactly as before, and only a cell that opts in by writing a `+token` gains an
-// obligation. splitRowClassCell is the single seam that separates the two axes.
+// obligation. briefdoc.SplitRowClassCell is the single seam that separates the two axes.
 //
 // PRESENCE, NOT ADEQUACY (spec §3 D7). This encoding, and the derivation that
 // reads it (obligationderivation.go), carry only whether an obligation ROW IS
