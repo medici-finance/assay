@@ -22,6 +22,7 @@ cases = [
     ('coverage', "found = sorted({str(Path(x).parent) for x in found if x})", "found = sorted({str(Path(x).parent) for x in found if x})[:1]", 'Harness.test_discovery'),
     ('network', "GOPROXY='https://proxy.golang.org' if network else 'off'", "GOPROXY='https://proxy.golang.org'", 'Harness.test_offline'),
     ('sumdb', "GOSUMDB=sumdb", "GOSUMDB='sum.golang.org'", 'Harness.test_offline'),
+    ('related', "if any(RELATED.match(n['Text']).group(1) not in rules for n in notes):", 'if False:', 'Harness.test_related_notes'),
     ('exit', "if proc.returncode not in [0, 1] or (proc.returncode == 0 and issues) or (proc.returncode == 1 and not issues):", 'if False:', 'Harness.test_scan_failures'),
 ]
 with tempfile.TemporaryDirectory() as tmp:

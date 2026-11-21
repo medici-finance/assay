@@ -38,8 +38,8 @@ head comparison prevents accidentally applying this hunk over a newer worker pus
 : "${REVIEWED_HEAD:?Set the full implementation commit you reviewed}"
 case "$REVIEWED_HEAD" in *[!0-9a-f]*|'') exit 1 ;; esac
 test "${#REVIEWED_HEAD}" -eq 40
-git fetch origin main codex/go-analysis-lint
-test "$(git rev-parse refs/remotes/origin/codex/go-analysis-lint)" = "$REVIEWED_HEAD"
+git fetch origin main feat/assay--desk-tools--34
+test "$(git rev-parse refs/remotes/origin/feat/assay--desk-tools--34)" = "$REVIEWED_HEAD"
 CI_REVIEW_TREE=$(mktemp -d "${TMPDIR:-/tmp}/go-lint-workflow.XXXXXX")
 git worktree add --detach "$CI_REVIEW_TREE" "$REVIEWED_HEAD"
 cd "$CI_REVIEW_TREE"
@@ -69,7 +69,7 @@ change using the human account's configured identity and credentials:
 test "$(git diff --name-only)" = '.github/workflows/ci.yml'
 git add .github/workflows/ci.yml
 git commit -m 'ci: enable ratcheted Go lint reporting'
-git push origin HEAD:refs/heads/codex/go-analysis-lint
+git push origin HEAD:refs/heads/feat/assay--desk-tools--34
 ```
 
 Do not dispatch a workflow. Wait for the normal push/PR run, record its exact head

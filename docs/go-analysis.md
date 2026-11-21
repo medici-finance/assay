@@ -40,8 +40,8 @@ run project tests or generators.
 
 [Admission #2649](https://github.com/medici-finance/assay/issues/2649) records the
 risk assessment. The scanner is golangci-lint **2.14.0**, released 24 September 2026,
-built with **Go 1.27.1** (released 1 September 2026). Project package loading uses
-**Go 1.25.0**. These are separate toolchains. The rest of the fleet has since moved
+built with **Go 1.27.1** (released 1 September 2026). Project package loading uses a
+separately installed **Go 1.27.1** (`ANALYSIS_GO`). The rest of the fleet has since moved
 to one Go version (1.27.4, `go 1.27.0`; #2918); these analysis pins lag it on purpose
 and are listed exceptions in that single-version guard
 (`tools/desk/internal/deskkit/goversion_test.go`) until a separately reviewed
@@ -56,7 +56,7 @@ which upstream does not recommend or guarantee. Qualification is specific:
   update, project graph mixing, replacement loss or disabled checksum database.
 - A readonly source build in isolation; `go mod verify`; recorded binary SHA-256.
 - Actual errcheck, staticcheck and unused defects produce a failing analyzer run;
-  the repaired fixture passes with the same binary and Go 1.25.0 package loader.
+  the repaired fixture passes with the same binary and Go 1.27.1 package loader.
 
 The observed Darwin arm64 qualified build SHA-256 was
 `6da8712d00a514c310b6bd8e6994e37265d204591b94c68cfe23cac6352e472c`.
@@ -73,8 +73,9 @@ No floating source or binary fallback is provided.
 ## Coverage and policy
 
 Discovery uses tracked `*go.mod` paths, including paths with spaces. At the migration
-source revision, 21 modules yielded 24 scans: Linux amd64 for every module, plus
-desk Windows amd64, Darwin arm64 and Linux amd64 with the `parity` tag. Tests are
+source revision, 30 modules yielded 36 scans: Linux amd64 for every module, plus
+Windows amd64, Darwin arm64 and Linux amd64 with the `parity` tag for both
+`tools/desk` and `gitcore`. Tests are
 included. The `untrustscan_broken_unicode` tag is an intentional mutation, not a
 shipping configuration. Other OS constraint branches are outside the current
 supported build matrix; expanding support must expand this declared matrix too.
@@ -85,12 +86,16 @@ pre-existing bare suppressions are debt, not a mass-edit requirement. Upstream
 strict generated-file detection is the only generated-code exclusion. Default
 exclusion presets, path exclusions and issue truncation are disabled.
 
-The complete measurement at the current migration source (which includes the
-latest `main` sync, listed in the PR body) contains **8,873 occurrences**:
-7,531 errcheck, 1,073 staticcheck, 249 unused, 12 nolintlint and 8 govet. These counts
-include separate configurations of the same source, not distinct physical defects.
-The eight govet observations are upstream's newer inline analyzer on two sites
-across four desk configurations; they do not override the existing Go 1.25 vet gate.
+The complete measurement at the current migration source (named by the baseline's
+`source_sha`) contains **13,435 occurrences**: 11,549 errcheck, 1,445 staticcheck,
+416 unused, 13 govet and 12 nolintlint. These counts include separate configurations
+of the same source, not distinct physical defects. Staticcheck "related information"
+notes annotate a primary finding and are dropped before identity (a note without its
+primary refuses); the primary findings remain individually recorded. The govet
+observations are upstream's newer analyzers; they do not override the existing vet
+gate. This measurement replaced the first one after the package loader moved to
+Go 1.27.1: records whose identity and diagnostic were unchanged kept their original
+first-observed date.
 No shipping Go source was changed to introduce the baseline.
 [Remediation #2654](https://github.com/medici-finance/assay/issues/2654) owns the
 incremental inventory; existing deferred-Close and deprecated AST work remains
@@ -135,7 +140,7 @@ gate result. Incomplete scans cannot resolve debt or report measured zero.
 Desk-tools/35 consumes this same artifact into qualgen; ingestion, vulnerability
 analysis and historical rendering are not implemented by this correctness change.
 
-The committed harness runs 14 tests and 14 guard mutations, with real upstream
+The committed harness runs 16 tests and 16 guard mutations, with real upstream
 analyzer red/green controls. It proves module discovery, source movement, baseline
 monotonicity, duplicate refusal, policy changes, checksum rejection and failure
 propagation in the first/middle/last scan. The action has its own separate wrapper
