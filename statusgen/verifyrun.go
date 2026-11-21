@@ -659,11 +659,14 @@ type shellPlan struct {
 	// rowScratch, when set (an admitted run), is the directory under which
 	// each row gets its own fresh HOME and TMPDIR, removed when the row ends.
 	rowScratch string
-	// rowRoster, when set (a container run under a roster receipt), is the
-	// verified roster copy each row's fresh HOME holds (rostercopy.go).
+	// rowRoster is the validated configuration to install in this execution's
+	// fresh HOME (rostercopy.go). Container rows get their receipted copy.
 	rowRoster []byte
 	// rule51 turns on the rule-51 lane (verifyrun --rule51, rule51.go).
 	rule51 bool
+	// rule51HostRoster is captured before any authored row runs. Only the
+	// pinned native companion uses it. Authored host rows keep an empty HOME.
+	rule51HostRoster []byte
 }
 
 // admittedScrubbedNote is the could-not-run note for an admitted row that
@@ -2405,7 +2408,9 @@ Flags:
                     ` + "`stamp=sha256:<64>`" + `. --check and the closure gate credit the row
                     only when that stamp binds to the witness, the forge run exited 0
                     with LINT: PASS, the pin is a release tag and the tree is clean.
-                    A hand citation is never credited. Not with --check,
+                    The pinned forge lint alone receives the validated statusgen keys from
+                    the host roster in its fresh HOME. Missing or invalid configuration
+                    records could-not-run. A hand citation is never credited. Not with --check,
                     --in-container, --sandbox container-netns or the bracket steps
   --fail-first      fail-first audit (verify-integrity/03): BEFORE the head run, check
                     the base out into a temporary worktree and run each
@@ -2991,6 +2996,11 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		plan.env = append(admittedRowEnv(environ), admittedRowGo(environ)...)
 		plan.rowScratch = scratch
 		plan.rowRoster = container.roster
+		if *rule51Mode && !netnsContainer {
+			// A missing or refused roster leaves the companion unable to run.
+			// Other rows still produce their own independent results.
+			plan.rule51HostRoster, _, _ = renderRosterCopy()
+		}
 		if sock, sockDir, err := rowreadSocketPath(scratch); err == nil {
 			if sockDir != "" {
 				defer removeRowScratch(sockDir)
