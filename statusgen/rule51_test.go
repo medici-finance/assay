@@ -93,6 +93,18 @@ func rule51Stub(t *testing.T, forgeRC string, forgeOut string) string {
 	return dir
 }
 
+func rule51TestPlan(t *testing.T) shellPlan {
+	t.Helper()
+	plan := resolveShellPlan()
+	plan.rowScratch = t.TempDir()
+	var err error
+	plan.rule51HostRoster, _, err = renderRosterCopy()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return plan
+}
+
 func rule51Cred(t *testing.T) *runReadCredential {
 	t.Helper()
 	c := &runReadCredential{repo: "example-org/example"}
@@ -119,7 +131,7 @@ func rule51Run(t *testing.T, plan shellPlan, sandbox string) witness {
 // authored command and the offline result, and that witness closes.
 func TestRule51RunStampsAndCloses(t *testing.T) {
 	rule51Stub(t, "0", "LINT: PASS")
-	plan := resolveShellPlan()
+	plan := rule51TestPlan(t)
 	plan.rule51, plan.readCred = true, rule51Cred(t)
 	w := rule51Run(t, plan, sandboxUnshare)
 	row := w.row()
@@ -165,7 +177,7 @@ func TestRule51RunRefusals(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			rule51Stub(t, c.rc, c.out)
-			plan := resolveShellPlan()
+			plan := rule51TestPlan(t)
 			plan.rule51 = true
 			if c.cred {
 				plan.readCred = rule51Cred(t)
