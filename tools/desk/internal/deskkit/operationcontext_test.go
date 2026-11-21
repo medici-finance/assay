@@ -52,16 +52,22 @@ func operationAdapterCensus(fset *token.FileSet, files []*ast.File) (callers, vi
 				}
 				callers = append(callers, fn.Name.Name)
 				pos := fset.Position(call.Pos()).String()
-				lit, ok := call.Args[0].(*ast.CompositeLit)
-				if len(call.Args) != 1 || !ok {
+				var lit *ast.CompositeLit
+				if len(call.Args) == 1 {
+					lit, _ = call.Args[0].(*ast.CompositeLit)
+				}
+				if lit == nil {
 					violations = append(violations, pos+": observations not built at the call")
 					return true
 				}
 				seen := map[string]bool{}
 				for _, elt := range lit.Elts {
 					kv, ok := elt.(*ast.KeyValueExpr)
+					if !ok {
+						continue
+					}
 					key, _ := kv.Key.(*ast.Ident)
-					if !ok || key == nil || (key.Name != "Decision" && key.Name != "Evidence") {
+					if key == nil || (key.Name != "Decision" && key.Name != "Evidence") {
 						continue
 					}
 					inner, ok := kv.Value.(*ast.CompositeLit)
@@ -77,9 +83,15 @@ func operationAdapterCensus(fset *token.FileSet, files []*ast.File) (callers, vi
 						if k, _ := ikv.Key.(*ast.Ident); k == nil || k.Name != "Repository" {
 							continue
 						}
+						// Name-based: the census trusts the identifier spelled
+						// `tracking` to be the tracking observation. A delivery
+						// value renamed `tracking` would pass; the planted
+						// control covers the realistic wrong-repository mistake.
 						v, ok := ikv.Value.(*ast.SelectorExpr)
-						base, _ := v.X.(*ast.Ident)
-						if ok && base != nil && base.Name == "tracking" && v.Sel.Name == "Repository" {
+						if !ok {
+							continue
+						}
+						if base, _ := v.X.(*ast.Ident); base != nil && base.Name == "tracking" && v.Sel.Name == "Repository" {
 							seen[key.Name] = true
 						}
 					}

@@ -27,15 +27,17 @@ sources:
 gate-why: "A wrong tracking, delivery or evidence coordinate can direct a credentialed adapter at another repository. Human acceptance confirms exact subject binding and independent effect authorization survive the consolidation."
 decision-trigger: start
 decision-issue: 7087
+ruling: "https://github.com/medici-finance/assay/issues/7087#issuecomment-7065937224"
+design: DR-tool-refactoring-01
 exec-tier: strong
 exec-tier-why: "Cross-component class refactoring and negative controls; one local happy-path test cannot prove that every production caller migrated."
 domain: complicated
 consumers:
-  - "statusgen/domain/operation.go: follow-up tool-refactoring/01 (this brief; source implementation is still owed)"
-  - "statusgen/domain/operation_test.go: follow-up tool-refactoring/01 (this brief; source implementation is still owed)"
-  - "tools/desk/internal/deskkit/workselection.go: follow-up tool-refactoring/01 (this brief; source implementation is still owed)"
-  - "tools/desk/internal/deskkit/operationcontext.go: follow-up tool-refactoring/01 (this brief; source implementation is still owed)"
-  - "tools/desk/internal/deskkit/operationcontext_test.go: follow-up tool-refactoring/01 (this brief; source implementation is still owed)"
+  - "statusgen/domain/operation.go: fixed-here (the pure operation subject and its projections)"
+  - "statusgen/domain/operation_test.go: fixed-here (fixture matrix and class guard)"
+  - "tools/desk/internal/deskkit/workselection.go: fixed-here (OperationBrief copies the selected subject)"
+  - "tools/desk/internal/deskkit/operationcontext.go: fixed-here (the observation adapter)"
+  - "tools/desk/internal/deskkit/operationcontext_test.go: fixed-here (adapter flow and census)"
 ---
 
 # Brief 01 — Bind operation subjects to explicit tracking, delivery and evidence repositories
@@ -51,7 +53,7 @@ files:
 - docs/contracts.md
 - docs/library-first.md
 - tools/desk/README.md
-- changelog/tool-refactoring-01.md
+- changelog/feat-assay--tool-refactoring--01.md
 
 facts (2026-11-12, source `680102a08777`):
 - Planned paths above identify new Go/test deliverables and existing starting seams; no out-of-repository files are changed.
