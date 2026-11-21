@@ -143,8 +143,12 @@ func orNull(s string) string {
 	return s
 }
 
+func prHelp(args []string) bool {
+	return len(args) > 0 && (args[0] == "-h" || args[0] == "--help")
+}
+
 func runPR(args []string, stdout, stderr io.Writer) int {
-	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
+	if prHelp(args) {
 		fmt.Fprint(stdout, prUsage)
 		return 0
 	}

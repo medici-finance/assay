@@ -65,8 +65,11 @@ func TestSameHeadWakes(t *testing.T) {
 		t.Helper()
 		var out, stderr bytes.Buffer
 		before := queue.reads
-		if code := runPR([]string{repo}, &out, &stderr); code != 0 {
+		if code := run([]string{"pr", repo}, &out, &stderr); code != 0 {
 			t.Fatalf("exit %d: %s %s", code, out.String(), stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "assay-config:") {
+			t.Fatal("live PR reader did not report its effective roster")
 		}
 		if queue.reads != before+1 {
 			t.Fatalf("bulk reads/cycle = %d", queue.reads-before)
@@ -207,7 +210,11 @@ func TestOfflineWakesRetainOnHeldCollection(t *testing.T) {
 		t.Helper()
 		save(fp, batch)
 		var out bytes.Buffer
-		got := runPR([]string{"--from-review", op, fp, repo}, &out, &out)
+		var stderr bytes.Buffer
+		got := run([]string{"pr", "--from-review", op, fp, repo}, &out, &stderr)
+		if strings.Contains(stderr.String(), "assay-config:") {
+			t.Fatal("offline PR reader reported an unused roster")
+		}
 		if got != want || !strings.Contains(out.String(), needle) {
 			t.Fatalf("rc %d: %q", got, out.String())
 		}
