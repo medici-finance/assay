@@ -21,6 +21,7 @@ const (
 	condAppToken         = "app-token"
 	condPROpenDraft      = "pr-open-draft"
 	condModelFloor       = "model-floor"
+	condAuthoringStamp   = deskkit.AuthoringStampCondition
 	condReviewerApproved = "reviewer-approved"
 	condChecksGreen      = "checks-green"
 	condMergeable        = "mergeable"
@@ -84,6 +85,14 @@ const (
 // reviewer-approved — no new paginated read — so it costs nothing extra ahead of model-floor
 // and security-verdict, the two conditions the cost ordering above exists to protect.
 //
+// authoring-stamp (#6855) is ADDITIVE too, and sits right after model-floor because it reads
+// the SAME label timeline model-floor already paid for (read once, shared). It applies only to
+// a change whose description carries a `Worker-Attestation:` line; such a change must carry the
+// dispatcher-applied authored-model / authored-tier pair its record selected, or the flip
+// refuses and prints the `deskdispatch --stamp-only` line that lands it. Its one extra read is
+// the attestation record, made only for an attested change. It never ADMITS anything: a change
+// with no line passes exactly as before.
+//
 // not-reverted (medici-finance/assay#6253 review F2) is ADDITIVE too, and sits right before
 // head-stable. It reads the change's comments once, for the post-flip backstop's revert marker
 // at the current head: a head the backstop already returned to draft is never flipped again,
@@ -98,6 +107,7 @@ var flipConditions = []string{
 	condChecksGreen,
 	condDeskDecided,
 	condModelFloor,
+	condAuthoringStamp,
 	condSecurityVerdict,
 	condNotReverted,
 	condHeadStable,
@@ -445,7 +455,20 @@ func flip(o flipOpts) error {
 	// so a self-applied stamp is worthless), and it fails CLOSED — an attested below-tier
 	// dispatch, or a stamp present-but-unreadable, refuses. An UNATTESTED PR (human-driven
 	// or pre-attestation) is not bricked: it proceeds with a NOTICE. The override is loud.
-	if err := checkModelFloor(o, fg, fr, pr); err != nil {
+	events, err := readLabelEvents(o, fg, fr)
+	if err != nil {
+		return err
+	}
+	if err := checkModelFloor(o, stampTimelineOf(pr.Labels, events)); err != nil {
+		return err
+	}
+
+	// --- authoring-stamp ---------------------------------------------------------
+	// An attested worker change (#6855) must carry the authoring stamp its record selected
+	// before it leaves draft: `--stamp-only` refuses a merged change, so a stamp missing at
+	// merge can never land. Reads the SAME timeline model-floor just read, plus the record.
+	readRecord := onceWorkerRecord(fg)
+	if err := checkAuthoringStamp(o, fr, pr.Body, stampTimelineOf(pr.Labels, events), readRecord); err != nil {
 		return err
 	}
 
@@ -534,6 +557,11 @@ func flip(o flipOpts) error {
 	pr2.Body = body2
 	pr2.Labels = labels2
 	if err := checkDeskDecided(o, pr2, reviews2, reviewerLogin, head); err != nil {
+		return err
+	}
+	// authoring-stamp re-runs against the re-read body and labels: a stamp removed, or a body
+	// line edited, between the reads moves no head. The record read is reused, not repeated.
+	if err := checkAuthoringStamp(o, fr, body2, stampTimelineOf(labels2, events), readRecord); err != nil {
 		return err
 	}
 	o.say("%s OK: still %s, and the verdicts at that head are unchanged", condHeadStable, short(head))
@@ -766,19 +794,7 @@ func tokenPathForMessage(path string) string {
 // (exit 6). Only a genuinely UNATTESTED PR proceeds, and it says so (NOTICE), so a
 // human-driven or pre-attestation lane is not bricked. The override line is always printed,
 // regardless of --quiet, because a silent bypass would nullify the layer.
-func checkModelFloor(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, pr prInfo) error {
-	events, err := readLabelEvents(o, fg, fr)
-	if err != nil {
-		return err
-	}
-	// The PRESENT label set comes from the PR read, not from the events: a truncated
-	// timeline must never make a standing stamp look ABSENT, because absent proceeds on the
-	// NOTICE path. A present label the events cannot attribute is could-not-check instead.
-	present := make([]string, 0, len(pr.Labels))
-	for _, l := range pr.Labels {
-		present = append(present, l.Name)
-	}
-	tl := deskkit.StampTimeline{Present: present, Events: events}
+func checkModelFloor(o flipOpts, tl deskkit.StampTimeline) error {
 	// COULD-NOT-CHECK on the stamp age-out, stated as itself. A stamp whose dispatch claim has
 	// been released ages out (deskkit/stampage.go), but establishing that needs a ref-PRESENCE
 	// read, and the frozen Forge surface this verb writes through carries none — adding an
@@ -802,6 +818,54 @@ func checkModelFloor(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, pr prIn
 	default: // FloorRefuse
 		return deskkit.Refused(fmt.Sprintf("condition %s: %s", condModelFloor, d.Message))
 	}
+}
+
+// stampTimelineOf joins the PR read's PRESENT labels with the attributed label events. The
+// present set comes from the PR read, not from the events: a truncated timeline must never make
+// a standing stamp look ABSENT, because absent proceeds on model-floor's NOTICE path. A present
+// label the events cannot attribute is could-not-check instead.
+func stampTimelineOf(labels []labelInfo, events []deskkit.LabelEvent) deskkit.StampTimeline {
+	present := make([]string, 0, len(labels))
+	for _, l := range labels {
+		present = append(present, l.Name)
+	}
+	return deskkit.StampTimeline{Present: present, Events: events}
+}
+
+// onceWorkerRecord binds the record reader to fg and memoises it, so the head-stable re-gate
+// re-decides the condition on the re-read body and labels without re-reading the record.
+func onceWorkerRecord(fg deskkit.Forge) deskkit.WorkerRecordReader {
+	type key struct {
+		repo string
+		n    int
+	}
+	type val struct {
+		r   deskkit.WorkerReceipt
+		err error
+	}
+	seen := map[key]val{}
+	return func(repo deskkit.ForgeRepo, n int) (deskkit.WorkerReceipt, error) {
+		k := key{repo.Slug(), n}
+		if v, ok := seen[k]; ok {
+			return v.r, v.err
+		}
+		r, err := readWorkerRecordFn(fg, repo, n)
+		seen[k] = val{r, err}
+		return r, err
+	}
+}
+
+// checkAuthoringStamp is the authoring-stamp condition (#6855), decided by the ONE shared
+// implementation `deskpost ready` also calls (deskkit.AuthoringStampGate), so the two flip
+// verbs cannot drift. A refusal names the condition and carries the exact `--stamp-only` line.
+func checkAuthoringStamp(o flipOpts, fr deskkit.ForgeRepo, body string, tl deskkit.StampTimeline,
+	read deskkit.WorkerRecordReader) error {
+	msg, err := deskkit.AuthoringStampGate(fr, o.pr, body, tl, read)
+	if err != nil {
+		return err
+	}
+	o.say("%s OK: %s", condAuthoringStamp, msg)
+	return nil
 }
 
 // readLabelEvents reads the target PR's label timeline — BOTH `labeled` and `unlabeled`

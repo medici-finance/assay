@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 	"github.com/medici-finance/assay/statusgen/evaluation"
 
 	"fmt"
@@ -1063,7 +1064,7 @@ func implementerAttributed(runnerCell string) bool {
 // "implementer run" table followed by an "independent re-run" table); each
 // table's own header+separator pair is skipped in turn.
 //
-// Cells are split with splitRowEscaped, the local escape-aware variant. A
+// Cells are split with briefdoc.SplitRowEscaped, the escape-aware splitter. A
 // Command cell legitimately contains an escaped pipe (e.g.
 // “ `grep -ciE "arm64\|amd64"` “); a splitter that does not know about the
 // escape cuts the row there too, so a row that names a "Runner" column by index
@@ -1075,7 +1076,7 @@ func implementerAttributed(runnerCell string) bool {
 // uses for the identical by-header-column read.
 //
 // A named Runner column is only trustworthy when the row's cell count
-// matches the header's. splitRowEscaped correctly
+// matches the header's. briefdoc.SplitRowEscaped correctly
 // treats an UNESCAPED pipe as a real delimiter, so a Command cell holding one
 // (e.g. an unescaped shell pipe in a backticked snippet — the common mistake
 // an author makes when they forget to escape) still shifts every cell after
@@ -1102,7 +1103,7 @@ func evidenceHasIndependentRow(evidence string) bool {
 		// skip both rows.
 		if i+1 < len(lines) && separatorRowRe.MatchString(strings.Trim(strings.TrimSpace(lines[i+1]), "|")) {
 			runnerIdx = -1
-			headerRow := splitRowEscaped(line)
+			headerRow := briefdoc.SplitRowEscaped(line)
 			headerCells = len(headerRow)
 			for j, c := range headerRow {
 				if strings.EqualFold(strings.TrimSpace(c), "runner") {
@@ -1112,7 +1113,7 @@ func evidenceHasIndependentRow(evidence string) bool {
 			i++
 			continue
 		}
-		cells := splitRowEscaped(line)
+		cells := briefdoc.SplitRowEscaped(line)
 		if len(cells) == 0 {
 			continue
 		}

@@ -286,9 +286,9 @@ type cursorMarketplaceEntry struct {
 }
 
 // renderCursorMarketplace derives the root Cursor marketplace from the Claude
-// marketplace catalog: the catalog's name and owner, and one entry naming the
-// plugin and its source directory. The catalog must list the plugin at that
-// source, so the two marketplaces cannot point at different trees.
+// marketplace catalog. It includes the bundle being generated and other local
+// plugins that ship a native Cursor manifest. Claude-only entries stay private
+// to that catalog.
 func renderCursorMarketplace(catalogPath, plugin, source string) (string, error) {
 	b, err := os.ReadFile(catalogPath)
 	if err != nil {
@@ -310,11 +310,24 @@ func renderCursorMarketplace(catalogPath, plugin, source string) (string, error)
 	if strings.TrimSpace(c.Name) == "" || strings.TrimSpace(c.Owner.Name) == "" {
 		return "", fmt.Errorf("marketplace catalog %s has no name/owner.name", catalogPath)
 	}
+	root := filepath.Dir(filepath.Dir(catalogPath))
 	found := false
+	entries := make([]cursorMarketplaceEntry, 0, len(c.Plugins))
 	for _, e := range c.Plugins {
 		if e.Name == plugin && e.Source == source {
 			found = true
+		} else {
+			if !filepath.IsLocal(e.Name) || e.Name == "." || filepath.Base(e.Name) != e.Name || e.Source != "./plugins/"+e.Name {
+				continue
+			}
+			manifest := filepath.Join(root, e.Source, ".cursor-plugin", "plugin.json")
+			if _, err := os.Stat(manifest); os.IsNotExist(err) {
+				continue
+			} else if err != nil {
+				return "", fmt.Errorf("reading Cursor plugin manifest %s: %w", manifest, err)
+			}
 		}
+		entries = append(entries, cursorMarketplaceEntry{Name: e.Name, Source: e.Source})
 	}
 	if !found {
 		return "", fmt.Errorf("marketplace catalog %s lists no %q entry with source %q", catalogPath, plugin, source)
@@ -322,6 +335,6 @@ func renderCursorMarketplace(catalogPath, plugin, source string) (string, error)
 	return encodeJSON(cursorMarketplace{
 		Name:    c.Name,
 		Owner:   cursorMarketplaceOwner{Name: c.Owner.Name},
-		Plugins: []cursorMarketplaceEntry{{Name: plugin, Source: source}},
+		Plugins: entries,
 	}), nil
 }

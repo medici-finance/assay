@@ -135,9 +135,9 @@ nothing measured.
 
    | State | Meaning | Effect |
    |---|---|---|
-   | `CORROBORATED` | every path the `fixed-here` site resolves to is in the diff; `follow-up <stream>/<NN>` exists **and** references back | — |
+   | `CORROBORATED` | every path the `fixed-here` site resolves to is in the diff; `follow-up <stream>/<NN>` to another brief exists **and** references back; a self-route (`follow-up` naming this brief) only when the diff touches every path its site resolves to, or names a site absent from the tree (deleted or renamed here) | — |
    | `DISPROVED` | the diff contradicts the claim: a path the site names is absent from the diff, the target brief does not exist, `out-of-scope` names a file this same diff edits, or the entry states no routing at all | **exit 1 — the gate** |
-   | `UNCHECKED` | the evidence is not visible here: an out-of-repo path, a component named in prose, `out-of-scope` whose truth is a judgement no diff settles, or an entry **inherited unchanged from the merge-base** (some earlier branch made that claim) | printed and counted, never a pass |
+   | `UNCHECKED` | the evidence is not visible here: an out-of-repo path, a component named in prose, `out-of-scope` whose truth is a judgement no diff settles, a self-route whose site the diff leaves wholly or partly untouched (an open deferral, never `DISPROVED`), or an entry **inherited unchanged from the merge-base** (some earlier branch made that claim) | printed and counted, never a pass |
 
    For post-merge verification, pin the delivery and its first parent with the explicit
    [delivery-check contract](consumer-delivery-checks.md); the branch default is not a
@@ -304,12 +304,12 @@ nothing measured.
     - **What counts.** The same pinned statusgen release, at the revision the row's witness
       names, run with `--acceptance-forge` in the host lane (a network-off `check:ci`
       sandbox cannot reach the forge), exits 0 with `LINT: PASS`.
-    - **Which credential reads the approval.** The run is made under a verifier-admission
-      signal (an admitted `statusgen verifyrun`, a `DESK_LOOP` naming a verify loop, or a
-      working repository holding the verifier attestation file) or with
-      `GH_TOKEN`/`GITHUB_TOKEN` set explicitly. Under those conditions the binary reads the
-      approval with that credential only and never falls back to a stored forge login. The
-      binary does not enforce this outside them, so a run made outside them is not credited.
+    - **Which credential reads the approval.** Only the run that `statusgen verifyrun
+      --rule51` makes inside an admitted run, under that run's verifier read credential. Its
+      stamp records `cred=verifier-run-read` and the credential's digest, and a stamp naming
+      any other class, or no credential digest, is not credited. A forge-enabled run made any
+      other way (by hand, under an explicitly set forge credential variable, or under a stored
+      forge login) writes no stamp and is never credited, whatever it printed.
     - **What does not count.** A forge-enabled run is `could-not-run` when any PROBLEM
       says an authority read did not complete: `could-not-check repository authority: …`,
       or `human approval could not be corroborated: …` because the record could not be read
@@ -326,13 +326,33 @@ nothing measured.
       something other than a clean repo-wide lint (one brief's lint, a named NOTICE, a
       problem count) is outside this rule.
     - **The row is not rewritten.** The Verify row keeps its authored command, because
-      editing a protected row needs its own transition. The Evidence entry records the
-      forge-enabled run beside the row's offline witness and cites this rule.
-    - **The record is not a rule-36 witness, and it is not written as a table row.** No tool
-      writes it. `statusgen` reads every `|` table row in an `## Evidence` section, so a
-      row in the witness columns would become the Verify row's newest witness, recording a
+      editing a protected row needs its own transition.
+    - **The tool writes the witness: `statusgen verifyrun --rule51`.**
+      Ruling A: https://github.com/medici-finance/assay/issues/4823#issuecomment-7015568405
+      The class is exact, never a substring: the command is, token for token,
+      `statusgen` with `--lint` and at most one `--root .` (or `--root=.`), or
+      `cd statusgen && go run .` with `--lint` and `--root ..`, and nothing else (no
+      `--diff-base`, `--acceptance-forge`, `--json`, redirection, pipe or `;`). The Expect
+      decides on exit 0 with no count bound and no required line but `LINT: PASS`. For
+      each such row the offline run records red, an admitted host run with `--rule51` also
+      runs its own binary as `--root . --lint --acceptance-forge` under the run's verifier
+      read credential. The row's witness keeps its authored command and offline result
+      and gains a stamp in its Result cell: `rule51=<state> forge-rc=<n>
+      forge-out=sha256:<12> pin=<version> cred=verifier-run-read cred-digest=sha256:<12>
+      stamp=sha256:<64>`. The stamp's digest binds it to the row's id, command, offline
+      result and output hash, tree and date. `verifyrun --check` and the closure gate
+      (`brief --check-verified`, which `deskevidence` runs) credit the row only when that
+      digest holds, the forge state is `pass` with rc 0, the credential class is the
+      verifier's run-scoped read credential, the pin is a release tag (a `dev` build is
+      not a pin) and the tree is a clean revision. Anything else stays the recorded
+      failure. The digest is unkeyed: it is a tool format, not a signature, so a
+      hand-written stamp is held to admission and review like any witness row.
+    - **A hand record is not a rule-36 witness, and it is never credited.** A prose or
+      hand-table citation of a forge run does not clear the row. Where one is still
+      written for a reader, it is never a table row: `statusgen` reads every `|` table
+      row in an `## Evidence` section, so a row in the witness columns would become the Verify row's newest witness, recording a
       command the row does not carry. `verifyrun --check` would then report the row
-      `could-not-run`, and the witness gate would refuse the close. Record the run as
+      `could-not-run`, and the witness gate would refuse the close. Write it as
       prose or a fenced block outside any table, with no line starting with `|`. State
       the command as run, its exit status and the state decided above, the revision, the
       date, who ran it, and the `sha256:` fingerprint of the combined output. Include the
@@ -977,6 +997,22 @@ passing run — which is why they are lint rules and not review vigilance.
       `## Context` (or its spec) describes. A production instance is never a
       Verify environment.
     - `cluster:<name>` — a live cluster, run by the pod runner (`check:cluster`).
+
+    A `service:<name>` cell may also DECLARE the cell dev-env names the row needs
+    (desk-containers/35): `service:<name>:<NAME>[,<NAME>…]`, for example
+    `service:pg-local:DEVENV_PGHOST,DEVENV_PGPORT`. `<name>` keeps its grammar,
+    which admits neither `:` nor `,`, so the form parses without ambiguity. A row
+    that declares no names receives none from the cell's dev-env file
+    ([`../containers/secrets.md`](../containers/secrets.md) §4.5). A declarable
+    name matches `DEVENV_[A-Z0-9_]+` and nothing else (deny by default): no shell,
+    loader, interpreter, forge client, git or Assay component reads that namespace
+    on its own. The row passes a declared value to its tool explicitly in its own
+    command (`PGHOST="$DEVENV_PGHOST" psql …`), where review sees it. In every
+    table with the column, whatever the row's class, `statusgen --lint`
+    hard-errors on a malformed name, a duplicate name, a name outside the
+    allow-list (naming its class where it is a path-and-home, dynamic-loader,
+    interpreter-options, tool-configuration, agent-socket or Assay name) and
+    declared names on any kind but `service`.
 
     `<name>` is lower-case letters, digits, `.`, `_` and `-`. In a table that
     carries the column, `statusgen --lint` hard-errors (PROBLEM) on an Env cell

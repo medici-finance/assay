@@ -75,16 +75,21 @@ func TestVerifyflipLooseHeaderWitnessRefuses(t *testing.T) {
 	}
 }
 
-// TestHeldLatestCreditedAboveProtected: a protected-table marker makes the witness
-// check read the full history, so it keeps 3c off whatever lies above the
-// heading, and so does any row a flip reader reads there; plain prose above
-// it does not.
+// TestHeldLatestCreditedAboveProtected: a protected-table marker in a record
+// the protected audit reads whole (no verdict, so no run is selected) keeps
+// 3c off whatever lies above the heading. Once the record holds a verdict the
+// audit reads only the latest PASS run, so the marker alone no longer keeps
+// 3c off (#5541). Any row a flip reader reads above the heading still does;
+// plain prose above it does not.
 // regression: #4294
 func TestHeldLatestCreditedAboveProtected(t *testing.T) {
 	sha := strings.Repeat("a", 40)
 	marker := "Verification-Table: delivery=" + sha + " base=" + sha + " original=" + sha + "\n"
-	if !heldCreditedAbove([]string{"prose only"}, marker+vlLatestRun()) {
-		t.Errorf("a protected-table marker does not keep 3c off")
+	if !heldCreditedAbove([]string{"prose only"}, marker+vlLatest+witnessTableFor(vfRow1, vlRow2)) {
+		t.Errorf("a protected-table marker in a record read whole does not keep 3c off")
+	}
+	if heldCreditedAbove([]string{"prose only"}, marker+vlLatestRun()) {
+		t.Errorf("a protected-table marker keeps 3c off although the audit reads only the latest PASS run")
 	}
 	if heldCreditedAbove([]string{"prose only"}, vlLatestRun()) {
 		t.Errorf("prose above the heading keeps 3c off")

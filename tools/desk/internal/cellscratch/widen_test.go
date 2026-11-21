@@ -19,7 +19,8 @@ func abandonedRuns(t *testing.T, s *Store, n int) []*Run {
 	for i := 0; i < n; i++ {
 		r := scratchRun(t, s)
 		plantBuild(t, r)
-		finish(t, r, 1)
+		// Never finished: a crashed session, so the build-only rule applies.
+		must(t, r.Close())
 		backdate(t, s, r, DefaultPolicy().MaxAge+time.Duration(n-i)*time.Hour)
 		runs = append(runs, r)
 	}
