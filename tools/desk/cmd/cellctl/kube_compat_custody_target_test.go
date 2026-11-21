@@ -22,7 +22,8 @@ type qualificationReceipt struct {
 }
 
 // Admit only this disposable run's exact target before invoking the ordinary
-// cellctl command. No environment discovery or Kubernetes request is needed.
+// cellctl command. This models fixture selection only. The shipped disposable
+// target admission clauses for opt-in and run ownership remain undelivered.
 func offlineQualificationTarget(optIn bool, runID, profilePath, receiptPath string) error {
 	if !optIn {
 		return errors.New("explicit qualification opt-in required")

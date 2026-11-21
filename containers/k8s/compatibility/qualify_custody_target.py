@@ -13,10 +13,9 @@ import sys
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 TEST = 'TestKubeCompatCustodyTarget'
-TARGET_CASES = {
-    'admitted', 'opt-in', 'endpoint', 'tls-name', 'ca-pin', 'context',
-    'namespace', 'profile', 'valid-other-profile', 'other-run', 'missing-receipt',
-}
+NATIVE_REFUSALS = {'endpoint', 'tls-name', 'ca-pin', 'context', 'namespace', 'profile'}
+FIXTURE_REFUSALS = {'opt-in', 'valid-other-profile', 'other-run', 'missing-receipt'}
+TARGET_CASES = {'admitted'} | NATIVE_REFUSALS | FIXTURE_REFUSALS
 sys.dont_write_bytecode = True
 spec = importlib.util.spec_from_file_location('k8s_check', HERE.parent / 'check.py')
 check = importlib.util.module_from_spec(spec)
@@ -116,19 +115,26 @@ def check_targets():
     run = subprocess.run(['go', 'test', '-json', '-count=1', '-timeout=5m',
                           '-run', '^' + TEST + '$', './cmd/cellctl'],
                          cwd=ROOT / 'tools/desk', env=env, capture_output=True, text=True)
-    passed = set()
+    required = {TEST} | {f'{TEST}/{case}' for case in TARGET_CASES}
+    passed, failed = set(), set()
     for line in run.stdout.splitlines():
         event = json.loads(line)
+        name = event.get('Test')
+        if event.get('Action') == 'fail' and name in required:
+            failed.add(name)
         if event.get('Action') == 'pass':
-            passed.add(event.get('Test'))
+            passed.add(name)
         if run.returncode and event.get('Output'):
             sys.stderr.write(event['Output'])
-    if run.returncode:
+    if run.stderr:
         sys.stderr.write(run.stderr)
-        raise check.Unavailable('compiled cellctl custody-target fixture did not pass')
-    required = {TEST} | {f'{TEST}/{case}' for case in TARGET_CASES}
+    if failed:
+        raise check.Invalid('named custody-target tests failed: ' + ', '.join(sorted(failed)))
+    if run.returncode:
+        raise check.Unavailable('Go did not report a result for the selected custody-target tests')
     missing = required - passed
-    check.need(not missing, 'missing named test passes: ' + ', '.join(sorted(missing)))
+    if missing:
+        raise check.Unavailable('missing named test passes: ' + ', '.join(sorted(missing)))
 
 
 def main():
@@ -142,12 +148,24 @@ def main():
     check_targets()
     print(json.dumps({'suite': 'custody-target', 'environment': 'offline-fixture',
                       'result': 'pass', 'target_cases': sorted(TARGET_CASES),
+                      'compiled_cli_refusals': sorted(NATIVE_REFUSALS),
+                      'fixture_only_admission_refusals': sorted(FIXTURE_REFUSALS),
+                      'hosted_target_admission': 'undelivered',
                       'policy_mutations': rejections, 'roles': check.roles(),
                       'effective_cluster_custody': 'unmeasured'}, sort_keys=True))
 
 
-if __name__ == '__main__':
+def run_suite():
     try:
         main()
-    except (OSError, check.Invalid, check.Unavailable) as error:
-        sys.exit(f'could-not-check: {error}')
+        return 0
+    except check.Invalid as error:
+        print(f'checked-failed: {error}', file=sys.stderr)
+        return 1
+    except (OSError, ValueError, check.Unavailable) as error:
+        print(f'could-not-check: {error}', file=sys.stderr)
+        return 2
+
+
+if __name__ == '__main__':
+    sys.exit(run_suite())
