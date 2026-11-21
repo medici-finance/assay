@@ -8,6 +8,7 @@ unblocks: ["tool-refactoring/10", "tool-refactoring/11"]
 effort: M
 gate: human
 decision-issue: 7061
+ruling: "https://github.com/medici-finance/assay/issues/7061#issuecomment-7066059966"
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2
