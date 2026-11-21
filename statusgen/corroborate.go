@@ -640,9 +640,10 @@ type stampRow struct {
 
 // stamp describes a single human:<name> occurrence found in a PR diff.
 type stamp struct {
-	Name string // the <name> portion (e.g. "alex")
-	File string // the file it appeared in
-	Line string // the full added line (first 120 chars, for context)
+	Name      string // the <name> portion (e.g. "alex")
+	File      string // the file it appeared in
+	Line      string // the full added line (first 120 chars, for context)
+	Locations []int  // destination lines of the grouped occurrences
 
 	// Rows lists every brief status-table row this (name,file) stamp was found on
 	// (accumulated across the dedup below). It is the input to the pre-existing
@@ -943,6 +944,10 @@ func markPreExisting(stamps []stamp, baseRowsByFile map[string]map[string]string
 // no checkout to consult, in which case only the hardcoded education prefix
 // excludes — the marker mechanism fails closed to "fully scanned".
 func stampsInDiff(root, diff string) []stamp {
+	return stampsInAddedLines(addedDiffLines(root, diff))
+}
+
+func stampsInAddedLines(added []diffAddedLine) []stamp {
 	var out []stamp
 	// curHeader holds the cells of the most recent board status-table HEADER row seen
 	// (as an ADDED line) in the current file — the branch table's own header. A board
@@ -959,7 +964,7 @@ func stampsInDiff(root, diff string) []stamp {
 	// fixture corpus with the on-disk marker (Ian 2026-09-01 desk walk), a PATH
 	// check, so a forged human:<name> OUTSIDE a declared corpus is unaffected — and
 	// sets aside the removed side of an embedded patch (#1395).
-	for _, al := range addedDiffLines(root, diff) {
+	for _, al := range added {
 		if al.Section != curSection {
 			curSection = al.Section
 			curHeader = nil
@@ -1000,9 +1005,10 @@ func stampsInDiff(root, diff string) []stamp {
 		for _, m := range humanStampRe.FindAllStringSubmatch(scan, -1) {
 			name := strings.ToLower(m[1])
 			s := stamp{
-				Name: name,
-				File: curFile,
-				Line: strings.TrimSpace(lineCtx),
+				Name:      name,
+				File:      curFile,
+				Line:      strings.TrimSpace(lineCtx),
+				Locations: []int{al.Number},
 			}
 			// Resolve this occurrence to a board status-table row. Anything that is
 			// NOT a board row (prose, authorized-by:, an Evidence cell, frontmatter)
@@ -1036,6 +1042,7 @@ func stampsInDiff(root, diff string) []stamp {
 				Name:       strings.ToLower(name),
 				File:       curFile,
 				Line:       strings.TrimSpace(lineCtx),
+				Locations:  []int{al.Number},
 				Unresolved: true, // a homoglyph name resolves to no board row — never exempt
 			})
 		}
@@ -1050,6 +1057,10 @@ func stampsInDiff(root, diff string) []stamp {
 	for _, s := range out {
 		key := s.Name + "\x00" + s.File
 		if idx, ok := seen[key]; ok {
+			lines := deduped[idx].Locations
+			if n := s.Locations[0]; n != lines[len(lines)-1] {
+				deduped[idx].Locations = append(lines, n)
+			}
 			deduped[idx].Rows = append(deduped[idx].Rows, s.Rows...)
 			deduped[idx].Unresolved = deduped[idx].Unresolved || s.Unresolved
 			continue
@@ -1058,6 +1069,31 @@ func stampsInDiff(root, diff string) []stamp {
 		deduped = append(deduped, s)
 	}
 	return deduped
+}
+
+// diffStampClaims prepares the same candidates for offline preview and online corroboration.
+// Reading the decision record also catches an unchanged decided-by on an edited record.
+func diffStampClaims(added []diffAddedLine, readRecord func(string) decisionRecordStamp) ([]stamp, []decisionRecordStamp) {
+	stamps := stampsInAddedLines(added)
+	var records []decisionRecordStamp
+	for _, file := range decisionRecordsInAddedLines(added) {
+		records = append(records, readRecord(file))
+	}
+	return addDecisionRecordStamps(stamps, records), records
+}
+
+func markBaseStampCells(stamps []stamp, readRows func(string) (map[string]string, map[string]int)) {
+	rows := map[string]map[string]string{}
+	headers := map[string]map[string]int{}
+	for _, s := range stamps {
+		if s.Unresolved {
+			continue
+		}
+		if _, read := rows[s.File]; !read {
+			rows[s.File], headers[s.File] = readRows(s.File)
+		}
+	}
+	markPreExisting(stamps, rows, headers)
 }
 
 // ---- verdict types ---------------------------------------------------------------
@@ -1471,19 +1507,16 @@ func runCorroborate(prsArg string) int {
 		}
 
 		// --- human:<name> STAMP corroboration ---
-		stamps := stampsInDiff(".", diff)
+		stamps, recs := diffStampClaims(addedDiffLines(".", diff), func(file string) decisionRecordStamp {
+			return loadDecisionRecordStamp(".", file)
+		})
 		// --- design-decision RULING-LINK lane (registers-v1 §7.5) ---
 		// Every DR record this PR adds or edits has its decided-by made visible to
 		// the stamp lane (the literal `human:<name>` placeholder included, which
 		// humanStampRe cannot see), and its ruling: link — when present — resolved
 		// through the forge. Records the PR does not touch are not re-gated.
 		var rulings rulingOutcomes
-		if drFiles := decisionRecordsInDiff(".", diff); len(drFiles) > 0 {
-			var recs []decisionRecordStamp
-			for _, f := range drFiles {
-				recs = append(recs, loadDecisionRecordStamp(".", f))
-			}
-			stamps = addDecisionRecordStamps(stamps, recs)
+		if len(recs) > 0 {
 			rulings = resolveDecisionRulings(rulingForgeClient(), ".", repo, recs, scanEffectiveConfig().HumanLogins)
 		}
 		if len(stamps) == 0 {
@@ -1507,18 +1540,9 @@ func runCorroborate(prsArg string) int {
 			// PR; a board migration that re-emits whole tables must not re-gate it
 			// here. A merge-base that cannot be resolved (or a base file that cannot
 			// be read) exempts nothing — the fail-closed direction.
-			mb := getMergeBase()
-			baseRowsByFile := map[string]map[string]string{}
-			baseHeadersByFile := map[string]map[string]int{}
-			for i := range stamps {
-				f := stamps[i].File
-				if _, ok := baseRowsByFile[f]; !ok {
-					rows, header := briefRowsAtRef(".", mb, f)
-					baseRowsByFile[f] = rows
-					baseHeadersByFile[f] = header
-				}
-			}
-			markPreExisting(stamps, baseRowsByFile, baseHeadersByFile)
+			markBaseStampCells(stamps, func(file string) (map[string]string, map[string]int) {
+				return briefRowsAtRef(".", getMergeBase(), file)
+			})
 			for _, r := range corroborateStampsRuled(stamps, data, repo, pr, gates, rulings) {
 				allResults = append(allResults, r)
 				if r.Verdict == verdictMissing {
