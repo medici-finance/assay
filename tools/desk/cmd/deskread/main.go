@@ -243,7 +243,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 // separate from readKinds on purpose: a kind added to readKinds is NOT served under the CI
 // transport until a reviewed diff adds it here (forge-neutral brief 18 owns each addition its
 // CI-lane sites need). TestCITransportKindsAreReads pins that every entry is also a readKinds kind.
-var ciTransportKinds = map[string]bool{"issues": true, "trust": true, "comments": true}
+var ciTransportKinds = map[string]bool{
+	"issues": true, "trust": true, "comments": true,
+	"issue": true, "label-events": true, // statusgen verifier attestation credit
+}
 
 // toolClassFor is the one place deskread picks its roster class. The CI class (ClassForTool(true),
 // which is ClassCI only inside CI) is chosen ONLY when the command line parsed cleanly and carried
