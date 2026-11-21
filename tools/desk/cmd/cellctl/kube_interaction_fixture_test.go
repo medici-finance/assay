@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -27,8 +28,8 @@ import (
 // a local fixture runtime. The image digest in the Kubernetes identity remains
 // the published candidate's; the executable launcher bytes come from its commit.
 type interactionFixture struct {
-	host, image, name, dir, role, source, mutation string
-	binding                                        kc.Role
+	host, image, name, dir, owner, role, source, mutation string
+	binding                                               kc.Role
 }
 
 func fixtureFile(t *testing.T, path string) []byte {
@@ -82,6 +83,9 @@ func prepareInteraction(t *testing.T, role string, binding kc.Role, mutation str
 	f.image, err = f.docker(ctx, "image", "inspect", image, "--format", "{{.Id}}")
 	if err != nil {
 		t.Fatal("could-not-check: cached offline fixture runtime required", err)
+	}
+	if err := f.selectMountOwner(ctx); err != nil {
+		t.Fatal("could-not-check: private fixture mount ownership", err)
 	}
 	root := filepath.Join("..", "..", "..", "..")
 	component := filepath.Join(root, "containers/k8s/components/compatibility-cellctl")
@@ -152,21 +156,67 @@ func prepareInteraction(t *testing.T, role string, binding kc.Role, mutation str
 		t.Fatal(err)
 	}
 	writeFixtureFile(t, filepath.Join(dir, "profile.json"), descriptor, 0644)
-	if _, err = f.docker(ctx, append(f.runBase(), "--rm", f.image, "-I", "/work/desk-session.py", "--prepare", "--profile", "/work/profile.json")...); err != nil {
+	if _, err = f.docker(ctx, append(f.runBase(false), "--rm", f.image, "-I", "/work/desk-session.py", "--prepare", "--profile", "/work/profile.json")...); err != nil {
 		t.Fatal(err)
 	}
 	return f
 }
 
-func (f *interactionFixture) runBase() []string {
-	return []string{"run", "--pull=never", "--network=none", "--cap-drop=ALL", "--security-opt", "no-new-privileges", "--mount", "type=bind,src=" + f.dir + ",dst=/work", "--entrypoint", "python3"}
+// The daemon's user namespace can map the native host UID differently. Stat
+// the empty mount itself, read-only, before writing any fixture files.
+func (f *interactionFixture) selectMountOwner(ctx context.Context) error {
+	args := append(f.runBase(true), "--rm", f.image, "-I", "-c",
+		"import os; s = os.stat('/work'); print(f'{s.st_uid}:{s.st_gid}')")
+	owner, err := f.docker(ctx, args...)
+	if err != nil {
+		return err
+	}
+	if !regexp.MustCompile(`^[0-9]{1,10}:[0-9]{1,10}$`).MatchString(owner) {
+		return fmt.Errorf("invalid fixture owner %q", owner)
+	}
+	f.owner = owner
+	return nil
+}
+
+func (f *interactionFixture) runBase(probe bool) []string {
+	mount := "type=bind,src=" + f.dir + ",dst=/work"
+	args := []string{"run", "--pull=never", "--network=none", "--cap-drop=ALL", "--security-opt", "no-new-privileges", "--entrypoint", "python3"}
+	if probe {
+		mount += ",readonly"
+	} else {
+		args = append(args, "--user", f.owner)
+	}
+	return append(args, "--mount", mount)
+}
+
+// regression: #7356
+func TestKubeCompatPrivateFixtureOptions(t *testing.T) {
+	f := interactionFixture{dir: "/private-fixture", owner: "1000:1000"}
+	option := func(args []string, key string) string {
+		if i := slices.Index(args, key); i >= 0 && i+1 < len(args) {
+			return args[i+1]
+		}
+		return ""
+	}
+	probe := f.runBase(true)
+	workload := f.runBase(false)
+	if option(probe, "--mount") != "type=bind,src=/private-fixture,dst=/work,readonly" ||
+		option(workload, "--mount") != "type=bind,src=/private-fixture,dst=/work" ||
+		option(workload, "--user") != f.owner {
+		t.Fatalf("mount ownership or write boundary changed: probe=%v workload=%v", probe, workload)
+	}
+	for _, args := range [][]string{probe, workload} {
+		if !slices.Contains(args, "--cap-drop=ALL") || !slices.Contains(args, "--network=none") || !slices.Contains(args, "--pull=never") || option(args, "--security-opt") != "no-new-privileges" {
+			t.Fatalf("offline fixture isolation changed: %v", args)
+		}
+	}
 }
 
 func (f *interactionFixture) start() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	r := f.binding
-	args := append(f.runBase(), "-dit", "--name", f.name, "-e", "ASSAY_DESK="+f.role, "-e", "ASSAY_POD_UID=pod-"+f.role+"-1", "-e", "ASSAY_COMPAT_INIT_ID="+r.InitializationID, "-e", "ASSAY_COMPAT_LAUNCH_ID="+r.LaunchID, f.image, "-I", "/work/desk-session.py", "--profile", "/work/profile.json")
+	args := append(f.runBase(false), "-dit", "--name", f.name, "-e", "ASSAY_DESK="+f.role, "-e", "ASSAY_POD_UID=pod-"+f.role+"-1", "-e", "ASSAY_COMPAT_INIT_ID="+r.InitializationID, "-e", "ASSAY_COMPAT_LAUNCH_ID="+r.LaunchID, f.image, "-I", "/work/desk-session.py", "--profile", "/work/profile.json")
 	if _, err := f.docker(ctx, args...); err != nil {
 		return err
 	}

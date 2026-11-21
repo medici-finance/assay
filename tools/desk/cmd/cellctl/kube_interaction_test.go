@@ -266,6 +266,10 @@ func runInteraction(t *testing.T, role, mutation string) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	sourceStatus, err := exec.Command("git", "status", "--porcelain").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
 	runtimeID, err := f.docker(context.Background(), "inspect", "--format", "{{.Id}}", f.name)
 	if err != nil {
 		t.Fatal(err)
@@ -275,9 +279,9 @@ func runInteraction(t *testing.T, role, mutation string) {
 		t.Fatal(err)
 	}
 	payload := map[string]any{"role": role,
-		"cli_source": strings.TrimSpace(string(revision)), "cli_sha256": shaString(fixtureFile(t, cellctlBinary(t))),
+		"cli_source": strings.TrimSpace(string(revision)), "cli_source_dirty": len(sourceStatus) != 0, "cli_sha256": shaString(fixtureFile(t, cellctlBinary(t))),
 		"candidate_source": f.source, "identity": before, "profile_sha256": shaString(fixtureFile(t, server.ProfilePath)),
-		"fixture_image": f.image, "fixture_container": runtimeID,
+		"fixture_mount_owner": f.owner, "fixture_image": f.image, "fixture_container": runtimeID,
 		"launcher_sha256": shaString(fixtureFile(t, filepath.Join(f.dir, "desk-session.py"))), "harness": "claude", "model": f.binding.Model,
 		"agent_sha256": f.binding.AgentSHA256, "agent_version": f.binding.AgentVersion, "launch_id": f.binding.LaunchID, "pid": pid,
 		"agent_starts": 1, "model_requests": 1, "result": want,

@@ -102,3 +102,11 @@ published candidate image, executable and runtime digests, terminal execution,
 request count and retained task result. This exercises the offline interaction
 contract. Running the published images on a Kubernetes target belongs to the
 separately authorized real-profile qualification.
+
+To run just the interaction count controls, use the same explicit Docker socket
+and cached image selection as the five-role check, then run from the repository root:
+
+```sh
+ASSAY_QUALIFY_INTERACTION=1 GOWORK=off GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local \
+  go -C tools/desk test -count=1 -run '^TestKubeCompatInteractionCountControls$' ./cmd/cellctl
+```
