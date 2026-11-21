@@ -84,7 +84,9 @@ func creditFakeDeskread(t *testing.T) {
 		}
 	}
 	writeStubBin(t, bin, "deskread", `#!/bin/sh
-if [ -n "$CREDIT_FAKE_FAIL" ]; then echo "deskread: the forge is unreachable" >&2; exit 4; fi
+if [ "$CREDIT_FAKE_FAIL" = "1" ] || [ "$CREDIT_FAKE_FAIL" = "$1" ]; then echo "deskread: the forge is unreachable" >&2; exit 4; fi
+if [ -n "$CREDIT_FAKE_CI" ] && [ "$4" != "--ci-workflow-token" ]; then exit 5; fi
+if [ -z "$CREDIT_FAKE_CI" ] && [ "$#" -ne 3 ]; then exit 5; fi
 n=${3##*#}
 f="$CREDIT_FAKE_DIR/$1-$n.json"
 [ -f "$f" ] || { echo "deskread: no fixture $f" >&2; exit 3; }
@@ -92,6 +94,7 @@ cat "$f"
 `)
 	t.Setenv("CREDIT_FAKE_DIR", dir)
 	t.Setenv("CREDIT_FAKE_FAIL", "")
+	t.Setenv("CREDIT_FAKE_CI", "")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
@@ -226,6 +229,18 @@ func TestBracketCredit(t *testing.T) {
 	if code, out := base.credit(t, fixtureSource); code != verifyrunExitPass || !strings.Contains(out, " verdict=match ") || !strings.HasSuffix(strings.TrimSpace(strings.Split(out, "\n")[0]), " credit=credited") {
 		t.Fatalf("base: exit %d output %q, want credit=credited exit 0", code, out)
 	}
+
+	t.Run("workflow transport", func(t *testing.T) {
+		t.Setenv("CREDIT_FAKE_CI", "1")
+		args := []string{"--bracket-digest", "--witness", base.brief, "--credit", "--source", fixtureSource, "--ci-workflow-token"}
+		if res, out := captureVerifyrunOut(t, args); res.code != verifyrunExitPass || !strings.Contains(out, " credit=credited") {
+			t.Fatalf("workflow credit: exit %d output %q, want credited", res.code, out)
+		}
+		t.Setenv("CREDIT_FAKE_FAIL", "label-events")
+		if res, out := captureVerifyrunOut(t, args); res.code != verifyrunExitCouldNot || !strings.Contains(out, " credit=could-not-check") {
+			t.Fatalf("workflow credit unavailable: exit %d output %q, want could-not-check", res.code, out)
+		}
+	})
 
 	type outcome struct {
 		code    int
@@ -555,7 +570,16 @@ func TestCreditBindingSource(t *testing.T) {
 // admits or refuses each shared fixture as its `expect` says. deskkit's
 // TestVerifierAttestationCreditParity reads the same files.
 func TestCreditRecordFixtures(t *testing.T) {
+	for _, mode := range []string{"custody", "workflow"} {
+		t.Run(mode, func(t *testing.T) { testCreditRecordFixtures(t, mode == "workflow") })
+	}
+}
+
+func testCreditRecordFixtures(t *testing.T, ci bool) {
 	creditFakeDeskread(t)
+	if ci {
+		t.Setenv("CREDIT_FAKE_CI", "1")
+	}
 	fixtures := loadCreditRecordFixtures(t)
 	names := make([]string, 0, len(fixtures))
 	for n := range fixtures {
@@ -584,7 +608,7 @@ func TestCreditRecordFixtures(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s: %q is not an attestation line", name, att)
 		}
-		cc := &creditContext{desk: "assay-desk-app", repo: creditRepo, rec: creditOK(), records: map[string]creditRecord{}}
+		cc := &creditContext{desk: "assay-desk-app", repo: creditRepo, rec: creditOK(), records: map[string]creditRecord{}, ciWorkflowToken: ci}
 		v := cc.record(a, att)
 		admitted := v.verdict == creditCredited
 		if admitted != (f.Expect == "admit") {

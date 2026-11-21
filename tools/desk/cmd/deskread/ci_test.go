@@ -110,6 +110,10 @@ func newRecSrv(t *testing.T) *recSrv {
 		switch {
 		case r.URL.Path == "/graphql":
 			_, _ = io.WriteString(w, ciTrustBody)
+		case r.URL.Path == "/repos/"+ciRepo+"/issues/7":
+			_, _ = io.WriteString(w, `{"number":7,"state":"closed","title":"Verifier attestation","user":{"login":"verifier","id":42}}`)
+		case r.URL.Path == "/repos/"+ciRepo+"/issues/7/timeline":
+			_, _ = io.WriteString(w, `[{"event":"labeled","label":{"name":"dispatched-tier:strong"},"actor":{"login":"dispatcher","id":43}}]`)
 		case strings.HasPrefix(r.URL.Path, "/repos/"+ciRepo+"/issues"):
 			if r.URL.Query().Get("page") != "1" {
 				_, _ = io.WriteString(w, `[]`)
@@ -342,14 +346,14 @@ func TestCITransportRefusesUnlistedKind(t *testing.T) {
 	wantRefusal(t, "zz-test-only", layerKind, code, stdout, stderr, srv)
 }
 
-// Every ciTransportKinds entry is a real read kind, and the set is exactly the three the brief
-// names: a kind added to it is a reviewed change to this test as well, never a silent widening.
+// Every ciTransportKinds entry is a real read kind, and the set is explicitly pinned.
+// Adding a kind requires a reviewed change to this test as well.
 func TestCITransportKindsAreReads(t *testing.T) {
 	if len(ciTransportKinds) == 0 {
 		t.Fatal("ciTransportKinds is empty")
 	}
-	if got := strings.Join(sortedCIKinds(), ","); got != "comments,issues,trust" || len(ciTransportKinds) != 3 {
-		t.Errorf("ciTransportKinds = %v, want exactly comments, issues, trust", ciTransportKinds)
+	if got := strings.Join(sortedCIKinds(), ","); got != "comments,issue,issues,label-events,trust" || len(ciTransportKinds) != 5 {
+		t.Errorf("ciTransportKinds = %v, want exactly comments, issue, issues, label-events, trust", ciTransportKinds)
 	}
 	for k := range ciTransportKinds {
 		if _, ok := readKinds[k]; !ok {
@@ -420,6 +424,51 @@ func TestCITransportBindsJobRepository(t *testing.T) {
 	fr := deskkit.ForgeRepo{Owner: "example-org", Name: "beta"}
 	if _, _, err := deskkit.ReadOnlyForgeForCIToken(fr, ciRepo, ciTestToken); err == nil || !deskkit.IsRefused(err) {
 		t.Errorf("constructor built a backend for another repository: %v", err)
+	}
+}
+
+func TestCITransportReadsAttestationHistory(t *testing.T) {
+	for _, kind := range []string{"issue", "label-events"} {
+		t.Run(kind, func(t *testing.T) {
+			srv := newRecSrv(t)
+			custody := ciSetup(t, srv)
+			stdout, stderr, code := runCI(t, kind, "--issue", ciRepo+"#7", "--ci-workflow-token")
+			if code != deskkit.ExitOK {
+				t.Fatalf("exit=%d; stderr=%s", code, stderr)
+			}
+			var env ItemEnvelope
+			if err := json.Unmarshal([]byte(stdout), &env); err != nil {
+				t.Fatal(err)
+			}
+			if len(env.Partial) != 0 || len(env.Items) != 1 {
+				t.Fatalf("items=%+v partial=%+v", env.Items, env.Partial)
+			}
+			item := env.Items[0]
+			path := "/repos/" + ciRepo + "/issues/7"
+			if kind == "issue" {
+				if item.Issue == nil || item.Issue.State != "closed" || item.Issue.Author == nil || item.Issue.Author.ID != 42 {
+					t.Fatalf("missing closed issue with author: %+v", item.Issue)
+				}
+			} else {
+				path += "/timeline"
+				if item.LabelEvents == nil || !item.LabelEvents.Complete || len(item.LabelEvents.Events) != 1 || item.LabelEvents.Events[0].ActorID != 43 {
+					t.Fatalf("missing complete label history with actor: %+v", item.LabelEvents)
+				}
+			}
+			reqs := srv.seen()
+			if len(reqs) != 1 || reqs[0].path != path || reqs[0].auth != "token "+ciTestToken {
+				t.Fatal("expected one request to the attestation endpoint using the CI token")
+			}
+			if custody.role != 0 || custody.mint != 0 {
+				t.Fatalf("CI read used custody: %+v", custody)
+			}
+		})
+		t.Run(kind+" foreign repository", func(t *testing.T) {
+			srv := newRecSrv(t)
+			ciSetup(t, srv)
+			stdout, stderr, code := runCI(t, kind, "--issue", ciOtherRepo+"#7", "--ci-workflow-token")
+			wantRefusal(t, kind, layerRepository, code, stdout, stderr, srv)
+		})
 	}
 }
 
