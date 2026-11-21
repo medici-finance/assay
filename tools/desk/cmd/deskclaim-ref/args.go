@@ -65,13 +65,18 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 		case "-h", "--help":
 			return dieUsage()
 		default:
-			// The performance flags follow the same rule. ManualPerformance reads an inline
-			// value itself, so a blank inline value is checked here.
-			flag, missing := rest[i], inline && blank(value)
+			// A performance flag never takes another long option as its value, and a missing
+			// value is refused, since either shifts the arguments that follow. An empty or
+			// blank value is NOT refused: under the shared performance contract it clears the
+			// inherited value and never changes a parser's result (internal/cli/performance.go).
+			flag, missing := rest[i], false
 			if cli.ManualPerformance(&pc, flag, func() string {
-				v, j := spacedValue(rest, i)
-				i, missing = j, v == ""
-				return v
+				if i+1 >= len(rest) || strings.HasPrefix(rest[i+1], "--") {
+					missing = true
+					return ""
+				}
+				i++
+				return rest[i]
 			}) {
 				if missing {
 					errf("refused: %s requires a value", name)

@@ -151,7 +151,7 @@ func TestEveryFlagNeedsValue(t *testing.T) {
 // A value made only of whitespace is a missing value, in the spaced and the inline form alike.
 // The repo and credential resolvers trim it and fall back to the origin remote and the ambient
 // GH_TOKEN, so a blank --repo or --token-file accepted here would act on the wrong repo or
-// under the wrong credential. The performance flags follow the same rule.
+// under the wrong credential. The performance flags are the exception (TestPerfBlankClears).
 // regression: #6896
 func TestBlankValueRefused(t *testing.T) {
 	t.Setenv("GH_TOKEN", "ambient")
@@ -172,9 +172,6 @@ func TestBlankValueRefused(t *testing.T) {
 		{"--owner", []string{"acquire", "at--stream--09", "--repo", r, "--owner", " "}},
 		{"--branch", []string{"acquire", "at--stream--09", "--repo", r, "--branch= "}},
 		{"--reason", []string{"acquire", "at--stream--09", "--repo", r, "--reason", " "}},
-		{"--perf-role", []string{"acquire", "at--stream--09", "--repo", r, "--perf-role="}},
-		{"--perf-role", []string{"acquire", "at--stream--09", "--repo", r, "--perf-role= "}},
-		{"--perf-role", []string{"acquire", "at--stream--09", "--repo", r, "--perf-role", " "}},
 	} {
 		if rc := run(tc.argv...); rc != exitRefused || !strings.Contains(se.String(), tc.flag+" requires a value") {
 			t.Errorf("%q: rc = %d, want 5 naming %s: %s", tc.argv, rc, tc.flag, se.String())
@@ -182,6 +179,24 @@ func TestBlankValueRefused(t *testing.T) {
 		if len(f.claims) != 0 {
 			t.Errorf("%q wrote a claim: %v", tc.argv, f.claims)
 			f.claims = map[string]fakeClaim{}
+		}
+	}
+}
+
+// An empty or blank performance value clears the inherited value and never changes the
+// result, in the spaced and the inline form alike: the shared performance contract
+// (clicontract TestPerfV3CLIContextPrecedence) holds every current parser to that.
+// regression: #6896
+func TestPerfBlankClears(t *testing.T) {
+	t.Setenv("DESK_SESSION", "o1")
+	noWorkSource(t)
+	const r = "medici-finance/assay"
+	for _, extra := range [][]string{{"--perf-role="}, {"--perf-role= "}, {"--perf-role", ""}, {"--perf-role", " "}} {
+		f := newStore()
+		run, _, se := harness(t, f)
+		argv := append([]string{"acquire", "at--stream--09", "--repo", r}, extra...)
+		if rc := run(argv...); rc != exitOK || len(f.claims) != 1 {
+			t.Errorf("%q: rc = %d, claims = %d, want 0 and 1: %s", argv, rc, len(f.claims), se.String())
 		}
 	}
 }

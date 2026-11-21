@@ -101,7 +101,9 @@ USAGE:
 MANDATORY — a bare stream name cross-locks another repo's stream.
 
 A value flag takes "--flag value" or "--flag=value". A missing or empty value, one made only
-of whitespace, or another "--" option where the value belongs, is refused (exit 5). "--branch -" records a branchless
+of whitespace, or another "--" option where the value belongs, is refused (exit 5). A
+"--perf-*" flag also refuses a missing value or a "--" option in its place, but an empty
+value there clears the inherited performance value. "--branch -" records a branchless
 claim (a detached review or verify home).
 
 The forge credential is read from --token-file <0600 file> when given, else GH_TOKEN /
