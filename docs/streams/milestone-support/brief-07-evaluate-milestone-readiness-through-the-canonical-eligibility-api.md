@@ -115,6 +115,66 @@ The wrong-but-plausible delivery is the mutation named in each Verify row. Each 
 
 <!-- Empty by design. Independent verifier records actual commit, environment, command/exit, named test and mutation result, coverage/unknowns and evidence location. -->
 
+### Verification run 2026-11-18 (independent verifier, merged main bec90193ce91)
+
+Non-implementer verifier (claude-opus-5-5, strong tier) ran the Verify table against merged main
+`bec90193ce916b2d5b11433f25970867a1b7ef95` after a successful `deskdispatch --check-verifier`
+admission. The delivering change is PR #6263, merge `b066c7ac58f110a1a038c3bf9c16e85b3e90f8fa`
+(implementation commit `321cdceb02683c5bc47aca6123fabec4a2f57124`). `deskpathguard rederive`
+reports 2 rows, 0 author-added, and both rows run with their original Command, Expect and
+class. The delivery changed only the Verify section's intro prose, never a row, and the PR
+does not carry the protected-table label, so this run is an ordinary record with no
+`Verification-Table:` marker.
+
+Both rows are `check:ci`. The host is darwin, where `unshare --net` is not available, so they
+ran in the closed container-netns admission bracket (rule 45): the host opened it with
+`--module-cache`, the rows ran in a `--network none` container using the release-pinned
+verify-runner v1.0.87 image (digest checked against that release's checksums.txt asset), and the
+host closed it. `statusgen verifyrun --bracket-digest` on the closed witness reports
+`verdict=match span-lines=tree-digest:1,container-image:1,attestation:1`. The witness bytes
+follow unchanged.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestMilestoneEligibility$' ./evaluation/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestMilestoneEligibility ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ bec90193ce91 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestNextupMilestoneCoverage$' . > "$milestone_verify_out" && grep -q -- '--- PASS: TestNextupMilestoneCoverage ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ bec90193ce91 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:1e8f3139667c5b2860658d062ab306b15095bbf06895404673ef6a551831135d
+Container-Image: sha256:c67baa7a3c8ba3d514128f31340489146525a50c29ebb641a68899c650d354a1
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6911 run=4d67cdacaae5400f5282a272276ba9937f32d9f2b3af4ab46398bddf7c6bb133 source=bec90193ce916b2d5b11433f25970867a1b7ef95 brief=docs/streams/milestone-support/brief-07-evaluate-milestone-readiness-through-the-canonical-eligibility-api.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=4d67cdacaae5400f5282a272276ba9937f32d9f2b3af4ab46398bddf7c6bb133 source=bec90193ce916b2d5b11433f25970867a1b7ef95 tree=sha256:1e8f3139667c5b2860658d062ab306b15095bbf06895404673ef6a551831135d witness=sha256:1ba03025609b876a66a554cd4c6ca52780c46809063098d0dd5da22f3f43a2de opened=2026-11-18T15:23:50Z closed=2026-11-18T15:25:25Z before=receipt after=check-verifier
+
+Supplemental observations. These are diagnostics with no acceptance credit; they ran against
+throwaway source snapshots outside the admitted home, in the same network-off runner image
+with `GOPROXY=off` and the bracket's module cache mounted read-only.
+
+| Probe | Command | Observed | Date | Runner |
+|---|---|---|---|---|
+| S1 mutation map | python3 statusgen/testdata/milestone-support/07-mutate.py, run in a committed snapshot of bec90193ce91 | exit 0; BASELINE PASS TestMilestoneEligibility and TestNextupMilestoneCoverage; CAUGHT all 20 declared mutations (15 on TestMilestoneEligibility, including start-gates-as-feathers, absent-resolved-satisfied, final-gates-inherited, other-holds-overridden, verified-finishes-work, withdrawal-finishes-work, revocation-satisfied, subject-match-omitted and version-match-omitted; 5 on TestNextupMilestoneCoverage: host-gates-as-feathers, host-readiness-not-applied, host-subject-token-dropped, host-revocation-ignored, host-history-dropped) | 2026-11-18 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| S2 fail-first row 1 | row 1 command, verbatim, in a snapshot of merge-base 0665bfb771788b07473c281b8875fc1806dab36d | exit 1; go test printed "no tests to run", so the named-PASS guard fails at base | 2026-11-18 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| S3 fail-first row 2 | row 2 command, verbatim, in the same base snapshot | exit 1; go test printed "no tests to run", so the named-PASS guard fails at base | 2026-11-18 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+An earlier S1 invocation stopped after its first baseline and before any mutation: git in the
+container could not read its global config, so the script's clean-baseline check reported
+"source differs from committed baseline". It was discarded and re-run with `safe.directory`
+set through the environment; it credits nothing.
+
+Risk-bearing values (risk: irreversible). Enumeration covered the production diff of PR #6263:
+the evaluation package files eligibility.go, identity.go, milestonegraph.go and readiness.go,
+plus the host files milestoneacceptance.go, milestonegraph.go and model.go, all under statusgen.
+
+- RISK-VALUE: DERIVED — work-done threshold `w.Status != "done"` @ statusgen/evaluation/readiness.go:199 — spec/milestone-v1.md, delivery-view rule 1: remaining work is any contributing or prerequisite brief not yet `done`, and `implemented` and `verified` stay unfinished. Mutations verified-finishes-work and withdrawal-finishes-work are caught.
+- RISK-VALUE: DERIVED — exact-match cardinality `len(matches) != 1` @ statusgen/evaluation/readiness.go:309 — DR-milestone-support-07, Subject and Revocation rules: only one exact current observation for the milestone version and subject can satisfy. Zero matches (missing) and two or more (ambiguous) both fail closed to could-not-check, never to satisfied.
+- RISK-VALUE: DERIVED — accepted mapping `a.State == "supported" && !a.AcceptanceOutstanding && len(a.History) > 0` @ statusgen/milestoneacceptance.go:250 — the actor rule (DR-milestone-support-06, kept by /07) needs a recorded human act, so an assessment with zero history can never map to accepted. Revoked or superseded history then overrides the mapping (host-revocation-ignored and host-history-dropped are caught).
+- RISK-VALUE: DERIVED — unknown filter literal `"acceptance-outstanding"` @ statusgen/milestoneacceptance.go:245 — it equals the literal the domain owner emits at statusgen/domain/milestone.go:617. Filtering it out maps an outstanding assessment to `outstanding`, which is unsatisfied and still a hold, never satisfied.
+- RISK-VALUE: DERIVED — status vocabulary `"todo", "in-progress", "implemented", "verified", "done", "blocked", "withdrawn"` @ statusgen/evaluation/readiness.go:341 — spec/lifecycle-v1.md lists the five ordered statuses plus `blocked` (§2.0) and `withdrawn` (§2.0a). Any other status is held as could-not-check coverage (coverage-gap-cleared is caught).
+- RISK-VALUE: DERIVED — `EvaluatorVersion = "statusgen-evaluation/6"` @ statusgen/evaluation/identity.go:13 — identity.go's own contract says the generation must change whenever a verdict can change for the same observations, and readiness changes start-gate verdicts. A wrong value is reversible: edit and redeploy.
+
+The gate is human and the item is irreversible, so this is Evidence only. The verifier changes
+no lifecycle status; the human gate closes it.
+
+**VERIFY: PASS** — 2/2 original rows pass in the closed container-netns bracket (bracket-digest verdict=match); all 20 declared mutations caught; both rows fail at the merge-base; Evidence only, status left for the human gate.
+
 ## Review
 
 Gate: human, derived from the declared risks. Independent review checks compatibility and consumer-flow evidence. No reviewer/worker stamp, release permission or acceptance receipt is created by this authoring change.

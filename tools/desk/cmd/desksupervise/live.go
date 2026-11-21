@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"github.com/go-git/go-git/v5/plumbing"
 	"os/exec"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -137,20 +136,6 @@ func showClaim(script, key, repo string) (string, error) {
 	return string(out), err
 }
 
-// claimStateFieldRe, claimAgeFieldRe, claimOwnerFieldRe and claimBranchFieldRe pull the
-// `state=`, `age=<N>m`, `owner=` and `branch=` fields out of the claim tool's `show` output.
-// state= and age= mirror cmd/deskdispatch/dispatch.go's own claimStateFieldRe and
-// claimAgeFieldRe byte-for-byte (that file is a separate `main` package and cannot be
-// imported, so this is a parallel implementation of the SAME external contract, not a
-// divergent one — see the file doc's note on why this cannot be verified against a live
-// script in this session).
-var (
-	claimStateFieldRe  = regexp.MustCompile(`state=([A-Za-z]+)`)
-	claimAgeFieldRe    = regexp.MustCompile(`age=(\d+)m`)
-	claimOwnerFieldRe  = regexp.MustCompile(`owner=(\S+)`)
-	claimBranchFieldRe = regexp.MustCompile(`branch=(\S+)`)
-)
-
 // withoutAliasLines drops the ALIAS-HELD lines `show` appends for another spelling of the same PR
 // (medici-finance/assay#3700). Those describe a DIFFERENT claim, so a field read for the key
 // itself (owner=) must not take its value from them: on `FREE <key>` + `ALIAS-HELD ...` the FREE
@@ -165,12 +150,27 @@ func withoutAliasLines(s string) string {
 	return strings.Join(kept, "\n")
 }
 
-func claimShowField(re *regexp.Regexp, s string) string {
-	m := re.FindStringSubmatch(s)
-	if m == nil {
+// claimShowOwner reads the holder's owner= from the HELD line of claim `show` output, for the
+// release reconciliation. It takes the first owner= WORD before the line's `note=` word: the
+// claim builder writes owner= ahead of the note, and a note is holder-written text that a tag
+// from another writer may leave split into words (medici-finance/assay#7305). An owner= that only
+// the note supplies is not the holder's, and reads as absent.
+func claimShowOwner(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		if !strings.Contains(line, "HELD ") {
+			continue
+		}
+		for _, word := range strings.Fields(line) {
+			if v, ok := strings.CutPrefix(word, "owner="); ok {
+				return v
+			}
+			if strings.HasPrefix(word, "note=") {
+				return ""
+			}
+		}
 		return ""
 	}
-	return m[1]
+	return ""
 }
 
 // The claim payload has no tier, so the existing cheap-tier liveness policy

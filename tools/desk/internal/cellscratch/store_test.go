@@ -340,9 +340,8 @@ func TestMaintenanceScanBound(t *testing.T) {
 		}
 	}
 	t.Setenv("ASSAY_MAINTENANCE_ENTRY_LIMIT", "32")
-	// Any failed inspection other than the per-entry bound still withdraws
-	// authority from the whole plan: the measured task beside it is not reclaimed.
-	// The over-limit task is present too, so the early return must still name it.
+	// Any failed inspection still withdraws authority from the whole plan: the
+	// measured tasks beside it are not reclaimed.
 	locked := filepath.Join(s.Path, "legacy-locked", "locked")
 	must(t, os.MkdirAll(locked, 0700))
 	must(t, os.Chmod(locked, 0))
@@ -351,23 +350,20 @@ func TestMaintenanceScanBound(t *testing.T) {
 	if err == nil || !rep.Partial || rep.Reclaimed != 0 || !exists(t, small.Work()) {
 		t.Fatalf("failed inspection did not fail the plan closed: %+v %v", rep, err)
 	}
-	if !errors.Is(err, deskkit.ErrScanLimit) || !strings.Contains(err.Error(), r.Record.ID) {
-		t.Fatalf("early return dropped the over-limit entry's name: %v", err)
+	if !exists(t, filepath.Join(r.Work(), "build")) {
+		t.Fatal("failed inspection deleted acknowledged work")
 	}
 	must(t, os.Chmod(locked, 0700))
 	must(t, os.RemoveAll(filepath.Dir(locked)))
-	// The over-limit task gains no authority; since #5560 it no longer withholds
-	// authority from the fully measured task beside it (TestScanBoundPerEntry).
+	// A task wider than the bound is paged through and measured in full (#5560):
+	// both acknowledged tasks are reclaimed and the sweep is complete.
 	rep, err = s.Sweep(DefaultPolicy(), true)
-	if err == nil || !rep.Partial {
-		t.Fatalf("incomplete scan reported complete: %+v %v", rep, err)
+	if err != nil || rep.Partial || exists(t, small.Work()) || exists(t, r.Work()) {
+		t.Fatalf("wide task not paged through: %+v %v", rep, err)
 	}
-	if _, err := os.Stat(filepath.Join(r.Work(), "build")); err != nil {
-		t.Fatalf("partial inventory deleted acknowledged work: %v", err)
-	}
-	if exists(t, small.Work()) {
-		t.Fatal("over-limit task withheld authority from a measured one")
-	}
+	late := scratchRun(t, s)
+	finish(t, late, 0)
+	acknowledge(t, late)
 	for i := 0; i < 40; i++ {
 		if err := os.Mkdir(filepath.Join(s.Path, fmt.Sprintf("wide-%03d", i)), 0700); err != nil {
 			t.Fatal(err)
@@ -385,7 +381,7 @@ func TestMaintenanceScanBound(t *testing.T) {
 
 }
 
-// One entry too large to walk inside the inventory bound is kept and named, and the
+// One entry too deep to walk inside the inventory bound is kept and named, and the
 // rest of the plan still runs: an ordinary reclaimable task beside it is reclaimed.
 // The sweep stays partial, so the periodic stamp is not written.
 //
@@ -406,12 +402,11 @@ func TestScanBoundPerEntry(t *testing.T) {
 			} else if err := os.Mkdir(wide, 0700); err != nil {
 				t.Fatal(err)
 			}
-			for i := 0; i < 65; i++ {
-				if err := os.WriteFile(filepath.Join(wide, fmt.Sprintf("wide-%03d", i)), []byte("retain"), 0600); err != nil {
-					t.Fatal(err)
-				}
-			}
-			t.Setenv("ASSAY_MAINTENANCE_ENTRY_LIMIT", "32")
+			// Since #5560 a wide tree is paged through; only the fixed depth bound
+			// still leaves an entry unmeasured.
+			deep := filepath.Join(wide, "wide-000", strings.Repeat("d/", 70))
+			must(t, os.MkdirAll(deep, 0700))
+			must(t, os.WriteFile(filepath.Join(deep, "leaf"), []byte("retain"), 0600))
 			rep, ran, err := s.SweepIfDue(DefaultPolicy(), time.Hour, true)
 			rows := map[string]Entry{}
 			for _, e := range rep.Entries {

@@ -7,6 +7,10 @@ depends: ["desk-containers/31"]
 unblocks: []
 effort: M
 gate: human
+delivery:
+  - in: "assay#7133"
+    covers: partial
+    note: "Offline compiled-CLI lifecycle checks for five roles. Role-specific useful work, the remaining qualification suites, independent hosted evidence and operator acceptance remain open."
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: The compatibility profile carries each role's signing and model credentials, so terminal and transcript access are key custody. The human confirms the exact disposable qualification target, authorized custodians and evidence before separately scoped adoption; offline PASS supplies no approval.
 decision-trigger: spec

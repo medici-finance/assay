@@ -58,6 +58,8 @@ binding ([`cursor.md`](./cursor.md)) that carry the `degrades`/`refuses` cells.
 | `pr-review-desk` | runs |
 | `pr-shepherd` | runs |
 | `session-coach` | runs  *(Derived from the skill body and this harness's capability rows; not a live measurement.)* |
+| `article-craft` | **runs** — draft and review local text. A fresh reader can perform the independent comprehension check. A single-session read is recorded as a self-check. |
+| `prose-cadence` | **runs** — revise a supplied passage and compare it with the verified original in the same session. |
 | `system-demo` | runs |
 | `the-desk` | runs |
 | `trace-path-to-live` | runs  *(Derived from the skill body and this harness's capability rows; not a live measurement.)* |

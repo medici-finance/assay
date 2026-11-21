@@ -184,12 +184,17 @@ var failFirstMergeBase = func(root string) string {
 // nativeGitEnv is every environment variable that sends a library read to the
 // native profile (gitCoreFor, referenceGitCore, historyRepoEnv), so a refusal
 // can name the one that is set.
-var nativeGitEnv = append([]string{"GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_SHALLOW_FILE", "GIT_REPLACE_REF_BASE", "GIT_GRAFT_FILE"}, historyRepoEnv...)
+var nativeGitEnv = append([]string{"GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM", configCountVar, "GIT_CONFIG_PARAMETERS", "GIT_SHALLOW_FILE", "GIT_REPLACE_REF_BASE", "GIT_GRAFT_FILE"}, historyRepoEnv...)
 
-// nativeGitEnvSet lists the nativeGitEnv variables present, empty included.
+// nativeGitEnvSet lists the nativeGitEnv variables present, empty included,
+// except a qualified GIT_CONFIG_COUNT (configCountNative), which selects no
+// native profile.
 func nativeGitEnvSet() []string {
 	var out []string
 	for _, k := range nativeGitEnv {
+		if k == configCountVar && !configCountNative() {
+			continue
+		}
 		if _, ok := os.LookupEnv(k); ok {
 			out = append(out, k)
 		}

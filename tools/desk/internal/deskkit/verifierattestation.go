@@ -267,8 +267,14 @@ func verifierLocalCheck(root, brief string, r verifierLocal, phase verifierPhase
 
 // PrepareVerifierAttestation persists the nonce BEFORE the first forge write.
 func PrepareVerifierAttestation(root, repo, brief, model, tier string) error {
+	return PrepareVerifierAttestationAt(root, repo, brief, model, tier, "")
+}
+
+// PrepareVerifierAttestationAt repeats the dispatcher's tracking-checkout check
+// against the actual brief immediately before preparing a cross-repository run.
+func PrepareVerifierAttestationAt(root, repo, brief, model, tier, expectedTrackingRoot string) error {
 	if filepath.IsAbs(brief) && !verifierContains(root, brief) {
-		return prepareVerifierCrossRepo(root, repo, brief, model, tier)
+		return prepareVerifierCrossRepo(root, repo, brief, model, tier, expectedTrackingRoot)
 	}
 	desk, _ := RoleAppLogin(DispatcherRole)
 	if !verifierAuthority(desk) {

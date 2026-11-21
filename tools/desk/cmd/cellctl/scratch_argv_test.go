@@ -188,3 +188,31 @@ func checkOpaqueTail(t *testing.T, c *cobra.Command, n string) {
 		t.Errorf("%s: exit %d, command %v (dash at %d); want exit 0 and the command %v untouched", c.Name(), code, got, dash, tail)
 	}
 }
+
+// regression: #7274 — `scratch run` is a second site that builds a task environment; the
+// child must see the claude harness's temp root at the same work dir as TMPDIR.
+func TestScratchRunHarnessTempRoot(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the probe is a POSIX shell script")
+	}
+	w := newCLIWorld(t, "")
+	src := filepath.Join(w.root, "src")
+	commitFixtureRepo(t, src, "a\n")
+	out := filepath.Join(w.root, "temp-root.out")
+	probe := "#!/bin/sh\nprintf '%s\\n%s\\n' \"$TMPDIR\" \"$" + harnessTempRootKey + "\" > " + out + "\n"
+	if err := os.WriteFile(filepath.Join(w.binDir, "temp-probe"), []byte(probe), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := w.run(t, []string{harnessTempRootKey + "=/elsewhere"}, "scratch", "example", "run", "--source", src, "--session", "s", "--task", "t", "temp-probe")
+	if r.Code != 0 {
+		t.Fatalf("scratch run: exit %d\nstdout:\n%s\nstderr:\n%s", r.Code, r.Stdout, r.Stderr)
+	}
+	raw, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimSpace(string(raw)), "\n")
+	if len(lines) != 2 || lines[0] == "" || lines[1] != lines[0] {
+		t.Fatalf("child saw TMPDIR / %s = %q, want the same task work dir for both", harnessTempRootKey, lines)
+	}
+}

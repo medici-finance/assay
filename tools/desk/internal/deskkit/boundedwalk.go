@@ -10,8 +10,10 @@ import (
 	"strconv"
 )
 
-// MaintenanceEntries bounds retained accounting/candidate state. Exceeding it
-// makes accounting incomplete; it must never authorize admission or reclamation.
+// MaintenanceEntries bounds retained accounting/candidate state. For
+// ReadDirBounded and BoundedWalkDir, exceeding it makes accounting incomplete; it
+// must never authorize admission or reclamation. For PagedWalkDir, which retains
+// nothing per entry, it is only the page size between cancellation checks.
 const MaintenanceEntries = 262144
 const maintenanceDepth = 64
 
@@ -42,13 +44,37 @@ func ReadDirBounded(f fs.ReadDirFile, limit int) ([]fs.DirEntry, error) {
 // descriptors. It preserves WalkDir's no-follow traversal and callback checks;
 // callers retain responsibility for custody and identity validation.
 func BoundedWalkDir(fsys fs.FS, name string, limit int, fn fs.WalkDirFunc) error {
-	remaining := limit
+	return walkDir(fsys, name, max(limit, 0), 0, nil, fn)
+}
+
+// PagedWalkDir streams the whole tree in pages of page entries, with no ceiling on
+// the entry count: it retains nothing per entry, so a tree wider than one page is
+// measured in full instead of being given up at the bound. next runs after every
+// page and may stop the walk with an error (a cancelled maintenance context). The
+// fixed directory depth still applies and returns ErrScanLimit.
+func PagedWalkDir(fsys fs.FS, name string, page int, next func() error, fn fs.WalkDirFunc) error {
+	if page < 1 {
+		return errors.New("paged walk needs a positive page size")
+	}
+	return walkDir(fsys, name, -1, page, next, fn)
+}
+
+// walkDir is the shared streaming core: limit < 0 means no entry ceiling.
+func walkDir(fsys fs.FS, name string, limit, page int, next func() error, fn fs.WalkDirFunc) error {
+	remaining, seen := limit, 0
 	var visit func(string, fs.DirEntry, int) error
 	visit = func(name string, d fs.DirEntry, depth int) error {
-		if remaining <= 0 || depth >= maintenanceDepth {
+		if remaining == 0 || depth >= maintenanceDepth {
 			return ErrScanLimit
 		}
-		remaining--
+		if remaining > 0 {
+			remaining--
+		}
+		if seen++; page > 0 && seen%page == 0 && next != nil {
+			if err := next(); err != nil {
+				return err
+			}
+		}
 		if err := fn(name, d, nil); err != nil {
 			if err == fs.SkipDir && d.IsDir() {
 				return nil

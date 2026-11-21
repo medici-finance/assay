@@ -61,7 +61,7 @@ func TestVerifierOutcomePath(t *testing.T) {
 		if !filepath.IsAbs(got[0]) || vpWithin(home, got[0]) || vpWithin(root, got[0]) {
 			t.Errorf("outcome directory %q is not an absolute path outside home %s and root %s", got[0], home, root)
 		}
-		cmd := "deskevidence example/repo main --outcome-record " + filepath.Join(dir, "<file>.json") + " --root " + home + " --acceptance-forge"
+		cmd := "deskevidence example/repo main --outcome-record " + deskkit.ShellSingleQuote(filepath.Join(dir, "<file>.json")) + " --root " + deskkit.ShellSingleQuote(home) + " --acceptance-forge"
 		if strings.Count(prompt, cmd) != 1 {
 			t.Errorf("prompt lacks the exact landing command %q:\n%s", cmd, prompt)
 		}
