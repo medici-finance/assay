@@ -457,7 +457,7 @@ func (l *interimLifecycle) verifySurface(c *Cell, rec surfaceReceipt, harnessMay
 	if err != nil {
 		return mismatch("harness pid %d start time unreadable: %v", rec.HarnessPID, err)
 	}
-	harnessGone := gone || start != rec.HarnessStart
+	harnessGone := cellcadence.JudgeProcess(rec.HarnessStart, cellcadence.ProcessProbe{Start: start, Gone: gone}).Departed()
 	if harnessGone && !harnessMayBeGone {
 		return refuseWith(cellop.ReasonSurfaceStale, "%s: the recorded harness pid %d is gone or restarted; re-launch the role or run cell-wide down", rec.Role, rec.HarnessPID)
 	}

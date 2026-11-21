@@ -115,8 +115,9 @@ Before the final completion message, persist required outcomes/evidence at their
 destination and read them back. If this session owns `ASSAY_SCRATCH_ID`, and every task
 sharing it has finished, call `cellctl scratch <ASSAY_SCRATCH_CELL> ack --id
 <ASSAY_SCRATCH_ID> --receipt <canonical-evidence-reference>`. Do not acknowledge a parent's
-scratch from a delegated worker. Pending evidence and resumable tasks remain protected;
-acknowledgment never overrides live ownership. The runtime alone reclaims disposable data
+scratch from a delegated worker. Resumable tasks remain protected. A finished task with no
+receipt keeps its work dir only through a 24-hour handoff grace; a sweep then reclaims it,
+keeping its record, output tail and Git data. Acknowledgment never overrides live ownership. The runtime alone reclaims disposable data
 and bounds failed-run diagnostics. No role adds a shell deletion hook. Older unmarked or
 harness owned scratch remains inventory-only until its ownership and evidence are proved.
 See `docs/cellctl-scratch.md` and the shipped desk-shell reference, "Managed task scratch".
