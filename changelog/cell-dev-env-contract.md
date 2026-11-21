@@ -1,0 +1,3 @@
+### Added
+- A Verify row's `service:<name>` Env cell can declare the cell dev-env names it needs, `service:<name>:<NAME>[,<NAME>…]`. `statusgen --lint` refuses a malformed or duplicate name, names on any other kind, and any name outside the `DEVENV_` allow-list, and names the class (path, loader, interpreter, tool configuration, agent socket, Assay) of a refused name.
+- `containers/secrets.md` §4.5 states the cell dev-env file contract: one file per cell named by `CELL_DEV_ENV_FILE`, written by the coordinator role only, dev-only values of at least 8 characters, change receipts with names and a digest but never values. No surface binds the file until its design-decision record is approved.

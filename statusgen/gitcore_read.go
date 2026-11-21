@@ -92,13 +92,30 @@ func openGitCoreRead(root string) gitCoreRead {
 	return gitCoreRead{repo: r, prefix: prefix, top: top}
 }
 
+// configCountVar is the one spelling of GIT_CONFIG_COUNT in statusgen's
+// sources outside tests.
+const configCountVar = "GIT_CONFIG_COUNT"
+
+// configCountNative reports whether GIT_CONFIG_COUNT is present with a value
+// the library does not qualify. The verifier's own git config env (a count of
+// 0, or exactly an admitted row's grep pins) keeps a read on the library path;
+// any other count, an empty one included, selects the native profile (#7007).
+// It is the one place statusgen reads the count (TestConfigCountOneOwner).
+func configCountNative() bool {
+	_, present := os.LookupEnv(configCountVar)
+	return present && !gitcore.CommandConfigQualified()
+}
+
 func gitCoreFor(root string) gitCoreRead {
 	// These unstripped native policies are observed per operation, including
 	// explicitly empty values. They are never frozen in the repository cache.
-	for _, key := range []string{"GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_CONFIG_COUNT", "GIT_CONFIG_PARAMETERS", "GIT_SHALLOW_FILE"} {
+	for _, key := range []string{"GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_CONFIG_PARAMETERS", "GIT_SHALLOW_FILE"} {
 		if _, present := os.LookupEnv(key); present {
 			return gitCoreRead{native: "native discovery/config/shallow environment profile"}
 		}
+	}
+	if configCountNative() {
+		return gitCoreRead{native: "native discovery/config/shallow environment profile"}
 	}
 	if activeGitReads == nil {
 		return observeHistoryProfile(openGitCoreRead(root))
@@ -192,7 +209,7 @@ func provenanceRepoTop(dir string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if why == "" && os.Getenv("GIT_CONFIG_COUNT") == "" && os.Getenv("GIT_CONFIG_PARAMETERS") == "" {
+		if why == "" && !configCountNative() && os.Getenv("GIT_CONFIG_PARAMETERS") == "" {
 			return read.top, nil
 		}
 	}

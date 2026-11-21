@@ -75,6 +75,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // staleImplementedThreshold is how long a brief may sit at `implemented` with
@@ -152,9 +154,9 @@ type unrunFinding struct {
 
 // parseVerifyItems extracts the rows of a `## Verify` table. It locates the
 // header naming Command and Expect (the same anchor verifyTableHasRow uses) and
-// reads the data rows below it. Cells are split escape-aware (splitRowEscaped)
+// reads the data rows below it. Cells are split escape-aware (briefdoc.SplitRowEscaped)
 // so a command containing `\|` does not shred the row — the same hazard
-// verifyrows.go documents at length.
+// statusgen/briefdoc/verification.go documents.
 func parseVerifyItems(section string) []verifyItem {
 	var items []verifyItem
 	cmdIdx, expIdx, numIdx := -1, -1, -1
@@ -168,7 +170,7 @@ func parseVerifyItems(section string) []verifyItem {
 		if separatorRowRe.MatchString(strings.Trim(line, "|")) {
 			continue
 		}
-		cells := splitRowEscaped(line)
+		cells := briefdoc.SplitRowEscaped(line)
 		if cmdIdx < 0 || expIdx < 0 {
 			for j, c := range cells {
 				switch strings.ToLower(strings.TrimSpace(c)) {
@@ -193,7 +195,7 @@ func parseVerifyItems(section string) []verifyItem {
 		ordinal++
 		id := strconv.Itoa(ordinal)
 		if numIdx >= 0 && numIdx < len(cells) {
-			if v := normalizeRowID(cells[numIdx]); v != "" {
+			if v := briefdoc.NormalizeRowID(cells[numIdx]); v != "" {
 				id = v
 			}
 		}
@@ -224,7 +226,7 @@ func parseEvidenceRows(section string) map[string][]evidenceRow {
 		if separatorRowRe.MatchString(strings.Trim(line, "|")) {
 			continue
 		}
-		cells := splitRowEscaped(line)
+		cells := briefdoc.SplitRowEscaped(line)
 		// A header row is the one immediately followed by a separator row.
 		if i+1 < len(lines) && separatorRowRe.MatchString(strings.Trim(strings.TrimSpace(lines[i+1]), "|")) {
 			numIdx, dateIdx, runnerIdx, ordinal = -1, -1, -1, 0
@@ -247,7 +249,7 @@ func parseEvidenceRows(section string) map[string][]evidenceRow {
 		ordinal++
 		id := strconv.Itoa(ordinal)
 		if numIdx >= 0 && numIdx < len(cells) {
-			if v := normalizeRowID(cells[numIdx]); v != "" {
+			if v := briefdoc.NormalizeRowID(cells[numIdx]); v != "" {
 				id = v
 			}
 		}
@@ -278,11 +280,6 @@ func parseEvidenceRows(section string) map[string][]evidenceRow {
 	return out
 }
 
-// normalizeRowID trims a row's "#" cell to a bare identifier ("`3`" → "3").
-func normalizeRowID(cell string) string {
-	return strings.TrimSpace(strings.Trim(strings.TrimSpace(cell), "`*_"))
-}
-
 // evidenceRowComplete reports whether an Evidence row PROVES its Verify row was
 // run: it carries a date and a runner, and is not marked UNRUN/deferred. Every
 // clause requires the presence of something written; none can be satisfied by
@@ -291,7 +288,7 @@ func normalizeRowID(cell string) string {
 // unrunMarkerRe is matched against the row with inline code spans blanked out
 // (inlineCodeRe, shared with linkcheck.go), not the raw row text. Command and
 // Output/Result cells are conventionally backtick-quoted verbatim content
-// (codeSpan in verifyrows.go documents the same convention); a run-status
+// (briefdoc.CodeSpan documents the same convention); a run-status
 // declaration is unquoted prose. Scanning the raw row let verbatim CONTENT
 // trip the marker — a `grep -n 'DO NOT RUN' <file>` command cell, or a tool's
 // own `0 failed, 0 skipped` output — and read a genuinely-run, passing row as

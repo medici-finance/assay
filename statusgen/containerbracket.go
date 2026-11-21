@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/deskcore/attestation"
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // The container bracket (desktools-v2/71). A runner inside a --network none
@@ -802,6 +803,9 @@ func findContainerBlock(text string) (containerBlock, error) {
 	}
 	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 	for _, l := range lines {
+		if strings.HasPrefix(strings.TrimSpace(l), "Kubernetes-Observation:") {
+			return containerBlock{}, fmt.Errorf("the container witness already carries a host Kubernetes observation")
+		}
 		if strings.HasPrefix(strings.TrimSpace(l), strings.TrimSpace(admissionBracketPrefix)) {
 			return containerBlock{}, fmt.Errorf("this witness already carries an %sline", admissionBracketPrefix)
 		}
@@ -905,14 +909,13 @@ func witnessSeparatorLine(l string) bool {
 // exactly the run the witness and the receipt name AND the home's recomputed
 // tree digest equals both the receipt's tree and the witness's Tree-Digest.
 // Any mismatch or refusal writes nothing.
-func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stderr io.Writer, records ...string) int {
-	record := ""
-	if len(records) > 0 {
-		record = records[0]
-	}
+func runCloseBracket(home, brief, receiptPath, witnessPath, record, observation string, stdout, stderr io.Writer) int {
 	refuse := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "statusgen verifyrun --close-bracket: refused, nothing appended: "+format+"\n", a...)
 		return verifyrunExitCouldNot
+	}
+	if observation != "" && !sha256DigestRe.MatchString(observation) {
+		return refuse("Kubernetes observation must be a sha256 digest")
 	}
 	if rel, ok := relWithin(home, witnessPath); ok {
 		return refuse("the witness %s sits inside the home (%s)", witnessPath, rel)
@@ -1063,6 +1066,11 @@ func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stder
 		return refuse("the close at %s is not after the receipt's opened time %s; the bracket's opened= must precede its closed=, so re-run the close once the clock has passed the open", closed.Format(time.RFC3339), receipt.Opened)
 	}
 	above := strings.Join(block.lines, "\n") + "\n"
+	// The host supplies the observation only after validating the complete,
+	// unmodified container witness. Include it in the same atomic close.
+	if observation != "" {
+		above += "Kubernetes-Observation: " + observation + "\n"
+	}
 	witness, err := bracketDigest(above)
 	if err != nil {
 		return refuse("%v", err)
@@ -1361,7 +1369,7 @@ func isWitnessHeaderLine(l string) bool {
 
 // witnessRunnerColumn is the Runner cell's index in a witness header line.
 func witnessRunnerColumn(header string) int {
-	for i, c := range splitRowEscaped(header) {
+	for i, c := range briefdoc.SplitRowEscaped(header) {
 		if strings.TrimSpace(c) == "Runner" {
 			return i
 		}
@@ -1377,7 +1385,7 @@ var onBehalfOfStampRe = regexp.MustCompile(`\(on-behalf-of human:[^\s()]+\)`)
 var cellWhitespaceRe = regexp.MustCompile(`[ \t]+`)
 
 // normaliseRunnerCell rewrites a table row's Runner cell (cell index col,
-// counted as splitRowEscaped counts them: `\|` is cell content): stamp
+// counted as briefdoc.SplitRowEscaped counts them: `\|` is cell content): stamp
 // removed, whitespace runs collapsed, trimmed. The rest of the row is kept
 // byte for byte. A row with too few cells is returned unchanged.
 func normaliseRunnerCell(row string, col int) string {

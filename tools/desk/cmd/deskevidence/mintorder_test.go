@@ -262,7 +262,7 @@ func TestLandingMintsBeforeAdmission(t *testing.T) {
 		// The documented refresh: the landed brief replaces the home's copy; HEAD stays.
 		writeFixtureFile(t, filepath.Join(lf.home, fixtureBrief), lf.api.files[fixtureBrief])
 		record := filepath.Join(t.TempDir(), "outcome.json")
-		writeFixtureFile(t, record, `{"brief":"x/01","ts":"2026-10-06T00:00:00Z","verdict":"verify-fail","digest":"0123456789abcdef"}`)
+		writeFixtureFile(t, record, `{"brief":"x/01","ts":"2026-10-06T00:00:00Z","outcome":"verified","sha":"0000002"}`)
 		before := len(lf.api.puts)
 		code, calls := lf.land(t, "--root", lf.home, "--outcome-record", record)
 		if code != deskkit.ExitOK {
@@ -295,7 +295,7 @@ func TestAdmissionStillPrecedesEveryLandingRead(t *testing.T) {
 	fragment := filepath.Join(t.TempDir(), "evidence.md")
 	writeFixtureFile(t, fragment, "| 1 | `true` | 0 | ok | 2026-10-06 | verifier |\n")
 	record := filepath.Join(t.TempDir(), "outcome.json")
-	writeFixtureFile(t, record, `{"brief":"x/01","ts":"2026-10-06T00:00:00Z","verdict":"verify-fail","digest":"0123456789abcdef"}`)
+	writeFixtureFile(t, record, `{"brief":"x/01","ts":"2026-10-06T00:00:00Z","outcome":"verified","sha":"0000002"}`)
 	shapes := map[string][]string{
 		"evidence":       {"--brief-path", fixtureBrief, "--evidence-file", fragment},
 		"outcome-record": {"--outcome-record", record},
@@ -384,7 +384,7 @@ func TestAdmissionStillPrecedesEveryLandingRead(t *testing.T) {
 // both landing shapes: the token is minted once, the forge is resolved once, admission is
 // handed THAT forge, and admission returns before the landing's first branch read.
 func TestLandingUsesOneForgeForAdmissionAndWrite(t *testing.T) {
-	rec := `{"brief":"x/01","ts":"2026-10-06T00:00:00Z","verdict":"verify-fail","digest":"0123456789abcdef"}`
+	rec := `{"brief":"x/01","ts":"2026-10-06T00:00:00Z","outcome":"verified","sha":"0000002"}`
 	// The record sits OUTSIDE the home, where a --root landing requires it.
 	outsideRecord := filepath.Join(t.TempDir(), "record.json")
 	writeFixtureFile(t, outsideRecord, rec)
@@ -450,9 +450,9 @@ func TestPreMintRefusalsNeverMint(t *testing.T) {
 	badJSON := filepath.Join(dir, "bad.json")
 	writeFixtureFile(t, badJSON, "{not json")
 	future := filepath.Join(dir, "future.json")
-	writeFixtureFile(t, future, `{"brief":"x/01","ts":"2999-01-01T00:00:00Z","verdict":"verify-fail","digest":"0123456789abcdef"}`)
+	writeFixtureFile(t, future, `{"brief":"x/01","ts":"2999-01-01T00:00:00Z","outcome":"verified","sha":"0000002"}`)
 	unnamed := filepath.Join(dir, "unnamed.json")
-	writeFixtureFile(t, unnamed, `{"brief":"../01","ts":"2026-10-06T00:00:00Z","verdict":"verify-fail","digest":"0123456789abcdef"}`)
+	writeFixtureFile(t, unnamed, `{"brief":"../01","ts":"2026-10-06T00:00:00Z","outcome":"verified","sha":"0000002"}`)
 
 	cases := map[string]struct {
 		args   []string

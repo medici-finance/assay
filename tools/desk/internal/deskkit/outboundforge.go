@@ -186,9 +186,15 @@ func (o *outboundForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFile
 	}
 	// in.Content is the file's full new content, line-aligned with `added`: the evidence the
 	// session-id arm's one brief-frontmatter exemption reads (#2022). It is never scanned.
+	fields := []OutboundField{{"path", in.File}, {in.File, added}, {OutboundFieldCommitMessage, in.Message}}
+	sources := map[string]string{in.File: string(in.Content)}
+	// A companion is create-only (WriteFileInput.Companions), so all of it is new.
+	for _, c := range in.Companions {
+		fields = append(fields, OutboundField{"path", c.File}, OutboundField{c.File, string(c.Content)})
+		sources[c.File] = string(c.Content)
+	}
 	if err := OutboundCheck(OutboundWrite{Role: o.role, Repo: repo.Slug(), Kind: OutboundKindFile,
-		Fields:      []OutboundField{{"path", in.File}, {in.File, added}, {OutboundFieldCommitMessage, in.Message}},
-		FileSources: map[string]string{in.File: string(in.Content)}}); err != nil {
+		Fields: fields, FileSources: sources}); err != nil {
 		return nil, err
 	}
 	return o.Forge.WriteFile(repo, in)

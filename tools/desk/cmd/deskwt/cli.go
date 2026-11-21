@@ -427,7 +427,8 @@ old or missing one is not proof the session is gone), one naming no session, git
 "initializing" lock — is refused with exit 5 and the tree is left untouched; a clean, pushed
 tree of a dead session is reaped by ` + "`deskwt prune --reap-dead-sessions`" + ` instead, once the tree
 has been idle past --min-idle (1h by default; run it with --dry-run first, it sweeps every
-ownerless tree). This is the end-of-PR step for a session that made its own home:
+ownerless tree). A dispatched home (one recording assay.runKey) is refused while its claim
+is held or unreadable, and its lock is no bar once the claim is released. This is the end-of-PR step for a session that made its own home:
 ` + "`deskwt add <name> --lock-session <id>`" + ` at the start, ` + "`deskwt remove <path>`" + ` once the PR is
 pushed and the tree is clean.
 
@@ -550,7 +551,15 @@ reachable from its upstream or from refs/remotes/origin/main. Its stale local br
 deleted with it (non-force ` + "`git branch -d`" + `) so the next add cuts fresh from origin. A live
 session's lock holds its worktree unconditionally, and anything dirty, unpushed or
 unverifiable is LISTED with the reason and left. Pair it with --dry-run first: that prints
-the full plan — path, session, REAP/KEEP, reason — and changes nothing.`
+the full plan — path, session, REAP/KEEP, reason — and changes nothing.
+
+A DISPATCHED home records its run's claim key (worktree config assay.runKey), and that claim
+decides ownership ahead of any lock, in every arm: while the claim is held the tree is held
+(locked or not); once it is released a lock left on the tree (a bare one included, but never
+git's "initializing" lock) no longer holds it, and the safety gates above decide. A claim
+listing that cannot be read holds the tree. A tree with no run key is judged as before. The
+run key is read from the tree's own admin entry when another entry cannot be inventoried, and
+a tree whose own entry cannot be confirmed either way is held.`
 
 	rootLong = `deskwt — safe worktree lifecycle and coordinated offline Git maintenance.
 

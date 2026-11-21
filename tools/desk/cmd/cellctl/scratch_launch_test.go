@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
 	"github.com/medici-finance/assay/tools/desk/internal/cellscratch"
 )
 
@@ -20,6 +21,11 @@ func init() {
 	work := os.Getenv("TMPDIR")
 	if work == "" || work != os.Getenv("TMP") || work != os.Getenv("TEMP") {
 		os.Exit(81)
+	}
+	// The claude harness's own temp root follows the task, not the system temp dir.
+	if os.Getenv(harnessTempRootKey) != work {
+		fmt.Fprintln(os.Stderr, "harness temp root outside the task:", os.Getenv(harnessTempRootKey))
+		os.Exit(88)
 	}
 	if err := os.WriteFile(filepath.Join(work, "build-output"), []byte(strings.Repeat("x", 1024*1024)), 0600); err != nil {
 		os.Exit(82)
@@ -154,11 +160,39 @@ func TestScratchLaunchFailure(t *testing.T) {
 	}
 }
 func TestScratchCodexPropagation(t *testing.T) {
-	args := scratchArgv("codex", []string{"codex", "exec", "prompt"}, []string{"TMPDIR=/owned", "ASSAY_SCRATCH_ID=task-id", "TOKEN=secret"})
+	args := scratchArgv("codex", []string{"codex", "exec", "prompt"}, []string{"TMPDIR=/owned", harnessTempRootKey + "=/owned", "ASSAY_SCRATCH_ID=task-id", "TOKEN=secret"})
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "shell_environment_policy.set.TMPDIR=") || !strings.Contains(joined, "shell_environment_policy.set.ASSAY_SCRATCH_ID=") || strings.Contains(joined, "secret") || args[len(args)-1] != "prompt" {
 		t.Fatal(args)
 	}
+	// regression: #7274 — a claude run started from a Codex command keeps the task's temp root.
+	if !strings.Contains(joined, "shell_environment_policy.set."+harnessTempRootKey+`="/owned"`) {
+		t.Fatal("harness temp root not propagated to Codex commands", args)
+	}
+}
+
+// regression: #7274
+func TestScratchHarnessTempRoot(t *testing.T) {
+	c := &Cell{Name: "fixture", Dir: t.TempDir(), Config: t.TempDir()}
+	// An inherited value (the operator's shell, or the system default) never wins.
+	env := []string{"ASSAY_SOURCE_REVISION=fixture-revision", "DESK_LOOP=worker-desk", harnessTempRootKey + "=/elsewhere"}
+	launch, env, err := c.beginScratch("worker-desk", env)
+	must(t, err)
+	got := map[string][]string{}
+	for _, kv := range env {
+		if k, v, ok := strings.Cut(kv, "="); ok {
+			got[k] = append(got[k], v)
+		}
+	}
+	work := launch.run.Work()
+	if v := got[harnessTempRootKey]; len(v) != 1 || v[0] != work || v[0] != got["TMPDIR"][0] {
+		t.Fatalf("%s = %v, want exactly the task work dir %s", harnessTempRootKey, v, work)
+	}
+	scratchRoot := filepath.Join(c.Dir, "run", "scratch") + string(filepath.Separator)
+	if !strings.HasPrefix(work, scratchRoot) {
+		t.Fatalf("task work dir %s is outside the cell scratch root %s", work, scratchRoot)
+	}
+	launch.finish(&cellcadence.Result{})
 }
 
 func TestScratchLaunchBudget(t *testing.T) {

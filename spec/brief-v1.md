@@ -3,7 +3,7 @@
 **Version:** v1.0-draft
 **Status:** DRAFT — published for review. v1.0-draft is unstable: breaking changes MAY be
 made without a major-version bump; no stability commitment.
-**Describes reference implementation:** `statusgen` v1.0.88
+**Describes reference implementation:** `statusgen` v1.0.91
 
 ## 1. Scope
 
@@ -615,6 +615,16 @@ The body MUST contain a `## Verify` section with an executable table:
   instance it runs against, and the brief or its spec MUST describe that
   instance. A row whose environment is not `tree` MUST NOT be classed `check:ci`,
   because no CI job reaches it.
+- A `service:<name>` Env cell MAY declare the cell dev-env variable names the row
+  needs, as `service:<name>:<NAME>[,<NAME>…]`; `<name>` admits neither `:` nor
+  `,`, so the form parses without ambiguity. A row that declares no names
+  receives none from the cell's dev-env file. Each declared name MUST match
+  `DEVENV_[A-Z0-9_]+` (an allow-list that denies every other name by default),
+  MUST be well-formed and MUST NOT repeat; declared names MUST NOT appear on any
+  kind but `service`. A row passes a declared value to a tool explicitly in its
+  own command, where review sees it. A conforming linter MUST refuse each
+  violation. The file's custody rules are the runtime credential contract's
+  (`containers/secrets.md` §4.5 in the reference implementation).
 - Prose deliverables (docs, articles) MUST use PRESENCE gates: checks that required
   elements exist (file, section, token). The Verify section MUST state that
   it gates presence, not quality; quality is owned by the review gate.

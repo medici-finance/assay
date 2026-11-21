@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -764,10 +763,6 @@ func firstNonEmpty(vals ...string) string {
 	return ""
 }
 
-// placeholderNameRe matches a placeholder file for issue NN, with or without the repo-name stem
-// foreign-repo placeholders carry so numbers from different repos never collide.
-var placeholderNameRe = regexp.MustCompile(`^(?:[a-z0-9][a-z0-9-]*-)?issue-([0-9]+)\.md$`)
-
 // HasPlaceholder reports whether local state already carries a placeholder for this item. It is a
 // LOCAL read by design: the mechanical/judgment split must not depend on a second network call that
 // could disagree with the one that produced the queue.
@@ -784,21 +779,11 @@ func HasPlaceholder(root, repo string, number int) (bool, error) {
 	if err != nil {
 		return false, deskkit.Unverifiable("scanloop: cannot read the placeholder state under "+dir, err)
 	}
-	want := strconv.Itoa(number)
-	// The scanner stems a foreign placeholder with the slug's LAST segment, so a GitLab nested
-	// group (`group/sub/project`) is `project-issue-N.md` (#6601).
-	short := placeholderStemOf(repo)
+	// This repo's own stem (the slug's LAST segment, so a GitLab nested group `group/sub/project`
+	// is `project-issue-N.md`, #6601), or the bare `issue-N.md` when this IS the home repo — a bare
+	// placeholder is the home repo's, never another repository's issue of the same number (#7023).
 	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-		m := placeholderNameRe.FindStringSubmatch(e.Name())
-		if m == nil || m[1] != want {
-			continue
-		}
-		stem := strings.TrimSuffix(e.Name(), "-issue-"+want+".md")
-		if stem == e.Name() || stem == short {
-			// Either the bare `issue-NN.md` form (the home repo) or this repo's own stem.
+		if !e.IsDir() && matchesPlaceholder(e.Name(), repo, number) {
 			return true, nil
 		}
 	}

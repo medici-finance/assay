@@ -87,8 +87,10 @@ await:
 // only for a teardown that signalled that owner itself and then proved, by pid and start time,
 // that the owner and every child it recorded are gone and that no process carrying the role's
 // marker survives: a crashed owner nobody stopped still needs explicit recovery. The caller holds
-// the lease. Anything but a Running interactive record written by pid is refused unchanged.
-func (l *Lease) RecordStopped(pid int, summary string) error {
+// the lease. Anything but the Running interactive record of the named owner generation (pid, and
+// the sequence and start of the checkpoint it was running when that was read) is refused
+// unchanged; a generation naming no owner is refused (Generation.OwnsUnfinished).
+func (l *Lease) RecordStopped(owner Generation, summary string) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.file == nil || l.running {
@@ -98,8 +100,8 @@ func (l *Lease) RecordStopped(pid int, summary string) error {
 	if err != nil {
 		return err
 	}
-	if s.Mode != "interactive" || !s.Running || pid <= 0 || s.PID != pid {
-		return errors.New("checkpoint is not the unfinished interactive record of the stopped owner")
+	if err := checkOwnsUnfinished(owner, s); err != nil {
+		return err
 	}
 	now := time.Now().UTC()
 	if now.Before(s.LastStart) {

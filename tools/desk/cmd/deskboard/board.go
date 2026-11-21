@@ -1369,6 +1369,14 @@ type prRow struct {
 	CIZero       string `json:"ciZero,omitempty"`
 	CIZeroDetail string `json:"ciZeroDetail,omitempty"`
 	OpenAge      string `json:"openAge,omitempty"`
+	// AuthoringStamp / StampOnly (#6855) are the coordinator's stamp-sweep listing. Both are
+	// ABSENT unless the change's description names a `Worker-Attestation:` record and its labels
+	// lack a complete authored-model / authored-tier pair. Then AuthoringStamp is "missing" and
+	// StampOnly is the exact `deskdispatch --stamp-only` line, every value taken from the
+	// validated record; or AuthoringStamp is "refused: …" / "could-not-check: …" when the
+	// record does not validate, with no StampOnly line (a STOP for that change, never a guess).
+	AuthoringStamp string `json:"authoringStamp,omitempty"`
+	StampOnly      string `json:"stampOnly,omitempty"`
 }
 
 // externalRow is an open item quarantined by the trust gate (deskkit/trust.go):
@@ -1491,6 +1499,7 @@ func sweepPRsRepo(repo string, now time.Time) (prsPartial, error) {
 		if pass == 0 && pending == 0 && fail == 0 && unknown == 0 {
 			row.CIZero, row.CIZeroDetail = probeZeroCI(repo, p)
 		}
+		row.AuthoringStamp, row.StampOnly = authoringStampListing(repo, p)
 		part.rows = append(part.rows, row)
 		part.openList = append(part.openList, fmt.Sprintf("%s#%d", repo, p.Number))
 	}
@@ -1559,6 +1568,12 @@ func cmdPRs(hdr Header) (*Report, error) {
 			fmt.Fprintf(w, "%-11s #%-4d %-6t %-10s %-22s %-8s %s\n",
 				shortRepo(r.Repo), r.Number, r.Draft, short(r.HeadSHA), ciSummary(r.CIPass, r.CIPending, r.CIFail, r.CIUnknown, r.CIZero),
 				displayDuration(r.OpenAge), title(r.Title, 46))
+			if r.AuthoringStamp != "" {
+				fmt.Fprintf(w, "    authoring-stamp: %s\n", r.AuthoringStamp)
+				if r.StampOnly != "" {
+					fmt.Fprintf(w, "    stamp-only: %s\n", r.StampOnly)
+				}
+			}
 		}
 		if len(rep.PRs) == 0 {
 			fmt.Fprintln(w, "(no open PRs in the watched set — see the scope line above for what that covers)")

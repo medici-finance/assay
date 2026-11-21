@@ -211,5 +211,5 @@ func writeOutcomeRecordLine(b *strings.Builder, plan dispatchPlan, home string) 
 		"It supplies no approval and does not repair unknown repository authority. "+
 		"Other forges retain the ordinary landing command; unsupported GitHub approval reads remain held. "+
 		"Retain every refusal; do not retry with stripped Git configuration, another origin or a stored human login.\n\n",
-		plan.outcomePath, home, plan.outcomeTarget.Repo.Slug(), filepath.Join(plan.outcomePath, "<file>.json"), home, approvalFlag)
+		plan.outcomePath, home, plan.outcomeTarget.Repo.Slug(), deskkit.ShellSingleQuote(filepath.Join(plan.outcomePath, "<file>.json")), deskkit.ShellSingleQuote(home), approvalFlag)
 }

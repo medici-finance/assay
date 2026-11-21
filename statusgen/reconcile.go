@@ -98,10 +98,10 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 	fs.SetOutput(stderr)
 	fs.Usage = func() {}
 	root := fs.String("root", ".", "repository root whose briefs to reconcile")
-	repo := fs.String("repo", "", "owner/name of the repo to read PRs from (online mode)")
+	repo := fs.String("repo", "", "owner/name (on GitLab, group/project) of the repo to read PRs or merge requests from (online mode)")
 	jsonOut := fs.Bool("json", false, "emit machine-readable JSON")
 	offline := fs.Bool("offline", false, "do not touch the network; every PR-derived cell is unknown")
-	tokenFile := fs.String("token-file", "", "file holding the GitHub API token (else GITHUB_TOKEN)")
+	tokenFile := fs.String("token-file", "", "file holding the GitHub API token (else GITHUB_TOKEN); unused when the roster binds the repo to GitLab, whose merge requests are read through deskread with its own GitLab credential")
 	backfill := fs.Bool("backfill", false, "declared history-only fallback (brief-07): a merged PR whose branch name or body names the brief in <stream>/<NN> or <stream>-<NN> form counts as a witness when no trailer links one; a hand-asserted implemented/verified/done with neither renders unknown, never a silent todo. Without --apply it also reports the rows --apply would write (JSON: wouldApply, present only when the run could look) and writes no stream README; it writes the drift report file only when --report is also given")
 	report := fs.Bool("report", false, "with --backfill: write docs/streams/board-drift-<date>.md, one row per brief where the last hand-edited (pre-generation) README cell disagrees with what this run derives; requires --backfill")
 	apply := fs.Bool("apply", false, "WRITE a witnessed todo|in-progress -> implemented cell back into the brief's stream README Status column (only, never Verified/Reviewed, never verified/done, never a demotion). Without --backfill only a `Brief:` trailer witness is written and PR admission reads cover only todo/in-progress rows (other rows report unknown/outside scope); with --backfill all rows are audited and the declared branch/body match is written too. A row whose move would add a lint PROBLEM is held and reported, never written. Exits 3 when the PR read could not be done")
@@ -156,13 +156,21 @@ func runReconcile(args []string, stdout, stderr *os.File) int {
 		// it as a could-not-check, never a clean board.
 		in.LookedAt = false
 		in.Reason = "no --repo given and not --offline — nothing to dereference PR-derived cells against"
+	case configuredForgeFn() == forgeGitLab:
+		// A GitLab-hosted repository (#7252): its merge requests, their files and
+		// its open issues' labels are read through deskread, the seam the GitLab
+		// auto-flip reads through; no GitHub credential is read.
+		client = newGitLabReconcileClient()
+		fallthrough
 	default:
-		token, terr := resolveGitHubToken(*tokenFile)
-		if terr != nil {
-			fmt.Fprintf(stderr, "could-not-check: %v\n", terr)
-			return reconcileUsageErr
+		if client == nil {
+			token, terr := resolveGitHubToken(*tokenFile)
+			if terr != nil {
+				fmt.Fprintf(stderr, "could-not-check: %v\n", terr)
+				return reconcileUsageErr
+			}
+			client = reconcileGHClient(token)
 		}
-		client = reconcileGHClient(token)
 		// One paged read of every pull serves both the trailer fold (ListPRs'
 		// filter) and the --backfill match below, which used to page the whole
 		// list a second time.
