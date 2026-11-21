@@ -9,22 +9,52 @@ import (
 
 // regression: #7308
 func TestPlainCommandApproval(t *testing.T) {
-	const original = "sh check.sh"
-	const next = "out=$(mktemp) && trap 'rm -f \"$out\"' 0 && sh check.sh --no-pull > \"$out\""
-	for _, mode := range []string{"approved", "legacy", "v1-link", "Command", "missing", "wrong-predecessor",
-		"expect", "class", "shell", "obligation", "environment", "extra-column", "delivery-environment", "span", "gate"} {
-		t.Run(mode, func(t *testing.T) {
+	const spanRule = "changed commands require one unambiguous code span and identical surrounding context"
+	const otherCells = "plain-shell replacement must retain every other original row cell"
+	const exactApproval = "human approval does not name the exact transition payload"
+	for _, tc := range []struct{ mode, refusal string }{
+		{"approved", ""},
+		{"legacy", spanRule},
+		{"v1-link", "plain-shell replacement requires an explicit v2 PlainCommand approval"},
+		{"Command", exactApproval},
+		{"missing", "human approval omits a changed original command: row 2"},
+		{"wrong-predecessor", exactApproval},
+		{"expect", exactApproval},
+		{"class", spanRule},
+		{"shell", spanRule},
+		{"pwsh", spanRule},
+		{"cmd", spanRule},
+		{"prose-led", spanRule},
+		{"span-to-plain", spanRule},
+		{"obligation", otherCells},
+		{"environment", otherCells},
+		{"extra-column", otherCells},
+		{"delivery-environment", otherCells},
+		{"restored-environment", otherCells},
+		{"span", spanRule},
+		{"gate", spanRule},
+	} {
+		t.Run(tc.mode, func(t *testing.T) {
+			mode := tc.mode
+			original, next := "sh check.sh", "out=$(mktemp) && trap 'rm -f \"$out\"' 0 && sh check.sh --no-pull > \"$out\""
+			class, shell := "check +flow", "sh"
+			switch mode {
+			case "pwsh", "cmd":
+				shell = mode
+			case "prose-led":
+				original, next = ": prior description", ": amended description"
+			case "span-to-plain":
+				original = "`sh ./check.sh`"
+			case "gate":
+				class = "gate:human"
+			}
 			f := contextFixture(t, []bool{true}, func(stage, body string) string {
 				switch stage {
 				case "original":
 					body = strings.Replace(body, "| Expect |", "| Expect | Class | Shell | Env | Note |", 1)
-					class := "check +flow"
-					if mode == "gate" {
-						class = "gate:human"
-					}
-					return strings.Replace(body, "| 2 | \x60sh check.sh\x60 | exit 1 |", "| 2 | "+original+" | exit 1 | "+class+" | sh | repo | contract A |", 1)
+					return strings.Replace(body, "| 2 | `sh check.sh` | exit 1 |", "| 2 | "+original+" | exit 1 | "+class+" | "+shell+" | repo | contract A |", 1)
 				case "delivery":
-					if mode == "delivery-environment" {
+					if mode == "delivery-environment" || mode == "restored-environment" {
 						return strings.Replace(body, "| repo |", "| host |", 1)
 					}
 				case "amendment":
@@ -40,6 +70,8 @@ func TestPlainCommandApproval(t *testing.T) {
 						return strings.Replace(body, "| check +flow |", "| check |", 1)
 					case "environment":
 						return strings.Replace(body, "| repo |", "| host |", 1)
+					case "restored-environment":
+						return strings.Replace(body, "| host |", "| repo |", 1)
 					case "extra-column":
 						return strings.Replace(body, "| contract A |", "| contract B |", 1)
 					case "span":
@@ -71,9 +103,9 @@ func TestPlainCommandApproval(t *testing.T) {
 				t.Fatal(err)
 			}
 			plan, why := protectedAcceptanceFor(verify, evidence, descriptor, f.path)
-			if mode != "approved" {
-				if why == "" {
-					t.Fatal("accepted", mode)
+			if tc.refusal != "" {
+				if !strings.Contains(why, tc.refusal) {
+					t.Fatalf("got refusal %q, want %q", why, tc.refusal)
 				}
 				return
 			}
@@ -114,6 +146,7 @@ func TestPlainTransitionCommandShape(t *testing.T) {
 		{"go test ./...", true},
 		{"out=$(mktemp) && cat < input > \"$out\"", true},
 		{"test -n \"$name\" \\| grep '^[0-9]$'", true},
+		{": description only", false},
 		{"Run \x60sh check.sh\x60 on the named host", false},
 		{"sh check.sh # on the named host", false},
 		{"sh check.sh <!-- context -->", false},
@@ -124,8 +157,11 @@ func TestPlainTransitionCommandShape(t *testing.T) {
 		{"sh check.sh \u202e", false},
 		{"", false},
 	} {
-		row := verifyRow{Class: classCheck, Classed: true, Shell: "sh", Command: verifyCommand(c.cell), CommandCell: c.cell}
-		if got := plainTransitionCommand(row); got != c.ok {
+		rows := briefVerifyRows("| # | Class | Command | Expect |\n|---|---|---|---|\n| 1 | check | " + c.cell + " | exit 0 |")
+		if len(rows) != 1 {
+			t.Fatalf("parsed %d rows for %q, want one", len(rows), c.cell)
+		}
+		if got := plainTransitionCommand(rows[0]); got != c.ok {
 			t.Errorf("%q eligibility = %t, want %t", c.cell, got, c.ok)
 		}
 	}
