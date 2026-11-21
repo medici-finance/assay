@@ -153,7 +153,7 @@ _Held by per-stream caps: 21 brief(s) across 3 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 1860e3ec1 2026-11-21T20:54:26Z_
+_last regen: e6ea53975 2026-11-21T21:00:48Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -174,7 +174,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 1860e3ec1 2026-11-21T20:54:26Z_
+_last regen: e6ea53975 2026-11-21T21:00:48Z_
 
 **Progress:** 37/100 brief items done.
 
@@ -328,7 +328,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | build-less-brittle | 04 [exec:strong] | verified | 5560 | 5 | 6d | worker | fix, cite medici-finance/assay#1927 | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | contributor-trust | 02 [exec:strong] | implemented | 4560 | 5 | 6d | worker | fix, cite medici-finance/assay#5210 | — | — |
 | derived-board | 03 [exec:strong] | implemented | 4560 | 5 | 6d | worker | fix, cite medici-finance/assay#2852 | — | — |
-| tool-refactoring | 01 [exec:strong] | implemented | 4500 | 5 | 2h | worker | fix, cite medici-finance/assay#1702 | — | — |
+| tool-refactoring | 01 [exec:strong] | implemented | 4500 | 5 | 3h | worker | fix, cite medici-finance/assay#1702 | — | — |
 | build-less-brittle | 12 [exec:strong] | implemented | 3560 | 1 | 6d | worker | fix, cite medici-finance/assay#4169 | — | — |
 | desk-containers | 26 | implemented | 3560 | 5 | 6d | worker | fix, cite medici-finance/assay#6455 | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3560 | 3 | 6d | worker | fix, cite medici-finance/assay#1281 | — | — |
