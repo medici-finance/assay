@@ -1,3 +1,0 @@
-### Fixed
-- The forge-body source guard's inventory of trees outside its roots refuses an entry that pins no hit, in either table. Before, an empty entry for a tree with no hits matched the empty scan and passed, so a tree with no uncapped read left could keep its entry instead of moving into the guard roots.
-- The inventory now starts at the repository root, so a body reader added in any module is inventoried, not only one under the six directories it used to list. A test checks that the inventory's parents chain down from the root without skipping a level. The wider scan found one reader it had not reached (the forge-service client, which reads one byte past its limit and refuses an oversized answer); it is now listed with its exact hit.

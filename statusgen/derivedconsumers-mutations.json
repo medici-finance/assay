@@ -34,8 +34,8 @@
     {
       "name": "recorded coordinates are not authenticated against the first-parent chain",
       "file": "consumerdelivery.go",
-      "old": "\tif cwhy != \"\" {\n\t\treturn \"\", \"\", cwhy\n\t}",
-      "new": "\tif false && cwhy != \"\" {\n\t\treturn \"\", \"\", cwhy\n\t}"
+      "old": "\t\tif cwhy != \"\" {\n\t\t\treturn \"\", \"\", cwhy\n\t\t}",
+      "new": "\t\tif false && cwhy != \"\" {\n\t\t\treturn \"\", \"\", cwhy\n\t\t}"
     },
     {
       "name": "the working-tree brief, not the committed blob, names the delivery",
@@ -46,8 +46,8 @@
     {
       "name": "conflicting deliveries are resolved to the first marker instead of refused",
       "file": "consumerdelivery.go",
-      "old": "if chosen != nil && *chosen != t {",
-      "new": "if false && chosen != nil && *chosen != t {"
+      "old": "if chosen != nil && chosen.delivery != t.delivery {",
+      "new": "if false && chosen != nil && chosen.delivery != t.delivery {"
     },
     {
       "name": "an explicit --base is overridden by derivation",

@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // statusgen is a separate module. Admission delegates to the installed shared
@@ -178,12 +180,12 @@ func admittedRowEnv(environ []string) []string {
 			env = append(env, kv)
 		}
 	}
-	return append(env,
+	// The grep pins come from gitcore, the owner that qualifies exactly them
+	// for its library reads, so a row's own scoped origin reads accept them.
+	env = append(env,
 		"GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1",
-		"GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=",
-		"GIT_CONFIG_COUNT=2",
-		"GIT_CONFIG_KEY_0=grep.patternType", "GIT_CONFIG_VALUE_0=default",
-		"GIT_CONFIG_KEY_1=grep.extendedRegexp", "GIT_CONFIG_VALUE_1=false")
+		"GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=")
+	return append(env, gitcore.GrepPinEnv()...)
 }
 
 // admittedRowGlobal reports whether an inherited GIT_* variable is a global

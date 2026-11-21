@@ -227,7 +227,11 @@ type deskreadItemEnvelope struct {
 		Trust  *struct {
 			BodyEditedAt string `json:"bodyEditedAt"`
 			Complete     bool   `json:"complete"`
-			Events       []struct {
+			// BodyHistoryKnown is whether the forge reported the body's edit
+			// provenance at all: an empty bodyEditedAt is "never edited" only when it
+			// is true (the change-trust kind; GitLab auto-flip's PRBodyEditedAt).
+			BodyHistoryKnown bool `json:"bodyHistoryKnown"`
+			Events           []struct {
 				AuthorLogin string `json:"authorLogin"`
 				AuthorID    int64  `json:"authorId"`
 				AuthorBot   bool   `json:"authorBot"`
@@ -240,13 +244,34 @@ type deskreadItemEnvelope struct {
 			AuthorID    int64  `json:"authorId"`
 			CreatedAt   string `json:"createdAt"`
 			Body        string `json:"body"`
+			// DatabaseID, AuthorType, URL and UpdatedAt are what a GitLab
+			// ruling note is checked on (rulinggitlab.go, #7252).
+			DatabaseID int64  `json:"databaseId"`
+			AuthorType string `json:"authorType"`
+			URL        string `json:"url"`
+			UpdatedAt  string `json:"updatedAt"`
 		} `json:"comments"`
+		// Issue is the `issue` kind: the decision issue a GitLab ruling note
+		// sits on (rulinggitlab.go). A pointer: no payload is not an answer.
+		Issue *struct {
+			State string `json:"state"`
+			Body  string `json:"body"`
+		} `json:"issue"`
 		// Reviews is the `reviews` kind. A pointer: an item with no review list at all is not an
 		// answer, while an empty list is ("nobody has reviewed").
 		Reviews *[]struct {
 			AuthorLogin string `json:"authorLogin"`
 			State       string `json:"state"`
+			// Body is the review's body as the seam served it; empty for a GitLab approval
+			// (the approvals endpoint carries none), never empty for a GitLab note.
+			Body string `json:"body"`
 		} `json:"reviews"`
+		// Change, ChangeCommits and ChangeFiles are the `change`, `change-commits` and
+		// `change-files` kinds the GitLab auto-flip reads (autoflip_gitlab.go). Pointers: an
+		// item that carries no payload for its kind is not an answer.
+		Change        *deskreadChange        `json:"change"`
+		ChangeCommits *deskreadChangeCommits `json:"changeCommits"`
+		ChangeFiles   *deskreadChangeFiles   `json:"changeFiles"`
 		// LabelEvents is the `label-events` kind. Complete is a pointer on purpose: an item that
 		// carries no completeness field at all is not a history this build can trust, and
 		// decoding it as false-or-true would be a guess either way.
@@ -266,6 +291,104 @@ type deskreadItemEnvelope struct {
 		Number int    `json:"number"`
 		Reason string `json:"reason"`
 	} `json:"partial"`
+}
+
+// deskreadChange is the `change` kind's payload: one change's merge state and record.
+// ChangedFiles is a pointer: the verb always renders it, so its absence is a contract this
+// build does not understand, never zero.
+type deskreadChange struct {
+	State          string `json:"state"`
+	Draft          bool   `json:"draft"`
+	Merged         bool   `json:"merged"`
+	MergedAt       string `json:"mergedAt"`
+	MergeCommitSHA string `json:"mergeCommitSha"`
+	HeadSHA        string `json:"headSha"`
+	BaseRef        string `json:"baseRef"`
+	ChangedFiles   *int   `json:"changedFiles"`
+	Body           string `json:"body"`
+	Author         *struct {
+		Login string `json:"login"`
+	} `json:"author"`
+}
+
+// deskreadChangeCommits is the `change-commits` kind's payload: the commits a change
+// introduced. Complete=false (or absent) means a SHA missing from the list is unknown.
+type deskreadChangeCommits struct {
+	Complete *bool    `json:"complete"`
+	SHAs     []string `json:"shas"`
+}
+
+// deskreadChangeFiles is the `change-files` kind's payload: a change's file list, with the
+// forge's own count. Complete=false (or absent) is a truncated list, never the whole diff.
+type deskreadChangeFiles struct {
+	Complete     *bool `json:"complete"`
+	ChangedFiles int   `json:"changedFiles"`
+	Files        []struct {
+		Filename         string `json:"filename"`
+		PreviousFilename string `json:"previousFilename"`
+		Status           string `json:"status"`
+		Patch            string `json:"patch"`
+		PatchAbsent      bool   `json:"patchAbsent"`
+	} `json:"files"`
+}
+
+// deskreadRepoEntry is one repo's answer under a per-repo kind the GitLab auto-flip reads:
+// `default-branch` (DefaultBranch) and `commit-changes` (CommitChanges, a pointer so an entry
+// with no list is not read as "no change").
+type deskreadRepoEntry struct {
+	Repo          string `json:"repo"`
+	DefaultBranch string `json:"defaultBranch"`
+	CommitChanges *[]int `json:"commitChanges"`
+}
+
+type deskreadRepoEnvelope struct {
+	Schema  int                 `json:"schema"`
+	Kind    string              `json:"kind"`
+	Repos   []deskreadRepoEntry `json:"repos"`
+	Partial []struct {
+		Repo   string `json:"repo"`
+		Reason string `json:"reason"`
+	} `json:"partial"`
+}
+
+// readRepoKind runs `deskread <kind> --repo <repo> [extra...]` and returns that ONE repo's
+// entry. As with readItemAt, every way the repo went unread is an error, never a zero entry.
+func (d deskreadReader) readRepoKind(kind, repo string, extra ...string) (*deskreadRepoEntry, error) {
+	what := strings.Join(append([]string{d.bin, kind, "--repo", repo}, extra...), " ")
+	out, err := d.readVerb(append([]string{kind, "--repo", repo}, extra...))
+	var env deskreadRepoEnvelope
+	jerr := json.Unmarshal(out, &env)
+	if jerr == nil && env.Schema != deskreadSchema {
+		return nil, fmt.Errorf("%s answered envelope schema %d, this build understands %d — "+
+			"upgrade statusgen rather than reading a contract it was not built against",
+			d.bin, env.Schema, deskreadSchema)
+	}
+	if jerr == nil && env.Kind != kind {
+		return nil, fmt.Errorf("%s: could-not-check: the envelope is kind %q, not %q", what, env.Kind, kind)
+	}
+	if jerr == nil {
+		for _, p := range env.Partial {
+			if p.Repo == repo {
+				return nil, fmt.Errorf("%s: could-not-check: %s", what, p.Reason)
+			}
+		}
+		for i := range env.Repos {
+			if env.Repos[i].Repo == repo {
+				return &env.Repos[i], nil
+			}
+		}
+	}
+	if err != nil {
+		detail := ""
+		if ee, ok := err.(*exec.ExitError); ok {
+			detail = firstLine(string(ee.Stderr))
+		}
+		return nil, fmt.Errorf("%s: could-not-check: %v %s", what, err, strings.TrimSpace(detail))
+	}
+	if jerr != nil {
+		return nil, fmt.Errorf("parsing the %s envelope: %w", what, jerr)
+	}
+	return nil, fmt.Errorf("%s: could-not-check: the envelope returned no result and no reason for this repo", what)
 }
 
 // readItem runs `deskread <kind> --issue <repo>#<n>` and returns the envelope's entry for that
@@ -445,12 +568,16 @@ type deskreadChangesEnvelope struct {
 	Repos  []struct {
 		Repo    string `json:"repo"`
 		Changes *[]struct {
-			Number   int    `json:"number"`
-			State    string `json:"state"`
-			Body     string `json:"body"`
-			BaseRef  string `json:"baseRef"`
+			Number    int    `json:"number"`
+			State     string `json:"state"`
+			Body      string `json:"body"`
+			BaseRef   string `json:"baseRef"`
 			MergedAt  string `json:"mergedAt"`
 			UpdatedAt string `json:"updatedAt"`
+			// HeadSHA and HeadRef feed reconcile's GitLab pull list
+			// (reconcilegitlab.go, #7252).
+			HeadSHA string `json:"headSha"`
+			HeadRef string `json:"headRef"`
 		} `json:"changes"`
 		Incomplete *bool `json:"incomplete"`
 		PageCap    int   `json:"pageCap"`

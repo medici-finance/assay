@@ -256,6 +256,11 @@ func TestRatchetRedOnGrowth(t *testing.T) {
 		"direct":  "package x\n\nimport \"os/exec\"\n\nfunc c() { _ = exec.Command(\"git\", \"log\") }\n",
 		"context": "package x\n\nimport (\n\t\"context\"\n\t\"os/exec\"\n)\n\nfunc c(ctx context.Context) { _ = exec.CommandContext(ctx, \"git\", \"log\") }\n",
 		"seam":    "package x\n\nfunc c() { gitOut(\"log\") }\n",
+		// deskkit's verifier read seam: a caller of the exported wrapper, and
+		// callers of the two helpers behind it, are each one site.
+		"verifier seam exported": "package x\n\nimport \"example.invalid/deskkit\"\n\nfunc c(root string) { _, _ = deskkit.VerifierGitPath(root, \"x\") }\n",
+		"verifier seam":          "package deskkit\n\nfunc c(root string) { _, _ = verifierGit(root, \"rev-parse\", \"HEAD\") }\n",
+		"verifier seam bytes":    "package deskkit\n\nfunc c(root string) { _, _ = verifierGitBytes(root, \"ls-files\") }\n",
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newFixture(t, "2\n")

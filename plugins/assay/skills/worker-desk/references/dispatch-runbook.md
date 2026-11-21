@@ -77,10 +77,10 @@ step before CI repair; it is neither ordinary unfinished work nor a closure verd
 For a pending board retirement, the offline `statusgen withdrawal-audit` snapshot also
 finds fresh implementation/evidence PRs outside the stalled detector's age window.
 
-`issueboard` replaces the raw `gh issue list` form this runbook used to carry. It resolves the scan
+`issueboard` is the way to list issues here; a raw `gh issue list` is not. It resolves the scan
 scope from the same roster key the placeholder scanner reads, applies the trust gate itself, and
-**exits 6 for the WHOLE board** when the scan set is unset/empty or any one repo is unreadable — where
-the list form returned a clean, empty board instead. An exit 6 from any of the four is
+**exits 6 for the WHOLE board** when the scan set is unset/empty or any one repo is unreadable; a raw
+list returns a clean, empty board in that case. An exit 6 from any of the four is
 could-not-check: report the surface BLIND for the tick, never zero.
 
 Then per slug in SCAN REPOS:
