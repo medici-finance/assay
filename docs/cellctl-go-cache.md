@@ -69,7 +69,8 @@ managed consumers may use these paths. Do not export them into unrelated shells
 or delegate cache users to services that outlive process supervision.
 
 Before HOME changes, the launcher composes `GOCACHE=<root>/build`,
-`GOMODCACHE=<root>/mod`, `GOPATH=<root>/gopath`, `GOFLAGS` (see "Builds share
+`GOMODCACHE=<root>/mod`, `GOPATH=<root>/gopath`, `GOTMPDIR=<root>/tmp` (see
+"Build work directories"), `GOFLAGS` (see "Builds share
 the cache across worktrees") and non-secret serialized `ASSAY_GO_CACHE_POLICY`. Codex receives these in its command environment;
 scrubbed cells add only these validated values to their composed environment.
 Changing task HOME does not create another compiler cache. Launch plans print
@@ -82,7 +83,57 @@ or traversal into another storage domain. Each cell has its own byte budget;
 cells on the same filesystem sample the same available-space pool. There is no
 aggregate cross-cell quota or reservation for future build writes. `gopath` is
 stable but never reclaimed: installed executables are not disposable compiler
-or module cache entries. Scratch, worktrees and session evidence are excluded.
+or module cache entries. `tmp` is outside the budget too: it holds only build
+work directories, which the sweep in "Build work directories" removes by age.
+Scratch, worktrees and session evidence are excluded.
+
+## Build work directories
+
+Every `go build`, `go test` and `go run` creates a work directory named
+`go-build<digits>` under `GOTMPDIR` and removes it when it ends. A build that is
+killed — a pass ended by its budget, an agent stopped mid-run — leaves it behind,
+and nothing else removes it, so an unmanaged `GOTMPDIR` grows by one compile
+tree per killed build. A managed cache therefore exports `GOTMPDIR=<root>/tmp`,
+and enrollment creates that directory (the Go toolchain refuses a `GOTMPDIR`
+that does not exist).
+
+Every maintenance pass sweeps it under the per-root lock: each live `clean`,
+`Check` and `deskwt prune` pass, and the cadence maintenance between passes even
+when its fresh measurement lets it skip the walk. A `go-build*` directory is
+removed only when both hold:
+
+- **No live consumer can hold it.** A consumer enrolls before its child starts,
+  so every work directory it creates is newer than its enrollment, and a
+  directory's modification time is never earlier than its creation. A directory
+  whose modification time is before the earliest active record's enrollment
+  (less the two-second clock margin) was created before every live consumer
+  existed. Consumers enroll under the same lock the sweep holds, so the set of
+  records cannot change while it decides. An active record whose enrollment time
+  cannot be read refuses the whole sweep.
+- **Nothing in it changed within `CELL_GO_CACHE_BUILD_MAX_AGE`.** The directory
+  and every member are walked through the verified root with the measurement's
+  checks; a linked, foreign, cross-device or other-writable member refuses that
+  directory. This also covers a `GOTMPDIR` user the records cannot see, such as
+  a shell that copied the variables.
+
+A directory that is not named `go-build*`, or that fails either test, is kept.
+The sweep never holds admission: a refusal is reported in the pass's
+`tmp_sweep` object (`removed`, `removed_bytes`, `kept`, `held` and a `reason`
+starting `could-not-check`), never as a pass failure. A dry run (`status`) lists
+what it would remove and removes nothing.
+
+The bound this gives is the oldest live record's lifetime, not the trim age
+alone. A standing role window is an active record for as long as it runs, so
+every work directory created after it enrolled is kept, whichever consumer
+created it, including consumers that have already exited: the sweep cannot tell
+whose directory it is, and no PID or age is accepted as proof. Each such
+directory is listed in `held` with the record that holds it, so a window holding
+the sweep is visible in the report. The record named is the oldest live one. A
+directory goes at the first pass after every live record that enrolled before it
+last changed is released; until then each pass names the oldest such record
+still live. A policy recorded before this setting existed
+exports no `GOTMPDIR`, creates no `tmp/` and is never swept, so consumers it
+launched keep their custody; relaunch them to move their work directories.
 
 ## Builds share the cache across worktrees
 
@@ -392,7 +443,8 @@ for next-cleanup comparisons. Each complete JSON record includes policy,
 filesystem identity, UTC before/after timestamps, logical usage, available bytes,
 skipped active records, reclaimed logical bytes, the number and summed logical
 bytes of compiler-cache entries the trim removed (`trimmed_build_entries`,
-`trimmed_build_bytes`), the trim's `low_water_trim` outcome and cleanup failures. The trimmed counts are what the
+`trimmed_build_bytes`), the trim's `low_water_trim` outcome, the `GOTMPDIR`
+sweep's `tmp_sweep` outcome and cleanup failures. The trimmed counts are what the
 trim removed, barring a concurrent removal or a partially failed directory
 removal; reclaimed bytes are a before/after difference that concurrent
 builds can blur. Retention

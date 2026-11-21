@@ -446,3 +446,62 @@ func TestCorruptCheckpointRefused(t *testing.T) {
 		}
 	}
 }
+
+// regression: #3054
+func TestCheckpointConcurrentPublication(t *testing.T) {
+	for _, name := range []string{"stable", "published", "published-again", "malformed-publication"} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			now := time.Now().UTC()
+			state := State{Schema: Schema, Mode: "interactive", Cell: "fixture", Role: "comms", PID: 123,
+				Sequence: 1, Running: true, LastStart: now, NextDue: now, Heartbeat: now, Outcome: "running"}
+			publish := func() {
+				t.Helper()
+				if err := write(dir, state); err != nil {
+					t.Fatal(err)
+				}
+			}
+			publish()
+			samples := 0
+			// Use the real atomic writer at precise observation boundaries.
+			inspect := func(path string) (os.FileInfo, error) {
+				samples++
+				if samples == 2 && name == "published-again" {
+					// Model a third publication's directory entry. Windows cannot
+					// rename over an open handle, so obtain its real file identity
+					// from an independent publication directory on every platform.
+					next := t.TempDir()
+					state.Sequence++
+					if err := write(next, state); err != nil {
+						t.Fatal(err)
+					}
+					return os.Lstat(filepath.Join(next, "checkpoint.json"))
+				}
+				info, err := os.Lstat(path)
+				if err == nil && samples == 1 && name != "stable" {
+					state.Sequence++
+					if name == "malformed-publication" {
+						state.Schema = "unknown-fixture-schema"
+					}
+					publish()
+				}
+				return info, err
+			}
+			got, err := readCheckpoint(dir, inspect)
+			switch name {
+			case "stable", "published":
+				if err != nil || got.Sequence != state.Sequence {
+					t.Fatalf("read sequence %d, want %d: %v", got.Sequence, state.Sequence, err)
+				}
+			case "published-again":
+				if err == nil || err.Error() != "cadence checkpoint identity changed" || samples != 2 {
+					t.Fatalf("unstable checkpoint must stay held after one reinspection: samples=%d err=%v", samples, err)
+				}
+			case "malformed-publication":
+				if err == nil || err.Error() != "invalid cadence checkpoint fields" {
+					t.Fatalf("published content did not go through validation: %v", err)
+				}
+			}
+		})
+	}
+}

@@ -13,6 +13,10 @@ func Maintain(ctx context.Context, p Policy) (Report, error) {
 		return Report{}, err
 	}
 	if r, why := cheapClean(p, false, admitEnv{free: diskFree, now: time.Now}, AdmitMaxAge); why == "" {
+		// Fresh accounting skips the measurement, never the GOTMPDIR sweep: a
+		// killed build's work directory is not part of the byte budget, so no
+		// measurement would ever notice it.
+		r.Tmp = sweepTmpLocked(p, time.Now())
 		return r, nil
 	}
 	// A just-finished build can have a filesystem timestamp inside the
