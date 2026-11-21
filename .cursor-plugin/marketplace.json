@@ -7,6 +7,10 @@
     {
       "name": "assay",
       "source": "./plugins/assay"
+    },
+    {
+      "name": "editorial",
+      "source": "./plugins/editorial"
     }
   ]
 }

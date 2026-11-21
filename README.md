@@ -39,6 +39,8 @@ The board is derived from agent-authored artifacts, checked by the linter and re
 | [tools/desk/](tools/desk/) | The desk tooling, a Go submodule (`github.com/medici-finance/assay/tools/desk`). Importing one of its packages from another module? See [how to pin it](docs/consuming-the-desk-go-module.md) — a bare repo tag does not resolve. |
 | [Dockerfile](Dockerfile) | Builds one combined Linux image with the desk-tools suite + `statusgen` on PATH, published to GHCR. See [docs/docker.md](docs/docker.md). |
 
+For writing projects, install [Editorial](plugins/editorial/README.md) from the same marketplace. Select `editorial@assay` to load the article editing skills independently.
+
 ## Building and generated Cursor files
 
 `make build-all` compiles every tracked Go module and emits every desk executable

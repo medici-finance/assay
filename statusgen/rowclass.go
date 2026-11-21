@@ -48,6 +48,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 
@@ -377,6 +378,22 @@ func (r verifyRowCells) shell() string {
 //     a PROBLEM — an env-bound row must say where it is witnessed.
 //
 // Gate rows are judged, not executed, so their Env cell is informational.
+//
+// DECLARED NAMES (desk-containers/35). A `service:<name>` cell may also carry the
+// cell dev-env variable names the row needs:
+//
+//	service:<name>:<NAME>[,<NAME>…]   e.g. service:pg-local:DEVENV_PGHOST,DEVENV_PGPORT
+//
+// <name> admits neither `:` nor `,`, so the form parses without ambiguity. A row
+// that declares no names receives none from the cell's dev-env file
+// (containers/secrets.md §4.5). Names keep the case they are written in. The
+// allow-list denies by default: a declarable name matches `DEVENV_[A-Z0-9_]+`
+// and nothing else, a namespace no shell, loader, interpreter, forge client, git
+// or Assay component reads on its own. In every table with the column, a
+// malformed name, a duplicate name, a name outside the allow-list (naming its
+// class where it is a path, loader, interpreter, tool-configuration,
+// agent-socket or Assay name) and declared names on any kind but `service` are
+// each a PROBLEM, whatever the row's class.
 
 const (
 	rowEnvTree    = "tree"
@@ -408,13 +425,114 @@ func resolveRowEnv(raw string) (env, kind string, known bool) {
 	return env, k, false
 }
 
-// rowEnvProblem is lint arm (d) for one row of a table carrying an `Env`
-// column: "" when the row is clean, else the PROBLEM text (issue #6065).
-func rowEnvProblem(path, where string, r verifyRowCells) string {
-	env, kind, known := resolveRowEnv(r.Env)
-	if !known {
-		return fmt.Sprintf("%s: %s declares environment %q, which is not a defined Verify-row environment — the recognised forms are `tree` (the checkout alone, network-off: what CI re-executes), `host` or `host:<name>` (the witness's own machine), `service:<name>` (a named non-production service instance: a database, an API, a staging deployment) and `cluster:<name>` (a live cluster), where <name> is lower-case letters, digits, `.`, `_` or `-`. An environment the tool cannot resolve routes the row nowhere; fix the cell — issue #6065", path, where, env)
+// rowEnvVarNameRe is the shape of a declared variable name: upper-case
+// letters, digits and `_`, not starting with a digit. A name of another shape
+// is malformed before the allow-list is consulted.
+var rowEnvVarNameRe = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
+
+// rowEnvAllowedNameRe is the deny-by-default allow-list of declarable names
+// (desk-containers/35 Task 3): the DEVENV_ namespace and nothing else.
+var rowEnvAllowedNameRe = regexp.MustCompile(`^DEVENV_[A-Z0-9_]+$`)
+
+// splitRowEnvNames separates an Env cell into its `kind[:<name>]` part and the
+// names it declares. declared is true when the cell carries a names segment
+// (a second `:`), even an empty one, so `service:pg:` is a malformed
+// declaration rather than a silent `service:pg`. Names are returned verbatim
+// and in the order written; base goes on to resolveRowEnv.
+func splitRowEnvNames(raw string) (base string, names []string, declared bool) {
+	cell := strings.TrimSpace(strings.Trim(strings.TrimSpace(raw), "`"))
+	kind, rest, ok := strings.Cut(cell, ":")
+	if !ok {
+		return raw, nil, false
 	}
+	name, list, ok := strings.Cut(rest, ":")
+	if !ok {
+		return raw, nil, false
+	}
+	for _, n := range strings.Split(list, ",") {
+		names = append(names, strings.TrimSpace(n))
+	}
+	return kind + ":" + name, names, true
+}
+
+// rowEnvNameClass names the class a refused name belongs to (desk-containers/35
+// Task 3), or "" for a name in no named class, which the allow-list still
+// refuses by default. The tool-configuration class reuses the shell-startup and
+// forge-token sets the verifier's admitted row environment strips
+// (verifieradmission.go), so the two never drift apart.
+func rowEnvNameClass(name string) string {
+	u := strings.ToUpper(name)
+	switch {
+	case u == "PATH" || u == "HOME" || strings.HasPrefix(u, "XDG_"):
+		return "path-and-home"
+	case strings.HasPrefix(u, "LD_") || strings.HasPrefix(u, "DYLD_"):
+		return "dynamic-loader"
+	case slices.Contains([]string{"NODE_OPTIONS", "NODE_PATH", "PYTHONPATH", "PYTHONHOME", "PYTHONSTARTUP", "PERL5LIB", "PERL5OPT", "PERLLIB", "RUBYOPT", "RUBYLIB"}, u):
+		return "interpreter-options"
+	case strings.HasPrefix(u, "GIT_") || strings.HasPrefix(u, "GH_") || admittedRowForgeToken(u) || admittedRowShellStartup(u):
+		return "tool-configuration"
+	case u == "SSH_AUTH_SOCK" || u == "GPG_AGENT_INFO":
+		return "agent-socket"
+	case strings.HasPrefix(u, "ASSAY_"):
+		return "Assay"
+	}
+	return ""
+}
+
+// rowEnvNameProblems lints the names an Env cell declares (desk-containers/35):
+// a malformed name, a duplicate, and a name outside the DEVENV_ allow-list.
+func rowEnvNameProblems(path, where, env string, names []string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, n := range names {
+		switch {
+		case !rowEnvVarNameRe.MatchString(n):
+			out = append(out, fmt.Sprintf("%s: %s declares name %q in environment %q, which is not a well-formed variable name — a declared name is upper-case letters, digits and `_`, written `service:<name>:<NAME>[,<NAME>…]` with no empty entry; fix the cell — desk-containers/35", path, where, n, env))
+		case seen[n]:
+			out = append(out, fmt.Sprintf("%s: %s declares name %q twice in environment %q — each name is declared once; drop the duplicate — desk-containers/35", path, where, n, env))
+		case !rowEnvAllowedNameRe.MatchString(n):
+			class := "it is in no named class, and every name outside the allow-list refuses (deny by default)"
+			if c := rowEnvNameClass(n); c != "" {
+				class = "it is in the " + c + " class, which a shell, loader, interpreter, tool or Assay component reads on its own"
+			}
+			out = append(out, fmt.Sprintf("%s: %s declares name %q in environment %q, which is outside the dev-env allow-list — a declarable name matches `DEVENV_[A-Z0-9_]+` and nothing else; %s. Rename it into the DEVENV_ namespace and pass it to the tool explicitly in the row's command — desk-containers/35", path, where, n, env, class))
+		}
+		seen[n] = true
+	}
+	return out
+}
+
+// rowEnvProblem is lint arm (d) for one row of a table carrying an `Env`
+// column: nil when the row is clean, else the PROBLEM texts (issue #6065;
+// declared names, desk-containers/35).
+func rowEnvProblem(path, where string, r verifyRowCells) []string {
+	base, names, declared := splitRowEnvNames(r.Env)
+	env, kind, known := resolveRowEnv(base)
+	if declared {
+		full := strings.TrimSpace(strings.Trim(strings.TrimSpace(r.Env), "`"))
+		if kind != rowEnvService {
+			return []string{fmt.Sprintf("%s: %s declares names in environment %q, but only a `service:<name>` environment may carry declared names (`service:<name>:<NAME>[,<NAME>…]`); a %q environment receives nothing from the cell dev-env file. Move the names to a `service:<name>` row or drop them — desk-containers/35", path, where, full, kind)}
+		}
+		if known {
+			probs := rowEnvNameProblems(path, where, full, names)
+			if msg := rowEnvKindProblem(path, where, env, kind, r); msg != "" {
+				probs = append(probs, msg)
+			}
+			return probs
+		}
+	}
+	if !known {
+		return []string{fmt.Sprintf("%s: %s declares environment %q, which is not a defined Verify-row environment — the recognised forms are `tree` (the checkout alone, network-off: what CI re-executes), `host` or `host:<name>` (the witness's own machine), `service:<name>` (a named non-production service instance: a database, an API, a staging deployment) and `cluster:<name>` (a live cluster), where <name> is lower-case letters, digits, `.`, `_` or `-`. An environment the tool cannot resolve routes the row nowhere; fix the cell — issue #6065", path, where, env)}
+	}
+	if msg := rowEnvKindProblem(path, where, env, kind, r); msg != "" {
+		return []string{msg}
+	}
+	return nil
+}
+
+// rowEnvKindProblem is the class-versus-environment half of lint arm (d) for a
+// well-formed Env cell (issue #6065): "" when the row's class fits its kind.
+func rowEnvKindProblem(path, where, env, kind string, r verifyRowCells) string {
 	offTree := kind != "" && kind != rowEnvTree
 	cls := r.class()
 	switch {
@@ -541,7 +659,7 @@ func verifyRowClassProblems(streams []*Stream) []string {
 				// (d) environment mismatch (issue #6065). After (a), so the
 				// class it reads is a known one.
 				if r.EnvCol {
-					if msg := rowEnvProblem(path, where, r); msg != "" {
+					for _, msg := range rowEnvProblem(path, where, r) {
 						add("%s", msg)
 					}
 				}

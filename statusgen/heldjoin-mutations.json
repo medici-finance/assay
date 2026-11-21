@@ -34,8 +34,8 @@
     {
       "name": "J2: Evidence that does not settle is read anyway",
       "file": "verifyissues.go",
-      "old": "\tif !settled {\n\t\treturn true,",
-      "new": "\tif false && !settled {\n\t\treturn true,"
+      "old": "\tif !settled {\n\t\treturn []heldRefusalSignal{",
+      "new": "\tif false && !settled {\n\t\treturn []heldRefusalSignal{"
     },
     {
       "name": "J3: the CommonMark short comment forms are not stripped",

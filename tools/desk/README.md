@@ -67,7 +67,7 @@ changed or discarded.
 
 | Tool | Verb(s) | Class | Write budget + breaker |
 |------|---------|-------|------------------------|
-| `deskboard` | `review-queue`, `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `diff`, `files` | read-only | no |
+| `deskboard` | `review-queue`, `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `milestones`, `diff`, `files` | read-only | no |
 | `issueboard` | `board`, `issues`, `intake` | read-only | no |
 | `verifyloop` | `plan` | read-only (spawns nothing, writes nothing) | no |
 | `scanloop` | `plan` (read-only queue print), `run` (one drain pass), `land` (record a judgment exit for a parked item) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item, each also appended as an `intake-exit-v1` record to `<state dir>/intake-exits.jsonl` (schema: `spec/intake-exit-v1.md`) | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) / local state (`land`) | yes (`run`) |
@@ -1648,7 +1648,7 @@ The same probe rides on `deskboard actions`: its header carries `mainHealth`, th
 merge onto it), and each row on an affected repo is flagged `baseBranchRed` with a note.
 An **absent** `mainHealth` field means the verb did not probe — never that it found
 nothing wrong. `review-queue`, `prs`, `queue`, `awaiting`, `nextup`, `dispatch`, `todo`, `next`,
-`next-up`, `throughput`, `scope`, `policydrift`, `stalled`,
+`next-up`, `throughput`, `scope`, `policydrift`, `stalled`, `milestones`,
 `reviews`, `diff` and `files` do not probe. That list is not prose upkeep: `TestNonProbingVerbs_OmitMainHealth` asserts
 the absence for every verb on it (JSON **and** `--table`), `TestVerbInventory_Complete`
 fails if a verb is added without being classified, and `TestREADME_NamesEveryNonProbingVerb`
@@ -1770,6 +1770,27 @@ filter — the PR's changed files. It never errors the board: a failed probe deg
 its one row to `unverified`, the same contract as branch health. deskpost's ready
 gate is unchanged (a `ciEmpty` on a CI-required repo is still exit 6 there); making
 the gate consume the same distinction is the natural follow-up, not this PR.
+
+## deskboard milestones — milestone state from stream-view documents
+
+`deskboard milestones <stream-view.json>... ` renders the milestone section of one or
+more `stream-view/v2` documents (`-` reads one from stdin). It is a pure, in-process
+consumer of the versioned projection (`docs/stream-view-contract.md`): it decodes with
+`statusgen/streamview`, fetches nothing and writes nothing.
+
+- It shows what the wire says and derives nothing. Supported scope, work remaining,
+  acceptance, availability, prerequisites, holds and evidence are separate facts; zero
+  work remaining prints as `0 remaining` beside the acceptance state and is never
+  summarized as done.
+- Source coverage and every listed unknown print first. A `stream-view/v1` document is
+  shown as `not-assessed` (it predates milestones), never as "no milestones".
+- A document whose contract version this build cannot decode, or that fails
+  validation, is **refused** (exit 5) naming the file; nothing is partly rendered.
+- Legacy aliases collapse onto the canonical milestone: no extra row, no change to
+  approval state; a disagreement between views is printed as `CONFLICT`.
+- Untrusted text is printed quoted (control characters and escape sequences are inert).
+  Views from, and evidence or source locators naming, a repository outside the board's
+  allow-list are `[withheld]` and counted.
 
 ## deskboard stalled — the stalled-draft detector
 
@@ -2125,8 +2146,8 @@ structurally invisible, and nothing knows to alert. Two halves:
 
 - **Every sweeping verb states its scope.** `review-queue` (requested/admitted/population in its observation), `prs`, `actions`, `queue`, `health`, `scope`,
   `policydrift`, `stalled` and `throughput` carry a `scope` object in the JSON header (repos, count, source) and
-  print one scope line on `--table`. Verbs taking an explicit repo (`reviews`, `diff`,
-  `files`) **omit** the field entirely — absent means "swept nothing", never "the set was
+  print one scope line on `--table`. Verbs taking an explicit repo or document (`reviews`, `diff`,
+  `files`, `milestones`) **omit** the field entirely — absent means "swept nothing", never "the set was
   empty". This sentence is not prose upkeep: `TestReadme_SweepingVerbSentence_359` fails
   if it names a subset of the verbs `verbScopeClass` declares as repo-sweeping — the
   defect this whole section is about, committed in its own documentation.
@@ -2342,6 +2363,36 @@ periodic full sweep (`--table`, or `deskboard actions`) alongside the quiet loop
 The **skill half** of this — the one-line-per-quiet-iteration console contract the role
 windows adopt, since no binary can gate what the model prints between tool calls — is the
 console noise floor, tracked in the desk-tools operator notes.
+
+## Cell lifecycle model — `internal/cellcadence/lifecycle.go`
+
+`cellctl up`, `reconcile`, `down` and the interactive-owner settle used to each decide, in their own
+code, whether a recorded role owner is the process now running and whether a checkpoint is the one
+that owner wrote. Those judgments now live in one pure model in `internal/cellcadence`; the
+`cellctl` files are adapters that read the process table, the lease and the checkpoint, call the
+model, and act on its decision. The model has no file, process or lock access.
+
+| Judgment | Function | Used by |
+|---|---|---|
+| One recorded process vs a probe of its pid: gone / unreadable / no recorded start / reused / same | `JudgeProcess`, `ClassifyProcesses` | `reconcile` (`inventoryRecord`, `liveLeaseHolders`), `up` stale probe, `verifySurface` |
+| Owner generation: is this checkpoint the one the signalled owner wrote | `Generation.Attributes`, `Generation.OwnsUnfinished` | `down` settle; `Lease.RecordStopped` |
+| One reading of a signalled interactive owner: done / read again / refuse / record the stop | `JudgeSettle` | `settleOnce` |
+| `up --plan` class and plannability, and the (state, class) preconditions `up --apply` re-measures | `RoleObservation` | `upProbe`, `planPreconditions` |
+
+A pid alone never identifies a process; the pid and start time together do, and an unreadable
+start time or a missing observation is `could-not-check`, never dead, free or owned. The
+`RecordStopped` checkpoint writer takes the owner `Generation` (pid, start time, and the
+checkpoint sequence and start read before `down` signalled anyone) and refuses a checkpoint of
+another generation, so a repeated `down` cannot finish a replacement owner's record. This keeps
+the #6251 repair (the checkpoint down read binds an owner whose lease record left with the lease)
+as a characterization case in `TestCellLifecycleMatrix`. Nothing changes in the plan or result
+schemas, exit codes or verbs. Independent checks at other trust boundaries stay where they are:
+`cellstop` re-reads the kernel start time right before any signal, `RecordStopped` re-checks the
+generation under the lease it holds, and `cellop` re-measures plan preconditions at apply.
+`TestCellLifecycleClassGuard` parses the production source and rejects a second start-time
+judgment, a checkpoint writer outside `Run`/`RunInteractive`/`RecordStopped`, a `RecordStopped`
+call without a settle decision or with a bare pid, and a class precondition built outside
+`planPreconditions`; its committed plants are in `internal/cellcadence/testdata/lifecycle_plant`.
 
 ## Build & install
 

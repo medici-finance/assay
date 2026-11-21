@@ -25,12 +25,12 @@ sources:
   - docs/library-first.md
   - "freshness-checked 2026-10-22 @ a631d47ea71b3270ab33ba08af47d3dde8c9e7d5"
 consumers:
-  - "statusgen/streamview/: follow-up milestone-support/11 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/main.go: follow-up milestone-support/11 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/readmetable.go: follow-up milestone-support/11 (this delivery; replace with fixed-here in implementation)"
-  - "tools/desk/cmd/deskboard/: follow-up milestone-support/11 (this delivery; replace with fixed-here in implementation)"
-  - "docs/streams/README.md: follow-up milestone-support/11 (this delivery; replace with fixed-here in implementation)"
-  - "docs/contracts.md: follow-up milestone-support/11 (this delivery; replace with fixed-here in implementation)"
+  - "statusgen/streamview/: fixed-here (census: docs/streams/milestone-support/11-consumers.md)"
+  - "statusgen/main.go: fixed-here (census: docs/streams/milestone-support/11-consumers.md)"
+  - "statusgen/readmetable.go: fixed-here (census: docs/streams/milestone-support/11-consumers.md)"
+  - "tools/desk/cmd/deskboard/: fixed-here (census: docs/streams/milestone-support/11-consumers.md)"
+  - "docs/streams/README.md: fixed-here (census: docs/streams/milestone-support/11-consumers.md)"
+  - "docs/contracts.md: fixed-here (census: docs/streams/milestone-support/11-consumers.md)"
   - "docs/streams/milestone-support/brief-13-trace-and-report-a-selected-milestone-through-canonical-readers.md: follow-up milestone-support/13 (consumes this delivery; exact runtime readers enumerated at pickup)"
 ---
 

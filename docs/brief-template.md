@@ -161,6 +161,13 @@ keep it to scope + intent, not a keystroke script.>
 # row needs more than the checkout. `statusgen --lint` PROBLEMs a check:ci row naming anything
 # but tree, an env-bound check / check:cluster row with an empty Env, a non-tree Env in a table
 # with no Class column (legacy rows are CI re-executed), and any Env outside this grammar.
+# DECLARED NAMES (desk-containers/35): a service:<name> cell may carry the cell dev-env names the
+# row needs, service:<name>:<NAME>[,<NAME>…] — e.g. service:pg-local:DEVENV_PGHOST,DEVENV_PGPORT.
+# A row that declares none receives none. Names match DEVENV_[A-Z0-9_]+ only (deny by default);
+# pass each one to its tool explicitly in the Command (PGHOST="$DEVENV_PGHOST" psql …). The lint
+# PROBLEMs a malformed or duplicate name, a name outside the allow-list (naming its class: PATH,
+# a loader, interpreter or tool-configuration variable, SSH_AUTH_SOCK, any ASSAY_*), and names
+# on any kind but service. The file itself: containers/secrets.md §4.5.
 # (The frontmatter `target` above stays reserved and unenforced; Env is the enforced per-row field.)
 # SCRIPTED rows: a check:ci / check row may be a reviewed script instead of an inline command —
 #   docs/streams/<stream>/verify.d/brief-NN/row-K.sh  (executable, exit 0 = PASS)

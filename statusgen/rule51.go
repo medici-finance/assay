@@ -198,6 +198,8 @@ func runRule51(plan shellPlan, sandbox, root string, w witness, timeout time.Dur
 		note = "rule-51 lane: a network-none container cannot reach the forge; run the host lane"
 	case plan.readCred == nil:
 		note = "rule-51 lane: the run is not admitted, so it holds no verifier read credential"
+	case plan.rule51HostRoster == nil || plan.rowScratch == "":
+		note = "rule-51 lane: no validated host roster or private row scratch for the pinned lint"
 	default:
 		exe, err := rule51Executable()
 		if err != nil || exe == "" {
@@ -211,6 +213,7 @@ func runRule51(plan shellPlan, sandbox, root string, w witness, timeout time.Dur
 		}
 		sum := sha256.Sum256([]byte(secret))
 		s.CredSum = hex.EncodeToString(sum[:])[:12]
+		plan.rowRoster = plan.rule51HostRoster
 		res := runVerifyCommandWith(root, shellQuoteArg(exe)+" --root . --lint --acceptance-forge", timeout, nil, plan, rowShellSh)
 		s.State = rule51ForgeState(res)
 		s.ForgeRC = res.exit
