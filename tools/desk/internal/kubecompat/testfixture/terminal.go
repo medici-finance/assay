@@ -4,10 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
+
 	core "k8s.io/api/core/v1"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/httpstream"
-	"net/http"
 )
 
 // TerminalHandler connects one retained fixture session to an operator's streams.

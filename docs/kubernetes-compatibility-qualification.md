@@ -23,8 +23,13 @@ Run `python3 -I containers/k8s/compatibility/qualify.test.py` to replay the
 runner's failure cases. The test feeds recorded Go events to the ordinary
 qualification command and checks its exit code and diagnostic for each case.
 
-The five-role useful-work and resize exercise, container-level restart evidence,
-and witnessed operator run remain open in
+The [offline interaction suite](../containers/k8s/components/compatibility-cellctl/README.md#offline-interaction-suite)
+uses the compiled CLI and the published candidate's PID-1 launcher source for all
+five roles. Its records cover useful work, resize, operator-client loss and
+retained results in a disposable fixture runtime.
+
+Independent qualification, container-level restart evidence and the witnessed
+operator run are tracked in
 [desk-containers/32](streams/desk-containers/brief-32-qualify-the-compatibility-kubernetes-desk-cell.md).
 The hosted run also needs scoped operator bindings, accepted transcript custody
 and a published image cohort. The lifecycle command only supports offline use.

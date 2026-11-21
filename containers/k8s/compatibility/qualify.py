@@ -53,12 +53,28 @@ def main():
     except FileNotFoundError:
         raise SystemExit("could-not-check: the Go toolchain and tools/desk checkout are required")
     passed = set()
+    records = {}
+    partial = {}
+    role_tests = {f"{test}/{role}": role for role in roles}
+    marker = "INTERACTION_RECORD "
     for line in run.stdout.splitlines():
         event = json.loads(line)
         if event["Action"] == "pass":
             passed.add(event.get("Test"))
-        if args.suite == "interaction" and event.get("Action") == "output" and "INTERACTION_RECORD {" in event.get("Output", ""):
-            print(event["Output"].split("INTERACTION_RECORD ", 1)[1].strip())
+        name = event.get("Test")
+        if args.suite == "interaction" and name in role_tests and event["Action"] == "output":
+            output = event.get("Output", "")
+            # test2json can split one long t.Log record across multiple output events.
+            if marker in output:
+                partial[name] = output.split(marker, 1)[1]
+            elif name in partial:
+                partial[name] += output
+            if name in partial and partial[name].endswith("\n"):
+                record = json.loads(partial.pop(name))
+                role = role_tests[name]
+                if record.get("role") != role or role in records:
+                    raise SystemExit("duplicate or inconsistent interaction record: " + role)
+                records[role] = record
         if run.returncode and event.get("Output"):
             sys.stderr.write(event["Output"])
     if run.stderr:
@@ -68,6 +84,11 @@ def main():
     missing = expected - passed
     if missing:
         raise SystemExit("missing named test passes: " + ", ".join(sorted(missing)))
+    if args.suite == "interaction":
+        if partial or set(records) != set(roles):
+            raise SystemExit("missing or incomplete five-role interaction records")
+        for role in roles:
+            print(json.dumps(records[role], sort_keys=True))
     print(json.dumps({"suite": args.suite, "environment": "offline-fixture",
                       "result": "pass", "roles": roles}, sort_keys=True))
     return 0

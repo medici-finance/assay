@@ -54,7 +54,14 @@ class RunnerControls(unittest.TestCase):
             check(complete, 0, 2, "unrecognized arguments: --allow-cluster-queries", "--allow-cluster-queries")
             interaction = "TestKubeCompatCellctlInteraction"
             interact_rows = [{"Action": "pass", "Test": row["Test"].replace(TEST, interaction)} for row in complete]
-            check(interact_rows, 0, 0, '"suite": "interaction"', "--offline", "--suite", "interaction")
+            logs = []
+            for role in roles:
+                named = {"Action": "output", "Test": f"{interaction}/{role}"}
+                logs.extend([dict(named, Output='fixture.go:1: INTERACTION_RECORD {"role": '),
+                             dict(named, Output=json.dumps(role) + "}\n")])
+            check([*interact_rows, *logs], 0, 0, '"suite": "interaction"', "--offline", "--suite", "interaction")
+            check([*interact_rows, *logs[:-1]], 0, 1, "incomplete five-role", "--suite", "interaction")
+            check([*interact_rows, *logs, *logs[:2]], 0, 1, "duplicate or inconsistent", "--suite", "interaction")
             check(complete, 0, 1, "missing named test passes", "--suite", "interaction")
             check(interact_rows[:-1], 0, 1, f"{interaction}/{roles[-1]}", "--suite", "interaction")
             check(complete, 0, 2, "requires a suite", "--self-test")
