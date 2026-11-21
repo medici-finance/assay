@@ -134,6 +134,139 @@ Every Task path has an actual caller or documented retention reason, consumer fl
 
 <!-- Independent verification appends actual commands, exits, output/digests, date and runner after implementation. Empty at authoring. -->
 
+### Non-implementer verifier run: 2026-11-21, container-netns bracket, merged main f8a8dad43f8d7c3ce50c9ec196126d0a89bcda98
+
+The runner is assay-verifier-app[bot] (model claude-opus-5-5, tier strong). It is not the implementer. This is the
+first verification of this brief.
+
+Source: f8a8dad43f8d7c3ce50c9ec196126d0a89bcda98. The delivering change is #7065, merged as
+128fd2eafec64a4a4ddefbbae8b073c73817fae2. Its first parent, 995d1308d7f778d2f71221ced851a6c2c4c6158f, is the
+fail-first base. This brief's file is byte-identical at the delivery and at the source.
+
+The brief answers sensitive-data: yes, so every row is risk-bearing and owes a fail-first witness. The original
+table is the four rows above: `deskpathguard rederive` reports 4 from-base rows and 0 author-added rows.
+
+This is DISPATCH-FOR-EVIDENCE. The run gathers Evidence and a draft outcome record only. The desk never flips this
+brief's status: the human's merge of the Evidence PR is the flip.
+
+Admission: `deskdispatch --check-verifier --root <home> --brief docs/streams/tool-refactoring/brief-03-compile-verify-rows-and-declared-inputs-through-the-existing-document-owner.md`
+exited 0 for this detached home before any row ran. It returned attestation #7388,
+run=eb7b1d9b9525e98e295c93949eec5665e4db45c7724565fdf7de8551a2c88f9f and source f8a8dad43f8d, with desk tools
+v1.0.90.
+
+Every row ran under the declared verifier Git environment: all GIT_* variables and SSH_ASKPASS were unset, then
+GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_NOSYSTEM=1, GIT_CONFIG_COUNT=0 and GIT_TERMINAL_PROMPT=0 were set, along
+with KUBECONFIG=/dev/null.
+
+Rows 1-3 ran in the container-netns admission bracket:
+
+- On the host, `statusgen verifyrun --open-bracket` wrote the receipt and a fresh module cache outside the home.
+  It opened at 19:27:23Z.
+- The container ran verify-runner v1.0.90, sha256:4e8e3c80a075, under `--network none --read-only` with
+  GOPROXY=off and GOTOOLCHAIN=local. It ran
+  `statusgen verifyrun --sandbox=container-netns --rows 1,2,3 --fail-first --delivering-commit 128fd2eafec6 --base 995d1308d7f7 --base-log <dir> --history-pack <pack>`.
+- On the host, `statusgen verifyrun --close-bracket` closed it at 19:39:44Z.
+- `statusgen verifyrun --bracket-digest` exited 0 with verdict=match (witness sha256:ab872245cfd9).
+
+Row 4 was outside the `--rows 1,2,3` selection (reasons below).
+
+Two attempts ran inside this bracket:
+
+- Attempt 1 (19:35:56Z-19:37:07Z) kept no base log. It was superseded by attempt 2, which retained the base output.
+- The witness below is attempt 2 (19:38:16Z-19:39:21Z).
+
+Both attempts exited 1. Both recorded rows 1-3 as passing at the head and as "non-discriminating — green at base
+995d1308d7f7".
+
+Rows 1-3: could-not-run, Expect-reader defect (#7389, in the #1702 class).
+
+The witness records each row as pass exit=0 at the head. Its fail-first result reads each row as
+non-discriminating, green at base, and the run exits 1. Neither reading observed the row's property. Each
+Expect requires the named "--- PASS:" line as well as exit 0, and verifyrun does not read an "output contains"
+Expect: it decides on exit status alone (#7389).
+
+The retained base logs show what the base actually printed:
+
+- Rows 1 and 2 have the same output, sha256:6386466e2731: "testing: warning: no tests to run" and
+  "ok github.com/medici-finance/assay/statusgen/briefdoc [no tests to run]".
+- Row 3, sha256:f06b221dad41: the same pair for tools/desk/internal/deskkit.
+
+None of them prints a "--- PASS:" line. Read against its Expect, each base run is the pre-fix red, and each row
+would discriminate. The green-at-base reading is the reader's artefact, not a property of the rows.
+
+The rows are classed could-not-run, never fail, under reviewer-lane practice:
+https://github.com/medici-finance/assay/pull/7228#pullrequestreview-5979645423 and
+https://github.com/medici-finance/assay/pull/7230#pullrequestreview-5979708866. The witness and its exit 1 still
+record them as non-discriminating.
+
+Row 4: could-not-run, check-definition (#6978).
+
+The row must run in a clean isolated checkout at the delivery D, where HEAD is D. The admitted home is detached at
+f8a8dad43f8d, and the brief forbids substituting it. verifyrun has no admitted lane for a row that needs a
+separate checkout at the delivery head (#6978), so the row was left out of the bracket's selection. It has no
+acceptance witness.
+
+Supplemental host probes. These carry no acceptance credit and were run after the bracket closed:
+
+- Head output. The three row commands ran verbatim at the source in the same image, network none. Each exited 0
+  and printed its named line: "--- PASS: TestVerificationDefinitionMatrix",
+  "--- PASS: TestVerificationDefinitionClassGuard" and "--- PASS: TestVerificationDefinitionFlow".
+- Row 4 at D. A local clone outside the home was checked out detached at 128fd2eafec6, with HEAD^ at
+  995d1308d7f7, and row 4's command ran there verbatim. It exited 0 and printed "summary: 5 corroborated,
+  0 disproved, 1 unchecked". The unchecked entry is statusgen/evaluation/declared_api.go, routed as a
+  follow-up to this brief, which says "source implementation is still owed". The diff does not touch that file.
+  DR-tool-refactoring-03 defers it: "Deferred, not decided here: the evaluation declaration API". At D, that
+  entry does not meet the row's "zero unchecked" Expect.
+
+Risk-bearing values. Every literal in the delivery's non-test diff was enumerated:
+
+- `MaxScopePaths = 4096` @ statusgen/briefdoc/declared.go:36, used at :191.
+- The declaration length bound 4096 @ declared.go:475.
+- The brace-expansion bound 256 @ declared.go:523.
+- The path length bound 4096 @ declared.go:554.
+- The fence-indent bound `<= 3` @ declared.go:59.
+- `CommandMarker = "cmd:"` @ statusgen/briefdoc/verification.go:146.
+
+Each is a move, byte for byte, from the base: tools/desk/internal/deskkit/declaredscope.go:59, :499, :547, :578
+and :83, and verifyCommandMarker @ statusgen/verifyrows.go:153. All are reversible.
+
+The scope bounds rank first, because the declared scope bounds what a landing may touch.
+
+RISK-VALUE: NAMED, NOT DERIVED — MaxScopePaths = 4096 @ statusgen/briefdoc/declared.go:36 — no source pins or derives the bound, and the brief names none. The value is unchanged from the base's maxScopePaths = 4096 @ tools/desk/internal/deskkit/declaredscope.go:59, so this move changes no behaviour. The same holds for the 4096 and 256 bounds @ declared.go:475, :523 and :554.
+RISK-VALUE: DERIVED — fence indent <= 3 @ statusgen/briefdoc/declared.go:59 — a CommonMark fenced code block may be indented by at most three spaces.
+RISK-VALUE: DERIVED — CommandMarker = "cmd:" @ statusgen/briefdoc/verification.go:146 — spec/brief-v1.md:580 and docs/brief-rules.md:75 define the marker as `cmd:`.
+
+Tool reads after the Evidence was written:
+
+- `statusgen verifyrun --check` exited 2 and printed "3 pass, 0 fail, 1 could-not-run/missing (of 4 Verify rows);
+  0 author-added with no acceptance credit". It reports rows 1-3 as "pass — witness matches the row and passed"
+  and row 4 as "could-not-run — no execution witness in Evidence".
+- The pass that `--check` gives rows 1-3 rests on the witness's exit-status reading (#7389). The same witness's
+  fail-first run exited 1, reading those rows as non-discriminating. So this entry does not count rows 1-3 as
+  passing. It classes them could-not-run for the reasons above.
+- `statusgen verifyrun --bracket-digest --witness` on this brief exited 0 with verdict=match (bracket=L268,
+  witness sha256:ab872245cfd9).
+- With `--credit --source f8a8dad43f8d`, it exited 1 and printed credit=not-credited: "L259 differs from HEAD; an
+  uncommitted line has no author".
+- Post-edit admission: the same `deskdispatch --check-verifier` ran again at 2026-11-21T19:44:37Z and exited 0
+  with the same binding: run=eb7b1d9b9525e98e295c93949eec5665e4db45c7724565fdf7de8551a2c88f9f, source
+  f8a8dad43f8d, model claude-opus-5-5, tier strong, attestation #7388.
+
+Tally: 0 of 4 rows pass. Rows 1-4 are could-not-run, and no acceptance obligation was observed to fail.
+
+**VERIFY: BLOCKED** — 0/4 rows pass at f8a8dad43f8d; no acceptance obligation was observed to fail. Rows 1-3 are could-not-run: verifyrun does not read their "output contains --- PASS" Expects, so its fail-first reads a base with no such test as green (#7389). Row 4 is could-not-run because it needs a checkout at the delivery and has no admitted lane (#6978). A supplemental probe at the delivery reports 1 unchecked consumer route.
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `cd statusgen && GOWORK=off go test -v ./briefdoc -run '^TestVerificationDefinitionMatrix$' -count=1` | pass exit=0 sandbox=container-netns | sha256:4c7becbd8c24 | 2026-11-21 | assay-verifier-app[bot] @ f8a8dad43f8d (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=995d1308d7f7 green rc=0 · head=f8a8dad43f8d · delivering=128fd2eafec6 output=sha256:6386466e2731d2f2ce0d214bfac06206b04c2948f6809937157789816d51b8bd log=row-000001.log |
+| 2 | `cd statusgen && GOWORK=off go test -v ./briefdoc -run '^TestVerificationDefinitionClassGuard$' -count=1` | pass exit=0 sandbox=container-netns | sha256:1fe196a998de | 2026-11-21 | assay-verifier-app[bot] @ f8a8dad43f8d (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=995d1308d7f7 green rc=0 · head=f8a8dad43f8d · delivering=128fd2eafec6 output=sha256:6386466e2731d2f2ce0d214bfac06206b04c2948f6809937157789816d51b8bd log=row-000002.log |
+| 3 | `cd tools/desk && GOWORK=off go test -v ./internal/deskkit -run '^TestVerificationDefinitionFlow$' -count=1` | pass exit=0 sandbox=container-netns | sha256:bdceb83781b2 | 2026-11-21 | assay-verifier-app[bot] @ f8a8dad43f8d (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=995d1308d7f7 green rc=0 · head=f8a8dad43f8d · delivering=128fd2eafec6 output=sha256:f06b221dad411e4c5c0c347dba3f0cb0e1747ab97d0f72fe454a36b24ee48901 log=row-000003.log |
+Tree-Digest: sha256:f7547b5f941d9e923b299c8059e1e6ca9c72cb052fb28dbced711e3319afaee7
+Container-Image: sha256:4e8e3c80a075c552de0966c886784c6020153c27e624f8a1ce988aa3b0590217
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7388 run=eb7b1d9b9525e98e295c93949eec5665e4db45c7724565fdf7de8551a2c88f9f source=f8a8dad43f8d7c3ce50c9ec196126d0a89bcda98 brief=docs/streams/tool-refactoring/brief-03-compile-verify-rows-and-declared-inputs-through-the-existing-document-owner.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=eb7b1d9b9525e98e295c93949eec5665e4db45c7724565fdf7de8551a2c88f9f source=f8a8dad43f8d7c3ce50c9ec196126d0a89bcda98 tree=sha256:f7547b5f941d9e923b299c8059e1e6ca9c72cb052fb28dbced711e3319afaee7 witness=sha256:ab872245cfd9b144f1dae23126b3823e79aeadd00a7abf37ac48254b463a5f66 opened=2026-11-21T19:27:23Z closed=2026-11-21T19:39:44Z before=receipt after=check-verifier
+
 ## Review
 
 Review the named lower-boundary refusals, all migrated callers and module/import constraints, not only the helper. Pre-mortem: a helper can exist without being called (flow row); two copies can agree on an unsafe result (mutation/neighbor row); incompatible records can strand adopters (joined qualification in /11). Scope adequacy and unenumerated consumers remain review obligations.
