@@ -53,6 +53,7 @@ var authorshipAllow = map[string]struct {
 	// ---- mapping and display: carry the author, decide nothing ----
 	"deskboard/board.go:prBaseFromChange:.Author":                       {2, "maps the typed forge author onto prBase — a copy, no decision"},
 	"deskboard/board.go:reviewsFromForge:.Author":                       {1, "maps a REVIEW's author (the verdict's identity, read by isReviewerBot) — not the PR author"},
+	"deskboard/change.go:cmdChange:.Author":                             {1, "displays the author the forge returned for each review submission"},
 	"deskboard/board.go:cmdReviews:.Author":                             {1, "the `reviews` debug verb prints each review's author — display only"},
 	"deskboard/board.go:renderExternal:.Author":                         {1, "renders the quarantined EXTERNAL / UNBLESSED section — display only"},
 	"deskboard/delta_extractors.go:actionsDeltaSet:.Author":             {1, "the quarantined row's delta signature — display only"},
