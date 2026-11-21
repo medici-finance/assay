@@ -18,6 +18,7 @@ import (
 // never evidence that an outstanding action has been completed.
 type inboxAction struct {
 	State, Owner, Title, URL, Act, Evidence, Verify string
+	awaitsPacket                                    bool // no ruling or fork to carry; a reviewed runsheet can supply the act
 }
 
 func (a inboxAction) next(state, owner, act string) inboxAction {
@@ -28,6 +29,11 @@ func (a inboxAction) next(state, owner, act string) inboxAction {
 func showCommand(stdout, stderr io.Writer, pre func(io.Writer) int, observer func() deskkit.RequestObserver) *cobra.Command {
 	return &cobra.Command{
 		Use: "show owner/repo#issue", Short: "show who owns the next action on one issue", Args: cobra.ExactArgs(1),
+		Long: `Look up the named issue in the current desk role. Reports a ready human action, desk or verifier preparation, a prior ruling, stale evidence, an unreadable observation, or closure.
+
+Verification uses statusgen and a clean checkout at the observed default branch. DESK_ROOTS maps owner/repo to the checkout; a matching working directory can also supply it. For a prepared human act, link the reviewed Markdown as a standalone [Runsheet](https://github.com/owner/repo/blob/COMMIT/path.md) line. The file must name this issue and contain one complete human-runsheet entry.
+
+Exit 6 means a required observation could not be checked.`,
 		RunE: func(_ *cobra.Command, args []string) error {
 			repo, raw, ok := strings.Cut(args[0], "#")
 			n, err := strconv.Atoi(raw)
@@ -78,6 +84,9 @@ func readInboxAction(repo string, number int, observers ...deskkit.RequestObserv
 		return a.next("unknown", "desk", "Read the issue's current open or closed state."), nil
 	}
 	acceptance := slices.Contains(iss.Labels, deskkit.VerifyGateLabel)
+	if acceptance && slices.Contains(iss.Labels, "needs-decision") {
+		return a.next("prepare", "desk", "Separate the unresolved decision from its verification sign-off card."), nil
+	}
 	if !acceptance && !slices.ContainsFunc(iss.Labels, func(l string) bool { return slices.Contains(labels, l) }) {
 		return a.next("prepare", "desk", "No escalation or verification gate is present."), nil
 	}
@@ -102,7 +111,7 @@ func readInboxAction(repo string, number int, observers ...deskkit.RequestObserv
 		return a.next("unknown", "desk", "Could not read the complete decision thread."), nil
 	}
 	action := screenDecision(iss, a, cs)
-	if action.State == "prepare" && len(cs) == 0 && !slices.Contains(iss.Labels, "needs-decision") {
+	if action.awaitsPacket && !slices.Contains(iss.Labels, "needs-decision") {
 		links := sheetLink.FindAllStringSubmatch(visibleDecisionText(iss.Body), -1)
 		if len(links) == 1 {
 			return readRunsheet(f, fr, iss, a, links[0][1])
@@ -189,6 +198,7 @@ func screenDecision(iss *deskkit.Issue, a inboxAction, cs []deskkit.Comment) inb
 		return a.next("screened", "desk", "Apply the documented reversible default.")
 	}
 	if !slices.Contains(iss.Labels, "needs-decision") || len(options.Texts) < 2 || len(options.Texts) != listLines || a.URL == "" {
+		a.awaitsPacket = true
 		return a.next("prepare", "desk", "Prepare the unresolved decision and its options or link the verified human runsheet.")
 	}
 	seen := map[string]bool{}

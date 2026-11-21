@@ -45,7 +45,7 @@ func readAcceptance(f deskkit.Forge, fr deskkit.ForgeRepo, iss *deskkit.Issue, a
 		return a.next("unknown", "verifier", "Could not read the current default-branch revision."), nil
 	}
 	root := deskkit.RootForRepo(fr.Slug())
-	if root == "" {
+	if root == "" || deskkit.RepoSlugForDir(root) != fr.Slug() {
 		if cwd, e := os.Getwd(); e == nil && deskkit.RepoSlugForDir(cwd) == fr.Slug() {
 			root = cwd
 		}

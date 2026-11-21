@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"path"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -49,7 +50,11 @@ func readRunsheet(f deskkit.Forge, repo deskkit.ForgeRepo, iss *deskkit.Issue, a
 		}
 	}
 	_, resume, hasResume := strings.Cut(text, "Resume:")
-	if !strings.Contains(text, ref+"\n") && !strings.Contains(text, ref+" ") || len(commands) != 1 || commands[0] == "" || strings.ContainsAny(commands[0], "<>") || !strings.Contains(text, "Why:") || !hasResume || strings.TrimSpace(resume) == "" {
+	namesIssue := slices.Contains(strings.Fields(text), ref)
+	oneCommand := len(commands) == 1 && commands[0] != "" && !strings.ContainsAny(commands[0], "<>")
+	prose := strings.Join(strings.Fields(text), " ")
+	hasPreparation := strings.Contains(prose, "What the session did:") && strings.Contains(prose, "Why:")
+	if !namesIssue || !oneCommand || !hasPreparation || !hasResume || strings.TrimSpace(resume) == "" {
 		return a.next("prepare", "desk", "Bind one complete human act, its authority and its post-act check to this issue in the runsheet."), nil
 	}
 	a.Evidence = target
