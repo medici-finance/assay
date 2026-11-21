@@ -56,9 +56,9 @@ func upDryRunRow(c *Cell, p upProbe) upRow {
 
 // The classes a role is probed into.
 const (
-	probeUp     = "up"
-	probeStale  = "stale"
-	probeAbsent = "absent"
+	probeUp     = cellcadence.KindUp
+	probeStale  = cellcadence.KindStale
+	probeAbsent = cellcadence.KindAbsent
 )
 
 // upPoll is how often a launch waits on the lease record of the role it just opened.
@@ -83,17 +83,18 @@ type upProbe struct {
 
 // class is the reconcile class that decides whether a stale role can be planned: only a proven-dead
 // record (or orphans alone) is.
-func (p upProbe) class() string {
-	switch {
-	case p.Entry != nil:
-		return p.Entry.Class
-	case p.Orphan:
-		return reconcileDead
-	}
-	return "-"
-}
+func (p upProbe) class() string { return p.observation().Class() }
 
-func (p upProbe) planned() bool { return p.Kind == probeStale && p.class() == reconcileDead }
+func (p upProbe) planned() bool { return p.observation().Plannable() }
+
+// observation is the probe as the lifecycle model judges it.
+func (p upProbe) observation() cellcadence.RoleObservation {
+	o := cellcadence.RoleObservation{Kind: p.Kind, HasRecord: p.Entry != nil, Orphan: p.Orphan}
+	if p.Entry != nil {
+		o.RecordClass = p.Entry.Class
+	}
+	return o
+}
 
 // probeUpRoles classifies roles. comms, when configured, is inventoried too: a stale comms record
 // is reported through the returned plan, not as a role.
@@ -407,6 +408,14 @@ func upResult(cell string, started time.Time, rows []upRow) cellop.Result {
 
 func roleKey(role, what string) string { return "role/" + role + "/" + what }
 
+// planPreconditions is the ONE place a role's state and class preconditions are built, for the plan
+// `up --plan` stores and for the fresh measurement `up --apply` compares it with, so the two
+// cannot disagree about what a role's class is. The values are the lifecycle model's.
+func planPreconditions(role string, obs cellcadence.RoleObservation) []cellop.Precondition {
+	state, class := obs.Preconditions()
+	return []cellop.Precondition{{Key: roleKey(role, "state"), Value: state}, {Key: roleKey(role, "class"), Value: class}}
+}
+
 const reconcilePrefix = "reconcile-"
 
 // upActions is the ONE reconcile plan's action list for the whole cell: one action per stale role
@@ -423,22 +432,16 @@ func (c *Cell) upActions(probes []upProbe, comms *reconcileEntry) (actions []cel
 		}
 		actions = append(actions, cellop.Action{
 			ID: reconcilePrefix + p.Role, Cell: c.Name,
-			Summary: "clear " + p.Role + "'s stale checkpoint and stop its marked orphans (never a live process)",
-			Preconditions: []cellop.Precondition{
-				{Key: roleKey(p.Role, "state"), Value: probeStale},
-				{Key: roleKey(p.Role, "class"), Value: p.class()},
-			},
+			Summary:       "clear " + p.Role + "'s stale checkpoint and stop its marked orphans (never a live process)",
+			Preconditions: planPreconditions(p.Role, p.observation()),
 		})
 	}
 	if comms != nil {
 		if comms.Class == reconcileDead {
 			actions = append(actions, cellop.Action{
 				ID: reconcilePrefix + "comms", Cell: c.Name,
-				Summary: "clear the comms service's stale checkpoint (never a live process)",
-				Preconditions: []cellop.Precondition{
-					{Key: roleKey("comms", "state"), Value: probeStale},
-					{Key: roleKey("comms", "class"), Value: comms.Class},
-				},
+				Summary:       "clear the comms service's stale checkpoint (never a live process)",
+				Preconditions: planPreconditions("comms", cellcadence.RoleObservation{Kind: probeStale, HasRecord: true, RecordClass: comms.Class}),
 			})
 		} else {
 			notPlanned = append(notPlanned, "comms: "+c.commsStaleHint(comms))
@@ -493,15 +496,14 @@ func upVerb(comms *deskCommsConfig, dry bool) cellopVerb {
 				}
 				plan := c.reconcileInventory(nil, comms)
 				e := commsStale(plan)
-				state, class := probeAbsent, "-"
+				obs := cellcadence.RoleObservation{Kind: probeAbsent}
 				if e != nil {
-					state, class = probeStale, e.Class
+					obs = cellcadence.RoleObservation{Kind: probeStale, HasRecord: true, RecordClass: e.Class}
 				}
-				return []cellop.Precondition{{Key: roleKey(role, "state"), Value: state}, {Key: roleKey(role, "class"), Value: class}}, nil
+				return planPreconditions(role, obs), nil
 			}
 			probes, _ := c.probeUpRoles([]string{role}, nil)
-			p := probes[0]
-			return []cellop.Precondition{{Key: roleKey(role, "state"), Value: p.Kind}, {Key: roleKey(role, "class"), Value: p.class()}}, nil
+			return planPreconditions(role, probes[0].observation()), nil
 		},
 		Run: func(c *Cell, a cellop.Action) (string, error) {
 			if dry {
