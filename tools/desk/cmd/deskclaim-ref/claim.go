@@ -212,12 +212,12 @@ func cmdAcquire(id, owner, branch string) int {
 		return exitRefused
 	}
 
-	if rc, stop := checkAliases(id, "pre"); stop {
+	if rc, stop := checkAliases(id, ""); stop {
 		return rc
 	}
 	switch store.CreateIfAbsent(id, msg) {
 	case deskkit.ClaimWriteApplied:
-		if rc, stop := checkAliases(id, "post"); stop {
+		if rc, stop := checkAliases(id, msg); stop {
 			return rc
 		}
 		logf("acquired %s (owner=%s state=claimed) — %s/%s", id, owner, refPrefix, id)
@@ -268,7 +268,7 @@ func cmdAcquire(id, owner, branch string) int {
 		// on the same exact revision and only one can enter worktree creation.
 		switch store.UpdateFrom(id, ref.Version, msg) {
 		case deskkit.ClaimWriteApplied:
-			if rc, stop := checkAliases(id, "post"); stop {
+			if rc, stop := checkAliases(id, msg); stop {
 				return rc
 			}
 			logf("acquired %s (owner=%s state=claimed) — consumed reclaimed lease", id, owner)
@@ -311,7 +311,7 @@ func cmdProgress(id, owner, branch string) int {
 		return exitRefused
 	}
 	// Advancing a claim is still a claim on the PR: refuse while another spelling is live.
-	if rc, stop := checkAliases(id, "pre"); stop {
+	if rc, stop := checkAliases(id, ""); stop {
 		return rc
 	}
 	switch store.UpdateFrom(id, ref.Version, msg) {
@@ -331,17 +331,29 @@ func cmdProgress(id, owner, branch string) int {
 	}
 }
 
-func cmdRelease(id, repo string) int {
-	outcome, existed := store.Remove(id)
-	switch outcome {
-	case deskkit.ClaimWriteApplied:
-		if existed {
-			logf("released %s", id)
-			writeReleasedRecord(id, repo)
-		} else {
-			logf("released %s (no claim — no-op)", id)
-		}
+func cmdRelease(id, repo, owner string) int {
+	ref, status := store.Read(id)
+	switch status {
+	case deskkit.ClaimReadFree:
+		logf("released %s (no claim — no-op)", id)
 		return exitOK
+	case deskkit.ClaimReadUnverifiable:
+		errf("unverifiable: could not read the claim on %s%s", id, causeSuffix())
+		return exitUnverifiable
+	}
+	holder := fieldOf(ref.Msg, "owner")
+	if owner == "" || owner == "unknown" || holder != owner {
+		errf("refused: %s is held by %s; only the identified holder may release it", id, dashOrValue(holder))
+		return exitRefused
+	}
+	switch store.RemoveFrom(id, ref.Version) {
+	case deskkit.ClaimWriteApplied:
+		logf("released %s", id)
+		writeReleasedRecord(id, repo)
+		return exitOK
+	case deskkit.ClaimWriteRejected:
+		errf("refused: %s changed since its owner was read; the current claim was preserved", id)
+		return exitRefused
 	default:
 		errf("unverifiable: could not delete %s/%s%s", refPrefix, id, causeSuffix())
 		return exitUnverifiable
@@ -375,7 +387,7 @@ func cmdSteal(id, owner, reason string, expired *deskkit.ClaimStoreRecord) int {
 		return exitRefused
 	}
 	// Before anything is read or replaced: a refused steal leaves the existing claim untouched.
-	if rc, stop := checkAliases(id, "pre"); stop {
+	if rc, stop := checkAliases(id, ""); stop {
 		return rc
 	}
 	msg, err := claimMessage(id, owner, "claimed", "", reason)
@@ -404,7 +416,7 @@ func cmdSteal(id, owner, reason string, expired *deskkit.ClaimStoreRecord) int {
 		// CAS losing, reported as "re-claimed during the steal".
 		switch store.CreateIfAbsent(id, msg) {
 		case deskkit.ClaimWriteApplied:
-			if rc, stop := checkAliases(id, "post"); stop {
+			if rc, stop := checkAliases(id, msg); stop {
 				return rc
 			}
 			logf("stole %s (owner=%s reason=%s)", id, owner, reason)
@@ -426,7 +438,7 @@ func cmdSteal(id, owner, reason string, expired *deskkit.ClaimStoreRecord) int {
 	// old DELETE-then-POST race window).
 	switch store.UpdateFrom(id, ref.Version, msg) {
 	case deskkit.ClaimWriteApplied:
-		if rc, stop := checkAliases(id, "post"); stop {
+		if rc, stop := checkAliases(id, msg); stop {
 			return rc
 		}
 		logf("stole %s (owner=%s reason=%s)", id, owner, reason)

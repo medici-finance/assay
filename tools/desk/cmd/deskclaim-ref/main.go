@@ -108,7 +108,7 @@ acquire   take the claim if free; reclaim it if the holder is past its TTL; refu
           if a live holder owns it. An explicit steal offers its identified owner one
           ordinary acquire of the reclaimed lease.
 progress  advance an acquired claim to state=dispatched (TTL 20m -> 120m).
-release   delete the claim ref (branch-as-claim takes over). A missing claim is a no-op.
+release   delete the caller-owned claim at the revision read. A missing claim is a no-op.
 steal     forcibly take the claim, recording --reason in the replacement — an auditable
           takeover, not a hand-delete.
 show      print the claim's holder/state/branch/age, or FREE. A claim still at state=claimed

@@ -151,7 +151,7 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 			}
 			return cmdProgress(id, owner, branch)
 		case "release":
-			return cmdRelease(id, repo)
+			return cmdRelease(id, repo, owner)
 		case "steal":
 			return cmdSteal(id, owner, reason, nil)
 		case "show":

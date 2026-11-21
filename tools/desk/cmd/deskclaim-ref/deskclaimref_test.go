@@ -98,10 +98,12 @@ func (f *fakeStore) UpdateFrom(id, oldSHA, msg string) deskkit.ClaimWriteOutcome
 	return deskkit.ClaimWriteApplied
 }
 
-func (f *fakeStore) Remove(id string) (deskkit.ClaimWriteOutcome, bool) {
-	_, existed := f.claims[id]
+func (f *fakeStore) RemoveFrom(id, old string) deskkit.ClaimWriteOutcome {
+	if c, ok := f.claims[id]; !ok || c.sha != old {
+		return deskkit.ClaimWriteRejected
+	}
 	delete(f.claims, id)
-	return deskkit.ClaimWriteApplied, existed
+	return deskkit.ClaimWriteApplied
 }
 
 func (f *fakeStore) List() ([]string, deskkit.ClaimReadStatus) {
@@ -335,6 +337,7 @@ func TestListShowsEachClaim(t *testing.T) {
 // --- release / steal / progress ---------------------------------------------
 
 func TestReleaseDeletesTheRefAndIsNoopWhenMissing(t *testing.T) {
+	t.Setenv("DESK_SESSION", "s1")
 	f := newStore()
 	f.seedClaim("at--stream--07", "s1", "dispatched", "", time.Minute)
 	run, so, _ := harness(t, f)
