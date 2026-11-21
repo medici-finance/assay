@@ -1,0 +1,1 @@
+- Allow verifier attestation credit checks to read issue details and label history through the same-repository CI workflow-token transport.
