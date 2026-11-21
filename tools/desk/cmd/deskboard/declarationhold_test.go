@@ -7,6 +7,8 @@ package main
 import (
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 const dhUndeclared = "Undeclared-desk-decision: picked a default without a ruling"
@@ -45,28 +47,37 @@ func dhClassify(p prBase, reviews []review, draft bool) (string, string) {
 
 // regression: #2690
 func TestDeclarationHoldBlocksRecommendation(t *testing.T) {
+	// want is a fragment of the gate's own refusal text, so each case pins WHICH hold the
+	// row names, not only that some hold stands.
 	cases := map[string]struct {
 		p       prBase
 		reviews []review
+		want    string
 	}{
 		"both lanes carry the line (the observed shape)": {dhPR(), []review{
-			dhCorrectness("APPROVED", "Correctness ok.\n"+dhUndeclared), dhSecurity(dhUndeclared)}},
+			dhCorrectness("APPROVED", "Correctness ok.\n"+dhUndeclared), dhSecurity(dhUndeclared)}, "undeclared desk decision"},
 		"correctness lane only": {dhPR(), []review{
-			dhCorrectness("APPROVED", "Correctness ok.\n"+dhUndeclared), dhSecurity("clean")}},
+			dhCorrectness("APPROVED", "Correctness ok.\n"+dhUndeclared), dhSecurity("clean")}, "correctness review"},
 		"security lane only": {dhPR(), []review{
-			dhCorrectness("APPROVED", "Correctness ok."), dhSecurity(dhUndeclared)}},
+			dhCorrectness("APPROVED", "Correctness ok."), dhSecurity(dhUndeclared)}, "security review"},
 		"label without a body block": {dhPR("desk-decided"), []review{
-			dhCorrectness("APPROVED", "Correctness ok."), dhSecurity("clean")}},
+			dhCorrectness("APPROVED", "Correctness ok."), dhSecurity("clean")}, "label but its body has no"},
 		"body block without the label": {func() prBase {
 			p := dhPR()
+			p.Body = "plain body\n\n" + deskkit.RenderDecidedBlock([]deskkit.DecidedItem{
+				{Decision: "kept the default", Alternative: "a ruling first", Cost: "one revert"}})
+			return p
+		}(), []review{dhCorrectness("APPROVED", "Correctness ok."), dhSecurity("clean")}, "section but not the"},
+		"malformed body block": {func() prBase {
+			p := dhPR("desk-decided")
 			p.Body = "## Desk-decided\n\nno marker, no items\n"
 			return p
-		}(), []review{dhCorrectness("APPROVED", "Correctness ok."), dhSecurity("clean")}},
+		}(), []review{dhCorrectness("APPROVED", "Correctness ok."), dhSecurity("clean")}, "does not parse"},
 		"commented correctness note does not clear": {dhPR(), []review{
 			dhCorrectness("APPROVED", "Correctness ok.\n"+dhUndeclared),
-			dhCorrectness("COMMENTED", "just a note"), dhSecurity("clean")}},
+			dhCorrectness("COMMENTED", "just a note"), dhSecurity("clean")}, "correctness review"},
 		"security pass does not clear the correctness lane": {dhPR(), []review{
-			dhCorrectness("APPROVED", "Correctness ok.\n"+dhUndeclared), dhSecurity("clean")}},
+			dhCorrectness("APPROVED", "Correctness ok.\n"+dhUndeclared), dhSecurity("clean")}, "correctness review"},
 	}
 	for name, c := range cases {
 		for _, draft := range []bool{true, false} {
@@ -75,8 +86,8 @@ func TestDeclarationHoldBlocksRecommendation(t *testing.T) {
 				if got == actMergeNow || got == actFlip {
 					t.Fatalf("draft=%v classify() = %q on an open declaration hold (note: %s)", draft, got, note)
 				}
-				if got != actBlocked || !strings.Contains(note, "declaration hold") {
-					t.Fatalf("draft=%v classify() = %q (%s), want BLOCKED naming the declaration hold", draft, got, note)
+				if got != actBlocked || !strings.Contains(note, "declaration hold") || !strings.Contains(note, c.want) {
+					t.Fatalf("draft=%v classify() = %q (%s), want BLOCKED naming the declaration hold (%q)", draft, got, note, c.want)
 				}
 			})
 		}
