@@ -20,7 +20,7 @@ func TestPerfV3LauncherChildFlow(t *testing.T) {
 	bin := filepath.Join(t.TempDir(), "deskclaim")
 	build := exec.Command("go", "build", "-o", bin, "./cmd/deskclaim")
 	build.Dir = filepath.Join("..", "..")
-	if out, err := offlineFixtureBuild(t, build).CombinedOutput(); err != nil {
+	if out, err := offlineFixtureGo(t, build).CombinedOutput(); err != nil {
 		t.Fatalf("build: %v %s", err, out)
 	}
 	// The parent carries its own earlier assignment. A child launched for a new
@@ -53,7 +53,7 @@ func TestPerfV3LauncherChildFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	probe := filepath.Join(probeHome, "role-probe")
-	if out, err := offlineFixtureBuild(t, exec.Command("go", "build", "-o", probe, probeSource)).CombinedOutput(); err != nil {
+	if out, err := offlineFixtureGo(t, exec.Command("go", "build", "-o", probe, probeSource)).CombinedOutput(); err != nil {
 		t.Fatalf("probe build: %v %s", err, out)
 	}
 	authority := Run(ToolCall{Name: probe, Env: env, Context: WithPerfContext(context.Background(), contexts[0])})

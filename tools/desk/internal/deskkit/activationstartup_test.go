@@ -63,7 +63,7 @@ func TestCompiledStartupDiscoveryWorkload(t *testing.T) {
 		defer cancel()
 		cmd := exec.CommandContext(ctx, "go", args...)
 		cmd.Dir = desk
-		if out, err := offlineFixtureBuild(t, cmd).CombinedOutput(); err != nil {
+		if out, err := offlineFixtureGo(t, cmd).CombinedOutput(); err != nil {
 			t.Fatalf("build %s: %v %s", tool, err, out)
 		}
 		return bin

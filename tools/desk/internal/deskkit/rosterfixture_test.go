@@ -96,7 +96,7 @@ func installFixtureRoster() (cleanup func(), err error) {
 }
 
 // startupBuildCaches are resolved before fixture HOME hides the caller's go env file.
-// Only fixture builds use them; runtime children keep isolated HOME.
+// Only fixture Go commands use them; runtime children keep isolated HOME.
 var startupBuildCaches map[string]string
 var startupBuildCacheErr error
 
@@ -118,9 +118,9 @@ func resolveStartupBuildCaches() {
 	}
 }
 
-// offlineFixtureBuild compiles a test child with the caches prepared before the
+// offlineFixtureGo runs a test Go command with the caches prepared before the
 // roster replaced HOME. Runtime invocations keep their own fixture environment.
-func offlineFixtureBuild(t *testing.T, cmd *exec.Cmd) *exec.Cmd {
+func offlineFixtureGo(t *testing.T, cmd *exec.Cmd, settings ...string) *exec.Cmd {
 	t.Helper()
 	if startupBuildCacheErr != nil {
 		t.Fatal(startupBuildCacheErr)
@@ -132,12 +132,13 @@ func offlineFixtureBuild(t *testing.T, cmd *exec.Cmd) *exec.Cmd {
 			cmd.Env = append(cmd.Env, key+"="+value)
 		}
 	}
+	cmd.Env = append(cmd.Env, settings...)
 	return goquiet.Cmd(cmd)
 }
 
 func TestMain(m *testing.M) {
 	// Reexecuted protocol fixtures may deliberately have no Go tool on PATH.
-	// Cache-resolution errors belong only to the test that needs a build child.
+	// Cache-resolution errors belong only to the test that needs the Go toolchain.
 	resolveStartupBuildCaches()
 
 	// Resolve the operator's REAL state directory before anything redirects the home, and

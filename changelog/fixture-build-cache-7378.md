@@ -1,1 +1,1 @@
-- Desk launcher and command performance tests now reuse prepared Go caches while compiling child binaries under an isolated roster home.
+- Desk performance and review-caller tests now reuse prepared Go caches when they compile children, invoke nested test suites or inspect cross-platform dependencies under an isolated roster home.

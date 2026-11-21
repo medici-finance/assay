@@ -97,7 +97,7 @@ func TestNewDeskCommandsAppendPerformance(t *testing.T) {
 		}
 		build := exec.Command("go", "build", "-o", exe, "./cmd/"+name)
 		build.Dir = filepath.Join("..", "..")
-		if out, err := offlineFixtureBuild(t, build).CombinedOutput(); err != nil {
+		if out, err := offlineFixtureGo(t, build).CombinedOutput(); err != nil {
 			t.Fatalf("build %s: %v %s", name, err, out)
 		}
 		var optedInOutput []byte
