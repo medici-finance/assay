@@ -117,8 +117,14 @@ func briefHandoff(g *pathGuard, dir, candidate, repo, branch, head, next string)
 	if err != nil {
 		return "", deskkit.Unverifiable("could not read the PR for this handoff", err)
 	}
-	if change == nil || change.Number != n || change.State != "open" || change.MergedAt != "" ||
-		change.CrossRepo != deskkit.CrossRepoSame || change.HeadRef != branch || change.HeadSHA != head {
+	if change == nil || change.Number != n || change.MergedAt != "" || change.CrossRepo != deskkit.CrossRepoSame || change.HeadSHA != head {
+		return "", deskkit.Refused("the open PR no longer matches the checkout's repository, branch and head")
+	}
+	// This handoff preserves a staged index on its original branch. A second
+	// branch at the same commit is insufficient to take ownership of that index.
+	match, err := deskkit.CheckOwnPR("deskwt brief handoff", deskkit.OwnPRLocal{Branch: branch, Head: head},
+		deskkit.OwnPRRemote{Number: n, State: change.State, HeadRef: change.HeadRef, HeadOid: change.HeadSHA})
+	if err != nil || match != deskkit.OwnPRByBranch {
 		return "", deskkit.Refused("the open PR no longer matches the checkout's repository, branch and head")
 	}
 	brief := deskkit.DeliveredLocalBrief(change.Body, repo)

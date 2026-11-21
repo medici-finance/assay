@@ -87,6 +87,12 @@ func TestBriefCheckoutHandoff(t *testing.T) {
 	change.HeadSHA = strings.Repeat("0", 40)
 	check("no longer matches")
 	change.HeadSHA = head
+	change.HeadRef = "another-branch-at-the-same-head"
+	check("no longer matches")
+	change.HeadRef = branch
+	change.State = "closed"
+	check("no longer matches")
+	change.State = "open"
 	check("")
 	mustGit(t, home, "config", "--worktree", "assay.runKey", next)
 	check("")
