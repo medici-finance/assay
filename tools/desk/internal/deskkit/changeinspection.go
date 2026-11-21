@@ -64,8 +64,27 @@ type observedCheck struct {
 
 type changeInspectionSource interface {
 	GetPullRequest(ForgeRepo, int) (*PullRequest, error)
-	ReviewsAtHead(ForgeRepo, int) ([]Review, error)
 	ChecksAtHead(ForgeRepo, string) (*ChecksAtHead, error)
+}
+
+// Only an adapter with a bounded inspection read can supply review history.
+// Owned wrappers delegate precisely this read; a future backend without it reports unknown.
+func inspectionReviews(f changeInspectionSource, repo ForgeRepo, number int) ([]Review, string, error) {
+	switch reader := f.(type) {
+	case *outboundForge:
+		return inspectionReviews(reader.Forge, repo, number)
+	case *readOnlyForge:
+		return inspectionReviews(reader.inner, repo, number)
+	case *GitLabForge:
+		reviews, err := reader.ReviewsAtHead(repo, number)
+		return reviews, "", err
+	case interface {
+		InspectionReviewWindow(ForgeRepo, int) ([]Review, string, error)
+	}:
+		return reader.InspectionReviewWindow(repo, number)
+	default:
+		return nil, "", Unverifiable("bounded review history unavailable for this provider", nil)
+	}
 }
 
 // InspectChange reads facts for one explicitly supplied review repository, change number
@@ -96,13 +115,16 @@ func InspectChange(f changeInspectionSource, fr ForgeRepo, number int, expected 
 			return nil, Unverifiable(fmt.Sprintf("change: expected %s, observed %s on %s#%d", r.ExpectedHead, r.Head, fr.Slug(), number), nil)
 		}
 	}
-	reviews, err := f.ReviewsAtHead(fr, number)
+	reviews, omission, err := inspectionReviews(f, fr, number)
 	if err != nil {
 		r.ReviewRead, r.ReviewError = "unknown", err.Error()
 	} else {
 		// This operation returns provider submissions; GitLab's historical notes
 		// window is bounded. A returned window is not evidence of no older review.
 		r.ReviewRead = "provider-window"
+		if omission != "" {
+			r.ReviewRead, r.ReviewError = "partial", omission
+		}
 		r.Reviews = make([]InspectedReview, 0, len(reviews))
 		for _, v := range reviews {
 			binding := "unknown"

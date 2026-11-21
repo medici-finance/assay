@@ -9,6 +9,11 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
+func (f *fakeForge) InspectionReviewWindow(repo deskkit.ForgeRepo, number int) ([]deskkit.Review, string, error) {
+	reviews, err := f.ReviewsAtHead(repo, number)
+	return reviews, "", err
+}
+
 func TestChangeCommandUsesRequestedSubject(t *testing.T) {
 	installFakeGH(t)
 	const repo = "example-org/tracker"

@@ -1486,31 +1486,78 @@ func (g *GitHubForge) trustEvents(repo ForgeRepo, number int, gql string, pr boo
 	return &tp, nil
 }
 
+func (g *GitHubForge) reviewPage(repo ForgeRepo, number, page int) ([]Review, http.Header, error) {
+	var chunk []ghReviewWire
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews?per_page=%d&page=%d", repo.Owner, repo.Name, number, forgeReviewPerPage, page)
+	h, err := g.doJSONHeader(http.MethodGet, path, nil, &chunk)
+	if err != nil {
+		return nil, nil, err
+	}
+	rows := make([]Review, 0, len(chunk))
+	for _, r := range chunk {
+		rows = append(rows, Review{URL: r.HTMLURL, ID: r.ID, Author: Account{Login: r.User.Login, ID: r.User.ID},
+			State: r.State, CommitID: r.CommitID, Body: r.Body, SubmittedAt: r.SubmittedAt})
+	}
+	return rows, h, nil
+}
+
 func (g *GitHubForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error) {
 	var all []Review
 	for page := 1; ; page++ {
-		var chunk []ghReviewWire
-		path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews?per_page=%d&page=%d",
-			repo.Owner, repo.Name, number, forgeReviewPerPage, page)
-		if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+		rows, _, err := g.reviewPage(repo, number, page)
+		if err != nil {
 			return nil, err
 		}
-		for _, r := range chunk {
-			all = append(all, Review{
-				URL:         r.HTMLURL,
-				ID:          r.ID,
-				Author:      Account{Login: r.User.Login, ID: r.User.ID},
-				State:       r.State,
-				CommitID:    r.CommitID,
-				Body:        r.Body,
-				SubmittedAt: r.SubmittedAt,
-			})
-		}
-		if len(chunk) < forgeReviewPerPage {
-			break
+		all = append(all, rows...)
+		if len(rows) < forgeReviewPerPage {
+			return all, nil
 		}
 	}
-	return all, nil
+}
+
+// InspectionReviewWindow uses the first page to locate GitHub's newest page. It
+// never follows a URL from a header: only its page number enters the original route.
+func (g *GitHubForge) InspectionReviewWindow(repo ForgeRepo, number int) ([]Review, string, error) {
+	first, h, err := g.reviewPage(repo, number, 1)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(first) < forgeReviewPerPage && !hasNextLink(h) {
+		return first, "", nil
+	}
+	last := lastReviewPage(h)
+	if last < 2 {
+		return first, "oldest review page retained; newest coverage cannot be established from pagination", nil
+	}
+	rows, lastHeader, err := g.reviewPage(repo, number, last)
+	if err != nil {
+		return first, "oldest review page retained; newest page unavailable: " + err.Error(), nil
+	}
+	if len(rows) == 0 || hasNextLink(lastHeader) {
+		return rows, "requested last review page; history changed during collection and newest coverage is unknown", nil
+	}
+	if last == 2 {
+		return append(first, rows...), "", nil
+	}
+	return rows, "newest review page retained; earlier submissions omitted", nil
+}
+
+func lastReviewPage(h http.Header) int {
+	for _, value := range h.Values("Link") {
+		for _, link := range strings.Split(value, ",") {
+			target, rel, ok := strings.Cut(strings.TrimSpace(link), ";")
+			if !ok || strings.TrimSpace(rel) != `rel="last"` || !strings.HasPrefix(target, "<") || !strings.HasSuffix(target, ">") {
+				continue
+			}
+			u, err := url.Parse(target[1 : len(target)-1])
+			if err == nil {
+				if page, err := strconv.Atoi(u.Query().Get("page")); err == nil && page >= 2 {
+					return page
+				}
+			}
+		}
+	}
+	return 0
 }
 
 func (g *GitHubForge) ListChangedFiles(repo ForgeRepo, number int) ([]ChangedFile, error) {

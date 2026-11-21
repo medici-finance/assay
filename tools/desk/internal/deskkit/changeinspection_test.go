@@ -1,7 +1,11 @@
 package deskkit
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -40,6 +44,74 @@ func TestInspectChangeGitHubReadCost(t *testing.T) {
 			}
 			if r.ReviewRead != "provider-window" || r.InlineDiscussions != "not-read" || len(r.Reviews) != 3 || r.Reviews[0].Binding != "other-head" || r.Reviews[1].Binding != "at-head" || r.Reviews[1].ID != 27 || r.Reviews[1].URL != reviewLink || r.Reviews[1].Body != "" || r.Reviews[2].Lane != "security" || r.Reviews[2].Binding != "unknown" || r.Reviews[2].Body != "Security-Review: fail\nF1: retain the original reason." {
 				t.Fatalf("incorrect review evidence: %+v", r.Reviews)
+			}
+		})
+	}
+}
+
+func TestInspectChangeLongReviewWindow(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		link      string
+		wantPages string
+		lastID    int64
+		reason    string
+	}{
+		{"1367 submissions", `<https://example.invalid/elsewhere?page=2>; rel="next", <https://example.invalid/elsewhere?page=14>; rel="last"`, "1,14", 1367, "newest review page retained"},
+		{"missing last link", `<https://example.invalid/elsewhere?page=2>; rel="next"`, "1", 100, "oldest review page retained"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var pages []string
+			calls := 0
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				var response any
+				switch r.URL.Path {
+				case "/repos/example-org/sample/pulls/7":
+					response = map[string]any{"number": 7, "state": "open", "head": map[string]string{"sha": inspectionHead}}
+				case "/repos/example-org/sample/pulls/7/reviews":
+					page := r.URL.Query().Get("page")
+					pages = append(pages, page)
+					n, _ := strconv.Atoi(page)
+					if n < 1 || n > 14 {
+						http.Error(w, "outside example", http.StatusBadRequest)
+						return
+					}
+					if n == 1 {
+						w.Header().Set("Link", tc.link)
+					}
+					var rows []map[string]any
+					for id := (n-1)*100 + 1; id <= n*100 && id <= 1367; id++ {
+						row := map[string]any{"id": id, "state": "APPROVED", "commit_id": inspectionOld}
+						if id == 1367 {
+							row = map[string]any{"id": id, "state": "CHANGES_REQUESTED", "commit_id": inspectionHead, "body": "Fix the latest revision."}
+						}
+						rows = append(rows, row)
+					}
+					response = rows
+				case "/repos/example-org/sample/commits/" + inspectionHead + "/status":
+					response = map[string]any{"statuses": []any{}}
+				case "/repos/example-org/sample/commits/" + inspectionHead + "/check-runs":
+					response = map[string]any{"check_runs": []any{}}
+				default:
+					t.Errorf("unexpected route %s", r.URL.Path)
+					http.NotFound(w, r)
+					return
+				}
+				_ = json.NewEncoder(w).Encode(response)
+			}))
+			defer s.Close()
+			f := ReadOnly(OutboundChecked(&GitHubForge{Token: "fixture", BaseURL: s.URL, Client: s.Client()}, "worker"))
+			r, err := InspectChange(f, ForgeRepo{Owner: "example-org", Name: "sample"}, 7, inspectionHead)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if strings.Join(pages, ",") != tc.wantPages || calls != len(pages)+3 || r.ReviewRead != "partial" || !strings.Contains(r.ReviewError, tc.reason) || len(r.Reviews) == 0 {
+				t.Fatalf("pages=%v calls=%d coverage=%s reason=%s", pages, calls, r.ReviewRead, r.ReviewError)
+			}
+			last := r.Reviews[len(r.Reviews)-1]
+			if last.ID != tc.lastID || (last.ID == 1367 && (last.Binding != "at-head" || last.Body != "Fix the latest revision.")) {
+				t.Fatalf("last review: %+v", last)
 			}
 		})
 	}
