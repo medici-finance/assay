@@ -13,7 +13,7 @@ import (
 // read refuses; progress must still advance a claim that holds no negotiated subject.
 // regression: #6896
 func TestProgressWithoutPublishedOwningRoot(t *testing.T) {
-	const key = "assay-console--stream--b-08"
+	const key = "tracker--stream--b-08"
 	old := loadClaimWork
 	t.Cleanup(func() { loadClaimWork = old })
 	noRoot := func(string) (deskkit.WorkCatalog, []readercaps.Observation, bool, error) {
