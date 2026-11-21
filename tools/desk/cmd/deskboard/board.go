@@ -691,14 +691,20 @@ func detectNonCommitResolution(repo string, p prBase, lastReviewAt time.Time) (b
 	// empty), so an empty value there is "not read", not "never edited" — and a description
 	// edit would be invisible to this signal. The forge's trust read derives the edit time from
 	// the change's description-change system notes; read it, for this one blocked row only.
-	// Any other forge keeps the empty value as "never edited" and pays no extra read.
-	if kind, kerr := forgeKindOf(repo); kerr == nil && kind == deskkit.ForgeGitLab {
+	// Those notes cover the description only: a GitLab title-only edit is still not seen here.
+	// Any other forge keeps the empty value as "never edited" and pays no extra read. A forge
+	// kind that cannot be resolved is could-not-check (error), never "not GitLab".
+	kind, kerr := forgeKindOf(repo)
+	if kerr != nil {
+		return false, "", kerr
+	}
+	if kind == deskkit.ForgeGitLab {
 		edited, rerr := gitlabBodyEditedAt(repo, p.Number)
 		if rerr != nil {
 			return false, "", rerr
 		}
 		if edited.After(lastReviewAt) {
-			return true, "PR body/title edited after the last review", nil
+			return true, "PR description edited after the last review", nil
 		}
 	}
 
@@ -716,7 +722,8 @@ var forgeKindOf = func(repo string) (deskkit.ForgeKind, error) {
 }
 
 // gitlabBodyEditedAt reads the change's latest description-edit time through the forge's
-// typed trust read. An incomplete payload is could-not-check (error), never "unedited".
+// typed trust read. An absent, incomplete or unknown-provenance payload is could-not-check
+// (error), never "unedited".
 func gitlabBodyEditedAt(repo string, num int) (time.Time, error) {
 	f, fr, err := forgeFor(repo)
 	if err != nil {
@@ -726,8 +733,8 @@ func gitlabBodyEditedAt(repo string, num int) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, err
 	}
-	if !tp.Complete {
-		return time.Time{}, deskkit.Unverifiable(fmt.Sprintf("could not establish the description-edit time of %s#%d (incomplete activity read)", repo, num), nil)
+	if tp == nil || !tp.Complete || !tp.BodyHistoryKnown {
+		return time.Time{}, deskkit.Unverifiable(fmt.Sprintf("could not establish the description-edit time of %s#%d (incomplete or unknown activity read)", repo, num), nil)
 	}
 	return tp.BodyEdited, nil
 }
