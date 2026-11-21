@@ -8,6 +8,9 @@ unblocks: ["tool-refactoring/04", "tool-refactoring/10"]
 effort: M
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
+decision-issue: 7060
+ruling: "https://github.com/medici-finance/assay/issues/7060#issuecomment-7066010310"
+design: DR-tool-refactoring-03
 issues: []
 schema: brief-v2
 version: 1
