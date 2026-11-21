@@ -1,8 +1,8 @@
 # Apply the Go lint CI job
 
 This is the human-applied workflow leg of desk-tools/34. The worker supplies code,
-fixtures and this exact hunk; a runsheet alone does not deploy CI. Apply after the
-worker's final commit, before merging its implementation PR. Existing CI jobs and
+fixtures and this exact hunk; a runsheet alone does not deploy CI. Apply after its
+implementation PR merges (see below). Existing CI jobs and
 permissions remain in place. The runner needs Python 3.12 or newer for checked archive
 extraction; the job checks this before downloading tools. An older runner image needs
 an explicit image update, not an unchecked extraction fallback.
@@ -28,18 +28,35 @@ this first action refuses changed tool/config/fingerprint contracts against the
 old baseline, and bootstrap cannot be reused as an upgrade bypass. This first
 hunk does not claim that ingestion or that migration lane already exists.
 
+## When to apply: after merge
+
+This branch re-measures the baseline under the current pins and moves the fingerprint
+to `source-window/v3`. A maintainer ruled that this change is the reviewed migration:
+https://github.com/medici-finance/assay/issues/7370#issuecomment-7066967298
+Against main's baseline, the action at this branch's head refuses with
+`tool/config migration requires reviewed baseline`. The refusal is by design and must
+not be loosened. Apply the hunk after the implementation PR merges, on a new branch cut
+from merged main. The pull request carrying that workflow change is the first one after
+merge, and its run is where the gate is measured.
+
 ## Prepare in an isolated checkout
 
-Set `REVIEWED_HEAD` to the full implementation commit you reviewed. Run with your
-own permitted Git identity, from a checkout of this repository. The exact remote
-head comparison prevents accidentally applying this hunk over a newer worker push.
+Set `REVIEWED_HEAD` to the full main commit you reviewed, at or after the merge of
+the implementation PR. Run with your own permitted Git identity, from a checkout of
+this repository. Each block starts with `set -eu`, so a failed guard stops it. Run both
+blocks in one fresh `bash` session started for this (not your login shell): a failed
+guard ends that session, and the second block runs in the checkout the first enters.
+The ancestry check ties the pin to a commit that is on main and
+already carries the migrated baseline.
 
 ```sh
+set -eu
 : "${REVIEWED_HEAD:?Set the full implementation commit you reviewed}"
 case "$REVIEWED_HEAD" in *[!0-9a-f]*|'') exit 1 ;; esac
 test "${#REVIEWED_HEAD}" -eq 40
-git fetch origin main codex/go-analysis-lint
-test "$(git rev-parse refs/remotes/origin/codex/go-analysis-lint)" = "$REVIEWED_HEAD"
+git fetch origin main
+git merge-base --is-ancestor "$REVIEWED_HEAD" refs/remotes/origin/main
+git show "$REVIEWED_HEAD:tools/go-analysis/runner.py" | grep -q "FINGERPRINT = 'source-window/v3'"
 CI_REVIEW_TREE=$(mktemp -d "${TMPDIR:-/tmp}/go-lint-workflow.XXXXXX")
 git worktree add --detach "$CI_REVIEW_TREE" "$REVIEWED_HEAD"
 cd "$CI_REVIEW_TREE"
@@ -66,17 +83,17 @@ Inspect the diff and the bootstrap SHA, then commit and push that workflow-only
 change using the human account's configured identity and credentials:
 
 ```sh
+set -eu
 test "$(git diff --name-only)" = '.github/workflows/ci.yml'
 git add .github/workflows/ci.yml
 git commit -m 'ci: enable ratcheted Go lint reporting'
-git push origin HEAD:refs/heads/codex/go-analysis-lint
+git push origin HEAD:refs/heads/ci/go-lint-enable
 ```
 
-Do not dispatch a workflow. Wait for the normal push/PR run, record its exact head
-and `go-lint` job logs, then repeat the proof on merged main. The worker must fetch
-and merge this human commit before any later push; never overwrite it. Check the
-branch-only workflow commit history and forge attribution as brief 34 Verify row 6
-requires. If acquisition or analysis fails, retain the failure and fix its cause;
+Open a pull request from `ci/go-lint-enable` to main. Do not dispatch a workflow.
+Wait for the normal pull request run, record its exact head and `go-lint` job logs,
+then repeat the proof on main after that pull request merges. Check the workflow
+commit's history and forge attribution as brief 34's Verify table requires. If acquisition or analysis fails, retain the failure and fix its cause;
 do not add a success fallback or bypass the ratchet.
 
 ## Exact appended job
