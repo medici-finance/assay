@@ -2161,7 +2161,7 @@ Usage:
                       --container-image-digest sha256:<64 hex> --witness <file>
   statusgen verifyrun --close-bracket --root <home> --brief <path> --admission-receipt <receipt>
                       --witness <file>
-  statusgen verifyrun --bracket-digest --witness <file> [--credit --source <40 hex>]
+  statusgen verifyrun --bracket-digest --witness <file> [--credit --source <40 hex> [--ci-workflow-token]]
 
 Runs each Verify row's Command in a fresh subshell at the repo root and appends
 one witness row per Verify row to the brief's ` + "`## Evidence`" + ` section:
@@ -2373,6 +2373,10 @@ Flags:
                     Commit authors are author-asserted, not authorization;
                     the record is the forge-attributed anchor.
   --source          the 40-hex source commit --credit binds the attestation to.
+  --ci-workflow-token
+                    with --credit: use deskread's explicit same-repository
+                    CI workflow-token transport for attestation reads.
+                    Requires a CI job and DESKREAD_CI_WORKFLOW_TOKEN.
   --in-container    run the rows inside the PINNED harness container instead of on
                     the host — the supported execution-witness runner on Windows,
                     where a native pipefail bash is unreliable (#1418). Reads the
@@ -2506,6 +2510,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	closeBracket := fs.Bool("close-bracket", false, "host close step of a container run: re-check admission and the tree digest, then append Admission-Bracket to --witness")
 	witnessFile := fs.String("witness", "", "container-netns: the new file outside the home the witness is written to; with --close-bracket or --bracket-digest: that file")
 	creditMode := fs.Bool("credit", false, "with --bracket-digest and --source: judge each bracket's credit (provenance, record, binding)")
+	creditCI := fs.Bool("ci-workflow-token", false, "with --credit: use the same-repository CI workflow-token transport")
 	creditSource := fs.String("source", "", "with --credit: the 40-hex source commit under verification")
 	bracketDigestMode := fs.Bool("bracket-digest", false, "read-only: check every Admission-Bracket line of --witness <file> against the digest of its span, one line per bracket")
 	rule51Mode := fs.Bool("rule51", false, "rule-51 lane: an admitted host run also runs `--lint --acceptance-forge` for each repo-wide lint row the offline run recorded red, and stamps that row's witness with the result")
@@ -2569,16 +2574,20 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	if *bracketDigestMode {
 		var others []string
 		fs.Visit(func(f *flag.Flag) {
-			if f.Name != "bracket-digest" && f.Name != "witness" && f.Name != "credit" && f.Name != "source" {
+			if f.Name != "bracket-digest" && f.Name != "witness" && f.Name != "credit" && f.Name != "source" && f.Name != "ci-workflow-token" {
 				others = append(others, "--"+f.Name)
 			}
 		})
 		if len(others) > 0 || fs.NArg() > 0 || *witnessFile == "" {
-			fmt.Fprintf(stderr, "statusgen verifyrun: --bracket-digest takes only --witness <file> [--credit --source <40 hex>] (got %s)\n", strings.Join(append(others, fs.Args()...), " "))
+			fmt.Fprintf(stderr, "statusgen verifyrun: --bracket-digest takes only --witness <file> [--credit --source <40 hex> [--ci-workflow-token]] (got %s)\n", strings.Join(append(others, fs.Args()...), " "))
 			return verifyrunExitUsageError
 		}
 		if *creditMode != (*creditSource != "") || (*creditMode && !creditSourceOK(*creditSource)) {
 			fmt.Fprintln(stderr, "statusgen verifyrun: --credit and --source <40 lowercase hex> go together")
+			return verifyrunExitUsageError
+		}
+		if *creditCI && !*creditMode {
+			fmt.Fprintln(stderr, "statusgen verifyrun: --ci-workflow-token requires --bracket-digest and --credit")
 			return verifyrunExitUsageError
 		}
 		raw, err := os.ReadFile(*witnessFile)
@@ -2595,6 +2604,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		var cc *creditContext
 		if *creditMode {
 			cc = newCreditContext(*witnessFile, *creditSource, string(raw))
+			cc.ciWorkflowToken = *creditCI
 		}
 		anyCouldNot := false
 		for _, c := range checks {
@@ -2631,8 +2641,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		}
 		return code
 	}
-	if *creditMode || *creditSource != "" {
-		fmt.Fprintln(stderr, "statusgen verifyrun: --credit and --source are read-only options of --bracket-digest")
+	if *creditMode || *creditSource != "" || *creditCI {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --credit, --source and --ci-workflow-token are read-only options of --bracket-digest")
 		return verifyrunExitUsageError
 	}
 
