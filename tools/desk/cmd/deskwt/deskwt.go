@@ -840,8 +840,23 @@ func runRemove(o removeOpts) (err error) {
 	}
 	lockReason, isLocked := locked[rt]
 	lockNote := ""
+	// The dispatch claim (claimfree.go): a home whose run's claim is still held — or cannot be
+	// read — is a live run's, and is refused whether or not anything locked it. A home whose
+	// claim is RELEASED has no owner left, so a lock its agent left behind no longer refuses
+	// it; the untracked-inclusive status read below still does, exactly as for an own lock.
+	claim := claimForRemove(guard, dir, rt)
+	if claim.holds() {
+		if claim.state == claimUnknown {
+			return deskkit.Unverifiable("cannot remove "+rt+": "+claim.why, nil)
+		}
+		return deskkit.Refused("refused: " + rt + " belongs to a live dispatched run: " + claim.why +
+			" — release the claim first, or let `deskwt prune --reap-dead-sessions` clear it after release")
+	}
 	if isLocked {
 		ok, why := ownLockOwner(lockReason)
+		if !ok && claim.releasedOwner() && strings.TrimSpace(lockReason) != gitInitLockReason {
+			ok, why = true, claim.why
+		}
 		if !ok {
 			return deskkit.Refused("refused: " + rt + " is locked (" + lockReasonText(lockReason) + ") and " + why)
 		}
@@ -861,6 +876,13 @@ func runRemove(o removeOpts) (err error) {
 			return deskkit.Refused("refused: " + rt + " holds untracked or uncommitted files that removing it would delete — commit or move them first:\n" + capRows(rows, 10))
 		}
 		lockNote = "; lock retired: " + why
+	}
+	if claim.releasedOwner() {
+		// The claim was read before the status gate above; a resume may have re-acquired it
+		// since. Re-read the one key just before the unlock and the delete.
+		if why := claimStillFree(dir, claim.key); why != "" {
+			return deskkit.Unverifiable("cannot remove "+rt+": "+why, nil)
+		}
 	}
 
 	// before_remove — runs before deletion. LOGGED failure class: a hook failure is reported

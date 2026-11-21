@@ -49,6 +49,13 @@ files: []
   # the key never having existed.
 
 canonical:
+  - path: skills/article-craft/SKILL.md
+    reason: >-
+      Portable article briefing, genre selection, evidence review and reader comprehension.
+      The bundled genre and calibration references accompany the canonical skill.
+  - path: skills/prose-cadence/SKILL.md
+    reason: >-
+      Canonical revision method for pacing and register in verified long-form prose.
   # ---------------------------------------------------------------------------
   # education/04 (Phase 0 ruling 2) / assay-dogfood/07. intake-desk moved here
   # from `files:` — the convergence brief replaced the hand-scrubbed port

@@ -203,6 +203,10 @@ func guardSafeCommand(args []ast.Expr, i int) bool {
 		return guardSafeGit(args, i+1)
 	case "deskroster":
 		return guardLiteral(args, i+1) == "set"
+	case "deskwt":
+		// `deskwt remove <home>` allocates nothing: it deletes one worktree only past
+		// deskwt's own gates (abortHome). Exactly one operand, so no flag can ride along.
+		return len(args) == i+3 && guardLiteral(args, i+1) == "remove"
 	}
 	return false
 }
@@ -227,7 +231,7 @@ func guardSafeGit(args []ast.Expr, i int) bool {
 		// assay.dispatchRef is a data-only key in the
 		// assay.* namespace like assay.runKey: git interprets no assay.* key,
 		// so it cannot select an executable for a later call.
-		case "user.name", "user.email", "assay.runKey", "assay.dispatchRef":
+		case "user.name", "user.email", "assay.runKey", "assay.dispatchRef", "assay.claimRepo", "assay.claimStore":
 			return true
 		}
 	}
