@@ -1,10 +1,10 @@
 {
-  "test": "go test ./internal/deskkit -run '^TestFlowWorld(Bind)?$' -count=1 -timeout 300s",
+  "test": "go test ./internal/deskkit -run '^(TestFlowWorld(Bind)?|TestToolUpgrade(Recheck|Admission)|TestForgeMainToolPin)$' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL - a moved input no longer invalidates the record",
     "file": "internal/deskkit/preflight.go",
-    "old": "\tif len(changed) > 0 {\n\t\treturn Refused(\"environment changed since admission: \"",
-    "new": "\tif len(changed) > 99 {\n\t\treturn Refused(\"environment changed since admission: \""
+    "old": "\tif len(changed) > 0 {\n\t\twhy := \"\"",
+    "new": "\tif len(changed) > 99 {\n\t\twhy := \"\""
   },
   "mutations": [
     {
@@ -40,8 +40,8 @@
     {
       "name": "attestation admission skips the bound record",
       "file": "internal/deskkit/verifierattestation.go",
-      "old": "\tif r.World != nil {\n\t\tif err = r.World.Recheck(worldRecheckProbes); err != nil {",
-      "new": "\tif r.World != nil && false {\n\t\tif err = r.World.Recheck(worldRecheckProbes); err != nil {"
+      "old": "\tif r.World != nil {\n\t\tif phase == verifierEvidence {",
+      "new": "\tif r.World != nil && false {\n\t\tif phase == verifierEvidence {"
     },
     {
       "name": "an instrument change is not rechecked",
@@ -66,6 +66,60 @@
       "file": "internal/deskkit/worldbrief.go",
       "old": "\tif commands == nil {\n",
       "new": "\tif false && commands == nil {\n"
+    },
+    {
+      "name": "#7353 control 1: an unstamped build is an upgrade",
+      "file": "internal/deskkit/toolupgrade.go",
+      "old": "\tcase !okTo:\n\t\treturn ToolUpgrade{}, Refused(\"desk-tools \" + running + \" is not a stamped release\")",
+      "new": "\tcase false && !okTo:\n\t\treturn ToolUpgrade{}, Refused(\"desk-tools \" + running + \" is not a stamped release\")"
+    },
+    {
+      "name": "#7353 control 2: a release not strictly newer is an upgrade",
+      "file": "internal/deskkit/toolupgrade.go",
+      "old": "\tcase !releaseNewer(to, from):",
+      "new": "\tcase false && !releaseNewer(to, from):"
+    },
+    {
+      "name": "#7353 control 3: a release other than main's pin is an upgrade",
+      "file": "internal/deskkit/toolupgrade.go",
+      "old": "\tif norm(tag) != norm(running) {",
+      "new": "\tif false && norm(tag) != norm(running) {"
+    },
+    {
+      "name": "#7353 control 4: an unread main admits the upgrade",
+      "file": "internal/deskkit/toolupgrade.go",
+      "old": "\ttag, source, err := mainPin()\n\tif err != nil {",
+      "new": "\ttag, source, err := mainPin()\n\tif tag = running; false && err != nil {"
+    },
+    {
+      "name": "#7353 control 5: an accepted upgrade masks other changed inputs",
+      "file": "internal/deskkit/preflight.go",
+      "old": "\t\t\tupgrade = &u\n",
+      "new": "\t\t\tupgrade = &u\n\t\t\tchanged = nil\n\t\t\tw.Paths = nil\n"
+    },
+    {
+      "name": "#7353 control 5b: row execution accepts the upgrade too",
+      "file": "internal/deskkit/verifierattestation.go",
+      "old": "\t\tif phase == verifierEvidence {\n\t\t\t// Evidence admission",
+      "new": "\t\tif phase == verifierEvidence || true {\n\t\t\t// Evidence admission"
+    },
+    {
+      "name": "#7353 the upgrade is not handed to the landing",
+      "file": "internal/deskkit/verifierattestation.go",
+      "old": "\t\t\tr.ToolUpgrade = u\n",
+      "new": "\t\t\t_ = u\n\t\t\tr.ToolUpgrade = nil\n"
+    },
+    {
+      "name": "#7353 main's pin is read from a branch other than main",
+      "file": "internal/deskkit/toolupgrade.go",
+      "old": "const mainBranch = \"main\"",
+      "new": "const mainBranch = \"HEAD\""
+    },
+    {
+      "name": "#7353 class plant: the Evidence landing rechecks strictly again",
+      "file": "internal/deskkit/verifierattestation.go",
+      "old": "\t\tif phase == verifierEvidence {\n\t\t\t// Evidence admission",
+      "new": "\t\tif false && phase == verifierEvidence {\n\t\t\t// Evidence admission"
     }
   ]
 }

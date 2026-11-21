@@ -508,7 +508,7 @@ func landOutcomeRecordAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug,
 	pr, perr := deskkit.CreateHeldDraftChange(fg, fr, deskkit.DraftChangeInput{
 		Title: "Evidence: " + target,
 		Body: "Verify-outcome record for `" + brief + "`, landed on branch `" + side + "` and opened as a " +
-			"draft change because the default branch `" + base + "` takes no direct write on this forge.\n\n" + ac.attestation,
+			"draft change because the default branch `" + base + "` takes no direct write on this forge.\n\n" + ac.attestationRecord(),
 		Head: side,
 		Base: base,
 	})
