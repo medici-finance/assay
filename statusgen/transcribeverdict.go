@@ -34,6 +34,7 @@ package main
 
 import (
 	verdictcore "github.com/medici-finance/assay/deskcore/verdict"
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 
 	"bytes"
 	"crypto/rsa"
@@ -668,15 +669,15 @@ func planTranscribeVerdict(root string, streams []*Stream, homeRepo string,
 				// and running a mention can exit 0 (`true`, `gh`) and turn a verdict
 				// this gate should refuse into a PASS. A `cmd:` marker naming a real
 				// command clears it; a marked comment stays refused (#2684).
-				if first, why := proseLedCommandWhy(row.Command); why != "" {
-					refuse("clause-6 (check:ci)", fmt.Sprintf("check:ci row %d of %s is %s: its lifted command `%s` is %s, not a command, so it cannot be re-executed — a check that was never run established nothing; %s", e.Row, rel, ruleProseLedCommand, first, why, proseLedRemedy(why)))
+				if first, why := briefdoc.ProseLedCommandWhy(row.Command); why != "" {
+					refuse("clause-6 (check:ci)", fmt.Sprintf("check:ci row %d of %s is %s: its lifted command `%s` is %s, not a command, so it cannot be re-executed — a check that was never run established nothing; %s", e.Row, rel, ruleProseLedCommand, first, why, briefdoc.ProseLedRemedy(why)))
 					verdictOK = false
 					break
 				}
 				// Re-execute the LIFTED command (#1805's choke point), never the raw
 				// cell: the raw cell still carries its code-span backticks, which
 				// the shell reads as command substitution.
-				res := runCheckCI(root, verifyCommand(row.Command))
+				res := runCheckCI(root, briefdoc.VerifyCommand(row.Command))
 				if res.CouldNotRun {
 					refuse("clause-6 (check:ci)", fmt.Sprintf("check:ci row %d of %s could not be re-executed hermetically (%s) — a hermetic check that could not be run hermetically established nothing", e.Row, rel, res.Reason))
 					verdictOK = false

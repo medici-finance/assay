@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
@@ -207,7 +208,7 @@ func TestVerifyrunRowsSelectsOnlyNamed(t *testing.T) {
 		t.Fatalf("the appended table is not the standard header over two rows:\n%s", ev)
 	}
 	for i, id := range []string{"2", "4"} {
-		if cells := splitRowEscaped(lines[2+i]); len(cells) < 6 || strings.TrimSpace(cells[0]) != id {
+		if cells := briefdoc.SplitRowEscaped(lines[2+i]); len(cells) < 6 || strings.TrimSpace(cells[0]) != id {
 			t.Fatalf("data row %d is not row %s: %q", i+1, id, lines[2+i])
 		}
 	}
