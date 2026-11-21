@@ -128,8 +128,10 @@ every work directory created after it enrolled is kept, whichever consumer
 created it, including consumers that have already exited: the sweep cannot tell
 whose directory it is, and no PID or age is accepted as proof. Each such
 directory is listed in `held` with the record that holds it, so a window holding
-the sweep is visible in the report. They go at the first pass after that record
-is released. A policy recorded before this setting existed
+the sweep is visible in the report. The record named is the oldest live one. A
+directory goes at the first pass after every live record that enrolled before it
+last changed is released; until then each pass names the oldest such record
+still live. A policy recorded before this setting existed
 exports no `GOTMPDIR`, creates no `tmp/` and is never swept, so consumers it
 launched keep their custody; relaunch them to move their work directories.
 

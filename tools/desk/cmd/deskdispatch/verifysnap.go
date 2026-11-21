@@ -21,8 +21,8 @@ package main
 // The snapshot of the claim being dispatched right now is never removed, however old, because
 // this very run is about to use it. On a platform whose build reads no change time
 // (changeTimeKnown false: everything but macOS and Linux), modification time alone cannot
-// prove a snapshot idle, so the prune fails closed there: every snapshot is kept and reported
-// could-not-check. Anything that cannot be read in full — a walk that fails or
+// prove a snapshot idle, so the prune fails closed there: every snapshot is kept and named on
+// stderr as could-not-check, on a real dispatch as well as a dry run. Anything that cannot be read in full — a walk that fails or
 // passes the entry bound — is kept and reported, never removed on a partial view.
 
 import (
@@ -198,7 +198,7 @@ var errSnapActive = errors.New("it changed after it was judged idle")
 // removeVerifySnap removes one idle snapshot through root, the same root the plan listed. Its
 // activity is read again first, so a snapshot a run touched after the plan is kept. Directories
 // are then made owner-writable (a snapshot can hold a module cache, whose directories are
-// read-only) through a descriptor opened without following a link, never by path.
+// read-only) through a descriptor checked to be the directory itself (makeSnapDirWritable).
 func removeVerifySnap(root *os.Root, name string, now time.Time, limit int) error {
 	cutoff := now.Add(-verifySnapMaxAge)
 	if newest, err := newestSnapActivity(root, name, cutoff, limit); err != nil {
@@ -213,20 +213,35 @@ func removeVerifySnap(root *os.Root, name string, now time.Time, limit int) erro
 		if d.Type()&os.ModeSymlink != 0 || !d.IsDir() {
 			return nil
 		}
-		f, err := root.OpenFile(path, os.O_RDONLY|snapNoFollow, 0)
-		if err != nil {
-			return err
-		}
-		st, err := f.Stat()
-		if err == nil && st.IsDir() {
-			err = f.Chmod(st.Mode().Perm() | 0o700)
-		}
-		return errors.Join(err, f.Close())
+		return makeSnapDirWritable(root, path)
 	})
 	if err != nil {
 		return err
 	}
 	return root.RemoveAll(name)
+}
+
+// makeSnapDirWritable makes one directory under root owner-writable through a descriptor,
+// never by path. os.Root.OpenFile follows a final link that stays inside the root, so the
+// opened file is compared with an Lstat of the path: a link, anything that is not a directory,
+// or a directory swapped between the Lstat and the open is left unchanged.
+func makeSnapDirWritable(root *os.Root, path string) error {
+	lst, err := root.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !lst.IsDir() {
+		return nil
+	}
+	f, err := root.OpenFile(path, os.O_RDONLY, 0)
+	if err != nil {
+		return err
+	}
+	st, err := f.Stat()
+	if err == nil && st.IsDir() && os.SameFile(st, lst) {
+		err = f.Chmod(st.Mode().Perm() | 0o700)
+	}
+	return errors.Join(err, f.Close())
 }
 
 // pruneVerifySnaps applies the plan: it removes each idle snapshot and returns the verdicts
@@ -284,7 +299,7 @@ func snapAge(now, t time.Time) string {
 
 // reportVerifySnaps runs the snapshot retention for a verifier dispatch. A dry run plans it only
 // and lists every snapshot with its verdict and reason; a real dispatch prunes and lists what it
-// removed and what it could not judge. Lines go to stderr regardless of --quiet: a removal is a
+// removed and what it could not judge, a could-not-check keep included. Lines go to stderr regardless of --quiet: a removal is a
 // durable act the operator must be able to see. It never fails the dispatch; a prune it could
 // not run says so.
 func reportVerifySnaps(claimKey string, dry bool) {
@@ -307,10 +322,11 @@ func reportVerifySnaps(claimKey string, dry bool) {
 	}
 	if !dry {
 		// A real dispatch names only what it removed or could not judge; an ordinary keep is
-		// not news on every dispatch.
+		// not news on every dispatch. A could-not-check keep (a build with no change time) is
+		// news: retention is off there, and this line is the operator's only signal of it.
 		shown := plan[:0]
 		for _, v := range plan {
-			if v.remove || strings.Contains(v.reason, "could not read") || strings.Contains(v.reason, "removal failed") {
+			if v.remove || strings.HasPrefix(v.reason, "could-not-check") || strings.Contains(v.reason, "could not read") || strings.Contains(v.reason, "removal failed") {
 				shown = append(shown, v)
 			}
 		}

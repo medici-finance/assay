@@ -8,9 +8,6 @@ import (
 	"time"
 )
 
-// snapNoFollow opens a snapshot directory for chmod without following a final link.
-const snapNoFollow = syscall.O_NOFOLLOW
-
 // changeTimeKnown: this platform gives the snapshot prune an inode change time.
 const changeTimeKnown = true
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,6 +53,15 @@ func snapAgeTree(t *testing.T, dir string, mtime time.Time) {
 	}
 }
 
+// needChangeTime skips a test that expects a removal on a build that reads no change time:
+// there the prune removes nothing by design (TestVerifySnapNoChangeTimeKeeps pins that).
+func needChangeTime(t *testing.T) {
+	t.Helper()
+	if !changeTimeKnown {
+		t.Skip("this build reads no inode change time; the prune keeps every snapshot here")
+	}
+}
+
 func snapVerdictFor(t *testing.T, plan []snapVerdict, name string) snapVerdict {
 	t.Helper()
 	for _, v := range plan {
@@ -65,6 +75,7 @@ func snapVerdictFor(t *testing.T, plan []snapVerdict, name string) snapVerdict {
 
 // regression: #7275
 func TestVerifySnapPruneKeepsLiveRuns(t *testing.T) {
+	needChangeTime(t)
 	base := snapFixture(t)
 	real := time.Now()
 	now := real.Add(verifySnapMaxAge + 24*time.Hour) // every inode change is a day past retention
@@ -156,6 +167,7 @@ func TestVerifySnapChangeTimeIsActivity(t *testing.T) {
 
 // A snapshot that cannot be read in full is kept, never removed on a partial view.
 func TestVerifySnapUnreadKept(t *testing.T) {
+	needChangeTime(t)
 	base := snapFixture(t)
 	real := time.Now()
 	now := real.Add(verifySnapMaxAge + 24*time.Hour)
@@ -198,6 +210,7 @@ func TestVerifySnapSymlinkBaseRefused(t *testing.T) {
 // The dispatch hook: a dry run removes nothing, a real verifier dispatch removes the idle
 // snapshot and keeps its own claim's.
 func TestVerifySnapDispatchHook(t *testing.T) {
+	needChangeTime(t)
 	base := snapFixture(t)
 	cache := filepath.Dir(filepath.Dir(base))
 	real := time.Now()
@@ -252,6 +265,7 @@ func TestVerifySnapNoChangeTimeKeeps(t *testing.T) {
 //
 // regression: #7275
 func TestVerifySnapRecheckBeforeRemoval(t *testing.T) {
+	needChangeTime(t)
 	base := snapFixture(t)
 	real := time.Now()
 	now := real.Add(verifySnapMaxAge + 24*time.Hour)
@@ -294,5 +308,81 @@ func TestVerifySnapCallSites(t *testing.T) {
 		if !strings.Contains(s, call) {
 			t.Errorf("dispatch.go lacks %s", call)
 		}
+	}
+}
+
+// On a build with no change time, a real dispatch keeps every snapshot and must still say so
+// on stderr: retention is off there, and the operator needs a signal on the dispatches they run.
+//
+// regression: #7275
+func TestVerifySnapReportNoCtime(t *testing.T) {
+	base := snapFixture(t)
+	cache := filepath.Dir(filepath.Dir(base))
+	real := time.Now()
+	oldCache, oldNow, oldRoot, oldKnown := packetCacheDir, packetNow, verifySnapRoot, snapChangeTimeKnown
+	t.Cleanup(func() {
+		packetCacheDir, packetNow, verifySnapRoot, snapChangeTimeKnown = oldCache, oldNow, oldRoot, oldKnown
+	})
+	packetCacheDir = func() (string, error) { return cache, nil }
+	verifySnapRoot = verifySnapBase
+	packetNow = func() time.Time { return real.Add(verifySnapMaxAge + 24*time.Hour) }
+	snapChangeTimeKnown = false
+	snapWrite(t, filepath.Join(base, "idle--01", "f"), real.Add(-time.Hour))
+	snapAgeTree(t, filepath.Join(base, "idle--01"), real.Add(-time.Hour))
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldStderr := os.Stderr
+	os.Stderr = w
+	reportVerifySnaps("", false)
+	os.Stderr = oldStderr
+	w.Close()
+	out, err := io.ReadAll(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "keep " + filepath.Join(base, "idle--01") + " — could-not-check"
+	if !strings.Contains(string(out), want) {
+		t.Fatalf("a real dispatch with no change time did not report the kept snapshot; stderr: %q", out)
+	}
+	if _, err := os.Stat(filepath.Join(base, "idle--01", "f")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The chmod before removal goes through a descriptor, and os.Root.OpenFile follows a final
+// link inside the root, so a link in place of a directory must leave its target unchanged.
+//
+// regression: #7275
+func TestVerifySnapChmodNoFollow(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "target"), 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(filepath.Join(dir, "target"), 0o700) })
+	if err := os.Mkdir(filepath.Join(dir, "plain"), 0o500); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("target", filepath.Join(dir, "link")); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if err := makeSnapDirWritable(root, "link"); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := os.Stat(filepath.Join(dir, "target")); err != nil || st.Mode().Perm() != 0o500 {
+		t.Fatalf("chmod through a link changed its target: %v %v", st.Mode(), err)
+	}
+	if err := makeSnapDirWritable(root, "plain"); err != nil {
+		t.Fatal(err)
+	}
+	if st, err := os.Stat(filepath.Join(dir, "plain")); err != nil || st.Mode().Perm() != 0o700 {
+		t.Fatalf("a read-only snapshot directory was not made writable: %v %v", st.Mode(), err)
 	}
 }

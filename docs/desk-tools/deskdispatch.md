@@ -243,8 +243,8 @@ inode change time inside the week. The change time is what marks an archive extr
 snapshot as new even though it keeps the archive's modification times. That holds on macOS and
 Linux, whose builds read the change time. A build for any other platform (Windows, the BSDs)
 reads none, and modification time alone cannot prove a snapshot idle, so there the prune keeps
-every snapshot and reports each as could-not-check: snapshots are not pruned on those
-platforms. Nothing records which
+every snapshot and names each on stderr as could-not-check, on every verifier dispatch as well
+as under --dry-run: snapshots are not pruned on those platforms. Nothing records which
 snapshot a running verifier holds, so recent activity is the liveness signal; a week is far
 past the two-hour stale age of a dispatched claim. The claim being dispatched never loses its
 own snapshot, a symlink or a plain file there is never removed, and a snapshot that cannot be
@@ -252,7 +252,8 @@ walked in full (an error, or more entries than the maintenance bound) is kept an
 stderr. A real dispatch reads each candidate's activity again, through the same opened
 directory, just before removing it, and keeps one that changed since. --dry-run lists every
 snapshot with "keep" or "would remove" and the reason; a real dispatch names on stderr each one
-it removed. A failure never fails the dispatch.
+it removed and each one it kept as could-not-check or could not read. A failure never fails
+the dispatch.
 
 A WORKER dispatch (--kit worker, --kit worker-objective) gets a packet too, smaller because a
 worker run re-reads it on every later request: 32 KiB an item, 64 KiB for the brief and for
