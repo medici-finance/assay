@@ -200,7 +200,7 @@ func TestChangesWithLandedRunsheet(t *testing.T) {
 	f.issue.Labels = []string{"help wanted"}
 	f.issue.Body = "[Runsheet](https://github.com/" + repo + "/blob/" + strings.Repeat("b", 40) + "/docs/run.md)"
 	f.Forge = &fakeForge{issues: []deskkit.IssueSummary{{Number: 7, Labels: f.issue.Labels}}}
-	f.pinnedFile = &deskkit.FileContent{Exists: true, Kind: deskkit.FileKindRegular, Content: []byte(repo + "#7\n! perform-reviewed-task\nWhy: only the account holder can approve.\nResume: read the receipt.")}
+	f.pinnedFile = &deskkit.FileContent{Exists: true, Kind: deskkit.FileKindRegular, Content: []byte(repo + "#7\n! perform-reviewed-task\nWhy: only the account holder can approve.\nWhat the session did: prepared the approval.\nResume: read the receipt.")}
 	f.branchFile = &deskkit.FileContent{Exists: false}
 	poll := func(want string) changeBatch {
 		t.Helper()

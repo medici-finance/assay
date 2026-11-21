@@ -80,6 +80,11 @@ func TestShowIssueIdentityAndAuthority(t *testing.T) {
 	if code, out := call("show", "example-org/tracker#7"); code != 0 || !strings.Contains(out, "Next owner: human") || !strings.Contains(out, "B. Tomorrow (recommended)") || f.gotNumber != 7 || f.gotRepo != "example-org/tracker" {
 		t.Fatalf("%d %s", code, out)
 	}
+	f.issue.Labels = append(f.issue.Labels, deskkit.VerifyGateLabel)
+	if code, out := call("show", "example-org/tracker#7"); code != 0 || !strings.Contains(out, "Separate the unresolved decision") {
+		t.Fatalf("%d %s", code, out)
+	}
+	f.issue.Labels = []string{"needs-decision"}
 	for _, bad := range []string{"7", "example-org/tracker#0", "../repo#7", "org/repo#7#8", "org/repo#+7"} {
 		f.gotNumber = 0
 		if code, out := call("show", bad); code != 5 || f.gotNumber != 0 {
@@ -194,7 +199,7 @@ func TestShowRunsheet(t *testing.T) {
 	ref := "https://github.com/example-org/tracker/blob/" + strings.Repeat("b", 40) + "/docs/run.md"
 	f.issue.Labels = []string{"help wanted"}
 	f.issue.Body = "[Runsheet](" + ref + ")"
-	file := &deskkit.FileContent{Exists: true, Kind: deskkit.FileKindRegular, Content: []byte("example-org/tracker#7\n! perform-reviewed-task\nWhy: only the account holder can approve.\nResume: read the receipt.")}
+	file := &deskkit.FileContent{Exists: true, Kind: deskkit.FileKindRegular, Content: []byte("example-org/tracker#7\n! perform-reviewed-task\nWhy: only the account holder can approve.\nWhat the session did: prepared the approval.\nResume: read the receipt.")}
 	f.pinnedFile, f.branchFile = file, file
 	check := func(want string) {
 		t.Helper()
@@ -203,6 +208,8 @@ func TestShowRunsheet(t *testing.T) {
 			t.Fatalf("%s: %+v %v", want, a, e)
 		}
 	}
+	check("ready")
+	f.comments = []deskkit.Comment{{Body: "Status check complete.", Author: deskkit.Account{Login: "example-worker[bot]", ID: 300000006, Type: "Bot"}}}
 	check("ready")
 	f.branchFile = &deskkit.FileContent{Exists: false}
 	check("stale")
