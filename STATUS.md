@@ -154,7 +154,7 @@ _Held by per-stream caps: 20 brief(s) across 2 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 995d1308d 2026-11-21T18:31:27Z_
+_last regen: f8a8dad43 2026-11-21T19:18:39Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -175,7 +175,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 995d1308d 2026-11-21T18:31:27Z_
+_last regen: f8a8dad43 2026-11-21T19:18:39Z_
 
 **Progress:** 37/100 brief items done.
 
@@ -478,8 +478,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 |---|---|---|---|---|---|---|---|---|---|
 | graph-execution | 36 [exec:strong] | implemented | 21020 | 38 | 2d | verify-desk | triage, then re-bucket | — | — |
 | tool-refactoring | 01 [exec:strong] | implemented | 4500 | 5 | 1h | verify-desk | triage, then re-bucket | — | — |
-| tool-refactoring | 03 [exec:strong] | implemented | 3550 | 3 | — | verify-desk | triage, then re-bucket | — | — |
-| tool-refactoring | 06 [exec:strong] | implemented | 3000 | 2 | 17h | verify-desk | triage, then re-bucket | — | — |
+| tool-refactoring | 03 [exec:strong] | implemented | 3500 | 3 | <1h | verify-desk | triage, then re-bucket | — | — |
+| tool-refactoring | 06 [exec:strong] | implemented | 3000 | 2 | 18h | verify-desk | triage, then re-bucket | — | — |
 | composability | 02 | implemented | 2560 | 3 | 6d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2560 | 1 | 6d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 06 | implemented | 2560 | 1 | 6d | verify-desk | dispatch one judge | — | — |
@@ -526,7 +526,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | statusgen | 6d | 05 |
 | verification-handoff | 6d | 01 |
 | windows-port | 6d | 03 |
-| tool-refactoring | 17h | 06 |
+| tool-refactoring | 18h | 06 |
 
 ## Unresolved findings
 
