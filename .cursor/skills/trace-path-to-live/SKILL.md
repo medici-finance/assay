@@ -25,7 +25,7 @@ can be done now to move it forward. The answer is a page with:
 Combine existing readers with recorded default-branch history; never invent progress;
 activity is not progress.
 
-## 1. Resolve the objective, then confirm it
+## 1. Resolve the objective
 
 An objective arrives in one of three forms. Each resolves to target briefs:
 
@@ -37,8 +37,10 @@ An objective arrives in one of three forms. Each resolves to target briefs:
 - **Plain language.** Search the stream READMEs of every root (step 2) for the briefs that
   deliver the goal. A wildcard such as `<stream>/*` means every brief in that stream.
 
-**Show the resolved target list and get confirmation before walking.** A wrong target makes
-every later step wrong. Do not walk an unconfirmed guess.
+An explicit target, a unique match, or the same target the driver already selected is
+confirmed for this read-only walk. Proceed and show the resolved list on the page. When
+two plausible targets deliver materially different outcomes and the records do not
+settle which was requested, ask which outcome the driver wants.
 
 ## 2. Read every root at its fetched default branch
 
@@ -104,6 +106,10 @@ transitive `depends:` closure, with live status, comes from the root that owns t
   - `verified` or `done`: 0.
 - **The path.** The critical path is the heaviest chain ending at a target. Report one path per
   target and the overall heaviest. If you change the weights, state the change on the page.
+- When asked which prerequisites could follow launch, read the acceptance criteria, evidence
+  and existing rulings. Identify what would fail at launch without each candidate. Report
+  supported changes as proposals alongside the recorded graph. Bring the driver only a
+  remaining decision about the outcome or acceptable risk.
 
 ## 6. Ranked moves
 
@@ -114,7 +120,7 @@ Each move names one node and one owning role:
 | worker | dispatch a `todo` that is `eligible`, unclaimed and has no open PR; a live claim is shown as in flight, not as a move |
 | review | review or flip an open PR on the node, Evidence PRs included |
 | verify | verify an `implemented` node on merged main when no Evidence PR or live verifier claim exists; flag a verifier claim held long with no Evidence PR |
-| driver | a `gate: human` node whose PASS Evidence awaits sign-off, an open `needs-decision`, or a merge |
+| driver | a ready sign-off card with its required Evidence, an unresolved decision the driver owns, or a merge ready for that identity. Link the actionable item |
 | desk | an authoring gap: a `depends:`/`gates:` ref that resolves to no brief on any read board, or a part of the objective no brief covers |
 
 Rank the moves in this order:

@@ -13,12 +13,10 @@ description: >-
 
 # Ask Decision — one decision per turn, with context
 
-A desk that has five things blocked on a human and asks about all five in one message gets no
-answer to any of them. The driver has to reconstruct each item's context, hold five open
-questions at once, and write a paragraph. A desk that asks about ONE, states the options, and
-says exactly what a reply must contain gets a one-word answer and moves on. That is the whole
-skill: **the queue drains at the speed the questions are askable, not at the speed the desk
-can enumerate them.**
+Ask one question when the driver owns the next choice. Read their request, earlier answers
+and the current artifact first. Carry out settled work, including work authorized once a
+named condition holds. Route a missing prerequisite or investigation to its owner. For a
+genuine fork, present a recommendation and the consequence of choosing it.
 
 This skill is a PRESENTATION and RELAY contract. It decides nothing, it rules on nothing, and
 its recommended default is a recommendation — the ruling is the driver's, and it is recorded
@@ -28,8 +26,10 @@ as a relay.
 
 - The driver asks for it: "ask me 1-by-1", "walk me through the decisions", "what do you need
   from me", "what's waiting on me", "go through the needs-decision queue".
-- A desk window ends with more than one human gate open. Rather than narrating them, invoke
-  this and ask the first.
+- A desk window ends with a newly actionable human gate. Surface it once through the
+  project's escalation channel. On later sweeps, keep the open item as the record and
+  continue independent work. Present it again when the driver requests a walk, the choice
+  materially changes, or the project's reminder policy calls for it.
 - After a ruling lands and the desk has recorded it, to present the next item.
 
 It does NOT run for a single question — one gate is just the format applied once, which is
@@ -125,7 +125,8 @@ question the desk can answer") are made mechanical by this screen **on the oracl
 only**. The screen narrows what reaches the driver; it does not replace reading — act on a
 screened class only after reading the evidence the tool cites. Where `deskinbox walk`
 renders instead, nothing classifies, and both floors stay manual checks done by hand before
-each question.
+each question. A renderer's `genuine` result admits the item for the desk's review. Apply
+the same test to an interactive prompt and a rendered item before asking the driver.
 
 ## The format — five parts for every GENUINE item
 
@@ -174,7 +175,9 @@ visible phrase naming the recommended option, else `not derivable — desk to fi
    transcript; the runnable block is the promise that nobody has to rebuild a command from a
    paragraph. The block's shape is defined once, in the next section. An item whose answer
    sets off no act a person runs (a pure ruling the desk then carries out) keeps only the
-   check.
+   check. When the gate accepts a ruling directly in the driver's own hand, offer that
+   surface first. One signed answer there settles the choice and records it. If the driver
+   answers in chat, follow the relay and ratification procedure below.
 
 ### Act — the shape of the fifth part
 
@@ -335,22 +338,18 @@ left alone, which matters only against a GitHub Enterprise Server host.
 # fill: the publish token, typed at a hidden prompt in step 2 on the live call.
 driver_act_123() (
   DRY_RUN=1; [ "${1-}" = live ] && DRY_RUN=0
-  run() { if [ "$DRY_RUN" = 1 ]; then echo "would run: $*"; else "$@"; fi; }
   echo '1. pin the driver token for every gh step. An exported App token never wins.'
   GH_TOKEN="$(gh auth token --user "<driver-login>")" || { echo "no driver token; nothing changed" >&2; exit 1; }
+  [ -n "$GH_TOKEN" ] || { echo "no driver token; nothing changed" >&2; exit 1; }
   export GH_TOKEN; unset GITHUB_TOKEN
   echo '2. read the publish token next, so an empty read changes nothing.'
   if [ "$DRY_RUN" = 1 ]; then echo "would read the publish token at a hidden prompt"
   else printf 'publish token: '
     PUBLISH_TOKEN=; read -rs PUBLISH_TOKEN || { echo; echo "no token read; nothing changed" >&2; exit 1; }
     echo; [ -n "$PUBLISH_TOKEN" ] || { echo "no token read; nothing changed" >&2; exit 1; }; fi
-  echo '3. push the parked branch. git push has its own --dry-run.'
-  if [ "$DRY_RUN" = 1 ]; then git push --dry-run origin parked-branch; else git push origin parked-branch; fi
-  echo '4. store the publish token as a repo secret.'
+  echo '3. store the publish token as a repo secret.'
   if [ "$DRY_RUN" = 1 ]; then echo "would run: gh secret set PUBLISH_TOKEN -R owner/repo"
   else printf '%s' "$PUBLISH_TOKEN" | gh secret set PUBLISH_TOKEN -R owner/repo; fi
-  echo '5. take the decision label off the issue. No --dry-run here, so the run guard covers it.'
-  run gh issue edit 123 -R owner/repo --remove-label needs-decision
 )
 driver_act_123
 ```
