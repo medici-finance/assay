@@ -4,7 +4,7 @@ date: "2026-11-21"
 title: "Approve the bounded operation-subject refactor once its independent class and caller controls pass"
 consequence: major
 decided-by: "human:<name>"
-ruling: "https://github.com/medici-finance/assay/issues/7087#issuecomment-7065937224"
+ruling: "https://github.com/medici-finance/assay/issues/7087#issuecomment-7066509833"
 alternatives:
   - "Option 2 — keep the existing behavior and request a narrower migration. Not chosen by the driver's ruling (option 1). It would leave each consumer deriving its own tracking, decision, review and Evidence coordinate, which is the repository-substitution class the brief exists to close."
 accepted:
@@ -22,11 +22,13 @@ comment posted under the driver's own login, never a role App relay. The
 posted 2026-11-21T16:48:19Z and not edited since, chooses option 1 and says #7092 may proceed
 once its independent class and caller controls pass.
 
-**Record binding still owed.** The ruling comment selects the option but does not name this
-record by its id, so the corroboration check reports it as `record-not-named` until the driver
-posts a comment on issue 7087 that names `DR-tool-refactoring-01`. The `ruling:` link above is
-then re-pointed at that comment. This record transcribes the human act; it makes no independent
-verification claim.
+**Record binding.** The ruling comment selects the option but does not name this record by its
+id. The driver then posted a second comment on issue 7087 under the same login,
+[naming this record](https://github.com/medici-finance/assay/issues/7087#issuecomment-7066509833)
+(2026-11-21T17:28:35Z): `DR-tool-refactoring-01: approved as the design record for
+tool-refactoring/01.` The `ruling:` link above points at that comment, so the record's
+provenance names it as a whole token. This record transcribes the human acts; it makes no
+independent verification claim.
 
 **Why `consequence: major`.** A wrong tracking, delivery or Evidence coordinate can direct a
 credentialed adapter at another repository. The route back exists: no production caller is
