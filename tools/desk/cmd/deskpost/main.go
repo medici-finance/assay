@@ -577,6 +577,9 @@ finishing a review (one command instead of three):
                       and write an audit line for the release.
                  Then ONE line on stdout:
                    deskpost finish: review=<link or id> state=<STATE> head=<sha> claim=released|already-released
+                 Review assignments supply --review-home <checkout> and --dispatch-ref <attempt>.
+                 Finish saves the confirmed review handoff before releasing the claim. After the
+                 parent acknowledges reviewer exit, deskwt retires the checkout when eligible.
                  A stop names the step and what was and was not done; nothing after the
                  failed step runs. Running the same command again does not post the verdict
                  a second time: a review by the reviewer identity with this body at --head is

@@ -25,13 +25,14 @@ type wtCLI struct {
 // wtCall is one parsed invocation: the verb and that verb's typed options. Nothing in it
 // has been validated beyond its type; every domain rule stays in the handler.
 type wtCall struct {
-	verb     string
-	add      addOpts
-	remove   removeOpts
-	prune    pruneFlags
-	maintain maintainOpts
-	objects  objectsOpts
-	role     roleFlags
+	verb                      string
+	reviewHome, reviewAttempt string
+	add                       addOpts
+	remove                    removeOpts
+	prune                     pruneFlags
+	maintain                  maintainOpts
+	objects                   objectsOpts
+	role                      roleFlags
 }
 
 type addOpts struct {
@@ -229,6 +230,8 @@ func newWtCLI(env wtCLI, argv []string) *cobra.Command {
 		func(v *cli.Values, a []string) wtCall {
 			return wtCall{remove: removeOpts{path: a[0], dryRun: v.Bool("dry-run")}}
 		}))
+	root.AddCommand(verb("review-exited <checkout> <dispatch-ref>", "acknowledge reviewer exit and saved evidence for a confirmed review", "Run from the target repository after the reviewer exits and its evidence has been saved. Attempts retirement immediately. Prune retries when the checkout becomes eligible.", cobra.ExactArgs(2),
+		func(_ *cli.Values, a []string) wtCall { return wtCall{reviewHome: a[0], reviewAttempt: a[1]} }))
 	root.AddCommand(verb("prune", "sweep stale worktrees, locks, branches and caches under the safety gates", pruneLong, cobra.NoArgs,
 		func(v *cli.Values, _ []string) wtCall {
 			return wtCall{prune: pruneFlags{repo: v.String("repo"), interval: v.String("interval"), reclaim: v.Bool("reclaim-stale-locks"),
@@ -309,6 +312,8 @@ func execute(c wtCall) error {
 		return runAdd(c.add)
 	case "remove":
 		return runRemove(c.remove)
+	case "review-exited":
+		return runReviewExited(c.reviewHome, c.reviewAttempt)
 	case "prune":
 		return runPrune(c.prune)
 	case "maintain":

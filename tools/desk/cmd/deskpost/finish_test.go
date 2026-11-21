@@ -3,8 +3,10 @@ package main
 import (
 	"bytes"
 	"errors"
+	"github.com/medici-finance/assay/tools/desk/internal/reviewhome"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -938,5 +940,46 @@ func TestFinishUnshippedStore(t *testing.T) {
 				t.Fatalf("release rows = %+v, want one ok row", rows)
 			}
 		})
+	}
+}
+
+func TestFinishQueuesExactAttemptBeforeReleasing(t *testing.T) {
+	h := setupFinish(t)
+	base := t.TempDir()
+	home := filepath.Join(base, "dispatched-checkout")
+	git := func(dir string, args ...string) string {
+		t.Helper()
+		c := exec.Command("git", args...)
+		c.Dir = dir
+		b, err := c.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%v: %v %s", args, err, b)
+		}
+		return strings.TrimSpace(string(b))
+	}
+	git(base, "init", "-q")
+	git(base, "-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "seed")
+	git(base, "worktree", "add", "--detach", home, "HEAD")
+	git(base, "config", "extensions.worktreeConfig", "true")
+	attempt := finishClaimKey + "@20261121T090000Z.0123456789ab"
+	git(home, "config", "--worktree", "assay.runKey", finishClaimKey)
+	git(home, "config", "--worktree", "assay.claimRepo", exampleRepo)
+	git(home, "config", "--worktree", "assay.dispatchRef", attempt)
+	git(home, "config", "--worktree", "assay.reviewAttempt", attempt)
+	args := finishArgs("review", "1", "approve", testHead, writeBody(t, "v.md", okReviewBody), finishClaimKey)
+	admin := git(home, "rev-parse", "--absolute-git-dir")
+	saved := releaseReviewClaimFn
+	defer func() { releaseReviewClaimFn = saved }()
+	called := false
+	releaseReviewClaimFn = func(_, _, key string) (string, error) {
+		called = true
+		r, err := reviewhome.Read(admin)
+		if err != nil || r.Attempt != attempt || r.Review != exampleRepo+"#1/review-1001" || r.Head != testHead || r.Key != key || r.CheckoutHead != git(home, "rev-parse", "HEAD") {
+			t.Fatalf("handoff at release: %+v, %v", r, err)
+		}
+		return finishClaimReleased, nil
+	}
+	if code := run(append(args, "--review-home", home, "--dispatch-ref", attempt)); code != 0 || !called {
+		t.Fatalf("finish=%d %s", code, h.errOut.String())
 	}
 }

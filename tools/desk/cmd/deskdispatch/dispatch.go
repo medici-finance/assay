@@ -193,7 +193,8 @@ type dispatchOpts struct {
 type dispatchRun struct {
 	// dispatchRef is the dispatch_ref minted after claim-acquire, or ""
 	// when none was minted (a dry run, a dispatch that stopped before the claim, a failed mint).
-	dispatchRef string
+	dispatchRef       string
+	reviewHomeStamped bool
 }
 
 // dispatchClock and dispatchEntropy are the production clock and secure entropy source the

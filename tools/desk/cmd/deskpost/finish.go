@@ -95,7 +95,10 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/medici-finance/assay/gitcore"
+	"github.com/medici-finance/assay/tools/desk/internal/reviewhome"
 	"net/http"
+	"path/filepath"
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -153,8 +156,10 @@ func cmdFinish(argv []string) int {
 	// The SAME parse the verdict verb runs, plus --claim. argv[1:] is exactly what that verb
 	// is handed, so the positionals, the three required flags, the full-sha rule and the
 	// shared modifiers are parsed once, in one place.
-	var claim *string
+	var claim, home, attempt *string
 	a, code, ok := parseVerdictArgs(lane.verb, lane.verdictValues, argv[1:], func(fs *flag.FlagSet) {
+		home = fs.String("review-home", "", "dispatched checkout for retirement")
+		attempt = fs.String("dispatch-ref", "", "exact checkout dispatch attempt")
 		claim = fs.String("claim", "", "the dispatch claim key to release once the verdict is confirmed (required)")
 	})
 	if !ok {
@@ -191,6 +196,42 @@ func cmdFinish(argv []string) int {
 		}
 		return 2
 	}
+	if (*home == "") != (*attempt == "") || (*attempt != "" && !deskkit.ValidDispatchRef(key, *attempt)) {
+		fmt.Fprintln(stderr, "deskpost finish: --review-home and its matching --dispatch-ref are required together")
+		return 2
+	}
+	// A reviewer invoking the legacy spelling from its dispatched checkout also
+	// hands off its own attempt. Other working directories retain the plain finish.
+	if *home == "" {
+		if top, err := gitcore.Toplevel("."); err == nil {
+			admin, err := gitcore.GitDir(top)
+			if err != nil {
+				fmt.Fprintln(stderr, err)
+				return deskkit.ExitUnverifiable
+			}
+			stamp, err := reviewhome.ReadStamp(admin)
+			if err != nil {
+				fmt.Fprintln(stderr, err)
+				return deskkit.ExitUnverifiable
+			}
+			if stamp.ReviewAttempt != "" {
+				*home, *attempt = top, stamp.Attempt
+			}
+		}
+	}
+	var checkout reviewhome.Receipt
+	if *home != "" {
+		rt, err := filepath.EvalSymlinks(*home)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return deskkit.ExitUnverifiable
+		}
+		checkout = reviewhome.Receipt{Home: rt, Repo: repo, PR: a.pr, Key: key, Attempt: *attempt, Head: a.head}
+		if _, _, err := checkout.Identity(); err != nil {
+			fmt.Fprintf(stderr, "deskpost finish: checkout handoff: %v\n", err)
+			return deskkit.ExitUnverifiable
+		}
+	}
 	shape, ok := lane.shapeFor(a.verdict)
 	if !ok {
 		// Hand the bad value to the verb's own writer so the message and exit code are its.
@@ -222,6 +263,14 @@ func cmdFinish(argv []string) int {
 		fmt.Fprintf(stderr, "deskpost finish: STOPPED at step 2 of 3 (confirm) — %s. The claim %s was NOT released. "+
 			"Run this command again: a verdict already on the change is found there and is not posted a second time\n", err.Error(), key)
 		return deskkit.ExitUnverifiable
+	}
+
+	if *home != "" {
+		checkout.Review = finishReviewRef(repo, a.pr, posted)
+		if err := checkout.Confirm(); err != nil {
+			fmt.Fprintf(stderr, "deskpost finish: verdict confirmed, checkout handoff failed before claim release: %v\n", err)
+			return deskkit.ExitUnverifiable
+		}
 	}
 
 	// Step 3 — release the dispatch claim.

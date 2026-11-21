@@ -491,7 +491,7 @@ func writeReviewAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 			home, head, home)
 	}
 	writeReviewRound(b, plan.round)
-	if writeReviewFinish(b, o, plan, repo) {
+	if writeReviewFinish(b, o, plan, repo, home) {
 		b.WriteString("If `finish` stops at its release step, the verdict stands and the claim is still held — " +
 			"release it with:\n\n")
 	} else {
@@ -500,13 +500,15 @@ func writeReviewAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 	writeReleaseClaim(b, o, plan, repo)
 }
 
+func quoteReviewArg(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'" }
+
 // writeReviewFinish emits the one-step post for a review whose claim key `deskpost finish`
 // accepts: it posts the verdict, reads it back, and releases the claim, so the reviewer is
 // not left to remember a separate release (or to run one that fails as printed). It reports
 // whether it wrote anything. The key and lane are judged by the SAME deskkit functions finish
 // itself judges them by — a key finish would refuse gets no finish line, only the release line,
 // and the lane verb is the one finish pairs with this key, never one it would refuse.
-func writeReviewFinish(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo string) bool {
+func writeReviewFinish(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo, home string) bool {
 	if o.pr <= 0 || deskkit.ValidateReviewClaimKey(plan.claimKey, repo, o.pr) != nil {
 		return false
 	}
@@ -515,8 +517,15 @@ func writeReviewFinish(b *strings.Builder, o dispatchOpts, plan dispatchPlan, re
 		verb, verdicts = "security-review", "pass|fail"
 	}
 	b.WriteString("Post your verdict, confirm it and release the dispatch claim in ONE step:\n\n")
-	fmt.Fprintf(b, "```\ndeskpost finish %s %s %d --verdict %s --head <full head sha> --body-file <file> --claim %q\n```\n\n",
-		verb, repo, o.pr, verdicts, plan.claimKey)
+	var handoff string
+	if o.run != nil && o.run.reviewHomeStamped {
+		handoff = " --review-home " + quoteReviewArg(home) + " --dispatch-ref " + quoteReviewArg(o.run.dispatchRef)
+	}
+	fmt.Fprintf(b, "```\ndeskpost finish %s %s %d --verdict %s --head <full head sha> --body-file <file> --claim %q%s\n```\n\n",
+		verb, repo, o.pr, verdicts, plan.claimKey, handoff)
+	if handoff != "" {
+		fmt.Fprintf(b, "Save supporting evidence outside the checkout and return its location with the verdict. After the reviewer exits, the dispatching desk runs this from the target repository: `deskwt review-exited %s %s`.\n\n", quoteReviewArg(home), quoteReviewArg(o.run.dispatchRef))
+	}
 	return true
 }
 

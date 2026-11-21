@@ -45,6 +45,13 @@ func recordDispatchRefInWorktree(o dispatchOpts, home, ref string) {
 			"will carry a null dispatch_ref and pairs by claim key instead", stepWorktreeCreate, home, r.run.Said())
 		return
 	}
+	if reviewKit(o.kit) && o.run != nil {
+		if r := runCmd(home, "git", "config", "--worktree", "assay.reviewAttempt", ref); r.err != nil {
+			o.say("%s WARNING: could not bind this review home for retirement; retain the checkout for inspection", stepWorktreeCreate)
+		} else {
+			o.run.reviewHomeStamped = true
+		}
+	}
 	o.say("%s OK: recorded dispatch ref (assay.dispatchRef) in %s", stepWorktreeCreate, home)
 }
 

@@ -32,7 +32,7 @@ import (
 // perfVerbs is deskwt's registered first-argument set for the opt-in local perf record
 // (deskkit.PerfRun): args[0] is recorded only when it is one of these, and as
 // "other" otherwise, so no argv text can reach the record.
-var perfVerbs = []string{"add", "remove", "prune", "maintain", "role-init", "role-clean", "--version", "--help"}
+var perfVerbs = []string{"add", "remove", "review-exited", "prune", "maintain", "role-init", "role-clean", "--version", "--help"}
 
 func main() {
 	selected := perfrec.ResolveContext(perfrec.ContextInput{})

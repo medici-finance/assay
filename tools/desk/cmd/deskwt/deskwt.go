@@ -738,6 +738,23 @@ func runRemove(o removeOpts) (err error) {
 	if !set[rt] {
 		return deskkit.Refused("refused: " + path + " is not a registered worktree (`git worktree list`)")
 	}
+	if _, statErr := os.Lstat(filepath.Join(rt, ".git")); !os.IsNotExist(statErr) {
+		admin, err := ownAdminEntry(guard, rt)
+		if err != nil {
+			return err
+		}
+		if hasReviewReceipt(admin) {
+			if wd := resolvePath(dir); wd == rt || strings.HasPrefix(wd, rt+string(filepath.Separator)) {
+				return deskkit.Refused("cannot retire the current review checkout")
+			}
+			if why := retireReview(guard, newSweepCtx(dir), dir, rt, admin, "", pruneOpts{minIdle: defaultMinIdle}); why != "" {
+				return deskkit.Refused("review retirement held: " + why)
+			}
+			ac.repo, ac.detail = repoOrEmpty(dir), "review checkout retired"
+			fmt.Fprintln(os.Stdout, ac.detail)
+			return nil
+		}
+	}
 	// A registration with NO git link left (an empty-directory husk, or a directory that is
 	// already gone) cannot be opened, so the tracked-clean and pushed gates below cannot run
 	// on it. huskremove.go clears it under its own, stricter bar — nothing in the directory,

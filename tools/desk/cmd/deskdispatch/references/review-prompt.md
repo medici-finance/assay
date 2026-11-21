@@ -239,7 +239,7 @@ still yours to post, as an ordinary clause-13 finding.
 - **Post, confirm and release in one step.** `deskpost finish review|security-review
   <owner/repo> <N> --verdict … --head <full sha> --body-file F --claim <claim key>` posts the
   verdict, reads it back, and only then releases your dispatch claim; your assignment spells it
-  out when your claim key is one it accepts. If it stops at its release step, the verdict
+  out with the exact checkout and dispatch ref when available. Save supporting artifacts outside the checkout and report their location to the desk before exiting. If it stops at its release step, the verdict
   stands and the claim is still held: run the release line in your assignment. A post may
   also print `verdict-time labels: applied <labels>` — the verb's own advisory size and
   surface labels, not a write of yours.
