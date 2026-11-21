@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -43,8 +44,6 @@ func openInteractionClient(t *testing.T, w *cliWorld, role string) *interactionC
 	if err != nil {
 		t.Fatal(err)
 	}
-	var diagnostic bytes.Buffer
-	c.cmd.Stderr = &diagnostic
 	if err = c.cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +58,7 @@ func openInteractionClient(t *testing.T, w *cliWorld, role string) *interactionC
 	go func() {
 		err := c.cmd.Wait()
 		if err != nil {
-			err = fmt.Errorf("%w %s", err, diagnostic.String())
+			err = fmt.Errorf("attach client: %w", err)
 		}
 		c.done <- err
 	}()
@@ -87,23 +86,23 @@ func (c *interactionClient) await(t *testing.T, command, want string) {
 	defer deadline.Stop()
 	retry := time.NewTicker(200 * time.Millisecond)
 	defer retry.Stop()
-	var seen []string
+	observedLines := 0
 	for {
 		select {
 		case line, ok := <-c.lines:
 			if !ok {
-				t.Fatalf("%s: terminal ended before %q: %v", command, want, seen)
+				t.Fatalf("%s: terminal closed after %d lines without the expected response", command, observedLines)
 			}
 			if line == want {
 				return
 			}
-			seen = append(seen, line)
+			observedLines++
 		case <-retry.C:
 			if command == "size" || command == "identity" {
 				c.send(t, command+"\n")
 			}
 		case <-deadline.C:
-			t.Fatalf("no %q response: %v", want, seen)
+			t.Fatalf("%s: expected response missing after %d lines", command, observedLines)
 		}
 	}
 }
@@ -134,10 +133,10 @@ type interactionCall struct {
 func readInteractionCalls(t *testing.T, f *interactionFixture) []interactionCall {
 	t.Helper()
 	var result []interactionCall
-	for _, raw := range bytes.Split(bytes.TrimSpace(fixtureFile(t, filepath.Join(f.dir, "repository", "calls.jsonl"))), []byte("\n")) {
+	for _, raw := range bytes.Split(bytes.TrimSpace(f.output(t, "repository/calls.jsonl")), []byte("\n")) {
 		var event interactionCall
 		if err := json.Unmarshal(raw, &event); err != nil {
-			t.Fatal(err)
+			t.Fatal("invalid interaction call record")
 		}
 		result = append(result, event)
 	}
@@ -152,7 +151,7 @@ func interactionCounts(events []interactionCall, requests int) error {
 		case "model":
 			calls++
 		default:
-			return fmt.Errorf("unexpected agent event: %s", event.Kind)
+			return fmt.Errorf("unexpected agent event kind")
 		}
 	}
 	if starts != 1 {
@@ -210,6 +209,9 @@ func runInteraction(t *testing.T, role, mutation string) {
 	if err := interactionCounts(events, 0); err != nil {
 		t.Fatal(err)
 	}
+	if !regexp.MustCompile(`^[0-9]+\.[0-9]+\.[0-9]+([a-z]+[0-9]+)?$`).MatchString(events[0].Python) {
+		t.Fatal("invalid fixture interpreter version")
+	}
 	pid := events[0].PID
 	identity := fmt.Sprintf("IDENTITY %s %d", role, pid)
 	client := openInteractionClient(t, w, role)
@@ -224,7 +226,7 @@ func runInteraction(t *testing.T, role, mutation string) {
 	client.await(t, "size", "SIZE 85x30")
 	client.size(t, 117, 42)
 	client.await(t, "size", "SIZE 117x42")
-	input := fixtureFile(t, filepath.Join(f.dir, "repository", "input.txt"))
+	input := f.output(t, "repository/input.txt")
 	want := fmt.Sprintf("%s 2 %s", role, shaString(input))
 	client.await(t, "work", "RESULT "+want)
 	checkpoint := func() {
@@ -238,14 +240,14 @@ func runInteraction(t *testing.T, role, mutation string) {
 		}
 		for _, event := range events {
 			if event.PID != pid {
-				t.Fatal("agent PID changed", events)
+				t.Fatalf("agent PID changed from %d to %d", pid, event.PID)
 			}
 		}
 		if starts, _, _ := server.Counts(); starts != 1 {
 			t.Fatal("unexpected scale/start count", starts)
 		}
-		if got := string(fixtureFile(t, filepath.Join(f.dir, "repository", "result.txt"))); got != want+"\n" {
-			t.Fatal("retained work differs", got)
+		if got := string(f.output(t, "repository/result.txt")); got != want+"\n" {
+			t.Fatal("retained result differs from the expected synthetic work")
 		}
 	}
 	checkpoint()
@@ -282,7 +284,7 @@ func runInteraction(t *testing.T, role, mutation string) {
 		"cli_source": strings.TrimSpace(string(revision)), "cli_source_dirty": len(sourceStatus) != 0, "cli_sha256": shaString(fixtureFile(t, cellctlBinary(t))),
 		"candidate_source": f.source, "identity": before, "profile_sha256": shaString(fixtureFile(t, server.ProfilePath)),
 		"fixture_mount_owner": f.owner, "fixture_image": f.image, "fixture_container": runtimeID,
-		"launcher_sha256": shaString(fixtureFile(t, filepath.Join(f.dir, "desk-session.py"))), "harness": "claude", "model": f.binding.Model,
+		"launcher_sha256": shaString(f.output(t, "desk-session.py")), "harness": "claude", "model": f.binding.Model,
 		"agent_sha256": f.binding.AgentSHA256, "agent_version": f.binding.AgentVersion, "launch_id": f.binding.LaunchID, "pid": pid,
 		"agent_starts": 1, "model_requests": 1, "result": want,
 		"go": runtime.Version(), "docker": dockerVersion, "fixture_python": events[0].Python}

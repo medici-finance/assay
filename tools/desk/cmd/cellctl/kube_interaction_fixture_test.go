@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -22,6 +23,7 @@ import (
 	"time"
 
 	kc "github.com/medici-finance/assay/tools/desk/internal/kubecompat"
+	"golang.org/x/sys/unix"
 )
 
 // The synthetic API's scale/attach effects reach an actual retained PID 1, via
@@ -30,11 +32,61 @@ import (
 type interactionFixture struct {
 	host, image, name, dir, owner, role, source, mutation string
 	binding                                               kc.Role
+	root                                                  *os.Root
 }
 
 func fixtureFile(t *testing.T, path string) []byte {
 	t.Helper()
 	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+// The synthetic records and launcher each fit within the launcher's own 64 KiB
+// input bound. Keep the directory handle across container runs and check the
+// opened descriptor before reading, including when the name changed after Lstat.
+const maxInteractionFileBytes = 64 * 1024
+
+var errInteractionFileReplaced = errors.New("fixture file replaced")
+
+func (f *interactionFixture) readOutput(name string) ([]byte, error) {
+	before, err := f.root.Lstat(name)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("fixture %s: %w", name, os.ErrNotExist)
+	}
+	if err != nil || !before.Mode().IsRegular() {
+		return nil, fmt.Errorf("fixture %s is not a readable regular file", name)
+	}
+	file, err := f.root.OpenFile(name, os.O_RDONLY|unix.O_NONBLOCK|unix.O_NOFOLLOW, 0)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("fixture %s: %w", name, os.ErrNotExist)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("cannot open fixture %s", name)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("fixture %s is not a readable regular file", name)
+	}
+	if !os.SameFile(before, info) {
+		return nil, fmt.Errorf("%s: %w", name, errInteractionFileReplaced)
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxInteractionFileBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("cannot read fixture %s", name)
+	}
+	if len(data) > maxInteractionFileBytes {
+		return nil, fmt.Errorf("fixture %s exceeds %d bytes", name, maxInteractionFileBytes)
+	}
+	return data, nil
+}
+
+func (f *interactionFixture) output(t *testing.T, name string) []byte {
+	t.Helper()
+	data, err := f.readOutput(name)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,11 +104,9 @@ func shaString(data []byte) string { return fmt.Sprintf("%x", sha256.Sum256(data
 
 func (f *interactionFixture) docker(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "docker", append([]string{"--host", f.host}, args...)...)
-	var diagnostic strings.Builder
-	cmd.Stderr = &diagnostic
 	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("offline docker %s: %w: %s", args[0], err, diagnostic.String())
+		return "", fmt.Errorf("offline docker %s: %w", args[0], err)
 	}
 	return strings.TrimSpace(string(out)), nil
 }
@@ -68,21 +118,29 @@ func prepareInteraction(t *testing.T, role string, binding kc.Role, mutation str
 	if socket == host || !filepath.IsAbs(socket) {
 		t.Fatal("could-not-check: set ASSAY_TEST_DOCKER_HOST to an explicit local Unix socket")
 	}
+	imageID := regexp.MustCompile("^sha256:[a-f0-9]{64}$")
 	image := os.Getenv("ASSAY_TEST_FIXTURE_IMAGE")
 	if image == "" {
 		image = "python:3.13-slim"
-	} else if !regexp.MustCompile("^sha256:[a-f0-9]{64}$").MatchString(image) {
+	} else if !imageID.MatchString(image) {
 		t.Fatal("could-not-check: ASSAY_TEST_FIXTURE_IMAGE requires an immutable local image ID")
 	}
 	dir := t.TempDir()
-	f := &interactionFixture{role: role, host: host, image: image, dir: dir, mutation: mutation,
+	mount, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = mount.Close() })
+	f := &interactionFixture{role: role, host: host, image: image, dir: dir, root: mount, mutation: mutation,
 		name: fmt.Sprintf("assay-offline-%s-%d-%d", role, os.Getpid(), time.Now().UnixNano())}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	var err error
 	f.image, err = f.docker(ctx, "image", "inspect", image, "--format", "{{.Id}}")
 	if err != nil {
 		t.Fatal("could-not-check: cached offline fixture runtime required", err)
+	}
+	if !imageID.MatchString(f.image) {
+		t.Fatal("could-not-check: local fixture runtime requires an immutable image ID")
 	}
 	if err := f.selectMountOwner(ctx); err != nil {
 		t.Fatal("could-not-check: private fixture mount ownership", err)
@@ -172,7 +230,7 @@ func (f *interactionFixture) selectMountOwner(ctx context.Context) error {
 		return err
 	}
 	if !regexp.MustCompile(`^[0-9]{1,10}:[0-9]{1,10}$`).MatchString(owner) {
-		return fmt.Errorf("invalid fixture owner %q", owner)
+		return errors.New("invalid fixture mount owner")
 	}
 	f.owner = owner
 	return nil
@@ -180,13 +238,41 @@ func (f *interactionFixture) selectMountOwner(ctx context.Context) error {
 
 func (f *interactionFixture) runBase(probe bool) []string {
 	mount := "type=bind,src=" + f.dir + ",dst=/work"
-	args := []string{"run", "--pull=never", "--network=none", "--cap-drop=ALL", "--security-opt", "no-new-privileges", "--entrypoint", "python3"}
+	args := []string{"run", "--pull=never", "--network=none", "--read-only", "--cap-drop=ALL", "--security-opt", "no-new-privileges", "--entrypoint", "python3"}
 	if probe {
 		mount += ",readonly"
 	} else {
 		args = append(args, "--user", f.owner)
 	}
 	return append(args, "--mount", mount)
+}
+
+// regression: #7356
+func TestKubeCompatInteractionOutputFiles(t *testing.T) {
+	dir := t.TempDir()
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	f := interactionFixture{root: root}
+	file := filepath.Join(dir, "record")
+	original := strings.Repeat("r", maxInteractionFileBytes)
+	writeFixtureFile(t, file, []byte(original), 0600)
+	got, err := f.readOutput("record")
+	if err != nil || string(got) != original {
+		t.Fatal("exact-limit fixture read failed", err)
+	}
+	writeFixtureFile(t, file, []byte(original+"r"), 0600)
+	if got, err = f.readOutput("record"); err == nil || got != nil {
+		t.Fatal("oversize fixture should fail without data")
+	}
+	if got, err = f.readOutput("."); err == nil || got != nil {
+		t.Fatal("directory fixture should fail without data")
+	}
+	if got, err = f.readOutput("missing"); !errors.Is(err, os.ErrNotExist) || got != nil {
+		t.Fatal("missing fixture should retain its classification")
+	}
 }
 
 // regression: #7356
@@ -206,7 +292,7 @@ func TestKubeCompatPrivateFixtureOptions(t *testing.T) {
 		t.Fatalf("mount ownership or write boundary changed: probe=%v workload=%v", probe, workload)
 	}
 	for _, args := range [][]string{probe, workload} {
-		if !slices.Contains(args, "--cap-drop=ALL") || !slices.Contains(args, "--network=none") || !slices.Contains(args, "--pull=never") || option(args, "--security-opt") != "no-new-privileges" {
+		if !slices.Contains(args, "--cap-drop=ALL") || !slices.Contains(args, "--network=none") || !slices.Contains(args, "--read-only") || !slices.Contains(args, "--pull=never") || option(args, "--security-opt") != "no-new-privileges" {
 			t.Fatalf("offline fixture isolation changed: %v", args)
 		}
 	}
@@ -221,17 +307,25 @@ func (f *interactionFixture) start() error {
 		return err
 	}
 	for {
-		data, _ := os.ReadFile(filepath.Join(f.dir, ".assay-compat", "state.json"))
+		data, err := f.readOutput(".assay-compat/state.json")
+		// PID 1 publishes state transitions by atomic replacement. Sample the next observation
+		// when it changed while opening; never use bytes from an unchecked descriptor.
+		if err != nil && !errors.Is(err, os.ErrNotExist) && !errors.Is(err, errInteractionFileReplaced) {
+			return err
+		}
 		var state struct{ State string }
 		if json.Unmarshal(data, &state) == nil && state.State == "running" {
-			if _, err := os.Stat(filepath.Join(f.dir, "repository", "calls.jsonl")); err == nil {
+			calls, err := f.readOutput("repository/calls.jsonl")
+			if err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+			if len(calls) > 0 && calls[len(calls)-1] == '\n' {
 				break
 			}
 		}
 		select {
 		case <-ctx.Done():
-			logs, _ := f.docker(context.Background(), "logs", "--tail", "4", f.name)
-			return fmt.Errorf("candidate did not start synthetic agent: %s", logs)
+			return errors.New("candidate did not start the synthetic agent before the deadline")
 		case <-time.After(25 * time.Millisecond):
 		}
 	}
