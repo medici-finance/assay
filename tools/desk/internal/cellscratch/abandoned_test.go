@@ -58,7 +58,8 @@ func TestScratchAbandonedBuild(t *testing.T) {
 		must(t, os.MkdirAll(filepath.Dir(path), 0700))
 		must(t, os.WriteFile(path, []byte("ordinary work"), 0600))
 	}
-	finish(t, old, 1)
+	// Never finished: a crashed session keeps everything but its build output.
+	must(t, old.Close())
 	backdate(t, s, old, p.MaxAge+time.Hour)
 	fresh := scratchRun(t, s)
 	plantBuild(t, fresh)
@@ -302,7 +303,7 @@ func TestScratchAbandonedBuildLinkAtDeletion(t *testing.T) {
 	older, swapped := scratchRun(t, s), scratchRun(t, s)
 	for _, r := range []*Run{older, swapped} {
 		plantBuild(t, r)
-		finish(t, r, 1)
+		must(t, r.Close())
 	}
 	backdate(t, s, older, p.MaxAge+2*time.Hour)
 	backdate(t, s, swapped, p.MaxAge+time.Hour)

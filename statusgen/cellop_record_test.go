@@ -44,27 +44,51 @@ track: platform
 	// decision authority are separate gates; this makes no network call or write.
 	at := time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC)
 	brief := filepath.Join(dir, name)
-	// The record as landed closes on later non-PASS entries (a 2026-11-01
-	// VERIFY: FAIL, then a 2026-11-20 VERIFY: BLOCKED), so the one-step close
-	// must refuse rather than stamp the earlier PASS run (#5229). Which check
-	// refuses first depends on the latest entry: the verdict check names the
-	// FAIL, and the held check fires on the BLOCKED entry's could-not-check
-	// text. Either refusal is correct; only a nil error is a regression.
-	if err := os.WriteFile(brief, raw, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, _, err := closeVerifyFlipPlan(root, "desk-containers/15", at); err == nil ||
-		!(strings.Contains(err.Error(), "VERIFY: FAIL, not PASS") || strings.Contains(err.Error(), "still says HELD/could-not-check")) {
-		t.Fatalf("completion reader must refuse a record whose latest verdict is not a PASS; got %v", err)
-	}
-	// The retained verifier record itself — every entry up to the later FAIL
-	// entry — must stay consumable.
+	// Freeze each case at its own Evidence entry. A later verifier run must
+	// neither erase an earlier refusal nor change the retained PASS fixture.
 	const failEntry = "### Non-implementer execution witness — 2026-11-01"
-	fs, fe := strings.Index(string(raw), failEntry), strings.Index(string(raw), "\n## Review")
-	if fs < 0 || fe < fs {
-		t.Fatal("later FAIL entry or Review section missing from the retained record")
+	const blockedEntry = "### Independent bounded verification — 2026-11-20"
+	body, review, ok := strings.Cut(string(raw), "\n## Review")
+	if !ok {
+		t.Fatal("Review section missing from the retained record")
 	}
-	record := string(raw)[:fs] + string(raw)[fe+1:]
+	review = "\n## Review" + review
+	pass, fail, ok := strings.Cut(body, failEntry)
+	if !ok {
+		t.Fatal("November 1 FAIL entry missing from the retained record")
+	}
+	fail, _, _ = strings.Cut(fail, "\n### ")
+	historical := pass + failEntry + strings.TrimRight(fail, "\n") + "\n"
+
+	// In a checkout containing the November 20 Evidence, exercise that exact
+	// entry. On an older checkout, model the same non-deferred held row.
+	held := historical + blockedEntry + "\n| # | Command | Result |\n|---|---|---|\n| 12 | lint | could-not-check |\n\n**VERIFY: BLOCKED**\n"
+	if prefix, entry, found := strings.Cut(body, blockedEntry); found {
+		entry, _, _ = strings.Cut(entry, "\n### ")
+		held = prefix + blockedEntry + entry
+	}
+	for _, tc := range []struct{ name, input, refusal string }{
+		{"historical FAIL", historical + review, "VERIFY: FAIL, not PASS"},
+		{"non-deferred held row", held + review, "still says HELD/could-not-check"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := os.WriteFile(brief, []byte(tc.input), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			path, plan, id, err := closeVerifyFlipPlan(root, "desk-containers/15", at)
+			if err == nil || !strings.Contains(err.Error(), tc.refusal) {
+				t.Fatalf("want refusal containing %q, got %v", tc.refusal, err)
+			}
+			if path != "" || plan != nil || id != "" {
+				t.Fatal("refused closure returned a plan")
+			}
+			got, err := os.ReadFile(brief)
+			if err != nil || string(got) != tc.input {
+				t.Fatalf("refused closure changed the Evidence fixture (read error %v)", err)
+			}
+		})
+	}
+	record := pass + strings.TrimPrefix(review, "\n")
 	if err := os.WriteFile(brief, []byte(record), 0o644); err != nil {
 		t.Fatal(err)
 	}
