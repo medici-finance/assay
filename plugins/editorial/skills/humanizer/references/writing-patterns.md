@@ -239,10 +239,10 @@ The fact underneath is usually sound. Keep it and remove the dressing.
 **Problem:** Models use these words far more often than people do, especially in groups. The watch lists in §13 to §18 hold phrases that are tells because of how they are used; this list holds words that are tells wherever they appear. A formal word outside these lists is not a tell by itself.
 
 **Before:**
-> Additionally, a distinctive feature of Somali cuisine is the incorporation of camel meat. An enduring testament to Italian colonial influence is the widespread adoption of pasta in the local culinary landscape, showcasing how these dishes have integrated into the traditional diet.
+> Additionally, a key feature of the new build system is its robust artifact cache. A testament to the team's meticulous work is the intricate interplay between the cache and the scheduler, highlighting how deploy times were enhanced across the engineering landscape.
 
 **After:**
-> Somali cuisine also includes camel meat, which is considered a delicacy. Pasta dishes, introduced during Italian colonization, remain common, especially in the south.
+> The new build system also has an artifact cache. Deploys take 6 minutes instead of 14 because the scheduler reuses cached layers.
 
 ### 13. Inflated significance
 
@@ -251,10 +251,10 @@ The fact underneath is usually sound. Keep it and remove the dressing.
 **Problem:** An ordinary detail is said to mark a change, prove a legacy, or promise a future. The habit shows up as a phrase, as a stock "challenges and outlook" section, or as a closing paragraph. Keep the fact and drop the significance. End on the last concrete fact; if the source states real plans, use those.
 
 **Before:**
-> The Statistical Institute of Catalonia was officially established in 1989, marking a pivotal moment in the evolution of regional statistics in Spain. This initiative was part of a broader movement across Spain to decentralize administrative functions and enhance regional governance.
+> The platform team completed the database migration in March 2024, marking a pivotal moment in the evolution of the company's data layer. The effort was part of a broader push across engineering to modernize legacy systems and enhance reliability.
 
 **After:**
-> The Statistical Institute of Catalonia was established in 1989, part of a wider decentralization of administrative functions in Spain.
+> The platform team completed the database migration in March 2024, one of several legacy-system replacements that year.
 
 **Before (stock section):**
 > Despite promising progress, the queue still faces familiar challenges. With sustained investment the team can look forward to a bright future. In this test the queue filled after 12 seconds.
@@ -287,10 +287,10 @@ The fact underneath is usually sound. Keep it and remove the dressing.
 **Problem:** An -ing phrase is bolted onto a simple fact to make it sound deeper. Attaching it to a named source ("Roger Ebert highlighted the lasting influence") does not make it true. Keep the fact; keep the -ing phrase only when the source supports what it claims.
 
 **Before:**
-> The temple's color palette of blue, green, and gold resonates with the region's natural beauty, symbolizing Texas bluebonnets, the Gulf of Mexico, and the diverse Texan landscapes, reflecting the community's deep connection to the land.
+> The dashboard's red, amber, and green tiles reflect the on-call team's commitment to clarity, symbolizing the health of each service, underscoring the importance of fast triage, and ensuring engineers can respond quickly.
 
 **After:**
-> The temple is painted blue, green, and gold, colors meant to evoke Texas bluebonnets and the Gulf of Mexico.
+> The dashboard shows one tile per service, colored red, amber, or green by its latest health check.
 
 ### 16. Sales language
 
@@ -299,10 +299,10 @@ The fact underneath is usually sound. Keep it and remove the dressing.
 **Problem:** The text reads like an advertisement, especially for places, culture, products, or organizations. State what the thing is.
 
 **Before:**
-> Nestled within the breathtaking region of Gonder in Ethiopia, Alamata Raya Kobo stands as a vibrant town with a rich cultural heritage and stunning natural beauty.
+> Nestled in the heart of the observability ecosystem, Quillspan is a groundbreaking open-source tracer with a rich feature set and a stunning interface, renowned for its commitment to developer happiness.
 
 **After:**
-> Alamata Raya Kobo is a town in the Gonder region of Ethiopia.
+> Quillspan is an open-source tracer with a web interface for browsing spans.
 
 ### 17. Borrowed authority
 
@@ -311,10 +311,10 @@ The fact underneath is usually sound. Keep it and remove the dressing.
 **Problem:** A name or an unnamed authority stands in for what was said. Unnamed experts prop up a claim; a list of prestige outlets props up a person. When you know the real source and what it said, name it. Otherwise cut the unsupported claim or the list. A missing citation alone is not a tell; most writing is unsourced.
 
 **Before (unnamed authority):**
-> Due to its unique characteristics, the Haolai River is of interest to researchers and conservationists. Experts believe it plays a crucial role in the regional ecosystem.
+> Owing to its distinctive design, the retrykit library is of interest to platform teams and reliability engineers. Industry observers believe it plays a crucial role in the modern resilience ecosystem.
 
 **After:**
-> Researchers and conservationists study the Haolai River, often called the narrowest river in the world: it averages about 15 centimeters wide.
+> Platform teams use retrykit because it caps total retry time per request: the default budget is 30 seconds.
 
 **Before (prestige list):**
 > Her views have been cited in The New York Times, BBC, Financial Times, and The Hindu. She maintains an active social media presence with over 500,000 followers.
@@ -329,10 +329,10 @@ The fact underneath is usually sound. Keep it and remove the dressing.
 **Problem:** Simple verbs are replaced with longer phrases. Use *is*, *are*, and *has*.
 
 **Before:**
-> Gallery 825 serves as LAAA's exhibition space for contemporary art. The gallery features four separate spaces and boasts over 3,000 square feet.
+> The ingest service functions as the pipeline's entry point. It features two worker pools and boasts a capacity of 5,000 events per second.
 
 **After:**
-> Gallery 825 is LAAA's exhibition space for contemporary art. It has four separate spaces and more than 3,000 square feet.
+> The ingest service is the pipeline's entry point. It has two worker pools and handles up to 5,000 events per second.
 
 ## D. Formatting by rule
 
