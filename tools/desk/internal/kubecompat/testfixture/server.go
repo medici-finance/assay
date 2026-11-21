@@ -29,6 +29,8 @@ import (
 )
 
 type RoleState struct {
+	// ObservedImageID optionally varies the running status independently of the Pod template.
+	ObservedImageID  string
 	UID, ContainerID string
 	Restart          int32
 	Replicas         int32
@@ -213,6 +215,9 @@ func (s *Server) serve(w http.ResponseWriter, req *http.Request) {
 		}
 		yes := true
 		cs := core.ContainerStatus{Name: role, ContainerID: r.ContainerID, RestartCount: r.Restart, ImageID: "docker-pullable://" + s.Profile.Roles[role].Image, Ready: r.Ready, State: core.ContainerState{Running: &core.ContainerStateRunning{}}}
+		if r.ObservedImageID != "" {
+			cs.ImageID = r.ObservedImageID
+		}
 		if r.Termination != nil {
 			cs.State = core.ContainerState{Terminated: r.Termination}
 		}
