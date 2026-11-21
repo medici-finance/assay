@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -9,6 +10,41 @@ import (
 
 	"github.com/medici-finance/assay/gitcore"
 )
+
+func TestPreviewStampsExistingFileLocations(t *testing.T) {
+	root := t.TempDir()
+	initRepoAt(t, root, fixedDate)
+	const brief = "docs/streams/widget/brief-01-widget.md"
+	var lines []string
+	for i := 1; i <= 20; i++ {
+		lines = append(lines, fmt.Sprintf("Evidence item %d pending.", i))
+	}
+	writeFile(t, root, brief, strings.Join(lines, "\n")+"\n")
+	runGit(t, root, "add", "--", brief)
+	runGit(t, root, "commit", "-qm", "record pending evidence")
+	runGit(t, root, "update-ref", remoteMainRef, "HEAD")
+
+	// Two separate hunks each start with unchanged context before the stamp.
+	lines[4] = "Approved by human:alex"
+	lines[15] = "Verified by human:alex"
+	writeFile(t, root, brief, strings.Join(lines, "\n")+"\n")
+	runGit(t, root, "commit", "-qm", "record two sign-offs", "--", brief)
+
+	var out bytes.Buffer
+	if code := runPreviewStamps([]string{"--root", root}, &out, &out); code != 1 {
+		t.Fatalf("exit %d, want 1: %s", code, &out)
+	}
+	var locations []string
+	for _, line := range strings.Split(out.String(), "\n") {
+		if strings.HasPrefix(line, brief+":") {
+			locations = append(locations, line)
+		}
+	}
+	want := brief + ":5: human:alex needs corroboration\n" + brief + ":16: human:alex needs corroboration"
+	if got := strings.Join(locations, "\n"); got != want {
+		t.Fatalf("destination lines:\n%s\nwant:\n%s", got, want)
+	}
+}
 
 func TestPreviewStampsLocalDiff(t *testing.T) {
 	root := t.TempDir()

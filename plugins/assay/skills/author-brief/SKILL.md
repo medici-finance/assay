@@ -89,6 +89,12 @@ the impacted briefs, their revisions, coverage and each amendment obligation in 
 and say that it is a manual bootstrap. Never invent a receipt or a schema version the
 install does not ship.
 
+When adding a requirement register entry, identify the requester in plain text (for example,
+`asked-by: Project driver`) and start with `status: proposed`. Record acceptance once the
+project's evidence supports the transition. Commit the changes and run `statusgen preview-stamps`
+before publishing. Exit 1 is expected for intended sign-offs. Keep each listed `human:<name>`
+claim backed by that person's own recorded act for online corroboration. Use plain text for attribution.
+
 ## Map work to delivery milestones
 
 When the source defines delivery milestones or the request needs staged outcomes,
@@ -135,11 +141,6 @@ head: brief 01 settles it". "That makes 01 the head", "established from the stat
 "unproven" with no line read and quoted state no check.
 
 ## Carry quality obligations into execution
-
-When adding a requirement register entry, identify the requester in plain text (for example,
-`asked-by: Project driver`) and start with `status: proposed`. Record acceptance once the
-project's evidence supports that transition. Before publishing, commit the changes and run
-`statusgen preview-stamps`; inspect each named sign-off and its source line.
 
 Carry applicable quality attributes and cost-model obligations from the controlling spec
 into the brief's existing Context, Task, DoD and Verify fields. Name the affected path or
