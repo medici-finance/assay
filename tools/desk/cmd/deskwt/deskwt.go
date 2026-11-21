@@ -414,6 +414,9 @@ func runAdd(o addOpts) (err error) {
 			return deskkit.Refused("refused: --upstream requires a full commit --base and a fully qualified remote branch, without --detach")
 		}
 	}
+	if o.handoffBrief && (*adoptRun == "" || *role != "worker" || *upstream != "refs/remotes/origin/"+br) {
+		return deskkit.Refused("--handoff-brief requires --role worker, --adopt-run and the PR branch on origin as --upstream")
+	}
 	if *adoptRun != "" && (*upstream == "" || !nameRe.MatchString(*adoptRun) || strings.Contains(*adoptRun, "..")) {
 		return deskkit.Refused("refused: --adopt-run requires --upstream and a single safe run key segment")
 	}
@@ -518,7 +521,15 @@ func runAdd(o addOpts) (err error) {
 		if aerr != nil {
 			return aerr
 		}
-		if why != "" {
+		handoff := false
+		if why != "" && o.handoffBrief {
+			rt, aerr = briefHandoff(guard, dir, candidate, repo, br, *base, *adoptRun)
+			if aerr != nil {
+				return fmt.Errorf("%s. Brief handoff: %w", refusal, aerr)
+			}
+			handoff = true
+		}
+		if why != "" && !handoff {
 			return deskkit.Refused(refusal + " Not adopted as a finished home of run " + *adoptRun + ": " + why + ".")
 		}
 		detail, perr := adoptedHome{guard: guard, dir: dir, rt: rt, br: br, upstream: *upstream, runKey: *adoptRun,
@@ -527,10 +538,16 @@ func runAdd(o addOpts) (err error) {
 			return perr
 		}
 		note := "adopted finished home " + rt + " of run " + *adoptRun + " (branch " + br + " at " + *base + "; clean, unlocked)"
+		if handoff {
+			note = "resumed the same session’s brief checkout " + rt + " for " + *adoptRun
+		}
 		ac.detail = note + "; " + detail
 		fmt.Fprintln(os.Stderr, "deskwt: "+note)
 		fmt.Fprintln(os.Stderr, "deskwt: "+detail+" at "+rt)
 		fmt.Println(rt)
+		if handoff {
+			fmt.Println(deskkit.BriefHandoffReceipt)
+		}
 		return nil
 	}
 
