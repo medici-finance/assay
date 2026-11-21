@@ -173,8 +173,13 @@ func TestCrossRepoDispatchExecution(t *testing.T) {
 				strings.Contains(string(prompt), "deskevidence example-org/source main --outcome-record ") {
 				t.Fatal("emitted outcome command must address the tracking repository")
 			}
-			if _, _, _, err := deskkit.VerifierBriefLocation(source, o.repo); !deskkit.IsRefused(err) {
-				t.Fatalf("delivery repository was accepted as the Evidence destination: %v", err)
+			if _, _, _, err := deskkit.VerifierBriefLocation(source, o.repo); !deskkit.IsRefused(err) ||
+				!strings.Contains(err.Error(), `planned "example-org/source", admitted "example-org/tracking"`) {
+				t.Fatalf("expected the planned and admitted repository on mismatch: %v", err)
+			}
+			const malformed = "redaction-fixture@invalid.example"
+			if _, _, _, err := deskkit.VerifierBriefLocation(source, malformed); !deskkit.IsRefused(err) || strings.Contains(err.Error(), malformed) {
+				t.Fatalf("malformed destination should receive a generic refusal: %v", err)
 			}
 			br, rel, rev, err := deskkit.VerifierBriefLocation(source, "example-org/tracking")
 			if err != nil {
@@ -376,6 +381,79 @@ func TestCrossRepoClaimRootOrigin(t *testing.T) {
 			t.Fatal("preview did not address the tracking repository")
 		})
 	}
+	t.Run("nested checkout of the same repository", func(t *testing.T) {
+		// A linked worktree shares the origin and object database, but its HEAD
+		// and the brief it supplies are independent of the named claim root.
+		nested := filepath.Join(tracking, "nested-checkout")
+		crossDispatchGit(t, tracking, "worktree", "add", "--detach", nested, "HEAD")
+		crossDispatchGit(t, nested, "commit", "--allow-empty", "-m", "independent brief revision")
+		preview := o
+		preview.brief = filepath.Join(nested, brief)
+		preview.dryRun = true
+		preview.promptFile = filepath.Join(t.TempDir(), "assignment.md")
+		err := dispatch(preview)
+		if !deskkit.IsRefused(err) || !strings.Contains(err.Error(), "tracking checkout") {
+			t.Fatalf("nested brief passed pre-claim planning: %v", err)
+		}
+		if _, err := os.Stat(emittedPathFor(preview.promptFile)); !os.IsNotExist(err) {
+			t.Fatalf("unexpected nested-brief prompt: %v", err)
+		}
+		if _, err := attestVerifierDispatch(preview, o.repo, source); !deskkit.IsRefused(err) || !strings.Contains(err.Error(), "tracking checkout") {
+			t.Fatalf("fresh attestation accepted a different checkout: %v", err)
+		}
+		if err := deskkit.PrepareVerifierAttestationAt(source, o.repo, preview.brief, o.model, o.tier, tracking); !deskkit.IsRefused(err) || !strings.Contains(err.Error(), "tracking checkout") {
+			t.Fatalf("independent admission accepted a different checkout: %v", err)
+		}
+		// Naming the linked checkout itself is valid; its shared .git directory
+		// must not be mistaken for the root of the primary checkout.
+		if _, err := deskkit.VerifierTrackingForge(nested, preview.brief); err != nil {
+			t.Fatalf("named linked checkout: %v", err)
+		}
+	})
+	t.Run("ambient transport rewrite", func(t *testing.T) {
+		t.Setenv(deskkit.EnvRepoForges, "example-org/source=github")
+		t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(t.TempDir(), "gitconfig"))
+		crossDispatchGit(t, tracking, "remote", "set-url", "origin", "https://gitlab.com/example-org/tracking.git")
+		crossDispatchGit(t, tracking, "config", "--global", "url.https://github.com/.insteadOf", "https://gitlab.com/")
+		preview := o
+		preview.dryRun = true
+		preview.promptFile = filepath.Join(t.TempDir(), "preview.md")
+		if err := dispatch(preview); err != nil {
+			t.Fatal(err)
+		}
+		prompt, err := os.ReadFile(emittedPathFor(preview.promptFile))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, line := range strings.Split(string(prompt), "\n") {
+			if strings.HasPrefix(line, "deskevidence example-org/tracking main --outcome-record ") {
+				if strings.Contains(line, " --acceptance-forge") {
+					t.Fatal("global rewrite changed the tracking forge option")
+				}
+				return
+			}
+		}
+		t.Fatal("no tracking outcome command in preview")
+	})
+	t.Run("local identity rewrite", func(t *testing.T) {
+		const declared = "https://github.com/example-org/other.git"
+		crossDispatchGit(t, tracking, "remote", "set-url", "origin", declared)
+		key := "url.https://github.com/example-org/tracking.git.insteadOf"
+		crossDispatchGit(t, tracking, "config", key, declared)
+		t.Cleanup(func() { crossDispatchGit(t, tracking, "config", "--unset", key) })
+		preview := o
+		preview.dryRun = true
+		preview.promptFile = filepath.Join(t.TempDir(), "preview.md")
+		if err := dispatch(preview); !deskkit.IsRefused(err) || !strings.Contains(err.Error(), "declared repository") {
+			t.Fatalf("contradictory tracking identities in preview: %v", err)
+		}
+		if _, err := os.Stat(emittedPathFor(preview.promptFile)); !os.IsNotExist(err) {
+			t.Fatal("preview emitted a prompt for conflicting identities")
+		}
+		if err := deskkit.PrepareVerifierAttestation(source, o.repo, o.brief, o.model, o.tier); !deskkit.IsRefused(err) || !strings.Contains(err.Error(), "declared repository") {
+			t.Fatalf("independent attestation of conflicting identities: %v", err)
+		}
+	})
 	crossDispatchGit(t, tracking, "remote", "set-url", "origin", "https://github.com/example-org/other.git")
 	_, err := attestVerifierDispatch(o, "example-org/source", source)
 	if err == nil || !strings.Contains(err.Error(), "requires the resolved tracking repository") {

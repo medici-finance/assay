@@ -354,6 +354,126 @@
       "file": "briefdoc/document.go",
       "old": "\t\tif lineValue(cut, capture) != values[r.key] {",
       "new": "\t\tif strings.TrimSpace(strings.SplitN(capture, \" #\", 2)[0]) != values[r.key] {"
+    },
+    {
+      "name": "an unescaped dollar no longer taints the cell (a marker inside inline math is honoured)",
+      "file": "briefdoc/verification.go",
+      "old": "\t\tcase c == '$':\n\t\t\tplain = false",
+      "new": "\t\tcase false:\n\t\t\tplain = false"
+    },
+    {
+      "name": "raw HTML / links no longer taint the cell (a marker in an HTML comment is honoured)",
+      "file": "briefdoc/verification.go",
+      "old": "\t\tcase c == '<' || c == '[':\n\t\t\tplain = false",
+      "new": "\t\tcase false:\n\t\t\tplain = false"
+    },
+    {
+      "name": "a backslash no longer escapes (an escaped dollar or bracket taints the cell)",
+      "file": "briefdoc/verification.go",
+      "old": "\t\tcase c == '\\\\' && i+1 < len(cell) && isASCIIPunct(cell[i+1]):",
+      "new": "\t\tcase false && c == '\\\\':"
+    },
+    {
+      "name": "a non-plain cell still honours its marker",
+      "file": "briefdoc/verification.go",
+      "old": "\tif !plain {\n\t\treturn nil\n\t}",
+      "new": "\tif false && !plain {\n\t\treturn nil\n\t}"
+    },
+    {
+      "name": "SR-1808-1 rr4: an escaped dollar no longer taints the cell (spaced escaped dollars honour the marker)",
+      "file": "briefdoc/verification.go",
+      "old": "\t\t\tif cell[i+1] == '$' {\n\t\t\t\tplain = false",
+      "new": "\t\t\tif false {\n\t\t\t\tplain = false"
+    },
+    {
+      "name": "SR-1808-1 rr4: a character reference no longer taints the cell (spaced reference dollars honour the marker)",
+      "file": "briefdoc/verification.go",
+      "old": "\t\tcase c == '&' && charRefRe.MatchString(cell[i:]):",
+      "new": "\t\tcase false && c == '&':"
+    },
+    {
+      "name": "SR-1808-1 rr4: a span opener fused to the prose before it no longer taints the cell (an autolink-glued marker is honoured)",
+      "file": "briefdoc/verification.go",
+      "old": "\t\t\tif !parenLed(cell, i) {\n\t\t\t\tplain = false",
+      "new": "\t\t\tif false {\n\t\t\t\tplain = false"
+    },
+    {
+      "name": "SR-1808-1 rr4: the marker opener need not follow whitespace (a paren-led marker is honoured)",
+      "file": "briefdoc/verification.go",
+      "old": "\t\tif !sp.SpaceLed {\n\t\t\treturn nil",
+      "new": "\t\tif false {\n\t\t\treturn nil"
+    },
+    {
+      "name": "SR-1808-1 rr4: the marker closer need not stand clear (a marker glued to the text after it is honoured)",
+      "file": "briefdoc/verification.go",
+      "old": "\t\tif !sp.CleanEnd {\n\t\t\treturn nil",
+      "new": "\t\tif false {\n\t\t\treturn nil"
+    },
+    {
+      "name": "SR-1808-1 rr4 over-taint: a `(` no longer allowed before a span opener (a parenthesised mention taints the cell)",
+      "file": "briefdoc/verification.go",
+      "old": "\tfor j > 0 && cell[j-1] == '(' {",
+      "new": "\tfor false && j > 0 && cell[j-1] == '(' {"
+    },
+    {
+      "name": "SR-1808-1 rr4 over-taint: plain punctuation after the marker closer no longer allowed",
+      "file": "briefdoc/verification.go",
+      "old": "|| strings.IndexByte(\".,;:!?)\", cell[k]) >= 0",
+      "new": "|| false"
+    },
+    {
+      "name": "CR-1808-4: MarkedCommands stops at the first good marker (a later marker not set apart is never checked)",
+      "file": "briefdoc/verification.go",
+      "old": "\t\tout = append(out, c)\n",
+      "new": "\t\treturn []string{c}\n"
+    },
+    {
+      "name": "#2684: ShellCommentOnly never matches (a lone heading span lifts as a passing command)",
+      "file": "briefdoc/verification.go",
+      "old": "\treturn strings.HasPrefix(strings.TrimSpace(cmd), \"#\")",
+      "new": "\treturn false"
+    },
+    {
+      "name": "#2684 review S1: CodeSpan closes an N-tick fence on a single backtick (it drifts from statusgen's lift)",
+      "file": "briefdoc/verification.go",
+      "old": "\tfence := strings.Repeat(\"`\", ticks)\n\trest := s[start+ticks:]\n\tend := strings.Index(rest, fence)\n\tif end < 0 {\n\t\treturn strings.TrimSpace(rest)",
+      "new": "\tfence := \"`\"\n\trest := s[start+ticks:]\n\tend := strings.Index(rest, fence)\n\tif end < 0 {\n\t\treturn strings.TrimSpace(rest)"
+    },
+    {
+      "name": "#3147 A2: the : builtin is no longer a no-op",
+      "file": "briefdoc/verification.go",
+      "old": "\treturn f[0] == \":\" && !strings.ContainsAny(c, \";&|\\n\")",
+      "new": "\treturn false"
+    },
+    {
+      "name": "#3147 A2 over-refusal: a : followed by a real command is refused",
+      "file": "briefdoc/verification.go",
+      "old": "f[0] == \":\" && !strings.ContainsAny(c, \";&|\\n\")",
+      "new": "f[0] == \":\""
+    },
+    {
+      "name": "#3147 A2: a cmd.exe REM remark is no longer a no-op",
+      "file": "briefdoc/verification.go",
+      "old": "\tif strings.ToLower(strings.TrimPrefix(f[0], \"@\")) == \"rem\" {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "#3147 A2: a cmd.exe :: remark is no longer a no-op",
+      "file": "briefdoc/verification.go",
+      "old": "\tif strings.HasPrefix(c, \"::\") {",
+      "new": "\tif false {"
+    },
+    {
+      "name": "prose-led table drops an extension (the shared Verify-row lexical home)",
+      "file": "briefdoc/verification.go",
+      "old": "\t\".pdf\": true,\n}",
+      "new": "}"
+    },
+    {
+      "name": "bare-word pattern drops a dot (the shared Verify-row lexical home)",
+      "file": "briefdoc/verification.go",
+      "old": "var bareWordRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)",
+      "new": "var bareWordRe = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)"
     }
   ]
 }

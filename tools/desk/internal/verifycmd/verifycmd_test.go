@@ -67,7 +67,7 @@ func TestMarkedSharedVectors(t *testing.T) {
 	}
 }
 
-// commentVectorsPath is the shell-comment table statusgen's shellCommentOnly is
+// commentVectorsPath is the shell-comment table statusgen's briefdoc.ShellCommentOnly is
 // held to as well (#2684).
 var commentVectorsPath = filepath.Join("..", "..", "..", "..", "statusgen", "testdata", "shell-comment-vectors.json")
 
@@ -203,7 +203,7 @@ func TestCommandRefusedBareLifts(t *testing.T) {
 }
 
 // TestLiftUnmarkedIsFirstSpan — a cell with no marker lifts its first code span,
-// byte for byte what statusgen's verifyCommand lifts, never the whole cell
+// byte for byte what statusgen's briefdoc.VerifyCommand lifts, never the whole cell
 // (#3147: the whole-cell lift ran "`false`: confirm" as a passing `:`).
 func TestLiftUnmarkedIsFirstSpan(t *testing.T) {
 	for cell, want := range map[string]string{

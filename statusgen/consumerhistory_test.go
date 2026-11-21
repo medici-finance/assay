@@ -255,3 +255,23 @@ func TestDerivedHistoryNativeMessage(t *testing.T) {
 	runGit(t, root, "checkout", "-q", "--detach", "HEAD")
 	wantCouldNotCheck(t, root, "cannot be read through the library read path", "record the Verification-Table marker or pass --delivery and --base")
 }
+
+// regression: #5479
+func TestDerivedIgnoresUncommittedEvidence(t *testing.T) {
+	// The verifier's own uncommitted Evidence insertion puts the brief in the
+	// working-tree diff. It must not turn the bare form into a vacuous pass:
+	// the answer is the same as on the clean checkout (delivery derived from
+	// history, or could-not-check), never the unpinned branch-diff run.
+	root, base, delivery := historyFixture(t, []string{"web/fixed.go: fixed-here", "web/untouched.go: fixed-here"}, historyShape{messages: []string{trailer("implement", "alpha/01")}})
+	bin := buildStatusgenBinary(t)
+	cleanCode, _, _ := runDerivedCLI(t, bin, root, "--brief", "alpha/01")
+	appendBrief(t, root, "\nuncommitted verifier run\n")
+	code, stdout, stderr := runDerivedCLI(t, bin, root, "--brief", "alpha/01")
+	if code != cleanCode || code != 1 || !strings.Contains(stdout, base+".."+delivery) || strings.Contains(stdout, "uncommitted working tree") {
+		t.Fatalf("uncommitted Evidence changed the verdict: clean %d, dirty %d\n%s\n%s", cleanCode, code, stdout, stderr)
+	}
+	// Same with no deliverable history: still could-not-check, not exit 0.
+	root2, _, _ := historyFixture(t, []string{"web/fixed.go: fixed-here"}, historyShape{messages: []string{"implement"}})
+	appendBrief(t, root2, "\nuncommitted verifier run\n")
+	wantCouldNotCheck(t, root2, "no Verification-Table marker")
+}

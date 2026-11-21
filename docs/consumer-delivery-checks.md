@@ -19,9 +19,13 @@ an independently reviewed claim.
 Every evaluated delivery writes a separate `PRODUCER-DELIVERY: COULD-NOT-CHECK`
 qualification to stderr. The stdout report stays byte-identical, preserving its header
 and pinned report hashes. The routing counts on stdout and exit status concern declared consumer routes
-only. In particular, `follow-up` corroborates that a target brief exists and references
-back; it does not require that the selected diff contains the producer's implementation.
-Two different producer deliveries can therefore corroborate the same follow-up routes.
+only. In particular, a `follow-up` to another brief corroborates that the target brief
+exists and references back; it does not require that the selected diff contains the
+producer's implementation. Two different producer deliveries can therefore corroborate the
+same follow-up routes to other briefs. A self-route (a `follow-up` naming the brief that
+carries the entry) corroborates only where the selected diff touches every path its site
+resolves to; otherwise it is unchecked. Sibling deliveries that share sites can still
+corroborate some of the same self-routes, so assert the exact summary line.
 Even `fixed-here` establishes path changes, not producer identity or implementation
 completeness. Independently inspect the actual delivery mapping and relevant changes
 before using these results as acceptance evidence. This limit also applies when the
@@ -98,8 +102,10 @@ the committed marker, or, on the history path, by whoever wrote the `Brief:` tra
 landed on the mainline ref, with its exact baseline), not against the brief's declared files
 or any record the verifier does not author. A marker that names a later mainline commit is
 accepted, so a reviewer still owns the claim that the named commit is the real delivery.
-The derivation reads every marker in the committed Evidence and refuses distinct triples;
-the protected-table closure reads only the current run's marker. Evidence that has not yet
+The consumer reader authenticates each distinct marker in committed Evidence. All markers
+must name the same delivery and its exact baseline. Each original revision must be an
+ancestor of that baseline and can differ between verifier runs. The protected-table
+closure reads the current run's marker. Evidence that has not yet
 recorded a marker falls back to the history search, which is could-not-check unless exactly
 one first-parent commit names the brief. The `consumer-delivery-range` lint below is
 unchanged and still asks for explicit pins in authored rows.

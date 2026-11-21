@@ -13,7 +13,7 @@ issues: []
 delivery:
   - {in: "assay#2655", covers: partial, note: "analyzer action, runner, baseline and local controls only; CI acquisition and the human-applied workflow with an actual job run (Task 1 and 5) remain owed"}
 schema: brief-v2
-version: 3
+version: 4
 authored: 2026-10-11 by statusgen newbrief
 sources:
   - "Maintainer direction 2026-10-11: ratchet lint/vulnerability checks over existing debt rather than rewrite old code wholesale; feed findings into qualgen reporting."
@@ -27,21 +27,21 @@ consumers:
   - "tools/go-analysis/runner.py: fixed-here (stdlib adapter for upstream JSON and finding ratchet)"
   - "tools/go-analysis/baseline.json: fixed-here (reviewed debt records)"
   - "docs/go-analysis-report-v1.md: fixed-here (scan artifact contract)"
-  - ".golangci.yml: fixed-here (implementation; workflow applied by a human on that branch)"
-  - "scripts/go-analysis.sh: fixed-here (implementation; workflow applied by a human on that branch)"
-  - "scripts/tests/go-analysis.sh: fixed-here (implementation; workflow applied by a human on that branch)"
-  - "scripts/tests/testdata/go-analysis/: fixed-here (implementation; workflow applied by a human on that branch)"
-  - "tools/go-analysis/pins.env: fixed-here (implementation; workflow applied by a human on that branch)"
-  - "docs/go-analysis.md: fixed-here (implementation; workflow applied by a human on that branch)"
-  - "docs/runsheets/go-analysis-ci-hunk.md: fixed-here (implementation; workflow applied by a human on that branch)"
-  - ".github/workflows/ci.yml: follow-up desk-tools/34 (implementation; workflow applied by a human on that branch)"
+  - ".golangci.yml: fixed-here (implementation; workflow applied by a human after the implementation merges)"
+  - "scripts/go-analysis.sh: fixed-here (implementation; workflow applied by a human after the implementation merges)"
+  - "scripts/tests/go-analysis.sh: fixed-here (implementation; workflow applied by a human after the implementation merges)"
+  - "scripts/tests/testdata/go-analysis/: fixed-here (implementation; workflow applied by a human after the implementation merges)"
+  - "tools/go-analysis/pins.env: fixed-here (implementation; workflow applied by a human after the implementation merges)"
+  - "docs/go-analysis.md: fixed-here (implementation; workflow applied by a human after the implementation merges)"
+  - "docs/runsheets/go-analysis-ci-hunk.md: fixed-here (implementation; workflow applied by a human after the implementation merges)"
+  - ".github/workflows/ci.yml: follow-up desk-tools/34 (implementation; workflow applied by a human after the implementation merges)"
 ---
 
 # Brief 34 — Pinned golangci-lint across every Go module
 
 ## Context
 
-files: `tools/go-analysis/baseline.json` (planned), `docs/go-analysis-report-v1.md` (planned), `.golangci.yml` (planned), `scripts/go-analysis.sh` (planned), `scripts/tests/go-analysis.sh` (planned), `scripts/tests/testdata/go-analysis/` (planned), `tools/go-analysis/pins.env` (planned), `docs/go-analysis.md` (planned), `docs/runsheets/go-analysis-ci-hunk.md` (planned), `changelog/go-analysis-lint.md` (planned), `.github/workflows/ci.yml` — Go source files only where the measured lint finding requires a small mechanical fix. The human also edits `.github/workflows/ci.yml` on the implementation branch after the worker's final commit.
+files: `tools/go-analysis/baseline.json` (planned), `docs/go-analysis-report-v1.md` (planned), `.golangci.yml` (planned), `scripts/go-analysis.sh` (planned), `scripts/tests/go-analysis.sh` (planned), `scripts/tests/testdata/go-analysis/` (planned), `tools/go-analysis/pins.env` (planned), `docs/go-analysis.md` (planned), `docs/runsheets/go-analysis-ci-hunk.md` (planned), `changelog/go-analysis-lint.md` (planned), `.github/workflows/ci.yml` — Go source files only where the measured lint finding requires a small mechanical fix. The human edits `.github/workflows/ci.yml` after the implementation merges.
 
 facts:
 - Main's module discovery is `git ls-files '*go.mod'`; it currently finds 21, not the 20 in
@@ -129,8 +129,9 @@ caller. Desk-tools/35 extends the same action for security and qualgen reporting
 5. Document commands, versions, coverage, exclusions and evidence in `docs/go-analysis.md` (planned).
    Prepare the exact CI diff and apply command in `docs/runsheets/go-analysis-ci-hunk.md` (planned):
    job `go-lint`, existing push/PR events and permissions, verified acquisition, runner tests,
-   then all-module ratcheted lint and publication of its JSON report even on a failed gate. The human applies it on this implementation branch AFTER the worker's
-   final commit and BEFORE merge. Re-read the combined diff and wait for that job's actual run;
+   then all-module ratcheted lint and publication of its JSON report even on a failed gate. The human applies it AFTER
+   the implementation merges, as its own change; that change's pull request carries the first go-lint run
+   against main's re-measured baseline ([ruling, option A](https://github.com/medici-finance/assay/issues/7370#issuecomment-7066967298)). Re-read that diff and wait for that job's actual run;
    neither a runsheet nor a green local command proves deployed CI. Add the changelog fragment.
 
 ## Interface contract
@@ -181,12 +182,16 @@ formats; do not build an analyzer or a generic policy engine.
 
 Rows 1–3 fail against the authoring baseline because the runner/config do not exist. Observe
 real pre/post outcomes during implementation; do not pre-fill Evidence from that prediction.
-Rows 6–7 run only after the human workflow commit; row 7 is repeated on merged main.
-For row 6, refresh origin/main, record its resolved SHA as VERIFY_BASE, and run before
-merge. Inspect every listed commit's workflow patch and verify its forge attribution;
-author metadata alone is not proof of the authenticated pusher. A main-only workflow
-change must produce no branch commit and cannot satisfy this row. Empty history or
-unverifiable attribution is could-not-check, not a pass.
+Rows 6–7 run only after the implementation merges and the human applies the go-lint job;
+row 7 runs on merged main. The implementation re-measures the baseline and changes the
+finding fingerprint, so its own pre-merge branch run is expected to refuse: the action admits
+no candidate whose tool/config contract differs from main's trusted baseline, and that check
+stays as it is ([ruling, option A](https://github.com/medici-finance/assay/issues/7370#issuecomment-7066967298)).
+For row 6, record the implementation's merge commit on main as VERIFY_BASE and check out the
+head of the first pull request after it whose CI runs the go-lint job. Inspect every listed
+commit's workflow patch and verify its forge attribution; author metadata alone is not proof
+of the authenticated pusher. Empty history or unverifiable attribution is could-not-check,
+not a pass.
 
 | # | Class | Command | Expect |
 |---|---|---|---|
@@ -195,7 +200,7 @@ unverifiable attribution is could-not-check, not a pass.
 | 3 | check +flow | `bash scripts/go-analysis.sh lint` | exit 0; all discovered modules and declared configurations complete, counts reconcile with tracked manifests; existing debt remains visible and only new/worsened findings or scan/ratchet failures block. JSON totals and dispositions match the gate. |
 | 4 | check +neighbour | `cd tools/desk && GOOS=windows GOARCH=amd64 go vet ./... && GOOS=darwin GOARCH=arm64 go vet ./... && go test -count=1 -timeout 300s ./internal/deskkit/ ./cmd/deskdispatch/` | exit 0; existing vet and representative suites remain green. |
 | 5 | check | `statusgen --root . --lint && statusgen --root . --consumers --brief desk-tools/34` | exit 0; routes match the implementation diff; update this brief's own future routes as sites land. |
-| 6 | check +dereference | `git diff --check && test -n "${VERIFY_BASE:?set to the recorded current main SHA}" && git log --format='%H %an %ae' "$VERIFY_BASE..HEAD" -- .github/workflows/ci.yml && gh run list --repo medici-finance/assay --workflow ci.yml --commit "$(git rev-parse HEAD)" --json databaseId,headSha,event,conclusion` | Branch-only history identifies the human-applied workflow commit(s), their authors and patches; no worker-authored workflow changes. Confirm forge attribution, then record run ID at this exact head and inspect its go-lint steps/logs. Missing run is could-not-check, not pass. |
+| 6 | check +dereference | `git diff --check && test -n "${VERIFY_BASE:?set to the implementation merge commit on main}" && git merge-base --is-ancestor "$VERIFY_BASE" HEAD && git log --format='%H %an %ae' "$VERIFY_BASE..HEAD" -- .github/workflows/ci.yml && gh run list --repo medici-finance/assay --workflow ci.yml --commit "$(git rev-parse HEAD)" --json databaseId,headSha,event,conclusion` | Run at the head of the first pull request after the implementation merged whose CI runs the go-lint job, with main's baseline the re-measured one. The listed commits identify the human-applied workflow commit(s), their authors and patches; no worker-authored workflow changes. Confirm forge attribution, then record the pull_request run ID at this exact head and inspect its go-lint steps/logs: the candidate is compared with main's trusted baseline and admitted, with no migration refusal. The implementation's own pre-merge branch run is expected to refuse and cannot satisfy this row. Missing run is could-not-check, not pass. |
 | 7 | gate:model +flow | `gh run list --repo medici-finance/assay --workflow ci.yml --commit "$(git rev-parse HEAD)" --json databaseId,headSha,event,conclusion` | On merged main, record actual run ID, successful go-lint job, pin acquisition and per-module/configuration logs. Match job commands to rows 1–3; a different job or head is insufficient. |
 
 ## Pre-mortem

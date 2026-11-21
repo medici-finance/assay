@@ -194,6 +194,9 @@ func isBriefFileFor(p, stream, nn string) bool {
 // error, never a partial answer: a short walk that happened to show only docs could hide the
 // code that makes the PR a delivery.
 func (c *ghClient) ListPRFiles(repo string, number int) ([]prFile, error) {
+	if c.gl != nil {
+		return gitlabPRFiles(*c.gl, repo, number)
+	}
 	const perPage = 100
 	const maxPages = 30 // the forge's 3000-file cap
 	var files []prFile

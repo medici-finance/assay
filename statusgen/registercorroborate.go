@@ -226,7 +226,7 @@ func repoTopLevel(dir string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if why == "" && os.Getenv("GIT_CONFIG_COUNT") == "" && os.Getenv("GIT_CONFIG_PARAMETERS") == "" {
+		if why == "" && !configCountNative() && os.Getenv("GIT_CONFIG_PARAMETERS") == "" {
 			return read.top, nil
 		}
 	}
