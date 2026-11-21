@@ -764,6 +764,23 @@ func CommonDir(dir string) (string, error) {
 	return resolveSymlinksBestEffort(common), nil
 }
 
+// GitDir returns the git directory of the working tree containing dir, matching
+// `git rev-parse --absolute-git-dir`. For a linked worktree this is its OWN
+// .git/worktrees/<name> admin directory, never the common dir: the .git file's
+// `gitdir: <path>` pointer is read and its commondir is not followed. It spawns no
+// git process.
+func GitDir(dir string) (string, error) {
+	top, err := Toplevel(dir)
+	if err != nil {
+		return "", err
+	}
+	gitDir, _, err := resolveGitDir(top)
+	if err != nil {
+		return "", fmt.Errorf("gitcore: git-dir %s: %w", dir, err)
+	}
+	return resolveSymlinksBestEffort(filepath.Clean(gitDir)), nil
+}
+
 // resolveSymlinksBestEffort mirrors git's own `--path-format=absolute`, which always
 // prints a REALPATH-resolved path: on a host where the temp/checkout root itself is a
 // symlink (e.g. macOS's /var -> /private/var), the raw "gitdir:"/"commondir" pointer

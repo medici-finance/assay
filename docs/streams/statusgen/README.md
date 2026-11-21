@@ -78,6 +78,7 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 42 | [Queue projections from one board load: next-up, awaiting and brief info](brief-42-queue-projections-from-one-board-load-next-up-awaiting-and-brief-info.md) | 3 | L | todo | — | — |
 | 43 | [Desk read-side consumers call the board library in-process](brief-43-desk-read-side-consumers-call-the-board-library-in-process.md) | 4 | M | todo | — | — |
 | 44 | [Hydration budget: profile a real tree and remove the dominant cost](brief-44-hydration-budget-profile-a-real-tree-and-remove-the-dominant-cost.md) | 1 | M | implemented | — | — |
+| 45 | [Prepare an offline fail-first cache for the selected delivery](brief-45-prepare-an-offline-fail-first-cache-for-the-selected-delivery.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path

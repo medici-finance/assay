@@ -1,9 +1,15 @@
 # git-exec ratchet pin, read by scripts/count-git-exec.sh.
 #
 # The one non-comment line is the git-exec site count the gate allows. It is the exact
-# count measured on the base commit the pin was set on (c2ac8845a9ea, by this same
-# script: 51 direct spawns + 154 seam call sites). The gate fails when the tree grows
+# count measured on the base commit the pin was set on (71dbd189f9ed, by this same
+# script: 53 direct spawns + 193 seam call sites). The gate fails when the tree grows
 # above it.
+#
+# Re-measured, not raised (2026-11-19): the script now also counts call sites of
+# deskkit's verifier read seam, verifierGit( and verifierGitBytes(, which it missed.
+# The 49 such sites already on that base account for the move from 197 to 246 (the
+# old pin, 205, had fallen 8 above the old script's 197). Base and head read 246 by
+# the same script, so no site was admitted.
 #
 # Lower it, in the same change, whenever a change removes sites (the script prints a
 # NOTE). Never raise it to admit a new site: route the new git work through
@@ -11,4 +17,4 @@
 # excludes. internal/gitexec/ratchet_test.go also re-measures the PR's base tree with
 # the head's script and fails if the head count exceeds the base count, so a raised
 # pin alone cannot let a site in.
-205
+246

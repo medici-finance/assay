@@ -290,14 +290,14 @@ const (
 	// which is what recognised-and-ignored keys are one bug report away from being.)
 	EnvAllowCluster = "ASSAY_ALLOW_CLUSTER"
 
-	// EnvHomeRepo and EnvScanRepos are STATUSGEN-only roster values (the home repo
-	// and the --scan-issues scope). deskkit does not consume them — but the two
-	// readers share one roster.env, and an unknown key in the ASSAY_ namespace
-	// is a NOTICE here since #1261 (statusgen still REFUSES the whole configuration).
-	// So deskkit must RECOGNISE them, or a roster.env that configures statusgen would
-	// draw an unknown-key NOTICE from the desk tools on every run. They are recognised
-	// here and otherwise ignored. KEEP IN SYNC
-	// with statusgen/rosterconfig.go's scanEnvHomeRepo / scanEnvScanRepos.
+	// EnvHomeRepo and EnvScanRepos are the roster values statusgen's --scan-issues
+	// reads (the home repo and the scan scope). The two readers share one
+	// roster.env, and an unknown key in the ASSAY_ namespace is a NOTICE here since
+	// #1261 (statusgen still REFUSES the whole configuration), so deskkit RECOGNISES
+	// both. EnvHomeRepo is also PARSED into Config.HomeRepo: statusgen names the home
+	// repo's placeholder with the bare `issue-N.md`, and the scan-carrier lane reads the
+	// same value to know which repository a bare placeholder belongs to (#7023). KEEP
+	// IN SYNC with statusgen/rosterconfig.go's scanEnvHomeRepo / scanEnvScanRepos.
 	EnvHomeRepo  = "ASSAY_HOME_REPO"
 	EnvScanRepos = "ASSAY_SCAN_REPOS"
 
@@ -757,6 +757,12 @@ type Config struct {
 	// this struct has to distinguish.
 	ReleaseRepo string
 
+	// HomeRepo is the configured home repo (EnvHomeRepo): the ONE owner/name whose
+	// issues statusgen's scanner names with the bare `issue-N.md` placeholder. Empty
+	// when unset or not an owner/name slug — then no repository owns the bare name,
+	// exactly as statusgen gives no repo the bare filename without it.
+	HomeRepo string
+
 	// WriteguardCallout is the absolute path of the adopter's writeguard callout
 	// (EnvWriteguardCallout), empty when unset. Empty means the compiled generic
 	// indicators alone — see the const's ONLY-WIDENS note.
@@ -925,11 +931,11 @@ type ExtKeyResult struct {
 // only the five keys the docs/adopting-assay.md §2 inventory names at the time
 // brief 00 landed; it is included here so a future manifest that injects
 // `assay.roster.ext.repo-forges` resolves against a REAL per-key result rather
-// than one this loader never populates. ASSAY_CHANNEL_DRIFT_TARGET and
-// ASSAY_HOME_REPO are STATUSGEN-only (recognised, never parsed, here — see
-// their own const comments): this loader has no shape to validate for either,
-// so their status can only ever be ExtOK (present) or ExtUnset (absent),
-// never ExtInvalid. ASSAY_RUN_CREDENTIALS is deliberately ABSENT: it chooses
+// than one this loader never populates. ASSAY_CHANNEL_DRIFT_TARGET is
+// STATUSGEN-only (recognised, never parsed, here — see its const comment): its
+// status can only ever be ExtOK (present) or ExtUnset (absent), never
+// ExtInvalid. ASSAY_HOME_REPO is parsed as one owner/name slug (Config.HomeRepo)
+// and reads ExtInvalid when it is not one. ASSAY_RUN_CREDENTIALS is deliberately ABSENT: it chooses
 // which credential a desk write runs as, so it is a trust key whose problems
 // refuse the whole roster (a driver ruling). extcatalogue_test.go pins this
 // catalogue to a committed allow-list and fails on any trust key reaching it.
@@ -1921,14 +1927,26 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	// stamped from a half-applied map and nothing else in the roster is dropped.
 	cfg.GitLabRoleEmails, cfg.GitLabRoleEmailsProblem = parseGitLabRoleEmails(vals[EnvGitLabRoleEmails], cfg)
 
-	// --- statusgen-only extension keys deskkit recognises but does not parse ---
-	// ASSAY_CHANNEL_DRIFT_TARGET and ASSAY_HOME_REPO have no shape this reader
-	// validates (see their const comments) — presence is all cfg.Ext can report
-	// for either, so a component that ever injects
-	// assay.roster.ext.channel-drift-target or assay.roster.ext.home-repo sees OK
-	// when the operator set something and UNSET when they did not, never INVALID.
+	// --- statusgen-only extension key deskkit recognises but does not parse ---
+	// ASSAY_CHANNEL_DRIFT_TARGET has no shape this reader validates (see its const
+	// comment) — presence is all cfg.Ext can report, so a component that ever
+	// injects assay.roster.ext.channel-drift-target sees OK when the operator set
+	// something and UNSET when they did not, never INVALID.
 	recordExt(&cfg, EnvChannelDriftTarget, vals[EnvChannelDriftTarget], extAccumulator{})
-	recordExt(&cfg, EnvHomeRepo, vals[EnvHomeRepo], extAccumulator{})
+
+	// --- home repo (ASSAY_HOME_REPO), an EXTENSION key ---
+	// One owner/name slug, the same shape statusgen accepts. A malformed value
+	// leaves HomeRepo empty (no repository owns the bare placeholder name) and is
+	// recorded INVALID; it never refuses the roster.
+	var homeRepoIssue extAccumulator
+	if raw := strings.TrimSpace(vals[EnvHomeRepo]); raw != "" {
+		if owner, name := splitRepo(raw); owner == "" || name == "" {
+			homeRepoIssue.bad("%s: %q is not an owner/name repo slug", EnvHomeRepo, raw)
+		} else {
+			cfg.HomeRepo = raw
+		}
+	}
+	recordExt(&cfg, EnvHomeRepo, vals[EnvHomeRepo], homeRepoIssue)
 
 	if len(problems) > 0 {
 		// Fail closed, P1: a refused roster loads NOTHING, however well-formed its other keys

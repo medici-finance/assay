@@ -40,24 +40,45 @@ func TestKubeCompatCellctlLifecycle(t *testing.T) {
 	if e := json.Unmarshal([]byte(plan.Stdout), &stored); e != nil || stored.Verify() != nil {
 		t.Fatal("invalid cell-op plan", e, plan.Stdout)
 	}
+	readRunning := func(t *testing.T, role string) kc.Identity {
+		t.Helper()
+		r, err := kc.ReadReceipt(filepath.Join(w.cellDir, "run", "kubecompat", role+".json"))
+		if err != nil || r.State != "running" || r.Identity.Role != role {
+			t.Fatalf("running receipt for %s: %+v, %v", role, r, err)
+		}
+		return r.Identity
+	}
+	attach := func(role, input, expected string) {
+		t.Helper()
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, cellctlBinary(t), "attach", "example", role)
+		cmd.Env = w.baseEnv()
+		cmd.Stdin = strings.NewReader(input)
+		output, err := cmd.CombinedOutput()
+		if err != nil || !strings.Contains(string(output), "retained terminal") {
+			t.Fatalf("native attach to %s: %s (%v)", role, output, err)
+		}
+		if got := s.Input(role); got != expected {
+			t.Fatalf("terminal input for %s: got %q, want %q", role, got, expected)
+		}
+	}
+	first := make(map[string]kc.Identity)
 	for _, role := range kc.Roles {
 		got := w.run(t, nil, "desk", "example", role)
 		if got.Code != 0 {
 			t.Fatal(role, got)
 		}
+		first[role] = readRunning(t, role)
 		again := w.run(t, nil, "desk", "example", role)
 		if again.Code != 0 {
 			t.Fatal("repeat start", again)
 		}
-		cmd := exec.Command(cellctlBinary(t), "attach", "example", role)
-		cmd.Env = w.baseEnv()
-		cmd.Stdin = strings.NewReader("retained " + role + "\x1dunknown\n\x1dASSAY_STOP not-confirmed\n")
-		out, e := cmd.CombinedOutput()
-		if e != nil || !strings.Contains(string(out), "retained terminal") {
-			t.Fatal("native attach", e, string(out))
-		}
-		if got := s.Input(role); got != "retained "+role+"unknown\nASSAY_STOP not-confirmed\n" {
-			t.Fatal("compiled attach lost escape text or forwarded stop control", got)
+		attach(role, "retained "+role+"\x1dunknown\n\x1dASSAY_STOP not-confirmed\n", "retained "+role+"unknown\nASSAY_STOP not-confirmed\n")
+		// A second, separately invoked terminal client must reach the same execution.
+		attach(role, "reconnected "+role, "reconnected "+role)
+		if err := first[role].Same(readRunning(t, role)); err != nil {
+			t.Fatalf("%s changed across repeated start and attach: %v", role, err)
 		}
 	}
 	starts, _, _ := s.Counts()
@@ -74,7 +95,7 @@ func TestKubeCompatCellctlLifecycle(t *testing.T) {
 	}
 	for _, role := range kc.Roles {
 		receipt, e := kc.ReadReceipt(filepath.Join(w.cellDir, "run", "kubecompat", role+".json"))
-		if e != nil || receipt.State != "clean-stopped" {
+		if e != nil || receipt.State != "clean-stopped" || first[role].Same(receipt.Identity) != nil {
 			t.Fatal("missing exact clean receipt", receipt, e)
 		}
 	}
@@ -89,6 +110,17 @@ func TestKubeCompatCellctlLifecycle(t *testing.T) {
 	starts, _, _ = s.Counts()
 	if starts != 10 {
 		t.Fatal("clean new execution count", starts)
+	}
+	for _, role := range kc.Roles {
+		t.Run(role, func(t *testing.T) {
+			old, next := first[role], readRunning(t, role)
+			if old.PodUID == next.PodUID || old.ContainerID == next.ContainerID {
+				t.Fatal("explicit restart reused a prior execution identity")
+			}
+			if old.ConfigDigest != next.ConfigDigest || old.StatefulSetUID != next.StatefulSetUID || old.Image != next.Image {
+				t.Fatal("explicit restart changed the admitted profile, workload or image")
+			}
+		})
 	}
 }
 

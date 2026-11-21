@@ -1,2 +1,0 @@
-### Changed
-- statusgen hydration (the frontmatter load behind `--gate-scores`, `--launch` and the dispatch views) now reads and parses brief files concurrently, makes one path lookup per cold read instead of three, and lists each stream directory once for placeholder discovery. On a 642-brief tree, hydration fell from about 24x to about 8x the bare board load, so its test budgets are back to the 10x that statusgen/44 set, on both the synthetic corpus and a real tree, in place of the loosened 20x and 100x. Output is unchanged (#6900).

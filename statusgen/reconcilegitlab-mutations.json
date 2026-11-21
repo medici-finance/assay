@@ -1,0 +1,71 @@
+{
+  "test": "go test . -run 'TestGLReconcile' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — a merged MR is mapped as closed without its merge time (read as unmerged)",
+    "file": "reconcilegitlab.go",
+    "old": "p.State, p.MergedAt = \"closed\", c.MergedAt",
+    "new": "p.State = \"closed\""
+  },
+  "mutations": [
+    {
+      "name": "a partial for the repo is ignored when a full entry sits beside it",
+      "file": "reconcilegitlab.go",
+      "old": "if p.Repo == repo {",
+      "new": "if false && p.Repo == repo {"
+    },
+    {
+      "name": "an entry with no completeness field is read as complete",
+      "file": "reconcilegitlab.go",
+      "old": "case e.Incomplete == nil:\n\t\t\t\treturn nil, false, what + \": could-not-check: the entry carries no completeness field\"\n\t\t\tcase *e.Incomplete:",
+      "new": "case e.Incomplete != nil && *e.Incomplete:"
+    },
+    {
+      "name": "a page-capped list is read as complete",
+      "file": "reconcilegitlab.go",
+      "old": "case *e.Incomplete:",
+      "new": "case false && *e.Incomplete:"
+    },
+    {
+      "name": "an absent change list is read as an empty one",
+      "file": "reconcilegitlab.go",
+      "old": "case e.Changes == nil:\n\t\t\t\treturn nil, false, what + \": could-not-check: the entry carries no change list\"",
+      "new": "case e.Changes == nil:\n\t\t\t\treturn []ghPull{}, true, \"\""
+    },
+    {
+      "name": "a merged MR with no merge time is admitted",
+      "file": "reconcilegitlab.go",
+      "old": "if c.MergedAt == \"\" {",
+      "new": "if false && c.MergedAt == \"\" {"
+    },
+    {
+      "name": "an unknown MR state is read as closed",
+      "file": "reconcilegitlab.go",
+      "old": "return nil, false, fmt.Sprintf(\"%s: could-not-check: MR !%d has state %q\", what, c.Number, c.State)",
+      "new": "p.State = \"closed\""
+    },
+    {
+      "name": "the draft flag from the change read is dropped",
+      "file": "reconcilegitlab.go",
+      "old": "p.Draft, p.MergeCommitSHA = d.Draft, d.MergeCommitSHA",
+      "new": "p.MergeCommitSHA = d.MergeCommitSHA"
+    },
+    {
+      "name": "the merge commit from the change read is dropped",
+      "file": "reconcilegitlab.go",
+      "old": "p.Draft, p.MergeCommitSHA = d.Draft, d.MergeCommitSHA",
+      "new": "p.Draft = d.Draft"
+    },
+    {
+      "name": "a change read that fails is skipped instead of refused",
+      "file": "reconcilegitlab.go",
+      "old": "if derr != nil {\n\t\t\t\t\t\treturn nil, false, derr.Error()\n\t\t\t\t\t}",
+      "new": "if derr != nil {\n\t\t\t\t\t\tpulls = append(pulls, p)\n\t\t\t\t\t\tcontinue\n\t\t\t\t\t}"
+    },
+    {
+      "name": "a file list not marked complete is admitted",
+      "file": "reconcilegitlab.go",
+      "old": "if cf == nil || cf.Complete == nil || !*cf.Complete {",
+      "new": "if cf == nil || cf.Complete == nil {"
+    }
+  ]
+}
