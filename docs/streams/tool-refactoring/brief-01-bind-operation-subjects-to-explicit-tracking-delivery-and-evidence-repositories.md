@@ -26,6 +26,7 @@ sources:
   - "graph-execution/28 — retained owning work; see existing-work.md"
 gate-why: "A wrong tracking, delivery or evidence coordinate can direct a credentialed adapter at another repository. Human acceptance confirms exact subject binding and independent effect authorization survive the consolidation."
 decision-trigger: start
+decision-issue: 7087
 exec-tier: strong
 exec-tier-why: "Cross-component class refactoring and negative controls; one local happy-path test cannot prove that every production caller migrated."
 domain: complicated
