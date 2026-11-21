@@ -286,6 +286,9 @@ for each contiguous link after the one `Verification-Table:` line. Draft each li
 exact v2 payload for the driver; never post an approval. Link 1 alone may retain a v1
 approval under its existing rules. The shared plan derives `Command`, `Expect` or
 `Command+Expect` changes, and every original witness must follow the final amendment.
+For a whole plain-shell replacement in an automated `sh` check, inspect both
+raw Git cells and draft the explicit v2 `ID:PlainCommand` token. Every other
+cell must match. Legacy approvals and `ID:Command` keep their existing scope.
 Then bracket the disjoint container-witnessable rows on that same source and land the
 closed witness through the sanctioned Evidence path. The selections together cover the
 whole protected table, and the assembled run carries exactly one `Verification-Table:`
