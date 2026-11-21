@@ -283,6 +283,8 @@ type protocolRule struct {
 var protocolRules = []protocolRule{
 	{"vocabulary-word", []*regexp.Regexp{regexp.MustCompile(`"(verify-fail|needs_context|needs-context)"`)}},
 	{"exact-verified", []*regexp.Regexp{regexp.MustCompile(`[Oo]utcome\w*(\)|\])?\s*[!=]=\s*"(verified|verify-fail|fail|blocked)"`)}},
+	{"reversed-verified", []*regexp.Regexp{regexp.MustCompile(`"(verified|verify-fail|fail|blocked)"\s*[!=]=\s*[\w.]*[Oo]utcome`)}},
+	{"folded-verified", []*regexp.Regexp{regexp.MustCompile(`EqualFold\([^)]*"(verified|verify-fail|blocked)"`)}},
 	{"brief-key-grammar", []*regexp.Regexp{
 		regexp.MustCompile("`\\^\\[a-z0-9\\]\\[a-z0-9-\\]\\*\\$`"),
 		regexp.MustCompile("`\\^\\[0-9\\]\\+\\$`"),
@@ -346,7 +348,8 @@ func scanProtocolCopies(root, rel string) ([]string, error) {
 
 // TestOutcomeProtocolClassGuard pins the CLASS, not the four copies that motivated it: no file
 // outside the protocol's owner may carry a private outcome vocabulary, an exact-spelling
-// closure comparison, a second brief-key grammar or a second row-result vocabulary. A planted
+// closure comparison (either operand order, or an EqualFold copy), a second brief-key grammar
+// or a second row-result vocabulary. A planted
 // file proves every rule is live.
 // regression: F-outcome-protocol-copies
 func TestOutcomeProtocolClassGuard(t *testing.T) {

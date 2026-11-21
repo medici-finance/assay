@@ -30,6 +30,16 @@ func privateGuard(r row) bool {
 	return r.Outcome != "verified"
 }
 
+// The same comparison with the operands reversed (rule: reversed-verified).
+func privateGuardReversed(r row) bool {
+	return "verified" != r.Outcome
+}
+
+// A case-folded copy of the comparison, outside the owner (rule: folded-verified).
+func privateGuardFolded(o string) bool {
+	return strings.EqualFold(o, "verified")
+}
+
 // A second record codec: the stream and number grammar of a brief key (rule: brief-key-grammar).
 var (
 	privateStreamRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
