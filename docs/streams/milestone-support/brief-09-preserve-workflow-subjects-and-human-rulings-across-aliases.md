@@ -156,7 +156,8 @@ each module keeps its own independent check around it.
 ### Bounded design to rule on
 
 The design adds one pure value to the existing reference owner, plus thin adapters at
-the existing boundaries. It adds no new grammar, store, binary or subprocess seam.
+the existing boundaries. It reuses the typed reference grammar and adds one ruling
+comment field. It adds no store, binary or subprocess seam.
 
 1. **One subject value.** `statusgen/workref` gains `Subject{LogicalKey, Revision}`,
    built only from a resolved `Result`, and one comparison, `SameSubject(approved,
@@ -195,43 +196,64 @@ the existing boundaries. It adds no new grammar, store, binary or subprocess sea
    today's path unchanged, as point 7 requires. It runs alongside the existing
    `AcceptanceBinding.Validate(candidate)` and replaces nothing: a stale or substituted
    candidate is still refused by the candidate check, even when the subject matches.
-4. **Ruling subject in statusgen.** The decision-gate hold and the ruling-link lane keep
-   every current condition. They add one more:
-   - every board id, permanent `id:`, `brief:` value and marker spelling the gate is
-     judging must resolve through one registry, built from the alias registry at the
-     judged base, to a single logical key. Two spellings that resolve to different keys
-     refuse the ruling rather than pick one;
-   - a prefixed or revisioned marker is resolved through `workref`, never through the
-     stream-and-number reduction. A marker whose cell names another cell no longer
-     matches on stream and number alone;
-   - when the decision issue carries a typed gate card, its `version` must equal the
-     judged brief's `version:`. A ruling on revision N does not carry to revision N+1.
-     A brief whose revision moved after the ruling needs a new ruling;
-   - a legacy marker with no card keeps today's behavior: it binds the logical brief and
-     no revision. This is the existing meaning of every past ruling, and it is not
-     reinterpreted. It is listed below as a known residual.
+4. **Ruling subject in statusgen.** The decision-gate hold and ruling-link lane keep
+   the existing same-repository, issue, human-account, unedited-comment and
+   record-binding checks. Every board id, permanent id, `brief:` value and marker
+   spelling must resolve to one logical key using the registry at the judged base.
+   Resolve prefixed or revisioned markers through `workref`; refuse a different cell,
+   root or work key even when stream and number match.
 
-   Layer one applies the identity and revision checks offline from frontmatter and the
-   card. Layer two applies them again after the network read, so bypassing either layer
-   still leaves the other.
-5. **Ruling subject in tools/desk.** `deskkit` gains a pure `RulingSubjectGate`. It
-   takes the ruled subject (from the decision issue's card or marker, with which of the
-   two it came from), the brief's board id, permanent id and aliases, the brief's
-   `version:`, the registry, the decision-issue number the brief records, the linked
-   comment's issue number, and the comment author with its account type. It builds the
-   two sides under point 4's rule, so the two modules apply one rule:
-   - when the ruled subject comes from a typed gate card, the ruled side is
-     `{key, card version}` and the presented side is `{key, brief version:}`;
-   - when it comes from a legacy marker with no card, both sides are built at revision
-     zero, so only the logical keys are compared and the past ruling keeps its meaning.
+   For a revision-bound ruling, the existing comment-binding hook reads one explicit
+   line from the unedited human ruling comment:
 
-   `SameSubject` is called only on subjects built this way. It refuses with three
-   different reasons: a subject mismatch through `SameSubject`, an issue mismatch, and
-   an author who is a bot, an App or unmapped. It
-   reuses the roster's existing human mapping, and never trusts a login string handed
-   to it. `deskevidence` calls it in-process on a landing for a gate-human brief, in
-   addition to, and independently of, the existing `statusgen --decision-gate` run.
-   That run stays as it is. The register gates (`R-N`) are unchanged.
+   ```text
+   Ruling-Subject: assay:assay:milestone-support:b-09@1 card=none
+   ```
+
+   Resolve the comment's typed brief reference with `workref`. Its key and positive
+   revision are the ruled side; the judged brief's resolved key and explicit
+   `version:` are the presented side. Require equality. Missing `version:` stays
+   missing, even if the card writer emits version 1. Duplicate, malformed or
+   conflicting subject lines refuse. Neither the issue body nor frontmatter can
+   supply a missing ruled revision.
+
+   The same line records the card the human saw. `card=none` requires a successful
+   issue read with the matching marker and no typed card. If a typed card is present,
+   use `card=sha256:<hex>` over its exact UTF-8 card block bytes, including the
+   delimiters and excluding surrounding issue text. The decision prompt must show
+   the card and the digest together. Require one well-formed card whose digest,
+   resolved key and version all match the comment. A missing, changed or unexpected
+   card, malformed card data or unreadable source is `could-not-check` and holds
+   the ruling. Edits to surrounding issue text do not affect the digest and still
+   have to satisfy the existing marker check.
+
+   Only an unedited comment with no subject line, created strictly before the
+   bridge's fixed cutover and validated by the existing legacy checks, can keep
+   logical-key-only meaning. The cutover is a fixed implementation rollout value,
+   recorded when the bridge is enabled and shared by both checks. Read the comment's
+   creation time from the forge, never from issue text or the caller's clock.
+   An absent or unreadable timestamp holds. A typed subject line selects the
+   revision-bound path even for an older comment; a broken or missing card can
+   never switch that comment to legacy. At and after cutover every new ruling
+   requires the subject line, including on marker-only issues.
+
+   Layer one validates local identity and explicit version inputs offline. It
+   cannot establish which revision a human ruled on. Layer two uses the fetched
+   ruling comment and current issue to establish that binding before a governed
+   transition can pass.
+
+5. **Ruling subject in tools/desk.** `deskkit` gains a pure `RulingSubjectGate`
+   that takes the fetched comment and issue observations, the resolved brief
+   context and registry, and the expected issue number. It checks the comment's
+   issue, edit timestamps, actor type and existing human mapping, then independently
+   applies point 4's subject, card and cutover rules. The revision-bound comparison
+   uses the human comment and the explicit brief version. The historical comparison
+   uses revision zero on both sides only after the legacy eligibility checks pass.
+   The two modules reuse the same pure subject and card-binding rules in the public
+   reference layer; neither accepts the other module's approval boolean in place of
+   source observations. Preserve distinct reasons for issue, actor, subject and
+   unavailable card evidence. `deskevidence` calls the in-process gate alongside
+   its existing `statusgen --decision-gate` run. Register gates (`R-N`) are unchanged.
 6. **Capability stays fail-closed.** No reader capability is advertised here. Where a
    consumer meets a prefixed or revisioned reference but the reader has not advertised
    prefixed references, the result is `could-not-check`. It is never silently reduced to
@@ -240,8 +262,9 @@ the existing boundaries. It adds no new grammar, store, binary or subprocess sea
    revisions, work, instance, node and attempt identities, and acceptance digests are
    never rewritten, renumbered or re-digested. A legacy record is read under its
    original meaning. The bridge only adds a comparison when a new subject is presented.
-8. **Future workflow owner.** There is no workflow store or controller on main. Nothing
-   here depends on one or simulates one. The two canonical specs gain one obligation:
+8. **Future workflow owner.** Main now has the PostgreSQL persistence foundation in
+   `workflow/store`. It has no workflow execution controller and is outside this
+   bridge. The two canonical specs gain one obligation:
    a future workflow owner must bind work, evidence and rulings through `Subject` and
    `SameSubject`, and must not add its own alias reduction.
 
@@ -254,16 +277,17 @@ The Human decision section asks for these four rules to be confirmed explicitly.
   metadata (frontmatter, a gate card, a DR record or a relayed comment) never create a
   ruling. They can only point at one that is then checked. Both modules check this
   independently.
-- **Subject.** A ruling or acceptance binds one logical identity at one exact revision.
-  An alias carries a ruling only when it resolves to the same logical key. A copied
-  ruling link, a different root or cell, another brief that shares a stream and number,
-  and a newer revision never inherit it. Legacy, unrevisioned rulings keep their current
-  logical-brief meaning.
-- **Revocation.** Unchanged. An edited or deleted ruling comment no longer stands, and
-  an issue whose body no longer rules on the record no longer stands. A new brief
-  revision needs a new ruling when the card names a revision. If a source cannot be
-  read, the result is `could-not-check`, never a pass, and never proof that nothing was
-  revoked.
+- **Subject.** A revision-bound ruling covers the logical key and declared version
+  in the unedited human comment. An alias carries the ruling only when it resolves
+  to the same key and revision. The declared version is author-maintained; it is not
+  a content digest. Changes to governed text require a version bump and a fresh
+  ruling. First adding an explicit version introduces a revision, even when a
+  previous card displayed a default of 1. Historical unrevisioned decisions retain
+  their original logical-key meaning under the limited compatibility rule in point 4.
+- **Revocation.** An edited or deleted ruling comment no longer stands. An issue
+  that no longer identifies the record, or a card observation that no longer
+  agrees with the comment, holds the ruling. A revision-bound ruling needs a new
+  comment for a new revision. An unreadable source is `could-not-check`.
 - **Effect admission.** None. The subject check grants no permission, claim, dispatch,
   status move or acceptance. It can only refuse. Status moves still go through the
   existing decision-gate hold, and dispatch admission stays with /10. No new store,
@@ -279,13 +303,14 @@ unchanged.
 |---|---|
 | `TestPrefixedHandoffSubject` (planned) | Recorded handoff fixtures keep their canonical bytes and digests. `ResolveQualifiedID` still refuses `b-09` and `@2` spellings. Mutations: broadening the legacy grammar, or adding a revision field to the digested record, fail. |
 | `TestPrefixedHandoffSubject` (planned) | `ResolveWorkSubject` on `b-09@2` returns the legacy `QID` and revision 2. A milestone reference is refused. A wrong-subject input is refused by `SameSubject` called directly, with the adapter bypassed. Mutation: comparing `Compatibility()` instead of the logical key passes a re-bound alias, so the test fails. |
-| `TestRulingAliasAuthority` (planned) | The real `RulingSubjectGate` accepts a human ruling on the same issue, through a typed card at revision 1 on a revision-1 brief, for an alias that resolves to the same key. It refuses a ruling copied from another brief, a card for revision 1 on a revision-2 brief, a marker from another cell or root, a bot or App author, and an unmapped login, each with its own reason. Mutations: dropping the revision comparison, matching on stream and number alone, and accepting a `[bot]` author each fail. |
-| `TestRulingAliasAuthority` (planned) | With the upper parser and capability check bypassed, the gate still refuses a mismatched subject. A legacy marker with no card on a revision-2 brief keeps its current acceptance, because both sides are built at revision zero; this is the compatibility control. Mutation: building the presented side from the brief's `version:` when no card is present refuses that legacy ruling, so the test fails. |
+| `TestRulingAliasAuthority` (planned) | A mapped human's unedited subject line passes for an alias of the same key and explicit revision, with either the declared absent card or the declared matching card digest. Refuse a copied ruling, different issue or root, wrong or absent explicit version (including a card default of 1), duplicate subject lines, an edited comment, and a bot, App or unmapped actor. Mutations: use the card's version as authority, default a missing brief version to 1, match on stream and number alone, or accept a bot. |
+| `TestRulingAliasAuthority` (planned) | A typed revision-1 ruling holds if its card is edited to version 2 and the brief moves to revision 2. Also hold if the card changes while the brief stays at revision 1, if the card is removed while its marker remains, or if a card is added to a comment that declared `card=none`. Exercise the real lower gate with the upper parser bypassed. Mutations: skip digest verification, treat a removed card as a legacy marker, or ignore unexpected card presence. |
+| `TestRulingAliasAuthority` (planned) | An otherwise valid, unrevisioned pre-cutover ruling keeps logical-key-only meaning. An otherwise identical comment at or after cutover, or with an unknown creation time, holds even on a marker-only issue. A pre-cutover comment with a typed subject and missing card also holds. Mutations: omit the timestamp check or let a failed typed binding fall through to legacy. |
 | `TestPrefixedVerifySubject` (planned) | `NewWorkAt` on `b-09@3` returns the existing `WorkIdentity` and revision 3. Evidence presented for revision 2, or for the legacy id with no revision, is refused (`checked-failed` and `could-not-check` respectively). Mutation: building the subject from the normalized `fullId` erases the revision, so the test fails. |
 | `TestPrefixedVerifySubject` (planned) | A matching subject with a stale or substituted candidate is still refused by `AcceptanceBinding.Validate`. Mutation: letting a matching subject short-circuit the candidate check fails. |
 
 The statusgen decision-gate checks from design point 4 are also covered by existing
-gate test files, extended for the alias and card-version cases. After the ruling, these
+gate test files, extended for the same alias, comment and card cases. After the ruling, these
 cases are implemented through the actual entrypoints. The compiling mutations are
 recorded in the declared `09-mutations.json` (planned), and fail-first results are
 shown before the implementation PR opens. None of the three named tests exists at this
@@ -299,14 +324,14 @@ source revision.
 | `statusgen/workref` (`Subject`, `SameSubject`) and its README | follow-up /09 after the ruling; one pure value and comparison. |
 | `statusgen/contexthandoff/` and `spec/context-handoff-v1.md` §2 and §6 | follow-up /09; the adapter, plus a note that the strict grammar and digests are unchanged. |
 | `statusgen/domain/` and `spec/verification-domain-v1.md` "Records and identity" | follow-up /09; `NewWorkAt` and `CheckSubject` beside the unchanged candidate check, plus the future-workflow obligation. |
-| `statusgen/decisiongatehold.go`, `statusgen/decisionruling.go` and `statusgen/briefruling.go` | follow-up /09; the added identity and card-version condition in both layers. |
+| `statusgen/decisiongatehold.go`, `statusgen/decisionruling.go` and `statusgen/briefruling.go` | follow-up /09; local identity checks and the fetched human-comment binding. |
 | `tools/desk/internal/deskkit/` (`RulingSubjectGate`) and `tools/desk/cmd/deskevidence/` | follow-up /09; the in-process subject check on a landing, beside the unchanged `statusgen --decision-gate` run. |
 | `tools/desk/internal/deskkit/briefschemagate.go` | follow-up /09: an unadvertised prefixed reference stays `could-not-check`. The advertisement itself is follow-up /10. |
 | `tools/desk/internal/deskkit/rulinggate.go`, `signoff.go` and the `deskclose`/`deskmerge` register gates | out-of-scope: register rulings (`R-N`) bind no brief subject; unchanged. |
 | `tools/desk/internal/deskkit/briefadmission.go` and `decisionensure.go` (marker lookup by brief id) | out-of-scope for authority: they find or file the decision issue and grant nothing. Typed marker lookup is follow-up /10 with dispatch admission. |
-| Legacy rulings with no gate card (known residual) | out-of-scope: they keep their logical-brief meaning. Binding them to a revision would reinterpret past rulings. |
+| Historical unrevisioned rulings | compatibility only: point 4 uses the forge creation time and existing binding checks; current card absence cannot qualify a new or revision-bound ruling. |
 | Dispatch and pickup, history and exports | follow-up /10 and /12; they consume the bridge. |
-| Workflow store or controller | out-of-scope: absent on main. The obligation is documented in the specs only. |
+| `workflow/store` and future workflow controller | out-of-scope: the persistence foundation is present and has no ruling-subject consumer. The future controller obligation is documented in the specs only. |
 
 ### Decision block
 
@@ -317,9 +342,9 @@ approves how /09 will be implemented. It does not accept any milestone outcome.
    - `Subject` and `SameSubject` in `statusgen/workref`;
    - the handoff and verification edge adapters, with the strict grammar and every
      record digest unchanged;
-   - the identity and card-version condition in both statusgen decision-gate layers;
+   - local identity checks and the human-comment revision binding in statusgen;
    - the in-process deskkit subject gate on Evidence landings;
-   - legacy rulings keeping their current meaning;
+   - the bounded compatibility rule for pre-cutover unrevisioned rulings;
    - the actor, subject, revocation and no-admission rules above.
 2. **Request corrections.** Name the adapter, condition, preserved rule or consumer to
    change. For example, binding legacy rulings to a revision, or persisting the revision
@@ -330,7 +355,9 @@ approves how /09 will be implemented. It does not accept any milestone outcome.
 
 Exact ruling needed: an unedited human comment on the existing decision issue. It names
 `milestone-support/09`, the proposal PR and its head, and `DR-milestone-support-09`,
-selects one option, and states any corrections. The reserved record id is
+selects one option, and states any corrections. Include the revision-1 subject line
+shown in point 4 if the issue still has no card. If it has a card, use the digest
+form from the decision prompt. The reserved record id is
 `DR-milestone-support-09`. If the proposal is accepted, the ruling is transcribed into
 that decision-v1 record, with alternatives, consequences and a ruling link that can be
 corroborated. The brief then cites the record through its `design:` field before
