@@ -66,7 +66,7 @@ func (f *interactionFixture) readOutput(name string) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot open fixture %s", name)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, fmt.Errorf("fixture %s is not a readable regular file", name)
@@ -254,7 +254,7 @@ func TestKubeCompatInteractionOutputFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer root.Close()
+	defer func() { _ = root.Close() }()
 	f := interactionFixture{root: root}
 	file := filepath.Join(dir, "record")
 	original := strings.Repeat("r", maxInteractionFileBytes)
@@ -348,7 +348,7 @@ func (f *interactionFixture) terminal(ctx context.Context, role string, input io
 	if err != nil {
 		return err
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	stopped := context.AfterFunc(ctx, func() { _ = conn.Close() })
 	defer stopped()
 	req, err := http.NewRequestWithContext(ctx, "POST", "http://fixture/containers/"+f.name+"/attach?stdin=1&stdout=1&stderr=1&stream=1", nil)
@@ -397,7 +397,7 @@ func (f *interactionFixture) terminal(ctx context.Context, role string, input io
 				results <- err
 				return
 			}
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			if resp.StatusCode != http.StatusOK {
 				results <- fmt.Errorf("fixture resize: %s", resp.Status)
 				return

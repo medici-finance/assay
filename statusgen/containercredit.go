@@ -494,14 +494,16 @@ func (cc *creditContext) attestedStamp(present []string, events []creditLabelEve
 type creditAccount struct {
 	Login string `json:"login"`
 	ID    int64  `json:"id"`
+	Type  string `json:"type"`
 }
 
 type creditIssue struct {
-	State  string         `json:"state"`
-	Title  string         `json:"title"`
-	Body   string         `json:"body"`
-	Labels []string       `json:"labels"`
-	Author *creditAccount `json:"author"`
+	State    string         `json:"state"`
+	Title    string         `json:"title"`
+	Body     string         `json:"body"`
+	Labels   []string       `json:"labels"`
+	Author   *creditAccount `json:"author"`
+	ClosedBy *creditAccount `json:"closedBy"`
 }
 
 type creditTrust struct {

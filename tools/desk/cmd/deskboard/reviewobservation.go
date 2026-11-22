@@ -160,7 +160,7 @@ func collectReviewQueue(feedbackPath string) (*Report, error) {
 		}
 	}
 	summary := fmt.Sprintf("review-queue: %d PR(s), %d repo(s); generation %s; cutoff %s; policy %s", observation.Result.Depths.Total, len(in.Admitted), in.Collection.Start.Format(time.RFC3339Nano), in.Collection.End.Format(time.RFC3339Nano), policy)
-	return &Report{value: observation, detail: summary, render: func(w io.Writer) { fmt.Fprintln(w, summary) }}, nil
+	return &Report{value: observation, detail: summary, render: func(w io.Writer) { _, _ = fmt.Fprintln(w, summary) }}, nil
 }
 
 // Sensitive artifacts replace the destination atomically without following its
