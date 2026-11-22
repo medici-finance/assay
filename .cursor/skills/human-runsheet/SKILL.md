@@ -32,12 +32,14 @@ A session invokes this the moment it recognises the blocker is not "I don't know
 
 It does not run for a DECISION — a fork where the driver picks among options and the session can
 proceed once told which. That is `ask-decision`'s job: it presents options with a recommended
-default and relays the ruling. This skill is for the opposite shape: the driver has already,
+default and relays the ruling. This skill is for the opposite shape: the driver has already
 authorized the outcome and the remaining act requires their identity, physical access or
 reserved authority. Sole ability to perform an act does not establish consent.
 
-Test each proposed step against the actual boundary. If approval lets the role execute the
-operation, ask for that approval through the accepted channel and execute it after approval.
+For an approval-dependent step, verify that the role already holds execution authority.
+Obtain the approval through the accepted channel, then act within that grant. A driver-reserved
+act stays on the runsheet even after approval. Stop on a guard refusal and route it to the
+authorized owner.
 If the driver must execute it personally, finish the authorized preparation first. Resolve
 the target and working directory, check that the named artifact exists, and validate the
 command's prerequisites without performing the protected act. For a sign-off, the desk

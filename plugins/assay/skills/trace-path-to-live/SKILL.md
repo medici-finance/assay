@@ -118,8 +118,8 @@ Each move names one node and one owning role:
 |------|------|
 | worker | dispatch a `todo` that is `eligible`, unclaimed and has no open PR; a live claim is shown as in flight, not as a move |
 | review | review or flip an open PR on the node, Evidence PRs included |
-| verify | verify an `implemented` node on merged main when no Evidence PR or live verifier claim exists; flag a verifier claim held long with no Evidence PR |
-| driver | a ready sign-off card with its required Evidence, an unresolved decision the driver owns, or a merge ready for that identity. Link the actionable item |
+| verify | verify an `implemented` node on merged main when no Evidence PR or live verifier claim exists. Flag a long-held verifier claim with no Evidence PR. For a `gate: human` node with landed PASS Evidence, prepare the missing card or obtain the required independent stamp from its owner |
+| driver | a ready sign-off card with its required Evidence, an open `needs-decision`, or a merge ready for that identity. Link the actionable item. If the decision screen routes an item to another role, cite the screen result and list the next move under that named role |
 | desk | an authoring gap: a `depends:`/`gates:` ref that resolves to no brief on any read board, or a part of the objective no brief covers |
 
 Rank the moves in this order:

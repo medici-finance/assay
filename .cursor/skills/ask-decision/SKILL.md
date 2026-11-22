@@ -14,8 +14,10 @@ description: >-
 # Ask Decision — one decision per turn, with context
 
 Ask one question when the driver owns the next choice. Read their request, earlier answers
-and the current artifact first. Carry out settled work, including work authorized once a
-named condition holds. Route a missing prerequisite or investigation to its owner. For a
+and the current artifact first. Carry out settled work within the role's existing authority
+once its recorded conditions hold. Approval leaves reserved acts with their named owner.
+Stop on a guard refusal and put any remaining driver-only act on the runsheet.
+Route a missing prerequisite or investigation to its owner. For a
 genuine fork, present a recommendation and the consequence of choosing it.
 
 This skill is a PRESENTATION and RELAY contract. It decides nothing, it rules on nothing, and
