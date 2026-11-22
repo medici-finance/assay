@@ -267,15 +267,15 @@ func readyBackstopRevertBody(state, head string, unmet []string) string {
 		"the forge reported its merge state as `%s` at head `%s`.\n\n%s"+
 		"Ready means mergeable per the forge, so the flip was reverted. The ready verb's own checks had "+
 		"passed, which means they and the forge's merge verdict disagree; the merge state names what the "+
-		"forge still requires. deskflip will not flip this head again; a new head clears that."+
+		"forge still requires. Neither deskflip nor deskpost ready will flip this head again; a new head clears that."+
 		"\n\n%s", state, head, reqs, ReadyBackstopRevertMarker(head))
 }
 
 // ReadyBackstopRevertMarker is the hidden line the backstop's revert comment carries for head:
-// the stable key deskflip's pre-flip not-reverted check matches, so a head the backstop already
-// returned to draft is never flipped again by deskflip on the next tick (medici-finance/assay#6253
-// review F2). It names the head, so a new head never matches. deskpost ready does not read it:
-// that verb never reads the comment surface.
+// the stable key the pre-flip not-reverted check of BOTH flip verbs matches (NotRevertedHold), so a
+// head the backstop already returned to draft is never flipped again on the next tick
+// (medici-finance/assay#6253 review F2, medici-finance/assay#6254). It names the head, so a new
+// head never matches.
 func ReadyBackstopRevertMarker(head string) string {
 	return "<!-- assay:ready-backstop-revert head=" + strings.ToLower(strings.TrimSpace(head)) + " -->"
 }
@@ -309,6 +309,30 @@ func FindReadyBackstopRevert(comments []Comment, head string) (Comment, bool) {
 		}
 	}
 	return Comment{}, false
+}
+
+// NotRevertedHold is the shared pre-flip not-reverted condition: the reason a flip of head must
+// stop because the post-flip backstop already returned it to draft, or "" when no trusted revert
+// comment names this head. deskflip and deskpost ready both call it, so the two verbs that perform
+// the ready mutation cannot disagree about a reverted head (medici-finance/assay#6254).
+//
+// REFUSE-ONLY. A match can only hold a flip; no result admits one, so a comment never satisfies a
+// gate through it. A marker from an untrusted author, or for another head, matches nothing.
+//
+// shown is the head as the calling verb prints it (each verb abbreviates a SHA its own way); the
+// match itself always uses the full head.
+func NotRevertedHold(comments []Comment, pr int, head, shown string) (string, bool) {
+	c, ok := FindReadyBackstopRevert(comments, head)
+	if !ok {
+		return "", false
+	}
+	ref := c.URL
+	if ref == "" {
+		ref = fmt.Sprintf("comment %d", c.DatabaseID)
+	}
+	return fmt.Sprintf("the post-flip check already returned PR #%d to draft at %s (%s): the forge "+
+		"reported it not mergeable right after a flip at this head, so flipping it again would be "+
+		"reverted again. A new head clears this condition.", pr, shown, ref), true
 }
 
 // stateOnlyRevert reports whether a revert comment records a viewer-relative state without

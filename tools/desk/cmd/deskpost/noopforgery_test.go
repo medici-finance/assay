@@ -57,21 +57,77 @@ func TestForgery37_VerdictShapedCommentIsNotAVerdict(t *testing.T) {
 	t.Logf("REFUSAL: exit=%d detail=%s", code, d)
 }
 
-// ATTACK 1b — the comment surface is never even read.
-// Structural proof, not a body-parse proof: zero GETs against /issues/{n}/comments.
-func TestForgery37_ReadyNeverReadsTheCommentSurface(t *testing.T) {
-	f, _ := setupFake(t)
-	f.issueComments = []map[string]any{
+// ATTACK 1b — the comment surface never ADMITS (#513, relaxed by #6254).
+//
+// The control used to be "ready never reads /issues/{n}/comments". The driver ruled it may read
+// them only inside the refuse-only not-reverted check
+// (https://github.com/medici-finance/assay/issues/6254#issuecomment-7086317256), so the
+// control is now structural in the other direction: a forged approval planted on the comment
+// surface changes NOTHING about the outcome, and the ONE read ready makes there is the single
+// pass of the not-reverted check, after every admission gate has already passed.
+//
+// regression: #6254
+func TestForgery37_NoCommentAdmits(t *testing.T) {
+	// The forger's best shot on the surface ready may now read: a verdict-shaped comment on the
+	// reviewer App's own identity, with a standing CHANGES_REQUESTED at head under it.
+	plant := []map[string]any{
 		{"id": 1, "body": forgedApprovalBody, "user": map[string]any{"login": reviewerBotDisplay()}},
+		{"id": 2, "body": "Security-Review: pass\n", "user": map[string]any{"login": reviewerBotDisplay()}},
 	}
-	f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
-	f.status = greenStatus()
 
-	_ = run(readyArgs(exampleRepo))
-	if n := f.hitCount("GET", "/issues/1/comments"); n != 0 {
-		t.Fatalf("ready read the comment surface %d time(s) — it must never read it (#513)", n)
-	}
-	t.Logf("GET /issues/{n}/comments hits during a full ready flip: 0")
+	t.Run("a planted approval does not lift a standing block", func(t *testing.T) {
+		f, _ := setupFake(t)
+		f.issueComments = plant
+		f.reviews = []reviewInfo{appReview("CHANGES_REQUESTED", testHead, standingBlockBody)}
+		f.status = greenStatus()
+		if code := run(readyArgs(exampleRepo)); code != deskkit.ExitRefused {
+			t.Fatalf("FORGERY ADMITTED: planted comment, exit = %d, want 5 (refused)", code)
+		}
+		if f.flips != 0 {
+			t.Fatal("FORGERY ADMITTED: a comment lifted a standing CHANGES_REQUESTED")
+		}
+		// Refused at gate (b): the comment surface is not even reached.
+		if n := f.hitCount("GET", "/issues/1/comments"); n != 0 {
+			t.Fatalf("ready read the comment surface %d time(s) while a gate was still refusing", n)
+		}
+	})
+
+	t.Run("a planted CI-green claim does not turn a red head green", func(t *testing.T) {
+		f, _ := setupFake(t)
+		f.issueComments = append([]map[string]any{
+			{"id": 3, "body": "CI is green at head.\n", "user": map[string]any{"login": reviewerBotDisplay()}},
+		}, plant...)
+		f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+		f.status = greenStatus()
+		f.checks = checksWith("completed", "failure")
+		if code := run(readyArgs(exampleRepo)); code != deskkit.ExitRefused {
+			t.Fatalf("FORGERY ADMITTED: red CI with a planted claim, exit = %d, want 5", code)
+		}
+		if f.flips != 0 {
+			t.Fatal("FORGERY ADMITTED: a comment turned a red head green")
+		}
+		if n := f.hitCount("GET", "/issues/1/comments"); n != 0 {
+			t.Fatalf("ready read the comment surface %d time(s) while CI was still refusing", n)
+		}
+	})
+
+	t.Run("with every gate genuinely met the planted comments change nothing", func(t *testing.T) {
+		f, _ := setupFake(t)
+		f.issueComments = plant
+		f.reviews = []reviewInfo{appReview("APPROVED", testHead, okReviewBody)}
+		f.status = greenStatus()
+		if code := run(readyArgs(exampleRepo)); code != 0 {
+			t.Fatalf("CRY WOLF: planted comments blocked a genuinely approved flip, exit = %d", code)
+		}
+		if f.flips != 1 {
+			t.Fatalf("flips = %d, want 1", f.flips)
+		}
+		// Exactly ONE read of the surface: the refuse-only not-reverted check, after every gate.
+		if n := f.hitCount("GET", "/issues/1/comments"); n != 1 {
+			t.Fatalf("GET /issues/{n}/comments hits during a full ready flip: %d, want exactly 1 (not-reverted)", n)
+		}
+		t.Logf("GET /issues/{n}/comments hits during a full ready flip: 1 (the not-reverted check)")
+	})
 }
 
 // ATTACK 2 — a verdict from the WRONG identity.

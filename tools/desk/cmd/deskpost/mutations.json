@@ -60,6 +60,30 @@
       "file": "cmd/deskpost/ready.go",
       "old": "out := clearedByExternalPrereq(grantReviews, head,",
       "new": "out := clearedByExternalPrereq(reviews, head,"
+    },
+    {
+      "name": "#6254: drop the not-reverted refusal on the FLIP path (a head the post-flip check already reverted is flipped again via deskpost ready — reddens TestReadyNotRevertedRefusesHead)",
+      "file": "cmd/deskpost/ready.go",
+      "old": "\t\tif reason, held := deskkit.NotRevertedHold(comments, pr, head, short(head)); held {",
+      "new": "\t\tif reason, held := deskkit.NotRevertedHold(comments, pr, head, short(head)); false && held {"
+    },
+    {
+      "name": "#6254: an unreadable comment thread reads as not-reverted (the check fails OPEN — reddens TestReadyNotRevertedUnreadableFailsClosed)",
+      "file": "cmd/deskpost/ready.go",
+      "old": "\t\tcomments, err := client.listChangeComments(pr)\n\t\tif err != nil {",
+      "new": "\t\tcomments, err := client.listChangeComments(pr)\n\t\tif false && err != nil {"
+    },
+    {
+      "name": "#6254: the comment read stops after page one (a revert comment on a long thread is missed — reddens TestReadyNotRevertedReadsEveryPage)",
+      "file": "cmd/deskpost/github.go",
+      "old": "\t\tif len(chunk) < 100 {\n\t\t\tbreak\n\t\t}\n\t}\n\treturn out, nil\n}\n\n// fetchPRTrustPayload",
+      "new": "\t\tbreak\n\t}\n\treturn out, nil\n}\n\n// fetchPRTrustPayload"
+    },
+    {
+      "name": "#6254: the revert marker is honoured from ANY author (a stranger holds a head out of ready — reddens TestReadyNotRevertedIgnoresStranger)",
+      "file": "internal/deskkit/readybackstop.go",
+      "old": "if TrustedAuthor(c.Author.Login) && HasReadyBackstopRevert(c.Body, head)",
+      "new": "if HasReadyBackstopRevert(c.Body, head)"
     }
   ]
 }

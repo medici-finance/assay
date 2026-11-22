@@ -1046,6 +1046,47 @@ func (c *ghClient) listCommentBodies(pr int) ([]string, error) {
 	return out, nil
 }
 
+// issueCommentRow is one entry of GET /issues/{n}/comments with the fields the not-reverted
+// check needs: who wrote it (the marker is honoured only from a trusted identity), the body, and
+// a reference to name in the refusal.
+type issueCommentRow struct {
+	ID      int64  `json:"id"`
+	Body    string `json:"body"`
+	HTMLURL string `json:"html_url"`
+	User    struct {
+		Login string `json:"login"`
+		ID    int64  `json:"id"`
+	} `json:"user"`
+}
+
+// listChangeComments returns EVERY comment on the PR, walking all pages in order. It serves
+// `ready`'s refuse-only not-reverted check and nothing else (medici-finance/assay#6254): the
+// post-flip backstop's revert comment is posted last, so a read of the first page alone would
+// miss it on a long thread and read as "not reverted". A page that cannot be read fails the whole
+// read, and the caller refuses could-not-check.
+func (c *ghClient) listChangeComments(pr int) ([]deskkit.Comment, error) {
+	var out []deskkit.Comment
+	for page := 1; ; page++ {
+		var chunk []issueCommentRow
+		path := fmt.Sprintf("/repos/%s/%s/issues/%d/comments?per_page=100&page=%d", c.owner, c.repo, pr, page)
+		if err := c.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+			return nil, err
+		}
+		for _, r := range chunk {
+			out = append(out, deskkit.Comment{
+				DatabaseID: r.ID,
+				Author:     deskkit.Account{Login: r.User.Login, ID: r.User.ID},
+				Body:       r.Body,
+				URL:        r.HTMLURL,
+			})
+		}
+		if len(chunk) < 100 {
+			break
+		}
+	}
+	return out, nil
+}
+
 // fetchPRTrustPayload runs the trust-gate GraphQL QUERY (deskkit.PRTrustQuery) and
 // returns the raw response body for deskkit.ParsePRTrustPayload. A read, not a
 // mutation — GraphQL rides POST but changes nothing.
