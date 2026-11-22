@@ -379,10 +379,15 @@ func TestS2ShapeCertifyIsAnd(t *testing.T) {
 
 // regression: #3159
 func TestS2ShapeNoWordBoundary(t *testing.T) {
+	// The escape is assembled, never written: a literal here would be the very hit the
+	// source scan below exists to report.
+	bans := []string{`\` + "b", `\` + "B"}
 	for _, r := range leakShapeRules {
 		src := r.re.String()
-		if strings.Contains(src, `\b`) || strings.Contains(src, `\B`) {
-			t.Errorf("%s rule uses a word-boundary escape: %s", r.shape, src)
+		for _, ban := range bans {
+			if strings.Contains(src, ban) {
+				t.Errorf("%s rule uses a word-boundary escape: %s", r.shape, src)
+			}
 		}
 		if r.canary == "" {
 			t.Errorf("%s rule has no canary — its silence would prove nothing", r.shape)
@@ -395,6 +400,31 @@ func TestS2ShapeNoWordBoundary(t *testing.T) {
 	for _, s := range AllLeakShapes {
 		if !seen[s] {
 			t.Errorf("shape %s has no rule", s)
+		}
+	}
+
+	// The ban covers the stage's own source bytes too — comments, raw strings and fixtures
+	// included — the same plain substring a reader's fixed-string grep applies, so a copy of
+	// any line into another engine cannot carry the escape. Every leakshape* file in this
+	// package is read, so a new file of the stage is covered without editing this list.
+	files, err := filepath.Glob("leakshape*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(files) < 2 {
+		t.Fatalf("source scan found %d leakshape* files, want the stage and its test: %v", len(files), files)
+	}
+	for _, f := range files {
+		raw, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatalf("could-not-check %s: %v", f, err)
+		}
+		for i, line := range strings.Split(string(raw), "\n") {
+			for _, ban := range bans {
+				if strings.Contains(line, ban) {
+					t.Errorf("%s:%d carries a word-boundary escape: %s", f, i+1, strings.TrimSpace(line))
+				}
+			}
 		}
 	}
 }
