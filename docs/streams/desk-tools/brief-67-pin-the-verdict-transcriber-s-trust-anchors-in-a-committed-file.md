@@ -1,5 +1,5 @@
 ---
-brief: assay:assay:desk-tools:66
+brief: assay:assay:desk-tools:67
 title: Pin the verdict transcriber's trust anchors in a committed file
 why: >-
   The verdict transcriber lands verified rows on main from a signed verdict issue. It decides
@@ -38,15 +38,15 @@ exec-tier: strong
 exec-tier-why: "It changes the input of a trust control, must fail closed on every missing, malformed or disagreeing anchor, and the file read, the equality check and the fallback must agree on one normal form."
 domain: complicated
 consumers:
-  - "statusgen/rosterconfig.go: follow-up desk-tools/66 (this brief; scanReadRawConfig gains the committed-file read ahead of the Actions environment read for the CI class)"
-  - "statusgen/transcribeverdict.go: follow-up desk-tools/66 (this brief; the transcriber's three anchor reads go through the one pinned reader and refuse on a disagreement)"
-  - "statusgen/main.go: follow-up desk-tools/66 (this brief; the --pubkey flag is checked against the pinned key when the file exists)"
-  - "docs/contracts.md: follow-up desk-tools/66 (this brief; the transcriber's configuration contract names the file and the precedence)"
+  - "statusgen/rosterconfig.go: follow-up desk-tools/67 (this brief; scanReadRawConfig gains the committed-file read ahead of the Actions environment read for the CI class)"
+  - "statusgen/transcribeverdict.go: follow-up desk-tools/67 (this brief; the transcriber's three anchor reads go through the one pinned reader and refuse on a disagreement)"
+  - "statusgen/main.go: follow-up desk-tools/67 (this brief; the --pubkey flag is checked against the pinned key when the file exists)"
+  - "docs/contracts.md: follow-up desk-tools/67 (this brief; gains a section naming the file and the precedence, as the planned transcriber configuration contract)"
   - "statusgen/evaluation/witness.go: out-of-scope (the witness record binds a verdict's outcome, not the transcriber's anchors)"
   - "the other roster entries (trusted logins, the remaining bot slugs): out-of-scope (they stay as Actions configuration, the residual this brief does not claim to close)"
 ---
 
-# Brief 66 — Pin the verdict transcriber's trust anchors in a committed file
+# Brief 67 — Pin the verdict transcriber's trust anchors in a committed file
 
 ## Dependencies
 - No typed edge. The transcriber, the roster reader and the CI class all exist on main.
@@ -59,7 +59,7 @@ files:
 - `statusgen/rosterconfig.go` — `scanReadRawConfig`, `scanRosterReadKeys`, the `ASSAY_BLESS_LOGIN` parse
 - `statusgen/transcribeverdict.go` — `verdictPubkeyVar`, `verdictResolvePubkey`, `verdictVerifierIdentity`, `transcribeVerdictEnactmentGate`, `runTranscribeVerdict`
 - `statusgen/main.go` — the `--pubkey` flag
-- `docs/contracts.md` — the transcriber's configuration contract
+- `docs/contracts.md` — the destination (Task step 8) for the transcriber's configuration contract, which does not exist today
 - `docs/streams/desk-tools/brief-30-verify-desk-landing-by-verdict-issue.md` — the accepted residual
 - **add** — `statusgen/trustanchors.go` (planned), `statusgen/trustanchors_test.go` (planned), `statusgen/trustanchors-mutations.json` (planned)
 - **add** — the pinned anchors file at the path the answer names (planned)
@@ -95,12 +95,12 @@ facts:
   live only in a workflow here. It has to be a property of the transcriber, so it holds wherever
   the transcriber runs.
 - `runTranscribeVerdict` already refuses with exit 2 when the roster is unconfigured or no
-  verifier is bound (`transcribeverdict.go:945-1000`). A disagreement between the file and the
+  verifier is bound (the `transcribeVerdictEnactmentGate` doc comment near `:949` and the `verdictVerifierIdentity` refusal in `runTranscribeVerdict`, near `:1003-1006`; cite by expression, the lines are a convenience). A disagreement between the file and the
   environment is the same class of refusal.
 
 design-fit:
   owner: statusgen/trustanchors.go (planned) is the one reader the three anchor reads share
-  contract: S-trust-roster
+  contract: S-identity (roster lexical/schema interpretation stays with `deskcore/trust`; this brief changes only which source the three anchor values are read from, and `S-decision-acceptance` still owns `transcribeVerdictEnactmentGate`)
   retires: [the direct environment read of the three anchors inside the transcriber, once the pinned reader owns it]
   weight: "verbs 0, flags 0, refusals 4 (malformed file, disagreement, flag disagreement, file read outside the base tree), one committed file"
   why-add: "One reader that knows both sources replaces three separate environment reads. A disagreement has one named refusal instead of the lane quietly trusting whichever source it read first."
@@ -145,6 +145,9 @@ Questions the answer must also settle, with the recommended default first:
   whoever may merge a change to the file. Whether that file also needs an owner rule or a
   branch-protection path rule is a repository-settings change this brief does not make. The
   answer says whether to file it separately.
+- **Who can merge the file.** The answer also covers automated merge lanes: any lane that can
+  merge without a human must exclude the pinned file's path, or the boundary moves to that lane's
+  identity instead of a reviewed human merge.
 - **Scope of the pin.** Only the three anchors. The trusted-login list and the other bot slugs
   stay Actions configuration, and the brief says so rather than implying the roster is pinned.
 
@@ -161,7 +164,11 @@ control reads from and a default must not do that. Option 1 is the recommendatio
   names an anchor the Actions copy contradicts refuses. A missing anchor is could-not-check,
   never trust.
 - The file is read from the tree the transcriber lands onto, never from a pull-request head, an
-  issue body or a verdict payload. A file path outside `root` refuses.
+  issue body or a verdict payload. A file path outside `root` refuses. The check applies to the
+  resolved path: a symlink or a non-regular file at the pinned path refuses, so a committed link
+  cannot point the read outside the landed tree.
+- A file that repeats an anchor key is malformed and refuses. Each of the three keys appears
+  exactly once.
 - The pinned values are public material: a login, a bot slug with its numeric id, and a PEM
   public key. The file carries no secret and the check never prints one.
 - The signature check, the author check, the enactment gate's other clauses, the network-off
@@ -176,7 +183,8 @@ control reads from and a default must not do that. Option 1 is the recommendatio
    same key are equal.
 2. Read the committed file from `root` at the path the answer names. Absent: return the
    environment values, each with source `environment`. Present: the file's values are the
-   anchors. Present but unreadable, malformed, or naming an unknown key: refuse.
+   anchors. Present but unreadable, malformed (including a repeated anchor key), a symlink or
+   non-regular file, or naming an unknown key: refuse.
 3. When the file is present and an Actions copy of the same anchor is set and differs after
    normalisation, refuse and name the anchor. An Actions copy that is unset is not a
    disagreement. A set copy that equals the file is not a disagreement.
@@ -218,10 +226,10 @@ the parent of the delivering merge.
 | # | Class | Command | Expect |
 |---|---|---|---|
 | 1 | check:ci +flow | `test -f statusgen/trustanchors_test.go && L=$(mktemp) && cd statusgen && go test . -run '^TestTrustAnchors' -count=1 -v > "$L" 2>&1 && grep -F -e '--- PASS: TestTrustAnchorsFileWins ' "$L" && grep -F -e '--- PASS: TestTrustAnchorsEnvFallback ' "$L" && grep -F -e '--- PASS: TestTrustAnchorsDisagreeRefuses ' "$L" && grep -F -e '--- PASS: TestTrustAnchorsMalformedRefuses ' "$L" && grep -F -e '--- PASS: TestTrustAnchorsUnsetCopyAgrees ' "$L" && grep -F -e '--- PASS: TestTrustAnchorsKeyFormsEqual ' "$L" && grep -F -e '--- PASS: TestTrustAnchorsFlagDisagreeRefuses ' "$L" && grep -F -e '--- PASS: TestTrustAnchorsSourceLine ' "$L" && ! grep -F -e '--- FAIL' "$L"` | exit 0; risk-bearing; the file is the source when present, the environment is read when it is absent and the source line says so, a differing Actions copy refuses and names the anchor, an unset copy and an equal copy do not, a PEM string and a base64-of-PEM value for one key compare equal, and a differing `--pubkey` refuses. The log is a fresh `mktemp` file and every grep runs only after the suite passed, so a red suite or a stale log fails the row. Red at the delivery base (no such test file) |
-| 2 | check:ci +neighbour | `L=$(mktemp) && cd statusgen && go test . -run 'TranscribeVerdict' -count=1 && go test . -run 'Roster' -count=1 && go test . -run 'Verdict' -count=1 -v > "$L" 2>&1 && ! grep -F -e '--- FAIL' "$L"` | exit 0; risk-bearing; the existing transcriber, roster and verdict suites pass unchanged beside the new reader, so a repository with no pinned file behaves as before. Every link is chained with `&&` into a fresh `mktemp` log |
+| 2 | check:ci +neighbour | `L=$(mktemp) && cd statusgen && go test . -run 'TranscribeVerdict' -count=1 -v > "$L" 2>&1 && grep -q -F -e '--- PASS' "$L" && ! grep -F -e '--- FAIL' "$L" && go test . -run 'Roster' -count=1 -v > "$L" 2>&1 && grep -q -F -e '--- PASS' "$L" && ! grep -F -e '--- FAIL' "$L" && go test . -run 'Verdict' -count=1 -v > "$L" 2>&1 && grep -q -F -e '--- PASS' "$L" && ! grep -F -e '--- FAIL' "$L"` | exit 0; risk-bearing; the existing transcriber, roster and verdict suites each run at least one passing test and none fails, unchanged beside the new reader, so a repository with no pinned file behaves as before. Every link is chained with `&&` into a fresh `mktemp` log |
 | 3 | check:ci +mutation | `T=$(mktemp -d) && (cd tools/desk && go build -o "$T/muhar" ./cmd/muhar) && cd statusgen && "$T/muhar" -spec trustanchors-mutations.json -j 4 > "$T/out" 2>&1; rc=$?; L=$(tail -1 "$T/out"); echo "$L"; [ $rc -eq 0 ] && grep -F -e 'positive control CAUGHT' "$T/out" && [ "$L" = 'Totals: 5 caught, 0 NOT CAUGHT, 0 could-not-mutate.' ]` | exit 0; risk-bearing; the five mutants (file ignored, disagreement skipped, environment copy preferred over the file, key forms compared as text, flag skipped) and the positive control are caught, so each fail-closed rule has a test that fires. Red at the delivery base (no spec) |
-| 4 | check +dereference | `test -n "${PINNED_FILE:-}" && test -f "$PINNED_FILE" && [ "$(grep -c -e '^ASSAY_BLESS_LOGIN=' -e '^ASSAY_VERIFIER_PUBKEY=' -e '^ASSAY_TRUSTED_BOT_SLUGS=' "$PINNED_FILE")" = 3 ] && ! grep -q -e 'PRIVATE KEY' "$PINNED_FILE"` | exit 0; risk-bearing; the committed file carries exactly the three anchors and no private key. `PINNED_FILE` is the path the answer names, set by the verifier from the recorded answer |
-| 5 | check +flow +dereference | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && ! grep -q -e '[:] follow-up ' docs/streams/desk-tools/brief-66-pin-the-verdict-transcriber-s-trust-anchors-in-a-committed-file.md && o=$(mktemp) && statusgen --root . --consumers --brief desk-tools/66 --delivery "$DELIVERY_HEAD" --base "$DELIVERY_BASE" > "$o" 2>&1; grep -F -e ' 0 disproved, 0 unchecked' "$o"` | exit 0; risk-bearing; every consumer is in the delivering diff |
+| 4 | check +dereference | `test -n "${PINNED_FILE:-}" && test -f "$PINNED_FILE" && [ "$(grep -c -e '^ASSAY_BLESS_LOGIN=' "$PINNED_FILE")" = 1 ] && [ "$(grep -c -e '^ASSAY_VERIFIER_PUBKEY=' "$PINNED_FILE")" = 1 ] && [ "$(grep -c -e '^ASSAY_TRUSTED_BOT_SLUGS=' "$PINNED_FILE")" = 1 ] && ! grep -q -e 'PRIVATE KEY' "$PINNED_FILE"` | exit 0; risk-bearing; the committed file carries each of the three anchors exactly once and no private key. `PINNED_FILE` is the path the answer names, set by the verifier from the recorded answer; the row re-baselines under rule 14 once the answer is recorded |
+| 5 | check +flow +dereference | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && ! grep -q -e '[:] follow-up ' docs/streams/desk-tools/brief-67-pin-the-verdict-transcriber-s-trust-anchors-in-a-committed-file.md && o=$(mktemp) && statusgen --root . --consumers --brief desk-tools/67 --delivery "$DELIVERY_HEAD" --base "$DELIVERY_BASE" > "$o" 2>&1; grep -F -e ' 0 disproved, 0 unchecked' "$o"` | exit 0; risk-bearing; every consumer is in the delivering diff |
 
 ## Threat model and detection
 

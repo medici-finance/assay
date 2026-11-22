@@ -243,7 +243,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 63 | [Admit the open false-positive shapes as registry entries, each with the refusals that bound it, and cap word-shaped admission](brief-63-registry-acceptance-shapes.md) | 2 | L | todo | — | — |
 | 64 | [Decide which lines of a branch diff the secret scan reads, and pin the answer](brief-64-diff-scan-scope.md) | 2 | M | todo | — | — |
 | 65 | [Read each Verify row's disposition from a field the verifier tooling writes, not from Evidence prose](brief-65-structured-verify-disposition.md) | 1 | L | todo | — | — |
-| 66 | [Pin the verdict transcriber's trust anchors in a committed file](brief-66-pin-the-verdict-transcriber-s-trust-anchors-in-a-committed-file.md) | 1 | M | todo | — | — |
+| 67 | [Pin the verdict transcriber's trust anchors in a committed file](brief-67-pin-the-verdict-transcriber-s-trust-anchors-in-a-committed-file.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -279,7 +279,7 @@ See "Secret-scan class — 10 November 2026" below.
 
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
-  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60, /61, /62, /65, /66 (all independent; parallelizable). desk-tools/06
+  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60, /61, /62, /65, /67 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 - **Wave 2** — desk-tools/35 (depends on desk-tools/34), desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
@@ -566,7 +566,7 @@ that as an accepted residual and named the pin as the follow-up. #2354 asks for 
 
 | Brief | What it does | Gate |
 |---|---|---|
-| [66](brief-66-pin-the-verdict-transcriber-s-trust-anchors-in-a-committed-file.md) | Adds a committed file on main holding the three anchors. The transcriber reads it first and refuses, naming the anchor, when the Actions copy is set and differs. The Actions read stays as the fallback for an installation with no file, and the report says which source was used. The path, where the equality check runs and whether the file needs an owner rule are the open questions. The trusted-login list and the other bot slugs stay Actions configuration | human, decision at creation: it changes where a trust control reads its anchors from |
+| [67](brief-67-pin-the-verdict-transcriber-s-trust-anchors-in-a-committed-file.md) | Adds a committed file on main holding the three anchors. The transcriber reads it first and refuses, naming the anchor, when the Actions copy is set and differs. The Actions read stays as the fallback for an installation with no file, and the report says which source was used. The path, where the equality check runs and whether the file needs an owner rule are the open questions. The trusted-login list and the other bot slugs stay Actions configuration | human, decision at creation: it changes where a trust control reads its anchors from |
 
 This brief narrows one residual and does not claim to remove the trust boundary. It moves it from
 "write access to Actions configuration" to "a merged pull request that edits the file".
