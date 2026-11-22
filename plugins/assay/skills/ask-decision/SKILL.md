@@ -236,7 +236,9 @@ restate it.
   a `DRY_RUN=0` left over from the previous act, or exported in the driver's profile, would
   make the next block act on its first paste. A mutating step passes the tool's `--dry-run`
   while `DRY_RUN=1` and drops it only on the live call; a tool with no `--dry-run` goes
-  through the `run` guard, which only prints while `DRY_RUN=1`. So pasting the block only
+  through `run`. Define the guard inside the act function, after setting `DRY_RUN`:
+  `run() { if [ "$DRY_RUN" = 0 ]; then "$@"; else printf 'would run %s\n' "$1"; fi; }`.
+  Call it as `run tool arg ...`. Its preview prints only the program name. So pasting the block only
   reports what it would do, and the driver acts by typing `driver_act_<id> live`. Nothing the
   function sets outlives the call.
 - **In a live walk, one live line per step instead.** When the desk is in the session with
