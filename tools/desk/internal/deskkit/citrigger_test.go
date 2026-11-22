@@ -352,6 +352,7 @@ func ciCrossModuleRegistry() []ciEntry {
 	// shared step, and the partition script refuses a split that drops or
 	// repeats a package (.github/scripts/go-test-shard.py).
 	floorJob := ciJobRef{id: "build-test-shard", matrixValue: "rest", check: "build-test-shard (rest)"}
+	loopadminJob := ciJobRef{id: "loopadmin-postgres", check: "loopadmin-postgres"}
 	deskFloorJob := ciJobRef{id: "build-test-shard", matrixValue: "desk-1", check: "build-test-shard (desk-1)"}
 	deskShardInvokes := []string{"go-test-shard.py --shards", `cd tools/desk && go test "${pkgs[@]}"`}
 
@@ -489,9 +490,9 @@ func ciCrossModuleRegistry() []ciEntry {
 			why:        "the review observation wire schema must qualify against its actual internal Go decoder and planner; the unconditional desk module test job runs on schema-only changes"},
 		{
 			test: "loopadmin/runner/request_test.go", module: "loopadmin",
-			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			workflow: ".github/workflows/ci.yml", prJob: loopadminJob, pushJob: loopadminJob,
 			reads:      []string{"perfrec/"},
-			runInvokes: []string{`*/loopadmin|loopadmin) extra="GOWORK=off go test ./..." ;;`},
+			runInvokes: []string{"cd loopadmin", "go test -count=1 -race -v ./..."},
 			why:        "Runner dependency isolation observes the exact local perfrec module closure through go list; the unfiltered source workflow executes its suite after any producer or dependency edit.",
 		},
 		{
