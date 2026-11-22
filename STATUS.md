@@ -152,7 +152,7 @@ _Held by per-stream caps: 21 brief(s) across 3 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 236854c9d 2026-11-22T22:31:06Z_
+_last regen: 56f127538 2026-11-22T23:11:38Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +173,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 236854c9d 2026-11-22T22:31:06Z_
+_last regen: 56f127538 2026-11-22T23:11:38Z_
 
 **Progress:** 37/100 brief items done.
 
@@ -475,7 +475,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
-| graph-execution | 36 [exec:strong] | implemented | 21030 | 38 | 3d | verify-desk | triage, then re-bucket | — | — |
+| graph-execution | 36 [exec:strong] | implemented | 21030 | 38 | 4d | verify-desk | triage, then re-bucket | — | — |
 | tool-refactoring | 05 [exec:strong] | implemented | 3010 | 2 | 26h | verify-desk | triage, then re-bucket | — | — |
 | tool-refactoring | 06 [exec:strong] | implemented | 3010 | 2 | 45h | verify-desk | triage, then re-bucket | — | — |
 | composability | 02 | implemented | 2570 | 3 | 7d | verify-desk | triage, then re-bucket | — | — |
