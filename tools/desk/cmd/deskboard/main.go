@@ -233,9 +233,10 @@ func executeRecorded(args []string, stdout, stderr io.Writer, pre func(io.Writer
 			}
 			if name == "change" || name == "reviews" || name == "diff" || name == "files" {
 				cmd.Use += " <repo> <pr>"
-				if name == "files" {
+				switch name {
+				case "files":
 					cmd.Use += " [path]"
-				} else if name == "change" {
+				case "change":
 					cmd.Use += " [expected-head]"
 				}
 				cmd.Args = func(c *cobra.Command, a []string) error {
@@ -411,7 +412,11 @@ func runBoard(sub string, rest, args []string, o boardOptions, stdout, stderr io
 	}
 	if wantTable {
 		printBanners(stderr, hdr)
-		rep.render(out)
+		if err := rep.table(out); err != nil {
+			logRun(sub, deskkit.ResultUnverifiable, "table: "+err.Error())
+			_, _ = fmt.Fprintln(stderr, "deskboard: table write failed:", err)
+			return deskkit.ExitUnverifiable
+		}
 	} else {
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")

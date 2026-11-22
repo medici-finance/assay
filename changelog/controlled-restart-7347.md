@@ -1,1 +1,0 @@
-- The offline Kubernetes controlled-restart suite checks that an explicit restart creates a new execution, preserves a test file, and holds replacement when the previous execution is uncertain.

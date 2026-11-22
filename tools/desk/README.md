@@ -2272,6 +2272,33 @@ not fatal**: `statusgenSkew` in the JSON header and a `WARN` line on `--table`.
 `--gate-scores` is per-root regardless of statusgen version, so refusing would cost
 availability for no correctness gain — but the skew stays visible so it cannot rot.
 
+## Delivering human inbox changes
+
+A polling consumer can use `deskinbox changes --consumer morning-inbox owner/repo`.
+Use the same consumer name and repository set across sessions. Repository order and
+duplicate arguments do not affect the cursor. Each successful read returns a JSON
+object with an `events` array. A nonempty batch includes a `receipt`.
+
+- `ready` offers a newly actionable human request.
+- `changed` replaces an earlier offer when its act or evidence changes.
+- `withdrawn` cancels an earlier offer by issue ID and omits the obsolete action.
+- `reminder` repeats an acknowledged, outstanding act after an optional interval,
+  such as `--remind-after 24h`. The interval starts again at acknowledgement.
+
+After the **whole batch** reaches its destination, the consumer runs
+`deskinbox changes --consumer morning-inbox --ack RECEIPT owner/repo`. Reading
+alone leaves delivery pending. If a process restarts or a delivery fails, poll
+again. A newer observation can supersede the pending receipt. The consumer
+can use each event's stable issue ID to update or withdraw a previously displayed
+request. An empty array requires no delivery or acknowledgement.
+
+A failed discovery or unverifiable item produces a nonzero exit and preserves
+the cursor. Acknowledgement uses local state and requires no new forge read.
+A corrupt cursor error names its file in the desk state directory under
+`inbox-changes/<scope>/cursor.json`. To recover, pause that consumer, move the
+named file aside for inspection and resume polling. The next complete poll
+offers every currently ready act again.
+
 ## deskboard `--delta` / `--quiet` — console discipline
 
 The standing desk windows sweep the board every loop and print the whole thing each time,

@@ -1,0 +1,1 @@
+- `deskinbox changes` emits newly ready or changed human actions and withdraws stale requests. Each consumer can acknowledge delivery, replay outstanding events, and opt into reminders.

@@ -47,7 +47,7 @@ func openInteractionClient(t *testing.T, w *cliWorld, role string) *interactionC
 	if err = c.cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	s.Close()
+	_ = s.Close()
 	go func() {
 		defer close(c.lines)
 		scan := bufio.NewScanner(output)
@@ -62,7 +62,7 @@ func openInteractionClient(t *testing.T, w *cliWorld, role string) *interactionC
 		}
 		c.done <- err
 	}()
-	t.Cleanup(func() { cancel(); m.Close() })
+	t.Cleanup(func() { cancel(); _ = m.Close() })
 	return c
 }
 func (c *interactionClient) size(t *testing.T, cols, rows uint16) {
