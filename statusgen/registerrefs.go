@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // registerLinkRe matches a markdown link whose text is a typed register ID:
@@ -412,7 +414,7 @@ func isVerifyHeaderRow(trimmed string) bool {
 		return false
 	}
 	cmd, exp := false, false
-	for _, c := range splitRowEscaped(trimmed) {
+	for _, c := range briefdoc.SplitRowEscaped(trimmed) {
 		switch strings.ToLower(strings.TrimSpace(c)) {
 		case "command":
 			cmd = true

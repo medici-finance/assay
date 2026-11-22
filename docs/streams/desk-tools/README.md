@@ -212,7 +212,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 30 | [verify-desk lands verdicts through the verdict-transcription lane; `deskevidence` demoted to break-glass](brief-30-verify-desk-landing-by-verdict-issue.md) | 1 | M | todo | — | — |
 | 31 | [The correctness lane carries a coverage contract — a named bug-class register every class of which is accounted in the verdict body (finding, checked-clean, n/a with a reason, or could-not-check)](brief-31-correctness-lane-coverage-contract.md) | 1 | M | implemented | — | — |
 | 33 | [An author's explicit disposition on a finding is final for the reviewer — accept it or escalate it once, never spend a round re-stating it](brief-33-author-disposition-finality.md) | 1 | S | todo | — | — |
-| 34 | [Pinned golangci-lint across every Go module](brief-34-pinned-golangci-lint-across-every-go-module.md) | 1 | M | todo | — | — |
+| 34 | [Pinned golangci-lint across every Go module](brief-34-pinned-golangci-lint-across-every-go-module.md) | 1 | M | implemented | — | — |
 | 35 | [Go security analysis with gosec and govulncheck](brief-35-go-security-analysis-with-gosec-and-govulncheck.md) | 2 | L | todo | — | — |
 | 36 | [The scheduled board reconcile's PR class becomes generated output — auto-approve lane (default) or direct-CI single-writer, per the driver's ruling on #2688](brief-36-reconcile-generated-class.md) | 1 | S | implemented | — | — |
 | 37 | [Review workflow semantic oracle and matched cost baseline](brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md) | 1 | M | verified | 2026-11-19 assay-verifier-app[bot] @ 62a6169dc364 (claude-opus-5-5) | — |

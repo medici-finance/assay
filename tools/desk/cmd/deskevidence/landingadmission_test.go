@@ -298,7 +298,7 @@ func TestVerifierEvidenceLandingFormAdmitted(t *testing.T) {
 	})
 
 	record := filepath.Join(t.TempDir(), "outcome.json")
-	writeFixtureFile(t, record, `{"brief":"x/01","ts":"2026-10-06T00:00:00Z","outcome":"verified","sha":"0000002"}`)
+	writeFixtureFile(t, record, `{"brief":"x/01","ts":"2026-10-06T00:00:00Z","outcome":"verified","digest":"0123456789abcdef"}`)
 	t.Run("refresh-files-only-keeps-admission", func(t *testing.T) {
 		// The documented refresh: the landed brief replaces the home's copy; HEAD stays.
 		writeFixtureFile(t, filepath.Join(home, brief), api.files[brief])
@@ -309,7 +309,7 @@ func TestVerifierEvidenceLandingFormAdmitted(t *testing.T) {
 	t.Run("moving-home-head-refuses", func(t *testing.T) {
 		lf.git(t, "commit", "-q", "--allow-empty", "-m", "newer main")
 		before := len(api.puts)
-		writeFixtureFile(t, record, `{"brief":"x/01","ts":"2026-10-06T00:00:01Z","outcome":"verified","sha":"0000002"}`)
+		writeFixtureFile(t, record, `{"brief":"x/01","ts":"2026-10-06T00:00:01Z","outcome":"verified","digest":"0123456789abcdef"}`)
 		if code := land("--root", home, "--outcome-record", record); code == 0 {
 			t.Fatal("landing after moving the home's HEAD was admitted")
 		}

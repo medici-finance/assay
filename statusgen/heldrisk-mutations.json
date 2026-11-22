@@ -18,6 +18,18 @@
       "file": "heldscope.go",
       "old": "regexp.MustCompile(`^` + heldRiskStateDecl +",
       "new": "regexp.MustCompile(heldRiskStateDecl +"
+    },
+    {
+      "name": "positional mapping accepts fewer outcomes than exit codes",
+      "file": "heldscope.go",
+      "old": "end <= m[3] && strings.Count(meaning[m[2]:m[3]], \"/\")+1 == len(codes)",
+      "new": "end <= m[3]"
+    },
+    {
+      "name": "numbered outcome table ignores the declared exit code",
+      "file": "heldscope.go",
+      "old": "if code != strings.TrimSpace(codes[i]) {",
+      "new": "if code == \"\" && code != strings.TrimSpace(codes[i]) {"
     }
   ]
 }

@@ -137,23 +137,17 @@ const PRsUnknownReasonNoPRDelivery = "no-pr-delivery"
 
 // Row result vocabulary of row_results.
 const (
-	RowPass        = "pass"
-	RowFail        = "fail"
-	RowCouldNotRun = "could-not-run"
-	RowDeferred    = "deferred"
+	RowPass        = evaluation.RowPass
+	RowFail        = evaluation.RowFail
+	RowCouldNotRun = evaluation.RowCouldNotRun
+	RowDeferred    = evaluation.RowDeferred
 )
 
 // ValidPRsUnknownReason reports whether s is in the closed prs_unknown_reason set.
 func ValidPRsUnknownReason(s string) bool { return s == PRsUnknownReasonNoPRDelivery }
 
 // ValidRowResult reports whether s is in the closed row_results result set.
-func ValidRowResult(s string) bool {
-	switch s {
-	case RowPass, RowFail, RowCouldNotRun, RowDeferred:
-		return true
-	}
-	return false
-}
+func ValidRowResult(s string) bool { return evaluation.ValidRowResult(s) }
 
 // ParseWakeReceipt unmarshals one JSONL sidecar line into a receipt. A malformed line, or one
 // with no brief key, is not a receipt (ok=false) — the caller skips it exactly as the legacy
@@ -168,9 +162,7 @@ func ParseWakeReceipt(line []byte) (WakeReceipt, bool) {
 
 // IsFailedOrBlocked reports whether the receipt's observed outcome is one this brief's wake
 // scheduling governs. A verified outcome is the stuck-flip lane's concern, not this one.
-func (r WakeReceipt) IsFailedOrBlocked() bool {
-	return evaluation.ParseVerificationOutcome(r.Outcome).NeedsWake()
-}
+func (r WakeReceipt) IsFailedOrBlocked() bool { return evaluation.IsFailedOrHeld(r.Outcome) }
 
 // Complete reports whether the receipt carries a full, well-formed verify-wake-v1 payload: the
 // schema tag, a stable ID, a KNOWN blocker kind and a KNOWN wake predicate, plus the predicate's

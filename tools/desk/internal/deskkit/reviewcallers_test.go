@@ -14,7 +14,7 @@ import (
 func TestReviewCallerFlow(t *testing.T) {
 	cmd := exec.Command("go", "test", "-count=1", "-v", "-run", "^TestReviewDriverParity$", "./internal/reviewtest")
 	cmd.Dir = filepath.Join("..", "..")
-	out, err := cmd.CombinedOutput()
+	out, err := offlineFixtureGo(t, cmd).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "--- PASS: TestReviewDriverParity ") {
 		t.Fatalf("production caller flow: %v\n%s", err, out)
 	}
@@ -23,7 +23,7 @@ func TestReviewCallerFlow(t *testing.T) {
 func TestReviewCallerRollback(t *testing.T) {
 	cmd := exec.Command("go", "test", "-count=1", "-v", "-run", "^TestReviewCallerFaults$", "./internal/reviewtest")
 	cmd.Dir = filepath.Join("..", "..")
-	out, err := cmd.CombinedOutput()
+	out, err := offlineFixtureGo(t, cmd).CombinedOutput()
 	if err != nil || !strings.Contains(string(out), "--- PASS: TestReviewCallerFaults ") {
 		t.Fatalf("caller failure qualification: %v\n%s", err, out)
 	}

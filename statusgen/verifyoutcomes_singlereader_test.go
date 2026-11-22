@@ -23,12 +23,13 @@ import (
 // means adding its line here, with a reason; a stale entry is ALSO a failure (see the two-way
 // check in the test below).
 var verifyOutcomesChokePointAllowList = map[string]string{
-	"outcomessplit.go":           "the migration writer (statusgen outcomes split) — writes record files directly, by design",
-	"verifyoutcomes.go":          "the reader/name choke point itself, plus the pre-existing legacy shard-glob union reader",
-	"verifyclosure.go":           "prose describing what deskevidence's verified-outcome sidecar gate is for — no file I/O",
-	"briefdoc/registers.go":      "the shared reserved-register name declaration in briefdoc (a string key), moved from load.go — no file I/O",
-	"evaluation/coverage_api.go": "statusgen/evaluation: the bookkeeping-path pattern the pure coverage evaluator exempts from stamping — a string constant, no file I/O (the evaluator opens nothing)",
-	"main.go":                    "prose describing the `outcomes` subcommand dispatch and the verifyclosure gate — no file I/O",
+	"outcomessplit.go":                          "the migration writer (statusgen outcomes split) — writes record files directly, by design",
+	"verifyoutcomes.go":                         "the reader/name choke point itself, plus the pre-existing legacy shard-glob union reader",
+	"verifyclosure.go":                          "prose describing what deskevidence's verified-outcome sidecar gate is for — no file I/O",
+	"briefdoc/registers.go":                     "the shared reserved-register name declaration in briefdoc (a string key), moved from load.go — no file I/O",
+	"evaluation/outcomerecord/outcomerecord.go": "statusgen/evaluation/outcomerecord: the shared verification-outcome record codec — the ONE codec and reader for the records, over an io/fs port (it opens no file by path itself; the root adapter in verifyoutcomes.go supplies the fs.FS); moved here from evaluation/outcome.go, which keeps only the pure vocabulary and reductions",
+	"evaluation/coverage_api.go":                "statusgen/evaluation: the bookkeeping-path pattern the pure coverage evaluator exempts from stamping — a string constant, no file I/O (the evaluator opens nothing)",
+	"main.go":                                   "prose describing the `outcomes` subcommand dispatch and the verifyclosure gate — no file I/O",
 }
 
 // verifyOutcomesChokePointScan walks walkRoot (non-recursive into "testdata") for non-test .go

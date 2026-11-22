@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // VerifyRowID preserves a Verify table's identity: 6 and 6a are different rows.
@@ -20,28 +22,14 @@ import (
 // them, and the scheduler surfaces them as could-not-check (residue on #5013).
 type VerifyRowID string
 
-var (
-	verifyRowNumberPattern = regexp.MustCompile(`^[1-9][0-9]*[a-zA-Z]?$`)
-	verifyRowLabelPattern  = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9]*$`)
-	// The only identity a bare (unquoted) JSON value may carry.
-	verifyRowIntegerPattern = regexp.MustCompile(`^[1-9][0-9]*$`)
-)
+// The only identity a bare (unquoted) JSON value may carry. The grammar of every other form
+// (number with optional letter suffix, letter-led label) is evaluation.ParseRowID's.
+var verifyRowIntegerPattern = regexp.MustCompile(`^[1-9][0-9]*$`)
 
+// ParseVerifyRowID validates a Verify row identity against the shared grammar.
 func ParseVerifyRowID(s string) (VerifyRowID, bool) {
-	if verifyRowLabelPattern.MatchString(s) {
-		return VerifyRowID(s), true
-	}
-	if !verifyRowNumberPattern.MatchString(s) {
-		return "", false
-	}
-	digits := s
-	if last := s[len(s)-1]; last < '0' || last > '9' {
-		digits = s[:len(s)-1]
-	}
-	if _, err := strconv.Atoi(digits); err != nil {
-		return "", false
-	}
-	return VerifyRowID(s), true
+	id, ok := evaluation.ParseRowID(s)
+	return VerifyRowID(id), ok
 }
 
 func (r VerifyRowID) MarshalJSON() ([]byte, error) {
