@@ -1,0 +1,1 @@
+- Activate the canonical acceptance card issuer and closer for verification-handoff/03.
