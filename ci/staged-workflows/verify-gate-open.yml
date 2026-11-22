@@ -23,17 +23,6 @@ on:
   issue_comment:
     types: [created]
 
-# Serialise runs of this emitter: the marker check-then-act window sits between
-# "collect existing markers" and "create issue", so two overlapping runs both
-# miss each other's issue and file duplicates. Keyed on the workflow — NOT the
-# ref — so a workflow_dispatch from any branch serialises against main pushes
-# too. No cancel-in-progress: a queued run must still execute (it no-ops once
-# the first run's issues exist); a cancelled run could die mid-create and leave
-# the gate un-filed.
-concurrency:
-  group: verify-gate-open
-  cancel-in-progress: false
-
 permissions:
   contents: read
   issues: write
@@ -48,6 +37,19 @@ jobs:
       (github.event.issue.pull_request == null &&
        startsWith(github.event.issue.title, 'Acceptance preparation: ') &&
        startsWith(github.event.comment.body, 'Approve acceptance-adjudication v1'))
+    # Serialise runs of this emitter: the marker check-then-act window sits between
+    # "collect existing markers" and "create issue", so two overlapping runs both
+    # miss each other's issue and file duplicates. Keyed on the workflow — NOT the
+    # ref — so a workflow_dispatch from any branch serialises against main pushes
+    # too. No cancel-in-progress: a queued run must still execute (it no-ops once
+    # the first run's issues exist); a cancelled run could die mid-create and leave
+    # the gate un-filed. The group is set on the job, not the workflow, so it is
+    # entered only once the `if:` above admits the run: a comment the `if:` skips
+    # never queues in the group and so cannot displace a pending issuer or
+    # adjudication run (GitHub keeps one pending run per group).
+    concurrency:
+      group: verify-gate-open
+      cancel-in-progress: false
     runs-on: medici-builder-public
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

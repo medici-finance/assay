@@ -1,1 +1,3 @@
 - Activate the canonical acceptance card issuer and closer for verification-handoff/03.
+- Promoting `verify-gate-close.yml` also makes its decision-gate refusal branch live for every brief, not only verification-handoff/03. When `statusgen --close-verify` refuses a close with "decision-gate hold", the workflow now reopens the card and comments the refusal, naming the decision issue and the remedy. Before, the refusal reached the generic first-attempt branch, which left the card closed with a reason that named neither.
+- `verify-gate-open.yml` now sets its concurrency group on the job instead of the workflow. A comment that the job's `if:` skips no longer queues in the group, so ordinary comment traffic cannot cancel a pending issuer or adjudication run.
