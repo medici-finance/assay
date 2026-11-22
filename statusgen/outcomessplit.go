@@ -109,11 +109,11 @@ func runOutcomes(args []string, stdout, stderr io.Writer) int {
 				continue
 			}
 			if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-				fmt.Fprintf(stderr, "statusgen outcomes split: %v\n", err)
+				_, _ = fmt.Fprintf(stderr, "statusgen outcomes split: %v\n", err)
 				return 1
 			}
 			if err := os.WriteFile(target, outcomerecord.CanonicalBytes(rec.Raw), 0o644); err != nil {
-				fmt.Fprintf(stderr, "statusgen outcomes split: %v\n", err)
+				_, _ = fmt.Fprintf(stderr, "statusgen outcomes split: %v\n", err)
 				return 1
 			}
 			written++

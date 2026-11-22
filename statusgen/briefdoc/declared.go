@@ -89,7 +89,7 @@ func DeclaredFiles(content string) ([]string, error) {
 		}
 		if context && (block || endedByBlank || strings.HasPrefix(line, "files:")) &&
 			(strings.Contains(line, "<!--") || (endedByBlank && strings.HasPrefix(line, "<"))) &&
-			!(columnZero && scopeFieldKey(line)) {
+			(!columnZero || !scopeFieldKey(line)) {
 			return nil, refuse("refused: HTML may hide a section boundary in declared files scope")
 		}
 		if strings.HasPrefix(line, "## ") {
@@ -412,7 +412,7 @@ func declarationLine(line string) (paths []string, described bool, err error) {
 			}
 			// "and tests" names the declaration's tests, never a path.
 			rest, ok := strings.CutPrefix(line, "and tests")
-			if !ok || !(rest == "" || rest == "." || strings.ContainsAny(rest[:1], " ,(")) {
+			if !ok || (rest != "" && rest != "." && !strings.ContainsAny(rest[:1], " ,(")) {
 				break
 			}
 			line = strings.TrimSpace(rest)
