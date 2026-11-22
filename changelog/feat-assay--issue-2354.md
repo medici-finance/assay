@@ -1,0 +1,2 @@
+### Added
+- desk-tools brief 66 (authoring only): pin the verdict transcriber's three trust anchors (the blessing login, the verifier role binding and the verifier public key) in a committed file on `main`, with a fail-closed equality check against the Actions copy and the environment read kept as the fallback for an installation with no file. `gate: human`, decided at creation; the control itself is not implemented here.
