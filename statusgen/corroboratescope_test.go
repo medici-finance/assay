@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -268,8 +269,7 @@ index 3333333..4444444 100644
 	}
 }
 
-// TestAddedDiffLinesKeepsSyntheticFileHeaders covers the header shape assembled
-// by prFilesToDiff: one destination header per file, without diff --git/--- lines.
+// Short patches can use one destination header per file after a complete hunk.
 func TestAddedDiffLinesKeepsSyntheticFileHeaders(t *testing.T) {
 	diff := `+++ b/docs/first.txt
 @@ -4 +4,2 @@
@@ -384,5 +384,18 @@ func TestCorroborateDiffWalkersShareOneWalker(t *testing.T) {
 	}
 	for _, o := range offenders {
 		t.Errorf("hand-rolled diff walker at %s — read added lines through addedDiffLines (corroboratescope.go) so quoted notation is scoped once (#1395)", o)
+	}
+}
+
+func TestAddedDiffLinesHandlesHunkBoundaries(t *testing.T) {
+	const diff = "+++ b/first.txt\n@@ -3 +4 @@\n-old\n\\ No newline at end of file\n+new\n" +
+		"+++ b/second.txt\n@@ -1,3 +7,3 @@\n first\nunexpected end\n+later"
+	got, _ := walkAddedDiffLines(diff, func(string) bool { return false })
+	want := []diffAddedLine{
+		{File: "first.txt", Section: 1, Number: 4, Content: "new"},
+		{File: "second.txt", Section: 2, Number: 0, Content: "later"},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("added lines = %+v, want %+v", got, want)
 	}
 }
