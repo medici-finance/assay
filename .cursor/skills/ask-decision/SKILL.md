@@ -28,14 +28,48 @@ as a relay.
 
 - The driver asks for it: "ask me 1-by-1", "walk me through the decisions", "what do you need
   from me", "what's waiting on me", "go through the needs-decision queue".
-- A desk window ends with a newly actionable human gate. Surface it once through the
-  project's escalation channel. On later sweeps, keep the open item as the record and
-  continue independent work. Present it again when the driver requests a walk, the choice
-  materially changes, or the project's reminder policy calls for it.
+- The project uses this desk to deliver human inbox notifications. Poll for changes as
+  described below and continue independent work between deliveries.
 - After a ruling lands and the desk has recorded it, to present the next item.
 
-It does NOT run for a single question — one gate is just the format applied once, which is
-cheap, but it needs no skill invocation to do it.
+For a single named issue, apply the format once after checking who owns its next step.
+
+## A named issue or a routine notification
+
+For a question about a particular issue, run `deskinbox show 'owner/repo#42'` in the
+current desk role. Use its next owner, action, evidence and post-act check. Present a
+`ready` human choice in the format below. For a verification sign-off, give the evidence
+and direct issue link for the driver's acceptance. For a runsheet act, give the verified
+command when shown or its pinned line. State the post-act check. The driver performs the
+act. For `screened`, read the cited evidence and proceed within the
+role's authority. Route `prepare` or `stale` to the named owner, follow up on `unknown`
+as could-not-check, and retire a `closed` item. A direct lookup is a read and needs no receipt.
+
+For routine delivery, follow the `assay:inbox` command contract.
+Run `deskinbox changes --consumer "$destination" owner/repo` with the project's stable
+destination name, durable local desk state and the same repository set on every sweep.
+An empty events array needs no message or acknowledgement. For `ready`, `changed` or a
+policy-enabled `reminder`, read the named issue with `show` before presenting it. Confirm
+it is still human-ready and that its act, evidence and post-act check match the offered event.
+On any difference, leave that receipt unacknowledged, poll again and use the fresh batch.
+Set `--remind-after` only when the project specifies a reminder interval.
+A `withdrawn` event cancels the old request.
+Remove it from pending delivery and correct a previously delivered instruction on its
+original surface. Continue the desk's own work.
+
+Only after successful delivery of the whole batch, including withdrawals, run
+`deskinbox changes --consumer "$destination" --ack "$receipt" owner/repo` against the same
+state and scope. Keep delivery progress across retries when presenting one item per turn.
+Retry undelivered events after a partial delivery; refresh a superseded receipt. Acknowledgement
+records delivery only. A ruling, sign-off or human act still needs its own evidence.
+
+If the installed binary lacks a required verb, report the capability gap to the desk.
+For an explicit request, read the named issue and thread with the authorized reader or
+use the manual walk below. On an older installation without `changes`, use the authorized
+reader and the screens below to verify a newly actionable human gate, then surface it once
+through the project's escalation channel. Keep the open item as its record and consult its
+thread and prior delivery before repeating a request. When an available verb fails a read or
+refuses a receipt, keep the batch pending and resolve that failure.
 
 ## The queue and its order
 
@@ -45,8 +79,8 @@ the rule that a bare label is unanswerable without a comment saying what is need
 whom — is defined in the `intake-desk` and `the-desk` skills. **Point at it; do not restate
 it here.** This skill assumes the labels already mean what those skills say they mean.
 
-Read the queue with the inbox, which already sorts it. Walk it with the bash oracle,
-because it is the renderer that runs **the screen** below (`<bundle>` is the installed Assay
+For a driver-requested walk, use the bash oracle to sort the queue and run **the screen**
+below (`<bundle>` is the installed Assay
 bundle's own directory; each harness locates it its own way, and the expansion for yours is
 in `../../references/<harness>.md`; substitute it before running):
 
