@@ -45,6 +45,7 @@ sorted urgency-then-age — plus the pipeline flow model (how is the system perf
 
   deskinbox [owner/repo ...]               the terminal table — one row per item.
   deskinbox show owner/repo#issue            show who owns the next action on one issue.
+  deskinbox changes [owner/repo ...]       report actionable changes until acknowledged.
   deskinbox walk [--item K] [owner/repo ...]
                                            print ONE item in the five-part decision
                                            format (Header/Context/Options/Reply shape/
@@ -69,7 +70,7 @@ Exit codes: 0 every query/reader succeeded · 5 refused (bad arguments) · 6 unv
 (at least one read failed — the printed output, if any, is PARTIAL; in html mode a blind
 Flow section alone does not redden the exit — see plugins/assay/commands/inbox.md).`
 
-var perfVerbs = []string{"table", "walk", "show", "html", "flow", "discovery", "version", "--version", "--help", "-h"}
+var perfVerbs = []string{"table", "walk", "show", "changes", "html", "flow", "discovery", "version", "--version", "--help", "-h"}
 
 func main() {
 	os.Exit(deskkit.PerfRunMeasured("deskinbox", perfVerbs, os.Args[1:], performanceCallback(os.Stdout, os.Stderr, time.Now(), startup)))
@@ -221,6 +222,7 @@ func executeMeasured(args []string, stdout, stderr io.Writer, now time.Time, pre
 				}
 				return codeErr(discoveryJSON(stdout, stderr, repos, observer))
 			}}
+		root.AddCommand(newChangesCommand(stdout, stderr, now, pre, &observer))
 		root.AddCommand(walk, html, flow, version, discovery)
 		return root
 	}
