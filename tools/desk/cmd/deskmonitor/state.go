@@ -253,11 +253,11 @@ var sleepFn = time.Sleep
 
 func secondsOf(n int) time.Duration { return time.Duration(n) * time.Second }
 
-// graphQLAnswerPrefix is how deskkit's open-changes read reports a GraphQL errors[] envelope (an
-// HTTP 200 whose errors[] names the failure): Unverifiable("open-changes GraphQL error: <m1>; <m2>").
+// graphQLAnswerPrefix is how deskkit's bulk review-queue read reports a GraphQL errors[] envelope (an
+// HTTP 200 whose errors[] names the failure): Unverifiable("review-queue GraphQL error: <m1>; <m2>").
 // What follows it is the forge's own messages — the text gh prints as `GraphQL: <m1>, <m2>`. The
 // parity fixture testdata/parity/pr-graphql-envelope.json goes red if deskkit's wording moves.
-const graphQLAnswerPrefix = "open-changes GraphQL error: "
+const graphQLAnswerPrefix = "review-queue GraphQL error: "
 
 // isRateLimited is the stop-on-limit test: a tripped limit must end the cycle, never be
 // compounded by the remaining reads. It decides every failure the way the oracle scripts do —

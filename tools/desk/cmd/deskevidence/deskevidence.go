@@ -116,6 +116,12 @@ func admitVerifierEvidence(root, repo, target string, fg deskkit.Forge, ac *audi
 		return receipt, err
 	}
 	ac.attestation = receipt.EvidenceBinding()
+	ac.toolUpgrade = ""
+	if receipt.ToolUpgrade != nil {
+		// Admission accepted a desk-tools upgrade against main's pin: the landing
+		// record names it, beside the binding it admitted (#7353).
+		ac.toolUpgrade = receipt.ToolUpgrade.Trailer()
+	}
 	return receipt, nil
 }
 
@@ -166,7 +172,8 @@ func admitLanding(root, repoSlug, owner, name, target, branch string, ac *auditC
 		if err != nil {
 			return changedSincePrep("pre-work admission", err)
 		}
-		if again.EvidenceBinding() != receipt.EvidenceBinding() || again.BriefRoot != receipt.BriefRoot || again.SourceHome != receipt.SourceHome {
+		if again.EvidenceBinding() != receipt.EvidenceBinding() || again.BriefRoot != receipt.BriefRoot || again.SourceHome != receipt.SourceHome ||
+			upgradeLine(again.ToolUpgrade) != upgradeLine(receipt.ToolUpgrade) {
 			return changedSincePrep("the admitted verifier binding", nil)
 		}
 		return nil
@@ -196,7 +203,24 @@ func (a *auditCtx) attestationTrailer() string {
 	if a.attestation == "" {
 		return ""
 	}
-	return "\n\n" + a.attestation
+	return "\n\n" + a.attestationRecord()
+}
+
+// attestationRecord is the admitted binding and, when admission accepted one, the
+// desk-tools upgrade it accepted — the lines every landing record carries (#7353).
+func (a *auditCtx) attestationRecord() string {
+	if a.toolUpgrade == "" {
+		return a.attestation
+	}
+	return a.attestation + "\n" + a.toolUpgrade
+}
+
+// upgradeLine is the record line for an accepted upgrade, or "" for none.
+func upgradeLine(u *deskkit.ToolUpgrade) string {
+	if u == nil {
+		return ""
+	}
+	return u.Trailer()
 }
 
 func cmdEvidence(args []string, ac *auditCtx) (err error) {
@@ -259,6 +283,10 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// for a BLOCKED or could-not-check re-run of a verified or done brief, whose Evidence
 	// append the verdict gate refuses (outcomeonly.go).
 	outcomeOnly := fs.Bool("outcome-only", false, "with --outcome-record: record a non-decisive re-run of a verified or done brief whose Evidence append is refused; the record states evidence_withheld and its sha is the admitted observation commit")
+	// --remove-superseded removes ONE outcome record that the --superseded-by record for the
+	// same brief supersedes, as a pinned conditional forge write (removesuperseded.go).
+	removeSuperseded := fs.String("remove-superseded", "", "repo-relative path of an outcome record to remove; it must be superseded by the --superseded-by record for the same brief (lands as a pinned conditional forge write)")
+	supersededBy := fs.String("superseded-by", "", "with --remove-superseded: repo-relative path of the newer outcome record for the same brief")
 	outcomeRecord := fs.String("outcome-record", "", "local JSON file holding ONE new verify-outcome record to commit at the path RecordName derives; with --root, an absolute file outside --root (mutually exclusive with --evidence-file/--brief-path)")
 	// --root binds the LOCAL read of a repo-relative --evidence-file to an explicit
 	// checkout, instead of the current working directory. #1709: a writeguard can reset a
@@ -333,6 +361,18 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// rather than merging into or replacing an existing whole file. Checked (and mutual
 	// exclusivity enforced) BEFORE --evidence-file is required below, so this branch never
 	// needs one.
+	if *removeSuperseded != "" || *supersededBy != "" {
+		if *removeSuperseded == "" || *supersededBy == "" {
+			return deskkit.Refused("refused: --remove-superseded and --superseded-by are given together")
+		}
+		if *outcomeRecord != "" || *evidenceFile != "" || *briefPath != "" {
+			return deskkit.Refused("refused: --remove-superseded is mutually exclusive with --outcome-record/--evidence-file/--brief-path")
+		}
+		if ferr := refuseUnhonouredFlags(fs, routeRemoveSuperseded); ferr != nil {
+			return ferr
+		}
+		return cmdOutcomeRecordRemove(*removeSuperseded, *supersededBy, repoSlug, owner, name, branch, *root, *dryRun, ac)
+	}
 	if *outcomeRecord != "" {
 		if *evidenceFile != "" || *briefPath != "" {
 			return deskkit.Refused("refused: --outcome-record is mutually exclusive with --evidence-file/--brief-path")
@@ -501,14 +541,14 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			" resolves outside docs/streams/ — deskevidence only writes under that tree")
 	}
 	// A witness row naming a read-set file lands only with that file in one
-	// commit (the read-set introduction binding); refuse before any forge call.
+	// commit (the read-set introduction binding). Copy every named file from
+	// the run's state directory now, before any forge call and so before any
+	// worktree cleanup; pairReadSets refuses a missing one before the write.
 	readSetRoot := evidenceRoot
 	if readSetRoot == "" {
 		readSetRoot = "."
 	}
-	if rerr := refuseUnpairedReadSets(localContent, readSetRoot, targetRepoPath); rerr != nil {
-		return rerr
-	}
+	readSets := captureReadSets(localContent, readSetRoot)
 
 	// The source was admitted independently of the conditional-write destination.
 	// Judge its immutable identity boundary against fetched main, never an older
@@ -758,6 +798,12 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		}
 	}
 
+	// The read-set files this commit introduces, from the copy taken above.
+	companions, perr := pairReadSets(readSets, commitContent, remoteContent, targetRepoPath)
+	if perr != nil {
+		return perr
+	}
+
 	// statusgen PROBLEM-diff guard (deskevidence: refuse a landing that adds a statusgen
 	// PROBLEM or lands outside docs/streams/). Diffs the PROBLEM set statusgen --lint
 	// reports for the landing worktree BEFORE this write against the set it reports AFTER
@@ -903,6 +949,9 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		for _, row := range rows {
 			fmt.Fprintf(stdout, "dry-run: on-behalf-of principal stamped by this tool (lands as): %s\n", row)
 		}
+		for _, c := range companions {
+			fmt.Fprintf(stdout, "dry-run: read-set file in the same commit: %s\n", c.File)
+		}
 		return nil
 	}
 
@@ -948,6 +997,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		AppendOnly:  appendOnly,
 		AllowShrink: *allowShrink,
 		ExpectedSHA: rowScopeSHA,
+		Companions:  companions,
 	}
 	writeInput.ExpectedHead = landedHead
 	res, cerr := fg.WriteFile(fr, writeInput)
@@ -963,7 +1013,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		if landedHead != "" {
 			return deskkit.Unverifiable("pinned verified outcome cannot fall back to a different branch", nil)
 		}
-		return landEvidenceAsChange(fg, fr, repoSlug, branch, targetRepoPath, commitContent, appendOnly, *allowShrink, remoteContent, rowScopeSHA, ac)
+		return landEvidenceAsChange(fg, fr, repoSlug, branch, targetRepoPath, commitContent, appendOnly, *allowShrink, remoteContent, rowScopeSHA, companions, ac)
 	}
 
 	if reportWriteNoop(res, targetRepoPath, ac) {
@@ -1004,7 +1054,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 // against the earlier, now-stale read) silently reverts the row(s) that moved in that window, in
 // a diff no merge can surface because the side branch's parent already carries the reversion.
 // Empty (no row-scope rows named) means no such precondition applies, exactly as before.
-func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base, target string, content []byte, appendOnly, allowShrink bool, remoteContent []byte, rowScopeSHA string, ac *auditCtx) error {
+func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base, target string, content []byte, appendOnly, allowShrink bool, remoteContent []byte, rowScopeSHA string, companions []deskkit.CompanionFile, ac *auditCtx) error {
 	dig := deskkit.Sha256Hex(content)
 	side := "evidence/" + sanitizeBranchComponent(path.Base(target)) + "-" + dig[:8]
 
@@ -1027,6 +1077,7 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 		AppendOnly:  appendOnly,
 		AllowShrink: allowShrink,
 		ExpectedSHA: rowScopeSHA,
+		Companions:  companions,
 	})
 	if werr != nil {
 		return werr
@@ -1050,7 +1101,7 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 		Title: "Evidence: " + target,
 		Body: "Verification Evidence row for `" + target + "`, landed on branch `" + side + "` and opened " +
 			"as a draft change because the default branch `" + base + "` takes no direct write on this forge. " +
-			"A reviewer verdict lands the row.\n\n" + ac.attestation,
+			"A reviewer verdict lands the row.\n\n" + ac.attestationRecord(),
 		Head: side,
 		Base: base,
 	})
@@ -1186,6 +1237,7 @@ func addedLines(older, newer []byte) []byte {
 type auditCtx struct {
 	options       childOptions
 	attestation   string
+	toolUpgrade   string // the accepted desk-tools upgrade's record line, or ""
 	verb          string
 	repo          string
 	file          string
@@ -1204,6 +1256,9 @@ type auditCtx struct {
 func (a *auditCtx) log(result, detail string) {
 	if a.attestation != "" {
 		detail += " " + a.attestation
+	}
+	if a.toolUpgrade != "" {
+		detail += " " + a.toolUpgrade
 	}
 	// An Evidence landing is an outward forge write: success renews a fresh HEARTBEAT lease
 	// (#6510). The dry-run paths set ResultNoop, so a rehearsal never renews.

@@ -210,9 +210,10 @@ import (
 //     grammar; a HELD there is read as its own occurrence). Wording the
 //     grammar does not recognise is read as a hold.
 //
-//  5. Sourced definitions (#4536). A column-zero RISK-VALUE: DERIVED
+//  5. Sourced definitions (#4536, #4200). A standalone or bulleted RISK-VALUE: DERIVED
 //     record with a source path and line number may declare a quoted state
-//     literal or explain a normative state relation (heldRiskDefinition).
+//     literal, explain a normative state relation, or map declared exit codes
+//     to outcomes (heldRiskDefinition).
 //     Only the occurrence inside the recognised phrase is excluded, never
 //     the entire line, an unsourced note or a results-table cell. Unrecognised
 //     wording and any independent hold remain read. The source locator is
@@ -1698,6 +1699,7 @@ var (
 	heldWitnessTrailerRes = []*regexp.Regexp{
 		regexp.MustCompile(`^Tree-Digest: sha256:[0-9a-f]{64}$`),
 		regexp.MustCompile(`^Container-Image: sha256:[0-9a-f]{64}$`),
+		regexp.MustCompile(`^Kubernetes-Observation: sha256:[0-9a-f]{64}$`),
 		regexp.MustCompile(`^Module-Cache: sha256:[0-9a-f]{64}$`),
 		regexp.MustCompile(`^Verification-Attestation: [A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[0-9]+ run=[0-9a-f]{64} (?:source-repo=[A-Za-z0-9._-]+/[A-Za-z0-9._-]+ )?source=[0-9a-f]{40} (?:tracking-source=[0-9a-f]{40} )?brief=[A-Za-z0-9._/-]+ model=[A-Za-z0-9._:\[\]-]+ tier=[a-z]+$`),
 		regexp.MustCompile(`^Admission-Bracket: run=[0-9a-f]{64} source=[0-9a-f]{40} tree=sha256:[0-9a-f]{64} witness=sha256:[0-9a-f]{64} opened=[0-9TZ:+.-]+ closed=[0-9TZ:+.-]+ before=receipt after=check-verifier$`),
@@ -2584,10 +2586,22 @@ func heldBlankRanges(s string, rs [][2]int) string {
 // identifiers, even in assignment syntax, may be row/run observations.
 const heldRiskStateDecl = `(?:Present = "present"|Missing = "missing"|(?:CouldNotCheck|Unavailable) = "could-not-check")`
 
+// Source locators in a derivation can cite individual lines, ranges, or a
+// second named source. They delimit the declaration and its rationale.
+const heldRiskLine = `[1-9][0-9]*(?:-[1-9][0-9]*)?`
+const heldRiskSource = `[a-zA-Z0-9_./-]+:` + heldRiskLine + `(?:, *` + heldRiskLine + `)*`
+const heldRiskWord = `[a-z][a-z-]*`
+const heldRiskCodePair = `[0-9]+ ` + heldRiskWord + `(?: or ` + heldRiskWord + `)?`
+
 var (
-	heldRiskRecordRe  = regexp.MustCompile(`^RISK-VALUE: DERIVED — ([^@|\r\n]+) @ [a-zA-Z0-9_./-]+:[1-9][0-9]*(?:-[1-9][0-9]*)? — `)
-	heldRiskLiteralRe = regexp.MustCompile(`^` + heldRiskStateDecl + `(?:(?:, | and )` + heldRiskStateDecl + `)*$`)
-	heldRiskMeaningRe = regexp.MustCompile(`(?i)\bmissing and could-not-check cannot release assessment\b|\ba timeout maps to could-not-check, never to permitted\b|\bretirement may remain held separately\b|\bcomplete/retirement-held (?:must|to) stay distinct from complete\b`)
+	heldRiskRecordRe     = regexp.MustCompile(`^(?:[-*+] )?RISK-VALUE: DERIVED — ([^@|\r\n]+) @ ` + heldRiskSource + `(?: and [a-z]+(?: [a-z]+)* @ ` + heldRiskSource + `)* — `)
+	heldRiskExitCodesRe  = regexp.MustCompile(`^exit codes = ([0-9]+(?:, *[0-9]+)+)$`)
+	heldRiskPositionalRe = regexp.MustCompile(`^(?:the )?(?:spec|contract) maps (` + heldRiskWord + `(?:/` + heldRiskWord + `)+) respectively\b`)
+	heldRiskNumberedRe   = regexp.MustCompile(`^(?:the )?(?:brief's |spec's |contract's )?(?:exit-code )?table: (` + heldRiskCodePair + `(?:, ` + heldRiskCodePair + `)+)(?:[.;]|$)`)
+	heldRiskStateSetRe   = regexp.MustCompile(`^settled states = "` + heldRiskWord + `"(?:, "` + heldRiskWord + `")+$`)
+	heldRiskStateListRe  = regexp.MustCompile(`\b` + heldRiskWord + `(?:, ` + heldRiskWord + `)* or ` + heldRiskWord + ` states stay presented\b`)
+	heldRiskLiteralRe    = regexp.MustCompile(`^` + heldRiskStateDecl + `(?:(?:, | and )` + heldRiskStateDecl + `)*$`)
+	heldRiskMeaningRe    = regexp.MustCompile(`(?i)\bmissing and could-not-check cannot release assessment\b|\ba timeout maps to could-not-check, never to permitted\b|\bretirement may remain held separately\b|\bcomplete/retirement-held (?:must|to) stay distinct from complete\b`)
 )
 
 // heldRiskDefinition reports whether this occurrence is a declared literal
@@ -2599,22 +2613,56 @@ func heldRiskDefinition(clean string, h []int) bool {
 	if record == nil {
 		return false
 	}
-	var spans [][]int
+	declaration := clean[record[2]:record[3]]
 	if h[1] <= record[3] {
 		// The whole declaration list must match: accepting a substring
 		// would hide an observation before or beside a valid constant.
-		return heldRiskLiteralRe.MatchString(clean[record[2]:record[3]])
-	} else if h[0] >= record[1] && !heldNamesRowRe.MatchString(clean[record[1]:]) {
-		for _, span := range heldRiskMeaningRe.FindAllStringIndex(clean[record[1]:], -1) {
-			spans = append(spans, []int{record[1] + span[0], record[1] + span[1]})
-		}
+		return heldRiskLiteralRe.MatchString(declaration)
 	}
-	for _, span := range spans {
-		if span[0] <= h[0] && h[1] <= span[1] {
+	meaning := clean[record[1]:]
+	if h[0] < record[1] || heldNamesRowRe.MatchString(meaning) {
+		return false
+	}
+	start, end := h[0]-record[1], h[1]-record[1]
+	if declared := heldRiskExitCodesRe.FindStringSubmatch(declaration); declared != nil &&
+		heldRiskExitMeaning(strings.Split(declared[1], ","), meaning, start, end) {
+		return true
+	}
+	return heldRiskPhrase(heldRiskMeaningRe, meaning, start, end) ||
+		(heldRiskStateSetRe.MatchString(declaration) && heldRiskPhrase(heldRiskStateListRe, meaning, start, end))
+}
+
+func heldRiskPhrase(pattern *regexp.Regexp, meaning string, start, end int) bool {
+	for _, span := range pattern.FindAllStringIndex(meaning, -1) {
+		if span[0] <= start && end <= span[1] {
 			return true
 		}
 	}
 	return false
+}
+
+// An ordered list supplies one outcome per declared exit code. An explicit
+// table must repeat those same codes in order. Only occurrences within the
+// mapping itself are definitions; later observations still count as holds.
+func heldRiskExitMeaning(codes []string, meaning string, start, end int) bool {
+	if m := heldRiskPositionalRe.FindStringSubmatchIndex(meaning); m != nil {
+		return m[2] <= start && end <= m[3] && strings.Count(meaning[m[2]:m[3]], "/")+1 == len(codes)
+	}
+	m := heldRiskNumberedRe.FindStringSubmatchIndex(meaning)
+	if m == nil || start < m[2] || end > m[3] {
+		return false
+	}
+	pairs := strings.Split(meaning[m[2]:m[3]], ", ")
+	if len(pairs) != len(codes) {
+		return false
+	}
+	for i, pair := range pairs {
+		code, _, _ := strings.Cut(pair, " ")
+		if code != strings.TrimSpace(codes[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // heldNamesRowNumRe matches a line naming a numbered Verify row: "row 3",

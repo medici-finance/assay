@@ -18,9 +18,39 @@ import (
 func (c *Cell) cursorLaunchArgv(role, model, wt string) []string {
 	prompt := fmt.Sprintf("Invoke the %q skill now.", "assay:"+role)
 	if c.Cadence == nil {
-		prompt += " This is a standing interactive desk. Read .cursor/references/cursor.md and apply its Interactive desk cadence section during role boot."
+		prompt += " This is a standing interactive desk. Read .cursor/references/cursor.md and apply its Interactive desk cadence section during role boot. " + c.cursorStrongNote(role)
 	}
 	return []string{"agent", "--workspace", wt, "--model", model, prompt}
+}
+
+// cursorStrongNote is the boot-prompt reminder that a Cursor desk may set a subagent to
+// the cell's configured strong-tier model for work that requires one. The id is the
+// cell's TIER_MODEL_TOP_CURSOR, never CURSOR_MODEL_default: that is a launch pin and may
+// read `auto`, which is not a strong model and is never named as one. The hold in
+// .cursor/references/cursor.md (Execution model selection) stays for a live session
+// model the desk cannot confirm, a weaker one, and an unconfirmed inherit.
+//
+// verify-desk gets its own note: its routine drain runs at the local session model and
+// never launches a stronger one (the verify-desk row of that section), so it is never
+// told to launch a strong subagent for routine strong work. Its one strong launch is the
+// floor-tier re-verify of a gate: human brief.
+func (c *Cell) cursorStrongNote(role string) string {
+	id := ""
+	if c.Env != nil {
+		id = strings.TrimSpace(c.Env.Get("TIER_MODEL_TOP_CURSOR"))
+	}
+	configured := id != "" && !strings.EqualFold(id, "auto")
+	if role == "verify-desk" {
+		note := "Strong tier: the routine verify drain runs at this session's local model and never launches a stronger configured model; it holds an exec-tier: strong brief this session's model cannot meet (see the verify-desk row of Execution model selection in .cursor/references/cursor.md)."
+		if configured {
+			return note + fmt.Sprintf(" Its one strong launch is the floor-tier re-verify of a gate: human brief, on the configured strong-tier model %q.", id)
+		}
+		return note + " This cell configures no strong-tier model id (TIER_MODEL_TOP_CURSOR is unset or auto), so the floor-tier re-verify of a gate: human brief is held unless this session's own model is confirmed strong; Auto is never treated as strong."
+	}
+	if !configured {
+		return "Strong tier: this cell configures no strong-tier model id (TIER_MODEL_TOP_CURSOR is unset or auto), so an exec-tier: strong item is held unless this session's own model is confirmed strong; Auto is never treated as strong."
+	}
+	return fmt.Sprintf("Strong tier: for work that requires strong tier, set the subagent to the configured strong-tier model %q (see Execution model selection in .cursor/references/cursor.md) and launch it; a CURSOR_MODEL_default of auto is the cell launch pin, not this session's model, and is not by itself a reason to hold. Keep the hold when the model that will run the work is unconfirmed, weaker, or an unconfirmed inherit.", id)
 }
 
 // Cursor authenticates through its own configuration. Preserve the composed

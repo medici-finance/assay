@@ -166,6 +166,8 @@ type dispatchReport struct {
 	// names rows KEPT because their brief or decision could not be read.
 	DispatchTier     string                  `json:"dispatchTier,omitempty"`
 	HeldByExecTier   int                     `json:"heldByExecTier"`
+	HeldByIssuePR    int                     `json:"heldByIssuePR,omitempty"`
+	IssuePRUnknown   int                     `json:"issuePRUnknown,omitempty"`
 	HeldByDecision   int                     `json:"heldByDecision"`
 	AdmissionHeld    []dispatchAdmissionHeld `json:"admissionHeld,omitempty"`
 	AdmissionUnknown []dispatchDegraded      `json:"admissionUnknown,omitempty"`
@@ -349,6 +351,7 @@ func dispatchFromRoots(hdr Header, verbUsed string, rs rootSet, tier string) (*d
 	if err != nil {
 		return nil, err
 	}
+	applyDispatchIssueAdmission(rep)
 	applyBriefAdmission(rep, tier)
 	rep.Shown = len(rep.Rows)
 	return rep, nil
@@ -409,7 +412,7 @@ func cmdDispatch(hdr Header, verbUsed, tier string) (*Report, error) {
 			if rep.Eligible == 0 {
 				fmt.Fprintf(w, "(no dispatchable briefs — all %d configured root(s) read successfully; nothing at todo/in-progress is eligible + unclaimed)\n", len(rep.Roots))
 			} else {
-				fmt.Fprintf(w, "(0 shown but %d eligible — everything is held back by caps, NOT drained; see the queue line above)\n", rep.Eligible)
+				fmt.Fprintf(w, "(0 shown but %d eligible — rows are held back; the queue is not drained; see the queue line above)\n", rep.Eligible)
 			}
 			return
 		}
@@ -441,7 +444,7 @@ func driveRowTags(r dispatchRow) string {
 // every run so "0 shown" is always accompanied by WHY.
 func dispatchHeldBackLine(rep *dispatchReport) string {
 	held := rep.HeldByStreamCap + rep.HeldBySpan + rep.HeldByDriveCap + rep.HeldByDriveWorkerCap +
-		rep.HeldByExecTier + rep.HeldByDecision
+		rep.HeldByExecTier + rep.HeldByDecision + rep.HeldByIssuePR + rep.IssuePRUnknown
 	if held == 0 {
 		return "0 held back"
 	}
@@ -461,6 +464,12 @@ func dispatchHeldBackLine(rep *dispatchReport) string {
 	}
 	if rep.HeldByExecTier > 0 {
 		parts = append(parts, fmt.Sprintf("%d by exec-tier stricter than --tier %s", rep.HeldByExecTier, rep.DispatchTier))
+	}
+	if rep.HeldByIssuePR > 0 {
+		parts = append(parts, fmt.Sprintf("%d represented by issue PRs", rep.HeldByIssuePR))
+	}
+	if rep.IssuePRUnknown > 0 {
+		parts = append(parts, fmt.Sprintf("%d issue PR reads unknown", rep.IssuePRUnknown))
 	}
 	if rep.HeldByDecision > 0 {
 		parts = append(parts, fmt.Sprintf("%d by an unruled human decision", rep.HeldByDecision))

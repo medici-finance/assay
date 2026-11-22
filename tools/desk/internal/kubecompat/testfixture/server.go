@@ -29,6 +29,8 @@ import (
 )
 
 type RoleState struct {
+	// ObservedImageID optionally varies the running status independently of the Pod template.
+	ObservedImageID  string
 	UID, ContainerID string
 	Restart          int32
 	Replicas         int32
@@ -58,6 +60,10 @@ type Server struct {
 	// so without this the program can exit, and close the connection, while the
 	// frame is still unread. Only set it for an attach whose client sends a size.
 	AwaitResize bool
+
+	// Terminal connects native attach streams to an optional retained offline process.
+	// Closing an operator connection cancels this presentation only.
+	Terminal TerminalHandler
 }
 
 func New(t testing.TB) *Server {
@@ -213,6 +219,9 @@ func (s *Server) serve(w http.ResponseWriter, req *http.Request) {
 		}
 		yes := true
 		cs := core.ContainerStatus{Name: role, ContainerID: r.ContainerID, RestartCount: r.Restart, ImageID: "docker-pullable://" + s.Profile.Roles[role].Image, Ready: r.Ready, State: core.ContainerState{Running: &core.ContainerStateRunning{}}}
+		if r.ObservedImageID != "" {
+			cs.ImageID = r.ObservedImageID
+		}
 		if r.Termination != nil {
 			cs.State = core.ContainerState{Terminated: r.Termination}
 		}
@@ -267,6 +276,10 @@ func (s *Server) attach(w http.ResponseWriter, req *http.Request, role string, a
 		case <-req.Context().Done():
 			return
 		}
+	}
+	if s.Terminal != nil {
+		s.attachTerminal(req, conn, role, streams)
+		return
 	}
 	resized := make(chan struct{})
 	if resize := streams[core.StreamTypeResize]; resize != nil {

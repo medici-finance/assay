@@ -78,10 +78,10 @@ step before CI repair; it is neither ordinary unfinished work nor a closure verd
 For a pending board retirement, the offline `statusgen withdrawal-audit` snapshot also
 finds fresh implementation/evidence PRs outside the stalled detector's age window.
 
-`issueboard` replaces the raw `gh issue list` form this runbook used to carry. It resolves the scan
+`issueboard` is the way to list issues here; a raw `gh issue list` is not. It resolves the scan
 scope from the same roster key the placeholder scanner reads, applies the trust gate itself, and
-**exits 6 for the WHOLE board** when the scan set is unset/empty or any one repo is unreadable — where
-the list form returned a clean, empty board instead. An exit 6 from any of the four is
+**exits 6 for the WHOLE board** when the scan set is unset/empty or any one repo is unreadable; a raw
+list returns a clean, empty board in that case. An exit 6 from any of the four is
 could-not-check: report the surface BLIND for the tick, never zero.
 
 Then per slug in SCAN REPOS:
@@ -139,6 +139,25 @@ comment cannot silently clear its label or record.
 These guards establish a candidate, not admission. Re-read ownership and both claim sources before
 claiming, preserve the supersession and freshness checks, and require the normal successful
 **model-stamp OK** before a worker starts. A live owner is not an orphan; an unread claim is not free.
+
+### Restarting after an explicit reclaim
+
+Use this sequence only after establishing that the previous worker has stopped
+and the reclaimed lease has launched no worker. Keep the same identified
+`DESK_SESSION` for all three commands. Use the original item's repo, checkout,
+brief, model, tier and any other admission flags.
+
+```bash
+token_file=$(desktoken --no-rotate worker --repo "$repo") || exit $?
+deskclaim-ref steal "$item" --repo "$repo" --reason "$reason" --token-file "$token_file" &&
+  deskclaim-ref release "$item" --repo "$repo" --token-file "$token_file" &&
+  deskdispatch "$item" --repo "$repo" --root "$root" --brief "$brief" \
+    --kit worker --model "$model" --tier "$tier" --attest-worker
+```
+
+If the explicit steal already succeeded, start with the release. A successful
+release opens the key to other dispatchers. If another holder wins it, stop.
+Launch only after the ordinary dispatch succeeds and emits the attested assignment.
 
 ### Queue suppressors — read them when a stream offers nothing for several consecutive ticks
 

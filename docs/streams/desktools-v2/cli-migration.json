@@ -43,6 +43,11 @@
     },
     {
       "class": "test",
+      "pattern": "containers/k8s/compatibility/qualify_controlled_restart.py",
+      "reason": "desk-containers/32 source-checkout controlled-restart fixture invoked by qualify.sh for compiled cellctl and offline PID-1 checks."
+    },
+    {
+      "class": "test",
       "pattern": "containers/k8s",
       "reason": "desk-containers/06 source-only YAML-to-JSON test adapter invoked by the offline packaging checker; Go main is run from the existing desk module, never installed or released as an operator CLI"
     },

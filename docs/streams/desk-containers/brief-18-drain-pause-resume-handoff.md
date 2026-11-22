@@ -18,7 +18,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-14 by a worker-desk fan-out session (assay:author-brief, opus-5.5; requested by the driver)
 sources:
   - "Driver request 2026-10-14: a `drain <cell>` that drains the loops first and then shuts down, with a handoff note; the driver's stated preference (relayed, pending ratification via the medici-finance/assay#2890 merge): these are runner-lifecycle states/transitions; cellctl verbs are adapters; today's STOP-flag/cadence mechanism is the interim first implementation, not the design"
@@ -132,10 +132,10 @@ facts:
 | 4 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainNowInteractiveOnly' -count=1 -v` | `--- PASS` — `drain --now` off a TTY is refused `not-interactive`; on a pseudo-terminal with the right confirm code, the result lists every abandoned claim as an unknown outcome |
 | 5 | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestInterimMappingPinned' -count=1 -v` | `--- PASS` — the single test that names the interim mechanism (cell flag, cadence checkpoint, handoff file) passes, and no other test references the flag path |
 | 6 | check +dereference | `grep -l 'references/handoff-note.md' plugins/assay/skills/the-desk/SKILL.md plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/verify-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md plugins/assay/skills/intake-desk/SKILL.md \| wc -l` | 5 |
-| 7 | gate:model +flow +dereference | On a disposable house cell with stub desks holding one fixture claim: `cellctl drain <cell> --timeout 2m` while the claim releases after 30s | the claim releases; a handoff record exists per role; the cell is stopped (every targeted role's surface is closed and its receipt removed, no role harness pid from the receipts is alive, and `cellctl cadence <cell> status` reports no `unfinished`); `cellctl cadence <cell> status` shows no `unfinished`; a following `cellctl up <cell>` exits 0 with every role `up` and each desk reports reading its record |
+| 7 | gate:human +flow +dereference | On a disposable house cell with stub desks holding one fixture claim: `cellctl drain <cell> --timeout 2m` while the claim releases after 30s | Operator row: run and witnessed by the driver at an interactive terminal, never by a dispatched verifier. The claim releases; a handoff record exists per role; the cell is stopped (every targeted role's surface is closed and its receipt removed, no role harness pid from the receipts is alive, and `cellctl cadence <cell> status` reports no `unfinished`); `cellctl cadence <cell> status` shows no `unfinished`; a following `cellctl up <cell>` exits 0 with every role `up` and each desk reports reading its record |
 | 8j | check | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainEmitsCellOpV1' -count=1 -v` | `--- PASS` — `drain --json` output validates against `schemas/cell-op-v1.json` (planned) and stdout carries nothing else; this brief owns its verb's adoption of the desk-containers/15 contract |
-| 8 | check | `statusgen --root . --lint` | exit 0 |
-| 8a | check | `statusgen --root . --consumers --brief desk-containers/18` | exit 0 — the `consumers:` routing holds against the branch diff |
+| 8 | check | `statusgen --root . --lint --acceptance-forge` | exit 0 |
+| 8a | check | `statusgen --root . --consumers --brief desk-containers/18 --delivery 2cbd6178f8400bcb95faae97047a4f38e08be490 --base 560daf9068b8631d945400bf1aa714d0add889f9` | exit 0 — the `consumers:` routing holds against the branch diff |
 
 ## Evidence
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
@@ -613,6 +613,70 @@ This note corrects the credit statement in the 2026-11-18 pass's Attempts line a
 Verification-Attestation: medici-finance/assay#7056 run=7cd766002acfb1831926c2530f1145a9debd307c126c1a5265d5445e0638eec5 source=c5df2f7f09bb355c9fcd4aad94994a781112c191 brief=docs/streams/desk-containers/brief-18-drain-pause-resume-handoff.md model=claude-opus-5-5 tier=strong
 
 **VERIFY: BLOCKED** — unchanged from the 2026-11-18 pass above: 12 of 15 rows pass exit 0; rows 7, 8 and 8a are held under the open repair ask medici-finance/assay#5472. No acceptance obligation was observed to fail.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `go -C tools/desk test ./cmd/cellctl/ -run 'TestLifecycleTransitions' -count=1 -v` | pass exit=0 | sha256:18ec752b43e6 | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 1b | `go -C tools/desk test ./cmd/cellctl/ -run 'TestResumeLeavesForeignStops' -count=1 -v` | pass exit=0 | sha256:acbef25d2fea | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 1c | `go -C tools/desk test ./cmd/cellctl/ -run 'TestPauseResumeDrainRefuseOffTTY' -count=1 -v` | pass exit=0 | sha256:6ba20ed92a5a | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 1d | `go -C tools/desk test ./cmd/cellctl/ -run 'TestRecordedResumeNotExecuted' -count=1 -v` | pass exit=0 | sha256:4e9e6781b2a0 | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 1e | `go -C tools/desk test ./cmd/cellctl/ -run 'TestPerRoleDownClosesOneSurface' -count=1 -v` | pass exit=0 | sha256:88b4c99c637e | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 1f | `go -C tools/desk test ./cmd/cellctl/ -run 'TestIdleSignalPerMode' -count=1 -v` | pass exit=0 | sha256:3921c1b7178a | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainWaitsForInFlight' -count=1 -v` | pass exit=0 | sha256:363afed25bff | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainTimeoutDoesNotStop' -count=1 -v` | pass exit=0 | sha256:b4093f5f0c7e | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainNowInteractiveOnly' -count=1 -v` | pass exit=0 | sha256:a8d7df679b9e | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `go -C tools/desk test ./cmd/cellctl/ -run 'TestInterimMappingPinned' -count=1 -v` | pass exit=0 | sha256:72e09e889f8b | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `grep -l 'references/handoff-note.md' plugins/assay/skills/the-desk/SKILL.md plugins/assay/skills/pr-review-desk/SKILL.md plugins/assay/skills/verify-desk/SKILL.md plugins/assay/skills/worker-desk/SKILL.md plugins/assay/skills/intake-desk/SKILL.md \| wc -l` | pass exit=0 | sha256:30179a803d48 | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cellctl drain <cell> --timeout 2m` | could-not-run exit=- — unsubstituted placeholder(s) <cell> — the row cannot run as written | sha256:e3b0c44298fc | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (on-behalf-of human:ian) (forge-identity) |
+| 8j | `go -C tools/desk test ./cmd/cellctl/ -run 'TestDrainEmitsCellOpV1' -count=1 -v` | pass exit=0 | sha256:20b354cf342f | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --root . --lint --acceptance-forge` | pass exit=0 | sha256:20850744130e | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 8a | `statusgen --root . --consumers --brief desk-containers/18 --delivery 2cbd6178f8400bcb95faae97047a4f38e08be490 --base 560daf9068b8631d945400bf1aa714d0add889f9` | pass exit=0 | sha256:9a375ab3b6e6 | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7455 run=599b445e2ecc498d1632874c816c1eb97068c0af6bc1293199a623243bc19140 source=e4acd02ff3eb2724940ece59d38b1f646f9dee9f brief=docs/streams/desk-containers/brief-18-drain-pause-resume-handoff.md model=claude-opus-5-5 tier=strong
+
+Verifier notes, 2026-11-22 run at merged main e4acd02ff3eb (claude-opus-5-5, strong tier; installed desk-tools and statusgen v1.0.91; darwin-arm64 host; go1.27.4; git 2.56.1; KUBECONFIG=/dev/null; the kit's verifier Git environment). This pass replaces the earlier Evidence PR medici-finance/assay#7230 and is a fresh run of the whole table.
+
+- Admission: `deskdispatch --check-verifier` exited 0 before any row ran (medici-finance/assay#7455, run 599b445e2ecc, capability verifier-attestation=checked-clean, source e4acd02ff3eb).
+- Table: `deskpathguard rederive` exited 0 and reports 15 rows, 0 author-added, base e4acd02ff3eb. The table at this source is the repaired one. The repair PR medici-finance/assay#7018 merged at efb137c2266e, after the driver's ruling https://github.com/medici-finance/assay/issues/5472#issuecomment-6988533049. Row 8 now carries --acceptance-forge, row 8a pins the delivery merge of medici-finance/assay#5415 (2cbd6178f840) and its first parent (560daf9068b8), and row 7 is marked an operator row that the driver runs and witnesses.
+- No row is classed check:ci, so the whole table ran as one host `statusgen verifyrun` with no row selection and no container bracket. Fail-first does not apply: all four risk answers are present and no, and no row is risk-bearing.
+- The witness table above is the only record of row results: 14 rows exited 0 and passed; row 7 is could-not-run.
+- Rows 8 and 8a pass on their own tool-stamped witness rows, as now written. No row is credited by hand.
+- Row 7 is could-not-run. verifyrun refused it on the unsubstituted placeholder <cell>, and its own Expect cell makes it an operator row for the driver at an interactive terminal, never for a dispatched verifier. The next actor is the driver, under the open issue medici-finance/assay#5472 and the ruling above.
+- `statusgen verifyrun --check` on this brief exited 2: "14 pass, 0 fail, 1 could-not-run/missing (of 15 Verify rows); 0 author-added with no acceptance credit". Its only non-pass line is "row 7: could-not-run — the witness records could-not-run — the row produced no verdict".
+- Credit check: `statusgen verifyrun --bracket-digest --witness` on this brief with `--credit --source e4acd02ff3eb2724940ece59d38b1f646f9dee9f` exited 2, printing "carries no Admission-Bracket: line, so there is nothing to check". The attempt is therefore uncredited (credit-unchecked).
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| supp-a | supplemental, no acceptance credit: the eleven go test selectors of rows 1, 1b, 1c, 1d, 1e, 1f, 2, 3, 4, 5 and 8j in one go test invocation with -count=1 -v, run by hand after the witness only to read the PASS lines | every named test PASS | exit 0; eleven "--- PASS" lines, one per named test, and zero "--- FAIL"; "ok github.com/medici-finance/assay/tools/desk/cmd/cellctl 3.412s" | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (model verifier) (on-behalf-of human:ian) |
+| supp-b | supplemental, no acceptance credit: row 8a's command re-run by hand to read its output | exit 0 | exit 0; "summary: 5 corroborated, 0 disproved, 3 unchecked, 0 brief(s) claiming nothing". The 3 unchecked are the two out-of-scope routes and the .cursor/skills/** self-route, which now reads "the diff leaves 13 of 18 path(s) untouched" because main has gained generated skill mirrors since the delivery. The delivery diff touched all five desk-role mirrors the brief names. The run also prints its standing PRODUCER-DELIVERY COULD-NOT-CHECK notice | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (model verifier) (on-behalf-of human:ian) |
+
+Risk-bearing values. Trigger: not fired. All four risk answers are present and no, the item is not irreversible, and no path is risk-classed. The enumeration was done anyway, over the non-test Go files the delivery diff 560daf9068b8..2cbd6178f840 changes plus the down.go and down_settle.go constants, re-read at e4acd02ff3eb. Since the 2026-11-18 pass no literal changed. The down STOP file mode moved from line 214 to line 194 of down_settle.go. Entries:
+- drainPollMax = 10 * time.Second @ tools/desk/cmd/cellctl/drain.go:23
+- drainDefaultTimeout = 20 * time.Minute @ tools/desk/cmd/cellctl/drain.go:24
+- drainDefaultHandoffWait = 60 * time.Second @ tools/desk/cmd/cellctl/drain.go:25
+- poll floor 10 * time.Millisecond @ tools/desk/cmd/cellctl/drain.go:35
+- cadenceStopWait = 20 * time.Second @ tools/desk/cmd/cellctl/cadence.go:419
+- downOwnerWait = cadenceStopWait @ tools/desk/cmd/cellctl/down.go:79
+- lease poll 100 * time.Millisecond @ tools/desk/cmd/cellctl/cadence.go:484
+- cell-wide STOP file mode 0600 @ tools/desk/cmd/cellctl/cadence.go:325
+- down STOP file mode 0600 (O_CREATE|O_EXCL) @ tools/desk/cmd/cellctl/down_settle.go:194
+- config dir mode 0o700 @ tools/desk/cmd/cellctl/lifecycle.go:310
+- pause flag mode 0o600 (O_CREATE|O_EXCL) @ tools/desk/cmd/cellctl/lifecycle.go:315
+- handoff dir mode 0o700 @ tools/desk/cmd/cellctl/lifecycle.go:647
+- private dir mode 0o700 @ tools/desk/cmd/cellctl/lifecycle.go:853
+- private file mode 0o600 @ tools/desk/cmd/cellctl/lifecycle.go:857
+
+Rank: every entry is a reversible operational knob that an edit and a release undo. The file modes rank first, because a wider mode would let another account read or plant lifecycle records. The stop and owner waits come next, then the drain timings.
+RISK-VALUE: DERIVED — private file mode = 0o600 @ tools/desk/cmd/cellctl/lifecycle.go:857 — the brief requires receipts written 0600 with O_CREAT|O_EXCL|O_NOFOLLOW into a cell-owned 0700 directory. Owner-only read/write is the narrowest mode the owning account can still rewrite, and the same call carries O_EXCL and oNoFollow.
+RISK-VALUE: DERIVED — private dir mode = 0o700 @ tools/desk/cmd/cellctl/lifecycle.go:853 — the brief names a cell-owned 0700 directory. Owner-only traversal keeps other accounts from listing it or racing the temporary name.
+RISK-VALUE: DERIVED — cadenceStopWait = 20 * time.Second @ tools/desk/cmd/cellctl/cadence.go:419 — step 1 of the brief's per-role stop is "the role's STOP file, a 20 s lease wait", the same bound cell-wide down already used. The idle re-measure runs after it.
+RISK-VALUE: DERIVED — downOwnerWait = cadenceStopWait @ tools/desk/cmd/cellctl/down.go:79 — the per-role stop waits for the interactive owner within the same 20 s bound as step 1, so the brief's single stated wait is not widened. It resolves to the literal above.
+RISK-VALUE: DERIVED — drainPollMax = 10 * time.Second @ tools/desk/cmd/cellctl/drain.go:23 — the brief says drain polls "at most every 10s". drainPollCap takes a tenth of the bound, capped at this value.
+RISK-VALUE: DERIVED — drainDefaultHandoffWait = 60 * time.Second @ tools/desk/cmd/cellctl/drain.go:25 — the brief says "drain --now stops after a 60s handoff bound".
+
+Attempts: (1) 2026-11-22T19:26:00Z to 2026-11-22T19:27:57Z, the host verifyrun witness above, 14 rows executed (1, 1b, 1c, 1d, 1e, 1f, 2, 3, 4, 5, 6, 8j, 8, 8a). Row 7 was refused on its placeholder. The attempt is uncredited (credit-unchecked), per the credit check above. The supplemental probes ran after it, from 19:28:19Z to 19:28:26Z, and discharge no row.
+
+**VERIFY: BLOCKED** — 14 of 15 rows pass on the tool witness (1, 1b, 1c, 1d, 1e, 1f, 2, 3, 4, 5, 6, 8j, 8, 8a). Row 7 is could-not-run: it is the driver's operator row (gate:human) under medici-finance/assay#5472, and a dispatched verifier may not run it. No acceptance obligation was observed to fail.
+
 
 ## Review
 Gate: model. All four risk answers are no: the transitions only add stops and stop only the named roles through the per-role `down <cell> <role...>`, after the drain has waited them idle and re-measured the idle signal per mode, and only after re-verifying the window's live identity against its receipt (a mismatch or stale receipt refuses), so a sibling's or another cell's window is not closed; the cell-wide `down` is never used here; abandonment needs an interactive confirm on a plan that lists every abandoned item as an unknown outcome. The reviewer checks rows 2, 4 and 5, the last one being the guarantee that the interim mechanism stays replaceable.
