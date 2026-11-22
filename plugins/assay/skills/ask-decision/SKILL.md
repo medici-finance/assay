@@ -64,8 +64,11 @@ records delivery only. A ruling, sign-off or human act still needs its own evide
 
 If the installed binary lacks a required verb, report the capability gap to the desk.
 For an explicit request, read the named issue and thread with the authorized reader or
-use the manual walk below. For a routine delivery, retain the pending state until the
-required verb and current evidence are available. A failed read creates no acknowledgement.
+use the manual walk below. On an older installation without `changes`, use the authorized
+reader and the screens below to verify a newly actionable human gate, then surface it once
+through the project's escalation channel. Keep the open item as its record and consult its
+thread and prior delivery before repeating a request. When an available verb fails a read or
+refuses a receipt, keep the batch pending and resolve that failure.
 
 ## The queue and its order
 

@@ -40,7 +40,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --show 'example-org/app#42'
 bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --changes --consumer team-inbox --ack "$receipt" example-org/app
 ```
 
-The launcher defaults to consumer `assay-inbox` for interactive use. Give each scheduled destination its own stable name, reuse its repo set on retries, and enable reminders only when the caller has a reminder policy. On a system without Bash or jq, use the native forms `deskinbox changes --consumer NAME [repos...]`, `deskinbox show 'owner/repo#issue'` and `deskinbox changes --consumer NAME --ack RECEIPT [repos...]`. Native polling returns a JSON object even for an empty `events` array. Suppress the notification for that result. If the installed binary lacks a verb, report that capability gap to the desk. The existing full-queue modes still work for an explicit manual request.
+The launcher defaults to consumer `assay-inbox` for interactive use. Give each scheduled destination its own stable name, reuse its repo set on retries, and enable reminders only when the caller has a reminder policy. On a system without Bash or jq, use the native forms `deskinbox changes --consumer NAME [repos...]`, `deskinbox show 'owner/repo#issue'` and `deskinbox changes --consumer NAME --ack RECEIPT [repos...]`. Native polling returns a JSON object even for an empty `events` array. Suppress the notification for that result. On an older installation without `changes`, surface a newly actionable gate once through the project's escalation channel and keep the open item as its record. Use the existing authorized reader and screens. A failed typed read or rejected receipt leaves the batch pending. The full-queue modes remain available for an explicit manual request.
 
 ## Four renderings of one queue (plus the flow model)
 
@@ -214,14 +214,14 @@ exits non-zero.
 
 **`deskinbox` uses the shared desk-tools exit-code taxonomy across every mode** — 0 ok, 5
 refused (bad arguments/preconditions), 6 unverifiable (a read failed — output, if any, is
-partial). **`assay-inbox.sh` — the renderer for `--walk`/`--html` and the fallback for the
-rest (step 2 below) — keeps its own, older taxonomy:**
+partial). The shell launcher keeps its older codes for manual modes. Delivery modes use the typed producer’s codes.
 
 | Exit | Meaning | `deskinbox` | `assay-inbox.sh` |
 |---|---|---|---|
 | ok | every read succeeded — the output is complete | `0` | `0` |
-| refused / precondition | no repos/cells resolvable, or bad arguments (unknown flag, non-numeric or out-of-range `--item`, a malformed `--since`, `html` with no output path; for the oracle also `gh`/`jq` missing, or `--walk` together with `--html` or with `--flow`) | `5` | `1` |
-| unverifiable / partial | one or more reads FAILED — the output is **partial**, see stderr. In `--walk`/`--html` this includes an issue whose body could not be read: it is rendered as `could-not-check`, never as an item with nothing to say. In `--flow`/`--flow --html` it includes any flow reader that could not be read | `6` | `2` |
+| refused / precondition | no repos/cells resolvable, or bad arguments (unknown flag, non-numeric or out-of-range `--item`, a malformed `--since`, `html` with no output path; for the oracle also `gh`/`jq` missing, or `--walk` together with `--html` or with `--flow`) | `5` | `1` manual, `5` for `--changes` or `--show` |
+| unverifiable / partial | one or more reads FAILED — the output is **partial**, see stderr. In `--walk`/`--html` this includes an issue whose body could not be read: it is rendered as `could-not-check`, never as an item with nothing to say. In `--flow`/`--flow --html` it includes any flow reader that could not be read | `6` | `2` manual, producer code for delivery |
+| delivery capability or invalid batch | Required verb unavailable or invalid poll output. The launcher suppresses partial batches and preserves a failing producer’s exit code and stderr. | n/a | `6` for unavailable capability or invalid batch |
 | unavailable auto discovery | no nonempty loop identity; no queue read attempted; explicitly select `ASSAY_INBOX_READER=legacy` for an ambient read | n/a | `6` |
 
 A blind Flow section on the `--html` page does **not** redden that run. The exit code of the
@@ -266,11 +266,8 @@ which renderer runs each, and translates the ones `deskinbox` runs into its subc
 
 ## Instructions for the agent running this command
 
-1. For `--changes` or `--show`, use the delivery instructions above, then stop. On explicitly requested `--show`, report the named issue's current status and owner. On a poll, only a ready human-owned act or a withdrawal warrants a notification.
-2. For the manual modes below, parse the mode and its options first. Check that every remaining repo argument matches `owner/repo`
-   (`[A-Za-z0-9._-]+/[A-Za-z0-9._-]+`). Refuse to run the command if any token does not
-   match, and say why. Then pass each repo as its own separately-quoted argument — never a
-   bare unquoted `$ARGUMENTS` expansion.
+1. Before running **any mode**, parse `$ARGUMENTS` as data. Validate every repository against `^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$`. For `--show`, require that repository followed by `#` and a positive decimal issue number (`[1-9][0-9]*`). For `--consumer` and `--ack`, require a token matching `^[A-Za-z0-9][A-Za-z0-9._-]*$`. Use the configured Go duration for `--remind-after`. Refuse malformed values and unknown options with a reason. Pass each validated value as its own quoted argument or argv element. Never interpolate the raw argument string into shell source or expand a bare unquoted `$ARGUMENTS`.
+2. For `--changes` or `--show`, follow the delivery instructions above. On explicitly requested `--show`, report the named issue's current status and owner. For manual modes, select the renderer below.
 
    **Table (no flags) and `--flow`** run the `deskinbox` verb directly (it is a compiled
    binary, not a script — no `bash` wrapper), translating `$ARGUMENTS`' own `--flow` spelling

@@ -166,7 +166,9 @@ not own.
   re-swept" is stale, not idle.
 - **Console noise floor.** For routine human inbox prompts, use `deskinbox changes` and the
   delivery procedure in [ask-decision](../ask-decision/SKILL.md#a-named-issue-or-a-routine-notification).
-  Use `deskinbox show` when the driver names an issue. Print actionable desk errors and register
+  On an older installation without `changes`, surface a newly actionable human gate once through
+  the project's escalation channel and keep the open item as its record. Use `deskinbox show`
+  when the driver names an issue and the verb is available. Print actionable desk errors and register
   defects in full. Print the full board on change or request; otherwise print one quiet line
   with the timestamp, boards swept, delta count, actionable count and next wake. A quiet line
   still requires a fresh board sweep.

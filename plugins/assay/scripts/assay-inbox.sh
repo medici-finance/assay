@@ -40,9 +40,11 @@
 # Exit codes (a queue tool that cannot distinguish "nothing waiting" from "the query
 # died" is worse than no tool at all — a review found this early on):
 #   0  every query succeeded (the printed table is complete)
-#   1  precondition failure — gh/jq missing, or no repos resolvable
+#   1  manual modes: gh/jq missing, bad arguments, or no repos resolvable
 #   2  at least one gh query FAILED; the table, if any, is PARTIAL
-#   6  auto discovery has no loop identity; no queue read was attempted
+#   5  --changes/--show refused an argument or a producer precondition
+#   6  delivery capability unavailable, invalid batch, or unavailable discovery identity
+# A producer failure under --changes/--show retains its code and diagnostic.
 #
 # PORTABILITY: bash 3.2 (stock /bin/bash on macOS) is a supported target — the brief's
 # premise is "plain git + gh + any terminal". No bash-4-only builtins (mapfile/readarray,
@@ -150,13 +152,16 @@ Environment:
   ASSAY_DESKBOARD     deskboard binary for --flow (default: `deskboard` on PATH).
 
 Exit codes:
-  0  all queries succeeded          1  gh/jq missing, no repos resolvable, or bad arguments
+  0  successful                     1  manual mode: gh/jq missing, no repos, or bad arguments
   2  one or more queries FAILED — the output is partial; see stderr. In --flow and
      --flow --html this includes any flow reader that could not be read. On the OTHER modes
      the exit code stays a statement about the DECISION queue: a blind flow section on the
      --html page is reported in the summary line and on the page, and does not redden the
      run, because a caller checking this code is asking whether it saw all the decisions.
-  6  auto discovery lacks a loop identity — no queue read was attempted. Explicitly set
+  5  --changes or --show refused an argument or producer precondition.
+  6  delivery capability unavailable or invalid batch. Producer read failures retain
+     the producer's exit code and diagnostic. In manual modes, 6 means
+     auto discovery lacks a loop identity — no queue read was attempted. Explicitly set
      ASSAY_INBOX_READER=legacy for ambient discovery. Flow modes do not require it.
 EOF
 }
@@ -192,6 +197,10 @@ case "${1:-}" in
         --consumer|--ack|--remind-after)
           if [[ $# -lt 2 || -z "$2" || "$2" == --* ]]; then
             echo "assay-inbox: $1 needs a value" >&2; exit 5
+          fi
+          if [[ "$1" != --remind-after && ! "$2" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "assay-inbox: $1 needs a token starting with a letter or digit, followed by letters, digits, period, underscore or hyphen" >&2
+            exit 5
           fi
           case "$1" in
             --consumer) consumer="$2" ;;

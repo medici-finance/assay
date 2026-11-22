@@ -28,6 +28,7 @@ case "$verb" in
         [[ "$*" == '--ack=receipt-42 -- example-org/app' ]] || exit 5
         touch acked ;;
       *)
+        [[ -e refused ]] && { cat batch; echo 'producer precondition' >&2; exit 5; }
         [[ -e partial ]] && { cat batch; echo 'incomplete discovery' >&2; exit 6; }
         if [[ -e acked ]]; then echo '{"events":[]}'; else cat batch; fi ;;
     esac ;;
@@ -71,18 +72,30 @@ touch partial
 expect_failure 6 poll
 grep -F 'incomplete discovery' err >/dev/null || fail 'original read diagnostic lost'
 rm partial
+touch refused
+expect_failure 5 poll
+grep -F 'producer precondition' err >/dev/null || fail 'producer refusal diagnostic lost'
+rm refused
 for kind in changed reminder; do
   jq -c --arg kind "$kind" '.events[1].kind=$kind' first > batch
   poll --remind-after 24h > out
   cmp -s batch out || fail "lost $kind event or receipt"
 done
 grep -Fx 'changes --consumer=chat --remind-after=24h -- example-org/app' calls >/dev/null || fail 'reminder policy lost'
+jq -c 'del(.receipt)' first > batch
+expect_failure 6 poll
+grep -F 'missing inbox receipt' err >/dev/null || fail 'valid events without receipt were accepted'
 for invalid in '' '{"events":[]' '{"events":null}' '{"events":[{}]}' '{"events":[{"id":"example-org/app#42","kind":"withdrawn","action":{"act":"Stale."}}],"receipt":"r"}' '{"events":[]} {"events":[]}'; do
   printf '%s' "$invalid" > batch
   expect_failure 6 poll
 done
 expect_failure 5 bash "$launcher" --show '--walk'
 expect_failure 5 poll --remind-after 12h --ack receipt-42
+for args in '--consumer' '--ack'; do
+  count=$(wc -l < calls)
+  expect_failure 5 poll "$args" 'two words'
+  [[ $(wc -l < calls) == "$count" ]] || fail "invalid $args reached the producer"
+done
 touch old
 expect_failure 6 poll
 expect_failure 6 bash "$launcher" --show 'example-org/app#42'
