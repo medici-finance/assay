@@ -22,7 +22,7 @@ import (
 // refused (answer.CheckGatewayToken). The login is the bot identity it authors
 // as. The credential is SEPARATE from every other deskd token by design: the
 // read token cannot write, the desk App token files as the desk, and the
-// write-issues token files record PRs — none of them is the gateway. Unset, no
+// record-PR token files record PRs — none of them is the gateway. Unset, no
 // signed intent is honoured.
 const (
 	intentGatewayTokenFileEnv = "DESKD_INTENT_GATEWAY_TOKEN_FILE"
