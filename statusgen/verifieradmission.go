@@ -130,7 +130,9 @@ func sameDirectory(a, b string) bool {
 // Every other variable is dropped, whatever its family, so a credential pointer nobody has thought to
 // name (another forge's or another tool's, an agent socket, a runtime
 // directory, a profile location) does not reach a row by default. A listed
-// proxy or module proxy whose URL carries a user name is dropped as well.
+// proxy or module proxy whose URL carries a user name is dropped as well. A row
+// that reads a dropped variable by name is could-not-run, not fail
+// (admittedRowScrubbedRefs).
 //
 // The named refusals below (admittedRowDenied) are checked first, so a name
 // added to the pass list later cannot carry one of them through.
@@ -302,26 +304,88 @@ func admittedRowInput(kv string) bool {
 // The pwsh form comes first so $env is not read as a name of its own.
 var admittedRowRefRe = regexp.MustCompile(`(?i:\$env:)([A-Za-z_][A-Za-z0-9_]*)|\$\{?[#!]?([A-Za-z_][A-Za-z0-9_]*)|%([A-Za-z_][A-Za-z0-9_]*)%`)
 
-// admittedRowScrubbedRefs returns, in the order first read, the ASSAY_*
-// variables a row's command reads that its admitted environment env cannot
-// carry, so the row cannot run as written under admission (desk decisions 10
-// and 11 on #6773). A name counts only when admittedRowEnv itself drops it,
-// whatever its value: it is probed with a full commit id, the one value a named
-// row input (admittedRowInputs) keeps, so the delivery coordinates never count,
-// and an abbreviated coordinate still gets the row's own failure. A name the
-// run sets after the scrub (its run credential path, for a forge row) is in env
-// and does not count.
+// admittedRowShellVars are the variables a row's own shell (or the run) sets,
+// so a row that reads one is not reading an inherited input the scrub removed:
+// bash and POSIX shell specials and pwsh's automatic variables that are spelt in
+// capitals, plus TMPDIR, which the run sets per row after the scrub.
+var admittedRowShellVars = []string{
+	"PWD", "OLDPWD", "SHLVL", "IFS", "RANDOM", "SECONDS", "LINENO", "UID", "EUID", "PPID", "BASHPID",
+	"HOSTNAME", "HOSTTYPE", "MACHTYPE", "OSTYPE", "FUNCNAME", "PIPESTATUS", "REPLY", "OPTIND", "OPTARG",
+	"OPTERR", "MAPFILE", "BASH", "BASH_VERSION", "BASH_SOURCE", "BASH_LINENO", "BASH_REMATCH", "BASH_ARGV",
+	"BASH_ARGC", "BASH_COMMAND", "BASH_SUBSHELL", "GROUPS", "PS1", "PS2", "PS3", "PS4", "LASTEXITCODE", "PID",
+	"TMPDIR",
+}
+
+// admittedRowOnlyReads reports whether every mention of name in the command is
+// a read of it (admittedRowRefRe), counting a whole-word mention spelt exactly
+// as name is (an English word in a message is not the capitalised name). A
+// bare mention beside it (NAME=x, for NAME in, read NAME, printenv NAME) means
+// the row may set the name itself, and it is not counted.
+func admittedRowOnlyReads(command, name string) bool {
+	word := func(b byte) bool {
+		return b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
+	}
+	text := command
+	mentions := 0
+	for i := 0; i < len(text); {
+		j := strings.Index(text[i:], name)
+		if j < 0 {
+			break
+		}
+		j += i
+		end := j + len(name)
+		if (j == 0 || !word(text[j-1])) && (end == len(text) || !word(text[end])) {
+			mentions++
+		}
+		i = j + 1
+	}
+	reads := 0
+	for _, m := range admittedRowRefRe.FindAllStringSubmatch(command, -1) {
+		if m[1]+m[2]+m[3] == name {
+			reads++
+		}
+	}
+	return mentions == reads
+}
+
+// admittedRowEnvShaped reports whether a $NAME or ${NAME} read is spelt like an
+// inherited variable: capitals, digits and underscores only. A lower-case or
+// mixed-case $name is the row's own local, or a pwsh variable such as $true.
+func admittedRowEnvShaped(name string) bool {
+	return name == strings.ToUpper(name) && !strings.HasPrefix(name, "_")
+}
+
+// admittedRowScrubbedRefs returns, in the order first read, the variables a
+// row's command reads that its admitted environment env cannot carry, so the
+// row cannot run as written under admission (desk decisions 10 and 11 on #6773,
+// and the same rule widened to every dropped input on #6802). Two sets count:
+//
+//   - every ASSAY_* variable the scrub drops, wherever it is read;
+//   - any other variable the allow-list drops that a base without it would
+//     have passed: not one of the named refusals (admittedRowDenied, dropped
+//     before the allow-list too), not a shell or run variable
+//     (admittedRowShellVars), spelt in capitals unless read through $env: or
+//     %NAME%, and only read, never also assigned or named bare in the row
+//     (admittedRowOnlyReads).
+//
+// A name counts only when admittedRowEnv itself drops it, whatever its value:
+// it is probed with a full commit id, the one value a named row input
+// (admittedRowInputs) keeps, so the delivery coordinates never count, and an
+// abbreviated coordinate still gets the row's own failure. A name the run sets
+// after the scrub (its run credential path, for a forge row) is in env and does
+// not count.
 //
 // The rule reads the command's text, not the shell's parse. Any $NAME, ${NAME
 // or %NAME% counts, wherever it sits: inside single quotes, in an echo or
-// comment, in a grep pattern. That errs to could-not-run. A read written
-// without that syntax (printenv NAME, env | grep NAME, or a program the row
-// starts reading the variable itself) does not count, and the row runs as before.
+// comment, in a grep pattern, with or without a default (${NAME:-x}). That errs
+// to could-not-run. A read written without that syntax (printenv NAME, env |
+// grep NAME, or a program the row starts reading the variable itself) does not
+// count, and the row runs as before, seeing the variable unset.
 func admittedRowScrubbedRefs(command string, env []string) []string {
 	var names []string
 	for _, m := range admittedRowRefRe.FindAllStringSubmatch(command, -1) {
 		name := m[1] + m[2] + m[3]
-		if !strings.HasPrefix(strings.ToUpper(name), "ASSAY_") || slices.Contains(names, name) {
+		if slices.Contains(names, name) {
 			continue
 		}
 		if slices.ContainsFunc(env, func(kv string) bool {
@@ -331,9 +395,16 @@ func admittedRowScrubbedRefs(command string, env []string) []string {
 			continue
 		}
 		probe := name + "=" + strings.Repeat("0", 40)
-		if !slices.Contains(admittedRowEnv([]string{probe}), probe) {
-			names = append(names, name)
+		if slices.Contains(admittedRowEnv([]string{probe}), probe) {
+			continue
 		}
+		if !strings.HasPrefix(strings.ToUpper(name), "ASSAY_") {
+			if admittedRowDenied(probe) || slices.Contains(admittedRowShellVars, strings.ToUpper(name)) ||
+				m[2] != "" && !admittedRowEnvShaped(name) || !admittedRowOnlyReads(command, name) {
+				continue
+			}
+		}
+		names = append(names, name)
 	}
 	return names
 }

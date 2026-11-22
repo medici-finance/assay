@@ -335,6 +335,68 @@ func TestAdmittedScrubbedInputCouldNotRun(t *testing.T) {
 	}
 }
 
+// regression: F-caller-set-row-inputs
+// TestAdmittedDroppedInputNotRun: under admission, a row that reads a variable
+// its caller exported and the allow-list drops (the kit variables Verify rows
+// name: DT03_KIT, a PR number, a pointer such as XDG_RUNTIME_DIR) is
+// could-not-run with a note naming it, never fail: the row would otherwise run
+// with the variable unset and record a defect in a delivery that may be correct.
+// The unadmitted control, with the same inputs set, runs and passes each row. A
+// row that sets the same name itself still runs under admission and passes.
+func TestAdmittedDroppedInputNotRun(t *testing.T) {
+	rows := map[string]string{
+		"DT03_KIT":        `test -r "$DT03_KIT/probe.txt"`,
+		"PR":              `test "${PR:?needs the pr number}" = 42`,
+		"XDG_RUNTIME_DIR": `test -n "${XDG_RUNTIME_DIR:-}"`,
+	}
+	kit := t.TempDir()
+	if err := os.WriteFile(filepath.Join(kit, "probe.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, row := range rows {
+		for _, admit := range []bool{true, false} {
+			t.Run(name+map[bool]string{true: "/admitted", false: "/control"}[admit], func(t *testing.T) {
+				root, _ := admittedFixture(t, admit)
+				t.Setenv("DT03_KIT", kit)
+				t.Setenv("PR", "42")
+				t.Setenv("XDG_RUNTIME_DIR", "/run/user/1000")
+				got, out := captureVerifyrunOut(t, []string{"--brief", droppedInputBrief(t, row), "--root", root, "--dry-run"})
+				if !admit {
+					if got.code != verifyrunExitPass {
+						t.Fatalf("plant did not land: the unadmitted row did not pass (exit %d):\n%s", got.code, out)
+					}
+					return
+				}
+				if got.code != verifyrunExitCouldNot || !strings.Contains(out, name) ||
+					!strings.Contains(out, "not permission to run it outside admission") {
+					t.Fatalf("admitted row that reads the dropped %s gave exit %d, want could-not-run (exit %d) naming it:\n%s",
+						name, got.code, verifyrunExitCouldNot, out)
+				}
+			})
+		}
+	}
+	t.Run("sets its own name", func(t *testing.T) {
+		root, _ := admittedFixture(t, true)
+		t.Setenv("DT03_KIT", kit)
+		row := `for DT03_KIT in "$PWD"; do test -d "$DT03_KIT"; done && D=$(pwd) && test -d "$D"`
+		if got, out := captureVerifyrunOut(t, []string{"--brief", droppedInputBrief(t, row), "--root", root, "--dry-run"}); got.code != verifyrunExitPass {
+			t.Fatalf("admitted row that sets its own variables gave exit %d, want pass:\n%s", got.code, out)
+		}
+	})
+}
+
+// droppedInputBrief writes a one-row brief and returns its path.
+func droppedInputBrief(t *testing.T, row string) string {
+	t.Helper()
+	tick := string(rune(96))
+	brief := filepath.Join(t.TempDir(), "brief.md")
+	body := "# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | " + tick + row + tick + " | exit 0 |\n\n## Evidence\n\n"
+	if err := os.WriteFile(brief, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return brief
+}
+
 // regression: #6773
 // TestScrubbedRowNeverGreen: a row's own text can make it could-not-run under
 // admission, so could-not-run must never clear anything. The verdict is
@@ -371,10 +433,12 @@ func TestScrubbedRowNeverGreen(t *testing.T) {
 
 // regression: F6
 // TestAdmittedRowScrubbedRefs pins the rule's boundary. A read counts when it
-// is written as $NAME, ${NAME...}, $env:NAME or %NAME% of an ASSAY_* name the
-// scrub drops whatever its value, wherever it sits in the text. The delivery
-// coordinates, a name the run set after the scrub, other families and a name
-// read without that syntax do not count.
+// is written as $NAME, ${NAME...}, $env:NAME or %NAME% of a name the scrub
+// drops whatever its value, wherever it sits in the text: any ASSAY_* name, or
+// another capitalised name the allow-list drops that the row only reads. The
+// delivery coordinates, a name the run set after the scrub, the pass list, the
+// named refusals that were dropped before the allow-list, a name the row also
+// assigns or names bare, and a name read without that syntax do not count.
 func TestAdmittedRowScrubbedRefs(t *testing.T) {
 	cred := runCredentialEnv + "=/run/cred"
 	cases := []struct {
@@ -395,6 +459,25 @@ func TestAdmittedRowScrubbedRefs(t *testing.T) {
 		{`cat "$` + runCredentialEnv + `"`, nil, []string{runCredentialEnv}},
 		{`test -n "$HOME" && test -z "$GH_TOKEN" && echo "$DESK_LOOP" "$GIT_DIR"`, nil, nil},
 		{`printenv ASSAY_TEST_POSTGRES_DSN; grep -c ASSAY_TEST_POSTGRES_DSN f`, nil, nil},
+		// Any other variable the allow-list drops counts while the row only reads it.
+		{`test -r "$DT03_KIT/a.txt" && test -x "$DT03_SWEEP" && cat "${DT03_KIT}/b"`, nil, []string{"DT03_KIT", "DT03_SWEEP"}},
+		{`test -n "$D" && git rev-parse "$D^1"`, nil, []string{"D"}},
+		{`H=$(gh pr view "$PR"); test -n "${SIBLING_PR:?need it}"`, nil, []string{"PR", "SIBLING_PR"}},
+		{`test -n "${GITLAB_API_BASE:-}" && echo %USERPROFILE% $env:Kit_Dir`, nil, []string{"GITLAB_API_BASE", "USERPROFILE", "Kit_Dir"}},
+		{`echo $XDG_RUNTIME_DIR $SSH_AUTH_SOCK $GITHUB_ACTIONS`, nil, []string{"XDG_RUNTIME_DIR", "SSH_AUTH_SOCK", "GITHUB_ACTIONS"}},
+		// A name the row sets or names bare itself is the row's own.
+		{`for D in a b; do test -n "$D"; done`, nil, nil},
+		{`D=$(mktemp -d) && test -d "$D"`, nil, nil},
+		{`read -r KIT < f && test -r "$KIT"`, nil, nil},
+		{`printenv DT03_KIT; test -r "$DT03_KIT"`, nil, nil},
+		// Lower and mixed case $name is a local; the explicit env forms count in any case.
+		{`n=1; test "$n" = 1 && test -n "${kit_dir}" && $true`, nil, nil},
+		// Shell and run variables, the pass list, the named inputs and the named refusals do not count.
+		{`cd "$PWD" && echo "$RANDOM" "$TMPDIR" "$PATH" "$USER" "$LANG" "$LC_ALL" "$GOFLAGS" "$CI" "$LASTEXITCODE"`, nil, nil},
+		{`test -n "$DELIVERY_HEAD" && test -n "${DELIVERY_BASE}"`, nil, nil},
+		{`test -z "$GITHUB_TOKEN" && test -z "$GH_HOST" && echo "$GIT_DIR" "$ENV" "$BASH_ENV"`, nil, nil},
+		// A name already in the admitted environment is not removed.
+		{`test -r "$DT03_KIT"`, []string{"DT03_KIT=/k"}, nil},
 	}
 	for _, c := range cases {
 		if got := admittedRowScrubbedRefs(c.command, c.env); !slices.Equal(got, c.want) {

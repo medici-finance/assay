@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvPassList|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred|TestAdmittedRowInputsPass|TestAdmittedRowSeesDelivery|TestAdmittedRowBareDelivery|TestAdmittedScrubbedInputCouldNotRun|TestAdmittedRowScrubbedRefs|TestScrubbedRowNeverGreen)$' -count=1 -timeout 600s",
+  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvPassList|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred|TestAdmittedRowInputsPass|TestAdmittedRowSeesDelivery|TestAdmittedRowBareDelivery|TestAdmittedScrubbedInputCouldNotRun|TestAdmittedDroppedInputNotRun|TestAdmittedRowScrubbedRefs|TestScrubbedRowNeverGreen)$' -count=1 -timeout 600s",
   "control": {
     "name": "admitted rows keep every credential pointer",
     "file": "verifieradmission.go",
@@ -166,8 +166,8 @@
     {
       "name": "the delivery coordinates count as scrubbed inputs",
       "file": "verifieradmission.go",
-      "old": "\t\tif !slices.Contains(admittedRowEnv([]string{probe}), probe) {\n",
-      "new": "\t\tif !slices.Contains(admittedRowEnv([]string{probe}), probe) || probe != \"\" {\n"
+      "old": "\t\tif slices.Contains(admittedRowEnv([]string{probe}), probe) {\n",
+      "new": "\t\tif slices.Contains(admittedRowEnv([]string{probe}), probe) && probe == \"\" {\n"
     },
     {
       "name": "a name the run sets after the scrub still counts as scrubbed",
@@ -216,6 +216,36 @@
       "file": "verifyrun.go",
       "old": "\t\t\" This note is not permission to run it outside admission, where the row sees the full environment\" +\n\t\t\" admission removes: do that only once the row itself has been reviewed for what it reads\"\n",
       "new": "\t\t\" Run it outside admission\"\n"
+    },
+    {
+      "name": "the scrubbed-input rule counts only ASSAY_* names again",
+      "file": "verifieradmission.go",
+      "old": "\t\t\tif admittedRowDenied(probe)",
+      "new": "\t\t\tcontinue\n\t\t\tif admittedRowDenied(probe)"
+    },
+    {
+      "name": "a named refusal that predates the allow-list counts as a scrubbed input",
+      "file": "verifieradmission.go",
+      "old": "admittedRowDenied(probe) || slices.Contains(admittedRowShellVars",
+      "new": "slices.Contains(admittedRowShellVars"
+    },
+    {
+      "name": "a shell or run variable counts as a scrubbed input",
+      "file": "verifieradmission.go",
+      "old": "slices.Contains(admittedRowShellVars, strings.ToUpper(name)) ||",
+      "new": "false ||"
+    },
+    {
+      "name": "a lower-case local counts as a scrubbed input",
+      "file": "verifieradmission.go",
+      "old": "m[2] != \"\" && !admittedRowEnvShaped(name) ||",
+      "new": "false ||"
+    },
+    {
+      "name": "a name the row assigns itself counts as a scrubbed input",
+      "file": "verifieradmission.go",
+      "old": "|| !admittedRowOnlyReads(command, name) {",
+      "new": "{"
     }
   ]
 }

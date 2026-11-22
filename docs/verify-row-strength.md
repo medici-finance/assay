@@ -321,8 +321,19 @@ variable (`GITHUB_ACTIONS`, `RUNNER_TEMP` and the like) alike. A listed proxy or
 URL carries a user name is dropped too; one that carries a secret elsewhere in its URL (a path or
 query) is not checked for it and passes. The run then adds what it hands the
 row itself: the git narrowing settings, its row-read socket, and its read-only credential path for
-a row that passes `--acceptance-forge`. A row that reads a dropped `ASSAY_*` variable by name is
-recorded could-not-run, never fail; a row that reads any other dropped variable sees it unset.
+a row that passes `--acceptance-forge`. A row that reads a dropped variable by name (`$NAME`,
+`${NAME}`, `$env:NAME` or `%NAME%`) is recorded could-not-run, never fail, with a note naming it:
+it cannot run as written under admission, and its own guard on the missing value would otherwise
+read as a defect in the delivery. That covers every `ASSAY_*` variable and every other variable the
+allow-list drops that the row only reads, such as a kit path or a pull-request number the brief
+tells the verifier to export. It leaves out a name the scrub already dropped before the allow-list
+existed (a forge credential, `GIT_*`, `GH_*`), a name the shell or the run sets (`PWD`, `RANDOM`,
+`TMPDIR`), a lower-case or mixed-case `$name` (a shell local; the `$env:` and `%NAME%` forms count
+in any case), and a name the row also assigns or names bare (`NAME=...`, `for NAME in`,
+`printenv NAME`). The rule reads the row's text, not the shell's parse, so a read with a default
+(`${NAME:-}`) counts too. A row that reads a dropped variable some other way, or names it bare,
+runs and sees it unset. The note is not permission to run the row outside admission: which rows to
+amend, or which inputs to carry in, is the author's call.
 
 What a row can still reach today, because it runs as the invoking user:
 
