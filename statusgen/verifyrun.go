@@ -2990,6 +2990,14 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		}
 		defer removeRowScratch(scratch)
 		plan.env = append(admittedRowEnv(environ), admittedRowGo(environ)...)
+		// The one declared replay path reaches the rows only in its checked
+		// form. A refused one is named here, and a row that reads it is
+		// could-not-run.
+		if kv, why := admittedReplayInput(environ, root); why != "" {
+			fmt.Fprintf(stderr, "statusgen verifyrun: %s is not passed to the rows: %s\n", admittedReplayInputVar, why)
+		} else if kv != "" {
+			plan.env = append(plan.env, kv)
+		}
 		plan.rowScratch = scratch
 		plan.rowRoster = container.roster
 		if *rule51Mode && !netnsContainer {
