@@ -505,6 +505,11 @@ func dispatch(o dispatchOpts) error {
 		return held.settle(wt.run.FailVerbatim(deskkit.ExitUnverifiable, msg))
 	}
 	home := firstLine(wt.stdout)
+	_, receipt, _ := strings.Cut(strings.TrimSpace(wt.stdout), "\n")
+	handoff := workerResume(o) && strings.TrimSpace(receipt) == deskkit.BriefHandoffReceipt
+	if handoff && dispatchRef == "" {
+		return held.settle(deskkit.Unverifiable("brief handoff requires a new dispatch receipt; the original home is retained", nil))
+	}
 	// Absoluteness is tested with homeIsAbsolute (filepath.IsAbs under the host-OS seam), not a
 	// literal leading-slash prefix: deskwt is Windows-aware and on native Windows deliberately picks
 	// the sanctioned <repo-root>/.claude/worktrees/ prefix, whose home is a drive-rooted `C:\...`
@@ -578,26 +583,28 @@ func dispatch(o dispatchOpts) error {
 	// the two-layer stop; a failure here degrades to Layer B (the desk window's cadence sweep)
 	// and is REPORTED, never silent — but it never fails the dispatch, which is already claimed,
 	// homed and identity-stamped.
-	if ext := runCmd(home, "git", "config", "extensions.worktreeConfig", "true"); ext.err == nil {
-		// Where the claim was taken, recorded BEFORE the key so a key never exists without
-		// its namespace unless the write failed (deskwt holds a key with no recorded namespace:
-		// "absent from this repo's claim listing" proves a release only for the repo and
-		// store the claim was taken in). A cross-repository verifier claims in the TRACKING
-		// repo while its home is cut from the deliverable checkout.
-		recordClaimNamespace(o, home, plan)
-		if rk := runCmd(home, "git", "config", "--worktree", "assay.runKey", plan.claimKey); rk.err == nil {
-			o.say("%s OK: recorded run key %s (assay.runKey) in %s", stepWorktreeCreate, plan.claimKey, home)
+	if !handoff {
+		if ext := runCmd(home, "git", "config", "extensions.worktreeConfig", "true"); ext.err == nil {
+			// Where the claim was taken, recorded BEFORE the key so a key never exists without
+			// its namespace unless the write failed (deskwt holds a key with no recorded namespace:
+			// "absent from this repo's claim listing" proves a release only for the repo and
+			// store the claim was taken in). A cross-repository verifier claims in the TRACKING
+			// repo while its home is cut from the deliverable checkout.
+			recordClaimNamespace(o, home, plan)
+			if rk := runCmd(home, "git", "config", "--worktree", "assay.runKey", plan.claimKey); rk.err == nil {
+				o.say("%s OK: recorded run key %s (assay.runKey) in %s", stepWorktreeCreate, plan.claimKey, home)
+			} else {
+				o.say("%s WARNING: could not record assay.runKey=%s in %s (%s) — the per-run stop's "+
+					"cooperative layer is off for this run; the desk-window sweep still covers it",
+					stepWorktreeCreate, plan.claimKey, home, rk.run.Said())
+			}
 		} else {
-			o.say("%s WARNING: could not record assay.runKey=%s in %s (%s) — the per-run stop's "+
-				"cooperative layer is off for this run; the desk-window sweep still covers it",
-				stepWorktreeCreate, plan.claimKey, home, rk.run.Said())
+			o.say("%s WARNING: could not enable extensions.worktreeConfig in %s (%s) — the per-run "+
+				"stop's cooperative layer is off for this run; the desk-window sweep still covers it",
+				stepWorktreeCreate, home, ext.run.Said())
 		}
-	} else {
-		o.say("%s WARNING: could not enable extensions.worktreeConfig in %s (%s) — the per-run "+
-			"stop's cooperative layer is off for this run; the desk-window sweep still covers it",
-			stepWorktreeCreate, home, ext.run.Said())
+		recordDispatchRefInWorktree(o, home, dispatchRef)
 	}
-	recordDispatchRefInWorktree(o, home, dispatchRef)
 
 	// before_run — runs after the worktree is prepared and BEFORE the prompt is emitted (the
 	// agent's "run"). FATAL failure class: a failure ABORTS the attempt — no prompt is
@@ -691,7 +698,22 @@ func dispatch(o dispatchOpts) error {
 		return held.settle(serr)
 	}
 	o.say("%s %s", stepModelStamp, stamp)
-	writeDispatchRecord(o, plan, dispatchRef, stamp)
+	if handoff {
+		// Preserve the previous key until all fallible preparation has finished.
+		// Write the run record before exposing its PR key to the resumed worker.
+		rec := buildDispatchRecord(o, plan, dispatchRef, stamp)
+		if err := appendDispatchRecord(&rec); err != nil {
+			return held.settle(deskkit.Unverifiable("could not record the brief-to-PR dispatch; original checkout retained", err))
+		}
+		if r := runCmd(home, "git", "config", "--worktree", "assay.runKey", plan.claimKey); r.err != nil {
+			return held.settle(deskkit.Unverifiable("could not record the PR run key; retry the PR dispatch", r.err))
+		}
+		if r := runCmd(home, "git", "config", "--worktree", "assay.dispatchRef", dispatchRef); r.err != nil {
+			return held.settle(deskkit.Unverifiable("could not record the PR dispatch receipt; retry the PR dispatch", r.err))
+		}
+	} else {
+		writeDispatchRecord(o, plan, dispatchRef, stamp)
+	}
 
 	// 6 — the review-lane queue label. When a reviewer is dispatched onto a known change,
 	// apply `authorization-needed` forge-neutrally (the resolved forge's idempotent label

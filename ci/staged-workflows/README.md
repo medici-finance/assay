@@ -91,6 +91,14 @@ reviewable artifact, not a run.
   `--lint`; the live corroborate step's `--corroborate --pr` runs the network lane only on PRs
   that touch a findings entry; and `deskevidence` / `--close-verify` run the network check
   themselves.
+- `verify-gate-open.yml` and `verify-gate-close.yml` — paired staged changes for
+  verification-handoff/03 under #4993. After an independent verifier publishes
+  the body rendered by `statusgen acceptance-route prepare`, an exact human
+  adjudication comment on that issue triggers the canonical issuer. The close
+  workflow admits only the resulting card, rereads the human closer and
+  revalidates the adjudication before the existing board-writer push.
+  **Promote both together**. The ordinary route for other briefs is unchanged.
+
 - `verify-gate-close.yml` — a STAGED TWIN of the live `.github/workflows/verify-gate-close.yml`
   carrying ONLY a decision-gate refusal branch in the "Advance ..." step. When
   `statusgen --close-verify` refuses a close with the literal "decision-gate hold", the branch

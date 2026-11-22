@@ -263,8 +263,8 @@ func TestBucketAwaitingUnrecognisedAndFutureAreCouldNotCheck(t *testing.T) {
 	}
 	// Case and padding of a known value still classify.
 	for _, outcome := range []string{" Verify-Fail ", "BLOCKED"} {
-		if evaluation.ParseVerificationOutcome(outcome) == evaluation.OutcomeUnknown {
-			t.Errorf("evaluation.ParseVerificationOutcome(%q) = unrecognised", outcome)
+		if evaluation.ClassifyOutcome(outcome) == evaluation.OutcomeUnrecognised {
+			t.Errorf("evaluation.ClassifyOutcome(%q) = unrecognised", outcome)
 		}
 	}
 }
@@ -283,7 +283,7 @@ func TestAwaitOutcomesFutureEndToEnd(t *testing.T) {
 	if oc := awaitOutcomesFor(s, "01"); !oc.Future {
 		t.Errorf("future-dated record not flagged: %+v", oc)
 	}
-	if oc := awaitOutcomesFor(s, "02"); oc.Future || oc.Latest == nil || evaluation.ParseVerificationOutcome(oc.Latest.Outcome) != evaluation.OutcomeUnknown {
+	if oc := awaitOutcomesFor(s, "02"); oc.Future || oc.Latest == nil || evaluation.ClassifyOutcome(oc.Latest.Outcome) != evaluation.OutcomeUnrecognised {
 		t.Errorf("unrecognised record not carried: %+v", oc)
 	}
 	if oc := awaitOutcomesFor(s, "03"); oc.Future || oc.Latest != nil {

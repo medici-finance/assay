@@ -28,6 +28,8 @@ The census pattern (kept in sync with `witnessCensusPattern` in `statusgen/witne
 | `statusgen/evaluation/coverage_api.go` | judges through the library | the library itself: cell parser, record parser, digest, judgement |
 | `statusgen/evaluation/declared_api.go` | judges through the library | the library itself: cell parser, record parser, digest, judgement |
 | `statusgen/evaluation/identity.go` | judges through the library | the library itself: cell parser, record parser, digest, judgement |
+| `statusgen/evaluation/outcome.go` | judges through the library | the library itself: the verify-outcome vocabulary, row and run reduction and brief-key grammar; pure, reads no file, cell or record bytes |
+| `statusgen/evaluation/outcomerecord/outcomerecord.go` | judges through the library | the library's record codec: parses, names, digests and reads verify-outcome records through an fs.FS port, classifying outcomes through statusgen/evaluation/outcome.go; reads no Runner cell |
 | `statusgen/evaluation/readset.go` | judges through the library | the library itself: read-set token and file grammar, the compile-input floor rule and the read-set judgement (build-less-brittle/15) |
 | `statusgen/evaluation/witness.go` | judges through the library | the library itself: cell parser, record parser, digest, judgement |
 | `statusgen/evaluation/witness_json.go` | judges through the library | the library itself: cell parser, record parser, digest, judgement |
