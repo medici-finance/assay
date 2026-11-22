@@ -152,7 +152,7 @@ _Held by per-stream caps: 21 brief(s) across 3 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 07d52c072 2026-11-22T22:14:14Z_
+_last regen: 7ed4dac84 2026-11-22T22:17:45Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +173,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 07d52c072 2026-11-22T22:14:14Z_
+_last regen: 7ed4dac84 2026-11-22T22:17:45Z_
 
 **Progress:** 37/100 brief items done.
 
@@ -333,7 +333,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-containers | 26 | implemented | 3570 | 5 | 7d | worker | fix, cite medici-finance/assay#6455 | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3570 | 3 | 7d | worker | fix, cite medici-finance/assay#1281 | — | — |
 | statusgen | 44 [exec:strong] | implemented | 3550 | 5 | 5d | worker | fix, cite medici-finance/assay#6900 | — | — |
-| tool-refactoring | 03 [exec:strong] | implemented | 3510 | 3 | 26h | worker | fix, cite medici-finance/assay#7389 | — | — |
+| tool-refactoring | 03 [exec:strong] | implemented | 3510 | 3 | 27h | worker | fix, cite medici-finance/assay#7389 | — | — |
 | desktools-v2 | 60 [exec:strong] | implemented | 2570 | 3 | 7d | worker | fix, cite medici-finance/assay#1927 | — | — |
 | measured-status | 05 [exec:strong] | implemented | 2270 | 0 | 7d | worker | fix, cite #3038 | — | — |
 | measured-status | 06 [exec:strong] | implemented | 2250 | 0 | 5d | worker | fix, cite medici-finance/assay#4170 | — | — |
@@ -476,7 +476,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
 | graph-execution | 36 [exec:strong] | implemented | 21030 | 38 | 3d | verify-desk | triage, then re-bucket | — | — |
-| tool-refactoring | 06 [exec:strong] | implemented | 3010 | 2 | 44h | verify-desk | triage, then re-bucket | — | — |
+| tool-refactoring | 06 [exec:strong] | implemented | 3010 | 2 | 45h | verify-desk | triage, then re-bucket | — | — |
 | tool-refactoring | 05 [exec:strong] | implemented | 3000 | 2 | 25h | verify-desk | triage, then re-bucket | — | — |
 | composability | 02 | implemented | 2570 | 3 | 7d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2570 | 1 | 7d | verify-desk | triage, then re-bucket | — | — |
@@ -486,7 +486,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 04 [exec:strong] | implemented | 2070 | 2 | 7d | verify-desk | dispatch one judge | — | — |
 | forge-neutral | 17 [exec:strong] | implemented | 2070 | 0 | 7d | verify-desk | triage, then re-bucket | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2070 | 2 | 7d | verify-desk | triage, then re-bucket | — | — |
-| desk-tools | 34 [exec:strong] | implemented | 1510 | 1 | 25h | verify-desk | dispatch one judge | — | — |
+| desk-tools | 34 [exec:strong] | implemented | 1510 | 1 | 26h | verify-desk | dispatch one judge | — | — |
 | desktools-v2 | 71 [exec:strong] | implemented | 1070 | 0 | 7d | verify-desk | dispatch one judge | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1070 | 0 | 7d | verify-desk | triage, then re-bucket | — | — |
 
@@ -525,7 +525,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | statusgen | 7d | 05 |
 | verification-handoff | 7d | 01 |
 | windows-port | 7d | 03 |
-| tool-refactoring | 44h | 06 |
+| tool-refactoring | 45h | 06 |
 
 ## Unresolved findings
 
