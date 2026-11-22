@@ -135,6 +135,9 @@ func TestShowDecisionScreens(t *testing.T) {
 		{"default: A\ncaught-by: review\n`<!--`\n\nclass: one-way", "prepare"},
 		{"default: A\ncaught-by: review\ntext <!--\n\nclass: one-way", "prepare"},
 		{"default: A\ncaught-by: review\n<!-- class: reserved -->", "prepare"},
+		{"default: A\ncaught-by: review\ncla<!-- seam -->ss: high-risk", "prepare"},
+		{"default: A\ncaught-by: review\nthis step is one‑way", "prepare"},
+		{"default: A\ncaught-by: review\n_class_: reserved", "prepare"},
 		{"~~~\n## Options\nA. Example\n~~~", "prepare"},
 		{"<!--\ndefault: A\ncaught-by: foo\n-->", "prepare"},
 		{"## Options\nA. Keeps going\n- Another unparsed option", "prepare"},
@@ -157,6 +160,25 @@ func TestShowDecisionScreens(t *testing.T) {
 	bot.Body = "## Options\nA. Monday\nB. Tuesday"
 	if a := screenDecision(f.issue, a, []deskkit.Comment{ruling, bot}); a.State != "ready" || !strings.Contains(a.Evidence, "Tuesday") {
 		t.Fatal(a)
+	}
+	// Both the original issue and the latest admitted proposal remain veto
+	// sources. In particular, filtering either before reading its class can
+	// transfer an irreversible choice to the desk.
+	for _, tc := range []struct{ issue, proposal, want string }{
+		{f.issue.Body, "## Options\nA. Only route\n    class: one-way", "prepare"},
+		{f.issue.Body, "## Options\nA. Only route\n<!-- class: one-way -->", "prepare"},
+		{f.issue.Body, "## Options\nA. Monday\nB. Tuesday\n\n## Defaults\ndefault: A\ncaught-by: review\n    class: one-way", "ready"},
+		{f.issue.Body + "\n<!-- class: one-way -->", "## Options\nA. Only route", "prepare"},
+		{f.issue.Body + "\ncla<!-- key -->ss: reserved", "## Options\nA. Only route", "prepare"},
+		{f.issue.Body, "## Options\nA. Only route\ncla<!-- key -->ss: reserved", "prepare"},
+	} {
+		source := *f.issue
+		source.Body = tc.issue
+		proposal := bot
+		proposal.Body = tc.proposal
+		if got := screenDecision(&source, a, []deskkit.Comment{proposal}); got.State != tc.want {
+			t.Errorf("proposal %q: want %s, got %s", tc.proposal, tc.want, got.State)
+		}
 	}
 	bot.Minimized = true
 	if got := screenDecision(f.issue, a, []deskkit.Comment{ruling, bot}); got.State != "screened" {

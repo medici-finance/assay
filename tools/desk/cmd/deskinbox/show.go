@@ -140,13 +140,14 @@ var (
 	rulingLetter  = regexp.MustCompile(`(?i)^(?:option\s+)?([A-D1-4])(?:$|[.)!:,]|\s*[—–-])`)
 	ratifies      = regexp.MustCompile(`(?i)^(?:i\s+)?(?:ratif(?:y|ied)|approved?)\b`)
 	rulingHold    = regexp.MustCompile(`(?i)\?|\b(no|not|hold|wait|later|undecided|unsure|pending)\b|n['’]t\b`)
-	classField    = regexp.MustCompile(`(?i)\bclass[ \t]*:`)
-	oneWay        = regexp.MustCompile(`(?i)\b(one-way|irreversible)\b`)
+	classField    = regexp.MustCompile(`(?i)(?:^|[^[:alnum:]])_*class_*[ \t]*:`)
+	oneWay        = regexp.MustCompile(`(?i)\b(one[-‐‑]way|irreversible)\b`)
 )
 
 func screenDecision(iss *deskkit.Issue, a inboxAction, cs []deskkit.Comment) inboxAction {
 	raw := iss.Body
-	body := visibleDecisionText(raw)
+	issueText := visibleDecisionText(raw)
+	body := issueText
 	options := deskkit.ParseDecisionOptions(body)
 	// A status update or repetition of the same options cannot erase a
 	// human's ruling. Only a newly proposed fork moves the anchor.
@@ -209,7 +210,7 @@ func screenDecision(iss *deskkit.Issue, a inboxAction, cs []deskkit.Comment) inb
 	}
 	// Positive evidence must be visible. Risk declarations are vetoes: Markdown
 	// parsing must never hide them and thereby promote an item to a default.
-	source := demd(raw)
+	source := demd(raw + "\n" + body + "\n" + issueText)
 	veto := classField.MatchString(source) || oneWay.MatchString(source)
 	if !veto && (heading && len(options.Texts) == 1 && listLines == 1 || !heading && len(fields["option"]) == 1 && fields["option"][0] != "") {
 		return a.next("screened", "desk", "No fork. Proceed with the single stated option or route it to its owner.")
