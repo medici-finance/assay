@@ -33,6 +33,7 @@ sources:
   - "docs/streams/decisions/DR-desk-containers-34.md: the approved design record, which already covers per-role OS identity on a host."
   - "freshness-checked 2026-11-17 @ e259796bb (origin/main): tools/desk/cmd/cellctl/{rolesecret.go,rolesecret_test.go,launch.go,desk.go,cell.go,envkeys.go,hotfix_unix.go}."
   - "freshness-checked 2026-11-21 @ 09c51fcf7 (origin/main): tools/desk/cmd/cellctl/{launch.go,git.go,sessionroots.go,cadence.go,envkeys.go,rolesecret.go} (the launcher's git calls, the run directory mode, both host-refusal texts)."
+  - "freshness-checked 2026-11-22 @ 236854c9d (origin/main): the host-refusal text (`rolesecret.go`, `envkeys.go`), the `run` directory mode and the launcher's git calls (`launch.go`), `roleSecretHolderRoles` and the two flow test names are unchanged; no `CELL_ROLE_IDENTITIES`, `hostmap-` or `host-worker-window` text exists under `tools/`, `containers/` or `docs/cellctl.md`."
 exec-tier: strong
 exec-tier-why: >-
   Yes to (a) the launch mechanism is a design choice the facts leave open, (b) the checks span
