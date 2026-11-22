@@ -55,6 +55,7 @@ files: `tools/desk/cmd/cellctl/{rolesecret.go,rolesecret_test.go,envkeys.go,chec
 `tools/desk/cmd/cellctl/rolesecret_host.go` (planned),
 `tools/desk/cmd/cellctl/rolesecret_host_test.go` (planned),
 `tools/desk/cmd/cellctl/rolesecret_flow_test.go` (planned),
+`tools/desk/cmd/deskdispatch/rolesecret_test.go`,
 `containers/secrets.md`, `docs/cellctl.md`,
 `changelog/role-secrets-host-surface.md` (planned).
 
@@ -263,7 +264,17 @@ Default if no answer: none — blocks until answered. Until it is answered the h
    passes. `roleSecretLaunchGate()` and every other call site keep refusing an unverified
    host surface. The `CELL_ROLE_SECRET_SURFACE` description in `envkeys.go` also says
    `host is not built yet`; rewrite it to describe the host surface, since Verify row 7
-   greps the whole package.
+   greps the whole package. Add the subtests that Verify rows 5 and 6 name, which do not
+   exist today and are what makes those rows fail before this change: in `cellctl`,
+   `TestRoleSecretReadIsolation` gains the subtests `hostmap-reviewer-on-holder-identity`,
+   `hostmap-reviewer-uid-zero`, `hostmap-reviewer-elevates` and
+   `hostmap-reviewer-writes-holder-path` (a table over a writable git directory, identity
+   map, PATH directory and home), each running the host check with the identity probe
+   injected and expecting a refusal; they may share a table with `TestRoleSecretHostSurface`
+   but must run under the first test's name. In `deskdispatch`, `TestRoleSecretUntrustedHead`
+   gains the subtest `host-worker-window`: a holding window whose path variable names a file
+   under a holder's home, not a container mount, gets the same refusals and admissions as the
+   container window.
 5. **Checkouts.** A holder role works in checkouts its own identity owns. If the dispatcher
    would create a holder's worktree from a checkout a non-holder can write, Task 2's
    writable-path check refuses; it does not create a separate clone. Record the operator
@@ -317,16 +328,22 @@ listed in the Ground rules is loosened.
 All tests below are implementation deliverables, not results claimed by this authoring PR.
 Named tests must execute; zero matches or a skip fails independent verification.
 
+The brief declares `sensitive-data: yes`, so every row is risk-bearing and must fail on the
+implementation's base. Each does: rows 1 to 6 name tests or subtests this change adds (rows 5
+and 6 grep each added subtest's own PASS line, never one that exists today such as
+`surface-host`), row 7 greps text this change removes, row 8 greps documentation this change
+adds, and row 9 runs on a diff that does not yet hold the implementation.
+
 | # | Class | Env | Command | Expect |
 |---|---|---|---|---|
 | 1 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretHostSurface$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretHostSurface ' "$o")` | Named PASS with the identity probe injected; each case refuses with its own reason: no map, a role missing from the map, a reviewer on a holder's identity or the file owner's, a reviewer at uid 0, a reviewer that elevates without a prompt to root, to a holder or to the launching identity, a reviewer that can write a rootful container runtime socket or a holder's or the launcher's rootless one (a rootless socket of its own passes), a coordinator or intake on a holder's identity, the launcher being a role identity, a writable git common directory, hooks, cell config, identity map, PATH directory, holder home or secret directory, a writable cellctl binary or its directory, launcher PATH directory, launcher home or shell startup file, switch rule file, cell directory, `run` directory or launcher-owned cell home, a writable git common directory, `config` or `hooks` of the cell repo, a stream root or a `CELL_ROOTS` checkout the launcher runs git in, a probed path whose ancestor a reviewer can write, a probed path or ancestor a reviewer owns with its write bit cleared, a reviewer-writable sticky ancestor over a reviewer-owned child (a sticky ancestor over a trusted-owned child passes), a launcher tmux socket a non-holder can connect to, a non-holding window handed the launcher-owned cell home, a shared tmux socket or home for a holder, a dev-env file a holder can read, and a probe that cannot run; a fully separated map passes and the expected owner is the role's identity. |
 | 2 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretHostLaunch$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretHostLaunch ' "$o")` | Named PASS with the switch seam injected; a verified host cell launches each window under its mapped identity, the worker window alone carries the path variable and no value, reviewer, intake and coordinator windows carry none, a window that cannot be switched refuses rather than falling back to the launcher's identity, and the receipt names the identity login. |
 | 3 | check +flow | host:multi-user | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretLaunchFlow$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretLaunchFlow ' "$o")` | Named PASS on a POSIX host provisioned per Task 6; the compiled cellctl checks a host-surface scratch cell, launches a worker window whose dispatched child sees only the path variable, then refuses once the fixture is group-readable; no output contains the fixture contents. The same command as desk-containers/34 row 5. |
 | 4 | check +flow | host:multi-user | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretReadDenyFlow$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretReadDenyFlow ' "$o")` | Named PASS on a POSIX host provisioned per Task 6; a reviewer child fails to open the fixture with a permission error and a worker child opens it; a map putting the reviewer on the worker's identity is refused at check before any window starts; a reviewer mapped to the elevating identity is refused by the real elevation probe; no output contains the fixture contents. The same command as desk-containers/34 row 9. |
-| 5 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretReadIsolation$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretReadIsolation ' "$o")` | Named PASS; desk-containers/34 row 8 still holds after the host refusal is lifted: an unmapped host surface, an unset surface and an unknown surface each still refuse, and the host-surface cases row 8's Expect lists (a reviewer on a holder's identity, uid 0, elevation, a writable git directory, map, PATH or home) are still exercised under this test, as its own subtests or a table it shares with `TestRoleSecretHostSurface`. |
-| 6 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/deskdispatch/ -run '^TestRoleSecretUntrustedHead$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretUntrustedHead ' "$o")` | Named PASS; the dispatcher still strips the path variables from an unblessed item and every review-kit child, now that a host worker window can carry them. |
+| 5 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretReadIsolation$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretReadIsolation ' "$o" && grep -F -- '--- PASS: TestRoleSecretReadIsolation/hostmap-reviewer-on-holder-identity ' "$o" && grep -F -- '--- PASS: TestRoleSecretReadIsolation/hostmap-reviewer-uid-zero ' "$o" && grep -F -- '--- PASS: TestRoleSecretReadIsolation/hostmap-reviewer-elevates ' "$o" && grep -F -- '--- PASS: TestRoleSecretReadIsolation/hostmap-reviewer-writes-holder-path ' "$o")` | Named PASS for the test and for each of the four `hostmap-` subtests, which exist only after this change. desk-containers/34 row 8 still holds after the host refusal is lifted: an unmapped host surface, an unset surface and an unknown surface each still refuse, and the host-surface cases row 8's Expect lists (a reviewer on a holder's identity, uid 0, elevation, a writable git directory, map, PATH or home) are now exercised by those subtests, run under this test's name. |
+| 6 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/deskdispatch/ -run '^TestRoleSecretUntrustedHead$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretUntrustedHead ' "$o" && grep -F -- '--- PASS: TestRoleSecretUntrustedHead/host-worker-window ' "$o")` | Named PASS for the test and for the `host-worker-window` subtest, which exists only after this change; the dispatcher still refuses an unblessed item and every review-kit child from a host worker window whose path variable names a file under the holder's home, and admits a trusted item. |
 | 7 | check | tree | `(! grep -rn -F 'host is not built yet' tools/desk/cmd/cellctl/)` | exit 0; the blanket refusal text is gone from the source. |
-| 8 | check | tree | `statusgen --root . --lint` | exit 0; output contains "LINT: PASS". |
+| 8 | check | tree | `(grep -q -F 'CELL_ROLE_IDENTITIES' docs/cellctl.md && grep -q -F 'CELL_ROLE_IDENTITIES' containers/secrets.md)` | exit 0; both documents name the identity-map key, which neither does before this change. |
 | 9 | check | tree | `statusgen --consumers --brief desk-containers/40 --base $(git merge-base origin/main HEAD)` | Pre-merge, on the implementation branch: exit 0; the declared implementation sites and follow-up references corroborate. |
 
 ## Threat model / pre-mortem
