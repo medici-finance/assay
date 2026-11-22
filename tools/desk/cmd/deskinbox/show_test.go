@@ -16,6 +16,9 @@ import (
 
 type showForge struct {
 	deskkit.Forge
+	commentsErr            error
+	commits                []deskkit.RepoCommit
+	commitsErr             error
 	issue                  *deskkit.Issue
 	history                *deskkit.TrustPayload
 	comments               []deskkit.Comment
@@ -35,7 +38,10 @@ func (f *showForge) IssueTrustEvents(deskkit.ForgeRepo, int) (*deskkit.TrustPayl
 	return f.history, nil
 }
 func (f *showForge) ListCommentsTyped(deskkit.ForgeRepo, int, deskkit.TargetKind) ([]deskkit.Comment, error) {
-	return f.comments, nil
+	return f.comments, f.commentsErr
+}
+func (f *showForge) ListRecentCommits(deskkit.ForgeRepo, int) ([]deskkit.RepoCommit, error) {
+	return f.commits, f.commitsErr
 }
 func (f *showForge) RepoDefaultBranch(deskkit.ForgeRepo) (string, error) { return "main", nil }
 func (f *showForge) ReadFile(_ deskkit.ForgeRepo, in deskkit.ReadFileInput) (*deskkit.FileContent, error) {
@@ -116,6 +122,7 @@ func TestShowDecisionScreens(t *testing.T) {
 		{"option: one route", "screened"},
 		{"default: A\ncaught-by: review", "screened"},
 		{"default: A\ncaught-by: review\nclass: irreversible", "prepare"},
+		{"default: A\ncaught-by: review\n<!--note\n    -->\nclass: one-way", "prepare"},
 		{"~~~\n## Options\nA. Example\n~~~", "prepare"},
 		{"<!--\ndefault: A\ncaught-by: foo\n-->", "prepare"},
 		{"## Options\nA. Keeps going\n- Another unparsed option", "prepare"},
@@ -153,13 +160,25 @@ func TestShowCanonicalGate(t *testing.T) {
 	}
 	sha := fixture.CommitFile(t, ".github/workflows/verify-gate-close.yml", "name: verify-gate-close\n", "install close workflow")
 	p := acceptancePacket{Repository: "example-org/tracker", Purpose: "verification-acceptance", Local: "example/01", Source: sha, Run: "deadbeef", SourceURL: "https://github.com/example-org/tracker/blob/" + sha + "/docs/streams/example/01.md"}
-	a := inboxAction{URL: "https://github.com/example-org/tracker/issues/7"}
-	body := "generated current card"
+	f := readyDecisionFixture(t)
+	if _, err := fixture.Git("remote", "add", "origin", "https://github.com/example-org/tracker.git"); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(deskkit.RootsEnv, "example-org/tracker="+fixture.Dir)
+	f.commits = []deskkit.RepoCommit{{SHA: sha}}
+	f.issue.Author = deskkit.Account{Login: "github-actions[bot]", ID: 88, Type: "Bot"}
+	f.issue.Labels = []string{"verify-gate"}
+	raw, err := json.Marshal(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := "<!-- verify-gate: example/01 -->\n\n<!-- assay-card: " + string(raw) + " -->\n\nPacket."
+	f.issue.Body = body
 	want := body
 	oldRunner, oldLook := runReaderFn, lookPathFn
 	t.Cleanup(func() { runReaderFn, lookPathFn = oldRunner, oldLook })
 	lookPathFn = func(string) (string, error) { return "/fixture/statusgen", nil }
-	failClose := false
+	var closeErr error
 	runReaderFn = func(_ string, args []string) ([]byte, []byte, error) {
 		if strings.Join(args, " ") == "--root "+fixture.Dir+" --verify-issues" {
 			b, e := json.Marshal([]any{map[string]any{"body": want, "card": p}})
@@ -168,19 +187,33 @@ func TestShowCanonicalGate(t *testing.T) {
 		if strings.Join(args, " ") != "verify-gate-close --root "+fixture.Dir+" --ref example/01 --dry-run" {
 			t.Fatalf("unexpected invocation %v", args)
 		}
-		if failClose {
-			return nil, []byte("required row held"), errors.New("held")
+		if closeErr != nil {
+			return nil, []byte("required row held"), closeErr
 		}
 		return []byte("would mark done"), nil, nil
 	}
-	runGate := func() inboxAction { return inspectGate(a, fixture.Dir, p.Repository, sha, body, p) }
-	if got := runGate(); got.State != "ready" || !strings.Contains(got.Act, a.URL) || got.Verify == "" {
+	runGate := func() inboxAction {
+		t.Helper()
+		state, err := readInboxAction(p.Repository, f.issue.Number)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return state
+	}
+	if got := runGate(); got.State != "ready" || !strings.Contains(got.Act, f.issue.URL) || got.Verify == "" {
 		t.Fatal(got)
 	}
-	failClose = true
+	closeErr = readerExit(1)
 	if got := runGate(); got.State != "prepare" || !strings.Contains(got.Act, "held") {
 		t.Fatal(got)
 	}
+	for _, err := range []error{readerExit(2), readerExit(5), readerExit(6), errors.New("cannot launch reader")} {
+		closeErr = err
+		if got := runGate(); got.State != "unknown" {
+			t.Errorf("close reader %v: %s", err, got.State)
+		}
+	}
+	closeErr = nil
 	want = "changed evidence"
 	if got := runGate(); got.State != "stale" {
 		t.Fatal(got)
@@ -241,4 +274,127 @@ func TestShowRunsheet(t *testing.T) {
 	f.branchFile = file
 	file.Content = append(file.Content, []byte("\n! another-act")...)
 	check("prepare")
+}
+
+type readerExit int
+
+func (e readerExit) Error() string { return "reader exited" }
+func (e readerExit) ExitCode() int { return int(e) }
+
+// regression: class decision-routing
+func TestShowTrustGuards(t *testing.T) {
+	f := readyDecisionFixture(t)
+	read := func(want string) inboxAction {
+		t.Helper()
+		a, err := readInboxAction("example-org/tracker", 7)
+		if err != nil || a.State != want {
+			t.Fatalf("want %s, got %+v, %v", want, a, err)
+		}
+		return a
+	}
+	f.history.BodyEdited = time.Now()
+	read("prepare")
+	f.history.BodyEdited = time.Time{}
+	f.commentsErr = errors.New("comments unavailable")
+	read("unknown")
+	f.commentsErr = nil
+	stamp := "2026-01-12T10:00:00Z"
+	ruling := deskkit.Comment{Author: f.issue.Author, Body: "A.", CreatedAt: stamp, UpdatedAt: stamp}
+	for name, c := range map[string]deskkit.Comment{
+		"wrong identity": {Author: deskkit.Account{Login: "another-user", ID: 99, Type: "User"}, Body: "A.", CreatedAt: stamp, UpdatedAt: stamp},
+		"minimized":      {Author: f.issue.Author, Minimized: true, Body: "A.", CreatedAt: stamp, UpdatedAt: stamp},
+	} {
+		t.Run(name, func(t *testing.T) { f.comments = []deskkit.Comment{c}; read("ready") })
+	}
+	ruling.Body = "A. Hold until Monday"
+	f.comments = []deskkit.Comment{ruling}
+	read("prepare")
+	ruling.Body = "A."
+	f.comments = []deskkit.Comment{ruling, {Author: deskkit.Account{Login: "other[bot]", ID: 12, Type: "Bot"}, Body: "## Options\nA. Supply\nB. Store", CreatedAt: stamp, UpdatedAt: stamp}}
+	read("screened")
+	blank := t.TempDir()
+	t.Setenv("HOME", blank)
+	t.Setenv("USERPROFILE", blank)
+	deskkit.ReloadConfig()
+	if deskkit.EffectiveConfig().Configured() {
+		t.Fatal("fixture roster still configured")
+	}
+	for _, l := range []string{"needs-decision", deskkit.VerifyGateLabel} {
+		f.issue.Labels = []string{l}
+		var out, diag bytes.Buffer
+		if rc := run([]string{"show", "example-org/tracker#7"}, &out, &diag, time.Now()); rc != 6 || !strings.Contains(out.String(), "roster") {
+			t.Errorf("no roster %s: exit %d, %s", l, rc, out.String())
+		}
+	}
+}
+
+// regression: class verification-provenance
+func TestShowAcceptanceInput(t *testing.T) {
+	f := readyDecisionFixture(t)
+	issue := f.issue
+	issue.Author = deskkit.Account{Login: "github-actions[bot]", ID: 88, Type: "Bot"}
+	issue.Labels = []string{"VeRiFy-GaTe"}
+	packet := acceptancePacket{Repository: "example-org/tracker", Local: "example/01", Purpose: "verification-acceptance", Source: strings.Repeat("b", 40), Run: "abcd"}
+	raw, err := json.Marshal(packet)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := "<!-- verify-gate: example/01 -->\n\n<!-- assay-card: " + string(raw) + " -->\n\nPacket."
+	issue.Body = body
+	check := func(want, why string) {
+		t.Helper()
+		a, e := readInboxAction("example-org/tracker", 7)
+		if e != nil || a.State != want || !strings.Contains(a.Act, why) {
+			t.Fatalf("%s %s: %+v %v", want, why, a, e)
+		}
+	}
+	issue.Author.Login = "other[bot]"
+	check("prepare", "workflow-issued")
+	issue.Author.Login = "github-actions[bot]"
+	actualURL := issue.URL
+	issue.URL = "https://github.com/example-org/other/issues/7"
+	check("prepare", "workflow-issued")
+	issue.URL = actualURL
+	issue.Body = "## Example\n" + body
+	check("prepare", "landed verification")
+	issue.Body = body
+	f.commitsErr = errors.New("failed to read current revision")
+	check("unknown", "default-branch")
+	f.commitsErr = nil
+	f.commits = []deskkit.RepoCommit{{SHA: strings.Repeat("a", 40)}}
+	t.Setenv(deskkit.RootsEnv, "example-org/tracker="+t.TempDir())
+	check("unknown", "local checkout")
+}
+
+// regression: class decision-routing
+func TestShowScreenOracle(t *testing.T) {
+	requireJQ(t)
+	f := readyDecisionFixture(t)
+	t.Setenv("ASSAY_INBOX_TRUSTED_JSON", `["ada"]`)
+	t.Setenv("ASSAY_INBOX_RATIFIER", "ada")
+	t.Setenv("ASSAY_INBOX_APPS_JSON", `["example-worker"]`)
+	prog := extractJQFMTProgram(t)
+	item := jqItem{Repo: "example-org/tracker", Number: 7, Title: "Decision", URL: f.issue.URL, Labels: []jqLabel{{Name: "needs-decision"}}}
+	stamp := "2026-01-12T10:00:00Z"
+	for _, test := range []struct{ class, body, ruling, prefix string }{
+		{"genuine", "## Options\nA. Today\nB. Tomorrow", "", "Reply on "},
+		{"no-fork", "## Options\nA. Only one route", "", "No fork."},
+		{"reversible-default", "default: A\ncaught-by: review", "", "Apply the documented reversible default."},
+		{"already-ruled", "## Options\nA. Today\nB. Tomorrow", "A.", "Already ruled."},
+	} {
+		t.Run(test.class, func(t *testing.T) {
+			f.issue.Body = test.body
+			detail := jqDetail{Body: test.body, Author: &jqCommentAuthor{Login: "ada"}}
+			var comments []deskkit.Comment
+			if test.ruling != "" {
+				comments = []deskkit.Comment{{Author: f.issue.Author, Body: test.ruling, CreatedAt: stamp, UpdatedAt: stamp}}
+				detail.Comments = []jqComment{{Author: jqCommentAuthor{Login: "ada"}, Body: test.ruling}}
+			}
+			oracle := runOracleFormat(t, prog, item, detail, 0, 1)
+			action := screenDecision(f.issue, inboxAction{URL: f.issue.URL}, comments)
+			if oracle.Class != test.class || !strings.HasPrefix(action.Act, test.prefix) {
+				t.Fatalf("oracle %s / show %+v", oracle.Class, action)
+			}
+		})
+	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -31,7 +32,7 @@ func readAcceptance(f deskkit.Forge, fr deskkit.ForgeRepo, iss *deskkit.Issue, a
 	// The existing comment admission exception grants no permission to close
 	// or trust arbitrary body text. A fixed workflow issuer, the canonical
 	// packet and fresh landed evidence are independently required here.
-	if !deskkit.EffectiveConfig().Configured() || iss.Author.Type != "Bot" || iss.Author.Login != "github-actions[bot]" || a.URL != fmt.Sprintf("%s/issues/%d", base, iss.Number) {
+	if iss.Author.Type != "Bot" || iss.Author.Login != "github-actions[bot]" || a.URL != fmt.Sprintf("%s/issues/%d", base, iss.Number) {
 		return a.next("prepare", "verifier", "Verifier owes the workflow-issued sign-off card for this issue."), nil
 	}
 	body := strings.TrimSpace(strings.ReplaceAll(iss.Body, "\r\n", "\n"))
@@ -109,7 +110,12 @@ func inspectGate(a inboxAction, root, repo, head, body string, packet acceptance
 		}
 		_, diag, e := runReaderFn(bin, []string{"verify-gate-close", "--root", root, "--ref", c.Card.Local, "--dry-run"})
 		if e != nil {
-			return a.next("prepare", "verifier", "Resolve the close preflight: "+runeTrunc(cleanText(firstDiagnosticLine(diag)), 350))
+			reason := runeTrunc(cleanText(firstDiagnosticLine(diag)), 350)
+			var exit interface{ ExitCode() int }
+			if errors.As(e, &exit) && exit.ExitCode() == 1 {
+				return a.next("prepare", "verifier", "Resolve the close preflight: "+reason)
+			}
+			return a.next("unknown", "verifier", "Could not run the close preflight: "+reason)
 		}
 		if why := gateCheckout(reader, head); why != "" {
 			return a.next("unknown", "verifier", why)
