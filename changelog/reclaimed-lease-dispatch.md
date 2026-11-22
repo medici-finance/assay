@@ -1,3 +1,3 @@
 ### Fixed
 
-- A dispatcher can use its explicitly reclaimed lease once through ordinary dispatch. A racing dispatcher cannot reuse that lease.
+- Documented how to release an unlaunched reclaimed lease before dispatch. Automatic expiry-based takeover preserves any claim renewed after the expiry check.

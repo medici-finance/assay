@@ -105,12 +105,13 @@ GITHUB_TOKEN / GITLAB_TOKEN. The forge (github/gitlab) resolves from ASSAY_REPO_
 origin remote host; every forge call is an in-process git-smart-HTTP request (no gh/glab CLI).
 
 acquire   take the claim if free; reclaim it if the holder is past its TTL; refuse (exit 5)
-          if a live holder owns it. An explicit steal offers its identified owner one
-          ordinary acquire of the reclaimed lease.
+          if a live holder owns it. Never steals a live claim inline.
 progress  advance an acquired claim to state=dispatched (TTL 20m -> 120m).
 release   delete the caller-owned claim at the revision read. A missing claim is a no-op.
 steal     forcibly take the claim, recording --reason in the replacement — an auditable
-          takeover, not a hand-delete.
+          takeover, not a hand-delete. If you reclaimed an unlaunched lease, run
+          deskclaim-ref release <id> --repo O/R --token-file FILE in the same DESK_SESSION,
+          then rerun the original deskdispatch command with its normal admission flags.
 show      print the claim's holder/state/branch/age, or FREE. A claim still at state=claimed
           past CLAIMED_TTL_MIN (default 20m) carries a trailing PREPARED-NOT-LAUNCHED note:
           its dispatch was prepared and never progressed, so no agent is known to run behind it.
