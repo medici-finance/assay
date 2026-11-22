@@ -186,13 +186,14 @@ comment field. It adds no store, binary or subprocess seam.
    approved side has a revision and the presented side has none, so a normalized legacy
    id can never erase a requested revision. The approved side is not read from any
    record, because points 2 and 3 persist no revision. At Evidence time it is rebuilt
-   from the brief itself: the logical key resolved from the brief's board id, and the
-   revision taken from the brief's `version:` frontmatter at the judged base, the same
-   commit the decision-gate hold judges. The presented side is the reference the
-   Evidence names, resolved through `ResolveWorkSubject`. A brief with no `version:`
-   yields approved revision zero, so only an unrevisioned presented reference matches
-   it. The check runs only on a landing whose Verify row or Evidence names the work by a
-   typed reference. A landing whose references are all legacy unprefixed ids keeps
+   from the brief at the judged base, the same commit the decision-gate hold judges.
+   Resolve the board id to the logical key and take the revision from statusgen's
+   parsed `BriefFile.Version`. An omitted version is 1 for brief-v2 and
+   unrevisioned for brief-v1. The presented side is the reference the Evidence names,
+   resolved through `ResolveWorkSubject`. This preserves the existing Evidence
+   revision semantics; the separate human-ruling binding in point 4 requires explicit
+   version frontmatter. The check runs only when the landing’s Verify row or Evidence
+   names work by a typed reference. A landing whose references are all legacy unprefixed ids keeps
    today's path unchanged, as point 7 requires. It runs alongside the existing
    `AcceptanceBinding.Validate(candidate)` and replaces nothing: a stale or substituted
    candidate is still refused by the candidate check, even when the subject matches.
@@ -307,6 +308,7 @@ unchanged.
 | `TestRulingAliasAuthority` (planned) | A typed revision-1 ruling holds if its card is edited to version 2 and the brief moves to revision 2. Also hold if the card changes while the brief stays at revision 1, if the card is removed while its marker remains, or if a card is added to a comment that declared `card=none`. Exercise the real lower gate with the upper parser bypassed. Mutations: skip digest verification, treat a removed card as a legacy marker, or ignore unexpected card presence. |
 | `TestRulingAliasAuthority` (planned) | An otherwise valid, unrevisioned pre-cutover ruling keeps logical-key-only meaning. An otherwise identical comment at or after cutover, or with an unknown creation time, holds even on a marker-only issue. A pre-cutover comment with a typed subject and missing card also holds. Mutations: omit the timestamp check or let a failed typed binding fall through to legacy. |
 | `TestPrefixedVerifySubject` (planned) | `NewWorkAt` on `b-09@3` returns the existing `WorkIdentity` and revision 3. Evidence presented for revision 2, or for the legacy id with no revision, is refused (`checked-failed` and `could-not-check` respectively). Mutation: building the subject from the normalized `fullId` erases the revision, so the test fails. |
+| `TestPrefixedVerifySubject` (planned) | With no explicit version, a brief-v2 fixture matches `@1` and holds an unrevisioned reference. A brief-v1 fixture stays unrevisioned. Mutation: treating an omitted brief-v2 version as zero reverses its two outcomes. |
 | `TestPrefixedVerifySubject` (planned) | A matching subject with a stale or substituted candidate is still refused by `AcceptanceBinding.Validate`. Mutation: letting a matching subject short-circuit the candidate check fails. |
 
 The statusgen decision-gate checks from design point 4 are also covered by existing
