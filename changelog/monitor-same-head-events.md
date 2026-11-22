@@ -1,2 +1,0 @@
-- The PR monitor can wake a shepherd when a reviewer submits a verdict or a CI check finishes at the same head. The qualified launcher reuses its existing review collection.
-- A malformed feedback companion checkpoint now names its file in the error, so an operator can restore or remove exactly that file.

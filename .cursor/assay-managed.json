@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "1.0.91",
+  "version": "1.0.92",
   "files": {
     ".cursor/references/claude-code.md": "631d34768071706854effdc48aa369b7aea9192191c832559a72595932b938f5",
     ".cursor/references/codex.md": "83e0b2ec78ceaa33e28c0569c98dfb93618d641c5552af12de5fb1cac32bec11",
@@ -15,7 +15,7 @@
     ".cursor/references/milestone-authoring.md": "f510d0d74761d1bb7840f26860eb33ac375b9e838678a4c8c45fcf6af4ac6f00",
     ".cursor/references/standing-note.md": "5b846214744e16741227a6f15728f062eb6df8ff2974e007463621f423803fb0",
     ".cursor/references/tick-contract.md": "65e6ac141091a31120f5eefd126891409ed1a92c376d6ef3f99fd8ea52e86ee7",
-    ".cursor/rules/assay.mdc": "bb6e8eee245d7d3bcc6207958d6a5c5365470ab1de33a751f800532d9c5ade3c",
+    ".cursor/rules/assay.mdc": "264465fd229db49a824267610cd1cb90b4bda14e6ef7d68a33117e08b23abf35",
     ".cursor/skills/adopt/SKILL.md": "e438b5a1993ca87f9e90167e01b7beda8ea772d2378bf7baeb88f0dc3bba9c5c",
     ".cursor/skills/article-craft/SKILL.md": "59c94edeb4af0eb7df0e50b30e4dadbaca39ad898cfd1cdc381dfe170d424d88",
     ".cursor/skills/article-craft/references/editorial-calibration.md": "0b268eb4ac4ed150b4070437c9119aafd3ce07ce5d2bfdaa27b87830ab7ff8f8",
@@ -52,5 +52,5 @@
     ".cursor/skills/worker-desk/SKILL.md": "f757855b7927e9eff83d18ee41065f0a2b2c09727d8695034120af351609654a",
     ".cursor/skills/worker-desk/references/dispatch-runbook.md": "5cdadffbe26c251fabee583f4c1e3ad389fcfa2e0d4ee9db9226504180de3c1d"
   },
-  "bindingsSha256": "f3ef81ff3fa8577bd2a370c56f3dc5d73a14380c1962bdaf84132fad0060d2e2"
+  "bindingsSha256": "fe2e8d0fc905678b04d49a0c3b1ad8260717742ade5924d076143dcf444fae56"
 }
