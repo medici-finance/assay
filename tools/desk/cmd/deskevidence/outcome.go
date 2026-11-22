@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/statusgen/evaluation"
+
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -46,7 +47,7 @@ func guardVerifiedOutcomes(root, landedRoot, target string, before, after []byte
 		if err := json.Unmarshal(line, &row); err != nil {
 			return deskkit.Refused("invalid verify-outcomes JSON record")
 		}
-		if evaluation.ParseVerificationOutcome(row.Outcome) != evaluation.OutcomeVerified || seen[row.Brief] {
+		if evaluation.ClassifyOutcome(row.Outcome) != evaluation.OutcomePass || seen[row.Brief] {
 			continue
 		}
 		seen[row.Brief] = true

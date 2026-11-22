@@ -30,6 +30,8 @@ On Teams or Enterprise, import `https://github.com/medici-finance/assay` through
 
 Give Article Craft a source note and a draft claim. For example, a benchmark measured 20 warm requests from a replay of 80, but the draft says performance improved for every request. Ask which words the evidence supports. Then give the verified paragraph to Prose Cadence and ask it to make the sampling limit easier to hear while preserving the measurements. For the final voice pass, give Humanizer that revision and a paragraph from a similar article you wrote. Keep “untimed” if the evidence says nothing about who ran the test.
 
+Use the [article review rubric](skills/article-craft/references/editorial-calibration.md#article-review-rubric) to review a finished draft. Each criterion asks for a passage and its consequence for the reader.
+
 ## Updating this package
 
 Article Craft and Prose Cadence are shared with the methodology plugin. Edit their canonical directories under `plugins/assay/skills/`, then copy the complete changed directories here, including references. Humanizer lives in this package. Its pattern guide adapts examples for technical articles and retains the MIT license from [Humanizer 4.0.0](https://github.com/blader/humanizer/tree/b48c832f0f809c1b5658edbb838c2521b72f2413). When updating that reference, compare the new upstream SKILL.md and LICENSE with the pinned source, carry forward the editorial examples, and check the changes against a writing sample.

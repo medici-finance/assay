@@ -65,7 +65,12 @@ func run(args []string, stdout, stderr io.Writer) int {
 	case "inbound":
 		return runInbound(args[1:], stdout, stderr)
 	case "pr":
-		return runPR(args[1:], stdout, stderr)
+		prArgs := args[1:]
+		if !prHelp(prArgs) && (len(prArgs) == 0 || prArgs[0] != "--from-review") {
+			// The live reader selects the reviewer from the effective roster.
+			deskkit.EchoEffectiveConfig(stderr)
+		}
+		return runPR(prArgs, stdout, stderr)
 	case "-h", "--help", "help":
 		fmt.Fprint(stdout, usage)
 		return 0

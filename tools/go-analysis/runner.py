@@ -18,7 +18,7 @@ OWNER = Path(__file__).resolve().parents[2]
 BASELINE = 'tools/go-analysis/baseline.json'
 POLICY = ['.golangci.yml', 'tools/go-analysis/pins.env']
 SCHEMA = 'go-analysis/v1'
-FINGERPRINT = 'source-window/v2'
+FINGERPRINT = 'source-window/v3'
 
 
 def digest(data):
@@ -262,6 +262,24 @@ def normalize(root, module, conf, issue):
                 line=line, column=pos.get('Column', 0))
 
 
+RELATED = re.compile(r'((?:SA|S|ST|QF)\d+)\(related information\): ')
+
+
+def primary(issues):
+    """Drop upstream related-information notes; each one annotates a primary finding.
+
+    Staticcheck reports a note per comparison at the call it relates to, so two
+    comparisons of one call give byte-identical notes at one position. The primary
+    findings stay individually identified; a note with no primary of its rule refuses.
+    """
+    notes = [i for i in issues if i.get('FromLinter') == 'staticcheck' and RELATED.match(str(i.get('Text')))]
+    kept = [i for i in issues if not any(i is n for n in notes)]
+    rules = {str(i.get('Text')).split(':', 1)[0] for i in kept if i.get('FromLinter') == 'staticcheck'}
+    if any(RELATED.match(n['Text']).group(1) not in rules for n in notes):
+        raise ValueError('related information without its primary finding')
+    return kept, len(notes)
+
+
 def records(value):
     if value.get('schema') != 'go-analysis-baseline/v1' or not isinstance(value.get('findings'), list):
         raise ValueError('malformed baseline')
@@ -352,6 +370,7 @@ def lint(root, cache, owner, base, trusted_root=None):
                     raise ValueError('analyzer execution failed or exit/result mismatch')
                 if payload['Report'].get('Error') or payload['Report'].get('Warnings'):
                     raise ValueError('analyzer reports incomplete/warning state')
+                issues, scan['related'] = primary(issues)
                 normalized = [normalize(root, module, conf, issue) for issue in issues]
                 findings.extend(normalized)
                 scan.update(state='complete', findings=len(normalized))

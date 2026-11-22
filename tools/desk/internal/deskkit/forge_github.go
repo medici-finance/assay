@@ -458,8 +458,9 @@ type ghIssueWire struct {
 }
 
 type ghReviewWire struct {
-	ID   int64 `json:"id"`
-	User struct {
+	HTMLURL string `json:"html_url"`
+	ID      int64  `json:"id"`
+	User    struct {
 		Login string `json:"login"`
 		ID    int64  `json:"id"`
 	} `json:"user"`
@@ -482,6 +483,7 @@ type ghCombinedStatusWire struct {
 	State      string `json:"state"`
 	TotalCount int    `json:"total_count"`
 	Statuses   []struct {
+		TargetURL string `json:"target_url"`
 		State     string `json:"state"`
 		Context   string `json:"context"`
 		CreatedAt string `json:"created_at"`
@@ -491,6 +493,11 @@ type ghCombinedStatusWire struct {
 type ghCheckRunsWire struct {
 	TotalCount int `json:"total_count"`
 	CheckRuns  []struct {
+		HTMLURL    string `json:"html_url"`
+		DetailsURL string `json:"details_url"`
+		App        struct {
+			Slug string `json:"slug"`
+		} `json:"app"`
 		ID          int64  `json:"id"`
 		Name        string `json:"name"`
 		Status      string `json:"status"`
@@ -1169,6 +1176,14 @@ func (g *GitHubForge) ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error) 
 	changes := make([]QueuedChange, 0, len(nodes))
 	for _, n := range nodes {
 		qc := QueuedChange{OpenChange: ghOpenChange(n)}
+		// A full contexts page could be truncated. Retain the prior wake baseline
+		// rather than paying for per-PR pagination or treating a prefix as complete.
+		if len(n.Commits.Nodes) == 1 {
+			c := n.Commits.Nodes[0].Commit
+			if c.Oid != "" && c.Oid == n.HeadRefOid {
+				qc.MonitorChecksComplete = c.StatusCheckRollup != nil && c.StatusCheckRollup.Contexts.Nodes != nil && len(c.StatusCheckRollup.Contexts.Nodes) < 100
+			}
+		}
 		if rv := n.Reviews; rv != nil && !rv.PageInfo.HasNextPage && len(rv.Nodes) <= forgeQueueReviewsCap {
 			qc.ReviewsComplete = true
 			for _, r := range rv.Nodes {
@@ -1479,30 +1494,78 @@ func (g *GitHubForge) trustEvents(repo ForgeRepo, number int, gql string, pr boo
 	return &tp, nil
 }
 
+func (g *GitHubForge) reviewPage(repo ForgeRepo, number, page int) ([]Review, http.Header, error) {
+	var chunk []ghReviewWire
+	path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews?per_page=%d&page=%d", repo.Owner, repo.Name, number, forgeReviewPerPage, page)
+	h, err := g.doJSONHeader(http.MethodGet, path, nil, &chunk)
+	if err != nil {
+		return nil, nil, err
+	}
+	rows := make([]Review, 0, len(chunk))
+	for _, r := range chunk {
+		rows = append(rows, Review{URL: r.HTMLURL, ID: r.ID, Author: Account{Login: r.User.Login, ID: r.User.ID},
+			State: r.State, CommitID: r.CommitID, Body: r.Body, SubmittedAt: r.SubmittedAt})
+	}
+	return rows, h, nil
+}
+
 func (g *GitHubForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error) {
 	var all []Review
 	for page := 1; ; page++ {
-		var chunk []ghReviewWire
-		path := fmt.Sprintf("/repos/%s/%s/pulls/%d/reviews?per_page=%d&page=%d",
-			repo.Owner, repo.Name, number, forgeReviewPerPage, page)
-		if err := g.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
+		rows, _, err := g.reviewPage(repo, number, page)
+		if err != nil {
 			return nil, err
 		}
-		for _, r := range chunk {
-			all = append(all, Review{
-				ID:          r.ID,
-				Author:      Account{Login: r.User.Login, ID: r.User.ID},
-				State:       r.State,
-				CommitID:    r.CommitID,
-				Body:        r.Body,
-				SubmittedAt: r.SubmittedAt,
-			})
-		}
-		if len(chunk) < forgeReviewPerPage {
-			break
+		all = append(all, rows...)
+		if len(rows) < forgeReviewPerPage {
+			return all, nil
 		}
 	}
-	return all, nil
+}
+
+// inspectionReviewWindow uses the first page to locate GitHub's newest page. It
+// never follows a URL from a header: only its page number enters the original route.
+func (g *GitHubForge) inspectionReviewWindow(repo ForgeRepo, number int) ([]Review, string, error) {
+	first, h, err := g.reviewPage(repo, number, 1)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(first) < forgeReviewPerPage && !hasNextLink(h) {
+		return first, "", nil
+	}
+	last := lastReviewPage(h)
+	if last < 2 {
+		return first, "oldest review page retained; newest coverage cannot be established from pagination", nil
+	}
+	rows, lastHeader, err := g.reviewPage(repo, number, last)
+	if err != nil {
+		return first, "oldest review page retained; newest page unavailable: " + err.Error(), nil
+	}
+	if len(rows) == 0 || hasNextLink(lastHeader) {
+		return rows, "requested last review page; history changed during collection and newest coverage is unknown", nil
+	}
+	if last == 2 {
+		return append(first, rows...), "", nil
+	}
+	return rows, "newest review page retained; earlier submissions omitted", nil
+}
+
+func lastReviewPage(h http.Header) int {
+	for _, value := range h.Values("Link") {
+		for _, link := range strings.Split(value, ",") {
+			target, rel, ok := strings.Cut(strings.TrimSpace(link), ";")
+			if !ok || strings.TrimSpace(rel) != `rel="last"` || !strings.HasPrefix(target, "<") || !strings.HasSuffix(target, ">") {
+				continue
+			}
+			u, err := url.Parse(target[1 : len(target)-1])
+			if err == nil {
+				if page, err := strconv.Atoi(u.Query().Get("page")); err == nil && page >= 2 {
+					return page
+				}
+			}
+		}
+	}
+	return 0
 }
 
 func (g *GitHubForge) ListChangedFiles(repo ForgeRepo, number int) ([]ChangedFile, error) {
@@ -1551,7 +1614,7 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 		}
 		for _, s := range cs.Statuses {
 			out.Statuses = append(out.Statuses, StatusContext{
-				State: s.State, Context: s.Context, CreatedAt: s.CreatedAt,
+				State: s.State, Context: s.Context, CreatedAt: s.CreatedAt, URL: s.TargetURL,
 			})
 		}
 		if len(cs.Statuses) < forgeCIPerPage {
@@ -1570,8 +1633,22 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 			out.CheckRunsTotalCount = cr.TotalCount
 		}
 		for _, c := range cr.CheckRuns {
+			details := c.DetailsURL
+			if details == "" {
+				details = c.HTMLURL
+			}
+			var runID, jobID string
+			if c.App.Slug == "github-actions" {
+				runID, jobID = g.actionsJobIDs(repo, details)
+				if jobID == "" {
+					alternateRun, alternateJob := g.actionsJobIDs(repo, c.HTMLURL)
+					if runID == "" || runID == alternateRun && alternateJob != "" {
+						runID, jobID = alternateRun, alternateJob
+					}
+				}
+			}
 			out.CheckRuns = append(out.CheckRuns, CheckRun{
-				ID:   checkRunID(c.ID),
+				ID: checkRunID(c.ID), URL: details, RunID: runID, JobID: jobID,
 				Name: c.Name, Status: c.Status, Conclusion: c.Conclusion,
 				StartedAt: c.StartedAt, CompletedAt: c.CompletedAt,
 			})
@@ -1581,6 +1658,42 @@ func (g *GitHubForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 		}
 	}
 	return out, nil
+}
+
+// Only an Actions-owned check and its repository-qualified job path identify the
+// parent workflow run. A third-party check-run ID is never a workflow run ID.
+func (g *GitHubForge) actionsJobIDs(repo ForgeRepo, raw string) (run, job string) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawPath != "" {
+		return "", ""
+	}
+	api, err := url.Parse(g.baseURL())
+	if err != nil {
+		return "", ""
+	}
+	webHost := api.Host
+	if strings.EqualFold(webHost, "api.github.com") {
+		webHost = "github.com"
+	}
+	if !strings.EqualFold(u.Host, webHost) {
+		return "", ""
+	}
+	path, ok := strings.CutPrefix(strings.ToLower(u.Path), "/"+strings.ToLower(repo.Slug())+"/actions/runs/")
+	if !ok {
+		return "", ""
+	}
+	run, job, hasJob := strings.Cut(path, "/job/")
+	ids := []string{run}
+	if hasJob {
+		ids = append(ids, job)
+	}
+	for _, id := range ids {
+		n, err := strconv.ParseUint(id, 10, 63)
+		if err != nil || n == 0 || strconv.FormatUint(n, 10) != id {
+			return "", ""
+		}
+	}
+	return run, job
 }
 
 // CheckSuitesAtHead reads GET /repos/{o}/{r}/commits/{sha}/check-suites, paginated under the

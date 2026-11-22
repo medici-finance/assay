@@ -20,6 +20,7 @@
     "StatusTotalCount": 1,
     "Statuses": [
       {
+        "RunID": "78",
         "State": "success",
         "Context": "pipeline",
         "CreatedAt": "2026-09-15T10:00:00Z"
@@ -28,6 +29,8 @@
     "CheckRunsTotalCount": 2,
     "CheckRuns": [
       {
+        "JobID": "9201",
+        "RunID": "78",
         "ID": "9201",
         "Name": "statusgen-lint",
         "Status": "completed",
@@ -36,6 +39,8 @@
         "CompletedAt": ""
       },
       {
+        "JobID": "9202",
+        "RunID": "78",
         "ID": "9202",
         "Name": "flaky-probe",
         "Status": "completed",

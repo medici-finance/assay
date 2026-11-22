@@ -85,7 +85,7 @@ var representedPRBatchFiles func(repo string, numbers []int) map[int]deskkit.Pen
 // the lower-cased brief id to those PR numbers; nil applies no set-aside. The same set-aside applies
 // to the hits of a lookup past an incomplete window (lookUpPastWindow), so a partial delivery older
 // than the window does not land the row either.
-func representedSourceFor(repo string, candidates func() ([]string, error), partials func(repo string) map[string]map[int]bool) func() (map[string]deskkit.RepresentedPR, error) {
+func representedSourceFor(repo string, candidates func() ([]string, error), partials func(repo string) map[string]map[int]bool, issueIndex ...*deskkit.IssuePRIndex) func() (map[string]deskkit.RepresentedPR, error) {
 	return func() (map[string]deskkit.RepresentedPR, error) {
 		if representedPRs == nil {
 			return nil, nil
@@ -93,6 +93,11 @@ func representedSourceFor(repo string, candidates func() ([]string, error), part
 		prs, incomplete, err := representedPRs(repo)
 		if err != nil {
 			return nil, err
+		}
+		if len(issueIndex) > 0 {
+			// Discard foreign-repository observations from a previous plan.
+			*issueIndex[0] = deskkit.IssuePRIndex{List: representedPRs, Lookup: briefChangeLookup}
+			issueIndex[0].RecordWindow(repo, prs, incomplete, nil)
 		}
 		all := deskkit.RepresentingPRsByBrief(prs)
 		var partial map[string]map[int]bool
@@ -145,8 +150,7 @@ func firstOfEach(all map[string][]deskkit.RepresentedPR) map[string]deskkit.Repr
 // outside the window lands under LANDED-UNRECONCILED and an open one routes to resume. A failed or
 // unwired lookup marks the brief Unchecked: the plan lists it under COULD-NOT-CHECK and never offers
 // it as IMPLEMENT. A complete lookup with no representing hit leaves the brief absent: genuinely
-// fresh. `issue-<NN>` placeholders carry an `Issue:` link, never a `Brief:` one, so they are not
-// looked up.
+// fresh. The issue index separately reconciles placeholders against their source repository.
 //
 // THE SEARCH BUDGET. Each lookup is one forge search, and a run can have more candidates than the
 // forge's per-minute search allowance. So the lookups run in QUEUE PRIORITY order (order, as
@@ -165,7 +169,7 @@ func lookUpPastWindow(repo string, order []string, out map[string]deskkit.Repres
 			continue
 		}
 		seen[id] = true
-		if _, ok := out[id]; ok || strings.HasPrefix(id[strings.LastIndex(id, "/")+1:], "issue-") {
+		if _, ok := out[id]; ok || deskkit.PlaceholderIssueNumber(id[strings.LastIndex(id, "/")+1:]) != 0 {
 			continue
 		}
 		ids = append(ids, id)

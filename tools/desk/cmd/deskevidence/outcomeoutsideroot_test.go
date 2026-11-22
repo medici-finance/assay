@@ -21,7 +21,7 @@ import (
 // outside-the-home rule BEFORE any mint, forge resolution, admission or forge read; an
 // absolute path outside the home proceeds to admission and lands.
 func TestOutcomeRecordOutsideRoot(t *testing.T) {
-	const rec = `{"brief":"x/01","ts":"2026-10-06T00:00:00Z","outcome":"verified","sha":"0000002"}`
+	const rec = `{"brief":"x/01","ts":"2026-10-06T00:00:00Z","outcome":"verified","digest":"0123456789abcdef"}`
 
 	type probe struct{ mints, forges, admissions int }
 	arm := func(t *testing.T) (*fakeForge, *probe, string, *bytes.Buffer) {

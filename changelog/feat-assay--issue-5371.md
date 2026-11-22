@@ -1,3 +1,0 @@
-### Added
-
-- `cellctl gc <cell> [--role <role>]` reports each existing reclaim target's dry run for a desk (the scratch sweep, the Go cache's recorded measurement, and `deskwt prune` for each stream root), one JSON line per target with what it measured. It is read-only; a failed or could-not-check target does not stop the rest and sets exit 1. Its state-changing forms, `gc --run` and `gc --apply <plan-id>`, follow cell-op-v1 (refused off a terminal, typed confirm on one), and their apply is held: a confirmed apply reclaims nothing until cell-op-v1 specifies a non-interactive maintenance class.

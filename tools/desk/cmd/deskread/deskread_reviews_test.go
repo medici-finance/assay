@@ -24,7 +24,7 @@ func (f *recForge) ReviewsAtHead(repo deskkit.ForgeRepo, number int) ([]deskkit.
 	}
 	app := deskkit.Account{Login: "example-app[bot]", ID: 300000002, Type: "Bot"}
 	return []deskkit.Review{
-		{ID: 1, Author: app, State: "CHANGES_REQUESTED", CommitID: "a1", SubmittedAt: "2026-09-02T00:00:00Z", Body: "fix it"},
+		{ID: 1, URL: "https://example.org/review/1", Author: app, State: "CHANGES_REQUESTED", CommitID: "a1", SubmittedAt: "2026-09-02T00:00:00Z", Body: "fix it"},
 		{ID: 2, Author: app, State: "APPROVED", CommitID: "b2", SubmittedAt: "2026-09-03T00:00:00Z"},
 	}, nil
 }
@@ -45,7 +45,7 @@ func TestDeskreadReviewsKind(t *testing.T) {
 			t.Fatalf("#9 reviews = %+v, want both submissions", rs)
 		}
 		a, b := (*rs)[0], (*rs)[1]
-		if a.State != "CHANGES_REQUESTED" || a.CommitID != "a1" || a.AuthorLogin != "example-app[bot]" || a.AuthorID != 300000002 ||
+		if a.SubmissionID != 1 || a.URL != "https://example.org/review/1" || a.State != "CHANGES_REQUESTED" || a.CommitID != "a1" || a.AuthorLogin != "example-app[bot]" || a.AuthorID != 300000002 ||
 			b.State != "APPROVED" || b.SubmittedAt != "2026-09-03T00:00:00Z" {
 			t.Errorf("reviews = %+v, want the seam's order and fields carried", *rs)
 		}
