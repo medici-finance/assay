@@ -1,2 +1,3 @@
 ### Fixed
 - Test binaries that use the shared `gitquiet` harness now refuse to run when `TMPDIR` or `GOTMPDIR` is inside a git repository. Before, a fixture that ran git in an empty temporary directory could discover the enclosing repository and rewrite its config: from a linked worktree, the shared checkout's `remote.origin.url`. `TestVerifierGitRedacts` no longer depends on what encloses the temporary root.
+- The daily Gremlins sweep (`tools/gremlins/run.sh`) now sweeps a copy of the checkout without `.git` and never writes the checkout, so the `gitquiet` refusal does not put the desk packages at `probe-red`.

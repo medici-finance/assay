@@ -34,6 +34,12 @@ cannot check is refused as could-not-check; with no git on `PATH` there is nothi
 could discover a repository, and the probe passes. Point `TMPDIR` and `GOTMPDIR` at a
 directory outside every repository to clear the refusal.
 
+The desk CI shards run this refusal through the adapter's own test
+(`tools/desk/internal/gitquiet`: `TestAdapterRefusesTempInRepo`), and this module's tests
+and mutation map hold the same checks at the source. A harness that must put `TMPDIR`
+under a checkout (the daily Gremlins sweep once did) copies the tree without `.git`
+instead; `tools/gremlins/run.sh` does.
+
 ## Go telemetry in a scratch home (`goquiet`)
 
 The `goquiet` subpackage closes the same class of defect for the go command. Unless
