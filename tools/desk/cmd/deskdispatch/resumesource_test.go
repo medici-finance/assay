@@ -185,3 +185,50 @@ func TestResumeClassPlant(t *testing.T) {
 		t.Fatal("planted unchecked resume was admitted")
 	}
 }
+
+// regression: #7345
+func TestBriefHandoffRecordsPRBeforePrompt(t *testing.T) {
+	for _, failStore := range []bool{false, true} {
+		t.Run(fmt.Sprintf("record_failure_%t", failStore), func(t *testing.T) {
+			s := &stub{}
+			_, root := s.install(t)
+			plantScripts(t, root)
+			priorHome := t.TempDir()
+			s.replies = []reply{
+				{match: "remote get-url origin", stdout: "https://github.com/" + allowedRepo + ".git"},
+				{match: "rev-parse --verify --quiet refs/remotes/origin/", stdout: resumeSHA},
+				{match: "deskwt add", stdout: priorHome + "\n" + deskkit.BriefHandoffReceipt},
+			}
+			readResumeChange = func(dispatchOpts, string) (deskkit.PullRequest, error) {
+				return deskkit.PullRequest{Number: 42, State: "open", HeadRef: "feature", HeadSHA: resumeSHA, CrossRepo: deskkit.CrossRepoSame, Body: "Brief: stream/02"}, nil
+			}
+			if failStore {
+				old := appendDispatchRecord
+				appendDispatchRecord = func(*deskkit.DispatchRecord) error { return fmt.Errorf("test record failure") }
+				t.Cleanup(func() { appendDispatchRecord = old })
+			}
+			key := deskkit.RepoShortLabel(allowedRepo) + "--pr-42"
+			prompt := filepath.Join(t.TempDir(), "checkout.md")
+			_, stderr, rc := ddRunCapture(t, []string{key, "--repo", allowedRepo, "--root", root, "--pr", "42", "--prompt-file", prompt})
+			if !strings.Contains(deskwtAddArgv(s), "--handoff-brief") {
+				t.Fatalf("no brief handoff on resume: %s", stderr)
+			}
+			if failStore {
+				if rc == 0 || !s.ran("release") || s.ran("deskwt remove") || s.ran("config --worktree assay.runKey") {
+					t.Fatalf("failed handoff did not retain its original home: rc %d calls %v", rc, s.calls)
+				}
+				if _, err := os.Stat(emittedPathFor(prompt)); !os.IsNotExist(err) {
+					t.Fatal("emitted a prompt without a record")
+				}
+				return
+			}
+			if rc != 0 {
+				t.Fatal(stderr)
+			}
+			rec, err := deskkit.LatestUsageDispatch(key)
+			if err != nil || rec.PR == nil || *rec.PR != 42 || rec.DispatchRef == nil || !s.ran("config --worktree assay.dispatchRef "+*rec.DispatchRef) {
+				t.Fatalf("missing handoff record or checkout stamp: %+v %v", rec, err)
+			}
+		})
+	}
+}

@@ -7,6 +7,15 @@ import (
 	"testing"
 )
 
+func mustPRFilesToDiff(t *testing.T, files []ghPRFile) string {
+	t.Helper()
+	diff, err := prFilesToDiff(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return diff
+}
+
 // TestPRFilesToDiff_ReconstructsParseableDiff proves the diff string
 // reconstructed from the paginated "List PR files" API entries is exactly what
 // stampsInDiff parses. Three properties, all ASSERTED:
@@ -36,7 +45,7 @@ func TestPRFilesToDiff_ReconstructsParseableDiff(t *testing.T) {
 		},
 	}
 
-	diff := prFilesToDiff(files)
+	diff := mustPRFilesToDiff(t, files)
 	stamps := stampsInDiff("", diff)
 
 	// (a) exactly the ONE real stamp — the prose `human:<name>` line adds none.
@@ -93,7 +102,7 @@ func TestPRFilesToDiff_DeleteRenameBinaryNoStamp(t *testing.T) {
 		}
 	}
 
-	diff := prFilesToDiff(files) // must not panic on the null patches
+	diff := mustPRFilesToDiff(t, files) // must not panic on the null patches
 	stamps := stampsInDiff("", diff)
 	// The only "human:alex" text lives on a DELETED ("-") line, which is not an
 	// added line, so no stamp is produced.
@@ -137,7 +146,7 @@ func TestPRFilesToDiff_LargeNPastCap(t *testing.T) {
 		files = append(files, f)
 	}
 
-	stamps := stampsInDiff("", prFilesToDiff(files))
+	stamps := stampsInDiff("", mustPRFilesToDiff(t, files))
 	// (a) exactly the ONE real stamp across >300 files; (b) prose excluded;
 	// (c) delete-only file emits none.
 	if len(stamps) != 1 {
@@ -169,12 +178,41 @@ func TestPRFilesToDiff_HeaderPerFile(t *testing.T) {
 		{Filename: "a/one.md", Patch: "@@ -1 +1 @@\n+hello\n"},
 		{Filename: "b/two.png", Patch: ""},
 	}
-	diff := prFilesToDiff(files)
+	diff := mustPRFilesToDiff(t, files)
 	for _, f := range files {
 		want := "+++ b/" + f.Filename
 		if strings.Count(diff, want) != 1 {
 			t.Errorf("diff has %d %q header lines, want 1:\n%s",
 				strings.Count(diff, want), want, diff)
 		}
+	}
+}
+
+func TestPRFilesToDiff_SeparateRecords(t *testing.T) {
+	files := []ghPRFile{
+		{Filename: "draft.txt", Patch: "@@ -1,4 +1,4 @@\n first"},
+		{Filename: "reading notes.txt", PreviousFilename: "notes.txt", Patch: "@@ -0,0 +8 @@\n+summary"},
+	}
+	lines, _ := walkAddedDiffLines(mustPRFilesToDiff(t, files), func(string) bool { return false })
+	if len(lines) != 1 || lines[0].File != "reading notes.txt" || lines[0].Content != "summary" || lines[0].Number != 8 {
+		t.Fatalf("want the summary at reading notes.txt line 8, got %+v", lines)
+	}
+}
+
+func TestCorroborateRejectsUnsupportedFileMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		file ghPRFile
+	}{
+		{"empty", ghPRFile{}},
+		{"current", ghPRFile{Filename: "notes\tfile.txt"}},
+		{"previous", ghPRFile{Filename: "new.txt", PreviousFilename: "old\rfile.txt"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			st := corroborateStub{files: []ghPRFile{tc.file}}
+			if code := runCorroborateOn(t, t.TempDir(), &st); code != 1 {
+				t.Errorf("exit = %d, want 1 for unsupported file metadata", code)
+			}
+		})
 	}
 }

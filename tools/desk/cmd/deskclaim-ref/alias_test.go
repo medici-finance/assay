@@ -191,8 +191,8 @@ func TestAliasRace_finished_rival_is_never_left_holding_beside_us(t *testing.T) 
 // with its ref still standing.
 type removeFailStore struct{ *hideOnceStore }
 
-func (removeFailStore) Remove(string) (deskkit.ClaimWriteOutcome, bool) {
-	return deskkit.ClaimWriteUnverifiable, false
+func (removeFailStore) RemoveFrom(string, string) deskkit.ClaimWriteOutcome {
+	return deskkit.ClaimWriteUnverifiable
 }
 
 func TestAliasRace_loser_that_cannot_release_exits_6(t *testing.T) {

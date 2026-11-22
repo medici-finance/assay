@@ -38,8 +38,11 @@ import (
 // structured Result back. The autonomous cutover — the standing fanout window actually booting this
 // as its driver — is gate:human (BLOCKED-ON-IAN); the SKILL.md repoint is staged, not applied.
 type FanoutLoop struct {
-	Root      string // repo root the default board read scans (STATUS.md + brief files)
-	TargetSHA string // merged-main SHA stamped onto every dispatched Item
+	issueIndex     *deskkit.IssuePRIndex
+	issueBoardRepo string
+	issuePRHolds   []string
+	Root           string // repo root the default board read scans (STATUS.md + brief files)
+	TargetSHA      string // merged-main SHA stamped onto every dispatched Item
 	// RunnerID is intentionally EMPTY for batch-fanout: authorship differs per worker (each draft
 	// PR is authored by the worker App, not this dispatcher), so the engine's author!=runner guard
 	// is disabled and attribution is the adapter's own — exactly the case Config.RunnerID's doc
@@ -223,6 +226,7 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	// Reset the plan diagnostics up front so a re-poll never reports a stale run's landed/held state.
 	f.mu.Lock()
 	f.landedUnreconciled = nil
+	f.issuePRHolds = nil
 	f.awaitingRework = nil
 	f.withheld = nil
 	f.freshHeld = ""
@@ -291,6 +295,9 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 			if f.isHandled(r.ID()) || f.statusWithheld(r, true) {
 				continue
 			}
+			if f.issueRepresentationHolds(r) {
+				continue
+			}
 			if rp, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
 				f.noteUnchecked(r, rp)
 				continue
@@ -334,6 +341,9 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 				continue
 			}
 			if f.isHandled(r.ID()) || f.statusWithheld(r, false) {
+				continue
+			}
+			if f.issueRepresentationHolds(r) {
 				continue
 			}
 			if rp, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
@@ -676,3 +686,29 @@ func (h *handle) Item() loopengine.Item          { return h.item }
 // brief. If the frozen Loop interface ever needed a new hook to fit batch-fanout, THIS line would
 // stop compiling, which is the contract-erosion tripwire.
 var _ loopengine.Loop = (*FanoutLoop)(nil)
+
+// issueRepresentationHolds reports the exact source-repository PR even when the
+// placeholder is hosted on another board and PR numbers overlap between repos.
+func (f *FanoutLoop) issueRepresentationHolds(row BoardRow) bool {
+	if f.issueIndex == nil || deskkit.PlaceholderIssueNumber(row.Num) == 0 {
+		return false
+	}
+	id := row.Stream + "/" + row.Num
+	why, unknown := f.issueIndex.PlaceholderHold(f.Root, f.issueBoardRepo, id)
+	if unknown {
+		return f.noteUnchecked(row, deskkit.RepresentedPR{Unchecked: why})
+	}
+	if why == "" {
+		return false
+	}
+	f.mu.Lock()
+	f.issuePRHolds = append(f.issuePRHolds, id+": "+why)
+	f.mu.Unlock()
+	return true
+}
+
+func (f *FanoutLoop) issuePRHoldRows() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.issuePRHolds...)
+}
