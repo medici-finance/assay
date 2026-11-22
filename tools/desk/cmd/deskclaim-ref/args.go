@@ -167,6 +167,13 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 			errf("refused: '%s' is not a valid claim key (want <repo>--<stream>--<NN> or <repo>--issue-<NN>)", id)
 			return exitRefused
 		}
+		// A lease written under the anonymous fallback has no identifiable
+		// holder who can release it. Read-only commands and a free release
+		// retain their usual behaviour when there is no session.
+		if (verb == "acquire" || verb == "progress" || verb == "steal") && (owner == "" || owner == "unknown") {
+			errf("refused: %s requires an identified owner; pass --owner or set DESK_SESSION", verb)
+			return exitRefused
+		}
 		switch verb {
 		case "acquire":
 			return cmdAcquire(id, owner, branch)
