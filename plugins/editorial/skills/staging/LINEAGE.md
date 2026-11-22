@@ -59,7 +59,7 @@ skill does not do design.
 **Garr Reynolds, *Presentation Zen* / *The Naked Presenter*.** The opening
 taxonomy — personal story, the unexpected, the never-before-seen, the
 challenge to assumption, the relevant humorous anecdote — which we merged with
-Weissman's gambit list into a single unbranded set rather than reproducing
+the gambit list from Weissman into a single unbranded set rather than reproducing
 either. The roughly-ten-minute attention interval and the deliberate gear
 change (three to four minutes online), which is our attention-budget table.
 The rules that you do not end on Q&A and that the artifact and the handout are
@@ -108,7 +108,7 @@ concrete-over-abstract rule and the observation that a credible ordinary
 instance can outperform an authority both feed our "instance, not category"
 rule for the explainer's bold moment.
 
-**Alan Monroe's motivated sequence, and classical rhetorical arrangement.**
+**the motivated sequence from Alan Monroe, and classical rhetorical arrangement.**
 The unbranded skeleton — attention, need, satisfaction, visualisation, action;
 and exordium/narratio/partitio/confirmatio/refutatio/peroratio. Both are
 effectively common property (one published at Purdue in the 1930s and restated
@@ -123,14 +123,12 @@ lint rule we found, and it is the one that cuts agenda slides.
 **Video-side sources for the video lanes.** Guo, Kim & Rubin (ACM Learning@
 Scale, 2014, 6.9M sessions) for the sub-six-minute segmentation ceiling and
 the finding that pre-production planning beats post-production polish — the
-peer-reviewed anchor for the video lane. Derek Muller's misconception-first
-sequencing result (surface the wrong model, allow the confusion, then
+peer-reviewed anchor for the video lane. the misconception-first sequencing result reported by Derek Muller (surface the wrong model, allow the confusion, then
 correct), which is why the technical genre's video lane makes it mandatory.
-Grant Sanderson's published criteria — clarity, motivation established in the
-opening half-minute, novelty, memorability, concrete before abstract. Dan
-Harmon's story circle for the beat that commercial video reliably omits — the
+Criteria published by Grant Sanderson — clarity, motivation established in the
+opening half-minute, novelty, memorability, concrete before abstract. the story circle from Dan Harmon for the beat that commercial video reliably omits — the
 cost or tradeoff — whose absence we treat as a trust tell in both media.
-Kurzgesagt's published process for the discipline of rewriting until the
+The published process from Kurzgesagt for the discipline of rewriting until the
 structure is right. The commercial explainer's converging runtime shares and
 the words-per-minute arithmetic that makes video staging zero-sum come from
 the trade template literature (Vidico, mypromovideos, Boords) and are
@@ -146,8 +144,7 @@ with an if-skipped column (appautomaton, renamed and re-worded here); the
 structural-sag diagnosis — early sag, middle sag, late sag, each with a
 distinct cause and the note that the fix is re-sequencing rather than more
 energy in delivery (pm-claude-skills); closing a large relation inventory down
-to a handful, each earning a distinct *sequencing consequence* (ArcDeck's
-treatment of rhetorical structure theory), which is the move behind our closed
+to a handful, each earning a distinct *sequencing consequence* (the treatment of rhetorical structure theory in ArcDeck), which is the move behind our closed
 sixteen-function vocabulary; and per-genre YAML with pick/skip, ordered beats,
 evidence policy and gates (aiox). From aiox we also took a **correction**: its
 schema carries a `visual_family` field per slot, and that field is exactly the
@@ -191,14 +188,14 @@ recorded rather than silently applied. MIT-licensed, so the form could have been
 copied; it was restated anyway, for consistency with rule 1 above.
 
 **Slide-engine vocabulary.** Seven of our sixteen function names match
-Slidev's layout vocabulary (MIT) so a staged artifact maps onto an existing
+the layout vocabulary in Slidev (MIT) so a staged artifact maps onto an existing
 renderer without translation. Slidev supplies names, not sequencing rules;
 the sequencing rules are ours.
 
 ## What is ours
 
 - The hall/table lane as a *staging* input that sets density, appendix
-  legality and the read/presented fork — the split is Abela's, its use as a
+  legality and the read/presented fork — Abela describes the split. Its use as a
   routing gate at the top of the flow, ahead of genre, is our arrangement.
 - **`bold_moment.placement`** as a genre-specific, gate-checked field. Every
   source that has the concept treats placement as taste. Making it a rule per
@@ -245,7 +242,7 @@ by Design* and extremepresentation.com · Garr Reynolds, *Presentation Zen* and
 *The Naked Presenter* · Michael Alley, *The Craft of Scientific Presentations*
 and the Penn State assertion–evidence materials · Jerry Weissman, *Presenting
 to Win* · Cliff Atkinson, *Beyond Bullet Points* · Nancy Duarte, *Resonate* ·
-Chip & Dan Heath, *Made to Stick* · Alan Monroe's motivated sequence · Robert
+Chip & Dan Heath, *Made to Stick* · the motivated sequence from Alan Monroe · Robert
 McKee, *Story* · Chris Anderson, *TED Talks* · Guo, Kim & Rubin, "How video
 production affects student engagement" (ACM L@S 2014).
 

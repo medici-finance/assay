@@ -28,6 +28,7 @@ func TestEditorialPluginContents(t *testing.T) {
 	}
 	for _, member := range []string{
 		"skills/deck-author/SKILL.md",
+		"skills/deck-author/workflow.md",
 		"skills/deck-author/assets/deck.html",
 		"skills/deck-author/references/brand-contract.md",
 		"skills/deck-author/tools/check_deck.py",
@@ -38,6 +39,7 @@ func TestEditorialPluginContents(t *testing.T) {
 		"skills/slop-lint/SKILL.md",
 		"skills/staging/LINEAGE.md",
 		"skills/staging/SKILL.md",
+		"skills/staging/workflow.md",
 		"skills/staging/references/audience.md",
 		"skills/staging/references/creative-development.md",
 		"skills/staging/references/executive-presence.md",
@@ -65,6 +67,7 @@ func TestEditorialPluginContents(t *testing.T) {
 		"skills/staging/tools/seam-gate.mjs",
 		"skills/staging/tools/staging_lint.py",
 		"skills/video-author/SKILL.md",
+		"skills/video-author/workflow.md",
 		"skills/video-author/references/driver-pattern.md",
 		"skills/video-author/references/native-rendering.md",
 		"skills/video-author/references/render-check.md",

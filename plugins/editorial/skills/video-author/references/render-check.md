@@ -31,17 +31,6 @@ counted on a `NOT CHECKED:` line — it is never a pass.
 
 Install Playwright in a project or a dedicated dependency directory. Set EDITORIAL_RENDER_DEPS to the absolute directory containing node_modules when running elsewhere. Install Chromium and the recording helper with `npx playwright install chromium ffmpeg` in that directory. The checker also calls the system ffmpeg. To use an existing Chrome installation, set RENDER_CHECK_CHROMIUM to its executable.
 
-## Playwright without npm install in the working repo
-
-The harness imports Playwright by absolute path from the house pipeline's own
-install, `tools/explainer-video/node_modules/playwright/index.mjs`. When that
-is absent it stops with the install line
-(`cd "$VIDEO_SKILL" && npm install && npx playwright install chromium`)
-and exit 2 — it never degrades to a source-only check, because a render gate
-that rendered nothing is NOT RUN. Pass D's `recordVideo` also needs
-Playwright's own ffmpeg (`npx playwright install ffmpeg`). On a machine whose
-Playwright browsers are not installed, `RENDER_CHECK_CHROMIUM=<binary>` points
-the launch at a local Chromium.
 
 ## The freeze — how every seeked frame is taken
 
@@ -112,8 +101,7 @@ goes red if the walk is removed — the demo alone cannot show that, because
 `?at=` already positions every engine beat.
 
 **Banned: `--virtual-time-budget`.** Measured in the RWA deck bake-off
-(verified via `document.getAnimations()`): headless Chrome's
-`--virtual-time-budget` fast-forwards `requestAnimationFrame` while leaving
+(verified via `document.getAnimations()`): the `--virtual-time-budget` flag in headless Chrome fast-forwards `requestAnimationFrame` while leaving
 every CSS animation at `currentTime: 0`, so every mid-animation screenshot
 comes back as the scene-*entry* state — an empty or half-built frame that reads
 exactly like a broken build. It is not a speed optimisation. The harness never
@@ -209,7 +197,7 @@ conditions (viewport 1920×1080, `recordVideo: { size: { width: 1920, height:
   within max(2 % of elapsed timeline time, 0.1 s) on both runs (the 0.1 s floor
   is boundary detection at frame granularity), and the plain and recorded runs
   agree to the same bound — a gap between them is load-proportional slip and
-  fails. Measured 2026-08-18: the hybrid exemplar holds every boundary within
+  fails. In one measured example, the hybrid exemplar holds every boundary within
   ±0.03 s over 7 min *while recording*; the hand-rolled animated driver within
   +0.26 s over 3 min (0.14 %). A drift that grows scene-over-scene means the
   live ticker is not tracking the wall clock (lag smoothing re-enabled, a

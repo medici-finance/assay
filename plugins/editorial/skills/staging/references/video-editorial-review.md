@@ -68,7 +68,7 @@ to wait for a fully locked script. Record alternatives and the selected visual
 discovery here rather than adding a new approval or document.
 
 Draft `SCRIPT.md` to the chosen arc using
-[video-author's pipeline contract](../../video-author/SKILL.md#2-the-shared-script-and-html-preview-contracts)
+[video-author's pipeline contract](../../video-author/workflow.md#2-the-shared-script-and-html-preview-contracts)
 even before visual authoring: its parser-facing table must be consumable at handoff.
 Read it aloud when audio is available;
 otherwise do an explicit prose read-through and label it that way. Estimate
@@ -274,7 +274,7 @@ The audience teach-back adapts the house article-craft procedure. The
 topic knowledge, opening promise, mistaken-inference and visual-appeal checks.
 These are production direction, not claims of measured audience effectiveness.
 
-- [Common Craft's explainer tips](https://www.commoncraft.com/blog-categories/explainer-tip): establish context and explain relationships before details.
-- [Wistia's scripting guidance](https://wistia.com/blog/wistias-scripting-tips): audience, takeaway and writing for speech.
+- [Explainer tips from Common Craft](https://www.commoncraft.com/blog-categories/explainer-tip): establish context and explain relationships before details.
+- [Scripting guidance from Wistia](https://wistia.com/blog/wistias-scripting-tips): audience, takeaway and writing for speech.
 - [Brame, Effective Educational Videos](https://pmc.ncbi.nlm.nih.gov/articles/PMC5132380/): signaling, segmentation, reducing extraneous load, engagement and active learning. Educational research informs the design; it does not establish a marketing-video retention target.
-- [YouTube's audience-retention guidance](https://support.google.com/youtube/answer/9314415): inspect the first 30 seconds against title/thumbnail expectations and inspect later drop-offs after publication. Retention measures viewing behavior, not comprehension.
+- [Audience-retention guidance from YouTube](https://support.google.com/youtube/answer/9314415): inspect the first 30 seconds against title/thumbnail expectations and inspect later drop-offs after publication. Retention measures viewing behavior, not comprehension.

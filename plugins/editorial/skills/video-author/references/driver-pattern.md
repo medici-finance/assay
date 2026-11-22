@@ -60,7 +60,7 @@ Two incompatible freeze hooks shipped in the same bake-off
   hung film, so it never flips `doneReason` to `watchdog` however long the
   capture holds it. `verify.mjs --freeze-watchdog` is the guard for that.
 
-Why this matters: headless Chrome's `--virtual-time-budget` fast-forwards
+Why this matters: the `--virtual-time-budget` flag in headless Chrome fast-forwards
 `requestAnimationFrame` while leaving every CSS animation at
 `currentTime: 0`, so a film whose visuals live in CSS `@keyframes` renders
 every mid-animation screenshot as the scene-*entry* state unless the

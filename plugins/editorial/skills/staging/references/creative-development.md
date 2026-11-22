@@ -92,7 +92,7 @@ A caption-only correction to either treatment does not reopen concept exploratio
 These are production practices adapted in house words, not validated universal
 thresholds or evidence of measured gains in our videos:
 
-- [Ordinary Folk's process](https://www.ordinaryfolk.co/process): explore design
+- [The production process at Ordinary Folk](https://www.ordinaryfolk.co/process): explore design
   and movement before final animation, with sound considered during development.
 - [Disney Animation: Story](https://www.disneyanimation.com/process/story/) and
   [Editorial & Sound](https://disneyanimation.com/process/editorial--sound/):

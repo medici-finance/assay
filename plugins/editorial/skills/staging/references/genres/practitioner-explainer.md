@@ -296,10 +296,3 @@ gates:
 ```
 
 An attractive storyboard cannot pass those checks by itself.
-
-## Worked revision
-
-
-
-The reusable choice is the progression. The subject, palette, scene count,
-numerical defaults and 53% case finding are specific to that film.
