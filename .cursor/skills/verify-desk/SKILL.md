@@ -596,7 +596,8 @@ hold. The SHA recorded in Evidence is the one the cross-check confirmed, not the
   the Evidence but **cannot be signed off by a model** — route it to the human gate — and a
   `gate: human` brief carries TWO stamps before the human closes it: the drain's
   local-tier PASS (first stamp), then ONE floor-tier re-verify (second stamp), the single sanctioned
-  pass above the local tier, one per human-gated brief — see "`gate: human` — the two stamps" below.
+  pass above the local tier, one per human-gated brief. Neither stamp flips the row; it stays
+  `implemented` until the human's card close — see "`gate: human` — the two stamps" below.
   Read each brief's own frontmatter; never default the queue to one treatment.
 - **The prompt is a KIT, not prose written here.** `deskdispatch --kit verifier` emits the common-clauses
   kit (isolation floor, no-evasion, offline envelope, three-state instruments, escalate-durably) plus the
@@ -1019,13 +1020,17 @@ two-stamp model, #1170). Model-gated briefs are unchanged: one local-tier stamp,
 
 1. **First stamp — the routine drain, at the local tier.** The dispatched non-implementer verifier
    runs the full Verify table at the local session model and lands the Evidence (dated,
-   runner-attributed, one row per Verify item) through the sanctioned landing above; its PASS flips
-   `implemented → verified`. The Verified cell and every Evidence row name the local-tier runner that
-   actually ran the rows — never a runner that did not. (An `irreversible: yes` brief stops short of
-   the flip and stays at `implemented` with Evidence, next section; its first stamp is the Evidence.)
-   The `--lint` verifier floor (methodology/19) reads risk-flagged rows at `verified` as well as at
-   `done`, so a below-floor stamp landed at `verified` is a lint PROBLEM naming this same remedy: the
-   row is not wrong, it is WAITING on the second stamp, and the second stamp is what clears it.
+   runner-attributed, one row per Verify item) through the sanctioned landing above. Its PASS does
+   NOT flip the row: the board row stays `implemented`, the first stamp is the Evidence itself, and
+   the verify-outcome record reads blocked/human-action with the Evidence PR as its ref. `statusgen
+   verifyflip` refuses every `gate: human` brief ("a human-gated brief is closed by the human
+   sign-off path, never by this verb"), so never attempt that flip. The human's close of the card
+   (step 3) advances `implemented → done` in one write and stamps the Verified cell FROM the
+   Evidence's recorded runner. Every Evidence row names the local-tier runner that actually ran
+   the rows — never a runner that did not. A risk-flagged row already landed at `verified` by
+   an earlier path is read by the `--lint` verifier floor (methodology/19) as well as a `done`
+   row: a below-floor stamp there is a lint PROBLEM naming this same remedy. The row is not
+   wrong, it is WAITING on the second stamp, and the second stamp is what clears it.
 2. **Second stamp — ONE floor-tier re-verify, BEFORE the card is filed.** A verify-gate card whose
    Verified cell names a runner below the verifier floor is a card the human will close and
    `verify-gate-close.yml` will REFUSE: `statusgen --close-verify` reads the cell the `done` row would
@@ -1046,7 +1051,10 @@ two-stamp model, #1170). Model-gated briefs are unchanged: one local-tier stamp,
    Where the project's `verify-gate-open` emitter files cards on every push, the card may exist before
    the second stamp has landed — it is not ready for the human until the stamp is on the cell. A card
    the close workflow refused and reopened is THIS desk's work item: land the second stamp, then the
-   human closes it again. Never hand-edit the cell to a runner that did not run the rows — the
+   human closes it again. When every card for the brief is already CLOSED and a later PASS
+   has landed with the row still `implemented`, the close event must fire again: run
+   `deskclose verify-gate-refire` on the latest card once that Evidence is on main ("Re-firing a
+   cycle", next section), and report the reopened card as the human's wait. Never hand-edit the cell to a runner that did not run the rows — the
    Evidence-actor and runner-agreement checks read that as a forgery, not a fix. **The card carries
    the act:** closing it is the human's act, so the card holds an Act block (`ask-decision` §"Act — the shape of the fifth part")
    — where the generated packet has none, this desk attaches it (`deskfile attach`) when the card is
