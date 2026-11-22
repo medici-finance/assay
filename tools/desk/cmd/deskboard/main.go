@@ -43,7 +43,7 @@ import (
 // release, where the namespaced ReleaseTag stamp supplies the version instead.
 var version string
 
-var perfVerbs = []string{"prs", "actions", "review-queue", "queue", "health", "awaiting", "nextup", "scope", "dispatch", "throughput", "policydrift", "stalled", "milestones", "reviews", "diff", "files"}
+var perfVerbs = []string{"prs", "actions", "review-queue", "queue", "health", "awaiting", "nextup", "scope", "dispatch", "throughput", "policydrift", "stalled", "milestones", "change", "reviews", "diff", "files"}
 
 func main() {
 	args := os.Args[1:]
@@ -89,10 +89,10 @@ func boardCode(n int) error {
 }
 
 type boardOptions struct {
-	table, delta, quiet, json    bool
-	out, tier, reviewObservation string
-	minAge, floor                int
-	merge, unreviewed            time.Duration
+	table, delta, quiet, json                 bool
+	out, tier, reviewObservation, feedbackOut string
+	minAge, floor                             int
+	merge, unreviewed                         time.Duration
 }
 
 func versionLine() string {
@@ -141,11 +141,21 @@ func executeRecorded(args []string, stdout, stderr io.Writer, pre func(io.Writer
 		root.Long = "Read-only cross-repo board. Output is JSON except stalled (table by default).\nAll roster, custody, scope, kill-switch and admission checks apply to execution."
 		set := cli.Declare(root, boardBindings()...)
 		handler := func(sub string) func(*cobra.Command, []string) error {
-			return func(_ *cobra.Command, rest []string) error {
+			return func(command *cobra.Command, rest []string) error {
 				o, err := resolveBoard(set)
 				if err != nil {
 					fmt.Fprintln(stderr, err)
 					return boardExit(deskkit.ExitRefused)
+				}
+				if sub == "review-queue" {
+					o.feedbackOut, _ = command.Flags().GetString("feedback-out")
+					if o.feedbackOut != "" {
+						obPath, obErr := filepath.Abs(o.out)
+						fbPath, fbErr := filepath.Abs(o.feedbackOut)
+						if o.out == "" || obErr != nil || fbErr != nil || obPath == fbPath {
+							return deskkit.Refused("deskboard review-queue: --feedback-out requires a separate --out file")
+						}
+					}
 				}
 				if o.reviewObservation != "" && sub != "throughput" {
 					return deskkit.Refused("deskboard: --review-observation is supported only by throughput")
@@ -209,22 +219,29 @@ func executeRecorded(args []string, stdout, stderr io.Writer, pre func(io.Writer
 			{"scope", "reconcile watched repos against open PRs", nil}, {"policydrift", "repo visibility drift", nil},
 			{"stalled", "stalled drafts and shepherd candidates", nil},
 			{"milestones", "milestone state from stream-view documents", nil},
+			{"change", "review findings and checks for one observed change head", nil},
 			{"reviews", "review states at each head", nil}, {"diff", "PR diff", nil}, {"files", "changed files or one file's content", nil},
 		} {
 			name := v.name
 			cmd := &cobra.Command{Use: name, Short: v.short, Aliases: v.aliases, Args: cobra.NoArgs}
+			if name == "review-queue" {
+				cmd.Flags().String("feedback-out", "", "write the same collection's advisory monitor fingerprints to a separate private file")
+			}
 			if name == "milestones" {
 				cmd.Use += " <stream-view.json>..."
 				cmd.Args = cobra.MinimumNArgs(1)
 			}
-			if name == "reviews" || name == "diff" || name == "files" {
+			if name == "change" || name == "reviews" || name == "diff" || name == "files" {
 				cmd.Use += " <repo> <pr>"
-				if name == "files" {
+				switch name {
+				case "files":
 					cmd.Use += " [path]"
+				case "change":
+					cmd.Use += " [expected-head]"
 				}
 				cmd.Args = func(c *cobra.Command, a []string) error {
 					max := 2
-					if name == "files" {
+					if name == "files" || name == "change" {
 						max = 3
 					}
 					if err := cobra.RangeArgs(2, max)(c, a); err != nil {
@@ -304,7 +321,9 @@ func runBoard(sub string, rest, args []string, o boardOptions, stdout, stderr io
 
 	var rep *Report
 	var err error
-	if sub == "throughput" && o.reviewObservation != "" {
+	if sub == "review-queue" && o.feedbackOut != "" {
+		rep, err = collectReviewQueue(o.feedbackOut)
+	} else if sub == "throughput" && o.reviewObservation != "" {
 		rep, err = cmdThroughput(hdr, mergeNowThreshold, unreviewedThreshold, o.reviewObservation)
 	} else {
 		rep, err = boardDispatch(sub, rest, hdr, mergeNowThreshold, unreviewedThreshold, minAgeHours, o.tier)
@@ -393,7 +412,11 @@ func runBoard(sub string, rest, args []string, o boardOptions, stdout, stderr io
 	}
 	if wantTable {
 		printBanners(stderr, hdr)
-		rep.render(out)
+		if err := rep.table(out); err != nil {
+			logRun(sub, deskkit.ResultUnverifiable, "table: "+err.Error())
+			_, _ = fmt.Fprintln(stderr, "deskboard: table write failed:", err)
+			return deskkit.ExitUnverifiable
+		}
 	} else {
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
@@ -490,12 +513,14 @@ func dispatch(sub string, rest []string, hdr Header, mergeNowThreshold, unreview
 		return cmdStalled(hdr, minAgeHours)
 	case "milestones":
 		return cmdMilestones(hdr, rest)
-	case "reviews", "diff", "files":
+	case "change", "reviews", "diff", "files":
 		repo, num, path, err := parseRepoPR(sub, rest)
 		if err != nil {
 			return nil, err
 		}
 		switch sub {
+		case "change":
+			return cmdChange(hdr, repo, num, rest[2:])
 		case "reviews":
 			return cmdReviews(hdr, repo, num)
 		case "diff":

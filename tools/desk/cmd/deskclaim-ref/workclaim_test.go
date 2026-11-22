@@ -164,7 +164,7 @@ func (s *aliasRaceStore) CreateIfAbsent(id, msg string) deskkit.ClaimWriteOutcom
 	s.seedClaim(s.alias, "racer", "claimed", "", 0)
 	return result
 }
-func (s *aliasRaceStore) Remove(id string) (deskkit.ClaimWriteOutcome, bool) {
+func (s *aliasRaceStore) RemoveFrom(id, old string) deskkit.ClaimWriteOutcome {
 	s.removed = true
-	return s.fakeStore.Remove(id)
+	return s.fakeStore.RemoveFrom(id, old)
 }

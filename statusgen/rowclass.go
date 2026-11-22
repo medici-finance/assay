@@ -51,6 +51,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // The row classes. Stable identifiers — the lint, verifyrun and the
@@ -135,7 +137,7 @@ var knownRowClasses = map[string]bool{
 // today's: the whole obligation axis lives INSIDE the one optional `Class` cell,
 // so a column-less legacy table is untouched, an execution-only cell parses
 // exactly as before, and only a cell that opts in by writing a `+token` gains an
-// obligation. splitRowClassCell is the single seam that separates the two axes.
+// obligation. briefdoc.SplitRowClassCell is the single seam that separates the two axes.
 //
 // PRESENCE, NOT ADEQUACY (spec §3 D7). This encoding, and the derivation that
 // reads it (obligationderivation.go), carry only whether an obligation ROW IS
@@ -169,34 +171,6 @@ var knownObligations = map[string]bool{
 	classNeighbour:   true,
 }
 
-// obligationSeparator prefixes each obligation token in a compound Class cell
-// (`check:ci +mutation`), distinguishing it from the single execution value.
-const obligationSeparator = "+"
-
-// splitRowClassCell separates a compound `Class` cell into its execution token
-// and its obligation tokens. The cell is `<execution> +<obligation>...`: one
-// execution value (optional — an empty or `+`-leading cell is the legacy
-// default), then zero or more obligation tokens, each optionally `+`-prefixed.
-// A cell with no obligation token returns nil obligations and parses exactly as
-// the pre-obligation code did — which is why every inherited table and every
-// existing execution-class test is untouched by this change.
-func splitRowClassCell(raw string) (execCell string, obligations []string) {
-	s := strings.ToLower(strings.TrimSpace(normalizeRowID(raw)))
-	if s == "" {
-		return "", nil
-	}
-	fields := strings.Fields(s)
-	i := 0
-	if !strings.HasPrefix(fields[0], obligationSeparator) {
-		execCell = fields[0]
-		i = 1
-	}
-	for _, f := range fields[i:] {
-		obligations = append(obligations, strings.TrimPrefix(f, obligationSeparator))
-	}
-	return execCell, obligations
-}
-
 // obligations returns the KNOWN obligation tokens a row's Class cell carries.
 // nil for a legacy (unclassed) table, an execution-only cell, or a cell whose
 // only obligation tokens are unrecognised — those are caught as PROBLEMs by
@@ -205,7 +179,7 @@ func (r verifyRowCells) obligations() []string {
 	if !r.Classed {
 		return nil
 	}
-	_, obs := splitRowClassCell(r.Class)
+	_, obs := briefdoc.SplitRowClassCell(r.Class)
 	var known []string
 	for _, o := range obs {
 		if knownObligations[o] {
@@ -251,7 +225,7 @@ type verifyRowCells struct {
 // returned verbatim (lowercased) with known=false, so the lint can name exactly
 // what the author wrote.
 func resolveRowClass(raw string) (class string, known bool) {
-	s := strings.ToLower(strings.TrimSpace(normalizeRowID(raw))) // strip backticks/emphasis, trim
+	s := strings.ToLower(strings.TrimSpace(briefdoc.NormalizeRowID(raw))) // strip backticks/emphasis, trim
 	if s == "" {
 		return legacyRowClass, true
 	}
@@ -268,7 +242,7 @@ func (r verifyRowCells) class() string {
 	}
 	// A compound cell (`check +mutation`) routes on its EXECUTION token only; the
 	// obligation tokens are a second axis every execution consumer ignores.
-	execCell, _ := splitRowClassCell(r.Class)
+	execCell, _ := briefdoc.SplitRowClassCell(r.Class)
 	if execCell == "" {
 		return legacyRowClass
 	}
@@ -341,7 +315,7 @@ var knownRowShells = map[string]bool{
 // non-empty cell that matches no shell is returned verbatim (lowercased) with
 // known=false, so the lint can name exactly what the author wrote.
 func resolveRowShell(raw string) (shell string, known bool) {
-	s := strings.ToLower(strings.TrimSpace(normalizeRowID(raw))) // strip backticks/emphasis, trim
+	s := strings.ToLower(strings.TrimSpace(briefdoc.NormalizeRowID(raw))) // strip backticks/emphasis, trim
 	if s == "" {
 		return legacyRowShell, true
 	}
@@ -431,7 +405,7 @@ var rowEnvNameRe = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 // well-formed. An empty cell is well-formed with kind "" (no environment named).
 // The normalised cell is returned verbatim so the lint names what was written.
 func resolveRowEnv(raw string) (env, kind string, known bool) {
-	env = strings.ToLower(strings.TrimSpace(normalizeRowID(raw)))
+	env = strings.ToLower(strings.TrimSpace(briefdoc.NormalizeRowID(raw)))
 	if env == "" {
 		return "", "", true
 	}
@@ -664,7 +638,7 @@ func verifyRowClassProblems(streams []*Stream) []string {
 				// on EITHER axis is fatal — a token the tool cannot resolve routes
 				// nowhere and is silently exempt from its gate.
 				if r.Classed {
-					execCell, obs := splitRowClassCell(r.Class)
+					execCell, obs := briefdoc.SplitRowClassCell(r.Class)
 					if execCell != "" {
 						if cls, known := resolveRowClass(execCell); !known {
 							add("%s: %s declares class %q, which is not a defined Verify row class — the recognised classes are `check:ci` (hermetic, CI re-executes network-off), `check` (env-bound, runner-executed), `gate:model` and `gate:human`. A row whose class the tool cannot resolve routes nowhere and is silently exempt from every gate; fix the class or drop the column (an unclassed table is legacy `check`) — verdict-lane/02", path, where, cls)

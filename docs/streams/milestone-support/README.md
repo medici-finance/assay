@@ -38,7 +38,7 @@ Existing independent human, review, verification and adoption gates remain in fo
 | 08 | [Normalize PR trailers and claims through the shared resolver](brief-08-normalize-pr-trailers-and-claims-through-the-shared-resolver.md) | 3 | M | implemented | — | — |
 | 09 | [Preserve workflow subjects and human rulings across aliases](brief-09-preserve-workflow-subjects-and-human-rulings-across-aliases.md) | 4 | M | todo | — | — |
 | 10 | [Enforce milestone capabilities at dispatch and pickup](brief-10-enforce-milestone-capabilities-at-dispatch-and-pickup.md) | 6 | M | todo | — | — |
-| 11 | [Project milestone state into stream views and deskboard](brief-11-project-milestone-state-into-stream-views-and-deskboard.md) | 6 | M | implemented | — | — |
+| 11 | [Project milestone state into stream views and deskboard](brief-11-project-milestone-state-into-stream-views-and-deskboard.md) | 6 | M | verified | 2026-11-21 assay-verifier-app[bot] @ 2aafcfe485c7 (claude-opus-5-5) | — |
 | 12 | [Preserve milestone scope and identity in history and exports](brief-12-preserve-milestone-scope-and-identity-in-history-and-exports.md) | 6 | M | todo | — | — |
 | 13 | [Trace and report a selected milestone through canonical readers](brief-13-trace-and-report-a-selected-milestone-through-canonical-readers.md) | 7 | M | todo | — | — |
 | 14 | [Qualify the two-binary rollout and prepare release adoption](brief-14-qualify-the-two-binary-rollout-and-prepare-release-adoption.md) | 8 | M | todo | — | — |

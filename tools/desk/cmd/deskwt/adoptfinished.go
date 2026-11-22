@@ -36,6 +36,12 @@ import (
 //
 // Any failed clause keeps the original refusal and appends which clause failed.
 
+// worktreeConfigEnabled confirms Git has enabled per-worktree configuration for this checkout.
+func worktreeConfigEnabled(dir string) bool {
+	value, err := runGit(dir, "config", "--bool", "--get", "extensions.worktreeConfig")
+	return err == nil && value == "true"
+}
+
 // adoptProof checks candidate against the clauses above. It returns the resolved home on
 // success, a refusal reason when a clause fails, or an error when a read cannot be made.
 func adoptProof(guard *pathGuard, dir, candidate, br, base, runKey string) (string, string, error) {
@@ -60,7 +66,7 @@ func adoptProof(guard *pathGuard, dir, candidate, br, base, runKey string) (stri
 	if top, err := runGit(rt, "rev-parse", "--show-toplevel"); err != nil || resolvePath(top) != rt {
 		return "", "its git link is missing or broken", nil
 	}
-	if ext, _ := runGit(rt, "config", "--bool", "--get", "extensions.worktreeConfig"); ext != "true" {
+	if !worktreeConfigEnabled(rt) {
 		return "", "it carries no worktree-scoped run key", nil
 	}
 	if key, _ := runGit(rt, "config", "--worktree", "--get", "assay.runKey"); key != runKey {

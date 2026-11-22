@@ -2,40 +2,47 @@
 # Issue #2798 review controls. Run only from a disposable/owned worktree.
 # Assert a green pristine baseline, require one anchor and an assertion kill per
 # control, and restore the original source after every probe, including failure.
+#
+# The strict Context files: grammar now lives in its owner,
+# statusgen/briefdoc/declared.go; deskkit's declared-scope projection calls it
+# (tools/desk resolves statusgen through its local replace), so these deskkit
+# tests still kill a mutant planted in the owner. Path resolution and its work
+# bound stay in deskkit/declaredscope.go. Each control names its target file.
 from pathlib import Path
 import subprocess,os,sys
 module=Path(__file__).resolve().parents[3]
-p=module/"internal/deskkit/declaredscope.go"
+owner=module.parents[1]/"statusgen/briefdoc/declared.go"
+adapter=module/"internal/deskkit/declaredscope.go"
 entries=[
  ("outside-context", 'if marker && (!context || !columnZero) {', 'if false {', '^TestScope(ReviewedCorpusRefusesPartial|ContinuationPositions)$'),
  ("field-position", 'else if line == "" || (columnZero && scopeFieldKey(line)) {', 'else if line == "" || (strings.HasSuffix(strings.Fields(line)[0], ":") && !strings.HasPrefix(line, "-")) {', '^TestScope(ReviewedCorpusRefusesPartial|ContinuationPositions)$'),
  ("unsupported-marker", 'if marker && !strings.HasPrefix(line, "files:") {', 'if false {', '^TestScopeContinuationPositions$'),
  ("hyphen-tail", '[]string{" — "}', '[]string{" — ", " – ", " - "}', '^TestScopeContinuationPositions$'),
- ("action-annotation", 'return nil, false, Refused("refused: unclosed Context files: action annotation")', 'break', '^TestScopeContinuationPositions$'),
+ ("action-annotation", 'return nil, false, refuse("refused: unclosed Context files: action annotation")', 'break', '^TestScopeContinuationPositions$'),
  ("loose-continuation", 'else if scopeLooseContinuation(raw, line) {', 'else if false {', '^TestScopeLooseContinuation$'),
- ("resolution-work", 'if n > maxScopeWork-work {', 'if false {', '^TestScopeResolutionWorkBound$'),
+ ("resolution-work", 'if n > maxScopeWork-work {', 'if false {', '^TestScopeResolutionWorkBound$', adapter),
  ("annotated-field", r"(?: \([^)]*\))?", "", '^TestScopeAcceptedFieldBoundaries$'),
  ("prose-marker", 'outsideFieldMarker := scopeOutsideFilesFieldPattern.MatchString(strings.TrimLeft(line, "*_"))', 'outsideFieldMarker := scopeBroadFilesMarker(markerLine)', '^TestScopeAcceptedFieldBoundaries$'),
  ("formatted-marker", 'markerLine := scopeMarkerText(line)', 'markerLine := strings.ToLower(strings.TrimLeft(line, "*_"))', '^TestScopeFormattedMarkersRefuse$'),
  ("loose-markers", 'scopeListPrefix(line) != 0 || strings.HasPrefix(line, "`")', 'strings.HasPrefix(line, "- ") || strings.HasPrefix(line, "`")', '^TestScopeLooseMarkdownContinuationsRefuse$'),
- ("unclosed-fence", 'if fence != "" {\n\t\treturn nil, Refused("refused: unclosed Markdown fence; declared scope cannot be established")', 'if false {\n\t\treturn nil, Refused("refused: unclosed Markdown fence; declared scope cannot be established")', '^TestScopeFenceIntegrity$'),
+ ("unclosed-fence", 'if fence != "" {\n\t\treturn nil, refuse("refused: unclosed Markdown fence; declared scope cannot be established")', 'if false {\n\t\treturn nil, refuse("refused: unclosed Markdown fence; declared scope cannot be established")', '^TestScopeFenceIntegrity$'),
  ("fence-width", 'fence = line[:length]', 'fence = line[:length-length+3]', '^TestScope(AcceptedFieldBoundaries|FenceIntegrity)$'),
  ("unknown-field", '"layout", "out-of-repo files":', '"layout", "out-of-repo files", "see":', '^TestScopeLooseMarkdownContinuationsRefuse$'),
  ("fence-opener-indent", 'if !fenceAtColumn || (line[0]', 'if false || (line[0]', '^TestScope(FenceIntegrity|FenceOpeners|MalformedFenceReceiptRefuses)$'),
  ("fence-opener-info", "(line[0] == '`' && strings.ContainsRune(line[length:], '`'))", 'false', '^TestScope(FenceIntegrity|MalformedFenceReceiptRefuses|InlineSpanBeforeContext)$'),
  ("fence-closer-indent", 'if fenceAtColumn && strings.HasPrefix(line, fence)', 'if strings.HasPrefix(line, fence)', '^TestScope(FenceIntegrity|FenceOpeners)$'),
- ("fence-context-indent", 'if context && !columnZero {\n\t\t\t\treturn nil, Refused("refused: indented Context fence may belong to a container")', 'if false {\n\t\t\t\treturn nil, Refused("refused: indented Context fence may belong to a container")', '^TestScopeFenceIntegrity$'),
+ ("fence-context-indent", 'if context && !columnZero {\n\t\t\t\treturn nil, refuse("refused: indented Context fence may belong to a container")', 'if false {\n\t\t\t\treturn nil, refuse("refused: indented Context fence may belong to a container")', '^TestScopeFenceIntegrity$'),
  ("fence-declaration", 'if context && (block || endedByBlank) {', 'if false {', '^TestScopeFenceIntegrity$'),
  ("fence-hidden-heading", 'else if strings.HasPrefix(line, "## ") {', 'else if false {', '^TestScopeFenceIntegrity$'),
  ("fence-hidden-marker", 'else if scopeFilesFieldPattern.MatchString(scopeMarkerText(line)) || scopeBroadFilesMarker(scopeMarkerText(line)) {', 'else if false {', '^TestScopeFenceIntegrity$'),
  ("whitespace-marker", 'return tail == "" || strings.ContainsAny(tail[:1], ":*_`(") || tail != strings.TrimLeftFunc(tail, unicode.IsSpace)', 'return tail == "" || strings.ContainsAny(tail[:1], ":*_`(")', '^TestScope(ContinuationPositions|WrappedFilesRefuse|LabelledFilesRefuse|UnwrappedFilesRefuse)$'),
- ("section-indent", 'return nil, Refused("refused: indented section heading in Context cannot end declared scope")', '// planted indented section boundary', '^TestScopeIndentedSectionRefuses$'),
- ("wrapped-description", 'if wrap && ExitCodeOf(err) == ExitRefused {', 'if false {', '^TestScopeWrapped(BulletParen|EqualsJoined|Boundary)$'),
+ ("section-indent", 'return nil, refuse("refused: indented section heading in Context cannot end declared scope")', '// planted indented section boundary', '^TestScopeIndentedSectionRefuses$'),
+ ("wrapped-description", 'if wrap && isRefusal(err) {', 'if false {', '^TestScopeWrapped(BulletParen|EqualsJoined|Boundary)$'),
  ("wrapped-no-description", 'wrap := described && indent > bulletIndent', 'wrap := (described || true) && indent > bulletIndent', '^TestScopeWrappedBoundary$'),
  ("wrapped-same-indent", 'wrap := described && indent > bulletIndent', 'wrap := described && indent >= bulletIndent', '^TestScopeWrappedBoundary$'),
  ("wrapped-list-item", '&& scopeListPrefix(line) == 0 && !strings.HasPrefix(line, ">")', '', '^TestScopeWrappedBoundary$'),
  ("wrapped-drops-decl", 'paths, desc, err := declarationLine(line)', 'paths, desc, err := declarationLine(line)\n\t\tif wrap {\n\t\t\tpaths = nil\n\t\t}', '^TestScopeWrappedBoundary$'),
- ("section-html",'return nil, Refused("refused: HTML may hide a section boundary in declared files scope")', '// planted hidden HTML boundary', '^TestScopeHTMLSectionBoundaryRefuses$'),
+ ("section-html",'return nil, refuse("refused: HTML may hide a section boundary in declared files scope")', '// planted hidden HTML boundary', '^TestScopeHTMLSectionBoundaryRefuses$'),
 ]
 selected=set(sys.argv[1:])
 known={entry[0] for entry in entries}
@@ -44,9 +51,11 @@ entries=[entry for entry in entries if not selected or entry[0] in selected]
 baseline=subprocess.run(["go","test","./internal/deskkit","-run","^Test(Scope|Declared|HistoricalScope)","-count=1","-timeout=60s"],cwd=module,env=dict(os.environ,GOWORK="off",KUBECONFIG="/dev/null"),capture_output=True,text=True)
 if baseline.returncode:raise SystemExit("pristine baseline failed\n"+baseline.stdout+baseline.stderr)
 print("pristine baseline: green",flush=True)
-original=p.read_text()
-for name,old,new,tests in entries:
- if original.count(old)!=1:raise SystemExit(name+": anchor absent/ambiguous")
+entries=[entry if len(entry)==5 else entry+(owner,) for entry in entries]
+for name,old,new,tests,p in entries:
+ if p.read_text().count(old)!=1:raise SystemExit(name+": anchor absent/ambiguous in "+p.name)
+for name,old,new,tests,p in entries:
+ original=p.read_text()
  try:
   p.write_text(original.replace(old,new))
   result=subprocess.run(["go","test","./internal/deskkit","-run",tests,"-count=1","-timeout=60s"],cwd=module,env=dict(os.environ,GOWORK="off",KUBECONFIG="/dev/null"),capture_output=True,text=True)

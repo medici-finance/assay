@@ -13,6 +13,7 @@ import (
 type resumeSource struct {
 	branch, head string
 	verified     bool
+	handoffBrief bool
 }
 
 var resumeHeadRe = regexp.MustCompile("^[0-9a-f]{40}$|^[0-9a-f]{64}$")
@@ -67,7 +68,7 @@ func resolveResume(o dispatchOpts, plan *dispatchPlan) error {
 	if o.branch != "" && o.branch != branch {
 		return deskkit.Refused(fmt.Sprintf("--branch %q differs from the change's source branch %q; nothing was claimed", o.branch, branch))
 	}
-	source := &resumeSource{branch: branch, head: change.HeadSHA}
+	source := &resumeSource{branch: branch, head: change.HeadSHA, handoffBrief: deskkit.DeliveredLocalBrief(change.Body, plan.repo) != ""}
 	if !o.dryRun {
 		refreshOpts := o
 		refreshOpts.repo = plan.repo

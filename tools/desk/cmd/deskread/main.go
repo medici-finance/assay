@@ -169,7 +169,7 @@ output: a versioned JSON envelope on stdout
   "issueStates", "labelEvents", "change", "changeCommits", "changeFiles", "reviews"; change-trust
   answers "trust", the trust kind's shape read on the change.
 
-  reviews answers a list, [{"authorLogin": …, "authorId": …, "state": "APPROVED|CHANGES_REQUESTED|
+  reviews answers a list, [{"authorLogin": …, "authorId": …, "submissionId": …, "url": …, "state": "APPROVED|CHANGES_REQUESTED|
   COMMENTED|DISMISSED|PENDING", "commitId": …, "submittedAt": …, "body": …}], every submission oldest first
   (an empty list is a real answer: nobody has reviewed). It is transport: it carries no verdict.
 
@@ -198,8 +198,9 @@ identity: two transports, named in the envelope's "identity" object and on one s
   ci-workflow-token (opt-in): --ci-workflow-token alone selects it. It is CI-only (refused
   outside a CI job and on pull_request_target), read-only (every write method is refused),
   same-repository (only the job's own GITHUB_REPOSITORY is read; another --repo lands in
-  "partial" and a --issue/--change in another repository is refused) and limited to the kinds
-  issues, trust and comments. The token is read from DESKREAD_CI_WORKFLOW_TOKEN only and must be
+  "partial" and a --issue/--change in another repository is refused), and limited to these kinds:
+  ` + strings.Join(sortedCIKinds(), ", ") + `.
+  The token is read from DESKREAD_CI_WORKFLOW_TOKEN only and must be
   an installation token (ghs_); without the flag that variable is ignored. A refusal reads
   "deskread: refused [ci-transport:<layer>]: <reason>" and exits 5. The identity object's
   repository and runId are copied from the environment and are NOT verified: CI detection is a
@@ -243,7 +244,10 @@ func run(args []string, stdout, stderr io.Writer) int {
 // separate from readKinds on purpose: a kind added to readKinds is NOT served under the CI
 // transport until a reviewed diff adds it here (forge-neutral brief 18 owns each addition its
 // CI-lane sites need). TestCITransportKindsAreReads pins that every entry is also a readKinds kind.
-var ciTransportKinds = map[string]bool{"issues": true, "trust": true, "comments": true}
+var ciTransportKinds = map[string]bool{
+	"issues": true, "trust": true, "comments": true,
+	"issue": true, "label-events": true, // statusgen verifier attestation credit
+}
 
 // toolClassFor is the one place deskread picks its roster class. The CI class (ClassForTool(true),
 // which is ClassCI only inside CI) is chosen ONLY when the command line parsed cleanly and carried
@@ -291,7 +295,7 @@ func versionLine() string {
 func bindings() []cli.Binding {
 	return []cli.Binding{
 		{Key: "repo", Kind: cli.StringArray, Flag: "repo", Usage: "`owner/repo` to read (repeatable; per-repo kinds)"},
-		{Key: "issue", Kind: cli.StringArray, Flag: "issue", Usage: "`owner/repo#N` issue to read (repeatable; trust, issue, issue-states, comments)"},
+		{Key: "issue", Kind: cli.StringArray, Flag: "issue", Usage: "`owner/repo#N` issue to read (repeatable; trust, issue, issue-states, label-events, comments)"},
 		{Key: "change", Kind: cli.StringArray, Flag: "change", Usage: "`owner/repo#N` change to read (repeatable; change, change-commits, change-files, comments)"},
 		{Key: "state", Kind: cli.StringArray, Flag: "state", Usage: "the state `word` (issue-list, changes; exactly one)"},
 		{Key: "label", Kind: cli.StringArray, Flag: "label", Usage: "ONE label `name` (issue-list only; exactly one)"},
@@ -994,12 +998,14 @@ type CommentJSON struct {
 // which ReviewsAtHead also renders APPROVED. An empty CommitID or SubmittedAt is could-not-check,
 // never "at the current head" or "just now".
 type ReviewJSON struct {
-	AuthorLogin string `json:"authorLogin,omitempty"`
-	AuthorID    int64  `json:"authorId,omitempty"`
-	State       string `json:"state"`
-	CommitID    string `json:"commitId,omitempty"`
-	SubmittedAt string `json:"submittedAt,omitempty"`
-	Body        string `json:"body,omitempty"`
+	SubmissionID int64  `json:"submissionId,omitempty"`
+	URL          string `json:"url,omitempty"`
+	AuthorLogin  string `json:"authorLogin,omitempty"`
+	AuthorID     int64  `json:"authorId,omitempty"`
+	State        string `json:"state"`
+	CommitID     string `json:"commitId,omitempty"`
+	SubmittedAt  string `json:"submittedAt,omitempty"`
+	Body         string `json:"body,omitempty"`
 }
 
 // IssueDetailJSON is one deskkit.Issue read through GetIssueTyped(issue kind). ClosedBy is set
@@ -1315,7 +1321,7 @@ func readItem(kind string, target deskkit.TargetKind, tgt issueTarget, o readOpt
 		for _, r := range rs {
 			out = append(out, ReviewJSON{
 				AuthorLogin: r.Author.Login, AuthorID: r.Author.ID, State: r.State,
-				CommitID: r.CommitID, SubmittedAt: r.SubmittedAt, Body: r.Body,
+				CommitID: r.CommitID, SubmittedAt: r.SubmittedAt, Body: r.Body, SubmissionID: r.SubmissionID(), URL: r.URL,
 			})
 		}
 		res.Reviews = &out

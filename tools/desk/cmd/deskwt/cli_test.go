@@ -287,7 +287,7 @@ func cliDefault(path, key string) any {
 		return 2 * time.Minute
 	}
 	switch key {
-	case "detach", "dry-run", "reclaim-stale-locks", "reap-dead-sessions", "no-singleton", "no-branches",
+	case "detach", "handoff-brief", "dry-run", "reclaim-stale-locks", "reap-dead-sessions", "no-singleton", "no-branches",
 		"branches-only", "no-maintenance", "no-cache", "apply", "json", "no-fetch":
 		return false
 	}
@@ -300,7 +300,7 @@ func cliFields(c wtCall) map[string]any {
 	case "add":
 		o := c.add
 		return map[string]any{"branch": o.branch, "detach": o.detach, "base": o.base, "upstream": o.upstream, "role": o.role,
-			"dry-run": o.dryRun, "lock-session": o.lockSession, "adopt-run": o.adoptRun}
+			"dry-run": o.dryRun, "lock-session": o.lockSession, "adopt-run": o.adoptRun, "handoff-brief": o.handoffBrief}
 	case "remove":
 		return map[string]any{"dry-run": c.remove.dryRun}
 	case "prune":

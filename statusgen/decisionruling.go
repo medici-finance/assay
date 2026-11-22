@@ -626,12 +626,16 @@ func isDecisionRecordPath(path string) bool {
 // diff ADDS OR EDITS (at least one added line), in first-seen order. A declared fixture corpus is skipped
 // exactly as stampsInDiff skips it.
 func decisionRecordsInDiff(root, diff string) []string {
+	return decisionRecordsInAddedLines(addedDiffLines(root, diff))
+}
+
+func decisionRecordsInAddedLines(added []diffAddedLine) []string {
 	var out []string
 	seen := map[string]bool{}
 	// The one shared diff walker (addedDiffLines, corroboratescope.go) already skips
 	// a declared fixture corpus; a decision record is never a .patch file, so the
 	// walker's embedded-patch rule never touches this lane.
-	for _, al := range addedDiffLines(root, diff) {
+	for _, al := range added {
 		cur := al.File
 		if cur == "" || seen[cur] || !isDecisionRecordPath(cur) {
 			continue
@@ -653,13 +657,17 @@ func decisionRecordsInDiff(root, diff string) []string {
 // (record-not-named, with a detail naming the missing id); the register lint reports
 // the same record.
 func loadDecisionRecordStamp(root, file string) decisionRecordStamp {
-	rec := decisionRecordStamp{File: file}
 	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
+	return parseDecisionRecordStamp(file, string(raw), err)
+}
+
+func parseDecisionRecordStamp(file, content string, err error) decisionRecordStamp {
+	rec := decisionRecordStamp{File: file}
 	if err != nil {
 		rec.LoadErr = err.Error()
 		return rec
 	}
-	fm, _, ferr := splitFrontmatter(string(raw))
+	fm, _, ferr := splitFrontmatter(content)
 	if ferr != nil {
 		rec.LoadErr = ferr.Error()
 		return rec

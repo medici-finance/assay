@@ -25,6 +25,7 @@
   ],
   "result": [
     {
+      "URL": "https://gitlab.example/medici-finance/assay/-/merge_requests/7#note_3",
       "ID": 3,
       "Author": {
         "Login": "human",
@@ -47,6 +48,7 @@
       "SubmittedAt": "2026-08-30T11:00:00Z"
     },
     {
+      "URL": "https://gitlab.example/medici-finance/assay/-/merge_requests/7#note_2",
       "ID": 2,
       "Author": {
         "Login": "reviewer-bot",
