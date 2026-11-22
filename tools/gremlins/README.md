@@ -142,6 +142,14 @@ past the job cap. A job that hits the cap fails with "No summary", so it fails c
 its roughly 5,600 runnable mutants fit in a day. For deskkit, Gremlins is a slow sample;
 muhar's targeted `-run` per entry is the right tool there.
 
+The swept copy has no `.git`, and the sweep's workdirs sit inside it. Several deskkit tests
+walk the whole tree or read the checkout's remote: the leak-shape, install-mode and
+multipath-TCP scans, the forge-body guard roots and `TestSharedReadLowerScope`. In a
+copy-probe of that layout (six failing tests, 2026-11-22) they fail in the baseline, so
+`internal/deskkit` is expected to report `probe-red` until those tests stop depending on
+`.git` and on what sits beside the module. The other five default packages pass the same
+probe. A `probe-red` row is reported as such, never as a clean sweep.
+
 ### Measured (2026-10-11)
 
 These are local runs with `GOMAXPROCS=2` to approximate the 2-CPU runner. Wall time
