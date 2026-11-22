@@ -115,9 +115,7 @@ var readChangeAction = readInboxAction
 
 func actionableSnapshot(repos []string, observer deskkit.RequestObserver) (map[string]changeAction, error) {
 	rows, failures := fetchQueueMatching(repos, func(labels []string) bool {
-		return hasEscalationLabel(labels) || slices.ContainsFunc(labels, func(l string) bool {
-			return strings.EqualFold(strings.TrimSpace(l), deskkit.VerifyGateLabel)
-		})
+		return hasEscalationLabel(labels) || hasVerifyGateLabel(labels)
 	}, observer)
 	if len(failures) > 0 {
 		f := failures[0]

@@ -88,12 +88,15 @@ func readInboxAction(repo string, number int, observers ...deskkit.RequestObserv
 	default:
 		return a.next("unknown", "desk", "Read the issue's current open or closed state."), nil
 	}
-	acceptance := slices.Contains(iss.Labels, deskkit.VerifyGateLabel)
-	if acceptance && slices.Contains(iss.Labels, "needs-decision") {
-		return a.next("prepare", "desk", "Separate the unresolved decision from its verification sign-off card."), nil
-	}
-	if !acceptance && !slices.ContainsFunc(iss.Labels, func(l string) bool { return slices.Contains(labels, l) }) {
+	acceptance := hasVerifyGateLabel(iss.Labels)
+	if !acceptance && !slices.ContainsFunc(labels, func(l string) bool { return hasInboxLabel(iss.Labels, l) }) {
 		return a.next("prepare", "desk", "No escalation or verification gate is present."), nil
+	}
+	if !deskkit.EffectiveConfig().Configured() {
+		return a.next("unknown", "desk", "Could not evaluate the issue's authority without a configured roster."), nil
+	}
+	if acceptance && hasInboxLabel(iss.Labels, "needs-decision") {
+		return a.next("prepare", "desk", "Separate the unresolved decision from its verification sign-off card."), nil
 	}
 	// Never promote body text to an action when its current authorship is
 	// unclear. A forge workflow's verify card must additionally match the
@@ -116,7 +119,7 @@ func readInboxAction(repo string, number int, observers ...deskkit.RequestObserv
 		return a.next("unknown", "desk", "Could not read the complete decision thread."), nil
 	}
 	action := screenDecision(iss, a, cs)
-	if action.awaitsPacket && !slices.Contains(iss.Labels, "needs-decision") {
+	if action.awaitsPacket && !hasInboxLabel(iss.Labels, "needs-decision") {
 		links := sheetLink.FindAllStringSubmatch(visibleDecisionText(iss.Body), -1)
 		if len(links) == 1 {
 			return readRunsheet(f, fr, iss, a, links[0][1])
@@ -124,6 +127,12 @@ func readInboxAction(repo string, number int, observers ...deskkit.RequestObserv
 	}
 	return action, nil
 }
+
+func hasInboxLabel(names []string, want string) bool {
+	return slices.ContainsFunc(names, func(name string) bool { return strings.EqualFold(strings.TrimSpace(name), want) })
+}
+
+func hasVerifyGateLabel(names []string) bool { return hasInboxLabel(names, deskkit.VerifyGateLabel) }
 
 var (
 	optionHeading = regexp.MustCompile(`(?i)^\s*#{1,6}\s*options?\b`)
@@ -202,7 +211,7 @@ func screenDecision(iss *deskkit.Issue, a inboxAction, cs []deskkit.Comment) inb
 		a.Evidence = "Default: " + cleanText(def[0]) + "; caught by: " + cleanText(caught[0])
 		return a.next("screened", "desk", "Apply the documented reversible default.")
 	}
-	if !slices.Contains(iss.Labels, "needs-decision") || len(options.Texts) < 2 || len(options.Texts) != listLines || a.URL == "" {
+	if !hasInboxLabel(iss.Labels, "needs-decision") || len(options.Texts) < 2 || len(options.Texts) != listLines || a.URL == "" {
 		a.awaitsPacket = true
 		return a.next("prepare", "desk", "Prepare the unresolved decision and its options or link the verified human runsheet.")
 	}
@@ -231,6 +240,15 @@ func visibleDecisionText(body string) string {
 	var fence string
 	var hidden bool
 	for _, line := range toLines(body) {
+		// A comment closes even on an indented or quoted line. Consume its
+		// terminator before deciding how Markdown treats the remaining text.
+		if hidden {
+			_, tail, ok := strings.Cut(line, "-->")
+			if !ok {
+				continue
+			}
+			line, hidden = tail, false
+		}
 		trim := strings.TrimSpace(line)
 		if fence != "" {
 			if strings.HasPrefix(trim, fence) && strings.Trim(trim, fence[:1]) == "" {
