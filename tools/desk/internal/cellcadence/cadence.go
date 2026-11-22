@@ -192,7 +192,7 @@ func readCheckpoint(dir string, lstat func(string) (os.FileInfo, error)) (State,
 	if err != nil {
 		return s, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	opened, err := f.Stat()
 	if err != nil {
 		return s, err
