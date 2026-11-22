@@ -96,7 +96,8 @@ reviewable artifact, not a run.
   concurrency group is set on the job, so a comment the job's `if:` skips never
   queues in it. The close workflow admits only the resulting card, rereads the
   human closer and revalidates the adjudication before the existing
-  board-writer push. The ordinary route for other briefs is unchanged.
+  board-writer push. Other briefs keep their ordinary card route; the close
+  step's decision-gate refusal branch, in the next entry, is live for every brief.
 
 - `verify-gate-close.yml` also carries the decision-gate refusal branch in the
   "Advance ..." step, live for every brief. When `statusgen --close-verify`
