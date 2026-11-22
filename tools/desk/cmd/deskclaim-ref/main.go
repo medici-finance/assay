@@ -40,7 +40,7 @@
 //
 //	deskclaim-ref acquire  <id> [--repo O/R] [--owner O] [--branch B]
 //	deskclaim-ref progress <id> [--repo O/R] [--owner O] --branch B
-//	deskclaim-ref release  <id> [--repo O/R]
+//	deskclaim-ref release  <id> [--repo O/R] [--owner O]
 //	deskclaim-ref steal    <id> --reason "<why>" [--repo O/R] [--owner O]
 //	deskclaim-ref show     <id> [--repo O/R]
 //	deskclaim-ref list          [--repo O/R]
@@ -91,7 +91,7 @@ tools/dispatch-claim.sh; the only claim path that runs native on Windows).
 USAGE:
   deskclaim-ref acquire  <id> [--repo O/R] [--owner O] [--branch B]
   deskclaim-ref progress <id> [--repo O/R] [--owner O] --branch B
-  deskclaim-ref release  <id> [--repo O/R]
+  deskclaim-ref release  <id> [--repo O/R] [--owner O]
   deskclaim-ref steal    <id> --reason "<why>" [--repo O/R] [--owner O]
   deskclaim-ref show     <id> [--repo O/R]
   deskclaim-ref list          [--repo O/R]
@@ -113,7 +113,10 @@ origin remote host; every forge call is an in-process git-smart-HTTP request (no
 acquire   take the claim if free; reclaim it if the holder is past its TTL; refuse (exit 5)
           if a live holder owns it. Never steals a live claim inline.
 progress  advance an acquired claim to state=dispatched (TTL 20m -> 120m).
-release   delete the claim ref (branch-as-claim takes over). A missing claim is a no-op.
+release   delete the caller-owned claim at the revision read. A missing claim is a no-op.
+          A different or unidentified owner is refused (exit 5). The owner defaults to
+          DESK_SESSION, then CLAUDE_SESSION_ID. Legacy ownerless claims require an explicit
+          takeover or an expired lease before another worker can acquire them.
 steal     forcibly take the claim, recording --reason in the replacement — an auditable
           takeover, not a hand-delete.
 show      print the claim's holder/state/branch/age, or FREE. A claim still at state=claimed

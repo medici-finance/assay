@@ -104,6 +104,14 @@ func (f *fakeStore) Remove(id string) (deskkit.ClaimWriteOutcome, bool) {
 	return deskkit.ClaimWriteApplied, existed
 }
 
+func (f *fakeStore) RemoveFrom(id, old string) deskkit.ClaimWriteOutcome {
+	if c, ok := f.claims[id]; !ok || c.sha != old {
+		return deskkit.ClaimWriteRejected
+	}
+	delete(f.claims, id)
+	return deskkit.ClaimWriteApplied
+}
+
 func (f *fakeStore) List() ([]string, deskkit.ClaimReadStatus) {
 	if f.readFails {
 		return nil, deskkit.ClaimReadUnverifiable
@@ -241,6 +249,7 @@ func TestAcquireBranchAsClaimRefuses(t *testing.T) {
 // A transport failure on the create is the fail-closed path: exit 6, never a claim assumed
 // placed or free.
 func TestAcquireTransportFailureIsUnverifiable(t *testing.T) {
+	t.Setenv("DESK_SESSION", "store-test")
 	f := newStore()
 	f.writeFails = true
 	run, _, se := harness(t, f)
@@ -335,6 +344,7 @@ func TestListShowsEachClaim(t *testing.T) {
 // --- release / steal / progress ---------------------------------------------
 
 func TestReleaseDeletesTheRefAndIsNoopWhenMissing(t *testing.T) {
+	t.Setenv("DESK_SESSION", "s1")
 	f := newStore()
 	f.seedClaim("at--stream--07", "s1", "dispatched", "", time.Minute)
 	run, so, _ := harness(t, f)
