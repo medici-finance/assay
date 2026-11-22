@@ -13,15 +13,10 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // regression: F-activation-snapshot
 func TestCompiledStartupDiscoveryWorkload(t *testing.T) {
-	if startupBuildCacheErr != nil {
-		t.Fatal(startupBuildCacheErr)
-	}
 	// Build the actual command packages, with a test-only observer overlay for work
 	// accounting. Elapsed timings use separately built uninstrumented executables.
 	desk, err := filepath.Abs(filepath.Join("..", ".."))
@@ -68,14 +63,7 @@ func TestCompiledStartupDiscoveryWorkload(t *testing.T) {
 		defer cancel()
 		cmd := exec.CommandContext(ctx, "go", args...)
 		cmd.Dir = desk
-		cmd.Env = []string{"GOWORK=off", "GOPROXY=off", "GOENV=off", "GOTOOLCHAIN=local",
-			"GOMODCACHE=" + startupBuildCaches["GOMODCACHE"], "GOCACHE=" + startupBuildCaches["GOCACHE"]}
-		for _, key := range []string{"PATH", "HOME", "USERPROFILE", "SystemRoot", "TMPDIR", "TMP", "TEMP"} {
-			if value, ok := os.LookupEnv(key); ok {
-				cmd.Env = append(cmd.Env, key+"="+value)
-			}
-		}
-		if out, err := goquiet.Cmd(cmd).CombinedOutput(); err != nil {
+		if out, err := offlineFixtureGo(t, cmd).CombinedOutput(); err != nil {
 			t.Fatalf("build %s: %v %s", tool, err, out)
 		}
 		return bin

@@ -249,6 +249,11 @@ account for every included finding.
 | C — board ownership and merged delivery | `already-merged-unflipped`, `out-of-repo-deliverable`, `dehoused`, `re-homed`, `statusgen-source-elsewhere`, `deferred-by-gate` in `statusgen/boardhonesty.go`; `sibling-merge-unreconciled` in `statusgen/siblingmerge.go`; `mergedPRStatusNotices` in `statusgen/mergedstatus.go`, for a merged implementation whose row remains todo/in-progress | /32 routes each observed class to existing eligibility/reconciliation owners. A heuristic mention is not an ownership declaration; unavailable forge/sibling evidence stays unknown. An Authors trailer never proves delivery. |
 | C — accepted-run attribution and register links | `verified-runner-attribution` in `statusgen/verifiedrunneragree.go`; `registerRefProblems` in `statusgen/registerrefs.go`, specifically references to a generated register view rather than a durable entry | /32 derives new attribution from the accepted run; historical Evidence stays frozen. The existing register backfill may rewrite a uniquely identified durable entry. Missing/ambiguous targets remain author-owed and no target is invented. |
 
+For brief input declarations, the differential authoring inventory also includes
+`declared-file-alias`. Its subject is the unregistered alias. A missing registry,
+a declaration grammar refusal, a missing root filename or a disagreement between
+the input and diagnostic readers stays advisory.
+
 “Derivable Family B” is an instance-level disposition, not every rule in a B row:
 the report must name the immutable source and unique derivation for each repair.
 All other B instances are author-owed, with a named owner and tracked disposition.

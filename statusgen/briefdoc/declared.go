@@ -21,7 +21,10 @@ import (
 
 // Refusal is a declaration the strict grammar will not read. Its Msg is the
 // complete operator-facing sentence.
-type Refusal struct{ Msg string }
+type Refusal struct {
+	Msg  string
+	Line int // one-based source line when the refusal came from a document
+}
 
 func (r *Refusal) Error() string { return r.Msg }
 
@@ -38,6 +41,35 @@ const MaxScopePaths = 4096
 // DeclaredFiles reads only declaration positions in Context's files field.
 // Unsupported declarations are errors, never an accidentally empty input scope.
 func DeclaredFiles(content string) ([]string, error) {
+	return readDeclaredFiles(content, nil)
+}
+
+// DeclaredPath locates an expanded path at the declaration that introduced it.
+type DeclaredPath struct {
+	Path    string
+	Line    int
+	Planned bool
+}
+
+// DeclaredFileLocations reads the same scope as DeclaredFiles and retains
+// authoring annotations. No partial scope is returned on a refusal.
+func DeclaredFileLocations(content string) ([]DeclaredPath, error) {
+	var paths []DeclaredPath
+	_, err := readDeclaredFiles(content, func(p DeclaredPath) { paths = append(paths, p) })
+	if err != nil {
+		return nil, err
+	}
+	return paths, nil
+}
+
+func readDeclaredFiles(content string, location func(DeclaredPath)) (_ []string, err error) {
+	lineNo := 0
+	defer func() {
+		if refusal, ok := err.(*Refusal); ok {
+			refusal.Line = lineNo
+		}
+	}()
+
 	context, seenContext, block, found := false, false, false, false
 	fence := ""
 	endedByBlank := false
@@ -51,6 +83,7 @@ func DeclaredFiles(content string) ([]string, error) {
 	var out []string
 	seen := map[string]bool{}
 	for _, raw := range strings.Split(content, "\n") {
+		lineNo++
 		line := strings.TrimSpace(raw)
 		columnZero := raw == strings.TrimLeftFunc(raw, unicode.IsSpace)
 		// Markdown fences allow at most three leading ASCII spaces. A tab,
@@ -89,7 +122,7 @@ func DeclaredFiles(content string) ([]string, error) {
 		}
 		if context && (block || endedByBlank || strings.HasPrefix(line, "files:")) &&
 			(strings.Contains(line, "<!--") || (endedByBlank && strings.HasPrefix(line, "<"))) &&
-			!(columnZero && scopeFieldKey(line)) {
+			(!columnZero || !scopeFieldKey(line)) {
 			return nil, refuse("refused: HTML may hide a section boundary in declared files scope")
 		}
 		if strings.HasPrefix(line, "## ") {
@@ -178,8 +211,8 @@ func DeclaredFiles(content string) ([]string, error) {
 			bulletIndent, described = -1, false
 		}
 		listClosed = bulletIndent >= 0 || strings.HasSuffix(line, ".")
-		for _, p := range paths {
-			expanded, err := ExpandDeclaration(p)
+		for _, decl := range paths {
+			expanded, err := ExpandDeclaration(decl.Path)
 			if err != nil {
 				return nil, err
 			}
@@ -187,6 +220,9 @@ func DeclaredFiles(content string) ([]string, error) {
 				if !seen[p] {
 					seen[p] = true
 					out = append(out, p)
+					if location != nil {
+						location(DeclaredPath{Path: p, Line: lineNo, Planned: decl.Planned})
+					}
 				}
 				if len(out) > MaxScopePaths {
 					return nil, refuse("refused: Context files: exceeds declaration limit")
@@ -204,6 +240,7 @@ func DeclaredFiles(content string) ([]string, error) {
 }
 
 var (
+	plannedPathAnnotation         = regexp.MustCompile(`(?i)\((?:planned|new|future(?: [^)]*)?)\)`)
 	scopeContextFieldPattern      = regexp.MustCompile(`^(out-of-repo files|[a-z0-9-]+)(?: \([^)]*\))?:`)
 	scopeFilesFieldPattern        = regexp.MustCompile("(?i)^files?[*_`]*(?:\\s*\\([^)]*\\))?[*_`]*\\s*:")
 	scopeOutsideFilesFieldPattern = regexp.MustCompile(`(?i)^files[*_]*(?:\s*\([^)]*\))?[*_]*\s*:`)
@@ -345,7 +382,7 @@ func scopeAnnotation(line string, declared []string) bool {
 
 // declarationLine reads one line's declarations. described reports that the line
 // ended in a description (after " — " or a ':'), which a wrapped line may continue.
-func declarationLine(line string) (paths []string, described bool, err error) {
+func declarationLine(line string) (paths []DeclaredPath, described bool, err error) {
 	for _, sep := range []string{" — "} {
 		if i := strings.Index(line, sep); i >= 0 {
 			line, described = line[:i], true
@@ -355,7 +392,7 @@ func declarationLine(line string) (paths []string, described bool, err error) {
 	if line == "their tests," {
 		return nil, described, nil
 	}
-	var result []string
+	var result []DeclaredPath
 	for line != "" {
 		line = strings.TrimSpace(line)
 		if line == "their tests," {
@@ -371,12 +408,15 @@ func declarationLine(line string) (paths []string, described bool, err error) {
 			continue
 		}
 		var p string
+		planned := false
 		if strings.HasPrefix(line, "`") {
 			i := strings.IndexByte(line[1:], '`')
 			if i < 0 {
 				return nil, false, refuse("refused: unclosed Context files: path quote")
 			}
-			p, line = TrimScopeAnnotation(line[1:i+1]), line[i+2:]
+			quoted := line[1 : i+1]
+			p, line = TrimScopeAnnotation(quoted), line[i+2:]
+			planned = plannedPathAnnotation.MatchString(quoted[len(p):])
 		} else {
 			i, braces := 0, 0
 			for i < len(line) {
@@ -398,7 +438,6 @@ func declarationLine(line string) (paths []string, described bool, err error) {
 		if p == "" {
 			return nil, false, refuse("refused: empty Context files: path")
 		}
-		result = append(result, p)
 		line = strings.TrimSpace(line)
 		// Annotations are stripped BEFORE the ':' and terminal tests, so their
 		// position never decides whether the remaining tail is understood.
@@ -408,15 +447,17 @@ func declarationLine(line string) (paths []string, described bool, err error) {
 				if i < 0 {
 					return nil, false, refuse("refused: unclosed Context files: annotation")
 				}
+				planned = planned || plannedPathAnnotation.MatchString(line[:i+1])
 				line = strings.TrimSpace(line[i+1:])
 			}
 			// "and tests" names the declaration's tests, never a path.
 			rest, ok := strings.CutPrefix(line, "and tests")
-			if !ok || !(rest == "" || rest == "." || strings.ContainsAny(rest[:1], " ,(")) {
+			if !ok || (rest != "" && rest != "." && !strings.ContainsAny(rest[:1], " ,(")) {
 				break
 			}
 			line = strings.TrimSpace(rest)
 		}
+		result = append(result, DeclaredPath{Path: p, Planned: planned})
 		if strings.HasPrefix(line, ":") {
 			described = true
 			break

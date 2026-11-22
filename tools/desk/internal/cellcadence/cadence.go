@@ -172,9 +172,13 @@ func (l *Lease) Close() error {
 }
 
 func Read(dir string) (State, error) {
+	return readCheckpoint(dir, os.Lstat)
+}
+
+func readCheckpoint(dir string, lstat func(string) (os.FileInfo, error)) (State, error) {
 	var s State
 	p := filepath.Join(dir, "checkpoint.json")
-	st, err := os.Lstat(p)
+	st, err := lstat(p)
 	if os.IsNotExist(err) {
 		return s, ErrNoState
 	}
@@ -188,10 +192,19 @@ func Read(dir string) (State, error) {
 	if err != nil {
 		return s, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	opened, err := f.Stat()
-	if err != nil || !os.SameFile(st, opened) {
-		return s, errors.New("cadence checkpoint identity changed")
+	if err != nil {
+		return s, err
+	}
+	if !os.SameFile(st, opened) {
+		// The writer renames each complete checkpoint into place. If it
+		// published between Lstat and Open, corroborate the opened handle
+		// against the current directory entry once, before reading any bytes.
+		current, err := lstat(p)
+		if err != nil || !current.Mode().IsRegular() || current.Size() > 64*1024 || !os.SameFile(current, opened) {
+			return s, errors.New("cadence checkpoint identity changed")
+		}
 	}
 	b, err := io.ReadAll(io.LimitReader(f, 64*1024+1))
 	if err != nil {

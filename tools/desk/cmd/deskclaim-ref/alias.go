@@ -106,15 +106,31 @@ func claimLive(id string) (ref deskkit.ClaimStoreRecord, live, verifiable bool) 
 //
 // A post-phase check that cannot be answered (exit 6) removes the ref just created, best effort:
 // a claim whose uniqueness nobody confirmed must not be left standing.
-func checkAliases(id, phase string) (rc int, stop bool) {
-	rc, stop = checkAliasesOnce(id, phase)
-	if stop && rc == exitUnverifiable && phase == "post" {
-		store.Remove(id)
+func checkAliases(id, writtenMessage string) (int, bool) {
+	rc, stop := checkAliasesOnce(id)
+	if !stop || writtenMessage == "" {
+		return rc, stop
 	}
-	return rc, stop
+	// A concurrent takeover can replace our new ref before the post-check
+	// completes. Remove only our own message and its observed revision.
+	ref, status := store.Read(id)
+	switch status {
+	case deskkit.ClaimReadFree:
+		return rc, true
+	case deskkit.ClaimReadUnverifiable:
+		errf("unverifiable: could not read %s for alias cleanup%s", id, causeSuffix())
+		return exitUnverifiable, true
+	}
+	if ref.Msg == writtenMessage {
+		if outcome := store.RemoveFrom(id, ref.Version); outcome == deskkit.ClaimWriteUnverifiable {
+			errf("unverifiable: could not release %s/%s after alias check%s", refPrefix, id, causeSuffix())
+			return exitUnverifiable, true
+		}
+	}
+	return rc, true
 }
 
-func checkAliasesOnce(id, phase string) (rc int, stop bool) {
+func checkAliasesOnce(id string) (rc int, stop bool) {
 	others, status := aliasIDs(id)
 	if status == deskkit.ClaimReadUnverifiable {
 		errf("unverifiable: could not list dispatch claims to check other spellings of %s%s", id, causeSuffix())
@@ -128,12 +144,6 @@ func checkAliasesOnce(id, phase string) (rc int, stop bool) {
 		}
 		if !live {
 			continue
-		}
-		if phase == "post" {
-			if outcome, _ := store.Remove(id); outcome != deskkit.ClaimWriteApplied {
-				errf("unverifiable: %s is live but could not release %s/%s%s", other, refPrefix, id, causeSuffix())
-				return exitUnverifiable, true
-			}
 		}
 		reportHolder(other, ref.Msg, ref.Date)
 		logf("  %s is another spelling of the same PR as %s — not dispatching", other, id)

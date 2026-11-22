@@ -42,6 +42,14 @@ func TestReviewDriverParity(t *testing.T) {
 	if err := os.WriteFile(fixture, got.Snapshot, 0600); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(fixture+".feedback", []byte(got.Facts["feedback"]), 0600); err != nil {
+		t.Fatal(err)
+	}
+	monitor := exec.Command("go", "build", "-o", filepath.Join(dir, "deskmonitor"), "./cmd/deskmonitor")
+	monitor.Dir = moduleRoot(t)
+	if out, err := monitor.CombinedOutput(); err != nil {
+		t.Fatalf("build monitor: %v %s", err, out)
+	}
 	cli := filepath.Join(dir, "reviewloop-real")
 	cmd := exec.Command("go", "build", "-o", cli, "./cmd/reviewloop")
 	cmd.Dir = moduleRoot(t)
@@ -56,10 +64,12 @@ func TestReviewDriverParity(t *testing.T) {
 	}
 	write("gh", "echo legacy-GH-called >> \"$CALL_LOG\"; exit 99\n")
 	write("deskboard", `if [ "${1:-}" = --version ]; then echo 'deskboard releaseTag=v1.0.59'; exit; fi
+if [ "${2:-}" = --help ]; then echo --feedback-out; exit; fi
 printf 'collect\n' >> "$CALL_LOG"
 [ "$1" = review-queue ] && [ "$2" = --out ]
 [ "${HELD:-0}" != 1 ] || exit 6
 cp "$FIXTURE" "$3"
+[ "$4" = --feedback-out ] && cp "$FIXTURE.feedback" "$5"
 `)
 	write("reviewloop", `if [ "${1:-}" = --version ]; then echo 'reviewloop releaseTag=v1.0.59'; exit; fi
 exec "$REAL_PLANNER" "$@"
@@ -92,6 +102,9 @@ exec "$REAL_PLANNER" "$@"
 	output, e := run(false)
 	if e != nil {
 		t.Fatal("prose monitor failed", e, output)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "state", "feedback-v1", "example-org__tracker.state")); err != nil {
+		t.Fatal("qualified launcher did not seed feedback", err, output)
 	}
 	var actual rf.SelectionPlan
 	found := false

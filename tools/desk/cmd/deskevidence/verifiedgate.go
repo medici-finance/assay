@@ -32,6 +32,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/statusgen/evaluation"
+
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -73,7 +74,7 @@ func verifiedBriefsAdded(remoteContent, commitContent []byte, remoteExists bool)
 			continue
 		}
 		brief := strings.TrimSpace(row.Brief)
-		if brief == "" || evaluation.ParseVerificationOutcome(row.Outcome) != evaluation.OutcomeVerified {
+		if brief == "" || evaluation.ClassifyOutcome(row.Outcome) != evaluation.OutcomePass {
 			continue
 		}
 		if seen[brief] {
