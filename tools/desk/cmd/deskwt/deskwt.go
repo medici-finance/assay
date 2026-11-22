@@ -522,15 +522,16 @@ func runAdd(o addOpts) (err error) {
 			return aerr
 		}
 		handoff := false
-		if why != "" && o.handoffBrief {
+		if why != "" {
+			refusal += " Not adopted as a finished home of run " + *adoptRun + ": " + why + "."
+			if !o.handoffBrief {
+				return deskkit.Refused(refusal)
+			}
 			rt, aerr = briefHandoff(guard, dir, candidate, repo, br, *base, *adoptRun)
 			if aerr != nil {
-				return fmt.Errorf("%s. Brief handoff: %w", refusal, aerr)
+				return fmt.Errorf("%s Brief handoff: %w", refusal, aerr)
 			}
 			handoff = true
-		}
-		if why != "" && !handoff {
-			return deskkit.Refused(refusal + " Not adopted as a finished home of run " + *adoptRun + ": " + why + ".")
 		}
 		detail, perr := adoptedHome{guard: guard, dir: dir, rt: rt, br: br, upstream: *upstream, runKey: *adoptRun,
 			roleKey: roleKey, name: botName, email: botEmail, repo: repo, lockSession: *lockSession}.provision()
@@ -539,7 +540,7 @@ func runAdd(o addOpts) (err error) {
 		}
 		note := "adopted finished home " + rt + " of run " + *adoptRun + " (branch " + br + " at " + *base + "; clean, unlocked)"
 		if handoff {
-			note = "resumed the same session’s brief checkout " + rt + " for " + *adoptRun
+			note = "resumed the same session's brief checkout " + rt + " for " + *adoptRun
 		}
 		ac.detail = note + "; " + detail
 		fmt.Fprintln(os.Stderr, "deskwt: "+note)

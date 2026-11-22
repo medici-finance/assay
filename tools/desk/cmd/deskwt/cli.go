@@ -99,7 +99,7 @@ func wtBindings() map[string][]cli.Binding {
 				"the shared checkout's identity"),
 			boolean("dry-run", "print the lifecycle-hook plan (HOOK after_create: ...) and touch nothing"),
 			str("lock-session", "", "lock the new worktree for this live session id, in role-init's lock-reason format"),
-			boolean("handoff-brief", "with --adopt-run: resume this session’s earlier worker checkout for the brief delivered by this PR"),
+			boolean("handoff-brief", "with --adopt-run: resume this session's earlier worker checkout for the brief delivered by this PR"),
 			str("adopt-run", "", "with --upstream: adopt an existing home stamped with this run key when it is proven finished "+
 				"(registered, unlocked, clean incl. untracked, on --branch at the pinned --base) instead of refusing it"),
 		},

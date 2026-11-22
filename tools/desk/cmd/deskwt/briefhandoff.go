@@ -48,9 +48,7 @@ var handoffOwnedClaim = func(dir, repo, key, session string) (bool, error) {
 	if r.Failed() {
 		return false, r.Fail(deskkit.ExitUnverifiable, "cannot confirm the PR claim owner")
 	}
-	line := strings.TrimSpace(r.Stdout)
-	prefix := "dispatch-claim: HELD " + key + " — dispatch-claim " + key + " owner=" + session + " state=claimed branch="
-	return !strings.Contains(line, "\n") && strings.HasPrefix(line, prefix), nil
+	return deskkit.OwnsPreparedClaim(r.Stdout, key, session), nil
 }
 
 // briefHandoff can return a dirty home. Its ownership proof is the original

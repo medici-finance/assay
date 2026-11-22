@@ -60,8 +60,13 @@ func TestBriefCheckoutHandoff(t *testing.T) {
 			if rc != 0 || strings.TrimSpace(out) != home+"\n"+deskkit.BriefHandoffReceipt {
 				t.Fatalf("rc %d out %q: %s", rc, out, stderr)
 			}
-		} else if rc == 0 || !strings.Contains(stderr, why) {
-			t.Fatalf("wanted refusal %q, got %d %s", why, rc, stderr)
+		} else {
+			if rc == 0 || !strings.Contains(stderr, why) {
+				t.Fatalf("wanted refusal %q, got %d %s", why, rc, stderr)
+			}
+			if !strings.Contains(stderr, "Not adopted as a finished home of run "+next+":") {
+				t.Errorf("lost the clause that selects the do-not-remove guidance: %s", stderr)
+			}
 		}
 		b, err := os.ReadFile(merge)
 		if err != nil || string(b) != head+"\n" || mustGit(t, home, "write-tree") != wantIndex {
@@ -93,7 +98,54 @@ func TestBriefCheckoutHandoff(t *testing.T) {
 	change.State = "closed"
 	check("no longer matches")
 	change.State = "open"
+	change.CrossRepo = deskkit.CrossRepoFork
+	check("no longer matches")
+	change.CrossRepo = deskkit.CrossRepoSame
+
+	// Point the upstream and PR at a newer commit. The original checkout
+	// still has its staged index on the earlier, locally held branch.
+	newHead := mustGit(t, work, "commit-tree", head+"^{tree}", "-p", head, "-m", "upstream advances")
+	mustGit(t, work, "update-ref", up, newHead)
+	args[5], change.HeadSHA = newHead, newHead
+	check("not at the confirmed PR head")
+	mustGit(t, work, "update-ref", up, head)
+	args[5], change.HeadSHA = head, head
+
+	// Use the existing target path so allocation inspects this checkout even
+	// when it now owns another branch at the same commit. Keep the index intact.
+	args[1] = "source"
+	mustGit(t, work, "branch", "other", head)
+	mustGit(t, home, "symbolic-ref", "HEAD", "refs/heads/other")
+	check("no longer holds the PR branch")
+	mustGit(t, home, "symbolic-ref", "HEAD", "refs/heads/"+branch)
+
+	for _, ns := range []struct{ key, bad, good string }{
+		{"assay.claimRepo", "example-org/other", repo},
+		{"assay.claimStore", "file", deskkit.ClaimStoreForgeRef},
+	} {
+		mustGit(t, home, "config", "--worktree", ns.key, ns.bad)
+		check("claim repository or store cannot be confirmed")
+		mustGit(t, home, "config", "--worktree", ns.key, ns.good)
+	}
+	prNum, otherBranch, otherKit := 17, "other", "review"
+	for _, alter := range []func(*deskkit.DispatchRecord){
+		func(r *deskkit.DispatchRecord) { r.PR = &prNum },
+		func(r *deskkit.DispatchRecord) { r.Branch = &otherBranch },
+		func(r *deskkit.DispatchRecord) { r.Kit = &otherKit },
+	} {
+		other := record
+		alter(&other)
+		if err := deskkit.AppendDispatchRecord(&other); err != nil {
+			t.Fatal(err)
+		}
+		check("does not match this session, repository and branch")
+	}
+	if err := deskkit.AppendDispatchRecord(&record); err != nil {
+		t.Fatal(err)
+	}
 	check("")
 	mustGit(t, home, "config", "--worktree", "assay.runKey", next)
+	check("")
+	mustGit(t, home, "config", "--worktree", "assay.dispatchRef", next+"@20261029T010000Z.0123456789ab")
 	check("")
 }
