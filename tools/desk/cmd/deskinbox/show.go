@@ -140,11 +140,13 @@ var (
 	rulingLetter  = regexp.MustCompile(`(?i)^(?:option\s+)?([A-D1-4])(?:$|[.)!:,]|\s*[—–-])`)
 	ratifies      = regexp.MustCompile(`(?i)^(?:i\s+)?(?:ratif(?:y|ied)|approved?)\b`)
 	rulingHold    = regexp.MustCompile(`(?i)\?|\b(no|not|hold|wait|later|undecided|unsure|pending)\b|n['’]t\b`)
+	classField    = regexp.MustCompile(`(?i)\bclass[ \t]*:`)
 	oneWay        = regexp.MustCompile(`(?i)\b(one-way|irreversible)\b`)
 )
 
 func screenDecision(iss *deskkit.Issue, a inboxAction, cs []deskkit.Comment) inboxAction {
-	body := visibleDecisionText(iss.Body)
+	raw := iss.Body
+	body := visibleDecisionText(raw)
 	options := deskkit.ParseDecisionOptions(body)
 	// A status update or repetition of the same options cannot erase a
 	// human's ruling. Only a newly proposed fork moves the anchor.
@@ -159,6 +161,7 @@ func screenDecision(iss *deskkit.Issue, a inboxAction, cs []deskkit.Comment) inb
 			if c.UpdatedAt == "" || c.UpdatedAt != c.CreatedAt {
 				return a.next("unknown", "desk", "Reconcile the changed decision's edit history.")
 			}
+			raw = iss.Body + "\n" + c.Body
 			anchor, body, options = i, proposal, asked
 		}
 	}
@@ -204,10 +207,14 @@ func screenDecision(iss *deskkit.Issue, a inboxAction, cs []deskkit.Comment) inb
 			fields[strings.ToLower(key)] = append(fields[strings.ToLower(key)], strings.TrimSpace(value))
 		}
 	}
-	if heading && len(options.Texts) == 1 && listLines == 1 || !heading && len(fields["option"]) == 1 && fields["option"][0] != "" {
+	// Positive evidence must be visible. Risk declarations are vetoes: Markdown
+	// parsing must never hide them and thereby promote an item to a default.
+	source := demd(raw)
+	veto := classField.MatchString(source) || oneWay.MatchString(source)
+	if !veto && (heading && len(options.Texts) == 1 && listLines == 1 || !heading && len(fields["option"]) == 1 && fields["option"][0] != "") {
 		return a.next("screened", "desk", "No fork. Proceed with the single stated option or route it to its owner.")
 	}
-	if caught, def := fields["caught-by"], fields["default"]; len(caught) == 1 && caught[0] != "" && !strings.HasPrefix(strings.ToLower(caught[0]), "nothing") && len(def) == 1 && def[0] != "" && len(fields["class"]) == 0 && !oneWay.MatchString(body) {
+	if caught, def := fields["caught-by"], fields["default"]; len(caught) == 1 && caught[0] != "" && !strings.HasPrefix(strings.ToLower(caught[0]), "nothing") && len(def) == 1 && def[0] != "" && !veto {
 		a.Evidence = "Default: " + cleanText(def[0]) + "; caught by: " + cleanText(caught[0])
 		return a.next("screened", "desk", "Apply the documented reversible default.")
 	}

@@ -16,6 +16,7 @@ import (
 
 type showForge struct {
 	deskkit.Forge
+	headSeries             [][]deskkit.RepoCommit
 	commentsErr            error
 	commits                []deskkit.RepoCommit
 	commitsErr             error
@@ -41,6 +42,11 @@ func (f *showForge) ListCommentsTyped(deskkit.ForgeRepo, int, deskkit.TargetKind
 	return f.comments, f.commentsErr
 }
 func (f *showForge) ListRecentCommits(deskkit.ForgeRepo, int) ([]deskkit.RepoCommit, error) {
+	if len(f.headSeries) > 0 {
+		head := f.headSeries[0]
+		f.headSeries = f.headSeries[1:]
+		return head, f.commitsErr
+	}
 	return f.commits, f.commitsErr
 }
 func (f *showForge) RepoDefaultBranch(deskkit.ForgeRepo) (string, error) { return "main", nil }
@@ -120,9 +126,15 @@ func TestShowDecisionScreens(t *testing.T) {
 	for _, tc := range []struct{ body, state string }{
 		{"## Options\nA. One option", "screened"},
 		{"option: one route", "screened"},
+		{"option: one route\nclass: one-way", "prepare"},
 		{"default: A\ncaught-by: review", "screened"},
 		{"default: A\ncaught-by: review\nclass: irreversible", "prepare"},
 		{"default: A\ncaught-by: review\n<!--note\n    -->\nclass: one-way", "prepare"},
+		{"default: A\ncaught-by: review\n    class: one-way", "prepare"},
+		{"default: A\ncaught-by: review\n- note\n\n    class: one-way", "prepare"},
+		{"default: A\ncaught-by: review\n`<!--`\n\nclass: one-way", "prepare"},
+		{"default: A\ncaught-by: review\ntext <!--\n\nclass: one-way", "prepare"},
+		{"default: A\ncaught-by: review\n<!-- class: reserved -->", "prepare"},
 		{"~~~\n## Options\nA. Example\n~~~", "prepare"},
 		{"<!--\ndefault: A\ncaught-by: foo\n-->", "prepare"},
 		{"## Options\nA. Keeps going\n- Another unparsed option", "prepare"},
@@ -145,6 +157,15 @@ func TestShowDecisionScreens(t *testing.T) {
 	bot.Body = "## Options\nA. Monday\nB. Tuesday"
 	if a := screenDecision(f.issue, a, []deskkit.Comment{ruling, bot}); a.State != "ready" || !strings.Contains(a.Evidence, "Tuesday") {
 		t.Fatal(a)
+	}
+	bot.Minimized = true
+	if got := screenDecision(f.issue, a, []deskkit.Comment{ruling, bot}); got.State != "screened" {
+		t.Fatalf("minimized proposal: %+v", got)
+	}
+	bot.Minimized = false
+	bot.UpdatedAt = "2026-01-12T12:00:00Z"
+	if got := screenDecision(f.issue, a, []deskkit.Comment{ruling, bot}); got.State != "unknown" {
+		t.Fatalf("edited proposal: %+v", got)
 	}
 	ruling.UpdatedAt = ""
 	if a := screenDecision(f.issue, a, []deskkit.Comment{ruling}); a.State != "unknown" {
@@ -202,6 +223,10 @@ func TestShowCanonicalGate(t *testing.T) {
 	}
 	if got := runGate(); got.State != "ready" || !strings.Contains(got.Act, f.issue.URL) || got.Verify == "" {
 		t.Fatal(got)
+	}
+	f.headSeries = [][]deskkit.RepoCommit{{{SHA: sha}}, {{SHA: strings.Repeat("a", 40)}}}
+	if got := runGate(); got.State != "unknown" || !strings.Contains(got.Act, "snapshot changed") {
+		t.Fatalf("moved branch: %+v", got)
 	}
 	closeErr = readerExit(1)
 	if got := runGate(); got.State != "prepare" || !strings.Contains(got.Act, "held") {
@@ -397,4 +422,17 @@ func TestShowScreenOracle(t *testing.T) {
 			}
 		})
 	}
+	t.Run("untrusted source goes to preparation", func(t *testing.T) {
+		// The original walk keeps an unclassified question visible. Show
+		// must additionally identify who owns preparing a trustworthy act.
+		f.issue.Body = "## Options\nA. Today\nB. Tomorrow"
+		f.issue.Author = deskkit.Account{Login: "unknown-author", ID: 123, Type: "User"}
+		detail := jqDetail{Body: f.issue.Body, Author: &jqCommentAuthor{Login: "unknown-author"}}
+		oracle := runOracleFormat(t, prog, item, detail, 0, 1)
+		got, err := readInboxAction(item.Repo, item.Number)
+		if err != nil || oracle.Class != "genuine" || got.State != "prepare" || got.Owner != "desk" {
+			t.Fatalf("oracle %s / show %+v, %v", oracle.Class, got, err)
+		}
+	})
+
 }
