@@ -794,3 +794,33 @@ func claimTestMessage(id, owner, state, branch, note string) string {
 	}
 	return msg
 }
+
+// Replace the expired revision exactly once, after acquire reads it. A second
+// read in the takeover path would see the live successor and authorize its removal.
+type renewedClaimStore struct {
+	*fakeStore
+	renewed bool
+}
+
+func (s *renewedClaimStore) Read(id string) (deskkit.ClaimStoreRecord, deskkit.ClaimReadStatus) {
+	ref, status := s.fakeStore.Read(id)
+	if !s.renewed && status == deskkit.ClaimReadHeld {
+		s.renewed = true
+		s.seedClaim(id, "successor", "dispatched", "feat/active", 0)
+	}
+	return ref, status
+}
+
+// regression: #3724
+func TestExpiredClaimReclaimPreservesConcurrentRenewal(t *testing.T) {
+	const id = "example--stream--01"
+	f := &renewedClaimStore{fakeStore: newStore()}
+	f.seedClaim(id, "expired", "claimed", "", time.Hour)
+	run := listFailHarness(t, f)
+	if rc := run("acquire", id, "--repo", "example/project", "--owner", "returning"); rc != exitRefused {
+		t.Fatalf("raced reclaim returned %d, want refusal", rc)
+	}
+	if holder := fieldOf(f.claims[id].msg, "owner"); holder != "successor" {
+		t.Fatalf("live successor replaced by %q", holder)
+	}
+}

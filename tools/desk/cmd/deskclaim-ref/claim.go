@@ -259,7 +259,8 @@ func cmdAcquire(id, owner, branch string) int {
 	}
 	if hage >= ttl {
 		logf("stale claim on %s: state=%s age=%dm >= %dm TTL — reclaiming", id, dashOrValue(state), hage, ttl)
-		return cmdSteal(id, owner, fmt.Sprintf("TTL: state=%s age=%dm >= %dm", dashOrValue(state), hage, ttl))
+		reason := fmt.Sprintf("TTL: state=%s age=%dm >= %dm", dashOrValue(state), hage, ttl)
+		return cmdSteal(id, owner, reason, &ref)
 	}
 	reportHolder(id, ref.Msg, ref.Date)
 	logf("  live (age %dm < %dm TTL for state=%s)", hage, ttl, dashOrValue(state))
@@ -361,7 +362,7 @@ func writeReleasedRecord(id, repo string) {
 	}
 }
 
-func cmdSteal(id, owner, reason string) int {
+func cmdSteal(id, owner, reason string, expired *deskkit.ClaimStoreRecord) int {
 	if reason == "" {
 		errf("refused: steal requires --reason (a takeover with no recorded reason is a hand-delete)")
 		return exitRefused
@@ -375,7 +376,14 @@ func cmdSteal(id, owner, reason string) int {
 		errf("%v", err)
 		return exitRefused
 	}
-	ref, status := store.Read(id)
+	var ref deskkit.ClaimStoreRecord
+	status := deskkit.ClaimReadHeld
+	if expired != nil {
+		// Only the observed revision passed the TTL check. A later renewal must win.
+		ref = *expired
+	} else {
+		ref, status = store.Read(id)
+	}
 	switch status {
 	case deskkit.ClaimReadUnverifiable:
 		errf("unverifiable: could not read %s before stealing it%s", id, causeSuffix())

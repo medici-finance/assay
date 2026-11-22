@@ -118,7 +118,9 @@ release   delete the caller-owned claim at the revision read. A missing claim is
           DESK_SESSION, then CLAUDE_SESSION_ID. Legacy ownerless claims require an explicit
           takeover or an expired lease before another worker can acquire them.
 steal     forcibly take the claim, recording --reason in the replacement — an auditable
-          takeover, not a hand-delete.
+          takeover, not a hand-delete. If you reclaimed an unlaunched lease, run
+          deskclaim-ref release <id> --repo O/R --token-file FILE in the same DESK_SESSION,
+          then rerun the original deskdispatch command with its normal admission flags.
 show      print the claim's holder/state/branch/age, or FREE. A claim still at state=claimed
           past CLAIMED_TTL_MIN (default 20m) carries a trailing PREPARED-NOT-LAUNCHED note:
           its dispatch was prepared and never progressed, so no agent is known to run behind it.

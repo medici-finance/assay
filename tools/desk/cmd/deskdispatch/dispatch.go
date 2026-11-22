@@ -1497,7 +1497,7 @@ func stepClaim(o dispatchOpts, repo, script string, isScript bool, auth claimAut
 						"dispatcher's claim, NOT a live holder. It is reclaimable: the claim tool reclaims a "+
 						"stale claim on its next `acquire`, so re-run; if it persists (its branch is still in "+
 						"flight, a branch-as-claim the tool keeps) reclaim deliberately with `%s steal %s "+
-						"--repo %s --reason <why>%s`. This verb still does not steal inline. Existing claim: %s.",
+						"--repo %s --reason <why>%s`. If you reclaim an unlaunched lease, release it in that session before rerunning dispatch (see --help). Existing claim: %s.",
 					stepClaimAcquire, claimKey, state, ageMin, script, claimKey, repo,
 					claimCredArg(script, stampRoleForKit(o.kit), repo, dispatcherLoop()), holder))
 			}
