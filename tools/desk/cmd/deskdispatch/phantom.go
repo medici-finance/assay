@@ -380,7 +380,7 @@ func dispatchIssue(o dispatchOpts, repo string) (deskkit.DispatchIssue, error) {
 		stem = item
 	}
 	n := deskkit.PlaceholderIssueNumber(stem)
-	if n > 0 && strings.HasPrefix(stem, "issue-") && !strings.Contains(item, "/") {
+	if n > 0 && stem == fmt.Sprintf("issue-%d", n) && !strings.Contains(item, "/") {
 		if o.brief == "" {
 			return deskkit.DispatchIssue{Repo: repo, Number: n}, nil
 		}

@@ -694,7 +694,10 @@ func (f *FanoutLoop) issueRepresentationHolds(row BoardRow) bool {
 		return false
 	}
 	id := row.Stream + "/" + row.Num
-	why, _ := f.issueIndex.PlaceholderHold(f.Root, f.issueBoardRepo, id)
+	why, unknown := f.issueIndex.PlaceholderHold(f.Root, f.issueBoardRepo, id)
+	if unknown {
+		return f.noteUnchecked(row, deskkit.RepresentedPR{Unchecked: why})
+	}
 	if why == "" {
 		return false
 	}
