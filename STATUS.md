@@ -32,7 +32,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [intake-class-routing](docs/streams/intake-class-routing/README.md) | P1 | active | 0/5 | 2026-11-20 |  |
 | [iso-9001](docs/streams/iso-9001/README.md) | P2 | active | 4/11 | 2026-11-20 |  |
 | [measured-status](docs/streams/measured-status/README.md) | P1 | active | 0/6 | 2026-11-18 |  |
-| [milestone-support](docs/streams/milestone-support/README.md) | P2 | active | 1/14 | 2026-11-21 |  |
+| [milestone-support](docs/streams/milestone-support/README.md) | P2 | active | 1/14 | 2026-11-22 |  |
 | [performance-collection](docs/streams/performance-collection/README.md) | P2 | active | 0/9 | 2026-11-02 |  |
 | [quality](docs/streams/quality/README.md) | P2 | active | 16/19 | 2026-11-02 |  |
 | [statusgen](docs/streams/statusgen/README.md) | P2 | active | 11/45 | 2026-11-21 |  |
@@ -153,7 +153,7 @@ _Held by per-stream caps: 21 brief(s) across 3 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 40dc7358c 2026-11-22T16:31:19Z_
+_last regen: 851c4ec4f 2026-11-22T16:59:53Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -174,7 +174,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 40dc7358c 2026-11-22T16:31:19Z_
+_last regen: 851c4ec4f 2026-11-22T16:59:53Z_
 
 **Progress:** 37/100 brief items done.
 
