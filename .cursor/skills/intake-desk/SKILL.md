@@ -521,8 +521,9 @@ Stated once for every desk; this skill adds only what is its own above.
   the wrong installation, never "App not installed". **App not installed is a STOP:** the App
   genuinely not installed on a target repo (`desktoken coverage <role> --repo <owner>/<repo>`
   exits 5; a missing human `gh` login is never this case) → stop that repo's work and file a
-  `help wanted` naming the App and the repository it must be installed on. Never work as a human
-  or shared operator login in its place, with or without a note.
+  `help wanted` (`deskfile new --raised-by <role>`) on a tracker the App does cover, this desk's
+  own, naming the App and the repository it must be installed on. Never work as a human or shared
+  operator login in its place, with or without a note.
 - **Git push policy (R8).** NEVER push to `main`, merge, close a human-decision issue, or trigger
   workflows / mutating `kubectl` without human:<name>'s go. Branch push + draft PR is
   standing-authorized (scan commits, tooling, brief authoring, close-out carriers). A blocked push or
