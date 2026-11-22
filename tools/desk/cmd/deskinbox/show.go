@@ -18,7 +18,8 @@ import (
 // never evidence that an outstanding action has been completed.
 type inboxAction struct {
 	State, Owner, Title, URL, Act, Evidence, Verify string
-	awaitsPacket                                    bool // no ruling or fork to carry; a reviewed runsheet can supply the act
+	command                                         string // single verified runsheet line, displayed only by show
+	awaitsPacket                                    bool   // no ruling or fork to carry; a reviewed runsheet can supply the act
 }
 
 func (a inboxAction) next(state, owner, act string) inboxAction {
@@ -50,6 +51,10 @@ Exit 6 means a required observation could not be checked.`,
 				return codeErr(deskkit.ExitCodeOf(err))
 			}
 			fmt.Fprintf(stdout, "%s#%d — %s\nState: %s\nNext owner: %s\nNext action: %s\n", repo, n, a.Title, a.State, a.Owner, a.Act)
+			if a.command != "" {
+				fmt.Fprintln(stdout, "Command:")
+				fmt.Fprintln(stdout, a.command)
+			}
 			for _, line := range [][2]string{{"Issue", a.URL}, {"Evidence", a.Evidence}, {"Desk verification", a.Verify}} {
 				if line[1] != "" {
 					fmt.Fprintf(stdout, "%s: %s\n", line[0], line[1])

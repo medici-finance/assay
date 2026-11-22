@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -15,6 +17,10 @@ import (
 // Only an explicit, immutable, same-repo link selects a runsheet. An ordinary
 // URL, a quoted command or a chat transcript never becomes an executable act.
 var sheetLink = regexp.MustCompile(`(?im)^\s*\[runsheet\]\(([^)\s]+)\)\s*$`)
+
+// The runsheet syntax reserves angle-bracket slots such as <release-id> for
+// incomplete instructions. Shell redirections are ordinary command bytes.
+var sheetPlaceholder = regexp.MustCompile(`<[[:alnum:]][[:alnum:]_./ -]*>`)
 
 func readRunsheet(f deskkit.Forge, repo deskkit.ForgeRepo, iss *deskkit.Issue, a inboxAction, target string) (inboxAction, error) {
 	u, err := url.Parse(target)
@@ -43,21 +49,31 @@ func readRunsheet(f deskkit.Forge, repo deskkit.ForgeRepo, iss *deskkit.Issue, a
 	}
 	ref := fmt.Sprintf("%s#%d", repo.Slug(), iss.Number)
 	text := string(current.Content)
-	var commands []string
-	for _, line := range strings.Split(text, "\n") {
+	var command string
+	var commandCount, commandLine int
+	for i, line := range strings.Split(text, "\n") {
 		if cmd, ok := strings.CutPrefix(line, "! "); ok {
-			commands = append(commands, strings.TrimSpace(cmd))
+			commandCount++
+			commandLine = i + 1
+			command = cmd
 		}
 	}
 	_, resume, hasResume := strings.Cut(text, "Resume:")
 	namesIssue := slices.Contains(strings.Fields(text), ref)
-	oneCommand := len(commands) == 1 && commands[0] != "" && !strings.ContainsAny(commands[0], "<>")
+	oneCommand := commandCount == 1 && strings.TrimSpace(command) != "" && !sheetPlaceholder.MatchString(command) && !strings.HasSuffix(strings.TrimRight(command, "\r"), "\\")
 	prose := strings.Join(strings.Fields(text), " ")
 	hasPreparation := strings.Contains(prose, "What the session did:") && strings.Contains(prose, "Why:")
 	if !namesIssue || !oneCommand || !hasPreparation || !hasResume || strings.TrimSpace(resume) == "" {
 		return a.next("prepare", "desk", "Bind one complete human act, its authority and its post-act check to this issue in the runsheet."), nil
 	}
-	a.Evidence = target
+	lineURL := fmt.Sprintf("%s#L%d", target, commandLine)
+	a.Evidence = lineURL
+	// Preserve every byte after the runsheet's "! " prefix. Sanitising an
+	// executable line can change its meaning; link to it if it cannot safely
+	// be displayed. The command is never part of a changes receipt.
+	if utf8.ValidString(command) && strings.IndexFunc(command, func(r rune) bool { return !unicode.IsPrint(r) }) < 0 && deskkit.ScanSurfaceSecrets("runsheet command", []byte(command)) == nil {
+		a.command = command
+	}
 	a.Verify = cleanText(strings.Join(strings.Fields(resume), " "))
-	return a.next("ready", "human", "Perform the one reviewed act in "+target+" using the authorized account."), nil
+	return a.next("ready", "human", "Run the reviewed command at "+lineURL+" using the authorized account."), nil
 }

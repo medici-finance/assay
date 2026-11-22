@@ -209,6 +209,28 @@ func TestShowRunsheet(t *testing.T) {
 		}
 	}
 	check("ready")
+	var showOut, showErr bytes.Buffer
+	normal := string(file.Content)
+	runShow := func() string {
+		t.Helper()
+		showOut.Reset()
+		showErr.Reset()
+		if rc := run([]string{"show", "example-org/tracker#7"}, &showOut, &showErr, time.Now()); rc != 0 {
+			t.Fatalf("show: %d %s", rc, showErr.String())
+		}
+		return showOut.String()
+	}
+	command := "printf '%s' 'two words' > proof.txt  "
+	file.Content = []byte(strings.ReplaceAll(normal, "perform-reviewed-task", command))
+	f.issue.Body += "\n! command-from-issue"
+	if out := runShow(); !strings.Contains(out, "Command:\n"+command+"\n") || !strings.Contains(out, ref+"#L2") || strings.Contains(out, "command-from-issue") {
+		t.Fatal(out)
+	}
+	file.Content = []byte(strings.ReplaceAll(normal, "perform-reviewed-task", "bad\x1bcommand"))
+	if out := runShow(); strings.Contains(out, "Command:\n") || strings.Contains(out, "bad") || !strings.Contains(out, ref+"#L2") {
+		t.Fatal(out)
+	}
+	file.Content = []byte(normal)
 	f.comments = []deskkit.Comment{{Body: "Status check complete.", Author: deskkit.Account{Login: "example-worker[bot]", ID: 300000006, Type: "Bot"}}}
 	check("ready")
 	f.branchFile = &deskkit.FileContent{Exists: false}
