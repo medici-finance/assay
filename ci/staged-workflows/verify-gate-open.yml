@@ -23,17 +23,6 @@ on:
   issue_comment:
     types: [created]
 
-# Serialise runs of this emitter: the marker check-then-act window sits between
-# "collect existing markers" and "create issue", so two overlapping runs both
-# miss each other's issue and file duplicates. Keyed on the workflow — NOT the
-# ref — so a workflow_dispatch from any branch serialises against main pushes
-# too. No cancel-in-progress: a queued run must still execute (it no-ops once
-# the first run's issues exist); a cancelled run could die mid-create and leave
-# the gate un-filed.
-concurrency:
-  group: verify-gate-open
-  cancel-in-progress: false
-
 permissions:
   contents: read
   issues: write
@@ -43,11 +32,45 @@ env:
 
 jobs:
   open:
+    # A comment run is admitted only when a HUMAN on the bless roster
+    # (vars.ASSAY_BLESS_LOGIN, `login:id` or bare logins, comma- or
+    # space-separated: the same roster verify-gate-close admits) wrote it. Title
+    # and body prefixes alone are text anyone can type, and an admitted run
+    # enters the concurrency group below, where it would displace a pending
+    # issuer or adjudication run. The login match is bounded on both sides: the
+    # roster is padded with a space, a login is preceded by a space or comma and
+    # followed by `:`, a comma or a space, so no login matches inside another.
+    # GitHub expression string comparison ignores case, as logins do.
     if: >-
       github.event_name != 'issue_comment' ||
       (github.event.issue.pull_request == null &&
+       github.event.comment.user.type == 'User' &&
        startsWith(github.event.issue.title, 'Acceptance preparation: ') &&
-       startsWith(github.event.comment.body, 'Approve acceptance-adjudication v1'))
+       startsWith(github.event.comment.body, 'Approve acceptance-adjudication v1') &&
+       (contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(' {0}:', github.event.comment.user.login)) ||
+        contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(',{0}:', github.event.comment.user.login)) ||
+        contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(' {0},', github.event.comment.user.login)) ||
+        contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(',{0},', github.event.comment.user.login)) ||
+        contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(' {0} ', github.event.comment.user.login)) ||
+        contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(',{0} ', github.event.comment.user.login))))
+    # Serialise runs of this emitter: the marker check-then-act window sits between
+    # "collect existing markers" and "create issue", so two overlapping runs both
+    # miss each other's issue and file duplicates. Keyed on the event class — NOT
+    # the ref — so a workflow_dispatch from any branch serialises against main
+    # pushes too. No cancel-in-progress, so a running run is never cancelled: a
+    # cancelled run could die mid-create and leave the gate un-filed. GitHub keeps
+    # at most one pending run per group, so within one event class a newer pending
+    # run replaces an older pending one. The group is set on the job, not the
+    # workflow, so it is entered only once the `if:` above admits the run: a
+    # comment from anyone off the bless roster never queues in the group and so
+    # cannot displace a pending issuer or adjudication run. The group is keyed
+    # by event class: issuer runs (push, dispatch) file every card
+    # except verification-handoff/03's, and adjudication runs (comment) file only
+    # that one, so the two never race on one marker, and a main push can no
+    # longer displace a pending adjudication run, nor a comment an issuer run.
+    concurrency:
+      group: verify-gate-open-${{ github.event_name == 'issue_comment' && 'adjudication' || 'issuer' }}
+      cancel-in-progress: false
     runs-on: medici-builder-public
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
