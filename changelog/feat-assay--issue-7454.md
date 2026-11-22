@@ -1,0 +1,2 @@
+### Changed
+- `statusgen verifyrun`: an admitted run now passes one declared replay input, `ASSAY_COHORT_REPLAY`, to its Verify rows. The path is made absolute and symlink-resolved, must name an existing regular file, and is refused when it resolves inside the working tree. A refused path is named on stderr, and a row that reads it is could-not-run. Every other `ASSAY_*` variable is still removed.
