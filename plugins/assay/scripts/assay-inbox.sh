@@ -71,10 +71,19 @@ usage() {
   cat <<'EOF'
 Usage: assay-inbox.sh [--walk [--item K] [--screened] | --html OUT.html] [--no-screen] [owner/repo ...]
        assay-inbox.sh --flow [--html OUT.html] [--root PATH ...] [--since YYYY-MM-DD]
+       assay-inbox.sh --show owner/repo#issue
+       assay-inbox.sh --changes [--consumer NAME] [--remind-after DURATION | --ack RECEIPT] [owner/repo ...]
 
 Prints open issues across the given repos (or ./.assay/repos.txt, or the current repo's
 origin remote) carrying any of the escalation-contract labels: urgent, needs-decision,
 question, help wanted. Sorted urgency-then-age (most urgent, then oldest, first).
+
+Delivery modes require a deskinbox build with the named verb:
+  --show ID         look up the live owner, act, and evidence by stable issue ID.
+  --changes         emit one JSON batch, or nothing when the complete poll found no
+                    events. The local cursor belongs to --consumer (default: assay-inbox)
+                    and the repository set. Use --ack only after the destination
+                    confirmed the entire batch. A failed delivery replays on the next poll.
 
 Modes (the first three share one ordering and one format builder):
   (none)            the terminal table — one row per item. Carries a `class` column
@@ -135,7 +144,7 @@ Environment:
   ASSAY_INBOX_READER  auto (default), typed or legacy for issue discovery. Auto requires
                      a nonempty DESK_LOOP before probing. For an ambient terminal read,
                      explicitly set ASSAY_INBOX_READER=legacy. Flow modes do no discovery.
-  ASSAY_DESKINBOX     typed discovery producer (default: deskinbox on PATH).
+  ASSAY_DESKINBOX     typed inbox binary (default: deskinbox on PATH).
   ASSAY_INBOX_LIMIT   per-repo-per-label fetch cap passed to `gh issue list` (default 500).
   ASSAY_STATUSGEN     statusgen binary for --flow (default: `statusgen` on PATH).
   ASSAY_DESKBOARD     deskboard binary for --flow (default: `deskboard` on PATH).
@@ -151,6 +160,77 @@ Exit codes:
      ASSAY_INBOX_READER=legacy for ambient discovery. Flow modes do not require it.
 EOF
 }
+
+# The delivery verbs run before the legacy renderer resolves a roster or reads any
+# issue. An older binary can exit successfully with root help for an unknown verb.
+typed_inbox() {
+  local verb="$1" producer="${ASSAY_DESKINBOX:-deskinbox}" help
+  shift
+  if ! help=$("$producer" "$verb" --help) ||
+      ! grep -Eq "^  deskinbox ${verb} .*\[flags\]$" <<< "$help"; then
+    echo "assay-inbox: delivery requires deskinbox $verb; the manual inbox modes remain available" >&2
+    return 6
+  fi
+  "$producer" "$verb" "$@"
+}
+
+case "${1:-}" in
+  --show)
+    shift
+    if [[ $# -ne 1 || ! "$1" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[1-9][0-9]*$ ]]; then
+      echo 'assay-inbox: --show needs one owner/repo#issue' >&2; exit 5
+    fi
+    typed_inbox show -- "$1"; exit ;;
+  --changes)
+    shift
+    consumer=assay-inbox
+    ack=""
+    remind_after=""
+    repos=()
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --consumer|--ack|--remind-after)
+          if [[ $# -lt 2 || -z "$2" || "$2" == --* ]]; then
+            echo "assay-inbox: $1 needs a value" >&2; exit 5
+          fi
+          case "$1" in
+            --consumer) consumer="$2" ;;
+            --ack) ack="$2" ;;
+            --remind-after) remind_after="$2" ;;
+          esac
+          shift 2 ;;
+        *)
+          if [[ ! "$1" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+            echo "assay-inbox: expected a repository in owner/repo form" >&2; exit 5
+          fi
+          repos+=("$1"); shift ;;
+      esac
+    done
+    opts=("--consumer=$consumer")
+    if [[ -n "$ack" ]]; then
+      if [[ -n "$remind_after" ]]; then
+        echo "assay-inbox: --remind-after applies only to polling" >&2; exit 5
+      fi
+      typed_inbox changes "${opts[@]}" "--ack=$ack" -- ${repos[@]+"${repos[@]}"}; exit
+    fi
+    [[ -z "$remind_after" ]] || opts+=("--remind-after=$remind_after")
+    # Validate the complete producer response before emitting anything. A read
+    # failure, broken pipe, or failed downstream delivery never calls --ack.
+    batch=$(typed_inbox changes "${opts[@]}" -- ${repos[@]+"${repos[@]}"}) || exit $?
+    jq -cs '
+      def valid_event:
+        (.id | type == "string" and test("^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[1-9][0-9]*\\z")) and
+        (if .kind == "withdrawn" then .action == null
+         else (.kind == "ready" or .kind == "changed" or .kind == "reminder") and
+              .action.owner == "human" and (.action.act | type == "string" and length > 0) end);
+      if length != 1 or (.[0].events | type) != "array" then error("invalid inbox batch")
+      elif (.[0].events | all(.[]; valid_event) | not) then error("invalid inbox event")
+      elif (.[0].events | length) == 0 then empty
+      elif (.[0].receipt | type) != "string" or .[0].receipt == "" then error("missing inbox receipt")
+      else .[0] end
+    ' <<< "$batch" || exit 6
+    exit ;;
+esac
 
 # ------------------------------------------------------------------ arguments --
 # Everything that is not a flag is a repo token. Parsed before anything else runs so a

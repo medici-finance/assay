@@ -1,33 +1,19 @@
 ---
-description: What's waiting on you across your configured repos — needs-decision, question, help wanted, and urgent issues, sorted urgency-then-age. Add --walk to be asked one decision at a time, --html FILE to read them as a page, or --flow to see where the pipeline is stuck. Read-only; shell issue discovery needs a loop identity or explicit legacy selection.
-argument-hint: "[--walk [--item K] [--screened] | --html OUT.html | --flow [--html OUT.html]] [--no-screen] [owner/repo ...]"
+description: Show the inbox, look up one issue with --show, or deliver only actionable changes with --changes. Use --walk for a decision, --html for a page, and --flow for the pipeline.
+argument-hint: "[--show owner/repo#issue | --changes [--consumer NAME] [--remind-after DURATION | --ack RECEIPT] | --walk [--item K] [--screened] | --html OUT.html | --flow [--html OUT.html]] [--no-screen] [owner/repo ...]"
 ---
 
 # assay:inbox
 
-The inbox: a **derived query**, not a stored roll-up or a service. It prints what's waiting
-on a human decision across your configured repos, most urgent (then oldest) first.
+The inbox reads the configured repositories. The manual table lists escalations in urgency and age order. Recurring notifications report changes to human-owned actions, including verification gates.
 
-**Implementation (windows-port/13 + windows-port/15).** Every rendering — the table, `walk`,
-`html` and `flow` — has a Go `deskinbox` verb (`tools/desk/cmd/deskinbox`): no `bash`/`jq`
-dependency, and it works on Windows. `deskinbox` does not run **the screen** (below) yet, so it
-is the primary renderer only where the screen changes nothing a caller relies on: the plain
-table and `flow`. `--walk` and `--html` shell `../scripts/assay-inbox.sh` — a plain `gh` +
-`jq` helper — because it is the only renderer that classifies; `deskinbox walk` and
-`deskinbox html` are the fallback only where the oracle cannot run, and there they present
-every item unscreened (`deskinbox html` writes exactly the oracle's `--html --no-screen` page).
-The script also stays in the tree as the parity oracle the Go port's tests check themselves
-against. Both paths compute the SAME ordering, item format and flow model; what differs is that
-only the oracle classifies, and so only the oracle numbers `--item K` over GENUINE items and
-puts a class on each row and card.
+The Go `deskinbox` binary runs on Windows and Unix. Use it for the plain table, flow, delivery and named lookups. For a screened walk or HTML page, `../scripts/assay-inbox.sh` classifies the full queue and numbers only genuine decisions. Where the shell renderer cannot run, `deskinbox walk` and `deskinbox html` present the unscreened queue. The Go and shell renderers share the ordering and flow model.
 
-**Read-only.** It never writes to, comments on, or closes any issue. **Terminal-agnostic.**
-It runs from any terminal; shell issue discovery requires a loop identity or explicit
-`ASSAY_INBOX_READER=legacy` selection, as described below.
+The command leaves forge issues unchanged. `--changes` keeps receipts in local desk state. Shell issue discovery requires a loop identity or explicit `ASSAY_INBOX_READER=legacy` selection as described below.
 
 ## What it queries
 
-The four escalation label tokens. `needs-decision` is created and owned by the escalation
+The manual decision queue includes four escalation labels. `needs-decision` is created and owned by the escalation
 contract; the other three are stock GitHub labels this inbox folds in alongside it:
 
 - `urgent`
@@ -37,6 +23,24 @@ contract; the other three are stock GitHub labels this inbox folds in alongside 
 
 An issue carrying more than one of these is shown once, ranked by the most urgent label it
 carries. Each row prints label, repo, `#number`, title, age, and the issue URL.
+
+## Deliver changed human actions
+
+Use `--changes` on recurring notification checks. A successful empty poll sends no message. A manual request for the whole queue uses the table, walk or HTML modes below.
+
+1. Poll using a stable consumer name for the destination and its configured repositories. The launcher prints one JSON batch when it has events. A nonzero exit is an incomplete check. Keep the receipt pending and handle the diagnostic on the desk.
+2. Read each event in order. A `withdrawn` event cancels the earlier instruction for that ID. For `ready`, `changed` or `reminder`, run `--show 'owner/repo#issue'` with the event's stable ID before presenting the act. Use the returned human-owned, ready act, its evidence, and the desk's verification. If the live act or its evidence differs from the event, the owner changes, or lookup fails, withhold the act and refresh the batch. Keep preparation and verification with their owners.
+3. Deliver the entire batch to its destination. Use the receipt as a delivery idempotency key when the destination supports one. If presenting one decision at a time, keep the batch pending until every event has been presented or a fresh poll supersedes it. The act being delivered and the human carrying it out are separate events.
+4. After the destination confirms successful delivery of the **entire original batch**, acknowledge its receipt with the same consumer and repo set. In conversation, match every event in that receipt, including withdrawals, to messages already visible in that conversation. A locally rendered draft, attempted send, partial send or timeout leaves the batch pending. Retry on the next poll without asking the human for a receipt. If acknowledgement refuses a superseded receipt, poll again and process the current events.
+
+```sh
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --changes --consumer team-inbox example-org/app
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --show 'example-org/app#42'
+# After confirmed delivery, using the exact receipt from the poll above:
+bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --changes --consumer team-inbox --ack "$receipt" example-org/app
+```
+
+The launcher defaults to consumer `assay-inbox` for interactive use. Give each scheduled destination its own stable name, reuse its repo set on retries, and enable reminders only when the caller has a reminder policy. On a system without Bash or jq, use the native forms `deskinbox changes --consumer NAME [repos...]`, `deskinbox show 'owner/repo#issue'` and `deskinbox changes --consumer NAME --ack RECEIPT [repos...]`. Native polling returns a JSON object even for an empty `events` array. Suppress the notification for that result. If the installed binary lacks a verb, report that capability gap to the desk. The existing full-queue modes still work for an explicit manual request.
 
 ## Four renderings of one queue (plus the flow model)
 
@@ -60,8 +64,7 @@ is the authoritative usage text; `tools/desk/cmd/deskinbox/testdata/spec.md` rec
 
 `--walk` (and `deskinbox walk`) is **non-interactive by design**: it prints one item and
 exits, never prompts, never blocks on a tty. The turn-taking — ask one, wait, record the ruling, ask the next — belongs to
-the [`assay:ask-decision`](../skills/ask-decision/SKILL.md) skill, which shells this command
-with an incrementing `--item`. Keeping the loop out of the command is what lets an agent, a
+the [`assay:ask-decision`](../skills/ask-decision/SKILL.md) skill. A subsequent lookup for a known issue uses its stable ID with `--show`, since queue positions can move. Keeping the loop out of the command is what lets an agent, a
 human at a prompt, and a CI job all use the same renderer.
 
 `--walk` and `--html` are alternative renderings of the decision queue; the oracle refuses
@@ -246,6 +249,8 @@ thousand open issues to matter).
 ```
 /assay:inbox                          # uses .assay/repos.txt, else origin
 /assay:inbox example-org/app example-org/service   # one or more repos
+/assay:inbox --changes --consumer team-inbox example-org/app  # quiet recurring delivery
+/assay:inbox --show example-org/app#42  # live action for this exact issue
 /assay:inbox --walk                   # ask me about the first decision
 /assay:inbox --walk --item 3          # ask me about the third GENUINE decision
 /assay:inbox --walk --screened        # what did the screen classify out, and why?
@@ -261,8 +266,8 @@ which renderer runs each, and translates the ones `deskinbox` runs into its subc
 
 ## Instructions for the agent running this command
 
-1. Resolve `$ARGUMENTS` as the repo list (may be empty).
-2. Before running anything, check that every repo argument matches `owner/repo`
+1. For `--changes` or `--show`, use the delivery instructions above, then stop. On explicitly requested `--show`, report the named issue's current status and owner. On a poll, only a ready human-owned act or a withdrawal warrants a notification.
+2. For the manual modes below, parse the mode and its options first. Check that every remaining repo argument matches `owner/repo`
    (`[A-Za-z0-9._-]+/[A-Za-z0-9._-]+`). Refuse to run the command if any token does not
    match, and say why. Then pass each repo as its own separately-quoted argument — never a
    bare unquoted `$ARGUMENTS` expansion.
@@ -280,7 +285,7 @@ which renderer runs each, and translates the ones `deskinbox` runs into its subc
    are doing so.
 
    **`--walk`/`--item K`, `--screened`, `--no-screen` and `--html`** run the bash oracle — it
-   is the only renderer with the screen (`deskinbox` does not classify yet):
+   screens the whole walk or page:
    ```
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --walk --item 2 "owner/repo1"
    bash "${CLAUDE_PLUGIN_ROOT}/scripts/assay-inbox.sh" --walk --screened "owner/repo1"

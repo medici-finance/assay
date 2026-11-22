@@ -165,10 +165,12 @@ not own.
   labelled `question` keeps moving on its stated default. Idle only when a fresh sweep confirms the
   board is empty: answer "what am I waiting on and why" at any moment — "nothing, I just haven't
   re-swept" is stale, not idle.
-- **Console noise floor.** Three output classes: **actionable** (a needs-decision item, a register
-  defect, an error, a question) always printed in full; the **full board** only when it changed or on
-  request; otherwise ONE **quiet** line — timestamp, boards swept, delta count, actionable count,
-  next wake. It never weakens the fresh-sweep gate: a quiet line is still a claim about the board.
+- **Console noise floor.** For routine human inbox prompts, use `deskinbox changes` and the
+  delivery procedure in [ask-decision](../ask-decision/SKILL.md#a-named-issue-or-a-routine-notification).
+  Use `deskinbox show` when the driver names an issue. Print actionable desk errors and register
+  defects in full. Print the full board on change or request; otherwise print one quiet line
+  with the timestamp, boards swept, delta count, actionable count and next wake. A quiet line
+  still requires a fresh board sweep.
 - **Receipt on every human-typed message.** After ANY human-typed message, the FIRST line of your
   turn is `deskack --repo <repo> "<your reading in at most 12 words>"`
   (role from `$DESK_LOOP`; omit `--repo <repo>` when no repo is named), then act.
