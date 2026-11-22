@@ -1,6 +1,6 @@
 # Editorial
 
-Install `editorial@assay` to write and revise technical articles. The plugin loads Article Craft, Prose Cadence, Humanizer, and their references. It has no hooks, agents, commands, MCP servers, or setup step.
+Install `editorial@assay` in an article, deck or video project. Article Craft, Prose Cadence and Humanizer support writing. The six presentation skills share a staged argument across slides and film.
 
 ## Claude Code
 
@@ -24,7 +24,15 @@ Start a fresh session in the writing project. Select `$editorial:article-craft`,
 
 ## Cursor
 
-On Teams or Enterprise, import `https://github.com/medici-finance/assay` through **Dashboard → Plugins & MCPs → Team Marketplaces → Add Marketplace → Import from Repo**. Track `main`, add **editorial**, and grant the team access. Members can enable **editorial** under **Customize** and ask for any of the three skills by name in a new Agent chat. If the marketplace is already connected, refresh it to discover the new plugin.
+On Teams or Enterprise, import `https://github.com/medici-finance/assay` through **Dashboard → Plugins & MCPs → Team Marketplaces → Add Marketplace → Import from Repo**. Track `main`, add **editorial**, and grant the team access. Members can enable **editorial** under **Customize** and ask for any installed Editorial skill by name in a new Agent chat. If the marketplace is already connected, refresh it to discover the new plugin.
+
+## Produce a deck or video
+
+Ask “Stage a five-minute technical talk from these notes” and give **staging** the source notes, audience and time limit. It produces a staging.yaml with the claims and their order. Use **deck-author** to turn that into an HTML presentation, **deck-typography** to check the reading size, and **slop-lint** to edit the slide copy. For film, **video-design** develops the storyboard and **video-author** builds a seekable preview and exports a native picture with your prepared soundtrack and captions.
+
+In Claude Code invoke `/editorial:staging`. In Codex select `$editorial:staging`. In Cursor enable the Editorial plugin and select the staging skill or ask Agent to stage the talk. The other skills use their directory names in the same way. Keep source material and outputs in your project. Relative tool and reference paths in a skill start at its installed SKILL.md.
+
+Python 3.11+ runs the staging and deck checks without third-party packages. Browser QA takes Node.js, Playwright, Chromium and ffmpeg. For an existing dependency installation, set `EDITORIAL_RENDER_DEPS` to the directory containing its `node_modules`. For a new one, run `npm install playwright` and `npx playwright install chromium ffmpeg` in a project dependency directory. The [video export instructions](skills/video-author/references/native-rendering.md) describe the fframes build, ffmpeg, ffprobe, audio and captions needed for final export. The voice provider, profiles, recordings and publishing credentials stay with the project.
 
 ## Try it
 

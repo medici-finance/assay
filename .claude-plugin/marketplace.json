@@ -20,7 +20,7 @@
     {
       "name": "editorial",
       "source": "./plugins/editorial",
-      "description": "Write and revise technical articles with Article Craft, Prose Cadence, and Humanizer."
+      "description": "Write technical articles, stage presentations, build slide decks and produce explainer videos with supplied audio."
     }
   ]
 }

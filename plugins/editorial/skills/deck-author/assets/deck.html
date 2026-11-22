@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How a queue handles a busy minute</title>
+<style>
+:root { color-scheme: light; font: 20px/1.45 system-ui, sans-serif; color: #172b35; background: #f3f1ea; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.slide { min-height: 100vh; padding: 8vh 9vw; display: grid; align-content: center; border-bottom: 2px solid #245463; }
+h1, h2 { max-width: 18ch; font-size: clamp(2rem, 5vw, 4rem); line-height: 1.05; text-wrap: balance; }
+p { max-width: 55ch; }
+@media print {
+  @page { size: letter landscape; margin: 0; }
+  .slide { height: 100vh; overflow: hidden; break-after: page; }
+  .slide:last-child { break-after: auto; }
+}
+</style>
+</head>
+<body>
+<main>
+<section class="slide" data-slide="1"><div class="slide-content"><h1>A queue gives the next request a place to wait</h1><p>A worker takes the oldest waiting request when it finishes its current one.</p></div></section>
+<section class="slide" data-slide="2"><div class="slide-content"><h2>Watch the oldest request</h2><p>If its wait keeps growing, arrivals have outpaced the available workers. Compare arrival and completion rates over the same interval.</p></div></section>
+</main>
+</body>
+</html>

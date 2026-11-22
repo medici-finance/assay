@@ -1,0 +1,24 @@
+# Fixture: a `diagram:` field that re-crosses into design by naming a chart
+# type — exactly the leak the composition-contract exception is worded to
+# still catch. Minimal otherwise (not product-pitch, no figures/terms) to
+# isolate the failure to the diagram check.
+brief: diagram-leak-demo
+genre: technical-deep-dive
+lane: table
+classify:
+  chose: {genre: technical-deep-dive, because: "audience can evaluate the mechanism"}
+  rejected: [{genre: executive-explainer, because: "audience is technical"}]
+audience: {assumed_knowledge: "n/a", distrusts: "n/a", decision_they_hold: "n/a", attention_budget: "n/a"}
+belief: "The mechanism is real and the tradeoffs are honest."
+time_shape: {minutes: 9, medium: deck, seconds_per_slot: 38, floor: 30}
+arc:
+  - {beat: ground, minutes: 1.0}
+number_gate:
+glossary:
+slots:
+  - {n: 1, function: cover, beat: ground, claim: "The mechanism is real and the tradeoffs are honest."}
+  - {n: 2, function: mechanism, beat: mechanism, claim: "The system reconciles both ledgers on every write.", diagram: "a bar chart comparing the two ledgers, blue for us and grey for the incumbent."}
+  - {n: 3, function: end, beat: standing, claim: "This is what the mechanism costs to run."}
+transitions:
+gates: {helicopter: pass}
+assumptions: []

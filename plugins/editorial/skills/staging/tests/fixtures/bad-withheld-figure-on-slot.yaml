@@ -1,0 +1,53 @@
+# Fixture: a conforming product-pitch staging.yaml.
+# Exercises every REQUIRED block (number_gate, glossary) and the diagram
+# exception cleanly, plus product-pitch's three authored gates
+# (mechanism_by, problem_share, cost_slot) all passing.
+brief: ledger-bridge-pitch-demo
+genre: product-pitch
+lane: mixed(table)
+classify:
+  chose: {genre: product-pitch, because: "a named buyer can say yes to a priced product this quarter"}
+  rejected: [{genre: executive-explainer, because: "a price is already on offer, not only understanding"}, {genre: sales-proposal, because: "one buyer, not a multi-stakeholder buying group"}]
+audience: {assumed_knowledge: "knows their own reconciliation cost, not our connectors", distrusts: "a claim with no price attached", decision_they_hold: "a purchase, this quarter", attention_budget: "decides in the problem beat"}
+belief: "Reconciliation drift is a structural gap between two ledgers, not a staffing shortfall — and closing it costs less than staffing around it."
+time_shape: {minutes: 8, medium: deck, seconds_per_slot: 37, floor: 35}
+arc:
+  - {beat: hook, minutes: 0.5}
+  - {beat: problem, minutes: 2.6}
+  - {beat: mechanism, minutes: 2.0}
+  - {beat: proof, minutes: 1.0}
+  - {beat: cost, minutes: 1.0}
+  - {beat: ask, minutes: 0.9}
+bold_moment: {slot: 8, beat: proof, form: "a pilot customer's own close-time number, shown as a screenshot of their own dashboard", why: "converts described into believed on contact with an instance"}
+number_gate:
+  - {figure: monthly_cost, value: "$18,400", source: "internal ops timesheet Q2", as_of: "", rederivation: "22 analyst-hours/week times loaded rate, from the timesheet export", verdict: ship, reason: ""}
+  - {figure: price, value: "$1,200", source: "product pricing sheet v3", as_of: "", rederivation: "list price, no discount applied", verdict: ship, reason: ""}
+  - {figure: pilot_error_rate, value: "3.1%", source: "pilot cohort, 6 customers", as_of: "2026-07-01", rederivation: "pilot cohort flagged-drift count divided by total rolls", verdict: ship_with_as_of, reason: ""}
+  - {figure: referral_churn, value: "17%", source: "early-access survey", as_of: "", rederivation: "", verdict: withhold, reason: "corpus contradiction pending presentation-skills/08 ruling"}
+glossary:
+  - {term: "roll-forward", verdict: keep_gloss_once, outbound: "the nightly re-statement of a ledger balance"}
+  - {term: "reconciliation drift", verdict: keep_gloss_once, outbound: "the gap between two systems' balances after a roll-forward"}
+  - {term: "synergy", verdict: banned, outbound: ""}
+  - {term: "shift-left", verdict: rename, outbound: ""}
+  - {term: "connector mesh", verdict: internal_only, outbound: ""}
+slots:
+  - {n: 1, function: cover, beat: hook, claim: "Ledger Bridge turns overnight reconciliation from a headcount problem into a five-minute check."}
+  - {n: 2, function: fact, beat: problem, claim: "Manual reconciliation already costs $18,400 a month in analyst time."}
+  - {n: 3, function: claim, beat: problem, claim: "Every month this keeps costing $18,400, whether or not the team ever gets ahead of it."}
+  - {n: 4, function: mechanism, beat: mechanism, claim: "Ledger Bridge re-derives every roll-forward from the source ledgers, not from an analyst's spreadsheet.", supporting: "A roll-forward is the nightly re-statement of a ledger balance.", diagram: "the two source ledgers sit side by side at the top, feeding down into one reconciled line at the bottom — the eye should find the single merged line before it finds either source."}
+  - {n: 5, function: mechanism, beat: mechanism, claim: "Reconciliation drift is caught the moment it appears, not at month-end close.", supporting: "Reconciliation drift is the gap between two systems' balances after a roll-forward."}
+  - {n: 6, function: mechanism, beat: mechanism, claim: "A flagged drift carries its own source trail back to the two ledgers that disagree.", required: false}
+  - {n: 7, function: comparison, beat: mechanism, claim: "Today an analyst re-keys both ledgers by hand; with Ledger Bridge the two ledgers reconcile themselves and only a disagreement reaches a person."}
+  - {n: 8, function: statement, beat: proof, claim: "One pilot customer's close moved from four days to same-day, in their own numbers, not ours."}
+  - {n: 9, function: objection, beat: proof, claim: "Why not have the team build this internally? Because the source-ledger connectors alone took our own team eleven months, and reconciliation is not this buyer's team's job."}
+  - {n: 10, function: objection, beat: cost, claim: "Why does it cost $1,200 a month? Also, note that referral churn currently sits at 17% among early-access customers.", required: false}
+  - {n: 11, function: cost, beat: cost, claim: "Ledger Bridge costs $1,200 a month."}
+  - {n: 12, function: ask, beat: ask, claim: "Start the two-ledger pilot on August's close, by September 1."}
+  - {n: 13, function: end, beat: ask, claim: "This is where the manual reconciliation ends."}
+  - {n: A1, function: appendix, beat: null, claim: "The pilot cohort's full 3.1% error-rate breakdown by ledger pair.", required: false}
+transitions:
+  - {after_slot: 3, type: narrow, line: "from the recurring cost to the one mechanism that removes it"}
+  - {after_slot: 7, type: fold, line: "the parts become one property — sets up the proof"}
+  - {after_slot: 9, type: escalate, line: "now the price, in the terms the proof just earned"}
+gates: {helicopter: pass, bold_moment: pass, dead_slot: pass, kill_conditions: pass, time_shape: "8min x 60 = 480s / 13 slots = 36.9s/slot >= 35s floor"}
+assumptions: ["the pilot customer's close-time number is public per their released case study"]
