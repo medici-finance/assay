@@ -300,7 +300,7 @@ func countLiveClaims(listOut, leaseKey string) int {
 	n := 0
 	for _, line := range strings.Split(listOut, "\n") {
 		line = strings.TrimSpace(line)
-		id, ok := heldClaimID(line)
+		id, ok := deskkit.HeldClaimID(line)
 		if !ok {
 			continue
 		}
@@ -313,47 +313,6 @@ func countLiveClaims(listOut, leaseKey string) int {
 		n++
 	}
 	return n
-}
-
-// heldClaimID pulls the claim id out of a `dispatch-claim: HELD <id> — …` list/show line. ok=false
-// for any line that is not a HELD row (the tool's `(no dispatch claims…)`, a FREE row, a blank).
-//
-// The marker must start a word: the claim tool's `show` also prints `ALIAS-HELD <id> — …` for
-// another spelling of the same PR, and that row is not a second occupied slot.
-func heldClaimID(line string) (string, bool) {
-	i := heldRowMarker(line)
-	if i < 0 {
-		return "", false
-	}
-	rest := strings.TrimSpace(line[i+len("HELD "):])
-	if rest == "" {
-		return "", false
-	}
-	// The id is the first whitespace-delimited token after HELD.
-	if j := strings.IndexAny(rest, " \t"); j >= 0 {
-		return rest[:j], true
-	}
-	return rest, true
-}
-
-// heldRowMarker is the index of the first "HELD " in line that is not the tail of a longer
-// hyphenated word (ALIAS-HELD), or -1.
-func heldRowMarker(line string) int {
-	for off := 0; ; {
-		j := strings.Index(line[off:], "HELD ")
-		if j < 0 {
-			return -1
-		}
-		i := off + j
-		if i == 0 || (line[i-1] != '-' && !isWordByte(line[i-1])) {
-			return i
-		}
-		off = i + 1
-	}
-}
-
-func isWordByte(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'
 }
 
 func (b *claimToolAdmissionBackend) reservation() (int, map[string]int, error) {

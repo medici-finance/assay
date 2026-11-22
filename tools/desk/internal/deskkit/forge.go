@@ -1026,8 +1026,10 @@ type ReviewQueue struct {
 // different answer).
 type QueuedChange struct {
 	OpenChange
-	Reviews         []Review
-	ReviewsComplete bool
+	// A complete head-pinned check population for monitor deltas. Advisory only.
+	MonitorChecksComplete bool `json:"-"`
+	Reviews               []Review
+	ReviewsComplete       bool
 }
 
 // ChangeStates is the set of change lifecycle states a ListChanges read is scoped to. It is a

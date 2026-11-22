@@ -143,7 +143,8 @@ func sameDirectory(a, b string) bool {
 // (GH_CONFIG_DIR, the forge CLI's config directory, and that CLI's token
 // variables among them), every ASSAY_* variable (the methodology's own
 // configuration, role key paths included) except the two named delivery
-// coordinates when they hold a commit id (admittedRowInput), CELLCTL_GH_AMBIENT (a cell's copy
+// coordinates when they hold a commit id (admittedRowInput; the run adds one
+// checked replay path back after this function, admittedReplayInput), CELLCTL_GH_AMBIENT (a cell's copy
 // of the stored login) and the GITHUB_* token variables (admittedRowForgeToken).
 // An inherited row-read socket variable is removed as well: the run names its
 // own socket after this function, and no other. The caller gives each row a
@@ -296,6 +297,59 @@ var admittedRowInputs = []string{"ASSAY_DELIVERY_SHA", "ASSAY_DELIVERY_BASE_SHA"
 func admittedRowInput(kv string) bool {
 	key, value, _ := strings.Cut(kv, "=")
 	return slices.Contains(admittedRowInputs, key) && fullObjectIDRe.MatchString(value)
+}
+
+// admittedReplayInputVar names the one file path an admitted row still
+// receives: the read-only cohort replay that derived-board/10 Verify row 14
+// reads (ruling A on medici-finance/assay#7454). It is not a commit id, so it
+// is not one of admittedRowInputs. admittedRowEnv scrubs it with the rest of
+// the ASSAY_* family, and the run adds it back after the scrub, only in the
+// checked form admittedReplayInput returns.
+const admittedReplayInputVar = "ASSAY_COHORT_REPLAY"
+
+// admittedReplayInput returns the replay input an admitted run hands to rows
+// that run in root, read from the invoking environment environ by exact name.
+// The path is made absolute, its symlinks are resolved, and it must name an
+// existing regular file that does not resolve inside root (relWithin). The
+// derived-board/10 brief's amendment A sets the same rules for its replay
+// paths, and root is the working tree the rows run in. The row receives the resolved path,
+// so a relative value cannot read differently from the row's directory and a
+// symlink cannot be re-pointed after the check.
+//
+// With the variable unset it returns neither. With a value that fails a check
+// it returns a refusal and no input. The row then reads a scrubbed name and is
+// could-not-run (admittedRowScrubbedRefs), never run without its input. The
+// file is not opened. Read-only means that admission passes only the path:
+// the row runs as the same user, so nothing stops a row from writing to the
+// file. A row that does so has to be caught by review of the row's text.
+func admittedReplayInput(environ []string, root string) (kv, refusal string) {
+	value, found := "", false
+	for _, e := range environ {
+		if k, v, _ := strings.Cut(e, "="); k == admittedReplayInputVar {
+			value, found = v, true
+		}
+	}
+	if !found {
+		return "", ""
+	}
+	if value == "" {
+		return "", "it is set but empty"
+	}
+	abs, err := filepath.Abs(value)
+	if err != nil {
+		return "", "it cannot be made absolute: " + err.Error()
+	}
+	real, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", "it cannot be resolved: " + err.Error()
+	}
+	if info, err := os.Stat(real); err != nil || !info.Mode().IsRegular() {
+		return "", fmt.Sprintf("%s is not an existing regular file", real)
+	}
+	if _, inside := relWithin(root, real); inside {
+		return "", fmt.Sprintf("%s resolves inside the working tree %s; replay bytes never live in the tree", real, root)
+	}
+	return admittedReplayInputVar + "=" + real, ""
 }
 
 // admittedRowRefRe matches a row command's reads of a variable by name:

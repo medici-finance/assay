@@ -171,6 +171,22 @@ func phantomCheckFor(o dispatchOpts, repo string, dl deliverable) (phantomFollow
 	if listRepresentedPRs == nil {
 		return none, nil
 	}
+	if issue, err := dispatchIssue(o, repo); err != nil {
+		return none, deskkit.Unverifiable(fmt.Sprintf("step %s: could not resolve the source issue (%v); nothing claimed", stepClaimAcquire, err), err)
+	} else if issue.Number > 0 {
+		index := deskkit.IssuePRIndex{List: listRepresentedPRs, Lookup: lookupBriefChanges}
+		pr, err := index.Match(issue)
+		if err != nil {
+			return none, deskkit.Unverifiable(fmt.Sprintf("step %s: could not check existing PRs for %s#%d; nothing claimed: %v", stepClaimAcquire, issue.Repo, issue.Number, err), err)
+		}
+		if pr.Number > 0 {
+			if pr.Merged && o.rework {
+				return phantomFollowUp{pr: pr.Number}, nil
+			}
+			return none, deskkit.Refused("step " + stepClaimAcquire + ": " + issue.Representation(pr) + "; nothing claimed")
+		}
+		return none, nil
+	}
 	briefID := briefIDFromItem(o.item)
 	if briefID == "" {
 		return none, nil
@@ -353,4 +369,32 @@ func (p *dispatchPlan) applyFollowUp(o dispatchOpts, f phantomFollowUp) error {
 func validCrossLink(value string) bool {
 	_, _, _, ok := deskkit.SplitCrossRepoBriefTrailer(value)
 	return ok
+}
+
+// Issue-only dispatch has an explicit target repo. A board-shaped key can instead
+// name a placeholder whose source issue lives outside the board checkout.
+func dispatchIssue(o dispatchOpts, repo string) (deskkit.DispatchIssue, error) {
+	item := strings.TrimSpace(o.item)
+	_, stem, claimed := strings.Cut(item, "--")
+	if !claimed {
+		stem = item
+	}
+	n := deskkit.PlaceholderIssueNumber(stem)
+	if n > 0 && stem == fmt.Sprintf("issue-%d", n) && !strings.Contains(item, "/") {
+		if o.brief == "" {
+			return deskkit.DispatchIssue{Repo: repo, Number: n}, nil
+		}
+		name := strings.TrimSuffix(filepath.Base(o.brief), ".md")
+		if deskkit.PlaceholderIssueNumber(name) != n {
+			return deskkit.DispatchIssue{}, fmt.Errorf("issue %d and placeholder filename %s disagree", n, name)
+		}
+		item = filepath.Base(filepath.Dir(o.brief)) + "/" + name
+	} else {
+		item = briefIDFromItem(item)
+	}
+	ref, err := deskkit.DispatchPlaceholder(briefTreeRoot(o), repo, item)
+	if err == nil && ref.Number > 0 && !strings.EqualFold(ref.Repo, repo) {
+		return deskkit.DispatchIssue{}, fmt.Errorf("placeholder names %s#%d; target repo %s differs", ref.Repo, ref.Number, repo)
+	}
+	return ref, err
 }

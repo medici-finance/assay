@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -222,6 +223,77 @@ func TestQuotedNotationNoticesAreVisible(t *testing.T) {
 	}
 }
 
+// TestAddedDiffLinesFollowsUnifiedDiffStructure pins the ordinary unified-diff
+// grammar used by both local preview and forge corroboration. A +++-shaped line
+// in a hunk is payload, not a file header; later hunks and files must retain
+// their own destination paths and destination line numbers.
+func TestAddedDiffLinesFollowsUnifiedDiffStructure(t *testing.T) {
+	diff := `diff --git a/docs/first.txt b/docs/first.txt
+index 1111111..2222222 100644
+--- a/docs/first.txt
++++ b/docs/first.txt
+@@ -1,2 +1,4 @@
+ first
++++ Section heading
+ second
++third
+@@ -10,2 +12,3 @@
+ ten
++eleven
+ twelve
+diff --git a/docs/second.txt b/docs/second.txt
+index 3333333..4444444 100644
+--- a/docs/second.txt
++++ b/docs/second.txt
+@@ -2 +2,2 @@
+ alpha
++beta
+`
+	got, quoted := walkAddedDiffLines(diff, func(string) bool { return false })
+	if len(quoted) != 0 {
+		t.Fatalf("ordinary text diff produced quoted lines: %+v", quoted)
+	}
+	if len(got) != 4 {
+		t.Fatalf("added lines = %+v, want four", got)
+	}
+	want := []diffAddedLine{
+		{File: "docs/first.txt", Section: 2, Number: 2, Content: "++ Section heading"},
+		{File: "docs/first.txt", Section: 2, Number: 4, Content: "third"},
+		{File: "docs/first.txt", Section: 2, Number: 13, Content: "eleven"},
+		{File: "docs/second.txt", Section: 4, Number: 3, Content: "beta"},
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("added line %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+// Short patches can use one destination header per file after a complete hunk.
+func TestAddedDiffLinesKeepsSyntheticFileHeaders(t *testing.T) {
+	diff := `+++ b/docs/first.txt
+@@ -4 +4,2 @@
+ four
++five
++++ b/docs/second.txt
+@@ -8,0 +9 @@
++nine
+`
+	got, _ := walkAddedDiffLines(diff, func(string) bool { return false })
+	want := []diffAddedLine{
+		{File: "docs/first.txt", Section: 1, Number: 5, Content: "five"},
+		{File: "docs/second.txt", Section: 2, Number: 9, Content: "nine"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("added lines = %+v, want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("added line %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
 // TestIsTestSourceFile pins the stamp lane's test-file recognition (pr1593-F1): a
 // closed program-source extension AND a test-file NAME convention on the stem. A
 // directory name never qualifies a file, and a non-test script never does.
@@ -312,5 +384,18 @@ func TestCorroborateDiffWalkersShareOneWalker(t *testing.T) {
 	}
 	for _, o := range offenders {
 		t.Errorf("hand-rolled diff walker at %s — read added lines through addedDiffLines (corroboratescope.go) so quoted notation is scoped once (#1395)", o)
+	}
+}
+
+func TestAddedDiffLinesHandlesHunkBoundaries(t *testing.T) {
+	const diff = "+++ b/first.txt\n@@ -3 +4 @@\n-old\n\\ No newline at end of file\n+new\n" +
+		"+++ b/second.txt\n@@ -1,3 +7,3 @@\n first\nunexpected end\n+later"
+	got, _ := walkAddedDiffLines(diff, func(string) bool { return false })
+	want := []diffAddedLine{
+		{File: "first.txt", Section: 1, Number: 4, Content: "new"},
+		{File: "second.txt", Section: 2, Number: 0, Content: "later"},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("added lines = %+v, want %+v", got, want)
 	}
 }

@@ -2583,7 +2583,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			}
 		})
 		if len(others) > 0 || fs.NArg() > 0 || *witnessFile == "" {
-			fmt.Fprintf(stderr, "statusgen verifyrun: --bracket-digest takes only --witness <file> [--credit --source <40 hex> [--ci-workflow-token]] (got %s)\n", strings.Join(append(others, fs.Args()...), " "))
+			_, _ = fmt.Fprintf(stderr, "statusgen verifyrun: --bracket-digest takes only --witness <file> [--credit --source <40 hex> [--ci-workflow-token]] (got %s)\n", strings.Join(append(others, fs.Args()...), " "))
 			return verifyrunExitUsageError
 		}
 		if *creditMode != (*creditSource != "") || (*creditMode && !creditSourceOK(*creditSource)) {
@@ -2591,7 +2591,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitUsageError
 		}
 		if *creditCI && !*creditMode {
-			fmt.Fprintln(stderr, "statusgen verifyrun: --ci-workflow-token requires --bracket-digest and --credit")
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: --ci-workflow-token requires --bracket-digest and --credit")
 			return verifyrunExitUsageError
 		}
 		raw, err := os.ReadFile(*witnessFile)
@@ -2646,7 +2646,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return code
 	}
 	if *creditMode || *creditSource != "" || *creditCI {
-		fmt.Fprintln(stderr, "statusgen verifyrun: --credit, --source and --ci-workflow-token are read-only options of --bracket-digest")
+		_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: --credit, --source and --ci-workflow-token are read-only options of --bracket-digest")
 		return verifyrunExitUsageError
 	}
 
@@ -2994,6 +2994,14 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		}
 		defer removeRowScratch(scratch)
 		plan.env = append(admittedRowEnv(environ), admittedRowGo(environ)...)
+		// The one declared replay path reaches the rows only in its checked
+		// form. A refused one is named here, and a row that reads it is
+		// could-not-run.
+		if kv, why := admittedReplayInput(environ, root); why != "" {
+			fmt.Fprintf(stderr, "statusgen verifyrun: %s is not passed to the rows: %s\n", admittedReplayInputVar, why)
+		} else if kv != "" {
+			plan.env = append(plan.env, kv)
+		}
 		plan.rowScratch = scratch
 		plan.rowRoster = container.roster
 		if *rule51Mode && !netnsContainer {

@@ -140,6 +140,25 @@ These guards establish a candidate, not admission. Re-read ownership and both cl
 claiming, preserve the supersession and freshness checks, and require the normal successful
 **model-stamp OK** before a worker starts. A live owner is not an orphan; an unread claim is not free.
 
+### Restarting after an explicit reclaim
+
+Use this sequence only after establishing that the previous worker has stopped
+and the reclaimed lease has launched no worker. Keep the same identified
+`DESK_SESSION` for all three commands. Use the original item's repo, checkout,
+brief, model, tier and any other admission flags.
+
+```bash
+token_file=$(desktoken --no-rotate worker --repo "$repo") || exit $?
+deskclaim-ref steal "$item" --repo "$repo" --reason "$reason" --token-file "$token_file" &&
+  deskclaim-ref release "$item" --repo "$repo" --token-file "$token_file" &&
+  deskdispatch "$item" --repo "$repo" --root "$root" --brief "$brief" \
+    --kit worker --model "$model" --tier "$tier" --attest-worker
+```
+
+If the explicit steal already succeeded, start with the release. A successful
+release opens the key to other dispatchers. If another holder wins it, stop.
+Launch only after the ordinary dispatch succeeds and emits the attested assignment.
+
 ### Queue suppressors — read them when a stream offers nothing for several consecutive ticks
 
 A claim subtracts twice: once as an eligibility exclusion and again as a per-stream cap decrement, so
