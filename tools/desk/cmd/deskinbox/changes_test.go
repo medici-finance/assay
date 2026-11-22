@@ -21,7 +21,7 @@ func TestChangesDeliveryAndWithdrawal(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	const repo = "example/repo"
 	f := &fakeForge{issues: []deskkit.IssueSummary{
-		{Number: 7, Labels: []string{deskkit.VerifyGateLabel}},
+		{Number: 7, Labels: []string{"VeRiFy-GaTe"}},
 		{Number: 8, Labels: []string{"other"}},
 	}}
 	withForge(t, map[string]*fakeForge{repo: f})
@@ -96,12 +96,23 @@ func TestChangesDeliveryAndWithdrawal(t *testing.T) {
 
 	current.Evidence = "proof-B"
 	newProof := poll("changed", now)
+	if retry := poll("changed", now); retry.Receipt != newProof.Receipt {
+		t.Fatal("retry of the changed offer replaced its receipt")
+	}
+	// A delivery might have shown proof-B even though no ack arrived.
+	// Re-offer proof-A so the consumer can replace that superseded action.
+	current.Evidence = "proof-A"
+	reverted := poll("changed", now)
+	if reverted.Receipt == newProof.Receipt || reverted.Events[0].Action.Evidence != "proof-A" {
+		t.Fatalf("reverted offer did not supersede the pending change: %+v", reverted)
+	}
+	ack(newProof.Receipt, deskkit.ExitRefused)
 	current.State = "stale"
 	withdrawn := poll("withdrawn", now)
 	if withdrawn.Events[0].Action != nil {
 		t.Fatal("withdrawal advertised stale act")
 	}
-	ack(newProof.Receipt, deskkit.ExitRefused)
+	ack(reverted.Receipt, deskkit.ExitRefused)
 	ack(withdrawn.Receipt, 0)
 	ack(withdrawn.Receipt, 0)
 	poll("", now)

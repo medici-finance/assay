@@ -2294,6 +2294,10 @@ request. An empty array requires no delivery or acknowledgement.
 
 A failed discovery or unverifiable item produces a nonzero exit and preserves
 the cursor. Acknowledgement uses local state and requires no new forge read.
+A corrupt cursor error names its file in the desk state directory under
+`inbox-changes/<scope>/cursor.json`. To recover, pause that consumer, move the
+named file aside for inspection and resume polling. The next complete poll
+offers every currently ready act again.
 
 ## deskboard `--delta` / `--quiet` — console discipline
 

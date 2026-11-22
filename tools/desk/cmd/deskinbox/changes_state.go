@@ -96,7 +96,15 @@ func saveChanges(path string, state *changeState) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	return os.Rename(tmp.Name(), path)
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return err
+	}
+	// Flush the directory entry as well on filesystems that support it.
+	if dir, err := os.Open(filepath.Dir(path)); err == nil {
+		_ = dir.Sync()
+		_ = dir.Close()
+	}
+	return nil
 }
 
 func acknowledgeChanges(path string, state *changeState, receipt string, now time.Time) error {
