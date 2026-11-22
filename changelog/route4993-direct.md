@@ -1,1 +1,0 @@
-- Collect hold-scan refusals in source order for acceptance adjudication while preserving the first-refusal behavior of existing verification gates.
