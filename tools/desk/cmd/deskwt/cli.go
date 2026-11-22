@@ -36,7 +36,7 @@ type wtCall struct {
 
 type addOpts struct {
 	name, branch, base, upstream, role, lockSession, adoptRun string
-	detach, dryRun                                            bool
+	detach, dryRun, handoffBrief                              bool
 }
 
 type removeOpts struct {
@@ -99,6 +99,7 @@ func wtBindings() map[string][]cli.Binding {
 				"the shared checkout's identity"),
 			boolean("dry-run", "print the lifecycle-hook plan (HOOK after_create: ...) and touch nothing"),
 			str("lock-session", "", "lock the new worktree for this live session id, in role-init's lock-reason format"),
+			boolean("handoff-brief", "with --adopt-run: resume this session's earlier worker checkout for the brief delivered by this PR"),
 			str("adopt-run", "", "with --upstream: adopt an existing home stamped with this run key when it is proven finished "+
 				"(registered, unlocked, clean incl. untracked, on --branch at the pinned --base) instead of refusing it"),
 		},
@@ -223,7 +224,7 @@ func newWtCLI(env wtCLI, argv []string) *cobra.Command {
 		func(v *cli.Values, a []string) wtCall {
 			return wtCall{add: addOpts{name: a[0], branch: v.String("branch"), detach: v.Bool("detach"), base: v.String("base"),
 				upstream: v.String("upstream"), role: v.String("role"), dryRun: v.Bool("dry-run"),
-				lockSession: v.String("lock-session"), adoptRun: v.String("adopt-run")}}
+				lockSession: v.String("lock-session"), adoptRun: v.String("adopt-run"), handoffBrief: v.Bool("handoff-brief")}}
 		}))
 	root.AddCommand(verb("remove <path>", "remove a proven-safe worktree (there is no --force)", removeLong, cobra.ExactArgs(1),
 		func(v *cli.Values, a []string) wtCall {
@@ -397,6 +398,11 @@ add --lock-session <id> LOCKS the new worktree for that live session, in role-in
 reason format (` + "`session=<id>`" + `), so prune holds it from its first second and
 --reclaim-stale-locks / --reap-dead-sessions retire it only once that session's roster beacon
 is stale. A lock that cannot be taken and verified rolls the worktree back.
+
+add --handoff-brief (worker PR resumes with --adopt-run) can continue this session's
+earlier brief checkout at the confirmed PR head. The previous brief claim must be
+released. A matching session, worker dispatch receipt, local delivery trailer and
+owned PR claim are required. The checkout keeps its index and in-progress merge.
 
 add --adopt-run <run key> (resume only: needs --upstream) hands back a FINISHED home instead
 of refusing it — the existing target, or the worktree holding --branch — when it carries that

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/statusgen/evaluation"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 	"github.com/medici-finance/assay/tools/desk/internal/verifycmd"
@@ -615,69 +616,38 @@ func joinRowIDs(ids []deskkit.VerifyRowID) string {
 // pendingWakeRows reuses observations only after the wake evaluator established
 // unchanged inputs and an unresolved blocker. No provider reads or persistent cache.
 func pendingWakeRows(rec deskkit.WakeReceipt, all []deskkit.VerifyRowID) ([]deskkit.VerifyRowID, error) {
-	// An empty held set names the whole brief, as in existing wake-v1 receipts.
-	if len(rec.Rows) == 0 {
-		return nil, nil
+	// The reconciliation of a receipt with the current Verify table is the shared reduction's
+	// (evaluation.ReduceRows, bound to the table); this adapter only converts types.
+	set := evaluation.RowSet{
+		Held:             rowIDStrings(rec.Rows),
+		HasTotal:         rec.RowsTotal > 0,
+		Total:            rec.RowsTotal,
+		HasPassed:        rec.RowsPassed > 0,
+		Passed:           rec.RowsPassed,
+		HasResults:       len(rec.RowResults) > 0,
+		BoundToInventory: true,
+		Inventory:        rowIDStrings(all),
 	}
-	held := heldRowSet(rec.Rows)
-	known := map[deskkit.VerifyRowID]bool{}
-	for _, id := range all {
-		if _, ok := deskkit.ParseVerifyRowID(string(id)); !ok || known[id] {
-			return nil, fmt.Errorf("invalid or duplicate Verify row %q", id)
-		}
-		known[id] = true
+	for _, rr := range rec.RowResults {
+		set.Results = append(set.Results, evaluation.RowResultEntry{Row: string(rr.Row), Result: rr.Result})
 	}
-	if len(known) == 0 {
-		return nil, fmt.Errorf("Verify row identities unavailable")
+	red, fault := evaluation.ReduceRows(set)
+	if fault != nil {
+		return nil, fault
 	}
-	for _, id := range rec.Rows {
-		if !known[id] {
-			return nil, fmt.Errorf("held row %q is not in the current Verify table", id)
-		}
+	var out []deskkit.VerifyRowID
+	for _, id := range red.Runnable {
+		out = append(out, deskkit.VerifyRowID(id))
 	}
-	if len(held) != len(rec.Rows) {
-		return nil, fmt.Errorf("duplicate held row")
+	return out, nil
+}
+
+func rowIDStrings(ids []deskkit.VerifyRowID) []string {
+	out := make([]string, len(ids))
+	for i, id := range ids {
+		out[i] = string(id)
 	}
-	remaining := runnableRemainder(all, held)
-	if len(rec.RowResults) > 0 {
-		if rec.RowsTotal != len(all) || len(rec.RowResults) != len(all) {
-			return nil, fmt.Errorf("row_results does not cover the current Verify table")
-		}
-		seen := map[deskkit.VerifyRowID]bool{}
-		passed := map[deskkit.VerifyRowID]bool{}
-		for _, rr := range rec.RowResults {
-			if !known[rr.Row] || seen[rr.Row] || !deskkit.ValidRowResult(rr.Result) {
-				return nil, fmt.Errorf("unknown, duplicate or invalid result row %q", rr.Row)
-			}
-			seen[rr.Row] = true
-			if rr.Result == deskkit.RowPass {
-				if held[rr.Row] {
-					return nil, fmt.Errorf("held row %q also claims PASS", rr.Row)
-				}
-				passed[rr.Row] = true
-			}
-		}
-		if len(passed) != rec.RowsPassed {
-			return nil, fmt.Errorf("row_results PASS count disagrees with rows_passed")
-		}
-		return runnableRemainder(remaining, passed), nil
-	}
-	// Older numeric-only receipts carry counts but no per-row pass observations.
-	// They prove completion only when ALL non-held rows passed, with exact totals.
-	if rec.RowsTotal > 0 || rec.RowsPassed > 0 {
-		if rec.RowsTotal != len(all) || rec.RowsPassed < 0 || rec.RowsPassed > len(remaining) {
-			return nil, fmt.Errorf("receipt counts disagree with the current Verify table")
-		}
-		for i, id := range all {
-			if string(id) != strconv.Itoa(i+1) {
-				return nil, fmt.Errorf("non-contiguous, suffixed or label rows require exact row_results")
-			}
-		}
-		if rec.RowsPassed == len(remaining) {
-			return nil, nil
-		}
-	}
-	return remaining, nil
+	return out
 }
 
 func joinInts(xs []int) string {

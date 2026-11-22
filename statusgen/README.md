@@ -688,6 +688,22 @@ prefix in `corroborate.go`, which teaches the `human:<name>` notation itself wit
 fictional personas. It is a named constant, reviewed on its own terms, and it
 needs no marker.
 
+### Preview prospective sign-offs (`preview-stamps`)
+
+`statusgen preview-stamps` shows the human sign-off claims in the diff from the
+local merge base to the committed branch head. Commit the edits you intend to
+push before running it. The preview prints both revisions and reads decisions
+and fixture declarations from the committed tree. The default base ref is
+`refs/remotes/origin/main`. Set `--base-ref refs/remotes/origin/<branch>` to
+match the intended PR target. The preview prints the destination file and line of
+each added stamp, and identifies the decision field for an edited decision record.
+Exit 0 means zero stamp claims need online corroboration, 1 lists prospective
+claims, and 2 means the preview could not read the requested revisions or diff,
+or the invocation was invalid. If the preview cannot establish a fixture or
+decision-record exemption, it retains the candidate for online corroboration.
+The online check also examines the PR's human evidence, register transitions,
+citations and decision gates.
+
 ### Quoted notation is not a claim (`--corroborate`)
 
 `--corroborate` reads the pull request's added lines as claims that a human

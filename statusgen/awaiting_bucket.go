@@ -279,7 +279,7 @@ func bucketAwaiting(b awaitBrief, rows awaitRows, ev awaitEvidence, oc awaitOutc
 		return bucketCouldNotCheck, ownerVerifyDesk, couldNotCheckLabel +
 			"a verify-outcome record for this brief is dated beyond the clock-skew tolerance — it never wins, so the latest state is unknown"
 	}
-	if oc.Latest != nil && evaluation.ParseVerificationOutcome(oc.Latest.Outcome) == evaluation.OutcomeUnknown {
+	if oc.Latest != nil && evaluation.ClassifyOutcome(oc.Latest.Outcome) == evaluation.OutcomeUnrecognised {
 		return bucketCouldNotCheck, ownerVerifyDesk, couldNotCheckLabel +
 			fmt.Sprintf("the latest verify-outcome record has an unrecognised outcome %q", oc.Latest.Outcome)
 	}
@@ -416,10 +416,10 @@ func recordedBlocker(latest *awaitOutcome, verdict, evidence string) (blocker *a
 	if latest == nil {
 		return nil, ""
 	}
-	switch evaluation.ParseVerificationOutcome(latest.Outcome) {
-	case evaluation.OutcomeBlocked, evaluation.OutcomeNeedsContext:
+	switch evaluation.ClassifyOutcome(latest.Outcome) {
+	case evaluation.OutcomeHold:
 		return latest, ""
-	case evaluation.OutcomeFailed:
+	case evaluation.OutcomeFail:
 		if verdict != verdictPass {
 			return latest, ""
 		}
@@ -491,7 +491,7 @@ func heldSignOffAct(blocker *awaitOutcome) string {
 		kind = "no recognised kind"
 	}
 	outcome := "fail"
-	if evaluation.ParseVerificationOutcome(blocker.Outcome).Held() {
+	if evaluation.ClassifyOutcome(blocker.Outcome) == evaluation.OutcomeHold {
 		outcome = "hold"
 	}
 	ref := blockerRefText(blocker.BlockerRef)

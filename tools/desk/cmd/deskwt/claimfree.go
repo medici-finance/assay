@@ -160,16 +160,18 @@ func (l *claimListing) state(dir, key string) (claimState, string) {
 	return claimFree, "dispatch claim " + key + " is released"
 }
 
-// runRecord is what deskdispatch recorded in a home about its run: the run key and where that
-// run's dispatch claim was taken ("" for a field the home does not record).
+// runRecord holds the dispatch key, claim namespace and receipts stamped in a home.
+// A field absent from the worktree's configuration is empty.
 type runRecord struct {
-	key   string // assay.runKey
-	repo  string // assay.claimRepo: the repository whose claim namespace holds the claim
-	store string // assay.claimStore: the resolved claim store
+	key              string // assay.runKey
+	repo             string // assay.claimRepo: the repository whose claim namespace holds the claim
+	store            string // assay.claimStore: the resolved claim store
+	dispatchRef      string // receipt of the current dispatch
+	handoffSourceRef string // original brief receipt retained while re-keying a checkout
 }
 
-// runRecordInAdmin reads the worktree-scoped assay.runKey, assay.claimRepo and
-// assay.claimStore from a worktree's admin directory (<common>/worktrees/<name>/config.worktree)
+// runRecordInAdmin reads the run record directly from the registered admin directory
+// (<common>/worktrees/<name>/config.worktree)
 // without starting git: all empty when the file or the keys are absent. A file that exists but
 // cannot be read or parsed is an error — the caller treats it as a run key it could not read,
 // which holds the tree.
@@ -187,9 +189,11 @@ func runRecordInAdmin(admin string) (runRecord, error) {
 	}
 	sec := cfg.Section("assay")
 	return runRecord{
-		key:   strings.TrimSpace(sec.Option("runKey")),
-		repo:  strings.TrimSpace(sec.Option("claimRepo")),
-		store: strings.TrimSpace(sec.Option("claimStore")),
+		key:              strings.TrimSpace(sec.Option("runKey")),
+		repo:             strings.TrimSpace(sec.Option("claimRepo")),
+		store:            strings.TrimSpace(sec.Option("claimStore")),
+		dispatchRef:      strings.TrimSpace(sec.Option("dispatchRef")),
+		handoffSourceRef: strings.TrimSpace(sec.Option("handoffSourceRef")),
 	}, nil
 }
 

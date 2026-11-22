@@ -25,7 +25,17 @@ func TestMain(m *testing.M) {
 	if err := os.Setenv("HOME", home); err != nil {
 		panic(err)
 	}
-	code := gitquiet.Run(m)
+	// The deskdispatch integration test invokes this test binary as the real
+	// claim CLI, with a local bare repository substituted for the forge.
+	var code int
+	if len(os.Args) > 3 && os.Args[1] == "local-claim-fixture" && filepath.IsAbs(os.Args[2]) {
+		buildStore = func(string, string, func() (string, error)) (deskkit.ClaimStore, error) {
+			return &gogitStore{url: os.Args[2], host: "fixture"}, nil
+		}
+		code = run(os.Args[3:])
+	} else {
+		code = gitquiet.Run(m)
+	}
 	if had {
 		_ = os.Setenv("HOME", prev)
 	} else {
