@@ -62,6 +62,8 @@ func TestAdjudicatedCloseProofHasSingleConstructor(t *testing.T) {
 					}
 				case *ast.ValueSpec:
 					expr = node.Type
+				case *ast.Field:
+					expr = node.Type
 				}
 				id, ok := expr.(*ast.Ident)
 				if ok && id.Name == "verifiedAcceptanceAdjudication" {
@@ -97,6 +99,7 @@ func TestAdjudicatedCloseProofHasSingleConstructor(t *testing.T) {
 		"_ = verifiedAcceptanceAdjudication{}",
 		"_ = new(verifiedAcceptanceAdjudication)",
 		"var receipt verifiedAcceptanceAdjudication; _ = receipt",
+		"_ = func() (receipt verifiedAcceptanceAdjudication) { return }",
 	} {
 		plant, err := parser.ParseFile(fset, "plant.go", "package main; func plant() { "+statement+" }", 0)
 		if err != nil {

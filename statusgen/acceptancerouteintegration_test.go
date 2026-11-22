@@ -29,7 +29,11 @@ func writeRouteIssueFixture(t *testing.T, kind string, issue int, value any) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	putFile(t, filepath.Join(os.Getenv("CREDIT_FAKE_DIR"), fmt.Sprintf("%s-%d.json", kind, issue)), string(raw))
+	putFile(t, routeIssueFixturePath(kind, issue), string(raw))
+}
+
+func routeIssueFixturePath(kind string, issue int) string {
+	return filepath.Join(os.Getenv("CREDIT_FAKE_DIR"), fmt.Sprintf("%s-%d.json", kind, issue))
 }
 
 func newAdjudicatedRouteFixture(t *testing.T, later, secondResult string) adjudicatedRouteFixture {
@@ -156,18 +160,22 @@ func TestAdjudicatedRouteIssuesAndClosesOnlyWithComposedChecks(t *testing.T) {
 	if err != nil || !strings.Contains(string(plan), "| done |") || getFile(t, f.readme) != before {
 		t.Fatalf("close did not plan a write-free done transition: %v", err)
 	}
-	cfg := writeAdjudicatedRouteCardFixture(t, issue.Body)
+	cfg := writeAdjudicatedRouteCardFixture(t, adjudicatedRouteCard(issue.Body))
 	if err := closeAdjudicatedCard(f.root, "vf/01", rlRepo, 60, c, cfg); err != nil || !strings.Contains(getFile(t, f.readme), "| done |") {
 		t.Fatalf("canonical close did not apply: %v", err)
 	}
 }
 
-func writeAdjudicatedRouteCardFixture(t *testing.T, body string) scanConfig {
+func adjudicatedRouteCard(body string) creditIssue {
+	return creditIssue{State: "closed", Labels: []string{"verify-gate"}, Body: body,
+		Author:   &creditAccount{Login: "github-actions[bot]", ID: 41898282, Type: "Bot"},
+		ClosedBy: &creditAccount{Login: rlHuman, ID: 1234, Type: "User"}}
+}
+
+func writeAdjudicatedRouteCardFixture(t *testing.T, card creditIssue) scanConfig {
 	t.Helper()
 	t.Setenv("CREDIT_FAKE_CI", "1")
-	writeRouteIssueFixture(t, "issue", 60, creditIssue{State: "closed", Labels: []string{"verify-gate"}, Body: body,
-		Author:   &creditAccount{Login: "github-actions[bot]", ID: 41898282, Type: "Bot"},
-		ClosedBy: &creditAccount{Login: rlHuman, ID: 1234, Type: "User"}})
+	writeRouteIssueFixture(t, "issue", 60, card)
 	yes := true
 	writeRouteIssueFixture(t, "trust", 60, creditTrust{Complete: true, BodyHistoryKnown: &yes})
 	return scanConfig{Bless: scanIdentity{Login: rlHuman, ID: 1234}, HumanLogins: rlLogins}
@@ -222,10 +230,92 @@ func TestAdjudicatedRouteRefusesBeforeIssuingOrWriting(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			cfg := writeAdjudicatedRouteCardFixture(t, verifyMarker("vf/01")+"\n"+routeMarker)
+			cfg := writeAdjudicatedRouteCardFixture(t, adjudicatedRouteCard(verifyMarker("vf/01")+"\n"+routeMarker))
 			err = closeAdjudicatedCard(f.root, "vf/01", rlRepo, 60, c, cfg)
 			if err == nil || !strings.Contains(err.Error(), tc.errText) || getFile(t, f.readme) != before {
 				t.Fatalf("wanted the live close shape to refuse without a write: %v", err)
+			}
+		})
+	}
+}
+
+func TestAdjudicatedCloseRejectsBadCardAfterValidPreparation(t *testing.T) {
+	for _, tc := range []struct {
+		name, errText   string
+		changeCard      func(*creditIssue)
+		changeMarker    func(*adjudicatedCardRef)
+		history         *creditTrust
+		changesOnReread bool
+	}{
+		{name: "bot closer", errText: "final close is not from the pinned human",
+			changeCard: func(card *creditIssue) { card.ClosedBy.Type = "Bot" }},
+		{name: "other mapped closer", errText: "final close is not from the pinned human",
+			changeCard: func(card *creditIssue) { card.ClosedBy.Login = rlOther }},
+		{name: "wrong issuer", errText: "expected a closed card issued by GitHub Actions",
+			changeCard: func(card *creditIssue) { card.Author.ID++ }},
+		{name: "missing verify gate label", errText: "missing verify-gate label",
+			changeCard: func(card *creditIssue) { card.Labels = nil }},
+		{name: "wrong brief marker", errText: "wrong or ambiguous brief marker",
+			changeCard: func(card *creditIssue) {
+				card.Body = strings.Replace(card.Body, verifyMarker("vf/01"), verifyMarker("vf/02"), 1)
+			}},
+		{name: "edited card", errText: "body was edited",
+			history: &creditTrust{Complete: true, BodyHistoryKnown: new(true), BodyEditedAt: rlPosted}},
+		{name: "partial history", errText: "body history is incomplete",
+			history: &creditTrust{Complete: false, BodyHistoryKnown: new(true)}},
+		{name: "wrong digest", errText: "preparation does not match the card's manifest digest",
+			changeMarker: func(ref *adjudicatedCardRef) { ref.Manifest = strings.Repeat("0", 64) }},
+		{name: "foreign ruling", errText: "adjudication is outside the card's repository",
+			changeMarker: func(ref *adjudicatedCardRef) { ref.Ruling = rlURL("other-org/other-repo", rlIssue, rlComment) }},
+		{name: "changed second read", errText: "issue changed during close revalidation", changesOnReread: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newAdjudicatedRouteFixture(t, "", "")
+			c := f.forge.client(t)
+			before := getFile(t, f.readme)
+			issue, err := makeAdjudicatedVerifyIssue(f.root, "vf/01", rlIssue, f.ruling, c, rlLogins, false)
+			if err != nil {
+				t.Fatalf("test requires a valid preparation and ruling: %v", err)
+			}
+			card := adjudicatedRouteCard(issue.Body)
+			if tc.changeMarker != nil {
+				ref, present, err := parseAdjudicatedCardRef(card.Body)
+				if !present || err != nil {
+					t.Fatalf("issuer did not render a canonical marker: %v", err)
+				}
+				oldMarker, err := ref.marker()
+				if err != nil {
+					t.Fatal(err)
+				}
+				tc.changeMarker(&ref)
+				marker, err := ref.marker()
+				if err != nil {
+					t.Fatal(err)
+				}
+				card.Body = strings.Replace(card.Body, oldMarker, marker, 1)
+			}
+			if tc.changeCard != nil {
+				tc.changeCard(&card)
+			}
+			if tc.changesOnReread {
+				changed := card
+				changed.State = "open"
+				writeRouteIssueFixture(t, "issue", 60, changed)
+				path := routeIssueFixturePath("issue", 60)
+				if err := os.Rename(path, path+".next"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			cfg := writeAdjudicatedRouteCardFixture(t, card)
+			if tc.history != nil {
+				writeRouteIssueFixture(t, "trust", 60, *tc.history)
+			}
+			err = closeAdjudicatedCard(f.root, "vf/01", rlRepo, 60, c, cfg)
+			if err == nil || !strings.Contains(err.Error(), tc.errText) {
+				t.Errorf("wanted close refusal containing %q, got %v", tc.errText, err)
+			}
+			if got := getFile(t, f.readme); got != before {
+				t.Error("card refusal changed the README")
 			}
 		})
 	}
