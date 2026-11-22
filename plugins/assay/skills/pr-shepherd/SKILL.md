@@ -159,9 +159,11 @@ this file whether or not the check has run against it yet.
 **Check what the PR actually owes before you write a fragment for it.** A documentation-only or
 Evidence-only PR owes none — a fragment added on top of one is a code changelog entry describing a
 change that is not in the diff — and some repos' changelog checks classify such a PR themselves and go
-green with no label at all. Where the check does NOT classify it and the branch is genuinely
-documentation-only, the move is to ASK the maintainer for `changelog:skip` and say so on the PR. It is
-never a fragment to invent, and never a label to apply yourself.
+green with no label at all. If that check still needs a waiver for a documentation-only or
+Evidence PR, the maintainer owns it. Check the PR for an existing request or decision.
+When an ask is due, give the maintainer the PR link and the reason once. For other
+non-notable PRs, route the waiver to the role named in project policy. The shepherd
+checks the resulting status and never applies its own waiver.
 
 **Carve-out — when the fix IS the removal of a security control, the red check is NOT yours
 (gate: human).** If the only way to turn a red check green is to delete, disable, or weaken a

@@ -10,8 +10,8 @@
     {
       "name": "advance destination line numbers only on additions",
       "file": "corroboratescope.go",
-      "old": "(strings.HasPrefix(trimmed, \"+\") || strings.HasPrefix(trimmed, \" \"))",
-      "new": "strings.HasPrefix(trimmed, \"+\")"
+      "old": "case strings.HasPrefix(trimmed, \" \"):\n\t\t\t\tnextLine++",
+      "new": "case strings.HasPrefix(trimmed, \" \"):"
     },
     {
       "name": "lose the next location of a repeated sign-off",

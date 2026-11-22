@@ -1137,8 +1137,7 @@ func (v verdict) String() string {
 // ---- PR data retrieval -----------------------------------------------------------
 
 // ghPRFile is one entry of the GitHub "List pull request files" REST API
-// (GET /repos/{owner}/{repo}/pulls/{pull_number}/files). Only the two fields
-// the corroborate scan needs are decoded: the path and its unified-diff hunks.
+// (GET /repos/{owner}/{repo}/pulls/{pull_number}/files).
 type ghPRFile struct {
 	Filename string `json:"filename"`
 	Patch    string `json:"patch"`
@@ -1148,20 +1147,29 @@ type ghPRFile struct {
 	PreviousFilename string `json:"previous_filename,omitempty"`
 }
 
-// prFilesToDiff reconstructs a unified-diff string (parseable by stampsInDiff)
-// from the PR "files" API entries: each file contributes a "+++ b/<name>"
-// header followed by its patch hunks. Files with no patch (binary/oversize)
-// contribute only the header — no added lines, nothing to corroborate.
-func prFilesToDiff(files []ghPRFile) string {
+// prFilesToDiff gives each API record an explicit file boundary, even if the
+// preceding patch ended inside a hunk. The destination header retains spaces
+// in names. Control characters cannot be represented in these literal headers.
+func prFilesToDiff(files []ghPRFile) (string, error) {
 	var b strings.Builder
-	for _, f := range files {
-		fmt.Fprintf(&b, "+++ b/%s\n", f.Filename)
+	for i, f := range files {
+		if f.Filename == "" || strings.IndexFunc(f.Filename, unicode.IsControl) >= 0 {
+			return "", fmt.Errorf("PR file %d has an empty filename or a control character in its filename", i+1)
+		}
+		if strings.IndexFunc(f.PreviousFilename, unicode.IsControl) >= 0 {
+			return "", fmt.Errorf("PR file %d has a control character in its previous filename", i+1)
+		}
+		oldName := f.PreviousFilename
+		if oldName == "" {
+			oldName = f.Filename
+		}
+		fmt.Fprintf(&b, "diff --git a/%s b/%s\n+++ b/%s\n", oldName, f.Filename, f.Filename)
 		if f.Patch != "" {
 			b.WriteString(f.Patch)
 			b.WriteString("\n")
 		}
 	}
-	return b.String()
+	return b.String(), nil
 }
 
 // fetchPRDiff returns a unified diff of the given repo's PR, reconstructed from
@@ -1171,7 +1179,7 @@ func fetchPRDiff(repo string, pr int) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return prFilesToDiff(files), nil
+	return prFilesToDiff(files)
 }
 
 // fetchPRFiles returns the given repo's PR file list from the paginated "List
@@ -1481,7 +1489,11 @@ func runCorroborate(prsArg string) int {
 			fmt.Fprintf(os.Stderr, "statusgen: PR #%d: %v\n", pr, err)
 			return 1
 		}
-		diff := prFilesToDiff(files)
+		diff, err := prFilesToDiff(files)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "statusgen: PR #%d: %v\n", pr, err)
+			return 1
+		}
 		// The PR's reviews/comments and its merge-base are read at most once per
 		// PR, and only by a lane that needs them.
 		var (

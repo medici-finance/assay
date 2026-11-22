@@ -190,7 +190,7 @@ func runPR(args []string, stdout, stderr io.Writer) int {
 		}
 		cfg.observed, err = readObservedFeedback(observation, feedback, repos)
 		if err != nil {
-			fmt.Fprintf(stdout, "MONITOR-DEGRADED: qualified feedback unavailable: %s\n", diagnostic(err))
+			_, _ = fmt.Fprintf(stdout, "MONITOR-DEGRADED: qualified feedback unavailable: %s\n", diagnostic(err))
 			return 2
 		}
 	}
