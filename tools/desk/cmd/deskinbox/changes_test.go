@@ -198,7 +198,8 @@ func TestChangesWithLandedRunsheet(t *testing.T) {
 	f := readyDecisionFixture(t)
 	const repo = "example-org/tracker"
 	f.issue.Labels = []string{"help wanted"}
-	f.issue.Body = "[Runsheet](https://github.com/" + repo + "/blob/" + strings.Repeat("b", 40) + "/docs/run.md)"
+	target := "https://github.com/" + repo + "/blob/" + strings.Repeat("b", 40) + "/docs/run.md"
+	f.issue.Body = "[Runsheet](" + target + ")"
 	f.Forge = &fakeForge{issues: []deskkit.IssueSummary{{Number: 7, Labels: f.issue.Labels}}}
 	f.pinnedFile = &deskkit.FileContent{Exists: true, Kind: deskkit.FileKindRegular, Content: []byte(repo + "#7\n! perform-reviewed-task\nWhy: only the account holder can approve.\nWhat the session did: prepared the approval.\nResume: read the receipt.")}
 	f.branchFile = &deskkit.FileContent{Exists: false}
@@ -220,8 +221,13 @@ func TestChangesWithLandedRunsheet(t *testing.T) {
 	poll("")
 	f.branchFile = f.pinnedFile
 	ready := poll("ready")
-	if a := ready.Events[0].Action; a == nil || !strings.Contains(a.Evidence, "/docs/run.md") || !strings.Contains(a.Act, "reviewed act") {
+	line := target + "#L2"
+	if a := ready.Events[0].Action; a == nil || a.Evidence != line || !strings.Contains(a.Act, line) {
 		t.Fatalf("missing verified evidence and act: %+v", a)
+	}
+	event, err := json.Marshal(ready)
+	if err != nil || bytes.Contains(event, []byte("perform-reviewed-task")) {
+		t.Fatalf("delivery copied the command out of the verified runsheet: %s (%v)", event, err)
 	}
 	if code := run([]string{"changes", repo, "--ack", ready.Receipt}, io.Discard, io.Discard, time.Now()); code != 0 {
 		t.Fatalf("ack exit %d", code)
