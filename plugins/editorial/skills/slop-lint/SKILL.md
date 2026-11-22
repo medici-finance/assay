@@ -46,3 +46,5 @@ is every number traceable); hedge-stacking ("could potentially perhaps").
 ## Check claims before handoff
 
 Tie each number to its source, interval and denominator. Distinguish measured outcomes from targets. Replace superlatives with the comparison the reader can actually check. Keep quoted language exact and preserve uncertainty through edits. Read the revised slide or script aloud and return a short diff with reasons for material changes.
+
+Treat the vocabulary list as an editing aid. Leave a suspected phrase in place when it is precise, quoted or established domain language. Keep inconvenient numbers, the size of the sample and plausible alternative explanations. Return suggestions for the author to weigh.

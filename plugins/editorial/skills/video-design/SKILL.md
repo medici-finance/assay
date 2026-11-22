@@ -39,3 +39,15 @@ Use the project's typography and marks. Develop the key explanatory image on the
 ## Renderer choice
 
 Use a seekable HTML player for previews. Native frames, SVG, canvas and 3D can support the same timing contract. Choose a renderer that reproduces the hardest shot with the available assets, then compare its frame at a named time with the storyboard. See the sibling video-author skill for delivery and timing checks.
+
+### Direct the renderer from the storyboard
+
+| Picture path | What to author | What to verify |
+|---|---|---|
+| Bundled HTML player | Inline the classic script. Give it one empty SCENE_DURATIONS assignment and authored fallback durations. Spend extra measured time on a reading hold. | Seek into a moving scene, pause, and capture it twice. Check that both frames agree and that reduced motion leaves the claim readable. |
+| GSAP in an existing project | Build an independent timeline per scene. Drive a plotted curve with a sampler, and reveal dashed guides without replacing their dash patterns. | Test callbacks while seeking as well as during normal playback. A counter updated only during live playback can freeze in an exported frame. |
+| Manim | Use a matched coordinate system for mathematical objects and their labels. Allocate the measured narration time across the transformations and pauses. | Inspect the rendered video for label collisions. Check total frames and the shared audio clock before joining scenes. |
+| Motion Canvas | Express related positions, labels and chart values as functions of the same signal. Bundle fonts with the render entry. | Wait for font loading, inspect the final text wraps, and match frame rates when intercutting with another renderer. |
+| Native fframes | Derive every frame from its time index. Share scene IDs, reveal cues and measured durations with the HTML preview. | Compare the difficult shot in both renders. Check the encoded picture, caption timing and bound audio with the video-author exporter. |
+
+When a render fails, identify the first failing layer. Confirm the script row and storyboard cue, then the scene at a named time, then the measured duration and completion signal, and finally the encoded frame and soundtrack. Record the failing scene, time, expected result and observation so the next editor can reproduce it.

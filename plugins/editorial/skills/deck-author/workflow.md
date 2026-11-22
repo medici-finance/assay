@@ -150,3 +150,9 @@ node "$DECK_SKILL/tools/render-deck-pdf.cjs" "$DECK_DIR/index.html" "$DECK_DIR/s
 ```
 
 Install Puppeteer in your dependency directory and set EDITORIAL_RENDER_DEPS to it. The PDF checks require Poppler, qpdf, MuPDF (mutool) and ExifTool. Supply the project’s approved link destinations using --allow when the deck has external links.
+
+## Review and handoff
+
+Read the slide titles alone in order. If the argument disappears, revise the staged claims. Keep an action title and speaker notes per slide in deck.md, plus the cut list for a shortened talk. Check each source note and qualification at presentation size. If the checker reports a skipped brand rule or an unmeasured contrast pair, inspect it in the render before treating it as checked. Use a scoped .deckcheck.json exception only with a reason explaining that specific match.
+
+Deliver the HTML, its referenced assets, deck.md and staging.yaml together. Record slide count, intended speaking time, the contact sheet, any fixes made after viewing it, and the checked PDF if requested.
