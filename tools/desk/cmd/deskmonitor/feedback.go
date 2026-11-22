@@ -173,7 +173,7 @@ func advanceFeedback(side, path, repo string, snap prSnapshot, primary []string,
 		return err
 	}
 	for _, ev := range events {
-		fmt.Fprintln(out, ev)
+		_, _ = fmt.Fprintln(out, ev)
 	}
 	return nil
 }

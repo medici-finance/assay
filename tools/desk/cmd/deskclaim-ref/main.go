@@ -40,7 +40,7 @@
 //
 //	deskclaim-ref acquire  <id> [--repo O/R] [--owner O] [--branch B]
 //	deskclaim-ref progress <id> [--repo O/R] [--owner O] --branch B
-//	deskclaim-ref release  <id> [--repo O/R]
+//	deskclaim-ref release  <id> [--repo O/R] [--owner O]
 //	deskclaim-ref steal    <id> --reason "<why>" [--repo O/R] [--owner O]
 //	deskclaim-ref show     <id> [--repo O/R]
 //	deskclaim-ref list          [--repo O/R]
@@ -91,7 +91,7 @@ tools/dispatch-claim.sh; the only claim path that runs native on Windows).
 USAGE:
   deskclaim-ref acquire  <id> [--repo O/R] [--owner O] [--branch B]
   deskclaim-ref progress <id> [--repo O/R] [--owner O] --branch B
-  deskclaim-ref release  <id> [--repo O/R]
+  deskclaim-ref release  <id> [--repo O/R] [--owner O]
   deskclaim-ref steal    <id> --reason "<why>" [--repo O/R] [--owner O]
   deskclaim-ref show     <id> [--repo O/R]
   deskclaim-ref list          [--repo O/R]
@@ -99,6 +99,12 @@ USAGE:
 
 <id> is the claim key: <repo>--<stream>--<NN> or <repo>--issue-<NN>. The <repo> prefix is
 MANDATORY — a bare stream name cross-locks another repo's stream.
+
+A value flag takes "--flag value" or "--flag=value". A missing or empty value, one made only
+of whitespace, or another "--" option where the value belongs, is refused (exit 5). A
+"--perf-*" flag also refuses a missing value or a "--" option in its place, but an empty
+value there clears the inherited performance value. "--branch -" records a branchless
+claim (a detached review or verify home).
 
 The forge credential is read from --token-file <0600 file> when given, else GH_TOKEN /
 GITHUB_TOKEN / GITLAB_TOKEN. The forge (github/gitlab) resolves from ASSAY_REPO_FORGES or the
@@ -108,6 +114,9 @@ acquire   take the claim if free; reclaim it if the holder is past its TTL; refu
           if a live holder owns it. Never steals a live claim inline.
 progress  advance an acquired claim to state=dispatched (TTL 20m -> 120m).
 release   delete the caller-owned claim at the revision read. A missing claim is a no-op.
+          A different or unidentified owner is refused (exit 5). The owner defaults to
+          DESK_SESSION, then CLAUDE_SESSION_ID. Legacy ownerless claims require an explicit
+          takeover or an expired lease before another worker can acquire them.
 steal     forcibly take the claim, recording --reason in the replacement — an auditable
           takeover, not a hand-delete. If you reclaimed an unlaunched lease, run
           deskclaim-ref release <id> --repo O/R --token-file FILE in the same DESK_SESSION,

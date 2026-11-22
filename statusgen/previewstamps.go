@@ -24,43 +24,43 @@ func runPreviewStamps(args []string, out, stderr io.Writer) int {
 		return 2
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintln(stderr, "usage: statusgen preview-stamps [--root DIR] [--base-ref refs/remotes/origin/main]")
+		_, _ = fmt.Fprintln(stderr, "usage: statusgen preview-stamps [--root DIR] [--base-ref refs/remotes/origin/main]")
 		return 2
 	}
 	top, err := gitcore.Toplevel(*root)
 	if err != nil {
-		fmt.Fprintf(stderr, "preview-stamps: could not resolve checkout root: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "preview-stamps: could not resolve checkout root: %v\n", err)
 		return 2
 	}
 	repo, err := gitcore.Open(top)
 	if err != nil {
-		fmt.Fprintf(stderr, "preview-stamps: could not open local object database: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "preview-stamps: could not open local object database: %v\n", err)
 		return 2
 	}
 	// The exact ref and all base blobs are read from this object store only.
 	// A missing promisor object must never prompt a lazy fetch.
 	if !strings.HasPrefix(*base, "refs/") || plumbing.ReferenceName(*base).Validate() != nil {
-		fmt.Fprintf(stderr, "preview-stamps: invalid fully qualified base ref %q\n", *base)
+		_, _ = fmt.Fprintf(stderr, "preview-stamps: invalid fully qualified base ref %q\n", *base)
 		return 2
 	}
 	baseID, found, err := repo.LocalRefHash(*base)
 	if err != nil || !found || !isObjectID(baseID) {
-		fmt.Fprintf(stderr, "preview-stamps: could not read exact local ref %q\n", *base)
+		_, _ = fmt.Fprintf(stderr, "preview-stamps: could not read exact local ref %q\n", *base)
 		return 2
 	}
 	head, err := repo.HeadID()
 	if err != nil {
-		fmt.Fprintf(stderr, "preview-stamps: could not resolve local HEAD: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "preview-stamps: could not resolve local HEAD: %v\n", err)
 		return 2
 	}
 	mb, err := repo.MergeBase(baseID, head)
 	if err != nil {
-		fmt.Fprintf(stderr, "preview-stamps: could not resolve the local merge base: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "preview-stamps: could not resolve the local merge base: %v\n", err)
 		return 2
 	}
 	patch, err := repo.Diff(mb, head, 3)
 	if err != nil {
-		fmt.Fprintf(stderr, "preview-stamps: could not read the local diff: %v\n", err)
+		_, _ = fmt.Fprintf(stderr, "preview-stamps: could not read the local diff: %v\n", err)
 		return 2
 	}
 	markers := map[string]bool{}
@@ -86,7 +86,7 @@ func runPreviewStamps(args []string, out, stderr io.Writer) int {
 		}
 		return briefRowsByKey(content), briefHeaderIndex(content)
 	})
-	fmt.Fprintf(out, "Base %s (merge base %s) to committed HEAD %s. Commit staged, unstaged and new files to include them.\n", *base, mb, head)
+	_, _ = fmt.Fprintf(out, "Base %s (merge base %s) to committed HEAD %s. Commit staged, unstaged and new files to include them.\n", *base, mb, head)
 	claims := 0
 	for _, s := range stamps {
 		if s.PreExisting {
@@ -94,13 +94,13 @@ func runPreviewStamps(args []string, out, stderr io.Writer) int {
 		}
 		claims++
 		if len(s.Locations) == 0 {
-			fmt.Fprintf(out, "%s (decided-by): human:%s needs corroboration\n", s.File, s.Name)
+			_, _ = fmt.Fprintf(out, "%s (decided-by): human:%s needs corroboration\n", s.File, s.Name)
 		}
 		for _, line := range s.Locations {
-			fmt.Fprintf(out, "%s:%d: human:%s needs corroboration\n", s.File, line, s.Name)
+			_, _ = fmt.Fprintf(out, "%s:%d: human:%s needs corroboration\n", s.File, line, s.Name)
 		}
 	}
-	fmt.Fprintf(out, "%d claim(s) for online corroboration. PR approvals and other CI gates are checked separately.\n", claims)
+	_, _ = fmt.Fprintf(out, "%d claim(s) for online corroboration. PR approvals and other CI gates are checked separately.\n", claims)
 	if claims != 0 {
 		return 1
 	}

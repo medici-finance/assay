@@ -249,6 +249,7 @@ func TestAcquireBranchAsClaimRefuses(t *testing.T) {
 // A transport failure on the create is the fail-closed path: exit 6, never a claim assumed
 // placed or free.
 func TestAcquireTransportFailureIsUnverifiable(t *testing.T) {
+	t.Setenv("DESK_SESSION", "store-test")
 	f := newStore()
 	f.writeFails = true
 	run, _, se := harness(t, f)

@@ -211,6 +211,8 @@ func (g *gogitStore) Remove(id string) (deskkit.ClaimWriteOutcome, bool) {
 	return deskkit.ClaimWriteApplied, res == gitcore.DeleteDone
 }
 
+// RemoveFrom requires the server object ID from a successful Read of this claim.
+// Git's conditional delete relies on that object still existing at the receiver.
 func (g *gogitStore) RemoveFrom(id, old string) deskkit.ClaimWriteOutcome {
 	if !plumbing.IsHash(old) || plumbing.NewHash(old).IsZero() {
 		g.fail(fmt.Errorf("invalid expected claim revision"))

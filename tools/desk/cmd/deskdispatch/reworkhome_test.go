@@ -100,4 +100,13 @@ func TestReworkRefusesForeignRun(t *testing.T) {
 		!strings.Contains(again.stderr, "assay.runKey") {
 		t.Fatalf("foreign home: err=%v, want the held-branch refusal naming the run key; %s", again.err, again.stderr)
 	}
+	later.resume.handoffBrief = true
+	for _, name := range []string{r.plan.wtName, later.wtName} {
+		later.wtName = name
+		refused := createDispatchWorktree(r.o, later)
+		hint := worktreeCreateHint("worker", r.branch, refused.stderr)
+		if refused.err == nil || !strings.Contains(hint, "Do not remove it unread") || !strings.Contains(refused.stderr, "Brief handoff:") {
+			t.Fatalf("refused brief handoff did not preserve the checkout guidance: %s\n%s", refused.stderr, hint)
+		}
+	}
 }

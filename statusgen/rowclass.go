@@ -171,10 +171,6 @@ var knownObligations = map[string]bool{
 	classNeighbour:   true,
 }
 
-// obligationSeparator prefixes each obligation token in a compound Class cell
-// (`check:ci +mutation`), distinguishing it from the single execution value.
-const obligationSeparator = "+"
-
 // obligations returns the KNOWN obligation tokens a row's Class cell carries.
 // nil for a legacy (unclassed) table, an execution-only cell, or a cell whose
 // only obligation tokens are unrecognised — those are caught as PROBLEMs by

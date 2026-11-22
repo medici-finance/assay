@@ -90,7 +90,9 @@ if [ -z "$CREDIT_FAKE_CI" ] && [ "$#" -ne 3 ]; then exit 5; fi
 n=${3##*#}
 f="$CREDIT_FAKE_DIR/$1-$n.json"
 [ -f "$f" ] || { echo "deskread: no fixture $f" >&2; exit 3; }
-cat "$f"
+cat "$f" || exit
+# If the test provides a replacement, subsequent reads see the changed item.
+if [ -f "$f.next" ]; then mv "$f.next" "$f"; fi
 `)
 	t.Setenv("CREDIT_FAKE_DIR", dir)
 	t.Setenv("CREDIT_FAKE_FAIL", "")

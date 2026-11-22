@@ -1050,7 +1050,9 @@ two-stamp model, #1170). Model-gated briefs are unchanged: one local-tier stamp,
    Evidence-actor and runner-agreement checks read that as a forgery, not a fix. **The card carries
    the act:** closing it is the human's act, so the card holds an Act block (`ask-decision` §"Act — the shape of the fifth part")
    — where the generated packet has none, this desk attaches it (`deskfile attach`) when the card is
-   ready for the human.
+   ready for the human. Before reporting that sign-off is owed, read the open card and the
+   landed evidence for this brief. Link the ready card directly. If the card or a required
+   stamp is missing, the verifier owns the next step.
 
 ## Irreversible briefs (`risk.irreversible: yes`) — the model records Evidence, a HUMAN flips
 
