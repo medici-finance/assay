@@ -857,21 +857,19 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 	// Under --dry-run this pass REPORTS what it would unlock and unlocks nothing: a dry run
 	// that silently retired locks would be a worse surprise than one that silently pruned
 	// bookkeeping, and both are now off the dry-run path.
-	// A pending review owns its lock even during opt-in stale-lock recovery.
+	// A pending review owns its lock even during opt-in stale-lock recovery. The admin map
+	// is read once per sweep. A failed read is kept, not returned: the sweep continues and
+	// every tree it cannot map is held below, never judged idle or free of a review handoff.
 	admins, adminsErr := guard.worktreeAdminDirs()
-	if adminsErr != nil {
-		return res, adminsErr
-	}
 	if opts.reclaimStaleLocks {
 		except := staleRegHeldLocked(staleVerdicts)
 		if except == nil {
 			except = map[string]bool{}
 		}
 		for rt := range locked {
-			if admin := admins[rt]; admin != "" {
-				if hasReviewReceipt(admin) {
-					except[rt] = true
-				}
+			// With no readable registry, any lock may belong to a pending review.
+			if adminsErr != nil || hasReviewReceipt(admins[rt]) {
+				except[rt] = true
 			}
 		}
 		reclaimed, warns, rerr := reclaimStaleLocksMode(guard, dir, cwd, opts.lockTTL, opts.dryRun, except)
@@ -1008,7 +1006,12 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 			}
 		}
 		if admins[rt] == "" && !protected {
-			res.skips = append(res.skips, skipEntry{rt, "cannot identify review checkout registration"})
+			// Without its admin entry a pending review handoff cannot be ruled out.
+			why := "could-not-check: no admin entry points at this worktree"
+			if adminsErr != nil {
+				why = "could-not-check: worktree registry (" + errText(adminsErr) + ")"
+			}
+			res.skips = append(res.skips, skipEntry{rt, why})
 			continue
 		}
 		reviewHold := admHold
