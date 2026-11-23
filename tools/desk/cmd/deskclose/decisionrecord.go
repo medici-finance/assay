@@ -43,20 +43,21 @@ const (
 
 // composeTriageRecord builds and encodes the record for a human-decided close. It returns the
 // encoded line (nil when the record is not written) and the audit status naming why.
-func composeTriageRecord(r triageReq, it item, ruling ghComment) ([]byte, string) {
+func composeTriageRecord(r triageReq, it item, ruling ghComment, history *deskkit.LabelHistory) ([]byte, string, error) {
 	fg, fr, err := forgeForFn(r.repo)
 	if err != nil {
-		return nil, "decision-record: unrecorded (forge unresolved)"
+		return nil, "decision-record: unrecorded (forge unresolved)", nil
 	}
 	comments, err := fg.ListCommentsTyped(fr, r.number, deskkit.TargetIssue)
 	if err != nil {
-		return nil, "decision-record: unrecorded (comment thread unreadable)"
+		return nil, "decision-record: unrecorded (comment thread unreadable)", nil
 	}
 	rul := deskkit.Comment{DatabaseID: ruling.ID, Body: ruling.Body, CreatedAt: ruling.CreatedAt}
-	if deskkit.DecisionRulingIndex(comments, rul) < 0 {
+	idx := deskkit.DecisionRulingIndex(comments, rul)
+	if idx < 0 {
 		// The ruling was verified on an earlier read of this thread; a re-read that no longer
 		// carries it cannot say what came before it.
-		return nil, "decision-record: unrecorded (the ruling is not in the re-read thread)"
+		return nil, "decision-record: unrecorded (the ruling is not in the re-read thread)", nil
 	}
 	// The body's last edit time, for the record's edit check. A read failure, or a forge that
 	// does not report body history, is `unverifiable` in the record — never `unedited`.
@@ -84,15 +85,23 @@ func composeTriageRecord(r triageReq, it item, ruling ghComment) ([]byte, string
 		IssueBodyEditedAt:  bodyEditedAt,
 		IssueBodyEditKnown: bodyEditKnown,
 	})
+	if history != nil {
+		if err := verifyQueueReply(it, ruling, comments, idx, rec); err != nil {
+			return nil, "", err
+		}
+		if err := verifyDecisionRound(fg, fr, r.number, rec.RuledAt, history); err != nil {
+			return nil, "", err
+		}
+	}
 	line, err := deskkit.EncodeDecisionRecord(rec)
 	if err != nil {
 		var de *deskkit.DecisionRecordError
 		if errors.As(err, &de) {
-			return nil, "decision-record: invalid (" + de.Field + ")"
+			return nil, "decision-record: invalid (" + de.Field + ")", nil
 		}
-		return nil, "decision-record: invalid (encoding)"
+		return nil, "decision-record: invalid (encoding)", nil
 	}
-	return line, recordStatusComposed
+	return line, recordStatusComposed, nil
 }
 
 // appendTriageRecord writes the local copy after the close succeeded. A failure is reported

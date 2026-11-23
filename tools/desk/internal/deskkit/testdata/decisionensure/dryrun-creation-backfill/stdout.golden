@@ -10,7 +10,7 @@ decide is in this issue.
 How to reply: comment from your own account with the board id of this item and the chosen option,
 as `sample/07: <option>` (for example `sample/07: 1`); the comment is the decision
 record. Name the board id in your own words — a bare option number or a one-word "approved"
-is not accepted as a ruling when the item later moves on the board. Then close the issue.
+is not accepted as a ruling when the item later moves on the board. The desk can close this decision issue with your reply and the continuing tracker.
 
 Context: logs grow.
 

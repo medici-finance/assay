@@ -48,8 +48,12 @@ const (
 // ---------------------------------------------------------------- stub remote
 
 type stubRemote struct {
-	deskkit.Forge // nil — only the methods deskclose uses are overridden (see deskclose_forgestub_test.go)
-	t             *testing.T
+	queueLabelEvents      []deskkit.LabelEvent
+	queueStateEvents      []deskkit.IssueStateEvent
+	queueLabelsIncomplete bool
+	failRemove            bool
+	deskkit.Forge         // nil — only the methods deskclose uses are overridden (see deskclose_forgestub_test.go)
+	t                     *testing.T
 	// items/pulls/dispositions are keyed "repo#N".
 	items   map[string]string
 	pulls   map[string]string
