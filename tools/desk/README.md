@@ -155,6 +155,17 @@ before printing any rows. This read checks the mapping, not checkout existence o
 `--scope topology` retains the stated compiled topology. The default `--scope all` retains its
 write, scan and topology inventories; request `roots` explicitly for board-root coverage.
 
+A repository an item **delivers into** need not be a stream root. `deskkit.ItemRepos` names an
+item's tracking repository (brief, board row, decision issue, Evidence, outcome record, verifier
+claim) and its deliverable repository (code and homes) once, and `deskkit.CheckoutForRepo` finds
+a repository's local checkout in this order: its `DESK_ROOTS` entry, then a `DESK_CHECKOUTS`
+entry (`"<owner>/<repo>=<path>,…"`, for a `homed-in:` or `deliverable_repo:` home with no
+`docs/streams/`), then a directory named after the repository beside the tracking checkout.
+`DESK_CHECKOUTS` refuses exactly what `DESK_ROOTS` refuses (an entry outside the allowed set, a
+malformed entry, a repeated repository). Every answer must match the checkout's own origin: a
+mis-mapped path refuses instead of falling through to the next candidate, and no candidate is
+could-not-check.
+
 ### Evidence publication requests
 
 `deskevidence` shares a snapshot within one publication. On GitHub its admission
