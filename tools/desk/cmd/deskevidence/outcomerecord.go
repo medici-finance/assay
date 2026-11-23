@@ -324,6 +324,10 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if landedHead != "" {
 		closureRef = landedHead
 	}
+	// Both bindings below read the named commit from evidenceRoot's object store.
+	if err := outcomeEvidenceInRoot(evidenceRoot, receipt, fr, branch, outcome.SHA); err != nil {
+		return err
+	}
 	// The Evidence binding, or under --outcome-only the check that this run's Evidence
 	// append is exactly the one the verdict gate refuses (outcomeonly.go, #5759).
 	if err := gateOutcomeEvidence(outcomeOnly, evidenceRoot, landedRoot, targetRepoPath, fg, fr, closureRef, receipt, outcome, commitContent, ac.options); err != nil {
