@@ -90,6 +90,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -2535,7 +2536,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return verifyrunExitUsageError
 	}
 	if *sourceAcceptance && (!*openBracket || *transitionRecord == "") {
-		fmt.Fprintln(stderr, "statusgen verifyrun: --source-acceptance requires --open-bracket and --acceptance-record")
+		_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: --source-acceptance requires --open-bracket and --acceptance-record")
 		return verifyrunExitUsageError
 	}
 	if *rule51Mode && (*checkMode || *inContainer || *sandbox == sandboxContainerNetns || *openBracket || *closeBracket || *bracketDigestMode) {
@@ -2776,6 +2777,17 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		// receipt is read instead, and the host closes the bracket afterwards.
 		root := *rootDir
 		if root == "" {
+			// A source-backed container never needs Git, even to reject an
+			// invocation missing its root. Inspect this hint before legacy
+			// root discovery. containerAdmission still validates the receipt.
+			raw, err := os.ReadFile(*admissionReceipt)
+			var hint struct {
+				Acceptance *json.RawMessage `json:"acceptance"`
+			}
+			if err != nil || json.Unmarshal(raw, &hint) != nil || hint.Acceptance != nil {
+				_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: supply --root for a protected or unreadable container receipt")
+				return verifyrunExitCouldNot
+			}
 			root = repoRootFor(path)
 		}
 		var admissionErr error
@@ -2796,7 +2808,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		}
 		sourceReceipt = container.cell.Acceptance != nil && container.cell.Acceptance.SourceRecord != ""
 		if sourceReceipt && (*rootDir == "" || *failFirstMode || *transitionRecord != "" || *inContainer) {
-			fmt.Fprintln(stderr, "statusgen verifyrun: source acceptance requires an explicit root and receipt-only container execution without fail-first")
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: source acceptance requires an explicit root and receipt-only container execution without fail-first")
 			return verifyrunExitCouldNot
 		}
 		attestation, containerTree = container.attestation, container.tree
@@ -2900,7 +2912,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	root := rowRoot()
 	if *sandbox != sandboxContainerNetns || (*transitionRecord == "" && !sourceReceipt) {
 		if why := verifyrunRootBelowToplevel(root); why != "" {
-			fmt.Fprintln(stderr, "statusgen verifyrun:", why)
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun:", why)
 			return verifyrunExitUsageError
 		}
 	}

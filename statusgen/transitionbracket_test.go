@@ -417,7 +417,7 @@ func TestTransitionBracketRefusals(t *testing.T) {
 }
 
 func TestSourceAcceptanceBracket(t *testing.T) {
-	for _, action := range []string{"execute", "nonidentical-plan", "changed-digest", "changed-descriptor", "inline-verify", "revoke-before-close"} {
+	for _, action := range []string{"execute", "nonidentical-plan", "changed-digest", "changed-descriptor", "inline-verify", "missing-root", "revoke-before-close"} {
 		t.Run(action, func(t *testing.T) {
 			f := transBracketWithSupplement(t, false, action == "nonidentical-plan")
 			args := []string{"--open-bracket", "--root", f.home, "--brief", f.brief, "--out", f.receipt, "--acceptance-record", f.record, "--acceptance-forge", "--source-acceptance"}
@@ -446,7 +446,29 @@ func TestSourceAcceptanceBracket(t *testing.T) {
 			// The baked image passes the existing container flags, with no forge access.
 			authority := transitionClient
 			transitionClient = func() *ghClient { t.Fatal("offline container consulted the forge"); return nil }
-			run, diag := captureVerifyrun(t, f.runArgs())
+			containerArgs := f.runArgs()
+			if action == "missing-root" {
+				// A local authority process must not be consulted to infer the root.
+				bin := t.TempDir()
+				marker := filepath.Join(bin, "git-called")
+				script := filepath.Join(bin, "git")
+				if err := os.WriteFile(script, []byte("#!/bin/sh\ntouch \""+marker+"\"\nexit 1\n"), 0700); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+				for i, arg := range containerArgs {
+					if arg == "--root" {
+						containerArgs = append(containerArgs[:i], containerArgs[i+2:]...)
+						break
+					}
+				}
+				defer func() {
+					if _, err := os.Stat(marker); !os.IsNotExist(err) {
+						t.Fatal("root discovery called Git")
+					}
+				}()
+			}
+			run, diag := captureVerifyrun(t, containerArgs)
 			transitionClient = authority
 			if action != "execute" && action != "revoke-before-close" {
 				if run.code == 0 || getFile(t, f.witness) != "" {
