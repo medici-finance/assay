@@ -254,6 +254,17 @@ jobs:
           echo "brief = $brief"
           stream=${brief%%/*}
           readme="docs/streams/${stream}/README.md"
+          # A card carrying an adjudication marker, valid or not, is closed only
+          # by the adjudicated route (#4993), which authenticates the card, its
+          # human closer and the exact adjudication for this brief. It never
+          # falls through to the ordinary close. A card without one takes the
+          # ordinary close, whose full hold scan still refuses a held brief.
+          # A shell pattern, not a pipe: a grep -q that exits early cannot turn
+          # a present marker into the ordinary route under pipefail.
+          route=ordinary
+          case "$ISSUE_BODY" in
+            *'<!-- verify-gate-adjudication:'*) route=adjudicated ;;
+          esac
 
           git config user.name  'assay-board-writer[bot]'
           git config user.email '319272446+assay-board-writer[bot]@users.noreply.github.com'
@@ -265,7 +276,7 @@ jobs:
             git reset --hard FETCH_HEAD
 
             close_status=0
-            if [ "$brief" = "verification-handoff/03" ]; then
+            if [ "$route" = "adjudicated" ]; then
               out=$("${RUNNER_TEMP}/statusgen" acceptance-route close --root . --brief "$brief" \
                 --card "$ISSUE" --acceptance-forge 2>&1) || close_status=$?
               if [ "$close_status" -ne 0 ]; then

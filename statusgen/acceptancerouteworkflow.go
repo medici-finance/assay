@@ -20,7 +20,7 @@ func runAcceptanceRouteWorkflow(args []string, out, stderr io.Writer) int {
 	fs := flag.NewFlagSet("acceptance-route "+verb, flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	root := fs.String("root", ".", "canonical repository checkout")
-	ref := fs.String("brief", "", "canonical brief reference")
+	ref := fs.String("brief", "", "canonical brief reference (issue: defaults to the brief the preparation binds)")
 	var preparation, card int
 	var ruling, markers string
 	if verb == "issue" {
@@ -38,7 +38,7 @@ func runAcceptanceRouteWorkflow(args []string, out, stderr io.Writer) int {
 		}
 		return 2
 	}
-	if fs.NArg() != 0 || *ref == "" || !transitionForge ||
+	if fs.NArg() != 0 || (verb != "issue" && *ref == "") || !transitionForge ||
 		(verb == "issue" && (preparation <= 0 || ruling == "" || markers == "")) ||
 		(verb == "close" && card <= 0) {
 		_, _ = fmt.Fprintln(stderr, "acceptance-route workflow: missing brief, target, or --acceptance-forge")
@@ -80,6 +80,11 @@ func runAcceptanceEffect(verb, root, ref string, preparation, card int, ruling, 
 		if err != nil {
 			return err
 		}
+		if ref == "" {
+			if ref, err = acceptancePreparationBriefRef(repo, preparation, true); err != nil {
+				return err
+			}
+		}
 		issue, err := makeAdjudicatedVerifyIssue(root, ref, preparation, ruling, forge, cfg.HumanLogins, true)
 		if err != nil {
 			return err
@@ -91,6 +96,23 @@ func runAcceptanceEffect(verb, root, ref string, preparation, card int, ruling, 
 		return json.NewEncoder(out).Encode(issues)
 	}
 	return closeAdjudicatedCard(root, ref, repo, card, forge, cfg)
+}
+
+// acceptancePreparationBriefRef names the brief a preparation issue binds, so
+// one canonical issuer serves any gate: human brief without a per-brief
+// workflow edit. The name is only a lookup key. The issuer then authenticates
+// the preparation as the pinned verifier's unedited record and refuses unless
+// the located brief's path and live source match the manifest exactly.
+func acceptancePreparationBriefRef(repo string, preparation int, ciWorkflowToken bool) (string, error) {
+	m, err := loadAcceptancePreparation(repo, preparation, ciWorkflowToken)
+	if err != nil {
+		return "", err
+	}
+	id, _, ok := expectedBriefID(m.Source.BriefPath)
+	if !ok || !refInRepoBriefRe.MatchString(id) {
+		return "", fmt.Errorf("acceptance preparation: manifest does not name a canonical brief file")
+	}
+	return id, nil
 }
 
 func checkClosedAdjudicatedCard(issue *creditIssue, brief string, closer scanIdentity) (adjudicatedCardRef, error) {

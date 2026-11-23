@@ -38,6 +38,15 @@ func routeIssueFixturePath(kind string, issue int) string {
 
 func newAdjudicatedRouteFixture(t *testing.T, later, secondResult string) adjudicatedRouteFixture {
 	t.Helper()
+	return newAdjudicatedRouteFixtureWith(t, later, secondResult, false)
+}
+
+// newAdjudicatedRouteFixtureWith optionally lands a twin, vf/02: a second
+// gate: human brief, committed with vf/01, carrying the same held Evidence.
+// The route serves any such brief, so its records must never cross between
+// them.
+func newAdjudicatedRouteFixtureWith(t *testing.T, later, secondResult string, twin bool) adjudicatedRouteFixture {
+	t.Helper()
 	creditFakeDeskread(t)
 	scanWithRoster(t, rosterWith(map[string]string{
 		scanEnvTrustedBotSlugs: "desk=assay-desk-app:300000001,verifier=assay-verifier-app:300000005,worker=assay-worker-app:300000006",
@@ -47,11 +56,19 @@ func newAdjudicatedRouteFixture(t *testing.T, later, secondResult string) adjudi
 	o.verify = "| # | Command | Expect |\n|---|---|---|\n| 1 | `true` | exit 0 |\n"
 	root, readme := vfFixture(t, o)
 	vfGit(t, root, vfMailHuman, "remote", "add", "origin", "https://github.com/"+rlRepo+".git")
+	path := vfBrief(root)
+	twinOf := func() string { return strings.Replace(getFile(t, path), "brief: vf/01\n", "brief: vf/02\n", 1) }
+	if twin {
+		// The twin exists at the baseline, so its protected original table
+		// resolves exactly as vf/01's does.
+		putFile(t, adjudicatedTwinBrief(root), twinOf())
+		putFile(t, readme, getFile(t, readme)+"| 02 | [t](./brief-02-flip.md) | 0 | S | implemented | — | "+vfReview+" |\n")
+		vfCommit(t, root, vfMailHuman)
+	}
 	base := vfRev(t, root, "HEAD")
 	putFile(t, filepath.Join(root, "delivery.txt"), "delivery\n")
 	vfCommit(t, root, vfMailWorker)
 	delivery := vfRev(t, root, "HEAD")
-	path := vfBrief(root)
 	rel, err := filepath.Rel(root, path)
 	if err != nil {
 		t.Fatal(err)
@@ -87,6 +104,9 @@ func newAdjudicatedRouteFixture(t *testing.T, later, secondResult string) adjudi
 		}
 	}
 	vfAppend(t, root, evidence+later)
+	if twin {
+		putFile(t, adjudicatedTwinBrief(root), twinOf())
+	}
 	vfCommit(t, root, vfMailVerifier)
 
 	source, err := readAcceptanceSource(root, path)
@@ -117,6 +137,49 @@ func newAdjudicatedRouteFixture(t *testing.T, later, secondResult string) adjudi
 	f.forge.commentBody = rlCommentJSONWith(rlHuman, "User", rlRepo, rlIssue, human, rlPosted, rlPosted)
 	f.forge.issueBody = rlIssueJSON(acceptanceAdjudicationMarker(source.BriefPath))
 	return f
+}
+
+func adjudicatedTwinBrief(root string) string {
+	return filepath.Join(root, "docs", "streams", "vf", "brief-02-flip.md")
+}
+
+// adjudicate records m as the verifier's preparation and the human's exact
+// adjudication of it on the fixture's decision issue.
+func (f *adjudicatedRouteFixture) adjudicate(t *testing.T, m acceptanceManifest) {
+	t.Helper()
+	f.manifest = m
+	f.writePreparation(t, "assay-verifier-app[bot]", 300000005)
+	text, err := acceptanceAdjudicationText(m, rlIssue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.forge.commentBody = rlCommentJSONWith(rlHuman, "User", rlRepo, rlIssue, text, rlPosted, rlPosted)
+	f.forge.issueBody = rlIssueJSON(acceptanceAdjudicationMarker(m.Source.BriefPath))
+}
+
+// manifestFor prepares a fresh, otherwise valid manifest for the brief at path
+// on the current checkout, reusing the fixture's runs and disposition shape.
+func (f adjudicatedRouteFixture) manifestFor(t *testing.T, path string) acceptanceManifest {
+	t.Helper()
+	source, err := readAcceptanceSource(f.root, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	def, err := readAcceptanceDefinition(f.root, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(source.Refusals) == 0 {
+		t.Fatal("fixture brief needs a real ordinary hold")
+	}
+	m := acceptanceManifest{Source: source, AcceptanceVersion: def.version,
+		Original: def.original, ProtectedVerifyHash: def.tableHash, Runs: f.manifest.Runs}
+	for _, refusal := range source.Refusals {
+		m.Dispositions = append(m.Dispositions, acceptanceDisposition{
+			Line: refusal.Line, Digest: refusal.Digest, Kind: "diagnostic-only", Explanation: "Synthetic diagnostic for this fixture.",
+		})
+	}
+	return m
 }
 
 func (f adjudicatedRouteFixture) writePreparation(t *testing.T, login string, id int64) {
