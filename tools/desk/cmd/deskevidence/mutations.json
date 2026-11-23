@@ -188,10 +188,52 @@
       "new": "return false"
     },
     {
-      "name": "branch board reads a compare that cannot be shown complete as complete (a truncated file listing hides a board change)",
+      "name": "branch board trusts a truncated compare's capped file list as complete (a board change past the forge's file cap is never read) \u2014 #5913",
       "file": "cmd/deskevidence/decisiongate.go",
-      "old": "if cmp == nil || !cmp.CommitsComplete || len(cmp.Files) >= decisionGateCompareFileCap {",
-      "new": "if cmp == nil {"
+      "old": "if !cmp.CommitsComplete || len(cmp.Files) >= decisionGateCompareFileCap {",
+      "new": "if false {"
+    },
+    {
+      "name": "branch board holds on a truncated compare instead of reading the board at both commits (a branch past the file cap with no board change never lands) \u2014 #5913",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\t\t\tfiles, err = decisionGateBoardTreeDiff(fg, fr, head, tip)\n",
+      "new": "\t\t\tfiles, err = nil, deskkit.Unverifiable(\"held\", nil)\n"
+    },
+    {
+      "name": "branch board lets a failed board listing through past the cap (an unreadable listing is read as an unchanged board) \u2014 #5913",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\t\t\tif err != nil {\n\t\t\t\treturn nil, deskkit.Unverifiable(fmt.Sprintf(\"the forge's compare of the landing home's HEAD %s with %s (%s) on %s cannot be shown complete, and the board",
+      "new": "\t\t\tif err != nil && false {\n\t\t\t\treturn nil, deskkit.Unverifiable(fmt.Sprintf(\"the forge's compare of the landing home's HEAD %s with %s (%s) on %s cannot be shown complete, and the board"
+    },
+    {
+      "name": "board tree diff ignores a changed object (a brief edited past the cap is not judged) \u2014 #5913",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "case old.OID != e.OID || old.Mode != e.Mode:",
+      "new": "case old.Mode != e.Mode:"
+    },
+    {
+      "name": "board tree diff ignores a mode change (a brief made a link past the cap is staged from the home's plain file) \u2014 #5913",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "case old.OID != e.OID || old.Mode != e.Mode:",
+      "new": "case old.OID != e.OID:"
+    },
+    {
+      "name": "board tree diff drops removals (a brief the branch deleted past the cap still stands for the judge) \u2014 #5913",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\t\t\tif !after[e.Path] {",
+      "new": "\t\t\tif false && !after[e.Path] {"
+    },
+    {
+      "name": "board tree diff lists only the first board directory (an archive change past the cap is never read) \u2014 #5913",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "\tfor _, dir := range decisionGateBoardDirs {",
+      "new": "\tfor _, dir := range decisionGateBoardDirs[:1] {"
+    },
+    {
+      "name": "board tree diff reads both listings at the tip (the home's board is never the baseline, so no change is seen) \u2014 #5913",
+      "file": "cmd/deskevidence/decisiongate.go",
+      "old": "was, err := decisionGateTreeFn(fg, fr, head, dir)",
+      "new": "was, err := decisionGateTreeFn(fg, fr, tip, dir)"
     },
     {
       "name": "branch board lets a compare error through (an unreadable branch is read as an unchanged board)",
