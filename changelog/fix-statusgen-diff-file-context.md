@@ -1,1 +1,0 @@
-- Statusgen preserves destination file names and line numbers when reviewing multi-file patches with header-like text in document content.

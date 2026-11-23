@@ -1,4 +1,0 @@
-### Fixed
-
-- `deskevidence` no longer holds a landing as could-not-check just because the target branch moved more than 300 files past the landing home. When the forge's compare cannot list every changed file, the decision-gate board read now lists the board directories (`docs/streams`, `docs/archive`) at both commits and diffs them. A branch with no board change lands, and a real board change is judged exactly as before. The landing still holds when that listing cannot be read whole. The listing is served on GitHub only.
-- Backend-only forge reads now reach the backend through an evidence landing's forge. Before this fix the board listing above, and the GitLab branch lane's descendant read, were reported as not served on every real landing, because the landing wraps its forge in a read scope that those reads did not see through.
