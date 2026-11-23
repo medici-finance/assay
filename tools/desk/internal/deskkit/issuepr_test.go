@@ -51,7 +51,9 @@ func TestDispatchIssuePastWindow(t *testing.T) {
 		if got := r.URL.Query().Get("q"); got != `repo:example-org/target is:pr "42" in:body` {
 			t.Errorf("query %q", got)
 		}
-		fmt.Fprint(w, `{"total_count":2,"incomplete_results":false,"items":[{"number":81,"state":"closed","body":"Fixes: #42","pull_request":{"merged_at":"2026-01-02T00:00:00Z"}},{"number":82,"state":"open","body":"Issue: #420","pull_request":{}}]}`)
+		if _, err := fmt.Fprint(w, `{"total_count":2,"incomplete_results":false,"items":[{"number":81,"state":"closed","body":"Fixes: #42","pull_request":{"merged_at":"2026-01-02T00:00:00Z"}},{"number":82,"state":"open","body":"Issue: #420","pull_request":{}}]}`); err != nil {
+			t.Errorf("write search response: %v", err)
+		}
 	})
 	calls := 0
 	idx := IssuePRIndex{Lookup: func(_ string, id string) ([]PRRef, error) {

@@ -104,3 +104,49 @@ func TestAdmittedRowSeesReplay(t *testing.T) {
 		t.Fatalf("the refusal does not say the replay resolves inside the working tree:\n%s", out)
 	}
 }
+
+// regression: #7404
+// TestAdmittedReplayRefusalUnwritable: the refusal line is an admitted run's
+// only record that the replay path was withheld from its rows. A run whose
+// stderr cannot take that line stops as could-not-run. The control run, the
+// same brief with a writable stderr, passes, so the exit comes from the
+// failed write.
+func TestAdmittedReplayRefusalUnwritable(t *testing.T) {
+	root, _ := admittedFixture(t, true)
+	inside := filepath.Join(root, "replay.json")
+	if err := os.WriteFile(inside, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(admittedReplayInputVar, inside)
+	tick := string(rune(96))
+	brief := filepath.Join(t.TempDir(), "brief.md")
+	body := "# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | " + tick + "true" + tick + " | exit 0 |\n\n## Evidence\n\n"
+	if err := os.WriteFile(brief, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	args := []string{"--brief", brief, "--root", root, "--dry-run"}
+	got, out := captureVerifyrun(t, args)
+	if got.code != verifyrunExitPass {
+		t.Fatalf("control: a row that does not read the replay gave exit %d, want pass (exit %d):\n%s", got.code, verifyrunExitPass, out)
+	}
+	if !strings.Contains(out, "is not passed to the rows") {
+		t.Fatalf("control: the refusal line is missing:\n%s", out)
+	}
+	errPath := filepath.Join(t.TempDir(), "err")
+	if err := os.WriteFile(errPath, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	unwritable, err := os.Open(errPath) // read-only, so every write fails
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = unwritable.Close() }()
+	stdout, err := os.Create(filepath.Join(t.TempDir(), "out"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = stdout.Close() }()
+	if code := runVerifyrun(args, stdout, unwritable); code != verifyrunExitCouldNot {
+		t.Fatalf("a run that cannot write the replay refusal gave exit %d, want could-not-run (exit %d)", code, verifyrunExitCouldNot)
+	}
+}

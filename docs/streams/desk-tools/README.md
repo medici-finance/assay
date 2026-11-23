@@ -244,6 +244,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 64 | [Decide which lines of a branch diff the secret scan reads, and pin the answer](brief-64-diff-scan-scope.md) | 2 | M | todo | — | — |
 | 65 | [Read each Verify row's disposition from a field the verifier tooling writes, not from Evidence prose](brief-65-structured-verify-disposition.md) | 1 | L | todo | — | — |
 | 67 | [Pin the verdict transcriber's trust anchors in a committed file](brief-67-pin-the-verdict-transcriber-s-trust-anchors-in-a-committed-file.md) | 1 | M | todo | — | — |
+| 68 | [One tracking/deliverable resolver for desk verbs](brief-68-one-tracking-deliverable-resolver-for-desk-verbs.md) | 1 | L | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -570,3 +571,15 @@ that as an accepted residual and named the pin as the follow-up. #2354 asks for 
 
 This brief narrows one residual and does not claim to remove the trust boundary. It moves it from
 "write access to Actions configuration" to "a merged pull request that edits the file".
+
+## Cross-repository item resolver — 23 November 2026
+
+A brief can be tracked in one repository and deliver into another. Each desk verb chose between
+the two on its own, so every fix aligned one verb while the next still read the other repository.
+#6274 records the class: a decision hold that read the deliverable, a verifier association and
+wake reader that could not find a deliverable with no streams, and an outcome record that could
+not read its own Evidence commit (fixed separately by #7492).
+
+| Brief | What it does | Gate |
+|---|---|---|
+| [68](brief-68-one-tracking-deliverable-resolver-for-desk-verbs.md) | Adds `ItemRepos`, which names the tracking and deliverable repository for each role, and `CheckoutForRepo`, which finds a repository's checkout from `DESK_ROOTS`, then `DESK_CHECKOUTS`, then the sibling directory, and proves it by origin. Moves the decision hold, the verifier association and the wake reader onto it. The remaining verbs are listed as follow-ups F1 to F7 in the brief | model: it changes which repository a verb reads and weakens no control |

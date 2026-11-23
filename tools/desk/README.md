@@ -155,6 +155,17 @@ before printing any rows. This read checks the mapping, not checkout existence o
 `--scope topology` retains the stated compiled topology. The default `--scope all` retains its
 write, scan and topology inventories; request `roots` explicitly for board-root coverage.
 
+A repository an item **delivers into** need not be a stream root. `deskkit.ItemRepos` names an
+item's tracking repository (brief, board row, decision issue, Evidence, outcome record, verifier
+claim) and its deliverable repository (code and homes) once, and `deskkit.CheckoutForRepo` finds
+a repository's local checkout in this order: its `DESK_ROOTS` entry, then a `DESK_CHECKOUTS`
+entry (`"<owner>/<repo>=<path>,…"`, for a `homed-in:` or `deliverable_repo:` home with no
+`docs/streams/`), then a directory named after the repository beside the tracking checkout.
+`DESK_CHECKOUTS` refuses exactly what `DESK_ROOTS` refuses (an entry outside the allowed set, a
+malformed entry, a repeated repository). Every answer must match the checkout's own origin: a
+mis-mapped path refuses instead of falling through to the next candidate, and no candidate is
+could-not-check.
+
 ### Evidence publication requests
 
 `deskevidence` shares a snapshot within one publication. On GitHub its admission
@@ -2919,7 +2930,7 @@ takes the C-5 audit line and the C-6 kill switch but NOT the outward-write rate 
 
 ```bash
 deskwt add <name> [--branch B] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R] [--lock-session <id>] [--adopt-run <key>]   # create tracker-<name> on a tracking branch
-deskwt remove <path>                                   # remove ONE proven-safe worktree
+deskwt remove <path> [--claim-repo <owner/name>]       # remove ONE proven-safe worktree
 deskwt prune [--repo <path>] [--interval <dur>] [--min-idle 1h]   # bulk-reduce stale worktrees, safely
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
 deskwt prune --reap-dead-sessions [--dry-run]          # …and reap the worktrees no live session owns
@@ -3014,6 +3025,16 @@ inventory and lists every observable change.
   unregistered path, or anything resolving outside the prefixes; untracked build artifacts
   (`node_modules`, `target/dist`, …) do NOT block. It shares its tracked-clean check and its
   delete+prune+verify step with `prune` (one implementation, no drift).
+  A dispatched home (one recording `assay.runKey`) is judged by its dispatch claim, read in
+  the repository the home records as `assay.claimRepo`: this checkout's origin, or, for a
+  cross-repository verifier's home, its tracking repository at the address origin's URL gives
+  with the owner/name replaced (same host, rewrite rules and credentials). Held or unreadable
+  refuses; released leaves the decision to the gates above. A home recorded before claim
+  namespaces were (no `assay.claimStore`) holds as could-not-check, and the refusal names the
+  sanctioned path: `--claim-repo <owner/name>` states the repository its dispatch claimed in
+  (a worker or review dispatch: this checkout's origin; a cross-repository verifier: its
+  tracking repository). The flag must agree with any namespace the home records, and it
+  relaxes no other gate.
 
 - **`prune`** exists because stale worktrees accumulate (the desk loops spawn one per worker
   and rarely remove them — ~1065 observed) until tooling breaks: the bash sandbox hits

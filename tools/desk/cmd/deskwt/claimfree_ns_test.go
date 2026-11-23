@@ -17,8 +17,10 @@ var namespaceCases = []struct {
 	name, repo, store, want string
 }{
 	// A cross-repository verifier claims in the TRACKING repo; its home is cut from the
-	// deliverable checkout, so its live claim is absent from the deliverable's listing.
-	{"other-repo", "other-org/tracking", deskkit.ClaimStoreForgeRef, "taken in other-org/tracking"},
+	// deliverable checkout, so its live claim is absent from the deliverable's listing. The
+	// listing is read in the tracking repository instead (crossrepo_test.go); one that cannot
+	// be read there (this fixture has no such repository) holds.
+	{"other-repo", "other-org/tracking", deskkit.ClaimStoreForgeRef, "claim listing in other-org/tracking unreadable"},
 	{"other-store", "", deskkit.ClaimStoreFile, "taken in the file store"},
 	{"no-store", "", "", "records no claim store"},
 	{"no-repo", "NOREPO", deskkit.ClaimStoreForgeRef, "records no claim repository"},
@@ -127,11 +129,11 @@ func TestClaimForRemoveOwnEntryUnreadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	rt := resolvePath(target)
-	if c := claimForRemove(guard, work, rt); c.holds() || c.key != "" {
+	if c, _ := claimForRemove(guard, work, rt, ""); c.holds() || c.key != "" {
 		t.Fatalf("a readable own entry with no run key must pass untouched; got %+v", c)
 	}
 	writeFile(t, filepath.Join(target, ".git"), "gitdir: "+filepath.Join(t.TempDir(), "elsewhere")+"\n")
-	if c := claimForRemove(guard, work, rt); c.state != claimUnknown || !c.holds() {
+	if c, _ := claimForRemove(guard, work, rt, ""); c.state != claimUnknown || !c.holds() {
 		t.Fatalf("an unconfirmable own admin entry must hold as could-not-check; got %+v", c)
 	}
 }
@@ -277,7 +279,7 @@ func stubClaimRereads(t *testing.T, key string) {
 	t.Helper()
 	old := listDispatchClaims
 	calls := 0
-	listDispatchClaims = func(string) (map[string]bool, error) {
+	listDispatchClaims = func(string, string) (map[string]bool, error) {
 		calls++
 		if calls == 1 {
 			return map[string]bool{}, nil

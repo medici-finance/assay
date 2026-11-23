@@ -2998,7 +2998,12 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		// form. A refused one is named here, and a row that reads it is
 		// could-not-run.
 		if kv, why := admittedReplayInput(environ, root); why != "" {
-			fmt.Fprintf(stderr, "statusgen verifyrun: %s is not passed to the rows: %s\n", admittedReplayInputVar, why)
+			// This line is the run's only record that the replay path was
+			// withheld. A run that cannot write it cannot report its rows'
+			// inputs, so it stops as could-not-run.
+			if _, werr := fmt.Fprintf(stderr, "statusgen verifyrun: %s is not passed to the rows: %s\n", admittedReplayInputVar, why); werr != nil {
+				return verifyrunExitCouldNot
+			}
 		} else if kv != "" {
 			plan.env = append(plan.env, kv)
 		}

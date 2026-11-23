@@ -72,12 +72,16 @@ func DispatchPlaceholder(root, localRepo, id string) (DispatchIssue, error) {
 	return issue, nil
 }
 
-func readPlaceholder(root, path string) ([]byte, error) {
+func readPlaceholder(root, path string) (_ []byte, err error) {
 	dir, err := os.OpenRoot(root)
 	if err != nil {
 		return nil, err
 	}
-	defer dir.Close()
+	defer func() {
+		if cerr := dir.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 	return dir.ReadFile(path)
 }
 
