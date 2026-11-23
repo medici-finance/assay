@@ -2892,7 +2892,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 		if why := verifyrunRootBelowToplevel(root); why != "" {
-			fmt.Fprintln(stderr, "statusgen verifyrun:", why)
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun:", why)
 			return verifyrunExitUsageError
 		}
 		ef := *envFile
