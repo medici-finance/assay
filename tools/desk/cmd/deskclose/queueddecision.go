@@ -152,7 +152,7 @@ func moveDecidedLabels(r triageReq, it item, a *auditCtx) error {
 		}
 		change := deskkit.LabelChange{Target: deskkit.TargetIssue}
 		if step.want {
-			change.Add = []deskkit.LabelSpec{{Name: step.name}}
+			change.Add = []deskkit.LabelSpec{{Name: step.name, Color: "0e8a16", Description: "The driver recorded a decision on this issue"}}
 		} else {
 			change.Remove = []string{step.name}
 		}
