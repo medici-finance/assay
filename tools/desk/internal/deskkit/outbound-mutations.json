@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -timeout 600s -run 'TestOutboundConformance|TestOutboundForgeWrapsEveryWriteMethod|TestOverrideAuditRowHoldsDigestNotText|TestOutboundNumberHint|TestOutboundWriteFileChecksBranch|TestOutboundWritesCarryNumber'",
+  "test": "go test ./internal/deskkit/ -count=1 -timeout 600s -run 'TestOutboundConformance|TestOutboundForgeWrapsEveryWriteMethod|TestOverrideAuditRowHoldsDigestNotText|TestOutboundNumberHint|TestOutboundWriteFileChecksBranch|TestOutboundWritesCarryNumber|TestBackendReadsThroughLanding|TestReadTreeListing'",
   "control": {
     "name": "CONTROL — the outbound check passes every write (a refusal is computed and then dropped)",
     "file": "internal/deskkit/outbound.go",
@@ -90,6 +90,18 @@
       "file": "cmd/deskpost/github.go",
       "old": "Kind: kind, NumberHint: pr, Fields:",
       "new": "Kind: kind, NumberHint: 0, Fields:"
+    },
+    {
+      "name": "backendOf stops at the evidence-landing scope (a backend-only read on a landing's forge — the board listing past a truncated compare, the GitLab descendant read — reads as not served) — #5913",
+      "file": "internal/deskkit/outboundforge.go",
+      "old": "\tif e, ok := f.(*evidenceLandingForge); ok {\n\t\treturn e.Forge\n\t}",
+      "new": "\tif e, ok := f.(*evidenceLandingForge); ok && false {\n\t\treturn e.Forge\n\t}"
+    },
+    {
+      "name": "the tree listing trusts a truncated recursive read (a board directory past the forge's listing cap reads as complete) — #5913",
+      "file": "internal/deskkit/treelisting.go",
+      "old": "if w.Truncated == nil || *w.Truncated || w.Tree == nil {",
+      "new": "if w.Tree == nil {"
     }
   ]
 }
