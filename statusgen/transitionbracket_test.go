@@ -90,14 +90,14 @@ func (f transBracketFixture) run(t *testing.T, extra ...string) (int, string) {
 	return r.code, diag
 }
 
-func (f transBracketFixture) close(t *testing.T, record bool) (int, string) {
+func (f transBracketFixture) close(t *testing.T, record bool, extra ...string) (int, string) {
 	t.Helper()
 	nowFunc = func() time.Time { v, _ := time.Parse(time.RFC3339, fixtureOpened); return v.Add(time.Minute) }
 	args := []string{"--close-bracket", "--root", f.home, "--brief", f.brief, "--admission-receipt", f.receipt, "--witness", f.witness}
 	if record {
 		args = append(args, "--acceptance-record", f.record, "--acceptance-forge")
 	}
-	r, diag := captureVerifyrun(t, args)
+	r, diag := captureVerifyrun(t, append(args, extra...))
 	return r.code, diag
 }
 
@@ -460,7 +460,11 @@ func TestSourceAcceptanceBracket(t *testing.T) {
 			if action == "revoke-before-close" {
 				f.forge.commentStatus = 404
 			}
-			code, diag := f.close(t, true)
+			observation := "sha256:" + strings.Repeat("1", 64)
+			code, diag := f.close(t, true, "--kubernetes-observation", observation)
+			if action == "execute" && !strings.Contains(getFile(t, f.witness), "Kubernetes-Observation: "+observation+"\nAdmission-Bracket: ") {
+				t.Fatal("protected close did not bind the observed execution")
+			}
 			if (code == 0) != (action == "execute") {
 				t.Fatal("unexpected protected close", code, diag)
 			}
