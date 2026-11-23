@@ -578,8 +578,8 @@ A brief can be tracked in one repository and deliver into another. Each desk ver
 the two on its own, so every fix aligned one verb while the next still read the other repository.
 #6274 records the class: a decision hold that read the deliverable, a verifier association and
 wake reader that could not find a deliverable with no streams, and an outcome record that could
-not read its own Evidence commit.
+not read its own Evidence commit (fixed separately by #7492).
 
 | Brief | What it does | Gate |
 |---|---|---|
-| [68](brief-68-one-tracking-deliverable-resolver-for-desk-verbs.md) | Adds `ItemRepos`, which names the tracking and deliverable repository for each role, and `CheckoutForRepo`, which finds a repository's checkout from `DESK_ROOTS`, then `DESK_CHECKOUTS`, then the sibling directory, and proves it by origin. Moves the decision hold, the verifier association, the wake reader and the outcome binding onto it. The remaining verbs are listed as follow-ups F1 to F6 in the brief | model: it changes which repository a verb reads and weakens no control |
+| [68](brief-68-one-tracking-deliverable-resolver-for-desk-verbs.md) | Adds `ItemRepos`, which names the tracking and deliverable repository for each role, and `CheckoutForRepo`, which finds a repository's checkout from `DESK_ROOTS`, then `DESK_CHECKOUTS`, then the sibling directory, and proves it by origin. Moves the decision hold, the verifier association and the wake reader onto it. The remaining verbs are listed as follow-ups F1 to F7 in the brief | model: it changes which repository a verb reads and weakens no control |

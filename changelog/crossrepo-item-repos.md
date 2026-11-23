@@ -6,4 +6,3 @@
 
 - `deskdispatch` reads a homed-in brief's `decision-issue:` in the repository that tracks the brief. Before, it read the deliverable repository, so the pre-claim hold could miss an open, unruled decision.
 - The verifier association and the planner's wake reader find a deliverable repository that has no `docs/streams`. Before, the verifier association stopped at "verifier deliverable root is not configured" and the item stayed could-not-check.
-- `deskevidence --outcome-record` fetches the Evidence commit from the tracking repository when the local checkout does not have it yet. The commit was written through the forge API, so the record had been refused as could-not-check.

@@ -378,13 +378,6 @@ func setupFake(t *testing.T) (*fakeForge, *bytes.Buffer) {
 		return nil
 	}
 	t.Cleanup(func() { outcomeEvidenceBindingFn = oldEvidenceBinding })
-	// The Evidence-commit fetch reaches the network in production; a test that wants it
-	// serves the refspecs from a local repository.
-	oldEvidenceFetch := evidenceCommitFetchFn
-	evidenceCommitFetchFn = func(string, string, []string) error {
-		return errors.New("fixture: no network fetch for the Evidence commit")
-	}
-	t.Cleanup(func() { evidenceCommitFetchFn = oldEvidenceFetch })
 	oldAdmission := verifierEvidenceAdmissionFn
 	verifierEvidenceAdmissionFn = func(_, _, target string, _ deskkit.Forge) (deskkit.VerifierReceipt, error) {
 		return stubAdmittedReceipt(target), nil

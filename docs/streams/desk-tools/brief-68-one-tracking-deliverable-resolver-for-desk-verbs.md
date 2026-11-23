@@ -40,7 +40,7 @@ consumers:
   - "tools/desk/cmd/verifyloop/association.go: fixed-here (the deliverable home comes from CheckoutForRepo, so a stream-less homed-in repository associates)"
   - "tools/desk/internal/deskkit/verifywake.go: fixed-here (the repo-source wake key reads the deliverable through CheckoutForRepo)"
   - "tools/desk/cmd/deskdispatch/briefadmission.go: fixed-here (the pre-claim decision hold reads ItemRepos.DecisionRepo, the tracking repository)"
-  - "tools/desk/cmd/deskevidence/outcomebinding.go: fixed-here (a missing Evidence commit is fetched from the tracking repository and read again)"
+  - "tools/desk/cmd/deskevidence/outcomebinding.go: out-of-scope (medici-finance/assay#7492 fixes the Evidence-commit fetch on its own; follow-up F7 below moves it onto the resolver's tracking-repo answer)"
   - "tools/desk/README.md: fixed-here (documents ItemRepos, CheckoutForRepo and DESK_CHECKOUTS beside the roots inventory)"
   - "tools/desk/cmd/deskdispatch/deliverable.go: out-of-scope (follow-up F1 below: its own declaration parser moves onto ResolveItemRepos)"
   - "tools/desk/cmd/deskrebaseline/brief.go: out-of-scope (follow-up F2 below)"
@@ -55,10 +55,10 @@ consumers:
 ## Dependencies
 
 None typed. It builds on what is on main: the verifier association's declaration policy
-(`VerifierDeliverables`), the decision gate's tracking target (`decisionTarget`, #5525), and
-deskevidence's private fetch refs for the landed closure (#5008). The #7490 point fix for
-`deskwt` is in flight on its own branch and touches no file this brief changes. F5 below
-moves that fix's claim-repository read onto the resolver after it lands.
+(`VerifierDeliverables`) and the decision gate's tracking target (`decisionTarget`, #5525).
+Two point fixes are in flight on their own branches and touch no file this brief changes:
+#7490 in `deskwt` and #7492 in deskevidence's outcome binding. F5 and F7 below move each
+onto the resolver after it lands.
 
 ## Context
 
@@ -70,9 +70,6 @@ files:
 - `tools/desk/cmd/verifyloop/association_test.go`
 - `tools/desk/cmd/deskdispatch/briefadmission.go` — `briefDecisionHold`
 - `tools/desk/cmd/deskdispatch/decisiontracking_test.go`
-- `tools/desk/cmd/deskevidence/outcomebinding.go` — `validateOutcomeEvidenceBinding`
-- `tools/desk/cmd/deskevidence/outcomebinding_test.go`
-- `tools/desk/cmd/deskevidence/deskevidence_test.go` — the shared fixture stubs the new fetch seam
 - `tools/desk/README.md` — the roots inventory paragraph
 - **add** — `changelog/crossrepo-item-repos.md`
 
@@ -103,13 +100,11 @@ facts:
   - Wake reader: `RootRevisionReader.Revision` read a `repo-source:` key through
     `RootForRepo`, so the same stream-less deliverable was could-not-check forever and the
     planner kept re-offering the item.
-  - Outcome binding (2026-11-12, 2026-11-17; same mechanism as #5008):
-    `validateOutcomeEvidenceBinding` ran `git show <evidence sha>:<brief>` in `--root`.
-    deskevidence writes Evidence through the forge API in the tracking repository, so that
-    commit is in no local store until something fetches it, and the record was refused with
-    exit 6.
-- **Instances not fixed here** (see Follow-ups): the dispatch dry-run plans its PR in the
-  tracking repository for a `deliverable_repo:` brief; the emitted verifier prompt names the
+- **Instances not fixed here** (see Follow-ups): the outcome binding (2026-11-12,
+  2026-11-17; same mechanism as #5008) reads the Evidence commit only from the local store,
+  though deskevidence wrote it through the forge API in the tracking repository, and #7492
+  fixes that on its own; the dispatch dry-run plans its PR in the tracking repository for a
+  `deliverable_repo:` brief; the emitted verifier prompt names the
   deliverable as the outcome target; the claim key built on the deliverable does not match
   the board row's key; #4812's verify witness; #7490's claim read in `deskwt`.
 
@@ -137,9 +132,9 @@ checkout. That is the convention the compiled roots already use.
 design-fit:
   owner: tools/desk/internal/deskkit — itemrepos.go (new); no registered contract row owned "which repository an item's role lives in" before this
   contract: none — the class record's hypothesised invariant; a contract row may follow once F1 and F2 leave one implementation
-  retires: [briefDecisionHold reading the decision issue in the dispatch's deliverable repo, the verifier association's stream-root-only lookup of the deliverable home, the wake reader's stream-root-only repo-source lookup, the outcome binding's local-store-only read of the Evidence commit]
-  weight: "verbs 0, flags 0, +1 environment variable (DESK_CHECKOUTS), refusals +2 (a mis-mapped DESK_CHECKOUTS entry, an ambiguous deliverable); +1 file, +6 tests"
-  why-add: "Without a shared resolver each verb keeps its own repository choice, which is the mechanism the class records. Two alternatives were rejected. Requiring every deliverable repository to be a stream root would force board machinery onto repositories that have no streams. Reading the Evidence commit through the forge would break the binding's comparison of local bytes against forge bytes, which is two reads from two sources. Fetching the commit keeps one byte source."
+  retires: [briefDecisionHold reading the decision issue in the dispatch's deliverable repo, the verifier association's stream-root-only lookup of the deliverable home, the wake reader's stream-root-only repo-source lookup]
+  weight: "verbs 0, flags 0, +1 environment variable (DESK_CHECKOUTS), refusals +2 (a mis-mapped DESK_CHECKOUTS entry, an ambiguous deliverable); +1 file, +5 tests"
+  why-add: "Without a shared resolver each verb keeps its own repository choice, which is the mechanism the class records. The rejected alternative, requiring every deliverable repository to be a stream root, would force board machinery onto repositories that have no streams."
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands outside the task's
@@ -149,7 +144,8 @@ design-fit:
   report it and do not edit the expectation.
 - The resolver never widens the allowed repository set. `DESK_CHECKOUTS` configures where a
   checkout is, never whether a repository is trusted.
-- Do not touch `tools/desk/cmd/deskwt/`. The #7490 fix owns it until F5.
+- Do not touch `tools/desk/cmd/deskwt/` or `tools/desk/cmd/deskevidence/`. The #7490 fix
+  owns the first until F5, and the #7492 fix owns the second until F7.
 - If anything is unclear or contradicts repo state, report NEEDS_CONTEXT. Do not guess.
 
 ## Task
@@ -172,13 +168,8 @@ design-fit:
 4. **Decision hold** (`tools/desk/cmd/deskdispatch/briefadmission.go`): read the decision issue in
    `ItemRepos.DecisionRepo()`, built from the plan's tracking target (`plan.decision`, already
    resolved before the claim for every human-gated item) and the dispatch repository.
-5. **Outcome binding** (`tools/desk/cmd/deskevidence/outcomebinding.go`): when `git show` cannot read the
-   Evidence commit, validate the landing branch name and fetch that branch and main from the
-   tracking repository into the root's private `refs/deskevidence-fetch/` refs, using the
-   landed closure's fetch path. Then read again. The commit is still named by full SHA, and
-   the landed-content comparison after it is unchanged. A failed fetch stays could-not-check.
-6. **Tests that fail before and pass after**, one per instance (Verify rows 1 to 4).
-7. **Docs.** Add the README paragraph and the changelog fragment.
+5. **Tests that fail before and pass after**, one per instance (Verify rows 1 to 3).
+6. **Docs.** Add the README paragraph and the changelog fragment.
 
 ### Follow-ups (not in this brief; each becomes its own brief or a fix on its issue)
 - **F1** — deskdispatch's `resolveDeliverable` / `aliasRegistry` resolve through
@@ -198,7 +189,9 @@ design-fit:
   `HomeRepo()` for the dispatch kind. The point fix's tests stay as they are.
 - **F6** — the class record's close condition 2: one end-to-end fixture tracked in A and
   delivering into B, running dispatch → Evidence → outcome record. That fixture also closes
-  the class once F1 to F5 are in.
+  the class once F1 to F5 and F7 are in.
+- **F7** — after #7492 lands, move its Evidence-commit fetch onto the resolver's tracking-repo
+  answer (`ItemRepos.EvidenceRepo()`), keeping its tests.
 - An installation's desk launcher can populate `DESK_CHECKOUTS` for stream-less deliverable
   checkouts. That is installation configuration, not part of this repository.
 
@@ -208,9 +201,8 @@ design-fit:
 | 1 | check:ci +flow +mutation | `cd tools/desk && L=$(mktemp) && trap 'rm -f "$L"' 0 && for t in TestItemReposRoles TestResolveItemReposFromBrief TestCheckoutForRepoStreamless TestWakeRepoSourceStreamlessCheckout; do go test ./internal/deskkit/ -run "^$t\$" -count=1 -v -timeout 300s >> "$L" 2>&1; done; grep -F -e '--- PASS: TestItemReposRoles ' "$L" && grep -F -e '--- PASS: TestResolveItemReposFromBrief ' "$L" && grep -F -e '--- PASS: TestCheckoutForRepoStreamless ' "$L" && grep -F -e '--- PASS: TestWakeRepoSourceStreamlessCheckout ' "$L" && ! grep -F -e '--- FAIL' "$L"` | exit 0; four named PASS lines: the role mapping, resolution from the tracking commit, a stream-less checkout found and proved by origin (a mis-mapped one refuses, an unconfigured one is could-not-check), and the wake reader using it. Mutation: drop the origin proof in `provedCheckout`, and the `wrong origin refuses` subtest must fail |
 | 2 | check:ci +flow | `cd tools/desk && L=$(mktemp) && trap 'rm -f "$L"' 0 && for t in TestCrossRepoAssociationStreamlessDeliverable TestCrossRepoAssociationRefusals; do go test ./cmd/verifyloop/ -run "^$t\$" -count=1 -v -timeout 300s >> "$L" 2>&1; done; grep -F -e '--- PASS: TestCrossRepoAssociationStreamlessDeliverable ' "$L" && grep -F -e '--- PASS: TestCrossRepoAssociationRefusals ' "$L" && ! grep -F -e '--- FAIL' "$L"` | exit 0; a homed-in repository with no `docs/streams` associates when `DESK_CHECKOUTS` names it, stays could-not-check when nothing does, and every existing association refusal still holds |
 | 3 | check:ci +flow +mutation | `cd tools/desk && L=$(mktemp) && trap 'rm -f "$L"' 0 && for t in TestDecisionHoldReadsTrackingRepo TestDecisionGateUsesTrackingRepo TestUnruledDecisionHolds; do go test ./cmd/deskdispatch/ -run "^$t\$" -count=1 -v -timeout 300s >> "$L" 2>&1; done; grep -F -e '--- PASS: TestDecisionHoldReadsTrackingRepo ' "$L" && grep -F -e '--- PASS: TestDecisionGateUsesTrackingRepo ' "$L" && grep -F -e '--- PASS: TestUnruledDecisionHolds ' "$L" && ! grep -F -e '--- FAIL' "$L"` | exit 0; for both `homed-in:` and `deliverable_repo:`, the hold reads the decision issue only in the tracking repository and holds before the claim; the gate's ensure step and the same-repository hold are unchanged. Mutation: pass the dispatch repository to `decisionWaitForgeFn` in place of `ItemRepos.DecisionRepo()` (the base behaviour), and `TestDecisionHoldReadsTrackingRepo` must fail |
-| 4 | check:ci +flow +mutation | `cd tools/desk && L=$(mktemp) && trap 'rm -f "$L"' 0 && for t in TestOutcomeBindingFetchesEvidenceCommitOnMiss TestOutcomeBindingRequiresCurrentLandedEvidence TestOutcomeCannotLandWithoutCurrentEvidence; do go test ./cmd/deskevidence/ -run "^$t\$" -count=1 -v -timeout 300s >> "$L" 2>&1; done; grep -F -e '--- PASS: TestOutcomeBindingFetchesEvidenceCommitOnMiss ' "$L" && grep -F -e '--- PASS: TestOutcomeBindingRequiresCurrentLandedEvidence ' "$L" && grep -F -e '--- PASS: TestOutcomeCannotLandWithoutCurrentEvidence ' "$L" && ! grep -F -e '--- FAIL' "$L"` | exit 0; an Evidence commit present only on the tracking repository binds once fetched, an unfetchable one stays could-not-check, and every existing binding refusal (previous run, wrong branch, unreadable SHA) still holds. Mutation: return the first `git show` miss without calling `evidenceCommitFetchFn`, and the `fetch=true` subtest must fail |
-| 5 | check:ci +neighbour | `cd tools/desk && go vet ./internal/deskkit/ ./cmd/verifyloop/ ./cmd/deskdispatch/ ./cmd/deskevidence/ && L=$(mktemp) && trap 'rm -f "$L"' 0 && go test ./cmd/verifyloop/ ./cmd/deskdispatch/ ./cmd/deskevidence/ -count=1 -timeout 600s > "$L" 2>&1 && ! grep -E -e '^(--- )?FAIL' "$L"` | exit 0; vet is clean and the three command packages pass in full beside the new tests |
-| 6 | check +dereference | `S=$(mktemp) && trap 'rm -f "$S"' 0 && statusgen --root . --consumers --brief assay:assay:desk-tools:68 > "$S" && grep -E '^summary: [1-9][0-9]* corroborated, 0 disproved' "$S"` | exit 0 and a `summary:` line with a nonzero corroborated count and `0 disproved`: each `fixed-here` consumer is a path the delivery changed |
+| 4 | check:ci +neighbour | `cd tools/desk && go vet ./internal/deskkit/ ./cmd/verifyloop/ ./cmd/deskdispatch/ && L=$(mktemp) && trap 'rm -f "$L"' 0 && go test ./cmd/verifyloop/ ./cmd/deskdispatch/ -count=1 -timeout 600s > "$L" 2>&1 && ! grep -E -e '^(--- )?FAIL' "$L"` | exit 0; vet is clean and the two command packages pass in full beside the new tests |
+| 5 | check +dereference | `S=$(mktemp) && trap 'rm -f "$S"' 0 && statusgen --root . --consumers --brief assay:assay:desk-tools:68 > "$S" && grep -E '^summary: [1-9][0-9]* corroborated, 0 disproved' "$S"` | exit 0 and a `summary:` line with a nonzero corroborated count and `0 disproved`: each `fixed-here` consumer is a path the delivery changed |
 
 ## Threat model and detection
 
@@ -221,9 +213,6 @@ design-fit:
 | A mis-mapped entry is skipped and a later candidate is used instead | row 1 (the refusal is checked by exit code, with no fall-through) |
 | `DESK_CHECKOUTS` widens the allowed repository set | row 1 (`outside the repo set`) |
 | An unconfigured deliverable is treated as the tracking repository | rows 1 and 2 (could-not-check, not success) |
-| The outcome binding fetches from the deliverable repository, or accepts an unfetched commit | row 4 (the fetch must name the tracking repository; an unfetchable commit stays exit 6) |
-| A fetched commit lets different bytes bind | row 4 (`TestOutcomeBindingRequiresCurrentLandedEvidence`: branch mismatch, old SHA and previous-run modes still refuse) |
-| A test that needs the network runs in CI | rows 4 and 5 (`setupFake` stubs the fetch seam to fail, so only the new test serves refs, from a local repository) |
 | The sibling-directory convention picks up an unrelated directory | No row beyond the origin proof in row 1; review-only: the reviewer confirms that a sibling whose origin names another repository refuses |
 
 ## Evidence
@@ -231,10 +220,9 @@ design-fit:
 
 ## Review
 Gate: model. The class record's trigger comment sets that gate: the change moves which
-repository a verb reads and weakens no control. The reviewer checks four things. First, every
+repository a verb reads and weakens no control. The reviewer checks three things. First, every
 new path is fail-closed (exit 5 or 6, never a fall-back to the other repository). Second,
-`DESK_CHECKOUTS` refuses exactly what `DESK_ROOTS` refuses. Third, the outcome-binding fetch
-only supplies objects and decides nothing. Fourth, no file under `tools/desk/cmd/deskwt/`
-changed. Rows 1 to 4 were each written to fail on the delivery base, and the implementing PR
+`DESK_CHECKOUTS` refuses exactly what `DESK_ROOTS` refuses. Third, no file under
+`tools/desk/cmd/deskwt/` or `tools/desk/cmd/deskevidence/` changed. Rows 1 to 3 were each written to fail on the delivery base, and the implementing PR
 records those base runs. A verifier may confirm them with `verifyrun --fail-first` against
 the parent of the delivering merge.
