@@ -14,7 +14,7 @@ risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-da
 issues: [2111]
 schema: "brief-v2"
 outcome: none
-version: 2
+version: 3
 id: "db9e3c41-3e2f-4a8a-8cd5-0ac34f329393"
 authored: "2026-10-04 by desktools-v2/15"
 sources:
@@ -132,7 +132,7 @@ sweep scheduling out of parsing/configuration; hooks cannot become a second prun
 | 6 | check | `cd tools/desk && GOOS=windows go vet ./cmd/deskwt` | exit 0; the owned packages compile for Windows (native Windows behaviour runs on the CI lane, not here) |
 | 7 | check +dereference | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/22 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | exit 0; TestCLIOwnerMigrated PASS; every row this brief owns is migrated, the registry validates and the contract tests pass in each migrated package |
 | 8 | check | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; every inherited floor seed still runs and passes |
-| 9 | check | `statusgen --root . --consumers` | exit 0; no declared consumer routing disproved by the change |
+| 9 | check | `o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desktools-v2/22 --delivery 0d9cb252285a910f63aac4d8d48333618328090f --base 378520e583862ffd841c25279ca912598d31c73d > "$o" 2>&1 && grep -F -e 'summary: 4 corroborated, 0 disproved, 5 unchecked,' "$o" && test "$(grep -c -F -e '  CORROBORATED  tools/desk/cmd/deskwt:' -e '  CORROBORATED  docs/deskwt-cli-compat.md:' -e '  CORROBORATED  tools/desk/README.md:' -e '  CORROBORATED  docs/streams/desktools-v2/cli-migration.json:' "$o")" -eq 4` | exit 0; no declared consumer routing disproved by the change |
 | 10 | check +flow | `(f=$(mktemp) && trap 'rm -f "$f"' 0 && cd tools/desk && go test -count=1 -v ./cmd/deskwt -run '^TestCLILifecycleParity$' > "$f" 2>&1 && grep -F -e '--- PASS: TestCLILifecycleParity ' "$f")` | exit 0; named PASS; the refreshed command inventory reaches unchanged lifecycle handlers; maintenance stays read-only without apply, invalid input/help has zero effects, and the declared mutation cases fail in row 4. |
 
 ## Pre-mortem
