@@ -300,9 +300,6 @@ jobs:
               # deps/audit-ledger guards over the CPU reader files are hermetic and
               # were latent under build+vet alone.
               */perfrec|perfrec) extra="go test ./..." ;;
-              # Runner lifecycle/authority and the exact local perfrec dependency
-              # closure must execute, not only compile, on every source change.
-              */loopadmin|loopadmin) extra="GOWORK=off go test ./..." ;;
             esac
             if ( cd "$dir" && go build ./... && go vet ./... && eval "$extra" ); then
               echo "${dir}: OK"
@@ -411,15 +408,55 @@ jobs:
             ${{ runner.temp }}/authority-qualification/production-controls.*
           if-no-files-found: ignore
 
+  loopadmin-postgres:
+    # Service containers need Docker; the regular builder has no daemon.
+    # https://docs.github.com/en/actions/tutorials/use-containerized-services/create-postgresql-service-containers
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.6-bookworm@sha256:5c4783a8cc3f0074912164f94dfa1be4e043438f0f707cf968d7af9a0d31a2c8
+        env:
+          POSTGRES_USER: fixture_admin
+          POSTGRES_PASSWORD: fixture_only
+          POSTGRES_DB: postgres
+        ports: ["5432/tcp"]
+        options: '--health-cmd "pg_isready -U fixture_admin -d postgres" --health-interval 1s --health-timeout 2s --health-retries 30'
+    env:
+      GOWORK: "off"
+      KUBECONFIG: /dev/null
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Go
+        env:
+          GO_SHA256: "7226736c2339719cda28fbf3a54d71aa63bcefe376e98cef00034268dab24840"
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          echo "${GO_SHA256}  ${RUNNER_TEMP}/go.tar.gz" | sha256sum -c -
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+      - name: Run the loopadmin suite against disposable PostgreSQL
+        env:
+          ASSAY_TEST_POSTGRES_DSN: postgresql://fixture_admin:fixture_only@127.0.0.1:${{ job.services.postgres.ports['5432'] }}/postgres?sslmode=disable
+        run: |
+          set -euo pipefail
+          cd loopadmin
+          go test -count=1 -race -v ./...
+
   # The required check `build-test`. Branch protection requires a check of this
   # exact name, so it stays a single job that reports one verdict for the whole
-  # sharded suite: success only when every build-test-shard leg succeeded. Any
+  # suite: success requires every shard, the authority fixture and loopadmin. Any
   # failed, cancelled or skipped leg fails it; there is no pass-without-running
   # path. `always()` makes it report even when the run is cancelled, so a
   # cancelled suite reads as a failure here, never as a skipped (passing) check.
   # GitHub-hosted: it only reads the needs context.
   build-test:
-    needs: [build-test-shard, forge-local-authority]
+    needs: [build-test-shard, forge-local-authority, loopadmin-postgres]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -427,14 +464,16 @@ jobs:
         env:
           SHARDS: ${{ needs.build-test-shard.result }}
           AUTHORITY: ${{ needs.forge-local-authority.result }}
+          LOOPADMIN: ${{ needs.loopadmin-postgres.result }}
         run: |
           set -euo pipefail
           echo "build-test-shard: ${SHARDS}"
           echo "forge-local-authority: ${AUTHORITY}"
-          if [ "$SHARDS" = "success" ] && [ "$AUTHORITY" = "success" ]; then
-            echo "every shard and actual authority qualification passed"
+          echo "loopadmin-postgres: ${LOOPADMIN}"
+          if [ "$SHARDS" = "success" ] && [ "$AUTHORITY" = "success" ] && [ "$LOOPADMIN" = "success" ]; then
+            echo "every shard, authority qualification and loopadmin suite passed"
           else
-            echo "::error::build-test shards concluded '${SHARDS}' — the suite did not pass"
+            echo "::error::required suite failed (shards=${SHARDS}, authority=${AUTHORITY}, loopadmin=${LOOPADMIN})"
             exit 1
           fi
 
