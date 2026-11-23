@@ -2807,9 +2807,22 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 		sourceReceipt = container.cell.Acceptance != nil && container.cell.Acceptance.SourceRecord != ""
-		if sourceReceipt && (*rootDir == "" || *failFirstMode || *transitionRecord != "" || *inContainer) {
-			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: source acceptance requires an explicit root and receipt-only container execution without fail-first")
-			return verifyrunExitCouldNot
+		if sourceReceipt {
+			var problem string
+			switch {
+			case *rootDir == "":
+				problem = "requires --root"
+			case *failFirstMode:
+				problem = "refuses --fail-first"
+			case *inContainer:
+				problem = "refuses --in-container"
+			case *transitionRecord != "":
+				problem = "already supplies --acceptance-record"
+			}
+			if problem != "" {
+				_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: source receipt", problem)
+				return verifyrunExitCouldNot
+			}
 		}
 		attestation, containerTree = container.attestation, container.tree
 		verifyrunAdmission.Store(admissionState(attestation))

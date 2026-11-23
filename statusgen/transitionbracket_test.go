@@ -417,7 +417,7 @@ func TestTransitionBracketRefusals(t *testing.T) {
 }
 
 func TestSourceAcceptanceBracket(t *testing.T) {
-	for _, action := range []string{"execute", "nonidentical-plan", "changed-digest", "changed-descriptor", "inline-verify", "missing-root", "revoke-before-close"} {
+	for _, action := range []string{"execute", "nonidentical-plan", "changed-digest", "changed-descriptor", "inline-verify", "missing-root", "fail-first", "in-container", "competing-record", "revoke-before-close"} {
 		t.Run(action, func(t *testing.T) {
 			f := transBracketWithSupplement(t, false, action == "nonidentical-plan")
 			args := []string{"--open-bracket", "--root", f.home, "--brief", f.brief, "--out", f.receipt, "--acceptance-record", f.record, "--acceptance-forge", "--source-acceptance"}
@@ -447,7 +447,22 @@ func TestSourceAcceptanceBracket(t *testing.T) {
 			authority := transitionClient
 			transitionClient = func() *ghClient { t.Fatal("offline container consulted the forge"); return nil }
 			containerArgs := f.runArgs()
-			if action == "missing-root" {
+			before := getFile(t, f.brief)
+			var refusal string
+			refusalCode := verifyrunExitCouldNot
+			switch action {
+			case "fail-first":
+				containerArgs = append(containerArgs, "--fail-first")
+				refusal = "source receipt refuses --fail-first"
+			case "in-container":
+				containerArgs = append(containerArgs, "--in-container")
+				refusal = "refusing --sandbox=container-netns with --in-container"
+				refusalCode = verifyrunExitUsageError
+			case "competing-record":
+				containerArgs = append(containerArgs, "--acceptance-record", f.record)
+				refusal = "source receipt already supplies --acceptance-record"
+			case "missing-root":
+				refusal = "supply --root for a protected or unreadable container receipt"
 				// A local authority process must not be consulted to infer the root.
 				bin := t.TempDir()
 				marker := filepath.Join(bin, "git-called")
@@ -470,6 +485,13 @@ func TestSourceAcceptanceBracket(t *testing.T) {
 			}
 			run, diag := captureVerifyrun(t, containerArgs)
 			transitionClient = authority
+			if refusal != "" {
+				if run.code != refusalCode || !strings.Contains(diag, refusal) {
+					t.Fatalf("wanted refusal %q, got %d: %s", refusal, run.code, diag)
+				}
+				f.assertNothingRan(t, before)
+				return
+			}
 			if action != "execute" && action != "revoke-before-close" {
 				if run.code == 0 || getFile(t, f.witness) != "" {
 					t.Fatal("accepted altered receipt", diag)
