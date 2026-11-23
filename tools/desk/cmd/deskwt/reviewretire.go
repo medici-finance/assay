@@ -198,7 +198,7 @@ func retireReview(guard *pathGuard, sc *sweepCtx, dir, rt, admin, attempt string
 		}
 		// Pin the index to this checkout, include ignored files and override
 		// user settings that could hide untracked files or a dirty submodule.
-		status, err := reviewInventory(rt, "--git-dir="+admin, "--work-tree="+rt, "--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "core.untrackedCache=false", "status", "--porcelain=v1", "-z", "--ignored=matching", "--untracked-files=all", "--ignore-submodules=none")
+		status, err := reviewInventory(rt, "--git-dir="+admin, "--work-tree="+rt, "--no-optional-locks", "-c", "core.untrackedCache=false", "status", "--porcelain=v1", "-z", "--ignored=matching", "--untracked-files=all", "--ignore-submodules=none")
 		if err != nil {
 			return err.Error()
 		}
@@ -226,7 +226,7 @@ func retireReview(guard *pathGuard, sc *sweepCtx, dir, rt, admin, attempt string
 	if !claim.releasedOwner() || claim.key != r.Key {
 		return "cannot prove release of this claim: " + claim.why
 	}
-	if why := reviewHeadRecoverable(sc, dir, r); why != "" {
+	if why := reviewHeadRecoverable(sc, dir, claim.remote, r); why != "" {
 		return why
 	}
 	if opts.dryRun {
@@ -257,8 +257,12 @@ func retireReview(guard *pathGuard, sc *sweepCtx, dir, rt, admin, attempt string
 }
 
 // A normal review fetch can populate only FETCH_HEAD. When no persistent remote
-// tracking ref covers the commit, prove the origin still publishes this exact PR head.
-func reviewHeadRecoverable(sc *sweepCtx, dir string, r reviewhome.Receipt) string {
+// tracking ref covers the commit, prove the PR's repository still publishes this exact PR
+// head. remote is where the claim was read (claimRemote): origin when the receipt's
+// repository is this checkout's origin, else that repository's derived address. A checkout
+// base whose origin is another repository must never vouch for the head under the same PR
+// number.
+func reviewHeadRecoverable(sc *sweepCtx, dir, remote string, r reviewhome.Receipt) string {
 	repo, err := sc.open(sc.historyDir)
 	if err != nil {
 		return err.Error()
@@ -273,11 +277,14 @@ func reviewHeadRecoverable(sc *sweepCtx, dir string, r reviewhome.Receipt) strin
 	if r.CheckoutHead != r.Head {
 		return "checkout commit is not reachable from a remote-tracking ref"
 	}
+	if remote == "" || strings.HasPrefix(remote, "-") {
+		return "cannot name the repository that publishes the review head"
+	}
 	pr := strconv.Itoa(r.PR)
 	gh, gl := "refs/pull/"+pr+"/head", "refs/merge-requests/"+pr+"/head"
 	ctx, cancel := context.WithTimeout(context.Background(), claimListTimeout)
 	defer cancel()
-	result := deskkit.Run(deskkit.ToolCall{Context: ctx, Name: "git", Args: []string{"ls-remote", "--refs", "origin", gh, gl}, Dir: dir, Env: claimListEnv(), Start: execCommand})
+	result := deskkit.Run(deskkit.ToolCall{Context: ctx, Name: "git", Args: []string{"ls-remote", "--refs", remote, gh, gl}, Dir: dir, Env: claimListEnv(), Start: execCommand})
 	if result.Failed() {
 		return "cannot read the published review head"
 	}
@@ -287,5 +294,5 @@ func reviewHeadRecoverable(sc *sweepCtx, dir string, r reviewhome.Receipt) strin
 			return ""
 		}
 	}
-	return "origin no longer advertises the confirmed review commit"
+	return r.Repo + " no longer advertises the confirmed review commit"
 }

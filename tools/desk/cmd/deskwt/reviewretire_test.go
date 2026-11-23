@@ -4,11 +4,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/reviewhome"
 )
 
@@ -16,15 +18,23 @@ func finishedReview(t *testing.T) (string, reviewhome.Receipt, string) {
 	t.Helper()
 	work := newRepo(t)
 	withEnv(t, work)
+	r, admin := finishedReviewIn(t, work, "example-org/tracker", "tracker--pr-42")
+	return work, r, admin
+}
+
+// finishedReviewIn is a confirmed review checkout cut from work whose PR and claim live in
+// repo. A repo other than the fixture origin is the cross-repository dispatch: the checkout
+// base's origin is not the PR's repository.
+func finishedReviewIn(t *testing.T, work, repo, key string) (reviewhome.Receipt, string) {
+	t.Helper()
 	target, _ := openPRWorktree(t, work, "review-attempt")
 	head := mustGit(t, target, "rev-parse", "HEAD")
 	mustGit(t, target, "checkout", "--detach", head)
-	key := "tracker--pr-42"
 	ref := key + "@20261121T090000Z.0123456789ab"
-	runKeyed(t, target, key)
+	runKeyedIn(t, target, key, repo, deskkit.ClaimStoreForgeRef)
 	mustGit(t, target, "config", "--worktree", "assay.dispatchRef", ref)
 	mustGit(t, target, "config", "--worktree", "assay.reviewAttempt", ref)
-	r := reviewhome.Receipt{Home: resolvePath(target), Repo: "example-org/tracker", PR: 42, Key: key, Attempt: ref, Head: head, Review: "review-17"}
+	r := reviewhome.Receipt{Home: resolvePath(target), Repo: repo, PR: 42, Key: key, Attempt: ref, Head: head, Review: "review-17"}
 	if err := r.Confirm(); err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +42,16 @@ func finishedReview(t *testing.T) (string, reviewhome.Receipt, string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return work, r, admin
+	return r, admin
+}
+
+// dropTrackingRef deletes every remote-tracking ref at the review head, as a review fetch
+// that populated only FETCH_HEAD leaves it, so retirement needs the published PR head.
+func dropTrackingRef(t *testing.T, work, head string) {
+	t.Helper()
+	for ref := range strings.FieldsSeq(mustGit(t, work, "for-each-ref", "--format=%(refname)", "--points-at", head, "refs/remotes/")) {
+		mustGit(t, work, "update-ref", "-d", ref)
+	}
 }
 
 func TestReviewRetirementWaitsForExitThenRetriesUnmerged(t *testing.T) {
@@ -167,4 +186,83 @@ func TestReviewRetirementRetriesFailedGitRemoval(t *testing.T) {
 	if rc != 0 || !strings.Contains(out, "already absent") {
 		t.Fatalf("duplicate exit after removal: %d %s %s", rc, out, diag)
 	}
+}
+
+// The review checkout's configuration is written by the reviewer, which reads untrusted PR
+// content. Retirement reads the checkout's index (ls-files, and the status Git's own
+// `worktree remove` starts), so a per-worktree core.fsmonitor would run the reviewer's
+// program from the desk and from every supervisor prune. Every such read pins it off.
+func TestReviewRetirementRunsNoConfiguredFSMonitor(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the probe program is a POSIX shell script")
+	}
+	for _, via := range []string{"review-exited", "prune"} {
+		t.Run(via, func(t *testing.T) {
+			_, r, admin := finishedReview(t)
+			probe := t.TempDir()
+			marker := filepath.Join(probe, "ran")
+			script := filepath.Join(probe, "fsmonitor")
+			writeFile(t, script, "#!/bin/sh\necho \"$@\" >> '"+marker+"'\n")
+			if err := os.Chmod(script, 0o755); err != nil {
+				t.Fatal(err)
+			}
+			mustGit(t, r.Home, "config", "--worktree", "core.fsmonitor", script)
+			var out string
+			if via == "review-exited" {
+				rc, stdout, diag := runCapBoth(t, []string{"review-exited", r.Home, r.Attempt})
+				if rc != 0 || !strings.Contains(stdout, "review checkout retired") {
+					t.Fatalf("%d %s %s", rc, stdout, diag)
+				}
+				out = diag
+			} else {
+				if err := r.Acknowledge(admin); err != nil {
+					t.Fatal(err)
+				}
+				out = pruneOK(t, "--no-singleton")
+				if !strings.Contains(out, "review_retired=1") {
+					t.Fatal(out)
+				}
+			}
+			gone(t, r.Home, out)
+			if ran, err := os.ReadFile(marker); !os.IsNotExist(err) {
+				t.Fatalf("retirement ran the checkout's configured fsmonitor program: %q (%v)", ran, err)
+			}
+		})
+	}
+}
+
+// A cross-repository review: the checkout base's origin is not the PR's repository. The
+// open-PR head proof must ask the repository the claim was taken in, never origin.
+func TestReviewHeadProofReadsTheReceiptRepository(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	tracking := trackingRepo(t, work)
+	r, _ := finishedReviewIn(t, work, "other-org/tracking", "tracking--pr-42")
+	dropTrackingRef(t, work, r.Head)
+	// origin advertises the same number with this commit; it is not the PR's repository.
+	mustGit(t, work, "push", "--quiet", "origin", r.Head+":refs/pull/42/head")
+	rc, out, diag := runCapBoth(t, []string{"review-exited", r.Home, r.Attempt})
+	if rc != 0 || !strings.Contains(out, "queued") || !strings.Contains(out, "no longer advertises") {
+		t.Fatalf("head proof read origin, not other-org/tracking: %d %s %s", rc, out, diag)
+	}
+	assertExists(t, r.Home)
+	// The PR's own repository advertises the confirmed head: the next sweep retires it.
+	mustGit(t, work, "push", "--quiet", tracking, r.Head+":refs/pull/42/head")
+	plan := pruneOK(t, "--no-singleton")
+	if !strings.Contains(plan, "review_retired=1 review_backlog=0") {
+		t.Fatal(plan)
+	}
+	gone(t, r.Home, plan)
+}
+
+// No remote-tracking ref and no advertised PR head: the commit may exist only here, so the
+// checkout is held.
+func TestReviewHeadProofHoldsAnUnpublishedHead(t *testing.T) {
+	work, r, _ := finishedReview(t)
+	dropTrackingRef(t, work, r.Head)
+	rc, out, diag := runCapBoth(t, []string{"review-exited", r.Home, r.Attempt})
+	if rc != 0 || !strings.Contains(out, "queued") || !strings.Contains(out, "no longer advertises") {
+		t.Fatalf("%d %s %s", rc, out, diag)
+	}
+	assertExists(t, r.Home)
 }
