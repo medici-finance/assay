@@ -41,7 +41,7 @@ func runAcceptanceRouteWorkflow(args []string, out, stderr io.Writer) int {
 	if fs.NArg() != 0 || *ref == "" || !transitionForge ||
 		(verb == "issue" && (preparation <= 0 || ruling == "" || markers == "")) ||
 		(verb == "close" && card <= 0) {
-		fmt.Fprintln(stderr, "acceptance-route workflow: missing brief, target, or --acceptance-forge")
+		_, _ = fmt.Fprintln(stderr, "acceptance-route workflow: missing brief, target, or --acceptance-forge")
 		return 2
 	}
 	path, err := filepath.Abs(*root)
@@ -49,7 +49,7 @@ func runAcceptanceRouteWorkflow(args []string, out, stderr io.Writer) int {
 		err = runAcceptanceEffect(verb, path, *ref, preparation, card, ruling, markers, out)
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, "statusgen:", err)
+		_, _ = fmt.Fprintln(stderr, "statusgen:", err)
 		return 1
 	}
 	return 0
