@@ -31,6 +31,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // SchemaWakeV1 is the schema tag a complete wake receipt carries. A row without it is legacy.
@@ -135,23 +137,17 @@ const PRsUnknownReasonNoPRDelivery = "no-pr-delivery"
 
 // Row result vocabulary of row_results.
 const (
-	RowPass        = "pass"
-	RowFail        = "fail"
-	RowCouldNotRun = "could-not-run"
-	RowDeferred    = "deferred"
+	RowPass        = evaluation.RowPass
+	RowFail        = evaluation.RowFail
+	RowCouldNotRun = evaluation.RowCouldNotRun
+	RowDeferred    = evaluation.RowDeferred
 )
 
 // ValidPRsUnknownReason reports whether s is in the closed prs_unknown_reason set.
 func ValidPRsUnknownReason(s string) bool { return s == PRsUnknownReasonNoPRDelivery }
 
 // ValidRowResult reports whether s is in the closed row_results result set.
-func ValidRowResult(s string) bool {
-	switch s {
-	case RowPass, RowFail, RowCouldNotRun, RowDeferred:
-		return true
-	}
-	return false
-}
+func ValidRowResult(s string) bool { return evaluation.ValidRowResult(s) }
 
 // ParseWakeReceipt unmarshals one JSONL sidecar line into a receipt. A malformed line, or one
 // with no brief key, is not a receipt (ok=false) — the caller skips it exactly as the legacy
@@ -166,14 +162,7 @@ func ParseWakeReceipt(line []byte) (WakeReceipt, bool) {
 
 // IsFailedOrBlocked reports whether the receipt's observed outcome is one this brief's wake
 // scheduling governs. A verified outcome is the stuck-flip lane's concern, not this one.
-func (r WakeReceipt) IsFailedOrBlocked() bool {
-	switch strings.ToLower(strings.TrimSpace(r.Outcome)) {
-	case "verify-fail", "fail", "blocked", "needs_context", "needs-context":
-		return true
-	default:
-		return false
-	}
-}
+func (r WakeReceipt) IsFailedOrBlocked() bool { return evaluation.IsFailedOrHeld(r.Outcome) }
 
 // Complete reports whether the receipt carries a full, well-formed verify-wake-v1 payload: the
 // schema tag, a stable ID, a KNOWN blocker kind and a KNOWN wake predicate, plus the predicate's
@@ -505,10 +494,14 @@ func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 		return "", false
 	case strings.HasPrefix(input, InputKeyRepoSourcePrefix):
 		repo := strings.TrimPrefix(input, InputKeyRepoSourcePrefix)
-		root := RootForRepo(repo)
-		if root == "" {
+		// The deliverable's checkout comes from the shared resolver (#6274), which does not
+		// require it to be a stream root: a stream-less deliverable used to read as
+		// could-not-check here forever, so the planner kept re-offering its item.
+		c, cerr := CheckoutForRepo(repo, rr.Root)
+		if cerr != nil {
 			return "", false
 		}
+		root := c.Path
 		// A configured root may reach its checkout through a link; the own-work-tree
 		// check compares git's resolved toplevel to it by string. A root that
 		// cannot be resolved is could-not-check.

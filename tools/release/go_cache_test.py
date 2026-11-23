@@ -1,5 +1,6 @@
 """Offline release-cache trust and extraction controls (regression: #138)."""
 import copy
+from contextlib import redirect_stdout
 import hashlib
 import importlib.util
 import io
@@ -241,6 +242,31 @@ class CacheTests(unittest.TestCase):
                     self.assertEqual(list(Path(lines['GOCACHE']).iterdir()),[])
         finally:
             server.shutdown();server.server_close();thread.join()
+
+    def test_ineligible_candidates_skip_remote_reads(self):
+        env = dict(GITHUB_REPOSITORY='example/project', GH_TOKEN='fixture', GITHUB_RUN_ID='99')
+        skipped = copy.deepcopy(self.job)
+        skipped['steps'][0]['conclusion'] = 'skipped'
+        api = mock.Mock()
+        api.json.side_effect = [
+            dict(path=cache.WORKFLOW, state='active', id=7),
+            dict(workflow_runs=[dict(self.run, head_branch='topic'), self.run, self.run, self.run]),
+            dict(total_count=1, jobs=[skipped]),
+            dict(total_count=1, jobs=[self.job]),
+            dict(total_count=1, jobs=[self.job]),
+        ]
+        api.get.side_effect = OSError('fixture-only-remote-detail')
+        output = io.StringIO()
+        with tempfile.TemporaryDirectory() as d, mock.patch.object(cache, 'API', return_value=api), \
+             mock.patch.object(cache, 'same_producer') as source, redirect_stdout(output):
+            with self.assertRaises(cache.Miss):
+                cache.restore(Path(d)/'cache', self.key, env)
+            self.assertFalse((Path(d)/'cache').exists())
+        self.assertEqual(source.call_count, 3)
+        self.assertEqual(api.get.call_args_list, [mock.call('/actions/jobs/81/logs', limit=16*1024**2)] * 2)
+        self.assertFalse(any('/artifacts' in call.args[0] for call in api.json.call_args_list))
+        self.assertIn('job-log=2, producer-job-and-steps=1, run-identity=1', output.getvalue())
+        self.assertNotIn('fixture-only-remote-detail', output.getvalue())
 
     def test_split_build_job_is_the_unique_cache_producer(self):
         build = copy.deepcopy(self.job)

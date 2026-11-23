@@ -397,6 +397,23 @@ lists module roots, both the container run and the close step also refuse a
 receipt that carries no `module_cache`, or one recorded for other roots, so a
 receipt edited after the open step cannot drop the requirement.
 
+**The roster in the container.** A row that runs `statusgen --lint` reads the
+trust roster from `~/.config/assay/roster.env`, and the container has none, so
+without one the row refuses its configuration (exit 5). `--open-bracket
+--roster-copy <file>` reads the host roster through the same owner-checked loader
+and refuses one that does not load. It writes only the keys statusgen reads
+(trusted identities, the repository set and product keys; no credential and no
+other key) to that new 0600 file outside the home. It records the copy's digest
+in the receipt as `roster` and prints the flag that mounts it:
+`--mount type=bind,source=<file>,target=/run/assay-roster/roster.env,readonly`.
+The path may hold no comma, quote, whitespace or control character. Before any
+row, the container run refuses unless the copy is at that target on a read-only
+mount, digests to the receipt's and loads cleanly. Each admitted row already runs
+under a fresh, empty HOME; under a roster receipt that HOME also holds the copy as
+`.config/assay/roster.env` (directory 0700, file 0600, owned by the row's user),
+so the row's statusgen reads it through the unchanged loader. A receipt with no
+`roster` leaves rows as they were.
+
 **The baked cache.** The image still bakes a cache for unbracketed runs: its
 Dockerfile copies the release's `go-module-roots.txt` to
 `/usr/local/share/verify-runner/go-module-roots.txt` and runs `go mod download` for

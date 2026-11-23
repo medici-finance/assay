@@ -130,6 +130,10 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if jerr != nil {
 		return jerr
 	}
+	// The outcome word must be one every reader classifies identically (evaluation vocabulary).
+	if oerr := deskkit.CheckOutcomeField(join); oerr != nil {
+		return oerr
+	}
 	var submitted deskkit.WakeReceipt
 	if uerr := json.Unmarshal(rec.Raw, &submitted); uerr != nil {
 		return deskkit.Refused("refused: invalid --outcome-record JSON: " + uerr.Error())
@@ -504,7 +508,7 @@ func landOutcomeRecordAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug,
 	pr, perr := deskkit.CreateHeldDraftChange(fg, fr, deskkit.DraftChangeInput{
 		Title: "Evidence: " + target,
 		Body: "Verify-outcome record for `" + brief + "`, landed on branch `" + side + "` and opened as a " +
-			"draft change because the default branch `" + base + "` takes no direct write on this forge.\n\n" + ac.attestation,
+			"draft change because the default branch `" + base + "` takes no direct write on this forge.\n\n" + ac.attestationRecord(),
 		Head: side,
 		Base: base,
 	})

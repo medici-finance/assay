@@ -41,7 +41,7 @@
       {"readme": "negative/traversal-repo/README.md", "diag": "want <owner>/<name>#<number>"},
       {"readme": "negative/control-path/README.md", "diag": "contains a control character"}
     ],
-    "unsupported_contract": "stream-view/v2"
+    "unsupported_contract": "stream-view/v3"
   },
   "flow": {
     "readme": "repo-a/docs/streams/shared/README.md",

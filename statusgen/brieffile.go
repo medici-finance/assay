@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -192,6 +193,7 @@ type BriefFile struct {
 	Evidence        string // body of the `## Evidence` section (between it and the next `## `)
 	Verify          string // body of the `## Verify` section (prefix-matched; decorated headings allowed)
 	Body            string // full markdown body after the frontmatter (decision-reflection check)
+	bodyLineOffset  int    // number of lines before Body in the original document
 	// DeclaredPaths are the repo-relative paths a brief names on the `files:` line
 	// of its `## Context` section — the paths it declares it will touch. Parsed by
 	// extractContextDeclaredPaths; the mistake-proofing/01 cross-read compares them
@@ -512,6 +514,13 @@ func expectedBriefID(path string) (id, num string, ok bool) {
 // Callers MUST test err before ok.
 func parseBriefFile(path string) (*BriefFile, bool, error) {
 	defer perfEnter("parse")() // the read + memo lookup, even when the memo answers
+	return parseBriefFileUnrecorded(path)
+}
+
+// parseBriefFileUnrecorded is parseBriefFile without the perf phase marker. The
+// phase stack (perfEnter) belongs to one goroutine, so the concurrent readers in
+// parseBriefFilesAhead call this and record one "parse" phase around all of them.
+func parseBriefFileUnrecorded(path string) (*BriefFile, bool, error) {
 	// Memo on (path, content-hash). Measured before this cache: one --lint made 3,351
 	// parseBriefFile calls over 172 distinct paths — up to 23 re-parses of a single file —
 	// because the thirty-odd checks that walk the brief tree each walk it independently and
@@ -543,6 +552,59 @@ func parseBriefFile(path string) (*BriefFile, bool, error) {
 	bf, found, perr := parseBriefFileBytes(path, raw)
 	briefParseMemoPut(key, bf, found, perr)
 	return bf, found, perr
+}
+
+// briefParseResult is one parseBriefFile return, kept by path.
+type briefParseResult struct {
+	bf  *BriefFile
+	ok  bool
+	err error
+}
+
+// parseBriefFilesAhead returns parseBriefFile's result for every path, read and
+// parsed concurrently. statusgen/44 measured what is left of hydration once its
+// history queries were gone: an open, a read, two stats and a YAML parse per
+// brief file, almost all of it syscall time, done one file after another
+// (statusgen/bench/hydration-profile.md). That kept hydration at 12x to 32x the
+// bare load where the brief's budget is 10x (issue #6900). The files are
+// independent, so this does the same work once per path, in parallel.
+//
+// It changes no result and no order. Each path gets exactly the value a
+// parseBriefFile call would return (the read and parse memos are mutex-guarded
+// and every path is parsed once, so briefParseCount is unchanged), and the
+// caller still walks its paths in their fixed order, so every PROBLEM and notice
+// comes out in the order it did before. A path listed twice is parsed once.
+func parseBriefFilesAhead(paths []string) map[string]briefParseResult {
+	defer perfEnter("parse")()
+	unique := make([]string, 0, len(paths))
+	seen := make(map[string]bool, len(paths))
+	for _, p := range paths {
+		if !seen[p] {
+			seen[p] = true
+			unique = append(unique, p)
+		}
+	}
+	results := make([]briefParseResult, len(unique))
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	for range min(runtime.GOMAXPROCS(0), len(unique)) {
+		wg.Go(func() {
+			for {
+				i := int(next.Add(1)) - 1
+				if i >= len(unique) {
+					return
+				}
+				bf, ok, err := parseBriefFileUnrecorded(unique[i])
+				results[i] = briefParseResult{bf: bf, ok: ok, err: err}
+			}
+		})
+	}
+	wg.Wait()
+	out := make(map[string]briefParseResult, len(unique))
+	for i, p := range unique {
+		out[p] = results[i]
+	}
+	return out
 }
 
 // briefParseKey keys a parse on the path and a strong hash of the file's CONTENT. Keying on
@@ -1129,6 +1191,7 @@ func parseBriefFileBytes(path string, raw []byte) (*BriefFile, bool, error) {
 	// rather than the exact-match extractEvidence uses.
 	bf.Verify = extractSectionByPrefix(body, "Verify")
 	bf.Body = body
+	bf.bodyLineOffset = strings.Count(fmRaw, "\n") + 3
 	bf.DeclaredPaths, bf.DeclaredPathsFound = extractContextDeclaredPaths(body)
 	bf.DeclaredEntriesRaw, bf.DeclaredEntriesRawFound = extractContextDeclaredEntriesRaw(body)
 	return bf, true, nil
@@ -1145,6 +1208,12 @@ var (
 	mdLinkTextRe = regexp.MustCompile(`\[([^\]]*)\]\([^)]*\)`)
 )
 
+// PROFILE (tool-refactoring/03): this is the permissive DIAGNOSTIC reader of the
+// `files:` declaration, kept for the cross-read and lint, which must still
+// report on a malformed line. It is not the declared-input grammar: the strict
+// reader, which refuses what it cannot read, is briefdoc.DeclaredFiles. A
+// change to what a declaration may name belongs there, not here.
+//
 // extractContextDeclaredPaths reads the `files:` declared-paths line from a
 // brief's `## Context` section and returns the paths it names. This is the first
 // half of mistake-proofing/01: the declared-paths line is parsed by nothing else
@@ -1626,13 +1695,13 @@ var briefHistoryNoticesInHydration bool
 var staleFailHistoryQueries atomic.Int64
 
 // checkBriefFilesMode is checkBriefFiles with one choice: whether to compute the
-// notices that need a git history query (waitingBriefNotice: the stale-FAIL
+// notices that need the strict input scan or a git history query (waitingBriefNotice: the stale-FAIL
 // route, which reads the shallow state, refs, config and first-parent history of
 // main once per waiting brief). Every PROBLEM, every hydrated Brief field and
 // every other notice is produced identically in both modes. A caller that
 // discards the notices (loadHydratedStreams) passes false and no longer pays one
 // history query per waiting brief; the lint and STATUS.md paths pass true.
-func checkBriefFilesMode(streams, allStreams []*Stream, historyNotices bool) (problems, notices []string) {
+func checkBriefFilesMode(streams, allStreams []*Stream, includeCostlyNotices bool) (problems, notices []string) {
 	add := func(format string, a ...any) { problems = append(problems, fmt.Sprintf(format, a...)) }
 	notice := func(format string, a ...any) { notices = append(notices, fmt.Sprintf(format, a...)) }
 
@@ -1684,9 +1753,21 @@ func checkBriefFilesMode(streams, allStreams []*Stream, historyNotices bool) (pr
 		return r
 	}
 
-	for _, s := range streams {
-		for _, path := range briefFilePaths(s) {
-			bf, ok, err := parseBriefFile(path)
+	// Every brief file is read and parsed once, up front and concurrently, before
+	// the sequential pass below consumes the results in its fixed order
+	// (statusgen/44, issue #6900). See parseBriefFilesAhead.
+	streamPaths := make([][]string, len(streams))
+	var allPaths []string
+	for i, s := range streams {
+		streamPaths[i] = briefFilePaths(s)
+		allPaths = append(allPaths, streamPaths[i]...)
+	}
+	parsedAhead := parseBriefFilesAhead(allPaths)
+
+	for si, s := range streams {
+		for _, path := range streamPaths[si] {
+			ahead := parsedAhead[path]
+			bf, ok, err := ahead.bf, ahead.ok, ahead.err
 			if err != nil {
 				add("%s", err.Error()) // already path-prefixed
 				continue
@@ -1695,6 +1776,15 @@ func checkBriefFilesMode(streams, allStreams []*Stream, historyNotices bool) (pr
 				continue // legacy / opted-out → exempt
 			}
 
+			// Hydration discards notices. Only lint needs the strict declaration diagnostics.
+			if includeCostlyNotices {
+				var reg *graphRepos
+				tags := briefdoc.BriefFilesTags(bf.Body)
+				if len(tags) > 0 {
+					reg = graphReposFor(s.Root)
+				}
+				notices = append(notices, declaredFilesNotices(s.Root, path, bf, reg, tags)...)
+			}
 			id, num, okName := expectedBriefID(path)
 			if !okName {
 				add("%s: filename must match brief-<NN>[-slug].md", path)
@@ -2043,7 +2133,7 @@ func checkBriefFilesMode(streams, allStreams []*Stream, historyNotices bool) (pr
 				// — noticing every gated todo floods the register with items
 				// nobody is waiting on; the brief's "top-of-Next-up"
 				// case is covered by the Next-up-pick check in run() instead.
-				if historyNotices {
+				if includeCostlyNotices {
 					if message := waitingBriefNotice(s.Root, path, bf, row.Status); message != "" {
 						notice("%s", message)
 					}

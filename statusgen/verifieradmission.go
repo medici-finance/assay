@@ -9,6 +9,8 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // statusgen is a separate module. Admission delegates to the installed shared
@@ -118,14 +120,31 @@ func sameDirectory(a, b string) bool {
 // shell would run or act on at startup are removed (admittedRowShellStartup),
 // since they can set any of the above before the row's own command runs.
 //
-// Every variable that leads a row to a stored credential is removed too
+// The scrub is an allow-list. An inherited variable reaches a row only when it
+// is on the pass list (admittedRowPass): the search path, the account and
+// shell names (USER, LOGNAME, SHELL), the bare CI flag, locale and terminal
+// settings, the Go toolchain settings, proxy and trust-root settings and the
+// Windows system locations, each by exact name, and the named delivery
+// coordinates while each holds a full commit id (admittedRowInput: the
+// ASSAY_DELIVERY_* pair and the unprefixed DELIVERY_HEAD/DELIVERY_BASE pair).
+// Every other variable is dropped, whatever its family, so a credential pointer nobody has thought to
+// name (another forge's or another tool's, an agent socket, a runtime
+// directory, a profile location) does not reach a row by default. A listed
+// proxy or module proxy whose URL carries a user name is dropped as well. A row
+// that reads a dropped variable by name is could-not-run, not fail
+// (admittedRowScrubbedRefs).
+//
+// The named refusals below (admittedRowDenied) are checked first, so a name
+// added to the pass list later cannot carry one of them through.
+// Every variable that leads a row to a stored credential is refused
 // (admittedRowCredential): HOME and XDG_CONFIG_HOME (where the forge CLI keeps
 // its stored login, a git credential helper is configured and a role key is
 // found), DESK_LOOP (the role a minter resolves), every GH_* variable
 // (GH_CONFIG_DIR, the forge CLI's config directory, and that CLI's token
 // variables among them), every ASSAY_* variable (the methodology's own
 // configuration, role key paths included) except the two named delivery
-// coordinates when they hold a commit id (admittedRowInput), CELLCTL_GH_AMBIENT (a cell's copy
+// coordinates when they hold a commit id (admittedRowInput; the run adds one
+// checked replay path back after this function, admittedReplayInput), CELLCTL_GH_AMBIENT (a cell's copy
 // of the stored login) and the GITHUB_* token variables (admittedRowForgeToken).
 // An inherited row-read socket variable is removed as well: the run names its
 // own socket after this function, and no other. The caller gives each row a
@@ -144,46 +163,101 @@ func sameDirectory(a, b string) bool {
 // removed too (it is an ASSAY_* variable): the run hands its own
 // credential path to the one row that needs it, after this function.
 //
-// Out of scope, stated so it is not overclaimed: PATH (which git and which
-// tools a row runs), SSH_AUTH_SOCK (an agent a row's git can authenticate
-// through), SSH_ASKPASS, the Windows profile variables, and credential
-// variables outside the families above, such as other forges' and other
-// tools', pass through unchanged. The scrub removes the
-// pointers, not the files: a row runs as the same user and can still open a
-// stored login or a key file by an absolute path it already knows. Two more
-// paths stay reachable without any variable: a credential helper configured in
-// the checkout's own git config, and a home that a tool resolves from the
-// user's account record rather than from HOME (ssh resolves ~ that way). The
+// Out of scope, stated so it is not overclaimed: the listed variables pass
+// with their values, PATH among them (which git and which tools a row runs).
+// The scrub removes the pointers, not the files: a row runs as the same user
+// and can still open a stored login or a key file by an absolute path it
+// already knows. Several paths stay reachable without any variable: a
+// credential helper configured in the checkout's own git config, a home that
+// a tool resolves from the user's account record rather than from HOME (ssh
+// resolves ~ that way), and the same user's local endpoints (an agent or
+// another run's socket) at a path a row already knows or can list. The
 // invoking process's own environment also stays reachable: a same-user
 // process can generally read another's startup environment (ps -E on macOS,
 // /proc/<pid>/environ on Linux), which keeps every variable removed here. A
 // row that looks for a credential on purpose can therefore still find one;
 // this removal stops one being found by default. Containment is a runner that
-// holds no credential but the verifier's own. An unadmitted run keeps the
-// caller's environment.
+// holds no credential but the verifier's own (docs/verify-row-strength.md,
+// "What an admitted row can reach"). An unadmitted run keeps the caller's
+// environment.
 func admittedRowEnv(environ []string) []string {
 	var env []string
 	for _, kv := range environ {
-		key, _, _ := strings.Cut(kv, "=")
 		switch {
 		case admittedRowInput(kv):
 			env = append(env, kv)
-		case admittedRowShellStartup(key):
-		case admittedRowForgeToken(key):
-		case admittedRowCredential(key):
-		case strings.EqualFold(key, runCredentialEnv):
-		case strings.EqualFold(key, rowreadSocketVar):
-		case strings.HasPrefix(strings.ToUpper(key), "GIT_") && !admittedRowGlobal(kv):
-		default:
+		case admittedRowDenied(kv):
+		case admittedRowGlobal(kv), admittedRowPass(kv):
 			env = append(env, kv)
 		}
 	}
-	return append(env,
+	// The grep pins come from gitcore, the owner that qualifies exactly them
+	// for its library reads, so a row's own scoped origin reads accept them.
+	env = append(env,
 		"GIT_NO_REPLACE_OBJECTS=1", "GIT_ATTR_NOSYSTEM=1",
-		"GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=",
-		"GIT_CONFIG_COUNT=2",
-		"GIT_CONFIG_KEY_0=grep.patternType", "GIT_CONFIG_VALUE_0=default",
-		"GIT_CONFIG_KEY_1=grep.extendedRegexp", "GIT_CONFIG_VALUE_1=false")
+		"GIT_CONFIG_NOSYSTEM=1", "GIT_TERMINAL_PROMPT=0", "GIT_ASKPASS=")
+	return append(env, gitcore.GrepPinEnv()...)
+}
+
+// admittedRowPassNames are the inherited variables an admitted row keeps,
+// matched by exact name whatever its case, besides the named row inputs, the
+// narrowing global git setting and the locale's LC_* settings. Each is a
+// search path, an account or shell name (USER, LOGNAME, SHELL), the bare CI
+// flag, a locale or terminal setting, a Go toolchain setting the
+// container run's module controls depend on, a proxy or trust-root setting, or
+// a Windows system location. None names a credential: GOAUTH (a credential
+// command), GOENV (a settings file that can set one), the Windows profile
+// locations and every family not listed here are dropped.
+var admittedRowPassNames = []string{
+	"PATH", "USER", "LOGNAME", "SHELL",
+	"LANG", "LANGUAGE", "TERM", "COLORTERM", "NO_COLOR", "TZ", "COLUMNS", "LINES", "CI",
+	"GOROOT", "GOPATH", "GOCACHE", "GOMODCACHE", "GOFLAGS", "GOTOOLCHAIN", "GOPROXY", "GOSUMDB",
+	"GONOSUMDB", "GONOPROXY", "GOPRIVATE", "GOINSECURE", "GOVCS", "GODEBUG", "GOEXPERIMENT",
+	"GOOS", "GOARCH", "GOAMD64", "GOARM", "GOARM64", "GO386", "GOWORK", "GOTMPDIR", "GOMAXPROCS",
+	"GOGC", "GOMEMLIMIT", "GOTRACEBACK", "GORACE", "GOCOVERDIR", "GOFIPS140", "CGO_ENABLED", "CC", "CXX",
+	"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR",
+	"SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "OS",
+	"PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS", "PROGRAMFILES", "PROGRAMFILES(X86)",
+	"PROGRAMW6432", "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(X86)", "COMMONPROGRAMW6432", "PROGRAMDATA",
+}
+
+// admittedRowURLNames are the listed variables whose value is a URL a client
+// authenticates with when it carries a user name. One that carries any '@'
+// is dropped, so a proxy or module-proxy login never rides through on a
+// listed name.
+var admittedRowURLNames = []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "GOPROXY", "GOSUMDB"}
+
+// admittedRowPass reports whether an inherited variable is on the pass list
+// (admittedRowPassNames, or LC_*), and, for a URL-valued one, carries no user
+// name. Everything else is dropped: the scrub is an allow-list, so a variable
+// family nobody listed never reaches a row by default.
+func admittedRowPass(kv string) bool {
+	key, value, _ := strings.Cut(kv, "=")
+	key = strings.ToUpper(key)
+	if slices.Contains(admittedRowURLNames, key) && strings.Contains(value, "@") {
+		return false
+	}
+	return strings.HasPrefix(key, "LC_") || slices.Contains(admittedRowPassNames, key)
+}
+
+// admittedRowDenied reports whether an inherited variable is one the scrub
+// refuses by name: a shell startup variable, a forge token, a credential
+// pointer, an inherited run credential or row-read socket, or a GIT_* variable
+// other than the narrowing global setting. It is checked before the pass list,
+// so a pass-list entry can never carry one of these through.
+func admittedRowDenied(kv string) bool {
+	key, _, _ := strings.Cut(kv, "=")
+	switch {
+	case admittedRowShellStartup(key):
+	case admittedRowForgeToken(key):
+	case admittedRowCredential(key):
+	case strings.EqualFold(key, runCredentialEnv):
+	case strings.EqualFold(key, rowreadSocketVar):
+	case strings.HasPrefix(strings.ToUpper(key), "GIT_") && !admittedRowGlobal(kv):
+	default:
+		return false
+	}
+	return true
 }
 
 // admittedRowGlobal reports whether an inherited GIT_* variable is a global
@@ -205,12 +279,16 @@ func admittedRowCredential(key string) bool {
 		slices.Contains([]string{"HOME", "XDG_CONFIG_HOME", "DESK_LOOP", "CELLCTL_GH_AMBIENT"}, key)
 }
 
-// admittedRowInputs are the only ASSAY_* variables an admitted row still
-// receives: the delivery coordinates the container verify runner
-// (images/verify-runner/witness.sh) exports from its own argv before it starts
-// an admitted run, which delivery-coordinate Verify rows read. They are commit
+// admittedRowInputs are the delivery coordinates an admitted row receives as
+// named row inputs. The ASSAY_* pair are the only ASSAY_* variables a row still
+// gets: the container verify runner (images/verify-runner/witness.sh) exports
+// them from its own argv before it starts an admitted run. DELIVERY_HEAD and
+// DELIVERY_BASE are the unprefixed pair older consumer-diff Verify rows read
+// (the desk-tools briefs' "Consumer-diff provenance" rows); they are on no
+// family's deny list, so before the allow-list they passed through, and they
+// are kept here under the same rule rather than dropped. All four are commit
 // ids, not credentials. Each is named exactly: no prefix, no other case.
-var admittedRowInputs = []string{"ASSAY_DELIVERY_SHA", "ASSAY_DELIVERY_BASE_SHA"}
+var admittedRowInputs = []string{"ASSAY_DELIVERY_SHA", "ASSAY_DELIVERY_BASE_SHA", "DELIVERY_HEAD", "DELIVERY_BASE"}
 
 // admittedRowInput reports whether an inherited variable is one of the named
 // row inputs (admittedRowInputs) holding a full commit id, the shape the runner
@@ -221,32 +299,147 @@ func admittedRowInput(kv string) bool {
 	return slices.Contains(admittedRowInputs, key) && fullObjectIDRe.MatchString(value)
 }
 
+// admittedReplayInputVar names the one file path an admitted row still
+// receives: the read-only cohort replay that derived-board/10 Verify row 14
+// reads (ruling A on medici-finance/assay#7454). It is not a commit id, so it
+// is not one of admittedRowInputs. admittedRowEnv scrubs it with the rest of
+// the ASSAY_* family, and the run adds it back after the scrub, only in the
+// checked form admittedReplayInput returns.
+const admittedReplayInputVar = "ASSAY_COHORT_REPLAY"
+
+// admittedReplayInput returns the replay input an admitted run hands to rows
+// that run in root, read from the invoking environment environ by exact name.
+// The path is made absolute, its symlinks are resolved, and it must name an
+// existing regular file that does not resolve inside root (relWithin). The
+// derived-board/10 brief's amendment A sets the same rules for its replay
+// paths, and root is the working tree the rows run in. The row receives the resolved path,
+// so a relative value cannot read differently from the row's directory and a
+// symlink cannot be re-pointed after the check.
+//
+// With the variable unset it returns neither. With a value that fails a check
+// it returns a refusal and no input. The row then reads a scrubbed name and is
+// could-not-run (admittedRowScrubbedRefs), never run without its input. The
+// file is not opened. Read-only means that admission passes only the path:
+// the row runs as the same user, so nothing stops a row from writing to the
+// file. A row that does so has to be caught by review of the row's text.
+func admittedReplayInput(environ []string, root string) (kv, refusal string) {
+	value, found := "", false
+	for _, e := range environ {
+		if k, v, _ := strings.Cut(e, "="); k == admittedReplayInputVar {
+			value, found = v, true
+		}
+	}
+	if !found {
+		return "", ""
+	}
+	if value == "" {
+		return "", "it is set but empty"
+	}
+	abs, err := filepath.Abs(value)
+	if err != nil {
+		return "", "it cannot be made absolute: " + err.Error()
+	}
+	real, err := filepath.EvalSymlinks(abs)
+	if err != nil {
+		return "", "it cannot be resolved: " + err.Error()
+	}
+	if info, err := os.Stat(real); err != nil || !info.Mode().IsRegular() {
+		return "", fmt.Sprintf("%s is not an existing regular file", real)
+	}
+	if _, inside := relWithin(root, real); inside {
+		return "", fmt.Sprintf("%s resolves inside the working tree %s; replay bytes never live in the tree", real, root)
+	}
+	return admittedReplayInputVar + "=" + real, ""
+}
+
 // admittedRowRefRe matches a row command's reads of a variable by name:
 // $env:NAME (pwsh, whatever its case), $NAME, ${NAME}, ${NAME...} (a default,
 // a length or an indirection: ${NAME:-x}, ${#NAME}, ${!NAME}) and %NAME% (cmd).
 // The pwsh form comes first so $env is not read as a name of its own.
 var admittedRowRefRe = regexp.MustCompile(`(?i:\$env:)([A-Za-z_][A-Za-z0-9_]*)|\$\{?[#!]?([A-Za-z_][A-Za-z0-9_]*)|%([A-Za-z_][A-Za-z0-9_]*)%`)
 
-// admittedRowScrubbedRefs returns, in the order first read, the ASSAY_*
-// variables a row's command reads that its admitted environment env cannot
-// carry, so the row cannot run as written under admission (desk decisions 10
-// and 11 on #6773). A name counts only when admittedRowEnv itself drops it,
-// whatever its value: it is probed with a full commit id, the one value a named
-// row input (admittedRowInputs) keeps, so the delivery coordinates never count,
-// and an abbreviated coordinate still gets the row's own failure. A name the
-// run sets after the scrub (its run credential path, for a forge row) is in env
-// and does not count.
+// admittedRowShellVars are the variables a row's own shell (or the run) sets,
+// so a row that reads one is not reading an inherited input the scrub removed:
+// bash and POSIX shell specials and pwsh's automatic variables that are spelt in
+// capitals, plus TMPDIR, which the run sets per row after the scrub.
+var admittedRowShellVars = []string{
+	"PWD", "OLDPWD", "SHLVL", "IFS", "RANDOM", "SECONDS", "LINENO", "UID", "EUID", "PPID", "BASHPID",
+	"HOSTNAME", "HOSTTYPE", "MACHTYPE", "OSTYPE", "FUNCNAME", "PIPESTATUS", "REPLY", "OPTIND", "OPTARG",
+	"OPTERR", "MAPFILE", "BASH", "BASH_VERSION", "BASH_SOURCE", "BASH_LINENO", "BASH_REMATCH", "BASH_ARGV",
+	"BASH_ARGC", "BASH_COMMAND", "BASH_SUBSHELL", "GROUPS", "PS1", "PS2", "PS3", "PS4", "LASTEXITCODE", "PID",
+	"TMPDIR",
+}
+
+// admittedRowOnlyReads reports whether every mention of name in the command is
+// a read of it (admittedRowRefRe), counting a whole-word mention spelt exactly
+// as name is (an English word in a message is not the capitalised name). A
+// bare mention beside it (NAME=x, for NAME in, read NAME, printenv NAME) means
+// the row may set the name itself, and it is not counted.
+func admittedRowOnlyReads(command, name string) bool {
+	word := func(b byte) bool {
+		return b == '_' || b >= '0' && b <= '9' || b >= 'a' && b <= 'z' || b >= 'A' && b <= 'Z'
+	}
+	text := command
+	mentions := 0
+	for i := 0; i < len(text); {
+		j := strings.Index(text[i:], name)
+		if j < 0 {
+			break
+		}
+		j += i
+		end := j + len(name)
+		if (j == 0 || !word(text[j-1])) && (end == len(text) || !word(text[end])) {
+			mentions++
+		}
+		i = j + 1
+	}
+	reads := 0
+	for _, m := range admittedRowRefRe.FindAllStringSubmatch(command, -1) {
+		if m[1]+m[2]+m[3] == name {
+			reads++
+		}
+	}
+	return mentions == reads
+}
+
+// admittedRowEnvShaped reports whether a $NAME or ${NAME} read is spelt like an
+// inherited variable: capitals, digits and underscores only. A lower-case or
+// mixed-case $name is the row's own local, or a pwsh variable such as $true.
+func admittedRowEnvShaped(name string) bool {
+	return name == strings.ToUpper(name) && !strings.HasPrefix(name, "_")
+}
+
+// admittedRowScrubbedRefs returns, in the order first read, the variables a
+// row's command reads that its admitted environment env cannot carry, so the
+// row cannot run as written under admission (desk decisions 10 and 11 on #6773,
+// and the same rule widened to every dropped input on #6802). Two sets count:
+//
+//   - every ASSAY_* variable the scrub drops, wherever it is read;
+//   - any other variable the allow-list drops that a base without it would
+//     have passed: not one of the named refusals (admittedRowDenied, dropped
+//     before the allow-list too), not a shell or run variable
+//     (admittedRowShellVars), spelt in capitals unless read through $env: or
+//     %NAME%, and only read, never also assigned or named bare in the row
+//     (admittedRowOnlyReads).
+//
+// A name counts only when admittedRowEnv itself drops it, whatever its value:
+// it is probed with a full commit id, the one value a named row input
+// (admittedRowInputs) keeps, so the delivery coordinates never count, and an
+// abbreviated coordinate still gets the row's own failure. A name the run sets
+// after the scrub (its run credential path, for a forge row) is in env and does
+// not count.
 //
 // The rule reads the command's text, not the shell's parse. Any $NAME, ${NAME
 // or %NAME% counts, wherever it sits: inside single quotes, in an echo or
-// comment, in a grep pattern. That errs to could-not-run. A read written
-// without that syntax (printenv NAME, env | grep NAME, or a program the row
-// starts reading the variable itself) does not count, and the row runs as before.
+// comment, in a grep pattern, with or without a default (${NAME:-x}). That errs
+// to could-not-run. A read written without that syntax (printenv NAME, env |
+// grep NAME, or a program the row starts reading the variable itself) does not
+// count, and the row runs as before, seeing the variable unset.
 func admittedRowScrubbedRefs(command string, env []string) []string {
 	var names []string
 	for _, m := range admittedRowRefRe.FindAllStringSubmatch(command, -1) {
 		name := m[1] + m[2] + m[3]
-		if !strings.HasPrefix(strings.ToUpper(name), "ASSAY_") || slices.Contains(names, name) {
+		if slices.Contains(names, name) {
 			continue
 		}
 		if slices.ContainsFunc(env, func(kv string) bool {
@@ -256,9 +449,16 @@ func admittedRowScrubbedRefs(command string, env []string) []string {
 			continue
 		}
 		probe := name + "=" + strings.Repeat("0", 40)
-		if !slices.Contains(admittedRowEnv([]string{probe}), probe) {
-			names = append(names, name)
+		if slices.Contains(admittedRowEnv([]string{probe}), probe) {
+			continue
 		}
+		if !strings.HasPrefix(strings.ToUpper(name), "ASSAY_") {
+			if admittedRowDenied(probe) || slices.Contains(admittedRowShellVars, strings.ToUpper(name)) ||
+				m[2] != "" && !admittedRowEnvShaped(name) || !admittedRowOnlyReads(command, name) {
+				continue
+			}
+		}
+		names = append(names, name)
 	}
 	return names
 }
@@ -268,7 +468,11 @@ func admittedRowScrubbedRefs(command string, env []string) []string {
 // and tools find no user config and no stored login there, and nothing an
 // earlier row of the same run left behind. It returns that directory, which
 // the caller removes when the row ends, and the two variables to set.
-func admittedRowDirs(scratch string) (string, []string, error) {
+//
+// With roster (a container run whose receipt carries the open step's roster
+// copy, rostercopy.go) the fresh HOME also holds that copy as its config-home
+// roster, and nothing else.
+func admittedRowDirs(scratch string, roster []byte) (string, []string, error) {
 	dir, err := os.MkdirTemp(scratch, "row-")
 	if err != nil {
 		return "", nil, err
@@ -276,6 +480,12 @@ func admittedRowDirs(scratch string) (string, []string, error) {
 	home, tmp := filepath.Join(dir, "home"), filepath.Join(dir, "tmp")
 	for _, d := range []string{home, tmp} {
 		if err := os.Mkdir(d, 0o700); err != nil {
+			removeRowScratch(dir)
+			return "", nil, err
+		}
+	}
+	if roster != nil {
+		if err := installRowRoster(home, roster); err != nil {
 			removeRowScratch(dir)
 			return "", nil, err
 		}

@@ -56,6 +56,10 @@ type VerifierReceipt struct {
 	// (example-stream/50), local-only like BriefRoot and never part of the issue
 	// body. Admission rechecks it before rows execute, and landing consumes it.
 	World *RunWorld `json:",omitempty"`
+	// ToolUpgrade is the desk-tools upgrade an Evidence admission accepted when
+	// it rechecked World (#7353). It is never persisted: the landing that was
+	// admitted records it in its own landing record (ToolUpgrade.Trailer).
+	ToolUpgrade *ToolUpgrade `json:"-"`
 }
 type verifierLocal struct {
 	VerifierReceipt
@@ -267,8 +271,14 @@ func verifierLocalCheck(root, brief string, r verifierLocal, phase verifierPhase
 
 // PrepareVerifierAttestation persists the nonce BEFORE the first forge write.
 func PrepareVerifierAttestation(root, repo, brief, model, tier string) error {
+	return PrepareVerifierAttestationAt(root, repo, brief, model, tier, "")
+}
+
+// PrepareVerifierAttestationAt repeats the dispatcher's tracking-checkout check
+// against the actual brief immediately before preparing a cross-repository run.
+func PrepareVerifierAttestationAt(root, repo, brief, model, tier, expectedTrackingRoot string) error {
 	if filepath.IsAbs(brief) && !verifierContains(root, brief) {
-		return prepareVerifierCrossRepo(root, repo, brief, model, tier)
+		return prepareVerifierCrossRepo(root, repo, brief, model, tier, expectedTrackingRoot)
 	}
 	desk, _ := RoleAppLogin(DispatcherRole)
 	if !verifierAuthority(desk) {
@@ -442,7 +452,21 @@ func checkVerifierRun(root, brief string, f Forge, phase verifierPhase, requireW
 		return r.VerifierReceipt, Refused("verifier run has no admitted prerequisite record (its prepare-step admission was held or could not check); no Verify rows or Evidence admitted; recover with deskdispatch --attest-verifier --root <home>, which re-admits it")
 	}
 	if r.World != nil {
-		if err = r.World.Recheck(worldRecheckProbes); err != nil {
+		if phase == verifierEvidence {
+			// Evidence admission is the landing: it alone may accept a desk-tools
+			// upgrade, against the pin on the tracking repo's current main, and it
+			// returns what it accepted for the landing record (#7353).
+			fr, rerr := verifierRepo(r.Binding.Repo)
+			if rerr != nil {
+				return r.VerifierReceipt, rerr
+			}
+			host := worldRecheckProbes.withDefaults().Runtime()
+			u, werr := r.World.RecheckLanding(worldRecheckProbes, ForgeMainToolPin(f, fr, r.Binding.Repo, host))
+			if werr != nil {
+				return r.VerifierReceipt, werr
+			}
+			r.ToolUpgrade = u
+		} else if err = r.World.Recheck(worldRecheckProbes); err != nil {
 			return r.VerifierReceipt, err
 		}
 	}

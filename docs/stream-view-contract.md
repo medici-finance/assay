@@ -1,4 +1,4 @@
-# Stream view contract (v1)
+# Stream view contract (v1 and v2)
 
 A **stream view** is one stream's state as a single, versioned, self-describing
 document: who the stream is, what it is for, where it stands, what changed in
@@ -11,7 +11,10 @@ This page is the contract. The Go types live in the importable package
 statusgen. The contract defines **shape and invariants only**: it introduces
 no readiness or progress algorithm and no persistent store.
 
-Contract identifier: **`stream-view/v1`** (`streamview.Version`).
+Contract identifiers: **`stream-view/v1`** (`streamview.Version`) and
+**`stream-view/v2`** (`streamview.Version2`), which adds the mandatory
+[milestones section](#milestones-v2). A v1 document is unchanged by v2 and decodes
+exactly as before.
 
 ## Identity
 
@@ -58,7 +61,9 @@ must not key caches, history or comparisons on `context`.
 
 ## Versioning and negotiation
 
-- Every document carries `"contract": "stream-view/v1"` as its first field.
+- Every document carries `"contract": "stream-view/v1"` (or `/v2`) as its first field.
+  `streamview.SupportedVersions` lists the versions this package decodes, newest
+  first.
 - `streamview.Negotiate(offered, accepted)` returns the **first** entry of the
   consumer's `accepted` list (its preference order) that the producer offers.
   No common version is an error — never a silent fall back to the producer's
@@ -68,6 +73,15 @@ must not key caches, history or comparisons on `context`.
   missing version *before* decoding the body, then decodes strictly (an
   unknown field is an error) and validates every invariant below. A consumer
   never "best-effort" reads a version it does not support.
+
+- **v2 is additive and opt-in by negotiation.** A producer offers `v2` only for a
+  stream that opted into milestones (`reader-requirements` naming `milestone-v1`);
+  every other stream is offered `v1` only and its view is byte-identical to
+  before. A v1-only consumer of an opted-in stream negotiates down to `v1` and
+  receives no milestone section; a milestone-only consumer (accepting only `v2`)
+  of a stream that did not opt in gets a negotiation error, never an invented
+  empty section. A `v1` document that carries a `milestones` member, or a `v2`
+  document that omits it, is invalid.
 
 ### Precedence
 
@@ -188,6 +202,42 @@ reported as a statusgen lint **PROBLEM** of the form
 In the view, an invalid block yields a mission section with availability
 `could-not-check`, the diagnostics, and no content.
 
+## Milestones (v2)
+
+The `milestones` section projects the canonical milestone reader's and readiness
+evaluator's results. It owns no state: nothing in it is authored, and a consumer
+never derives one of its facts from another. Five facts stay distinct per
+milestone (`ref` is the exact `<key>@<version>`):
+
+| Field | Meaning |
+|---|---|
+| `scope` | the work refs the milestone promises |
+| `work` | `state` known or unknown; when known, `remaining` and the `pending` refs. Unknown carries no count and a reason |
+| `acceptance` | `accepted`, `outstanding`, `not-due` (work remains) or `could-not-check` (reason required) |
+| `availability` | `supported`, `blocked` or `unknown` |
+| `prerequisites`, `holds` | what blocks it: typed holds (`work`, `coverage`, `cycle`, `prerequisite`, `acceptance`) each with a state and reason |
+
+**Zero work remaining is not acceptance.** A milestone with `work.remaining: 0`
+and `acceptance.state: outstanding` is not supported and not done; a validated
+document cannot say `supported` without `accepted` acceptance and no holds. The
+production producer supplies no acceptance observation, so it projects
+`could-not-check` acceptance with a reason and never infers acceptance from work.
+
+The section's `coverage` is `known` or `unknown`; every gap behind `unknown` is
+listed in `unknowns`, and a `known` section lists none. A stream that did not opt
+in states `not-assessed` rather than omitting the section. `membership` is the
+generated reverse index from a work item to the milestones that list it; it
+names only items in the section. `aliases` records legacy spellings that denote
+the same milestone: an alias never makes a second row and never carries its own
+approval state (the producer emits none today, because milestone records carry no
+alias spellings; the field is for tolerant ingest). `evidence` uses the same
+references and dereference rules as every other section.
+
+Consumers: `deskboard milestones` renders the section (tools/desk README); the
+generated `statusgen:milestones` region of a stream README (docs/streams/README.md)
+carries only the plan-time facts (scope, prerequisites, evidence, membership,
+coverage), because live work, acceptance and availability change without a commit.
+
 ## Changes window
 
 `changes.window` is always stated, whatever the section's availability, so an
@@ -252,6 +302,10 @@ found); rows marked `planned` must still be absent.
 | File | Symbol | State |
 |---|---|---|
 | `statusgen/streamview/contract.go` | `const Version = "stream-view/v1"` | existing |
+| `statusgen/streamview/contract.go` | `Version2 = "stream-view/v2"` | existing |
+| `statusgen/streamview/milestones.go` | `type Milestones struct` | existing |
+| `statusgen/streammilestones.go` | `func streamViewVersioned(` | existing |
+| `tools/desk/cmd/deskboard/milestones.go` | `func cmdMilestones(` | existing |
 | `statusgen/streamview/contract.go` | `func Negotiate(` | existing |
 | `statusgen/streamview/contract.go` | `func Decode(` | existing |
 | `statusgen/streamview/contract.go` | `func ContinuesHistory(` | existing |

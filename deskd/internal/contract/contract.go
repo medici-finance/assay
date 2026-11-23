@@ -643,7 +643,7 @@ type OverridesResponse struct {
 	Cell string `json:"cell"`
 	domain.Overrides
 	// RecordPR reports the mirror-to-cells.yaml record PR's state: a filed PR's
-	// ref, or an honest could-not-check when the write-issues App is not
+	// ref, or an honest could-not-check when the record-PR App is not
 	// configured (the filer never falls back to another identity).
 	RecordPR string `json:"record_pr,omitempty"`
 }

@@ -72,7 +72,7 @@ func dispatchBindings(mode string) []cli.Binding {
 		return append(common,
 			str("tier", "any", "execution tier the item demands: strong|any"), str("kit", "worker", "prompt kit: "+joinKits()),
 			str("repo", "", "owner/name (default: --root's origin)"), str("root", ".", "item's own repo root"),
-			str("claim-root", "", "checkout carrying consumer scripts (default: --root); claims still land in --repo"),
+			str("claim-root", "", "checkout carrying consumer scripts (default: --root); claims land in --repo, except a cross-repo verifier's, which land in this checkout's origin"),
 			str("model", "", "exact model selected by the dispatcher"), str("branch", "", "fresh branch, or verified resume source branch"),
 			str("observation", "", "advisory review observation file (review kit only)"),
 			str("brief", "", "item specification path"), boolean("gate-human", "ensure the human decision issue exists"),
@@ -101,6 +101,9 @@ func newDispatchCLI(mode string, env dispatchCLI) *cobra.Command {
 		"Operational reference: docs/desk-tools/deskdispatch.md"
 	set := cli.Declare(root, dispatchBindings(mode)...)
 	if mode == "" {
+		root.Long += "\nAfter an explicit reclaim of an unlaunched lease, run " +
+			"deskclaim-ref release <item-key> --repo <owner/name> --token-file <file> in the session that reclaimed it. " +
+			"Then repeat the original deskdispatch command with its normal flags. A competing holder stops the dispatch."
 		root.Args = cobra.MaximumNArgs(1)
 	} else {
 		root.Args = cobra.NoArgs

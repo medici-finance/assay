@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // A sanctioned editorial repair of historical Evidence is its own entry in the
@@ -419,7 +421,7 @@ func principalOnly(old, next string) bool {
 }
 
 func cellsTrimmed(line string) []string {
-	cells := splitRowEscaped(line)
+	cells := briefdoc.SplitRowEscaped(line)
 	for i := range cells {
 		cells[i] = strings.TrimSpace(cells[i])
 	}

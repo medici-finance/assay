@@ -21,7 +21,7 @@
 //
 // # The record PR degrades honestly
 //
-// The record PR is filed only when the write-issues App is configured
+// The record PR is filed only when the record-PR App is configured
 // ([mcp.RecordFiler.RecordIdentity] non-empty). When it is not, the table is
 // still written, NO PR is attempted, and the response says
 // `record_pr: could-not-check` — the filer NEVER falls back to the read App or
@@ -114,7 +114,7 @@ func (o *Overrides) handleGet(w http.ResponseWriter, r *http.Request) {
 
 // handlePost sets a cell's overrides. It gates on the answerer tier, validates
 // with the SAME validator the schema uses, writes the local table, then files
-// the record PR (could-not-check when the write-issues App is unconfigured).
+// the record PR (could-not-check when the record-PR App is unconfigured).
 func (o *Overrides) handlePost(w http.ResponseWriter, r *http.Request) {
 	cell := r.PathValue("id")
 	if cell == "" {
@@ -180,7 +180,7 @@ func (o *Overrides) handlePost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── file the record PR, or record could-not-check ─────────────────────
-	recordStatus := "could-not-check (write-issues App not configured)"
+	recordStatus := "could-not-check (record-PR App not configured)"
 	if o.Filer != nil && o.Filer.RecordIdentity() != "" {
 		res, ferr := o.Filer.FileRecordPR(r.Context(), mcp.RecordPRRequest{
 			Cell: cell, Repo: o.ConfigRepo, ConfigPath: o.ConfigPath, Overrides: merged,

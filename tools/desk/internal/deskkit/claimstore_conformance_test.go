@@ -83,6 +83,14 @@ func (m *memForgeClaimStore) Remove(id string) (ClaimWriteOutcome, bool) {
 	return ClaimWriteApplied, existed
 }
 
+func (m *memForgeClaimStore) RemoveFrom(id, old string) ClaimWriteOutcome {
+	if r, ok := m.refs[id]; !ok || r.Version != old {
+		return ClaimWriteRejected
+	}
+	delete(m.refs, id)
+	return ClaimWriteApplied
+}
+
 func (m *memForgeClaimStore) List() ([]string, ClaimReadStatus) {
 	ids := make([]string, 0, len(m.refs))
 	for id := range m.refs {
@@ -251,17 +259,18 @@ func TestClaimStoreConformance(t *testing.T) {
 				}
 			})
 
-			t.Run("release: remove reports it existed, then is an idempotent no-op", func(t *testing.T) {
+			t.Run("release: remove only the exact observed revision", func(t *testing.T) {
 				s, _ := fresh(t)
 				s.CreateIfAbsent(id, holder(id, "sess-A", "dispatched", "", ""))
-				if out, existed := s.Remove(id); out != ClaimWriteApplied || !existed {
-					t.Fatalf("Remove of a held claim = (%v, %t), want (applied, true)", out, existed)
+				ref := mustRead(t, s, id)
+				if got := s.RemoveFrom(id, "stale"); got != ClaimWriteRejected {
+					t.Fatalf("stale removal = %v, want rejected", got)
+				}
+				if got := s.RemoveFrom(id, ref.Version); got != ClaimWriteApplied {
+					t.Fatalf("remove = %v, want applied", got)
 				}
 				if _, st := s.Read(id); st != ClaimReadFree {
 					t.Fatalf("after release Read = %v, want free", st)
-				}
-				if out, existed := s.Remove(id); out != ClaimWriteApplied || existed {
-					t.Fatalf("Remove of an absent claim = (%v, %t), want (applied, false)", out, existed)
 				}
 				if got := s.CreateIfAbsent(id, holder(id, "sess-B", "claimed", "", "")); got != ClaimWriteApplied {
 					t.Fatalf("a create after release = %v, want applied", got)
@@ -277,7 +286,7 @@ func TestClaimStoreConformance(t *testing.T) {
 				for _, k := range held {
 					s.CreateIfAbsent(k, holder(k, "s", "claimed", "", ""))
 				}
-				s.Remove("other--stream--01")
+				s.RemoveFrom("other--stream--01", mustRead(t, s, "other--stream--01").Version)
 				ids, st := s.List()
 				if st != ClaimReadHeld {
 					t.Fatalf("List status = %v, want verified", st)

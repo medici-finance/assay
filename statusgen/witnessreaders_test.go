@@ -7,7 +7,9 @@ package main
 // interpretation of the v2 schema cannot go unnoticed.
 
 import (
+	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -40,20 +42,31 @@ func censusFiles(files map[string]string) []string {
 func repoCensusSources(t *testing.T) map[string]string {
 	t.Helper()
 	files := repoWitnessSources(t)
-	entries, err := os.ReadDir("evaluation")
+	// Walk the library tree, its subpackages included (the record codec lives in
+	// evaluation/outcomerecord), so no library reader escapes the census.
+	err := filepath.WalkDir("evaluation", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		n := d.Name()
+		if d.IsDir() {
+			if n == "testdata" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") {
+			return nil
+		}
+		b, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		files["statusgen/"+filepath.ToSlash(p)] = string(b)
+		return nil
+	})
 	if err != nil {
 		t.Fatal(err)
-	}
-	for _, e := range entries {
-		n := e.Name()
-		if e.IsDir() || !strings.HasSuffix(n, ".go") || strings.HasSuffix(n, "_test.go") {
-			continue
-		}
-		b, err := os.ReadFile("evaluation/" + n)
-		if err != nil {
-			t.Fatal(err)
-		}
-		files["statusgen/evaluation/"+n] = string(b)
 	}
 	return files
 }

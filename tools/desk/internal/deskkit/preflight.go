@@ -2487,11 +2487,29 @@ func DeclaredSiblings(brief string) []string { return declaredSiblings(brief) }
 // capability is carried, never re-minted. A changed input refuses (the run is
 // invalid and must be re-admitted); an unreadable one is could-not-check.
 func (w RunWorld) Recheck(probes PreflightProbes) error {
+	_, err := w.recheck(probes, nil)
+	return err
+}
+
+// RecheckLanding is Recheck for a landing that records what it accepted. The one
+// input it may accept a change in is the desk-tools release, and only an upgrade
+// acceptToolUpgrade admits against mainPin (#7353). The accepted upgrade is
+// returned so the landing records it; nil means the tool did not change.
+func (w RunWorld) RecheckLanding(probes PreflightProbes, mainPin MainToolPin) (*ToolUpgrade, error) {
+	if mainPin == nil {
+		return nil, Refused("a landing recheck needs a reader for the desk-tools pin on main")
+	}
+	return w.recheck(probes, mainPin)
+}
+
+func (w RunWorld) recheck(probes PreflightProbes, mainPin MainToolPin) (*ToolUpgrade, error) {
 	if w.Version != runWorldVersion || len(w.Inputs) == 0 {
-		return Unverifiable("environment could-not-check: the prerequisite record is unreadable", nil)
+		return nil, Unverifiable("environment could-not-check: the prerequisite record is unreadable", nil)
 	}
 	p := probes.withDefaults()
 	var changed, unread []string
+	var upgrade *ToolUpgrade
+	var toolErr error
 	compare := func(key, got string, err error) {
 		switch {
 		case err != nil:
@@ -2511,7 +2529,18 @@ func (w RunWorld) Recheck(probes PreflightProbes) error {
 			rev, err := p.Revision(w.Root)
 			compare(key, rev, err)
 		case key == WorldTool:
-			compare(key, p.RunningTool(), nil)
+			running := p.RunningTool()
+			if running == w.Inputs[key] || mainPin == nil {
+				compare(key, running, nil)
+				break
+			}
+			u, err := acceptToolUpgrade(w.Inputs[key], running, mainPin)
+			if err != nil {
+				toolErr = err
+				changed = append(changed, key)
+				break
+			}
+			upgrade = &u
 		case key == WorldRuntime:
 			compare(key, p.Runtime(), nil)
 		case key == WorldCapability:
@@ -2525,14 +2554,22 @@ func (w RunWorld) Recheck(probes PreflightProbes) error {
 			unread = append(unread, key+": unknown prerequisite key")
 		}
 	}
+	if len(changed) == 1 && toolErr != nil && ExitCodeOf(toolErr) == ExitUnverifiable {
+		// The only change is the tool, and main's pin could not be read to judge it.
+		return nil, Unverifiable("environment could-not-check since admission: tool upgrade: "+oneLine(toolErr.Error()), nil)
+	}
 	if len(changed) > 0 {
-		return Refused("environment changed since admission: " + strings.Join(changed, ", ") +
-			" — the run is invalid; re-admit it before landing")
+		why := ""
+		if toolErr != nil {
+			why = " (tool upgrade not accepted: " + oneLine(toolErr.Error()) + ")"
+		}
+		return nil, Refused("environment changed since admission: " + strings.Join(changed, ", ") +
+			" — the run is invalid; re-admit it before landing" + why)
 	}
 	if len(unread) > 0 {
-		return Unverifiable("environment could-not-check since admission: "+strings.Join(unread, "; "), nil)
+		return nil, Unverifiable("environment could-not-check since admission: "+strings.Join(unread, "; "), nil)
 	}
-	return nil
+	return upgrade, nil
 }
 
 func revisionProbe(dir string) (string, error) {

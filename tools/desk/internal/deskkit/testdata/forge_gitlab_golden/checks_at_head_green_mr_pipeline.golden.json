@@ -20,6 +20,7 @@
     "StatusTotalCount": 1,
     "Statuses": [
       {
+        "RunID": "77",
         "State": "success",
         "Context": "pipeline",
         "CreatedAt": "2026-09-15T10:00:00Z"
@@ -28,6 +29,8 @@
     "CheckRunsTotalCount": 1,
     "CheckRuns": [
       {
+        "JobID": "9101",
+        "RunID": "77",
         "ID": "9101",
         "Name": "statusgen-lint",
         "Status": "completed",

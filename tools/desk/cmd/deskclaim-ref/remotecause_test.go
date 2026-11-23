@@ -57,11 +57,41 @@ func TestRefusedReleaseCauseCarriesServerMessage(t *testing.T) {
 	if res := g.CreateIfAbsent(id, claimTestMessage(id, "sess-A", "claimed", "-", "")); res != deskkit.ClaimWriteApplied {
 		t.Fatalf("seed create = %v, want Applied; cause=%q", res, g.TransportCause())
 	}
+	ref, status := g.Read(id)
+	if status != deskkit.ClaimReadHeld {
+		t.Fatal("could not read fixture claim")
+	}
 	installHook(t, server)
-	if out, _ := g.Remove(id); out != deskkit.ClaimWriteUnverifiable {
+	if out := g.RemoveFrom(id, ref.Version); out != deskkit.ClaimWriteUnverifiable {
 		t.Fatalf("release against a refusing server = %v, want Unverifiable", out)
 	}
 	if c := g.TransportCause(); !strings.Contains(c, hookSays) {
 		t.Fatalf("TransportCause = %q, want it to carry the server's message %q", c, hookSays)
+	}
+}
+
+// regression: #2488
+func TestReleaseChecksObservedRevisionAtRemote(t *testing.T) {
+	g := &gogitStore{url: refusingServer(t), host: "fixture"}
+	const id = "example--pr-12"
+	if got := g.CreateIfAbsent(id, claimTestMessage(id, "first", "claimed", "", "")); got != deskkit.ClaimWriteApplied {
+		t.Fatalf("create=%v: %s", got, g.TransportCause())
+	}
+	first, status := g.Read(id)
+	if status != deskkit.ClaimReadHeld {
+		t.Fatal("initial lease absent")
+	}
+	if got := g.UpdateFrom(id, first.Version, claimTestMessage(id, "next", "claimed", "", "")); got != deskkit.ClaimWriteApplied {
+		t.Fatalf("takeover=%v: %s", got, g.TransportCause())
+	}
+	if got := g.RemoveFrom(id, first.Version); got != deskkit.ClaimWriteRejected {
+		t.Fatalf("stale delete=%v: %s", got, g.TransportCause())
+	}
+	next, status := g.Read(id)
+	if status != deskkit.ClaimReadHeld || fieldOf(next.Msg, "owner") != "next" {
+		t.Fatal("successor changed on delayed delete")
+	}
+	if got := g.RemoveFrom(id, next.Version); got != deskkit.ClaimWriteApplied {
+		t.Fatalf("holder delete=%v: %s", got, g.TransportCause())
 	}
 }
