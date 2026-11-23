@@ -137,7 +137,7 @@ func briefHandoff(g *pathGuard, dir, candidate, repo, branch, head, next string)
 	if brief == "" || sourceKey != prefix+strings.ReplaceAll(brief, "/", "--") {
 		return "", deskkit.Refused("the PR does not deliver the brief that owns this checkout")
 	}
-	keys, err := listDispatchClaims(dir)
+	keys, err := listDispatchClaims(dir, originRemote)
 	if err != nil {
 		return "", deskkit.Unverifiable("could not read the original and new dispatch claims", err)
 	}

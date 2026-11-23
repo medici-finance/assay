@@ -40,8 +40,8 @@ type addOpts struct {
 }
 
 type removeOpts struct {
-	path   string
-	dryRun bool
+	path, claimRepo string
+	dryRun          bool
 }
 
 // pruneFlags carries the duration knobs as the operator's text: runPrune owns their
@@ -103,7 +103,11 @@ func wtBindings() map[string][]cli.Binding {
 			str("adopt-run", "", "with --upstream: adopt an existing home stamped with this run key when it is proven finished "+
 				"(registered, unlocked, clean incl. untracked, on --branch at the pinned --base) instead of refusing it"),
 		},
-		"remove": {boolean("dry-run", "print the lifecycle-hook plan (HOOK before_remove: ...) and touch nothing")},
+		"remove": {
+			boolean("dry-run", "print the lifecycle-hook plan (HOOK before_remove: ...) and touch nothing"),
+			str("claim-repo", "", "owner/name of the repository a dispatched home's claim was taken in, for a home "+
+				"that predates recorded claim namespaces; it must agree with any namespace the home records"),
+		},
 		"prune": {
 			str("repo", "", "run against this repo root instead of the current directory"),
 			str("interval", "", "if set (e.g. 30m), loop: sweep every interval instead of once"),
@@ -228,7 +232,7 @@ func newWtCLI(env wtCLI, argv []string) *cobra.Command {
 		}))
 	root.AddCommand(verb("remove <path>", "remove a proven-safe worktree (there is no --force)", removeLong, cobra.ExactArgs(1),
 		func(v *cli.Values, a []string) wtCall {
-			return wtCall{remove: removeOpts{path: a[0], dryRun: v.Bool("dry-run")}}
+			return wtCall{remove: removeOpts{path: a[0], dryRun: v.Bool("dry-run"), claimRepo: v.String("claim-repo")}}
 		}))
 	root.AddCommand(verb("prune", "sweep stale worktrees, locks, branches and caches under the safety gates", pruneLong, cobra.NoArgs,
 		func(v *cli.Values, _ []string) wtCall {
@@ -434,7 +438,13 @@ old or missing one is not proof the session is gone), one naming no session, git
 tree of a dead session is reaped by ` + "`deskwt prune --reap-dead-sessions`" + ` instead, once the tree
 has been idle past --min-idle (1h by default; run it with --dry-run first, it sweeps every
 ownerless tree). A dispatched home (one recording assay.runKey) is refused while its claim
-is held or unreadable, and its lock is no bar once the claim is released. This is the end-of-PR step for a session that made its own home:
+is held or unreadable, and its lock is no bar once the claim is released. The claim is read in
+the repository the home records (assay.claimRepo): this checkout's origin, or, for a
+cross-repository verifier's home, its tracking repository on origin's forge host. A home that
+predates recorded claim namespaces is unreadable until --claim-repo <owner/name> names the
+repository its dispatch claimed in (a worker or review dispatch: this checkout's origin; a
+cross-repository verifier: its tracking repository); naming the wrong one can free a live
+run's home, and every other gate still applies. This is the end-of-PR step for a session that made its own home:
 ` + "`deskwt add <name> --lock-session <id>`" + ` at the start, ` + "`deskwt remove <path>`" + ` once the PR is
 pushed and the tree is clean.
 
