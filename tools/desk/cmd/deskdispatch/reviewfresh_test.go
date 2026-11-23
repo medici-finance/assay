@@ -92,6 +92,11 @@ func TestReviewFreshAllocation(t *testing.T) {
 						!strings.Contains(string(body), "deskwt review-exited "+quoteReviewArg(h)+" "+quoteReviewArg(ref)) {
 						t.Fatal("assignment lost its confirmed-review or parent-exit binding")
 					}
+					// review-exited binds to the registry of the directory it runs in, which is
+					// the checkout base, not the PR's repository when the two differ.
+					if !strings.Contains(string(body), "runs this from the checkout base") || strings.Contains(string(body), "from the target repository: `deskwt review-exited") {
+						t.Fatal("assignment names the wrong directory for deskwt review-exited")
+					}
 				}
 				return rc
 			}

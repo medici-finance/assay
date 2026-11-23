@@ -3457,12 +3457,18 @@ It still REPORTS everything a real sweep would do.
 Review dispatch supplies `deskpost finish` with `--review-home` and `--dispatch-ref`.
 After reading back the verdict and its body at the reviewed commit, finish records the
 handoff in the checkout's Git administration directory before releasing the claim.
-The parent runs the emitted `deskwt review-exited <checkout> <dispatch-ref>` after
-the reviewer exits and its supporting evidence is saved outside the checkout.
+The parent runs the emitted `deskwt review-exited <checkout> <dispatch-ref>` from the
+checkout base, the repository the checkout was cut from, after the reviewer exits and its
+supporting evidence is saved outside the checkout.
 
 Retirement checks the registered checkout, dispatch attempt, detached checkout commit,
-claim release, lock, activity window and local files, including
-ignored evidence. The checkout commit must be reachable from a remote-tracking ref or still advertised by the origin as the confirmed PR head. A confirmed checkout can retire while the PR is open. On a hold or
+claim release, lock, activity window (the prune `--min-idle` window, 60 minutes by
+default, so a fresh exit usually queues) and local files, including ignored evidence.
+Its Git reads pin `core.fsmonitor` off, so the checkout's own configuration runs no
+program. The checkout commit must be reachable from a remote-tracking ref or still
+advertised as the confirmed PR head by the PR's repository, the one the claim was read
+in, which can differ from the checkout base's origin. A confirmed checkout can retire
+while the PR is open. On a hold or
 an interruption after exit acknowledgement, ordinary `deskwt prune` retries. Each
 worktree sweep reports the remaining count, logical file bytes and oldest age since
 confirmation, plus the count of entries with unavailable size or age. A dry run reports

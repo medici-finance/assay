@@ -442,9 +442,12 @@ as the planner and acts on its rows.
   (`capability:dispatch-worker`) with the emitted prompt.
 
   After the harness reports the reviewer has exited, verify its supporting evidence is saved
-  outside the checkout. Run the assignment’s `deskwt review-exited` command from the target
-  repository, using the original checkout and dispatch ref. The supervisor retries held
-  checkouts. Carry that command forward if the desk restarts before acknowledging exit.
+  outside the checkout. Run the assignment’s `deskwt review-exited` command from the checkout
+  base the assignment names (the repository the checkout was cut from, which may differ from
+  the PR's repository), using the original checkout and dispatch ref. Retirement waits for the
+  prune idle window (60 minutes by default), so the command usually queues the checkout; the
+  supervisor retries held checkouts. Carry that command forward if the desk restarts before
+  acknowledging exit.
 
   **The dispatcher states each round's scope — the desk never narrows it.** Before it claims, a
   `--kit review --pr <N>` dispatch reads the forge and writes a "This round" block into the

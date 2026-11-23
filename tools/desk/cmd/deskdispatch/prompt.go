@@ -524,7 +524,7 @@ func writeReviewFinish(b *strings.Builder, o dispatchOpts, plan dispatchPlan, re
 	fmt.Fprintf(b, "```\ndeskpost finish %s %s %d --verdict %s --head <full head sha> --body-file <file> --claim %q%s\n```\n\n",
 		verb, repo, o.pr, verdicts, plan.claimKey, handoff)
 	if handoff != "" {
-		fmt.Fprintf(b, "Save supporting evidence outside the checkout and return its location with the verdict. After the reviewer exits, the dispatching desk runs this from the target repository: `deskwt review-exited %s %s`.\n\n", quoteReviewArg(home), quoteReviewArg(o.run.dispatchRef))
+		fmt.Fprintf(b, "Save supporting evidence outside the checkout and return its location with the verdict. After the reviewer exits, the dispatching desk runs this from the checkout base named above (the repository the checkout was cut from, which may differ from the PR's repository): `deskwt review-exited %s %s`. Retirement also waits for the prune idle window (60 minutes by default), so the command usually queues the checkout for a later sweep.\n\n", quoteReviewArg(home), quoteReviewArg(o.run.dispatchRef))
 	}
 	return true
 }
