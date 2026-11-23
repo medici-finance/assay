@@ -522,9 +522,15 @@ the two verdict verbs (a risk-classed PR needs BOTH at the same head):
                    review — state COMMENTED, so `+"`ready`"+`'s gate (e) can read it while the
                    board's review state is NOT flipped to APPROVED over live correctness
                    findings. A FAIL is submitted as REQUEST_CHANGES. Do NOT post a clean
-                   security pass as a plain comment: `+"`ready`"+` reads reviews, never
-                   comments, so a comment-shaped pass leaves a risk-classed PR unflippable
-                   (#513 / #438).
+                   security pass as a plain comment: `+"`ready`"+` admits on reviews, never
+                   on comments, so a comment-shaped pass leaves a risk-classed PR
+                   unflippable (#513 / #438).
+  ready            also refuses (exit 6, could-not-check) a head the post-flip check below
+                   already returned to draft: a trusted comment carrying that check's hidden
+                   marker for the CURRENT head. The same condition as deskflip's
+                   not-reverted. It is the one read of the comment thread `+"`ready`"+`
+                   makes, and it can only refuse, never admit. A comment thread it cannot
+                   read is also exit 6. A new head clears it (#6254).
 
 targets:
   comment        reviewer-role callers only: DESK_LOOP must resolve to reviewer.
