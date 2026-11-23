@@ -441,6 +441,11 @@ as the planner and acts on its rows.
   is the 2026-08-15 laundering); for a first review, dispatch a fresh reviewer
   (`capability:dispatch-worker`) with the emitted prompt.
 
+  After the harness reports the reviewer has exited, verify its supporting evidence is saved
+  outside the checkout. Run the assignment’s `deskwt review-exited` command from the target
+  repository, using the original checkout and dispatch ref. The supervisor retries held
+  checkouts. Carry that command forward if the desk restarts before acknowledging exit.
+
   **The dispatcher states each round's scope — the desk never narrows it.** Before it claims, a
   `--kit review --pr <N>` dispatch reads the forge and writes a "This round" block into the
   assignment: the lane's round number, the head of that lane's first review, and
