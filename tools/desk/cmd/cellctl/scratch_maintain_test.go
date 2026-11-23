@@ -29,7 +29,7 @@ func plantAbandoned(t *testing.T, root string) (build, record, kept string) {
 	must(t, os.WriteFile(filepath.Join(build, "b001", "x.a"), []byte(strings.Repeat("b", 4096)), 0600))
 	kept = filepath.Join(r.Work(), "notes.txt")
 	must(t, os.WriteFile(kept, []byte("unacknowledged work"), 0600))
-	must(t, r.Finish(1, true))
+	// Never finished: a crashed session, so only build output is reclaimable.
 	must(t, r.Close())
 	must(t, s.Close())
 	record = filepath.Join(root, r.Record.ID, "record.json")
@@ -38,7 +38,7 @@ func plantAbandoned(t *testing.T, root string) (build, record, kept string) {
 	var rec cellscratch.Record
 	must(t, json.Unmarshal(b, &rec))
 	rec.Created = rec.Created.Add(-30 * 24 * time.Hour)
-	rec.Finished = rec.Finished.Add(-30 * 24 * time.Hour)
+	rec.Reaped = true
 	b, err = json.Marshal(rec)
 	must(t, err)
 	must(t, os.WriteFile(record, b, 0600))

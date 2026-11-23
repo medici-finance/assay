@@ -987,7 +987,33 @@ func verifyPassHeldWitnessed(evidence, path string) (bool, string) {
 // only when latestRun is true: flipHeldRefusal passes it for verifyflip and
 // the reconcile fold, whose witness check reads the same run; every other
 // caller passes false.
+//
+// Every read also shares one comment normalisation (heldjoin.go): a marker
+// that only stripping HTML comments forms ("HE<!-- -->LD", the page renders
+// HELD) is a hold on each read line it spans, with no negation, routing or
+// quoting excuse, and Evidence whose comments do not settle is refused.
 func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
+	refusals := scanHeldRefusals(evidence, latestRun)
+	if len(refusals) == 0 {
+		return false, ""
+	}
+	return true, refusals[0].reason
+}
+
+type heldRefusalSignal struct {
+	// line is the one-based Evidence line, or zero for a whole-document refusal.
+	line   int
+	reason string
+}
+
+// scanHeldRefusals returns every line-level refusal in source order. The
+// ordinary gates project the first reason from this same result.
+func scanHeldRefusals(evidence string, latestRun bool) []heldRefusalSignal {
+	joinText, joinSrc, settled := heldCommentJoins(evidence)
+	if !settled {
+		return []heldRefusalSignal{{reason: "HTML comments that still change after repeated stripping"}}
+	}
+	joined := heldJoinedLines(evidence, joinSrc, heldOrCouldNotCheckRe.FindAllStringIndex(joinText, -1))
 	inFence := false
 	var codeScan inlineCodeScan
 	scope := heldScanScope(evidence, latestRun)
@@ -1026,6 +1052,10 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 		masked := codeScan.mask(line)
 		read := scope.lines[i]
 		if strings.HasPrefix(trimmed, ">") || read.skip {
+			continue
+		}
+		if joined[i] {
+			hits, quotes = append(hits, i), append(quotes, trimmed)
 			continue
 		}
 		// A results-table row is read in its result cells only: the
@@ -1136,13 +1166,14 @@ func unroutedHeldLine(evidence string, latestRun bool) (bool, string) {
 		}
 	}
 	superseded := scope.supersedes(hits)
+	var refusals []heldRefusalSignal
 	for k, i := range hits {
 		if superseded && i < scope.from {
 			continue
 		}
-		return true, quotes[k]
+		refusals = append(refusals, heldRefusalSignal{line: i + 1, reason: quotes[k]})
 	}
-	return false, ""
+	return refusals
 }
 
 // evidenceVerifierInfo returns the date and the Runner cell, verbatim, of the
@@ -1682,7 +1713,11 @@ func closeVerify(root, briefID string, now time.Time) error {
 // decision issue. The close lands on the default branch with no pull request, so
 // this is the only network check that sees it.
 func closeVerifyPlan(root, briefID string, now time.Time) (readme string, updated []byte, local string, err error) {
-	readme, updated, local, err = closeVerifyFlipPlan(root, briefID, now)
+	return closeVerifyPlanFor(root, briefID, now, nil)
+}
+
+func closeVerifyPlanFor(root, briefID string, now time.Time, adjudication *verifiedAcceptanceAdjudication) (readme string, updated []byte, local string, err error) {
+	readme, updated, local, err = closeVerifyFlipPlanFor(root, briefID, now, adjudication)
 	if err != nil {
 		return "", nil, "", err
 	}
@@ -1694,6 +1729,10 @@ func closeVerifyPlan(root, briefID string, now time.Time) (readme string, update
 
 // closeVerifyFlipPlan is closeVerifyPlan before the decision-gate hold.
 func closeVerifyFlipPlan(root, briefID string, now time.Time) (readme string, updated []byte, local string, err error) {
+	return closeVerifyFlipPlanFor(root, briefID, now, nil)
+}
+
+func closeVerifyFlipPlanFor(root, briefID string, now time.Time, adjudication *verifiedAcceptanceAdjudication) (readme string, updated []byte, local string, err error) {
 	// Accept either brief-key form: a brief-v1 <stream>/<NN> id or a brief-v2
 	// <cell>:<repo>:<stream>:<NN> id (issue #804), plus the reference grammar's
 	// <alias>:<stream>/<NN> and <cell>:<alias>:<stream>/<NN> forms. Any repo
@@ -1765,7 +1804,7 @@ func closeVerifyFlipPlan(root, briefID string, now time.Time) (readme string, up
 		// claim, NOT on how (or whether) a PASS marker was written — plus the
 		// FAIL read, both BEFORE the floor read on the cell the done row will
 		// carry (two-stamp model).
-		if err := closeVerifyHeldRefusal(briefID, row.Status, bf.Evidence); err != nil {
+		if err := closeVerifyAdjudicatedHold(root, briefID, row.Status, bf, adjudication); err != nil {
 			return "", nil, "", err
 		}
 		if err := closeVerifyFailRefusal(briefID, row.Status, bf.Evidence); err != nil {
@@ -1791,7 +1830,7 @@ func closeVerifyFlipPlan(root, briefID string, now time.Time) (readme string, up
 		if !hasVerifyPass(bf.Evidence) {
 			return "", nil, "", fmt.Errorf("refusing: brief %s status is %q (not verified) and Evidence has no **VERIFY: PASS** marker — a human-gated brief needs a recorded model verify pass before the human sign-off can advance it", briefID, row.Status)
 		}
-		if err := closeVerifyHeldRefusal(briefID, row.Status, bf.Evidence); err != nil {
+		if err := closeVerifyAdjudicatedHold(root, briefID, row.Status, bf, adjudication); err != nil {
 			return "", nil, "", err
 		}
 		// The stamp is the latest strict PASS run's (latestPassSpan, the

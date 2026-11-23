@@ -21,7 +21,7 @@ import (
 //   - `stream-source` codifies the intake rule "a stream is scaffolded only from
 //     an APPROVED spec": a diff that adds (or flips to) a `status: active` stream
 //     README must name, in its `spec:` frontmatter, a repo-relative scoping doc
-//     whose header parses as `**Status:** approved` (spec/lifecycle-v1.md §8.1).
+//     whose header is approved or routed (spec/lifecycle-v1.md §8.2).
 //     A `parked` stream may cite a `draft`.
 //
 // DIFFERENTIAL, and why it is keyed on the --changed set rather than emitting a
@@ -197,7 +197,7 @@ func streamCapAdds(streams []*Stream, root string, changed []string) []string {
 // streamSourceLint is the `stream-source` --lint entry point. It is differential:
 // it binds only a stream README the diff ADDS or flips to active (a full lint
 // grandfathers the standing corpus, which predates the `spec:` requirement). An
-// added/flipped active stream that does not cite an `approved` spec is a PROBLEM.
+// added/flipped active stream must cite a spec that has crossed approval.
 func streamSourceLint(streams []*Stream, root string, changed []string) (problems, notices []string) {
 	if len(changed) == 0 {
 		return nil, nil
@@ -224,7 +224,7 @@ func streamSourceLint(streams []*Stream, root string, changed []string) (problem
 }
 
 // streamSourceProblem is the pure per-stream predicate: an ACTIVE stream must cite
-// in `spec:` a repo-relative scoping doc whose §8.1 header state is `approved`.
+// in `spec:` a repo-relative scoping doc in the approved or routed state.
 // A non-active (e.g. `parked`) stream is exempt — it may cite a `draft`, or
 // nothing. Returns "" when the stream satisfies the rule.
 func streamSourceProblem(root string, s *Stream) string {
@@ -234,25 +234,22 @@ func streamSourceProblem(root string, s *Stream) string {
 	spec := strings.TrimSpace(s.Spec)
 	if spec == "" {
 		return fmt.Sprintf(
-			"[stream-source] %s: an active stream names no `spec:` — a stream is scaffolded ONLY from a "+
-				"scoping doc whose header is `**Status:** approved`, never from an idea, an issue thread, or a "+
-				"`draft`. Add a `spec:` pointing at the approved doc, or land the stream `status: parked`",
+			"[stream-source] %s: an active stream names no `spec:`. Cite an approved or routed scoping doc, or land the stream `status: parked`",
 			s.Name)
 	}
 	h, err := parseSpecLifecycleHeader(root, filepath.Join(root, filepath.FromSlash(spec)))
 	if err != nil {
 		return fmt.Sprintf(
 			"[stream-source] %s: `spec: %s` cannot be read (%v) — an active stream must cite a readable scoping "+
-				"doc whose header is `**Status:** approved`", s.Name, spec, err)
+				"doc in the `approved` or `routed` state", s.Name, spec, err)
 	}
-	if h.State != lifecycleApproved {
+	if !h.hasApproval() {
 		got := h.StateRaw
 		if got == "" {
 			got = "unclassified"
 		}
 		return fmt.Sprintf(
-			"[stream-source] %s: `spec: %s` is `%s`, not `approved` — an active stream is scaffolded only from an "+
-				"APPROVED spec (a `parked` stream may cite a `draft`)", s.Name, spec, got)
+			"[stream-source] %s: `spec: %s` is `%s`; an active stream requires an `approved` or `routed` spec (a `parked` stream may cite a `draft`)", s.Name, spec, got)
 	}
 	return ""
 }

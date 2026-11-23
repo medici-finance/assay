@@ -44,13 +44,29 @@ def bytecode_state():
             for path in base.rglob('*.pyc')}
 
 
+def offline_env(*, docker_fixture=False):
+    """Environment for local qualification tools and synthetic test children."""
+    names = (
+        'PATH', 'HOME', 'TMPDIR', 'TMP', 'TEMP', 'XDG_CACHE_HOME',
+        'GOPATH', 'GOROOT', 'GOCACHE', 'GOMODCACHE', 'GOTMPDIR',
+        'SDKROOT', 'DEVELOPER_DIR', 'MACOSX_DEPLOYMENT_TARGET',
+        'LANG', 'LANGUAGE', 'LC_ALL', 'LC_CTYPE', 'LC_COLLATE', 'LC_MESSAGES',
+        'LC_MONETARY', 'LC_NUMERIC', 'LC_TIME', 'TZ',
+    )
+    if docker_fixture:
+        names += ('ASSAY_TEST_DOCKER_HOST', 'ASSAY_TEST_FIXTURE_IMAGE')
+    env = {name: os.environ[name] for name in names if name in os.environ}
+    env.update(KUBECONFIG=os.devnull, GOPROXY='off', GOSUMDB='off', GONOPROXY='none',
+               GOVCS='*:off', GOAUTH='off', GOENV='off', GOTOOLCHAIN='local', GOWORK='off', GOFLAGS='',
+               GIT_TERMINAL_PROMPT='0', GIT_ALLOW_PROTOCOL='file')
+    return env
+
+
 def run(args, data=None, cwd=ROOT):
     try:
         return subprocess.run(args, input=data, stdout=subprocess.PIPE,
                               stderr=subprocess.PIPE, cwd=cwd, timeout=90,
-                              env={**os.environ, 'KUBECONFIG': '/dev/null',
-                                   'GOPROXY': 'off', 'GOSUMDB': 'off',
-                                   'GOTOOLCHAIN': 'local'})
+                              env=offline_env())
     except (OSError, subprocess.TimeoutExpired) as err:
         raise Unavailable(f'{args[0]} could not complete') from err
 
@@ -432,11 +448,14 @@ def compatibility_structured(docs, pins, custody):
              container.get('terminationMessagePolicy') == 'File', 'exact lower termination message required')
         env = container.get('env', [])
         by_name = {item.get('name'): item for item in env}
+        for name in ('ASSAY_COMPAT_LAUNCH_ID', 'ASSAY_COMPAT_INIT_ID'):
+            value = by_name.get(name, {}).get('value')
+            need(isinstance(value, str) and re.fullmatch('[a-f0-9]{64}', value),
+                 f'prepared launch identity missing or invalid for {role}: {name}. '
+                 "Use workload_env from that role's preparation handoff.")
         need(len(env) == 6 and len(by_name) == 6 and
              by_name.get('ASSAY_POD_UID') == {'name': 'ASSAY_POD_UID', 'valueFrom': {'fieldRef': {'fieldPath': 'metadata.uid'}}},
              'exact downward Pod UID and launch identity required')
-        for name in ['ASSAY_COMPAT_LAUNCH_ID', 'ASSAY_COMPAT_INIT_ID']:
-            need(re.fullmatch('[a-f0-9]{64}', by_name.get(name, {}).get('value', '')), 'prepared launch identity missing')
         need(spec['template']['metadata']['labels'].get('assay.dev/profile') == 'compatibility-cellctl', 'opt-in profile label missing')
         # Reuse the historical base assertions for every unchanged custody/isolation
         # constraint. These changes are in an in-memory comparison copy only.
@@ -497,6 +516,24 @@ def compatibility_mutations(docs, pins, custody):
             print('rejected: compatibility-' + name)
         else:
             raise Invalid('compatibility hostile fixture escaped: ' + name)
+    # Operators need the role and binding to correct a five-role manifest.
+    for name, value in [('ASSAY_COMPAT_LAUNCH_ID', None), ('ASSAY_COMPAT_INIT_ID', 2026)]:
+        changed = copy.deepcopy(docs)
+        workload = workloads(changed)[-1]
+        env = workload['spec']['template']['spec']['containers'][0]['env']
+        binding = next(entry for entry in env if entry['name'] == name)
+        if value is None:
+            env.remove(binding)
+        else:
+            binding['value'] = value
+        try:
+            compatibility_structured(changed, pins, custody)
+        except Invalid as err:
+            need(workload['metadata']['name'] in str(err) and name in str(err),
+                 'missing or malformed preparation binding must identify its role and name')
+            print(f'rejected: compatibility-preparation-binding-{name}')
+        else:
+            raise Invalid(f'invalid preparation binding accepted: {name}')
     changed = dict(custody); changed.pop('logs')
     try:
         compatibility_structured(docs, pins, changed)

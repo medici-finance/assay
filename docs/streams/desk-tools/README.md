@@ -212,10 +212,10 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 30 | [verify-desk lands verdicts through the verdict-transcription lane; `deskevidence` demoted to break-glass](brief-30-verify-desk-landing-by-verdict-issue.md) | 1 | M | todo | — | — |
 | 31 | [The correctness lane carries a coverage contract — a named bug-class register every class of which is accounted in the verdict body (finding, checked-clean, n/a with a reason, or could-not-check)](brief-31-correctness-lane-coverage-contract.md) | 1 | M | implemented | — | — |
 | 33 | [An author's explicit disposition on a finding is final for the reviewer — accept it or escalate it once, never spend a round re-stating it](brief-33-author-disposition-finality.md) | 1 | S | todo | — | — |
-| 34 | [Pinned golangci-lint across every Go module](brief-34-pinned-golangci-lint-across-every-go-module.md) | 1 | M | todo | — | — |
+| 34 | [Pinned golangci-lint across every Go module](brief-34-pinned-golangci-lint-across-every-go-module.md) | 1 | M | implemented | — | — |
 | 35 | [Go security analysis with gosec and govulncheck](brief-35-go-security-analysis-with-gosec-and-govulncheck.md) | 2 | L | todo | — | — |
 | 36 | [The scheduled board reconcile's PR class becomes generated output — auto-approve lane (default) or direct-CI single-writer, per the driver's ruling on #2688](brief-36-reconcile-generated-class.md) | 1 | S | implemented | — | — |
-| 37 | [Review workflow semantic oracle and matched cost baseline](brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md) | 1 | M | verified | 2026-11-01 assay-verifier-app[bot] @ ab6803d9f65c (claude-opus-5-5) | — |
+| 37 | [Review workflow semantic oracle and matched cost baseline](brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md) | 1 | M | verified | 2026-11-19 assay-verifier-app[bot] @ 62a6169dc364 (claude-opus-5-5) | — |
 | 38 | [Correct desk performance attribution and counter coverage](brief-38-correct-desk-performance-attribution-and-counter-coverage.md) | 2 | M | implemented | — | — |
 | 39 | [Extract shared review observation and pure planning contracts](brief-39-extract-shared-review-observation-and-pure-planning-contracts.md) | 2 | M | implemented | — | — |
 | 40 | [Deliver one review queue observation and offline planning bridge](brief-40-deliver-one-review-queue-observation-and-offline-planning-bridge.md) | 3 | M | implemented | — | — |
@@ -243,6 +243,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 63 | [Admit the open false-positive shapes as registry entries, each with the refusals that bound it, and cap word-shaped admission](brief-63-registry-acceptance-shapes.md) | 2 | L | todo | — | — |
 | 64 | [Decide which lines of a branch diff the secret scan reads, and pin the answer](brief-64-diff-scan-scope.md) | 2 | M | todo | — | — |
 | 65 | [Read each Verify row's disposition from a field the verifier tooling writes, not from Evidence prose](brief-65-structured-verify-disposition.md) | 1 | L | todo | — | — |
+| 67 | [Pin the verdict transcriber's trust anchors in a committed file](brief-67-pin-the-verdict-transcriber-s-trust-anchors-in-a-committed-file.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -278,7 +279,7 @@ See "Secret-scan class — 10 November 2026" below.
 
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
-  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60, /61, /62, /65 (all independent; parallelizable). desk-tools/06
+  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60, /61, /62, /65, /67 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 - **Wave 2** — desk-tools/35 (depends on desk-tools/34), desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
@@ -554,3 +555,18 @@ which asks the gate to read a structured disposition instead of prose.
 
 Close-verify, the card emitter and autoflip keep the prose rules. This brief changes the flip read
 only, the same scope #6638 takes.
+
+## Pinned verdict-transcriber trust anchors — 22 November 2026
+
+The verdict transcriber (`statusgen --transcribe-verdict`) decides whom to believe from three
+values it reads out of the repository's Actions configuration: the blessing login, the verifier
+role binding and the verifier public key. Anyone who can write that configuration can change all
+three in one step, and the change shows in neither the tree nor a review. desk-tools/30 recorded
+that as an accepted residual and named the pin as the follow-up. #2354 asks for it.
+
+| Brief | What it does | Gate |
+|---|---|---|
+| [67](brief-67-pin-the-verdict-transcriber-s-trust-anchors-in-a-committed-file.md) | Adds a committed file on main holding the three anchors. The transcriber reads it first and refuses, naming the anchor, when the Actions copy is set and differs. The Actions read stays as the fallback for an installation with no file, and the report says which source was used. The path, where the equality check runs and whether the file needs an owner rule are the open questions. The trusted-login list and the other bot slugs stay Actions configuration | human, decision at creation: it changes where a trust control reads its anchors from |
+
+This brief narrows one residual and does not claim to remove the trust boundary. It moves it from
+"write access to Actions configuration" to "a merged pull request that edits the file".

@@ -36,7 +36,7 @@ type wtCall struct {
 
 type addOpts struct {
 	name, branch, base, upstream, role, lockSession, adoptRun string
-	detach, dryRun                                            bool
+	detach, dryRun, handoffBrief                              bool
 }
 
 type removeOpts struct {
@@ -99,6 +99,7 @@ func wtBindings() map[string][]cli.Binding {
 				"the shared checkout's identity"),
 			boolean("dry-run", "print the lifecycle-hook plan (HOOK after_create: ...) and touch nothing"),
 			str("lock-session", "", "lock the new worktree for this live session id, in role-init's lock-reason format"),
+			boolean("handoff-brief", "with --adopt-run: resume this session's earlier worker checkout for the brief delivered by this PR"),
 			str("adopt-run", "", "with --upstream: adopt an existing home stamped with this run key when it is proven finished "+
 				"(registered, unlocked, clean incl. untracked, on --branch at the pinned --base) instead of refusing it"),
 		},
@@ -223,7 +224,7 @@ func newWtCLI(env wtCLI, argv []string) *cobra.Command {
 		func(v *cli.Values, a []string) wtCall {
 			return wtCall{add: addOpts{name: a[0], branch: v.String("branch"), detach: v.Bool("detach"), base: v.String("base"),
 				upstream: v.String("upstream"), role: v.String("role"), dryRun: v.Bool("dry-run"),
-				lockSession: v.String("lock-session"), adoptRun: v.String("adopt-run")}}
+				lockSession: v.String("lock-session"), adoptRun: v.String("adopt-run"), handoffBrief: v.Bool("handoff-brief")}}
 		}))
 	root.AddCommand(verb("remove <path>", "remove a proven-safe worktree (there is no --force)", removeLong, cobra.ExactArgs(1),
 		func(v *cli.Values, a []string) wtCall {
@@ -398,6 +399,11 @@ reason format (` + "`session=<id>`" + `), so prune holds it from its first secon
 --reclaim-stale-locks / --reap-dead-sessions retire it only once that session's roster beacon
 is stale. A lock that cannot be taken and verified rolls the worktree back.
 
+add --handoff-brief (worker PR resumes with --adopt-run) can continue this session's
+earlier brief checkout at the confirmed PR head. The previous brief claim must be
+released. A matching session, worker dispatch receipt, local delivery trailer and
+owned PR claim are required. The checkout keeps its index and in-progress merge.
+
 add --adopt-run <run key> (resume only: needs --upstream) hands back a FINISHED home instead
 of refusing it — the existing target, or the worktree holding --branch — when it carries that
 worktree-scoped assay.runKey, is registered and unlocked, sits on --branch at exactly the
@@ -427,7 +433,8 @@ old or missing one is not proof the session is gone), one naming no session, git
 "initializing" lock — is refused with exit 5 and the tree is left untouched; a clean, pushed
 tree of a dead session is reaped by ` + "`deskwt prune --reap-dead-sessions`" + ` instead, once the tree
 has been idle past --min-idle (1h by default; run it with --dry-run first, it sweeps every
-ownerless tree). This is the end-of-PR step for a session that made its own home:
+ownerless tree). A dispatched home (one recording assay.runKey) is refused while its claim
+is held or unreadable, and its lock is no bar once the claim is released. This is the end-of-PR step for a session that made its own home:
 ` + "`deskwt add <name> --lock-session <id>`" + ` at the start, ` + "`deskwt remove <path>`" + ` once the PR is
 pushed and the tree is clean.
 
@@ -550,7 +557,15 @@ reachable from its upstream or from refs/remotes/origin/main. Its stale local br
 deleted with it (non-force ` + "`git branch -d`" + `) so the next add cuts fresh from origin. A live
 session's lock holds its worktree unconditionally, and anything dirty, unpushed or
 unverifiable is LISTED with the reason and left. Pair it with --dry-run first: that prints
-the full plan — path, session, REAP/KEEP, reason — and changes nothing.`
+the full plan — path, session, REAP/KEEP, reason — and changes nothing.
+
+A DISPATCHED home records its run's claim key (worktree config assay.runKey), and that claim
+decides ownership ahead of any lock, in every arm: while the claim is held the tree is held
+(locked or not); once it is released a lock left on the tree (a bare one included, but never
+git's "initializing" lock) no longer holds it, and the safety gates above decide. A claim
+listing that cannot be read holds the tree. A tree with no run key is judged as before. The
+run key is read from the tree's own admin entry when another entry cannot be inventoried, and
+a tree whose own entry cannot be confirmed either way is held.`
 
 	rootLong = `deskwt — safe worktree lifecycle and coordinated offline Git maintenance.
 

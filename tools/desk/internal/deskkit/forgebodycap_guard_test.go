@@ -11,8 +11,11 @@ package deskkit
 // forms are recognised.
 //
 // What it does NOT claim: the guard is syntactic (go/ast, no type information) and NOT
-// exhaustive. A read in a file outside the roots is not scanned at all (forgeBodyGuardGaps
-// lists the known ones), and some ways of reaching a body through indirection are not seen;
+// exhaustive. A read in a file outside the roots is not held to the cap. TestForgeBodyOutsideRoots
+// inventories every tree of the repository outside the roots (from the repository root down;
+// hidden directories and testdata are skipped) and pins each one's hits in forgeBodyGuardGaps or
+// forgeBodyNotForge, so such a read is listed, never silent. Some ways of reaching a body through
+// indirection are not seen;
 // those known blind spots are tracked outside this file. A clean run means "no shape this guard
 // recognises", never "every body read in the tree is capped".
 
@@ -276,15 +279,23 @@ func TestForgeBodyHandoffStrict(t *testing.T) {
 // forgeBodyInventoryParents are the directories, relative to deskTreeRoot, whose children
 // TestForgeBodyOutsideRoots scans: each child directory (with its subdirectories) and each
 // shipped .go file directly under a parent is one tree. A child that is a guard root, or is
-// itself a parent, is skipped.
+// itself a parent, is skipped. The first parent is the repository root and every other parent
+// is a child of an earlier one (TestForgeBodyInventoryWhole), so the trees cover the whole
+// repository outside the roots: a reader added in any module is inventoried.
 var forgeBodyInventoryParents = []string{
+	forgeBodyRepoRoot,
+	"..",
 	".",
 	"cmd",
 	"internal",
+	"../../deskd",
 	"../../deskd/cmd",
 	"../../deskd/internal",
 	"../../statusgen",
 }
+
+// forgeBodyRepoRoot is the repository root, relative to deskTreeRoot.
+const forgeBodyRepoRoot = "../.."
 
 // forgeBodyGuardGaps are trees, relative to deskTreeRoot, that read forge response bodies but
 // are NOT guard roots: their reads are not held to the cap by this guard. Each is kept out by
@@ -293,7 +304,8 @@ var forgeBodyInventoryParents = []string{
 // ("<file>:<func> <kind>", relative to the tree). Some of those hits are not forge response
 // reads (a server's own request body, for one); they are pinned all the same. A tree whose
 // hits change fails TestForgeBodyOutsideRoots: a new read is reported, a fixed read forces
-// the entry to be updated, and a gap with no hit left moves into forgeBodyGuardRoots.
+// the entry to be updated, and a gap with no hit left moves into forgeBodyGuardRoots. An entry
+// pins at least one hit: an empty entry is refused whatever its tree scans as.
 var forgeBodyGuardGaps = map[string][]string{
 	"../../deskd/internal/adapter": {
 		"github.go:Client.conditionalGet uncapped-body-read",
@@ -346,11 +358,9 @@ var forgeBodyGuardGaps = map[string][]string{
 
 // forgeBodyNotForge are trees outside the roots whose hits are not forge response reads, or
 // are reads that keep their own bound. They are not gaps, but their hit sets are pinned the
-// same way, so a new read in one of them is still reported.
-var forgeBodyNotForge = map[string]struct {
-	why  string
-	hits []string
-}{
+// same way, so a new read in one of them is still reported. Like a gap, an entry pins at least
+// one hit.
+var forgeBodyNotForge = map[string]notForgeEntry{
 	"../../deskd/internal/chat": {"a model backend's answer, not a forge response", []string{
 		"httpbackend.go:HTTPBackend.Complete uncapped-body-read",
 	}},
@@ -360,6 +370,9 @@ var forgeBodyNotForge = map[string]struct {
 		"v1_actions.go:peekIntent uncapped-body-read",
 		"v1_overrides.go:Overrides.handlePost uncapped-body-decode",
 		"v1_terminal_actions.go:decodeStrict uncapped-body-decode",
+	}},
+	"../../forgeread": {"the forge-service client's answer, read to limit+1 and refused over its limit", []string{
+		"client/client.go:Client.Do uncapped-body-read",
 	}},
 	"../../statusgen/modcachepublic.go": {"reads limit+1 and refuses a body over its limit", []string{
 		"modcachepublic.go:provePublicAssay uncapped-body-read",
@@ -371,6 +384,9 @@ var forgeBodyNotForge = map[string]struct {
 		"readcost.go:boardTransport.RoundTrip uncapped-body-copy",
 		"readcost.go:boardTransport.RoundTrip uncapped-body-read",
 	}},
+	"internal/forgeservice": {"the read-only decoder reads its incoming request to limit+1 and refuses oversized input", []string{
+		"server/decode.go:DecodeMirrorQuery uncapped-body-read",
+	}},
 	"internal/kubecompat": {"a test fixture server reading its own request bodies", []string{
 		"testfixture/server.go:Server.serve uncapped-body-decode",
 	}},
@@ -380,27 +396,29 @@ var forgeBodyNotForge = map[string]struct {
 	}},
 }
 
+// notForgeEntry is one forgeBodyNotForge entry: why the tree is not a forge reader, and its
+// pinned hits.
+type notForgeEntry struct {
+	why  string
+	hits []string
+}
+
 // Every tree outside the roots that the inventory reaches must show exactly the hits its
 // forgeBodyGuardGaps or forgeBodyNotForge entry pins: an unlisted tree with a hit, a listed
 // tree whose hits changed, and a listed tree the inventory never reaches all fail.
 //
 // regression: #6775
 func TestForgeBodyOutsideRoots(t *testing.T) {
-	listed := map[string][]string{}
-	for tree, hits := range forgeBodyGuardGaps {
-		listed[tree] = hits
+	listed, problems := forgeBodyListed(forgeBodyGuardGaps, forgeBodyNotForge)
+	for _, p := range problems {
+		t.Error(p)
 	}
-	for tree, nf := range forgeBodyNotForge {
-		if _, dup := listed[tree]; dup {
-			t.Errorf("%s is listed both as a gap and as not a forge reader", tree)
-		}
-		if nf.why == "" {
-			t.Errorf("forgeBodyNotForge entry %s gives no reason", tree)
-		}
-		listed[tree] = nf.hits
+	trees, err := forgeBodyInventoryIn(deskTreeRoot, forgeBodyInventoryParents, forgeBodyGuardRoots)
+	if err != nil {
+		t.Fatal(err)
 	}
 	scanned := map[string]bool{}
-	for _, tree := range forgeBodyInventory(t) {
+	for _, tree := range trees {
 		hits, err := scanForgeBodyReads(filepath.Join(deskTreeRoot, tree), tree)
 		if errors.Is(err, errNoGoSource) {
 			continue
@@ -415,13 +433,14 @@ func TestForgeBodyOutsideRoots(t *testing.T) {
 			got = append(got, strings.TrimPrefix(h, tree+"/"))
 		}
 		sort.Strings(got)
-		want := append([]string(nil), listed[tree]...)
+		pinned, isListed := listed[tree]
+		want := append([]string(nil), pinned...)
 		sort.Strings(want)
 		if strings.Join(got, "\n") == strings.Join(want, "\n") {
 			continue
 		}
 		switch {
-		case listed[tree] == nil:
+		case !isListed:
 			t.Errorf("%s reads response bodies outside every guard root and is not listed — move it into "+
 				"forgeBodyGuardRoots, or list it in forgeBodyGuardGaps (or forgeBodyNotForge, with a reason):\n%s",
 				tree, strings.Join(got, "\n"))
@@ -435,26 +454,99 @@ func TestForgeBodyOutsideRoots(t *testing.T) {
 	for tree := range listed {
 		if !scanned[tree] {
 			t.Errorf("%s is listed outside the roots, but the inventory never scans it (a guard root, gone, or "+
-				"not under forgeBodyInventoryParents) — drop or move its entry", tree)
+				"not a tree the inventory reaches) — drop or move its entry", tree)
 		}
 	}
 }
 
-// forgeBodyInventory lists the trees under forgeBodyInventoryParents, guard roots excluded.
-func forgeBodyInventory(t *testing.T) []string {
-	t.Helper()
+// forgeBodyListed merges the two inventory tables into one tree→pinned-hits map and reports
+// every entry the tables must not hold: a tree in both tables, a forgeBodyNotForge entry with no
+// reason, and an entry in either table that pins no hit. An empty entry is refused here, before
+// any scan: compared against a tree with no hits it would match and pass, so a tree with no
+// uncapped read left could keep its entry instead of moving into forgeBodyGuardRoots.
+func forgeBodyListed(gaps map[string][]string, notForge map[string]notForgeEntry) (map[string][]string, []string) {
+	listed := map[string][]string{}
+	var problems []string
+	for tree, hits := range gaps {
+		if len(hits) == 0 {
+			problems = append(problems, fmt.Sprintf("forgeBodyGuardGaps entry %s pins no hit — a tree with no "+
+				"uncapped body read moves into forgeBodyGuardRoots; drop the entry", tree))
+		}
+		listed[tree] = hits
+	}
+	for tree, nf := range notForge {
+		if _, dup := listed[tree]; dup {
+			problems = append(problems, fmt.Sprintf("%s is listed both as a gap and as not a forge reader", tree))
+		}
+		if nf.why == "" {
+			problems = append(problems, fmt.Sprintf("forgeBodyNotForge entry %s gives no reason", tree))
+		}
+		if len(nf.hits) == 0 {
+			problems = append(problems, fmt.Sprintf("forgeBodyNotForge entry %s pins no hit — a tree with no "+
+				"body read needs no entry; drop it", tree))
+		}
+		listed[tree] = nf.hits
+	}
+	sort.Strings(problems)
+	return listed, problems
+}
+
+// An entry that pins no hit is refused in both tables, even for a tree that scans clean, where
+// comparing the scan with the pin alone would pass it.
+//
+// regression: #6794
+func TestForgeBodyEmptyEntry(t *testing.T) {
+	gaps := map[string][]string{"gapdir": {}, "nilgap": nil, "kept": {"a.go:f uncapped-body-read"}}
+	notForge := map[string]notForgeEntry{
+		"nfdir":  {"a reason", []string{}},
+		"nfkept": {"a reason", []string{"b.go:g uncapped-body-read"}},
+	}
+	listed, problems := forgeBodyListed(gaps, notForge)
+	for _, tree := range []string{"gapdir", "nilgap", "nfdir"} {
+		n := 0
+		for _, p := range problems {
+			if strings.Contains(p, " "+tree+" pins no hit") {
+				n++
+			}
+		}
+		if n != 1 {
+			t.Errorf("an empty entry for %s was reported %d times, want 1; problems:\n%s",
+				tree, n, strings.Join(problems, "\n"))
+		}
+	}
+	if len(problems) != 3 {
+		t.Errorf("problems = %d, want 3 (the three empty entries only):\n%s", len(problems), strings.Join(problems, "\n"))
+	}
+	if len(listed) != 5 {
+		t.Errorf("listed %d trees, want 5", len(listed))
+	}
+}
+
+// forgeBodyInventoryIn lists the trees under parents (relative to base), roots excluded. A
+// child's label is its path relative to base, so a parent reached from another parent (".."
+// from "../..", "." from "..") is recognised whatever spelling reaches it.
+func forgeBodyInventoryIn(base string, parents, roots []string) ([]string, error) {
+	absBase, err := filepath.Abs(base)
+	if err != nil {
+		return nil, fmt.Errorf("the forge-body inventory could not resolve %s: %v — could-not-check", base, err)
+	}
 	var trees []string
-	for _, parent := range forgeBodyInventoryParents {
-		ents, err := os.ReadDir(filepath.Join(deskTreeRoot, parent))
+	for _, parent := range parents {
+		dir := filepath.Join(absBase, parent)
+		ents, err := os.ReadDir(dir)
 		if err != nil {
-			t.Fatalf("the forge-body inventory could not read %s: %v — could-not-check", parent, err)
+			return nil, fmt.Errorf("the forge-body inventory could not read %s: %v — could-not-check", parent, err)
 		}
 		for _, e := range ents {
 			name := e.Name()
-			tree := filepath.ToSlash(filepath.Join(parent, name))
+			rel, err := filepath.Rel(absBase, filepath.Join(dir, name))
+			if err != nil {
+				return nil, fmt.Errorf("the forge-body inventory could not label %s: %v — could-not-check", name, err)
+			}
+			tree := filepath.ToSlash(rel)
 			switch {
 			case strings.HasPrefix(name, "."), name == "testdata":
-			case slicesContains(forgeBodyGuardRoots, tree), slicesContains(forgeBodyInventoryParents, tree):
+			case slicesContains(roots, tree), slicesContains(parents, tree):
 			case e.IsDir():
 				trees = append(trees, tree)
 			case strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go"):
@@ -463,9 +555,72 @@ func forgeBodyInventory(t *testing.T) []string {
 		}
 	}
 	if len(trees) == 0 {
-		t.Fatal("the forge-body inventory found no trees — could-not-check, NOT clean")
+		return nil, errors.New("the forge-body inventory found no trees — could-not-check, NOT clean")
 	}
-	return trees
+	return trees, nil
+}
+
+// forgeBodyInventoryBounds reports every way parents fails to cover the whole tree under
+// repoRoot: repoRoot is not the first parent, or a parent is not a child of an earlier parent
+// (its siblings would then be scanned by nobody, or its own tree scanned twice).
+func forgeBodyInventoryBounds(parents []string, repoRoot string) []string {
+	var problems []string
+	if len(parents) == 0 || parents[0] != repoRoot {
+		problems = append(problems, fmt.Sprintf("the first inventory parent must be the repository root %s — "+
+			"a reader outside the listed parents would not be inventoried", repoRoot))
+	}
+	for i, p := range parents {
+		if i == 0 {
+			continue
+		}
+		up := filepath.ToSlash(filepath.Join(p, ".."))
+		if !slicesContains(parents[:i], up) {
+			problems = append(problems, fmt.Sprintf("inventory parent %s is not a child of an earlier parent — the "+
+				"trees beside it are not inventoried", p))
+		}
+	}
+	return problems
+}
+
+// The inventory is bounded by the repository, not by a short list of parents: the real parents
+// start at the repository root and chain down, and a reader planted in a module beside the
+// desk module (testdata/forgebodyinventory) is reached and reported.
+//
+// regression: #6794
+func TestForgeBodyInventoryWhole(t *testing.T) {
+	for _, p := range forgeBodyInventoryBounds(forgeBodyInventoryParents, forgeBodyRepoRoot) {
+		t.Error(p)
+	}
+	// The bounds check itself refuses a list that starts below the root, or skips a level.
+	if len(forgeBodyInventoryBounds([]string{".", "cmd"}, forgeBodyRepoRoot)) == 0 {
+		t.Error("a parent list that starts at the desk module passed the bounds check")
+	}
+	if len(forgeBodyInventoryBounds([]string{forgeBodyRepoRoot, "../../deskd/internal"}, forgeBodyRepoRoot)) == 0 {
+		t.Error("a parent list that skips a level passed the bounds check")
+	}
+
+	// The planted repository: tools/desk is the desk module; tools/guarded is a guard root with a
+	// read; elsewhere is a module beside it with a read.
+	base := filepath.Join("testdata", "forgebodyinventory", "tools", "desk")
+	parents := []string{forgeBodyRepoRoot, "..", "."}
+	if p := forgeBodyInventoryBounds(parents, forgeBodyRepoRoot); len(p) != 0 {
+		t.Fatalf("the planted parents are not whole: %v", p)
+	}
+	trees, err := forgeBodyInventoryIn(base, parents, []string{"../guarded"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(trees)
+	if want := "../../elsewhere\ncmd"; strings.Join(trees, "\n") != want {
+		t.Fatalf("planted inventory:\n%s\nwant:\n%s", strings.Join(trees, "\n"), want)
+	}
+	hits, err := scanForgeBodyReads(filepath.Join(base, "../../elsewhere"), "../../elsewhere")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "../../elsewhere/reader.go:fetch uncapped-body-read"; strings.Join(hits, "\n") != want {
+		t.Errorf("planted reader hits:\n%s\nwant:\n%s", strings.Join(hits, "\n"), want)
+	}
 }
 
 func slicesContains(s []string, v string) bool {

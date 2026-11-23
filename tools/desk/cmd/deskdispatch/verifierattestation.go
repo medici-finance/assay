@@ -112,8 +112,22 @@ func verifierPrivatePromptDestination(file string) error {
 	}
 }
 
+// verifierTrackingTarget binds the tracking brief to the checkout whose forge
+// and repository will receive the outcome. Attestation repeats the check.
+func verifierTrackingTarget(o dispatchOpts, dl deliverable) (deskkit.ForgeResolution, error) {
+	target, err := deskkit.VerifierTrackingForge(dl.trackingRoot, o.brief)
+	if err != nil {
+		return deskkit.ForgeResolution{}, err
+	}
+	if !dl.crossRepo(o.root) || !strings.EqualFold(target.Repo.Slug(), dl.trackingRepo) || !vpWithin(dl.trackingRoot, o.brief) {
+		return deskkit.ForgeResolution{}, deskkit.Refused("cross-repository verifier requires the resolved tracking repository and its brief under --claim-root")
+	}
+	return target, nil
+}
+
 func attestVerifierDispatch(o dispatchOpts, repo, home string) (string, error) {
 	brief := o.brief
+	var trackingRoot string
 	if filepath.IsAbs(brief) && vpWithin(o.root, brief) {
 		var err error
 		brief, err = filepath.Rel(o.root, brief)
@@ -126,12 +140,12 @@ func attestVerifierDispatch(o dispatchOpts, repo, home string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		actual, err := deskkit.OriginRepoSlug(o.claimRoot)
-		if err != nil || !dl.crossRepo(o.root) || dl.trackingRepo == "" || !strings.EqualFold(actual, dl.trackingRepo) || !vpWithin(o.claimRoot, brief) {
-			return "", deskkit.Refused("cross-repository verifier requires the resolved tracking repository and its brief under --claim-root")
+		if _, err := verifierTrackingTarget(o, dl); err != nil {
+			return "", err
 		}
+		trackingRoot = dl.trackingRoot
 	}
-	if err := deskkit.PrepareVerifierAttestation(home, repo, brief, o.model, o.tier); err != nil {
+	if err := deskkit.PrepareVerifierAttestationAt(home, repo, brief, o.model, o.tier, trackingRoot); err != nil {
 		return "", err
 	}
 	// Marked BEFORE the stamp is issued: if the admission below is held or

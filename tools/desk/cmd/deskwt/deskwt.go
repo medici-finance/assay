@@ -414,6 +414,9 @@ func runAdd(o addOpts) (err error) {
 			return deskkit.Refused("refused: --upstream requires a full commit --base and a fully qualified remote branch, without --detach")
 		}
 	}
+	if o.handoffBrief && (*adoptRun == "" || *role != "worker" || *upstream != "refs/remotes/origin/"+br) {
+		return deskkit.Refused("--handoff-brief requires --role worker, --adopt-run and the PR branch on origin as --upstream")
+	}
 	if *adoptRun != "" && (*upstream == "" || !nameRe.MatchString(*adoptRun) || strings.Contains(*adoptRun, "..")) {
 		return deskkit.Refused("refused: --adopt-run requires --upstream and a single safe run key segment")
 	}
@@ -518,8 +521,17 @@ func runAdd(o addOpts) (err error) {
 		if aerr != nil {
 			return aerr
 		}
+		handoff := false
 		if why != "" {
-			return deskkit.Refused(refusal + " Not adopted as a finished home of run " + *adoptRun + ": " + why + ".")
+			refusal += " Not adopted as a finished home of run " + *adoptRun + ": " + why + "."
+			if !o.handoffBrief {
+				return deskkit.Refused(refusal)
+			}
+			rt, aerr = briefHandoff(guard, dir, candidate, repo, br, *base, *adoptRun)
+			if aerr != nil {
+				return fmt.Errorf("%s Brief handoff: %w", refusal, aerr)
+			}
+			handoff = true
 		}
 		detail, perr := adoptedHome{guard: guard, dir: dir, rt: rt, br: br, upstream: *upstream, runKey: *adoptRun,
 			roleKey: roleKey, name: botName, email: botEmail, repo: repo, lockSession: *lockSession}.provision()
@@ -527,10 +539,16 @@ func runAdd(o addOpts) (err error) {
 			return perr
 		}
 		note := "adopted finished home " + rt + " of run " + *adoptRun + " (branch " + br + " at " + *base + "; clean, unlocked)"
+		if handoff {
+			note = "resumed the same session's brief checkout " + rt + " for " + *adoptRun
+		}
 		ac.detail = note + "; " + detail
 		fmt.Fprintln(os.Stderr, "deskwt: "+note)
 		fmt.Fprintln(os.Stderr, "deskwt: "+detail+" at "+rt)
 		fmt.Println(rt)
+		if handoff {
+			fmt.Println(deskkit.BriefHandoffReceipt)
+		}
 		return nil
 	}
 
@@ -840,8 +858,23 @@ func runRemove(o removeOpts) (err error) {
 	}
 	lockReason, isLocked := locked[rt]
 	lockNote := ""
+	// The dispatch claim (claimfree.go): a home whose run's claim is still held — or cannot be
+	// read — is a live run's, and is refused whether or not anything locked it. A home whose
+	// claim is RELEASED has no owner left, so a lock its agent left behind no longer refuses
+	// it; the untracked-inclusive status read below still does, exactly as for an own lock.
+	claim := claimForRemove(guard, dir, rt)
+	if claim.holds() {
+		if claim.state == claimUnknown {
+			return deskkit.Unverifiable("cannot remove "+rt+": "+claim.why, nil)
+		}
+		return deskkit.Refused("refused: " + rt + " belongs to a live dispatched run: " + claim.why +
+			" — release the claim first, or let `deskwt prune --reap-dead-sessions` clear it after release")
+	}
 	if isLocked {
 		ok, why := ownLockOwner(lockReason)
+		if !ok && claim.releasedOwner() && strings.TrimSpace(lockReason) != gitInitLockReason {
+			ok, why = true, claim.why
+		}
 		if !ok {
 			return deskkit.Refused("refused: " + rt + " is locked (" + lockReasonText(lockReason) + ") and " + why)
 		}
@@ -861,6 +894,13 @@ func runRemove(o removeOpts) (err error) {
 			return deskkit.Refused("refused: " + rt + " holds untracked or uncommitted files that removing it would delete — commit or move them first:\n" + capRows(rows, 10))
 		}
 		lockNote = "; lock retired: " + why
+	}
+	if claim.releasedOwner() {
+		// The claim was read before the status gate above; a resume may have re-acquired it
+		// since. Re-read the one key just before the unlock and the delete.
+		if why := claimStillFree(dir, claim.key); why != "" {
+			return deskkit.Unverifiable("cannot remove "+rt+": "+why, nil)
+		}
 	}
 
 	// before_remove — runs before deletion. LOGGED failure class: a hook failure is reported

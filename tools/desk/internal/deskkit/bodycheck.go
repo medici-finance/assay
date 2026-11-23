@@ -807,6 +807,75 @@ func isDiffstatBar(run string) bool {
 	return run != "" && strings.Trim(run, "+") == ""
 }
 
+const (
+	// maxGoDebugName is one past the longest setting name Go registers (27 characters
+	// in go1.27's internal/godebugs table). A longer name stays refused.
+	maxGoDebugName = 28
+	// maxGoDebugNameDigits is the most digits Go puts in one setting name (6).
+	maxGoDebugNameDigits = 6
+	// maxGoDebugValue caps a setting's value at four digits. The build-info defaults
+	// are all 0 or 1; the runtime also takes small sizes such as 8192.
+	maxGoDebugValue = 4
+)
+
+// isGoDebugList reports whether the run at raw[start:] heads a Go GODEBUG settings
+// list: `DefaultGODEBUG=` or `GODEBUG=`, then comma-joined `name=<digits>` settings
+// (Rule 9, #6821). A committed build-info dump carries the list as a `build` row,
+// `DefaultGODEBUG=<name>=1,<name>=0,…`. The comma is outside reBase64ish, so
+// the list splits per setting, and only the head glued to the first setting can reach
+// the threshold: that is 33 characters in the reported row. No other rule reads it. The
+// key is mixed case, and the value carries a second '='.
+//
+// The exemption is bounded by the list's own grammar, never by the head alone:
+//
+//   - the head is a godebugHeads entry and the whole env name: a `_` or name byte in
+//     front of it (`TOKEN_GODEBUG=`, `MYGODEBUG=`) refuses;
+//   - the token is read on past the run through every name, base64 and comma byte, and
+//     each comma-separated item must be one setting, so a glued `/`, `+`, third '=' or
+//     non-setting item refuses;
+//   - a setting name is lowercase letters and digits, opens with a letter, is at most
+//     maxGoDebugName long, carries at most maxGoDebugNameDigits digits and at least one
+//     letter outside a-f, so a mixed-case or hex run in the name position refuses;
+//   - the value is 1 to maxGoDebugValue digits.
+//
+// A token written as the value (`DefaultGODEBUG=<base64>`, pos-godebug-token-value)
+// has no `=<digits>` tail and refuses (TestBodycheckGoDebugControls). A random base64 run
+// admits nothing, behind the head or not (TestBodycheckGoDebugOnRandom).
+func isGoDebugList(raw string, start int) bool {
+	end := start
+	for end < len(raw) && (isEnvNameByte(raw[end]) || strings.IndexByte("+/=,", raw[end]) >= 0) {
+		end++
+	}
+	head, list, ok := strings.Cut(raw[start:end], "=")
+	if !ok || !slices.Contains(godebugHeads, head) || envNameAt(raw, start, head) != head {
+		return false
+	}
+	for _, item := range strings.Split(strings.TrimSuffix(list, ","), ",") {
+		if !isGoDebugSetting(item) {
+			return false
+		}
+	}
+	return true
+}
+
+// isGoDebugSetting reports whether item is one `name=<digits>` setting within
+// Rule 9's bounds (see isGoDebugList).
+func isGoDebugSetting(item string) bool {
+	name, value, ok := strings.Cut(item, "=")
+	if !ok || name == "" || len(name) > maxGoDebugName || name[0] < 'a' || name[0] > 'z' ||
+		value == "" || len(value) > maxGoDebugValue || strings.Trim(value, "0123456789") != "" ||
+		!isLowerAlnum(name) || !strings.ContainsAny(name, "ghijklmnopqrstuvwxyz") {
+		return false
+	}
+	digits := 0
+	for i := 0; i < len(name); i++ {
+		if name[i] >= '0' && name[i] <= '9' {
+			digits++
+		}
+	}
+	return digits <= maxGoDebugNameDigits
+}
+
 // regexFinding builds the explain ScanFinding for a literal-marker arm: the rule id, the
 // 1-based line of the first match, its length and a redacted shape. It never carries the
 // matched bytes — redactShape keeps only the two ends and the character class.

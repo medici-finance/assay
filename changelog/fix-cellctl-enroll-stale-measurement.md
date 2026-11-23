@@ -1,2 +1,0 @@
-### Changed
-- Managed Go caches: the docs now say why final consumer enrollment, and the `cellctl cache-run` pane supervisor that passes through it, refuse a stale, unstamped, future-dated or missing measurement on an existing cache root instead of re-measuring it, and a new test pins that refusal (no child starts, no clean runs, `report.json` unchanged). The docs and a second test also record the one exception: a cache root that does not exist yet is created by the enrollment, known empty, and admitted after one free-space check with a `bounded-empty` report.

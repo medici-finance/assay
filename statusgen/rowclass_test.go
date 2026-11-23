@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // All tests in this file share the `RowClass` substring so a single
@@ -156,12 +158,12 @@ func TestRowClass_CompoundCellSplit(t *testing.T) {
 		{"", "", nil}, // empty → legacy
 	}
 	for _, c := range cases {
-		exec, obl := splitRowClassCell(c.in)
+		exec, obl := briefdoc.SplitRowClassCell(c.in)
 		if exec != c.wantExec {
-			t.Errorf("splitRowClassCell(%q) exec=%q, want %q", c.in, exec, c.wantExec)
+			t.Errorf("briefdoc.SplitRowClassCell(%q) exec=%q, want %q", c.in, exec, c.wantExec)
 		}
 		if strings.Join(obl, ",") != strings.Join(c.wantObl, ",") {
-			t.Errorf("splitRowClassCell(%q) obl=%v, want %v", c.in, obl, c.wantObl)
+			t.Errorf("briefdoc.SplitRowClassCell(%q) obl=%v, want %v", c.in, obl, c.wantObl)
 		}
 	}
 }

@@ -89,6 +89,12 @@ the impacted briefs, their revisions, coverage and each amendment obligation in 
 and say that it is a manual bootstrap. Never invent a receipt or a schema version the
 install does not ship.
 
+When adding a requirement register entry, identify the requester in plain text (for example,
+`asked-by: Project driver`) and start with `status: proposed`. Record acceptance once the
+project's evidence supports the transition. Commit the changes and run `statusgen preview-stamps`
+before publishing. Exit 1 is expected for intended sign-offs. Keep each listed `human:<name>`
+claim backed by that person's own recorded act for online corroboration. Use plain text for attribution.
+
 ## Map work to delivery milestones
 
 When the source defines delivery milestones or the request needs staged outcomes,
@@ -704,7 +710,7 @@ it is an authoring convention only.
 | `runtime-resource-unreconciled-release` | a runtime resource release counted done with no later reconcile receipt observing the resource absent | fatal |
 | `shredded-cell` | a raw `|` in the Command cell is read as a table delimiter, truncating the command and shifting every later column — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |
 | `stream-cap` | a change that adds an active stream past the per-root active-stream cap (ASSAY_STREAM_CAP) with no offsetting park — no net new streams past the cap | fatal |
-| `stream-source` | a change that adds an active stream README citing no `spec:`, or a `spec:` whose header is not `**Status:** approved` — a stream is scaffolded only from an approved spec | fatal |
+| `stream-source` | a newly active stream must cite a readable `spec:` with an `approved` or `routed` lifecycle header | fatal |
 | `table-touches-no-files` | no Verify command references any path the brief's `files:` declares, so the table may prove nothing about the change (an unparseable `files:` is COULD-NOT-CHECK) | advisory |
 | `trivially-green` | a command that exits 0 whatever the tree holds — `true`, `echo ok`, a trailing `|| true`, a `git log --grep` with no count, or an existence test on a path the brief itself declares | advisory |
 | `unsubstituted-metavar` | an unsubstituted `<metavar>` placeholder left in the Command cell, so the row cannot be run as written — fatal for a closure this branch makes (verified/done, and not so at the merge-base); a NOTICE on every other brief | fatal |

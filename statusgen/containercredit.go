@@ -121,6 +121,7 @@ type creditContext struct {
 	// record can be read against. Each is credited when it does not decide.
 	place, prov, rec creditVerdict
 	records          map[string]creditRecord
+	ciWorkflowToken  bool
 }
 
 // newCreditContext reads what does not depend on the bracket: the witness's
@@ -151,11 +152,14 @@ func (cc *creditContext) placeWitness(witness string) creditVerdict {
 	if err != nil {
 		return creditCouldNot("cannot resolve the repository toplevel: %v", err)
 	}
-	rel, err := filepath.Rel(toplevel, resolved)
-	if err != nil || !filepath.IsLocal(rel) {
+	// Use the same repository coordinate as container admission. A relative
+	// witness can stay relative after EvalSymlinks even when Git returns an
+	// absolute worktree root. Both inputs above must already exist.
+	rel, inside := relWithin(toplevel, resolved)
+	if !inside {
 		return creditCouldNot("cannot place %s inside its repository", witness)
 	}
-	cc.rel = filepath.ToSlash(rel)
+	cc.rel = rel
 	return creditOK()
 }
 
@@ -365,7 +369,7 @@ func (cc *creditContext) admitRecord(a containerAttestation) (creditVerdict, str
 	}
 	target := fmt.Sprintf("%s#%d", repo, n)
 
-	first, err := creditReadIssue(target)
+	first, err := cc.readIssue(target)
 	if err != nil {
 		return creditCouldNot("record: %v", err), target, ""
 	}
@@ -382,7 +386,7 @@ func (cc *creditContext) admitRecord(a containerAttestation) (creditVerdict, str
 		return creditNot("record: %s %s", target, why), target, ""
 	}
 
-	trust, err := creditReadTrust(target)
+	trust, err := cc.readTrust(target)
 	if err != nil {
 		return creditCouldNot("record: %v", err), target, ""
 	}
@@ -396,7 +400,7 @@ func (cc *creditContext) admitRecord(a containerAttestation) (creditVerdict, str
 
 	// A second read after the history read: a record edited or reopened in
 	// between is not the one whose history was read.
-	second, err := creditReadIssue(target)
+	second, err := cc.readIssue(target)
 	if err != nil {
 		return creditCouldNot("record: %v", err), target, ""
 	}
@@ -407,7 +411,7 @@ func (cc *creditContext) admitRecord(a containerAttestation) (creditVerdict, str
 		return creditNot("record: %s is %s on the second read, not closed", target, second.State), target, ""
 	}
 
-	events, err := creditReadLabelEvents(target)
+	events, err := cc.readLabelEvents(target)
 	if err != nil {
 		return creditCouldNot("record: %v", err), target, ""
 	}
@@ -490,14 +494,16 @@ func (cc *creditContext) attestedStamp(present []string, events []creditLabelEve
 type creditAccount struct {
 	Login string `json:"login"`
 	ID    int64  `json:"id"`
+	Type  string `json:"type"`
 }
 
 type creditIssue struct {
-	State  string         `json:"state"`
-	Title  string         `json:"title"`
-	Body   string         `json:"body"`
-	Labels []string       `json:"labels"`
-	Author *creditAccount `json:"author"`
+	State    string         `json:"state"`
+	Title    string         `json:"title"`
+	Body     string         `json:"body"`
+	Labels   []string       `json:"labels"`
+	Author   *creditAccount `json:"author"`
+	ClosedBy *creditAccount `json:"closedBy"`
 }
 
 type creditTrust struct {
@@ -534,16 +540,20 @@ type creditEnvelope struct {
 	} `json:"partial"`
 }
 
-// creditDeskread runs `deskread <kind> --issue <repo>#<n>` and returns the
+// deskread runs `deskread <kind> --issue <repo>#<n>` and returns the
 // item for that one issue. Every way it went unread is an error, which the
 // caller reports as could-not-check.
-func creditDeskread(kind, target string) (*creditEnvelope, int, error) {
+func (cc *creditContext) deskread(kind, target string) (*creditEnvelope, int, error) {
 	repo, num, _ := strings.Cut(target, "#")
 	n, _ := strconv.Atoi(num)
 	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
 	defer cancel()
 	var stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "deskread", kind, "--issue", target)
+	args := []string{kind, "--issue", target}
+	if cc.ciWorkflowToken {
+		args = append(args, "--ci-workflow-token")
+	}
+	cmd := exec.CommandContext(ctx, "deskread", args...)
 	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	var env creditEnvelope
@@ -572,8 +582,8 @@ func creditDeskread(kind, target string) (*creditEnvelope, int, error) {
 	return nil, 0, fmt.Errorf("%s %s --issue %s: the envelope names no result and no reason for this issue", creditDeskreadBin, kind, target)
 }
 
-func creditReadIssue(target string) (*creditIssue, error) {
-	env, i, err := creditDeskread("issue", target)
+func (cc *creditContext) readIssue(target string) (*creditIssue, error) {
+	env, i, err := cc.deskread("issue", target)
 	if err != nil {
 		return nil, err
 	}
@@ -583,8 +593,8 @@ func creditReadIssue(target string) (*creditIssue, error) {
 	return env.Items[i].Issue, nil
 }
 
-func creditReadTrust(target string) (*creditTrust, error) {
-	env, i, err := creditDeskread("trust", target)
+func (cc *creditContext) readTrust(target string) (*creditTrust, error) {
+	env, i, err := cc.deskread("trust", target)
 	if err != nil {
 		return nil, err
 	}
@@ -594,8 +604,8 @@ func creditReadTrust(target string) (*creditTrust, error) {
 	return env.Items[i].Trust, nil
 }
 
-func creditReadLabelEvents(target string) (*creditLabelEvents, error) {
-	env, i, err := creditDeskread("label-events", target)
+func (cc *creditContext) readLabelEvents(target string) (*creditLabelEvents, error) {
+	env, i, err := cc.deskread("label-events", target)
 	if err != nil {
 		return nil, err
 	}

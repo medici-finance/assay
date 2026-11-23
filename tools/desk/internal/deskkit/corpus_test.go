@@ -207,6 +207,8 @@ func TestBodycheckCorpusCoversEveryCataloguedShape(t *testing.T) {
 		"pos-review-quotes-sops-envelope.txt":      "#2060 — a quoted short envelope stays refused",
 		"pos-url-userinfo-credential.txt":          "the url-userinfo arm — a password in URL userinfo",
 		"neg-url-userinfo-placeholders.txt":        "the url-userinfo arm — placeholders and username-only forms",
+		"neg-go-buildinfo-godebug.txt":             "#6821 — a Go build-info GODEBUG settings row",
+		"pos-godebug-token-value.txt":              "#6821 — a token value behind the GODEBUG head stays refused",
 	}
 	required := benignNamedFixtures()
 	for file, why := range catalogued {

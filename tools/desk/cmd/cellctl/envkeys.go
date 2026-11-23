@@ -147,6 +147,8 @@ func buildEnvKeys() []envKey {
 			desc: "Time one tick may run, a duration from 61s to 24h. Default: 20m once a cadence is set; without a cadence a launch refuses it."},
 		{key: "CELL_FF_ROOTS", class: envMachine, group: envGroupCadence, def: "0",
 			desc: "1 fast-forwards, at desk boot, every stream root that can move without a decision."},
+		{key: "CELL_VERIFY_SHARED_ROOTS", class: envMachine, group: envGroupCadence, def: "0",
+			desc: "1 gives a house verify-desk window the shared stream roots; otherwise it reads per-session trees kept at each root's origin/main."},
 		{key: "CELLCTL_DESKWT", class: envMachine, group: envGroupCadence, def: deskwtDefault,
 			desc: "1 lets an installed deskwt name each role worktree; any other value uses cellctl's own worktree path."},
 		{key: "CELLCTL_GENERATED_FILES", class: envMachine, group: envGroupCadence, def: "STATUS.md docs/streams/FINDINGS.md",
@@ -177,7 +179,11 @@ func buildEnvKeys() []envKey {
 	for _, harness := range []string{"claude", "codex", "cursor"} {
 		for _, level := range []string{"TOP", "MID", "FAST"} {
 			k := "TIER_MODEL_" + level + "_" + strings.ToUpper(harness)
-			keys = append(keys, envKey{key: k, class: envMachine, group: envGroupModels, def: tierModelDefaults[k], desc: tier})
+			desc := tier
+			if k == "TIER_MODEL_TOP_CURSOR" {
+				desc = tier + " On cursor it is also the strong-tier model id the standing desk boot prompt names for a strong subagent; unset or auto names none."
+			}
+			keys = append(keys, envKey{key: k, class: envMachine, group: envGroupModels, def: tierModelDefaults[k], desc: desc})
 		}
 	}
 	keys = append(keys,

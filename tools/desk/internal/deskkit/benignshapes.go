@@ -183,6 +183,15 @@ var benignShapes = []benignShape{
 		line:     isPGPFingerprint,
 	},
 	{
+		ID: "go-debug-list", Context: ctxLine, Issue: "#6821",
+		Doc:      "a Go GODEBUG settings list (DefaultGODEBUG= or GODEBUG= then lowercase name=DIGITS items)",
+		Admitted: []string{"neg-go-buildinfo-godebug.txt"},
+		Bounds:   []string{"pos-godebug-token-value.txt"},
+		line: func(raw string, start, _ int) bool {
+			return isGoDebugList(raw, start)
+		},
+	},
+	{
 		ID: "go-sum", Context: ctxArtifact, Issue: "#778",
 		Doc:      "a go.sum h1: digest (exactly 43 base64 and one pad behind the h1: marker)",
 		Admitted: []string{"neg-go-sum-checksums.txt"},
@@ -296,6 +305,11 @@ var k8sUIDPrefixes = map[string]bool{
 	"pvc": true, "pv": true, "pod": true, "rs": true, "rc": true,
 	"ds": true, "sts": true, "job": true, "cm": true, "svc": true,
 }
+
+// godebugHeads are the only keys Rule 9 reads a GODEBUG settings list behind: the
+// build-info row `go version -m` prints for a binary's compiled-in defaults, and the
+// environment variable the Go runtime reads the same list from.
+var godebugHeads = []string{"DefaultGODEBUG", "GODEBUG"}
 
 // benignWalk is the registry prepared for one scanned surface: each artifact entry's spans
 // are found ONCE, before the loop, so a recognised field is judged by its format rather

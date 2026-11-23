@@ -29,6 +29,8 @@
 //
 //	conflict-markers   grep for VCS conflict markers in the git work tree under --root
 //	junk-oversize      junk-named or oversize files in the git work tree under --root
+//	                   (an allowlisted retained baseline passes only while unchanged
+//	                   since the merge-base and within its pinned bound)
 //	go-fmt-vet         gofmt -l + go vet, scoped to the touched Go files under --root
 //	statusgen-lint     statusgen --root <abs> --lint, from a neutral cwd
 //	leak-sweep         the installed leak-sweep, WHERE PRESENT (see runLeakSweep)
@@ -502,24 +504,244 @@ var junkNames = []string{"*.orig", "*.rej", "*.swp", "*~", ".DS_Store", "Thumbs.
 // grep is batched around), and the two predicates are a base-name match and an
 // integer compare. Lstat is a pure read and does not follow symlinks, so the
 // check still cannot reach outside the tree it was pointed at.
+//
+// The ONE exception to the size threshold is the retained-baseline allowlist
+// (retainedBaselines): an oversize file named there passes only while it is
+// byte-identical to its copy at the merge-base and within its pinned bound. A
+// junk name is never exempt.
 func runJunkOversize(absRoot string, tl tools) check {
+	return junkOversize(absRoot, defaultBase, retainedBaselines, tl)
+}
+
+func junkOversize(absRoot, base string, allow []retainedBaseline, tl tools) check {
 	listed, why, ok := gitWorkTreeFiles(absRoot, tl)
 	if !ok {
 		return couldNotCheck(nameJunkOversize, why)
 	}
-	var hits []string
+	var (
+		hits     []string
+		retained []string
+		pv       *provenance
+	)
 	for _, f := range regularFiles(absRoot, listed, tl) {
-		if isJunkName(filepath.Base(f.rel)) || f.size > oversizeBytes {
+		if isJunkName(filepath.Base(f.rel)) {
 			hits = append(hits, f.rel)
+			continue
 		}
+		if f.size <= oversizeBytes {
+			continue
+		}
+		if pv == nil {
+			pfx, why, ok := repoPrefix(absRoot, tl)
+			if !ok {
+				return couldNotCheck(nameJunkOversize, why)
+			}
+			pv = &provenance{prefix: pfx}
+		}
+		repoRel := pv.prefix + filepath.ToSlash(f.rel)
+		e, inList := findRetained(allow, repoRel)
+		if !inList {
+			hits = append(hits, f.rel)
+			continue
+		}
+		if pv.mergeBase == "" {
+			mb, why, ok := mergeBaseOf(absRoot, base, tl)
+			if !ok {
+				return couldNotCheck(nameJunkOversize, why)
+			}
+			pv.mergeBase = mb
+		}
+		switch verdict, reason := verifyRetained(absRoot, f, repoRel, e, *pv, tl); verdict {
+		case retainedOK:
+			retained = append(retained, f.rel)
+		case retainedRejected:
+			hits = append(hits, f.rel+" ("+reason+")")
+		default:
+			return couldNotCheck(nameJunkOversize, reason)
+		}
+	}
+	note := ""
+	if len(retained) > 0 {
+		sort.Strings(retained)
+		note = fmt.Sprintf("; retained baseline(s) unchanged since merge-base %s and within bound: %s",
+			shortID(pv.mergeBase), strings.Join(retained, ", "))
 	}
 	if len(hits) == 0 {
 		return clean(nameJunkOversize, fmt.Sprintf(
-			"no junk or oversize files among the %d work-tree file(s) under %s", len(listed), absRoot))
+			"no junk or oversize files among the %d work-tree file(s) under %s", len(listed), absRoot)+note)
 	}
 	sort.Strings(hits)
 	return failedCheck(nameJunkOversize,
-		"junk/oversize file(s): "+strings.Join(hits, ", "))
+		"junk/oversize file(s): "+strings.Join(hits, ", ")+note)
+}
+
+func shortID(id string) string {
+	if len(id) > 12 {
+		return id[:12]
+	}
+	return id
+}
+
+// --- retained baselines: the one reviewed exception to the size threshold ---
+
+// retainedBaseline is one entry of the retained-baseline allowlist: a tracked
+// file this repository keeps on purpose although it is larger than
+// oversizeBytes, and the size ceiling pinned for it.
+type retainedBaseline struct {
+	// path is the file's path relative to the REPOSITORY top level, compared
+	// exactly — no glob, no prefix, no case folding.
+	path string
+	// maxBytes is the pinned ceiling. A copy larger than this is reported even
+	// when it is otherwise unchanged: growth past the bound is a decision for a
+	// reviewer of this list, not something the gate absorbs.
+	maxBytes int64
+}
+
+// retainedBaselines is the retained-baseline allowlist, carried as a NAMED
+// VALUE compiled into the binary rather than read from a file in the tree or
+// taken as a flag — for the same reason conflictMarkerExclusion is: a gate whose
+// exceptions can be widened by the change under review is not a gate. Adding or
+// raising an entry is a change to this source file, reviewed like any other
+// change to the gate, and it only takes effect once a rebuilt deskpreflight is
+// installed; a pull request cannot widen the list for its own preflight.
+//
+// An entry exempts a file from the size threshold ONLY when all of these hold
+// (verifyRetained), and otherwise the file is reported exactly as any other
+// oversize file is:
+//
+//   - its path matches an entry exactly;
+//   - its size is within the entry's pinned maxBytes;
+//   - it exists at the merge-base of HEAD and --base, and the blob there is the
+//     blob at HEAD, in the index, and in the working tree — i.e. the change
+//     about to become a pull request does not touch it at all;
+//   - every one of those reads succeeded. A read that fails (no merge-base, an
+//     unreadable file) is could-not-check, never an exemption.
+//
+// So an entry can only ever pass bytes that are ALREADY on the base branch: it
+// cannot carry new content into a pull request, it cannot let a file grow
+// without bound, and it says nothing about junk names, which are checked first
+// and never exempted.
+//
+// The two entries are the repository's own quality baselines: the quality
+// metrics history and the Go-analysis findings baseline. Both are regenerated
+// data that is deliberately versioned, and both are larger than 5 MiB.
+var retainedBaselines = []retainedBaseline{
+	{path: "docs/quality/metrics.jsonl", maxBytes: 16 * 1024 * 1024},
+	{path: "tools/go-analysis/baseline.json", maxBytes: 8 * 1024 * 1024},
+}
+
+// defaultBase is the ref whose merge-base with HEAD a retained baseline must be
+// unchanged since. It is spelled in full: a bare origin/main resolves to a stray
+// local branch of that name where one exists. It is deliberately NOT a flag: a
+// base the caller picks (HEAD, say) would make "unchanged since the merge-base"
+// true of any committed edit. Where it does not resolve, an allowlisted oversize
+// file is could-not-check — fail-closed — and a tree with no oversize file never
+// consults it.
+const defaultBase = "refs/remotes/origin/main"
+
+// findRetained returns the allowlist entry for a repository-relative path.
+func findRetained(allow []retainedBaseline, repoRel string) (retainedBaseline, bool) {
+	for _, e := range allow {
+		if e.path == repoRel {
+			return e, true
+		}
+	}
+	return retainedBaseline{}, false
+}
+
+// provenance is the git context a retained baseline is verified against. Each
+// half is resolved lazily and once: the prefix only when an oversize file is
+// seen at all, the merge-base only when an oversize file matches an allowlist
+// entry. So a tree with no allowlisted oversize file never consults the base,
+// and an ordinary oversize hit is reported as a hit whether or not it resolves.
+type provenance struct {
+	prefix    string // `git rev-parse --show-prefix` of --root ("" at the top)
+	mergeBase string // merge-base of the base ref and HEAD ("" until resolved)
+}
+
+func repoPrefix(absRoot string, tl tools) (string, string, bool) {
+	pfx, code, ran := tl.output(absRoot, "git", "rev-parse", "--show-prefix")
+	if !ran || code != 0 {
+		return "", "could not resolve the repository prefix of " + absRoot + ": " + firstLine(pfx), false
+	}
+	return strings.TrimSpace(string(pfx)), "", true
+}
+
+func mergeBaseOf(absRoot, base string, tl tools) (string, string, bool) {
+	mb, code, ran := tl.output(absRoot, "git", "merge-base", base, "HEAD")
+	mergeBase := strings.TrimSpace(string(mb))
+	if !ran || code != 0 || mergeBase == "" {
+		return "", fmt.Sprintf(
+			"retained-baseline provenance is unverifiable: no merge-base of %s and HEAD: %s",
+			base, firstLine(mb)), false
+	}
+	return mergeBase, "", true
+}
+
+// retainedVerdict is verifyRetained's three-state answer for one file.
+type retainedVerdict int
+
+const (
+	retainedOK          retainedVerdict = iota // exempt: unchanged and within bound
+	retainedRejected                           // reported as a hit, with a reason
+	retainedUncheckable                        // a read failed: could-not-check
+)
+
+// verifyRetained decides whether one allowlisted oversize file is exempt. rel is
+// the path relative to --root (what ls-files, hash-object and the report use);
+// repoRel is the same path relative to the repository top (what the object
+// specs use). Every git command here is a pure read: rev-parse, ls-files and
+// hash-object WITHOUT -w compute ids and write nothing.
+func verifyRetained(absRoot string, f treeFile, repoRel string, e retainedBaseline, pv provenance, tl tools) (retainedVerdict, string) {
+	if f.size > e.maxBytes {
+		return retainedRejected, fmt.Sprintf("retained baseline is %d bytes, past its pinned %d-byte bound", f.size, e.maxBytes)
+	}
+	// blobAt returns (id, present, why-uncheckable).
+	blobAt := func(rev string) (string, bool, string) {
+		out, code, ran := tl.output(absRoot, "git", "rev-parse", "--verify", "--quiet", rev+":"+repoRel)
+		if !ran {
+			return "", false, "could not run git rev-parse for " + rev + ":" + repoRel
+		}
+		id := strings.TrimSpace(string(out))
+		switch {
+		case code == 0 && id != "":
+			return id, true, ""
+		case code == 1:
+			return "", false, ""
+		default:
+			return "", false, fmt.Sprintf("git rev-parse exited %d for %s:%s: %s", code, rev, repoRel, firstLine(out))
+		}
+	}
+	baseBlob, present, why := blobAt(pv.mergeBase)
+	if why != "" {
+		return retainedUncheckable, why
+	}
+	if !present {
+		return retainedRejected, "allowlisted path is not present at the merge-base: an addition, not a retained baseline"
+	}
+	headBlob, present, why := blobAt("HEAD")
+	if why != "" {
+		return retainedUncheckable, why
+	}
+	if !present || headBlob != baseBlob {
+		return retainedRejected, "retained baseline changed since the merge-base (committed)"
+	}
+	idx, code, ran := tl.output(absRoot, "git", "ls-files", "--stage", "--", f.rel)
+	if !ran || code != 0 {
+		return retainedUncheckable, "could not read the index entry for " + f.rel + ": " + firstLine(idx)
+	}
+	stages := nonEmptyLines(idx)
+	if len(stages) != 1 || len(strings.Fields(stages[0])) < 2 || strings.Fields(stages[0])[1] != baseBlob {
+		return retainedRejected, "retained baseline changed since the merge-base (staged)"
+	}
+	wt, code, ran := tl.output(absRoot, "git", "hash-object", "--", f.rel)
+	if !ran || code != 0 {
+		return retainedUncheckable, "could not read " + f.rel + " to verify it is unchanged: " + firstLine(wt)
+	}
+	if strings.TrimSpace(string(wt)) != baseBlob {
+		return retainedRejected, "retained baseline changed since the merge-base (working tree)"
+	}
+	return retainedOK, ""
 }
 
 // isJunkName reports whether a file's base name matches the junk list.

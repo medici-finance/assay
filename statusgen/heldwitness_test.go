@@ -24,6 +24,7 @@ const (
 	// renders it.
 	witAttest = "Verification-Attestation: example-org/example-repo#4017 run=" + witHex64 +
 		" source=" + witHex40 + " brief=docs/streams/fixture/brief-02-fixture.md model=fixture-model tier=strong"
+	witObservation = "Kubernetes-Observation: sha256:" + witHex64
 	// witContainer is the block a container run writes under its table
 	// (containerWitnessLines) plus the bracket close's line.
 	witContainer = "Tree-Digest: sha256:" + witHex64 + "\n" +
@@ -124,6 +125,10 @@ func TestHeldScopeWitnessCover(t *testing.T) {
 		{"trailer only, hand-table latest", witOldBullet + handLatest, false},
 		// A witness with no sandbox and a bare attestation line.
 		{"host witness, attestation only", witOldHeading + unshareLatest, false},
+		{"observation inside an earlier closed witness",
+			witEntry("Run 1", witTable(4, sandboxContainerNetns, witRow3(stateFail, 1, ""),
+				strings.Replace(witContainer, "Admission-Bracket:", witObservation+"\nAdmission-Bracket:", 1)), witBullet, "VERIFY: BLOCKED") +
+				witLatest(witPass), false},
 		// Planted second instance: the container block under an earlier witness.
 		{"container block under earlier witness",
 			witEntry("Run 1", witTable(4, sandboxContainerNetns, witRow3(stateFail, 1, ""), witContainer), witBullet, "VERIFY: BLOCKED") +
@@ -212,6 +217,7 @@ func TestHeldScopeWitnessAnchors(t *testing.T) {
 		// Each trailer line is anchored at its end, not only the attestation.
 		{"Tree-Digest with a note appended", under(block[0]+note) + witLatest(witPass), true},
 		{"Container-Image with a note", under(block[1]+note) + witLatest(witPass), true},
+		{"Kubernetes-Observation with a note", under(witObservation+note) + witLatest(witPass), true},
 		{"Admission-Bracket with a note", under(block[3]+note) + witLatest(witPass), true},
 		// The witness header is matched as the tool writes it, byte for byte.
 		{"header with a trailing space", header("| Runner |\n", "| Runner | \n") + witLatest(witPass), true},
@@ -227,8 +233,47 @@ func TestHeldScopeWitnessAnchors(t *testing.T) {
 			strings.Replace(witContainer, "model=fixture-model", "model=HELD", 1)), "", "**VERIFY: PASS**"), true},
 	},
 		// The anchor is loosened in an earlier entry under a clean latest PASS.
-		"Tree-Digest with a note appended", "Container-Image with a note", "Admission-Bracket with a note",
+		"Tree-Digest with a note appended", "Container-Image with a note", "Kubernetes-Observation with a note", "Admission-Bracket with a note",
 		"header with a trailing space", "header with a leading space")
+}
+
+// TestHeldScopeSandboxDefault: a clean Result cell that names either sandbox
+// mode as a detail reads as clean, the default mode (unshare) as much as the
+// container one. The cells here are outside verifyrun's own passing shape
+// (heldWitnessPassRe: lower-case "pass exit=N sandbox=..."), so only the
+// sandbox detail in heldDetailRes admits them: dropping unshare from that
+// closed set turns the default mode into an unrecognised note, and a later
+// clean run under unshare would stop covering an earlier hold.
+// regression: #6790
+func TestHeldScopeSandboxDefault(t *testing.T) {
+	for _, mode := range []string{sandboxUnshare, sandboxContainerNetns} {
+		for _, cell := range []string{"PASS exit=0 sandbox=" + mode, "ok, sandbox=" + mode, "exit 0; sandbox=" + mode} {
+			if got := heldOutcome(cell, false); got != heldCellPass {
+				t.Errorf("heldOutcome(%q) = %v, want pass", cell, got)
+			}
+		}
+	}
+	// The sandbox detail is still one whole closed-set word.
+	for _, cell := range []string{"PASS exit=0 sandbox=unshare-ok", "PASS exit=0 sandbox=other"} {
+		if got := heldOutcome(cell, false); got != heldCellOther {
+			t.Errorf("heldOutcome(%q) = %v, want other", cell, got)
+		}
+	}
+	// End to end: a later clean run whose hand-typed Result cells name the
+	// sandbox mode covers the earlier held row 3.
+	upper := func(mode string) string {
+		return witOldRow + witEntry("Run 2", strings.ReplaceAll(witTable(4, mode, witPass, witAttest),
+			"| pass exit=0 sandbox="+mode+" |", "| PASS exit=0 sandbox="+mode+" |"), "", "**VERIFY: PASS**")
+	}
+	for _, mode := range []string{sandboxUnshare, sandboxContainerNetns} {
+		if !strings.Contains(upper(mode), "| PASS exit=0 sandbox="+mode+" |") {
+			t.Fatalf("fixture for %s did not rewrite the Result cells", mode)
+		}
+	}
+	runHeldRowCases(t, []heldScanCase{
+		{"later PASS under unshare", upper(sandboxUnshare), false},
+		{"later PASS under container-netns", upper(sandboxContainerNetns), false},
+	})
 }
 
 // witTableFF renders a fail-first verifyrun witness table for rows 1..n

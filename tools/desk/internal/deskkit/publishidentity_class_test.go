@@ -61,6 +61,8 @@ var publishIdentitySites = map[string]string{
 	// Conditional-write callers bind the source independently of their destination.
 	"cmd/deskevidence/deskevidence.go|cmdEvidence|call|-":            "conditional-write wrapper fixes RemoteTip to \"\" and pins the admitted source against main",
 	"cmd/deskevidence/outcomerecord.go|cmdOutcomeRecordWrite|call|-": "conditional-write wrapper fixes RemoteTip to \"\" and pins the admitted source against main",
+	"cmd/deskevidence/removesuperseded.go|cmdOutcomeRecordRemove|call|-": "conditional-write wrapper fixes RemoteTip to \"\" and pins the admitted source against main; " +
+		"the deletion itself is pinned to the record blob and the branch head",
 	// Flip judges unpublished commits using the shared offline branch estimate.
 	"cmd/deskevidence/flip.go|runFlip|call|remoteTip": "shared offline branch tip, pinned across both local checks; publication rechecks live state",
 }

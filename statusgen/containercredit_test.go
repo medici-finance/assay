@@ -84,14 +84,19 @@ func creditFakeDeskread(t *testing.T) {
 		}
 	}
 	writeStubBin(t, bin, "deskread", `#!/bin/sh
-if [ -n "$CREDIT_FAKE_FAIL" ]; then echo "deskread: the forge is unreachable" >&2; exit 4; fi
+if [ "$CREDIT_FAKE_FAIL" = "1" ] || [ "$CREDIT_FAKE_FAIL" = "$1" ]; then echo "deskread: the forge is unreachable" >&2; exit 4; fi
+if [ -n "$CREDIT_FAKE_CI" ] && [ "$4" != "--ci-workflow-token" ]; then exit 5; fi
+if [ -z "$CREDIT_FAKE_CI" ] && [ "$#" -ne 3 ]; then exit 5; fi
 n=${3##*#}
 f="$CREDIT_FAKE_DIR/$1-$n.json"
 [ -f "$f" ] || { echo "deskread: no fixture $f" >&2; exit 3; }
-cat "$f"
+cat "$f" || exit
+# If the test provides a replacement, subsequent reads see the changed item.
+if [ -f "$f.next" ]; then mv "$f.next" "$f"; fi
 `)
 	t.Setenv("CREDIT_FAKE_DIR", dir)
 	t.Setenv("CREDIT_FAKE_FAIL", "")
+	t.Setenv("CREDIT_FAKE_CI", "")
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
@@ -177,6 +182,43 @@ func rosterWith(over map[string]string) map[string]string {
 	return vals
 }
 
+func TestBracketCreditPortableWitnessPaths(t *testing.T) {
+	creditFakeDeskread(t)
+	fx := landed(t, vfMailVerifier, creditBaseAtt(41))
+	t.Chdir(fx.root)
+
+	// The alias points below the brief directory, so alias/../brief traverses
+	// back into that directory. Cleaning the argument before following the
+	// link would select a different file.
+	deeper := filepath.Join(filepath.Dir(filepath.FromSlash(creditBriefRel)), "nested")
+	if err := os.Mkdir(deeper, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(deeper, "alias"); err != nil {
+		t.Fatal(err)
+	}
+	aliasPath := filepath.FromSlash("alias/../") + filepath.Base(fx.brief)
+	for _, tc := range []struct{ dir, arg string }{
+		{fx.root, fx.brief},
+		{fx.root, filepath.FromSlash(creditBriefRel)},
+		{fx.root, aliasPath},
+		{filepath.Dir(fx.brief), filepath.Base(fx.brief)},
+	} {
+		t.Chdir(tc.dir)
+		input := creditFx{root: fx.root, brief: tc.arg}
+		if code, out := input.credit(t, fixtureSource); code != verifyrunExitPass || !strings.Contains(out, "credit=credited") {
+			t.Errorf("%s: exit %d, want credited: %s", tc.arg, code, out)
+		}
+		if code, out := input.credit(t, strings.Repeat("e", 40)); code != verifyrunExitFail || !strings.Contains(out, "credit=not-credited") {
+			t.Errorf("%s (other source): exit %d, want not-credited: %s", tc.arg, code, out)
+		}
+	}
+	missing := creditFx{root: fx.root, brief: "absent.md"}
+	if code, out := missing.credit(t, fixtureSource); code != verifyrunExitCouldNot || strings.Contains(out, "credit=credited") {
+		t.Errorf("missing witness: exit %d, want could-not-check: %s", code, out)
+	}
+}
+
 func TestBracketCredit(t *testing.T) {
 	creditFakeDeskread(t)
 
@@ -189,6 +231,18 @@ func TestBracketCredit(t *testing.T) {
 	if code, out := base.credit(t, fixtureSource); code != verifyrunExitPass || !strings.Contains(out, " verdict=match ") || !strings.HasSuffix(strings.TrimSpace(strings.Split(out, "\n")[0]), " credit=credited") {
 		t.Fatalf("base: exit %d output %q, want credit=credited exit 0", code, out)
 	}
+
+	t.Run("workflow transport", func(t *testing.T) {
+		t.Setenv("CREDIT_FAKE_CI", "1")
+		args := []string{"--bracket-digest", "--witness", base.brief, "--credit", "--source", fixtureSource, "--ci-workflow-token"}
+		if res, out := captureVerifyrunOut(t, args); res.code != verifyrunExitPass || !strings.Contains(out, " credit=credited") {
+			t.Fatalf("workflow credit: exit %d output %q, want credited", res.code, out)
+		}
+		t.Setenv("CREDIT_FAKE_FAIL", "label-events")
+		if res, out := captureVerifyrunOut(t, args); res.code != verifyrunExitCouldNot || !strings.Contains(out, " credit=could-not-check") {
+			t.Fatalf("workflow credit unavailable: exit %d output %q, want could-not-check", res.code, out)
+		}
+	})
 
 	type outcome struct {
 		code    int
@@ -518,7 +572,16 @@ func TestCreditBindingSource(t *testing.T) {
 // admits or refuses each shared fixture as its `expect` says. deskkit's
 // TestVerifierAttestationCreditParity reads the same files.
 func TestCreditRecordFixtures(t *testing.T) {
+	for _, mode := range []string{"custody", "workflow"} {
+		t.Run(mode, func(t *testing.T) { testCreditRecordFixtures(t, mode == "workflow") })
+	}
+}
+
+func testCreditRecordFixtures(t *testing.T, ci bool) {
 	creditFakeDeskread(t)
+	if ci {
+		t.Setenv("CREDIT_FAKE_CI", "1")
+	}
 	fixtures := loadCreditRecordFixtures(t)
 	names := make([]string, 0, len(fixtures))
 	for n := range fixtures {
@@ -547,7 +610,7 @@ func TestCreditRecordFixtures(t *testing.T) {
 		if !ok {
 			t.Fatalf("%s: %q is not an attestation line", name, att)
 		}
-		cc := &creditContext{desk: "assay-desk-app", repo: creditRepo, rec: creditOK(), records: map[string]creditRecord{}}
+		cc := &creditContext{desk: "assay-desk-app", repo: creditRepo, rec: creditOK(), records: map[string]creditRecord{}, ciWorkflowToken: ci}
 		v := cc.record(a, att)
 		admitted := v.verdict == creditCredited
 		if admitted != (f.Expect == "admit") {

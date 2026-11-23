@@ -1,0 +1,53 @@
+{
+  "test": "go test . -run 'TestHeldEmphasisInch|TestHeldCommentSplit|TestHeldCommentUnsettled' -count=1 -timeout 300s",
+  "control": {
+    "name": "CONTROL — a marker a comment strip forms is not a hold (the split-marker defect)",
+    "file": "verifyissues.go",
+    "old": "\t\tif joined[i] {\n\t\t\thits, quotes = append(hits, i), append(quotes, trimmed)\n\t\t\tcontinue\n\t\t}",
+    "new": "\t\tif false && joined[i] {\n\t\t\thits, quotes = append(hits, i), append(quotes, trimmed)\n\t\t\tcontinue\n\t\t}"
+  },
+  "mutations": [
+    {
+      "name": "E1: a quote beside an emphasis delimiter still pairs as a span",
+      "file": "heldscope.go",
+      "old": "if q > lo && strings.IndexByte(\"*_\", clean[q-1]) >= 0 || q+1 < hi && strings.IndexByte(\"*_\", clean[q+1]) >= 0 {",
+      "new": "if false {"
+    },
+    {
+      "name": "E2: only a delimiter before the quote is read",
+      "file": "heldscope.go",
+      "old": "if q > lo && strings.IndexByte(\"*_\", clean[q-1]) >= 0 || q+1 < hi && strings.IndexByte(\"*_\", clean[q+1]) >= 0 {",
+      "new": "if q > lo && strings.IndexByte(\"*_\", clean[q-1]) >= 0 {"
+    },
+    {
+      "name": "E3: \"_\" is not read as a delimiter",
+      "file": "heldscope.go",
+      "old": "if q > lo && strings.IndexByte(\"*_\", clean[q-1]) >= 0 || q+1 < hi && strings.IndexByte(\"*_\", clean[q+1]) >= 0 {",
+      "new": "if q > lo && strings.IndexByte(\"*\", clean[q-1]) >= 0 || q+1 < hi && strings.IndexByte(\"*\", clean[q+1]) >= 0 {"
+    },
+    {
+      "name": "J1: one strip only, read as settled (no fixed point)",
+      "file": "heldjoin.go",
+      "old": "\t\ttext, src = b.String(), next\n",
+      "new": "\t\treturn b.String(), next, true\n"
+    },
+    {
+      "name": "J2: Evidence that does not settle is read anyway",
+      "file": "verifyissues.go",
+      "old": "\tif !settled {\n\t\treturn []heldRefusalSignal{",
+      "new": "\tif false && !settled {\n\t\treturn []heldRefusalSignal{"
+    },
+    {
+      "name": "J3: the CommonMark short comment forms are not stripped",
+      "file": "heldjoin.go",
+      "old": "`(?s)<!--(?:>|->|.*?-->)`",
+      "new": "`(?s)<!--.*?-->`"
+    },
+    {
+      "name": "J4: every marker is a join, formed by a strip or not",
+      "file": "heldjoin.go",
+      "old": "\t\tif !joined {\n\t\t\tcontinue\n\t\t}",
+      "new": "\t\tif false && !joined {\n\t\t\tcontinue\n\t\t}"
+    }
+  ]
+}

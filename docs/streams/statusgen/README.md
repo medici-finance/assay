@@ -78,6 +78,7 @@ Operations admission remains a blocker for /25; the verifier runtime does not wa
 | 42 | [Queue projections from one board load: next-up, awaiting and brief info](brief-42-queue-projections-from-one-board-load-next-up-awaiting-and-brief-info.md) | 3 | L | todo | — | — |
 | 43 | [Desk read-side consumers call the board library in-process](brief-43-desk-read-side-consumers-call-the-board-library-in-process.md) | 4 | M | todo | — | — |
 | 44 | [Hydration budget: profile a real tree and remove the dominant cost](brief-44-hydration-budget-profile-a-real-tree-and-remove-the-dominant-cost.md) | 1 | M | implemented | — | — |
+| 45 | [Prepare an offline fail-first cache for the selected delivery](brief-45-prepare-an-offline-fail-first-cache-for-the-selected-delivery.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -247,6 +248,11 @@ account for every included finding.
 | B — ordering and legacy review metadata | `orderingGateNotices` in `statusgen/orderinggate.go`, for gate-shaped prose with no corroborating typed edge; `checkBriefFiles` in `statusgen/brieffile.go`, for a risk-classed done record with no security-review claim | Ordering suggestions require author review, never automatic dependency choices. Never manufacture a review claim. Corroborated pre-2026-08-15 closure dates retain the stated grandfather boundary; unknown dates remain could-not-check. Closed records are reporting inputs, not repair targets. |
 | C — board ownership and merged delivery | `already-merged-unflipped`, `out-of-repo-deliverable`, `dehoused`, `re-homed`, `statusgen-source-elsewhere`, `deferred-by-gate` in `statusgen/boardhonesty.go`; `sibling-merge-unreconciled` in `statusgen/siblingmerge.go`; `mergedPRStatusNotices` in `statusgen/mergedstatus.go`, for a merged implementation whose row remains todo/in-progress | /32 routes each observed class to existing eligibility/reconciliation owners. A heuristic mention is not an ownership declaration; unavailable forge/sibling evidence stays unknown. An Authors trailer never proves delivery. |
 | C — accepted-run attribution and register links | `verified-runner-attribution` in `statusgen/verifiedrunneragree.go`; `registerRefProblems` in `statusgen/registerrefs.go`, specifically references to a generated register view rather than a durable entry | /32 derives new attribution from the accepted run; historical Evidence stays frozen. The existing register backfill may rewrite a uniquely identified durable entry. Missing/ambiguous targets remain author-owed and no target is invented. |
+
+For brief input declarations, the differential authoring inventory also includes
+`declared-file-alias`. Its subject is the unregistered alias. A missing registry,
+a declaration grammar refusal, a missing root filename or a disagreement between
+the input and diagnostic readers stays advisory.
 
 “Derivable Family B” is an instance-level disposition, not every rule in a B row:
 the report must name the immutable source and unique derivation for each repair.

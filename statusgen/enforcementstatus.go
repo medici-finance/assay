@@ -157,7 +157,7 @@ var lintRuleRegistry = []LintRule{
 	// Stream WIP cap + parked lane (attention-budget/04). Differential: a full lint
 	// only NOTICEs; the PR-diff gate makes each a PROBLEM, so both are fatal.
 	{"stream-cap", "a change that adds an active stream past the per-root active-stream cap (ASSAY_STREAM_CAP) with no offsetting park — no net new streams past the cap", StatusFatal},
-	{"stream-source", "a change that adds an active stream README citing no `spec:`, or a `spec:` whose header is not `**Status:** approved` — a stream is scaffolded only from an approved spec", StatusFatal},
+	{"stream-source", "a newly active stream must cite a readable `spec:` with an `approved` or `routed` lifecycle header", StatusFatal},
 
 	// Eligibility evaluator could-not-check surface (eligibilitycli.go,
 	// graph-execution/01). Advisory: the underlying hold already excludes the

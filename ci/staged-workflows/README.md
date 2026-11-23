@@ -22,10 +22,6 @@ reviewable artifact, not a run.
 
 ## Contents
 
-- `verify-gate-close.yml` — live workflow twin with the board-writer
-  Environment restriction, byte-identical to its live counterpart, enforced by
-  `declared-changes.json`.
-
 - `assay-qualgen.yml` — live workflow twin with the board-writer Environment
   restriction, plus the classified board push (#2910): the QUALITY.md commit step
   sources `statusgen/pushcred.sh`, preflights the push credential (a dry-run push)
@@ -91,22 +87,27 @@ reviewable artifact, not a run.
   `--lint`; the live corroborate step's `--corroborate --pr` runs the network lane only on PRs
   that touch a findings entry; and `deskevidence` / `--close-verify` run the network check
   themselves.
-- `verify-gate-close.yml` — a STAGED TWIN of the live `.github/workflows/verify-gate-close.yml`
-  carrying ONLY a decision-gate refusal branch in the "Advance ..." step. When
-  `statusgen --close-verify` refuses a close with the literal "decision-gate hold", the branch
-  relays the refusal, reopens the card and commits nothing. `TestDecisionGateCloseWorkflowKeyedPhrase`
+- `verify-gate-open.yml` and `verify-gate-close.yml` — live workflow twins,
+  byte-identical to their live counterparts and enforced by
+  `declared-changes.json`. They carry the canonical adjudicated acceptance route
+  for verification-handoff/03 under #4993. After an independent verifier
+  publishes the body rendered by `statusgen acceptance-route prepare`, an exact
+  human adjudication comment on that issue triggers the canonical issuer. Its
+  concurrency group is set on the job, so a comment the job's `if:` skips never
+  queues in it. The close workflow admits only the resulting card, rereads the
+  human closer and revalidates the adjudication before the existing
+  board-writer push. Other briefs keep their ordinary card route; the close
+  step's decision-gate refusal branch, in the next entry, is live for every brief.
+
+- `verify-gate-close.yml` also carries the decision-gate refusal branch in the
+  "Advance ..." step, live for every brief. When `statusgen --close-verify`
+  refuses a close with the literal "decision-gate hold", the branch relays the
+  refusal, reopens the card and commits nothing. `TestDecisionGateCloseWorkflowKeyedPhrase`
   in `statusgen` pins the phrase on this staged copy, or on the live file once it is gone.
-  **Pending promotion**, the same way. Until then `--close-verify` still refuses the close and
-  the live workflow commits nothing, but the refusal reaches its generic first-attempt branch.
-  That branch leaves the card closed and comments a reason that does not name the decision
-  issue or the remedy.
-- `assay-statusgen.yml` — status-historian part: the `regen` job runs `statusgen --record`
-  after each STATUS.md write (the first run and every push retry), and its commit step adds
-  `docs/streams/.history.jsonl` beside `STATUS.md` in the same `[skip-status-regen]` commit.
-  The `push:` paths gain `!docs/streams/.history.jsonl` after `docs/**`, so that commit still
-  cannot retrigger the workflow (loop guard 1). The same text is in the live file and this copy;
-  `TestBoardRegenRecordsHistory` (with its negative control) in `statusgen` pins both. The
-  `tools/ci-load/activation/` copy predates it and is not updated (stale, #1187).
+- Both the live and staged `assay-statusgen.yml` use `--write-and-record` to
+  regenerate the board and record history on the initial checkout and each retry.
+  The commit guard includes history-only updates.
+
 - `loopadmin.yml` — the loopadmin module's test job (graph-execution/20): `gofmt`, `go vet`,
   `go test` and the mutation gate (`go run ./mutate`) from `loopadmin/`, on path triggers for the
   module, `spec/loop-admin-runner-v1.md` and `schemas/loop-admin-runner-v1.json`. **Staged, not

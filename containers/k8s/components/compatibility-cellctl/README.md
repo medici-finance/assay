@@ -50,23 +50,19 @@ PVC retention supplies only the filesystem part.
 
 ## Remaining preparation and qualification
 
-Publication supplies the image pins, not the operator's launch facts. Each role
-still needs its approved pinned agent/version/model and work inputs on the retained
-volume, baked or explicitly selected custom role instructions, a genuine
-cold-preparation identity, and a matching launch descriptor. The launcher's existing `desk-session --prepare` command creates the
-initial history only when none exists; it does not reset history. Its prepared
-state records `launch_id` (the SHA-256 of the canonical launch descriptor) and the
-descriptor's `initialization_id`. The descriptor has no `launch_id` member and
-`--prepare` does not print that hash; read it from `.assay-compat/state.json`.
-Use those same values in the operator profile and the workload's
-`ASSAY_COMPAT_LAUNCH_ID` and `ASSAY_COMPAT_INIT_ID`. Never substitute fixture hashes.
+Use the [custodian preparation guide](../../../../docs/kubernetes-compatibility-preparation.md)
+in each role’s authorized cold preparation context. Supply the pinned agent, model,
+work directory and instructions approved for that role. Run the guide’s preparation
+command in its default read-only mode to check the inputs, then add `--prepare`
+to initialize the unused volume. Both calls use `cellctl compat-prepare` through
+the guide’s companion binary and Python delegate.
 
-Follow the [custodian preparation guide](../../../../docs/kubernetes-compatibility-preparation.md)
-for the approved-input inventory, reviewed companion `cellctl compat-prepare` binary
-and transparent Python delegate, and per-role
-profile/workload mapping. The helper generates both binding identities and reads
-them back through the existing image-owned launcher; no manual hashes are needed. The guide starts inside an already
-authorized preparation context; it supplies no cluster or credential grant.
+If the preparation output was lost before the role first booted, repeat the same
+selection with `--readback`. It validates the unused prepared state and returns
+the same JSON without writing. Copy `launch_id` and `descriptor.initialization_id`
+into the operator profile, and use the returned `workload_env` bindings for
+`ASSAY_COMPAT_LAUNCH_ID` and `ASSAY_COMPAT_INIT_ID`. Changed inputs or a previously
+used volume hold readback.
 
 A custodian must also supply each existing role-custodian group in `rbac.yaml` and
 qualify the explicit operator/TLS endpoint, static credential, effective access,
@@ -76,8 +72,8 @@ visible and is not deployable.
 
 `sh containers/k8s/check.sh --compatibility-cellctl --self-test` first checks
 synthetic hostile fixtures, then checks the actual rendered component. With the
-remaining launch/init placeholders it returns `checked-failed: prepared launch
-identity missing`; group placeholders are another unresolved actual-profile gate.
+remaining launch/init placeholders it names the first affected role and environment
+variable. The group placeholders also require custodian input.
 Fixture success is not the `checked-clean: compatibility cellctl profile` result.
 Do not weaken either check or replace preparation values merely to make it pass.
 
@@ -87,3 +83,30 @@ Brief 31 stays blocked until its actual profile and required acceptance are comp
 Neither this checkpoint nor the release source supplies the final delivery merge
 and first parent required by the independent qualification handoff. Deployment,
 credential grants, activation, live model usefulness and adoption remain held.
+
+### Offline interaction suite
+
+From a full source checkout with the candidate's recorded commit available, set
+`ASSAY_TEST_DOCKER_HOST` to an explicit local Unix socket for a disposable test
+daemon. The daemon needs a cached `python:3.13-slim` or a Python 3 Linux image
+selected by its immutable local `sha256:...` ID in `ASSAY_TEST_FIXTURE_IMAGE`.
+The runner resolves the local image ID, disables image pulls and container
+networking, and mounts only a temporary fixture directory. The Go toolchain and
+the desk module dependencies must be available offline.
+
+Run `sh containers/k8s/compatibility/qualify.sh --offline --suite interaction`.
+The compiled CLI talks to a synthetic Kubernetes API. Its terminal reaches the
+candidate source's actual PID-1 launcher, running a pinned synthetic Claude
+adapter in the fixture runtime. Each of the five role records identifies the
+published candidate image, executable and runtime digests, terminal execution,
+request count and retained task result. This exercises the offline interaction
+contract. Running the published images on a Kubernetes target belongs to the
+separately authorized real-profile qualification.
+
+To run just the interaction count controls, use the same explicit Docker socket
+and cached image selection as the five-role check, then run from the repository root:
+
+```sh
+ASSAY_QUALIFY_INTERACTION=1 GOWORK=off GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local \
+  go -C tools/desk test -count=1 -run '^TestKubeCompatInteractionCountControls$' ./cmd/cellctl
+```
