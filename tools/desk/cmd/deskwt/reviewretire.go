@@ -235,7 +235,7 @@ func retireReview(guard *pathGuard, sc *sweepCtx, dir, rt, admin, attempt string
 	if _, err := deskkit.RunHook(deskkit.HookBeforeRemove, deskkit.HookEnv{RunKey: r.Key, Worktree: rt, Repo: r.Repo}); err != nil {
 		return "before_remove: " + err.Error()
 	}
-	if why := claimStillFree(dir, r.Key); why != "" {
+	if why := claimStillFree(dir, claim.remote, r.Key); why != "" {
 		return why
 	}
 	admissions, err := guard.verifierAdmissions()

@@ -168,7 +168,7 @@ func parseVerifyTable(section string) ([]verifyRow, error) {
 	return rows, nil
 }
 
-// splitRowCells mirrors statusgen's splitRowEscaped, preserving raw cell text
+// splitRowCells mirrors statusgen's briefdoc.SplitRowEscaped, preserving raw cell text
 // (including backslashes and code spans). Re-derivation reports, never executes.
 // The existing shared executor splitter is being introduced separately in #3160;
 // until it lands there is no importable table splitter in this module.

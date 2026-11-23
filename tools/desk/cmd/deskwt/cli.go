@@ -37,12 +37,12 @@ type wtCall struct {
 
 type addOpts struct {
 	name, branch, base, upstream, role, lockSession, adoptRun string
-	detach, dryRun                                            bool
+	detach, dryRun, handoffBrief                              bool
 }
 
 type removeOpts struct {
-	path   string
-	dryRun bool
+	path, claimRepo string
+	dryRun          bool
 }
 
 // pruneFlags carries the duration knobs as the operator's text: runPrune owns their
@@ -100,10 +100,15 @@ func wtBindings() map[string][]cli.Binding {
 				"the shared checkout's identity"),
 			boolean("dry-run", "print the lifecycle-hook plan (HOOK after_create: ...) and touch nothing"),
 			str("lock-session", "", "lock the new worktree for this live session id, in role-init's lock-reason format"),
+			boolean("handoff-brief", "with --adopt-run: resume this session's earlier worker checkout for the brief delivered by this PR"),
 			str("adopt-run", "", "with --upstream: adopt an existing home stamped with this run key when it is proven finished "+
 				"(registered, unlocked, clean incl. untracked, on --branch at the pinned --base) instead of refusing it"),
 		},
-		"remove": {boolean("dry-run", "print the lifecycle-hook plan (HOOK before_remove: ...) and touch nothing")},
+		"remove": {
+			boolean("dry-run", "print the lifecycle-hook plan (HOOK before_remove: ...) and touch nothing"),
+			str("claim-repo", "", "owner/name of the repository a dispatched home's claim was taken in, for a home "+
+				"that predates recorded claim namespaces; it must agree with any namespace the home records"),
+		},
 		"prune": {
 			str("repo", "", "run against this repo root instead of the current directory"),
 			str("interval", "", "if set (e.g. 30m), loop: sweep every interval instead of once"),
@@ -224,11 +229,11 @@ func newWtCLI(env wtCLI, argv []string) *cobra.Command {
 		func(v *cli.Values, a []string) wtCall {
 			return wtCall{add: addOpts{name: a[0], branch: v.String("branch"), detach: v.Bool("detach"), base: v.String("base"),
 				upstream: v.String("upstream"), role: v.String("role"), dryRun: v.Bool("dry-run"),
-				lockSession: v.String("lock-session"), adoptRun: v.String("adopt-run")}}
+				lockSession: v.String("lock-session"), adoptRun: v.String("adopt-run"), handoffBrief: v.Bool("handoff-brief")}}
 		}))
 	root.AddCommand(verb("remove <path>", "remove a proven-safe worktree (there is no --force)", removeLong, cobra.ExactArgs(1),
 		func(v *cli.Values, a []string) wtCall {
-			return wtCall{remove: removeOpts{path: a[0], dryRun: v.Bool("dry-run")}}
+			return wtCall{remove: removeOpts{path: a[0], dryRun: v.Bool("dry-run"), claimRepo: v.String("claim-repo")}}
 		}))
 	root.AddCommand(verb("review-exited <checkout> <dispatch-ref>", "acknowledge reviewer exit and saved evidence for a confirmed review", "Run from the target repository after the reviewer exits and its evidence has been saved. Attempts retirement immediately. Prune retries when the checkout becomes eligible.", cobra.ExactArgs(2),
 		func(_ *cli.Values, a []string) wtCall { return wtCall{reviewHome: a[0], reviewAttempt: a[1]} }))
@@ -403,6 +408,11 @@ reason format (` + "`session=<id>`" + `), so prune holds it from its first secon
 --reclaim-stale-locks / --reap-dead-sessions retire it only once that session's roster beacon
 is stale. A lock that cannot be taken and verified rolls the worktree back.
 
+add --handoff-brief (worker PR resumes with --adopt-run) can continue this session's
+earlier brief checkout at the confirmed PR head. The previous brief claim must be
+released. A matching session, worker dispatch receipt, local delivery trailer and
+owned PR claim are required. The checkout keeps its index and in-progress merge.
+
 add --adopt-run <run key> (resume only: needs --upstream) hands back a FINISHED home instead
 of refusing it — the existing target, or the worktree holding --branch — when it carries that
 worktree-scoped assay.runKey, is registered and unlocked, sits on --branch at exactly the
@@ -433,7 +443,13 @@ old or missing one is not proof the session is gone), one naming no session, git
 tree of a dead session is reaped by ` + "`deskwt prune --reap-dead-sessions`" + ` instead, once the tree
 has been idle past --min-idle (1h by default; run it with --dry-run first, it sweeps every
 ownerless tree). A dispatched home (one recording assay.runKey) is refused while its claim
-is held or unreadable, and its lock is no bar once the claim is released. This is the end-of-PR step for a session that made its own home:
+is held or unreadable, and its lock is no bar once the claim is released. The claim is read in
+the repository the home records (assay.claimRepo): this checkout's origin, or, for a
+cross-repository verifier's home, its tracking repository on origin's forge host. A home that
+predates recorded claim namespaces is unreadable until --claim-repo <owner/name> names the
+repository its dispatch claimed in (a worker or review dispatch: this checkout's origin; a
+cross-repository verifier: its tracking repository); naming the wrong one can free a live
+run's home, and every other gate still applies. This is the end-of-PR step for a session that made its own home:
 ` + "`deskwt add <name> --lock-session <id>`" + ` at the start, ` + "`deskwt remove <path>`" + ` once the PR is
 pushed and the tree is clean.
 

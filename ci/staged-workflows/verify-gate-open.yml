@@ -1,0 +1,181 @@
+name: verify-gate-open
+# Opens one self-contained "human sign-off" GitHub issue per brief that is
+# gate: human AND newly eligible (README-row status `verified`, or `implemented`
+# for an irreversible brief with a recorded model verify pass — the one-step
+# path) AND has no verify-gate issue yet (open OR closed). statusgen is the
+# single brain; this workflow is thin glue. Idempotent: the marker check spans
+# ALL existing verify-gate issues, open and closed, so a re-run on a later push
+# creates nothing new.
+#
+# The paired closer is verify-gate-close.yml, which advances the brief
+# verified → done when an allowlisted HUMAN closes the issue this one files.
+# Together they are the only sign-off surface a `gate: human` brief has; without
+# them such a brief rots at `verified` with no way to reach `done`.
+#
+# statusgen is BUILT FROM THIS REPO'S OWN SOURCE (statusgen/), exactly as the
+# board workflow builds it — this is the repo statusgen lives in, so a released
+# binary would lag the very source a PR is changing, and there is no pinned-tool
+# install action here to consume one with.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  GO_VERSION: "1.27.4"
+
+jobs:
+  open:
+    # A comment run is admitted only when a HUMAN on the bless roster
+    # (vars.ASSAY_BLESS_LOGIN, `login:id` or bare logins, comma- or
+    # space-separated: the same roster verify-gate-close admits) wrote it. Title
+    # and body prefixes alone are text anyone can type, and an admitted run
+    # enters the concurrency group below, where it would displace a pending
+    # issuer or adjudication run. The login match is bounded on both sides: the
+    # roster is padded with a space, a login is preceded by a space or comma and
+    # followed by `:`, a comma or a space, so no login matches inside another.
+    # GitHub expression string comparison ignores case, as logins do.
+    if: >-
+      github.event_name != 'issue_comment' ||
+      (github.event.issue.pull_request == null &&
+       github.event.comment.user.type == 'User' &&
+       startsWith(github.event.issue.title, 'Acceptance preparation: ') &&
+       startsWith(github.event.comment.body, 'Approve acceptance-adjudication v1') &&
+       (contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(' {0}:', github.event.comment.user.login)) ||
+        contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(',{0}:', github.event.comment.user.login)) ||
+        contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(' {0},', github.event.comment.user.login)) ||
+        contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(',{0},', github.event.comment.user.login)) ||
+        contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(' {0} ', github.event.comment.user.login)) ||
+        contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(',{0} ', github.event.comment.user.login))))
+    # Serialise runs of this emitter: the marker check-then-act window sits between
+    # "collect existing markers" and "create issue", so two overlapping runs both
+    # miss each other's issue and file duplicates. Keyed on the event class — NOT
+    # the ref — so a workflow_dispatch from any branch serialises against main
+    # pushes too. No cancel-in-progress, so a running run is never cancelled: a
+    # cancelled run could die mid-create and leave the gate un-filed. GitHub keeps
+    # at most one pending run per group, so within one event class a newer pending
+    # run replaces an older pending one. The group is set on the job, not the
+    # workflow, so it is entered only once the `if:` above admits the run: a
+    # comment from anyone off the bless roster never queues in the group and so
+    # cannot displace a pending issuer or adjudication run. The group is keyed
+    # by event class: issuer runs (push, dispatch) file every card
+    # except verification-handoff/03's, and adjudication runs (comment) file only
+    # that one, so the two never race on one marker, and a main push can no
+    # longer displace a pending adjudication run, nor a comment an issuer run.
+    concurrency:
+      group: verify-gate-open-${{ github.event_name == 'issue_comment' && 'adjudication' || 'issuer' }}
+      cancel-in-progress: false
+    runs-on: medici-builder-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Runner + Go install mirror the board workflow: this self-hosted runner
+      # has no Docker and no reach to the release-asset CDN, so Go is fetched by
+      # hand rather than with a setup action.
+      - name: Install Go
+        run: |
+          set -euo pipefail
+          url="https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz"
+          echo "fetching $url"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/go.tar.gz"
+          mkdir -p "${HOME}/go-toolchain"
+          tar -C "${HOME}/go-toolchain" -xzf "${RUNNER_TEMP}/go.tar.gz"
+          echo "${HOME}/go-toolchain/go/bin" >> "${GITHUB_PATH}"
+
+      - name: Build statusgen from source
+        run: |
+          set -euo pipefail
+          go version
+          ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
+
+      - name: Build the adjudication reader
+        if: github.event_name == 'issue_comment'
+        run: |
+          set -euo pipefail
+          ( cd tools/desk && go build -o "${RUNNER_TEMP}/deskread" ./cmd/deskread )
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
+
+      # The self-hosted runner image does not ship the gh CLI. Install a pinned,
+      # sha256-verified release to $GITHUB_PATH when it is missing (same release
+      # and digest the board workflow uses). Durable alternative: bake gh into
+      # the runner image.
+      - name: Ensure gh CLI is available (pinned, checksum-verified)
+        run: |
+          set -euo pipefail
+          if command -v gh >/dev/null 2>&1; then
+            echo "gh present: $(gh --version | head -1)"; exit 0
+          fi
+          url="https://github.com/cli/cli/releases/download/v2.63.2/gh_2.63.2_linux_amd64.tar.gz"
+          want="912fdb1ca29cb005fb746fc5d2b787a289078923a29d0f9ec19a0b00272ded00"
+          curl -fsSL "$url" -o "${RUNNER_TEMP}/gh.tar.gz"
+          got="$(sha256sum "${RUNNER_TEMP}/gh.tar.gz" | cut -d' ' -f1)"
+          if [ "$want" != "$got" ]; then
+            echo "::error::gh tarball sha256 mismatch — want ${want}, got ${got}; refusing to extract"
+            exit 1
+          fi
+          tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/gh.tar.gz"
+          echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
+
+      - name: Read all canonical verify-gate issues
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues?labels=verify-gate&state=all&per_page=100" \
+            --jq '.[] | select(.pull_request == null) | .body' > "${RUNNER_TEMP}/markers.txt"
+
+      - name: Compute newly-eligible ordinary verify-gate issues
+        if: github.event_name != 'issue_comment'
+        run: |
+          set -euo pipefail
+          # The reviewed separate contract is scoped to verification-handoff/03.
+          "${RUNNER_TEMP}/statusgen" --root . --verify-issues \
+            --existing-markers "${RUNNER_TEMP}/markers.txt" \
+            | jq 'map(select(.marker != "<!-- verify-gate: verification-handoff/03 -->"))' \
+            > "${RUNNER_TEMP}/issues.json"
+
+      - name: Compute the adjudicated acceptance card
+        if: github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DESKREAD_CI_WORKFLOW_TOKEN: ${{ github.token }}
+          PREPARATION: ${{ github.event.issue.number }}
+          RULING: ${{ github.event.comment.html_url }}
+          ASSAY_BLESS_LOGIN: ${{ vars.ASSAY_BLESS_LOGIN }}
+          ASSAY_TRUSTED_LOGINS: ${{ vars.ASSAY_TRUSTED_LOGINS }}
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
+          ASSAY_ALLOWED_REPOS: ${{ vars.ASSAY_ALLOWED_REPOS }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/statusgen" acceptance-route issue --root . --brief verification-handoff/03 \
+            --preparation "$PREPARATION" --ruling "$RULING" \
+            --existing-markers "${RUNNER_TEMP}/markers.txt" --acceptance-forge > "${RUNNER_TEMP}/issues.json"
+
+      - name: Create one issue per eligible brief
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          count=$(jq 'length' "${RUNNER_TEMP}/issues.json")
+          if [ "$count" -eq 0 ]; then
+            echo "no newly-eligible briefs — nothing to open"
+            exit 0
+          fi
+          for i in $(seq 0 $((count - 1))); do
+            title=$(jq -r ".[$i].title" "${RUNNER_TEMP}/issues.json")
+            labels=$(jq -r ".[$i].labels | join(\",\")" "${RUNNER_TEMP}/issues.json")
+            jq -r ".[$i].body" "${RUNNER_TEMP}/issues.json" > "${RUNNER_TEMP}/body.md"
+            echo "creating issue: $title"
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "$title" --label "$labels" --body-file "${RUNNER_TEMP}/body.md"
+          done

@@ -106,6 +106,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
@@ -373,7 +374,7 @@ var witnessStateRe = regexp.MustCompile(`\b(could-not-run|pass|fail)\b`)
 // alone appears in prose Evidence already on main, and a bare `sha256:` could
 // be a hash someone pasted.
 func witnessCells(text string) []string {
-	cells := splitRowEscaped(strings.TrimSpace(text))
+	cells := briefdoc.SplitRowEscaped(strings.TrimSpace(text))
 	if len(cells) < witnessCellCount {
 		return nil
 	}
@@ -410,7 +411,7 @@ func witnessCommandOf(text string) string {
 	if cells == nil {
 		return ""
 	}
-	return codeSpan(cells[witnessCellCommand])
+	return briefdoc.CodeSpan(cells[witnessCellCommand])
 }
 
 // The tree token follows the Runner cell's ` @ ` marker (witness.row() writes
@@ -670,8 +671,9 @@ type shellPlan struct {
 }
 
 // admittedScrubbedNote is the could-not-run note for an admitted row that
-// reads scrubbed ASSAY_* inputs. It names the inputs and says what running the
-// row outside admission takes, so the note never reads as permission to do it.
+// reads inputs the scrub removed (admittedRowScrubbedRefs). It names the inputs
+// and says what running the row outside admission takes, so the note never
+// reads as permission to do it.
 func admittedScrubbedNote(names []string) string {
 	return "the row reads " + strings.Join(names, ", ") +
 		", which an admitted run removes from every row's environment, so it cannot run as written here." +
@@ -695,7 +697,8 @@ func removeRowScratch(dir string) {
 }
 
 // rowEnv is the environment every Verify row of the run executes in: the
-// caller's own, unless the run was admitted, when it is admittedRowEnv's.
+// caller's own, unless the run was admitted, when it is admittedRowEnv's
+// allow-list.
 func (p shellPlan) rowEnv() []string {
 	if p.env != nil {
 		return p.env
@@ -946,9 +949,11 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	// A row of an admitted run gets a HOME and a TMPDIR of its own, so it
 	// finds nothing an earlier row of the run left there.
 	if plan.rowScratch != "" {
-		// A row that reads an ASSAY_* input the scrub removed cannot run as
-		// written under admission. It is could-not-run, never a fail: its own
-		// guard on the missing value would otherwise read as a regression. Nor
+		// A row that reads an input the scrub removed (an ASSAY_* variable, or
+		// any other variable the allow-list drops that the row only reads)
+		// cannot run as written under admission. It is could-not-run, never a
+		// fail: its own guard on the missing value would otherwise read as a
+		// defect in the delivery. Nor
 		// is it ever a pass: the row's text chooses this outcome, so it must
 		// not be one that clears anything. The note does not grant a run
 		// outside admission either, where the row sees everything the scrub
@@ -1560,7 +1565,7 @@ type verifyRow struct {
 	// this shell; a shell unavailable on the runner's OS is could-not-run.
 	Shell string
 	// Obligations are the row's KNOWN `+`-prefixed obligation tokens
-	// (rowclass.go's splitRowClassCell / verifyRowCells.obligations) — mutation,
+	// (briefdoc.SplitRowClassCell / verifyRowCells.obligations) — mutation,
 	// flow, dereference, neighbour. graph-execution/03's coverage rule reads
 	// `flow` here for the pattern join's integration check (Task item 2): a
 	// `+flow` row is the one obligation token that proves a Verify row exercises
@@ -1613,39 +1618,24 @@ func numberedVerifyRows(verifySection string) ([]verifyRow, []bool) {
 // row's trimmed Class cell.
 func verifyRowsOf(verifySection string, numbered *[]bool, classCells *[]string) []verifyRow {
 	var rows []verifyRow
-	ordinal := 0
-	verifyRowTable(verifySection, func(r verifyRowCells) {
-		cmd := verifyCommand(r.Command)
-		if strings.TrimSpace(cmd) == "" && strings.TrimSpace(r.Expect) == "" {
-			return
-		}
-		ordinal++
-		id := strconv.Itoa(ordinal)
-		v := normalizeRowID(r.Num)
-		if v != "" {
-			id = v
-		}
-		row := verifyRow{ID: id, Command: cmd, CommandCell: strings.TrimSpace(r.Command), Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell(), Obligations: r.obligations(), RiskText: strings.TrimSpace(r.Command) + " " + strings.TrimSpace(r.Expect)}
-		if first, why := proseLedCommandWhy(r.Command); why != "" {
-			what := "first span "
-			if why == shellCommentMarkedWhy || why == shellNoOpMarkedWhy {
-				what = "marked command "
-			}
-			row.ProseLed = what + strings.ReplaceAll(first, "|", "\\|") + " is " + why
-		}
-		rows = append(rows, row)
+	// Row identity, command lift and the prose-led verdict are compiled once, by
+	// the document owner (briefdoc.CompileVerification); only the class, shell
+	// and obligation MEANING, which needs this package's constants, is added here.
+	for _, c := range briefdoc.CompileVerification(verifySection) {
+		cells := verifyRowCells{Class: c.ClassCell, Classed: c.Classed, Shell: c.ShellCell}
+		rows = append(rows, verifyRow{ID: c.ID, Command: c.Command, CommandCell: c.CommandCell, Expect: c.Expect, Class: cells.class(), Classed: c.Classed, Shell: cells.shell(), Obligations: cells.obligations(), RiskText: c.CommandCell + " " + strings.TrimSpace(c.Expect), ProseLed: c.ProseLed})
 		if numbered != nil {
-			*numbered = append(*numbered, v != "")
+			*numbered = append(*numbered, c.Numbered)
 		}
 		if classCells != nil {
-			*classCells = append(*classCells, strings.TrimSpace(r.Class))
+			*classCells = append(*classCells, c.ClassCell)
 		}
-	})
+	}
 	return rows
 }
 
 // parseRowSelector splits a --rows value into row IDs (desktools-v2/74). Each
-// element is read the way a Verify `#` cell is (normalizeRowID), so the selector
+// element is read the way a Verify `#` cell is (briefdoc.NormalizeRowID), so the selector
 // and the Evidence reader agree on what an ID is. It returns the IDs in
 // selector order and as a set, or the reason the value is refused.
 func parseRowSelector(value string) ([]string, map[string]bool, string) {
@@ -1655,7 +1645,7 @@ func parseRowSelector(value string) ([]string, map[string]bool, string) {
 	parts := strings.Split(value, ",")
 	ids, set := make([]string, 0, len(parts)), make(map[string]bool, len(parts))
 	for i, part := range parts {
-		id := normalizeRowID(part)
+		id := briefdoc.NormalizeRowID(part)
 		if id == "" {
 			return nil, nil, fmt.Sprintf("element %d is empty; every comma-separated element names one Verify row ID", i+1)
 		}
@@ -1905,7 +1895,7 @@ func rowReads(tree string, res runResult) string {
 // proseLedNote is the could-not-run note for a prose-led row: the lint's
 // stable rule tag first (greppable in Evidence), then the reason and the fix.
 func proseLedNote(reason string) string {
-	return ruleProseLedCommand + ": not executed; the " + reason + ", not a command. " + proseLedRemedy(reason)
+	return ruleProseLedCommand + ": not executed; the " + reason + ", not a command. " + briefdoc.ProseLedRemedy(reason)
 }
 
 // witnessTable renders a full Evidence table for a run.
@@ -2593,7 +2583,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			}
 		})
 		if len(others) > 0 || fs.NArg() > 0 || *witnessFile == "" {
-			fmt.Fprintf(stderr, "statusgen verifyrun: --bracket-digest takes only --witness <file> [--credit --source <40 hex> [--ci-workflow-token]] (got %s)\n", strings.Join(append(others, fs.Args()...), " "))
+			_, _ = fmt.Fprintf(stderr, "statusgen verifyrun: --bracket-digest takes only --witness <file> [--credit --source <40 hex> [--ci-workflow-token]] (got %s)\n", strings.Join(append(others, fs.Args()...), " "))
 			return verifyrunExitUsageError
 		}
 		if *creditMode != (*creditSource != "") || (*creditMode && !creditSourceOK(*creditSource)) {
@@ -2601,7 +2591,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitUsageError
 		}
 		if *creditCI && !*creditMode {
-			fmt.Fprintln(stderr, "statusgen verifyrun: --ci-workflow-token requires --bracket-digest and --credit")
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: --ci-workflow-token requires --bracket-digest and --credit")
 			return verifyrunExitUsageError
 		}
 		raw, err := os.ReadFile(*witnessFile)
@@ -2656,7 +2646,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return code
 	}
 	if *creditMode || *creditSource != "" || *creditCI {
-		fmt.Fprintln(stderr, "statusgen verifyrun: --credit, --source and --ci-workflow-token are read-only options of --bracket-digest")
+		_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: --credit, --source and --ci-workflow-token are read-only options of --bracket-digest")
 		return verifyrunExitUsageError
 	}
 
@@ -3004,6 +2994,19 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		}
 		defer removeRowScratch(scratch)
 		plan.env = append(admittedRowEnv(environ), admittedRowGo(environ)...)
+		// The one declared replay path reaches the rows only in its checked
+		// form. A refused one is named here, and a row that reads it is
+		// could-not-run.
+		if kv, why := admittedReplayInput(environ, root); why != "" {
+			// This line is the run's only record that the replay path was
+			// withheld. A run that cannot write it cannot report its rows'
+			// inputs, so it stops as could-not-run.
+			if _, werr := fmt.Fprintf(stderr, "statusgen verifyrun: %s is not passed to the rows: %s\n", admittedReplayInputVar, why); werr != nil {
+				return verifyrunExitCouldNot
+			}
+		} else if kv != "" {
+			plan.env = append(plan.env, kv)
+		}
 		plan.rowScratch = scratch
 		plan.rowRoster = container.roster
 		if *rule51Mode && !netnsContainer {

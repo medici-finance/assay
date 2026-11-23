@@ -132,3 +132,21 @@ func ParseTrailers(body []byte) ([]Trailer, error) { return trailers.ParseStrict
 func ResolveWorkTrailer(v string, declaring *workref.Context, registry workref.Registry) (workref.Result, error) {
 	return workref.Resolve(v, declaring, registry, workref.TypedBrief)
 }
+
+// BriefHandoffReceipt is the extra stdout line deskwt emits only after proving
+// an existing brief checkout belongs to the session resuming its PR.
+const BriefHandoffReceipt = "brief-checkout-handoff-v1"
+
+// DeliveredLocalBrief identifies a single local delivery. An authoring, issue,
+// cross-repo or ambiguous declaration cannot authorize transferring a checkout.
+func DeliveredLocalBrief(body, repo string) string {
+	ts, err := ParseTrailers([]byte(body))
+	if err != nil || len(ts) != 1 || ts[0].Kind != TrailerBrief {
+		return ""
+	}
+	r, err := workref.Parse(ts[0].Value, workref.LegacyTrailer)
+	if err != nil || (r.Repo != "" && r.Repo != RepoShortLabel(repo)) {
+		return ""
+	}
+	return r.Stream + "/" + r.Number
+}

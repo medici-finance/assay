@@ -167,3 +167,47 @@ func applyBriefAdmission(rep *dispatchReport, tier string) {
 	}
 	rep.Rows = kept
 }
+
+// Each dispatch report reuses the source repository's PR observation across all
+// its placeholder rows, including rows hosted in other tracking repositories.
+func applyDispatchIssueAdmission(rep *dispatchReport) {
+	idx := deskkit.IssuePRIndex{
+		List: func(repo string) ([]deskkit.PRRef, bool, error) {
+			f, fr, err := forgeFor(repo)
+			if err != nil {
+				return nil, false, err
+			}
+			return deskkit.RepresentedPRRefs(f, fr)
+		},
+		Lookup: func(repo, id string) ([]deskkit.PRRef, error) {
+			f, fr, err := forgeFor(repo)
+			if err != nil {
+				return nil, err
+			}
+			read := deskkit.ChangesByBriefReader(f)
+			if read == nil {
+				return nil, fmt.Errorf("forge has no complete issue trailer search")
+			}
+			return read(fr, id)
+		},
+	}
+	filterIssueRows(rep, &idx)
+}
+
+func filterIssueRows(rep *dispatchReport, idx *deskkit.IssuePRIndex) {
+	kept := rep.Rows[:0]
+	for _, row := range rep.Rows {
+		why, unknown := idx.PlaceholderHold(row.Root, row.Repo, row.Brief)
+		if why == "" {
+			kept = append(kept, row)
+			continue
+		}
+		if unknown {
+			rep.IssuePRUnknown++
+		} else {
+			rep.HeldByIssuePR++
+		}
+		rep.AdmissionHeld = append(rep.AdmissionHeld, dispatchAdmissionHeld{Repo: row.Repo, Brief: row.Brief, Reason: why})
+	}
+	rep.Rows = kept
+}

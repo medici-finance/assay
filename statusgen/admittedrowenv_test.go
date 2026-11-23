@@ -421,7 +421,10 @@ func TestAdmittedRowsDropForgeTokens(t *testing.T) {
 }
 
 // TestAdmittedEnvDropsForgeTokens pins the removal one variable at a time,
-// whatever its case, beside a variable that only shares a prefix.
+// whatever its case, beside a variable that only shares a prefix. The forge
+// token check itself (shared with the broker and the minter) must not match
+// that variable; the row environment drops it anyway, as it is off the pass
+// list.
 func TestAdmittedEnvDropsForgeTokens(t *testing.T) {
 	in := []string{"PATH=/bin", "GITHUB_TOKEN_FILE=kept", "Gh_Token=x"}
 	for _, name := range forgeTokenVars {
@@ -433,9 +436,13 @@ func TestAdmittedEnvDropsForgeTokens(t *testing.T) {
 			t.Errorf("admitted row environment carries %s", kv)
 		}
 	}
-	for _, kv := range []string{"PATH=/bin", "GITHUB_TOKEN_FILE=kept"} {
-		if !slices.Contains(admittedRowEnv(in), kv) {
-			t.Errorf("admitted row environment dropped %s", kv)
-		}
+	if !slices.Contains(admittedRowEnv(in), "PATH=/bin") {
+		t.Error("admitted row environment dropped PATH=/bin")
+	}
+	if admittedRowForgeToken("GITHUB_TOKEN_FILE") {
+		t.Error("the forge token check matches GITHUB_TOKEN_FILE, which only shares a prefix")
+	}
+	if slices.Contains(admittedRowEnv(in), "GITHUB_TOKEN_FILE=kept") {
+		t.Error("admitted row environment carries GITHUB_TOKEN_FILE, which is off the pass list")
 	}
 }

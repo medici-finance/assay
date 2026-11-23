@@ -43,8 +43,10 @@ type GitHubFiler struct {
 	db      *index.DB
 
 	// recordToken and recordApp are the SEPARATE identity the cell-override
-	// record PR is filed under (the service contract): the write-issues App, NOT
-	// [AppIdentity] and NEVER a person's token. They are empty until
+	// record PR is filed under (the service contract): an App that holds
+	// Contents: write and Pull requests: write on the config repo, NOT
+	// [AppIdentity], NEVER the write-issues App (which is specified to hold
+	// neither permission) and NEVER a person's token. They are empty until
 	// [GitHubFiler.SetRecordApp] wires them; empty means the record PR is
 	// could-not-check (the filer degrades honestly, never falling back).
 	recordToken string
@@ -72,20 +74,22 @@ func NewGitHubFiler(apiBase, token string, db *index.DB) *GitHubFiler {
 	}
 }
 
-// SetRecordApp wires the write-issues App identity the cell-override record PR
+// SetRecordApp wires the record-PR App identity the cell-override record PR
 // files under (the service contract). It is DELIBERATELY separate from the desk
-// App token the escalation writes use: the record PR is a config-repo write by
-// a dedicated cross-repo issue-writing identity, and if that App is not
-// configured the filer stays could-not-check rather than borrowing the read App
-// or a person's token. token is the write-issues App installation token; app is
-// its bot login for reporting.
+// App token the escalation writes use, and it is NOT the write-issues App: the
+// record PR creates a ref, commits a file and opens a pull request on the
+// config repo, so the App must hold Contents: write and Pull requests: write
+// there, and the write-issues App is specified to hold neither. If the App is
+// not configured the filer stays could-not-check rather than borrowing the read
+// App, the write-issues App or a person's token. token is the record-PR App
+// installation token; app is its bot login for reporting.
 func (g *GitHubFiler) SetRecordApp(token, app string) {
 	g.recordToken = token
 	g.recordApp = app
 }
 
 // RecordIdentity is the login the record PR is filed as, or "" when the
-// write-issues App is not configured (the could-not-check state).
+// record-PR App is not configured (the could-not-check state).
 func (g *GitHubFiler) RecordIdentity() string {
 	if g.recordToken == "" {
 		return ""
@@ -104,7 +108,7 @@ type RecordPRRequest struct {
 // RecordPRResult reports a record PR filing's outcome.
 type RecordPRResult struct {
 	// Status is a human/wire line: a filed/idempotent note, or an honest
-	// could-not-check when the write-issues App is not configured.
+	// could-not-check when the record-PR App is not configured.
 	Status string `json:"status"`
 	// Ref is the filed (or already-open) PR, nil when nothing was filed.
 	Ref *FiledRef `json:"ref,omitempty"`
@@ -118,10 +122,10 @@ type RecordPRResult struct {
 // interface from [Filer] (the escalation write path) so the escalation surface
 // and its authority test are untouched by this addition.
 type RecordFiler interface {
-	// RecordIdentity is the write-issues App login, or "" when unconfigured.
+	// RecordIdentity is the record-PR App login, or "" when unconfigured.
 	RecordIdentity() string
 	// FileRecordPR mirrors a cell's override table into its cells.yaml
-	// overrides: block via a draft PR under the write-issues App, idempotent per
+	// overrides: block via a draft PR under the record-PR App, idempotent per
 	// (cell, table hash). When the App is unconfigured it returns a
 	// could-not-check result and files NOTHING — never a fallback identity.
 	FileRecordPR(ctx context.Context, req RecordPRRequest) (RecordPRResult, error)
@@ -132,14 +136,15 @@ type RecordFiler interface {
 func recordPRKey(cell string, ov domain.Overrides) string { return cell + "\x00" + ov.Hash() }
 
 // FileRecordPR mirrors a cell's override table to its cells.yaml via a draft PR
-// authored by the write-issues App (the service contract). It is idempotent per
+// authored by the record-PR App (the service contract). It is idempotent per
 // (cell, table hash): a repeated filing of the same table returns the existing
-// PR and opens no second one. When the write-issues App is not configured it
+// PR and opens no second one. When the record-PR App is not configured it
 // returns could-not-check and touches no forge — the honest degrade the brief
-// requires, with NO fallback to the read App or a human credential.
+// requires, with NO fallback to the read App, the write-issues App or a human
+// credential.
 func (g *GitHubFiler) FileRecordPR(ctx context.Context, req RecordPRRequest) (RecordPRResult, error) {
 	if g.recordToken == "" {
-		return RecordPRResult{Status: "could-not-check (write-issues App not configured)"}, nil
+		return RecordPRResult{Status: "could-not-check (record-PR App not configured)"}, nil
 	}
 	key := recordPRKey(req.Cell, req.Overrides)
 	g.mu.Lock()
@@ -198,7 +203,7 @@ func (g *GitHubFiler) FileRecordPR(ctx context.Context, req RecordPRRequest) (Re
 	g.filed[key] = ref
 	g.mu.Unlock()
 	r := ref
-	return RecordPRResult{Status: "record PR filed (draft) under the write-issues App", Ref: &r}, nil
+	return RecordPRResult{Status: "record PR filed (draft) under the record-PR App", Ref: &r}, nil
 }
 
 // setCellOverrides re-serialises cells.yaml with the named cell's overrides:
@@ -354,7 +359,8 @@ func (g *GitHubFiler) createPR(ctx context.Context, owner, name, title, head, ba
 }
 
 // get / postRecord / putRecord are the record-PR transport, authenticating with
-// the WRITE-ISSUES token (recordToken), never the desk App token.
+// the RECORD-PR token (recordToken), never the desk App token or the
+// write-issues token.
 func (g *GitHubFiler) get(ctx context.Context, url string) ([]byte, error) {
 	return g.doRecord(ctx, http.MethodGet, url, nil)
 }
@@ -382,7 +388,8 @@ func (g *GitHubFiler) doRecord(ctx context.Context, method, url string, payload 
 	if bodyReader != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	// The record PR authenticates as the WRITE-ISSUES App, never the desk App.
+	// The record PR authenticates as the record-PR App, never the desk App and
+	// never the write-issues App (which holds neither Contents nor PR write).
 	req.Header.Set("Authorization", "Bearer "+g.recordToken)
 	resp, err := g.http.Do(req)
 	if err != nil {

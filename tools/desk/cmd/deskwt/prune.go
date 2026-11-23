@@ -648,11 +648,13 @@ type sweepCtx struct {
 	mainTip    string
 	ancestry   map[ancestryQuery]bool
 	admins     *worktreeAdminIndex
-	claims     *claimListing // the sweep's one dispatch-claim listing, read lazily (claimfree.go)
+	claims     map[string]*claimListing // one dispatch-claim listing per claim repository, read lazily (claimfree.go)
 
-	// origin is this checkout's origin as owner/name, read lazily (claimfree.go): a claim is
-	// proved released only against the repository it was taken in.
+	// origin is this checkout's origin as owner/name, and originURL the URL it was read from,
+	// both read lazily (claimfree.go): a claim is proved released only against the repository
+	// it was taken in.
 	origin     string
+	originURL  string
 	originErr  error
 	originRead bool
 
@@ -1055,7 +1057,7 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 				// The sweep's listing may be minutes old by now: a resume that re-acquired the
 				// claim and adopted this home since is a live run. Re-read the one key just
 				// before the unlock and the delete (claimStillFree).
-				if why := claimStillFree(dir, rc.key); why != "" {
+				if why := claimStillFree(dir, rc.remote, rc.key); why != "" {
 					v.reap = false
 					v.reason += "; " + why
 				}

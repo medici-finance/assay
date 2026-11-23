@@ -25,21 +25,32 @@ package main
 // no claim to consult, and the gates that judged it before still judge it.
 //
 // "Absent from the listing" proves a release only for the claim namespace the listing reads. So
-// a key counts as released only when the home also records WHERE its claim was taken, and that
-// is this checkout's origin, in the forge-ref store the listing reads: deskdispatch records
-// `assay.claimRepo` and `assay.claimStore` beside `assay.runKey`. A cross-repository verifier
-// claims in the TRACKING repo while its home is cut from the deliverable checkout, so its live
-// claim is absent from this checkout's listing; it, a home recorded before the namespace was
-// recorded, and a home whose store is not forge-ref are could-not-check, which holds.
+// a key counts as released only when the home also records WHERE its claim was taken, in the
+// forge-ref store the listing reads: deskdispatch records `assay.claimRepo` and
+// `assay.claimStore` beside `assay.runKey`, and the listing is read in that repository. A home
+// claimed in this checkout's origin is read there. A cross-repository verifier claims in the
+// TRACKING repo while its home is cut from the deliverable checkout; the claim tool dialed the
+// tracking repository on this checkout's forge host, so its listing is read at the address
+// origin's URL gives with its trailing owner/name replaced by the recorded repository (same
+// scheme, host and rewrite rules, so the same credentials). An address that cannot be derived,
+// or a listing that cannot be read there, is could-not-check, which holds.
 //
-// The claim listing is ONE `git ls-remote` per sweep, made lazily (only once a candidate with
-// a run key is reached), against the checkout's own origin. Both namespaces are read: the one
+// A home recorded before the namespace was recorded holds too: its claim may have been taken
+// in either repository, and an absence in the wrong one proves nothing. `deskwt remove <home>
+// --claim-repo <owner/name>` is the sanctioned path for one: the operator names the repository
+// the dispatch claimed in (forge-ref, the one store shipped then), and every other gate still
+// applies. A home whose store is not forge-ref holds.
+//
+// The claim listing is ONE `git ls-remote` per repository per sweep, made lazily (only once a
+// candidate with a run key is reached). Both namespaces are read: the one
 // claims are acquired in today and the branch-shaped one the fleet's readers list
 // (deskkit/claimref.go). Just before a destructive step the key is re-read once more
-// (claimStillFree), so a resume that re-acquired the claim after the sweep's listing is seen.
+// (claimStillFree), in the same repository, so a resume that re-acquired the claim after the
+// sweep's listing is seen.
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -65,7 +76,13 @@ type runClaim struct {
 	key   string
 	state claimState
 	why   string
+	// remote is where the claim listing was read: originRemote, or the address of the
+	// repository the claim was taken in. claimStillFree re-reads the same one.
+	remote string
 }
+
+// originRemote names this checkout's own origin as the listing's remote.
+const originRemote = "origin"
 
 // releasedOwner reports whether the claim proves the tree's run is over.
 func (c runClaim) releasedOwner() bool { return c.key != "" && c.state == claimFree }
@@ -94,24 +111,28 @@ func claimListEnv() []string {
 	return append(scrubbedGitEnv(), "GIT_TERMINAL_PROMPT=0", "GIT_SSH_COMMAND=ssh -o BatchMode=yes")
 }
 
-// listDispatchClaims lists the dispatch-claim keys present on dir's origin. It is a
-// package-level var so a test can count the reads and simulate an unreadable forge; the
-// default reads the fixture's or the real origin with git itself, under claimListEnv and
-// claimListTimeout.
-var listDispatchClaims = func(dir string) (map[string]bool, error) {
+// listDispatchClaims lists the dispatch-claim keys present on remote, read from dir: remote
+// is originRemote or a repository address claimRepoURL derived. It is a package-level var so
+// a test can count the reads and simulate an unreadable forge; the default reads the
+// fixture's or the real repository with git itself, under claimListEnv and claimListTimeout.
+var listDispatchClaims = func(dir, remote string) (map[string]bool, error) {
+	shown := deskkit.RedactRemoteUserinfo(remote)
+	if remote == "" || strings.HasPrefix(remote, "-") {
+		return nil, deskkit.Unverifiable(fmt.Sprintf("refusing to list dispatch claims at %q", shown), nil)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), claimListTimeout)
 	defer cancel()
 	r := deskkit.Run(deskkit.ToolCall{
 		Context: ctx,
 		Name:    "git",
-		Args: []string{"ls-remote", "origin",
+		Args: []string{"ls-remote", remote,
 			deskkit.DispatchClaimActiveRefsPrefix + "*", deskkit.ClaimRefsPattern},
 		Dir:   dir,
 		Env:   claimListEnv(),
 		Start: execCommand,
 	})
 	if r.Failed() {
-		return nil, r.Fail(deskkit.ExitUnverifiable, "git ls-remote origin (dispatch claims)")
+		return nil, r.Fail(deskkit.ExitUnverifiable, "git ls-remote %s (dispatch claims)", shown)
 	}
 	return parseClaimListing(r.Stdout)
 }
@@ -144,31 +165,34 @@ func parseClaimListing(out string) (map[string]bool, error) {
 	return keys, nil
 }
 
-// state answers for one key, reading the listing on first use.
-func (l *claimListing) state(dir, key string) (claimState, string) {
+// state answers for one key, reading remote's listing on first use. where is "" for this
+// checkout's origin, else " in <owner/name>", the repository the reasons name.
+func (l *claimListing) state(dir, remote, where, key string) (claimState, string) {
 	if !l.read {
 		l.read = true
-		l.keys, l.err = listDispatchClaims(dir)
+		l.keys, l.err = listDispatchClaims(dir, remote)
 	}
 	if l.err != nil {
-		return claimUnknown, "could-not-check: dispatch claim " + key + " (claim listing unreadable: " + errText(l.err) + ")"
+		return claimUnknown, "could-not-check: dispatch claim " + key + " (claim listing" + where + " unreadable: " + errText(l.err) + ")"
 	}
 	if l.keys[key] {
-		return claimHeld, "dispatch claim " + key + " is held"
+		return claimHeld, "dispatch claim " + key + " is held" + where
 	}
-	return claimFree, "dispatch claim " + key + " is released"
+	return claimFree, "dispatch claim " + key + " is released" + where
 }
 
-// runRecord is what deskdispatch recorded in a home about its run: the run key and where that
-// run's dispatch claim was taken ("" for a field the home does not record).
+// runRecord holds the dispatch key, claim namespace and receipts stamped in a home.
+// A field absent from the worktree's configuration is empty.
 type runRecord struct {
-	key   string // assay.runKey
-	repo  string // assay.claimRepo: the repository whose claim namespace holds the claim
-	store string // assay.claimStore: the resolved claim store
+	key              string // assay.runKey
+	repo             string // assay.claimRepo: the repository whose claim namespace holds the claim
+	store            string // assay.claimStore: the resolved claim store
+	dispatchRef      string // receipt of the current dispatch
+	handoffSourceRef string // original brief receipt retained while re-keying a checkout
 }
 
-// runRecordInAdmin reads the worktree-scoped assay.runKey, assay.claimRepo and
-// assay.claimStore from a worktree's admin directory (<common>/worktrees/<name>/config.worktree)
+// runRecordInAdmin reads the run record directly from the registered admin directory
+// (<common>/worktrees/<name>/config.worktree)
 // without starting git: all empty when the file or the keys are absent. A file that exists but
 // cannot be read or parsed is an error — the caller treats it as a run key it could not read,
 // which holds the tree.
@@ -177,38 +201,100 @@ func runRecordInAdmin(admin string) (runRecord, error) {
 	if err != nil {
 		return runRecord{}, deskkit.Unverifiable("cannot read the worktree's config.worktree", err)
 	}
-	return runRecord{key: stamp.Key, repo: stamp.Repo, store: stamp.Store}, nil
+	return runRecord{
+		key:              stamp.Key,
+		repo:             stamp.Repo,
+		store:            stamp.Store,
+		dispatchRef:      stamp.Attempt,
+		handoffSourceRef: stamp.HandoffSourceRef,
+	}, nil
 }
 
 // originSlug is this checkout's origin as owner/name, read once per sweep without starting git.
 func (sc *sweepCtx) originSlug(dir string) (string, error) {
 	if !sc.originRead {
 		sc.originRead = true
-		sc.origin, sc.originErr = currentRepo(dir)
+		sc.originURL, sc.origin, sc.originErr = currentOrigin(dir)
 	}
 	return sc.origin, sc.originErr
 }
 
-// namespaceHold is "" when the home's claim was taken where the listing reads (this checkout's
-// origin, in the forge-ref store), else the could-not-check reason that holds the tree.
-func (sc *sweepCtx) namespaceHold(dir string, rec runRecord) string {
+// claimRemote is where the home's claim listing is read: originRemote when the claim was taken
+// in this checkout's origin, or the derived address of the repository that took it. hold is
+// the could-not-check reason that holds the tree when neither can be named.
+func (sc *sweepCtx) claimRemote(dir string, rec runRecord) (remote, hold string) {
 	pre := "could-not-check: dispatch claim " + rec.key
 	switch {
 	case rec.store == "":
-		return pre + " (the home records no claim store, so a listing here proves nothing about it)"
+		return "", pre + " (the home records no claim store, so a listing here proves nothing about it; " +
+			"if it predates recorded claim namespaces, name the repository its dispatch claimed in: " +
+			"deskwt remove <home> --claim-repo <owner/name>. A worker or review dispatch claims in this " +
+			"checkout's origin, a cross-repository verifier in its tracking repository)"
 	case rec.store != deskkit.ClaimStoreForgeRef:
-		return pre + " (taken in the " + rec.store + " store; only the " + deskkit.ClaimStoreForgeRef + " listing is read here)"
+		return "", pre + " (taken in the " + rec.store + " store; only the " + deskkit.ClaimStoreForgeRef + " listing is read here)"
 	case rec.repo == "":
-		return pre + " (the home records no claim repository, so a listing here proves nothing about it)"
+		return "", pre + " (the home records no claim repository, so a listing here proves nothing about it)"
 	}
 	origin, err := sc.originSlug(dir)
 	if err != nil {
-		return pre + " (this checkout's origin cannot be read: " + errText(err) + ")"
+		return "", pre + " (this checkout's origin cannot be read: " + errText(err) + ")"
 	}
-	if !strings.EqualFold(origin, rec.repo) {
-		return pre + " (taken in " + rec.repo + ", not in this checkout's origin " + origin + ")"
+	if strings.EqualFold(origin, rec.repo) {
+		return originRemote, ""
 	}
-	return ""
+	url, err := claimRepoURL(sc.originURL, rec.repo)
+	if err != nil {
+		return "", pre + " (taken in " + rec.repo + ", not in this checkout's origin " + origin +
+			", and that repository's address cannot be derived from origin: " + errText(err) + ")"
+	}
+	return url, ""
+}
+
+// claimRepoURL is the address of repository repo on the forge origin names: originURL with its
+// trailing owner/name replaced by repo, keeping the scheme, host (or SSH alias), port, userinfo
+// and a ".git" suffix, so git applies the same rewrite rules and credentials it applies to
+// origin. The claim tool dialed the claim repository on this checkout's origin host, so this is
+// the namespace the claim was taken in. Anything it cannot derive exactly is an error.
+func claimRepoURL(originURL, repo string) (string, error) {
+	if !deskkit.ValidRepoSlug(repo) {
+		return "", fmt.Errorf("the recorded claim repository %q is not an owner/name", repo)
+	}
+	owner, name, err := deskkit.ParseRemoteRepo(originURL)
+	if err != nil {
+		return "", err
+	}
+	base := strings.TrimRight(strings.TrimSpace(originURL), "/")
+	suffix := ""
+	if trimmed, ok := strings.CutSuffix(base, ".git"); ok {
+		base, suffix = trimmed, ".git"
+	}
+	head, ok := strings.CutSuffix(base, owner+"/"+name)
+	if !ok || head == "" || !strings.ContainsAny(head[len(head)-1:], "/:") {
+		return "", fmt.Errorf("origin %s does not end in its own %s/%s", deskkit.RedactRemoteUserinfo(originURL), owner, name)
+	}
+	return head + repo + suffix, nil
+}
+
+// assertClaimRepo applies `remove --claim-repo`: the repository the operator names as the one
+// a home's dispatch claimed in. It fills the namespace of a home that records none (in the
+// forge-ref store, the only one shipped before namespaces were recorded) and must agree with
+// a namespace the home does record; a disagreement is refused, never resolved either way.
+func assertClaimRepo(rec runRecord, repo string) (runRecord, error) {
+	if repo == "" {
+		return rec, nil
+	}
+	if rec.key == "" {
+		return rec, deskkit.Refused("refused: --claim-repo names a claim repository, but the home records no dispatch run key (assay.runKey)")
+	}
+	if rec.repo != "" && !strings.EqualFold(rec.repo, repo) {
+		return rec, deskkit.Refused("refused: --claim-repo " + repo + " contradicts the claim repository the home records (" + rec.repo + ")")
+	}
+	if rec.store != "" && rec.store != deskkit.ClaimStoreForgeRef {
+		return rec, deskkit.Refused("refused: --claim-repo asserts a " + deskkit.ClaimStoreForgeRef +
+			" claim, but the home records the " + rec.store + " store")
+	}
+	rec.repo, rec.store = repo, deskkit.ClaimStoreForgeRef
+	return rec, nil
 }
 
 // claimFor is the sweep's claim verdict for rt. An unreadable admin entry or run key is
@@ -253,17 +339,33 @@ func (sc *sweepCtx) claimFromAdmin(dir, admin string) runClaim {
 	if err != nil {
 		return runClaim{key: "?", state: claimUnknown, why: "could-not-check: run key (" + errText(err) + ")"}
 	}
+	return sc.claimFromRecord(dir, rec)
+}
+
+// claimFromRecord is the claim verdict for a home's run record, read in the repository the
+// record names (claimRemote), one listing per repository per sweep.
+func (sc *sweepCtx) claimFromRecord(dir string, rec runRecord) runClaim {
 	if rec.key == "" {
 		return runClaim{}
 	}
-	if why := sc.namespaceHold(dir, rec); why != "" {
-		return runClaim{key: rec.key, state: claimUnknown, why: why}
+	remote, hold := sc.claimRemote(dir, rec)
+	if hold != "" {
+		return runClaim{key: rec.key, state: claimUnknown, why: hold}
 	}
 	if sc.claims == nil {
-		sc.claims = &claimListing{}
+		sc.claims = map[string]*claimListing{}
 	}
-	st, why := sc.claims.state(dir, rec.key)
-	return runClaim{key: rec.key, state: st, why: why}
+	l := sc.claims[remote]
+	if l == nil {
+		l = &claimListing{}
+		sc.claims[remote] = l
+	}
+	where := ""
+	if remote != originRemote {
+		where = " in " + rec.repo
+	}
+	st, why := l.state(dir, remote, where, rec.key)
+	return runClaim{key: rec.key, state: st, why: why, remote: remote}
 }
 
 // ownAdminEntry is the admin directory of rt itself, found from rt's own `.git` file and
@@ -307,21 +409,30 @@ func ownAdminEntry(guard *pathGuard, rt string) (string, error) {
 // claimForRemove is `remove`'s claim verdict for its one target. It reads the run record from
 // the target's OWN admin entry (no git process: the git-exec ratchet, and no read of any
 // sibling entry), so a broken sibling cannot change the verdict on a home with no run key,
-// while `remove` and `prune` still read one home's run record the same way.
-func claimForRemove(guard *pathGuard, dir, rt string) runClaim {
+// while `remove` and `prune` still read one home's run record the same way. claimRepo is
+// `--claim-repo` (assertClaimRepo); a contradiction with the record is the error.
+func claimForRemove(guard *pathGuard, dir, rt, claimRepo string) (runClaim, error) {
 	admin, err := ownAdminEntry(guard, rt)
 	if err != nil {
-		return runClaim{key: "?", state: claimUnknown, why: "could-not-check: run key (" + errText(err) + ")"}
+		return runClaim{key: "?", state: claimUnknown, why: "could-not-check: run key (" + errText(err) + ")"}, nil
+	}
+	rec, err := runRecordInAdmin(admin)
+	if err != nil {
+		return runClaim{key: "?", state: claimUnknown, why: "could-not-check: run key (" + errText(err) + ")"}, nil
+	}
+	if rec, err = assertClaimRepo(rec, claimRepo); err != nil {
+		return runClaim{}, err
 	}
 	sc := &sweepCtx{commonDir: guard.commonDir}
-	return sc.claimFromAdmin(dir, admin)
+	return sc.claimFromRecord(dir, rec), nil
 }
 
-// claimStillFree re-reads the claim listing for key, bypassing the sweep's cached read, just
-// before a destructive step. It is "" only when the fresh listing is readable and does not
-// hold key; otherwise the reason the step must not go ahead.
-func claimStillFree(dir, key string) string {
-	keys, err := listDispatchClaims(dir)
+// claimStillFree re-reads the claim listing for key on remote (the claim's own repository, as
+// claimFromRecord named it), bypassing the sweep's cached read, just before a destructive
+// step. It is "" only when the fresh listing is readable and does not hold key; otherwise the
+// reason the step must not go ahead.
+func claimStillFree(dir, remote, key string) string {
+	keys, err := listDispatchClaims(dir, remote)
 	if err != nil {
 		return "could-not-check: dispatch claim " + key + " (re-read before removal failed: " + errText(err) + ")"
 	}

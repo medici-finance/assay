@@ -30,6 +30,7 @@
         "CreatedAt": ""
       },
       {
+        "RunID": "55",
         "State": "failure",
         "Context": "pipeline",
         "CreatedAt": ""
@@ -38,6 +39,8 @@
     "CheckRunsTotalCount": 3,
     "CheckRuns": [
       {
+        "JobID": "9001",
+        "RunID": "55",
         "ID": "9001",
         "Name": "go-test",
         "Status": "completed",
@@ -46,6 +49,8 @@
         "CompletedAt": ""
       },
       {
+        "JobID": "9002",
+        "RunID": "55",
         "ID": "9002",
         "Name": "lint",
         "Status": "completed",
@@ -54,6 +59,7 @@
         "CompletedAt": ""
       },
       {
+        "RunID": "55",
         "ID": "",
         "Name": "deploy",
         "Status": "queued",

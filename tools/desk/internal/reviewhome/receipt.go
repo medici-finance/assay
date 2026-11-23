@@ -20,7 +20,7 @@ import (
 const ReceiptFile = "assay-review-finished.json"
 const ExitFile = "assay-review-exited"
 
-type Stamp struct{ Key, Repo, Store, Attempt, ReviewAttempt string }
+type Stamp struct{ Key, Repo, Store, Attempt, ReviewAttempt, HandoffSourceRef string }
 
 func ReadStamp(admin string) (Stamp, error) {
 	data, err := os.ReadFile(filepath.Join(admin, "config.worktree"))
@@ -36,7 +36,7 @@ func ReadStamp(admin string) (Stamp, error) {
 	}
 	sec := cfg.Section("assay")
 	get := func(k string) string { return strings.TrimSpace(sec.Option(k)) }
-	return Stamp{get("runKey"), get("claimRepo"), get("claimStore"), get("dispatchRef"), get("reviewAttempt")}, nil
+	return Stamp{get("runKey"), get("claimRepo"), get("claimStore"), get("dispatchRef"), get("reviewAttempt"), get("handoffSourceRef")}, nil
 }
 
 type Receipt struct {

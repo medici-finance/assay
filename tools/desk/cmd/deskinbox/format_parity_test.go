@@ -92,15 +92,17 @@ type jqComment struct {
 	Body   string          `json:"body"`
 }
 type jqDetail struct {
-	Body              string      `json:"body,omitempty"`
-	Comments          []jqComment `json:"comments,omitempty"`
-	DetailUnavailable bool        `json:"detailUnavailable,omitempty"`
+	Body              string           `json:"body,omitempty"`
+	Comments          []jqComment      `json:"comments,omitempty"`
+	DetailUnavailable bool             `json:"detailUnavailable,omitempty"`
+	Author            *jqCommentAuthor `json:"author,omitempty"`
 }
 
 // jqRenderedOut is the subset of the oracle's per-item output object this test compares —
 // the five-part fields render_walk actually reads (header/context/options/reply/
 // verification/unread), i.e. everything this brief's rendered struct also carries.
 type jqRenderedOut struct {
+	Class   string   `json:"class"`
 	Header  string   `json:"header"`
 	Context []string `json:"context"`
 	Options []struct {

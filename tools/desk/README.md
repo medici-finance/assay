@@ -67,7 +67,7 @@ changed or discarded.
 
 | Tool | Verb(s) | Class | Write budget + breaker |
 |------|---------|-------|------------------------|
-| `deskboard` | `review-queue`, `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `milestones`, `diff`, `files` | read-only | no |
+| `deskboard` | `change`, `review-queue`, `prs`, `actions`, `reviews`, `queue`, `health`, `awaiting` (alias `nextup`), `dispatch` (aliases `todo`, `next`, `next-up`), `throughput`, `scope`, `policydrift`, `stalled`, `milestones`, `diff`, `files` | read-only | no |
 | `issueboard` | `board`, `issues`, `intake` | read-only | no |
 | `verifyloop` | `plan` | read-only (spawns nothing, writes nothing) | no |
 | `scanloop` | `plan` (read-only queue print), `run` (one drain pass), `land` (record a judgment exit for a parked item) — the intake desk's drain consumer: it wraps the durable inbound poller, applies the trust gate BEFORE queueing, dispatches the whole-scope scan ONCE per pass (batching every mechanical item behind one branch and one PR), bounds the scan-PR coalesce window, regenerates the scan PR's title/body on every push, and records exactly ONE tracked exit per inbound item, each also appended as an `intake-exit-v1` record to `<state dir>/intake-exits.jsonl` (schema: `spec/intake-exit-v1.md`) | read-only (`plan`) / outward write (`run`, through `deskpr` and `deskfile`) / local state (`land`) | yes (`run`) |
@@ -154,6 +154,17 @@ defaults. Malformed, duplicate or disallowed entries refuse the whole inventory 
 before printing any rows. This read checks the mapping, not checkout existence or board contents.
 `--scope topology` retains the stated compiled topology. The default `--scope all` retains its
 write, scan and topology inventories; request `roots` explicitly for board-root coverage.
+
+A repository an item **delivers into** need not be a stream root. `deskkit.ItemRepos` names an
+item's tracking repository (brief, board row, decision issue, Evidence, outcome record, verifier
+claim) and its deliverable repository (code and homes) once, and `deskkit.CheckoutForRepo` finds
+a repository's local checkout in this order: its `DESK_ROOTS` entry, then a `DESK_CHECKOUTS`
+entry (`"<owner>/<repo>=<path>,…"`, for a `homed-in:` or `deliverable_repo:` home with no
+`docs/streams/`), then a directory named after the repository beside the tracking checkout.
+`DESK_CHECKOUTS` refuses exactly what `DESK_ROOTS` refuses (an entry outside the allowed set, a
+malformed entry, a repeated repository). Every answer must match the checkout's own origin: a
+mis-mapped path refuses instead of falling through to the next candidate, and no candidate is
+could-not-check.
 
 ### Evidence publication requests
 
@@ -424,6 +435,16 @@ no tool reinvents it with holes:
 | `Version()` / `WarnIfUnpinned(w)` | Reports the embedded `sourceSHA`/`builtAt`; warns loudly when unpinned (C-1). |
 | `OperationContext(work, trackingRoot, deliveryRoot, targets)` | Observation adapter for the `statusgen/domain` operation subject. Reads the tracking checkout's origin and HEAD and the delivery checkout's origin, binds the decision target and Evidence destination to the tracking observation and the selected brief path, and returns the subject. Its `Dispatch`, `Review`, `PRPublication` and `EvidencePublication` projections are the only reads. A missing coordinate is `ExitUnverifiable` (6), never another repository; a coordinate that disagrees with the selected brief (a moved tracking checkout, a review or candidate in the wrong repository) is `ExitRefused` (5). It authorizes no effect. No desk verb routes through it yet: deskdispatch, deskpr, deskfile, deskevidence and verifyloop keep their own coordinate derivation until their follow-up migrations move them onto the projections. |
 | exit codes | `ExitOK 0`, `ExitDisabled 3`, `ExitRateLimited 4`, `ExitRefused 5`, `ExitUnverifiable 6`. `ExitCodeOf(err)` maps a typed error, failing **closed** to 6 for any unexpected error. |
+
+**Verify rows and declared inputs.** deskkit and `internal/verifycmd` keep no reader of a
+brief's `## Verify` table or its `## Context` `files:` declaration. `BriefDeclaredFiles`
+projects `statusgen/briefdoc.DeclaredFiles` (the strict grammar, one `*briefdoc.Refusal`
+mapped onto exit 5), and `verifycmd.Lift`, `Marked`, `CommentOnly`, `NoOp` and `Refused` call
+`briefdoc.VerifyCommand`, `MarkedCommands`, `ShellCommentOnly`, `ShellNoOp` and
+`ProseLedMention`. A change to what a Command cell may name is a change in `briefdoc`, held
+by `briefdoc.TestVerificationDefinitionClassGuard` and the shared vector tables under
+`statusgen/testdata/`; `deskkit.TestVerificationDefinitionFlow` follows one brief from the
+runner to the landing scope.
 
 **Fail-closed (C-10):** any state a helper cannot positively verify (unreadable/malformed
 audit file, missing HOME, unparseable timestamp) is a typed `Unverifiable` refusal
@@ -1640,7 +1661,7 @@ merge onto it), and each row on an affected repo is flagged `baseBranchRed` with
 An **absent** `mainHealth` field means the verb did not probe — never that it found
 nothing wrong. `review-queue`, `prs`, `queue`, `awaiting`, `nextup`, `dispatch`, `todo`, `next`,
 `next-up`, `throughput`, `scope`, `policydrift`, `stalled`, `milestones`,
-`reviews`, `diff` and `files` do not probe. That list is not prose upkeep: `TestNonProbingVerbs_OmitMainHealth` asserts
+`change`, `reviews`, `diff` and `files` do not probe. That list is not prose upkeep: `TestNonProbingVerbs_OmitMainHealth` asserts
 the absence for every verb on it (JSON **and** `--table`), `TestVerbInventory_Complete`
 fails if a verb is added without being classified, and `TestREADME_NamesEveryNonProbingVerb`
 fails if this sentence drifts from the guard.
@@ -2137,7 +2158,7 @@ structurally invisible, and nothing knows to alert. Two halves:
 
 - **Every sweeping verb states its scope.** `review-queue` (requested/admitted/population in its observation), `prs`, `actions`, `queue`, `health`, `scope`,
   `policydrift`, `stalled` and `throughput` carry a `scope` object in the JSON header (repos, count, source) and
-  print one scope line on `--table`. Verbs taking an explicit repo or document (`reviews`, `diff`,
+  print one scope line on `--table`. Verbs taking an explicit repo or document (`change`, `reviews`, `diff`,
   `files`, `milestones`) **omit** the field entirely — absent means "swept nothing", never "the set was
   empty". This sentence is not prose upkeep: `TestReadme_SweepingVerbSentence_359` fails
   if it names a subset of the verbs `verbScopeClass` declares as repo-sweeping — the
@@ -2261,6 +2282,33 @@ Version skew between the running statusgen and the `.assay-versions` pin is **re
 not fatal**: `statusgenSkew` in the JSON header and a `WARN` line on `--table`.
 `--gate-scores` is per-root regardless of statusgen version, so refusing would cost
 availability for no correctness gain — but the skew stays visible so it cannot rot.
+
+## Delivering human inbox changes
+
+A polling consumer can use `deskinbox changes --consumer morning-inbox owner/repo`.
+Use the same consumer name and repository set across sessions. Repository order and
+duplicate arguments do not affect the cursor. Each successful read returns a JSON
+object with an `events` array. A nonempty batch includes a `receipt`.
+
+- `ready` offers a newly actionable human request.
+- `changed` replaces an earlier offer when its act or evidence changes.
+- `withdrawn` cancels an earlier offer by issue ID and omits the obsolete action.
+- `reminder` repeats an acknowledged, outstanding act after an optional interval,
+  such as `--remind-after 24h`. The interval starts again at acknowledgement.
+
+After the **whole batch** reaches its destination, the consumer runs
+`deskinbox changes --consumer morning-inbox --ack RECEIPT owner/repo`. Reading
+alone leaves delivery pending. If a process restarts or a delivery fails, poll
+again. A newer observation can supersede the pending receipt. The consumer
+can use each event's stable issue ID to update or withdraw a previously displayed
+request. An empty array requires no delivery or acknowledgement.
+
+A failed discovery or unverifiable item produces a nonzero exit and preserves
+the cursor. Acknowledgement uses local state and requires no new forge read.
+A corrupt cursor error names its file in the desk state directory under
+`inbox-changes/<scope>/cursor.json`. To recover, pause that consumer, move the
+named file aside for inspection and resume polling. The next complete poll
+offers every currently ready act again.
 
 ## deskboard `--delta` / `--quiet` — console discipline
 
@@ -2882,7 +2930,7 @@ takes the C-5 audit line and the C-6 kill switch but NOT the outward-write rate 
 
 ```bash
 deskwt add <name> [--branch B] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R] [--lock-session <id>] [--adopt-run <key>]   # create tracker-<name> on a tracking branch
-deskwt remove <path>                                   # remove ONE proven-safe worktree
+deskwt remove <path> [--claim-repo <owner/name>]       # remove ONE proven-safe worktree
 deskwt prune [--repo <path>] [--interval <dur>] [--min-idle 1h]   # bulk-reduce stale worktrees, safely
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
 deskwt prune --reap-dead-sessions [--dry-run]          # …and reap the worktrees no live session owns
@@ -2977,6 +3025,16 @@ inventory and lists every observable change.
   unregistered path, or anything resolving outside the prefixes; untracked build artifacts
   (`node_modules`, `target/dist`, …) do NOT block. It shares its tracked-clean check and its
   delete+prune+verify step with `prune` (one implementation, no drift).
+  A dispatched home (one recording `assay.runKey`) is judged by its dispatch claim, read in
+  the repository the home records as `assay.claimRepo`: this checkout's origin, or, for a
+  cross-repository verifier's home, its tracking repository at the address origin's URL gives
+  with the owner/name replaced (same host, rewrite rules and credentials). Held or unreadable
+  refuses; released leaves the decision to the gates above. A home recorded before claim
+  namespaces were (no `assay.claimStore`) holds as could-not-check, and the refusal names the
+  sanctioned path: `--claim-repo <owner/name>` states the repository its dispatch claimed in
+  (a worker or review dispatch: this checkout's origin; a cross-repository verifier: its
+  tracking repository). The flag must agree with any namespace the home records, and it
+  relaxes no other gate.
 
 - **`prune`** exists because stale worktrees accumulate (the desk loops spawn one per worker
   and rarely remove them — ~1065 observed) until tooling breaks: the bash sandbox hits
@@ -7890,6 +7948,16 @@ a fail-open in the tier policy cannot leak a risk-bearing brief into DISPATCH). 
 gather Evidence for such a brief — its member line reads `Evidence-only (never flip-eligible)` —
 but never flips it; the Evidence-only lane in `Land` writes Evidence with no status flip and the
 human's merge of the checkpoint PR is the flip.
+
+**One outcome protocol for the writer and its readers**. The outcome words, the
+row-result reduction and the record codec the verifier writes and the queue reads are defined once in
+`statusgen/evaluation/outcome.go` (the codec in its subpackage `statusgen/evaluation/outcomerecord`);
+`deskkit` keeps only the adapters. The writer's existing outcome-word checks are unchanged:
+`--outcome-record` lands only a word the readers recognise (`verified`, `verify-fail`, `fail`,
+`blocked`, `needs-context`, `needs_context`, ignoring case and surrounding space as the readers do), and
+the verified-closure guard and the sidecar gate count `Verified` or ` verified ` as a pass. What is new is
+that a `verified` record that holds or fails rows is refused at the writer. The record layout, the
+numeric exit codes and the wake-receipt schema are unchanged.
 
 **`plan` does not re-run an unchanged failure — wake receipts** (`verify-wake-v1`;
 `docs/streams/example-stream/verify-wake-v1.md`). A `verify-fail`/`blocked` verifier run lands a
