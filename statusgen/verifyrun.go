@@ -671,8 +671,9 @@ type shellPlan struct {
 }
 
 // admittedScrubbedNote is the could-not-run note for an admitted row that
-// reads scrubbed ASSAY_* inputs. It names the inputs and says what running the
-// row outside admission takes, so the note never reads as permission to do it.
+// reads inputs the scrub removed (admittedRowScrubbedRefs). It names the inputs
+// and says what running the row outside admission takes, so the note never
+// reads as permission to do it.
 func admittedScrubbedNote(names []string) string {
 	return "the row reads " + strings.Join(names, ", ") +
 		", which an admitted run removes from every row's environment, so it cannot run as written here." +
@@ -696,7 +697,8 @@ func removeRowScratch(dir string) {
 }
 
 // rowEnv is the environment every Verify row of the run executes in: the
-// caller's own, unless the run was admitted, when it is admittedRowEnv's.
+// caller's own, unless the run was admitted, when it is admittedRowEnv's
+// allow-list.
 func (p shellPlan) rowEnv() []string {
 	if p.env != nil {
 		return p.env
@@ -947,9 +949,11 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	// A row of an admitted run gets a HOME and a TMPDIR of its own, so it
 	// finds nothing an earlier row of the run left there.
 	if plan.rowScratch != "" {
-		// A row that reads an ASSAY_* input the scrub removed cannot run as
-		// written under admission. It is could-not-run, never a fail: its own
-		// guard on the missing value would otherwise read as a regression. Nor
+		// A row that reads an input the scrub removed (an ASSAY_* variable, or
+		// any other variable the allow-list drops that the row only reads)
+		// cannot run as written under admission. It is could-not-run, never a
+		// fail: its own guard on the missing value would otherwise read as a
+		// defect in the delivery. Nor
 		// is it ever a pass: the row's text chooses this outcome, so it must
 		// not be one that clears anything. The note does not grant a run
 		// outside admission either, where the row sees everything the scrub
@@ -2579,7 +2583,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			}
 		})
 		if len(others) > 0 || fs.NArg() > 0 || *witnessFile == "" {
-			fmt.Fprintf(stderr, "statusgen verifyrun: --bracket-digest takes only --witness <file> [--credit --source <40 hex> [--ci-workflow-token]] (got %s)\n", strings.Join(append(others, fs.Args()...), " "))
+			_, _ = fmt.Fprintf(stderr, "statusgen verifyrun: --bracket-digest takes only --witness <file> [--credit --source <40 hex> [--ci-workflow-token]] (got %s)\n", strings.Join(append(others, fs.Args()...), " "))
 			return verifyrunExitUsageError
 		}
 		if *creditMode != (*creditSource != "") || (*creditMode && !creditSourceOK(*creditSource)) {
@@ -2587,7 +2591,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitUsageError
 		}
 		if *creditCI && !*creditMode {
-			fmt.Fprintln(stderr, "statusgen verifyrun: --ci-workflow-token requires --bracket-digest and --credit")
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: --ci-workflow-token requires --bracket-digest and --credit")
 			return verifyrunExitUsageError
 		}
 		raw, err := os.ReadFile(*witnessFile)
@@ -2642,7 +2646,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		return code
 	}
 	if *creditMode || *creditSource != "" || *creditCI {
-		fmt.Fprintln(stderr, "statusgen verifyrun: --credit, --source and --ci-workflow-token are read-only options of --bracket-digest")
+		_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: --credit, --source and --ci-workflow-token are read-only options of --bracket-digest")
 		return verifyrunExitUsageError
 	}
 
@@ -2990,6 +2994,19 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		}
 		defer removeRowScratch(scratch)
 		plan.env = append(admittedRowEnv(environ), admittedRowGo(environ)...)
+		// The one declared replay path reaches the rows only in its checked
+		// form. A refused one is named here, and a row that reads it is
+		// could-not-run.
+		if kv, why := admittedReplayInput(environ, root); why != "" {
+			// This line is the run's only record that the replay path was
+			// withheld. A run that cannot write it cannot report its rows'
+			// inputs, so it stops as could-not-run.
+			if _, werr := fmt.Fprintf(stderr, "statusgen verifyrun: %s is not passed to the rows: %s\n", admittedReplayInputVar, why); werr != nil {
+				return verifyrunExitCouldNot
+			}
+		} else if kv != "" {
+			plan.env = append(plan.env, kv)
+		}
 		plan.rowScratch = scratch
 		plan.rowRoster = container.roster
 		if *rule51Mode && !netnsContainer {

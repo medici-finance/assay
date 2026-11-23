@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/reviewflow"
@@ -59,28 +60,33 @@ func cmdChange(h Header, repo string, number int, expected []string) (*Report, e
 		Header
 		*deskkit.ChangeInspection
 		Checks []changeCheck `json:"checks"`
-	}{h, r, checks}, render: func(w io.Writer) {
-		fmt.Fprintf(w, "%s#%d head=%s %s draft=%t mergeable=%s merge-state=%s\n", repo, number, r.Head, r.State, r.Draft, r.Mergeable, r.MergeState)
-		fmt.Fprintf(w, "reviews (%s; inline discussions %s) %s\n", r.ReviewRead, r.InlineDiscussions, deskkit.StripControl(r.URL))
+	}{h, r, checks}, renderTo: func(w io.Writer) error {
+		// Compose the table in memory, where a write cannot fail, then write it once
+		// and hand that write's error back so the caller can exit unverifiable.
+		var b strings.Builder
+		fmt.Fprintf(&b, "%s#%d head=%s %s draft=%t mergeable=%s merge-state=%s\n", repo, number, r.Head, r.State, r.Draft, r.Mergeable, r.MergeState)
+		fmt.Fprintf(&b, "reviews (%s; inline discussions %s) %s\n", r.ReviewRead, r.InlineDiscussions, deskkit.StripControl(r.URL))
 		for _, v := range r.Reviews {
-			fmt.Fprintf(w, "  %s %s %s %s", v.Binding, v.Lane, deskkit.StripControl(v.Author), deskkit.StripControl(v.State))
+			fmt.Fprintf(&b, "  %s %s %s %s", v.Binding, v.Lane, deskkit.StripControl(v.Author), deskkit.StripControl(v.State))
 			if v.ID != 0 {
-				fmt.Fprintf(w, " id=%d", v.ID)
+				fmt.Fprintf(&b, " id=%d", v.ID)
 			}
-			fmt.Fprintf(w, " %s\n", deskkit.StripControl(v.URL))
+			fmt.Fprintf(&b, " %s\n", deskkit.StripControl(v.URL))
 			if v.Body != "" {
-				fmt.Fprintf(w, "    %q\n", v.Body)
+				fmt.Fprintf(&b, "    %q\n", v.Body)
 			}
 		}
 		if r.ReviewError != "" {
-			fmt.Fprintln(w, deskkit.StripControl(r.ReviewError))
+			fmt.Fprintln(&b, deskkit.StripControl(r.ReviewError))
 		}
-		fmt.Fprintf(w, "checks (%s)\n", r.CheckRead)
+		fmt.Fprintf(&b, "checks (%s)\n", r.CheckRead)
 		if r.CheckError != "" {
-			fmt.Fprintln(w, deskkit.StripControl(r.CheckError))
+			fmt.Fprintln(&b, deskkit.StripControl(r.CheckError))
 		}
 		for _, c := range checks {
-			fmt.Fprintf(w, "  %s %s job=%s run=%s %s\n", c.Result, deskkit.StripControl(c.Name), c.JobID, c.RunID, deskkit.StripControl(c.URL))
+			fmt.Fprintf(&b, "  %s %s job=%s run=%s %s\n", c.Result, deskkit.StripControl(c.Name), c.JobID, c.RunID, deskkit.StripControl(c.URL))
 		}
+		_, err := io.WriteString(w, b.String())
+		return err
 	}}, nil
 }

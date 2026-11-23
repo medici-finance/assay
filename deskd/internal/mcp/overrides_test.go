@@ -23,9 +23,13 @@ type fakeForge struct {
 	mu       sync.Mutex
 	pulls    int
 	cellsYML string
+	auths    []string // the Authorization header of every request, in order
 }
 
 func (f *fakeForge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	f.auths = append(f.auths, r.Header.Get("Authorization"))
+	f.mu.Unlock()
 	switch {
 	case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/contents/config/cells.yaml"):
 		writeJSONTest(w, map[string]any{"content": base64.StdEncoding.EncodeToString([]byte(f.cellsYML)), "encoding": "base64", "sha": "filesha"})
@@ -65,7 +69,7 @@ func TestOverridesRecordPRIsIdempotentPerHash(t *testing.T) {
 	defer srv.Close()
 
 	g := NewGitHubFiler(srv.URL, "desk-app-token", nil)
-	g.SetRecordApp("write-issues-token", "assay-cell-issues-app")
+	g.SetRecordApp("record-pr-token", "record-pr-app")
 
 	ov := domain.Overrides{DispatchWidth: intp(1), HoldMerges: boolp(true)}
 	req := RecordPRRequest{Cell: "assay", Repo: "example-org/console", ConfigPath: "config/cells.yaml", Overrides: ov}
@@ -105,15 +109,51 @@ func TestOverridesRecordPRIsIdempotentPerHash(t *testing.T) {
 	}
 }
 
+// regression: F-record-pr-app
+//
+// TestRecordPRAuthenticatesAsRecordApp pins which credential the record PR
+// sends: every request of the ref / contents / pulls sequence carries the
+// record-PR App's credential, none carries the desk App's. The sequence writes
+// repository contents and opens a pull request, so it must run on an App that
+// holds those permissions; the write-issues App is specified to hold neither.
+func TestRecordPRAuthenticatesAsRecordApp(t *testing.T) {
+	forge := &fakeForge{cellsYML: "cells:\n  - name: assay\n    repos: [example-org/console]\n"}
+	srv := httptest.NewServer(forge)
+	defer srv.Close()
+
+	g := NewGitHubFiler(srv.URL, "desk-app-token", nil)
+	g.SetRecordApp("record-pr-token", "record-pr-app")
+	if got := g.RecordIdentity(); got != "record-pr-app" {
+		t.Fatalf("RecordIdentity = %q, want the record-PR App login", got)
+	}
+	res, err := g.FileRecordPR(context.Background(), RecordPRRequest{
+		Cell: "assay", Repo: "example-org/console", ConfigPath: "config/cells.yaml",
+		Overrides: domain.Overrides{DispatchWidth: intp(1)},
+	})
+	if err != nil || res.Ref == nil {
+		t.Fatalf("FileRecordPR = %+v, %v; want a filed PR", res, err)
+	}
+	forge.mu.Lock()
+	defer forge.mu.Unlock()
+	if len(forge.auths) < 5 {
+		t.Fatalf("the record PR made %d forge requests, want at least the 5 of the sequence", len(forge.auths))
+	}
+	for i, a := range forge.auths {
+		if a != "Bearer record-pr-token" {
+			t.Fatalf("request %d carried %q, want the record-PR App credential only", i, a)
+		}
+	}
+}
+
 // TestRecordPRUnconfiguredFilesNothing proves the honest-degrade path at the
-// filer level: with no write-issues App the filer returns could-not-check and
+// filer level: with no record-PR App the filer returns could-not-check and
 // touches no forge — never a fallback to the desk App token.
 func TestRecordPRUnconfiguredFilesNothing(t *testing.T) {
 	forge := &fakeForge{cellsYML: "cells:\n  - name: assay\n    repos: [a/b]\n"}
 	srv := httptest.NewServer(forge)
 	defer srv.Close()
 
-	g := NewGitHubFiler(srv.URL, "desk-app-token", nil) // desk App set, write-issues App NOT
+	g := NewGitHubFiler(srv.URL, "desk-app-token", nil) // desk App set, record-PR App NOT
 	if g.RecordIdentity() != "" {
 		t.Fatalf("record identity must be empty until SetRecordApp is called")
 	}

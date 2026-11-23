@@ -1,0 +1,29 @@
+{
+  "test": "go test -count=1 -run '^TestPreviewStamps' .",
+  "control": {
+    "name": "count an existing board sign-off as a new claim",
+    "file": "previewstamps.go",
+    "old": "if s.PreExisting {",
+    "new": "if false && s.PreExisting {"
+  },
+  "mutations": [
+    {
+      "name": "advance destination line numbers only on additions",
+      "file": "corroboratescope.go",
+      "old": "case strings.HasPrefix(trimmed, \" \"):\n\t\t\t\tnextLine++",
+      "new": "case strings.HasPrefix(trimmed, \" \"):"
+    },
+    {
+      "name": "lose the next location of a repeated sign-off",
+      "file": "corroborate.go",
+      "old": "deduped[idx].Locations = append(lines, n)",
+      "new": "deduped[idx].Locations = lines"
+    },
+    {
+      "name": "report a clean preview despite prospective claims",
+      "file": "previewstamps.go",
+      "old": "if claims != 0 {\n\t\treturn 1",
+      "new": "if claims != 0 {\n\t\treturn 0"
+    }
+  ]
+}

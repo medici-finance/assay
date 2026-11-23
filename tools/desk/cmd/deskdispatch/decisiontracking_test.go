@@ -125,3 +125,50 @@ func TestDecisionGateSameRepoUnchanged(t *testing.T) {
 		t.Fatalf("decision helper ran with --repo %q, want [%s]", got, allowedRepo)
 	}
 }
+
+// regression: #6494
+// TestDecisionHoldReadsTrackingRepo — the pre-claim decision HOLD reads the brief's bare
+// `decision-issue: #N` in the repository that tracks the brief, the same repository the gate's
+// ensure step already uses (#5525). It used to read #N in the deliverable repo, where the open,
+// unruled decision does not exist, so a homed-in human-gated brief was dispatched past its hold.
+func TestDecisionHoldReadsTrackingRepo(t *testing.T) {
+	for _, declare := range []string{"homed-in: medici-finance/assay", "deliverable_repo: example-tool"} {
+		t.Run(declare, func(t *testing.T) { decisionHoldReadsTrackingRepo(t, declare) })
+	}
+}
+
+func decisionHoldReadsTrackingRepo(t *testing.T, declare string) {
+	s := &stub{}
+	home, root := s.install(t) // --root's origin is medici-finance/assay (the deliverable)
+	trk := trackingCheckout(t, exampleRegistry, "gate: human", declare, "decision-issue: 41")
+	withPortsOnPath(t, goClaimBinary, goDecisionBinary)
+	s.replies = append(happyReplies(filepath.Join(t.TempDir(), "worker-home")),
+		reply{match: goDecisionBinary + " ensure", stdout: "exists: decision issue #41"})
+	recordMint(t, home, nil)
+	useRatifier(t, true)
+	open := openDecision(41, "", "someone-else")
+	var asked []string
+	old := decisionWaitForgeFn
+	decisionWaitForgeFn = func(repo string) (deskkit.DecisionForge, deskkit.ForgeRepo, error) {
+		asked = append(asked, repo)
+		fr, err := forgeRepoOf(repo)
+		if repo != "example-org/tracker" {
+			return &fakeDecisionForge{}, fr, err // the deliverable repo holds no such issue
+		}
+		return open, fr, err
+	}
+	t.Cleanup(func() { decisionWaitForgeFn = old })
+
+	err := cmdDispatch([]string{"example-stream/05", "--root", root, "--claim-root", trk,
+		"--brief", exampleBriefRel, "--kit", "worker", "--quiet",
+		"--prompt-file", filepath.Join(t.TempDir(), "p.md")})
+	if len(asked) != 1 || asked[0] != "example-org/tracker" {
+		t.Fatalf("the decision hold read %q, want exactly [example-org/tracker] (the tracking repo)", asked)
+	}
+	if err == nil || deskkit.ExitCodeOf(err) != deskkit.ExitRefused || !strings.Contains(err.Error(), "example-org/tracker#41") {
+		t.Fatalf("an open, unruled decision in the tracking repo must hold the dispatch naming example-org/tracker#41: %v", err)
+	}
+	if len(claimCalls(s)) != 0 || s.ran("deskwt add") {
+		t.Errorf("the hold must precede the claim and the worktree; calls=%v", s.calls)
+	}
+}

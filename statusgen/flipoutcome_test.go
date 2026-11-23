@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/statusgen/evaluation/outcomerecord"
 )
 
 // flipoutcome_test.go — fail-first tests for verifyflip's verify-outcome
@@ -107,11 +109,11 @@ func TestVflipOutcomeLegacyBadTS(t *testing.T) {
 func TestVflipOutcomeMisfiled(t *testing.T) {
 	root, readme := vfFixture(t, vfDefaults())
 	line := `{"brief":"vf/01","ts":"2026-08-14T12:00:00Z","outcome":"verified","sha":"0000000000aa","source_sha":"` + vfSHA + `"}`
-	name, err := outcomeRecordName([]byte(line))
+	name, err := outcomerecord.RecordName([]byte(line))
 	if err != nil {
 		t.Fatal(err)
 	}
-	vfWriteAt(t, root, "docs/streams/verify-outcomes/zz/"+filepath.Base(name), outcomeCanonicalBytes([]byte(line)))
+	vfWriteAt(t, root, "docs/streams/verify-outcomes/zz/"+filepath.Base(name), outcomerecord.CanonicalBytes([]byte(line)))
 	vfCommit(t, root, vfMailVerifier)
 	vfCouldNotCheck(t, root, readme, "vf/01", "belong at")
 }

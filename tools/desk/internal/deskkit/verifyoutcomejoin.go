@@ -19,6 +19,8 @@ import (
 	"strings"
 	"time"
 	"unicode"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 var (
@@ -205,6 +207,17 @@ func ParseJoinInput(raw []byte) (JoinInput, error) {
 	return in, nil
 }
 
+// CheckOutcomeField is the writer's demand that the record carries an outcome in a spelling every
+// reader classifies the same way (checkRunMetadataShape already refuses a present but
+// non-canonical value; this refuses an absent one). A record whose outcome a reader cannot
+// interpret is never written.
+func CheckOutcomeField(in JoinInput) error {
+	if _, has := in.Fields["outcome"]; !has {
+		return Refused("refused: outcome — a record names its outcome, one of " + strings.Join(evaluation.OutcomeWords(), ", "))
+	}
+	return nil
+}
+
 func parsePREntry(i int, raw json.RawMessage) (DeliveredPR, error) {
 	at := func(f string) string { return "prs[" + strconv.Itoa(i) + "]." + f }
 	var obj map[string]json.RawMessage
@@ -286,6 +299,19 @@ func checkRunMetadataShape(f map[string]json.RawMessage) error {
 		return n, true, nil
 	}
 
+	// The outcome word is written only when the readers recognise it (case and surrounding space
+	// ignored, as they ignore them); a value a reader would treat as unrecognised is refused, and
+	// the submitted bytes are never normalised.
+	outcome, hasOutcome, err := str("outcome")
+	if err != nil {
+		return err
+	}
+	if hasOutcome {
+		if _, perr := evaluation.ParseOutcomeWord(outcome); perr != nil {
+			return Refused("refused: " + perr.Error())
+		}
+	}
+
 	if tier, has, err := str("verifier_tier"); err != nil {
 		return err
 	} else if has && !isDispatchTier(tier) {
@@ -347,41 +373,25 @@ func checkRunMetadataShape(f map[string]json.RawMessage) error {
 	if err != nil {
 		return err
 	}
-	if hasPassed && hasTotal && passed > total {
-		return Refused(fmt.Sprintf("refused: rows_passed %d exceeds rows_total %d", passed, total))
-	}
-
-	heldRows := map[VerifyRowID]bool{}
+	// Rows: this adapter reads the JSON shapes (types, the closed key set, the row grammar); the
+	// meaning of the counts, held rows and row_results is the shared reduction's
+	// (evaluation.ReduceRows), the same one the queue reader applies to the receipt.
+	set := evaluation.RowSet{HasTotal: hasTotal, Total: total, HasPassed: hasPassed, Passed: passed}
 	if v, has := f["rows"]; has {
 		var rows []VerifyRowID
 		if err := json.Unmarshal(v, &rows); err != nil {
 			return Refused("refused: rows must contain positive integers, suffixed identities (6a) or letter-led labels (R, S1)")
 		}
-		seen := map[VerifyRowID]bool{}
 		for _, row := range rows {
-			if seen[row] {
-				return Refused("refused: rows repeats row " + string(row))
-			}
-			seen[row] = true
-			heldRows[row] = true
+			set.Held = append(set.Held, string(row))
 		}
-	}
-	if hasPassed && hasTotal && passed > total-len(heldRows) {
-		return Refused(fmt.Sprintf("refused: rows_passed %d exceeds non-held rows %d", passed, total-len(heldRows)))
 	}
 	if v, has := f["row_results"]; has {
 		var entries []json.RawMessage
 		if err := json.Unmarshal(v, &entries); err != nil || entries == nil {
 			return Refused("refused: row_results must be a JSON list of {row, result}")
 		}
-		if !hasTotal {
-			return Refused("refused: row_results needs rows_total (it covers ALL rows of the brief)")
-		}
-		if len(entries) != total {
-			return Refused(fmt.Sprintf("refused: row_results lists %d rows but rows_total is %d — it covers ALL rows", len(entries), total))
-		}
-		seen := map[VerifyRowID]bool{}
-		pass := 0
+		set.HasResults = true
 		for i, e := range entries {
 			var obj map[string]json.RawMessage
 			if err := json.Unmarshal(e, &obj); err != nil || obj == nil {
@@ -396,38 +406,23 @@ func checkRunMetadataShape(f map[string]json.RawMessage) error {
 			if err := json.Unmarshal(obj["row"], &row); err != nil {
 				return Refused(fmt.Sprintf("refused: row_results[%d].row must be a positive integer, suffixed identity (6a) or letter-led label (R, S1)", i))
 			}
-			if seen[row] {
-				return Refused(fmt.Sprintf("refused: row_results[%d].row %s repeats", i, row))
-			}
-			seen[row] = true
 			var res string
-			if err := json.Unmarshal(obj["result"], &res); err != nil || !ValidRowResult(res) {
-				return Refused(fmt.Sprintf("refused: row_results[%d].result must be one of pass, fail, could-not-run, deferred", i))
+			if err := json.Unmarshal(obj["result"], &res); err != nil {
+				res = "" // not a string: the reduction refuses it as an invalid result
 			}
-			if res == RowPass {
-				if heldRows[row] {
-					return Refused("refused: held row " + string(row) + " also claims PASS")
-				}
-				pass++
-			}
+			set.Results = append(set.Results, evaluation.RowResultEntry{Row: string(row), Result: res})
 		}
-		if hasPassed && pass != passed {
-			return Refused(fmt.Sprintf("refused: row_results holds %d pass rows but rows_passed is %d", pass, passed))
-		}
-		for row := range heldRows {
-			if !seen[row] {
-				return Refused("refused: held row " + string(row) + " is absent from row_results inventory")
-			}
-		}
-	} else if hasTotal {
-		// Without exact results, only the declared contiguous numeric inventory
-		// 1..total is known. Never infer a suffix or a foreign held identity.
-		for row := range heldRows {
-			n, err := strconv.Atoi(string(row))
-			if err != nil || n > total {
-				return Refused("refused: held row " + string(row) + " is outside count-only inventory 1..rows_total")
-			}
-		}
+	}
+	// Without an outcome key the rows are reduced on their own; the writer demands the key
+	// (CheckOutcomeField) before it lands anything.
+	run, fault := evaluation.ReduceRun(outcome, set)
+	if fault != nil {
+		return Refused("refused: " + fault.Text())
+	}
+	if run.Verdict == evaluation.VerdictContradiction {
+		return Refused("refused: a " + outcome + " record holds or fails rows (" +
+			strings.Join(append(append([]string{}, run.Rows.Held...), run.Rows.NonPass...), ", ") +
+			") — a pass lists no held or non-pass row; record the run as verify-fail or blocked")
 	}
 	// attempts (issue #4163): every verification run of this dispatch, validated
 	// against the record's own window and row count checked above.

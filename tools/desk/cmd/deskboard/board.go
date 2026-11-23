@@ -128,9 +128,10 @@ func (c check) recencyKey() string {
 }
 
 type prBase struct {
-	Number int    `json:"number"`
-	Title  string `json:"title"`
-	Body   string `json:"body"`
+	monitorFeedback deskkit.MonitorFeedback
+	Number          int    `json:"number"`
+	Title           string `json:"title"`
+	Body            string `json:"body"`
 	// State is gh's OPEN / CLOSED / MERGED. The enumeration below already filters to
 	// --state open, so this is belt-and-braces — but #247 is exactly the class of bug
 	// where merged-vs-closed stops being load-bearing by accident, and a verb that
@@ -288,7 +289,7 @@ func prBaseFromChange(c deskkit.OpenChange) prBase {
 //
 // A failure fails the whole run, named for the repo, exactly as fetchOpenPRs does — the
 // error text is the same so the out-of-installation scoping check still recognizes it.
-func fetchReviewQueue(repo string) (prs []prBase, reviews map[int][]review, truncated bool, visibility string, err error) {
+func fetchReviewQueue(repo string, monitor ...bool) (prs []prBase, reviews map[int][]review, truncated bool, visibility string, err error) {
 	f, fr, ferr := forgeFor(repo)
 	if ferr != nil {
 		return nil, nil, false, "", ferr
@@ -299,8 +300,17 @@ func fetchReviewQueue(repo string) (prs []prBase, reviews map[int][]review, trun
 	}
 	prs = make([]prBase, 0, len(q.Changes))
 	reviews = make(map[int][]review, len(q.Changes))
+	withFeedback := len(monitor) > 0 && monitor[0]
+	var reviewer string
+	if withFeedback {
+		reviewer, _ = deskkit.RoleAppLogin("reviewer")
+	}
 	for _, c := range q.Changes {
-		prs = append(prs, prBaseFromChange(c.OpenChange))
+		p := prBaseFromChange(c.OpenChange)
+		if withFeedback {
+			p.monitorFeedback = c.MonitorFeedback(reviewer)
+		}
+		prs = append(prs, p)
 		if c.ReviewsComplete {
 			reviews[c.Number] = reviewsFromForge(c.Reviews)
 		}
@@ -684,9 +694,59 @@ func detectNonCommitResolution(repo string, p prBase, lastReviewAt time.Time) (b
 		if t, perr := time.Parse(time.RFC3339, p.LastEditedAt); perr == nil && t.After(lastReviewAt) {
 			return true, "PR body/title edited after the last review", nil
 		}
+		return false, "", nil
+	}
+
+	// GitLab reports no edit time on the change list (ListOpenChanges leaves LastEditedAt
+	// empty), so an empty value there is "not read", not "never edited" — and a description
+	// edit would be invisible to this signal. The forge's trust read derives the edit time from
+	// the change's description-change system notes; read it, for this one blocked row only.
+	// Those notes cover the description only: a GitLab title-only edit is still not seen here.
+	// Any other forge keeps the empty value as "never edited" and pays no extra read. A forge
+	// kind that cannot be resolved is could-not-check (error), never "not GitLab".
+	kind, kerr := forgeKindOf(repo)
+	if kerr != nil {
+		return false, "", kerr
+	}
+	if kind == deskkit.ForgeGitLab {
+		edited, rerr := gitlabBodyEditedAt(repo, p.Number)
+		if rerr != nil {
+			return false, "", rerr
+		}
+		if edited.After(lastReviewAt) {
+			return true, "PR description edited after the last review", nil
+		}
 	}
 
 	return false, "", nil
+}
+
+// forgeKindOf names the forge kind serving repo; a package var so tests can pin it.
+var forgeKindOf = func(repo string) (deskkit.ForgeKind, error) {
+	owner, name, _ := strings.Cut(repo, "/")
+	res, err := deskkit.ForgeKindFor(deskkit.ForgeRepo{Owner: owner, Name: name})
+	if err != nil {
+		return "", err
+	}
+	return res.Kind, nil
+}
+
+// gitlabBodyEditedAt reads the change's latest description-edit time through the forge's
+// typed trust read. An absent, incomplete or unknown-provenance payload is could-not-check
+// (error), never "unedited".
+func gitlabBodyEditedAt(repo string, num int) (time.Time, error) {
+	f, fr, err := forgeFor(repo)
+	if err != nil {
+		return time.Time{}, err
+	}
+	tp, err := f.PRTrustEvents(fr, num)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if tp == nil || !tp.Complete || !tp.BodyHistoryKnown {
+		return time.Time{}, deskkit.Unverifiable(fmt.Sprintf("could not establish the description-edit time of %s#%d (incomplete or unknown activity read)", repo, num), nil)
+	}
+	return tp.BodyEdited, nil
 }
 
 // prBlessed evaluates the blessing for a PR whose AUTHOR is untrusted: ONE
@@ -1346,7 +1406,20 @@ type Header struct {
 type Report struct {
 	value  any
 	render func(io.Writer)
-	detail string
+	// renderTo is a table renderer that returns its write error. A report sets it
+	// instead of render; table prefers it.
+	renderTo func(io.Writer) error
+	detail   string
+}
+
+// table writes the report's table to w and returns the write error a renderTo
+// renderer reports. A render renderer has no error to return.
+func (r *Report) table(w io.Writer) error {
+	if r.renderTo != nil {
+		return r.renderTo(w)
+	}
+	r.render(w)
+	return nil
 }
 
 // ---- prs ----
@@ -1777,6 +1850,11 @@ type prOutcome struct {
 	row      *actionRow
 }
 
+type reviewSweepOptions struct {
+	qualified    bool
+	withFeedback bool
+}
+
 // sweepActionsRepo computes one repo's actionsPartial. It is the per-repo unit of work
 // the bounded sweep runs concurrently; briefScore, knownBriefs, redBases and now are all
 // read-only shared inputs, safe to read from many workers at once.
@@ -1789,15 +1867,19 @@ type prOutcome struct {
 // any global semaphore. It fails CLOSED exactly as the old serial body did: any read/parse
 // error is wrapped-and-repo/PR-named and propagates to fail the whole run, deterministically
 // (lowest-index PR first).
-func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time, qualified ...bool) (actionsPartial, error) {
+func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []string, redBases map[string]bool, now time.Time, opts ...reviewSweepOptions) (actionsPartial, error) {
 	var part actionsPartial
+	var mode reviewSweepOptions
+	if len(opts) > 0 {
+		mode = opts[0]
+	}
 	// repo-level: fetchReviewQueue lists ALL open PRs for the repo AND their reviews in one
 	// read — nothing about the repo can be classified without it, so failing the whole run
 	// here is correct (contrast classifyPR below, whose per-change reads are the opposite
 	// kind). The reviews it carries replace classifyPR's per-PR review read (N+1 → 1, and
 	// the head and its reviews come from one consistent instant); a PR it did not carry in
 	// full is read per-item as before.
-	prs, queued, truncated, visibility, err := fetchReviewQueue(repo)
+	prs, queued, truncated, visibility, err := fetchReviewQueue(repo, mode.withFeedback)
 	if err != nil {
 		return actionsPartial{}, err // fail the whole run, name the repo
 	}
@@ -1807,7 +1889,7 @@ func sweepActionsRepo(repo string, briefScore map[string]int, knownBriefs []stri
 	// #2421: the previous sweep's per-PR facts for this repo (prfacts.go). Saved only when the
 	// whole repo classified, so a failed sweep never replaces good facts with partial ones.
 	facts := loadPRFacts(repo)
-	facts.qualified = len(qualified) > 0 && qualified[0]
+	facts.qualified = mode.qualified
 	outcomes, err := sweepConcurrent(prs, sweepConcurrency, func(p prBase) (prOutcome, error) {
 		rv, have := queued[p.Number]
 		return classifyPRFrom(repo, p, rv, have, ciRequired, briefScore, knownBriefs, redBases, now, facts)

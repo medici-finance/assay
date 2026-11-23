@@ -126,6 +126,10 @@ func isFixtureCorpusPath(root, rel string) bool {
 	if root == "" {
 		return false // no filesystem to consult — fail-closed to fully scanned
 	}
+	return fixtureUnderMarker(rel, func(marker string) bool { return fileExists(filepath.Join(root, marker)) })
+}
+
+func fixtureUnderMarker(rel string, exists func(string) bool) bool {
 	rel = filepath.ToSlash(strings.TrimSpace(rel))
 	if rel == "" || rel == ".." || strings.HasPrefix(rel, "../") {
 		return false // empty or escaping — never a corpus, never climb above root
@@ -140,7 +144,7 @@ func isFixtureCorpusPath(root, rel string) bool {
 		// docs/streams/ itself, anywhere outside docs/ — is INERT here rather than
 		// merely complained about by the lint, because --corroborate reaches this
 		// resolver without running the lint at all.
-		if fixtureCorpusScopeOK(dir) && fileExists(filepath.Join(root, dir, fixtureCorpusMarkerName)) {
+		if fixtureCorpusScopeOK(dir) && exists(filepath.ToSlash(filepath.Join(dir, fixtureCorpusMarkerName))) {
 			return true
 		}
 		if dir == "." || dir == string(filepath.Separator) || dir == "" {

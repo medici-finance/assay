@@ -287,7 +287,7 @@ func cliDefault(path, key string) any {
 		return 2 * time.Minute
 	}
 	switch key {
-	case "detach", "dry-run", "reclaim-stale-locks", "reap-dead-sessions", "no-singleton", "no-branches",
+	case "detach", "handoff-brief", "dry-run", "reclaim-stale-locks", "reap-dead-sessions", "no-singleton", "no-branches",
 		"branches-only", "no-maintenance", "no-cache", "apply", "json", "no-fetch":
 		return false
 	}
@@ -300,9 +300,9 @@ func cliFields(c wtCall) map[string]any {
 	case "add":
 		o := c.add
 		return map[string]any{"branch": o.branch, "detach": o.detach, "base": o.base, "upstream": o.upstream, "role": o.role,
-			"dry-run": o.dryRun, "lock-session": o.lockSession, "adopt-run": o.adoptRun}
+			"dry-run": o.dryRun, "lock-session": o.lockSession, "adopt-run": o.adoptRun, "handoff-brief": o.handoffBrief}
 	case "remove":
-		return map[string]any{"dry-run": c.remove.dryRun}
+		return map[string]any{"dry-run": c.remove.dryRun, "claim-repo": c.remove.claimRepo}
 	case "prune":
 		f := c.prune
 		return map[string]any{"repo": f.repo, "interval": f.interval, "reclaim-stale-locks": f.reclaim, "lock-ttl": f.lockTTL,
@@ -515,6 +515,7 @@ func TestCLILegacyForms(t *testing.T) {
 		{[]string{"add", "wt-1", "--trace"}, 0, want{"add", map[string]any{}, "wt-1"}},
 		{[]string{"remove", "/tmp/wt-1"}, 0, want{"remove", map[string]any{"dry-run": false}, "/tmp/wt-1"}},
 		{[]string{"remove", "--dry-run", "/tmp/wt-1"}, 0, want{"remove", map[string]any{"dry-run": true}, "/tmp/wt-1"}},
+		{[]string{"remove", "/tmp/wt-1", "--claim-repo", "o/n"}, 0, want{"remove", map[string]any{"claim-repo": "o/n"}, "/tmp/wt-1"}},
 		{[]string{"prune", "--repo", "/r"}, 0, want{"prune", map[string]any{"repo": "/r", "lock-ttl": "0", "singleton-ttl": "10m0s"}, ""}},
 		{[]string{"prune", "-repo", "/r", "-reap-dead-sessions", "-lock-ttl", "24h"}, 0,
 			want{"prune", map[string]any{"repo": "/r", "reap-dead-sessions": true, "lock-ttl": "24h"}, ""}},

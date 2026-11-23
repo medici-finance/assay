@@ -155,6 +155,17 @@ before printing any rows. This read checks the mapping, not checkout existence o
 `--scope topology` retains the stated compiled topology. The default `--scope all` retains its
 write, scan and topology inventories; request `roots` explicitly for board-root coverage.
 
+A repository an item **delivers into** need not be a stream root. `deskkit.ItemRepos` names an
+item's tracking repository (brief, board row, decision issue, Evidence, outcome record, verifier
+claim) and its deliverable repository (code and homes) once, and `deskkit.CheckoutForRepo` finds
+a repository's local checkout in this order: its `DESK_ROOTS` entry, then a `DESK_CHECKOUTS`
+entry (`"<owner>/<repo>=<path>,…"`, for a `homed-in:` or `deliverable_repo:` home with no
+`docs/streams/`), then a directory named after the repository beside the tracking checkout.
+`DESK_CHECKOUTS` refuses exactly what `DESK_ROOTS` refuses (an entry outside the allowed set, a
+malformed entry, a repeated repository). Every answer must match the checkout's own origin: a
+mis-mapped path refuses instead of falling through to the next candidate, and no candidate is
+could-not-check.
+
 ### Evidence publication requests
 
 `deskevidence` shares a snapshot within one publication. On GitHub its admission
@@ -2272,6 +2283,33 @@ not fatal**: `statusgenSkew` in the JSON header and a `WARN` line on `--table`.
 `--gate-scores` is per-root regardless of statusgen version, so refusing would cost
 availability for no correctness gain — but the skew stays visible so it cannot rot.
 
+## Delivering human inbox changes
+
+A polling consumer can use `deskinbox changes --consumer morning-inbox owner/repo`.
+Use the same consumer name and repository set across sessions. Repository order and
+duplicate arguments do not affect the cursor. Each successful read returns a JSON
+object with an `events` array. A nonempty batch includes a `receipt`.
+
+- `ready` offers a newly actionable human request.
+- `changed` replaces an earlier offer when its act or evidence changes.
+- `withdrawn` cancels an earlier offer by issue ID and omits the obsolete action.
+- `reminder` repeats an acknowledged, outstanding act after an optional interval,
+  such as `--remind-after 24h`. The interval starts again at acknowledgement.
+
+After the **whole batch** reaches its destination, the consumer runs
+`deskinbox changes --consumer morning-inbox --ack RECEIPT owner/repo`. Reading
+alone leaves delivery pending. If a process restarts or a delivery fails, poll
+again. A newer observation can supersede the pending receipt. The consumer
+can use each event's stable issue ID to update or withdraw a previously displayed
+request. An empty array requires no delivery or acknowledgement.
+
+A failed discovery or unverifiable item produces a nonzero exit and preserves
+the cursor. Acknowledgement uses local state and requires no new forge read.
+A corrupt cursor error names its file in the desk state directory under
+`inbox-changes/<scope>/cursor.json`. To recover, pause that consumer, move the
+named file aside for inspection and resume polling. The next complete poll
+offers every currently ready act again.
+
 ## deskboard `--delta` / `--quiet` — console discipline
 
 The standing desk windows sweep the board every loop and print the whole thing each time,
@@ -2892,7 +2930,7 @@ takes the C-5 audit line and the C-6 kill switch but NOT the outward-write rate 
 
 ```bash
 deskwt add <name> [--branch B] [--base origin/main] [--upstream refs/remotes/REMOTE/BRANCH] [--role R] [--lock-session <id>] [--adopt-run <key>]   # create tracker-<name> on a tracking branch
-deskwt remove <path>                                   # remove ONE proven-safe worktree
+deskwt remove <path> [--claim-repo <owner/name>]       # remove ONE proven-safe worktree
 deskwt prune [--repo <path>] [--interval <dur>] [--min-idle 1h]   # bulk-reduce stale worktrees, safely
 deskwt prune --reclaim-stale-locks [--lock-ttl 24h]    # …and retire locks whose session is gone
 deskwt prune --reap-dead-sessions [--dry-run]          # …and reap the worktrees no live session owns
@@ -2987,6 +3025,16 @@ inventory and lists every observable change.
   unregistered path, or anything resolving outside the prefixes; untracked build artifacts
   (`node_modules`, `target/dist`, …) do NOT block. It shares its tracked-clean check and its
   delete+prune+verify step with `prune` (one implementation, no drift).
+  A dispatched home (one recording `assay.runKey`) is judged by its dispatch claim, read in
+  the repository the home records as `assay.claimRepo`: this checkout's origin, or, for a
+  cross-repository verifier's home, its tracking repository at the address origin's URL gives
+  with the owner/name replaced (same host, rewrite rules and credentials). Held or unreadable
+  refuses; released leaves the decision to the gates above. A home recorded before claim
+  namespaces were (no `assay.claimStore`) holds as could-not-check, and the refusal names the
+  sanctioned path: `--claim-repo <owner/name>` states the repository its dispatch claimed in
+  (a worker or review dispatch: this checkout's origin; a cross-repository verifier: its
+  tracking repository). The flag must agree with any namespace the home records, and it
+  relaxes no other gate.
 
 - **`prune`** exists because stale worktrees accumulate (the desk loops spawn one per worker
   and rarely remove them — ~1065 observed) until tooling breaks: the bash sandbox hits
@@ -7883,6 +7931,16 @@ a fail-open in the tier policy cannot leak a risk-bearing brief into DISPATCH). 
 gather Evidence for such a brief — its member line reads `Evidence-only (never flip-eligible)` —
 but never flips it; the Evidence-only lane in `Land` writes Evidence with no status flip and the
 human's merge of the checkpoint PR is the flip.
+
+**One outcome protocol for the writer and its readers**. The outcome words, the
+row-result reduction and the record codec the verifier writes and the queue reads are defined once in
+`statusgen/evaluation/outcome.go` (the codec in its subpackage `statusgen/evaluation/outcomerecord`);
+`deskkit` keeps only the adapters. The writer's existing outcome-word checks are unchanged:
+`--outcome-record` lands only a word the readers recognise (`verified`, `verify-fail`, `fail`,
+`blocked`, `needs-context`, `needs_context`, ignoring case and surrounding space as the readers do), and
+the verified-closure guard and the sidecar gate count `Verified` or ` verified ` as a pass. What is new is
+that a `verified` record that holds or fails rows is refused at the writer. The record layout, the
+numeric exit codes and the wake-receipt schema are unchanged.
 
 **`plan` does not re-run an unchanged failure — wake receipts** (`verify-wake-v1`;
 `docs/streams/example-stream/verify-wake-v1.md`). A `verify-fail`/`blocked` verifier run lands a
