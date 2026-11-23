@@ -84,12 +84,19 @@ func TestHeldNonZeroAllConsumers(t *testing.T) {
 }
 
 // TestHeldNonZeroFailStillRefuses: the control. A latest run whose row 2
-// records fail exit=1 covers nothing, so the earlier hold still refuses on
-// every reader.
+// records fail exit=1 covers nothing, so with rule 3d off the earlier hold
+// still refuses on every reader. With 3d on the latest strict PASS entry
+// supersedes that hold, and the failed row is refused by verifyflip's witness
+// check instead (a fail outcome is not a hold).
 // regression: #5541
 func TestHeldNonZeroFailStillRefuses(t *testing.T) {
 	failed := strings.Replace(vfRow2, "pass exit=1", "fail exit=1", 1)
 	ev := nzOldHeld() + nzLatest(failed)
+	o := vfDefaults()
+	o.evidence = ev
+	vfRefuses(t, o, "lack a passing execution witness (row 2: fail)")
+	defer func(on bool) { heldPassRule = on }(heldPassRule)
+	heldPassRule = false
 	if err := flipHeldRefusal("vf/01", "implemented", ev); err == nil {
 		t.Error("flipHeldRefusal admitted a latest run whose row 2 failed")
 	}
