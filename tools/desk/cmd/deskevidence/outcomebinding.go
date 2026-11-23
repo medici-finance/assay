@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -89,7 +90,7 @@ func validateOutcomeEvidenceBinding(root string, fg deskkit.Forge, fr deskkit.Fo
 	if len(sha) != 40 {
 		return deskkit.Refused("refused: outcome record must name the full Evidence commit SHA")
 	}
-	atCommit, err := gitShowAt(root, sha, b.Brief)
+	atCommit, err := evidenceCommitAt(root, fr, branch, sha, b.Brief)
 	if err != nil {
 		return deskkit.Unverifiable("cannot read the outcome record's Evidence commit", err)
 	}
@@ -115,6 +116,35 @@ func validateOutcomeEvidenceBinding(root string, fg deskkit.Forge, fr deskkit.Fo
 		}
 	}
 	return deskkit.Refused("refused: outcome record has no landed Evidence for the current admitted run; land the Evidence successfully before writing its outcome")
+}
+
+// evidenceCommitFetchFn is the network seam evidenceCommitAt fetches through; tests serve
+// the refspecs from a local repository.
+var evidenceCommitFetchFn = fetchLandedRefs
+
+// evidenceCommitAt reads relPath at the Evidence commit sha. Evidence lands through the
+// forge API, in the repository that TRACKS the brief (#6274), so the read root (a
+// cross-repository verifier clone, or any checkout that has not fetched since the landing)
+// may not hold that commit yet. On a miss it fetches the tracking repository's landing
+// branch and main into the root's private deskevidence-fetch refs and reads again. The
+// commit is still named by its full SHA, and the landed-content comparison that follows is
+// unchanged, so the fetch only supplies objects; it never chooses what is compared.
+func evidenceCommitAt(root string, fr deskkit.ForgeRepo, branch, sha, relPath string) ([]byte, error) {
+	atCommit, err := gitShowAt(root, sha, relPath)
+	if err == nil {
+		return atCommit, nil
+	}
+	if plumbing.NewBranchReferenceName(branch).Validate() != nil {
+		return nil, err
+	}
+	specs := []string{"+refs/heads/main:" + landedFetchRefs + "main"}
+	if branch != "main" {
+		specs = append(specs, "+refs/heads/"+branch+":"+landedFetchRefs+"branch/"+branch)
+	}
+	if ferr := evidenceCommitFetchFn(root, fr.Slug(), specs); ferr != nil {
+		return nil, fmt.Errorf("%v; fetching %s for it: %v", err, fr.Slug(), ferr)
+	}
+	return gitShowAt(root, sha, relPath)
 }
 
 // Supplied receipts must obey the same observed-input contract as derived ones.

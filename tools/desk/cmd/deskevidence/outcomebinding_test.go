@@ -305,3 +305,70 @@ type outcomeWakeInputs map[string]string
 
 func (m outcomeWakeInputs) Revision(key string) (string, bool)  { v, ok := m[key]; return v, ok }
 func (m outcomeWakeInputs) ActionCompleted(string) (bool, bool) { return false, false }
+
+// The 2026-11-12 / 2026-11-17 instances of #6274: deskevidence lands Evidence through the forge
+// API in the TRACKING repository, so the commit the outcome record names exists on the forge
+// but not in the local read root, and the outcome stayed could-not-check. The binding now
+// fetches the tracking repository's landing branch on a miss and reads the commit again;
+// every comparison after that read is unchanged.
+// regression: #6274
+func TestOutcomeBindingFetchesEvidenceCommitOnMiss(t *testing.T) {
+	for _, fetches := range []bool{true, false} {
+		t.Run(fmt.Sprintf("fetch=%v", fetches), func(t *testing.T) {
+			f, errBuf := setupFake(t)
+			outcomeEvidenceBindingFn = productionOutcomeEvidenceBinding
+			root, source := receiptGitRoot(t)
+			base, err := os.ReadFile(filepath.Join(root, receiptBriefPath))
+			if err != nil {
+				t.Fatal(err)
+			}
+			receipt := deskkit.VerifierReceipt{Issue: 77, Binding: deskkit.VerifierBinding{
+				Repo: "example-org/tracker", Brief: receiptBriefPath, Source: source,
+				Run: strings.Repeat("a", 64), Model: "gpt-6-astra", Tier: "strong",
+				PlanSHA256: planDigest(strings.TrimSpace(strings.SplitN(string(base), "\n## Evidence\n", 2)[0])),
+			}}
+			verifierEvidenceAdmissionFn = func(string, string, string, deskkit.Forge) (deskkit.VerifierReceipt, error) { return receipt, nil }
+			oldDerive := outcomeReceiptFn
+			outcomeReceiptFn = func(raw []byte, _ string, _ deskkit.Forge, _ deskkit.ForgeRepo, _, _ string) ([]byte, error) {
+				return raw, nil
+			}
+			t.Cleanup(func() { outcomeReceiptFn = oldDerive })
+
+			// The forge's copy of the tracking repository: the Evidence commit lands on the
+			// landing branch there, and never in the local read root.
+			forge := t.TempDir()
+			rvGitIn(t, forge, "clone", "-q", root, ".")
+			rvGitIn(t, forge, "checkout", "-q", "-b", "evidence-branch")
+			landed := string(base) + "\n| 1 | command | 0 | observed |\n" + receipt.EvidenceBinding() + "\n"
+			rvWriteAndAdd(t, forge, receiptBriefPath, landed)
+			rvGitIn(t, forge, "commit", "-qm", "Evidence")
+			sha := rvGitIn(t, forge, "rev-parse", "HEAD")
+			f.setFile(receiptBriefPath, landed)
+
+			var fetched []string
+			evidenceCommitFetchFn = func(dir, repo string, specs []string) error {
+				fetched = append(fetched, repo)
+				if !fetches {
+					return fmt.Errorf("fixture: forge unreachable")
+				}
+				rvGitIn(t, dir, append([]string{"fetch", "-q", forge}, specs...)...)
+				return nil
+			}
+			line := completeFail(t, fmt.Sprintf(`{"ts":"2026-10-12T00:00:00Z","brief":"example-stream/14","outcome":"blocked","sha":%q,"blocker_kind":"human-action","blocker_ref":"#7"}`, sha))
+			file := writeRepoFile(t, "record.json", line)
+			code := run([]string{"example-org/tracker", "evidence-branch", "--outcome-record", file, "--root", root})
+			if len(fetched) != 1 || fetched[0] != "example-org/tracker" {
+				t.Fatalf("the missing Evidence commit was fetched from %q, want exactly the tracking repo", fetched)
+			}
+			if fetches {
+				if code != 0 || len(f.writes) != 1 {
+					t.Fatalf("an Evidence commit landed through the forge must bind once fetched: exit=%d stderr=%s writes=%d", code, errBuf.String(), len(f.writes))
+				}
+				return
+			}
+			if code != deskkit.ExitUnverifiable || len(f.writes) != 0 {
+				t.Fatalf("an unfetchable Evidence commit must stay could-not-check: exit=%d stderr=%s writes=%d", code, errBuf.String(), len(f.writes))
+			}
+		})
+	}
+}

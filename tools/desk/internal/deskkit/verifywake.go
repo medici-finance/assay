@@ -494,10 +494,14 @@ func (rr *RootRevisionReader) Revision(input string) (string, bool) {
 		return "", false
 	case strings.HasPrefix(input, InputKeyRepoSourcePrefix):
 		repo := strings.TrimPrefix(input, InputKeyRepoSourcePrefix)
-		root := RootForRepo(repo)
-		if root == "" {
+		// The deliverable's checkout comes from the shared resolver (#6274), which does not
+		// require it to be a stream root: a stream-less deliverable used to read as
+		// could-not-check here forever, so the planner kept re-offering its item.
+		c, cerr := CheckoutForRepo(repo, rr.Root)
+		if cerr != nil {
 			return "", false
 		}
+		root := c.Path
 		// A configured root may reach its checkout through a link; the own-work-tree
 		// check compares git's resolved toplevel to it by string. A root that
 		// cannot be resolved is could-not-check.
