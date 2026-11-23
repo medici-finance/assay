@@ -201,20 +201,20 @@ func cmdFinish(argv []string) int {
 		return 2
 	}
 	// A reviewer invoking the legacy spelling from its dispatched checkout also
-	// hands off its own attempt. Other working directories retain the plain finish.
+	// hands off its own attempt. Other working directories retain the plain finish:
+	// a directory whose review stamp cannot be read proves no handoff, so it posts
+	// without one (the checkout then keeps its ordinary cleanup rules), and only a
+	// stamp that IS read binds the strict checks below.
 	if *home == "" {
 		if top, err := gitcore.Toplevel("."); err == nil {
 			admin, err := gitcore.GitDir(top)
-			if err != nil {
-				fmt.Fprintln(stderr, err)
-				return deskkit.ExitUnverifiable
+			var stamp reviewhome.Stamp
+			if err == nil {
+				stamp, err = reviewhome.ReadStamp(admin)
 			}
-			stamp, err := reviewhome.ReadStamp(admin)
 			if err != nil {
-				fmt.Fprintln(stderr, err)
-				return deskkit.ExitUnverifiable
-			}
-			if stamp.ReviewAttempt != "" {
+				fmt.Fprintf(stderr, "deskpost finish: no checkout handoff (the review stamp in %s cannot be read: %v)\n", top, err)
+			} else if stamp.ReviewAttempt != "" {
 				*home, *attempt = top, stamp.Attempt
 			}
 		}

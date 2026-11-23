@@ -983,3 +983,47 @@ func TestFinishQueuesExactAttemptBeforeReleasing(t *testing.T) {
 		t.Fatalf("finish=%d %s", code, h.errOut.String())
 	}
 }
+
+// The legacy spelling run from a checkout whose review stamp cannot be read proves no
+// handoff: finish posts and releases as it did before handoffs existed, and says so. Only a
+// stamp that is read binds the handoff checks.
+func TestFinishUnreadableStampPostsWithoutHandoff(t *testing.T) {
+	h := setupFinish(t)
+	base := t.TempDir()
+	run1 := func(dir string, args ...string) string {
+		t.Helper()
+		c := exec.Command("git", args...)
+		c.Dir = dir
+		b, err := c.CombinedOutput()
+		if err != nil {
+			t.Fatalf("%v: %v %s", args, err, b)
+		}
+		return strings.TrimSpace(string(b))
+	}
+	run1(base, "init", "-q")
+	run1(base, "-c", "user.name=Test", "-c", "user.email=test@example.com", "-c", "commit.gpgsign=false", "commit", "--allow-empty", "-qm", "seed")
+	home := filepath.Join(base, "other-checkout")
+	run1(base, "worktree", "add", "--detach", home, "HEAD")
+	admin := run1(home, "rev-parse", "--absolute-git-dir")
+	if err := os.WriteFile(filepath.Join(admin, "config.worktree"), []byte("[assay\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(home)
+	saved := releaseReviewClaimFn
+	defer func() { releaseReviewClaimFn = saved }()
+	released := false
+	releaseReviewClaimFn = func(_, _, _ string) (string, error) {
+		released = true
+		return finishClaimReleased, nil
+	}
+	args := finishArgs("review", "1", "approve", testHead, writeBody(t, "v.md", okReviewBody), finishClaimKey)
+	if code := run(args); code != 0 || !released {
+		t.Fatalf("finish=%d released=%v %s", code, released, h.errOut.String())
+	}
+	if !strings.Contains(h.errOut.String(), "no checkout handoff") {
+		t.Fatalf("the skipped handoff was not reported: %s", h.errOut.String())
+	}
+	if _, err := os.Stat(filepath.Join(admin, reviewhome.ReceiptFile)); !os.IsNotExist(err) {
+		t.Fatalf("a receipt was written without a readable stamp: %v", err)
+	}
+}
