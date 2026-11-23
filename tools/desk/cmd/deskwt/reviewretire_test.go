@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -265,4 +266,35 @@ func TestReviewHeadProofHoldsAnUnpublishedHead(t *testing.T) {
 		t.Fatalf("%d %s %s", rc, out, diag)
 	}
 	assertExists(t, r.Home)
+}
+
+// The backlog size walk is bounded per sweep: a tree the budget cannot finish is
+// counted as unknown size and adds no partial bytes.
+func TestReviewBacklogSizeWalkIsBounded(t *testing.T) {
+	old := reviewSizeBudget
+	t.Cleanup(func() { reviewSizeBudget = old })
+	reviewSizeBudget = 6
+	root := t.TempDir()
+	small, large := filepath.Join(root, "small"), filepath.Join(root, "large")
+	for i, dir := range []string{small, large} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		n := 2 + 8*i
+		for j := 0; j < n; j++ {
+			if err := os.WriteFile(filepath.Join(dir, "f"+strconv.Itoa(j)), []byte("abcd"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	var b reviewBacklog
+	now := time.Now()
+	b.hold(small, nil, now)
+	b.hold(large, nil, now)
+	if b.pending != 2 || b.bytes != 8 || b.unknownSize != 1 {
+		t.Fatalf("pending=%d bytes=%d unknownSize=%d; want 2, 8 and 1", b.pending, b.bytes, b.unknownSize)
+	}
+	if b.walked > reviewSizeBudget {
+		t.Fatalf("walked %d entries past a budget of %d", b.walked, reviewSizeBudget)
+	}
 }

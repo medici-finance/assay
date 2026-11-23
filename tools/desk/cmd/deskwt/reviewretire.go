@@ -82,7 +82,16 @@ type reviewBacklog struct {
 	retired, pending, unknownSize, unknownAge int
 	bytes                                     int64
 	oldest                                    time.Duration
+	// walked counts the entries the size walks visited this sweep.
+	walked int
 }
+
+// reviewSizeBudget bounds the entries one sweep's backlog size walks visit, across every
+// held review checkout. A tree the budget cannot finish counts in review_unknown_size and
+// adds no bytes, so the summary never reports a partial size as a total.
+var reviewSizeBudget = 200000
+
+var errSizeBudget = errors.New("review backlog size budget spent")
 
 func (b reviewBacklog) summary() string {
 	return fmt.Sprintf("review_retired=%d review_backlog=%d review_backlog_bytes=%d review_oldest=%s review_unknown_size=%d review_unknown_age=%d",
@@ -103,6 +112,10 @@ func (b *reviewBacklog) hold(rt string, confirmed fs.FileInfo, now time.Time) {
 		if err != nil {
 			return err
 		}
+		if b.walked >= reviewSizeBudget {
+			return errSizeBudget
+		}
+		b.walked++
 		if d.IsDir() {
 			return nil
 		}

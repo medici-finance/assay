@@ -3471,7 +3471,9 @@ in, which can differ from the checkout base's origin. A confirmed checkout can r
 while the PR is open. On a hold or
 an interruption after exit acknowledgement, ordinary `deskwt prune` retries. Each
 worktree sweep reports the remaining count, logical file bytes and oldest age since
-confirmation, plus the count of entries with unavailable size or age. A dry run reports
+confirmation, plus the count of entries with unavailable size or age. The size walks
+share a budget of 200,000 entries per sweep; a checkout the budget cannot finish counts
+as unavailable size. A dry run reports
 projected removals and the projected remaining backlog. Historical checkouts without
 a confirmed handoff follow their existing cleanup rules.
 
