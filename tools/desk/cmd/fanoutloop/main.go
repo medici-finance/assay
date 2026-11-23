@@ -169,7 +169,9 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 		fmt.Fprintf(out, "COULD-NOT-CHECK: %d row(s) NOT dispatched — representing PR unknown (listed below)\n", len(unchecked))
 	}
 	for _, hold := range f.issuePRHoldRows() {
-		fmt.Fprintf(out, "ISSUE-PR HOLD %s\n", hold)
+		if _, err := fmt.Fprintf(out, "ISSUE-PR HOLD %s\n", hold); err != nil {
+			return err
+		}
 	}
 	for _, it := range items {
 		tier, terr := f.TierPolicy(it)

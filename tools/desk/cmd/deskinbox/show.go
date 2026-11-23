@@ -47,18 +47,25 @@ Exit 6 means a required observation could not be checked.`,
 			}
 			a, err := readInboxAction(repo, n, observer())
 			if err != nil {
-				fmt.Fprintf(stderr, "deskinbox: %s#%d could-not-check: %s\n", repo, n, cleanText(err.Error()))
+				_, _ = fmt.Fprintf(stderr, "deskinbox: %s#%d could-not-check: %s\n", repo, n, cleanText(err.Error()))
 				return codeErr(deskkit.ExitCodeOf(err))
 			}
-			fmt.Fprintf(stdout, "%s#%d — %s\nState: %s\nNext owner: %s\nNext action: %s\n", repo, n, a.Title, a.State, a.Owner, a.Act)
+			// Compose the report in memory, where a write cannot fail, then write
+			// it once. A report that cannot be written exits unverifiable.
+			var b strings.Builder
+			fmt.Fprintf(&b, "%s#%d — %s\nState: %s\nNext owner: %s\nNext action: %s\n", repo, n, a.Title, a.State, a.Owner, a.Act)
 			if a.command != "" {
-				fmt.Fprintln(stdout, "Command:")
-				fmt.Fprintln(stdout, a.command)
+				b.WriteString("Command:\n")
+				b.WriteString(a.command + "\n")
 			}
 			for _, line := range [][2]string{{"Issue", a.URL}, {"Evidence", a.Evidence}, {"Desk verification", a.Verify}} {
 				if line[1] != "" {
-					fmt.Fprintf(stdout, "%s: %s\n", line[0], line[1])
+					fmt.Fprintf(&b, "%s: %s\n", line[0], line[1])
 				}
+			}
+			if _, err := io.WriteString(stdout, b.String()); err != nil {
+				_, _ = fmt.Fprintf(stderr, "deskinbox: %s#%d could-not-check: report write failed: %s\n", repo, n, cleanText(err.Error()))
+				return codeErr(deskkit.ExitUnverifiable)
 			}
 			if a.State == "unknown" {
 				return codeErr(deskkit.ExitUnverifiable)

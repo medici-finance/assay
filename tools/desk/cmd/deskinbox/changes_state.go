@@ -57,11 +57,13 @@ func withChangesState(dir string, fn func(string, *changeState) error) error {
 	if err != nil {
 		return err
 	}
-	defer lock.Close()
+	// The lock file carries no data, and closing it releases the lock, so
+	// neither the unlock nor the close has an error the caller could act on.
+	defer func() { _ = lock.Close() }()
 	if err := deskkit.TryLockExclusive(lock); err != nil {
 		return fmt.Errorf("cannot acquire inbox cursor lock: %w", err)
 	}
-	defer deskkit.UnlockFile(lock)
+	defer func() { _ = deskkit.UnlockFile(lock) }()
 	path := filepath.Join(dir, "cursor.json")
 	s := changeState{Version: 1, Delivered: make(map[string]deliveredAction)}
 	raw, err := os.ReadFile(path)
@@ -85,7 +87,9 @@ func saveChanges(path string, state *changeState) error {
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
+	// After a successful rename the temporary name no longer exists, so this
+	// cleanup fails by design on the success path.
+	defer func() { _ = os.Remove(tmp.Name()) }()
 	if err = json.NewEncoder(tmp).Encode(state); err == nil {
 		err = tmp.Sync()
 	}
