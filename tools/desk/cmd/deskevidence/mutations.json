@@ -666,6 +666,18 @@
       "file": "cmd/deskevidence/writeflow.go",
       "old": "\tif left := lockWait - a.lockWaited; left > 0 {",
       "new": "\tif left := lockWait; left > 0 {"
+    },
+    {
+      "name": "a cross-repository outcome reads its Evidence commit from a tracking clone that never fetched it (the landed commit is never fetched; every cross-repo outcome refuses)",
+      "file": "cmd/deskevidence/outcomerecord.go",
+      "old": "\tif err := outcomeEvidenceInRoot(evidenceRoot, receipt, fr, branch, outcome.SHA); err != nil {",
+      "new": "\tif err := error(nil); err != nil {"
+    },
+    {
+      "name": "a same-repository outcome root is fetched into as if it were a cross-repository tracking clone",
+      "file": "cmd/deskevidence/outcomebinding.go",
+      "old": "\tif receipt.Binding.Version != 2 || len(sha) != 40 {",
+      "new": "\tif len(sha) != 40 {"
     }
   ]
 }
