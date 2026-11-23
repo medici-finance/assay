@@ -316,7 +316,7 @@ func (g *gen) responses(r contract.Route) map[string]any {
 		// answers since the service contract increment 4 mounted it.
 		if strings.HasSuffix(r.Path, "/cells/{id}/overrides") {
 			resp := jsonBody("OverridesResponse")
-			resp["description"] = "the cell's override table AFTER the merge, with record_pr naming the record PR's status (could-not-check when the write-issues App is unconfigured)"
+			resp["description"] = "the cell's override table AFTER the merge, with record_pr naming the record PR's status (could-not-check when the record-PR App is unconfigured)"
 			return map[string]any{"200": resp}
 		}
 		return map[string]any{"204": map[string]any{"description": "service-local state recorded; no platform write and no body"}}

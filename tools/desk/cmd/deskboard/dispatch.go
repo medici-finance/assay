@@ -412,7 +412,7 @@ func cmdDispatch(hdr Header, verbUsed, tier string) (*Report, error) {
 			if rep.Eligible == 0 {
 				fmt.Fprintf(w, "(no dispatchable briefs — all %d configured root(s) read successfully; nothing at todo/in-progress is eligible + unclaimed)\n", len(rep.Roots))
 			} else {
-				fmt.Fprintf(w, "(0 shown but %d eligible — rows are held back; the queue is not drained; see the queue line above)\n", rep.Eligible)
+				_, _ = fmt.Fprintf(w, "(0 shown but %d eligible — rows are held back; the queue is not drained; see the queue line above)\n", rep.Eligible)
 			}
 			return
 		}

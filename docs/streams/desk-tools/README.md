@@ -243,6 +243,8 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 63 | [Admit the open false-positive shapes as registry entries, each with the refusals that bound it, and cap word-shaped admission](brief-63-registry-acceptance-shapes.md) | 2 | L | todo | — | — |
 | 64 | [Decide which lines of a branch diff the secret scan reads, and pin the answer](brief-64-diff-scan-scope.md) | 2 | M | todo | — | — |
 | 65 | [Read each Verify row's disposition from a field the verifier tooling writes, not from Evidence prose](brief-65-structured-verify-disposition.md) | 1 | L | todo | — | — |
+| 67 | [Pin the verdict transcriber's trust anchors in a committed file](brief-67-pin-the-verdict-transcriber-s-trust-anchors-in-a-committed-file.md) | 1 | M | todo | — | — |
+| 68 | [One tracking/deliverable resolver for desk verbs](brief-68-one-tracking-deliverable-resolver-for-desk-verbs.md) | 1 | L | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -278,7 +280,7 @@ See "Secret-scan class — 10 November 2026" below.
 
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
-  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60, /61, /62, /65 (all independent; parallelizable). desk-tools/06
+  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60, /61, /62, /65, /67 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 - **Wave 2** — desk-tools/35 (depends on desk-tools/34), desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
@@ -554,3 +556,30 @@ which asks the gate to read a structured disposition instead of prose.
 
 Close-verify, the card emitter and autoflip keep the prose rules. This brief changes the flip read
 only, the same scope #6638 takes.
+
+## Pinned verdict-transcriber trust anchors — 22 November 2026
+
+The verdict transcriber (`statusgen --transcribe-verdict`) decides whom to believe from three
+values it reads out of the repository's Actions configuration: the blessing login, the verifier
+role binding and the verifier public key. Anyone who can write that configuration can change all
+three in one step, and the change shows in neither the tree nor a review. desk-tools/30 recorded
+that as an accepted residual and named the pin as the follow-up. #2354 asks for it.
+
+| Brief | What it does | Gate |
+|---|---|---|
+| [67](brief-67-pin-the-verdict-transcriber-s-trust-anchors-in-a-committed-file.md) | Adds a committed file on main holding the three anchors. The transcriber reads it first and refuses, naming the anchor, when the Actions copy is set and differs. The Actions read stays as the fallback for an installation with no file, and the report says which source was used. The path, where the equality check runs and whether the file needs an owner rule are the open questions. The trusted-login list and the other bot slugs stay Actions configuration | human, decision at creation: it changes where a trust control reads its anchors from |
+
+This brief narrows one residual and does not claim to remove the trust boundary. It moves it from
+"write access to Actions configuration" to "a merged pull request that edits the file".
+
+## Cross-repository item resolver — 23 November 2026
+
+A brief can be tracked in one repository and deliver into another. Each desk verb chose between
+the two on its own, so every fix aligned one verb while the next still read the other repository.
+#6274 records the class: a decision hold that read the deliverable, a verifier association and
+wake reader that could not find a deliverable with no streams, and an outcome record that could
+not read its own Evidence commit (fixed separately by #7492).
+
+| Brief | What it does | Gate |
+|---|---|---|
+| [68](brief-68-one-tracking-deliverable-resolver-for-desk-verbs.md) | Adds `ItemRepos`, which names the tracking and deliverable repository for each role, and `CheckoutForRepo`, which finds a repository's checkout from `DESK_ROOTS`, then `DESK_CHECKOUTS`, then the sibling directory, and proves it by origin. Moves the decision hold, the verifier association and the wake reader onto it. The remaining verbs are listed as follow-ups F1 to F7 in the brief | model: it changes which repository a verb reads and weakens no control |
