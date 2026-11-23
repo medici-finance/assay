@@ -30,8 +30,11 @@ empty temporary directory and expects "not a git repository" would otherwise dis
 the enclosing repository and write to it; from a linked worktree that is the shared
 checkout's config. The probe asks git itself with every inherited `GIT_*` variable
 removed, because an isolating child drops `GIT_CEILING_DIRECTORIES` too. A root git
-cannot check is refused as could-not-check; with no git on `PATH` there is nothing that
-could discover a repository, and the probe passes. Point `TMPDIR` and `GOTMPDIR` at a
+cannot check is refused as could-not-check: that includes a root inside a repository owned
+by another account (the probe keeps git's ownership check, so it never parses that
+repository's config) and any error other than one that starts with git's own
+`fatal: not a git repository`. With no git on `PATH` there is nothing that could discover
+a repository, and the probe passes. Point `TMPDIR` and `GOTMPDIR` at a
 directory outside every repository to clear the refusal.
 
 The desk CI shards run this refusal through the adapter's own test

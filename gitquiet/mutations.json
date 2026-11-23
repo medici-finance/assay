@@ -46,8 +46,14 @@
     {
       "name": "could-not-check rounds to clean — every git failure reads as 'outside every repository'",
       "file": "gitquiet.go",
-      "old": "\tcase strings.Contains(stderr.String(), \"not a git repository\"):\n",
+      "old": "\tcase strings.HasPrefix(strings.TrimSpace(stderr.String()), \"fatal: not a git repository\"):\n",
       "new": "\tdefault:\n"
+    },
+    {
+      "name": "the clean match is unanchored — a git error that echoes a path containing 'not a git repository' reads as clean",
+      "file": "gitquiet.go",
+      "old": "\tcase strings.HasPrefix(strings.TrimSpace(stderr.String()), \"fatal: not a git repository\"):\n",
+      "new": "\tcase strings.Contains(stderr.String(), \"not a git repository\"):\n"
     }
   ]
 }

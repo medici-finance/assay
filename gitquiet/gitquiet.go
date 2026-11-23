@@ -129,11 +129,15 @@ func tempRoots() [][2]string {
 // enclosingRepo returns the git directory git discovers from dir, or "" when dir is in
 // no repository. It asks git itself, in the environment most likely to find one: every
 // inherited GIT_* variable removed (GIT_CEILING_DIRECTORIES included, as an isolating
-// child's environment removes it), discovery allowed across filesystems, and ownership
-// checks off, so a repository owned by another account still counts. With no git on
-// PATH there is nothing that could discover a repository, and it returns "".
+// child's environment removes it), and discovery allowed across filesystems. Ownership
+// checks stay on: git never parses the config of a repository owned by another account,
+// and its dubious-ownership error is not "not a git repository", so that root is refused
+// as could-not-check. Only stderr that starts with git's own "fatal: not a git
+// repository" reads as clean, so an error that merely echoes a path containing that
+// phrase does not. With no git on PATH there is nothing that could discover a
+// repository, and it returns "".
 func enclosingRepo(dir string) (string, error) {
-	cmd := exec.Command("git", "-c", "safe.directory=*", "-C", dir, "rev-parse", "--absolute-git-dir")
+	cmd := exec.Command("git", "-C", dir, "rev-parse", "--absolute-git-dir")
 	for _, kv := range os.Environ() {
 		if !strings.HasPrefix(strings.ToUpper(kv), "GIT_") {
 			cmd.Env = append(cmd.Env, kv)
@@ -149,7 +153,7 @@ func enclosingRepo(dir string) (string, error) {
 		return strings.TrimSpace(string(out)), nil
 	case errors.Is(err, exec.ErrNotFound):
 		return "", nil
-	case strings.Contains(stderr.String(), "not a git repository"):
+	case strings.HasPrefix(strings.TrimSpace(stderr.String()), "fatal: not a git repository"):
 		return "", nil
 	}
 	return "", fmt.Errorf("could-not-check whether %s is inside a git repository: git rev-parse: %v: %s",

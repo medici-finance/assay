@@ -244,7 +244,8 @@ func TestRunRefusesTempInRepo(t *testing.T) {
 
 // TestEnclosingRepo — the probe. A directory below a work tree or a bare repository is
 // inside it, whatever GIT_CEILING_DIRECTORIES the caller set; a directory outside both is
-// not; a directory git cannot enter is an error.
+// not; a directory git cannot enter is an error, even when its path contains git's
+// "not a git repository" phrase.
 //
 // regression: F-temp-root-in-repo
 func TestEnclosingRepo(t *testing.T) {
@@ -269,5 +270,10 @@ func TestEnclosingRepo(t *testing.T) {
 	// A root git cannot even enter is could-not-check, never "outside every repository".
 	if got, err := enclosingRepo(filepath.Join(out, "absent")); err == nil || got != "" {
 		t.Errorf("enclosingRepo(absent dir) = %q, %v; want a could-not-check error", got, err)
+	}
+	// git echoes the path in that error. A path that contains git's clean phrase must not
+	// make the failure read as clean: only stderr that starts with it counts.
+	if got, err := enclosingRepo(filepath.Join(out, "not a git repository")); err == nil || got != "" {
+		t.Errorf("enclosingRepo(absent dir named for the clean phrase) = %q, %v; want a could-not-check error", got, err)
 	}
 }
