@@ -19,6 +19,10 @@ type transBracketFixture struct {
 }
 
 func newTransBracket(t *testing.T, drift bool) transBracketFixture {
+	return transBracketWithSupplement(t, drift, true)
+}
+
+func transBracketWithSupplement(t *testing.T, drift, supplemental bool) transBracketFixture {
 	t.Helper()
 	c := newContainerFixture(t)
 	f := contextFixture(t, nil, func(stage, body string) string {
@@ -44,6 +48,10 @@ func newTransBracket(t *testing.T, drift bool) transBracketFixture {
 			} else {
 				body = strings.Replace(body, "| exit 0 |", "| exit 0 | check:ci |", 1)
 			}
+		}
+		if stage == "delivery" && !supplemental {
+			body = strings.Replace(body, "## Verify", "Delivery work outside the Verify table.\n\n## Verify", 1)
+			body = strings.Replace(body, "| 3 | `printf supplemental` | exit 0 |\n", "", 1)
 		}
 		if stage == "delivery" {
 			body = strings.Replace(body, "`printf supplemental` | exit 0 |", "`printf supplemental` | exit 0 | check:ci |", 1)
@@ -403,6 +411,58 @@ func TestTransitionBracketRefusals(t *testing.T) {
 			res, diag = captureVerifyrun(t, []string{"--close-bracket", "--root", f.home, "--brief", f.brief, "--admission-receipt", f.receipt, "--witness", f.witness})
 			if res.code == 0 || !strings.Contains(diag, "witness carries acceptance preamble without a host plan") || getFile(t, f.witness) != body {
 				t.Fatalf("ordinary preamble did not refuse atomically at its own guard: %d %s", res.code, diag)
+			}
+		})
+	}
+}
+
+func TestSourceAcceptanceBracket(t *testing.T) {
+	for _, action := range []string{"execute", "nonidentical-plan", "changed-digest", "changed-descriptor", "inline-verify", "revoke-before-close"} {
+		t.Run(action, func(t *testing.T) {
+			f := transBracketWithSupplement(t, false, action == "nonidentical-plan")
+			args := []string{"--open-bracket", "--root", f.home, "--brief", f.brief, "--out", f.receipt, "--acceptance-record", f.record, "--acceptance-forge", "--source-acceptance"}
+			result, diag := captureVerifyrun(t, args)
+			if action == "nonidentical-plan" {
+				if result.code == 0 || getFile(t, f.receipt) != "" {
+					t.Fatal("published a plan different from source", diag)
+				}
+				return
+			}
+			if result.code != 0 {
+				t.Fatal(diag)
+			}
+			body := getFile(t, f.receipt)
+			if !strings.Contains(body, `"source_record":`) || strings.Contains(body, `"verify":`) || strings.Contains(body, "check.sh") {
+				t.Fatal("receipt leaked or omitted the protected plan binding")
+			}
+			switch action {
+			case "changed-digest":
+				f.editReceipt(t, func(r *bracketReceipt) { r.Acceptance.VerifySHA = strings.Repeat("0", 64) })
+			case "changed-descriptor":
+				f.editReceipt(t, func(r *bracketReceipt) { r.Acceptance.SourceRecord += "x" })
+			case "inline-verify":
+				f.editReceipt(t, func(r *bracketReceipt) { r.Acceptance.Verify = "different" })
+			}
+			// The baked image passes the existing container flags, with no forge access.
+			authority := transitionClient
+			transitionClient = func() *ghClient { t.Fatal("offline container consulted the forge"); return nil }
+			run, diag := captureVerifyrun(t, f.runArgs())
+			transitionClient = authority
+			if action != "execute" && action != "revoke-before-close" {
+				if run.code == 0 || getFile(t, f.witness) != "" {
+					t.Fatal("accepted altered receipt", diag)
+				}
+				return
+			}
+			if run.code != 0 || !strings.Contains(getFile(t, f.witness), f.descriptor) {
+				t.Fatal("protected execution failed", diag)
+			}
+			if action == "revoke-before-close" {
+				f.forge.commentStatus = 404
+			}
+			code, diag := f.close(t, true)
+			if (code == 0) != (action == "execute") {
+				t.Fatal("unexpected protected close", code, diag)
 			}
 		})
 	}
