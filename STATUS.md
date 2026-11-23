@@ -87,7 +87,7 @@ _gate:model briefs at `verified` that the model auto-flip has not moved to `done
 | [milestone-support/03](docs/streams/milestone-support/README.md) | Load and validate versioned milestone records | 7d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [milestone-support/04](docs/streams/milestone-support/README.md) | Add negotiated brief schema and prefixed authoring | 7d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [milestone-support/05](docs/streams/milestone-support/README.md) | Build the combined milestone and brief dependency graph | 7d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
-| [milestone-support/11](docs/streams/milestone-support/README.md) | Project milestone state into stream views and deskboard | 31h | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
+| [milestone-support/11](docs/streams/milestone-support/README.md) | Project milestone state into stream views and deskboard | 32h | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [quality/19](docs/streams/quality/README.md) | qualgen re-fix metric — SZZ-traced fixes that repeat a defect an earlier fix already addressed | 7d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [statusgen/15](docs/streams/statusgen/README.md) | Extract canonical eligibility and coverage evaluation API | 7d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
 | [statusgen/17](docs/streams/statusgen/README.md) | `--scan-issues`: a `risk:high` label derives `gate: human` on the issue's placeholder (`risk:med` does not) | 7d | not yet `done`: REFUSED, COULD-NOT-CHECK, or not yet judged — `statusgen --auto-flip-model --dry-run` names which and why |
@@ -152,7 +152,7 @@ _Held by per-stream caps: 22 brief(s) across 3 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 92fc5497f 2026-11-23T01:01:23Z_
+_last regen: 050ff6b40 2026-11-23T02:05:53Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +173,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 92fc5497f 2026-11-23T01:01:23Z_
+_last regen: 050ff6b40 2026-11-23T02:05:53Z_
 
 **Progress:** 37/100 brief items done.
 
@@ -328,12 +328,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | build-less-brittle | 04 [exec:strong] | verified | 5570 | 5 | 7d | worker | fix, cite medici-finance/assay#1927 | 2026-10-04 assay-verifier-app[bot] @ d6662bbc6b4f (claude-opus-5-5) | — |
 | contributor-trust | 02 [exec:strong] | implemented | 4570 | 5 | 7d | worker | fix, cite medici-finance/assay#5210 | — | — |
 | derived-board | 03 [exec:strong] | implemented | 4570 | 5 | 7d | worker | fix, cite medici-finance/assay#2852 | — | — |
-| tool-refactoring | 01 [exec:strong] | implemented | 4510 | 5 | 31h | worker | fix, cite medici-finance/assay#1702 | — | — |
+| tool-refactoring | 01 [exec:strong] | implemented | 4510 | 5 | 33h | worker | fix, cite medici-finance/assay#1702 | — | — |
 | build-less-brittle | 12 [exec:strong] | implemented | 3570 | 1 | 7d | worker | fix, cite medici-finance/assay#4169 | — | — |
 | desk-containers | 26 | implemented | 3570 | 5 | 7d | worker | fix, cite medici-finance/assay#6455 | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3570 | 3 | 7d | worker | fix, cite medici-finance/assay#1281 | — | — |
 | statusgen | 44 [exec:strong] | implemented | 3550 | 5 | 5d | worker | fix, cite medici-finance/assay#6900 | — | — |
-| tool-refactoring | 03 [exec:strong] | implemented | 3510 | 3 | 30h | worker | fix, cite medici-finance/assay#7389 | — | — |
+| tool-refactoring | 03 [exec:strong] | implemented | 3510 | 3 | 32h | worker | fix, cite medici-finance/assay#7389 | — | — |
 | desktools-v2 | 60 [exec:strong] | implemented | 2570 | 3 | 7d | worker | fix, cite medici-finance/assay#1927 | — | — |
 | measured-status | 05 [exec:strong] | implemented | 2270 | 0 | 7d | worker | fix, cite #3038 | — | — |
 | measured-status | 06 [exec:strong] | implemented | 2250 | 0 | 5d | worker | fix, cite medici-finance/assay#4170 | — | — |
@@ -455,7 +455,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | graph-execution | 32 [exec:strong] | verified | 2070 | 0 | 7d | CI auto-flip | none; stuck after one main run → file | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
 | measured-status | 04 [exec:strong] | verified | 2070 | 0 | 7d | CI auto-flip | none; stuck after one main run → file | 2026-10-22 assay-verifier-app[bot] @ 05dc9fbc88f2 (claude-opus-5-5) | — |
 | statusgen | 23 [exec:strong] | verified | 2070 | 2 | 7d | CI auto-flip | none; stuck after one main run → file | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
-| milestone-support | 11 [exec:strong] | verified | 2010 | 2 | 31h | CI auto-flip | none; stuck after one main run → file | 2026-11-21 assay-verifier-app[bot] @ 2aafcfe485c7 (claude-opus-5-5) | — |
+| milestone-support | 11 [exec:strong] | verified | 2010 | 2 | 32h | CI auto-flip | none; stuck after one main run → file | 2026-11-21 assay-verifier-app[bot] @ 2aafcfe485c7 (claude-opus-5-5) | — |
 | desk-supervision | 19 [exec:strong] | verified | 1570 | 1 | 7d | CI auto-flip | none; stuck after one main run → file | 2026-10-04 assay-verifier-app[bot] @ 70deba75a577 (claude-opus-5-5) | — |
 | statusgen | 17 | verified | 1570 | 1 | 7d | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 54c024fca36e (claude-opus-5-5) | — |
 | statusgen | 24 [exec:strong] | verified | 1570 | 1 | 7d | CI auto-flip | none; stuck after one main run → file | 2026-10-29 assay-verifier-app[bot] @ 4264d1027198 (forge-identity) | — |
@@ -476,7 +476,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
 | graph-execution | 36 [exec:strong] | implemented | 21040 | 38 | 4d | verify-desk | triage, then re-bucket | — | — |
-| tool-refactoring | 05 [exec:strong] | implemented | 3010 | 2 | 29h | verify-desk | triage, then re-bucket | — | — |
+| tool-refactoring | 05 [exec:strong] | implemented | 3010 | 2 | 30h | verify-desk | triage, then re-bucket | — | — |
 | tool-refactoring | 06 [exec:strong] | implemented | 3010 | 2 | 2d | verify-desk | triage, then re-bucket | — | — |
 | composability | 02 | implemented | 2570 | 3 | 7d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2570 | 1 | 7d | verify-desk | triage, then re-bucket | — | — |
@@ -486,7 +486,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 04 [exec:strong] | implemented | 2070 | 2 | 7d | verify-desk | dispatch one judge | — | — |
 | forge-neutral | 17 [exec:strong] | implemented | 2070 | 0 | 7d | verify-desk | triage, then re-bucket | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2070 | 2 | 7d | verify-desk | triage, then re-bucket | — | — |
-| desk-tools | 34 [exec:strong] | implemented | 1510 | 1 | 29h | verify-desk | dispatch one judge | — | — |
+| desk-tools | 34 [exec:strong] | implemented | 1510 | 1 | 31h | verify-desk | dispatch one judge | — | — |
 | desktools-v2 | 71 [exec:strong] | implemented | 1070 | 0 | 7d | verify-desk | dispatch one judge | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1070 | 0 | 7d | verify-desk | triage, then re-bucket | — | — |
 
