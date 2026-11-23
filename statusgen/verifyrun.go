@@ -671,8 +671,9 @@ type shellPlan struct {
 }
 
 // admittedScrubbedNote is the could-not-run note for an admitted row that
-// reads scrubbed ASSAY_* inputs. It names the inputs and says what running the
-// row outside admission takes, so the note never reads as permission to do it.
+// reads inputs the scrub removed (admittedRowScrubbedRefs). It names the inputs
+// and says what running the row outside admission takes, so the note never
+// reads as permission to do it.
 func admittedScrubbedNote(names []string) string {
 	return "the row reads " + strings.Join(names, ", ") +
 		", which an admitted run removes from every row's environment, so it cannot run as written here." +
@@ -696,7 +697,8 @@ func removeRowScratch(dir string) {
 }
 
 // rowEnv is the environment every Verify row of the run executes in: the
-// caller's own, unless the run was admitted, when it is admittedRowEnv's.
+// caller's own, unless the run was admitted, when it is admittedRowEnv's
+// allow-list.
 func (p shellPlan) rowEnv() []string {
 	if p.env != nil {
 		return p.env
@@ -947,9 +949,11 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	// A row of an admitted run gets a HOME and a TMPDIR of its own, so it
 	// finds nothing an earlier row of the run left there.
 	if plan.rowScratch != "" {
-		// A row that reads an ASSAY_* input the scrub removed cannot run as
-		// written under admission. It is could-not-run, never a fail: its own
-		// guard on the missing value would otherwise read as a regression. Nor
+		// A row that reads an input the scrub removed (an ASSAY_* variable, or
+		// any other variable the allow-list drops that the row only reads)
+		// cannot run as written under admission. It is could-not-run, never a
+		// fail: its own guard on the missing value would otherwise read as a
+		// defect in the delivery. Nor
 		// is it ever a pass: the row's text chooses this outcome, so it must
 		// not be one that clears anything. The note does not grant a run
 		// outside admission either, where the row sees everything the scrub
