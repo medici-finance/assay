@@ -164,7 +164,7 @@ entry (`"<owner>/<repo>=<path>,…"`, for a `homed-in:` or `deliverable_repo:` h
 `DESK_CHECKOUTS` refuses exactly what `DESK_ROOTS` refuses (an entry outside the allowed set, a
 malformed entry, a repeated repository). Every answer must match the checkout's own origin: a
 mis-mapped path refuses instead of falling through to the next candidate, and no candidate is
-could-not-check (desk-tools/68).
+could-not-check.
 
 ### Evidence publication requests
 
