@@ -101,6 +101,29 @@ func TestReadyNotRevertedReadsEveryPage(t *testing.T) {
 	}
 }
 
+// The walk is bounded like deskflip's read of the same thread: a thread still full at the last
+// page under the cap is could-not-check, never "not reverted", and the walk stops at the cap.
+//
+// regression: #6254
+func TestReadyNotRevertedBoundedWalkFailsClosed(t *testing.T) {
+	f := approvedGreenFake(t)
+	for i := 0; i < maxChangeCommentPages*100+1; i++ {
+		f.issueComments = append(f.issueComments, map[string]any{
+			"id": 1000 + i, "body": "noise", "user": map[string]any{"login": "example-human"}})
+	}
+
+	code := run(readyArgs(exampleRepo))
+	if code != deskkit.ExitUnverifiable || f.flips != 0 {
+		t.Fatalf("exit = %d flips = %d, want could-not-check: the thread was not read to the end", code, f.flips)
+	}
+	if n := f.hitCount("GET", "/issues/1/comments"); n != maxChangeCommentPages {
+		t.Fatalf("comment page reads = %d, want the walk to stop at %d", n, maxChangeCommentPages)
+	}
+	if d := lastAudit(t).Detail; !strings.Contains(d, "not read to the end") {
+		t.Fatalf("the refusal should say the thread was not read whole, got: %s", d)
+	}
+}
+
 // A thread that cannot be read is could-not-check, never "not reverted".
 //
 // regression: #6254

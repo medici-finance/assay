@@ -1059,14 +1059,23 @@ type issueCommentRow struct {
 	} `json:"user"`
 }
 
+// maxChangeCommentPages bounds listChangeComments' walk: 20 pages of 100 = 2000 comments, the
+// same bound deskflip's read of the same thread stops at (deskkit's forgeMaxEventPages). On a
+// public repo anyone can comment, so an unbounded walk would let a flooded thread spend the
+// reviewer App's API budget without limit.
+const maxChangeCommentPages = 20
+
 // listChangeComments returns EVERY comment on the PR, walking all pages in order. It serves
 // `ready`'s refuse-only not-reverted check and nothing else (medici-finance/assay#6254): the
 // post-flip backstop's revert comment is posted last, so a read of the first page alone would
 // miss it on a long thread and read as "not reverted". A page that cannot be read fails the whole
-// read, and the caller refuses could-not-check.
+// read, and the caller refuses could-not-check. So does a thread whose last page under
+// maxChangeCommentPages is still full: the read cannot show it saw the newest comment, and a
+// truncated read is never "not reverted" (a thread of exactly 2000 comments refuses too, the
+// conservative side).
 func (c *ghClient) listChangeComments(pr int) ([]deskkit.Comment, error) {
 	var out []deskkit.Comment
-	for page := 1; ; page++ {
+	for page := 1; page <= maxChangeCommentPages; page++ {
 		var chunk []issueCommentRow
 		path := fmt.Sprintf("/repos/%s/%s/issues/%d/comments?per_page=100&page=%d", c.owner, c.repo, pr, page)
 		if err := c.doJSON(http.MethodGet, path, nil, &chunk); err != nil {
@@ -1081,10 +1090,11 @@ func (c *ghClient) listChangeComments(pr int) ([]deskkit.Comment, error) {
 			})
 		}
 		if len(chunk) < 100 {
-			break
+			return out, nil
 		}
 	}
-	return out, nil
+	return nil, fmt.Errorf("PR #%d's comment thread runs past %d pages of 100, so it was not read to the end",
+		pr, maxChangeCommentPages)
 }
 
 // fetchPRTrustPayload runs the trust-gate GraphQL QUERY (deskkit.PRTrustQuery) and
