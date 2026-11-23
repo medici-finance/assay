@@ -331,9 +331,9 @@ func schemaShape(t *testing.T, root map[string]any, typ reflect.Type) {
 			props := def["properties"].(map[string]any)
 			required := def["required"].([]any)
 			expectedRequired := typ.NumField()
-			if typ == reflect.TypeOf(rf.ChangeFact{}) {
+			if typ == reflect.TypeOf(rf.ChangeFact{}) || typ == reflect.TypeOf(rf.ClassificationFacts{}) {
 				expectedRequired--
-			} // only Mergeable is additive/optional
+			} // only Mergeable and declarationHold are additive/optional
 			if len(props) != typ.NumField() || len(required) != expectedRequired || def["additionalProperties"] != false {
 				t.Fatalf("schema differs from closed Go type %s", typ)
 			}
@@ -352,7 +352,7 @@ func schemaShape(t *testing.T, root map[string]any, typ reflect.Type) {
 						isRequired = true
 					}
 				}
-				wantRequired := !(typ == reflect.TypeOf(rf.ChangeFact{}) && key == "Mergeable")
+				wantRequired := !rf.OptionalObservationField(typ, key)
 				if isRequired != wantRequired {
 					t.Fatalf("schema requiredness differs for %s.%s", typ, key)
 				}
