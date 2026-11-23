@@ -87,31 +87,31 @@ func (c Config) GoString() string { return c.String() }
 // TLS configuration, and any ambient PG* variable that could redirect it.
 func driverConfig(c Config) (*pgx.ConnConfig, error) {
 	if c.Host == "" || c.Port == 0 || c.User == "" || c.Database == "" || c.Timeout <= 0 || c.Timeout > time.Minute {
-		return nil, failure(nil, "configure", InvalidConfig)
+		return nil, &Error{Operation: "configure", Code: InvalidConfig}
 	}
 	for _, v := range []string{c.Host, c.User, c.Database, c.Password} {
 		if strings.ContainsRune(v, 0) {
-			return nil, failure(nil, "configure", InvalidConfig)
+			return nil, &Error{Operation: "configure", Code: InvalidConfig}
 		}
 	}
 	if strings.Contains(c.Host, ",") {
-		return nil, failure(nil, "configure", InvalidConfig)
+		return nil, &Error{Operation: "configure", Code: InvalidConfig}
 	}
 	ip := net.ParseIP(c.Host)
 	if !filepath.IsAbs(c.Host) && c.TLS == nil && (ip == nil || !ip.IsLoopback()) {
-		return nil, failure(nil, "configure", InvalidConfig)
+		return nil, &Error{Operation: "configure", Code: InvalidConfig}
 	}
 	if c.TLS != nil && (c.TLS.InsecureSkipVerify || c.TLS.MinVersion < tls.VersionTLS12) {
-		return nil, failure(nil, "configure", InvalidConfig)
+		return nil, &Error{Operation: "configure", Code: InvalidConfig}
 	}
 	for _, entry := range os.Environ() {
 		if key, value, ok := strings.Cut(entry, "="); ok && strings.HasPrefix(key, "PG") && value != "" {
-			return nil, failure(nil, "configure", InvalidConfig)
+			return nil, &Error{Operation: "configure", Code: InvalidConfig}
 		}
 	}
 	cfg, err := pgx.ParseConfig("host=127.0.0.1 port=1 user=unused dbname=unused password=unused sslmode=disable connect_timeout=5")
 	if err != nil {
-		return nil, failure(nil, "configure", InvalidConfig)
+		return nil, &Error{Operation: "configure", Code: InvalidConfig}
 	}
 	cfg.Host, cfg.Port, cfg.User, cfg.Database, cfg.Password = c.Host, c.Port, c.User, c.Database, c.Password
 	cfg.TLSConfig = nil
@@ -146,7 +146,7 @@ func connect(ctx context.Context, c Config) (*sql.DB, error) {
 	ping, cancel := context.WithTimeout(ctx, c.Timeout)
 	defer cancel()
 	if err = db.PingContext(ping); err != nil {
-		db.Close()
+		_ = db.Close() // The refused connection is already unusable.
 		return nil, failure(ping, "connect", Unavailable)
 	}
 	return db, nil

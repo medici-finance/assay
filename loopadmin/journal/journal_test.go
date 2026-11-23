@@ -23,7 +23,7 @@ func rows(t *testing.T, ctx context.Context, c Config, query string, args ...any
 	t.Helper()
 	db, err := connect(ctx, c)
 	must(t, err)
-	defer db.Close()
+	defer closeTestHandle(t, db)
 	var n int
 	must(t, db.QueryRowContext(ctx, query, args...).Scan(&n))
 	return n
@@ -33,7 +33,7 @@ func run(t *testing.T, ctx context.Context, c Config, stmt string, args ...any) 
 	t.Helper()
 	db, err := connect(ctx, c)
 	must(t, err)
-	defer db.Close()
+	defer closeTestHandle(t, db)
 	if _, err = db.ExecContext(ctx, stmt, args...); err != nil {
 		t.Fatal(err)
 	}
@@ -149,7 +149,7 @@ func TestJournalSharedStoreRestart(t *testing.T) {
 	must(t, Migrate(ctx, cfg))
 	j, err = Open(ctx, cfg, testCell, op)
 	must(t, err)
-	defer j.Close()
+	defer closeTestHandle(t, j)
 	if _, err = j.Intend(ctx, in, &d.Receipt); !errors.Is(err, ErrPaused) {
 		t.Fatalf("a rebuilt journal without an activation record must start paused, got %v", err)
 	}
@@ -197,6 +197,15 @@ func TestJournalIncarnationPaused(t *testing.T) {
 	must(t, Activate(ctx, cfg, testCell, op, StopConfirmation{Receipt: "stop-a"}))
 	j, err := Open(ctx, cfg, testCell, op)
 	must(t, err)
+
+	// A gate whose transaction could not be closed must refuse admission.
+	closedTx, err := j.db.BeginTx(ctx, nil)
+	must(t, err)
+	must(t, closedTx.Rollback())
+	var closeErr *Error
+	if err := j.finishGate(ctx, closedTx, nil, nil); !errors.As(err, &closeErr) || closeErr.Code != StoreFailed {
+		t.Fatalf("failed gate rollback must refuse admission, got %v", err)
+	}
 	if d, err := j.Intend(ctx, intent("inv-1", "req-1"), nil); err != nil || !d.Launch {
 		t.Fatalf("positive control: the activated incarnation must launch, got %+v, %v", d, err)
 	}
@@ -220,7 +229,7 @@ func TestJournalIncarnationPaused(t *testing.T) {
 	op.rotate(testCell, "inc-b", "key-b")
 	jr, err := Open(ctx, restored, testCell, op)
 	must(t, err)
-	defer jr.Close()
+	defer closeTestHandle(t, jr)
 	if err = jr.Gate(ctx); !errors.Is(err, ErrPaused) {
 		t.Fatalf("a restored activation naming another incarnation must start paused, got %v", err)
 	}
@@ -262,7 +271,7 @@ func TestJournalIncarnationPaused(t *testing.T) {
 	// Missing activation record.
 	jm, err := Open(ctx, missing, testCell, op)
 	must(t, err)
-	defer jm.Close()
+	defer closeTestHandle(t, jm)
 	if err = try(jm, "inv-3"); !errors.Is(err, ErrPaused) {
 		t.Fatalf("a restored journal without an activation record must start paused, got %v", err)
 	}
@@ -301,7 +310,7 @@ func TestJournalIncarnationPaused(t *testing.T) {
 		must(t, Activate(ctx, c, testCell, o, StopConfirmation{Receipt: "stop-a"}))
 		jj, err := Open(ctx, c, testCell, o)
 		must(t, err)
-		t.Cleanup(func() { jj.Close() })
+		t.Cleanup(func() { closeTestHandle(t, jj) })
 		return jj, c, o
 	}
 	gateSeen := func(jj *Journal, snap Incarnation) *seenRecord {
@@ -309,7 +318,7 @@ func TestJournalIncarnationPaused(t *testing.T) {
 		tx, err := jj.db.BeginTx(ctx, nil)
 		must(t, err)
 		seen, gerr := gate(ctx, tx, testCell, snap)
-		tx.Rollback()
+		must(t, tx.Rollback())
 		if seen == nil || !errors.Is(gerr, ErrPaused) {
 			t.Fatalf("the gate must report the record it saw, got %v, %v", seen, gerr)
 		}

@@ -36,19 +36,19 @@ var migrationName = regexp.MustCompile(`^[0-9]{5}_[a-z0-9_]+\.sql$`)
 func checkManifest(fsys fs.FS) (fs.FS, error) {
 	sub, err := fs.Sub(fsys, "migrations")
 	if err != nil {
-		return nil, failure(nil, "manifest", InvalidManifest)
+		return nil, &Error{Operation: "manifest", Code: InvalidManifest}
 	}
 	entries, err := fs.ReadDir(sub, ".")
 	if err != nil || len(entries) == 0 {
-		return nil, failure(nil, "manifest", InvalidManifest)
+		return nil, &Error{Operation: "manifest", Code: InvalidManifest}
 	}
 	for _, e := range entries {
 		if e.IsDir() || !migrationName.MatchString(e.Name()) {
-			return nil, failure(nil, "manifest", InvalidManifest)
+			return nil, &Error{Operation: "manifest", Code: InvalidManifest}
 		}
 		body, err := fs.ReadFile(sub, path.Clean(e.Name()))
 		if err != nil {
-			return nil, failure(nil, "manifest", InvalidManifest)
+			return nil, &Error{Operation: "manifest", Code: InvalidManifest}
 		}
 		ups := 0
 		for _, line := range bytes.Split(body, []byte("\n")) {
@@ -61,11 +61,11 @@ func checkManifest(fsys fs.FS) (fs.FS, error) {
 				ups++
 			case "StatementBegin", "StatementEnd":
 			default:
-				return nil, failure(nil, "manifest", InvalidManifest)
+				return nil, &Error{Operation: "manifest", Code: InvalidManifest}
 			}
 		}
 		if ups != 1 {
-			return nil, failure(nil, "manifest", InvalidManifest)
+			return nil, &Error{Operation: "manifest", Code: InvalidManifest}
 		}
 	}
 	return sub, nil
@@ -78,7 +78,7 @@ func provider(db *sql.DB) (*goose.Provider, error) {
 	}
 	locker, err := lock.NewPostgresSessionLocker(lock.WithLockID(migrationLockID), lock.WithLockTimeout(1, 10), lock.WithUnlockTimeout(1, 2))
 	if err != nil {
-		return nil, failure(nil, "migrate", MigrationFailed)
+		return nil, &Error{Operation: "migrate", Code: MigrationFailed}
 	}
 	p, err := goose.NewProvider(goose.DialectPostgres, db, sub,
 		goose.WithTableName(VersionTable),
@@ -87,7 +87,7 @@ func provider(db *sql.DB) (*goose.Provider, error) {
 		goose.WithSlog(slog.New(slog.DiscardHandler)),
 	)
 	if err != nil {
-		return nil, failure(nil, "migrate", InvalidManifest)
+		return nil, &Error{Operation: "migrate", Code: InvalidManifest}
 	}
 	return p, nil
 }
@@ -100,7 +100,7 @@ func Migrate(ctx context.Context, c Config) error {
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }() // The migration result is authoritative.
 	if _, err = db.ExecContext(ctx, "CREATE SCHEMA IF NOT EXISTS "+Schema); err != nil {
 		return failure(ctx, "migrate", MigrationFailed)
 	}

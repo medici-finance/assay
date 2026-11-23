@@ -91,14 +91,14 @@ type Journal struct {
 // store: an unreachable database or a missing schema refuses.
 func Open(ctx context.Context, c Config, cell string, src IncarnationSource) (*Journal, error) {
 	if cell == "" || src == nil {
-		return nil, failure(nil, "open", InvalidConfig)
+		return nil, &Error{Operation: "open", Code: InvalidConfig}
 	}
 	db, err := connect(ctx, c)
 	if err != nil {
 		return nil, err
 	}
 	if err = checkSchema(ctx, db); err != nil {
-		db.Close()
+		_ = db.Close() // Preserve the schema refusal.
 		return nil, err
 	}
 	return &Journal{db: db, cell: cell, source: src}, nil
@@ -118,8 +118,18 @@ func (j *Journal) Gate(ctx context.Context) error {
 		return classify(ctx, "gate", err)
 	}
 	seen, err := gate(ctx, tx, j.cell, cur)
-	tx.Rollback()
-	return refuse(ctx, j.db, j.source, j.cell, seen, err)
+	return j.finishGate(ctx, tx, seen, err)
+}
+
+// finishGate releases the read lock before a refused gate records a pause.
+// An unsuccessful rollback also prevents admission on an otherwise open gate.
+func (j *Journal) finishGate(ctx context.Context, tx *sql.Tx, seen *seenRecord, gateErr error) error {
+	rollbackErr := tx.Rollback()
+	result := refuse(ctx, j.db, j.source, j.cell, seen, gateErr)
+	if rollbackErr != nil {
+		return errors.Join(result, classify(ctx, "gate", rollbackErr))
+	}
+	return result
 }
 
 func newReceiptID() (string, error) {
@@ -154,10 +164,9 @@ func (j *Journal) Intend(ctx context.Context, in Intent, prior *Receipt) (Decisi
 	if err != nil {
 		return Decision{}, classify(ctx, "intend", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }() // Release on error; Commit closes a successful transaction.
 	if seen, err := gate(ctx, tx, j.cell, cur); err != nil {
-		tx.Rollback()
-		return Decision{}, refuse(ctx, j.db, j.source, j.cell, seen, err)
+		return Decision{}, j.finishGate(ctx, tx, seen, err)
 	}
 	// Serialize intents for one request so that a concurrent duplicate waits
 	// for this transaction instead of racing it.
@@ -294,7 +303,7 @@ func (j *Journal) Pending(ctx context.Context) ([]Record, error) {
 	if err != nil {
 		return nil, classify(ctx, "pending", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }() // Early Scan failures take precedence; Rows.Err reports iteration and close errors.
 	var out []Record
 	for rows.Next() {
 		var r Record

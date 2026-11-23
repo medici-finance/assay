@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"io"
 	"net/url"
 	"os"
 	"strconv"
@@ -29,6 +30,13 @@ type pgFixture struct {
 	base  Config
 	mu    sync.Mutex
 	owned map[string]bool
+}
+
+func closeTestHandle(t testing.TB, handle io.Closer) {
+	t.Helper()
+	if err := handle.Close(); err != nil {
+		t.Error("failed to close PostgreSQL test handle")
+	}
 }
 
 func clearPGEnv(t testing.TB) {
@@ -85,7 +93,7 @@ func newPG(t testing.TB) *pgFixture {
 		for _, name := range names {
 			f.drop(ctx, name)
 		}
-		admin.Close()
+		closeTestHandle(t, admin)
 	})
 	return f
 }

@@ -128,7 +128,7 @@ func Activate(ctx context.Context, c Config, cell string, src IncarnationSource,
 	if err != nil {
 		return err
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }() // Preserve the activation transaction result.
 	if err = checkSchema(ctx, db); err != nil {
 		return err
 	}
@@ -136,7 +136,7 @@ func Activate(ctx context.Context, c Config, cell string, src IncarnationSource,
 	if err != nil {
 		return classify(ctx, "activate", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }() // Release on error; Commit closes a successful transaction.
 	var id, key string
 	err = tx.QueryRowContext(ctx, "SELECT incarnation_id, key_ref FROM loopadmin.activation WHERE cell_id = $1 FOR UPDATE", cell).Scan(&id, &key)
 	switch {
