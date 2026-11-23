@@ -31,7 +31,8 @@ func trackingRepo(t *testing.T, work string) string {
 func holdClaimIn(t *testing.T, work, bare, key string) {
 	t.Helper()
 	src := mustGit(t, work, "rev-parse", "origin/main")
-	mustGit(t, work, "push", "--quiet", bare, src+":"+deskkit.DispatchClaimActiveRefsPrefix+key)
+	ref := deskkit.DispatchClaimActiveRefsPrefix + key
+	mustGit(t, work, "push", "--quiet", bare, src+":"+ref)
 }
 
 // crossRepoHome is a bare-locked home whose claim was taken in other-org/tracking.

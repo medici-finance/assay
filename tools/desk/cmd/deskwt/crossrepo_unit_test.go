@@ -15,9 +15,9 @@ func TestClaimRepoURL(t *testing.T) {
 		{"https://forge.example/acme/deliver.git", "https://forge.example/other-org/tracking.git"},
 		{"https://forge.example/acme/deliver", "https://forge.example/other-org/tracking"},
 		{"https://forge.example/acme/deliver/", "https://forge.example/other-org/tracking"},
-		{"git@forge.example:acme/deliver.git", "git@forge.example:other-org/tracking.git"},
-		{"forge-alias:acme/deliver.git", "forge-alias:other-org/tracking.git"},
-		{"ssh://git@forge.example:2222/acme/deliver.git", "ssh://git@forge.example:2222/other-org/tracking.git"},
+		{"git@github.com:acme/deliver.git", "git@github.com:other-org/tracking.git"},
+		{"github.com:acme/deliver.git", "github.com:other-org/tracking.git"}, // scp form with no user, as an alias is written
+		{"ssh://git@ssh.github.com:443/acme/deliver.git", "ssh://git@ssh.github.com:443/other-org/tracking.git"},
 		{"/srv/git/acme/deliver.git", "/srv/git/other-org/tracking.git"},
 	} {
 		got, err := claimRepoURL(tc.origin, "other-org/tracking")
@@ -37,7 +37,7 @@ func TestClaimRepoURL(t *testing.T) {
 		}
 	}
 	// A credential in origin's URL never reaches the error text.
-	if _, err := claimRepoURL("https://user:s3cret@forge.example/", "other-org/tracking"); err == nil || strings.Contains(err.Error(), "s3cret") {
+	if _, err := claimRepoURL("https://user:<token>@forge.example/", "other-org/tracking"); err == nil || strings.Contains(err.Error(), "<token>") {
 		t.Errorf("err = %v; want an error that does not echo the userinfo", err)
 	}
 }
