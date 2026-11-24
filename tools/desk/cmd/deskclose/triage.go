@@ -48,7 +48,7 @@ import (
 // requires a current explicit choice before moving the labels and closing the issue.
 // The general label verb has no authority to record a human decision.
 //
-//// A non-issue target (a pull request) is refused; an already-closed issue is an idempotent
+// A non-issue target (a pull request) is refused; an already-closed issue is an idempotent
 // no-op; an unreadable item is could-not-check (exit 6), never a guessed close.
 
 const modeTriage = "triage"
@@ -230,7 +230,9 @@ func applyTriage(r triageReq, out io.Writer) error {
 		a.log(deskkit.ResultDryRun, joinDetail("dry-run: verified, wrote nothing", recordStatus))
 		fmt.Fprintf(out, "dry-run\t%s\t%s\tdisposition=%s\n", itemRef(r.repo, r.number, deskkit.TargetIssue), modeTriage, r.disposition)
 		if hasLabel(it, labelNeedsDecision) {
-			fmt.Fprintln(out, "labels: needs-decision -> human-decided before close")
+			if _, err := fmt.Fprintln(out, "labels: needs-decision -> human-decided before close"); err != nil {
+				return fmt.Errorf("write decision label preview: %w", err)
+			}
 		}
 		fmt.Fprintln(out, body)
 		return nil
