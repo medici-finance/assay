@@ -29,6 +29,7 @@ const freshWorktreeSafetyWindow = beaconFreshWindow
 
 // pruneResult is the outcome of one sweep.
 type pruneResult struct {
+	reviews    reviewBacklog
 	bookkept   int // admin entries dropped by `git worktree prune` (dirs already gone)
 	removed    int // merged+clean worktrees removed
 	lockedHeld int // the subset of skips held by the lock gate
@@ -381,7 +382,7 @@ func runPrune(f pruneFlags) (err error) {
 		}
 		pruneMaintenance(ctx, dir, opts, os.Stderr)
 		ac.detail = pruneAuditDetail(res)
-		if res.bookkept == 0 && res.removed == 0 && res.reaped == 0 && len(res.reclaimed) == 0 &&
+		if res.bookkept == 0 && res.removed == 0 && res.reviews.retired == 0 && res.reaped == 0 && len(res.reclaimed) == 0 &&
 			len(res.staleRegs) == 0 && res.branchGC.collected() == 0 && res.cache.reclaimed == 0 && len(res.cache.reaped) == 0 {
 			ac.successResult = deskkit.ResultNoop
 		}
@@ -418,6 +419,7 @@ func pruneSummaryLine(res pruneResult) string {
 		res.bookkept, plural(res.bookkept, "y", "ies"),
 		res.removed, plural(res.removed, "", "s"),
 		len(res.skips), res.lockedHeld, len(res.reclaimed), res.reaped, len(res.branches))
+	line += ", " + res.reviews.summary()
 	line += staleRegSegment(len(res.staleRegs))
 	if res.branchGC.ran {
 		line += fmt.Sprintf(", branches-gc %d (merged %d, cherry-clean %d), branches-held %d",
@@ -437,6 +439,7 @@ func pruneAuditDetail(res pruneResult) string {
 	}
 	detail := fmt.Sprintf("pruned %d bookkeeping, removed %d, held %d (locked-held %d), locks-reclaimed %d, dead-session-reaped %d, branches-deleted %d",
 		res.bookkept, res.removed, len(res.skips), res.lockedHeld, len(res.reclaimed), res.reaped, len(res.branches))
+	detail += ", " + res.reviews.summary()
 	detail += staleRegSegment(len(res.staleRegs))
 	if res.branchGC.ran {
 		detail += fmt.Sprintf(", branches-gc %d (merged %d, cherry-clean %d), branches-held %d",
@@ -540,7 +543,7 @@ func runPruneLoop(guard *pathGuard, dir, cwd string, interval time.Duration, opt
 		if !swept {
 			fmt.Fprintf(os.Stdout, "%s deskwt prune tick %d: %s — skipped\n", nowStamp(), ticks, why)
 		} else {
-			totalRemoved += res.removed
+			totalRemoved += res.removed + res.reviews.retired
 			totalReclaimed += len(res.reclaimed)
 			var tick string
 			if res.branchGC.only {
@@ -552,6 +555,7 @@ func runPruneLoop(guard *pathGuard, dir, cwd string, interval time.Duration, opt
 			} else {
 				tick = fmt.Sprintf("%s deskwt prune tick %d: bookkept=%d removed=%d held=%d locked_held=%d locks_reclaimed=%d",
 					nowStamp(), ticks, res.bookkept, res.removed, len(res.skips), res.lockedHeld, len(res.reclaimed))
+				tick += " " + res.reviews.summary()
 				if res.branchGC.ran {
 					tick += fmt.Sprintf(" branches_gc=%d (merged=%d cherry=%d) branches_held=%d",
 						res.branchGC.collected(), res.branchGC.merged, res.branchGC.cherry, res.branchGC.held())
@@ -853,8 +857,22 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 	// Under --dry-run this pass REPORTS what it would unlock and unlocks nothing: a dry run
 	// that silently retired locks would be a worse surprise than one that silently pruned
 	// bookkeeping, and both are now off the dry-run path.
+	// A pending review owns its lock even during opt-in stale-lock recovery. The admin map
+	// is read once per sweep. A failed read is kept, not returned: the sweep continues and
+	// every tree it cannot map is held below, never judged idle or free of a review handoff.
+	admins, adminsErr := guard.worktreeAdminDirs()
 	if opts.reclaimStaleLocks {
-		reclaimed, warns, rerr := reclaimStaleLocksMode(guard, dir, cwd, opts.lockTTL, opts.dryRun, staleRegHeldLocked(staleVerdicts))
+		except := staleRegHeldLocked(staleVerdicts)
+		if except == nil {
+			except = map[string]bool{}
+		}
+		for rt := range locked {
+			// With no readable registry, any lock may belong to a pending review.
+			if adminsErr != nil || hasReviewReceipt(admins[rt]) {
+				except[rt] = true
+			}
+		}
+		reclaimed, warns, rerr := reclaimStaleLocksMode(guard, dir, cwd, opts.lockTTL, opts.dryRun, except)
 		res.reclaimed = reclaimed
 		res.warns = append(res.warns, warns...)
 		if rerr != nil {
@@ -922,15 +940,6 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 	// candidate this sweep.
 	admissions, admErr := guard.verifierAdmissions()
 
-	// The activity gate's admin map, read once per sweep (after the reclaim pass's
-	// bookkeeping prune, so it maps the registration as it stands). A failed read is kept,
-	// not returned: every candidate is then HELD as unverifiable, never judged idle.
-	var admins map[string]string
-	var adminsErr error
-	if opts.minIdle > 0 {
-		admins, adminsErr = guard.worktreeAdminDirs()
-	}
-
 	// pendingRemoved collects the trees deleted in this loop. Their admin entries are
 	// dropped ONCE after the loop (see the batched deregistration below), not per removal.
 	var pendingRemoved []string
@@ -996,6 +1005,31 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 				admHold = admissionHoldReason(admissions, rt, sweepNow)
 			}
 		}
+		if admins[rt] == "" && !protected {
+			// Without its admin entry a pending review handoff cannot be ruled out.
+			why := "could-not-check: no admin entry points at this worktree"
+			if adminsErr != nil {
+				why = "could-not-check: worktree registry (" + errText(adminsErr) + ")"
+			}
+			res.skips = append(res.skips, skipEntry{rt, why})
+			continue
+		}
+		reviewHold := admHold
+		if protected {
+			reviewHold = protectedReason(guard, cwd, rt)
+		} else if isLocked {
+			reviewHold = lockedReason(reason)
+		} else if reviewHold == "" {
+			reviewHold = idleHold
+		}
+		if handled, removed := checkReviewReceipt(guard, sc, admins[rt], dir, rt, reviewHold, opts, &res); handled {
+			if removed {
+				removedPaths = append(removedPaths, rt)
+			} else if isLocked {
+				res.lockedHeld++
+			}
+			continue
+		}
 		if opts.reapDeadSessions && admHold != "" {
 			v := reapVerdict{path: rt, reason: admHold}
 			if isLocked {
@@ -1038,6 +1072,10 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 					res.reaped++
 					res.plan = append(res.plan, v)
 					removedPaths = append(removedPaths, rt)
+					continue
+				}
+				if hasReviewReceipt(admins[rt]) {
+					res.skips = append(res.skips, skipEntry{rt, "review handoff arrived during sweep"})
 					continue
 				}
 				branch, rerr := reapWorktree(sc, dir, rt, isLocked)
@@ -1220,6 +1258,10 @@ func pruneSweep(guard *pathGuard, dir, cwd string, opts pruneOpts) (pruneResult,
 		// A worktree closes its own repo handle's reference here: the sweep may hold an
 		// open *gitcore.Repo on a tree it is about to delete, and nothing reads it again.
 		delete(sc.repos, rt)
+		if hasReviewReceipt(admins[rt]) {
+			res.skips = append(res.skips, skipEntry{rt, "review handoff arrived during sweep"})
+			continue
+		}
 		if rmErr := removeWorktreeTree(rt); rmErr != nil {
 			res.skips = append(res.skips, skipEntry{rt, "removal failed: " + rmErr.Error()})
 			continue

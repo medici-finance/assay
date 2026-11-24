@@ -79,7 +79,26 @@ func TestReviewFreshAllocation(t *testing.T) {
 			}
 			t.Cleanup(func() { execCommand = prior })
 			dispatch := func() int {
-				return run([]string{lane, "--root", root, "--repo", allowedRepo, "--kit", "review", "--pr", "77", "--model", "example-model-1", "--tier", "strong", "--prompt-file", filepath.Join(t.TempDir(), "prompt.md")})
+				prompt := filepath.Join(t.TempDir(), "prompt.md")
+				rc := run([]string{lane, "--root", root, "--repo", allowedRepo, "--kit", "review", "--pr", "77", "--model", "example-model-1", "--tier", "strong", "--prompt-file", prompt})
+				if rc == 0 {
+					h := homes[len(homes)-1]
+					ref := ddGit(t, h, "config", "--worktree", "--get", "assay.dispatchRef")
+					body, err := os.ReadFile(emittedPathFor(prompt))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !strings.Contains(string(body), "--review-home "+quoteReviewArg(h)+" --dispatch-ref "+quoteReviewArg(ref)) ||
+						!strings.Contains(string(body), "deskwt review-exited "+quoteReviewArg(h)+" "+quoteReviewArg(ref)) {
+						t.Fatal("assignment lost its confirmed-review or parent-exit binding")
+					}
+					// review-exited binds to the registry of the directory it runs in, which is
+					// the checkout base, not the PR's repository when the two differ.
+					if !strings.Contains(string(body), "runs this from the checkout base") || strings.Contains(string(body), "from the target repository: `deskwt review-exited") {
+						t.Fatal("assignment names the wrong directory for deskwt review-exited")
+					}
+				}
+				return rc
 			}
 			if rc := dispatch(); rc != 0 {
 				t.Fatalf("first dispatch=%d", rc)

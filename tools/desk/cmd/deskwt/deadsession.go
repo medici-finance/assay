@@ -364,10 +364,15 @@ func scrubbedGitEnv() []string {
 	return env
 }
 
+// reviewInventory runs one git read, or the non-forced removal, against a checkout before a
+// destructive step. The checkout's own configuration, including a per-worktree
+// config.worktree its session can write, is not trusted to name a program: core.fsmonitor is
+// pinned off on the command line, which outranks every file and reaches the child that
+// `git worktree remove` starts to check cleanliness (the rule targetGitStatus follows).
 func reviewInventory(rt string, args ...string) (string, error) {
 	env := scrubbedGitEnv()
 	result := deskkit.Run(deskkit.ToolCall{
-		Name: "git", Args: args,
+		Name: "git", Args: append([]string{"-c", "core.fsmonitor=false"}, args...),
 		Dir: rt, Env: env, Start: execCommand,
 	})
 	if result.Failed() {

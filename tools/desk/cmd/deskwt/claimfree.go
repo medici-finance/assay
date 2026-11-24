@@ -49,7 +49,6 @@ package main
 // sweep's listing is seen.
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
@@ -57,7 +56,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-git/go-git/v5/plumbing/format/config"
+	"github.com/medici-finance/assay/tools/desk/internal/reviewhome"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
@@ -198,24 +197,16 @@ type runRecord struct {
 // cannot be read or parsed is an error — the caller treats it as a run key it could not read,
 // which holds the tree.
 func runRecordInAdmin(admin string) (runRecord, error) {
-	data, err := os.ReadFile(filepath.Join(admin, "config.worktree"))
-	if os.IsNotExist(err) {
-		return runRecord{}, nil
-	}
+	stamp, err := reviewhome.ReadStamp(admin)
 	if err != nil {
 		return runRecord{}, deskkit.Unverifiable("cannot read the worktree's config.worktree", err)
 	}
-	cfg := config.New()
-	if derr := config.NewDecoder(bytes.NewReader(data)).Decode(cfg); derr != nil {
-		return runRecord{}, deskkit.Unverifiable("cannot parse the worktree's config.worktree", nil)
-	}
-	sec := cfg.Section("assay")
 	return runRecord{
-		key:              strings.TrimSpace(sec.Option("runKey")),
-		repo:             strings.TrimSpace(sec.Option("claimRepo")),
-		store:            strings.TrimSpace(sec.Option("claimStore")),
-		dispatchRef:      strings.TrimSpace(sec.Option("dispatchRef")),
-		handoffSourceRef: strings.TrimSpace(sec.Option("handoffSourceRef")),
+		key:              stamp.Key,
+		repo:             stamp.Repo,
+		store:            stamp.Store,
+		dispatchRef:      stamp.Attempt,
+		handoffSourceRef: stamp.HandoffSourceRef,
 	}, nil
 }
 
