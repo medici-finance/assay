@@ -1,0 +1,2 @@
+### Fixed
+- `statusgen verifyflip` no longer refuses a clean latest run because an earlier entry quotes a placeholder such as `<a verb ...>`. The check for an element left open before the latest run's heading now skips such text inside a certain inline code span, and the formatting tags inside a cell of the witness table `verifyrun` writes, since neither can carry past its span or cell on the page. The same text in prose, or in a span or table the check cannot settle, still counts, so the check still refuses when the page might hide the heading.

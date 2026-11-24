@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction|TestHeldLatest|TestHeldCarryElement|TestHeldContainerFence|TestVerifyflip|TestHeldWitnessNonZero|TestHeldNonZero|TestHeldProse|TestSh' -count=1 -timeout 300s",
+  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction|TestHeldLatest|TestHeldCarry|TestHeldContainerFence|TestVerifyflip|TestHeldWitnessNonZero|TestHeldNonZero|TestHeldProse|TestSh' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — supersession drops every earlier hold (the S1 defect)",
     "file": "heldscope.go",
@@ -1686,6 +1686,48 @@
       "file": "heldscope.go",
       "old": "\tif items && heldOneLineItem(l) {",
       "new": "\tif false && items && heldOneLineItem(l) {"
+    },
+    {
+      "name": "#7578 carry: a certain code span hides no carried opener",
+      "file": "heldscope.go",
+      "old": "\t\tif live[i] {\n\t\t\tout[i] = masked",
+      "new": "\t\tif false && live[i] {\n\t\t\tout[i] = masked"
+    },
+    {
+      "name": "#7578 carry: a code span is hidden on a line the page may not render as text",
+      "file": "heldscope.go",
+      "old": "\t\tif live[i] {\n\t\t\tout[i] = masked",
+      "new": "\t\tif true || live[i] {\n\t\t\tout[i] = masked"
+    },
+    {
+      "name": "#7578 carry: a verifyrun witness row's carried tags still count",
+      "file": "heldscope.go",
+      "old": "if !isWitnessRow(l) {\n\t\t\tcontinue // a row verifyrun did not write",
+      "new": "if true {\n\t\t\tcontinue // a row verifyrun did not write"
+    },
+    {
+      "name": "#7578 carry: any row of a witness table is exempt, verifyrun's or not",
+      "file": "heldscope.go",
+      "old": "if !isWitnessRow(l) {\n\t\t\tcontinue // a row verifyrun did not write",
+      "new": "if false {\n\t\t\tcontinue // a row verifyrun did not write"
+    },
+    {
+      "name": "#7578 carry: a table-structure or template tag does not end the witness exemption",
+      "file": "heldscope.go",
+      "old": "|| hasBareCR(l) || heldCellEscape(l) {",
+      "new": "|| hasBareCR(l) {"
+    },
+    {
+      "name": "#7578 carry: a witness header need not start a block",
+      "file": "heldscope.go",
+      "old": "if heldWitnessHeaders[l] && (i == 0 || isBlankLine(lines[i-1])) &&",
+      "new": "if heldWitnessHeaders[l] &&"
+    },
+    {
+      "name": "#7578 carry: a raw tag in a witness row is hidden too",
+      "file": "heldscope.go",
+      "old": "heldCarryTags[heldElementName(l[p+1:])] {",
+      "new": "(heldCarryTags[heldElementName(l[p+1:])] || heldRawTags[heldElementName(l[p+1:])]) {"
     }
   ]
 }
