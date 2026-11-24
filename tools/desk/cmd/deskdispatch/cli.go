@@ -34,14 +34,14 @@ func modeArgs(args []string) (string, []string) {
 	}
 	if i < len(args) {
 		switch args[i] {
-		case "--stamp-only", "--check-verifier", "--attest-verifier":
+		case "--stamp-only", "--check-verifier", "--attest-verifier", "--stage-npm":
 			mode = args[i]
 			out := append([]string{}, args[:i]...)
 			return mode, append(out, args[i+1:]...)
 		case "help":
 			if i+1 < len(args) {
 				switch args[i+1] {
-				case "--stamp-only", "--check-verifier", "--attest-verifier":
+				case "--stamp-only", "--check-verifier", "--attest-verifier", "--stage-npm":
 					mode = args[i+1]
 					out := append([]string{}, args[:i+1]...)
 					return mode, append(out, args[i+2:]...)
@@ -66,6 +66,11 @@ func dispatchBindings(mode string) []cli.Binding {
 	switch mode {
 	case "--check-verifier", "--attest-verifier":
 		return append(common, str("root", "", "existing detached verifier worktree (required)"), str("brief", "", "source brief (required for --check-verifier)"), boolean("dry-run", "validate arguments without mutation"))
+	case "--stage-npm":
+		return append(common, str("root", "", "existing detached verifier worktree (required)"), str("brief", "", "source brief (default: the run's attested brief)"),
+			str("package", "", "home-relative directory holding package.json and package-lock.json (required)"),
+			str("cache", "", "npm cache filled before the run, an existing directory outside the home (required)"),
+			boolean("build", "also run the package's own build script, staging its dist directory"), boolean("dry-run", "validate arguments without mutation"))
 	case "--stamp-only":
 		return append(common, str("repo", "", "target owner/repo (required)"), integer("pr", "already-open change number (required)"), str("model", "", "exact model selected by the dispatcher (required)"), str("tier", "", "selected execution tier (required)"), str("kit", "worker", "original dispatch kit"), integer("attestation", "worker pre-work attestation record (also read from the change)"), boolean("dry-run", "read and report without mutation"))
 	default:
@@ -96,7 +101,7 @@ func newDispatchCLI(mode string, env dispatchCLI) *cobra.Command {
 	}
 	root := cli.NewRoot(use, short)
 	root.Long = short + "\n\nExecution retains domain custody, claims, worktree isolation and rollback.\n" +
-		"Modes: --stamp-only, --check-verifier, --attest-verifier. Request each mode's --help.\n" +
+		"Modes: --stamp-only, --check-verifier, --attest-verifier, --stage-npm. Request each mode's --help.\n" +
 		"Dispatch steps: " + strings.Join(dispatchSteps, ", ") + ".\n" +
 		"Operational reference: docs/desk-tools/deskdispatch.md"
 	set := cli.Declare(root, dispatchBindings(mode)...)
@@ -158,6 +163,10 @@ func newDispatchCLI(mode string, env dispatchCLI) *cobra.Command {
 		override := ""
 		switch mode {
 		case "--check-verifier", "--attest-verifier":
+		case "--stage-npm":
+			o.npmPackage = v.String("package")
+			o.npmCache = v.String("cache")
+			o.npmBuild = v.Bool("build")
 		case "--stamp-only":
 			o.stampOnly = true
 			o.repo = v.String("repo")
@@ -198,6 +207,8 @@ func executeMode(mode string, o dispatchOpts, override string) error {
 		return executeStampOnly(o)
 	case "--check-verifier", "--attest-verifier":
 		return executeVerifier(mode, o)
+	case "--stage-npm":
+		return executeStageNpm(o)
 	default:
 		return executeDispatch(o, override)
 	}
