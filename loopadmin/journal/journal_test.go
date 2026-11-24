@@ -39,6 +39,13 @@ func run(t *testing.T, ctx context.Context, c Config, stmt string, args ...any) 
 	}
 }
 
+// budget records, as the operator, a window budget for the test profile that
+// these tests never spend.
+func budget(t *testing.T, ctx context.Context, c Config) {
+	t.Helper()
+	must(t, SetBudget(ctx, c, Budget{Profile: "worker", Window: time.Hour, Max: 100}))
+}
+
 func intent(inv, req string) Intent {
 	return Intent{Key: Key{Namespace: "desk/worker", Invocation: inv, Generation: 1}, RequestID: req, Profile: "worker", Digest: "sha256:" + req}
 }
@@ -55,6 +62,7 @@ func TestJournalSharedStoreRestart(t *testing.T) {
 	cfg := pg.create(ctx, "")
 	must(t, Migrate(ctx, cfg))
 	must(t, Migrate(ctx, cfg)) // idempotent: nothing pending
+	budget(t, ctx, cfg)
 	op := &operator{}
 	op.rotate(testCell, "inc-1", "key-1")
 	must(t, Activate(ctx, cfg, testCell, op, StopConfirmation{Receipt: "stop-1"}))
@@ -105,6 +113,9 @@ func TestJournalSharedStoreRestart(t *testing.T) {
 	}
 	if n := rows(t, ctx, cfg, "SELECT count(*) FROM loopadmin.invocation WHERE invocation_id = 'inv-torn'"); n != 0 {
 		t.Fatalf("a failed receipt write must roll the intent back, found %d rows", n)
+	}
+	if n := rows(t, ctx, cfg, "SELECT count(*) FROM loopadmin.launch"); n != 1 {
+		t.Fatalf("a failed receipt write must roll the recorded launch back, found %d launches", n)
 	}
 
 	// Restart with the database intact: the open invocation reconciles once.
@@ -189,6 +200,7 @@ func TestJournalIncarnationPaused(t *testing.T) {
 	pg := newPG(t)
 	cfg := pg.create(ctx, "")
 	must(t, Migrate(ctx, cfg))
+	budget(t, ctx, cfg)
 	op := &operator{}
 	op.rotate(testCell, "inc-a", "key-a")
 	if err := Activate(ctx, cfg, testCell, op, StopConfirmation{}); !errors.Is(err, ErrStopUnconfirmed) {
@@ -305,6 +317,7 @@ func TestJournalIncarnationPaused(t *testing.T) {
 	setup := func() (*Journal, Config, *operator) {
 		c := pg.create(ctx, "")
 		must(t, Migrate(ctx, c))
+		budget(t, ctx, c)
 		o := &operator{}
 		o.rotate(testCell, "inc-a", "key-a")
 		must(t, Activate(ctx, c, testCell, o, StopConfirmation{Receipt: "stop-a"}))
