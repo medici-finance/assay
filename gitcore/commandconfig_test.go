@@ -141,7 +141,10 @@ func checkScopedRemote(t *testing.T, origin string, env [][2]string, ok bool) {
 	t.Setenv("GIT_CONFIG_GLOBAL", os.DevNull)
 	t.Setenv("GIT_CONFIG_PARAMETERS", "")
 	t.Setenv("GIT_CONFIG", "") // restored after the test
-	os.Unsetenv("GIT_CONFIG")  // git config would write to an empty path
+	// git config would write to an empty path
+	if err := os.Unsetenv("GIT_CONFIG"); err != nil {
+		t.Fatal(err)
+	}
 	f := gittest.NewFixture(t)
 	mustOut(t, f, "remote", "add", "origin", origin)
 	for _, kv := range env {
