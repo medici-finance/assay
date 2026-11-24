@@ -17,8 +17,9 @@ func refusalOf(t *testing.T, err error) Refusal {
 	return *r
 }
 
-// regression: milestone-support/09 — a normalized legacy identity alone must
+// milestone-support/09: a normalized legacy identity alone must
 // never erase the revision the Evidence was requested for.
+// regression: #7088
 func TestPrefixedVerifySubject(t *testing.T) {
 	const key = "4b7d2e10-0000-4000-8000-000000000009"
 	brief := workref.Identity{Kind: workref.Brief, Cell: "example", Repo: "widgets", Stream: "build", Number: "09"}

@@ -29,8 +29,9 @@ func subjectRegistry(t *testing.T, key string) workref.Registry {
 	return reg
 }
 
-// regression: milestone-support/09 — a typed reference must reach the legacy
+// milestone-support/09: a typed reference must reach the legacy
 // fullId boundary with its exact revision retained beside it, never folded in.
+// regression: #7088
 func TestPrefixedHandoffSubject(t *testing.T) {
 	// Old records keep their canonical bytes and digests.
 	for path, want := range recordedHandoffDigests {

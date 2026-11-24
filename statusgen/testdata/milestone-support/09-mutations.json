@@ -150,7 +150,7 @@
       "name": "cutover-timestamp-omitted",
       "target": "statusgen/workref/subject.go",
       "old": "\t\tcase !known:\n",
-      "new": "\t\tcase false:\n",
+      "new": "\t\tcase !known && false:\n",
       "module": "tools/desk",
       "package": "./internal/deskkit",
       "test": "TestRulingAliasAuthority"

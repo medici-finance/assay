@@ -39,9 +39,10 @@ func rsgRegistry(t *testing.T) (*workref.Context, workref.Registry) {
 	return &workref.Context{Cell: "example", Repo: "ex"}, reg
 }
 
-// regression: milestone-support/09 — only the same human, issue and exact work
+// milestone-support/09: only the same human, issue and exact work
 // subject carries a ruling across aliases; a copied ruling, another revision or
 // root, a bot actor or a changed card never does.
+// regression: #7088
 func TestRulingAliasAuthority(t *testing.T) {
 	declaring, registry := rsgRegistry(t)
 	issueBody := "A human decision is needed.\n\n" + rsgMarker + "\n"

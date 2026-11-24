@@ -54,8 +54,9 @@ func subjRun(t *testing.T, version, comment, created, issue string) (int, string
 	return dhGate(t, root)
 }
 
-// regression: milestone-support/09 — a ruling binds the exact work subject the
+// milestone-support/09: a ruling binds the exact work subject the
 // human named; an alias, revision or card it did not name never carries it.
+// regression: #7088
 func TestDecisionGateRulingSubject(t *testing.T) {
 	const pre = rlPosted                // before the cutover
 	const post = "2026-12-02T10:00:00Z" // after the cutover

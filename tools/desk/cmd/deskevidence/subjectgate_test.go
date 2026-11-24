@@ -40,9 +40,10 @@ func sgBrief(version, evidence string) []byte {
 	return []byte(fm + "---\n\n# Brief 18\n\n## Evidence\n\n" + evidence + "\n## Review\n")
 }
 
-// regression: milestone-support/09 — the Evidence landing itself refuses a ruling
+// milestone-support/09: the Evidence landing itself refuses a ruling
 // that does not name this brief's exact subject, and Evidence that names another
 // revision, before and after staging the write.
+// regression: #7088
 func TestEvidenceRulingSubjectGate(t *testing.T) {
 	root := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(root, "docs", "streams"), 0o755); err != nil {
