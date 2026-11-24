@@ -55,4 +55,4 @@ jobs:
           export ASSAY_TEST_POSTGRES_DSN="postgresql://${FIXTURE_ADMIN}:${FIXTURE_PASSWORD}@127.0.0.1:${FIXTURE_PORT}/postgres?sslmode=disable"
           cd loopadmin
           go vet ./journal/
-          go test -count=1 -race -timeout=180s -run '^TestJournal(SharedStoreRestart|IncarnationPaused)$' ./journal/
+          go test -count=1 -race -timeout=180s -run '^Test(Journal(SharedStoreRestart|IncarnationPaused|PassiveRestore|RuntimeGrants)|LoopAdminLaunchBudgetBrake)$' ./journal/

@@ -160,6 +160,12 @@ type dispatchOpts struct {
 	promptFile  string
 	quiet       bool
 	dryRun      bool
+
+	// npmPackage, npmCache and npmBuild are --stage-npm's --package, --cache and
+	// --build: the admitted npm staging step of a verifier run (#7572).
+	npmPackage string
+	npmCache   string
+	npmBuild   bool
 	// itemAlias is the `<alias>:` prefix split off the item key (deliverable.go) — the alias the
 	// brief is TRACKED under. item carries the key WITHOUT it, so every derivation below (claim
 	// key, branch, worktree name) sees the ordinary grammar.

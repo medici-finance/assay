@@ -20,10 +20,37 @@ type Incarnation struct {
 	KeyRef string `json:"key_ref"`
 }
 
-// IncarnationSource reads the current incarnation from trusted operator state
-// outside PostgreSQL. An error or an empty record holds admission.
+// RestoredControl is restore provenance recorded outside the database: the
+// snapshot a restore came from and the historical incarnation and key
+// reference it carried (spec/operator-incarnation-v1.md, RestoredControl).
+type RestoredControl struct {
+	SnapshotRef   string `json:"snapshot_ref"`
+	IncarnationID string `json:"incarnation_id"`
+	KeyRef        string `json:"key_ref"`
+}
+
+// IncarnationSource reads the current incarnation and the cell's restore
+// provenance from trusted operator state outside PostgreSQL. An error or an
+// empty current record holds admission, and so does a current incarnation
+// that has not rotated away from every restore it reports.
 type IncarnationSource interface {
 	CurrentIncarnation(ctx context.Context, cellID string) (Incarnation, error)
+	RestoredControls(ctx context.Context, cellID string) ([]RestoredControl, error)
+}
+
+// notRestored is the contract's CheckNotRestored: it refuses incomplete
+// provenance and a current incarnation whose identity or key reference equals
+// a restored one.
+func notRestored(cur Incarnation, restored []RestoredControl) bool {
+	for _, r := range restored {
+		if r.SnapshotRef == "" || r.IncarnationID == "" || r.KeyRef == "" {
+			return false
+		}
+		if cur.ID == r.IncarnationID || cur.KeyRef == r.KeyRef {
+			return false
+		}
+	}
+	return true
 }
 
 // StopConfirmation is the operator's confirmation that the cell's execution
@@ -54,6 +81,10 @@ func current(ctx context.Context, src IncarnationSource, cell string) (Incarnati
 	}
 	cur, err := src.CurrentIncarnation(ctx, cell)
 	if err != nil || !usable(cell, cur) {
+		return Incarnation{}, ErrPaused
+	}
+	restored, err := src.RestoredControls(ctx, cell)
+	if err != nil || !notRestored(cur, restored) {
 		return Incarnation{}, ErrPaused
 	}
 	return cur, nil
