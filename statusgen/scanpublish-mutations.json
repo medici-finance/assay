@@ -10,7 +10,7 @@
     {
       "name": "coverage walk skips an unexported embedded struct carrying a json tag",
       "file": "scanpublish.go",
-      "old": "if tag == \"-\" || (!f.IsExported() && !(f.Anonymous && ft.Kind() == reflect.Struct)) {",
+      "old": "if tag == \"-\" || (!f.IsExported() && (!f.Anonymous || ft.Kind() != reflect.Struct)) {",
       "new": "if tag == \"-\" || !f.IsExported() {"
     },
     {
