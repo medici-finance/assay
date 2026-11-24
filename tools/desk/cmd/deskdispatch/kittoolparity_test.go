@@ -88,6 +88,12 @@ func TestAgentReleaseLineHasCred(t *testing.T) {
 			}
 			prompt := string(body)
 			line := lineWith(prompt, goClaimBinary+" release")
+			if tc.kit == "review" {
+				if line != "" || !strings.Contains(prompt, "deskpost finish review") {
+					t.Fatal("reviewer must use the run-bound finish, without a bare release command")
+				}
+				return
+			}
 			if line == "" {
 				t.Fatalf("no %s release line in the %s prompt", goClaimBinary, tc.kit)
 			}
@@ -243,6 +249,21 @@ func TestReviewKitStatesToolResults(t *testing.T) {
 			if !strings.Contains(kit, want) {
 				t.Errorf("lane %q: the review kit does not carry %q", lane, want)
 			}
+		}
+	}
+}
+
+// regression: #7432, F1
+func TestReviewFinishCommandUsesTheAssignedCheckout(t *testing.T) {
+	s := &stub{}
+	s.install(t)
+	home := "/reviewer's homes/review 42"
+	for _, key := range []string{"assay--pr-42", "assay--pr-42--security"} {
+		var packet strings.Builder
+		writeReviewAssignment(&packet, dispatchOpts{pr: 42}, dispatchPlan{claimKey: key}, allowedRepo, home)
+		line := lineWith(packet.String(), "deskpost finish ")
+		if !strings.HasPrefix(line, "cd -- "+deskkit.ShellSingleQuote(home)+" && deskpost finish ") {
+			t.Fatalf("finish command omits its assigned checkout: %s", line)
 		}
 	}
 }
