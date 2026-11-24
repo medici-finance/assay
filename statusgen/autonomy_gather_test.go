@@ -58,6 +58,12 @@ esac
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	// The fake gh is launched through ghGuard, which refuses to start it when
+	// verifier admission is required here (a verifier worktree's attestation
+	// file) and no forge token variable is set. The fixture supplies its own
+	// placeholder so the outcome never depends on the caller's environment;
+	// the fake ignores it, and it is not a credential.
+	t.Setenv("GH_TOKEN", "fixture-placeholder-not-a-credential")
 	t.Setenv("AUTONOMY_CALLS", log)
 	t.Setenv("AUTONOMY_LIST", list)
 	t.Setenv("AUTONOMY_ROLLUP", rollup)
