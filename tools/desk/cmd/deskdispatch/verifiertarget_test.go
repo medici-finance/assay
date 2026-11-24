@@ -30,6 +30,36 @@ func tgOptIn(t *testing.T, home string) {
 	t.Cleanup(deskkit.ReloadConfig)
 }
 
+// tgContained stands in for the credential-less runner that does not exist
+// yet, so the dispatch steps behind the pre-claim runner check can be tested.
+func tgContained(t *testing.T) {
+	t.Helper()
+	prev := premergeRunnerFn
+	premergeRunnerFn = func() error { return nil }
+	t.Cleanup(func() { premergeRunnerFn = prev })
+}
+
+// regression: #7623
+// TestTargetInertPreClaim: with no contained runner, an opted-in target whose
+// head is present is still refused before the claim, and only the head read
+// ran (#7628 review S1).
+func TestTargetInertPreClaim(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t)
+	plantScripts(t, root)
+	t.Setenv("DESK_LOOP", "verify-desk")
+	tgOptIn(t, home)
+	s.replies = happyReplies(t.TempDir())
+	if rc := run(tgArgs(t, root, "--target-change", "12", "--target-head", tgHead)); rc != deskkit.ExitRefused {
+		t.Fatalf("rc = %d, want %d", rc, deskkit.ExitRefused)
+	}
+	for _, c := range s.calls {
+		if j := strings.Join(c, " "); !strings.Contains(j, "rev-parse --verify --quiet") {
+			t.Fatalf("an inert target ran %q before refusing", j)
+		}
+	}
+}
+
 func tgArgs(t *testing.T, root string, extra ...string) []string {
 	return append([]string{"example-stream/07", "--root", root, "--repo", allowedRepo, "--kit", "verifier",
 		"--model", "gpt-6-astra", "--brief", "spec.md", "--prompt-file", filepath.Join(t.TempDir(), "p.md")}, extra...)
@@ -104,6 +134,7 @@ func TestTargetHeadNotFetched(t *testing.T) {
 // TestTargetCutsAtHead: an opted-in target cuts the detached verifier home
 // at exactly the named head, and the prompt says the run is pre-merge.
 func TestTargetCutsAtHead(t *testing.T) {
+	tgContained(t)
 	s := &stub{}
 	home, root := s.install(t)
 	plantScripts(t, root)
@@ -139,7 +170,7 @@ func TestTargetCutsAtHead(t *testing.T) {
 func TestTargetHelpStatesGuards(t *testing.T) {
 	for _, mode := range []string{"", "--check-verifier", "--attest-verifier"} {
 		long := newDispatchCLI(mode, dispatchCLI{}).Long
-		for _, want := range []string{"--target-head", "ASSAY_VERIFIER_PREMERGE_REPOS", "default off", "APPROVED", "moved head", "never lands Evidence"} {
+		for _, want := range []string{"--target-head", "ASSAY_VERIFIER_PREMERGE_REPOS", "default off", "APPROVED", "moved head", "never lands Evidence", "NONE EXISTS YET", "Security-Review: pass", "never a fork"} {
 			if !strings.Contains(long, want) {
 				t.Errorf("mode %q help lacks %q", mode, want)
 			}

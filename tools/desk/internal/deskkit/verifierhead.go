@@ -19,11 +19,23 @@ import (
 //   - the reviewer App's own decisive verdict AT THAT HEAD is APPROVED, no
 //     reviewer-App CHANGES_REQUESTED stands at that head, and no other login's
 //     review counts;
+//   - the reviewer App's security lane has posted `Security-Review: pass` AT
+//     THAT HEAD, and no security fail of its stands after that pass;
+//   - the change's head branch lives in the base repository (never a fork),
+//     and its author is a trusted public author on the roster (a role App or
+//     an accountable human, id-pinned);
 //   - the change author is none of the verifier, reviewer or dispatching
 //     desk Apps, so the implementer is never the witness;
 //   - the head is read again after the reviews, at admission and at every use
 //     point (--check-verifier), so a moved head voids the admission;
-//   - any forge read failure is could-not-check, never admitted.
+//   - any forge read failure is could-not-check, never admitted;
+//   - the run executes in a credential-less, contained runner. None exists
+//     yet, so PremergeRunnerProblem refuses every pre-merge target and the
+//     whole feature is INERT: a host-lane row runs as the desk's OS user and
+//     can reach every same-user credential (stored forge logins, App key
+//     files, the credential helper, the ssh home, same-user sockets), not
+//     only the run's own read-only one (docs/verify-row-strength.md,
+//     "What an admitted row can reach").
 
 // VerifierHeadTarget names the unmerged change and the exact head commit a
 // pre-merge verifier run is admitted at.
@@ -135,6 +147,24 @@ func shortSHA(s string) string {
 	return s
 }
 
+// premergeRunnerContained answers whether this run executes in a runner that
+// holds no credential but the verifier's run-scoped read-only one. No such
+// runner exists, so it is false. It is a package variable only so this
+// package's tests can exercise the guards behind it; nothing outside the
+// package can change it, and no production code sets it.
+var premergeRunnerContained = func() bool { return false }
+
+// PremergeRunnerProblem refuses a pre-merge target unless the run is
+// contained. Until a credential-less runner lands, it refuses every one.
+func PremergeRunnerProblem() error {
+	if premergeRunnerContained() {
+		return nil
+	}
+	return Refused("pre-merge verifier runs are inert: no credential-less, contained runner exists, and a host-lane " +
+		"row runs as the desk's OS user with every same-user credential in reach (stored forge logins, App key files, " +
+		"the credential helper, the ssh home), so unmerged code is never run there")
+}
+
 // AdmitVerifierHead is the pre-merge admission rule. It runs at dispatch,
 // before the run record exists, and again at every use point. A nil error is
 // the only admission.
@@ -169,6 +199,9 @@ func AdmitVerifierHead(f Forge, repo string, t VerifierHeadTarget) error {
 			return Refused(fmt.Sprintf("change %d was authored by %s: the implementer is never the verifier's witness or approver", t.Change, author))
 		}
 	}
+	if err := premergeOriginProblem(pr, t.Change); err != nil {
+		return err
+	}
 	reviews, err := f.ReviewsAtHead(fr, t.Change)
 	if err != nil {
 		return Unverifiable(fmt.Sprintf("pre-merge verifier admission could not read change %d's reviews", t.Change), err)
@@ -176,12 +209,17 @@ func AdmitVerifierHead(f Forge, repo string, t VerifierHeadTarget) error {
 	if why := premergeApprovalProblem(reviewer, reviews, t.Head); why != "" {
 		return Refused(fmt.Sprintf("change %d at %s: %s", t.Change, shortSHA(t.Head), why))
 	}
+	if why := premergeSecurityProblem(reviewer, reviews, t.Head); why != "" {
+		return Refused(fmt.Sprintf("change %d at %s: %s", t.Change, shortSHA(t.Head), why))
+	}
 	// Read the head again AFTER the reviews: an approval read against a head
 	// that moved while the reviews were fetched is not an approval of t.Head.
 	if _, err := premergeHead(f, fr, t); err != nil {
 		return err
 	}
-	return nil
+	// Last, so every other guard is still read and reported: the runner must be
+	// contained (#7628 review S1). Today this refuses every target.
+	return PremergeRunnerProblem()
 }
 
 // premergeApprovalProblem requires the reviewer App's standing decisive verdict
@@ -210,6 +248,54 @@ func premergeApprovalProblem(reviewer string, reviews []Review, head string) str
 	default:
 		return "the reviewer App's verdict at this head is not APPROVED"
 	}
+}
+
+// premergeOriginProblem refuses a change whose head is not in the base
+// repository, or whose author is not a trusted public author. A pre-merge run
+// executes on the desk host as the desk's OS user, so the code must come from
+// the repository itself and from an identity the roster already trusts. An
+// unanswered head repository is could-not-check, never "same".
+func premergeOriginProblem(pr *PullRequest, change int) error {
+	switch pr.CrossRepo {
+	case CrossRepoSame:
+	case CrossRepoFork:
+		return Refused(fmt.Sprintf("change %d's head is in a fork: a pre-merge run is admitted only for a branch in the base repository", change))
+	default:
+		return Unverifiable(fmt.Sprintf("change %d's head repository could not be read", change), nil)
+	}
+	login := pr.Author.Login
+	if !TrustedPublicAuthor(login) || !TrustedAuthorID(login, pr.Author.ID) {
+		return Refused(fmt.Sprintf("change %d's author %s is not a trusted role App or accountable human on the roster", change, login))
+	}
+	return nil
+}
+
+// premergeSecurityProblem requires the reviewer App's security lane to pass
+// at exactly head. Reviews are reduced in submission order: a
+// `Security-Review: fail` stands whatever commit it names until a later pass
+// at head, and a fail AT head refuses even when a later pass exists (the same
+// no-laundering rule as a request for changes). A pass at another commit
+// grants nothing.
+func premergeSecurityProblem(reviewer string, reviews []Review, head string) string {
+	pass := false
+	for _, r := range reviews {
+		if !SameActor(r.Author.Login, reviewer) {
+			continue
+		}
+		switch {
+		case HasSecurityReviewFail(r.Body):
+			if r.CommitID == head {
+				return "the reviewer App's security lane failed this head"
+			}
+			pass = false
+		case HasSecurityReviewPass(r.Body) && r.CommitID == head:
+			pass = true
+		}
+	}
+	if !pass {
+		return "the reviewer App's security lane has not passed this head (`Security-Review: pass` at exactly this head)"
+	}
+	return ""
 }
 
 // ResolveVerifierHeadForge resolves the forge a dispatching desk reads the

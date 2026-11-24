@@ -14,9 +14,13 @@ import (
 
 const verifierTargetHelp = "Pre-merge verifier target (--target-change N --target-head SHA, verifier kit only): " +
 	"the run executes an UNMERGED change head with the verifier's credential, so it is admitted only when " +
+	"the run is in a credential-less, contained runner (NONE EXISTS YET, so every target is refused today: a " +
+	"host-lane row runs as the desk's OS user with every same-user credential in reach), " +
 	"the repository is opted in on the roster (ASSAY_VERIFIER_PREMERGE_REPOS, default off), the change is open at " +
 	"EXACTLY that 40-hex head, the reviewer App's own verdict at that head is APPROVED with no reviewer-App " +
-	"request for changes at it, and the change author is none of the verifier, reviewer or dispatching desk Apps. " +
+	"request for changes at it, its security lane posted Security-Review: pass at that head, the head branch is in " +
+	"the base repository (never a fork), the author is a trusted role App or accountable human, and the change " +
+	"author is none of the verifier, reviewer or dispatching desk Apps. " +
 	"Fetch the change head into the checkout first; deskdispatch never fetches it. --attest-verifier and " +
 	"--check-verifier re-read the change at every use: a moved head, a withdrawn approval, a closed change or an " +
 	"opt-out refuses (exit 5) and an unreadable forge is could-not-check (exit 6). A pre-merge run never lands " +
@@ -62,8 +66,13 @@ func verifierTargetPreconditions(o dispatchOpts, dl deliverable, repo string) er
 			"step %s: change %d's head %s is not in %s — fetch the change head first; deskdispatch never fetches it",
 			stepWorktreeCreate, o.targetChange, o.targetHead, o.root), nil)
 	}
-	return nil
+	return premergeRunnerFn()
 }
+
+// premergeRunnerFn is deskkit.PremergeRunnerProblem: with no contained runner
+// it refuses every target before the claim (#7628 review S1). A package seam
+// so this package's tests can reach the steps behind it.
+var premergeRunnerFn = deskkit.PremergeRunnerProblem
 
 // detachedBaseLabel names what a detached home is cut from, for the plan and
 // step lines.

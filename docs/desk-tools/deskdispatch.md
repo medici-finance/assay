@@ -99,14 +99,21 @@ deskdispatch --attest-verifier --root HOME [--dry-run]
 deskdispatch <item> --kit verifier ... --target-change N --target-head SHA
   PRE-MERGE TARGET (#7623). Runs the Verify table at an UNMERGED change head instead of
   merged main, so the verifier's credential meets code that review approved but no merge
-  has accepted. Default off: the repository must be listed on the owner-held roster key
+  has accepted. INERT TODAY: every target is refused, before the claim and at every use
+  point, until a credential-less, contained runner exists, because a host-lane row runs as
+  the desk's OS user with every same-user credential in reach (stored forge logins, App
+  key files, the credential helper, the ssh home, same-user sockets). The guards below
+  all still run and report. Default off: the repository must be listed on the owner-held roster key
   ASSAY_VERIFIER_PREMERGE_REPOS (full owner/name slugs; a malformed value refuses the whole
   roster) and on ASSAY_ALLOWED_REPOS. SHA is the full 40-hex head, already fetched into
   --root (deskdispatch never fetches it); the home is cut detached at exactly SHA.
   Admission requires the change open at exactly SHA, the reviewer App's own decisive
   verdict at SHA APPROVED with no reviewer-App request for changes at SHA (human and other
-  Apps' reviews are not read), and a change author that is none of the verifier, reviewer
-  or dispatching desk Apps. The head is read again after the reviews, and the whole rule is
+  Apps' reviews are not read), the reviewer App's security lane `Security-Review: pass` at
+  SHA with no security fail at SHA, a head branch in the base repository (a fork, or an
+  unreadable head repository, refuses), an author who is a trusted role App or
+  accountable human on the roster, and a change author that is none of the verifier,
+  reviewer or dispatching desk Apps. The head is read again after the reviews, and the whole rule is
   re-run at every --check-verifier and --attest-verifier: a moved head, a withdrawn
   approval, a closed change or a removed opt-in refuses (exit 5), and an unreadable forge
   is could-not-check (exit 6), never admitted. A pre-merge run never lands Evidence and is

@@ -18,6 +18,8 @@ const (
 	phRepo     = "example-org/one"
 	phReviewer = "example-reviewer[bot]"
 	phWorker   = "example-worker[bot]"
+	phSecPass  = "Security-Review: pass"
+	phSecFail  = "Security-Review: fail"
 )
 
 // headForge is verifierForge plus the change and review reads admission makes.
@@ -67,6 +69,7 @@ func phRoster(t *testing.T, premerge string) {
 // top of origin/main and leaves the home detached at that change's head.
 func phFixture(t *testing.T, premerge string) (string, string, *headForge) {
 	t.Helper()
+	phContained(t)
 	root := t.TempDir()
 	verifierFixtureRepo(t, root, nil)
 	phRoster(t, premerge)
@@ -84,10 +87,46 @@ func phFixture(t *testing.T, premerge string) (string, string, *headForge) {
 	}
 	f := &headForge{
 		verifierForge: &verifierForge{actor: "example-desk[bot]"},
-		pr:            PullRequest{State: "open", Draft: true, Author: Account{Login: phWorker, Type: "Bot"}, HeadSHA: head},
-		reviews:       []Review{{Author: Account{Login: phReviewer, Type: "Bot"}, State: "APPROVED", CommitID: head, SubmittedAt: "2026-11-23T01:00:00Z"}},
+		pr: PullRequest{State: "open", Draft: true, Author: Account{Login: phWorker, ID: 4, Type: "Bot"},
+			HeadSHA: head, CrossRepo: CrossRepoSame},
+		reviews: []Review{
+			{Author: Account{Login: phReviewer, Type: "Bot"}, State: "APPROVED", CommitID: head, SubmittedAt: "2026-11-23T01:00:00Z"},
+			{Author: Account{Login: phReviewer, Type: "Bot"}, State: "COMMENTED", CommitID: head, Body: phSecPass, SubmittedAt: "2026-11-23T01:05:00Z"},
+		},
 	}
 	return root, head, f
+}
+
+// phContained stands in for the credential-less runner that does not exist
+// yet, so the guards behind PremergeRunnerProblem can be exercised.
+func phContained(t *testing.T) {
+	t.Helper()
+	prev := premergeRunnerContained
+	premergeRunnerContained = func() bool { return true }
+	t.Cleanup(func() { premergeRunnerContained = prev })
+}
+
+// regression: #7623
+// TestPremergeInertWithoutRunner: with no contained runner, a target that
+// passes every other guard is still refused at preparation and at the use
+// point, before any run record exists (#7628 review S1).
+func TestPremergeInertWithoutRunner(t *testing.T) {
+	if err := PremergeRunnerProblem(); ExitCodeOf(err) != ExitRefused {
+		t.Fatalf("the production runner check admits: %v", err)
+	}
+	root, head, f := phFixture(t, phRepo)
+	premergeRunnerContained = func() bool { return false }
+	err := phPrepare(root, head, f)
+	if ExitCodeOf(err) != ExitRefused || !strings.Contains(err.Error(), "inert") {
+		t.Fatalf("a pre-merge target was admitted with no contained runner: %v", err)
+	}
+	phNoRecord(t, root)
+	if f.creates != 0 {
+		t.Fatal("a refused admission filed a run record")
+	}
+	if err := AdmitVerifierHead(f, phRepo, VerifierHeadTarget{Change: 12, Head: head}); ExitCodeOf(err) != ExitRefused {
+		t.Fatalf("the use-point rule admitted with no contained runner: %v", err)
+	}
 }
 
 func phPrepare(root, head string, f *headForge) error {
@@ -157,15 +196,33 @@ func TestPremergeRefusals(t *testing.T) {
 		}, ExitRefused},
 		{"opted out", "", func(*headForge, string) {}, ExitRefused},
 		{"other repo opted in", "example-org/two", func(*headForge, string) {}, ExitRefused},
-		{"implementer witness", phRepo, func(f *headForge, _ string) { f.pr.Author.Login = "example-verifier[bot]" }, ExitRefused},
-		{"reviewer authored", phRepo, func(f *headForge, _ string) { f.pr.Author.Login = phReviewer }, ExitRefused},
-		{"dispatcher authored", phRepo, func(f *headForge, _ string) { f.pr.Author.Login = "example-desk[bot]" }, ExitRefused},
+		{"implementer witness", phRepo, func(f *headForge, _ string) { f.pr.Author = Account{Login: "example-verifier[bot]", ID: 2, Type: "Bot"} }, ExitRefused},
+		{"reviewer authored", phRepo, func(f *headForge, _ string) { f.pr.Author = Account{Login: phReviewer, ID: 3, Type: "Bot"} }, ExitRefused},
+		{"dispatcher authored", phRepo, func(f *headForge, _ string) { f.pr.Author = Account{Login: "example-desk[bot]", ID: 1, Type: "Bot"} }, ExitRefused},
 		{"moved head", phRepo, func(f *headForge, _ string) { f.pr.HeadSHA = other }, ExitRefused},
 		{"moved during reviews", phRepo, func(f *headForge, _ string) { f.moveOn = 2 }, ExitRefused},
 		{"closed change", phRepo, func(f *headForge, _ string) { f.pr.State = "closed" }, ExitRefused},
 		{"change unreadable", phRepo, func(f *headForge, _ string) { f.prErr = errors.New("offline") }, ExitUnverifiable},
 		{"reviews unreadable", phRepo, func(f *headForge, _ string) { f.revErr = errors.New("offline") }, ExitUnverifiable},
 		{"author unreadable", phRepo, func(f *headForge, _ string) { f.pr.Author.Login = "" }, ExitUnverifiable},
+		// Security lane (#7628 review S2): a pass at exactly the head, by the reviewer App.
+		{"no security pass", phRepo, func(f *headForge, _ string) { f.reviews = f.reviews[:1] }, ExitRefused},
+		{"security pass other sha", phRepo, func(f *headForge, _ string) { f.reviews[1].CommitID = other }, ExitRefused},
+		{"security pass by human", phRepo, func(f *headForge, _ string) { f.reviews[1].Author = human }, ExitRefused},
+		{"security fail after pass", phRepo, func(f *headForge, head string) {
+			f.reviews = append(f.reviews, Review{Author: Account{Login: phReviewer}, State: "COMMENTED", CommitID: head, Body: phSecFail})
+		}, ExitRefused},
+		{"security fail then pass", phRepo, func(f *headForge, head string) {
+			f.reviews = append([]Review{{Author: Account{Login: phReviewer}, State: "COMMENTED", CommitID: head, Body: phSecFail}}, f.reviews...)
+		}, ExitRefused},
+		{"older fail no pass", phRepo, func(f *headForge, _ string) {
+			f.reviews[1] = Review{Author: Account{Login: phReviewer}, State: "COMMENTED", CommitID: other, Body: phSecFail}
+		}, ExitRefused},
+		// Origin (#7628 review S3): never a fork head, never an untrusted author.
+		{"fork head", phRepo, func(f *headForge, _ string) { f.pr.CrossRepo = CrossRepoFork }, ExitRefused},
+		{"head repo unreadable", phRepo, func(f *headForge, _ string) { f.pr.CrossRepo = "" }, ExitUnverifiable},
+		{"untrusted author", phRepo, func(f *headForge, _ string) { f.pr.Author = Account{Login: "outsider", ID: 9, Type: "User"} }, ExitRefused},
+		{"machine login author", phRepo, func(f *headForge, _ string) { f.pr.Author = Account{Login: "example-human", ID: 2001, Type: "User"} }, ExitRefused},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			root, head, f := phFixture(t, c.premerge)
@@ -235,6 +292,9 @@ func TestPremergeVoidAtUsePoint(t *testing.T) {
 		{"moved head", func(f *headForge, _ string) { f.pr.HeadSHA = strings.Repeat("d", 40) }, ExitRefused},
 		{"approval withdrawn", func(f *headForge, head string) {
 			f.reviews = append(f.reviews, Review{Author: Account{Login: phReviewer}, State: "CHANGES_REQUESTED", CommitID: head})
+		}, ExitRefused},
+		{"security fail posted", func(f *headForge, head string) {
+			f.reviews = append(f.reviews, Review{Author: Account{Login: phReviewer}, State: "COMMENTED", CommitID: head, Body: phSecFail})
 		}, ExitRefused},
 		{"change merged", func(f *headForge, _ string) { f.pr.State = "closed" }, ExitRefused},
 		{"opt-in removed", func(*headForge, string) { phRoster(t, "") }, ExitRefused},

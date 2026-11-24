@@ -785,7 +785,12 @@ bound and `deskrun` dispatches nothing). `ASSAY_VERIFIER_PREMERGE_REPOS` (comma-
 `owner/name` slugs) is a trust key for the same reason: it opts a repository in to pre-merge
 verifier runs, whose Verify rows run an unmerged change head with the verifier's credential
 (`deskdispatch --kit verifier --target-change/--target-head`). It is default off, it is read
-from the roster file only, and a malformed entry refuses the whole roster. The adopter-extension
+from the roster file only, and a malformed entry refuses the whole roster. Opting in does not
+yet make a pre-merge run possible: every pre-merge target is refused until a credential-less,
+contained runner exists. A host-lane Verify row runs as the desk's OS user, so it can reach
+every credential that user can (stored forge logins, App key files, the checkout's credential
+helper, the ssh home, same-user sockets), not only the run's read-only one; see "What an
+admitted row can reach" in `docs/verify-row-strength.md`. The adopter-extension
 surfaces — `ASSAY_REPO_ALIASES`, `ASSAY_REPO_FORGES`, `ASSAY_RISK_CALLOUT`,
 `ASSAY_WRITEGUARD_CALLOUT`, `ASSAY_RELEASE_REPO`, `ASSAY_SCAN_REPOS`,
 `ASSAY_OS_USER_LOGIN_MAP` — no longer collapse the

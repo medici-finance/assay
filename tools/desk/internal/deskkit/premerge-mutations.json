@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -timeout 300s -run '^TestPremerge'",
+  "test": "go test ./internal/deskkit/ ./cmd/deskdispatch/ -count=1 -timeout 300s -run '^TestPremerge|^TestTarget'",
   "control": {
     "name": "CONTROL - a closed change reads as open",
     "file": "internal/deskkit/verifierhead.go",
@@ -16,8 +16,8 @@
     {
       "name": "count any login's approval, not only the reviewer App's",
       "file": "internal/deskkit/verifierhead.go",
-      "old": "\t\tif !SameActor(r.Author.Login, reviewer) {\n\t\t\tcontinue\n\t\t}\n",
-      "new": "\t\tif !SameActor(r.Author.Login, reviewer) {\n\t\t\tr.Author.Login = reviewer\n\t\t}\n"
+      "old": "\t\tif !SameActor(r.Author.Login, reviewer) {\n\t\t\tcontinue\n\t\t}\n\t\tif r.State ==",
+      "new": "\t\tif !SameActor(r.Author.Login, reviewer) {\n\t\t\tr.Author.Login = reviewer\n\t\t}\n\t\tif r.State =="
     },
     {
       "name": "a later approval launders a reviewer-App request for changes at the same head",
@@ -34,8 +34,8 @@
     {
       "name": "drop the head re-read after the reviews",
       "file": "internal/deskkit/verifierhead.go",
-      "old": "\tif _, err := premergeHead(f, fr, t); err != nil {\n\t\treturn err\n\t}\n\treturn nil\n}\n",
-      "new": "\treturn nil\n}\n"
+      "old": "\tif _, err := premergeHead(f, fr, t); err != nil {\n\t\treturn err\n\t}\n\t// Last,",
+      "new": "\t// Last,"
     },
     {
       "name": "drop the use-point recheck (admission is never re-read after dispatch)",
@@ -78,6 +78,72 @@
       "file": "internal/deskkit/verifierhead.go",
       "old": "`^[0-9a-f]{40}$`",
       "new": "`^[0-9a-fA-F]{7,40}$`"
+    },
+    {
+      "name": "drop the security-lane requirement (correctness approval alone admits)",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif why := premergeSecurityProblem(reviewer, reviews, t.Head); why != \"\" {\n",
+      "new": "\tif why := premergeSecurityProblem(reviewer, reviews, t.Head); false && why != \"\" {\n"
+    },
+    {
+      "name": "a security pass at any commit counts",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\t\tcase HasSecurityReviewPass(r.Body) && r.CommitID == head:\n",
+      "new": "\t\tcase HasSecurityReviewPass(r.Body):\n"
+    },
+    {
+      "name": "a later security pass launders a security fail at the same head",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\t\t\tif r.CommitID == head {\n\t\t\t\treturn \"the reviewer App's security lane failed this head\"\n",
+      "new": "\t\t\tif false {\n\t\t\t\treturn \"the reviewer App's security lane failed this head\"\n"
+    },
+    {
+      "name": "a security pass by any login counts",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\t\tif !SameActor(r.Author.Login, reviewer) {\n\t\t\tcontinue\n\t\t}\n\t\tswitch {\n",
+      "new": "\t\tswitch {\n"
+    },
+    {
+      "name": "a fork head is admitted",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tcase CrossRepoSame:\n\tcase CrossRepoFork:\n",
+      "new": "\tcase CrossRepoSame, CrossRepoFork:\n\tcase \"fork-disabled\":\n"
+    },
+    {
+      "name": "an unreadable head repository reads as the base repository",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tswitch pr.CrossRepo {\n\tcase CrossRepoSame:\n",
+      "new": "\tswitch pr.CrossRepo {\n\tcase CrossRepoSame, \"\":\n"
+    },
+    {
+      "name": "drop the trusted-author check",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif !TrustedPublicAuthor(login) || !TrustedAuthorID(login, pr.Author.ID) {\n",
+      "new": "\tif false {\n"
+    },
+    {
+      "name": "widen author trust to any configured login",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif !TrustedPublicAuthor(login) || !TrustedAuthorID(login, pr.Author.ID) {\n",
+      "new": "\tif !TrustedAuthor(login) || !TrustedAuthorID(login, pr.Author.ID) {\n"
+    },
+    {
+      "name": "drop the contained-runner refusal from admission",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\treturn PremergeRunnerProblem()\n}\n",
+      "new": "\treturn nil\n}\n"
+    },
+    {
+      "name": "the production runner check reads as contained",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "var premergeRunnerContained = func() bool { return false }\n",
+      "new": "var premergeRunnerContained = func() bool { return true }\n"
+    },
+    {
+      "name": "dispatch skips the contained-runner check before the claim",
+      "file": "cmd/deskdispatch/verifiertarget.go",
+      "old": "\treturn premergeRunnerFn()\n}\n",
+      "new": "\treturn nil\n}\n"
     }
   ]
 }
