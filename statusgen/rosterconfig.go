@@ -427,6 +427,13 @@ const (
 	// credential collapses statusgen's whole trust configuration. Recognised, not
 	// applied. KEEP IN SYNC with deskkit/rosterconfig.go's EnvRunCredentials.
 	scanEnvRunCredentials = "ASSAY_RUN_CREDENTIALS"
+	// scanEnvVerifierPremergeRepos (ASSAY_VERIFIER_PREMERGE_REPOS) is a DESK-only
+	// roster value (#7623): the repositories opted in to pre-merge verifier runs,
+	// read by deskdispatch's admission. statusgen consumes it in no form — but the
+	// two readers share one ~/.config/assay/roster.env, and an unknown ASSAY_ key
+	// REFUSES the whole configuration, so it must be RECOGNISED here. Recognised,
+	// not applied. KEEP IN SYNC with deskkit/rosterconfig.go's EnvVerifierPremergeRepos.
+	scanEnvVerifierPremergeRepos = "ASSAY_VERIFIER_PREMERGE_REPOS"
 	// scanEnvClaimStore (ASSAY_CLAIM_STORE), scanEnvClaimDir (ASSAY_CLAIM_DIR) and
 	// scanEnvClaimSingleHost (ASSAY_CLAIM_SINGLE_HOST) are DESK-only roster values
 	// (the claim-store seam): where a cell keeps its dispatch claims, the file store's

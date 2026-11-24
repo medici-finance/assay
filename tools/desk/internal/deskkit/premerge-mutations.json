@@ -1,0 +1,83 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -timeout 300s -run '^TestPremerge'",
+  "control": {
+    "name": "CONTROL - a closed change reads as open",
+    "file": "internal/deskkit/verifierhead.go",
+    "old": "\tif pr.State != \"open\" {\n",
+    "new": "\tif pr.State == \"open\" {\n"
+  },
+  "mutations": [
+    {
+      "name": "drop the approval check (an unapproved head is admitted)",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif why := premergeApprovalProblem(reviewer, reviews, t.Head); why != \"\" {\n",
+      "new": "\tif why := premergeApprovalProblem(reviewer, reviews, t.Head); false && why != \"\" {\n"
+    },
+    {
+      "name": "count any login's approval, not only the reviewer App's",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\t\tif !SameActor(r.Author.Login, reviewer) {\n\t\t\tcontinue\n\t\t}\n",
+      "new": "\t\tif !SameActor(r.Author.Login, reviewer) {\n\t\t\tr.Author.Login = reviewer\n\t\t}\n"
+    },
+    {
+      "name": "a later approval launders a reviewer-App request for changes at the same head",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\t\tif r.State == \"CHANGES_REQUESTED\" && r.CommitID == head {\n",
+      "new": "\t\tif false && r.State == \"CHANGES_REQUESTED\" && r.CommitID == head {\n"
+    },
+    {
+      "name": "drop the head-bind (a moved head is admitted)",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif pr.HeadSHA != t.Head {\n",
+      "new": "\tif false && pr.HeadSHA != t.Head {\n"
+    },
+    {
+      "name": "drop the head re-read after the reviews",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif _, err := premergeHead(f, fr, t); err != nil {\n\t\treturn err\n\t}\n\treturn nil\n}\n",
+      "new": "\treturn nil\n}\n"
+    },
+    {
+      "name": "drop the use-point recheck (admission is never re-read after dispatch)",
+      "file": "internal/deskkit/verifierattestation.go",
+      "old": "\t\tif err = AdmitVerifierHead(f, r.Binding.Repo, bindingHeadTarget(r.Binding)); err != nil {\n",
+      "new": "\t\tif false {\n"
+    },
+    {
+      "name": "drop the opt-in check (every repository admits pre-merge runs)",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif err := VerifierPremergeOptedIn(repo); err != nil {\n\t\treturn err\n\t}\n\treviewer, excluded",
+      "new": "\treviewer, excluded"
+    },
+    {
+      "name": "allow the implementer as witness (author exclusion dropped)",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\t\tif SameActor(author, login) {\n",
+      "new": "\t\tif false && SameActor(author, login) {\n"
+    },
+    {
+      "name": "an unreadable change author is admitted",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif strings.TrimSpace(author) == \"\" {\n",
+      "new": "\tif false {\n"
+    },
+    {
+      "name": "an unreadable review list reads as no reviews to refuse on",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif err != nil {\n\t\treturn Unverifiable(fmt.Sprintf(\"pre-merge verifier admission could not read change %d's reviews\", t.Change), err)\n",
+      "new": "\tif false {\n\t\treturn Unverifiable(fmt.Sprintf(\"pre-merge verifier admission could not read change %d's reviews\", t.Change), err)\n"
+    },
+    {
+      "name": "a pre-merge run lands Evidence",
+      "file": "internal/deskkit/verifierattestation.go",
+      "old": "\t\tif phase == verifierEvidence {\n\t\t\treturn r.VerifierReceipt, Refused(\"a pre-merge verifier run never lands Evidence",
+      "new": "\t\tif false {\n\t\t\treturn r.VerifierReceipt, Refused(\"a pre-merge verifier run never lands Evidence"
+    },
+    {
+      "name": "an abbreviated head is accepted as a target",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "`^[0-9a-f]{40}$`",
+      "new": "`^[0-9a-fA-F]{7,40}$`"
+    }
+  ]
+}

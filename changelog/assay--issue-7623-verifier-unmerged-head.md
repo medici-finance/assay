@@ -1,0 +1,2 @@
+### Added
+- `deskdispatch --kit verifier --target-change N --target-head SHA` runs a verifier pass at an unmerged change head before merge. It is off by default: the repository must opt in on the roster key `ASSAY_VERIFIER_PREMERGE_REPOS`, and admission requires the reviewer App's approval at exactly that head and a change author who is not the verifier, reviewer or dispatching desk. A moved head voids the run at every use point, and an unreadable forge refuses. A pre-merge run never lands Evidence and is never credited; the merged-main verification is still owed.

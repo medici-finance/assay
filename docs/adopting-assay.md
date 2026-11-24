@@ -781,7 +781,11 @@ dependents.** The six fail-closed trust surfaces — `ASSAY_BLESS_LOGIN`, `ASSAY
 refuse on a malformed value: every acting command refuses exactly as described above.
 `ASSAY_RUN_CREDENTIALS` is a trust surface because it chooses which credential a desk write runs
 as; a malformed entry refuses the whole roster, not only `deskrun` (unset stays valid: no repo is
-bound and `deskrun` dispatches nothing). The adopter-extension
+bound and `deskrun` dispatches nothing). `ASSAY_VERIFIER_PREMERGE_REPOS` (comma-separated full
+`owner/name` slugs) is a trust key for the same reason: it opts a repository in to pre-merge
+verifier runs, whose Verify rows run an unmerged change head with the verifier's credential
+(`deskdispatch --kit verifier --target-change/--target-head`). It is default off, it is read
+from the roster file only, and a malformed entry refuses the whole roster. The adopter-extension
 surfaces — `ASSAY_REPO_ALIASES`, `ASSAY_REPO_FORGES`, `ASSAY_RISK_CALLOUT`,
 `ASSAY_WRITEGUARD_CALLOUT`, `ASSAY_RELEASE_REPO`, `ASSAY_SCAN_REPOS`,
 `ASSAY_OS_USER_LOGIN_MAP` — no longer collapse the

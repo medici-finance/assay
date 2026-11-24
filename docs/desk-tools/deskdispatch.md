@@ -96,6 +96,22 @@ deskdispatch --attest-verifier --root HOME [--dry-run]
   search result cannot authorize another issue. Failed dispatch releases its claim and
   retains the worktree for recovery. Reacquire that claim before launching a recovered run.
   PENDING, failed, mismatched or unreadable stamps never admit verification.
+deskdispatch <item> --kit verifier ... --target-change N --target-head SHA
+  PRE-MERGE TARGET (#7623). Runs the Verify table at an UNMERGED change head instead of
+  merged main, so the verifier's credential meets code that review approved but no merge
+  has accepted. Default off: the repository must be listed on the owner-held roster key
+  ASSAY_VERIFIER_PREMERGE_REPOS (full owner/name slugs; a malformed value refuses the whole
+  roster) and on ASSAY_ALLOWED_REPOS. SHA is the full 40-hex head, already fetched into
+  --root (deskdispatch never fetches it); the home is cut detached at exactly SHA.
+  Admission requires the change open at exactly SHA, the reviewer App's own decisive
+  verdict at SHA APPROVED with no reviewer-App request for changes at SHA (human and other
+  Apps' reviews are not read), and a change author that is none of the verifier, reviewer
+  or dispatching desk Apps. The head is read again after the reviews, and the whole rule is
+  re-run at every --check-verifier and --attest-verifier: a moved head, a withdrawn
+  approval, a closed change or a removed opt-in refuses (exit 5), and an unreadable forge
+  is could-not-check (exit 6), never admitted. A pre-merge run never lands Evidence and is
+  never credited or scheduled; the merged-main run stays owed. Cross-repository briefs
+  and --cross-repo are refused.
 deskdispatch --stage-npm --root HOME --package DIR --cache CACHE [--build] [--brief PATH]
   The admitted npm staging step (#7572), the npm counterpart of the container bracket's
   Go module cache. The home must first pass local pre-work admission. It then runs
