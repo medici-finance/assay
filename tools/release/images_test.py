@@ -2984,6 +2984,62 @@ class PushRetryTest(unittest.TestCase):
                 self.assertEqual((pushes, sleeps), (2, [15]))
 
     # regression: #7619
+    def test_each_classifier_alternative_pinned(self):
+        # Every alternative of both patterns has its own fixture, which matches
+        # only that alternative within its pattern. Dropping any one
+        # alternative flips its fixture's outcome: a transient stops being
+        # retried, or a mixed refusal-plus-transient starts being retried.
+        transient = {
+            r'unknown blob': 'unknown blob\n',
+            r'blob unknown': 'blob unknown to registry\n',
+            r'\bhttp(?: status)?:? 5[0-9]{2}\b': 'HTTP 500\n',
+            r'internal server error': '500 Internal Server Error\n',
+            r'bad gateway': '502 Bad Gateway\n',
+            r'service unavailable': '503 Service Unavailable\n',
+            r'gateway timeout': '504 Gateway Timeout\n',
+            r'\bhttp(?: status)?:? 429\b': 'received unexpected HTTP status: 429\n',
+            r'toomanyrequests': 'toomanyrequests: retry later\n',
+            r'too many requests': '429 Too Many Requests\n',
+            r'connection reset': 'read: connection reset by peer\n',
+            r'i/o timeout': 'dial tcp: i/o timeout\n',
+            r'tls handshake timeout': 'net/http: TLS handshake timeout\n',
+        }
+        refusal = {
+            r'denied': 'denied: blob unknown\n',
+            r'unauthori[sz]ed': 'unauthorized: HTTP 429\n',
+            r'forbidden': 'forbidden: toomanyrequests\n',
+            r'authenticat': 'authentication required: too many requests\n',
+            r'already exists': 'tag already exists: connection reset by peer\n',
+            r'\b401\b': 'HTTP 401: i/o timeout\n',
+            r'\b403\b': 'HTTP 403: TLS handshake timeout\n',
+        }
+        images = load_images()
+        for name, table, retried in (('PUSH_TRANSIENT', transient, True),
+                                     ('PUSH_REFUSAL', refusal, False)):
+            alternatives = getattr(images, name).pattern.split('|')
+            with self.subTest(inventory=name):
+                self.assertEqual(sorted(alternatives), sorted(table))
+            for alternative, stderr in table.items():
+                with self.subTest(pattern=name, alternative=alternative):
+                    hits = [a for a in alternatives if re.search(a, stderr, re.I)]
+                    self.assertEqual(hits, [alternative])
+                    self.assertEqual(images.registry_transient(stderr), retried)
+                    mutant = load_images()
+                    kept = '|'.join(a for a in alternatives if a != alternative)
+                    setattr(mutant, name, re.compile(kept, re.I))
+                    self.assertEqual(mutant.registry_transient(stderr), not retried,
+                                     'SURVIVED: drop ' + alternative)
+        # The pushed path agrees with the classifier for each new class.
+        for stderr in transient.values():
+            with self.subTest(pushed=stderr):
+                got, pushes, sleeps = push_with([(1, stderr), (0, '')])
+                self.assertEqual((pushes, sleeps), (2, [15]))
+        for stderr in refusal.values():
+            with self.subTest(refused=stderr):
+                got, pushes, sleeps = push_with([(1, stderr), (0, '')])
+                self.assertEqual((pushes, sleeps), (1, []))
+
+    # regression: #7619
     def test_transient_retry_is_bounded(self):
         images = load_images()
         got, pushes, sleeps = push_with([(1, UNKNOWN_BLOB)] * 9)

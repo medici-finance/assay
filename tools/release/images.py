@@ -429,15 +429,22 @@ def import_native_runner(native, version, source, ref):
 # A registry can fail a push it accepts moments later: GHCR answered "unknown
 # blob" straight after a cross-repository blob mount and burned a release
 # (#7619). Only such registry-side transients are retried, a bounded number of
-# times with a growing wait. An auth or permission refusal, an existing-tag or
-# invalid-manifest refusal, and every other failure raise on the first attempt.
-# Re-pushing the same local image under the same tag inside one run writes no
-# different bytes, so it does not bypass the existing-tag pre-check above.
+# times with a growing wait: a missing blob (both spellings), a 5xx status, a
+# 429 rate limit, and a dropped or timed-out connection. An auth or permission
+# refusal (401/403 included), an existing-tag or invalid-manifest refusal, and
+# every other failure raise on the first attempt; a refusal word anywhere in
+# the message wins over a transient marker beside it. Re-pushing the same local
+# image under the same tag inside one run writes no different bytes, so it does
+# not bypass the existing-tag pre-check above.
 PUSH_ATTEMPTS = 3
 PUSH_BACKOFF_SECONDS = 15
-PUSH_REFUSAL = re.compile(r"denied|unauthori[sz]ed|forbidden|authenticat|already exists", re.I)
-PUSH_TRANSIENT = re.compile(r"unknown blob|\bhttp(?: status)?:? 5[0-9]{2}\b|internal server error"
-                            r"|bad gateway|service unavailable|gateway timeout", re.I)
+PUSH_REFUSAL = re.compile(r"denied|unauthori[sz]ed|forbidden|authenticat|already exists"
+                          r"|\b401\b|\b403\b", re.I)
+PUSH_TRANSIENT = re.compile(r"unknown blob|blob unknown"
+                            r"|\bhttp(?: status)?:? 5[0-9]{2}\b|internal server error"
+                            r"|bad gateway|service unavailable|gateway timeout"
+                            r"|\bhttp(?: status)?:? 429\b|toomanyrequests|too many requests"
+                            r"|connection reset|i/o timeout|tls handshake timeout", re.I)
 
 
 def registry_transient(stderr):
