@@ -51,6 +51,14 @@ the `qualified-id` rule: an issue reference (`#N`, `<name>#N`), a path or file n
 `<stream>/<NN>` form (a migration-window read form of the brief parser, not a qualified ID), a
 bare stream or number, more than four segments, and any whitespace.
 
+A typed or revisioned reference (`b-NN`, `<ref>@N`) is not a qualified ID and stays refused here.
+A host that meets one resolves it at its own edge with `ResolveWorkSubject`: the reference
+resolves through `statusgen/workref`, its compatibility `fullId` passes to this unchanged grammar,
+and the `workref.Subject` (logical key and requested revision) is returned beside it. The revision
+is never written into a record; persisting it would be a new schema version. Any later workflow
+owner that binds work, evidence or rulings must carry and compare that `Subject` with
+`workref.SameSubject` and must not add its own alias reduction.
+
 ## 3. The handoff record (context-handoff-v1)
 
 One JSON object with `"schema": "context-handoff-v1"`. Every property in every object is
@@ -231,6 +239,9 @@ The digest is `sha256:` followed by the lower-case hex SHA-256 of the canonical 
 that differ only in key order, whitespace, string escaping or elided-versus-full references have
 the same digest; any changed value changes it. The input bytes are never hashed. The manifest's
 `handoff` field is the handoff's digest, so a manifest binds one exact handoff.
+
+Subject resolution (§2) adds no field and changes no canonical byte, so every existing record
+keeps its digest.
 
 Code-built records must be serialized and successfully passed through `DecodeHandoff` or
 `DecodeManifest` before canonicalizing or digesting. `Canonical` and `Digest` do not validate

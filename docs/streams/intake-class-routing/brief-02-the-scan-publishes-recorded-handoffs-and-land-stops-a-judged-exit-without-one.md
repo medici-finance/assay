@@ -19,6 +19,9 @@ gate-why: >-
   human confirms where the scrub boundary sits for that automated copy, and confirms the
   refusal ruled as D2 in the scoping document.
 decision-trigger: start
+decision-issue: 6364
+ruling: "https://github.com/medici-finance/assay/issues/6364#issuecomment-6929236569"
+design: DR-handoff-publish
 issues: []
 outcome: none
 schema: brief-v2
@@ -82,7 +85,9 @@ Options:
 1. **Publish the fields as recorded.** The copy rides the same reviewed intake change as today, so the repository's existing outbound checks and the reviewer see it before merge. Nothing new is added. A careless evidence line can reach a draft pull request before anyone reads it.
 2. **Publish typed references only.** A repository is treated as public unless the roster marks it private; one the roster does not list, or whose marking cannot be read, counts as public. In a public repository the scan publishes a judgment only when all three free-text fields are safe: the evidence must be a typed reference (an issue, pull request, brief or finding id), and the required action and the wake condition must be empty. A judgment that fails this is not published; the scan names the field and reports the judgment as unpublished, and the text stays local. In practice a judgment about work waiting on someone outside the pipeline is never published to a public repository, because its action and wake condition are free text. That holds back nothing a worker could start: such a judgment does not make an issue schedulable. Intake must write evidence as references in public repositories.
 
-Default if no answer: option 2 after 7 days from the decision issue's filing. It is the narrower behaviour and can be widened later; option 1 cannot be undone for text already pushed.
+Default if no answer: option 2 after 2026-11-20 (7 days from the decision issue's filing on 2026-11-13). It is the narrower behaviour and can be widened later; option 1 cannot be undone for text already pushed.
+
+Ruled: option 2 (option A on the decision issue), recorded by the `ruling:` link in this brief's frontmatter, which points at the ruling comment that names `intake-class-routing/02`.
 
 ## Ground rules
 - NEVER git push / trigger workflows / run mutating infra commands. Commit only per the task instructions.
