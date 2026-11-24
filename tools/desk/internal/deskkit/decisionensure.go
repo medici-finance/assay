@@ -648,7 +648,7 @@ func decisionIssueBody(briefID, title, boardID, core string) string {
 		"How to reply: comment from your own account with the board id of this item and the chosen option,\n" +
 		"as `" + boardID + ": <option>` (for example `" + boardID + ": 1`); the comment is the decision\n" +
 		"record. Name the board id in your own words — a bare option number or a one-word \"approved\"\n" +
-		"is not accepted as a ruling when the item later moves on the board. Then close the issue.\n\n" +
+		"is not accepted as a ruling when the item later moves on the board. The desk can close this decision issue with your reply and the continuing tracker.\n\n" +
 		core
 	return strings.TrimRight(body, "\n")
 }
