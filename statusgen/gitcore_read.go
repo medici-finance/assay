@@ -98,8 +98,9 @@ const configCountVar = "GIT_CONFIG_COUNT"
 
 // configCountNative reports whether GIT_CONFIG_COUNT is present with a value
 // the library does not qualify. The verifier's own git config env (a count of
-// 0, or exactly an admitted row's grep pins) keeps a read on the library path;
-// any other count, an empty one included, selects the native profile (#7007).
+// 0, or exactly an admitted row's grep pins) and exactly core.quotePath=false
+// keep a read on the library path; any other count, an empty one included,
+// selects the native profile (#7007, #7533).
 // It is the one place statusgen reads the count (TestConfigCountOneOwner).
 func configCountNative() bool {
 	_, present := os.LookupEnv(configCountVar)
