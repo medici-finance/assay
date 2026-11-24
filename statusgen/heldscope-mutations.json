@@ -1728,6 +1728,24 @@
       "file": "heldscope.go",
       "old": "heldCarryTags[heldElementName(l[p+1:])] {",
       "new": "(heldCarryTags[heldElementName(l[p+1:])] || heldRawTags[heldElementName(l[p+1:])]) {"
+    },
+    {
+      "name": "#7578 carry: a witness header needs no delimiter row under it",
+      "file": "heldscope.go",
+      "old": "!inFence[i+1] && lines[i+1] == heldWitnessDelims[l] && live[i] && live[i+1] {",
+      "new": "!inFence[i+1] && live[i] && live[i+1] {"
+    },
+    {
+      "name": "#7578 carry: a fence does not end the witness exemption",
+      "file": "heldscope.go",
+      "old": "code.fenceLine(l)\n\t\t\t}\n\t\t\twitness = 0\n",
+      "new": "code.fenceLine(l)\n\t\t\t}\n"
+    },
+    {
+      "name": "#7578 carry: a closer in a witness row still counts",
+      "file": "heldscope.go",
+      "old": "} else if n, ok := heldCloseTag(l[p:]); ok && heldCarryTags[n] {",
+      "new": "} else if false {"
     }
   ]
 }

@@ -81,6 +81,8 @@ func TestHeldCarryProseStillDoubts(t *testing.T) {
 	tplRow := strings.Replace(vlRow2, "| 2026-08-13 |", "| 2026-08-13 <template> |", 1)
 	rawRow := strings.Replace(vlRow2, "| 2026-08-13 |", "| 2026-08-13 <textarea> |", 1)
 	carryRow := strings.Replace(vlRow2, "| 2026-08-13 |", "| 2026-08-13 <s> |", 1)
+	closeRow := strings.Replace(vlRow2, "| 2026-08-13 |", "| 2026-08-13 </s> |", 1)
+	header := strings.SplitN(witnessTableFor(vfRow1), "\n", 2)[0]
 	cases := []struct{ name, text string }{
 		{"open a href", "See <a href=x>the log"},
 		{"open details", "Notes <details><summary>x</summary>"},
@@ -97,6 +99,9 @@ func TestHeldCarryProseStillDoubts(t *testing.T) {
 		{"hand header", "\n| # | Command | Result | Output | Date |\n|---|---|---|---|---|\n" + carryRow},
 		{"row not verifyrun's", "\n" + witnessTableFor(vfRow1, "| 3 | <s> | ran |")},
 		{"after the table", "\n" + witnessTableFor(vfRow1) + "\n\n" + carryRow},
+		{"header with no delimiter row", "\n" + header + "\n" + vlRow2 + "\n" + carryRow},
+		{"fence ends the table", "\n" + witnessTableFor(vfRow1) + "\n```\nx\n```\n" + carryRow},
+		{"closer in a witness row", "x <s>\n\n" + witnessTableFor(vfRow1, closeRow)},
 	}
 	for _, c := range cases {
 		if !hc7578Carry(c.text) {
