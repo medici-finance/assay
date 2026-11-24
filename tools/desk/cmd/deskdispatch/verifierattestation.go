@@ -68,6 +68,43 @@ func executeVerifier(mode string, o dispatchOpts) (err error) {
 	return json.NewEncoder(os.Stdout).Encode(receipt)
 }
 
+// executeStageNpm is --stage-npm: the admitted npm staging step of an existing
+// verifier run (#7572). It stages the package's dependencies from a cache filled
+// before the run, binds their digest to the run record, and prints the receipt
+// carrying it. Row admission (--check-verifier) then passes over only the staged
+// directories, and only while they still hash to that digest.
+func executeStageNpm(o dispatchOpts) (err error) {
+	if o.root == "" || o.npmPackage == "" || o.npmCache == "" {
+		return deskkit.Refused("--stage-npm requires --root, --package and --cache")
+	}
+	var receipt deskkit.VerifierReceipt
+	defer func() {
+		if !o.dryRun {
+			result, detail := deskkit.ResultOK, "stage-npm "+receipt.EvidenceBinding()
+			if err != nil {
+				result = deskkit.ResultUnverifiable
+				if deskkit.ExitCodeOf(err) == deskkit.ExitRefused {
+					result = deskkit.ResultRefused
+				}
+				detail = firstLine(err.Error())
+			}
+			_ = deskkit.Log(deskkit.Entry{Tool: toolName, Verb: "stage-npm", Result: result, Detail: detail})
+		}
+	}()
+	if o.dryRun {
+		if err := deskkit.PlanVerifierAttestation(o.root, o.brief); err != nil {
+			return err
+		}
+		fmt.Println("PLAN: stage the package's npm dependencies offline into the verifier home and bind their digest; no forge access")
+		return nil
+	}
+	receipt, err = deskkit.StageVerifierNpm(o.root, o.brief, o.npmPackage, o.npmCache, o.npmBuild)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(receipt)
+}
+
 var attestVerifierDispatchFn = attestVerifierDispatch
 
 // verifierEmittedDest is the file a --prompt-file dispatch actually writes:
