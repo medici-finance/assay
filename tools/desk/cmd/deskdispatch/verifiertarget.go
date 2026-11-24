@@ -56,7 +56,7 @@ func verifierTargetPreconditions(o dispatchOpts, dl deliverable, repo string) er
 	if err := deskkit.VerifierPremergeOptedIn(repo); err != nil {
 		return err
 	}
-	r := runCmd(o.root, "git", "cat-file", "-e", o.targetHead+"^{commit}")
+	r := runCmd(o.root, "git", "rev-parse", "--verify", "--quiet", o.targetHead+"^{commit}")
 	if r.err != nil {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: change %d's head %s is not in %s — fetch the change head first; deskdispatch never fetches it",

@@ -89,12 +89,12 @@ func TestTargetHeadNotFetched(t *testing.T) {
 	plantScripts(t, root)
 	t.Setenv("DESK_LOOP", "verify-desk")
 	tgOptIn(t, home)
-	s.replies = append([]reply{{match: "cat-file -e", code: 1}}, happyReplies("/private/tmp/verifier-home")...)
+	s.replies = append([]reply{{match: "rev-parse --verify --quiet", code: 1}}, happyReplies("/private/tmp/verifier-home")...)
 	if rc := run(tgArgs(t, root, "--target-change", "12", "--target-head", tgHead)); rc != deskkit.ExitUnverifiable {
 		t.Fatalf("rc = %d, want %d", rc, deskkit.ExitUnverifiable)
 	}
 	for _, c := range s.calls {
-		if j := strings.Join(c, " "); !strings.Contains(j, "cat-file -e") {
+		if j := strings.Join(c, " "); !strings.Contains(j, "rev-parse --verify --quiet") {
 			t.Fatalf("a missing head ran %q", j)
 		}
 	}
