@@ -366,7 +366,7 @@ Row 12: the offline bare lint exited 1 and the witness records it as fail. A sep
 
 Supplemental observations (no acceptance credit; separate inspection runs on the same source and home, 2026-11-23T23:32:47Z to 23:39:47Z):
 
-| # | Command | Expected | Observed | Date | Runner |
+| # | Command | Expected | Observed | Observed on | Observed by |
 |---|---------|----------|----------|------|--------|
 | S1 | go -C tools/desk test ./internal/cellop/ -count=1 -v | named tests of rows 2-7 run and PASS | exit 0; 23 top-level tests PASS, 0 SKIP, including TestContractExamplesValidate, TestConcurrentApplyRunsOnce, TestApplyReverifies, TestPlanExpiryAndForeignCell, TestMarkerResetBound, TestBatchConsumedFirstAndStops; log sha256:b5c6d7c4616b | 2026-11-23 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
 | S2 | go -C tools/desk test -tags cellopfixture ./cmd/cellctl/ -run 'TestEveryStateChangingInvocationRequiresTTY\|TestApplyRefusesDeskSession\|TestPlanApplyRoundTrip' -count=1 -v | rows 8, 8b, 10 named tests exist and PASS | exit 0; all three PASS, 0 SKIP; row 8's seven subtests PASS, including exempting_any_one_invocation_fails and every_arrival_at_apply_is_annotated; log sha256:b9f86ddd5110 | 2026-11-23 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
