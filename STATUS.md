@@ -152,7 +152,7 @@ _Held by per-stream caps: 22 brief(s) across 3 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 430b92604 2026-11-24T01:13:38Z_
+_last regen: 61c56c4b3 2026-11-24T01:17:28Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -173,7 +173,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 430b92604 2026-11-24T01:13:38Z_
+_last regen: 61c56c4b3 2026-11-24T01:17:28Z_
 
 **Progress:** 37/100 brief items done.
 
@@ -470,14 +470,14 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 14 [exec:strong] | verified | 1080 | 0 | 8d | CI auto-flip | none; stuck after one main run → file | 2026-10-07 assay-verifier-app[bot] @ 91f04b81ba06 (claude-opus-5-5) | — |
 | quality | 19 [exec:strong] | verified | 1080 | 0 | 8d | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 3add8a9ae315 (claude-opus-5-5) | — |
 | statusgen | 21 [exec:strong] | verified | 1080 | 0 | 8d | CI auto-flip | none; stuck after one main run → file | 2026-11-11 assay-verifier-app[bot] @ b856f281f758 (claude-opus-5-5) | — |
-| desk-tools | 68 [exec:strong] | implemented | 1000 | 0 | 7h | verify runner | none | — | — |
+| desk-tools | 68 [exec:strong] | implemented | 1000 | 0 | 8h | verify runner | none | — | — |
 
 ### Desk-actionable (14)
 
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
 | graph-execution | 36 [exec:strong] | implemented | 21040 | 38 | 5d | verify-desk | triage, then re-bucket | — | — |
-| tool-refactoring | 06 [exec:strong] | implemented | 3020 | 2 | 2d | verify-desk | triage, then re-bucket | — | — |
+| tool-refactoring | 06 [exec:strong] | implemented | 3020 | 2 | 3d | verify-desk | triage, then re-bucket | — | — |
 | tool-refactoring | 05 [exec:strong] | implemented | 3010 | 2 | 2d | verify-desk | triage, then re-bucket | — | — |
 | composability | 02 | implemented | 2580 | 3 | 8d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2580 | 1 | 8d | verify-desk | triage, then re-bucket | — | — |
@@ -526,7 +526,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | statusgen | 8d | 05 |
 | verification-handoff | 8d | 01 |
 | windows-port | 8d | 03 |
-| tool-refactoring | 2d | 06 |
+| tool-refactoring | 3d | 06 |
 
 ## Unresolved findings
 
