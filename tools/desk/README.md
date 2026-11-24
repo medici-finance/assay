@@ -7795,9 +7795,10 @@ on the PR's `dispatched-model:` label, which joins via `pr`.
 The record is the dispatcher's own account. `tier` is the `--tier` flag, `session_tag` is an
 environment value, a `released` line's `dispatch_ref` is read from worktree config, and
 `attempt_local` counts lines already in this file. Only `model_stamp: applied` reports an act,
-the stamp step's own OK. The record is analysis data: never an authenticated log, and never an input to a
-control. A missing line is not evidence that no dispatch ran, since a failed write is
-non-fatal. These records support aggregate analysis per brief, tier and kit. They are never
+the stamp step's own OK. The receipt is unauthenticated. For a review, `deskpost finish` checks it against the
+assigned checkout's dispatch ref and the held lease's owner and run. A missing or mismatched
+receipt leaves the lease held. Dispatch can continue if writing the record fails, so the log can
+be incomplete. These records support aggregate analysis per brief, tier and kit. They are never
 used to rank people or agents.
 
 ## The dispatch-claim store — `ResolveClaimStore`
