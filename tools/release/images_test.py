@@ -2973,9 +2973,15 @@ class PushRetryTest(unittest.TestCase):
 
     # regression: #7619
     def test_server_error_retried(self):
-        got, pushes, sleeps = push_with([(1, HTTP_503), (0, '')])
-        self.assertEqual(got, 'sha256:' + 'd' * 64)
-        self.assertEqual(pushes, 2)
+        # Each fixture matches exactly one 5xx alternative, so dropping or
+        # narrowing any single alternative turns its subtest red.
+        for stderr in (HTTP_503, 'HTTP 500\n', 'received unexpected HTTP status: 504\n',
+                       'http: 599\n', '500 Internal Server Error\n', '502 Bad Gateway\n',
+                       '503 Service Unavailable\n', '504 Gateway Timeout\n'):
+            with self.subTest(stderr=stderr):
+                got, pushes, sleeps = push_with([(1, stderr), (0, '')])
+                self.assertEqual(got, 'sha256:' + 'd' * 64)
+                self.assertEqual((pushes, sleeps), (2, [15]))
 
     # regression: #7619
     def test_transient_retry_is_bounded(self):
@@ -2987,16 +2993,19 @@ class PushRetryTest(unittest.TestCase):
         self.assertEqual(got.cmd, ['docker', 'push', PUSHED])
         self.assertEqual(pushes, images.PUSH_ATTEMPTS)
         self.assertEqual(images.PUSH_ATTEMPTS, 3)
-        self.assertEqual(len(sleeps), images.PUSH_ATTEMPTS - 1)
-        self.assertEqual(sleeps, sorted(sleeps))
-        self.assertTrue(all(s > 0 for s in sleeps))
+        self.assertEqual(sleeps, [15, 30])
 
     # regression: #7619
     def test_refusals_never_retried(self):
         for stderr in (AUTH_REFUSAL, 'unauthorized: authentication required\n',
                        'denied: requested access to the resource is denied\n',
                        '403 Forbidden\n', 'unauthorized: 503 Service Unavailable\n',
-                       'tag already exists\n', 'manifest invalid\n', ''):
+                       'tag already exists\n', 'manifest invalid\n', '',
+                       # One mixed refusal-plus-transient fixture per veto term:
+                       # the refusal must win over the transient marker.
+                       'denied: unknown blob\n', 'forbidden: HTTP 503\n',
+                       'authentication required: 502 Bad Gateway\n',
+                       'tag already exists: unknown blob\n'):
             with self.subTest(stderr=stderr):
                 got, pushes, sleeps = push_with([(1, stderr), (0, '')])
                 self.assertIsInstance(got, subprocess.CalledProcessError)
