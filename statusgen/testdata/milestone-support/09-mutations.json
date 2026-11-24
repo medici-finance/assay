@@ -1,0 +1,195 @@
+{
+  "schema": "subject-bridge-mutations-v1",
+  "runner": "python3 statusgen/testdata/milestone-support/09-mutate.py",
+  "cases": [
+    {
+      "name": "handoff-revision-erased",
+      "target": "statusgen/contexthandoff/ids.go",
+      "old": "return q, workref.SubjectOf(resolved), nil",
+      "new": "s := workref.SubjectOf(resolved)\n\ts.Revision = 0\n\treturn q, s, nil",
+      "module": "statusgen",
+      "package": "./contexthandoff",
+      "test": "TestPrefixedHandoffSubject"
+    },
+    {
+      "name": "subject-by-compatibility-id",
+      "target": "statusgen/workref/subject.go",
+      "old": "return Subject{LogicalKey: r.LogicalKey, Revision: r.Revision, kind: r.Kind}",
+      "new": "return Subject{LogicalKey: r.Compatibility, Revision: r.Revision, kind: r.Kind}",
+      "module": "statusgen",
+      "package": "./contexthandoff",
+      "test": "TestPrefixedHandoffSubject"
+    },
+    {
+      "name": "verify-revision-erased",
+      "target": "statusgen/domain/records.go",
+      "old": "\treturn w, subject, nil\n}",
+      "new": "\tsubject.Revision = 0\n\treturn w, subject, nil\n}",
+      "module": "statusgen",
+      "package": "./domain",
+      "test": "TestPrefixedVerifySubject"
+    },
+    {
+      "name": "omitted-v2-version-zero",
+      "target": "statusgen/domain/records.go",
+      "old": "\t\treturn 0\n\t}\n\treturn 1\n}",
+      "new": "\t\treturn 0\n\t}\n\treturn 0\n}",
+      "module": "statusgen",
+      "package": "./domain",
+      "test": "TestPrefixedVerifySubject"
+    },
+    {
+      "name": "legacy-id-erases-revision",
+      "target": "statusgen/domain/records.go",
+      "old": "if approved.Revision != 0 && presented.Revision == 0 && approved.LogicalKey == presented.LogicalKey {",
+      "new": "if false && approved.Revision != 0 && presented.Revision == 0 && approved.LogicalKey == presented.LogicalKey {",
+      "module": "statusgen",
+      "package": "./domain",
+      "test": "TestPrefixedVerifySubject"
+    },
+    {
+      "name": "subject-short-circuits-candidate",
+      "target": "statusgen/domain/records.go",
+      "old": "\t\treturn err\n\t}\n\treturn b.Validate(c)\n}",
+      "new": "\t\treturn err\n\t}\n\treturn nil\n}",
+      "module": "statusgen",
+      "package": "./domain",
+      "test": "TestPrefixedVerifySubject"
+    },
+    {
+      "name": "statusgen-subject-hook-dropped",
+      "target": "statusgen/decisiongatehold.go",
+      "old": "\t\tsubject: subject.bind,\n",
+      "new": "",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestDecisionGateRulingSubject"
+    },
+    {
+      "name": "statusgen-marker-stream-number-only",
+      "target": "statusgen/rulingsubject.go",
+      "old": "if !markerNamesSubject(issueBody, presented.LogicalKey, declaring, registry) {",
+      "new": "if false && !markerNamesSubject(issueBody, presented.LogicalKey, declaring, registry) {",
+      "module": "statusgen",
+      "package": ".",
+      "test": "TestDecisionGateRulingSubject"
+    },
+    {
+      "name": "missing-version-defaults-to-1",
+      "target": "tools/desk/internal/deskkit/rulingsubjectgate.go",
+      "old": "presented, err := workref.BriefSubject(in.Declared, in.Version, in.Declaring, in.Registry)",
+      "new": "presented, err := workref.BriefSubject(in.Declared, func() uint64 {\n\t\tif in.Version == 0 {\n\t\t\treturn 1\n\t\t}\n\t\treturn in.Version\n\t}(), in.Declaring, in.Registry)",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestRulingAliasAuthority"
+    },
+    {
+      "name": "bot-actor-accepted",
+      "target": "tools/desk/internal/deskkit/rulingsubjectgate.go",
+      "old": "case c.Author.Type != \"User\" || strings.HasSuffix(strings.ToLower(c.Author.Login), \"[bot]\"):",
+      "new": "case false:",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestRulingAliasAuthority"
+    },
+    {
+      "name": "edited-comment-accepted",
+      "target": "tools/desk/internal/deskkit/rulingsubjectgate.go",
+      "old": "if c.CreatedAt != c.UpdatedAt {",
+      "new": "if false && c.CreatedAt != c.UpdatedAt {",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestRulingAliasAuthority"
+    },
+    {
+      "name": "copied-ruling-accepted",
+      "target": "tools/desk/internal/deskkit/rulingsubjectgate.go",
+      "old": "if !strings.EqualFold(c.Repo, in.ExpectedRepo) || c.Issue != in.ExpectedIssue {",
+      "new": "if !strings.EqualFold(c.Repo, in.ExpectedRepo) {",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestRulingAliasAuthority"
+    },
+    {
+      "name": "card-version-as-authority",
+      "target": "statusgen/workref/subject.go",
+      "old": "\tif presented.Revision == 0 {\n\t\treturn fail(Refused, ReasonBriefVersion,",
+      "new": "\tif presented.Revision == 0 && e.Card.Version > 0 {\n\t\tpresented.Revision = e.Card.Version\n\t}\n\tif presented.Revision == 0 {\n\t\treturn fail(Refused, ReasonBriefVersion,",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestRulingAliasAuthority"
+    },
+    {
+      "name": "card-digest-skipped",
+      "target": "statusgen/workref/subject.go",
+      "old": "if !cardDigestRe.MatchString(line.Card) || CardDigest(c.Block) != line.Card {",
+      "new": "if !cardDigestRe.MatchString(line.Card) {",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestRulingAliasAuthority"
+    },
+    {
+      "name": "unexpected-card-ignored",
+      "target": "statusgen/workref/subject.go",
+      "old": "\tif line.Card == \"none\" {\n\t\tif c.Present {",
+      "new": "\tif line.Card == \"none\" {\n\t\tif false && c.Present {",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestRulingAliasAuthority"
+    },
+    {
+      "name": "removed-card-as-legacy",
+      "target": "statusgen/workref/subject.go",
+      "old": "\tif !c.Present {\n\t\treturn fail(CouldNotCheck, ReasonCard,",
+      "new": "\tif !c.Present {\n\t\treturn RulingBinding{State: Bound}\n\t}\n\tif false {\n\t\treturn fail(CouldNotCheck, ReasonCard,",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestRulingAliasAuthority"
+    },
+    {
+      "name": "cutover-timestamp-omitted",
+      "target": "statusgen/workref/subject.go",
+      "old": "\t\tcase !known:\n",
+      "new": "\t\tcase false:\n",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestRulingAliasAuthority"
+    },
+    {
+      "name": "broken-line-falls-to-legacy",
+      "target": "statusgen/workref/subject.go",
+      "old": "\tline, err := ParseRulingSubject(e.Comment)\n",
+      "new": "\tline, err := ParseRulingSubject(e.Comment)\n\tif err != nil {\n\t\tline, err = nil, nil\n\t}\n",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestRulingAliasAuthority"
+    },
+    {
+      "name": "same-subject-ignores-revision",
+      "target": "statusgen/workref/subject.go",
+      "old": "\t\tapproved.kind == presented.kind &&\n\t\tapproved.Revision == presented.Revision",
+      "new": "\t\tapproved.kind == presented.kind",
+      "module": "tools/desk",
+      "package": "./internal/deskkit",
+      "test": "TestRulingAliasAuthority"
+    },
+    {
+      "name": "evidence-subject-check-skipped",
+      "target": "tools/desk/cmd/deskevidence/subjectgate.go",
+      "old": "\tif err := evidenceSubjectGate(root, fr.Slug(), target, p, v, remote, content); err != nil {",
+      "new": "\tif err := evidenceSubjectGate(root, fr.Slug(), target, p, v, remote, content); false && err != nil {",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestEvidenceRulingSubjectGate"
+    },
+    {
+      "name": "landing-ruling-gate-skipped",
+      "target": "tools/desk/cmd/deskevidence/subjectgate.go",
+      "old": "\tr := deskkit.RulingSubjectGate(in)\n",
+      "new": "\tr := deskkit.RulingSubjectResult{State: workref.Bound}\n\t_ = in\n",
+      "module": "tools/desk",
+      "package": "./cmd/deskevidence",
+      "test": "TestEvidenceRulingSubjectGate"
+    }
+  ]
+}
