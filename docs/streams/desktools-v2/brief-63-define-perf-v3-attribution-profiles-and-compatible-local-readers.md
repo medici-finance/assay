@@ -340,6 +340,101 @@ RISK-VALUE: NAMED, NOT DERIVED — MaxWork = 8 @ perfrec/context.go:76, MaxWorkB
 
 **VERIFY: PASS** — 4/4 Verify rows pass at 671d33a050bc, in the network-off container witness and by hand; bare row 4 exits 0 with 10 corroborated, 0 disproved, 0 unchecked. This is the second stamp; gate:human sign-off is pending, and the status is left for the human gate.
 
+### Re-verify on the done path — 2026-11-24 at 52f341a6e0dc (container witness for rows 1 to 3, host witness for row 4)
+
+Subject revision: public merged main 52f341a6e0dc25f7cdc915377f3e9ce6728df746, detached and clean. Delivery: the two-parent merge 3937f39ae2d00d150633f2c22568a79d1f5efb5a, whose first parent b787e831d0be847f1ca81cc48496c8c0deb01fe5 is the fail-first base. The dispatcher check (deskdispatch --check-verifier) exited 0 before any row and again after the bracket closed, with run 2e3e65e48eb6 and source 52f341a6e0dc both times. Reason for the re-run: deliverable files changed after the 2026-10-20 PASS (perfrec gained the perf-v4 and perf-v5 work, and perfrec.go, v3.go, reduce.go, schema.go, deskkit perf.go and perfread.go, and cmd/deskperf all changed since 671d33a050bc), so the earlier PASS does not carry forward.
+
+Protected table: deskpathguard rederive at this source reports 4 rows, 0 author-added; it lists every row as from-base, with row 4 in its current form (pinned delivery and base, from 53d27c1887). No run in this pass refused with a protected-table error: verifyrun took the current table without an acceptance record on both the host and in the container. The Verify table was not edited.
+
+Runner class: the pinned verify-runner image (digest sha256:d3d958719dea47fc611e096612c1478bcc07376b7f9783f92433ac8faeeee380, statusgen v1.0.92, go1.27.4 linux/arm64, git 2.56.1), run under local docker with --network none, --read-only, --cap-drop ALL, the home mounted read-only, the bracket module cache mounted read-only, GOPROXY=off, GOTOOLCHAIN=local, GOFLAGS=-mod=readonly and the history pack from the open step. Host: darwin/arm64, statusgen v1.0.92, go1.27.4, git 2.56.1. Rows 1 to 3 are check:ci and run only in the container lane, because the host has no unshare sandbox. Row 4 is a plain check and runs on the host, where it reads the git history.
+
+#### Container witness, rows 1 to 3 (statusgen verifyrun, sandbox=container-netns, --fail-first)
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `(cd perfrec && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3ContextAndConsent$' ./... > "$out" && grep -F -- '--- PASS: TestPerfV3ContextAndConsent ' "$out")` | pass exit=0 sandbox=container-netns | sha256:94ae9dfaafb6 | 2026-11-24 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=b787e831d0be unproven · head=52f341a6e0dc |
+| 2 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3RecordToReportFlow$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestPerfV3RecordToReportFlow ' "$out")` | pass exit=0 sandbox=container-netns | sha256:9266e90d8bb8 | 2026-11-24 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=b787e831d0be unproven · head=52f341a6e0dc |
+| 3 | `(cd perfrec && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3IsolationAndOverhead$' ./... > "$out" && grep -F -- '--- PASS: TestPerfV3IsolationAndOverhead ' "$out")` | pass exit=0 sandbox=container-netns | sha256:f830b78791b2 | 2026-11-24 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=b787e831d0be unproven · head=52f341a6e0dc |
+Tree-Digest: sha256:3cc0bbcb8407f28d67721c22b23324b961dba4995fbcd08fb0f0e4058f247071
+Container-Image: sha256:d3d958719dea47fc611e096612c1478bcc07376b7f9783f92433ac8faeeee380
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7507 run=2e3e65e48eb619fbe54fb08a7584d615a1d7698132e578785688e61248c8b3b7 source=52f341a6e0dc25f7cdc915377f3e9ce6728df746 brief=docs/streams/desktools-v2/brief-63-define-perf-v3-attribution-profiles-and-compatible-local-readers.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=2e3e65e48eb619fbe54fb08a7584d615a1d7698132e578785688e61248c8b3b7 source=52f341a6e0dc25f7cdc915377f3e9ce6728df746 tree=sha256:3cc0bbcb8407f28d67721c22b23324b961dba4995fbcd08fb0f0e4058f247071 witness=sha256:8477376c4df3390d35be16dda7a436f902d2f682fd55b63377553eb90f5315cc opened=2026-11-23T23:21:12Z closed=2026-11-24T00:03:57Z before=receipt after=check-verifier
+
+The bracket-digest check on this file reports `bracket=L10 header=L1 verdict=match span-lines=tree-digest:1,container-image:1,attestation:1`, with exit 0. It has not been checked for credit yet: the `--credit` check belongs to the landed brief.
+
+#### Host witness, row 4 (statusgen verifyrun --rows 4 --fail-first --delivering-commit 3937f39ae2d0, dry run)
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 4 | `statusgen --root . --consumers --brief desktools-v2/63 --delivery 3937f39ae2d00d150633f2c22568a79d1f5efb5a --base b787e831d0be847f1ca81cc48496c8c0deb01fe5` | pass exit=0 | sha256:3eb8e84ce880 | 2026-11-23 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) | base=b787e831d0be red rc=2 · head=52f341a6e0dc · delivering=3937f39ae2d0 output=sha256:0ae5c2e6b56d8b0cb98ece339b25cd89b1ff04f902745fae69f1cd25274748a7 log=row-000001.log |
+Verification-Attestation: medici-finance/assay#7507 run=2e3e65e48eb619fbe54fb08a7584d615a1d7698132e578785688e61248c8b3b7 source=52f341a6e0dc25f7cdc915377f3e9ce6728df746 brief=docs/streams/desktools-v2/brief-63-define-perf-v3-attribution-profiles-and-compatible-local-readers.md model=claude-opus-5-5 tier=strong
+
+#### By-hand checks on the host at 52f341a6e0dc
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 1 | Verify row 1 test command (go test and grep only; the subshell wrapper is held, see the note below) | exit 0; named PASS | go test exit 0; grep exit 0; --- PASS: TestPerfV3ContextAndConsent (0.02s) | 2026-11-23 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 2 | Verify row 2 test command (go test and grep only) | exit 0; named PASS | go test exit 0; grep exit 0; --- PASS: TestPerfV3RecordToReportFlow (0.18s) | 2026-11-23 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 3 | Verify row 3 test command (go test and grep only) | exit 0; named PASS | go test exit 0; grep exit 0; --- PASS: TestPerfV3IsolationAndOverhead (1.28s); matched workload n=100 concurrency=1 bytes/record=804 drops=0; on-minus-off ns p50=397917 p95=700458 max=2272084; concurrency=4 records=200 bytes=158400 drops=0 | 2026-11-23 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+| 4 | Verify row 4 command, verbatim | exit 0; consumer routing corroborates the actual diff | exit 0; summary: 10 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing, over base b787e831d0be..3937f39ae2d0 (immutable delivered snapshot) | 2026-11-23 | assay-verifier-app[bot] (claude-opus-5-5) (on-behalf-of human:ian) |
+
+These by-hand rows earn no acceptance credit. For rows 1 to 3 the host has no network-off sandbox. The exact subshell form was refused by the session's command-safety check, because it hands rm to bash -c. That refusal was not worked around: the by-hand runs ran only the go test and grep steps, with no temp-file wrapper.
+
+#### Fail-first (risk: sensitive-data yes makes every row risk-bearing)
+
+| # | Base result | Reading |
+|---|-------------|---------|
+| 1 | unproven at base b787e831d0be (container) | The witness says "the row could not run there, so it was never shown to fail". The base-log directory from a single-row diagnostic re-run stayed empty, so the base command never ran. The base tree has no TestPerfV3ContextAndConsent. A host probe of the row's test step on an archive of base perfrec gives "no tests to run" and grep exit 1, which would be red. That probe earns no credit. |
+| 2 | unproven at base b787e831d0be (container) | Same unproven result, with no base log. The host probe on a partial archive could not build: the forgeread replace directory was not in the archive. That is a probe limitation, not a result. |
+| 3 | unproven at base b787e831d0be (container) | Same unproven result. The host probe of the test step gives grep exit 1, which would be red. No credit. |
+| 4 | red rc=2 at base b787e831d0be (host), delivering=3937f39ae2d0 | The base log reads "--consumers --delivery: COULD-NOT-CHECK: delivery must be an ancestor of the checkout's HEAD". The row is red at base because the base cannot contain its own delivery. It is not red because a routing claim was disproved. |
+
+#### Risk-bearing values (trigger: risk sensitive-data yes)
+
+Enumerated over the delivery diff b787e831..3937f39a and re-read at this source. Values in files changed since the last verify sit on new lines.
+
+- ProfileTool = "tool" @ perfrec/context.go:18; ProfileWorkflow = "workflow" @ perfrec/context.go:19
+- tool-profile writer identity check: all linked fields empty and len(d.Work) == 0 @ perfrec/context.go:313
+- opt-in enabled != "1" @ perfrec/context.go:207; Enabled: os.Getenv(EnvVar) == "1" @ perfrec/perfrec.go:136; EnvVar = "ASSAY_TELEMETRY" @ perfrec/perfrec.go:47
+- NewID [16]byte from crypto/rand @ perfrec/context.go:114
+- RetentionDays = 7 @ perfrec/perfrec.go:50
+- directory mode 0o700 @ perfrec/perfrec.go:378 and :385; file mode 0o600 @ perfrec/perfrec.go:282, :291, :394 and :414
+- MaxWork = 8 @ perfrec/context.go:76; MaxWorkBytes = 4096 @ perfrec/context.go:77; MaxRequestGroups = 64 @ perfrec/v3.go:80; issue bound 2147483647 @ perfrec/context.go:152
+
+Ranked by what breaks. The tool/workflow split, the opt-in, the file modes and the retention decide whether linked identity reaches disk; a disclosure cannot be undone by an edit and a redeploy. ID entropy comes next. The size bounds rank last as reversible knobs. Since 671d33a050bc, perfrec.go gained WriteEnabled. The v3 and v4 schemas still require the exact process opt-in at the writer. Legacy schemas keep their earlier writer behaviour, with no opt-in check at Write.
+
+RISK-VALUE: DERIVED — ProfileTool = "tool" @ perfrec/context.go:18, writer check @ perfrec/context.go:313 — the spec says only the workflow profile carries linked context (docs/performance-attribution-spec.md line 61). The writer refuses session, agent, parent, deskRole, role and work values under the tool profile even with the parser bypassed.
+
+RISK-VALUE: DERIVED — Enabled == "1" @ perfrec/perfrec.go:136 (enabled != "1" @ perfrec/context.go:207, EnvVar = "ASSAY_TELEMETRY" @ perfrec/perfrec.go:47) — new writing needs ASSAY_TELEMETRY=1 exactly (spec lines 35 and 37), and WriteEnabled keeps that exact check for v3 and v4 whatever consent the application resolved.
+
+RISK-VALUE: DERIVED — directory mode 0o700 @ perfrec/perfrec.go:378/:385 and file mode 0o600 @ perfrec/perfrec.go:394/:414 — owner-only access, per the spec's restrictive permissions and its 0700 directories and 0600 files (spec lines 49 and 114).
+
+RISK-VALUE: DERIVED — RetentionDays = 7 @ perfrec/perfrec.go:50 — seven UTC days (spec lines 34 and 115).
+
+RISK-VALUE: DERIVED — NewID [16]byte from crypto/rand @ perfrec/context.go:114 — 128 random bits put the birthday bound near 2^64 IDs, far above any seven-day local history. The spec asks for random IDs (line 48) but names no width, so this derivation is from first principles.
+
+RISK-VALUE: NAMED, NOT DERIVED — MaxWork = 8 @ perfrec/context.go:76, MaxWorkBytes = 4096 @ perfrec/context.go:77, MaxRequestGroups = 64 @ perfrec/v3.go:80, issue bound 2147483647 @ perfrec/context.go:152 — reversible size bounds. The spec asks for bounded values but gives no numbers.
+
+#### Attempts
+
+| # | Started (UTC) | Finished (UTC) | Lane | Rows run | Disposition |
+|---|---------------|----------------|------|----------|-------------|
+| A1 | 2026-11-23T23:19:06Z | 2026-11-23T23:19:27Z | host verifyrun --rows 4 --dry-run | 4 | uncredited, replaced by A2 (no fail-first) |
+| A2 | 2026-11-23T23:20:45Z | 2026-11-23T23:21:16Z | host verifyrun --rows 4 --fail-first --dry-run | 4 | credited (row 4 at head); base red is COULD-NOT-CHECK (see Fail-first) |
+| A3 | 2026-11-23T23:20:35Z | 2026-11-24T00:00:04Z | open bracket (history export) | 0 | bracket opened 2026-11-23T23:21:12Z |
+| A4 | 2026-11-24T00:00:35Z | 2026-11-24T00:00:40Z | container verifyrun rows 1 to 3 | 0 | discarded: the brief path was relative to the container cwd and admission refused ("the receipt admits brief … but this run's brief is …"); no rows executed |
+| A5 | 2026-11-24T00:01:07Z | 2026-11-24T00:03:08Z | container verifyrun rows 1 to 3, fail-first | 1, 2, 3 | credited at head; base unproven for every row. Bracket closed 00:03:57Z after one relative-path close refusal ("refused, nothing appended") was fixed with an absolute brief path |
+| A6 | 2026-11-24T00:04:14Z | 2026-11-24T00:05:24Z | container verifyrun row 1, fail-first, --base-log (diagnostic, separate witness, not closed) | 1 | uncredited diagnostic: the same unproven base, and the base-log directory stayed empty |
+| A7 | 2026-11-23 | 2026-11-23 | host by hand, rows 1 to 4 | 1, 2, 3, 4 | uncredited supplemental (table above) |
+| A8 | 2026-11-24 | 2026-11-24 | host base probes, rows 1 to 3, on an archive of the base tree | 1, 2, 3 | uncredited probe; rows 1 and 3 grep exit 1; row 2 build failed because the archive was partial (environment) |
+
+Refusals hit in this pass, quoted and not worked around:
+- Claude Code command-safety check, on the by-hand form of rows 1 to 3: "This command passes a shell -c script that runs rm, and Claude Code could not check the script for dangerous removals."
+- writeguard, on a process-listing pipeline whose grep filter contained a credential-shaped word: "writeguard: BLOCKED — ambient forge credential read". That line of work stopped. It was not needed.
+
+**VERIFY: BLOCKED** — environment/instrument, rows 1, 2 and 3. All 4 rows pass at head: rows 1 to 3 in the bracketed network-off container witness (verdict=match), and row 4 on the host with 10 corroborated, 0 disproved, 0 unchecked. Fail-first did not complete. Rows 1 to 3 came back unproven at base b787e831d0be: the container's base run never ran a command, and its base log is empty. Row 4 is red at base only through COULD-NOT-CHECK, because the base cannot contain the delivery. No acceptance obligation failed. Gate: human; the status stays where it is.
+
 ## Review
 
 Gate: human. Reject changed legacy meanings, guessed identity/cost, lost coverage or optional measurement that changes an operation.
