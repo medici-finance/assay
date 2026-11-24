@@ -149,7 +149,7 @@ func (c *Client) roundTrip(ctx context.Context, b []byte, report *Report) ([]byt
 	if response != nil && response.Body != nil {
 		defer func() {
 			if !closed {
-				response.Body.Close()
+				_ = response.Body.Close()
 			}
 		}()
 	}

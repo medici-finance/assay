@@ -51,3 +51,24 @@ func TestMirrorPageClientRestartDoesNotRetry(t *testing.T) {
 		t.Fatalf("foreign cursor was sent: %v, calls %d", err, calls)
 	}
 }
+
+func TestMirrorPageClientCapsResponse(t *testing.T) {
+	q, _, _ := literal(t)
+	q.Operation, q.Source = service.MirrorQuery, nil
+	q.Mirror = &service.MirrorRequest{Kind: mirror.Changes, MaxAgeMS: 60_000}
+	request := service.MirrorPageRequest{Schema: service.MirrorPageSchema, Query: q, Limit: 100}
+	body := bytes.NewReader(make([]byte, service.MaxMessageBytes+2))
+	closes := 0
+	transport := trip(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}},
+			Body: &closeBody{Reader: body, close: func() { closes++ }}}, nil
+	})
+	c := configured(t, q, "https://example.test/mirror-pages", transport, false)
+	got, report, err := c.DoMirrorPage(context.Background(), request)
+	if !errors.Is(err, service.ErrInvalid) || got.Page != nil || report.TransportAttempts != 1 ||
+		report.ResponseBodyBytes == nil || *report.ResponseBodyBytes != service.MaxMessageBytes+1 ||
+		body.Len() != 1 || closes != 1 {
+		t.Fatalf("expected an oversized response to be refused after reading limit+1 bytes: %v, report %+v, unread %d, closes %d",
+			err, report, body.Len(), closes)
+	}
+}
