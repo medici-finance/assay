@@ -2,7 +2,7 @@
 stream: review-profiles
 repo: medici-finance/assay
 serves: assay
-status: parked
+status: active
 priority: P2
 track: platform
 issues: [3080]
@@ -12,9 +12,7 @@ spec: docs/streams/review-profiles/spec.md
 
 # Performance and architecture review profiles
 
-[Draft specification](spec.md). Extend existing review and assessment owners with two
-selectively applied profiles. This plan does not install two unconditional approval lanes,
-start a pilot, enable a cadence or promote advisory findings to blockers.
+The [specification](spec.md) defines two selectively applied reviews. Start with brief 01 to define the assessment record and offline replay kit. Its verification opens brief 02 (performance) and brief 03 (architecture) in parallel. Brief 05 owns the decision to enable advisory PR routing after calibration.
 
 ## Briefs
 
@@ -57,6 +55,6 @@ assessment belongs to continuing operations/quality. Optional performance collec
 carries observations, while required CI evidence and runtime budget accounting remain
 independent. See the spec for exact consumers and the future-architecture mapping.
 
-All briefs are proposed and unstarted. Preserve historical implementation and verification
+Preserve historical implementation and verification
 records in build-less-brittle and other streams. Deployment-specific pilot corpora and data
 grants stay with each adopter; public fixtures are synthetic or explicitly public.

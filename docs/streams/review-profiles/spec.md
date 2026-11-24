@@ -1,7 +1,10 @@
 # Performance and architecture assessment profiles
 
-**Status: draft, 15 October 2026.** Proposed assessment design and pilot contract;
-no new lane, blocker, model spend, scheduled job or repair authority is activated.
+**Status:** routed
+
+**Routes-to:** docs/streams/review-profiles/
+
+The profiles cover offline implementation and calibration. Brief 05 defines the decision for live routing.
 Source inspection: public main `7d52be61b66cb81f5ad2ab7e1d250747a6f125de`.
 
 ## Purpose and lead questions
