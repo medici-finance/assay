@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -28,18 +29,30 @@ func OpenRefreshRuntime(ctx context.Context, c Config, p RefreshRoleProfile) (*D
 	if err != nil {
 		return nil, err
 	}
-	var restricted bool
-	err = db.db.QueryRowContext(ctx, `
-		SELECT rolcanlogin AND NOT (rolinherit OR rolsuper OR rolcreatedb OR rolcreaterole OR rolreplication OR rolbypassrls)
-		    AND session_user=current_user AND current_database()=$1 AND current_user=$2
-		    AND NOT EXISTS (SELECT FROM pg_catalog.pg_auth_members m WHERE m.member=r.oid)
-		    AND NOT pg_catalog.has_any_column_privilege(r.oid,'public.refresh_initializations','INSERT')
-		FROM pg_catalog.pg_roles r WHERE rolname=current_user`, p.Database, p.Runtime).Scan(&restricted)
-	if err != nil || !restricted {
+	// Use the same effective privilege envelope as the operator grant manifest.
+	// Check the identity and the privileges on the same PostgreSQL session.
+	conn, err := db.db.Conn(ctx)
+	if err == nil {
+		err = checkRefreshRuntime(ctx, conn, p)
+		_ = conn.Close()
+	}
+	if err != nil {
 		_ = db.Close()
 		return nil, failure(ctx, "open refresh runtime", InvalidConfig)
 	}
 	return db, nil
+}
+
+func checkRefreshRuntime(ctx context.Context, conn *sql.Conn, p RefreshRoleProfile) error {
+	var matches bool
+	err := conn.QueryRowContext(ctx, `
+		SELECT session_user=current_user AND current_database()=$1 AND current_user=$2`,
+		p.Database, p.Runtime).Scan(&matches)
+	if err != nil || !matches {
+		return failure(ctx, "check refresh runtime identity", InvalidConfig)
+	}
+	_, err = conn.ExecContext(ctx, refreshRoleChecks(true))
+	return err
 }
 
 type refreshTableRole struct {
