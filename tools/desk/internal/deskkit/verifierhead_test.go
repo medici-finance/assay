@@ -196,7 +196,9 @@ func TestPremergeRefusals(t *testing.T) {
 		}, ExitRefused},
 		{"opted out", "", func(*headForge, string) {}, ExitRefused},
 		{"other repo opted in", "example-org/two", func(*headForge, string) {}, ExitRefused},
-		{"implementer witness", phRepo, func(f *headForge, _ string) { f.pr.Author = Account{Login: "example-verifier[bot]", ID: 2, Type: "Bot"} }, ExitRefused},
+		{"implementer witness", phRepo, func(f *headForge, _ string) {
+			f.pr.Author = Account{Login: "example-verifier[bot]", ID: 2, Type: "Bot"}
+		}, ExitRefused},
 		{"reviewer authored", phRepo, func(f *headForge, _ string) { f.pr.Author = Account{Login: phReviewer, ID: 3, Type: "Bot"} }, ExitRefused},
 		{"dispatcher authored", phRepo, func(f *headForge, _ string) { f.pr.Author = Account{Login: "example-desk[bot]", ID: 1, Type: "Bot"} }, ExitRefused},
 		{"moved head", phRepo, func(f *headForge, _ string) { f.pr.HeadSHA = other }, ExitRefused},
