@@ -38,7 +38,7 @@ func (s *MirrorStore) ReadPage(ctx context.Context, a mirror.Admission, scope mi
 	if err != nil {
 		return MirrorPage{}, mirrorFailure(ctx, "mirror-page", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	h, err := readMirrorHeader(ctx, tx, key, scope, s.limits.MaxBytes, false)
 	if err != nil {
 		return MirrorPage{}, mirrorFailure(ctx, "mirror-page", err)
@@ -72,7 +72,9 @@ func (s *MirrorStore) ReadPage(ctx context.Context, a mirror.Admission, scope mi
 			return MirrorPage{}, mirrorFailure(ctx, "mirror-page", err)
 		}
 		err = readMirrorRecordRows(rows, &h, size, maxBytes)
-		rows.Close()
+		if closeErr := rows.Close(); err == nil {
+			err = closeErr
+		}
 		if err != nil {
 			return MirrorPage{}, mirrorFailure(ctx, "mirror-page", err)
 		}
@@ -96,7 +98,7 @@ func pagePayloadCount(ctx context.Context, tx *sql.Tx, key []byte, kind string, 
 	if err != nil {
 		return 0, false, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	count := 0
 	for rows.Next() {
 		var bytes int

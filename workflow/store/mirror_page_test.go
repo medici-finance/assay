@@ -19,7 +19,7 @@ func TestPGMirrorSnapshotPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() { _ = db.Close() })
 	limits := MirrorLimits{MaxRecords: 1024, MaxBytes: 4 << 20}
 	writer, err := db.Mirror(limits)
 	if err != nil {
@@ -40,7 +40,7 @@ func TestPGMirrorSnapshotPages(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { runtime.Close() })
+	t.Cleanup(func() { _ = runtime.Close() })
 	s, err := runtime.Mirror(limits)
 	if err != nil {
 		t.Fatal(err)
