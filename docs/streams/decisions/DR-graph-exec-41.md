@@ -20,8 +20,8 @@ accepted:
 ---
 
 **PROPOSED — no ruling is recorded.** `decided-by:` is a placeholder until a human rules on
-this record on the brief's own decision issue (filed from its `## Human decision` section
-and recorded in the brief as `decision-issue:`). Until then this record is not an approved
+this record on the brief's own decision issue, #7549 (filed from its `## Human decision`
+section and recorded in the brief as `decision-issue: 7549`). Until then this record is not an approved
 design, and the brief that cites it (graph-execution/41, `design: DR-graph-exec-41`)
 may not be accepted on its account (the design-approval gate, `spec/lifecycle-v1.md`
 §4.4). The ruling comment must name `DR-graph-exec-41` and one of the brief's options.
