@@ -186,7 +186,8 @@ type dispatchOpts struct {
 	// run carries what the dispatch minted back to cmdDispatch's audit line. A POINTER, because
 	// dispatch() works on copies of the options (resolveBrief returns a new value) and the audit
 	// line is written from the caller's copy. nil on paths that mint nothing (--stamp-only).
-	run *dispatchRun
+	reviewRun string // embedded by the Go claim tool at review acquisition
+	run       *dispatchRun
 }
 
 // dispatchRun is the per-run state a dispatch hands back to its own audit line.
@@ -439,6 +440,13 @@ func dispatch(o dispatchOpts) error {
 		}
 	}
 
+	// A review checkout and its claim share this per-run identity. Reusing the
+	// desk session and claim key for a later review must not reuse its lease.
+	var dispatchRef string
+	if reviewKit(o.kit) {
+		dispatchRef = mintDispatchRef(plan)
+		o.reviewRun = dispatchRef
+	}
 	// ADMISSION (example-stream/18) then the durable item claim, as one sequence: see admitAndClaim.
 	if err := admitAndClaim(o, plan, claimRepo, auth, func() error {
 		return stepClaim(o, claimRepo, plan.claimTool, plan.claimToolIsScript, auth, plan.claimKey)
@@ -454,7 +462,12 @@ func dispatch(o dispatchOpts) error {
 	// the claim key alone names the ITEM, which every re-dispatch, re-review and stale reclaim
 	// reuses. A mint failure (the secure source failing) is a WARNING: the dispatch proceeds with
 	// no ref and never falls back to a weaker source.
-	dispatchRef := mintDispatchRef(o, plan)
+	if !reviewKit(o.kit) {
+		dispatchRef = mintDispatchRef(plan)
+	}
+	if o.run != nil {
+		o.run.dispatchRef = dispatchRef
+	}
 
 	// 2 — the agent's worktree, in the ITEM's repo. deskwt owns the safety here (a
 	// sanctioned path prefix, an unambiguous base, no clobber of an existing target), so
@@ -604,6 +617,7 @@ func dispatch(o dispatchOpts) error {
 				stepWorktreeCreate, home, ext.run.Said())
 		}
 		recordDispatchRefInWorktree(o, home, dispatchRef)
+
 	}
 
 	// before_run — runs after the worktree is prepared and BEFORE the prompt is emitted (the
@@ -1439,6 +1453,9 @@ func stepClaim(o dispatchOpts, repo, script string, isScript bool, auth claimAut
 				"double-dispatches.", stepClaimAcquire, script), err)
 	}
 	args := []string{"acquire", claimKey, "--repo", repo}
+	if o.reviewRun != "" && !isScript {
+		args = append(args, "--review-run", o.reviewRun)
+	}
 	if o.branch != "" {
 		args = append(args, "--branch", o.branch)
 	}
