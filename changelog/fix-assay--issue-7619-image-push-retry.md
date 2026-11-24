@@ -1,0 +1,3 @@
+### Fixed
+- The release image publisher now retries a push a bounded number of times (three attempts, with a growing wait) when the registry answers with a transient error such as `unknown blob` or a 5xx status, so one registry hiccup after approval no longer burns the version. Auth, permission, existing-tag and every other refusal still stop the release on the first attempt, and the original registry error is what surfaces when the retries run out. The runner image index push takes the same retry.
+- When the image publish fails part-way, the release log now lists every image reference, with its digest, that was pushed before the failure.

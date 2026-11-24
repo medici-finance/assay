@@ -6,7 +6,9 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
+import time
 
 DESKS = ("intake-desk", "worker-desk", "pr-review-desk", "verify-desk", "the-desk")
 # deskd is the service image cell-api/08 defines (images/deskd/, context deskd/).
@@ -183,13 +185,19 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
         print("Dry build complete: no image pushed and no pinnable-reference artifacts written.")
         return
     images = []
-    for name, ref in refs.items():
-        if name == "verify-runner":
-            digest = publish_runner_index(ref, runner_refs)
-            images.append({"name": name, "platform": RUNNER_PLATFORM, "ref": ref + "@" + digest})
-            continue
-        images.append({"name": name, "platform": "linux/amd64",
-                       "ref": ref + "@" + push_digest(ref)})
+    try:
+        for name, ref in refs.items():
+            if name == "verify-runner":
+                digest = publish_runner_index(ref, runner_refs)
+                images.append({"name": name, "platform": RUNNER_PLATFORM, "ref": ref + "@" + digest})
+                continue
+            images.append({"name": name, "platform": "linux/amd64",
+                           "ref": ref + "@" + push_digest(ref)})
+    except Exception:
+        # Plan the next cut from the job log alone: what this version now holds.
+        print("Release images pushed before the failure: "
+              + (" ".join(image["ref"] for image in images) or "none"), file=sys.stderr, flush=True)
+        raise
     manifest = {"schema": "release-images-v1", "version": version,
                 "source_revision": source, "repository": prefix.removeprefix("ghcr.io/"), "images": images}
     (out / "release-images.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -418,9 +426,51 @@ def import_native_runner(native, version, source, ref):
         raise ValueError("loaded ARM64 image differs from the native checked image")
 
 
-def push_digest(ref):
+# A registry can fail a push it accepts moments later: GHCR answered "unknown
+# blob" straight after a cross-repository blob mount and burned a release
+# (#7619). Only such registry-side transients are retried, a bounded number of
+# times with a growing wait. An auth or permission refusal, an existing-tag or
+# invalid-manifest refusal, and every other failure raise on the first attempt.
+# Re-pushing the same local image under the same tag inside one run writes no
+# different bytes, so it does not bypass the existing-tag pre-check above.
+PUSH_ATTEMPTS = 3
+PUSH_BACKOFF_SECONDS = 15
+PUSH_REFUSAL = re.compile(r"denied|unauthori[sz]ed|forbidden|authenticat|already exists", re.I)
+PUSH_TRANSIENT = re.compile(r"unknown blob|\bhttp(?: status)?:? 5[0-9]{2}\b|internal server error"
+                            r"|bad gateway|service unavailable|gateway timeout", re.I)
+
+
+def registry_transient(stderr):
+    """True only for a registry-side transient that carries no refusal."""
+    return bool(not PUSH_REFUSAL.search(stderr) and PUSH_TRANSIENT.search(stderr))
+
+
+def registry_push(*args, capture=False, sleep=time.sleep):
+    """Run one docker registry write, retrying registry transients only.
+
+    Every docker push and manifest push goes through here. On exhaustion, or
+    on any other failure, the last attempt's CalledProcessError is raised."""
+    attempt = 1
+    while True:
+        print("+ " + " ".join(map(str, args)), flush=True)
+        result = subprocess.run(list(map(str, args)), text=True, stderr=subprocess.PIPE,
+                                stdout=subprocess.PIPE if capture else None)
+        sys.stderr.write(result.stderr or "")
+        sys.stderr.flush()
+        if result.returncode == 0:
+            return result.stdout
+        if attempt >= PUSH_ATTEMPTS or not registry_transient(result.stderr):
+            result.check_returncode()
+        wait = PUSH_BACKOFF_SECONDS * 2 ** (attempt - 1)
+        print(f"registry transient on attempt {attempt} of {PUSH_ATTEMPTS}; "
+              f"retrying in {wait}s", flush=True)
+        sleep(wait)
+        attempt += 1
+
+
+def push_digest(ref, *, sleep=time.sleep):
     """Push one tagged image and return the registry manifest digest it got."""
-    run("docker", "push", ref)
+    registry_push("docker", "push", ref, sleep=sleep)
     repo = ref.rsplit(":", 1)[0]
     digests = run("docker", "image", "inspect", "--format",
                   "{{range .RepoDigests}}{{println .}}{{end}}", ref, capture=True).splitlines()
@@ -445,7 +495,7 @@ def publish_runner_index(ref, runner_refs):
     repo = ref.rsplit(":", 1)[0]
     pushed = {platform: push_digest(platform_ref) for platform, platform_ref in runner_refs.items()}
     run("docker", "manifest", "create", ref, *(repo + "@" + d for d in pushed.values()))
-    out = run("docker", "manifest", "push", "--purge", ref, capture=True).split()
+    out = registry_push("docker", "manifest", "push", "--purge", ref, capture=True).split()
     if not out or not re.fullmatch(r"sha256:[0-9a-f]{64}", out[-1]):
         raise ValueError(f"index push did not yield an immutable digest for {ref}")
     digest = out[-1]
