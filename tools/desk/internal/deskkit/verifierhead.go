@@ -237,9 +237,10 @@ func premergeApprovalProblem(reviewer string, reviews []Review, head string) str
 			return "the reviewer App requested changes at this head"
 		}
 		state := r.State
-		if state == "APPROVED" && HasSecurityReviewPass(r.Body) {
-			// One lane per review body (#7628 security review A3): an
-			// approval that also carries a security pass grants neither.
+		if state == "APPROVED" && (HasSecurityReviewPass(r.Body) || HasSecurityReviewFail(r.Body)) {
+			// One lane per review body (#7628 review F1, security A3): an
+			// approval that speaks for the security lane is not the
+			// correctness approval.
 			state = "COMMENTED"
 		}
 		app = append(app, AppReview{AuthorLogin: r.Author.Login, State: state, CommitID: r.CommitID, SubmittedAt: r.SubmittedAt})
@@ -281,8 +282,7 @@ func premergeOriginProblem(pr *PullRequest, change int) error {
 // `Security-Review: fail` stands whatever commit it names until a later pass
 // at head, and a fail AT head refuses even when a later pass exists (the same
 // no-laundering rule as a request for changes). A pass at another commit
-// grants nothing, and neither does a pass in an APPROVED body: one review body
-// grants one lane.
+// grants nothing, and neither does a pass premergeSecPassGrants rejects.
 func premergeSecurityProblem(reviewer string, reviews []Review, head string) string {
 	pass := false
 	for _, r := range reviews {
@@ -295,7 +295,7 @@ func premergeSecurityProblem(reviewer string, reviews []Review, head string) str
 				return "the reviewer App's security lane failed this head"
 			}
 			pass = false
-		case HasSecurityReviewPass(r.Body) && r.CommitID == head && r.State != "APPROVED":
+		case HasSecurityReviewPass(r.Body) && r.CommitID == head && premergeSecPassGrants(r):
 			pass = true
 		}
 	}
@@ -324,4 +324,13 @@ func ResolveVerifierHeadForge(repo string) (Forge, error) {
 // a merged-main binding.
 func bindingHeadTarget(b VerifierBinding) VerifierHeadTarget {
 	return VerifierHeadTarget{Change: b.TargetChange, Head: b.TargetHead}
+}
+
+// premergeSecPassGrants holds the ready gate's grant conditions for a security
+// pass, made stricter (#7628 review F1): the review is a submitted COMMENTED
+// review (SecurityPassStateStands also admits the legacy APPROVED shape; a
+// pre-merge run does not), and its body carries no correctness verdict line,
+// so one review body never speaks for both lanes. A fail is never filtered.
+func premergeSecPassGrants(r Review) bool {
+	return SecurityPassStateStands(r.State) && r.State != "APPROVED" && !HasCorrectnessVerdictLine(r.Body)
 }

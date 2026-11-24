@@ -226,6 +226,15 @@ func TestPremergeRefusals(t *testing.T) {
 		{"sec pass only in approval", phRepo, func(f *headForge, head string) {
 			f.reviews[1] = Review{Author: Account{Login: phReviewer, Type: "Bot"}, State: "APPROVED", CommitID: head, Body: phSecPass}
 		}, ExitRefused},
+		// The ready gate's grant conditions (#7628 correctness review F1).
+		{"sec pass dismissed", phRepo, func(f *headForge, _ string) { f.reviews[1].State = "DISMISSED" }, ExitRefused},
+		{"one review both lanes", phRepo, func(f *headForge, head string) {
+			f.reviews = []Review{{Author: Account{Login: phReviewer, Type: "Bot"}, State: "APPROVED", CommitID: head, Body: "Verdict: approve\n" + phSecPass}}
+		}, ExitRefused},
+		{"legacy sec approval only", phRepo, func(f *headForge, head string) {
+			f.reviews = []Review{{Author: Account{Login: phReviewer, Type: "Bot"}, State: "APPROVED", CommitID: head, Body: phSecPass}}
+		}, ExitRefused},
+		{"sec pass carries verdict", phRepo, func(f *headForge, _ string) { f.reviews[1].Body = "Verdict: approve\n" + phSecPass }, ExitRefused},
 		// Origin (#7628 review S3): never a fork head, never an untrusted author.
 		{"fork head", phRepo, func(f *headForge, _ string) { f.pr.CrossRepo = CrossRepoFork }, ExitRefused},
 		{"head repo unreadable", phRepo, func(f *headForge, _ string) { f.pr.CrossRepo = "" }, ExitUnverifiable},

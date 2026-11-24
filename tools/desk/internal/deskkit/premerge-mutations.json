@@ -88,8 +88,8 @@
     {
       "name": "a security pass at any commit counts",
       "file": "internal/deskkit/verifierhead.go",
-      "old": "\t\tcase HasSecurityReviewPass(r.Body) && r.CommitID == head && r.State != \"APPROVED\":\n",
-      "new": "\t\tcase HasSecurityReviewPass(r.Body) && r.State != \"APPROVED\":\n"
+      "old": "\t\tcase HasSecurityReviewPass(r.Body) && r.CommitID == head && premergeSecPassGrants(r):\n",
+      "new": "\t\tcase HasSecurityReviewPass(r.Body) && premergeSecPassGrants(r):\n"
     },
     {
       "name": "a later security pass launders a security fail at the same head",
@@ -146,16 +146,28 @@
       "new": "\treturn nil\n}\n"
     },
     {
-      "name": "an approval whose body carries a security pass still counts as an approval",
+      "name": "an approval whose body speaks for the security lane still counts as the correctness approval",
       "file": "internal/deskkit/verifierhead.go",
-      "old": "\t\tif state == \"APPROVED\" && HasSecurityReviewPass(r.Body) {",
+      "old": "\t\tif state == \"APPROVED\" && (HasSecurityReviewPass(r.Body) || HasSecurityReviewFail(r.Body)) {",
       "new": "\t\tif false {"
+    },
+    {
+      "name": "a security pass from a non-standing review state (dismissed) counts",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\treturn SecurityPassStateStands(r.State) && r.State != \"APPROVED\" && !HasCorrectnessVerdictLine(r.Body)",
+      "new": "\treturn r.State != \"APPROVED\" && !HasCorrectnessVerdictLine(r.Body)"
     },
     {
       "name": "a security pass inside an approval body counts for the security lane",
       "file": "internal/deskkit/verifierhead.go",
-      "old": " && r.CommitID == head && r.State != \"APPROVED\":",
-      "new": " && r.CommitID == head:"
+      "old": "\treturn SecurityPassStateStands(r.State) && r.State != \"APPROVED\" && !HasCorrectnessVerdictLine(r.Body)",
+      "new": "\treturn SecurityPassStateStands(r.State) && !HasCorrectnessVerdictLine(r.Body)"
+    },
+    {
+      "name": "a security pass whose body also carries a correctness verdict counts",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\treturn SecurityPassStateStands(r.State) && r.State != \"APPROVED\" && !HasCorrectnessVerdictLine(r.Body)",
+      "new": "\treturn SecurityPassStateStands(r.State) && r.State != \"APPROVED\""
     }
   ]
 }

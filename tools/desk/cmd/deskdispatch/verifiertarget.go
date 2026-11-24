@@ -18,7 +18,7 @@ const verifierTargetHelp = "Pre-merge verifier target (--target-change N --targe
 	"host-lane row runs as the desk's OS user with every same-user credential in reach), " +
 	"the repository is opted in on the roster (ASSAY_VERIFIER_PREMERGE_REPOS, default off), the change is open at " +
 	"EXACTLY that 40-hex head, the reviewer App's own verdict at that head is APPROVED with no reviewer-App " +
-	"request for changes at it, its security lane posted Security-Review: pass at that head in a review of its own (one body grants one lane), the head branch is in " +
+	"request for changes at it, its security lane posted Security-Review: pass at that head in a comment review of its own (one body grants one lane), the head branch is in " +
 	"the base repository (never a fork), the author is a trusted role App or accountable human, and the change " +
 	"author is none of the verifier, reviewer or dispatching desk Apps. " +
 	"Fetch the change head into the checkout first; deskdispatch never fetches it. --attest-verifier and " +

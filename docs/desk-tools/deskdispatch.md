@@ -110,8 +110,9 @@ deskdispatch <item> --kit verifier ... --target-change N --target-head SHA
   Admission requires the change open at exactly SHA, the reviewer App's own decisive
   verdict at SHA APPROVED with no reviewer-App request for changes at SHA (human and other
   Apps' reviews are not read), the reviewer App's security lane `Security-Review: pass` at
-  SHA in a review of its own with no security fail at SHA (one review body grants one
-  lane: an approval that also carries a security pass grants neither), a head branch in the base repository (a fork, or an
+  SHA in a submitted comment review of its own with no correctness verdict line, and no
+  security fail at SHA (one review body grants one lane: an approval that speaks for the
+  security lane is not the correctness approval), a head branch in the base repository (a fork, or an
   unreadable head repository, refuses), an author who is a trusted role App or
   accountable human on the roster, and a change author that is none of the verifier,
   reviewer or dispatching desk Apps. The head is read again after the reviews, and the whole rule is
