@@ -690,3 +690,42 @@ func TestOutOfSetBriefFieldsNull(t *testing.T) {
 		})
 	}
 }
+
+// regression: #7432
+func TestReviewDispatchBindsAcquisitionToTheCheckout(t *testing.T) {
+	s := &stub{}
+	home, root := s.install(t)
+	withGoClaimOnPath(t)
+	fixEntropy(t)
+	s.replies = happyReplies(filepath.Join(t.TempDir(), "review-home"))
+	t.Setenv("DESK_LOOP", "pr-review-desk")
+	installGHStamp(t)
+	stubQueueLabel(t, nil)
+	if rc := run(stampArgs(t, root, "--kit", "review")); rc != deskkit.ExitOK {
+		t.Fatalf("review dispatch exit %d", rc)
+	}
+	recs := recordLines(t, home)
+	if len(recs) != 1 || recs[0].DispatchRef == nil {
+		t.Fatalf("missing dispatch receipt: %v", recs)
+	}
+	ref := *recs[0].DispatchRef
+	if !s.ran("--review-run "+ref) || !s.ran("assay.dispatchRef "+ref) || recs[0].SessionTag != "deskdispatch-test" {
+		t.Fatalf("acquire and checkout did not receive the same run and identified holder: %+v", s.calls)
+	}
+}
+
+// regression: #7432, A1
+func TestReviewRecordUsesClaimSessionFallback(t *testing.T) {
+	t.Setenv("DESK_SESSION", "")
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "audit-session")
+	t.Setenv("CLAUDE_SESSION_ID", "claim-session")
+	record := buildDispatchRecord(dispatchOpts{kit: "review"}, dispatchPlan{}, "", "")
+	if record.SessionTag != "claim-session" {
+		t.Fatalf("receipt identifies %q instead of the acquiring desk", record.SessionTag)
+	}
+	t.Setenv("CLAUDE_SESSION_ID", "")
+	record = buildDispatchRecord(dispatchOpts{kit: "review"}, dispatchPlan{}, "", "")
+	if record.SessionTag != deskkit.UnknownSessionTag {
+		t.Fatalf("audit-only identity invented a claim owner: %q", record.SessionTag)
+	}
+}
