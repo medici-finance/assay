@@ -105,13 +105,37 @@ func (c *Client) Do(ctx context.Context, q service.Request) (out service.Respons
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
+	raw, reason, err := c.roundTrip(ctx, b, &report)
+	if err != nil {
+		return fail(reason, err)
+	}
+	out, err = service.DecodeResponse(raw, q)
+	if err != nil {
+		return fail(mirror.Unknown, err)
+	}
 	if err := ctx.Err(); err != nil {
 		return fail(mirror.Transport, err)
+	}
+	if out.Conflict {
+		return fail(mirror.Unknown, service.ErrConflict)
+	}
+	if out.Metadata.State == service.Permission {
+		return out, report, service.ErrScope
+	}
+	if out.Metadata.State == service.Unavailable {
+		return out, report, service.ErrInvalid
+	}
+	return out, report, nil
+}
+
+func (c *Client) roundTrip(ctx context.Context, b []byte, report *Report) ([]byte, mirror.Reason, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, mirror.Transport, err
 	}
 	u := c.endpoint
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u.String(), bytes.NewReader(b))
 	if err != nil {
-		return fail(mirror.Unknown, service.ErrInvalid)
+		return nil, mirror.Unknown, service.ErrInvalid
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -131,25 +155,25 @@ func (c *Client) Do(ctx context.Context, q service.Request) (out service.Respons
 	}
 	if sendErr != nil || response == nil || response.Body == nil {
 		if ctx.Err() != nil {
-			return fail(mirror.Transport, ctx.Err())
+			return nil, mirror.Transport, ctx.Err()
 		}
-		return fail(mirror.Transport, service.ErrInvalid)
+		return nil, mirror.Transport, service.ErrInvalid
 	}
 	if response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusNotFound {
-		return fail(mirror.Permission, service.ErrScope)
+		return nil, mirror.Permission, service.ErrScope
 	}
 	if response.StatusCode == http.StatusTooManyRequests {
-		return fail(mirror.RateLimited, service.ErrInvalid)
+		return nil, mirror.RateLimited, service.ErrInvalid
 	}
 	if response.StatusCode == http.StatusConflict {
-		return fail(mirror.Unknown, service.ErrConflict)
+		return nil, mirror.Unknown, service.ErrConflict
 	}
 	if response.StatusCode != http.StatusOK {
-		return fail(mirror.Transport, service.ErrInvalid)
+		return nil, mirror.Transport, service.ErrInvalid
 	}
 	media, _, mediaErr := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if mediaErr != nil || media != "application/json" {
-		return fail(mirror.Unknown, service.ErrInvalid)
+		return nil, mirror.Unknown, service.ErrInvalid
 	}
 	raw, readErr := io.ReadAll(io.LimitReader(response.Body, service.MaxMessageBytes+1))
 	closeErr := response.Body.Close()
@@ -157,23 +181,7 @@ func (c *Client) Do(ctx context.Context, q service.Request) (out service.Respons
 	read := int64(len(raw))
 	report.ResponseBodyBytes = &read
 	if readErr != nil || closeErr != nil || len(raw) > service.MaxMessageBytes {
-		return fail(mirror.Transport, service.ErrInvalid)
+		return nil, mirror.Transport, service.ErrInvalid
 	}
-	out, err = service.DecodeResponse(raw, q)
-	if err != nil {
-		return fail(mirror.Unknown, err)
-	}
-	if err := ctx.Err(); err != nil {
-		return fail(mirror.Transport, err)
-	}
-	if out.Conflict {
-		return fail(mirror.Unknown, service.ErrConflict)
-	}
-	if out.Metadata.State == service.Permission {
-		return out, report, service.ErrScope
-	}
-	if out.Metadata.State == service.Unavailable {
-		return out, report, service.ErrInvalid
-	}
-	return out, report, nil
+	return raw, "", nil
 }

@@ -43,6 +43,7 @@ type MirrorQueryHandler struct {
 	policy    auth.GrantScope
 	db        *store.DB
 	mirror    *store.MirrorStore
+	limits    store.MirrorLimits
 	lifetime  context.Context
 	stop      context.CancelFunc
 }
@@ -83,7 +84,7 @@ func OpenMirrorQuery(ctx context.Context, c MirrorQueryConfig) (*MirrorQueryHand
 	lifetime, stop := context.WithCancel(ctx)
 	return &MirrorQueryHandler{
 		profile: c.Profile, verifier: c.Verifier, admission: c.Admission, source: c.Source,
-		policy: p, db: db, mirror: observations, lifetime: lifetime, stop: stop,
+		policy: p, db: db, mirror: observations, limits: c.Limits, lifetime: lifetime, stop: stop,
 	}, nil
 }
 
@@ -115,51 +116,18 @@ func (h *MirrorQueryHandler) Handle(r *http.Request, grant auth.SignedGrant) ([]
 	denied := func() ([]byte, error) {
 		return service.EncodeResponse(service.Held(q, mirror.Permission), q)
 	}
-	if len(q.Scope.Repositories) != 1 || q.Repository != p.Scope.Repository ||
-		q.Mirror.Kind != p.Scope.Kind || q.Scope.AdmissionID != p.Scope.AdmissionID ||
-		q.Scope.AccessEpoch != p.Caller.AccessEpoch || q.Scope.CallerID != p.Caller.ID ||
-		q.Scope.RepresentedActor != p.Actor {
-		return denied()
-	}
-	if len(grant.Payload) > celllaunch.MaxRecordBytes || len(grant.Signature) != ed25519.SignatureSize {
-		return denied()
-	}
 	ctx, cancel := context.WithTimeout(r.Context(), p.Caller.Limits.WaitTimeout)
 	defer cancel()
-	grant.Payload, grant.Signature = bytes.Clone(grant.Payload), bytes.Clone(grant.Signature)
-	v := h.verifier
-	caller, err := v.Authorize(ctx, grant, p.Scope)
-	if err != nil || caller.Caller() != p.Caller {
-		return denied()
-	}
-	if err := h.admission.Authorize(ctx, p.Scope.Repository); err != nil || h.admission.ID() != p.Scope.AdmissionID {
+	grant, allowed := h.authorizeMirrorQuery(ctx, q, grant)
+	if !allowed {
 		return denied()
 	}
 	maxAge := time.Duration(q.Mirror.MaxAgeMS) * time.Millisecond
 	response := service.Held(q, mirror.Unknown)
 	// Opaque minimum tokens do not establish progress for this owner.
 	if q.Mirror.Minimum == nil && maxAge >= p.Caller.Limits.MinFreshness && maxAge <= p.Caller.Limits.MaxFreshness {
-		authority, err := v.BindRefresh(grant)
-		if err != nil {
-			return denied()
-		}
-		clock := wallClock{}
-		gate, err := h.db.Refresh(h.mirror, h.profile, authority, clock)
-		if err != nil {
-			return nil, auth.ErrConfig
-		}
-		source, err := deskkit.NewMirrorIngestSource(h.source, p.Scope.AdmissionID, p.SourceID, clock.Now, gate)
-		if err != nil {
-			return nil, auth.ErrConfig
-		}
-		coordinator, err := refresh.New(h.lifetime, h.mirror, source, gate, clock, p.SourceID, authority)
-		if err != nil {
-			return nil, auth.ErrConfig
-		}
-		query := refresh.Query{Query: mirror.Query{Scope: p.Scope, MaxAge: maxAge}}
-		result, err := coordinator.Read(ctx, h.admission, query, caller.Caller())
-		if result.Reason == mirror.Permission || result.Snapshot.Coverage.Reason == mirror.Permission ||
-			errors.Is(err, mirror.ErrPermission) || errors.Is(err, auth.ErrHeld) {
+		result, err := h.readMirrorQuery(ctx, grant, maxAge)
+		if deniedRead(result, err) {
 			return denied()
 		}
 		response = mirrorReply(q, result, err == nil, time.Now())
@@ -174,18 +142,68 @@ func (h *MirrorQueryHandler) Handle(r *http.Request, grant auth.SignedGrant) ([]
 			return nil, err
 		}
 	}
-	if err := h.admission.Authorize(ctx, p.Scope.Repository); err != nil || h.admission.ID() != p.Scope.AdmissionID {
-		return denied()
-	}
-	// Reacquire current proof after all data/coordination I/O and encoding.
-	final, err := v.Authorize(ctx, grant, p.Scope)
-	if err != nil || final.Caller() != caller.Caller() || v.CheckRelease(ctx, final) != nil {
+	if !h.releaseMirrorQuery(ctx, grant) {
 		return denied()
 	}
 	if response.Mirror != nil && time.Since(response.Mirror.Coverage.LastComplete) > maxAge {
 		return service.EncodeResponse(service.Held(q, mirror.Unknown), q)
 	}
 	return data, nil
+}
+
+func (h *MirrorQueryHandler) authorizeMirrorQuery(ctx context.Context, q service.Request, grant auth.SignedGrant) (auth.SignedGrant, bool) {
+	p := h.policy
+	if len(q.Scope.Repositories) != 1 || q.Repository != p.Scope.Repository ||
+		q.Mirror.Kind != p.Scope.Kind || q.Scope.AdmissionID != p.Scope.AdmissionID ||
+		q.Scope.AccessEpoch != p.Caller.AccessEpoch || q.Scope.CallerID != p.Caller.ID ||
+		q.Scope.RepresentedActor != p.Actor || len(grant.Payload) > celllaunch.MaxRecordBytes ||
+		len(grant.Signature) != ed25519.SignatureSize {
+		return auth.SignedGrant{}, false
+	}
+	grant.Payload, grant.Signature = bytes.Clone(grant.Payload), bytes.Clone(grant.Signature)
+	caller, err := h.verifier.Authorize(ctx, grant, p.Scope)
+	if err != nil || caller.Caller() != p.Caller {
+		return auth.SignedGrant{}, false
+	}
+	return grant, h.admission.Authorize(ctx, p.Scope.Repository) == nil && h.admission.ID() == p.Scope.AdmissionID
+}
+
+func (h *MirrorQueryHandler) readMirrorQuery(ctx context.Context, grant auth.SignedGrant, maxAge time.Duration) (refresh.Result, error) {
+	p := h.policy
+	authority, err := h.verifier.BindRefresh(grant)
+	if err != nil {
+		return refresh.Result{}, err
+	}
+	clock := wallClock{}
+	gate, err := h.db.Refresh(h.mirror, h.profile, authority, clock)
+	if err != nil {
+		return refresh.Result{}, auth.ErrConfig
+	}
+	source, err := deskkit.NewMirrorIngestSource(h.source, p.Scope.AdmissionID, p.SourceID, clock.Now, gate)
+	if err != nil {
+		return refresh.Result{}, auth.ErrConfig
+	}
+	coordinator, err := refresh.New(h.lifetime, h.mirror, source, gate, clock, p.SourceID, authority)
+	if err != nil {
+		return refresh.Result{}, auth.ErrConfig
+	}
+	query := refresh.Query{Query: mirror.Query{Scope: p.Scope, MaxAge: maxAge}}
+	return coordinator.Read(ctx, h.admission, query, p.Caller)
+}
+
+func deniedRead(result refresh.Result, err error) bool {
+	return result.Reason == mirror.Permission || result.Snapshot.Coverage.Reason == mirror.Permission ||
+		errors.Is(err, mirror.ErrPermission) || errors.Is(err, auth.ErrHeld)
+}
+
+// Reacquire current proof after all data and coordination I/O and encoding.
+func (h *MirrorQueryHandler) releaseMirrorQuery(ctx context.Context, grant auth.SignedGrant) bool {
+	p := h.policy
+	if err := h.admission.Authorize(ctx, p.Scope.Repository); err != nil || h.admission.ID() != p.Scope.AdmissionID {
+		return false
+	}
+	final, err := h.verifier.Authorize(ctx, grant, p.Scope)
+	return err == nil && final.Caller() == p.Caller && h.verifier.CheckRelease(ctx, final) == nil
 }
 
 func mirrorReply(q service.Request, result refresh.Result, success bool, now time.Time) service.Response {
