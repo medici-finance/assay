@@ -25,11 +25,11 @@ const (
 // call onward (1-based), so a head that moves between reads is observable.
 type headForge struct {
 	*verifierForge
-	pr             PullRequest
-	reviews        []Review
-	prErr, revErr  error
-	prReads, moved int
-	moveOn         int
+	pr            PullRequest
+	reviews       []Review
+	prErr, revErr error
+	prReads       int
+	moveOn        int
 }
 
 func (f *headForge) GetPullRequest(_ ForgeRepo, n int) (*PullRequest, error) {
