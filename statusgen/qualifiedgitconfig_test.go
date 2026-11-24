@@ -9,8 +9,9 @@ import (
 )
 
 // qgcQualified is the command-priority config the library read path accepts:
-// the declared verifier env's GIT_CONFIG_COUNT=0 and an admitted row's grep
-// pins, spelled literally so the test does not read the set it checks.
+// the declared verifier env's GIT_CONFIG_COUNT=0, an admitted row's grep
+// pins and core.quotePath=false alone, spelled literally so the test does not
+// read the set it checks.
 var qgcQualified = []struct {
 	name string
 	env  [][2]string
@@ -21,6 +22,7 @@ var qgcQualified = []struct {
 		{"GIT_CONFIG_KEY_0", "grep.patternType"}, {"GIT_CONFIG_VALUE_0", "default"},
 		{"GIT_CONFIG_KEY_1", "grep.extendedRegexp"}, {"GIT_CONFIG_VALUE_1", "false"},
 	}},
+	{"quotepath", [][2]string{{"GIT_CONFIG_COUNT", "1"}, {"GIT_CONFIG_KEY_0", "core.quotePath"}, {"GIT_CONFIG_VALUE_0", "false"}}},
 }
 
 // qgcNative is near misses that must still select the native profile.
@@ -36,6 +38,7 @@ var qgcNative = []struct {
 		{"GIT_CONFIG_KEY_1", "grep.extendedRegexp"}, {"GIT_CONFIG_VALUE_1", "false"},
 	}},
 	{"core-key", [][2]string{{"GIT_CONFIG_COUNT", "1"}, {"GIT_CONFIG_KEY_0", "core.worktree"}, {"GIT_CONFIG_VALUE_0", "/"}}},
+	{"quotepath-true", [][2]string{{"GIT_CONFIG_COUNT", "1"}, {"GIT_CONFIG_KEY_0", "core.quotePath"}, {"GIT_CONFIG_VALUE_0", "true"}}},
 	{"pins-reordered", [][2]string{
 		{"GIT_CONFIG_COUNT", "2"},
 		{"GIT_CONFIG_KEY_0", "grep.extendedRegexp"}, {"GIT_CONFIG_VALUE_0", "false"},

@@ -4871,7 +4871,15 @@ the mutation sweep is `cmd/deskclose/mutations.json`.
 ### The human-decided triage close writes a decision record
 
 `deskclose triage --disposition human-decided --decision <ruling permalink> --tracker <ref>`
-closes a ruled decision issue. It authorizes only on the ruling comment on that issue, after
+closes a ruled decision issue. For an issue still labelled `needs-decision`, give it the
+original, unedited human reply and a separate tracker. On a generated decision, the reply
+names the board ID and one offered option, such as `sample/02: 1`. A later human reply,
+a new question, or a reopened decision requires fresh evidence. The command confirms
+`human-decided` before removing `needs-decision`, then posts the ruling and closes the
+issue. A failed label change leaves the issue open and can be retried. Use `--dry-run`
+to preview the labels and closing comment.
+
+It authorizes only on the ruling comment on that issue, after
 verifying that its author is the blessing authority. The permalink is the forge's own link to
 that one comment: `https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<id>` on GitHub,
 `https://<host>/<group>/<project>/-/issues/<N>#note_<id>` on GitLab. Its forge, host and
