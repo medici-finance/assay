@@ -1433,7 +1433,7 @@ Admission-Bracket: run=b62585a7848589fe492e0a6174d9ef340cd596aaf5fe436254aab5106
 
 Compared with the previous landed pass at 0240956217eb, every row still passes. The output digests of rows 1 to 10, 12, 13 and 15 are identical to that pass. The digests of rows 11 and 14 changed with the launcher sources and the diff base; both rows still exit 0. Row 13's output digest, sha256:4355a46b19d3, is the sha256 of `1` followed by a newline. The custody rows (8, 15 and the PEM and config-home rows inside 2) pass under GNU coreutils in the image.
 
-Fail-first. The tool selected row 7 as risk-bearing, because its Expect contains the word "live" (a live pid). No other row matches, and all four brief-wide risk answers are no. At base 4e213c78271b, row 7 is `unproven`: tools/cellctl/tests/scrubbed-cell.test.sh does not exist before the delivering commit, so the row cannot execute at that base and no admissible base can show it red. At head, the row passes. This is the same fail-first result the two previous landed passes recorded.
+Fail-first. The tool selected row 7 as risk-bearing, because its Expect contains the word "live" (a live pid). No other row matches, and all four brief-wide risk answers are no. At base 4e213c78271b, row 7 is `unproven`: tools/cellctl/tests/scrubbed-cell.test.sh does not exist before the delivering commit, so the row cannot execute at that base and no admissible base can show it red. At head, the row passes. This is the same fail-first result the two previous landed passes recorded. The tool exits 2 on it, which is could-not-check, and the fail-first closure check refuses a close on it. Because no base can show the row red, running it again at an unchanged head cannot close the brief. Row 7 needs one of two things: a re-authored row that can run at the base, or the verifyrun change tracked in medici-finance/assay#7516, which would record tests a delivery adds as a proven red at base. That issue's case 1 is this shape.
 
 RISK-BEARING VALUE. Risk metadata is present, and all four answers are no, including irreversible: no. The literals enumerated over the deliverable at 034614a8c462 (the Go launcher under tools/desk/cmd/cellctl and the shell oracle) are below.
 - pem-mode = 0o600 @ tools/desk/cmd/cellctl/check.go:542 (oracle :1719, `scrubbed_mode_is "$f" 600`)
@@ -1453,9 +1453,9 @@ Ranking, highest first: (1) the two custody modes, because a widened mode expose
 
 Accounting: this dispatch ran the Verify table once. Attempt 1 (started 2026-11-24T16:48:24Z, finished 2026-11-24T16:55:18Z) ran all 15 rows under one bracket (opened 16:48:46Z, closed 16:55:18Z, `verdict=match`) and is the witness above. No attempt was discarded.
 
-Result: rows_passed=15, rows_total=15. No defect was found, so no issue was filed.
+Result: rows_passed=14, rows_total=15, 0 failed. Rows 1 to 6 and 8 to 15 met their Expect with every obligation met. Row 7 also met its Expect at the source, but its risk-bearing obligation is not met because its fail-first is unproven, so it is counted as could-not-run. No defect in the delivery was found. The blocker is the row's check definition, tracked in medici-finance/assay#7516. The outcome is recorded as blocked and the status stays implemented.
 
-**VERIFY: PASS** — 15/15 pass in one container-netns bracket at 034614a8c462; fail-first row 7 is unproven at base 4e213c78271b because its suite did not exist before the delivering commit.
+**VERIFY: BLOCKED** — at 034614a8c462: 14 of 15 rows meet their Expect with every obligation met, in one container-netns bracket, and 0 fail. Row 7 meets its Expect at the source, but its fail-first is unproven at base 4e213c78271b because its suite did not exist before the delivering commit. Row 7 needs re-authoring so it can run at the base, or the verifyrun change tracked in medici-finance/assay#7516.
 
 ## Review
 Gate: model (all four risk answers no — a new cell kind plus three verbs on a host launcher;
