@@ -144,16 +144,18 @@ integer on the last line as the `≥` count, so the echo order now puts `pass` l
 `[ … ]` assertion is unchanged.
 
 **Row amendment note (2026-11-23).** Rows 2, 3, 3a and 4 are re-shaped so a verifier run can
-admit them; no Expect changes. Rows 3, 3a and 4 each build `deskpins` into a fresh `mktemp -d`
+admit them. Row 2's Expect gains a pass-count floor; no other Expect changes. Rows 3, 3a and 4 each build `deskpins` into a fresh `mktemp -d`
 directory outside the tree and run it from there, because an in-tree build leaves an unattested
 `tools/desk/dist/` binary that run admission refuses. A failed setup step (build, copy) now exits
 the row non-zero, so row 3a can no longer pass on a build failure. Row 3a copies the golden
 fixture itself instead of reading row 3's output, so the rows no longer depend on run order. Row 2
-no longer runs the full module suite, which timed out under host load: it tests the three packages
-that hold the delivered pin reader and stamp, board flow and validator (`internal/deskkit`,
-`cmd/deskboard`, `cmd/deskpins`), each with its own `-timeout`, under `PYTHONDONTWRITEBYTECODE=1`, and keeps
-`go vet ./...`, which compiles every package, including the commands whose `--version` line the
-delivery extended.
+no longer runs the full module suite, which timed out under host load. It runs, each with its own
+`-timeout` and under `PYTHONDONTWRITEBYTECODE=1`: the 14 named tests in `internal/deskkit` that
+cover the delivered pin reader, validator and release stamp (the tests in `pins_test.go` and the
+stamp tests in `version_test.go`; the whole `internal/deskkit` package alone overran an 8-minute
+timeout under load), the full `cmd/deskboard` and `cmd/deskpins` packages, and `go vet ./...`,
+which compiles every package, including the commands whose `--version` line the delivery
+extended. The row asserts `pass` ≥ 14, so a filter that matched no test cannot pass.
 
 **Build step**: none. Rows 3, 3a and 4 build `deskpins` themselves, outside the tree. Do not run
 `make desk-build` for this table: it writes into `tools/desk/dist/`.
@@ -162,7 +164,7 @@ delivery extended.
 |---|---------|--------|
 | 0 | single-spec: `n=$( { grep -rl 'assay-versions. pin file' docs/ README.md tools/desk/README.md 2>/dev/null; } \| xargs -r grep -l -e '^#\{1,3\} .*pin file' \| sort -u \| wc -l \| tr -d ' '); echo "spec-homes=$n"; [ "$n" -eq 1 ]` | exit 0, `spec-homes=1` — one file carries the spec heading; every other mention links to it |
 | 1 | `SPEC=docs/distribution.md; BT=$(printf '\140'); test -f "$SPEC" && grep -q "^## The ${BT}.assay-versions${BT} pin file" "$SPEC" && n=$(grep -c -e statusgen -e desk-tools -e daily-harvest -e sha256 -e could-not-check "$SPEC"); echo "n=$n"; [ "$n" -ge 5 ]` | exit 0, `n` ≥ 5 — the spec section exists and names every artifact line and the three states |
-| 2 | `cd tools/desk && export PYTHONDONTWRITEBYTECODE=1 && go test -count=1 -timeout 8m ./internal/deskkit && go test -count=1 -timeout 4m ./cmd/deskboard && go test -count=1 -timeout 2m ./cmd/deskpins && go vet ./...` | exit 0 |
+| 2 | `cd tools/desk && export PYTHONDONTWRITEBYTECODE=1 && D=$(mktemp -d) && go test -count=1 -timeout 4m -v -run '^(TestArtifactPin_TrailingSpaceSemantics\|TestStatusgenPinIsThinWrapper\|TestUmbrellaPin_ThreeStates\|TestCheckPins_LiveGoldenIsClean\|TestCheckPins_NotADuplicate\|TestCheckPins_PlainTagRelease\|TestCheckPins_States\|TestCheckPins_AbsentIsCouldNotCheck\|TestPinTagGrammar\|TestVersionUnpinned\|TestVersionPinned\|TestReleaseTagOrDev\|TestVersionStampedFromReleaseWorkflow\|TestReleaseTagStampMissingIsCaught)$' ./internal/deskkit > "$D/k.txt" 2>&1 && go test -count=1 -timeout 6m ./cmd/deskboard && go test -count=1 -timeout 3m ./cmd/deskpins && go vet ./... && p=$(grep -c '^--- PASS' "$D/k.txt"); echo "pass=$p"; [ "$p" -ge 14 ]` | exit 0, `pass` ≥ 14 — every named pin-reader, validator and release-stamp test in `internal/deskkit` ran and passed, and the deskboard and deskpins packages pass in full |
 | 3 | backward-compat against the golden fixture: `D=$(mktemp -d) && (cd tools/desk && go build -o "$D/deskpins" ./cmd/deskpins) && mkdir -p "$D/av" && cp tools/desk/internal/deskkit/testdata/assay-versions-live.golden "$D/av/.assay-versions" && "$D/deskpins" --check --root "$D/av"` | exit 0; checked-clean; the per-platform lines and comment lines parse; no bare `desk-tools` line is required |
 | 3a | not-a-duplicate: `D=$(mktemp -d) && (cd tools/desk && go build -o "$D/deskpins" ./cmd/deskpins) && mkdir -p "$D/avd" && cp tools/desk/internal/deskkit/testdata/assay-versions-live.golden "$D/avd/.assay-versions" && grep -m1 '^statusgen ' "$D/avd/.assay-versions" > "$D/dupline" && cat "$D/dupline" >> "$D/avd/.assay-versions" \|\| exit 1; "$D/deskpins" --check --root "$D/avd"; rc=$?; echo "dup-rc=$rc"; [ "$rc" -ne 0 ]` | exit 0, non-zero `dup-rc` — the identical-tag/sha `statusgen`+`statusgen-linux-amd64` pair stays clean; a real second `statusgen ` line is rejected |
 | 4 | fail-closed: `D=$(mktemp -d) && (cd tools/desk && go build -o "$D/deskpins" ./cmd/deskpins) && mkdir -p "$D/av" \|\| exit 1; "$D/deskpins" --check --root "$D/av"; a=$?; printf 'statusgen only-a-tag\n' > "$D/av/.assay-versions"; "$D/deskpins" --check --root "$D/av"; b=$?; echo "absent=$a malformed=$b"; [ "$a" -ne 0 ] && [ "$b" -ne 0 ] && [ "$a" -ne "$b" ]` | exit 0 — absent and malformed both non-zero and distinct from each other; never a default |
