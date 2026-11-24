@@ -1,0 +1,1 @@
+- Prepare the read-only mirror-query handler to compose an explicit caller verifier with the restricted PostgreSQL runtime login and canonical refresh gate. This offline slice adds no listener.
