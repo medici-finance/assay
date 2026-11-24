@@ -248,6 +248,11 @@ Verification-Attestation: medici-finance/assay#7512 run=e9381744378164614ad43efd
 |---|---------|--------|--------|------|--------|
 | 12 | `bash tools/cellctl/tests/postgres-verify.sh 12` | pass exit=0 | sha256:65a7f43318e2 | 2026-11-24 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
 Verification-Attestation: medici-finance/assay#7512 run=e9381744378164614ad43efdb0a49078eb4b2085f60311d4810b2a911d81ca67 source=52f341a6e0dc25f7cdc915377f3e9ce6728df746 brief=docs/streams/desk-containers/brief-26-local-docker-postgres.md model=gpt-6.2-astra tier=strong
+### Independent verification disposition, November 23, 2026
+
+**VERIFY: FAIL** — the witness audit credits 11 of 13 current rows. Row 10’s full package check exited 1. The diagnostic repeat reported two failing tests, then reached the package’s existing ten-minute limit. The failing tests, command and output are recorded in medici-finance/assay#7525 for the worker.
+
+Row 7 has no current execution witness. Its prior independent controls are recorded under medici-finance/assay#6449. Verify-desk owns the remaining row coverage and independent recheck after the package repair. Final sensitive-data acceptance stays with the human custodian.
 
 ## Review
 Gate: human, `sensitive-data: yes`: the brief designs credential custody (see `gate-why`). The other three risk answers are no. No credential is committed: the superuser password and each cell's password live in operator-created files outside the repository. The brief follows `containers/secrets.md` unchanged and leaves it unedited. Every test server is throwaway. A restore renames the previous database aside rather than dropping it, so nothing done here is irreversible. The reviewer checks:
