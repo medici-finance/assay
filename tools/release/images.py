@@ -74,15 +74,15 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
     targets = [*refs.values(), *runner_refs.values()]
     print("Release image targets: " + ", ".join(targets), flush=True)
     if publish:
-        # A failed lookup is absence only for the registry's explicit unknown
-        # manifest response. Auth/transport failures never permit an overwrite.
+        # Read every tag before the build, so unreadable registry state stops
+        # the release early. A tag already present is not refused here: no
+        # pushed digest exists yet to compare it with. attach_version_tags
+        # compares it after every push and refuses any other digest (#7619).
         for ref in targets:
-            result = subprocess.run(["docker", "manifest", "inspect", ref],
-                                    text=True, capture_output=True)
-            if result.returncode == 0:
-                raise ValueError(f"image tag already exists; fix forward: {ref}")
-            if "manifest unknown" not in result.stderr.lower():
-                raise ValueError(f"could not establish image-tag absence: {ref}: {result.stderr}")
+            present = tag_digest(ref)
+            if present is not None:
+                print(f"Image tag already present: {ref}@{present}; "
+                      "it must name the digest this run pushes", flush=True)
     stage = root / ".release-images"
     if stage.exists():
         raise ValueError(".release-images already exists; use a clean release checkout")
@@ -184,20 +184,25 @@ def build_images(root, version, source, prefix, verify_image, artifacts, out, pu
     if not publish:
         print("Dry build complete: no image pushed and no pinnable-reference artifacts written.")
         return
-    images = []
+    # Digest first (#7619): every image is pushed under a staging tag and its
+    # digest recorded; no version tag moves until every push has succeeded.
+    images, wanted = [], {}
     try:
         for name, ref in refs.items():
             if name == "verify-runner":
-                digest = publish_runner_index(ref, runner_refs)
+                digest, platforms = publish_runner_index(ref, runner_refs)
+                wanted.update((runner_refs[p], d) for p, d in platforms.items())
                 images.append({"name": name, "platform": RUNNER_PLATFORM, "ref": ref + "@" + digest})
-                continue
-            images.append({"name": name, "platform": "linux/amd64",
-                           "ref": ref + "@" + push_digest(ref)})
+            else:
+                digest = push_digest(stage_tag(ref))
+                images.append({"name": name, "platform": "linux/amd64", "ref": ref + "@" + digest})
+            wanted[ref] = digest
     except Exception:
-        # Plan the next cut from the job log alone: what this version now holds.
-        print("Release images pushed before the failure: "
+        # Plan the next cut from the job log alone: what the registry now holds.
+        print("Release images pushed before the failure, with no version tag attached: "
               + (" ".join(image["ref"] for image in images) or "none"), file=sys.stderr, flush=True)
         raise
+    attach_version_tags(wanted)
     manifest = {"schema": "release-images-v1", "version": version,
                 "source_revision": source, "repository": prefix.removeprefix("ghcr.io/"), "images": images}
     (out / "release-images.json").write_text(json.dumps(manifest, indent=2) + "\n")
@@ -433,9 +438,9 @@ def import_native_runner(native, version, source, ref):
 # 429 rate limit, and a dropped or timed-out connection. An auth or permission
 # refusal (401/403 included), an existing-tag or invalid-manifest refusal, and
 # every other failure raise on the first attempt; a refusal word anywhere in
-# the message wins over a transient marker beside it. Re-pushing the same local
-# image under the same tag inside one run writes no different bytes, so it does
-# not bypass the existing-tag pre-check above.
+# the message wins over a transient marker beside it. A retried push re-sends
+# the same local image to its staging tag, and a retried tag attach names the
+# same digest, so a retry never moves a version tag to other bytes.
 PUSH_ATTEMPTS = 3
 PUSH_BACKOFF_SECONDS = 15
 PUSH_REFUSAL = re.compile(r"denied|unauthori[sz]ed|forbidden|authenticat|already exists"
@@ -455,8 +460,9 @@ def registry_transient(stderr):
 def registry_push(*args, capture=False, sleep=time.sleep):
     """Run one docker registry write, retrying registry transients only.
 
-    Every docker push and manifest push goes through here. On exhaustion, or
-    on any other failure, the last attempt's CalledProcessError is raised."""
+    Every docker push, manifest push and imagetools tag write goes through
+    here. On exhaustion, or on any other failure, the last attempt's
+    CalledProcessError is raised."""
     attempt = 1
     while True:
         print("+ " + " ".join(map(str, args)), flush=True)
@@ -487,6 +493,84 @@ def push_digest(ref, *, sleep=time.sleep):
     return candidates.pop().split("@", 1)[1]
 
 
+# A push needs a tag, so each image is pushed under a staging tag in its own
+# repository: repo:staging-<version tag>. Pushing it uploads the image and
+# yields its digest without touching the version tag (#7619). A staging tag
+# is mutable working state that a re-run overwrites; nothing pins it.
+STAGING_PREFIX = "staging-"
+
+
+def staging_ref(ref):
+    repo, tag = ref.rsplit(":", 1)
+    return f"{repo}:{STAGING_PREFIX}{tag}"
+
+
+def stage_tag(ref):
+    """Give the local image ref its staging tag and return that reference."""
+    staged = staging_ref(ref)
+    run("docker", "tag", ref, staged)
+    return staged
+
+
+def tag_digest(ref):
+    """The digest a registry tag names now, or None when the tag is absent.
+
+    Only the registry's explicit unknown-manifest answer is absence; any other
+    lookup failure, or a present tag whose digest cannot be read, refuses."""
+    result = subprocess.run(["docker", "manifest", "inspect", ref], text=True, capture_output=True)
+    if result.returncode != 0:
+        if "manifest unknown" in result.stderr.lower():
+            return None
+        raise ValueError(f"could not establish image-tag absence: {ref}: {result.stderr}")
+    found = json.loads(run("docker", "buildx", "imagetools", "inspect", "--format",
+                           "{{json .Manifest}}", ref, capture=True))
+    digest = found.get("digest") if isinstance(found, dict) else None
+    if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
+        raise ValueError(f"could not read the digest image tag {ref} names")
+    return digest
+
+
+def attach_tag(ref, digest, *, sleep=time.sleep):
+    """Point the version tag ref at the pushed digest and read it back."""
+    repo = ref.rsplit(":", 1)[0]
+    # --prefer-index=false copies the one manifest as it is. Without it buildx
+    # wraps a single image in a new index, which has another digest.
+    registry_push("docker", "buildx", "imagetools", "create", "--prefer-index=false",
+                  "--tag", ref, repo + "@" + digest, sleep=sleep)
+    got = tag_digest(ref)
+    if got != digest:
+        raise ValueError(f"{ref} names {got} after tagging, not the pushed {digest}")
+    return digest
+
+
+def attach_version_tags(wanted):
+    """Attach each version tag to its pushed digest, once every push succeeded.
+
+    wanted maps every version tag to the digest this run pushed for it. A tag
+    already naming that digest is left as it is, so a re-run completes. A tag
+    naming any other digest refuses the release before any tag moves."""
+    attach, clash = {}, []
+    for ref, digest in wanted.items():
+        got = tag_digest(ref)
+        if got is None:
+            attach[ref] = digest
+        elif got == digest:
+            print(f"Image tag already names its pushed digest: {ref}@{digest}", flush=True)
+        else:
+            clash.append(f"{ref} names {got}, this run pushed {digest}")
+    if clash:
+        raise ValueError("image tag already exists; fix forward: " + "; ".join(clash))
+    tagged = []
+    try:
+        for ref, digest in attach.items():
+            attach_tag(ref, digest)
+            tagged.append(ref)
+    except Exception:
+        print("Version tags attached before the failure: " + (" ".join(tagged) or "none"),
+              file=sys.stderr, flush=True)
+        raise
+
+
 INDEX_TYPES = ("application/vnd.docker.distribution.manifest.list.v2+json",
                "application/vnd.oci.image.index.v1+json")
 
@@ -494,15 +578,19 @@ INDEX_TYPES = ("application/vnd.docker.distribution.manifest.list.v2+json",
 def publish_runner_index(ref, runner_refs):
     """Push each platform image, then the index over exactly those digests.
 
-    Returns the index digest. The reference pins the index, not one platform:
-    the index bytes name every platform manifest by digest, so one immutable
-    pin selects one exact image per platform. The index is read back by that
-    digest and must list exactly the pushed platform digests, nothing else.
+    Returns the index digest and the pushed platform digests. Everything is
+    pushed under staging tags; the version tags are attached later. The
+    reference pins the index, not one platform: the index bytes name every
+    platform manifest by digest, so one immutable pin selects one exact image
+    per platform. The index is read back by that digest and must list exactly
+    the pushed platform digests, nothing else.
     """
     repo = ref.rsplit(":", 1)[0]
-    pushed = {platform: push_digest(platform_ref) for platform, platform_ref in runner_refs.items()}
-    run("docker", "manifest", "create", ref, *(repo + "@" + d for d in pushed.values()))
-    out = registry_push("docker", "manifest", "push", "--purge", ref, capture=True).split()
+    pushed = {platform: push_digest(stage_tag(platform_ref))
+              for platform, platform_ref in runner_refs.items()}
+    staged = staging_ref(ref)
+    run("docker", "manifest", "create", staged, *(repo + "@" + d for d in pushed.values()))
+    out = registry_push("docker", "manifest", "push", "--purge", staged, capture=True).split()
     if not out or not re.fullmatch(r"sha256:[0-9a-f]{64}", out[-1]):
         raise ValueError(f"index push did not yield an immutable digest for {ref}")
     digest = out[-1]
@@ -518,4 +606,4 @@ def publish_runner_index(ref, runner_refs):
         listed[key] = entry.get("digest")
     if listed != pushed:
         raise ValueError(f"{ref}@{digest} does not list exactly the pushed platform images")
-    return digest
+    return digest, pushed
