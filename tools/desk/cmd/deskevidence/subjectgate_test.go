@@ -40,7 +40,7 @@ func sgBrief(version, evidence string) []byte {
 	return []byte(fm + "---\n\n# Brief 18\n\n## Evidence\n\n" + evidence + "\n## Review\n")
 }
 
-// milestone-support/09: the Evidence landing itself refuses a ruling
+// The Evidence landing itself refuses a ruling
 // that does not name this brief's exact subject, and Evidence that names another
 // revision, before and after staging the write.
 // regression: #7088

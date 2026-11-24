@@ -1,7 +1,7 @@
 package main
 
 // subjectgate.go — the in-process ruling-subject check on an Evidence landing
-// (milestone-support/09, design point 5).
+// (design point 5 of the ruling-subject bridge).
 //
 // It runs beside the statusgen --decision-gate run, never in place of it. For a
 // landing into a gate: human brief that records a GitHub ruling link, it reads the

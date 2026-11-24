@@ -1,7 +1,7 @@
 package deskkit
 
 // rulingsubjectgate.go — the desk-tools half of the ruling-subject bridge
-// (milestone-support/09, design point 5).
+// (design point 5 of the ruling-subject bridge).
 //
 // RulingSubjectGate is pure: the caller fetches the ruling comment and the current
 // decision issue and passes what it read. The gate never fetches, never accepts

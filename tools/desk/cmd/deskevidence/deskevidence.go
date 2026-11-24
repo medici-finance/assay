@@ -886,7 +886,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			"refused: landing %s would move, relabel or drop a gate: human brief with no human ruling on its decision issue (decision-gate hold, lifecycle-v1 §4.5):\n%s",
 			targetRepoPath, strings.Join(gateRefused, "\n")))
 	}
-	// Ruling subject (milestone-support/09): the in-process gate binds the recorded
+	// Ruling subject: the in-process gate binds the recorded
 	// ruling to this brief's exact work subject, beside the statusgen run above.
 	if err := rulingSubjectGateFn(fg, fr, landedRoot, targetRepoPath, remoteContent, commitContent); err != nil {
 		return err
