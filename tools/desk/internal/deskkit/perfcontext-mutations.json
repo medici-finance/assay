@@ -46,7 +46,7 @@
     {
       "name": "remove runner suite from CI execution",
       "file": "../../.github/workflows/ci.yml",
-      "old": "*/loopadmin|loopadmin) extra=\"GOWORK=off go test -skip '^TestJournal(SharedStoreRestart|IncarnationPaused)$' ./...\" ;;",
+      "old": "*/loopadmin|loopadmin) extra=\"GOWORK=off go test -skip '^Test(Journal(SharedStoreRestart|IncarnationPaused|PassiveRestore|RuntimeGrants)|LoopAdminLaunchBudgetBrake)$' ./...\" ;;",
       "new": "*/loopadmin|loopadmin) extra=true ;;"
     },
     {
