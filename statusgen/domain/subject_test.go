@@ -21,7 +21,7 @@ func refusalOf(t *testing.T, err error) Refusal {
 // never erase the revision the Evidence was requested for.
 // regression: #7088
 func TestPrefixedVerifySubject(t *testing.T) {
-	const key = "4b7d2e10-0000-4000-8000-000000000009"
+	const key = "00000000-0000-4000-8000-000000000009"
 	brief := workref.Identity{Kind: workref.Brief, Cell: "example", Repo: "widgets", Stream: "build", Number: "09"}
 	reg, err := workref.NewRegistry([]workref.Root{{Cell: "example", Repo: "widgets"}}, []workref.Binding{{Identity: brief, Key: key}})
 	if err != nil {

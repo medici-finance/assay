@@ -32,7 +32,7 @@ const (
 )
 
 func sgBrief(version, evidence string) []byte {
-	fm := "---\nbrief: example:ex:sdlc:18\nid: 0d4c1f3e-0000-4000-8000-000000000018\nschema: brief-v2\ngate: human\n" +
+	fm := "---\nbrief: example:ex:sdlc:18\nid: 00000000-0000-4000-8000-000000000018\nschema: brief-v2\ngate: human\n" +
 		"decision-issue: 41\nruling: \"" + sgRuling + "\"\n"
 	if version != "" {
 		fm += "version: " + version + "\n"

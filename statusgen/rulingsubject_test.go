@@ -16,7 +16,7 @@ const (
 		"  ex:        {cell: example, repo: example-org/example-repo}\n" +
 		"  elsewhere: {cell: example, repo: example-org/other-repo}\n"
 	subjBrief  = "example:ex:sdlc:18"
-	subjPerm   = "0d4c1f3e-0000-4000-8000-000000000018"
+	subjPerm   = "00000000-0000-4000-8000-000000000018"
 	subjMarker = "<!-- decision-gate: " + subjBrief + " -->"
 )
 

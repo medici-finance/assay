@@ -60,7 +60,7 @@ func TestPrefixedHandoffSubject(t *testing.T) {
 		}
 	}
 
-	const key = "6f0a3c1e-0000-4000-8000-000000000009"
+	const key = "00000000-0000-4000-8000-000000000009"
 	reg := subjectRegistry(t, key)
 	ctx := &workref.Context{Cell: "example", Repo: "tools"}
 
@@ -97,7 +97,7 @@ func TestPrefixedHandoffSubject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rebound := subjectRegistry(t, "6f0a3c1e-0000-4000-8000-00000000000a")
+	rebound := subjectRegistry(t, "00000000-0000-4000-8000-00000000000a")
 	_, reboundSubject, err := ResolveWorkSubject("build:b-09@2", ctx, rebound)
 	if err != nil {
 		t.Fatal(err)

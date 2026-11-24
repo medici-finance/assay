@@ -13,7 +13,7 @@ const (
 	rsgIssue   = 41
 	rsgComment = 9001
 	rsgHuman   = "example-human"
-	rsgKey     = "0d4c1f3e-0000-4000-8000-000000000018"
+	rsgKey     = "00000000-0000-4000-8000-000000000018"
 	rsgBrief   = "example:ex:sdlc:18"
 	rsgPre     = "2026-09-01T10:00:00Z"
 	rsgPost    = "2026-12-02T10:00:00Z"
