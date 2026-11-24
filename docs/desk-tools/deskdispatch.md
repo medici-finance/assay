@@ -101,7 +101,11 @@ deskdispatch --stage-npm --root HOME --package DIR --cache CACHE [--build] [--br
   Go module cache. The home must first pass local pre-work admission. It then runs
   npm ci --offline --ignore-scripts --cache CACHE in the home-relative package DIR
   against its attested package-lock.json (CACHE is filled before the run, outside the
-  home) and, with --build, the package's own build script. It re-closes the home so the
+  home) and, with --build, the package's own build script. Both npm commands run under
+  an allow-listed environment with a fresh, empty HOME and TMPDIR, as an admitted
+  Verify row does, so no inherited token, npm config or proxy login reaches them. A
+  staged symlink must resolve, through its whole chain, to an existing path inside
+  its staged directory. It re-closes the home so the
   step wrote nothing but DIR/node_modules (and DIR/dist with --build), and binds their
   digest to the run record once. --check-verifier then passes over only those staged
   directories, and only while they still hash to that digest; any other unattested file,

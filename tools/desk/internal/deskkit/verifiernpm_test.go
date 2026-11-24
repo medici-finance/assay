@@ -29,7 +29,7 @@ func npmStagingFixture(t *testing.T) (string, *verifierForge, VerifierReceipt) {
 	}
 	prev := npmStageCommand
 	t.Cleanup(func() { npmStageCommand = prev })
-	npmStageCommand = func(dir string, args ...string) error {
+	npmStageCommand = func(dir string, env []string, args ...string) error {
 		write := func(rel, body string, mode os.FileMode) {
 			p := filepath.Join(dir, rel)
 			if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
@@ -167,7 +167,7 @@ func TestNpmStagedTreeAdmits(t *testing.T) {
 // drop dist, and a second staging of the same run.
 func TestNpmMutatedStagingRefuses(t *testing.T) {
 	nm := filepath.Join(npmFixturePkg, "node_modules")
-	for _, mode := range []string{"changed", "added", "removed", "chmod", "relinked", "dist-added", "dist-changed", "record-unbuilt", "record-lock", "restage"} {
+	for _, mode := range []string{"changed", "added", "removed", "chmod", "relinked", "chained-link", "dangling-link", "dist-added", "dist-changed", "record-unbuilt", "record-lock", "restage"} {
 		t.Run(mode, func(t *testing.T) {
 			root, f, _ := npmStagingFixture(t)
 			if _, err := StageVerifierNpm(root, "brief.md", npmFixturePkg, npmFixtureCache(t), true); err != nil {
@@ -192,6 +192,19 @@ func TestNpmMutatedStagingRefuses(t *testing.T) {
 				if err = os.Remove(at(nm + "/.bin/tool")); err == nil {
 					err = os.Symlink("../lib/package.json", at(nm+"/.bin/tool"))
 				}
+			case "chained-link":
+				// The review's repro: l1 resolves to node_modules itself, so
+				// l2's target is inside lexically but resolves to the attested
+				// brief at the home root.
+				if err = os.MkdirAll(at(nm+"/a/b"), 0o755); err == nil {
+					if err = os.Symlink("../..", at(nm+"/a/b/l1")); err == nil {
+						err = os.Symlink("a/b/l1/../../brief.md", at(nm+"/l2"))
+					}
+				}
+				want = "resolves outside its staged directory"
+			case "dangling-link":
+				err = os.Symlink("lib/absent.js", at(nm+"/dangling"))
+				want = "does not resolve to an existing path"
 			case "dist-added":
 				writeNpmProbe(t, root, npmFixturePkg+"/dist/extra.js")
 			case "dist-changed":
@@ -239,7 +252,7 @@ func TestNpmStagingStepRefuses(t *testing.T) {
 			root, _, _ := npmStagingFixture(t)
 			ran := false
 			prev := npmStageCommand
-			npmStageCommand = func(dir string, args ...string) error { ran = true; return prev(dir, args...) }
+			npmStageCommand = func(dir string, env []string, args ...string) error { ran = true; return prev(dir, env, args...) }
 			pkg, cache, want := npmFixturePkg, npmFixtureCache(t), ""
 			switch mode {
 			case "preexisting":
@@ -267,6 +280,104 @@ func TestNpmStagingStepRefuses(t *testing.T) {
 			}
 			if ran {
 				t.Fatalf("%s: npm ran before the step refused", mode)
+			}
+			if r, _ := verifierLoad(root); r.NpmStaging != nil {
+				t.Fatalf("%s: a refused staging left a record", mode)
+			}
+		})
+	}
+}
+
+// regression: #7572
+// The staging step's npm commands run under an allow-list scrub with a fresh,
+// empty HOME and TMPDIR, as an admitted Verify row does: no credential-shaped
+// variable, npm config variable, NODE_OPTIONS or proxy login reaches either
+// command, and the step's HOME and TMPDIR are gone once it ends.
+func TestNpmStagingEnvScrubbed(t *testing.T) {
+	root, _, _ := npmStagingFixture(t)
+	realHome := t.TempDir()
+	const sentinel = "sentinel-value-7572"
+	t.Setenv("HOME", realHome)
+	for _, name := range []string{"GH_TOKEN", "GITHUB_TOKEN", "NPM_TOKEN", "NODE_AUTH_TOKEN", "AWS_SECRET_ACCESS_KEY", "npm_config__authToken", "NPM_CONFIG_USERCONFIG", "NODE_OPTIONS", "SSH_AUTH_SOCK", "GIT_ASKPASS"} {
+		t.Setenv(name, sentinel)
+	}
+	t.Setenv("HTTPS_PROXY", "http://user:"+sentinel+"@proxy.invalid:8080")
+	t.Setenv("LANG", "C.UTF-8")
+	var dirs []string
+	prev := npmStageCommand
+	npmStageCommand = func(dir string, env []string, args ...string) error {
+		vars := map[string]string{}
+		for _, kv := range env {
+			k, v, _ := strings.Cut(kv, "=")
+			if strings.Contains(v, sentinel) {
+				t.Errorf("npm %s: %s reached the staging step", args[0], k)
+			}
+			if _, dup := vars[k]; dup {
+				t.Errorf("npm %s: %s set twice", args[0], k)
+			}
+			vars[k] = v
+		}
+		if vars["LANG"] != "C.UTF-8" || vars["PATH"] == "" {
+			t.Errorf("npm %s: allow-listed LANG or PATH dropped: %q %q", args[0], vars["LANG"], vars["PATH"])
+		}
+		for _, k := range []string{"HOME", "TMPDIR"} {
+			d := vars[k]
+			if d == "" || d == realHome || strings.HasPrefix(d, root) {
+				t.Errorf("npm %s: %s=%q is not the step's own directory", args[0], k, d)
+				continue
+			}
+			if ents, err := os.ReadDir(d); err != nil || len(ents) != 0 {
+				t.Errorf("npm %s: %s=%s is not a fresh empty directory: %v %v", args[0], k, d, ents, err)
+			}
+			dirs = append(dirs, d)
+		}
+		return prev(dir, env, args...)
+	}
+	if _, err := StageVerifierNpm(root, "brief.md", npmFixturePkg, npmFixtureCache(t), true); err != nil {
+		t.Fatalf("staging refused: %v", err)
+	}
+	if len(dirs) != 4 {
+		t.Fatalf("want HOME and TMPDIR for both npm commands, got %v", dirs)
+	}
+	for _, d := range dirs {
+		if _, err := os.Stat(d); !os.IsNotExist(err) {
+			t.Errorf("staging step's %s outlived the step: %v", d, err)
+		}
+	}
+}
+
+// regression: #7572
+// A link the staging step's npm writes is resolved along its whole chain, not
+// only lexically: the review's chained pair (l1 -> ../.., then
+// l2 -> a/b/l1/../../brief.md) stays inside node_modules as written but
+// resolves to the home root, and a dangling link resolves nowhere. Either
+// refuses the staging and leaves no record, so a link out of the staged
+// directory never enters the digest whose target could later change unseen.
+func TestNpmStagingRefusesEscapingLinks(t *testing.T) {
+	for _, mode := range []string{"chained-link", "dangling-link"} {
+		t.Run(mode, func(t *testing.T) {
+			root, _, _ := npmStagingFixture(t)
+			prev := npmStageCommand
+			npmStageCommand = func(dir string, env []string, args ...string) error {
+				if err := prev(dir, env, args...); err != nil || args[0] != "ci" {
+					return err
+				}
+				nm := filepath.Join(dir, "node_modules")
+				if mode == "dangling-link" {
+					return os.Symlink("lib/absent.js", filepath.Join(nm, "dangling"))
+				}
+				if err := os.MkdirAll(filepath.Join(nm, "a/b"), 0o755); err != nil {
+					return err
+				}
+				if err := os.Symlink("../..", filepath.Join(nm, "a/b/l1")); err != nil {
+					return err
+				}
+				return os.Symlink("a/b/l1/../../brief.md", filepath.Join(nm, "l2"))
+			}
+			want := map[string]string{"chained-link": "resolves outside its staged directory", "dangling-link": "does not resolve to an existing path"}[mode]
+			_, err := StageVerifierNpm(root, "brief.md", npmFixturePkg, npmFixtureCache(t), false)
+			if err == nil || ExitCodeOf(err) != ExitRefused || !strings.Contains(err.Error(), want) {
+				t.Fatalf("%s: want exit %d refusal %q, got exit %d: %v", mode, ExitRefused, want, ExitCodeOf(err), err)
 			}
 			if r, _ := verifierLoad(root); r.NpmStaging != nil {
 				t.Fatalf("%s: a refused staging left a record", mode)

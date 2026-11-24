@@ -10,6 +10,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -52,14 +53,80 @@ func (s NpmStaging) stagedDirs() []string {
 	return dirs
 }
 
-// npmStageCommand runs one npm command in dir. Tests replace it; the shipped
-// step runs the npm on PATH with the admission git environment.
-var npmStageCommand = func(dir string, args ...string) error {
+// npmStageCommand runs one npm command in dir with exactly env. Tests replace
+// it; the shipped step runs the npm on PATH.
+var npmStageCommand = func(dir string, env []string, args ...string) error {
 	cmd := exec.Command("npm", args...)
 	cmd.Dir = dir
-	cmd.Env = verifierEnv()
+	cmd.Env = env
 	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
 	return RunProcess(cmd)
+}
+
+// npmStagePassNames are the inherited variables the staging step's npm keeps,
+// matched by exact name whatever its case, besides the locale's LC_* settings:
+// the shape of an admitted Verify row's allow-list scrub (statusgen's
+// admittedRowPassNames) without its Go toolchain settings. Each is a search
+// path, an account or shell name, the bare CI flag, a locale or terminal
+// setting, a proxy or trust-root setting, or a Windows system location. None
+// names a credential; every family not listed here (npm_config_*, NODE_OPTIONS,
+// forge and cloud tokens, credential pointers) is dropped.
+var npmStagePassNames = []string{
+	"PATH", "USER", "LOGNAME", "SHELL",
+	"LANG", "LANGUAGE", "TERM", "COLORTERM", "NO_COLOR", "TZ", "COLUMNS", "LINES", "CI",
+	"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR",
+	"SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "OS",
+	"PROCESSOR_ARCHITECTURE", "NUMBER_OF_PROCESSORS", "PROGRAMFILES", "PROGRAMFILES(X86)",
+	"PROGRAMW6432", "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(X86)", "COMMONPROGRAMW6432", "PROGRAMDATA",
+}
+
+// npmStageURLNames are the listed variables whose value is a URL a client
+// authenticates with when it carries a user name; one carrying any '@' is
+// dropped, so a proxy login never rides through on a listed name.
+var npmStageURLNames = []string{"HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"}
+
+// npmStageEnv is the whole environment of the staging step's npm commands:
+// the allow-listed inherited variables, then a fresh, empty HOME and TMPDIR
+// (and their Windows names) that the caller made for this step, and a global
+// npm config path that does not exist, so npm reads no user or global npmrc
+// and no stored login. Like an admitted row's scrub it removes the pointers,
+// not the files: the step runs as the same user.
+func npmStageEnv(environ []string, home, tmp string) []string {
+	var env []string
+	for _, kv := range environ {
+		key, value, _ := strings.Cut(kv, "=")
+		key = strings.ToUpper(key)
+		if slices.Contains(npmStageURLNames, key) && strings.Contains(value, "@") {
+			continue
+		}
+		if strings.HasPrefix(key, "LC_") || slices.Contains(npmStagePassNames, key) {
+			env = append(env, kv)
+		}
+	}
+	return append(env,
+		"HOME="+home, "USERPROFILE="+home,
+		"TMPDIR="+tmp, "TEMP="+tmp, "TMP="+tmp,
+		"npm_config_userconfig="+filepath.Join(home, ".npmrc"),
+		"npm_config_globalconfig="+filepath.Join(home, "global-npmrc"),
+		"npm_config_update_notifier=false")
+}
+
+// npmStageDirs makes the staging step's own HOME and TMPDIR: fresh, empty 0700
+// directories under a new temporary directory, which the caller removes before
+// the home is closed again.
+func npmStageDirs() (string, string, string, error) {
+	dir, err := os.MkdirTemp("", "npm-stage-")
+	if err != nil {
+		return "", "", "", err
+	}
+	home, tmp := filepath.Join(dir, "home"), filepath.Join(dir, "tmp")
+	for _, d := range []string{home, tmp} {
+		if err := os.Mkdir(d, 0o700); err != nil {
+			_ = os.RemoveAll(dir) // best effort; the mkdir error is the one reported
+			return "", "", "", err
+		}
+	}
+	return dir, home, tmp, nil
 }
 
 // npmPackageProblem validates a --package value and the attested tree under it:
@@ -123,8 +190,9 @@ func npmCacheProblem(home, cache string) string {
 // sha256 over sorted "path NUL mode NUL sha256(content) NUL" entries, with paths
 // relative to home (the shape of the container bracket's homeTreeDigest). Each
 // staged directory must be a real directory. A symlink is recorded by its
-// target, which must stay inside its staged directory; any other file type
-// refuses.
+// target, which must stay inside its staged directory both as written and once
+// its whole chain is resolved, and must resolve to an existing path; any other
+// file type refuses.
 func npmStagingDigest(home string, s NpmStaging) (string, error) {
 	type entry struct{ path, mode, sum string }
 	var entries []entry
@@ -133,6 +201,10 @@ func npmStagingDigest(home string, s NpmStaging) (string, error) {
 		info, err := os.Lstat(root)
 		if err != nil || !info.IsDir() {
 			return "", Refused("npm staging directory " + dir + " is missing or not a directory")
+		}
+		rootReal, err := filepath.EvalSymlinks(root)
+		if err != nil {
+			return "", Unverifiable("cannot resolve npm staging directory "+dir, err)
 		}
 		err = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
 			if err != nil {
@@ -164,6 +236,18 @@ func npmStagingDigest(home string, s NpmStaging) (string, error) {
 				in, err := filepath.Rel(root, filepath.Join(filepath.Dir(p), target))
 				if err != nil || !filepath.IsLocal(in) {
 					return Refused("npm staging symlink " + rel + " leaves its staged directory " + dir)
+				}
+				// The lexical check above does not see through a chain: a link
+				// whose target names another link (a/b/l1 -> ../.., then
+				// l2 -> a/b/l1/../../x) can stay inside lexically and still
+				// resolve outside. Resolve the whole chain and require the
+				// result to exist inside the staged directory.
+				resolved, err := filepath.EvalSymlinks(p)
+				if err != nil {
+					return Refused("npm staging symlink " + rel + " does not resolve to an existing path")
+				}
+				if in, err := filepath.Rel(rootReal, resolved); err != nil || !filepath.IsLocal(in) {
+					return Refused("npm staging symlink " + rel + " resolves outside its staged directory " + dir)
 				}
 				content, mode = []byte(target), "120000"
 			case info.Mode().IsRegular():
@@ -223,6 +307,26 @@ func verifierNpmCheck(home, source string, s NpmStaging) error {
 	return nil
 }
 
+// npmStageRun runs the staging step's npm commands in dir under npmStageEnv,
+// with a fresh HOME and TMPDIR that are removed before it returns.
+func npmStageRun(dir, cache string, build bool) error {
+	scratch, home, tmp, err := npmStageDirs()
+	if err != nil {
+		return Unverifiable("cannot make the npm staging step's own HOME and TMPDIR", err)
+	}
+	defer func() { _ = os.RemoveAll(scratch) }() // best effort; the run's own result is what is reported
+	env := npmStageEnv(os.Environ(), home, tmp)
+	if err := npmStageCommand(dir, env, "ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", "--cache", cache); err != nil {
+		return Unverifiable("npm ci --offline could not stage the package's dependencies from the cache", err)
+	}
+	if build {
+		if err := npmStageCommand(dir, env, "run", "build", "--offline", "--ignore-scripts"); err != nil {
+			return Unverifiable("the package's build script failed during npm staging", err)
+		}
+	}
+	return nil
+}
+
 // StageVerifierNpm is the admitted npm staging step (#7572). The home must pass
 // local pre-work admission first, so nothing is staged into a home that already
 // holds an unattested file. It runs, in the package directory,
@@ -230,7 +334,9 @@ func verifierNpmCheck(home, source string, s NpmStaging) error {
 //	npm ci --offline --ignore-scripts --no-audit --no-fund --cache <cache>
 //
 // and, with build, `npm run build --offline --ignore-scripts` (the package's
-// own attested build script; no dependency's install script runs). The home is
+// own attested build script; no dependency's install script runs), both under
+// npmStageEnv: an allow-listed environment with a fresh, empty HOME and TMPDIR,
+// as an admitted Verify row gets. The home is
 // then closed again with only the staged directories passed over, so the step
 // wrote nothing else, and the digest of the staged directories is bound to the
 // run record once. Only a version-1 (same-repository) run can be staged.
@@ -267,13 +373,8 @@ func StageVerifierNpm(root, brief, pkg, cache string, build bool) (VerifierRecei
 		return r.VerifierReceipt, Refused(p)
 	}
 	dir := filepath.Join(home, filepath.FromSlash(pkg))
-	if err := npmStageCommand(dir, "ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", "--cache", cache); err != nil {
-		return r.VerifierReceipt, Unverifiable("npm ci --offline could not stage the package's dependencies from the cache", err)
-	}
-	if build {
-		if err := npmStageCommand(dir, "run", "build", "--offline", "--ignore-scripts"); err != nil {
-			return r.VerifierReceipt, Unverifiable("the package's build script failed during npm staging", err)
-		}
+	if err := npmStageRun(dir, cache, build); err != nil {
+		return r.VerifierReceipt, err
 	}
 	s := NpmStaging{Package: pkg, Lock: npmLockObject(tree, pkg), Built: build}
 	if s.Digest, err = npmStagingDigest(home, s); err != nil {
