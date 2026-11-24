@@ -167,7 +167,7 @@ func TestNpmStagedTreeAdmits(t *testing.T) {
 // drop dist, and a second staging of the same run.
 func TestNpmMutatedStagingRefuses(t *testing.T) {
 	nm := filepath.Join(npmFixturePkg, "node_modules")
-	for _, mode := range []string{"changed", "added", "removed", "chmod", "relinked", "dist-added", "dist-changed", "record-unbuilt", "restage"} {
+	for _, mode := range []string{"changed", "added", "removed", "chmod", "relinked", "dist-added", "dist-changed", "record-unbuilt", "record-lock", "restage"} {
 		t.Run(mode, func(t *testing.T) {
 			root, f, _ := npmStagingFixture(t)
 			if _, err := StageVerifierNpm(root, "brief.md", npmFixturePkg, npmFixtureCache(t), true); err != nil {
@@ -204,6 +204,14 @@ func TestNpmMutatedStagingRefuses(t *testing.T) {
 				r.NpmStaging.Built = false
 				err = verifierSave(root, r)
 				want = "unattested worktree file: " + npmFixturePkg + "/dist/main.js"
+			case "record-lock":
+				r, lerr := verifierLoad(root)
+				if lerr != nil {
+					t.Fatal(lerr)
+				}
+				r.NpmStaging.Lock = strings.Repeat("0", len(r.NpmStaging.Lock))
+				err = verifierSave(root, r)
+				want = "names a different package-lock.json"
 			case "restage":
 				_, serr := StageVerifierNpm(root, "brief.md", npmFixturePkg, npmFixtureCache(t), true)
 				if serr == nil || ExitCodeOf(serr) != ExitRefused || !strings.Contains(serr.Error(), "already has an npm staging record") {

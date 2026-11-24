@@ -28,7 +28,8 @@ type NpmStaging struct {
 	// Package is the home-relative directory holding package.json and
 	// package-lock.json, slash-separated and clean.
 	Package string
-	// Lock is the sha256 of the attested package-lock.json blob.
+	// Lock is the git object id of the attested package-lock.json blob, as
+	// the attested source tree lists it.
 	Lock string
 	// Built records that staging also ran the package's own build script, so
 	// the package's dist directory is staged and digested with node_modules.
@@ -84,6 +85,18 @@ func npmPackageProblem(pkg string, tree map[string]string, built bool) string {
 		}
 	}
 	return ""
+}
+
+// npmLockObject is the object id of pkg's attested package-lock.json in the
+// source tree, or "" when the tree has no such blob. npmPackageProblem has
+// already required the entry to be a tracked file.
+func npmLockObject(tree map[string]string, pkg string) string {
+	entry, ok := tree[path.Join(pkg, "package-lock.json")]
+	if !ok || !strings.HasPrefix(entry, "100") {
+		return ""
+	}
+	_, id, _ := strings.Cut(entry, " ")
+	return id
 }
 
 // npmCacheProblem mirrors moduleCachePathProblem's placement rule: the cache is
@@ -177,7 +190,7 @@ func npmStagingDigest(home string, s NpmStaging) (string, error) {
 	sort.Slice(entries, func(i, j int) bool { return entries[i].path < entries[j].path })
 	h := sha256.New()
 	for _, e := range entries {
-		fmt.Fprintf(h, "%s\x00%s\x00%s\x00", e.path, e.mode, e.sum)
+		_, _ = fmt.Fprintf(h, "%s\x00%s\x00%s\x00", e.path, e.mode, e.sum) // hash.Hash.Write never returns an error
 	}
 	return "sha256:" + hex.EncodeToString(h.Sum(nil)), nil
 }
@@ -191,17 +204,13 @@ func verifierNpmCheck(home, source string, s NpmStaging) error {
 	if err != nil {
 		return err
 	}
-	if !npmStagingDigestRe.MatchString(s.Digest) || len(s.Lock) != 64 {
+	if !npmStagingDigestRe.MatchString(s.Digest) || s.Lock == "" {
 		return Refused("invalid npm staging record")
 	}
 	if p := npmPackageProblem(s.Package, tree, s.Built); p != "" {
 		return Refused(p)
 	}
-	lock, err := verifierGitBytes(home, "cat-file", "blob", source+":"+path.Join(s.Package, "package-lock.json"))
-	if err != nil {
-		return Unverifiable("cannot read attested package-lock.json", err)
-	}
-	if verifierDigest(lock) != s.Lock {
+	if npmLockObject(tree, s.Package) != s.Lock {
 		return Refused("npm staging record names a different package-lock.json than the attested source")
 	}
 	got, err := npmStagingDigest(home, s)
@@ -257,10 +266,6 @@ func StageVerifierNpm(root, brief, pkg, cache string, build bool) (VerifierRecei
 	if p := npmCacheProblem(home, cache); p != "" {
 		return r.VerifierReceipt, Refused(p)
 	}
-	lock, err := verifierGitBytes(home, "cat-file", "blob", r.Binding.Source+":"+path.Join(pkg, "package-lock.json"))
-	if err != nil {
-		return r.VerifierReceipt, Unverifiable("cannot read attested package-lock.json", err)
-	}
 	dir := filepath.Join(home, filepath.FromSlash(pkg))
 	if err := npmStageCommand(dir, "ci", "--offline", "--ignore-scripts", "--no-audit", "--no-fund", "--cache", cache); err != nil {
 		return r.VerifierReceipt, Unverifiable("npm ci --offline could not stage the package's dependencies from the cache", err)
@@ -270,7 +275,7 @@ func StageVerifierNpm(root, brief, pkg, cache string, build bool) (VerifierRecei
 			return r.VerifierReceipt, Unverifiable("the package's build script failed during npm staging", err)
 		}
 	}
-	s := NpmStaging{Package: pkg, Lock: verifierDigest(lock), Built: build}
+	s := NpmStaging{Package: pkg, Lock: npmLockObject(tree, pkg), Built: build}
 	if s.Digest, err = npmStagingDigest(home, s); err != nil {
 		return r.VerifierReceipt, err
 	}
