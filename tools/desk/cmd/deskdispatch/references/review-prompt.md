@@ -239,7 +239,9 @@ still yours to post, as an ordinary clause-13 finding.
 - **Post, confirm and release in one step.** `deskpost finish review|security-review
   <owner/repo> <N> --verdict … --head <full sha> --body-file F --claim <claim key>` posts the
   verdict, reads it back, and only then releases your dispatch claim; your assignment spells it
-  out when your claim key is one it accepts. If it stops at its release step, the verdict
+  out when your claim key is one it accepts. Run the whole command, including its change
+  into the assigned review checkout, so finish reads that checkout’s lease receipt. Use an
+  absolute path to the verdict body. If it stops at its release step, the verdict
   stands. Retry transient failures from the same checkout. Leave a changed or unprovable lease with the dispatching desk. A post may
   also print `verdict-time labels: applied <labels>` — the verb's own advisory size and
   surface labels, not a write of yours.

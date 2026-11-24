@@ -140,6 +140,15 @@ func buildDispatchRecord(o dispatchOpts, plan dispatchPlan, ref, stamp string) d
 	if plan.rules != nil {
 		rulesDigest = opt(plan.rules.sha256)
 	}
+	session := deskkit.DispatchRecordSessionTag()
+	// The review claim is acquired under the claim tool's session fallback.
+	// A child process has its own environment, so record the acquiring desk here.
+	if reviewKit(kit) {
+		session = deskkit.ResolveSessionName("")
+		if session == "" || !deskkit.ValidDispatchRecordField("session_tag", session) {
+			session = deskkit.UnknownSessionTag
+		}
+	}
 	return deskkit.DispatchRecord{
 		Event:       deskkit.DispatchEventDispatched,
 		DispatchRef: opt(ref),
@@ -150,7 +159,7 @@ func buildDispatchRecord(o dispatchOpts, plan dispatchPlan, ref, stamp string) d
 		Kit:         opt(kit),
 		Branch:      branch,
 		PR:          pr,
-		SessionTag:  deskkit.DispatchRecordSessionTag(),
+		SessionTag:  session,
 		Tier:        opt(tier),
 		BriefExec:   execTier,
 		BriefEffort: effort,

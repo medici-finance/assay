@@ -4,6 +4,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/medici-finance/assay/gitcore"
 	"os/exec"
+	"strings"
 	"testing"
 	"time"
 
@@ -24,11 +25,6 @@ func (s *reviewLeaseFixture) Read(k string) (deskkit.ClaimStoreRecord, deskkit.C
 		return s.record, deskkit.ClaimReadFree
 	}
 	return s.record, deskkit.ClaimReadHeld
-}
-
-func (s *reviewLeaseFixture) Remove(k string) (deskkit.ClaimWriteOutcome, bool) {
-	s.record = deskkit.ClaimStoreRecord{}
-	return deskkit.ClaimWriteApplied, true
 }
 
 func (s *reviewLeaseFixture) RemoveFrom(k, old string) deskkit.ClaimWriteOutcome {
@@ -125,7 +121,14 @@ func TestFinishPreservesReplacementOnForgeRef(t *testing.T) {
 	if out, err := exec.Command("git", "-C", repo, "update-ref", "refs/tags/unrelated", old.String()).CombinedOutput(); err != nil {
 		t.Fatalf("seed unrelated ref: %v: %s", err, out)
 	}
+	seen, status := lease.Read(finishClaimKey)
+	if status != deskkit.ClaimReadHeld || seen.Version != old.String() {
+		t.Fatalf("original lease unreadable: %+v %v", seen, status)
+	}
 	put(nextReviewRun)
+	if got := lease.RemoveFrom(finishClaimKey, seen.Version); got != deskkit.ClaimWriteRejected {
+		t.Fatalf("stale receiver deletion: %v (%s)", got, lease.TransportCause())
+	}
 	reviewerLease = func(deskkit.ForgeRepo) (finishLease, error) { return lease, nil }
 	if _, err := releaseReviewClaim("example-org", "tracker", finishClaimKey); deskkit.ExitCodeOf(err) != deskkit.ExitRefused {
 		t.Fatalf("former reviewer: %v", err)
@@ -140,5 +143,18 @@ func TestFinishPreservesReplacementOnForgeRef(t *testing.T) {
 		if err != nil || state != want {
 			t.Fatalf("successor finish: got %q, %v; want %q", state, err, want)
 		}
+	}
+}
+
+// regression: #7432, F1
+func TestFinishNamesTheCheckoutWhoseLeaseCannotBeProved(t *testing.T) {
+	h := setupFinish(t)
+	dir := t.TempDir()
+	t.Chdir(dir)
+	checkoutReviewIdentity = deskkit.WorktreeReviewLeaseIdentity
+	file := writeBody(t, "verdict.md", okReviewBody)
+	code := run(finishArgs("review", "1", "approve", testHead, file, finishClaimKey))
+	if code != deskkit.ExitRefused || h.deletes() != 0 || !strings.Contains(h.errOut.String(), dir) {
+		t.Fatalf("exit=%d deletes=%d; refusal must name the checkout that lacks evidence: %s", code, h.deletes(), h.errOut.String())
 	}
 }

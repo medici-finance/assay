@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"strings"
 	"sync"
 
@@ -215,10 +214,8 @@ func spacedValue(rest []string, i int) (string, int) {
 }
 
 func defaultOwner() string {
-	for _, env := range []string{"DESK_SESSION", "CLAUDE_SESSION_ID"} {
-		if v := strings.TrimSpace(os.Getenv(env)); v != "" {
-			return v
-		}
+	if owner := deskkit.ResolveSessionName(""); owner != "" {
+		return owner
 	}
 	return "unknown"
 }

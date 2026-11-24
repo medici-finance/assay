@@ -593,7 +593,7 @@ finishing a review (one command instead of three):
                  claim is released LAST because the post step needs it held. --claim must be
                  a review claim of this change AND of this lane — a key with a "security"
                  segment for "finish security-review", one without for "finish review" (exit
-                 2 otherwise, before anything is posted). A held claim requires the same holder and dispatch run as this checkout.
+                 2 otherwise, before anything is posted). Run finish from the assigned review checkout. Its receipt must match the holder and dispatch run.
                  Older claims lacking run evidence stay held for the dispatching desk.
                  With --dry-run only step 1 is rehearsed.
 

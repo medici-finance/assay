@@ -93,6 +93,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 
 	"strings"
 
@@ -352,7 +353,11 @@ func releaseReviewClaim(owner, name, key string) (string, error) {
 	}
 	holder, run := checkoutReviewIdentity(repo.Slug(), key)
 	if rec.Version == "" || !reviewLeaseMatches(rec.Msg, key, holder, run) {
-		return "", deskkit.Refused("the checkout and the held review lease do not identify the same dispatch run and holder")
+		dir, err := os.Getwd()
+		if err != nil {
+			return "", deskkit.Unverifiable("could not identify the current review directory; run finish from the assigned review checkout", err)
+		}
+		return "", deskkit.Refused(fmt.Sprintf("directory %q and the held review lease do not identify the same dispatch run and holder; run finish from the review checkout named in your assignment", dir))
 	}
 	switch lease.RemoveFrom(key, rec.Version) {
 	case deskkit.ClaimWriteApplied:

@@ -252,3 +252,18 @@ func TestReviewKitStatesToolResults(t *testing.T) {
 		}
 	}
 }
+
+// regression: #7432, F1
+func TestReviewFinishCommandUsesTheAssignedCheckout(t *testing.T) {
+	s := &stub{}
+	s.install(t)
+	home := "/reviewer's homes/review 42"
+	for _, key := range []string{"assay--pr-42", "assay--pr-42--security"} {
+		var packet strings.Builder
+		writeReviewAssignment(&packet, dispatchOpts{pr: 42}, dispatchPlan{claimKey: key}, allowedRepo, home)
+		line := lineWith(packet.String(), "deskpost finish ")
+		if !strings.HasPrefix(line, "cd -- "+deskkit.ShellSingleQuote(home)+" && deskpost finish ") {
+			t.Fatalf("finish command omits its assigned checkout: %s", line)
+		}
+	}
+}

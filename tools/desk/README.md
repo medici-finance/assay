@@ -2747,7 +2747,8 @@ deskpost finish review example-org/project 42 --verdict approve \
 ```
 
 The arguments after `finish review` / `finish security-review` are that verb's own, parsed by
-the same code, plus `--claim` — the claim key the review assignment names.
+the same code, plus `--claim` — the claim key the review assignment names. Run the
+command from the assigned review checkout and pass an absolute path for `--body-file`.
 
 | Step | What runs | A stop here means |
 |---|---|---|

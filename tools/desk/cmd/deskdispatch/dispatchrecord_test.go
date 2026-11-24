@@ -713,3 +713,19 @@ func TestReviewDispatchBindsAcquisitionToTheCheckout(t *testing.T) {
 		t.Fatalf("acquire and checkout did not receive the same run and identified holder: %+v", s.calls)
 	}
 }
+
+// regression: #7432, A1
+func TestReviewRecordUsesClaimSessionFallback(t *testing.T) {
+	t.Setenv("DESK_SESSION", "")
+	t.Setenv("CLAUDE_CODE_SESSION_ID", "audit-session")
+	t.Setenv("CLAUDE_SESSION_ID", "claim-session")
+	record := buildDispatchRecord(dispatchOpts{kit: "review"}, dispatchPlan{}, "", "")
+	if record.SessionTag != "claim-session" {
+		t.Fatalf("receipt identifies %q instead of the acquiring desk", record.SessionTag)
+	}
+	t.Setenv("CLAUDE_SESSION_ID", "")
+	record = buildDispatchRecord(dispatchOpts{kit: "review"}, dispatchPlan{}, "", "")
+	if record.SessionTag != deskkit.UnknownSessionTag {
+		t.Fatalf("audit-only identity invented a claim owner: %q", record.SessionTag)
+	}
+}
