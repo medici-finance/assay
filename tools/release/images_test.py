@@ -3266,7 +3266,8 @@ class DigestFirstTest(unittest.TestCase):
         attached = {ref: d for ref, d in tag_targets().items()
                     if re.search(r'/(desk-tools|assay-harness|desk-base|intake-desk|worker-desk):', ref)}
         self.assertEqual(self.held(first), attached)
-        self.assertIn('Version tags attached before the failure', result.stderr)
+        self.assertIn('Version tags written before the failure: ' + ' '.join(attached),
+                      result.stderr)
         return first, attached
 
     def check_rerun_same(self, source=None):
@@ -3313,6 +3314,9 @@ class DigestFirstTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('after tagging', result.stderr)
         self.assertEqual(len(self.creates(case)), 1)
+        # The drifted tag did move, so the failure line must name it.
+        moved = self.creates(case)[0][0]
+        self.assertIn('Version tags written before the failure: ' + moved, result.stderr)
         self.assertFalse((case.out / 'release-images.json').exists())
 
     # regression: #7619
@@ -3352,7 +3356,7 @@ class DigestFirstTest(unittest.TestCase):
         mutations = {
             'tag before all pushes succeed': (
                 'digest = push_digest(stage_tag(ref))',
-                'digest = attach_tag(ref, push_digest(stage_tag(ref)))'),
+                'digest = attach_tag(ref, push_digest(stage_tag(ref)), [])'),
             'accept a mismatching digest': (
                 'clash.append(f"{ref} names {got}, this run pushed {digest}")',
                 'attach[ref] = digest'),

@@ -109,9 +109,12 @@ roll remains a separate downstream job under its own existing identity.
    references and their checksums to the draft GitHub release before its
    single immutable publish. A failed push leaves no version tag behind, so the
    same version can be published again. Tagging is not atomic: if attaching a
-   tag fails part-way, the log lists the tags already attached, and a re-run
-   completes only if its rebuilt images have the same digests; otherwise fix
-   forward with the next version.
+   tag fails part-way, the log lists every tag already written, including one
+   whose read-back failed, and a re-run completes only if its rebuilt images
+   have the same digests; otherwise fix forward with the next version. The
+   `staging-<umbrella-tag>` tags are the publisher's working state, not
+   release references: they can name an image that was never released or one
+   that differs from the published version, so never pin them.
 
 Dry runs use the same one-approval job: they build and check the images but
 push none, write no pinnable-reference files, cut no tag and publish no GitHub

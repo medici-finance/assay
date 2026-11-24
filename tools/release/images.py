@@ -530,13 +530,17 @@ def tag_digest(ref):
     return digest
 
 
-def attach_tag(ref, digest, *, sleep=time.sleep):
-    """Point the version tag ref at the pushed digest and read it back."""
+def attach_tag(ref, digest, written, *, sleep=time.sleep):
+    """Point the version tag ref at the pushed digest and read it back.
+
+    ref is added to written as soon as the tag write returns, before the
+    read-back, so a failed read-back still reports the tag that moved."""
     repo = ref.rsplit(":", 1)[0]
     # --prefer-index=false copies the one manifest as it is. Without it buildx
     # wraps a single image in a new index, which has another digest.
     registry_push("docker", "buildx", "imagetools", "create", "--prefer-index=false",
                   "--tag", ref, repo + "@" + digest, sleep=sleep)
+    written.append(ref)
     got = tag_digest(ref)
     if got != digest:
         raise ValueError(f"{ref} names {got} after tagging, not the pushed {digest}")
@@ -563,10 +567,9 @@ def attach_version_tags(wanted):
     tagged = []
     try:
         for ref, digest in attach.items():
-            attach_tag(ref, digest)
-            tagged.append(ref)
+            attach_tag(ref, digest, tagged)
     except Exception:
-        print("Version tags attached before the failure: " + (" ".join(tagged) or "none"),
+        print("Version tags written before the failure: " + (" ".join(tagged) or "none"),
               file=sys.stderr, flush=True)
         raise
 
