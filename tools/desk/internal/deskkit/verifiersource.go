@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -337,6 +338,17 @@ func verifierBlobID(newHash func() hash.Hash, b []byte) string {
 // is present. Paths in allowed (the brief, and at Evidence time its stream
 // index) are checked by their own rules instead.
 func verifierSourceClosure(home, commit string, checkout verifierCheckout, allowed map[string]bool) error {
+	return verifierSourceClosureStaged(home, commit, checkout, allowed, nil)
+}
+
+// verifierSourceClosureStaged is verifierSourceClosure that passes over the
+// untracked directories in staged, the home-relative directories an npm
+// staging record names (#7572). A staged directory is passed over only when it
+// is a real directory that is not a tracked path; a symlink or file of that name
+// is still an unattested worktree file. The caller binds the staged bytes to
+// the record's digest (verifierNpmCheck); with staged empty this is the
+// unchanged closure.
+func verifierSourceClosureStaged(home, commit string, checkout verifierCheckout, allowed map[string]bool, staged []string) error {
 	checkout.source = commit
 	tree, err := verifierTree(home, commit)
 	if err != nil {
@@ -374,6 +386,9 @@ func verifierSourceClosure(home, commit string, checkout verifierCheckout, allow
 				// A gitlink: its content is another repository's commit, which
 				// this closure does not attest.
 				return Refused("verifier home has a submodule, whose content is not attested: " + rel)
+			}
+			if slices.Contains(staged, rel) {
+				return filepath.SkipDir
 			}
 			return nil
 		}

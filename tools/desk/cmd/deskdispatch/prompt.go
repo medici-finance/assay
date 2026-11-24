@@ -491,12 +491,11 @@ func writeReviewAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 			home, head, home)
 	}
 	writeReviewRound(b, plan.round)
-	if writeReviewFinish(b, o, plan, repo) {
-		b.WriteString("If `finish` stops at its release step, the verdict stands and the claim is still held — " +
-			"release it with:\n\n")
-	} else {
-		b.WriteString("Release the dispatch claim once your verdict is posted:\n\n")
+	if writeReviewFinish(b, o, plan, repo, home) {
+		b.WriteString("If the release step fails, retry from this checkout after a transient error. If the lease has changed or ownership cannot be proved, leave it with the dispatching desk.\n\n")
+		return
 	}
+	b.WriteString("Release the dispatch claim once your verdict is posted:\n\n")
 	writeReleaseClaim(b, o, plan, repo)
 }
 
@@ -506,7 +505,7 @@ func writeReviewAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 // whether it wrote anything. The key and lane are judged by the SAME deskkit functions finish
 // itself judges them by — a key finish would refuse gets no finish line, only the release line,
 // and the lane verb is the one finish pairs with this key, never one it would refuse.
-func writeReviewFinish(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo string) bool {
+func writeReviewFinish(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo, home string) bool {
 	if o.pr <= 0 || deskkit.ValidateReviewClaimKey(plan.claimKey, repo, o.pr) != nil {
 		return false
 	}
@@ -514,9 +513,9 @@ func writeReviewFinish(b *strings.Builder, o dispatchOpts, plan dispatchPlan, re
 	if deskkit.ReviewClaimKeyIsSecurity(plan.claimKey, o.pr) {
 		verb, verdicts = "security-review", "pass|fail"
 	}
-	b.WriteString("Post your verdict, confirm it and release the dispatch claim in ONE step:\n\n")
-	fmt.Fprintf(b, "```\ndeskpost finish %s %s %d --verdict %s --head <full head sha> --body-file <file> --claim %q\n```\n\n",
-		verb, repo, o.pr, verdicts, plan.claimKey)
+	b.WriteString("Post your verdict, confirm it and release the dispatch claim in ONE step from the assigned review checkout. Supply the verdict body file by absolute path:\n\n")
+	fmt.Fprintf(b, "```\ncd -- %s && deskpost finish %s %s %d --verdict %s --head <full head sha> --body-file <file> --claim %q\n```\n\n",
+		deskkit.ShellSingleQuote(home), verb, repo, o.pr, verdicts, plan.claimKey)
 	return true
 }
 

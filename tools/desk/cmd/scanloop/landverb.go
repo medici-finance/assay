@@ -84,6 +84,14 @@ func cmdLand(args []string, declaredLoop string, w io.Writer) error {
 		return err
 	}
 
+	// A bug or a placeholder with no judgment behind it is the exit that strands an issue: the
+	// board cannot assess it and nothing else writes the companion. The other three exits
+	// discharge without one, and the drain's own mechanical exits never pass through this verb.
+	if *handoffPath == "" && (exit == ExitBug || exit == ExitPlaceholder) {
+		return deskkit.Refused("scanloop land: --exit " + string(exit) + " records a judgment, so it needs --handoff " +
+			"<intake-handoff-v1 JSON> and --handoff-reader <version>; without one the issue is parked with nothing the board can assess")
+	}
+
 	opened, err := landOpened(*openedFlag)
 	if err != nil {
 		return err
