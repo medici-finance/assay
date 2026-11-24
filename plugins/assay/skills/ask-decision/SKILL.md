@@ -12,12 +12,12 @@ description: >-
 
 # Ask Decision — one decision per turn, with context
 
-A desk that has five things blocked on a human and asks about all five in one message gets no
-answer to any of them. The driver has to reconstruct each item's context, hold five open
-questions at once, and write a paragraph. A desk that asks about ONE, states the options, and
-says exactly what a reply must contain gets a one-word answer and moves on. That is the whole
-skill: **the queue drains at the speed the questions are askable, not at the speed the desk
-can enumerate them.**
+Ask one question when the driver owns the next choice. Read their request, earlier answers
+and the current artifact first. Carry out settled work within the role's existing authority
+once its recorded conditions hold. Approval leaves reserved acts with their named owner.
+Stop on a guard refusal and put any remaining driver-only act on the runsheet.
+Route a missing prerequisite or investigation to its owner. For a
+genuine fork, present a recommendation and the consequence of choosing it.
 
 This skill is a PRESENTATION and RELAY contract. It decides nothing, it rules on nothing, and
 its recommended default is a recommendation — the ruling is the driver's, and it is recorded
@@ -27,12 +27,48 @@ as a relay.
 
 - The driver asks for it: "ask me 1-by-1", "walk me through the decisions", "what do you need
   from me", "what's waiting on me", "go through the needs-decision queue".
-- A desk window ends with more than one human gate open. Rather than narrating them, invoke
-  this and ask the first.
+- The project uses this desk to deliver human inbox notifications. Poll for changes as
+  described below and continue independent work between deliveries.
 - After a ruling lands and the desk has recorded it, to present the next item.
 
-It does NOT run for a single question — one gate is just the format applied once, which is
-cheap, but it needs no skill invocation to do it.
+For a single named issue, apply the format once after checking who owns its next step.
+
+## A named issue or a routine notification
+
+For a question about a particular issue, run `deskinbox show 'owner/repo#42'` in the
+current desk role. Use its next owner, action, evidence and post-act check. Present a
+`ready` human choice in the format below. For a verification sign-off, give the evidence
+and direct issue link for the driver's acceptance. For a runsheet act, give the verified
+command when shown or its pinned line. State the post-act check. The driver performs the
+act. For `screened`, read the cited evidence and proceed within the
+role's authority. Route `prepare` or `stale` to the named owner, follow up on `unknown`
+as could-not-check, and retire a `closed` item. A direct lookup is a read and needs no receipt.
+
+For routine delivery, follow the `assay:inbox` command contract.
+Run `deskinbox changes --consumer "$destination" owner/repo` with the project's stable
+destination name, durable local desk state and the same repository set on every sweep.
+An empty events array needs no message or acknowledgement. For `ready`, `changed` or a
+policy-enabled `reminder`, read the named issue with `show` before presenting it. Confirm
+it is still human-ready and that its act, evidence and post-act check match the offered event.
+On any difference, leave that receipt unacknowledged, poll again and use the fresh batch.
+Set `--remind-after` only when the project specifies a reminder interval.
+A `withdrawn` event cancels the old request.
+Remove it from pending delivery and correct a previously delivered instruction on its
+original surface. Continue the desk's own work.
+
+Only after successful delivery of the whole batch, including withdrawals, run
+`deskinbox changes --consumer "$destination" --ack "$receipt" owner/repo` against the same
+state and scope. Keep delivery progress across retries when presenting one item per turn.
+Retry undelivered events after a partial delivery; refresh a superseded receipt. Acknowledgement
+records delivery only. A ruling, sign-off or human act still needs its own evidence.
+
+If the installed binary lacks a required verb, report the capability gap to the desk.
+For an explicit request, read the named issue and thread with the authorized reader or
+use the manual walk below. On an older installation without `changes`, use the authorized
+reader and the screens below to verify a newly actionable human gate, then surface it once
+through the project's escalation channel. Keep the open item as its record and consult its
+thread and prior delivery before repeating a request. When an available verb fails a read or
+refuses a receipt, keep the batch pending and resolve that failure.
 
 ## The queue and its order
 
@@ -42,8 +78,8 @@ the rule that a bare label is unanswerable without a comment saying what is need
 whom — is defined in the `intake-desk` and `the-desk` skills. **Point at it; do not restate
 it here.** This skill assumes the labels already mean what those skills say they mean.
 
-Read the queue with the inbox, which already sorts it. Walk it with the bash oracle,
-because it is the renderer that runs **the screen** below (`<bundle>` is the installed Assay
+For a driver-requested walk, use the bash oracle to sort the queue and run **the screen**
+below (`<bundle>` is the installed Assay
 bundle's own directory; each harness locates it its own way, and the expansion for yours is
 in `../../references/<harness>.md`; substitute it before running):
 
@@ -124,7 +160,8 @@ question the desk can answer") are made mechanical by this screen **on the oracl
 only**. The screen narrows what reaches the driver; it does not replace reading — act on a
 screened class only after reading the evidence the tool cites. Where `deskinbox walk`
 renders instead, nothing classifies, and both floors stay manual checks done by hand before
-each question.
+each question. A renderer's `genuine` result admits the item for the desk's review. Apply
+the same test to an interactive prompt and a rendered item before asking the driver.
 
 ## The format — five parts for every GENUINE item
 
@@ -173,7 +210,9 @@ visible phrase naming the recommended option, else `not derivable — desk to fi
    transcript; the runnable block is the promise that nobody has to rebuild a command from a
    paragraph. The block's shape is defined once, in the next section. An item whose answer
    sets off no act a person runs (a pure ruling the desk then carries out) keeps only the
-   check.
+   check. When the gate accepts a ruling directly in the driver's own hand, offer that
+   surface first. One signed answer there settles the choice and records it. If the driver
+   answers in chat, follow the relay and ratification procedure below.
 
 ### Act — the shape of the fifth part
 
@@ -231,7 +270,9 @@ restate it.
   a `DRY_RUN=0` left over from the previous act, or exported in the driver's profile, would
   make the next block act on its first paste. A mutating step passes the tool's `--dry-run`
   while `DRY_RUN=1` and drops it only on the live call; a tool with no `--dry-run` goes
-  through the `run` guard, which only prints while `DRY_RUN=1`. So pasting the block only
+  through `run`. Define the guard inside the act function, after setting `DRY_RUN`:
+  `run() { if [ "$DRY_RUN" = 0 ]; then "$@"; else printf 'would run %s\n' "$1"; fi; }`.
+  Call it as `run tool arg ...`. Its preview prints only the program name. So pasting the block only
   reports what it would do, and the driver acts by typing `driver_act_<id> live`. Nothing the
   function sets outlives the call.
 - **In a live walk, one live line per step instead.** When the desk is in the session with
@@ -334,22 +375,18 @@ left alone, which matters only against a GitHub Enterprise Server host.
 # fill: the publish token, typed at a hidden prompt in step 2 on the live call.
 driver_act_123() (
   DRY_RUN=1; [ "${1-}" = live ] && DRY_RUN=0
-  run() { if [ "$DRY_RUN" = 1 ]; then echo "would run: $*"; else "$@"; fi; }
   echo '1. pin the driver token for every gh step. An exported App token never wins.'
   GH_TOKEN="$(gh auth token --user "<driver-login>")" || { echo "no driver token; nothing changed" >&2; exit 1; }
+  [ -n "$GH_TOKEN" ] || { echo "no driver token; nothing changed" >&2; exit 1; }
   export GH_TOKEN; unset GITHUB_TOKEN
   echo '2. read the publish token next, so an empty read changes nothing.'
   if [ "$DRY_RUN" = 1 ]; then echo "would read the publish token at a hidden prompt"
   else printf 'publish token: '
     PUBLISH_TOKEN=; read -rs PUBLISH_TOKEN || { echo; echo "no token read; nothing changed" >&2; exit 1; }
     echo; [ -n "$PUBLISH_TOKEN" ] || { echo "no token read; nothing changed" >&2; exit 1; }; fi
-  echo '3. push the parked branch. git push has its own --dry-run.'
-  if [ "$DRY_RUN" = 1 ]; then git push --dry-run origin parked-branch; else git push origin parked-branch; fi
-  echo '4. store the publish token as a repo secret.'
+  echo '3. store the publish token as a repo secret.'
   if [ "$DRY_RUN" = 1 ]; then echo "would run: gh secret set PUBLISH_TOKEN -R owner/repo"
   else printf '%s' "$PUBLISH_TOKEN" | gh secret set PUBLISH_TOKEN -R owner/repo; fi
-  echo '5. take the decision label off the issue. No --dry-run here, so the run guard covers it.'
-  run gh issue edit 123 -R owner/repo --remove-label needs-decision
 )
 driver_act_123
 ```
@@ -435,10 +472,9 @@ Rules that make the relay honest:
   three follow-on choices, the relay records "B"; the follow-ons are NEW questions for a
   later turn.
 - **A silence is not a ruling.** No answer means the item stays in the queue.
-- **Then move the label.** Adjust or remove the escalation label per the vocabulary the
-  `intake-desk` skill defines — that relabel, not the close, is what takes the item off the
-  driver's queue. Close authority, and the rule that a decided issue's close comment must name
-  the tracker carrying the remaining work, are that skill's; follow them there.
+- **Record the queue transition.** The human-decided close below verifies the reply
+  and tracker, then moves `needs-decision` to `human-decided`. Preview with `--dry-run`.
+  The intake desk’s close rules still govern when the continuing work has a tracker.
 
 To close a ruled decision, use `deskclose triage --disposition human-decided --decision
 <the ruling's permalink> --tracker <ref>`, never a hand close first. That lane writes the

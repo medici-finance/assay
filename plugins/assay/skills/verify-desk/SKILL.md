@@ -286,6 +286,9 @@ for each contiguous link after the one `Verification-Table:` line. Draft each li
 exact v2 payload for the driver; never post an approval. Link 1 alone may retain a v1
 approval under its existing rules. The shared plan derives `Command`, `Expect` or
 `Command+Expect` changes, and every original witness must follow the final amendment.
+For a whole plain-shell replacement in an automated `sh` check, inspect both
+raw Git cells and draft the explicit v2 `ID:PlainCommand` token. Every other
+cell must match. Legacy approvals and `ID:Command` keep their existing scope.
 Then bracket the disjoint container-witnessable rows on that same source and land the
 closed witness through the sanctioned Evidence path. The selections together cover the
 whole protected table, and the assembled run carries exactly one `Verification-Table:`
@@ -1046,7 +1049,9 @@ two-stamp model, #1170). Model-gated briefs are unchanged: one local-tier stamp,
    Evidence-actor and runner-agreement checks read that as a forgery, not a fix. **The card carries
    the act:** closing it is the human's act, so the card holds an Act block (`ask-decision` §"Act — the shape of the fifth part")
    — where the generated packet has none, this desk attaches it (`deskfile attach`) when the card is
-   ready for the human.
+   ready for the human. Before reporting that sign-off is owed, read the open card and the
+   landed evidence for this brief. Link the ready card directly. If the card or a required
+   stamp is missing, the verifier owns the next step.
 
 ## Irreversible briefs (`risk.irreversible: yes`) — the model records Evidence, a HUMAN flips
 

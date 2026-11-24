@@ -116,6 +116,12 @@ func admitVerifierEvidence(root, repo, target string, fg deskkit.Forge, ac *audi
 		return receipt, err
 	}
 	ac.attestation = receipt.EvidenceBinding()
+	ac.toolUpgrade = ""
+	if receipt.ToolUpgrade != nil {
+		// Admission accepted a desk-tools upgrade against main's pin: the landing
+		// record names it, beside the binding it admitted (#7353).
+		ac.toolUpgrade = receipt.ToolUpgrade.Trailer()
+	}
 	return receipt, nil
 }
 
@@ -166,7 +172,8 @@ func admitLanding(root, repoSlug, owner, name, target, branch string, ac *auditC
 		if err != nil {
 			return changedSincePrep("pre-work admission", err)
 		}
-		if again.EvidenceBinding() != receipt.EvidenceBinding() || again.BriefRoot != receipt.BriefRoot || again.SourceHome != receipt.SourceHome {
+		if again.EvidenceBinding() != receipt.EvidenceBinding() || again.BriefRoot != receipt.BriefRoot || again.SourceHome != receipt.SourceHome ||
+			upgradeLine(again.ToolUpgrade) != upgradeLine(receipt.ToolUpgrade) {
 			return changedSincePrep("the admitted verifier binding", nil)
 		}
 		return nil
@@ -196,7 +203,24 @@ func (a *auditCtx) attestationTrailer() string {
 	if a.attestation == "" {
 		return ""
 	}
-	return "\n\n" + a.attestation
+	return "\n\n" + a.attestationRecord()
+}
+
+// attestationRecord is the admitted binding and, when admission accepted one, the
+// desk-tools upgrade it accepted — the lines every landing record carries (#7353).
+func (a *auditCtx) attestationRecord() string {
+	if a.toolUpgrade == "" {
+		return a.attestation
+	}
+	return a.attestation + "\n" + a.toolUpgrade
+}
+
+// upgradeLine is the record line for an accepted upgrade, or "" for none.
+func upgradeLine(u *deskkit.ToolUpgrade) string {
+	if u == nil {
+		return ""
+	}
+	return u.Trailer()
 }
 
 func cmdEvidence(args []string, ac *auditCtx) (err error) {
@@ -862,6 +886,11 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			"refused: landing %s would move, relabel or drop a gate: human brief with no human ruling on its decision issue (decision-gate hold, lifecycle-v1 §4.5):\n%s",
 			targetRepoPath, strings.Join(gateRefused, "\n")))
 	}
+	// Ruling subject: the in-process gate binds the recorded
+	// ruling to this brief's exact work subject, beside the statusgen run above.
+	if err := rulingSubjectGateFn(fg, fr, landedRoot, targetRepoPath, remoteContent, commitContent); err != nil {
+		return err
+	}
 	// The board the gates judged was read from the forge at closureRef, and the decision-gate
 	// judge reads who wrote each ruling from the forge: neither is pinned by the conditional
 	// write. Both are re-read in the write window — the board must be the one judged, and the
@@ -884,6 +913,9 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		}
 		if len(again) > 0 {
 			return changedSincePrep("the decision-gate verdict", deskkit.Refused(strings.Join(again, "\n")))
+		}
+		if err := rulingSubjectGateFn(ac.freshForge, fr, landedRoot, targetRepoPath, remoteContent, commitContent); err != nil {
+			return changedSincePrep("the ruling-subject verdict", err)
 		}
 		return nil
 	})
@@ -1077,7 +1109,7 @@ func landEvidenceAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug, base
 		Title: "Evidence: " + target,
 		Body: "Verification Evidence row for `" + target + "`, landed on branch `" + side + "` and opened " +
 			"as a draft change because the default branch `" + base + "` takes no direct write on this forge. " +
-			"A reviewer verdict lands the row.\n\n" + ac.attestation,
+			"A reviewer verdict lands the row.\n\n" + ac.attestationRecord(),
 		Head: side,
 		Base: base,
 	})
@@ -1213,6 +1245,7 @@ func addedLines(older, newer []byte) []byte {
 type auditCtx struct {
 	options       childOptions
 	attestation   string
+	toolUpgrade   string // the accepted desk-tools upgrade's record line, or ""
 	verb          string
 	repo          string
 	file          string
@@ -1231,6 +1264,9 @@ type auditCtx struct {
 func (a *auditCtx) log(result, detail string) {
 	if a.attestation != "" {
 		detail += " " + a.attestation
+	}
+	if a.toolUpgrade != "" {
+		detail += " " + a.toolUpgrade
 	}
 	// An Evidence landing is an outward forge write: success renews a fresh HEARTBEAT lease
 	// (#6510). The dry-run paths set ResultNoop, so a rehearsal never renews.

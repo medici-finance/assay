@@ -789,11 +789,52 @@ STUB
     check "$([[ "$RC" -eq 2 ]] && grep -q '^MONITOR-DEGRADED: .*could-not-check' <<<"$OUT" && echo 0 || echo 1)" \
       "deskmonitor exit $bad_rc is MONITOR-DEGRADED could-not-check, exit 2" "rc=$RC stdout: ${OUT:-<empty>}"
   done
-  # Qualified mode never hands off (its one collector is review-queue).
+  # A qualified cycle held before collection (no producer tools here) never hands off.
   : > "$w/dm.log"; printf '0' > "$w/dm.rc"
   run "$w" "$st" "PR_MONITOR_REVIEW_OBSERVATION=$w/obs.json" 'PR_MONITOR_REVIEW_POLICY={}' PR_MONITOR_REVIEW_CAPACITY=1 -- o/r
   check "$([[ ! -s "$w/dm.log" ]] && echo 0 || echo 1)" \
-    "qualified mode never calls deskmonitor" "dm.log: $(cat "$w/dm.log")"
+    "a held qualified cycle never calls deskmonitor" "dm.log: $(cat "$w/dm.log")"
+fi
+
+# regression: #7384
+# Qualified mode with an older adapter pair: when either deskmonitor lacks
+# --from-review or deskboard lacks --feedback-out, the launcher keeps the
+# population event baseline. deskmonitor is only probed for help, never run.
+if want classified-older-pair; then
+  echo "classified-older-pair — an unmatched adapter pair keeps the population baseline and only probes deskmonitor"
+  for pair in old-monitor old-board; do
+    w="$TMPROOT/cop-$pair"; st="$TMPROOT/cop-$pair-st"; make_gh "$w"
+    board_help="usage: review-queue --out FILE"; monitor_help="Usage: deskmonitor pr [owner/repo ...]"
+    if [[ "$pair" == old-monitor ]]; then board_help+=" --feedback-out FILE"; else monitor_help+=" --from-review"; fi
+    cat > "$w/deskboard" <<STUB
+#!/usr/bin/env bash
+[ "\${1:-}" = --version ] && { echo 'deskboard releaseTag=v1.0.59'; exit 0; }
+[ "\${2:-}" = --help ] && { echo '$board_help'; exit 0; }
+printf '%s\n' "\$*" >> "$w/db.log"
+[ "\$1" = review-queue ] && [ "\$2" = --out ] && [ \$# -eq 3 ] || exit 9
+printf '%s' '{"inputs":{"policy":"p","changes":[{"identity":{"repository":{"repository":"o/r"},"number":1,"head":"aaa"},"facts":{"change":{"IsDraft":false,"MergeStateStatus":"CLEAN"}}}]}}' > "\$3"
+STUB
+    cat > "$w/reviewloop" <<'STUB'
+#!/usr/bin/env bash
+[ "${1:-}" = --version ] && { echo 'reviewloop releaseTag=v1.0.59'; exit 0; }
+echo '{}'
+STUB
+    cat > "$w/deskmonitor" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$w/dm.log"
+[ "\${2:-}" = --help ] && { echo '$monitor_help'; exit 0; }
+exit 9
+STUB
+    chmod +x "$w/deskboard" "$w/reviewloop" "$w/deskmonitor"
+    : > "$w/dm.log"; : > "$w/db.log"
+    run "$w" "$st" "PR_MONITOR_REVIEW_OBSERVATION=$w/obs.json" 'PR_MONITOR_REVIEW_POLICY={}' PR_MONITOR_REVIEW_CAPACITY=1 -- o/r
+    check "$([[ "$RC" -eq 0 ]] && contains "$OUT" "REVIEW-PLAN: $w/obs.json.plan" && echo 0 || echo 1)" \
+      "$pair: the qualified cycle completes on the older recipe" "rc=$RC stdout: ${OUT:-<empty>}"
+    check "$([[ "$(grep -v -- '--help' "$w/dm.log")" == "" && "$(cat "$w/db.log")" == "review-queue --out "* ]] && ! grep -q -- --feedback-out "$w/db.log" && echo 0 || echo 1)" \
+      "$pair: deskmonitor is only probed and the collection asks for no feedback" "dm.log: $(cat "$w/dm.log") db.log: $(cat "$w/db.log")"
+    check "$([[ "$(cat "$st/o__r.state" 2>/dev/null)" == "1 aaa ready OPEN CLEAN" && ! -s "$w/calls.log" && ! -s "$w/mint.log" ]] && echo 0 || echo 1)" \
+      "$pair: the population baseline seeds from the collection with no gh read or mint" "state: $(cat "$st/o__r.state" 2>/dev/null)"
+  done
 fi
 
 echo

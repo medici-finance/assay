@@ -111,3 +111,57 @@ func TestRemoveSupersededRefusals(t *testing.T) {
 		}
 	})
 }
+
+// regression: #7353 — a removal admitted across a desk-tools upgrade records the upgrade
+// it was admitted under in the landed commit and the audit line, beside the binding.
+func TestRemoveRecordsToolUpgrade(t *testing.T) {
+	f, errBuf, older, newer, _ := supersedeFixture(t)
+	up := deskkit.ToolUpgrade{From: "v1.0.89", To: "v1.0.90", Pin: "example-org/tracker@main:.assay-versions desk-tools"}
+	verifierEvidenceAdmissionFn = func(_, _, target string, _ deskkit.Forge) (deskkit.VerifierReceipt, error) {
+		r := stubAdmittedReceipt(target)
+		r.ToolUpgrade = &up
+		return r, nil
+	}
+	code := run([]string{"example-org/tracker", "main", "--remove-superseded", older, "--superseded-by", newer})
+	if code != deskkit.ExitOK {
+		t.Fatalf("exit = %d, want 0 (stderr %q)", code, errBuf.String())
+	}
+	if len(f.writes) != 1 || !strings.Contains(f.writes[0].Message, "Verification-Attestation: ") ||
+		!strings.Contains(f.writes[0].Message, "\n"+up.Trailer()) {
+		t.Fatalf("landed commit does not record the accepted upgrade: %+v", f.writes)
+	}
+	if d := lastAudit(t).Detail; !strings.Contains(d, up.Trailer()) || strings.Contains(d, "\n") {
+		t.Fatalf("audit detail %q does not record the upgrade on its one line", d)
+	}
+}
+
+// regression: #7353 — the write window re-admits and refuses when the upgrade it accepts
+// differs from the one preparation accepted, so a record never names a stale upgrade.
+func TestRemoveRefusesUpgradeDrift(t *testing.T) {
+	up := deskkit.ToolUpgrade{From: "v1.0.89", To: "v1.0.90", Pin: "example-org/tracker@main:.assay-versions desk-tools"}
+	for _, c := range []struct {
+		name        string
+		prep, again *deskkit.ToolUpgrade
+	}{
+		{"an upgrade appears", nil, &up},
+		{"an upgrade disappears", &up, nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f, errBuf, older, newer, _ := supersedeFixture(t)
+			calls := 0
+			verifierEvidenceAdmissionFn = func(_, _, target string, _ deskkit.Forge) (deskkit.VerifierReceipt, error) {
+				r := stubAdmittedReceipt(target)
+				if r.ToolUpgrade = c.prep; calls > 0 {
+					r.ToolUpgrade = c.again
+				}
+				calls++
+				return r, nil
+			}
+			code := run([]string{"example-org/tracker", "main", "--remove-superseded", older, "--superseded-by", newer})
+			if code != deskkit.ExitRefused || len(f.writes) != 0 || calls < 2 ||
+				!strings.Contains(errBuf.String(), "the admitted verifier binding changed") {
+				t.Fatalf("exit = %d writes = %d calls = %d stderr %q", code, len(f.writes), calls, errBuf.String())
+			}
+		})
+	}
+}

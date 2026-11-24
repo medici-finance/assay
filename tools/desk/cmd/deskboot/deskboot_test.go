@@ -151,6 +151,58 @@ func TestBootCompleteRunsEveryStepInOrder(t *testing.T) {
 	}
 }
 
+// TestBootForwardsRepoToPreflight: an explicit --repo reaches the envelope
+// preflight as well as the token mint, so the two resolve the same repository;
+// without it the preflight argv carries no --repo and derives its own.
+//
+// FAIL-FIRST: on the pre-fix code the preflight argv never carried --repo.
+// regression: #7533
+func TestBootForwardsRepoToPreflight(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"explicit", []string{"--repo", "example-org/tracker"}, "--repo example-org/tracker"},
+		{"derived", nil, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := &stub{}
+			home, root := s.install(t)
+			// The explicit repo is a GitLab-mapped roster entry the origin does not name.
+			roster := strings.Replace(fixtureRoster, "ASSAY_REPO_FORGES=medici-finance/assay=github",
+				"ASSAY_REPO_FORGES=medici-finance/assay=github,example-org/tracker=gitlab", 1)
+			if err := os.WriteFile(filepath.Join(home, ".config", "assay", "roster.env"), []byte(roster), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			deskkit.ReloadConfig()
+			s.replies = append([]reply{{match: "desktoken", stdout: writeToken(t, home)}},
+				happyStub(t, writeToken(t, home))...)
+			argv := append([]string{"the-desk", "--root", root}, tc.args...)
+			if rc := run(argv); rc != deskkit.ExitOK {
+				t.Fatalf("boot rc = %d, want 0", rc)
+			}
+			i := s.indexOf("deskroster preflight")
+			if i < 0 {
+				t.Fatal("the preflight never ran")
+			}
+			got := strings.Join(s.calls[i], " ")
+			if tc.want == "" {
+				if strings.Contains(got, "--repo") {
+					t.Fatalf("preflight argv %q carries --repo with none given", got)
+				}
+				return
+			}
+			if !strings.HasSuffix(got, tc.want) {
+				t.Fatalf("preflight argv %q does not forward %q", got, tc.want)
+			}
+			if !s.ran("desktoken desk " + tc.want) {
+				t.Fatalf("the mint did not use %q", tc.want)
+			}
+		})
+	}
+}
+
 // A red preflight is could-not-run for the WHOLE pass, and there is deliberately no
 // override: this is the assertion that keeps it that way.
 func TestRedPreflightStopsTheBootAndReadsNoBoard(t *testing.T) {

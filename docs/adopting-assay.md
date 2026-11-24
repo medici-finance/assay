@@ -89,7 +89,9 @@ Windows pins skip this block and use the chooser above.
 /plugin install assay@assay
 ```
 
-Then invoke **`assay:install`** (the `install` skill, surfaced namespaced once the plugin is
+For a writing project, select [the editorial plugin](../plugins/editorial/README.md) instead. It installs the writing skills independently and uses the `editorial:` namespace.
+
+For methodology setup, invoke **`assay:install`** (the `install` skill, surfaced namespaced once the plugin is
 installed). It self-installs the whole setup, driving each step itself and stopping only at the
 never-autonomous escalation points below.
 
@@ -1994,7 +1996,7 @@ Claude Code's. Codex has its own plugin surface, spelled `codex plugin marketpla
 marketplace manifest from `$REPO_ROOT/.agents/plugins/marketplace.json` or
 `~/.agents/plugins/marketplace.json`, and — per OpenAI's current plugin docs — still recognises
 `$REPO_ROOT/.claude-plugin/marketplace.json` as a **legacy** path. This repository ships exactly
-that legacy file, with one entry named `assay` sourcing `./plugins/assay`, whose Codex manifest is
+that legacy file, with the methodology entry `assay` sourcing `./plugins/assay`, whose Codex manifest is
 [`plugins/assay/.codex-plugin/plugin.json`](../plugins/assay/.codex-plugin/plugin.json) (generated
 by `harnessgen codex`, byte-checked in CI, version-bound to the Claude manifest so the two can
 never skew). So `codex plugin marketplace add medici-finance/assay` has a manifest to find.

@@ -217,7 +217,7 @@ func Reap(p Policy) (bool, error) {
 		m.close()
 		return false, aerr
 	}
-	for _, name := range []string{"build", "mod", "gopath"} {
+	for _, name := range []string{"build", "mod", "gopath", tmpDir} {
 		if err := m.removeTree(name); err != nil {
 			m.close()
 			return false, err

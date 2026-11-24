@@ -85,6 +85,7 @@ var ratchetRowRules = map[string]bool{
 // ratchetBriefRules are the bracket tags of brief-level findings that carry a
 // path and a subject (the identifier, or the declared path).
 var ratchetBriefRules = map[string]bool{
+	"declared-file-alias":  true,
 	"id-dereference":       true, // linkcheck.go
 	ruleRiskFilesCrossRead: true,
 	ruleTableNoFiles:       true,
@@ -232,7 +233,7 @@ func parseLintNotice(line, treeRoot string) (lintFinding, bool) {
 		}
 		f.rule, f.path = m[1], m[2]
 		switch m[1] {
-		case "id-dereference":
+		case "id-dereference", "declared-file-alias":
 			f.subject = firstBacktick(m[3])
 		case ruleRiskFilesCrossRead:
 			if d := ratchetDeclaredRe.FindStringSubmatch(m[3]); d != nil {

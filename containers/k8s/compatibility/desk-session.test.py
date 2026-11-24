@@ -1,4 +1,4 @@
-import os,subprocess,json,hashlib,time,pty,select,errno,tempfile,shutil,sys,uuid,importlib.util
+import os,subprocess,json,hashlib,time,pty,select,errno,re,tempfile,shutil,sys,uuid,importlib.util
 from pathlib import Path
 source=Path(__file__).resolve().parent
 scratch=tempfile.TemporaryDirectory(prefix='compat-pid1-fixtures-')
@@ -19,7 +19,10 @@ if not host.startswith('unix:///'):
  sys.exit(2)
 D=['docker','--host',host]
 run_id=uuid.uuid4().hex[:12]
-image='python:3.13-slim'; names=[]; results=[]
+image=os.environ.get('ASSAY_TEST_FIXTURE_IMAGE','python:3.13-slim')
+if image!='python:3.13-slim' and not re.fullmatch(r'sha256:[0-9a-f]{64}',image):
+ sys.exit('could-not-check: explicit alternate fixture image must be a local sha256 ID')
+names=[]; results=[]
 # Inspect only the explicit local daemon; --pull=never and --network=none below
 # prevent registry/model contact. This is a test environment, not candidate proof.
 inspection=subprocess.run(D+['image','inspect',image,'--format','{{.Id}}'],capture_output=True,text=True,timeout=10)
@@ -44,14 +47,14 @@ def case(label,mode='normal'):
  p={'cell':'example','initial_prompt':'Read /opt/assay/plugin/skills/worker-desk/SKILL.md and run that role under its existing STOP, claim and human gates.','schema':'cell-kube-compat-v1','role':'worker-desk','initialization_id':'a'*64,'agent':'/qa/fake-agent.py','agent_sha256':sha(root/'fake-agent.py'),'agent_version':'qa-synthetic','version_manifest':'/qa/version.json','model':'synthetic-no-model','instructions':'/qa/role.md','instructions_sha256':sha(root/'role.md'),'workdir':'/work'}
  (w/'profile.json').write_text(json.dumps(p))
  lid=hashlib.sha256(json.dumps(p,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
- base=D+['run','--pull=never','--network=none','--mount',f'type=bind,src={root},dst=/qa,readonly','--mount',f'type=bind,src={w},dst=/work']
- prep=subprocess.run(base+['--rm',image,'python','/qa/desk-session.py','--prepare','--profile','/work/profile.json','--work','/work'],capture_output=True,text=True,timeout=10)
+ base=D+['run','--pull=never','--network=none','--entrypoint','python3','--mount',f'type=bind,src={root},dst=/qa,readonly','--mount',f'type=bind,src={w},dst=/work']
+ prep=subprocess.run(base+['--rm',image,'/qa/desk-session.py','--prepare','--profile','/work/profile.json','--work','/work'],capture_output=True,text=True,timeout=10)
  assert prep.returncode==0,prep.stderr
  return w,lid,base
 
 def launch(label,w,lid,base,pod='pod-a',terminal=False):
  name='compat-pid1-fixture-'+run_id+'-'+label; names.append(name)
- cmd=base+['--name',name,'-i']+(['-t'] if terminal else [])+['-e','ASSAY_DESK=worker-desk','-e','ASSAY_COMPAT_INIT_ID='+'a'*64,'-e','ASSAY_COMPAT_LAUNCH_ID='+lid,'-e','ASSAY_POD_UID='+pod,image,'python','/qa/desk-session.py','--profile','/work/profile.json','--work','/work']
+ cmd=base+['--name',name,'-i']+(['-t'] if terminal else [])+['-e','ASSAY_DESK=worker-desk','-e','ASSAY_COMPAT_INIT_ID='+'a'*64,'-e','ASSAY_COMPAT_LAUNCH_ID='+lid,'-e','ASSAY_POD_UID='+pod,image,'/qa/desk-session.py','--profile','/work/profile.json','--work','/work']
  if terminal:
   m,s=pty.openpty(); p=subprocess.Popen(cmd,stdin=s,stdout=s,stderr=s);os.close(s)
   return name,p,m
@@ -75,9 +78,9 @@ def finish(name,p,m=None):
  (root/(name+'.stdout')).write_bytes(out);(root/(name+'.stderr')).write_bytes(err)
  return p.returncode,out.decode(errors='replace'),err.decode(errors='replace')
 try:
- w,lid,base=case('positive');name,p,m=launch('positive',w,lid,base)
+ w,lid,base=case('positive','retained-work');name,p,m=launch('positive',w,lid,base)
  assert wait_for(lambda:any(e['kind']=='agent' for e in events(w)))
- ready=subprocess.run(D+['exec','-e','ASSAY_POD_UID=pod-a',name,'python','/qa/desk-session.py','--ready','--profile','/work/profile.json','--work','/work'],capture_output=True,text=True,timeout=5)
+ ready=subprocess.run(D+['exec','-e','ASSAY_POD_UID=pod-a',name,'python3','/qa/desk-session.py','--ready','--profile','/work/profile.json','--work','/work'],capture_output=True,text=True,timeout=5)
  assert ready.returncode==0,(ready.stdout,ready.stderr)
  expected=['--model','synthetic-no-model','--append-system-prompt-file','/qa/role.md','Read /opt/assay/plugin/skills/worker-desk/SKILL.md and run that role under its existing STOP, claim and human gates.']
  assert next(e['argv'] for e in events(w) if e['kind']=='agent')==expected
@@ -88,7 +91,11 @@ try:
  results.append(dict(test='positive',exit=rc,byte_without_newline=immediate,state=json.loads((w/'.assay-compat/state.json').read_text()),events=events(w),stdout=out,stderr=err))
  before=len(events(w));name,p,m=launch('samepod',w,lid,base)
  rc,out,err=finish(name,p);assert rc==78 and len(events(w))==before,(rc,out,err);results.append(dict(test='samePod-history-hold',exit=rc,agent_event_count_unchanged=len(events(w))==before,stderr=err))
- name,p,m=launch('newpod',w,lid,base,pod='pod-b');assert wait_for(lambda:len(events(w))>before)
+ assert immediate and (w/'retained-work.bin').read_bytes()==b'q', 'first execution did not write the terminal byte'
+ name,p,m=launch('newpod',w,lid,base,pod='pod-b')
+ assert wait_for(lambda:any(e['kind']=='retained-read' for e in events(w)[before:])), events(w)[before:]
+ readback=next(e for e in events(w)[before:] if e['kind']=='retained-read')
+ assert readback['session']=='example-worker-desk-pod-b' and readback['hex']=='71', ('new execution did not read the retained terminal byte',readback)
  p.stdin.write(frame(lid,'pod-b'));p.stdin.flush();rc,out,err=finish(name,p);assert rc==0 and json.loads((w/'.assay-compat/state.json').read_text())['state']=='clean' and len([e for e in events(w) if e['kind']=='agent'])==2,(rc,out,err);results.append(dict(test='clean-newPod-restart',exit=rc,state=json.loads((w/'.assay-compat/state.json').read_text()),stderr=err))
  w,lid,base=case('dirty');s=w/'.assay-compat/state.json';v=json.loads(s.read_text());v.update(state='intent',pod_uid='prior-pod');s.write_text(json.dumps(v))
  name,p,m=launch('dirty',w,lid,base);rc,out,err=finish(name,p);assert rc==78 and not events(w),(rc,out,err);results.append(dict(test='dirty-history-hold',exit=rc,events=events(w),state=json.loads(s.read_text()),stderr=err))
@@ -123,6 +130,10 @@ try:
  subprocess.run(D+['kill','--signal','TERM',name],check=True,capture_output=True)
  rc,out,err=finish(name,p)
  assert rc==78 and json.loads((w/'.assay-compat/state.json').read_text())['state']!='clean',(rc,out,err)
+ before_unclean_retry=len(events(w))
+ name,p,m=launch('retry-unclean',w,lid,base,pod='new-pod')
+ rc,out,err=finish(name,p)
+ assert rc==78 and len(events(w))==before_unclean_retry,('unclean predecessor must hold with zero additional launches',rc,out,err)
  for label,content in [('failed-exec','#!/not-a-real-interpreter\n'),('instant-exit','#!/bin/sh\nexit 0\n')]:
   agent=root/(label+'-agent');agent.write_text(content);agent.chmod(0o755)
   w,lid,base=case(label);profile_path=w/'profile.json';v=json.loads(profile_path.read_text());v['agent']='/qa/'+agent.name;v['agent_sha256']=sha(agent);profile_path.write_text(json.dumps(v));lid=hashlib.sha256(json.dumps(v,sort_keys=True,separators=(',',':'),ensure_ascii=False).encode()).hexdigest()
@@ -144,7 +155,7 @@ os.waitpid(pid,0)
 assert p.returncode==78 and 'dead or zombie' in p.stderr,(p.returncode,p.stdout,p.stderr)
 """)
  w,lid,base=case('zombie-readiness')
- probe=subprocess.run(base+['--rm','-e','ASSAY_POD_UID=pod-a',image,'python','/qa/zombie-probe.py'],capture_output=True,text=True,timeout=10)
+ probe=subprocess.run(base+['--rm','-e','ASSAY_POD_UID=pod-a',image,'/qa/zombie-probe.py'],capture_output=True,text=True,timeout=10)
  assert probe.returncode==0,(probe.stdout,probe.stderr)
  (root/'fsync-probe.py').write_text("""import os,json,importlib.util
 from pathlib import Path
@@ -163,10 +174,12 @@ else:raise AssertionError('fault did not fire')
 assert (path.parent/'uncommitted').exists() and json.loads(path.read_text())['state']=='clean'
 """)
  w,lid,base=case('fsync-after-rename')
- probe=subprocess.run(base+['--rm',image,'python','/qa/fsync-probe.py'],capture_output=True,text=True,timeout=10)
+ probe=subprocess.run(base+['--rm',image,'/qa/fsync-probe.py'],capture_output=True,text=True,timeout=10)
  assert probe.returncode==0,(probe.stdout,probe.stderr)
  name,p,m=launch('fsync-after-rename',w,lid,base);rc,out,err=finish(name,p)
  assert rc==78 and not events(w) and 'interrupted retained write' in err,(rc,out,err)
+ print(json.dumps({'suite':'pid1-controlled-restart','retained_hex':readback['hex'],'first_session':stamp['session'],
+                   'second_session':readback['session'],'image_id':inspection.stdout.strip()}))
  print('checked-clean: compatibility launch and execution-group stop')
 finally:
  for name in names:

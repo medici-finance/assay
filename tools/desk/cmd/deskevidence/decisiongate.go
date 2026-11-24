@@ -9,6 +9,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -239,14 +240,75 @@ var decisionGateBranchBoardFn = decisionGateBranchBoard
 // before it stops listing (GitHub: 300). A listing that reaches it may be truncated.
 const decisionGateCompareFileCap = 300
 
+// decisionGateBoardDirs are the board's directories: the paths decisionGateBoardRe
+// selects, and the directories read whole at both commits when the forge's compare cannot
+// list every changed file (decisionGateBoardTreeDiff). The selector is built from this list,
+// so a board directory cannot be selected from the compare and missed by the listing.
+var decisionGateBoardDirs = []string{"docs/streams", "docs/archive"}
+
 // decisionGateBoardRe selects the paths whose change on the target branch the judge
 // would not see from a stale landing home: the board's files under docs/streams and
 // docs/archive, less the registers the board never reads (findings, intake,
 // verify-outcomes), which change on most days and bear on no brief's gate.
 var (
-	decisionGateBoardRe    = regexp.MustCompile(`^docs/(streams|archive)/`)
-	decisionGateRegisterRe = regexp.MustCompile(`^docs/(streams|archive)/(findings|intake|verify-outcomes)/`)
+	decisionGateBoardRe    = regexp.MustCompile(`^` + boardDirsAlt() + `/`)
+	decisionGateRegisterRe = regexp.MustCompile(`^` + boardDirsAlt() + `/(findings|intake|verify-outcomes)/`)
 )
+
+// boardDirsAlt is decisionGateBoardDirs as one quoted regexp alternation.
+func boardDirsAlt() string {
+	q := make([]string, len(decisionGateBoardDirs))
+	for i, d := range decisionGateBoardDirs {
+		q[i] = regexp.QuoteMeta(d)
+	}
+	return "(?:" + strings.Join(q, "|") + ")"
+}
+
+// decisionGateTreeFn lists every non-directory entry under one directory at one commit,
+// complete or could-not-check. A seam so the branch-board tests can serve a listing from the
+// fake forge; production: deskkit.ReadTreeListing.
+var decisionGateTreeFn = deskkit.ReadTreeListing
+
+// decisionGateBoardTreeDiff is the board read that does not depend on the compare's capped
+// file list: each board directory is listed at the home's HEAD and at the tip, and every
+// path whose entry differs (added, removed, or a different object or mode) is returned as a
+// changed file. A rename is a removal plus an addition, which the board read stages the same
+// way. Any listing that cannot be shown complete is could-not-check.
+func decisionGateBoardTreeDiff(fg deskkit.Forge, fr deskkit.ForgeRepo, head, tip string) ([]deskkit.ChangedFile, error) {
+	var files []deskkit.ChangedFile
+	for _, dir := range decisionGateBoardDirs {
+		was, err := decisionGateTreeFn(fg, fr, head, dir)
+		if err != nil {
+			return nil, err
+		}
+		now, err := decisionGateTreeFn(fg, fr, tip, dir)
+		if err != nil {
+			return nil, err
+		}
+		before := make(map[string]deskkit.TreeEntry, len(was))
+		for _, e := range was {
+			before[e.Path] = e
+		}
+		after := make(map[string]bool, len(now))
+		for _, e := range now {
+			after[e.Path] = true
+			old, ok := before[e.Path]
+			switch {
+			case !ok:
+				files = append(files, deskkit.ChangedFile{Filename: e.Path, Status: "added"})
+			case old.OID != e.OID || old.Mode != e.Mode:
+				files = append(files, deskkit.ChangedFile{Filename: e.Path, Status: "modified"})
+			}
+		}
+		for _, e := range was {
+			if !after[e.Path] {
+				files = append(files, deskkit.ChangedFile{Filename: e.Path, Status: "removed"})
+			}
+		}
+	}
+	sort.Slice(files, func(i, j int) bool { return files[i].Filename < files[j].Filename })
+	return files, nil
+}
 
 // sameCommit reports whether a and b are one commit by exact equality of two full,
 // lowercase object ids. A prefix never matches: an abbreviated id could name another
@@ -269,9 +331,14 @@ func sameCommit(a, b string) bool {
 // replaces, is read at the branch tip and applied to both sides of the judge. The home
 // is never moved.
 //
+// A compare whose file or commit list cannot be shown complete (the forge's file cap) is
+// not itself a hold: the board's directories are then read at both commits and diffed
+// (decisionGateBoardTreeDiff), and only that read failing holds.
+//
 // Fail closed throughout: a home HEAD the forge does not know, a compare that cannot be
-// shown complete (or a forge that serves no compare), or a changed board file that
-// cannot be read at the branch tip is could-not-check, never a pass.
+// made (or a forge that serves no compare), a truncated compare whose board cannot be
+// read at both commits instead, or a changed board file that cannot be read at the branch
+// tip is could-not-check, never a pass.
 func decisionGateBranchBoard(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branch, targetRepoPath string) ([]boardEdit, error) {
 	head, err := landingHead(root)
 	if err != nil || head == "" {
@@ -307,17 +374,29 @@ func decisionGateBranchBoard(fg deskkit.Forge, fr deskkit.ForgeRepo, root, branc
 	case err != nil:
 		return nil, deskkit.Unverifiable(fmt.Sprintf("cannot compare the landing home's HEAD %s with %s (%s) on %s, so the board the write lands on cannot be shown to match the one judged (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug()), err)
 	default:
-		if cmp == nil || !cmp.CommitsComplete || len(cmp.Files) >= decisionGateCompareFileCap {
+		if cmp == nil {
 			return nil, deskkit.Unverifiable(fmt.Sprintf("the forge's compare of the landing home's HEAD %s with %s (%s) on %s cannot be shown complete, so a board change on the branch cannot be ruled out (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug()), nil)
 		}
 		// The compare lists what the branch changed since the commits' merge base. Only when
 		// the home's HEAD is an ancestor of the tip is that every difference between the board
 		// judged and the board landed on; a home carrying commits the branch lacks would keep
-		// its own board edits in the judge.
+		// its own board edits in the judge. The status word and the behind count come with
+		// the compare's first page, so they stand whether or not its lists are complete.
 		if cmp.BehindBy != 0 || (cmp.Status != "ahead" && cmp.Status != "identical") {
 			return nil, deskkit.Unverifiable(fmt.Sprintf("the landing home's HEAD %s is not an ancestor of %s (%s) on %s (compare status %q, behind by %d), so the board judged cannot be shown to be the board the write lands on (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug(), cmp.Status, cmp.BehindBy), nil)
 		}
 		files = cmp.Files
+		if !cmp.CommitsComplete || len(cmp.Files) >= decisionGateCompareFileCap {
+			// The compare's file list stops at the forge's cap (GitHub: 300), and a long
+			// interval leaves its commit list unread, so neither can rule a board change out.
+			// That is a fact about the forge's paging, not about the board: read the board's
+			// own directories at both commits and diff them entry by entry instead (#5913).
+			// Only a read that is itself incomplete holds.
+			files, err = decisionGateBoardTreeDiff(fg, fr, head, tip)
+			if err != nil {
+				return nil, deskkit.Unverifiable(fmt.Sprintf("the forge's compare of the landing home's HEAD %s with %s (%s) on %s cannot be shown complete, and the board could not be read at both commits instead, so a board change on the branch cannot be ruled out (decision-gate hold, lifecycle-v1 §4.5)", head, branch, tip, fr.Slug()), err)
+			}
+		}
 	}
 	isBoard := func(p string) bool {
 		return p != "" && p != targetRepoPath && decisionGateBoardRe.MatchString(p) && !decisionGateRegisterRe.MatchString(p)

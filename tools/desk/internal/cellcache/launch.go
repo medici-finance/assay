@@ -36,7 +36,7 @@ func (m *manager) launchCheck() (Report, error) {
 	if m.created {
 		// Only a directory created by THIS transaction can be known empty without
 		// recursively measuring it. Existing empty-looking roots are not adopted.
-		for _, name := range []string{"build", "mod", "gopath"} {
+		for _, name := range m.p.consumerDirs() {
 			if err := m.r.Mkdir(name, 0700); err != nil {
 				return Report{}, err
 			}

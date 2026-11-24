@@ -84,15 +84,22 @@ const tokenEnv = "DESKD_GITHUB_TOKEN"
 // honest could-not-check rather than a silent no-op.
 const writeTokenEnv = "DESKD_DESK_APP_TOKEN"
 
-// recordTokenEnv / recordAppEnv name the WRITE-ISSUES App identity the
+// recordTokenEnv / recordAppEnv name the RECORD-PR App identity the
 // cell-override record PR is filed under (the service contract). It is SEPARATE
-// from the desk App write token: the record PR is a config-repo write by a
-// dedicated cross-repo issue-writing identity (the per-cell write App), and
-// if it is unset the override table is still written but the record PR is
-// could-not-check — the filer never borrows the read App or a person's token.
+// from the desk App write token, and it is NOT the write-issues App: the record
+// PR creates a ref, commits cells.yaml and opens a pull request, so the App
+// wired here must hold Contents: write and Pull requests: write on the config
+// repo, and the write-issues App is specified to hold neither.
+// If it is unset the override table is still written but the record PR is
+// could-not-check — the filer never borrows the read App, the write-issues App
+// or a person's token.
 const (
-	recordTokenEnv = "DESKD_WRITE_ISSUES_TOKEN"
-	recordAppEnv   = "DESKD_WRITE_ISSUES_APP"
+	recordTokenEnv = "DESKD_RECORD_PR_TOKEN"
+	recordAppEnv   = "DESKD_RECORD_PR_APP"
+	// legacyRecordTokenEnv is the variable the record PR used to read, when it
+	// was wired to the write-issues App's installation token. It is no longer
+	// read; [legacyRecordTokenNotice] tells an operator who still sets it.
+	legacyRecordTokenEnv = "DESKD_WRITE_ISSUES_TOKEN"
 	// overrideConfigRepoEnv names the owner/name repo the cell's cells.yaml
 	// lives in — the record PR's target. Empty leaves the record PR unable to
 	// resolve a target (could-not-check). A deployment sets it to the repository
@@ -490,16 +497,19 @@ func main() {
 	// The cell-override wiring (the service contract): the local override table,
 	// the answerer gate on the POST, and the record-PR filer. The filer is the
 	// SAME desk-App filer as the escalation write path, extended with the
-	// write-issues App identity the record PR files under — SEPARATE from the
-	// desk App token, and could-not-check when unset (the filer never falls back
-	// to the read App or a person's token).
+	// record-PR App identity the record PR files under — SEPARATE from the desk
+	// App token, and could-not-check when unset (the filer never falls back to
+	// the read App, the write-issues App or a person's token).
 	var recordFiler mcp.RecordFiler
 	if gf, ok := filer.(*mcp.GitHubFiler); ok {
 		if rt := os.Getenv(recordTokenEnv); rt != "" {
 			gf.SetRecordApp(rt, os.Getenv(recordAppEnv))
-			fmt.Fprintf(os.Stderr, "deskd: cell-override record PRs enabled — filed as the write-issues App %s\n", clip(os.Getenv(recordAppEnv)))
+			fmt.Fprintf(os.Stderr, "deskd: cell-override record PRs enabled — filed as the record-PR App %s\n", clip(os.Getenv(recordAppEnv)))
 		} else {
 			fmt.Fprintf(os.Stderr, "deskd: %s unset — cell overrides are written locally but the record PR is could-not-check (no fallback identity, the service contract)\n", recordTokenEnv)
+		}
+		if notice := legacyRecordTokenNotice(os.Getenv); notice != "" {
+			fmt.Fprintln(os.Stderr, notice)
 		}
 		recordFiler = gf
 	}
@@ -960,6 +970,20 @@ func clip(s string) string {
 		return s[:8]
 	}
 	return s
+}
+
+// legacyRecordTokenNotice returns the one-line startup notice for an operator
+// who still sets the variable the record PR used to read, or "" when it is
+// unset. That variable carried the write-issues App's installation token, an
+// App specified to hold neither Contents: write nor Pull requests: write,
+// so it is never read now: the record PR is wired
+// only from [recordTokenEnv]. Saying so beats a silent change of behaviour — an
+// operator whose record PRs stopped would otherwise not know why.
+func legacyRecordTokenNotice(getenv func(string) string) string {
+	if getenv(legacyRecordTokenEnv) == "" {
+		return ""
+	}
+	return fmt.Sprintf("deskd: %s is set but is no longer read — the write-issues App holds neither Contents: write nor Pull requests: write, so the record PR needs the record-PR App on %s", legacyRecordTokenEnv, recordTokenEnv)
 }
 
 // authLoginFn resolves the authenticated login of a request's OAuth session, so

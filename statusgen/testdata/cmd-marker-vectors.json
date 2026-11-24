@@ -1,5 +1,5 @@
 {
-  "about": "Shared test vectors for the Verify-row `cmd:` command marker (#1805, #1808). Every executor that lifts a Verify command must agree on which command a cell's marker names: statusgen (verifyCommand / markedCommands) and tools/desk (internal/verifycmd, used by verifyloop and deskrebaseline) both run this table. `marked` is the command the FIRST honoured marker names, or null when the cell carries no honoured marker (the executor then falls back to its legacy lift).",
+  "about": "Shared test vectors for the Verify-row `cmd:` command marker (#1805, #1808). Every executor that lifts a Verify command must agree on which command a cell's marker names: statusgen (briefdoc.VerifyCommand / MarkedCommands) and tools/desk (internal/verifycmd, used by verifyloop and deskrebaseline) both run this table. `marked` is the command the FIRST honoured marker names, or null when the cell carries no honoured marker (the executor then falls back to its legacy lift).",
   "vectors": [
     {"name": "mention-led prose", "cell": "In `PublicRepoGate` change the check, then `cmd: cd tools/desk && go test ./internal/deskkit/ -count=1`; restore", "marked": "cd tools/desk && go test ./internal/deskkit/ -count=1"},
     {"name": "marker as the only span", "cell": "`cmd: go test ./x -count=1`", "marked": "go test ./x -count=1"},

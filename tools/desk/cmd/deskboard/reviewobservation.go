@@ -33,6 +33,9 @@ func resolveObservation(p prBase, rs reviewState, reviews []review, ciRequired b
 	}
 	f.OwnFilesChanged, f.RiskClassed, f.RiskReason = in.ownFilesChanged, in.riskClassed, in.riskReason
 	f.NonCommitResolution, f.NonCommitResolutionNote = in.nonCommitResolution, in.nonCommitResolutionNote
+	// #2690: the same declaration hold the actions row was classified with, so the
+	// review-queue observation cannot recommend a flip or merge the actions row refuses.
+	f.DeclarationHold = in.declarationHold
 	// Use the existing marker parser/reducer on the correctness lane independently;
 	// the legacy aggregate may include security grants and cannot establish this lane.
 	correctness := make([]review, 0, len(reviews))
@@ -75,7 +78,9 @@ func observationRevision(v any) string {
 	return fmt.Sprintf("sha256:%x", sha256.Sum256(b))
 }
 
-func cmdReviewQueue() (*Report, error) {
+func cmdReviewQueue() (*Report, error) { return collectReviewQueue("") }
+
+func collectReviewQueue(feedbackPath string) (*Report, error) {
 	start := time.Now().UTC()
 	boardMeter.begin(rateFloor)
 	defer boardMeter.end()
@@ -90,7 +95,7 @@ func cmdReviewQueue() (*Report, error) {
 	repos := deskkit.AllowedRepos()
 	policy := reviewCollectionPolicy(scores, repos)
 	partials, err := sweepRepos(repos, sweepConcurrency, func(repo string) (actionsPartial, error) {
-		return sweepActionsRepo(repo, scores, known, nil, start, true)
+		return sweepActionsRepo(repo, scores, known, nil, start, reviewSweepOptions{qualified: true, withFeedback: feedbackPath != ""})
 	})
 	if cost := boardMeter.snapshot(); cost.FloorBreach != nil {
 		return nil, cost.floorError(time.Now())
@@ -99,6 +104,12 @@ func cmdReviewQueue() (*Report, error) {
 		return nil, err
 	}
 	in := rf.ObservationInputs{Evaluator: rf.ObservationEvaluator, Policy: policy, ReviewerDisplay: reviewerBotDisplay(), Requested: []rf.Repository{}, Admitted: []rf.Repository{}, Population: []rf.PopulationCoverage{}, Changes: []rf.ObservedChange{}}
+	var feedback deskkit.MonitorBatch
+	if feedbackPath != "" {
+		feedback.Generation = start.Format(time.RFC3339Nano)
+		feedback.Policy = policy
+		feedback.Rows = make(map[string]deskkit.MonitorFeedback)
+	}
 	for i, repo := range repos {
 		owner, name, _ := strings.Cut(repo, "/")
 		resolution, err := deskkit.ForgeKindFor(deskkit.ForgeRepo{Owner: owner, Name: name})
@@ -125,6 +136,9 @@ func cmdReviewQueue() (*Report, error) {
 			if !v.complete {
 				return nil, deskkit.Unverifiable("review-queue: degraded classification requires refresh; no complete artifact emitted", nil)
 			}
+			if feedbackPath != "" {
+				feedback.Rows[deskkit.MonitorSubject(r.String(), v.change.Number, v.change.HeadRefOid)] = v.change.monitorFeedback
+			}
 			inputs := rf.ReviewInputs{Subject: provenance(v.change), Body: provenance(v.change.Body), Reviews: provenance(struct {
 				Raw      []review
 				Resolved rf.ReviewState
@@ -143,8 +157,13 @@ func cmdReviewQueue() (*Report, error) {
 	if err != nil {
 		return nil, deskkit.Unverifiable("review-queue: cannot qualify collected inputs", err)
 	}
+	if feedbackPath != "" {
+		if err := writeReviewObservation(feedbackPath, feedback); err != nil {
+			return nil, err
+		}
+	}
 	summary := fmt.Sprintf("review-queue: %d PR(s), %d repo(s); generation %s; cutoff %s; policy %s", observation.Result.Depths.Total, len(in.Admitted), in.Collection.Start.Format(time.RFC3339Nano), in.Collection.End.Format(time.RFC3339Nano), policy)
-	return &Report{value: observation, detail: summary, render: func(w io.Writer) { fmt.Fprintln(w, summary) }}, nil
+	return &Report{value: observation, detail: summary, render: func(w io.Writer) { _, _ = fmt.Fprintln(w, summary) }}, nil
 }
 
 // Sensitive artifacts replace the destination atomically without following its

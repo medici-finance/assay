@@ -46,8 +46,8 @@ Gremlins never decides that on its own. That is why the sweep files no issues.
    one `--exclude-files` regex. A large package is therefore covered over several days
    instead of the same first files every day.
 4. **Copy probe.** This is the positive control for the layout. The package's tests must
-   pass in a copy of the module two levels below the checkout root, which is where Gremlins
-   puts every mutant. If they fail there, every "killed" result would be false, so the
+   pass in a copy of the module two levels below the root of the swept tree (see "The swept
+   tree" below), which is where Gremlins puts every mutant. If they fail there, every "killed" result would be false, so the
    sweep records `probe-red` and counts as broken.
 5. **Unleash.** This runs Gremlins with `--workers 2` under `timeout --signal=INT`. Gremlins
    writes no JSON when it is interrupted, so a run stopped at its budget is read back from
@@ -76,11 +76,8 @@ triple the run.
 ## Usage
 
 ```sh
-# Run in a DISPOSABLE checkout: mutant copies are written under its root.
-git clone --no-hardlinks . /tmp/assay-gremlins && cd /tmp/assay-gremlins
-# Keep the forge origin: some deskkit tests resolve the forge from the origin remote,
-# and a clone of a local path points origin at that path.
-git remote set-url origin https://github.com/medici-finance/assay.git
+# From any checkout. It is read, never written: the sweep copies it without .git.
+# TMPDIR must be outside every git repository (the run refuses otherwise).
 bash tools/gremlins/run.sh -o /tmp/gremlins-out                    # all six packages
 bash tools/gremlins/run.sh -o /tmp/gremlins-out cmd/desksourceguard  # one package
 bash tools/gremlins/run.sh -o /tmp/gremlins-out -b 300 cmd/deskclose:900
@@ -92,15 +89,23 @@ bash tools/gremlins/run.sh -o /tmp/gremlins-out -b 300 cmd/deskclose:900
 | `-b SECONDS` | 600 | Per-package budget. A `PKG:SECONDS` argument overrides it for that package |
 | `-w N` | 2 | Gremlins workers. Sized for the 2-CPU public runner |
 | `--day N` | days since the epoch (UTC) | Which bin of a rotated package runs |
-| `--root DIR` | this checkout | Checkout whose `tools/desk` is swept |
+| `--root DIR` | this checkout | Checkout whose `tools/desk` is swept. It is copied without `.git`; it is never written |
 | `--gremlins BIN` | install the pin | Use an existing binary. The pin check still runs |
 
-**Why `TMPDIR` is the checkout root.** Gremlins copies the module to
-`$TMPDIR/gremlins-*/wd-*`. The desk module reaches two levels up: `go.mod` replaces
-`../../forgeread`, and tests read `../../docs`. With `TMPDIR` at the checkout root, those
-paths still resolve from the copy. The copies are deleted on exit. A leftover
-`gremlins-*` directory under the root refuses the next run, so a dirty checkout is never
-reused.
+**The swept tree.** Gremlins copies the module to `$TMPDIR/gremlins-*/wd-*`. The desk
+module reaches two levels up: `go.mod` replaces `../../forgeread`, and tests read
+`../../docs`. So `TMPDIR` must be a root laid out like the checkout. `run.sh` makes one: a
+copy of the checkout without `.git`, in a fresh directory under the caller's `TMPDIR`. It
+runs the copy probe and Gremlins with `TMPDIR` set to that copy, and deletes the copy on
+exit. The checkout is never written, so a dirty checkout or leftovers from an earlier run
+cannot affect a sweep.
+
+The copy has no `.git` because the packages' tests use the shared git test harness
+(`gitquiet.Run`), which refuses to run when `TMPDIR` or `GOTMPDIR` is inside a git
+repository. A test that runs git in an empty temporary directory would otherwise discover
+the enclosing repository and could write to it. With `TMPDIR` at a checkout root that
+refusal would put every such package at `probe-red`. `run.sh` also refuses up front when
+the caller's own `TMPDIR` is inside a repository, because the copy would be too.
 
 **Exit codes.**
 
@@ -136,6 +141,14 @@ past the job cap. A job that hits the cap fails with "No summary", so it fails c
 `internal/deskkit` is the outlier. One run of its suite takes minutes, so only a handful of
 its roughly 5,600 runnable mutants fit in a day. For deskkit, Gremlins is a slow sample;
 muhar's targeted `-run` per entry is the right tool there.
+
+The swept copy has no `.git`, and the sweep's workdirs sit inside it. Several deskkit tests
+walk the whole tree or read the checkout's remote: the leak-shape, install-mode and
+multipath-TCP scans, the forge-body guard roots and `TestSharedReadLowerScope`. In a
+copy-probe of that layout (six failing tests, 2026-11-22) they fail in the baseline, so
+`internal/deskkit` is expected to report `probe-red` until those tests stop depending on
+`.git` and on what sits beside the module. The other five default packages pass the same
+probe. A `probe-red` row is reported as such, never as a clean sweep.
 
 ### Measured (2026-10-11)
 

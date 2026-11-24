@@ -101,6 +101,9 @@ func newDispatchCLI(mode string, env dispatchCLI) *cobra.Command {
 		"Operational reference: docs/desk-tools/deskdispatch.md"
 	set := cli.Declare(root, dispatchBindings(mode)...)
 	if mode == "" {
+		root.Long += "\nAfter an explicit reclaim of an unlaunched lease, run " +
+			"deskclaim-ref release <item-key> --repo <owner/name> --token-file <file> in the session that reclaimed it. " +
+			"Then repeat the original deskdispatch command with its normal flags. A competing holder stops the dispatch."
 		root.Args = cobra.MaximumNArgs(1)
 	} else {
 		root.Args = cobra.NoArgs
