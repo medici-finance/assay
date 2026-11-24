@@ -300,7 +300,16 @@ func (l scanCarrierPRLane) carry(req LaneRequest) (LaneOutcome, error) {
 
 	// 2. derive the delta. The scanner is wrapped, never re-implemented, and it refuses a shared
 	//    checkout on its own account — this lane's guard is the earlier, cheaper one.
-	if err := step(req.Worktree, "statusgen", "--root", ".", "--scan-issues"); err != nil {
+	//    The judgment log and the target name are handed over so the scan can publish each judged
+	//    item's handoff (the scan stays the only placeholder writer). The target is the drain's
+	//    resolved target repo and nothing broader: statusgen compares it with the checkout's own
+	//    origin before it lets free text out.
+	state, err := deskkit.StateDir()
+	if err != nil {
+		return out, deskkit.Unverifiable("scan-carrier lane: cannot resolve the desk state dir for the judgment log", err)
+	}
+	if err := step(req.Worktree, "statusgen", "--root", ".", "--scan-issues",
+		"--judgments", filepath.Join(state, handoffRecordsFile), "--scan-target", repo); err != nil {
 		return out, err
 	}
 
@@ -338,7 +347,7 @@ func (l scanCarrierPRLane) carry(req LaneRequest) (LaneOutcome, error) {
 		by := map[int]bool{}
 		first := 0
 		for _, c := range changed {
-			n, ok := req.Carried[c.path]
+			n, ok := carriedBy(req.Carried, c.path)
 			if !ok {
 				continue
 			}
@@ -668,4 +677,23 @@ func scanMetaFiles(dir string) (title, body string) {
 
 func writeTextFile(path, content string) error {
 	return os.WriteFile(path, []byte(content), 0o600)
+}
+
+// handoffCompanionSuffix is the suffix of a published handoff companion, which lives beside its
+// placeholder (`<stem>.md`) and is written by the same scan pass.
+const handoffCompanionSuffix = ".handoff.json"
+
+// carriedBy reports which open scan carrier carries path, if any. A published handoff companion
+// travels with its placeholder: when another carrier carries `<stem>.md`, `<stem>.handoff.json` is
+// theirs too. Splitting the pair would commit a companion with no pointer to it, which the
+// next scan reads as a judgment a reactivation already spent, and never publishes.
+func carriedBy(carried map[string]int, path string) (int, bool) {
+	if n, ok := carried[path]; ok {
+		return n, true
+	}
+	if stem, ok := strings.CutSuffix(path, handoffCompanionSuffix); ok {
+		n, ok := carried[stem+".md"]
+		return n, ok
+	}
+	return 0, false
 }
