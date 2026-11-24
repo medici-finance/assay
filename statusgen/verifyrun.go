@@ -2768,7 +2768,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// admission is established, and for the rest of an admitted run.
 	prevAdmission := verifyrunAdmission.Swap(verifyrunPending)
 	defer verifyrunAdmission.Store(prevAdmission)
-	attestation, admittedHome, containerTree := "", "", ""
+	attestation, admittedHome, containerTree, npmStaging := "", "", "", ""
 	var container containerAdmit
 	var runCred *runReadCredential
 	sourceReceipt := false
@@ -2832,7 +2832,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			admissionRoot = repoRootFor(path)
 		}
 		var admissionErr error
-		attestation, path, admittedHome, admissionErr = verifierAdmission(admissionRoot, path)
+		attestation, path, admittedHome, npmStaging, admissionErr = verifierAdmission(admissionRoot, path)
 		if admissionErr != nil {
 			fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
 			return verifyrunExitCouldNot
@@ -3239,6 +3239,11 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		}
 		table += "\n" + containerWitnessLines(*imageDigest, containerTree, container.moduleCache, attestation)
 	} else if attestation != "" {
+		if npmStaging != "" {
+			// The staged npm dependency set the rows ran on (#7572); admission
+			// bound the staged directories to this digest before any row ran.
+			table += "\n" + npmStaging
+		}
 		table += "\n" + attestation + "\n"
 	}
 

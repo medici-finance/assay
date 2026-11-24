@@ -96,6 +96,17 @@ deskdispatch --attest-verifier --root HOME [--dry-run]
   search result cannot authorize another issue. Failed dispatch releases its claim and
   retains the worktree for recovery. Reacquire that claim before launching a recovered run.
   PENDING, failed, mismatched or unreadable stamps never admit verification.
+deskdispatch --stage-npm --root HOME --package DIR --cache CACHE [--build] [--brief PATH]
+  The admitted npm staging step (#7572), the npm counterpart of the container bracket's
+  Go module cache. The home must first pass local pre-work admission. It then runs
+  npm ci --offline --ignore-scripts --cache CACHE in the home-relative package DIR
+  against its attested package-lock.json (CACHE is filled before the run, outside the
+  home) and, with --build, the package's own build script. It re-closes the home so the
+  step wrote nothing but DIR/node_modules (and DIR/dist with --build), and binds their
+  digest to the run record once. --check-verifier then passes over only those staged
+  directories, and only while they still hash to that digest; any other unattested file,
+  and any staged change, still refuses with exit 5. statusgen verifyrun writes the digest
+  on the host-lane witness as an Npm-Staging: sha256:<hex> line. Same-repository runs only.
 
 WORKER PRE-WORK (--attest-worker, opt-in). A fresh worker dispatch (no --pr) otherwise
 reports its stamp PENDING until the change opens. With --attest-worker (worker kits only;
