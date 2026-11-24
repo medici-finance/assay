@@ -97,7 +97,7 @@ def environment(cache, toolchain, network=False):
     return env
 
 
-def acquire(root, cache, owner):
+def acquire(root, cache, owner, base=None):
     p = pins(owner)
     system = {'Darwin': 'darwin', 'Linux': 'linux'}.get(platform.system())
     arch = {'arm64': 'arm64', 'aarch64': 'arm64', 'x86_64': 'amd64'}.get(platform.machine())
@@ -147,6 +147,13 @@ def acquire(root, cache, owner):
     for module in modules(root):
         print('prepare module ' + module, flush=True)
         subprocess.run([str(analysis_go / 'bin/go'), 'mod', 'download'], cwd=root / module, env=env, check=True)
+    if base:
+        # The gate also scans the merge base offline; its module graph can differ from the head's.
+        sha = merge_base(root, base)
+        with merge_base_tree(root, cache, sha) as tree:
+            for module in modules(tree):
+                print('prepare merge-base module ' + module, flush=True)
+                subprocess.run([str(analysis_go / 'bin/go'), 'mod', 'download'], cwd=tree / module, env=env, check=True)
     receipt = {'pins_sha256': digest((owner / POLICY[1]).read_bytes()),
                'binary_sha256': digest(binary.read_bytes()), 'build_go': p['BUILD_GO'],
                'analysis_go': p['ANALYSIS_GO'], 'version': p['LINT_VERSION']}
@@ -281,6 +288,7 @@ def primary(issues):
 
 
 def records(value):
+    """Parse the retained debt register. Reporting only: the gate never reads it."""
     if value.get('schema') != 'go-analysis-baseline/v1' or not isinstance(value.get('findings'), list):
         raise ValueError('malformed baseline')
     result = {}
@@ -298,122 +306,214 @@ def records(value):
     return result
 
 
-def compare(findings, candidate, trusted, complete, policy):
-    current, prior = records(candidate), records(trusted)
-    if candidate.get('contract') != policy or trusted.get('contract') != policy:
-        raise ValueError('tool/config migration requires reviewed baseline')
-    if any(key not in prior or record != prior[key] for key, record in current.items()):
-        raise ValueError('baseline expansion or rewrite prohibited')
-    live = {}
+def index(findings, where):
+    result = {}
     for item in findings:
-        if item['id'] in live:
-            raise ValueError('ambiguous duplicate finding identity: ' + item['path'])
-        live[item['id']] = item
-        old = current.get(item['id'])
+        if item['id'] in result:
+            raise ValueError('ambiguous duplicate finding identity ' + where + ': ' + item['path'])
+        result[item['id']] = item
+    return result
+
+
+def compare(findings, prior_findings, complete):
+    """Dispose head findings against the merge base's own findings under one policy."""
+    prior = index(prior_findings, 'at merge base')
+    live = index(findings, 'at head')
+    for item in findings:
+        old = prior.get(item['id'])
         item['disposition'] = 'new' if old is None else ('existing' if old['diagnostic'] == item['diagnostic'] else 'worsened')
-        item['exception'] = {k: old[k] for k in ['first_seen', 'owner', 'work', 'reason']} if old else None
+        item['exception'] = None
     resolved = []
     if complete:
-        stale = current.keys() - live.keys()
-        if stale:
-            raise ValueError('resolved findings retain baseline allowances: ' + str(len(stale)))
-        resolved = [dict(v, disposition='resolved') for k, v in prior.items() if k not in live]
+        resolved = [dict(v, disposition='resolved', exception=None) for k, v in prior.items() if k not in live]
     return findings + resolved
 
 
-def lint(root, cache, owner, base, trusted_root=None):
-    raw = cache / 'raw'
-    raw.mkdir(parents=True, exist_ok=True)
-    now = dt.datetime.now(dt.timezone.utc).isoformat()
-    report = {'schema': SCHEMA, 'repository': os.getenv('GITHUB_REPOSITORY', 'medici-finance/assay'),
-              'source_sha': git(root, 'rev-parse', 'HEAD').decode().strip(), 'base_sha': base,
-              'event_sha': os.getenv('GITHUB_SHA', ''), 'pr_head_sha': os.getenv('GO_ANALYSIS_PR_HEAD', ''), 'pr_base_sha': os.getenv('GO_ANALYSIS_PR_BASE', ''),
-              'run_id': os.getenv('GITHUB_RUN_ID', 'local'), 'attempt': os.getenv('GITHUB_RUN_ATTEMPT', '1'),
-              'scanned_at': now, 'family': 'lint', 'fingerprint': FINGERPRINT, 'contract': contract(owner),
-              'coverage': [], 'findings': [], 'errors': [], 'state': 'could-not-check', 'gate': 'fail'}
-    exit_code = 2
+def merge_base(root, base):
+    if not base or not re.fullmatch('[0-9a-f]{40}', base):
+        raise ValueError('explicit trusted base SHA required')
     try:
-        mods = modules(root)
-        report['module_count'] = len(mods)
-        plan = coverage(mods)
-        report['expected_scans'] = len(plan)
-        for name in POLICY:
-            if (root / name).read_bytes() != (owner / name).read_bytes():
-                raise ValueError('analysis policy migration requires reviewed trusted runner')
-        binary, env, receipt = verify_tool(cache, owner)
-        report['tool'] = receipt
-        findings = []
-        for index, (module, goos, goarch, tags) in enumerate(plan):
-            conf = goos + '/' + goarch + ';tags=' + tags + ';tests=true;cgo=0'
-            outfile = raw / (str(index) + '.json')
-            stderr = raw / (str(index) + '.stderr')
-            stdout = raw / (str(index) + '.stdout')
-            scan = dict(module=module, configuration=conf, state='could-not-check', findings=None)
-            report['coverage'].append(scan)
-            print('scan ' + module + ' ' + conf, flush=True)
-            try:
-                outfile.unlink(missing_ok=True)
-                with stdout.open('wb') as out, stderr.open('wb') as err:
-                    proc = subprocess.run([str(binary), 'run', '--config', str(owner / '.golangci.yml'),
-                                           '--output.json.path', str(outfile), '--build-tags', tags, './...'],
-                                          cwd=root / module, env=dict(env, GOOS=goos, GOARCH=goarch),
-                                          stdout=out, stderr=err, timeout=660)
-                scan['exit_code'] = proc.returncode
-                scan['raw'] = {'path': 'raw/' + outfile.name, 'sha256': digest(outfile.read_bytes())}
-                payload = json.loads(outfile.read_text())
-                issues = payload['Issues']
-                if issues is None:
-                    issues = []
-                if not isinstance(issues, list) or not isinstance(payload.get('Report'), dict):
-                    raise ValueError('malformed analyzer output')
-                if proc.returncode not in [0, 1] or (proc.returncode == 0 and issues) or (proc.returncode == 1 and not issues):
-                    raise ValueError('analyzer execution failed or exit/result mismatch')
-                if payload['Report'].get('Error') or payload['Report'].get('Warnings'):
-                    raise ValueError('analyzer reports incomplete/warning state')
-                issues, scan['related'] = primary(issues)
-                normalized = [normalize(root, module, conf, issue) for issue in issues]
-                findings.extend(normalized)
-                scan.update(state='complete', findings=len(normalized))
-            except (ValueError, KeyError, OSError, subprocess.SubprocessError) as exc:
-                scan['error'] = type(exc).__name__ + ': analyzer output or execution could not be validated'
-                print('scan could-not-check: ' + module + ': ' + str(exc), file=sys.stderr)
-        report['findings'] = findings
-        complete = all(s['state'] == 'complete' for s in report['coverage'])
-        candidate_bytes = (root / BASELINE).read_bytes()
-        if trusted_root:
-            trusted_bytes = (trusted_root / BASELINE).read_bytes()
-            trusted_sha = git(trusted_root, 'rev-parse', 'HEAD').decode().strip()
-        else:
-            if not base or not re.fullmatch('[0-9a-f]{40}', base):
-                raise ValueError('explicit trusted base SHA required')
-            trusted_bytes = git(root, 'show', base + ':' + BASELINE)
-            trusted_sha = base
-        report['baseline'] = {'candidate_digest': digest(candidate_bytes),
-                              'trusted_digest': digest(trusted_bytes), 'revision': trusted_sha}
-        report['findings'] = compare(findings, json.loads(candidate_bytes), json.loads(trusted_bytes), complete, contract(owner))
-        report['state'] = 'complete' if complete else 'could-not-check'
-        regressions = any(f['disposition'] in ['new', 'worsened'] for f in report['findings'])
-        exit_code = 2 if not complete else (1 if regressions else 0)
-        report['gate'] = 'pass' if exit_code == 0 else 'fail'
-    except (ValueError, KeyError, OSError, subprocess.SubprocessError) as exc:
-        report['errors'].append(type(exc).__name__ + ': acquisition, coverage or ratchet contract could not be validated')
-        print('could-not-check: ' + str(exc), file=sys.stderr)
+        sha = git(root, 'merge-base', base, 'HEAD').decode().strip()
+    except subprocess.CalledProcessError:
+        raise ValueError('merge base unresolvable; the analyzed checkout needs full history and the base commit')
+    if not re.fullmatch('[0-9a-f]{40}', sha):
+        raise ValueError('merge base unresolvable')
+    # By construction the merge base is reachable from the trusted base: reviewed history,
+    # never a commit only the PR carries.
+    return sha
+
+
+class merge_base_tree:
+    """A detached worktree of the merge base inside the cache, removed on exit."""
+
+    def __init__(self, root, cache, sha):
+        self.root, self.sha = root, sha
+        self.path = (cache / 'merge-base').resolve()
+
+    def __enter__(self):
+        self.remove()
+        git(self.root, 'worktree', 'add', '--quiet', '--detach', str(self.path), self.sha)
+        if git(self.path, 'rev-parse', 'HEAD').decode().strip() != self.sha:
+            raise ValueError('merge-base checkout revision mismatch')
+        return self.path
+
+    def __exit__(self, *_exc):
+        self.remove()
+        return False
+
+    def remove(self):
+        if self.path.exists():
+            subprocess.run(['git', '-C', str(self.root), 'worktree', 'remove', '--force', str(self.path)],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['git', '-C', str(self.root), 'worktree', 'prune'],
+                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if self.path.exists():
+            raise ValueError('stale merge-base checkout could not be removed')
+
+
+def require_policy(tree, owner):
+    for name in POLICY:
+        if (tree / name).read_bytes() != (owner / name).read_bytes():
+            raise ValueError('analysis policy migration requires reviewed trusted runner')
+
+
+def scan_tree(tree, cache, owner, binary, env, label):
+    """Run every planned module/configuration scan over one tree; returns (coverage, findings)."""
+    raw = cache / 'raw' / label
+    raw.mkdir(parents=True, exist_ok=True)
+    rows, findings = [], []
+    for number, (module, goos, goarch, tags) in enumerate(coverage(modules(tree))):
+        conf = goos + '/' + goarch + ';tags=' + tags + ';tests=true;cgo=0'
+        outfile = raw / (str(number) + '.json')
+        stderr = raw / (str(number) + '.stderr')
+        stdout = raw / (str(number) + '.stdout')
+        scan = dict(module=module, configuration=conf, state='could-not-check', findings=None)
+        rows.append(scan)
+        print('scan ' + label + ' ' + module + ' ' + conf, flush=True)
+        try:
+            outfile.unlink(missing_ok=True)
+            with stdout.open('wb') as out, stderr.open('wb') as err:
+                proc = subprocess.run([str(binary), 'run', '--config', str(owner / '.golangci.yml'),
+                                       '--output.json.path', str(outfile), '--build-tags', tags, './...'],
+                                      cwd=tree / module, env=dict(env, GOOS=goos, GOARCH=goarch),
+                                      stdout=out, stderr=err, timeout=660)
+            scan['exit_code'] = proc.returncode
+            scan['raw'] = {'path': 'raw/' + label + '/' + outfile.name, 'sha256': digest(outfile.read_bytes())}
+            payload = json.loads(outfile.read_text())
+            issues = payload['Issues']
+            if issues is None:
+                issues = []
+            if not isinstance(issues, list) or not isinstance(payload.get('Report'), dict):
+                raise ValueError('malformed analyzer output')
+            if proc.returncode not in [0, 1] or (proc.returncode == 0 and issues) or (proc.returncode == 1 and not issues):
+                raise ValueError('analyzer execution failed or exit/result mismatch')
+            if payload['Report'].get('Error') or payload['Report'].get('Warnings'):
+                raise ValueError('analyzer reports incomplete/warning state')
+            issues, scan['related'] = primary(issues)
+            normalized = [normalize(tree, module, conf, issue) for issue in issues]
+            findings.extend(normalized)
+            scan.update(state='complete', findings=len(normalized))
+        except (ValueError, KeyError, OSError, subprocess.SubprocessError) as exc:
+            scan['error'] = type(exc).__name__ + ': analyzer output or execution could not be validated'
+            print('scan could-not-check: ' + label + ' ' + module + ': ' + str(exc), file=sys.stderr)
+    return rows, findings
+
+
+def envelope(root, owner, base, mode):
+    now = dt.datetime.now(dt.timezone.utc).isoformat()
+    return {'schema': SCHEMA, 'mode': mode, 'repository': os.getenv('GITHUB_REPOSITORY', 'medici-finance/assay'),
+            'source_sha': git(root, 'rev-parse', 'HEAD').decode().strip(), 'base_sha': base,
+            'event_sha': os.getenv('GITHUB_SHA', ''), 'pr_head_sha': os.getenv('GO_ANALYSIS_PR_HEAD', ''), 'pr_base_sha': os.getenv('GO_ANALYSIS_PR_BASE', ''),
+            'run_id': os.getenv('GITHUB_RUN_ID', 'local'), 'attempt': os.getenv('GITHUB_RUN_ATTEMPT', '1'),
+            'scanned_at': now, 'family': 'lint', 'fingerprint': FINGERPRINT, 'contract': contract(owner),
+            'coverage': [], 'findings': [], 'errors': [], 'state': 'could-not-check', 'gate': 'fail'}
+
+
+def finish(report, root, cache, exit_code):
     report['exit_code'] = exit_code
     report['totals'] = {d: sum(f.get('disposition') == d for f in report['findings']) for d in ['existing', 'new', 'worsened', 'resolved']}
     target = cache / 'report.json'
     target.write_text(json.dumps(report, indent=2, sort_keys=True) + '\n')
     print('report ' + str(target.relative_to(root)) if target.is_relative_to(root) else 'report written')
-    print(json.dumps({'state': report['state'], 'gate': report['gate'], 'totals': report['totals']}))
+    print(json.dumps({'mode': report['mode'], 'state': report['state'], 'gate': report['gate'], 'totals': report['totals']}))
     return exit_code
+
+
+def lint(root, cache, owner, base):
+    """Gate: analyze the merge base and the head under one policy; fail only on what the head adds."""
+    report = envelope(root, owner, base, 'gate')
+    exit_code = 2
+    try:
+        mods = modules(root)
+        report['module_count'] = len(mods)
+        report['expected_scans'] = len(coverage(mods))
+        require_policy(root, owner)
+        sha = merge_base(root, base)
+        report['merge_base_sha'] = sha
+        binary, env, receipt = verify_tool(cache, owner)
+        report['tool'] = receipt
+        report['coverage'], findings = scan_tree(root, cache, owner, binary, env, 'head')
+        if sha == report['source_sha']:
+            # The head is the merge base (a push to the base branch): one scan is both sides.
+            report['base_coverage'] = [dict(row) for row in report['coverage']]
+            prior = [dict(item) for item in findings]
+        else:
+            with merge_base_tree(root, cache, sha) as tree:
+                require_policy(tree, owner)
+                report['base_coverage'], prior = scan_tree(tree, cache, owner, binary, env, 'merge-base')
+        complete = all(s['state'] == 'complete' for s in report['coverage'] + report['base_coverage'])
+        report['findings'] = compare(findings, prior, complete)
+        report['state'] = 'complete' if complete else 'could-not-check'
+        regressions = any(f['disposition'] in ['new', 'worsened'] for f in report['findings'])
+        exit_code = 2 if not complete else (1 if regressions else 0)
+        report['gate'] = 'pass' if exit_code == 0 else 'fail'
+    except (ValueError, KeyError, OSError, subprocess.SubprocessError) as exc:
+        report['errors'].append(type(exc).__name__ + ': acquisition, coverage or comparison contract could not be validated')
+        print('could-not-check: ' + str(exc), file=sys.stderr)
+    return finish(report, root, cache, exit_code)
+
+
+def debt(root, cache, owner):
+    """Report only: every finding at the analyzed revision, never a regression verdict."""
+    report = envelope(root, owner, '', 'debt-report')
+    exit_code = 2
+    try:
+        mods = modules(root)
+        report['module_count'] = len(mods)
+        report['expected_scans'] = len(coverage(mods))
+        require_policy(root, owner)
+        binary, env, receipt = verify_tool(cache, owner)
+        report['tool'] = receipt
+        report['coverage'], findings = scan_tree(root, cache, owner, binary, env, 'head')
+        index(findings, 'at analyzed revision')
+        register = {}
+        if (root / BASELINE).is_file():
+            register = records(json.loads((root / BASELINE).read_bytes()))
+            report['baseline'] = {'digest': digest((root / BASELINE).read_bytes()), 'role': 'reporting-only'}
+        for item in findings:
+            old = register.get(item['id'])
+            item['disposition'] = 'existing'
+            item['exception'] = {k: old[k] for k in ['first_seen', 'owner', 'work', 'reason']} if old else None
+        report['findings'] = findings
+        report['debt'] = {'recorded': sum(1 for f in findings if f['exception']),
+                          'unrecorded': sum(1 for f in findings if not f['exception'])}
+        complete = all(s['state'] == 'complete' for s in report['coverage'])
+        report['state'] = 'complete' if complete else 'could-not-check'
+        # A debt report never gates on findings; only an incomplete scan fails it.
+        exit_code = 0 if complete else 2
+        report['gate'] = 'pass' if complete else 'fail'
+    except (ValueError, KeyError, OSError, subprocess.SubprocessError) as exc:
+        report['errors'].append(type(exc).__name__ + ': acquisition, coverage or register could not be validated')
+        print('could-not-check: ' + str(exc), file=sys.stderr)
+    return finish(report, root, cache, exit_code)
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode', choices=['acquire', 'lint'])
+    parser.add_argument('mode', choices=['acquire', 'lint', 'report'])
     parser.add_argument('--root', type=Path, default=Path.cwd())
     parser.add_argument('--allow-downloads', action='store_true')
     parser.add_argument('--base', default=os.getenv('GO_ANALYSIS_BASE', ''))
-    parser.add_argument('--trusted-root', type=Path)
     parser.add_argument('--cache', type=Path)
     args = parser.parse_args()
     root = Path(git(args.root, 'rev-parse', '--show-toplevel').decode().strip()).resolve()
@@ -422,11 +522,13 @@ def main():
     if args.mode == 'acquire':
         if not args.allow_downloads:
             parser.error('acquire requires explicit --allow-downloads')
-        acquire(root, cache, OWNER)
+        acquire(root, cache, OWNER, args.base or None)
         return 0
     if args.allow_downloads:
-        parser.error('lint is offline; use acquire separately')
-    return lint(root, cache, OWNER, args.base, args.trusted_root)
+        parser.error(args.mode + ' is offline; use acquire separately')
+    if args.mode == 'report':
+        return debt(root, cache, OWNER)
+    return lint(root, cache, OWNER, args.base)
 
 
 if __name__ == '__main__':

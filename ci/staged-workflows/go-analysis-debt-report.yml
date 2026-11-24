@@ -1,0 +1,43 @@
+# go-analysis-debt-report — a weekly list of every Go analysis finding on main.
+# REPORTING, NEVER A GATE: the pull-request go-lint job compares each head with its
+# merge base and fails only on what the head adds, so main's existing debt no longer
+# shows on any pull request. This job keeps it visible. It runs the analysis action in
+# report mode, which exits 0 on any complete scan whatever it found, and fails only
+# when the scan itself could not complete. It writes nothing to the repository.
+# See docs/go-analysis.md ("Debt report").
+#
+# Staged, not live: a maintainer promotes it to .github/workflows/go-analysis-debt-report.yml.
+# It must not be made a required check.
+name: go-analysis-debt-report
+
+on:
+  schedule:
+    # Weekly, off the hour, clear of the daily sweeps.
+    - cron: "29 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: go-analysis-debt-report
+  cancel-in-progress: false
+
+jobs:
+  report:
+    # Main's debt only: a manual run on another branch is not main's report.
+    if: github.ref == 'refs/heads/main'
+    runs-on: medici-builder-public
+    timeout-minutes: 45
+    steps:
+      - name: Check out main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Report main's Go analysis debt
+        # The action and its runner come from this same reviewed main checkout.
+        uses: ./actions/go-analysis
+        with:
+          root: .
+          mode: report
+          allow-downloads: 'true'

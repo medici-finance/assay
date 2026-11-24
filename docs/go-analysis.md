@@ -1,9 +1,12 @@
-# Ratcheted Go correctness analysis
+# Merge-base Go correctness analysis
 
-The pinned runner inventories every tracked Go module. Existing debt is recorded as
-individual findings; CI rejects additions, changed diagnostics, stale allowances
-and incomplete scans. A passing gate means no regressions beyond accepted debt,
-not zero findings. Existing vet, tests and security checks remain independent.
+The pinned runner inventories every tracked Go module. The gate analyses the pull
+request's merge base and its head under the same pinned policy and fails only on
+what the head adds: new findings, changed diagnostics and incomplete scans. Debt
+that main already carries passes; a finding the head repairs resolves with no file
+to edit. A passing gate means no regressions against the merge base, not zero
+findings. A separate [debt report](#debt-report) keeps main's findings visible and
+never gates. Existing vet, tests and security checks remain independent.
 
 ## Run locally
 
@@ -16,8 +19,16 @@ bash scripts/go-analysis.sh acquire --allow-downloads
 bash scripts/tests/go-analysis.sh lint
 GO_ANALYSIS_BASE=$(git rev-parse refs/remotes/origin/main)
 export GO_ANALYSIS_BASE
+bash scripts/go-analysis.sh acquire --allow-downloads --base "$GO_ANALYSIS_BASE"
 bash scripts/go-analysis.sh lint
+bash scripts/go-analysis.sh report
 ```
+
+`lint` needs the base commit and enough history to compute `git merge-base`. It
+checks the merge base out as a detached worktree under the cache, scans it,
+and removes it afterwards. When the head is its own merge base (a push to main),
+one scan serves as both sides. Acquisition with `--base` also prepares the merge
+base's module graph, because the scan itself is offline.
 
 Use `--root PATH` to analyze a different checkout and `--cache PATH` for a dedicated
 cache outside that checkout. Run the trusted harness with
@@ -45,7 +56,7 @@ separately installed **Go 1.27.1** (`ANALYSIS_GO`). The rest of the fleet has si
 to one Go version (1.27.4, `go 1.27.0`; #2918); these analysis pins lag it on purpose
 and are listed exceptions in that single-version guard
 (`tools/desk/internal/deskkit/goversion_test.go`) until a separately reviewed
-baseline migration moves them (see "Maintain the ratchet").
+reviewed policy migration moves them (see "Maintain the comparison").
 
 The runner cannot reach GitHub's release-asset CDN. It therefore uses the
 [upstream source-install route](https://golangci-lint.run/docs/welcome/install/local/),
@@ -86,8 +97,8 @@ pre-existing bare suppressions are debt, not a mass-edit requirement. Upstream
 strict generated-file detection is the only generated-code exclusion. Default
 exclusion presets, path exclusions and issue truncation are disabled.
 
-The complete measurement at the current migration source (named by the baseline's
-`source_sha`) contains **13,487 occurrences**: 11,599 errcheck, 1,447 staticcheck,
+The complete measurement at the last recorded migration source (named by the retained
+register's `source_sha`) contains **13,487 occurrences**: 11,599 errcheck, 1,447 staticcheck,
 416 unused, 13 govet and 12 nolintlint. These counts include separate configurations
 of the same source, not distinct physical defects. Staticcheck "related information"
 notes annotate a primary finding and are dropped before identity (a note without its
@@ -96,35 +107,44 @@ observations are upstream's newer analyzers; they do not override the existing v
 gate. This measurement replaced the first one after the package loader moved to
 Go 1.27.1: records whose identity and diagnostic were unchanged kept their original
 first-observed date.
-No shipping Go source was changed to introduce the baseline.
+No shipping Go source was changed to introduce the register.
 [Remediation #2654](https://github.com/medici-finance/assay/issues/2654) owns the
 incremental inventory; existing deferred-Close and deprecated AST work remains
 linked from that issue.
 
-## Maintain the ratchet
+## Maintain the comparison
 
-Each baseline entry names analyzer/rule, module/configuration, relative source
-path, stable source anchor, diagnostic hash, first-observed date, owner and linked
-remediation work. Review the initial inventory once. Subsequently:
+The gate compares two scans of the same pull request; no committed file decides
+what passes:
 
-1. Fix an individual finding and remove its exact allowance in the same PR.
-2. Run a complete comparable scan. An old allowance whose finding disappeared
-   fails until removed; a removed allowance cannot silently re-admit a regression.
-3. New occurrences and changed diagnostics fail, even if another fix lowers total
-   counts. Baseline entries must be byte-equivalent records from trusted main;
-   ordinary PRs cannot add or rewrite them.
-4. Tool, configuration and fingerprint changes require a separately reviewed
-   migration with before/after evidence. CI never automatically rebaselines.
+1. A finding present at the merge base and unchanged at the head is `existing` and
+   passes. A finding the head adds is `new`; a changed diagnostic at an identity
+   the merge base carries is `worsened`. Either fails the gate.
+2. A merge-base finding absent from a complete head scan is `resolved`. A fix
+   needs no allowance edit. An incomplete scan on either side cannot pass the head
+   or resolve anything.
+3. The merge base is analyzed under the runner's own reviewed policy, or not at
+   all. If the merge base's `.golangci.yml` or `pins.env` differs from the runner's,
+   the gate refuses with `analysis policy migration requires reviewed trusted
+   runner`. Tool, configuration and fingerprint changes stay a separately reviewed
+   migration with before/after evidence.
+4. CI never writes to main. Main moving on after a branch forked does not change
+   that branch's verdict: it is compared with its own merge base until it merges
+   main in.
 
-The current baseline is itself such a migration. Main's first baseline was measured
-under the earlier loader pin, so its contract no longer matches the current pins. A
-maintainer ruled that the pull request carrying this re-measurement and the
-`source-window/v3` fingerprint is the reviewed migration:
-https://github.com/medici-finance/assay/issues/7370#issuecomment-7066967298
-The shipped action takes its trusted baseline from main, so a branch run before merge
-refuses with `tool/config migration requires reviewed baseline`. That refusal is by
-design. The CI job is applied after merge, and the gate is measured on the first pull
-request after merge (see the [CI runsheet](runsheets/go-analysis-ci-hunk.md)).
+`tools/go-analysis/baseline.json` is kept for reporting only. The gate never reads
+it. The debt report uses it to name the owner and linked remediation work of
+recorded debt, and the action pinned in CI before this change still reads it. It
+is retired once the CI pin moves past this change and the debt report has an
+owner register of its own.
+
+### Debt report
+
+`bash scripts/go-analysis.sh report` scans the analyzed revision, lists every
+finding as `existing`, and marks which carry a record in the retained register.
+It exits 0 whenever the scan is complete, whatever it found; only an incomplete
+scan fails it. The scheduled workflow that publishes it is staged at
+`ci/staged-workflows/go-analysis-debt-report.yml` and is not a required check.
 
 Identity uses source content and distinguishing context, not line numbers or
 counts. The anchor is scoped to the enclosing top-level declaration: fixing,
@@ -134,25 +154,27 @@ identical lines are told apart by the smallest distinguishing neighborhood, so
 editing next to such a line can conservatively produce a new identity. Blank/comment
 movement preserves ordinary code anchors. Lines before the first declaration (the
 package clause and the comments and directives above it) form their own scope. Ambiguous identities fail for review. See the [report contract](go-analysis-report-v1.md) for exact fields.
-The baseline does not exempt failures from any already-enforced test, vet or
+The comparison does not exempt failures from any already-enforced test, vet or
 security gate. Findings are analyzer observations, not confirmed vulnerabilities.
 
 ## Evidence and reporting
 
 The runner retains raw upstream JSON and stdout/stderr locally and emits
-`report.json` even on analyzer/ratchet failure when the filesystem permits it.
+`report.json` even on analyzer or gate failure when the filesystem permits it.
 Only the structured report is published. Source text and diagnostic payloads are
 hashed; errors use controlled categories. Publication failure remains visible.
 
-The report binds analyzed source SHA, event/head/base identities, tool receipt,
-policy and baseline digests, run/attempt, coverage state, finding dispositions and
-gate result. Incomplete scans cannot resolve debt or report measured zero.
+The report binds analyzed source SHA, event/head/base identities, the merge base
+it compared against, tool receipt, policy digest, run/attempt, head and merge-base
+coverage state, finding dispositions and gate result. Incomplete scans cannot resolve debt or report measured zero.
 Desk-tools/35 consumes this same artifact into qualgen; ingestion, vulnerability
 analysis and historical rendering are not implemented by this correctness change.
 
-The committed harness runs 16 tests and 19 guard mutations, with real upstream
-analyzer red/green controls. It proves module discovery, source movement, baseline
-monotonicity, duplicate refusal, policy changes, checksum rejection and failure
-propagation in the first/middle/last scan. The action has its own separate wrapper
+The committed harness runs 23 tests and 24 guard mutations, with real upstream
+analyzer red/green controls. It proves module discovery, source movement, the
+merge-base comparison (a head that adds a finding fails; one that touches none or
+repairs one passes; a moved main does not change a forked branch's verdict),
+duplicate refusal, policy at the merge base, checksum rejection and failure
+propagation in the first/middle/last scan and in the merge-base scan. The action has its own separate wrapper
 controls. Implementation evidence belongs in the PR workpad; independent verifier
 Evidence and actual merged-main CI remain distinct from local results.

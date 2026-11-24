@@ -58,34 +58,43 @@ class ActionTests(unittest.TestCase):
         self.assertEqual(out['source-sha'], self.git('rev-parse', 'HEAD'))
         self.assertEqual(Path(out['code-root']), Path(__file__).resolve().parents[2])
 
+    # regression: #7421
     def test_bootstrap_requires_sha(self):
-        with patch.dict(os.environ, BOOTSTRAP_REV='main'):
-            with self.assertRaises(ValueError):
+        # Bootstrap is retired: any value, even an immutable SHA, is refused, never ignored.
+        for value in ['main', 'a' * 40]:
+            with patch.dict(os.environ, BOOTSTRAP_REV=value):
+                with self.assertRaisesRegex(ValueError, 'retired'):
+                    action.prepare()
+
+    # regression: #7421
+    def test_mode_validated(self):
+        with patch.dict(os.environ, INPUT_MODE='permissive'):
+            with self.assertRaisesRegex(ValueError, 'mode'):
                 action.prepare()
 
     def test_output_injection_refused(self):
         with self.assertRaises(ValueError):
             action.output('path', 'valid\nforged=success')
 
+    # regression: #7421
     def test_trust_lifecycle(self):
         target = self.home / 'analyzed'
         subprocess.run(['git', 'clone', '-q', str(self.repo), str(target)], check=True)
         with patch.dict(os.environ, ANALYZED=str(target), BASE_DIR=str(self.repo)):
-            with self.assertRaises(ValueError):
+            with self.assertRaisesRegex(ValueError, 'policy'):
                 action.trust()
-            with patch.dict(os.environ, BOOTSTRAP_REV=self.git('rev-parse', 'HEAD')):
+            self.write('tools/go-analysis/pins.env')
+            self.commit()
+            with self.assertRaisesRegex(ValueError, 'policy'):
                 action.trust()
-                self.assertEqual(self.outputs()['bootstrap'], 'true')
-                self.write('tools/go-analysis/pins.env')
-                self.commit()
-                with self.assertRaises(ValueError):
-                    action.trust()
-                self.write('tools/go-analysis/baseline.json')
-                self.write('.golangci.yml')
-                sha = self.commit()
-                action.trust()
-                self.assertEqual(self.outputs()['bootstrap'], 'false')
-                self.assertEqual(self.outputs()['base-sha'], sha)
+            # No baseline file is needed: the comparison is against the merge base.
+            self.write('.golangci.yml')
+            sha = self.commit()
+            action.trust()
+            self.assertEqual(self.outputs()['base-sha'], sha)
+            self.assertNotIn('bootstrap', self.outputs())
+            # The trusted base commit is now reachable from the analyzed checkout.
+            subprocess.run(['git', '-C', str(target), 'cat-file', '-e', sha + '^{commit}'], check=True)
 
     def test_scan_preserves_exit(self):
         self.write('scripts/go-analysis.sh', '#!/bin/bash\nexit 1\n')
@@ -135,12 +144,36 @@ class ActionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 action.summary()
 
-    def test_bootstrap_wrong_checkout_rejected(self):
+    # regression: #7421
+    def test_scan_mode_arguments(self):
+        self.write('scripts/go-analysis.sh', '#!/bin/bash\necho "$@" > "$GO_ARGS"\n')
+        record = self.home / 'args'
+        base = self.git('rev-parse', 'HEAD')
         with patch.dict(os.environ, CODE_ROOT=str(self.repo), ANALYZED=str(self.repo),
-                        BASE_SHA=self.git('rev-parse', 'HEAD'), BOOTSTRAP='true',
-                        BOOTSTRAP_DIR=str(self.repo), BOOTSTRAP_REV='a' * 40):
-            with self.assertRaises(ValueError):
-                action.scan()
+                        BASE_SHA=base, GO_ARGS=str(record)):
+            self.assertEqual(action.scan(), 0)
+            self.assertTrue(record.read_text().startswith('lint '))
+            self.assertIn('--base ' + base, record.read_text())
+            with patch.dict(os.environ, INPUT_MODE='report'):
+                self.assertEqual(action.scan(), 0)
+                self.assertTrue(record.read_text().startswith('report '))
+                self.assertNotIn('--base', record.read_text())
+            with patch.dict(os.environ, INPUT_MODE='permissive'):
+                with self.assertRaises(ValueError):
+                    action.scan()
+
+    # regression: #7421
+    def test_debt_report_summary(self):
+        report = {'schema': 'go-analysis/v1', 'mode': 'debt-report', 'state': 'complete', 'gate': 'pass',
+                  'exit_code': 0, 'totals': {'existing': 9, 'new': 0, 'worsened': 0, 'resolved': 0}}
+        (self.cache / 'report.json').write_text(json.dumps(report))
+        self.assertEqual(action.summary(), 0)
+        self.assertEqual(self.outputs()['existing'], '9')
+        self.assertIn('never gates', self.summary.read_text())
+        report['mode'] = 'lenient'
+        (self.cache / 'report.json').write_text(json.dumps(report))
+        with self.assertRaises(ValueError):
+            action.summary()
 
     def test_cache_in_analyzed_tree_rejected(self):
         with patch.dict(os.environ, RUNNER_TEMP=str(self.repo)):

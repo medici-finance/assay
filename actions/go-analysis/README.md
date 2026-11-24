@@ -1,8 +1,10 @@
-# Ratcheted Go analysis action
+# Merge-base Go analysis action
 
 A composite action for the shared Go lint runner. It acquires pinned tools,
-checks every tracked Go module, preserves individually reviewed legacy debt,
-fails regressions, and publishes the same structured findings used by the gate.
+checks every tracked Go module at the pull request's merge base and at its head,
+fails only on findings the head adds, and publishes the same structured findings
+used by the gate. In `mode: report` it instead lists every finding at the
+analyzed revision and never fails on findings.
 It also exposes counts and scan state as outputs and writes a job summary.
 
 Use a full reviewed Assay commit SHA. The action versions with this repository;
@@ -26,21 +28,17 @@ steps:
       allow-downloads: 'true'
 ```
 
-Before adopting, prepare the reviewed finding-level baseline and matching analyzer
-config/pins described in [the operational guide](../../docs/go-analysis.md).
-The action consumes those policy files; an empty baseline is not a shortcut for
-an unmeasured repository. For the first admission only, provide an immutable
-`bootstrap-revision` containing the reviewed baseline in the calling repository.
-Once the base has a baseline, bootstrap is ignored so resolved allowances can
-continue to shrink. Partial installations fail rather than silently reverting to
-an older baseline.
+Gate mode needs full history (`fetch-depth: 0`) so the merge base can be computed,
+and matching analyzer config/pins at the trusted base, described in
+[the operational guide](../../docs/go-analysis.md). No committed baseline is
+needed: the merge base's own scan decides what is already debt. The retired
+`bootstrap-revision` input is refused if set, so a stale caller is noticed.
 
 The action executes code from its own pinned ref. Config/pins in the analyzed tree
-must match that version. Updating policy or tools requires an explicitly reviewed
-action-pin and baseline migration; a PR cannot silently make its checker permissive.
-The current action deliberately refuses post-bootstrap contract migrations.
-Desk-tools/35 must add an explicit human-reviewed migration lane before enabling
-gosec; changing the pin alone will fail against the old trusted baseline.
+and at the merge base must match that version. Updating policy or tools requires
+an explicitly reviewed action-pin migration; a PR cannot silently make its checker
+permissive. Desk-tools/35 must add an explicit human-reviewed migration lane before
+enabling gosec.
 Do not pass a PR-controlled ref as `base-ref`. The caller's workflow permissions,
 fork approval, runner isolation and merge protection still govern execution;
 a composite action cannot protect a workflow that a caller permits a PR to replace.
@@ -50,8 +48,9 @@ a composite action cannot protect a workflow that a caller permits a PR to repla
 | Input | Default | Purpose |
 |---|---|---|
 | `root` | `.` | Git checkout to analyze. |
-| `base-ref` | `main` | Trusted baseline ref in the calling repository; an explicit recorded SHA is also accepted. |
-| `bootstrap-revision` | empty | Full human-reviewed SHA for initial admission, only while the base has no installation. |
+| `base-ref` | `main` | Trusted base ref in the calling repository; the head is compared with its merge base against this ref. An explicit recorded SHA is also accepted. Unused in report mode. |
+| `mode` | `gate` | `gate` compares merge base and head; `report` lists every finding and never fails on findings. |
+| `bootstrap-revision` | empty | Retired; a non-empty value is refused. |
 | `allow-downloads` | `false` | Set explicitly to `true` to acquire pinned tools and dependencies from printed public sources. |
 
 Requires Bash, Git, Python 3.12+, and a supported Linux/macOS host from the pin file.
@@ -76,7 +75,7 @@ are the dependent desk-tools/35 implementation, not claimed as delivered here.
 ## Development
 
 Run `python3 -m unittest discover -s actions/go-analysis -p 'test_*.py'` for the
-wrapper's offline controls. The underlying real-analyzer and ratchet tests remain
+wrapper's offline controls. The underlying real-analyzer and merge-base comparison tests remain
 `bash scripts/tests/go-analysis.sh lint` with the acquired cache set through
 `GO_ANALYSIS_TEST_CACHE`. The human-applied [CI runsheet](../../docs/runsheets/go-analysis-ci-hunk.md)
 contains the exact thin consumer workflow patch.

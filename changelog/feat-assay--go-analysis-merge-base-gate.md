@@ -1,0 +1,5 @@
+### Changed
+- The Go analysis gate now scans a pull request's merge base and its head under the same pinned policy and fails only on findings the head adds. Debt main already carries no longer reddens unrelated pull requests, and a pull request that repairs a finding passes with no allowance file to edit. New, worsened and resolved keep their meanings, and an incomplete scan on either side still fails. CI never writes to main. `tools/go-analysis/baseline.json` is kept for reporting only; the gate never reads it. The action's `bootstrap-revision` input is retired and refused if set. The live `go-lint` job moves to this gate when a maintainer bumps its action pin (see `docs/runsheets/go-analysis-ci-hunk.md`).
+
+### Added
+- `go-analysis.sh report` and the action's `mode: report` list every finding at the analyzed revision, marking which carry a record in the retained register, and never fail on findings. A weekly debt-report workflow that keeps main's debt visible is staged at `ci/staged-workflows/go-analysis-debt-report.yml` for maintainer promotion. It is not a required check.

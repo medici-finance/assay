@@ -178,6 +178,21 @@ reviewable artifact, not a run.
   git commit -m "ci: activate gremlins-daily.yml"
   git push
   ```
+- `go-analysis-debt-report.yml` — the weekly Go analysis debt report (#7421). The
+  pull-request `go-lint` gate compares each head with its merge base and fails only on what
+  the head adds, so main's existing findings no longer show on pull requests; this job lists
+  them. It runs `./actions/go-analysis` with `mode: report` on main only, exits 0 on any
+  complete scan whatever it found, and fails only when the scan could not complete.
+  **Reporting, never a gate**: it must not become a required check. Weekly cron at 04:29 UTC
+  on Mondays plus `workflow_dispatch`, `contents: read`, one concurrency group, writes
+  nothing to the repository. `go-analysis-debt-report.yml.pending` classifies it. **Staged,
+  not live** — a maintainer promotes it:
+  ```
+  git mv ci/staged-workflows/go-analysis-debt-report.yml .github/workflows/go-analysis-debt-report.yml
+  git rm ci/staged-workflows/go-analysis-debt-report.yml.pending
+  git commit -m "ci: activate go-analysis-debt-report.yml"
+  git push
+  ```
 - `assay-statusgen.yml` — sign-off digest part: the hourly `reconcile` job gains a read-only
   step, before its compute step, that runs `statusgen --signoff-digest --acceptance-forge` on
   the fresh clone of main and writes the digest to the tick's job summary. Its only credential

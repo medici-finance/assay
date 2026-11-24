@@ -3,10 +3,13 @@
 import json
 import os
 from pathlib import Path
-import re
 import subprocess
 import sys
 import tempfile
+
+
+MODES = ['gate', 'report']
+POLICY = ['tools/go-analysis/pins.env', '.golangci.yml']
 
 
 def output(key, value):
@@ -27,18 +30,18 @@ def prepare():
     workspace = Path(os.environ['GITHUB_WORKSPACE']).resolve()
     root = (workspace / os.environ['INPUT_ROOT']).resolve()
     root = Path(git(root, 'rev-parse', '--show-toplevel')).resolve()
-    rev = os.environ.get('BOOTSTRAP_REV', '')
-    if rev and not re.fullmatch('[0-9a-f]{40}', rev):
-        raise ValueError('bootstrap revision must be an immutable full commit SHA')
+    if os.environ.get('BOOTSTRAP_REV', ''):
+        # The gate compares against the merge base; there is no baseline left to admit.
+        raise ValueError('bootstrap-revision is retired; remove it from the workflow')
+    if os.environ.get('INPUT_MODE', 'gate') not in MODES:
+        raise ValueError('mode must be gate or report')
     cache = Path(tempfile.mkdtemp(prefix='go-analysis-', dir=os.environ['RUNNER_TEMP'])).resolve()
     if cache.is_relative_to(root):
         raise ValueError('runner temporary directory must be outside analyzed checkout')
     base_dir = Path(tempfile.mkdtemp(prefix='.go-analysis-base-', dir=workspace))
-    bootstrap_dir = Path(tempfile.mkdtemp(prefix='.go-analysis-bootstrap-', dir=workspace))
     output('root', root)
     output('cache', cache)
     output('base-directory', base_dir.name)
-    output('bootstrap-directory', bootstrap_dir.name)
     output('code-root', Path(__file__).resolve().parents[2])
     output('source-sha', git(root, 'rev-parse', 'HEAD'))
 
@@ -47,32 +50,29 @@ def trust():
     root = Path(os.environ['ANALYZED'])
     base_dir = Path(os.environ['BASE_DIR'])
     base = git(base_dir, 'rev-parse', 'HEAD')
-    paths = ['tools/go-analysis/baseline.json',
-             'tools/go-analysis/pins.env', '.golangci.yml']
     present = [subprocess.run(['git', '-C', str(base_dir), 'cat-file', '-e', f'HEAD:{p}'],
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
-               for p in paths]
+               for p in POLICY]
     if not all(present):
-        if any(present):
-            raise ValueError('partial base installation; bootstrap fallback refused')
-        if not os.environ.get('BOOTSTRAP_REV'):
-            raise ValueError('no reviewed baseline; explicit bootstrap revision required')
+        raise ValueError('trusted base carries no reviewed analysis policy')
     # Transfer the exact already-authenticated checkout object, without a second network fetch.
+    # The runner then resolves the PR's merge base against it from the analyzed history.
     subprocess.run(['git', '-C', str(root), 'fetch', '--no-tags', '--no-write-fetch-head',
                     str(base_dir), base], check=True)
     output('base-sha', base)
-    output('bootstrap', 'false' if all(present) else 'true')
 
 
 def scan():
     code = Path(os.environ['CODE_ROOT'])
-    args = ['bash', str(code / 'scripts/go-analysis.sh'), 'lint', '--root', os.environ['ANALYZED'],
-            '--base', os.environ['BASE_SHA'], '--cache', os.environ['CACHE']]
-    if os.environ.get('BOOTSTRAP') == 'true':
-        directory = Path(os.environ['BOOTSTRAP_DIR'])
-        if git(directory, 'rev-parse', 'HEAD') != os.environ['BOOTSTRAP_REV']:
-            raise ValueError('bootstrap checkout revision mismatch')
-        args += ['--trusted-root', str(directory)]
+    mode = os.environ.get('INPUT_MODE', 'gate')
+    if mode not in MODES:
+        raise ValueError('mode must be gate or report')
+    script = ['bash', str(code / 'scripts/go-analysis.sh')]
+    if mode == 'report':
+        args = script + ['report', '--root', os.environ['ANALYZED'], '--cache', os.environ['CACHE']]
+    else:
+        args = script + ['lint', '--root', os.environ['ANALYZED'],
+                         '--base', os.environ['BASE_SHA'], '--cache', os.environ['CACHE']]
     return subprocess.run(args, check=False).returncode
 
 
@@ -91,6 +91,9 @@ def summary():
         raise ValueError('unsupported scan report')
     if state == 'could-not-check' and gate != 'fail':
         raise ValueError('incomplete scan cannot pass')
+    mode = report.get('mode', 'gate')
+    if mode not in ['gate', 'debt-report']:
+        raise ValueError('unsupported report mode')
     expected_exit = 2 if state == 'could-not-check' else (0 if gate == 'pass' else 1)
     if type(report.get('exit_code')) is not int or report['exit_code'] != expected_exit:
         raise ValueError('inconsistent scan outcome')
@@ -108,7 +111,8 @@ def summary():
     output('state', state)
     output('gate', gate)
     with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as stream:
-        stream.write(f'## Go analysis\n\nScan: **{state}**. Gate: **{gate}**.\n\n')
+        title = 'Go analysis debt report (never gates)' if mode == 'debt-report' else 'Go analysis'
+        stream.write(f'## {title}\n\nScan: **{state}**. Gate: **{gate}**.\n\n')
         if rows:
             stream.write('| Disposition | Findings |\n|---|---:|\n' + '\n'.join(rows) + '\n')
         else:

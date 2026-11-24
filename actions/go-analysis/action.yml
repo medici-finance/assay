@@ -1,14 +1,17 @@
 name: Ratcheted Go analysis
-description: Run pinned all-module Go lint, preserve accepted debt, fail regressions and publish a qualgen-ready report.
+description: Run pinned all-module Go lint at the merge base and the head, fail only on findings the head adds, and publish a qualgen-ready report.
 inputs:
   root:
     description: Analyzed Git checkout path, relative to the workspace or absolute.
     default: '.'
   base-ref:
-    description: Trusted baseline ref in the calling repository. Pin a base SHA when available.
+    description: Trusted base ref in the calling repository; the gate compares the head with its merge base against this ref. Pin a base SHA when available.
     default: main
+  mode:
+    description: gate (compare the head with its merge base and fail on additions) or report (list every finding at the analyzed revision; never fails on findings).
+    default: gate
   bootstrap-revision:
-    description: Human-reviewed full commit SHA for initial baseline admission only; ignored after main contains the gate.
+    description: Retired. The gate keeps no baseline to admit; a non-empty value is refused so a stale caller is noticed.
     default: ''
   allow-downloads:
     description: Explicit consent to fetch pinned tools and module dependencies from printed public sources.
@@ -19,22 +22,22 @@ outputs:
     description: Absolute path to the sanitized report, also uploaded on failure.
     value: ${{ steps.summary.outputs.report-path }}
   state:
-    description: complete or could-not-check; missing reports fail the action.
+    description: complete or could-not-check (either scan, merge base or head); missing reports fail the action.
     value: ${{ steps.summary.outputs.state }}
   gate:
-    description: pass or fail; accepted legacy debt can pass while remaining visible.
+    description: pass or fail; findings already present at the merge base pass while remaining visible.
     value: ${{ steps.summary.outputs.gate }}
   existing:
-    description: Accepted outstanding findings; unset for incomplete scans.
+    description: Findings present at both the merge base and the head; unset for incomplete scans.
     value: ${{ steps.summary.outputs.existing }}
   new:
-    description: New findings; unset for incomplete scans.
+    description: Findings the head adds; unset for incomplete scans.
     value: ${{ steps.summary.outputs.new }}
   worsened:
-    description: Changed findings at accepted identities; unset for incomplete scans.
+    description: Changed diagnostics at identities present at the merge base; unset for incomplete scans.
     value: ${{ steps.summary.outputs.worsened }}
   resolved:
-    description: Findings resolved by a complete comparable scan; unset for incomplete scans.
+    description: Merge-base findings absent from a complete head scan; unset for incomplete scans.
     value: ${{ steps.summary.outputs.resolved }}
 runs:
   using: composite
@@ -45,32 +48,26 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_ROOT: ${{ inputs.root }}
+        INPUT_MODE: ${{ inputs.mode }}
         BOOTSTRAP_REV: ${{ inputs.bootstrap-revision }}
       run: python3 "$ACTION_PATH/run.py" prepare
-    - name: Check out the trusted baseline
+    - name: Check out the trusted base
+      if: inputs.mode != 'report'
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         repository: ${{ github.repository }}
         ref: ${{ inputs.base-ref }}
         path: ${{ steps.prepare.outputs.base-directory }}
         persist-credentials: false
-    - name: Resolve baseline trust
+    - name: Resolve the trusted base
       id: trust
+      if: inputs.mode != 'report'
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
         ANALYZED: ${{ steps.prepare.outputs.root }}
         BASE_DIR: ${{ github.workspace }}/${{ steps.prepare.outputs.base-directory }}
-        BOOTSTRAP_REV: ${{ inputs.bootstrap-revision }}
       run: python3 "$ACTION_PATH/run.py" trust
-    - name: Check out the approved bootstrap baseline
-      if: steps.trust.outputs.bootstrap == 'true'
-      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        repository: ${{ github.repository }}
-        ref: ${{ inputs.bootstrap-revision }}
-        path: ${{ steps.prepare.outputs.bootstrap-directory }}
-        persist-credentials: false
     - name: Acquire pinned tools and module caches
       shell: bash
       env:
@@ -78,13 +75,15 @@ runs:
         ANALYZED: ${{ steps.prepare.outputs.root }}
         CACHE: ${{ steps.prepare.outputs.cache }}
         ALLOW_DOWNLOADS: ${{ inputs.allow-downloads }}
+        BASE_SHA: ${{ steps.trust.outputs.base-sha }}
       run: |
         set -euo pipefail
         if [ "$ALLOW_DOWNLOADS" != true ]; then
           echo 'Explicit allow-downloads: true is required to prepare the isolated tool cache' >&2
           exit 2
         fi
-        bash "$CODE_ROOT/scripts/go-analysis.sh" acquire --allow-downloads --root "$ANALYZED" --cache "$CACHE"
+        # In gate mode the merge base's module graph is prepared too: the scan is offline.
+        bash "$CODE_ROOT/scripts/go-analysis.sh" acquire --allow-downloads --root "$ANALYZED" --cache "$CACHE" --base "$BASE_SHA"
     - name: Exercise trusted harness and real analyzer controls
       shell: bash
       env:
@@ -95,17 +94,15 @@ runs:
         cd "$CODE_ROOT"
         python3 -m unittest discover -s actions/go-analysis -p 'test_*.py'
         bash scripts/tests/go-analysis.sh lint
-    - name: Scan and enforce the ratchet
+    - name: Scan the merge base and the head and enforce the comparison
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
         CODE_ROOT: ${{ steps.prepare.outputs.code-root }}
         ANALYZED: ${{ steps.prepare.outputs.root }}
         CACHE: ${{ steps.prepare.outputs.cache }}
+        INPUT_MODE: ${{ inputs.mode }}
         BASE_SHA: ${{ steps.trust.outputs.base-sha }}
-        BOOTSTRAP: ${{ steps.trust.outputs.bootstrap }}
-        BOOTSTRAP_REV: ${{ inputs.bootstrap-revision }}
-        BOOTSTRAP_DIR: ${{ github.workspace }}/${{ steps.prepare.outputs.bootstrap-directory }}
         GO_ANALYSIS_PR_HEAD: ${{ github.event.pull_request.head.sha }}
         GO_ANALYSIS_PR_BASE: ${{ github.event.pull_request.base.sha }}
       run: python3 "$ACTION_PATH/run.py" scan
