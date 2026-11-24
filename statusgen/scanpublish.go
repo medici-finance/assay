@@ -150,7 +150,7 @@ func uncoveredFields(t reflect.Type, prefix string, covered map[string]string) [
 		}
 		nested := ft.Kind() == reflect.Struct && ft != reflect.TypeOf(time.Time{}) && !marshalsItself(ft)
 		tag := f.Tag.Get("json")
-		if tag == "-" || (!f.IsExported() && !(f.Anonymous && ft.Kind() == reflect.Struct)) {
+		if tag == "-" || (!f.IsExported() && (!f.Anonymous || ft.Kind() != reflect.Struct)) {
 			continue
 		}
 		if name, _, _ := strings.Cut(tag, ","); f.Anonymous && nested && name == "" {
@@ -339,7 +339,7 @@ func readHandoffLog(path string) (log handoffLog, absent bool, err error) {
 	if err != nil {
 		return log, false, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
 	sc.Buffer(make([]byte, 65536), 1024*1024)
 	for n := 1; sc.Scan(); n++ {
@@ -391,7 +391,7 @@ func readCompanionIn(dir, name string) (issueflow.IntakeHandoff, []byte, error) 
 	if err != nil {
 		return issueflow.IntakeHandoff{}, nil, err
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	raw, err := r.ReadFile(name)
 	if err != nil {
 		return issueflow.IntakeHandoff{}, nil, err
@@ -446,7 +446,7 @@ func publishHandoffs(root string, opts scanPublishOpts, dryRun bool, out io.Writ
 		return res, fmt.Errorf("cannot read the judgment log: %w", err)
 	}
 	if absent {
-		fmt.Fprintln(out, "scan-issues: handoffs: no judgment log recorded — nothing to publish")
+		_, _ = fmt.Fprintln(out, "scan-issues: handoffs: no judgment log recorded — nothing to publish")
 		return res, nil
 	}
 	var notices []string
@@ -476,7 +476,7 @@ func publishHandoffs(root string, opts scanPublishOpts, dryRun bool, out io.Writ
 			if dryRun {
 				verb = "would publish"
 			}
-			fmt.Fprintf(out, "%s %s  (%s, revision %d)\n", verb, handoffCompanionName(path), item, cand.Revision)
+			_, _ = fmt.Fprintf(out, "%s %s  (%s, revision %d)\n", verb, handoffCompanionName(path), item, cand.Revision)
 		case "unchanged":
 			res.Unchanged++
 		default:
@@ -485,7 +485,7 @@ func publishHandoffs(root string, opts scanPublishOpts, dryRun bool, out io.Writ
 		}
 	}
 	emitNotices(notices)
-	fmt.Fprintf(out, "scan-issues: handoffs: %d published, %d unchanged, %d unpublished\n", res.Published, res.Unchanged, res.Unpublished)
+	_, _ = fmt.Fprintf(out, "scan-issues: handoffs: %d published, %d unchanged, %d unpublished\n", res.Published, res.Unchanged, res.Unpublished)
 	return res, nil
 }
 
@@ -556,7 +556,7 @@ func publishOne(dir, path string, ph *Placeholder, cand issueflow.IntakeHandoff,
 	if err != nil {
 		return "unpublished", "the stream directory could not be opened"
 	}
-	defer r.Close()
+	defer func() { _ = r.Close() }()
 	if err := r.WriteFile(name, append(raw, '\n'), 0o644); err != nil {
 		return "unpublished", "the companion could not be written"
 	}

@@ -637,6 +637,7 @@ func TestPublicUncoveredFields(t *testing.T) {
 		Block  *inner `json:"block"`
 		hidden string
 	}
+	_ = probe{hidden: "unexported fields are skipped"}.hidden
 	covered := map[string]string{"schema": "string", "block.repo": "string", "block.at": "time"}
 	got := strings.Join(uncoveredFields(reflect.TypeOf(probe{}), "", covered), ",")
 	if got != "note,block.extra" {
