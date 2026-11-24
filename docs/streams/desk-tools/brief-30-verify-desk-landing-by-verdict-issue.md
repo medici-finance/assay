@@ -32,6 +32,8 @@ gate-why: >-
   transcribed end to end. That precondition is something only the human can attest from the
   forge, so it is recorded here and in row 10, never as a typed `depends:` edge.
 decision-trigger: creation
+decision-issue: 2352
+ruling: "https://github.com/medici-finance/assay/issues/2352#issuecomment-7106502397"
 issues: []
 outcome: none
 schema: brief-v2
@@ -56,13 +58,13 @@ exec-tier-why: "(b) cross-artifact doctrine: one shared policy sentence is rewri
   sections and the desk meter's rationale must agree with it. Only the five copies are lint-checked
   against each other; the rest agree only if the implementer makes them."
 consumers:
-  - "plugins/assay/skills/verify-desk/SKILL.md: follow-up desk-tools/30 (this brief; Tasks 1-5)"
-  - ".claude/guardrails/GUARDRAILS.md: follow-up desk-tools/30 (this brief; Task 5, the declared source of the shared push-policy block)"
-  - "plugins/assay/skills/the-desk/SKILL.md: follow-up desk-tools/30 (this brief; Task 5, the shared push-policy sentence)"
-  - "plugins/assay/skills/pr-review-desk/SKILL.md: follow-up desk-tools/30 (this brief; Task 5)"
-  - "plugins/assay/skills/worker-desk/SKILL.md: follow-up desk-tools/30 (this brief; Task 5)"
-  - "plugins/assay/skills/pr-shepherd/SKILL.md: follow-up desk-tools/30 (this brief; Task 5)"
-  - "tools/desk/internal/deskkit/ratelimit.go: follow-up desk-tools/30 (this brief; Task 6, comment only, cap value unchanged)"
+  - "plugins/assay/skills/verify-desk/SKILL.md: fixed-here (this brief; Tasks 1-5)"
+  - ".claude/guardrails/GUARDRAILS.md: fixed-here (this brief; Task 5, the declared source of the shared push-policy block)"
+  - "plugins/assay/skills/the-desk/SKILL.md: fixed-here (this brief; Task 5, the shared push-policy sentence)"
+  - "plugins/assay/skills/pr-review-desk/SKILL.md: fixed-here (this brief; Task 5)"
+  - "plugins/assay/skills/worker-desk/SKILL.md: fixed-here (this brief; Task 5)"
+  - "plugins/assay/skills/pr-shepherd/SKILL.md: fixed-here (this brief; Task 5)"
+  - "tools/desk/internal/deskkit/ratelimit.go: fixed-here (this brief; Task 6, comment only, cap value unchanged)"
   - "tools/desk/internal/deskkit/width.go: out-of-scope (the verify-desk width arm keeps metering the deskevidence bucket; re-deriving it onto the verdict-issue bucket is deferred to an unauthored brief, and the declared max of 6 binds under either meter)"
   - "tools/desk/cmd/verifyloop/verdictrun.go: out-of-scope (wiring the signed-issue FILING into a public tool is a separate unauthored brief; this brief changes doctrine only and names the filing step as a project-bound capability)"
 version: 1
