@@ -50,6 +50,31 @@ def raw_docker_builds(source):
     return found
 
 
+def raw_registry_pushes(source):
+    """Line numbers of docker push argument lists not handed to registry_push."""
+    import ast
+    found, inside = [], set()
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == 'registry_push':
+            inside.update(id(n) for n in ast.walk(node))
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == 'registry_push'):
+            inside.add(id(node))
+    for node in ast.walk(tree):
+        items = node.args if isinstance(node, ast.Call) else node.elts if isinstance(node, (ast.List, ast.Tuple)) else None
+        if items is None or id(node) in inside:
+            continue
+        words = []
+        for item in items:
+            if not (isinstance(item, ast.Constant) and isinstance(item.value, str)):
+                break
+            words.append(item.value)
+        if words[:1] == ['docker'] and 'push' in words[1:3]:
+            found.append(node.lineno)
+    return found
+
+
 NATIVE_CONFIG = b'{"architecture":"arm64","os":"linux"}'
 NATIVE_ID = 'sha256:' + hashlib.sha256(NATIVE_CONFIG).hexdigest()
 
@@ -1088,6 +1113,7 @@ if args[0] == 'run' and 'python3' in args:
 if args[0] == 'run':
     print('v0.0.0' if mode == 'stale' and 'desk-base:' in args[-2] else 'v1.2.3')
 if args[0] == 'push' and mode == 'push-fail': sys.exit(1)
+if args[0] == 'push' and mode == 'push-fail-pr-review' and '/pr-review-desk:' in args[-1]: sys.exit(1)
 if args[:2] == ['image', 'inspect']:
     if mode == 'missing-digest': sys.exit(0)
     repo = args[-1].rsplit(':', 1)[0]
@@ -2878,6 +2904,245 @@ if args[:2] == ['image', 'inspect']:
             out.addfile(info)
         self.assertNotEqual(self.invoke().returncode, 0)
         self.assertFalse(any('"build"' in s for s in self.recorded()))
+
+
+PUSHED = 'ghcr.io/example/assay/pr-review-desk:v1.2.3'
+UNKNOWN_BLOB = 'unknown blob\n'
+HTTP_503 = 'received unexpected HTTP status: 503 Service Unavailable\n'
+AUTH_REFUSAL = 'denied: permission_denied: write_package\n'
+
+
+def load_images(source=None):
+    """images.py as a fresh module, optionally from mutated source text."""
+    import types
+    module = types.ModuleType('images_under_test')
+    text = (HERE / 'images.py').read_text() if source is None else source
+    exec(compile(text, str(HERE / 'images.py'), 'exec'), module.__dict__)
+    return module
+
+
+class FakeDocker:
+    """Stands in for subprocess inside images.py: each docker push takes the
+    next scripted (exit code, stderr) outcome; image inspect reports a digest."""
+    PIPE, STDOUT = subprocess.PIPE, subprocess.STDOUT
+    CalledProcessError = subprocess.CalledProcessError
+    CompletedProcess = subprocess.CompletedProcess
+    LIMIT = 10
+
+    def __init__(self, outcomes):
+        self.outcomes, self.pushes, self.calls = list(outcomes), 0, []
+
+    def run(self, args, check=False, **kwargs):
+        self.calls.append(list(args))
+        if args[1:2] == ['push'] or args[1:3] == ['manifest', 'push']:
+            self.pushes += 1
+            if self.pushes > self.LIMIT:
+                raise AssertionError('push retried without a bound')
+            code, err = self.outcomes.pop(0) if self.outcomes else (0, '')
+            out = 'sha256:' + 'c' * 64 + '\n' if args[1] == 'manifest' else None
+        else:
+            code, err = 0, ''
+            out = PUSHED.rsplit(':', 1)[0] + '@sha256:' + 'd' * 64 + '\n'
+        result = subprocess.CompletedProcess(args, code, stdout=out, stderr=err)
+        if check:
+            result.check_returncode()
+        return result
+
+
+def push_with(outcomes, source=None):
+    """Run push_digest against scripted push outcomes with a recorded sleep.
+    Returns (digest or the raised error, push attempts, sleeps)."""
+    images, fake, sleeps = load_images(source), FakeDocker(outcomes), []
+    images.subprocess = fake
+    try:
+        got = images.push_digest(PUSHED, sleep=sleeps.append)
+    except subprocess.CalledProcessError as error:
+        got = error
+    return got, fake.pushes, sleeps
+
+
+class PushRetryTest(unittest.TestCase):
+    """#7619: one registry-transient push failure must not burn a release."""
+
+    # regression: #7619
+    def test_unknown_blob_retried(self):
+        got, pushes, sleeps = push_with([(1, UNKNOWN_BLOB), (0, '')])
+        self.assertEqual(got, 'sha256:' + 'd' * 64)
+        self.assertEqual(pushes, 2)
+        self.assertEqual(len(sleeps), 1)
+
+    # regression: #7619
+    def test_server_error_retried(self):
+        # Each fixture matches exactly one 5xx alternative, so dropping or
+        # narrowing any single alternative turns its subtest red.
+        for stderr in (HTTP_503, 'HTTP 500\n', 'received unexpected HTTP status: 504\n',
+                       'http: 599\n', '500 Internal Server Error\n', '502 Bad Gateway\n',
+                       '503 Service Unavailable\n', '504 Gateway Timeout\n'):
+            with self.subTest(stderr=stderr):
+                got, pushes, sleeps = push_with([(1, stderr), (0, '')])
+                self.assertEqual(got, 'sha256:' + 'd' * 64)
+                self.assertEqual((pushes, sleeps), (2, [15]))
+
+    # regression: #7619
+    def test_each_classifier_alternative_pinned(self):
+        # Every alternative of both patterns has its own fixture, which matches
+        # only that alternative within its pattern. Dropping any one
+        # alternative flips its fixture's outcome: a transient stops being
+        # retried, or a mixed refusal-plus-transient starts being retried.
+        transient = {
+            r'unknown blob': 'unknown blob\n',
+            r'blob unknown': 'blob unknown to registry\n',
+            r'\bhttp(?: status)?:? 5[0-9]{2}\b': 'HTTP 500\n',
+            r'internal server error': '500 Internal Server Error\n',
+            r'bad gateway': '502 Bad Gateway\n',
+            r'service unavailable': '503 Service Unavailable\n',
+            r'gateway timeout': '504 Gateway Timeout\n',
+            r'\bhttp(?: status)?:? 429\b': 'received unexpected HTTP status: 429\n',
+            r'toomanyrequests': 'toomanyrequests: retry later\n',
+            r'too many requests': '429 Too Many Requests\n',
+            r'connection reset': 'read: connection reset by peer\n',
+            r'i/o timeout': 'dial tcp: i/o timeout\n',
+            r'tls handshake timeout': 'net/http: TLS handshake timeout\n',
+        }
+        refusal = {
+            r'denied': 'denied: blob unknown\n',
+            r'unauthori[sz]ed': 'unauthorized: HTTP 429\n',
+            r'forbidden': 'forbidden: toomanyrequests\n',
+            r'authenticat': 'authentication required: too many requests\n',
+            r'already exists': 'tag already exists: connection reset by peer\n',
+            r'\b401\b': 'HTTP 401: i/o timeout\n',
+            r'\b403\b': 'HTTP 403: TLS handshake timeout\n',
+        }
+        images = load_images()
+        for name, table, retried in (('PUSH_TRANSIENT', transient, True),
+                                     ('PUSH_REFUSAL', refusal, False)):
+            alternatives = getattr(images, name).pattern.split('|')
+            with self.subTest(inventory=name):
+                self.assertEqual(sorted(alternatives), sorted(table))
+            for alternative, stderr in table.items():
+                with self.subTest(pattern=name, alternative=alternative):
+                    hits = [a for a in alternatives if re.search(a, stderr, re.I)]
+                    self.assertEqual(hits, [alternative])
+                    self.assertEqual(images.registry_transient(stderr), retried)
+                    mutant = load_images()
+                    kept = '|'.join(a for a in alternatives if a != alternative)
+                    setattr(mutant, name, re.compile(kept, re.I))
+                    self.assertEqual(mutant.registry_transient(stderr), not retried,
+                                     'SURVIVED: drop ' + alternative)
+        # The pushed path agrees with the classifier for each new class.
+        for stderr in transient.values():
+            with self.subTest(pushed=stderr):
+                got, pushes, sleeps = push_with([(1, stderr), (0, '')])
+                self.assertEqual((pushes, sleeps), (2, [15]))
+        for stderr in refusal.values():
+            with self.subTest(refused=stderr):
+                got, pushes, sleeps = push_with([(1, stderr), (0, '')])
+                self.assertEqual((pushes, sleeps), (1, []))
+
+    # regression: #7619
+    def test_transient_retry_is_bounded(self):
+        images = load_images()
+        got, pushes, sleeps = push_with([(1, UNKNOWN_BLOB)] * 9)
+        # The original registry error surfaces, not a generic one.
+        self.assertIsInstance(got, subprocess.CalledProcessError)
+        self.assertIn('unknown blob', got.stderr)
+        self.assertEqual(got.cmd, ['docker', 'push', PUSHED])
+        self.assertEqual(pushes, images.PUSH_ATTEMPTS)
+        self.assertEqual(images.PUSH_ATTEMPTS, 3)
+        self.assertEqual(sleeps, [15, 30])
+
+    # regression: #7619
+    def test_refusals_never_retried(self):
+        for stderr in (AUTH_REFUSAL, 'unauthorized: authentication required\n',
+                       'denied: requested access to the resource is denied\n',
+                       '403 Forbidden\n', 'unauthorized: 503 Service Unavailable\n',
+                       'tag already exists\n', 'manifest invalid\n', '',
+                       # One mixed refusal-plus-transient fixture per veto term:
+                       # the refusal must win over the transient marker.
+                       'denied: unknown blob\n', 'forbidden: HTTP 503\n',
+                       'authentication required: 502 Bad Gateway\n',
+                       'tag already exists: unknown blob\n'):
+            with self.subTest(stderr=stderr):
+                got, pushes, sleeps = push_with([(1, stderr), (0, '')])
+                self.assertIsInstance(got, subprocess.CalledProcessError)
+                self.assertEqual((pushes, sleeps), (1, []))
+
+    # regression: #7619
+    def test_existing_tag_still_refused(self):
+        # The absence pre-check runs once per target, before any push, and an
+        # existing tag still stops the release with nothing pushed.
+        case = ImagesTest('test_dry_build_never_pushes_or_writes_pinnable_refs')
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        result = case.invoke(True, 'exists')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('image tag already exists; fix forward', result.stderr)
+        calls = [json.loads(s) for s in case.recorded() if s.startswith('[')]
+        self.assertFalse(any(c[:1] == ['push'] or c[:2] == ['manifest', 'push'] for c in calls))
+        self.assertEqual([c for c in calls if c[:2] == ['manifest', 'inspect']],
+                         [['manifest', 'inspect', 'ghcr.io/example/assay/desk-tools:v1.2.3']])
+
+    # regression: #7619
+    def test_partial_publish_reported(self):
+        case = ImagesTest('test_dry_build_never_pushes_or_writes_pinnable_refs')
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        result = case.invoke(True, 'push-fail-pr-review')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse((case.out / 'release-images.json').exists())
+        line = next(s for s in result.stderr.splitlines() if 'pushed before the failure' in s)
+        for name in ('desk-tools', 'assay-harness', 'desk-base', 'intake-desk', 'worker-desk'):
+            ref = f'ghcr.io/example/assay/{name}:v1.2.3'
+            self.assertIn(ref + '@sha256:' + hashlib.sha256(ref.encode()).hexdigest(), line)
+        self.assertNotIn('pr-review-desk', line)
+
+    # regression: #7619
+    def test_every_push_is_retried(self):
+        # The class: a registry write made as a single attempt. Every docker
+        # push and manifest push goes through registry_push; a planted
+        # second push outside it is caught, and the shipped module has none.
+        source = (HERE / 'images.py').read_text()
+        self.assertEqual(raw_registry_pushes(source), [])
+        anchor = '    check_runner_platform(ref, platform)\n'
+        for plant in ('    run("docker", "push", ref)\n',
+                      '    subprocess.run(["docker", "manifest", "push", ref])\n'):
+            with self.subTest(plant=plant):
+                planted = source.replace(anchor, anchor + plant, 1)
+                self.assertNotEqual(planted, source)
+                self.assertEqual(len(raw_registry_pushes(planted)), 1)
+        # The runner index push retries a transient too.
+        images, fake, sleeps = load_images(), FakeDocker([(1, HTTP_503), (0, '')]), []
+        images.subprocess = fake
+        out = images.registry_push('docker', 'manifest', 'push', '--purge', PUSHED,
+                                   capture=True, sleep=sleeps.append)
+        self.assertEqual(out.split()[-1], 'sha256:' + 'c' * 64)
+        self.assertEqual((fake.pushes, len(sleeps)), (2, 1))
+
+    # regression: #7619
+    def test_retry_mutations_killed(self):
+        # Each planted weakening of the retry must turn a scenario red.
+        source = (HERE / 'images.py').read_text()
+        mutations = {
+            'retry every error': ('not registry_transient(result.stderr)', 'False'),
+            'unbounded retry': ('attempt >= PUSH_ATTEMPTS or ', ''),
+            'retry auth': ('not PUSH_REFUSAL.search(stderr) and ', ''),
+        }
+        scenarios = [lambda s: self.assertEqual(push_with([(1, AUTH_REFUSAL), (0, '')], s)[1], 1),
+                     lambda s: self.assertEqual(push_with([(1, '')], s)[1], 1),
+                     lambda s: self.assertEqual(push_with([(1, UNKNOWN_BLOB)] * 9, s)[1], 3),
+                     lambda s: self.assertEqual(
+                         push_with([(1, 'unauthorized: 503 Service Unavailable\n'), (0, '')], s)[1], 1)]
+        for name, (old, new) in mutations.items():
+            with self.subTest(mutation=name):
+                self.assertIn(old, source)
+                mutated = source.replace(old, new, 1)
+                killed = 0
+                for scenario in scenarios:
+                    try:
+                        scenario(mutated)
+                    except AssertionError:
+                        killed += 1
+                self.assertGreater(killed, 0, 'SURVIVED: ' + name)
 
 
 if __name__ == '__main__':

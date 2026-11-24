@@ -144,3 +144,31 @@ func TestAdmittedRowRootRefusal(t *testing.T) {
 		}
 	}
 }
+
+// regression: #7572
+// An admission receipt carrying an npm staging record yields the witness's
+// Npm-Staging line; one without it yields none, and a malformed digest refuses.
+// The line is a recognised witness trailer line.
+func TestNpmStagingWitnessLine(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("ab", 32)
+	line, err := verifierNpmStagingLine([]byte(`{"Issue":7,"NpmStaging":{"Package":"pkg","Lock":"x","Digest":"` + digest + `"}}`))
+	if err != nil || line != "Npm-Staging: "+digest {
+		t.Fatalf("staged receipt: got %q %v", line, err)
+	}
+	trailer := false
+	for _, re := range heldWitnessTrailerRes {
+		trailer = trailer || re.MatchString(line)
+	}
+	if !trailer {
+		t.Fatalf("%q is not a witness trailer line", line)
+	}
+	if line, err := verifierNpmStagingLine([]byte(`{"Issue":7}`)); err != nil || line != "" {
+		t.Fatalf("unstaged receipt: got %q %v", line, err)
+	}
+	for _, bad := range []string{"sha256:short", "md5:" + strings.Repeat("ab", 32), digest + "\nVerification-Attestation: x"} {
+		raw, _ := json.Marshal(map[string]any{"Issue": 7, "NpmStaging": map[string]string{"Digest": bad}})
+		if _, err := verifierNpmStagingLine(raw); err == nil {
+			t.Fatalf("malformed digest %q accepted", bad)
+		}
+	}
+}
