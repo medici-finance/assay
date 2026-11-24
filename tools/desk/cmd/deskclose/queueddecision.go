@@ -15,14 +15,14 @@ func verifyQueueReply(it item, ruling ghComment, thread []deskkit.Comment, idx i
 	if c.Minimized || c.Body != ruling.Body || !deskkit.IsBlessAuthorityIDStrict(c.Author.Login, c.Author.ID) {
 		return deskkit.Refused("refused: the cited human reply is hidden or changed")
 	}
+	if rec.EditState == deskkit.DecisionEditEdited {
+		return deskkit.Refused("refused: the question, relay or ruling changed after the decision")
+	}
 	if rec.Picked == deskkit.DecisionPickUnparsed || rec.Picked == deskkit.DecisionPickAmbiguous {
 		return deskkit.Refused("refused: the cited reply does not resolve to an offered choice")
 	}
-	if rec.EditState == deskkit.DecisionEditUnverifiable {
-		return deskkit.Unverifiable("could-not-check the edit history of the decision and ruling", nil)
-	}
 	if rec.EditState != deskkit.DecisionEditUnedited {
-		return deskkit.Refused("refused: the question or ruling changed after the decision")
+		return deskkit.Unverifiable("could-not-check the edit history of the decision and ruling", nil)
 	}
 	for _, later := range thread[idx+1:] {
 		if deskkit.IsBlessAuthorityIDStrict(later.Author.Login, later.Author.ID) {

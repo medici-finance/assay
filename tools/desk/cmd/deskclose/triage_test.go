@@ -18,6 +18,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -455,7 +456,17 @@ func TestTriageQueueRefusals(t *testing.T) {
 		{"requeued", 5, func(s *stubRemote) {
 			s.queueLabelEvents = []deskkit.LabelEvent{{Name: labelNeedsDecision, CreatedAt: recT1}}
 		}},
-		{"incomplete history", 6, func(s *stubRemote) { s.queueLabelsIncomplete = true }},
+		{"incomplete label history", 6, func(s *stubRemote) { s.queueLabelsIncomplete = true }},
+		{"incomplete reopen history", 6, func(s *stubRemote) { s.queueStatesIncomplete = true }},
+		{"record thread unreadable on second read", 6, func(s *stubRemote) {
+			s.threadFailFrom[fmt.Sprintf("%s#%d", testRepo, triageIssue)] = 2
+		}},
+		{"trusted question after ruling", 5, func(s *stubRemote) {
+			plantAtComment(s, triageIssue, "7008", recAppSlug, recAppID, "Bot", "2026-10-04T00:00:00Z", "## Options\nA. Start over\nB. Stop")
+		}},
+		{"reply update predates its creation", 5, func(s *stubRemote) {
+			plantEditedComment(s, triageIssue, "7007", blessLogin, blessID, "User", recT1, recT0, "sample/02: 1")
+		}},
 		{"unknown body edits", 6, func(s *stubRemote) { s.bodyEditUnknown = true }},
 		{"body changed", 5, func(s *stubRemote) {
 			s.bodyEdited[fmt.Sprintf("%s#%d", testRepo, triageIssue)] = "2026-10-04T00:00:00Z"
@@ -468,6 +479,58 @@ func TestTriageQueueRefusals(t *testing.T) {
 				t.Fatalf("want %d, got %d", tc.code, code)
 			}
 			assertNoWrites(t, s)
+		})
+	}
+}
+
+func TestTriageQueuedRelay(t *testing.T) {
+	const offered = "## Options\nA. Ship\nB. Return"
+	const relayAt = "2026-10-02T08:00:00Z"
+	for _, tc := range []struct {
+		name, reply, relayUpdated, reason string
+	}{
+		{"ratified", "ratified", relayAt, ""},
+		{"qualified reply", "ratified in principle", relayAt, "does not select one offered option"},
+		{"no ratification", "received", relayAt, "does not resolve to an offered choice"},
+		{"relay edited after ruling", "ratified", "2026-10-04T00:00:00Z", "changed after the decision"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, rul, url := queuedWorld(t, offered, tc.reply)
+			plantEditedComment(s, triageIssue, "7006", recAppSlug, recAppID, "Bot", relayAt, tc.relayUpdated, "Answer: B")
+			code, out := recClose(t, rul, url)
+			if tc.reason == "" {
+				if code != deskkit.ExitOK {
+					t.Fatalf("ratified relay: exit %d, want 0: %s", code, out)
+				}
+				if rec := recDecode(t, s); rec.Picked != "B" || rec.PickedVia != deskkit.DecisionViaRatified {
+					t.Fatalf("recorded %q via %q, want B via the relay", rec.Picked, rec.PickedVia)
+				}
+				return
+			}
+			detail := recLastTriageDetail(t, os.Getenv("HOME"))
+			if code != deskkit.ExitRefused || !strings.Contains(detail, tc.reason) {
+				t.Fatalf("exit %d, detail %q; want refusal containing %q", code, detail, tc.reason)
+			}
+			assertNoWrites(t, s)
+		})
+	}
+}
+
+func TestTriageQueuedLabelAcknowledgedWithoutChange(t *testing.T) {
+	for _, label := range []string{dispositionHumanDecided, labelNeedsDecision} {
+		t.Run(label, func(t *testing.T) {
+			s, rul, url := queuedWorld(t, queuedAsk, "sample/02: 1")
+			s.unreflectedLabel = label
+			code, _ := recClose(t, rul, url)
+			detail := recLastTriageDetail(t, os.Getenv("HOME"))
+			if code != deskkit.ExitUnverifiable || !strings.Contains(detail, "decision label "+label+" did not reach") {
+				t.Fatalf("unreflected %s: exit %d, want 6 at read-back; detail %q", label, code, detail)
+			}
+			it, err := fetchItem(testRepo, triageIssue, deskkit.TargetIssue)
+			if err != nil || it.closed() || !hasLabel(it, labelNeedsDecision) ||
+				hasLabel(it, dispositionHumanDecided) != (label == labelNeedsDecision) {
+				t.Fatalf("unexpected issue after acknowledged %s: %+v (%v)", label, it, err)
+			}
 		})
 	}
 }

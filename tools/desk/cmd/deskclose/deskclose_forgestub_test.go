@@ -198,16 +198,16 @@ func (s *stubRemote) ListCommentsTyped(fr deskkit.ForgeRepo, n int, kind deskkit
 	return s.listCommentsAt(fr, n, key)
 }
 
-// IssueTrustEvents serves the issue body's last-edit time — the only part of the trust payload
-// deskclose reads (the decision record's edit check). Events are not modelled.
 func (s *stubRemote) IssueStateEvents(fr deskkit.ForgeRepo, n int) (*deskkit.IssueStateHistory, error) {
-	return &deskkit.IssueStateHistory{Complete: true, Events: s.queueStateEvents}, nil
+	return &deskkit.IssueStateHistory{Complete: !s.queueStatesIncomplete, Events: s.queueStateEvents}, nil
 }
 
 func (s *stubRemote) IssueLabelHistory(fr deskkit.ForgeRepo, n int) (*deskkit.LabelHistory, error) {
 	return &deskkit.LabelHistory{Complete: !s.queueLabelsIncomplete, Events: s.queueLabelEvents}, nil
 }
 
+// IssueTrustEvents serves the issue body's last-edit time — the only part of the trust payload
+// deskclose reads (the decision record's edit check). Events are not modelled.
 func (s *stubRemote) IssueTrustEvents(fr deskkit.ForgeRepo, n int) (*deskkit.TrustPayload, error) {
 	if s.bodyEditUnknown {
 		return &deskkit.TrustPayload{Complete: true}, nil
@@ -496,6 +496,9 @@ func (s *stubRemote) ApplyLabels(fr deskkit.ForgeRepo, n int, change deskkit.Lab
 	}
 	for _, name := range change.Remove {
 		s.calls = append(s.calls, []string{kind, "edit", strconv.Itoa(n), "-R", fr.Slug(), "--remove-label", name})
+	}
+	if s.unreflectedLabel != "" && (slices.Contains(added, s.unreflectedLabel) || slices.Contains(change.Remove, s.unreflectedLabel)) {
+		return &deskkit.LabelOutcome{Added: added, Removed: change.Remove}, nil
 	}
 	if change.Target == deskkit.TargetIssue {
 		for _, name := range added {

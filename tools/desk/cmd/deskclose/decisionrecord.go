@@ -7,8 +7,8 @@ package main
 // creation time), the issue's comment thread, and the author-verified ruling comment — and
 // written twice by independent paths: as a hidden block in the close comment (the forge copy,
 // riding the existing charged write) and, after the close succeeds, as one line in
-// decision-records.jsonl beside the audit log (the local copy). Neither copy ever gates the
-// close: an invalid record is not written at all, and a local append failure leaves the forge
+// decision-records.jsonl beside the audit log (the local copy). Moving a queued decision
+// requires a verified, encodable record. Once authorized, a local append failure leaves the forge
 // copy standing, and a block the outbound check refuses is dropped from the comment (the close
 // proceeds on the prose alone, and the local copy still lands). Every outcome is named in the
 // lane's audit detail as `decision-record: …`.

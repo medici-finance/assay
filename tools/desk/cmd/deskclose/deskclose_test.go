@@ -51,6 +51,8 @@ type stubRemote struct {
 	queueLabelEvents      []deskkit.LabelEvent
 	queueStateEvents      []deskkit.IssueStateEvent
 	queueLabelsIncomplete bool
+	queueStatesIncomplete bool
+	unreflectedLabel      string // provider acknowledges this change while keeping the existing labels
 	failRemove            bool
 	deskkit.Forge         // nil — only the methods deskclose uses are overridden (see deskclose_forgestub_test.go)
 	t                     *testing.T
