@@ -236,7 +236,13 @@ func premergeApprovalProblem(reviewer string, reviews []Review, head string) str
 		if r.State == "CHANGES_REQUESTED" && r.CommitID == head {
 			return "the reviewer App requested changes at this head"
 		}
-		app = append(app, AppReview{AuthorLogin: r.Author.Login, State: r.State, CommitID: r.CommitID, SubmittedAt: r.SubmittedAt})
+		state := r.State
+		if state == "APPROVED" && HasSecurityReviewPass(r.Body) {
+			// One lane per review body (#7628 security review A3): an
+			// approval that also carries a security pass grants neither.
+			state = "COMMENTED"
+		}
+		app = append(app, AppReview{AuthorLogin: r.Author.Login, State: state, CommitID: r.CommitID, SubmittedAt: r.SubmittedAt})
 	}
 	switch ReduceAppVerdict(reviewer, app, head) {
 	case AppVerdictApproved:
@@ -275,7 +281,8 @@ func premergeOriginProblem(pr *PullRequest, change int) error {
 // `Security-Review: fail` stands whatever commit it names until a later pass
 // at head, and a fail AT head refuses even when a later pass exists (the same
 // no-laundering rule as a request for changes). A pass at another commit
-// grants nothing.
+// grants nothing, and neither does a pass in an APPROVED body: one review body
+// grants one lane.
 func premergeSecurityProblem(reviewer string, reviews []Review, head string) string {
 	pass := false
 	for _, r := range reviews {
@@ -288,7 +295,7 @@ func premergeSecurityProblem(reviewer string, reviews []Review, head string) str
 				return "the reviewer App's security lane failed this head"
 			}
 			pass = false
-		case HasSecurityReviewPass(r.Body) && r.CommitID == head:
+		case HasSecurityReviewPass(r.Body) && r.CommitID == head && r.State != "APPROVED":
 			pass = true
 		}
 	}

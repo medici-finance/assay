@@ -88,8 +88,8 @@
     {
       "name": "a security pass at any commit counts",
       "file": "internal/deskkit/verifierhead.go",
-      "old": "\t\tcase HasSecurityReviewPass(r.Body) && r.CommitID == head:\n",
-      "new": "\t\tcase HasSecurityReviewPass(r.Body):\n"
+      "old": "\t\tcase HasSecurityReviewPass(r.Body) && r.CommitID == head && r.State != \"APPROVED\":\n",
+      "new": "\t\tcase HasSecurityReviewPass(r.Body) && r.State != \"APPROVED\":\n"
     },
     {
       "name": "a later security pass launders a security fail at the same head",
@@ -144,6 +144,18 @@
       "file": "cmd/deskdispatch/verifiertarget.go",
       "old": "\treturn premergeRunnerFn()\n}\n",
       "new": "\treturn nil\n}\n"
+    },
+    {
+      "name": "an approval whose body carries a security pass still counts as an approval",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\t\tif state == \"APPROVED\" && HasSecurityReviewPass(r.Body) {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "a security pass inside an approval body counts for the security lane",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": " && r.CommitID == head && r.State != \"APPROVED\":",
+      "new": " && r.CommitID == head:"
     }
   ]
 }

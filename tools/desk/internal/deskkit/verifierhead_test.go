@@ -220,6 +220,12 @@ func TestPremergeRefusals(t *testing.T) {
 		{"older fail no pass", phRepo, func(f *headForge, _ string) {
 			f.reviews[1] = Review{Author: Account{Login: phReviewer}, State: "COMMENTED", CommitID: other, Body: phSecFail}
 		}, ExitRefused},
+		// One lane per review body (#7628 security review A3): an approval
+		// whose body also carries a security pass grants neither lane.
+		{"approval carries sec pass", phRepo, func(f *headForge, _ string) { f.reviews[0].Body = phSecPass }, ExitRefused},
+		{"sec pass only in approval", phRepo, func(f *headForge, head string) {
+			f.reviews[1] = Review{Author: Account{Login: phReviewer, Type: "Bot"}, State: "APPROVED", CommitID: head, Body: phSecPass}
+		}, ExitRefused},
 		// Origin (#7628 review S3): never a fork head, never an untrusted author.
 		{"fork head", phRepo, func(f *headForge, _ string) { f.pr.CrossRepo = CrossRepoFork }, ExitRefused},
 		{"head repo unreadable", phRepo, func(f *headForge, _ string) { f.pr.CrossRepo = "" }, ExitUnverifiable},
