@@ -113,24 +113,6 @@ reviewable artifact, not a run.
   module, `spec/loop-admin-runner-v1.md` and `schemas/loop-admin-runner-v1.json`. **Staged, not
   live** — a maintainer promotes it to `.github/workflows/loopadmin.yml`. Until then `ci.yml`'s
   build-test job still builds and vets the module (it discovers every `go.mod`) but runs no tests.
-- `loopadmin-journal.yml` and `ci.yml` — twins of the live files for graph-execution/41. The
-  loopadmin journal adds three tests that need a disposable PostgreSQL server:
-  `TestLoopAdminLaunchBudgetBrake`, `TestJournalPassiveRestore` and `TestJournalRuntimeGrants`.
-  The journal job's `-run` names them beside the two it already runs, and the `ci.yml` floor
-  job's loopadmin `-skip` names the same five, so the floor never runs a test without its
-  server. Each twin differs from live only in that one line, classified by its `.pending` file.
-  **Pending promotion**: until it lands, the live floor job runs the three new tests without a
-  server, and they fail rather than skip. Promote both in one maintainer-credentialled commit,
-  updating the loopadmin `runInvokes` line in `tools/desk/internal/deskkit/citrigger_test.go`
-  (which mirrors the live `ci.yml`) in the same commit:
-  ```
-  diff -u .github/workflows/ci.yml ci/staged-workflows/ci.yml
-  diff -u .github/workflows/loopadmin-journal.yml ci/staged-workflows/loopadmin-journal.yml
-  cp ci/staged-workflows/ci.yml .github/workflows/ci.yml
-  cp ci/staged-workflows/loopadmin-journal.yml .github/workflows/loopadmin-journal.yml
-  ```
-  Each `diff -u` must show only the one test-name line. Anything else is a live change made
-  since staging, and the twin must be re-based on the live file first.
 - `workspace.yml` — the shared workspace contract module's job (`spec/cell-workspaces-v1.md`):
   `gofmt`, `go vet`, `go test` and the mutation gates (`muhar -spec mutations.json` and
   `muhar -spec local/mutations.json`, harness built from `tools/desk`) from `workspace/`, on path triggers for the module, its spec, its schema and
