@@ -2816,13 +2816,13 @@ apply and none of this runs.
   its key, and no record behind the key states a lane. A security review dispatched under a
   key with no `security` segment would be accepted by `finish review` and refused by `finish
   security-review`. The check does not prove which lane a key was dispatched for.
-- **Only the finishing run can release its review lease.** Review dispatch records the
-  acquiring desk's holder and a unique dispatch ref in the review checkout. The Go claim
+- **Only the finishing run can release its review lease.** Review dispatch records a
+  unique dispatch ref in the review checkout and the acquiring desk in its dispatch receipt. The Go claim
   tool places that ref on the lease at acquisition and preserves it across progress. After
   confirming the verdict, finish reads the holder and run and deletes only the exact
   revision it observed. A successor from the same desk has its own dispatch ref.
 - An absent claim returns `already-released`. An unreadable or changed lease stays held.
-  If the checkout or claim lacks run evidence (including a claim acquired by an older
+  If the checkout, dispatch receipt, or claim lacks run evidence (including a claim acquired by an older
   tool or a legacy shell script), the verdict stands and the dispatching desk retains
   cleanup responsibility. A transient failure can be retried from the original checkout.
 - **Two audit rows on a full run.** The first is the post step's, as for the plain verdict

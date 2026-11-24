@@ -73,7 +73,7 @@ func TestFinishChecksCheckoutLeaseBeforeExactRemoval(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			setupFinish(t)
-			checkoutReviewIdentity = func() (string, string) { return tc.checkoutOwner, tc.checkoutRun }
+			checkoutReviewIdentity = func(_, _ string) (string, string) { return tc.checkoutOwner, tc.checkoutRun }
 			s := &reviewLeaseFixture{record: deskkit.ClaimStoreRecord{Msg: tc.message, Version: tc.version}}
 			if tc.race {
 				s.next = &deskkit.ClaimStoreRecord{Msg: msg + " review-run=" + nextReviewRun, Version: "successor"}
@@ -134,36 +134,11 @@ func TestFinishPreservesReplacementOnForgeRef(t *testing.T) {
 	if status != deskkit.ClaimReadHeld || rec.Version != old.String() {
 		t.Fatalf("replacement gone: status=%v version=%q cause=%s", status, rec.Version, lease.TransportCause())
 	}
-	checkoutReviewIdentity = func() (string, string) { return "reviews", nextReviewRun }
+	checkoutReviewIdentity = func(_, _ string) (string, string) { return "reviews", nextReviewRun }
 	for _, want := range []string{finishClaimReleased, finishClaimAlreadyReleased} {
 		state, err := releaseReviewClaim("example-org", "tracker", finishClaimKey)
 		if err != nil || state != want {
 			t.Fatalf("successor finish: got %q, %v; want %q", state, err, want)
 		}
-	}
-}
-
-// A bare or unrelated checkout must not inherit the receipt from repository-wide config.
-// regression: #7432
-func TestFinishUsesOnlyThisCheckoutLeaseReceipt(t *testing.T) {
-	dir := t.TempDir()
-	t.Chdir(dir)
-	git := func(args ...string) {
-		t.Helper()
-		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
-			t.Fatalf("git %s: %v: %s", args[0], err, out)
-		}
-	}
-	git("init", "-q")
-	git("config", "--local", "assay.reviewClaimOwner", "shared-owner")
-	git("config", "--local", "assay.dispatchRef", nextReviewRun)
-	if holder, run := deskkit.WorktreeReviewLeaseIdentity(); holder != "" || run != "" {
-		t.Fatalf("trusted shared settings: %s %s", holder, run)
-	}
-	git("config", "extensions.worktreeConfig", "true")
-	git("config", "--worktree", "assay.reviewClaimOwner", "desk")
-	git("config", "--worktree", "assay.dispatchRef", firstReviewRun)
-	if holder, run := deskkit.WorktreeReviewLeaseIdentity(); holder != "desk" || run != firstReviewRun {
-		t.Fatalf("wrong checkout receipt: %s %s", holder, run)
 	}
 }

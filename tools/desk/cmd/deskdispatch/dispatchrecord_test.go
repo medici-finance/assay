@@ -709,7 +709,7 @@ func TestReviewDispatchBindsAcquisitionToTheCheckout(t *testing.T) {
 		t.Fatalf("missing dispatch receipt: %v", recs)
 	}
 	ref := *recs[0].DispatchRef
-	if !s.ran("--review-run "+ref) || !s.ran("assay.dispatchRef "+ref) || !s.ran("assay.reviewClaimOwner deskdispatch-test") {
+	if !s.ran("--review-run "+ref) || !s.ran("assay.dispatchRef "+ref) || recs[0].SessionTag != "deskdispatch-test" {
 		t.Fatalf("acquire and checkout did not receive the same run and identified holder: %+v", s.calls)
 	}
 }

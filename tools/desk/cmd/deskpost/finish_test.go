@@ -78,7 +78,7 @@ func setupFinish(t *testing.T) *finishHarness {
 	t.Setenv("DESK_SESSION", "reviews")
 	previous, receipt, output := reviewerLease, checkoutReviewIdentity, stdout
 	reviewerLease = func(deskkit.ForgeRepo) (finishLease, error) { return h, nil }
-	checkoutReviewIdentity = func() (string, string) { return "reviews", reviewRunFor(h.claimKey) }
+	checkoutReviewIdentity = func(_, _ string) (string, string) { return "reviews", reviewRunFor(h.claimKey) }
 	stdout = h.out
 	t.Cleanup(func() {
 		reviewerLease, checkoutReviewIdentity, stdout = previous, receipt, output

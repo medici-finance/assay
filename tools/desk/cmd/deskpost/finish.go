@@ -350,7 +350,7 @@ func releaseReviewClaim(owner, name, key string) (string, error) {
 	default:
 		return "", deskkit.Unverifiable(fmt.Sprintf("could not read %s from %s: %s", key, res.Label(), lease.TransportCause()), nil)
 	}
-	holder, run := checkoutReviewIdentity()
+	holder, run := checkoutReviewIdentity(repo.Slug(), key)
 	if rec.Version == "" || !reviewLeaseMatches(rec.Msg, key, holder, run) {
 		return "", deskkit.Refused("the checkout and the held review lease do not identify the same dispatch run and holder")
 	}

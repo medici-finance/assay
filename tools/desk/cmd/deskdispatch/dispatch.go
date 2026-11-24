@@ -617,14 +617,7 @@ func dispatch(o dispatchOpts) error {
 				stepWorktreeCreate, home, ext.run.Said())
 		}
 		recordDispatchRefInWorktree(o, home, dispatchRef)
-		if o.reviewRun != "" && !plan.claimToolIsScript {
-			holder := deskkit.ResolveSessionName("")
-			if holder != "" && holder != "unknown" {
-				if r := runCmd(home, "git", "config", "--worktree", "assay.reviewClaimOwner", holder); r.err != nil {
-					o.say("%s WARNING: could not record this review lease's holder in %s; finish will leave the claim held", stepWorktreeCreate, home)
-				}
-			}
-		}
+
 	}
 
 	// before_run — runs after the worktree is prepared and BEFORE the prompt is emitted (the
