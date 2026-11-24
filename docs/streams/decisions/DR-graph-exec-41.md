@@ -15,11 +15,13 @@ accepted:
   - "Unknown, unreadable or unverifiable usage refuses a launch. A pacing estimate derived from recorded launches may delay a launch but never refuses one on its own."
   - "Restore is passive. It verifies the referenced-artifact inventory, holds the journal and never launches. Operational restore and activation stay separately authorized adapters."
   - "No production database, role grant, service enrollment or activation is configured by the implementing change; the grant model chosen on the decision issue is expressed as migration and fixture checks only."
+  - "The test fixture keeps every disposability rule of the brief's Task 6: a literal-loopback server and its admin database with only the allowed settings, create and drop only of databases carrying its own marker, the configuration redacted from String() and the database password kept out of every error, and PostgreSQL environment variables scrubbed from the test and child environment."
   - "Verify rows that need a PostgreSQL server run only where a disposable server is supplied; anywhere else they are reported as could-not-check, never as passed."
 ---
 
 **PROPOSED — no ruling is recorded.** `decided-by:` is a placeholder until a human rules on
-this record on the brief's decision issue. Until then this record is not an approved
+this record on the brief's own decision issue (filed from its `## Human decision` section
+and recorded in the brief as `decision-issue:`). Until then this record is not an approved
 design, and the brief that cites it (graph-execution/41, `design: DR-graph-exec-41`)
 may not be accepted on its account (the design-approval gate, `spec/lifecycle-v1.md`
 §4.4). The ruling comment must name `DR-graph-exec-41` and one of the brief's options.
@@ -42,10 +44,11 @@ outside the database and is compared with the protected incarnation, so a restor
 pauses rather than resuming.
 
 The open question is the privilege boundary. If the runtime role may update or delete
-ledger rows, the append-only property holds only by convention. The brief's options are a
-split between a migration-owner role and a runtime role that may only insert and read ledger
-rows, checked by a fixture, or a single trusted role with in-place tampering declared out of
-scope.
+ledger rows, or raise the profile budgets and admitted limits that admission reads, the
+append-only property holds only by convention. The brief's options are a split between a
+migration-owner role and a runtime role that may only insert and read ledger rows and only
+read budgets and limits, checked by a new Verify row, or a single trusted role with in-place
+tampering declared out of scope.
 
 ## Why `consequence: major`
 
