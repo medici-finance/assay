@@ -60,6 +60,11 @@ type VerifierReceipt struct {
 	// it rechecked World (#7353). It is never persisted: the landing that was
 	// admitted records it in its own landing record (ToolUpgrade.Trailer).
 	ToolUpgrade *ToolUpgrade `json:"-"`
+	// NpmStaging is the run's admitted npm dependency set (#7572), bound once by
+	// StageVerifierNpm and local-only like World. Admission passes over its
+	// staged directories only while their bytes hash to its digest; the
+	// executor writes that digest on the witness as its Npm-Staging line.
+	NpmStaging *NpmStaging `json:",omitempty"`
 }
 type verifierLocal struct {
 	VerifierReceipt
@@ -242,8 +247,20 @@ func verifierLocalCheck(root, brief string, r verifierLocal, phase verifierPhase
 	if phase == verifierEvidence {
 		allowed[index] = true
 	}
-	if err := verifierSourceClosure(home, b.Source, checkout, allowed); err != nil {
+	// A run with an npm staging record (#7572) has its staged directories passed
+	// over by the closure, and only then if their bytes still hash to the
+	// recorded digest. Without a record nothing is passed over.
+	var staged []string
+	if r.NpmStaging != nil {
+		staged = r.NpmStaging.stagedDirs()
+	}
+	if err := verifierSourceClosureStaged(home, b.Source, checkout, allowed, staged); err != nil {
 		return err
+	}
+	if r.NpmStaging != nil {
+		if err := verifierNpmCheck(home, b.Source, *r.NpmStaging); err != nil {
+			return err
+		}
 	}
 	if phase == verifierEvidence {
 		_, nn, _ := r.VerifierReceipt.verifierBriefKey()
