@@ -153,7 +153,7 @@ _Held by per-stream caps: 21 brief(s) across 3 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 4c4ac6e5d 2026-11-24T17:57:08Z_
+_last regen: 07be962f9 2026-11-24T20:15:47Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -174,7 +174,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 4c4ac6e5d 2026-11-24T17:57:08Z_
+_last regen: 07be962f9 2026-11-24T20:15:47Z_
 
 **Progress:** 37/100 brief items done.
 
@@ -479,7 +479,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | Stream | Brief | Status | Score | _Blocked_ | Age | Owner | Next act | Verified | Reviewed |
 |---|---|---|---|---|---|---|---|---|---|
 | graph-execution | 36 [exec:strong] | implemented | 21050 | 38 | 5d | verify-desk | triage, then re-bucket | — | — |
-| milestone-support | 09 [exec:strong] | implemented | 3000 | 4 | 2h | verify-desk | triage, then re-bucket | — | — |
+| milestone-support | 09 [exec:strong] | implemented | 3000 | 4 | 3h | verify-desk | triage, then re-bucket | — | — |
 | composability | 02 | implemented | 2590 | 3 | 9d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 01 [exec:strong] | implemented | 2590 | 1 | 9d | verify-desk | triage, then re-bucket | — | — |
 | contributor-trust | 06 | implemented | 2590 | 1 | 9d | verify-desk | dispatch one judge | — | — |
@@ -488,10 +488,10 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 04 [exec:strong] | implemented | 2090 | 2 | 9d | verify-desk | dispatch one judge | — | — |
 | forge-neutral | 17 [exec:strong] | implemented | 2090 | 0 | 9d | verify-desk | triage, then re-bucket | — | — |
 | harness-portability | 14 [exec:strong] | implemented | 2090 | 2 | 9d | verify-desk | triage, then re-bucket | — | — |
-| desk-tools | 34 [exec:strong] | implemented | 1520 | 1 | 2d | verify-desk | dispatch one judge | — | — |
-| desk-tools | 30 [exec:strong] | implemented | 1090 | 0 | — | verify-desk | dispatch one judge | — | — |
+| desk-tools | 34 [exec:strong] | implemented | 1520 | 1 | 3d | verify-desk | dispatch one judge | — | — |
 | desktools-v2 | 71 [exec:strong] | implemented | 1090 | 0 | 9d | verify-desk | dispatch one judge | — | — |
 | harness-portability | 13 [exec:strong] | implemented | 1090 | 0 | 9d | verify-desk | triage, then re-bucket | — | — |
+| desk-tools | 30 [exec:strong] | implemented | 1000 | 0 | <1h | verify-desk | dispatch one judge | — | — |
 
 ### Could-not-check (3)
 
