@@ -99,7 +99,10 @@ func forgeGitEndpoint(repoSlug, role, kindHost string) (ForgeGitEndpoint, error)
 	if err != nil {
 		return ForgeGitEndpoint{}, err
 	}
-	kind := res.Kind
+	return endpointForResolvedKind(repo, role, res.Kind)
+}
+
+func endpointForResolvedKind(repo ForgeRepo, role string, kind ForgeKind) (ForgeGitEndpoint, error) {
 
 	// Identity agreement (kept intact from the reviewer-approved surface): a role whose
 	// forge-qualified roster entry names a different forge is refused before any credential read.
@@ -128,7 +131,7 @@ func forgeGitEndpoint(repoSlug, role, kindHost string) (ForgeGitEndpoint, error)
 		Kind: kind,
 		Host: host,
 		Opts: gitcore.ListOpts{
-			URL:  "https://" + host + "/" + owner + "/" + name + ".git",
+			URL:  "https://" + host + "/" + repo.Slug() + ".git",
 			Auth: gitcore.BasicAuthAs(username, token),
 		},
 	}, nil
@@ -207,4 +210,21 @@ func validateGitHost(host, repoSlug string) error {
 		return Unverifiable(fmt.Sprintf("refusing to dial the git host for %s: it must be a bare hostname", repoSlug), nil)
 	}
 	return nil
+}
+
+// ReviewerClaimLease opens the review target's active claim namespace through
+// reviewer custody on the same resolved forge instance as the verdict.
+func ReviewerClaimLease(repo ForgeRepo) (*ForgeClaimLease, error) {
+	if !ValidPRRepo(repo.Slug()) {
+		return nil, Refused("invalid repository for review claim release")
+	}
+	res, err := resolveForgeKind(repo)
+	if err != nil {
+		return nil, err
+	}
+	endpoint, err := endpointForResolvedKind(repo, "reviewer", res.Kind)
+	if err != nil {
+		return nil, err
+	}
+	return &ForgeClaimLease{Endpoint: endpoint.Opts}, nil
 }

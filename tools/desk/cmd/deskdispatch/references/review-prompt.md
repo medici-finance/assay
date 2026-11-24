@@ -240,7 +240,7 @@ still yours to post, as an ordinary clause-13 finding.
   <owner/repo> <N> --verdict … --head <full sha> --body-file F --claim <claim key>` posts the
   verdict, reads it back, and only then releases your dispatch claim; your assignment spells it
   out when your claim key is one it accepts. If it stops at its release step, the verdict
-  stands and the claim is still held: run the release line in your assignment. A post may
+  stands. Retry transient failures from the same checkout. Leave a changed or unprovable lease with the dispatching desk. A post may
   also print `verdict-time labels: applied <labels>` — the verb's own advisory size and
   surface labels, not a write of yours.
 - **A PR labelled `wrote-to-the-test` gets no APPROVE without the reason.** When the PR

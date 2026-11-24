@@ -88,6 +88,12 @@ func TestAgentReleaseLineHasCred(t *testing.T) {
 			}
 			prompt := string(body)
 			line := lineWith(prompt, goClaimBinary+" release")
+			if tc.kit == "review" {
+				if line != "" || !strings.Contains(prompt, "deskpost finish review") {
+					t.Fatal("reviewer must use the run-bound finish, without a bare release command")
+				}
+				return
+			}
 			if line == "" {
 				t.Fatalf("no %s release line in the %s prompt", goClaimBinary, tc.kit)
 			}

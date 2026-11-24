@@ -478,3 +478,9 @@ func WorktreeDispatchRef() string {
 	}
 	return strings.TrimSpace(string(out))
 }
+
+// WorktreeReviewLeaseIdentity reads the acquiring desk and dispatch ref from
+// this checkout's own config file. A shared repository setting is never evidence.
+func WorktreeReviewLeaseIdentity() (holder, run string) {
+	return worktreeConfigValue("", "assay.reviewClaimOwner"), worktreeConfigValue("", "assay.dispatchRef")
+}

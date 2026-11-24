@@ -492,11 +492,10 @@ func writeReviewAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 	}
 	writeReviewRound(b, plan.round)
 	if writeReviewFinish(b, o, plan, repo) {
-		b.WriteString("If `finish` stops at its release step, the verdict stands and the claim is still held — " +
-			"release it with:\n\n")
-	} else {
-		b.WriteString("Release the dispatch claim once your verdict is posted:\n\n")
+		b.WriteString("If the release step fails, retry from this checkout after a transient error. If the lease has changed or ownership cannot be proved, leave it with the dispatching desk.\n\n")
+		return
 	}
+	b.WriteString("Release the dispatch claim once your verdict is posted:\n\n")
 	writeReleaseClaim(b, o, plan, repo)
 }
 

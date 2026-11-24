@@ -78,10 +78,9 @@ package main
 // `finish security-review`. The check stops a run from releasing the OTHER lane's
 // conventionally named claim; it does not prove which lane a key was dispatched for.
 //
-// WHAT THE RELEASE DOES NOT CHECK: who holds the claim. The claim record names the
-// dispatcher that placed it, and a reviewer is handed the key and nothing that identifies
-// that dispatcher, so there is nothing sound to compare. A run holding this lane's key for
-// this change can release that claim whoever placed it.
+// A held claim is released only when its holder and review-run field match the
+// dispatch evidence in this checkout, at the revision the store returned.
+//
 //
 // TWO AUDIT ROWS ON A FULL RUN. The first is the post step's, as for the plain verdict verbs;
 // its argument digest is this invocation's. Confirm is a read and writes none. The second is
@@ -92,10 +91,9 @@ package main
 // toward that budget afterwards like any other.
 
 import (
-	"errors"
 	"flag"
 	"fmt"
-	"net/http"
+
 	"strings"
 
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
@@ -229,7 +227,7 @@ func cmdFinish(argv []string) int {
 	finishReleaseAudit(argv, repo, a.pr, a.head, key, state, err)
 	if err != nil {
 		fmt.Fprintf(stderr, "deskpost finish: STOPPED at step 3 of 3 (release) — the verdict IS posted and confirmed (%s, %s at %s), "+
-			"but the claim %s is STILL HELD: %s. Run this command again, or release the claim with the release command in your assignment\n",
+			"but the claim %s is STILL HELD: %s. Retry from the original review checkout for a transient failure. If ownership is unproven, leave the claim with the dispatching desk\n",
 			finishReviewRef(repo, a.pr, posted), posted.State, a.head, key, firstLineOf(err.Error()))
 		if c := deskkit.ExitCodeOf(err); c != deskkit.ExitOK {
 			return c
@@ -318,65 +316,65 @@ func finishReviewRef(repo string, pr int, r reviewInfo) string {
 	return fmt.Sprintf("%s#%d/review-%d", repo, pr, r.ID)
 }
 
-// releaseReviewClaim releases the review-dispatch claim key on owner/name and reports
-// "released" or "already-released". key has already passed ValidateReviewClaimKey.
-//
-// WHERE THE CLAIM IS. The store is resolved the way every claim writer resolves it
-// (deskkit.ResolveClaimStore) and a configured store is released through its own Remove — the
-// configured store is never swapped for another one. With no store configured the claim is a
-// ref on the forge under deskkit.DispatchClaimActiveRefsPrefix — the namespace the claim tool
-// writes and the one this tool's own liveness read looks in (claimliveness.go) — and it is
-// deleted through the reviewer identity's typed forge operation, which validates the ref path
-// before any request exists.
-//
-// "ALREADY GONE" IS VERIFIED, NEVER ASSUMED. A delete the forge answers with not-found (or
-// with unprocessable, which is how some forges answer a delete of a missing ref) is followed
-// by a read of that one ref: only a positive "absent" is reported as already-released. A
-// forbidden, a server error or an unreadable ref is a failure — the claim may still be held.
-func releaseReviewClaim(owner, name, key string) (string, error) {
-	repo := owner + "/" + name
-	res, err := deskkit.ResolveClaimStore(repo)
-	if err != nil {
-		return "", err
-	}
-	if res.Store != nil {
-		outcome, existed := res.Store.Remove(key)
-		if outcome != deskkit.ClaimWriteApplied {
-			return "", deskkit.Unverifiable(fmt.Sprintf("the %s claim store did not release %s (%s)",
-				res.Label(), key, res.Store.TransportCause()), nil)
-		}
-		if !existed {
-			return finishClaimAlreadyReleased, nil
-		}
-		return finishClaimReleased, nil
-	}
-	if !res.Legacy {
-		return "", deskkit.Unverifiable(fmt.Sprintf("the %s claim store is configured for %s but this tool was given no handle to it",
-			res.Label(), repo), nil)
-	}
+type finishLease interface {
+	Read(string) (deskkit.ClaimStoreRecord, deskkit.ClaimReadStatus)
+	RemoveFrom(string, string) deskkit.ClaimWriteOutcome
+	TransportCause() string
+}
 
-	fr := deskkit.ForgeRepo{Owner: owner, Name: name}
-	fg, err := forgeForReviewer(fr)
+var checkoutReviewIdentity = deskkit.WorktreeReviewLeaseIdentity
+
+var reviewerLease = func(repo deskkit.ForgeRepo) (finishLease, error) { return deskkit.ReviewerClaimLease(repo) }
+
+func releaseReviewClaim(owner, name, key string) (string, error) {
+	repo := deskkit.ForgeRepo{Owner: owner, Name: name}
+	res, err := deskkit.ResolveClaimStore(repo.Slug())
 	if err != nil {
 		return "", err
 	}
-	ref := strings.TrimPrefix(deskkit.DispatchClaimActiveRefsPrefix, "refs/") + key
-	derr := fg.DeleteRef(fr, ref)
-	if derr == nil {
+	var lease finishLease = res.Store
+	if lease == nil {
+		if !res.Legacy {
+			return "", deskkit.Unverifiable(fmt.Sprintf("the %s claim store is configured for %s but this tool was given no handle to it", res.Label(), repo.Slug()), nil)
+		}
+		lease, err = reviewerLease(repo)
+		if err != nil {
+			return "", err
+		}
+	}
+	rec, status := lease.Read(key)
+	switch status {
+	case deskkit.ClaimReadFree:
+		return finishClaimAlreadyReleased, nil
+	case deskkit.ClaimReadHeld:
+	default:
+		return "", deskkit.Unverifiable(fmt.Sprintf("could not read %s from %s: %s", key, res.Label(), lease.TransportCause()), nil)
+	}
+	holder, run := checkoutReviewIdentity()
+	if rec.Version == "" || !reviewLeaseMatches(rec.Msg, key, holder, run) {
+		return "", deskkit.Refused("the checkout and the held review lease do not identify the same dispatch run and holder")
+	}
+	switch lease.RemoveFrom(key, rec.Version) {
+	case deskkit.ClaimWriteApplied:
 		return finishClaimReleased, nil
+	case deskkit.ClaimWriteRejected:
+		return "", deskkit.Refused("the lease changed after its holder and dispatch run were read; the current claim was preserved")
+	default:
+		return "", deskkit.Unverifiable(fmt.Sprintf("could not conditionally release %s from %s: %s", key, res.Label(), lease.TransportCause()), nil)
 	}
-	var ae *deskkit.ForgeAPIError
-	if errors.As(derr, &ae) && (ae.Status == http.StatusNotFound || ae.Status == http.StatusUnprocessableEntity) {
-		exists, rerr := fg.RefExists(fr, ref)
-		if rerr == nil && !exists {
-			return finishClaimAlreadyReleased, nil
-		}
-		if rerr != nil {
-			return "", deskkit.Unverifiable(fmt.Sprintf("the forge would not delete the claim (HTTP %d) and whether it still exists could not be read", ae.Status), rerr)
-		}
-		return "", deskkit.Unverifiable(fmt.Sprintf("the forge would not delete the claim (HTTP %d) and it still exists", ae.Status), derr)
+}
+
+// The claim writer emits the holder, state, branch and optional review-run in
+// this order. Ignore a free-form note only after all the structural fields.
+func reviewLeaseMatches(message, key, holder, run string) bool {
+	if holder == "" || holder == "unknown" || !deskkit.ValidDispatchRef(key, run) {
+		return false
 	}
-	return "", derr
+	body, _, _ := strings.Cut(message, " note=")
+	fields := strings.Fields(body)
+	return len(fields) == 6 && fields[0] == "dispatch-claim" && fields[1] == key &&
+		fields[2] == "owner="+holder && (fields[3] == "state=claimed" || fields[3] == "state=dispatched") &&
+		strings.HasPrefix(fields[4], "branch=") && len(fields[4]) > len("branch=") && fields[5] == "review-run="+run
 }
 
 // firstLineOf is the first line of a possibly multi-line message, for a one-line stop.
