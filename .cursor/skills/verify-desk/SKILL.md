@@ -882,8 +882,10 @@ For comments, use `deskfile attach` on issues or `deskreply` on this desk's own 
 
 In an armed project, `deskevidence` lands to `main` only when the lane is down, on the driver's explicit
 say-so for that landing, recorded on the brief's Evidence as break-glass (the Evidence row says it was a
-break-glass landing and names the driver's go). In a project that has not armed the lane it is the
-standing landing path, unchanged.
+break-glass landing and links the driver's go). The go must be checkable afterwards as the driver's own
+act: link the comment or issue the driver wrote for that landing. A go relayed by a bot, an App or
+another desk does not count, and without a linkable go there is no break-glass landing. In a project
+that has not armed the lane it is the standing landing path, unchanged.
 
 **The whole fleet is branch + draft PR; push-to-main and merge are human-gated. The one exception, and it
 is this desk's alone: `deskevidence` Evidence-row landings and the status flips that accompany them

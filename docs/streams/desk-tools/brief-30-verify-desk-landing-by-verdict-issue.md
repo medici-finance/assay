@@ -34,6 +34,7 @@ gate-why: >-
 decision-trigger: creation
 decision-issue: 2352
 ruling: "https://github.com/medici-finance/assay/issues/2352#issuecomment-7106502397"
+design: DR-desk-tools-30
 issues: []
 outcome: none
 schema: brief-v2
