@@ -110,11 +110,19 @@ func classifyForgeURL(raw string) forgeKind {
 // A package-level var so tests substitute a fake without a git checkout, matching
 // the listRemoteBranches / listMergedClosedBranches injection pattern.
 var remoteOriginURL = func(root string) (string, error) {
-	out, err := exec.Command("git", "-C", root, "remote", "get-url", "origin").Output()
+	out, err := gitRemoteOriginURLs(root)
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// gitRemoteOriginURLs is the one native `git remote get-url` launch for the `origin` remote. flags
+// are the get-url options (none: the fetch URL; "--push", "--all": every push destination), so a
+// second reader of the same remote shares this launch and adds no Git spawn site of its own.
+func gitRemoteOriginURLs(root string, flags ...string) ([]byte, error) {
+	args := append([]string{"-C", root, "remote", "get-url"}, flags...)
+	return exec.Command("git", append(args, "origin")...).Output()
 }
 
 // detectForge classifies the forge behind root's `origin` remote. It returns

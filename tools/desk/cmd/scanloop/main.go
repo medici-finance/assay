@@ -90,7 +90,8 @@ USAGE:
                 [--dry-run] [everything 'plan' takes]
   scanloop land --item <owner/repo#N> --exit <exit> --artifact <ref> --tier any|strong
                 [--opened <RFC3339>] [--detail rejected|watching] [--kind <reason>]
-                [--dispatch-ref <ref>]
+                [--dispatch-ref <ref>] [--handoff <intake-handoff-v1 JSON> --handoff-reader <version>]
+                (--exit bug|placeholder is refused without --handoff and --handoff-reader)
   scanloop --version
 
 'plan' is READ-ONLY. It prints the inbound queue — surface, item, lane, age, claim state — the

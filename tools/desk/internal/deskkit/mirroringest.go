@@ -33,15 +33,20 @@ func NewMirrorIngestSource(source *MirrorReadSource, admissionID, sourceID strin
 	if source == nil || source.forge == nil || admissionID == "" || strings.TrimSpace(admissionID) != admissionID || sourceID == "" || strings.TrimSpace(sourceID) != sourceID || now == nil || nilMirrorInput(authority) {
 		return nil, Refused("mirror observation source needs an admitted reader, bound admission/source, explicit clock and attempt authority")
 	}
-	path := source.repo.Slug()
-	if source.provider == ForgeGitHub {
-		path = strings.ToLower(path)
-	}
-	repo := mirror.RepositoryID{Provider: mirror.Provider(source.provider), Host: source.instance, Path: path}
+	repo := source.RepositoryID()
 	if err := repo.Validate(); err != nil {
 		return nil, err
 	}
 	return &mirrorIngestSource{source: source, admissionID: admissionID, repository: repo, now: now, sourceID: sourceID, authority: authority}, nil
+}
+
+// RepositoryID is the canonical identity of the already-admitted source.
+func (s *MirrorReadSource) RepositoryID() mirror.RepositoryID {
+	path := s.repo.Slug()
+	if s.provider == ForgeGitHub {
+		path = strings.ToLower(path)
+	}
+	return mirror.RepositoryID{Provider: mirror.Provider(s.provider), Host: s.instance, Path: path}
 }
 
 func nilMirrorInput(a any) bool {
