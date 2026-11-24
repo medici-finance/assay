@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -82,14 +83,31 @@ func shCheckVerified(t *testing.T, evidence, stamp string) (int, string) {
 
 // regression: #6767
 func TestShFlipNoteShape(t *testing.T) {
-	root, readme := vfFixture(t, shOpts(shNoteShape))
-	vfExpect(t, root, readme, verifyflipExitOK, "")
+	shBothRules(t, func(t *testing.T) {
+		root, readme := vfFixture(t, shOpts(shNoteShape))
+		vfExpect(t, root, readme, verifyflipExitOK, "")
+	})
 }
 
 // regression: #6767
 func TestShFlipItemShape(t *testing.T) {
-	root, readme := vfFixture(t, shOpts(shItemShape))
-	vfExpect(t, root, readme, verifyflipExitOK, "")
+	shBothRules(t, func(t *testing.T) {
+		root, readme := vfFixture(t, shOpts(shItemShape))
+		vfExpect(t, root, readme, verifyflipExitOK, "")
+	})
+}
+
+// shBothRules runs fn with rule 3d on and then off. With it on, the latest
+// strict PASS entry supersedes the BLOCKED entry whole, so rule 3c's shape
+// reads (the noted restatement row, the one-line bullet) only decide the
+// answer with it off.
+func shBothRules(t *testing.T, fn func(t *testing.T)) {
+	t.Helper()
+	defer func(on bool) { heldPassRule = on }(heldPassRule)
+	for _, on := range []bool{true, false} {
+		heldPassRule = on
+		t.Run(fmt.Sprintf("rule3d=%v", on), fn)
+	}
 }
 
 // regression: #6767

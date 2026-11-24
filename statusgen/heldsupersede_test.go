@@ -155,6 +155,9 @@ func TestHeldSupersedeNeedsStrictPass(t *testing.T) {
 		"struck marker":        early + latest("~~**VERIFY: PASS**~~ — re-run green."),
 		"marker in code":       early + latest("`**VERIFY: PASS**` — re-run green."),
 		"two verdicts on line": early + latest("**VERIFY: PASS** — rows 1-2; VERIFY: BLOCKED on row 3."),
+		// Any later VERIFY token in the marker's own entry, even one that
+		// is not a non-pass verdict, leaves that entry unsettled.
+		"later token in entry": early + latest("**VERIFY: PASS** — re-run green.\n\nVERIFY: PENDING sign-off on row 1."),
 		"same entry as hold": "### Run — 2026-07-10\n\nRow 2 HELD: no runner was online.\n\n" +
 			sdHead + sdRow1 + "\n**VERIFY: PASS** — re-run green.\n",
 	} {
