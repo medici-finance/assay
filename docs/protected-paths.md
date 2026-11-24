@@ -321,8 +321,12 @@ A protected or transition record may run inside a closed **container-netns trans
 opened and closed with the same `--acceptance-record` descriptor. The dispatch host
 performs the protected plan and clean-source checks at open, re-reads transition approval
 with `--acceptance-forge`, and binds the exact planned table, row IDs, source and changes
-in the receipt. Inside it the container executes the receipt's planned table, not the
-current table; it reads no Git history or forge and refuses `--acceptance-forge`.
+in the receipt. By default the container takes the same descriptor and executes the
+table carried in the receipt. For a table byte-identical to admitted source, the host
+may add `--source-acceptance` at open. The receipt then carries the approval coordinates
+and table digest. The container takes only the receipt and reads the table from its
+explicit `--root`, checking both digests before any row runs. Both forms keep approval
+reads on the host.
 Close re-plans with a fresh approval read and compares the complete receipt plan,
 byte-exact table and witness descriptor, changes and commands before appending anything.
 `deskdispatch --check-verifier` runs only on the dispatch host. A different-runtime

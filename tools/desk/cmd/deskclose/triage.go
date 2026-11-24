@@ -44,11 +44,9 @@ import (
 //	               never asserts it. The cited authority in the close comment is THAT decision
 //	               comment's URL, not a blanket ruling's.
 //
-// THE CONTROL THIS LANE KEEPS (worker §2, #1207). triage must never close a `needs-decision`
-// issue (still on the human's decision queue), and never close an item lacking its required
-// fetched artifact. not-planned refuses BOTH decision labels; human-decided refuses
-// `needs-decision` but PERMITS a `human-decided` item — closing one, gated by the verified
-// decision comment and the named tracker, is the sanctioned lane this verb adds.
+// not-planned refuses either decision label. On an outstanding decision, human-decided
+// requires a current explicit choice before moving the labels and closing the issue.
+// The general label verb has no authority to record a human decision.
 //
 // A non-issue target (a pull request) is refused; an already-closed issue is an idempotent
 // no-op; an unreadable item is could-not-check (exit 6), never a guessed close.
@@ -211,7 +209,19 @@ func applyTriage(r triageReq, out io.Writer) error {
 	var record []byte
 	recordStatus := ""
 	if ruling != nil {
-		record, recordStatus = composeTriageRecord(r, it, *ruling)
+		history, err := decisionQueueHistory(r, it)
+		if err != nil {
+			a.log(resultFor(err), err.Error())
+			return err
+		}
+		record, recordStatus, err = composeTriageRecord(r, it, *ruling, history)
+		if err == nil && history != nil && record == nil {
+			err = deskkit.Unverifiable("could-not-check queued decision: "+recordStatus, nil)
+		}
+		if err != nil {
+			a.log(resultFor(err), err.Error())
+			return err
+		}
 		if record != nil {
 			body += "\n" + deskkit.DecisionRecordBlock(record) + "\n"
 		}
@@ -219,10 +229,21 @@ func applyTriage(r triageReq, out io.Writer) error {
 	if r.dryRun {
 		a.log(deskkit.ResultDryRun, joinDetail("dry-run: verified, wrote nothing", recordStatus))
 		fmt.Fprintf(out, "dry-run\t%s\t%s\tdisposition=%s\n", itemRef(r.repo, r.number, deskkit.TargetIssue), modeTriage, r.disposition)
+		if hasLabel(it, labelNeedsDecision) {
+			if _, err := fmt.Fprintln(out, "labels: needs-decision -> human-decided before close"); err != nil {
+				return fmt.Errorf("write decision label preview: %w", err)
+			}
+		}
 		fmt.Fprintln(out, body)
 		return nil
 	}
 
+	if hasLabel(it, labelNeedsDecision) {
+		if err := moveDecidedLabels(r, it, a); err != nil {
+			a.log(resultFor(err), err.Error())
+			return err
+		}
+	}
 	if err := allowWrite(r.repo, r.number); err != nil {
 		a.log(deskkit.ResultRateLimited, err.Error())
 		return err
@@ -277,9 +298,13 @@ func authorizeTriage(r triageReq, it item) (string, *ghComment, error) {
 		}
 		src = s
 	case dispositionHumanDecided:
-		// Still on the human's decision queue → refused; a human-decided label is PERMITTED.
-		if err := refuseNeedsDecision(r.repo, it); err != nil {
-			return "", nil, err
+		if hasLabel(it, labelNeedsDecision) || hasLabel(it, dispositionHumanDecided) {
+			if hasLabel(it, deskkit.VerifyGateLabel) || hasLabel(it, "human-only") {
+				return "", nil, deskkit.Refused("refused: this issue reserves closure for its human sign-off")
+			}
+			if r.tracker != nil && strings.EqualFold(r.tracker.repo, r.repo) && r.tracker.number == r.number && r.tracker.kind != deskkit.TargetChange {
+				return "", nil, deskkit.Refused("refused: the decision issue cannot be its own continuing tracker")
+			}
 		}
 		s, c, err := humanDecidedAuthority(r)
 		if err != nil {
@@ -403,23 +428,6 @@ func requireTrackerExists(ref resolvedRef) error {
 		return deskkit.Unverifiable(fmt.Sprintf(
 			"could-not-check: --tracker %s could not be confirmed to exist — a triage close names an EXISTING "+
 				"item as where residual/decided work lives, never an unverified reference", renderRef(ref)), err)
-	}
-	return nil
-}
-
-// refuseNeedsDecision refuses ONLY the needs-decision label — an item still on the human's
-// decision queue. Unlike refuseDecisionItem (which the ruled lanes and not-planned share), it
-// PERMITS a human-decided item: closing one, gated by the verified decision comment and the
-// named tracker, is the human-decided disposition's entire purpose.
-func refuseNeedsDecision(repo string, it item) error {
-	for _, have := range it.labelNames() {
-		if strings.EqualFold(strings.TrimSpace(have), labelNeedsDecision) {
-			return deskkit.Refused(fmt.Sprintf(
-				"refused: %s#%d carries the %q label — it is still on the human's decision queue, undecided. "+
-					"%s --disposition %s closes an issue whose decision is ALREADY recorded (relabelled "+
-					"human-decided); an undecided item leaves the queue through the decision digest, not a "+
-					"triage close.", repo, it.Number, labelNeedsDecision, modeTriage, dispositionHumanDecided))
-		}
 	}
 	return nil
 }

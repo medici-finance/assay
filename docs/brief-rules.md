@@ -926,8 +926,11 @@ passing run — which is why they are lint rules and not review vigilance.
       **container-netns transition bracket**, opened and closed on the dispatch
       host with the same `--acceptance-record` descriptor. The host plans and
       re-plans through the shared evaluator, re-reading transition approvals
-      with `--acceptance-forge`. Inside it the container executes the receipt's
-      planned table, not the current table; the container refuses forge reads.
+      with `--acceptance-forge`. By default the container takes the same descriptor and executes the
+      table carried in the receipt. If that table is byte-identical to admitted source,
+      the host may add `--source-acceptance` at open. The container then takes only the
+      receipt, checks its approval coordinates and reads the digest-bound table from
+      its explicit `--root`. Both forms keep approval reads on the host.
       Close compares the exact table, descriptor, source, changes and witness
       commands. `deskdispatch --check-verifier` runs only on the dispatch host:
       a different runtime still refuses `environment changed since admission:

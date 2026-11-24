@@ -89,8 +89,10 @@ USAGE:
       stands in for it. --tracker is
       never authority: when given it must name an EXISTING item (verified by a read),
       and it is required for human-decided (the close NAMES the continuing work). A
-      needs-decision item is refused in both dispositions; not-planned also refuses a
-      human-decided item; a pull-request target is refused; already-closed is a no-op.
+      queued decision requires an unedited human choice of an offered option. The
+      command adds and confirms human-decided, then removes needs-decision before
+      closing. not-planned refuses either decision label. PRs are refused; an
+      already-closed issue is a no-op.
   deskclose --version
 
 Every mode accepts --dry-run (validate + read the remote, write nothing) and
