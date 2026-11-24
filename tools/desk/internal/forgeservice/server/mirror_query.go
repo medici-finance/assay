@@ -54,6 +54,7 @@ func (wallClock) Now() time.Time { return time.Now() }
 
 // OpenMirrorQuery is unqualified composition for an owned fixture. Callers must
 // supply an actual verifier from the qualified producer before operational use.
+// ctx must span the server lifetime because it also governs background fills.
 func OpenMirrorQuery(ctx context.Context, c MirrorQueryConfig) (*MirrorQueryHandler, error) {
 	if ctx == nil || ctx.Err() != nil || c.Verifier == nil || !presentAdmission(c.Admission) || c.Source == nil ||
 		c.Provenance != PostgresSnapshot || c.Profile.Validate() != nil ||
