@@ -58,7 +58,8 @@ type ForgeGitEndpoint struct {
 // none yields a usable ListOpts, and none presents a credential to a host derived from an
 // untrusted or unrelated source.
 func ForgeGitEndpointFor(repoSlug, role string) (ForgeGitEndpoint, error) {
-	return forgeGitEndpoint(repoSlug, role, "")
+	var noOrigin string
+	return forgeGitEndpoint(repoSlug, role, &noOrigin)
 }
 
 // ForgeGitEndpointForCheckout is ForgeGitEndpointFor for a caller acting on the checkout it
@@ -77,12 +78,12 @@ func ForgeGitEndpointForCheckout(repoSlug, role, originRemoteURL string) (ForgeG
 	if h, err := hostOfRemote(originRemoteURL); err == nil {
 		host = h
 	}
-	return forgeGitEndpoint(repoSlug, role, host)
+	return forgeGitEndpoint(repoSlug, role, &host)
 }
 
-// forgeGitEndpoint is the shared body: kindHost is the ONLY non-roster input to the forge-kind
-// decision ("" ⇒ the roster alone answers) and is never used to build the URL.
-func forgeGitEndpoint(repoSlug, role, kindHost string) (ForgeGitEndpoint, error) {
+// A nil host hint resolves from the current checkout, as ForgeFor does.
+// A supplied hint, including an empty one, never consults the current checkout.
+func forgeGitEndpoint(repoSlug, role string, kindHost *string) (ForgeGitEndpoint, error) {
 	owner, name, ok := strings.Cut(strings.TrimSpace(repoSlug), "/")
 	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
 		return ForgeGitEndpoint{}, Unverifiable(fmt.Sprintf(
@@ -90,19 +91,17 @@ func forgeGitEndpoint(repoSlug, role, kindHost string) (ForgeGitEndpoint, error)
 	}
 	repo := ForgeRepo{Owner: owner, Name: name}
 
-	// WHICH forge — from the roster (ASSAY_REPO_FORGES), else refuse. ForgeGitEndpointFor passes
-	// kindHost "": the checkout's origin is deliberately NOT consulted there, since it names an
-	// unrelated repo's forge in the cross-repo sweep and a mis-resolution would pick the wrong
-	// credential. ForgeGitEndpointForCheckout passes its OWN origin's host, which can only map
-	// through the well-known table.
-	res, err := resolveForgeKindWithHost(repo, kindHost)
+	var res ForgeResolution
+	var err error
+	if kindHost == nil {
+		res, err = resolveForgeKind(repo)
+	} else {
+		res, err = resolveForgeKindWithHost(repo, *kindHost)
+	}
 	if err != nil {
 		return ForgeGitEndpoint{}, err
 	}
-	return endpointForResolvedKind(repo, role, res.Kind)
-}
-
-func endpointForResolvedKind(repo ForgeRepo, role string, kind ForgeKind) (ForgeGitEndpoint, error) {
+	kind := res.Kind
 
 	// Identity agreement (kept intact from the reviewer-approved surface): a role whose
 	// forge-qualified roster entry names a different forge is refused before any credential read.
@@ -131,7 +130,7 @@ func endpointForResolvedKind(repo ForgeRepo, role string, kind ForgeKind) (Forge
 		Kind: kind,
 		Host: host,
 		Opts: gitcore.ListOpts{
-			URL:  "https://" + host + "/" + repo.Slug() + ".git",
+			URL:  "https://" + host + "/" + owner + "/" + name + ".git",
 			Auth: gitcore.BasicAuthAs(username, token),
 		},
 	}, nil
@@ -212,17 +211,13 @@ func validateGitHost(host, repoSlug string) error {
 	return nil
 }
 
-// ReviewerClaimLease opens the review target's active claim namespace through
-// reviewer custody on the same resolved forge instance as the verdict.
+// ReviewerClaimLease opens the active claim namespace under reviewer custody,
+// with the same roster-first resolution from this checkout used for its verdict.
 func ReviewerClaimLease(repo ForgeRepo) (*ForgeClaimLease, error) {
 	if !ValidPRRepo(repo.Slug()) {
 		return nil, Refused("invalid repository for review claim release")
 	}
-	res, err := resolveForgeKind(repo)
-	if err != nil {
-		return nil, err
-	}
-	endpoint, err := endpointForResolvedKind(repo, "reviewer", res.Kind)
+	endpoint, err := forgeGitEndpoint(repo.Slug(), "reviewer", nil)
 	if err != nil {
 		return nil, err
 	}
