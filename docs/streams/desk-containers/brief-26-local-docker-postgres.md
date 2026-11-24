@@ -215,6 +215,15 @@ Row 9 diagnosis. The parity harness runs each side under env -i with a throwaway
 Attempts: (1) 2026-11-13T23:21:59Z to 2026-11-13T23:33:48Z, rows 1 to 12 (13 rows, with the five row 7 mutations inside the span), credited.
 
 **VERIFY: FAIL** — row 9: the shell-oracle parity no longer holds, with 8 of 200 cells divergent on the labels rows added after delivery (medici-finance/assay#6455). Row 11 is BLOCKED (environment, medici-finance/assay#4823). The other 11 rows pass, including all five row 7 mutations CAUGHT. Status is left for the human gate.
+### Independent recheck of rows 9 and 11, 2026-11-23
+
+The verifier reran the two rows held in the 2026-11-14 outcome after the parity repair in #6521 and the Rule 51 witness implementation in #7236. The witness audit credits both rows. It reports no execution witness for the other eleven rows in this run. The earlier outcome records eleven passes. The brief remains implemented and its final acceptance stays with the human custodian.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 9 | `bash tools/cellctl/tests/postgres-verify.sh 9` | pass exit=0 | sha256:0f4a381a6812 | 2026-11-23 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 11 | `statusgen --root . --lint` | fail exit=5 rule51=pass forge-rc=0 forge-out=sha256:031c0cae0654 pin=v1.0.92 cred=verifier-run-read cred-digest=sha256:4b27bccb65cd stamp=sha256:05f4e22bb69f8ae3c8a156be84e887578f34a176ed06a803211b8a5574d2cc5e | sha256:3a9c739aef4a | 2026-11-23 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7512 run=e9381744378164614ad43efdb0a49078eb4b2085f60311d4810b2a911d81ca67 source=52f341a6e0dc25f7cdc915377f3e9ce6728df746 brief=docs/streams/desk-containers/brief-26-local-docker-postgres.md model=gpt-6.2-astra tier=strong
 
 ## Review
 Gate: human, `sensitive-data: yes`: the brief designs credential custody (see `gate-why`). The other three risk answers are no. No credential is committed: the superuser password and each cell's password live in operator-created files outside the repository. The brief follows `containers/secrets.md` unchanged and leaves it unedited. Every test server is throwaway. A restore renames the previous database aside rather than dropping it, so nothing done here is irreversible. The reviewer checks:
