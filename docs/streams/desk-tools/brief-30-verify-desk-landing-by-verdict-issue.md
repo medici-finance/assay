@@ -33,7 +33,7 @@ gate-why: >-
   forge, so it is recorded here and in row 10, never as a typed `depends:` edge.
 decision-trigger: creation
 decision-issue: 2352
-ruling: "https://github.com/medici-finance/assay/issues/2352#issuecomment-7106502397"
+ruling: "https://github.com/medici-finance/assay/issues/2352#issuecomment-7139122485"
 design: DR-desk-tools-30
 issues: []
 outcome: none
