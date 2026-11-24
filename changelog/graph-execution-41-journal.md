@@ -1,0 +1,2 @@
+### Added
+- `docs/streams/decisions/DR-graph-exec-41.md` proposes the design for the rest of the loop-admin PostgreSQL journal: typed process records, one locked shared-capacity admission with an append-only launch ledger, restore provenance checked against the operator incarnation, and passive backup with an artifact inventory. It awaits a human ruling; graph-execution/41 now cites it with `design:`, carries its `## Human decision` section and records what the merged journal base already delivered.
