@@ -78,13 +78,20 @@ func admit(ctx context.Context, tx *sql.Tx, cell, incarnation string, in Intent)
 	if err != nil {
 		return time.Time{}, errors.Join(ErrUsageUnknown, classify(ctx, "admit", err))
 	}
+	// The admission time is read after the lock, not the transaction start
+	// (now()): a caller that waited on the lock must not stamp its launch,
+	// or count its window, from before it was admitted.
+	var at time.Time
+	if err = tx.QueryRowContext(ctx, "SELECT clock_timestamp()").Scan(&at); err != nil {
+		return time.Time{}, errors.Join(ErrUsageUnknown, classify(ctx, "admit", err))
+	}
 	var used, unknown int64
 	var last sql.NullTime
 	err = tx.QueryRowContext(ctx, `SELECT
-			(SELECT count(*) FROM loopadmin.launch WHERE profile = $1 AND launched_at > now() - ($2::bigint * interval '1 second')),
+			(SELECT count(*) FROM loopadmin.launch WHERE profile = $1 AND launched_at > $3::timestamptz - ($2::bigint * interval '1 second')),
 			(SELECT max(launched_at) FROM loopadmin.launch WHERE profile = $1),
 			(SELECT count(*) FROM loopadmin.invocation WHERE profile = $1 AND state = 'unknown')`,
-		in.Profile, window).Scan(&used, &last, &unknown)
+		in.Profile, window, at).Scan(&used, &last, &unknown)
 	if err != nil {
 		return time.Time{}, errors.Join(ErrUsageUnknown, classify(ctx, "admit", err))
 	}
@@ -95,9 +102,9 @@ func admit(ctx context.Context, tx *sql.Tx, cell, incarnation string, in Intent)
 		return time.Time{}, ErrBudgetSpent
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO loopadmin.launch
-		(profile, caller_namespace, invocation_id, owner_generation, cell_id, incarnation_id)
-		VALUES ($1, $2, $3, $4, $5, $6)`,
-		in.Profile, in.Key.Namespace, in.Key.Invocation, in.Key.Generation, cell, incarnation); err != nil {
+		(profile, caller_namespace, invocation_id, owner_generation, cell_id, incarnation_id, launched_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		in.Profile, in.Key.Namespace, in.Key.Invocation, in.Key.Generation, cell, incarnation, at); err != nil {
 		return time.Time{}, classify(ctx, "admit", err)
 	}
 	var pace time.Time

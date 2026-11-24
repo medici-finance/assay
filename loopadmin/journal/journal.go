@@ -165,7 +165,10 @@ func (j *Journal) Intend(ctx context.Context, in Intent, prior *Receipt) (Decisi
 	if err != nil {
 		return Decision{}, err
 	}
-	tx, err := j.db.BeginTx(ctx, nil)
+	// Admission counts the ledger after taking its lock, so each statement
+	// must see every admission committed before it: READ COMMITTED, pinned
+	// rather than left to the server's default isolation.
+	tx, err := j.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return Decision{}, classify(ctx, "intend", err)
 	}

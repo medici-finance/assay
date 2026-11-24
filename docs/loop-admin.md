@@ -91,7 +91,5 @@ marker, owner and creator match. The password never appears in `String()` or an 
 `PG*` variables are cleared from the test and child environment.
 `TestJournalFixtureDisposability` checks these rules with no server.
 
-In CI, `.github/workflows/loopadmin-journal.yml` runs the server tests against a disposable
-PostgreSQL service. The copies that add graph-execution/41's tests to it, and to `ci.yml`'s
-floor skip, wait in `ci/staged-workflows/` for a maintainer to promote them
-([README](../ci/staged-workflows/README.md)).
+In CI, `.github/workflows/loopadmin-journal.yml` runs the five server tests against a
+disposable PostgreSQL service, and the `ci.yml` floor job skips them.

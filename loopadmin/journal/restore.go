@@ -75,8 +75,13 @@ func CheckRestore(ctx context.Context, c Config, cell string, m Manifest, store 
 	if err = checkSchema(ctx, db); err != nil {
 		return err
 	}
-	if _, err = db.ExecContext(ctx, "UPDATE loopadmin.activation SET paused = true, recorded_at = now() WHERE cell_id = $1", cell); err != nil {
+	res, err := db.ExecContext(ctx, "UPDATE loopadmin.activation SET paused = true, recorded_at = now() WHERE cell_id = $1", cell)
+	if err != nil {
 		return classify(ctx, "restore", err)
+	}
+	// A restore that pauses no activation record has not paused the cell.
+	if n, err := res.RowsAffected(); err != nil || n == 0 {
+		return ErrRestoreHeld
 	}
 	version, err := schemaVersion(ctx, db)
 	if err != nil {

@@ -1776,5 +1776,12 @@
     "file": "journal/migrations/00002_ledger.sql",
     "old": "GRANT USAGE ON SCHEMA loopadmin TO loopadmin_runtime;",
     "new": "GRANT USAGE, CREATE ON SCHEMA loopadmin TO loopadmin_runtime;"
+  },
+  {
+    "test": "TestJournalPassiveRestore",
+    "why": "accept a restore check that paused no activation record",
+    "file": "journal/restore.go",
+    "old": "if n, err := res.RowsAffected(); err != nil || n == 0 {",
+    "new": "if n, err := res.RowsAffected(); err != nil || n < 0 {"
   }
 ]

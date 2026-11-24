@@ -244,6 +244,9 @@ func TestJournalPassiveRestore(t *testing.T) {
 	if err = CheckRestore(ctx, restored, testCell, extra, store); !errors.Is(err, ErrRestoreHeld) {
 		t.Fatalf("an inventory that differs from the backup must hold, got %v", err)
 	}
+	if err = CheckRestore(ctx, restored, "no-such-cell", m, store); !errors.Is(err, ErrRestoreHeld) {
+		t.Fatalf("a restore check that pauses no activation must hold, got %v", err)
+	}
 	must(t, CheckRestore(ctx, restored, testCell, m, store))
 	if n := rows(t, ctx, restored, "SELECT count(*) FROM loopadmin.activation WHERE paused"); n != 1 {
 		t.Fatal("the restore check must pause the restored activation")
