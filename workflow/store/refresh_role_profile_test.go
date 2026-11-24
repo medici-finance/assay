@@ -60,7 +60,7 @@ func TestPGRefreshRuntimeOpenPrivileges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer admin.Close()
+	defer func() { _ = admin.Close() }()
 	apply := func(t *testing.T) {
 		t.Helper()
 		if _, err := admin.ExecContext(ctx, manifest); err != nil {
@@ -93,12 +93,12 @@ func TestPGRefreshRuntimeOpenPrivileges(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		defer db.Close()
+		defer func() { _ = db.Close() }()
 		conn, err := db.db.Conn(ctx)
 		if err != nil {
 			return err
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		return checkRefreshRuntime(ctx, conn, profile)
 	}
 	if err := check(); err != nil {
