@@ -1,0 +1,1 @@
+graph-execution/41: the loopadmin floor skip also names the journal tests that need a disposable PostgreSQL server (TestLoopAdminLaunchBudgetBrake, TestJournalPassiveRestore, TestJournalRuntimeGrants); otherwise identical to live. Pending maintainer promotion with the citrigger_test.go mirror (README Contents).

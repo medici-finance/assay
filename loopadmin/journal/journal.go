@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"time"
 )
 
 // State is an invocation's journalled lifecycle state.
@@ -51,11 +52,15 @@ type Receipt struct {
 }
 
 // Decision is the journal's answer to Intend. Launch is true only when this
-// call committed a new intent; the caller starts the child only then.
+// call committed a new intent and recorded its launch in the ledger; the
+// caller starts the child only then. NotBefore is a best-effort pacing
+// estimate derived from recorded launches: the caller may delay the launch
+// until then. A zero value means no estimate, and never refuses the launch.
 type Decision struct {
-	Receipt Receipt
-	State   State
-	Launch  bool
+	Receipt   Receipt
+	State     State
+	Launch    bool
+	NotBefore time.Time
 }
 
 // Kind is an append-only process fact kind.
@@ -209,6 +214,12 @@ func (j *Journal) Intend(ctx context.Context, in Intent, prior *Receipt) (Decisi
 		in.Key.Namespace, in.Key.Invocation, in.Key.Generation, in.RequestID, j.cell, in.Profile, in.Digest, cur.ID); err != nil {
 		return Decision{}, classify(ctx, "intend", err)
 	}
+	// The launch is admitted against the profile's shared budget and recorded
+	// in the ledger in this same transaction: a refusal rolls the intent back.
+	pace, err := admit(ctx, tx, j.cell, cur.ID, in)
+	if err != nil {
+		return Decision{}, err
+	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO loopadmin.receipt (receipt_id, caller_namespace, invocation_id, owner_generation)
 		VALUES ($1, $2, $3, $4)`, id, in.Key.Namespace, in.Key.Invocation, in.Key.Generation); err != nil {
 		return Decision{}, classify(ctx, "intend", err)
@@ -216,7 +227,7 @@ func (j *Journal) Intend(ctx context.Context, in Intent, prior *Receipt) (Decisi
 	if err = tx.Commit(); err != nil {
 		return Decision{}, classify(ctx, "intend", err)
 	}
-	return Decision{Receipt: Receipt{ID: id, Key: in.Key}, State: Intended, Launch: true}, nil
+	return Decision{Receipt: Receipt{ID: id, Key: in.Key}, State: Intended, Launch: true, NotBefore: pace}, nil
 }
 
 // lookup finds an existing record by request ID or key. A record matching one
