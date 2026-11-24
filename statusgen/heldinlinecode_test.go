@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -45,7 +46,49 @@ func runHeldScanCases(t *testing.T, cases []heldScanCase) {
 // checked at all three reads: the card and close-verify reads must decide as
 // written whatever flipAdmits says, and the flip read must agree with them
 // except on a named case, where it admits.
+//
+// The cases decide as written with rule 3d (a later strict PASS entry
+// supersedes every entry before it) off: they are the tests of the rules
+// that still decide every Evidence 3d does not admit. With 3d on, each read's
+// refusals must then be exactly those it made with 3d off that lie at or
+// after the superseding entry (heldScope.pass), so 3d drops nothing else and
+// never adds a refusal (runHeldPassRuleAgrees).
 func runHeldScanCasesFlip(t *testing.T, cases []heldScanCase, flipAdmits map[string]bool) {
+	t.Helper()
+	func() {
+		defer func(on bool) { heldPassRule = on }(heldPassRule)
+		heldPassRule = false
+		runHeldScanCasesFlipAs(t, cases, flipAdmits)
+	}()
+	for _, tc := range cases {
+		runHeldPassRuleAgrees(t, tc.name, tc.evidence)
+	}
+}
+
+// runHeldPassRuleAgrees checks, on both reads, that rule 3d only drops the
+// refusals before the entry it names superseding.
+func runHeldPassRuleAgrees(t *testing.T, name, evidence string) {
+	t.Helper()
+	defer func(on bool) { heldPassRule = on }(heldPassRule)
+	for _, latestRun := range []bool{false, true} {
+		heldPassRule = false
+		before := scanHeldRefusals(evidence, latestRun)
+		heldPassRule = true
+		after := scanHeldRefusals(evidence, latestRun)
+		pass := heldScanScope(evidence, latestRun).pass
+		var want []heldRefusalSignal
+		for _, r := range before {
+			if r.line == 0 || r.line-1 >= pass {
+				want = append(want, r)
+			}
+		}
+		if !reflect.DeepEqual(after, want) {
+			t.Errorf("%s (latestRun=%v): rule 3d refusals %v, want %v (3d off %v, superseding entry from line %d)", name, latestRun, after, want, before, pass+1)
+		}
+	}
+}
+
+func runHeldScanCasesFlipAs(t *testing.T, cases []heldScanCase, flipAdmits map[string]bool) {
 	t.Helper()
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

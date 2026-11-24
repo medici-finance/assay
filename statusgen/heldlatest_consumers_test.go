@@ -74,11 +74,16 @@ func chCard(t *testing.T, root string) bool {
 }
 
 // TestHeldLatestNotReadByNonFlipConsumers: on the skipped-row shape the
-// flip-side read drops the earlier hold (3c), and every other consumer still
-// refuses on it: close-verify on its implemented and verified paths, the
-// verify-gate card, the sign-off act and autoflip's pre-check.
+// flip-side read drops the earlier hold (3c), and, with rule 3d off, every
+// other consumer still refuses on it: close-verify on its implemented and
+// verified paths, the verify-gate card, the sign-off act and autoflip's
+// pre-check. Rule 3d (https://github.com/medici-finance/assay/issues/4993#issuecomment-7115589994)
+// supersedes the earlier entry on every read, so with it on they admit the
+// shape; TestHeldSupersededEveryConsumer pins that.
 // regression: #4294
 func TestHeldLatestNotReadByNonFlipConsumers(t *testing.T) {
+	defer func(on bool) { heldPassRule = on }(heldPassRule)
+	heldPassRule = false
 	ev := chSkippedEvidence(false)
 	if err := flipHeldRefusal("ch/04", "implemented", ev); err != nil {
 		t.Fatalf("fixture drifted: the flip-side read must admit the shape (rule 3c), so this test reads the split: %v", err)
@@ -128,5 +133,39 @@ func TestHeldLatestNonFlipControl(t *testing.T) {
 	}
 	if err := closeVerify(root, "ch/04", time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)); err != nil {
 		t.Errorf("close-verify must admit the control: %v", err)
+	}
+}
+
+// TestHeldSupersededEveryConsumer: with rule 3d, the skipped-row shape's
+// earlier BLOCKED entry is superseded by the later strict PASS entry, so no
+// consumer reads its could-not-check row: close-verify on both paths, the
+// verify-gate card, the sign-off act and the acceptance-route signal list.
+// The autoflip takes that drop only behind verifyflip's witness check: with
+// no brief to check the run against it keeps the hold.
+func TestHeldSupersededEveryConsumer(t *testing.T) {
+	ev := chSkippedEvidence(false)
+	if held, why := verifyPassHeldContradiction(ev); held {
+		t.Errorf("verifyPassHeldContradiction read a superseded hold: %q", why)
+	}
+	for _, st := range []string{"implemented", "verified"} {
+		if err := closeVerifyHeldRefusal("ch/04", st, ev); err != nil {
+			t.Errorf("closeVerifyHeldRefusal(%s) = %v, want nil", st, err)
+		}
+	}
+	if got := signOffAct(awaitBrief{Status: "implemented", Gate: "human"}, ev); got != nextActCloseCard {
+		t.Errorf("signOffAct = %q, want %q", got, nextActCloseCard)
+	}
+	if got := scanHeldRefusals(ev, false); len(got) != 0 {
+		t.Errorf("scanHeldRefusals (acceptance-route signals) = %v, want none", got)
+	}
+	if held, _ := verifyPassHeldWitnessed(ev, ""); !held {
+		t.Error("the autoflip dropped a superseded hold without the witness check")
+	}
+	root := chWithEvidence(t, ev)
+	if !chCard(t, root) {
+		t.Error("verifyIssues raised no verify-gate card for ch/04 over a superseded hold")
+	}
+	if err := closeVerify(root, "ch/04", time.Date(2026, 7, 12, 0, 0, 0, 0, time.UTC)); err != nil {
+		t.Errorf("close-verify refused a superseded hold: %v", err)
 	}
 }

@@ -78,10 +78,18 @@ func TestVerifyflipProtectedOldHold(t *testing.T) {
 	if held, why := verifyPassHeldWitnessed(evidence, path); held {
 		t.Errorf("the autoflip read finds a superseded hold: %s", why)
 	}
-	// The plain read (close-verify, latestRun false) still reports it.
-	if held, _ := unroutedHeldLine(evidence, false); !held {
-		t.Errorf("the plain held read no longer sees the earlier hold")
+	// The plain read (close-verify, latestRun false) reads it only with rule
+	// 3d off; with 3d on the later strict PASS entry supersedes it there too.
+	if held, why := unroutedHeldLine(evidence, false); held {
+		t.Errorf("the plain held read finds a superseded hold: %s", why)
 	}
+	func() {
+		defer func(on bool) { heldPassRule = on }(heldPassRule)
+		heldPassRule = false
+		if held, _ := unroutedHeldLine(evidence, false); !held {
+			t.Errorf("with rule 3d off the plain held read no longer sees the earlier hold")
+		}
+	}()
 	if code, out, diag := runVF(t, root, "--sha", delivery); code != verifyflipExitOK {
 		t.Fatalf("flip refused: code=%d out=%s diag=%s", code, out, diag)
 	}

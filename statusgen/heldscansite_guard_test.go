@@ -15,7 +15,8 @@ import (
 // DEFECT CLASS: a HELD/could-not-check scan over Evidence text that reads the
 // marker without the full quotation hygiene — fenced code, blockquotes, struck
 // spans and (since #2100) inline code spans. The instance was the one scan
-// site (then unroutedHeldLine, now scanHeldRefusals) missing inline code.
+// site (then unroutedHeldLine, then scanHeldRefusals, now scanHeldSignals)
+// missing inline code.
 // The class is any OTHER site
 // that applies heldOrCouldNotCheckRe to Evidence: it would read quoted output
 // as a disposition again, and drift from the one wording the verify-gate card,
@@ -26,7 +27,7 @@ import (
 // (or verifyPassHeldContradiction / closeVerifyHeldRefusal on top of it),
 // never by matching the regexp itself.
 var heldScanSites = map[string]bool{
-	"scanHeldRefusals": true,
+	"scanHeldSignals": true,
 }
 
 // heldRegexRefs returns "file:func" for every reference to
@@ -134,10 +135,10 @@ func TestHeldRegexSingleScanSite(t *testing.T) {
 			sawSite = true
 			continue
 		}
-		t.Errorf("%s reads heldOrCouldNotCheckRe directly — a HELD/could-not-check scan outside scanHeldRefusals skips its quotation hygiene (fences, blockquotes, struck and inline code); call unroutedHeldLine instead", r)
+		t.Errorf("%s reads heldOrCouldNotCheckRe directly — a HELD/could-not-check scan outside scanHeldSignals skips its quotation hygiene (fences, blockquotes, struck and inline code); call unroutedHeldLine instead", r)
 	}
 	if !sawSite {
-		t.Fatalf("guard matched no reference in scanHeldRefusals (refs=%v) — the matcher is broken, not the tree clean", refs)
+		t.Fatalf("guard matched no reference in scanHeldSignals (refs=%v) — the matcher is broken, not the tree clean", refs)
 	}
 }
 
@@ -148,8 +149,8 @@ func TestHeldRegexSingleScanSite(t *testing.T) {
 // an Evidence row a later strict-PASS entry re-ran — and so refuses a clean
 // pass on text that is not a live row disposition; or, the other way, a scan
 // site that calls heldScanScope and ignores its decision. The instance was
-// the one scan site (then unroutedHeldLine, now scanHeldRefusals) reading
-// the whole Evidence section.
+// the one scan site (then unroutedHeldLine, then scanHeldRefusals, now
+// scanHeldSignals) reading the whole Evidence section.
 // The class is any scan site (heldScanSites) that does not take its scope
 // from heldScanScope AND read it. Together with TestHeldRegexSingleScanSite
 // (one site may read the marker), this pins every HELD read to the one scope

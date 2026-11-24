@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -82,14 +83,31 @@ func shCheckVerified(t *testing.T, evidence, stamp string) (int, string) {
 
 // regression: #6767
 func TestShFlipNoteShape(t *testing.T) {
-	root, readme := vfFixture(t, shOpts(shNoteShape))
-	vfExpect(t, root, readme, verifyflipExitOK, "")
+	shBothRules(t, func(t *testing.T) {
+		root, readme := vfFixture(t, shOpts(shNoteShape))
+		vfExpect(t, root, readme, verifyflipExitOK, "")
+	})
 }
 
 // regression: #6767
 func TestShFlipItemShape(t *testing.T) {
-	root, readme := vfFixture(t, shOpts(shItemShape))
-	vfExpect(t, root, readme, verifyflipExitOK, "")
+	shBothRules(t, func(t *testing.T) {
+		root, readme := vfFixture(t, shOpts(shItemShape))
+		vfExpect(t, root, readme, verifyflipExitOK, "")
+	})
+}
+
+// shBothRules runs fn with rule 3d on and then off. With it on, the latest
+// strict PASS entry supersedes the BLOCKED entry whole, so rule 3c's shape
+// reads (the noted restatement row, the one-line bullet) only decide the
+// answer with it off.
+func shBothRules(t *testing.T, fn func(t *testing.T)) {
+	t.Helper()
+	defer func(on bool) { heldPassRule = on }(heldPassRule)
+	for _, on := range []bool{true, false} {
+		heldPassRule = on
+		t.Run(fmt.Sprintf("rule3d=%v", on), fn)
+	}
 }
 
 // regression: #6767
@@ -173,23 +191,33 @@ func TestShAutoflipSuperseded(t *testing.T) {
 
 // regression: #6767
 func TestShAutoflipStillHeld(t *testing.T) {
-	for name, ev := range map[string]string{
-		// The latest run's tool row failed: no passing witness, the hold stands.
-		"no witness": shAFEvidence("| 1 | `go vet ./...` | fail exit=1 | sha256:abc123def456", ""),
-		// A restatement note that reads as a failure is not corroboration.
-		"failing note": shAFEvidence(shAFPass, "; but the cache was missing"),
-	} {
-		got := shAutoflip(t, ev)
-		if !strings.Contains(got.Reason, "not marked deferred") {
-			t.Errorf("%s: want the held refusal, got %v (%s)", name, got.Outcome, got.Reason)
-		}
+	// The latest run's tool row failed: no passing witness, the hold stands
+	// (the autoflip takes rule 3d's drop only behind the witness check).
+	if got := shAutoflip(t, shAFEvidence("| 1 | `go vet ./...` | fail exit=1 | sha256:abc123def456", "")); !strings.Contains(got.Reason, "not marked deferred") {
+		t.Errorf("no witness: want the held refusal, got %v (%s)", got.Outcome, got.Reason)
+	}
+	// A restatement note that reads as a failure is not corroboration for rule
+	// 3c, so with rule 3d off the hold stands. With 3d on, the witnessed
+	// latest strict PASS entry supersedes the BLOCKED entry and is read at
+	// full strength: the note carries no hold, so the autoflip proceeds.
+	failing := shAFEvidence(shAFPass, "; but the cache was missing")
+	if got := shAutoflip(t, failing); got.Outcome != flipDone {
+		t.Errorf("failing note, rule 3d: want the flip, got %v (%s)", got.Outcome, got.Reason)
+	}
+	defer func(on bool) { heldPassRule = on }(heldPassRule)
+	heldPassRule = false
+	if got := shAutoflip(t, failing); !strings.Contains(got.Reason, "not marked deferred") {
+		t.Errorf("failing note, rule 3d off: want the held refusal, got %v (%s)", got.Outcome, got.Reason)
 	}
 }
 
 // regression: #6767
 func TestShItemBesideTableHeld(t *testing.T) {
 	// A bullet beside a "|---|" bullet is not a lone one-line item: the scan
-	// still cannot key it, so the latest entry is not aligned.
+	// still cannot key it, so the latest entry is not aligned (rule 3c; rule
+	// 3d, which supersedes the earlier entry whole, is off here).
+	defer func(on bool) { heldPassRule = on }(heldPassRule)
+	heldPassRule = false
 	ev := shEvidence(shHandQuals, "", "- a | b\n- |---|\n\n")
 	if held, _ := unroutedHeldLine(ev, true); !held {
 		t.Fatal("a bullet next to a delimiter-shaped bullet was read as prose")

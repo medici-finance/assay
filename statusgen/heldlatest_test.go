@@ -151,12 +151,17 @@ func TestVerifyflipLatestUndatedRefuses(t *testing.T) {
 }
 
 // TestVerifyflipLatestFailedRowRefuses: a latest run with a failed row reads
-// no clean outcome, so the older hold stays read and refuses.
+// no clean outcome, so the flip refuses. Rule 3d no longer reads the older
+// hold (the latest strict PASS entry supersedes it), so the refusal is the
+// witness check's on the failed row; with 3d off the older hold refuses first.
 // regression: #4294
 func TestVerifyflipLatestFailedRowRefuses(t *testing.T) {
 	o := vlOpts()
 	o.evidence = vlOldHeld() + vlLatest + witnessTableFor(vfRow1, strings.Replace(vlRow2, "pass exit=0", "fail exit=1", 1)) +
 		"\n\n" + vfPass
+	vfRefuses(t, o, "lack a passing execution witness (row 2: fail)")
+	defer func(on bool) { heldPassRule = on }(heldPassRule)
+	heldPassRule = false
 	vfRefuses(t, o, "could-not-check")
 }
 

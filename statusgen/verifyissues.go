@@ -941,9 +941,25 @@ func verifyPassHeldContradiction(evidence string) (bool, string) {
 // already verified. Anything that cannot be read (no path, the brief
 // unreadable, no selectable run, a witness refusal or a missing or failed
 // row) keeps the plain read's answer.
+//
+// The plain read here is the one with rule 3d's drop put back
+// (scanHeldSignals' superseded list): an entry a later strict PASS entry
+// supersedes is dropped by the autoflip only behind the same witness check,
+// as 3c's are, so the autoflip never closes on a superseding run that does
+// not re-run every Verify row.
 func verifyPassHeldWitnessed(evidence, path string) (bool, string) {
-	held, why := verifyPassHeldContradiction(evidence)
-	if !held || path == "" {
+	if !hasVerifyPass(evidence) {
+		return false, ""
+	}
+	refusals, superseded := scanHeldSignals(evidence, false)
+	if len(refusals) == 0 {
+		refusals = superseded
+	}
+	if len(refusals) == 0 {
+		return false, ""
+	}
+	held, why := true, refusals[0].reason
+	if path == "" {
 		return held, why
 	}
 	p, err := flipLatestPass(evidence)
@@ -986,7 +1002,11 @@ func verifyPassHeldWitnessed(evidence, path string) (bool, string) {
 // Those are rules 3a and 3b. Rule 3c (the latest PASS run only, #4294) is read
 // only when latestRun is true: flipHeldRefusal passes it for verifyflip and
 // the reconcile fold, whose witness check reads the same run; every other
-// caller passes false.
+// caller passes false. Rule 3d is read on both: a held line in an entry that a
+// later strict PASS entry supersedes, with no verdict that is not a pass
+// anywhere after that marker, is not read at all, whatever it is (prose, a
+// row, a verdict line); the superseding entry and everything after it are
+// read in full (https://github.com/medici-finance/assay/issues/4993#issuecomment-7115589994).
 //
 // Every read also shares one comment normalisation (heldjoin.go): a marker
 // that only stripping HTML comments forms ("HE<!-- -->LD", the page renders
@@ -1007,11 +1027,22 @@ type heldRefusalSignal struct {
 }
 
 // scanHeldRefusals returns every line-level refusal in source order. The
-// ordinary gates project the first reason from this same result.
+// ordinary gates project the first reason from this same result. A hold in an
+// entry a later strict PASS supersedes (rule 3d) is not among them.
 func scanHeldRefusals(evidence string, latestRun bool) []heldRefusalSignal {
+	refusals, _ := scanHeldSignals(evidence, latestRun)
+	return refusals
+}
+
+// scanHeldSignals is the one hold scan. It returns the refusals
+// scanHeldRefusals reports and, apart, the holds only rule 3d drops: those
+// before the entry whose strict PASS supersedes them (heldScope.pass) that
+// rules 3a to 3c would still read. Only the model autoflip reads the second
+// list (verifyPassHeldWitnessed), to take that drop behind the witness check.
+func scanHeldSignals(evidence string, latestRun bool) (refusals, superseded []heldRefusalSignal) {
 	joinText, joinSrc, settled := heldCommentJoins(evidence)
 	if !settled {
-		return []heldRefusalSignal{{reason: "HTML comments that still change after repeated stripping"}}
+		return []heldRefusalSignal{{reason: "HTML comments that still change after repeated stripping"}}, nil
 	}
 	joined := heldJoinedLines(evidence, joinSrc, heldOrCouldNotCheckRe.FindAllStringIndex(joinText, -1))
 	inFence := false
@@ -1165,15 +1196,19 @@ func scanHeldRefusals(evidence string, latestRun bool) []heldRefusalSignal {
 			break
 		}
 	}
-	superseded := scope.supersedes(hits)
-	var refusals []heldRefusalSignal
+	covered := scope.supersedes(hits)
 	for k, i := range hits {
-		if superseded && i < scope.from {
+		if covered && i < scope.from {
 			continue
 		}
-		refusals = append(refusals, heldRefusalSignal{line: i + 1, reason: quotes[k]})
+		signal := heldRefusalSignal{line: i + 1, reason: quotes[k]}
+		if i < scope.pass {
+			superseded = append(superseded, signal) // rule 3d: a later strict PASS entry supersedes it
+			continue
+		}
+		refusals = append(refusals, signal)
 	}
-	return refusals
+	return refusals, superseded
 }
 
 // evidenceVerifierInfo returns the date and the Runner cell, verbatim, of the
@@ -1877,9 +1912,19 @@ func closeVerifyFlipPlanFor(root, briefID string, now time.Time, adjudication *v
 // paths, so the two can never drift into refusing differently; the
 // no-strict-marker variant is reachable from the verified path only.
 //
-// Supersession is inferred at ONE granularity only (#1894, heldScanScope rule
-// 3): a held row in an earlier `### ` entry is not read when the last entry,
-// closing on its own live strict **VERIFY: PASS**, re-ran that row — the same
+// Supersession by entry (heldScanScope rule 3d,
+// https://github.com/medici-finance/assay/issues/4993#issuecomment-7115589994):
+// an entry before the last entry that carries a live strict **VERIFY: PASS**
+// (entries split at live column-0 `### ` headings, text before the first
+// heading the first entry) is not read at all, when no verdict that is not a
+// pass (BLOCKED, FAIL, PARTIAL and the like, in any form) follows that marker
+// anywhere and its heading surely renders. That entry and everything after it
+// are read in full; the rules below decide every Evidence 3d does not admit.
+//
+// Otherwise supersession is inferred at ONE granularity only (#1894,
+// heldScanScope rule 3): a held row in an earlier `### ` entry is not read
+// when the last entry, closing on its own live strict **VERIFY: PASS**,
+// re-ran that row — the same
 // row key under the same key-column name, in a results table of its own, and
 // every row of that key in the entry reads, cell by whole cell, as a
 // recognised clean outcome (heldCovered, heldOutcome) — and every other
@@ -1899,8 +1944,8 @@ func closeVerifyFlipPlanFor(root, briefID string, now time.Time, adjudication *v
 // unstruck, unrouted hold refuses by design.
 //
 // Rule 3c (the latest PASS run only, #4294) is NOT read here: close-verify
-// runs no witness check on the run 3c would stop at, so it keeps rules 3a and
-// 3b. verifyflip and the reconcile fold read 3c through flipHeldRefusal.
+// runs no witness check on the run 3c would stop at, so it keeps rules 3a,
+// 3b and 3d. verifyflip and the reconcile fold read 3c through flipHeldRefusal.
 func closeVerifyHeldRefusal(briefID, status, evidence string) error {
 	return heldRefusal(briefID, status, evidence, false)
 }

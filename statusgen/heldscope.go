@@ -50,11 +50,13 @@ import (
 //  3. Supersession. The Evidence body is split into entries at `### `
 //     headings (level exactly three, column 0) that render as live headings
 //     (heldRender); text before the first such heading is the first entry.
-//     A held occurrence in an earlier entry is dropped in one of two ways,
-//     and otherwise every entry is read. Both need the LAST entry to carry a
-//     live strict **VERIFY: PASS** marker (heldEntryPass): at column 0,
-//     opening its own paragraph, rendered live, and with no VERIFY token
-//     after it anywhere in the entry, quoted or not.
+//     A held occurrence in an earlier entry is dropped in one of the ways
+//     below, and otherwise every entry is read. (a) and (b) need the LAST
+//     entry to carry a live strict **VERIFY: PASS** marker (heldEntryPass):
+//     at column 0, opening its own paragraph, rendered live, and with no
+//     VERIFY token after it anywhere in the entry, quoted or not, and no
+//     verdict that is not a pass after it in any case or form, on its own
+//     line included (heldVerdictAfter, as for (d)).
 //     (a) Row by row: every held occurrence in the earlier entries sits in
 //     the result cell of an aligned row of a results table (rule 1) with a
 //     non-empty row key (heldRowKey), and the last entry covers that key
@@ -161,8 +163,8 @@ import (
 //     fold read it (flipHeldRefusal, latestRun true), and the model autoflip
 //     once that same check has passed on the same run
 //     (verifyPassHeldWitnessed, #6767); close-verify, the verify-gate card
-//     and the sign-off act run no witness check and read rules 3a and 3b
-//     alone. On this read only, a results row of the last entry whose
+//     and the sign-off act run no witness check and read rules 3a, 3b and
+//     3d (below) alone. On this read only, a results row of the last entry whose
 //     outcome cell opens on a clean outcome and carries a note reads clean
 //     when a tool-written witness row of the same key in the same entry
 //     already reads clean (heldCorroboratedNote, #6767): a verifier's
@@ -180,6 +182,37 @@ import (
 //     A hold inside the last entry is read as always, and an earlier entry is
 //     never edited or annotated to get here: it is accurate history, and the
 //     scan simply does not read it.
+//
+//     (d) Superseded entries (the maintainer's ruling,
+//     https://github.com/medici-finance/assay/issues/4993#issuecomment-7115589994,
+//     ratified at https://github.com/medici-finance/assay/issues/4993#issuecomment-7115641667):
+//     the scan does not read an entry that a later strict PASS entry in the
+//     same Evidence supersedes. An entry is exactly what this rule 3 splits
+//     on: the text from one live column-0 level-three heading to the next,
+//     the text before the first heading being the first entry. The
+//     superseding entry is the LAST entry, after the first, that carries the
+//     marker heldEntryPass accepts (live, column 0, its own paragraph, no
+//     VERIFY token after it in that entry; heldPassSupersedes). It
+//     supersedes every entry before it, whatever they record (rows, prose,
+//     verdicts, tables of any shape), only when no verdict that is not a
+//     pass follows the marker anywhere in the Evidence (heldLaterVerdictRe:
+//     BLOCKED, FAIL, PARTIAL, HELD, could-not-check and the like, bold or
+//     plain, at a line start or inside a line, in any case, quoted or not)
+//     and its heading is one the page surely draws (heldBoundaryDoubt, as
+//     for 3c). The superseding entry and everything after it are read at
+//     full strength by every rule above: no wording is exempted, and a hold
+//     there refuses as always. A loose PASS (plain "VERIFY: PASS", a marker
+//     with a note inside the bold, a marker in a quote or a list item)
+//     supersedes nothing. On the flip read (latestRun true) 3d also needs
+//     every Date/Runner row of the run verifyflip credits to lie under the
+//     superseding heading (heldWitnessInLatest), so rows above it that the
+//     witness check counts as that run's are never dropped. Every consumer
+//     reads 3d: the verify-gate card, the sign-off act and awaiting bucket,
+//     close-verify (and the verify-gate-close workflow that runs it), the
+//     acceptance-route signal list, verifyflip and the reconcile fold. The
+//     model autoflip takes 3d's drop only once verifyflip's witness check
+//     has passed on the run it credits (verifyPassHeldWitnessed, as for 3c).
+//     As for 3c, an earlier entry is never edited to get here.
 //
 //  4. Observed output (#4294). An occurrence of "could-not-check" (never HELD)
 //     in a Result-type cell (heldColResult) of an aligned, keyed row is what
@@ -271,6 +304,9 @@ type heldScope struct {
 	covered map[string]bool // the row keys the superseding entry re-ran
 	whole   bool            // the superseding entry re-ran every row key of every earlier entry (rule 3b)
 	latest  bool            // the superseding entry is a dated PASS run on a sure boundary: nothing before it is read (rule 3c)
+	// pass is the first line of the entry whose strict PASS supersedes every
+	// entry before it (rule 3d), or -1: no line before it is read.
+	pass int
 }
 
 // supersedes reports whether the held occurrences found on the given lines
@@ -1129,7 +1165,8 @@ var heldVerdictTokenRe = regexp.MustCompile(`VERIFY:[ \t]*[A-Za-z-]`)
 // it cannot continue a blockquote, a list item, a code span or a strike from
 // the line above. No VERIFY token may follow the marker anywhere in the entry,
 // in any context: a later verdict, even quoted, leaves the entry unsettled.
-func heldEntryPass(lines []string, live []bool, lo, hi int) bool {
+// It returns the marker's line, or -1 when the entry carries none.
+func heldEntryPass(lines []string, live []bool, lo, hi int) int {
 	at := -1
 	for i := lo + 1; i < hi; i++ {
 		m := verifyVerdictBoldRe.FindStringSubmatchIndex(lines[i])
@@ -1145,15 +1182,67 @@ func heldEntryPass(lines []string, live []bool, lo, hi int) bool {
 		at = i
 	}
 	if at < 0 {
-		return false
+		return -1
 	}
 	for i := at; i < hi; i++ {
 		n := len(heldVerdictTokenRe.FindAllStringIndex(lines[i], -1))
 		if i == at && n > 1 || i > at && n > 0 {
-			return false
+			return -1
 		}
 	}
-	return true
+	return at
+}
+
+// heldLaterVerdictRe is a verdict that is not a pass, in any form a verifier
+// writes one: bold or plain, at a line start or inside a line, upper or lower
+// case, with emphasis around the colon ("**VERIFY:** BLOCKED"). Rule 3d reads
+// it on every line after the superseding marker, fenced code, comments and
+// quotes included, so it can only keep supersession off (fail closed).
+var heldLaterVerdictRe = regexp.MustCompile(`(?i)(?:^|[^a-z0-9])verify[ \t*_]*:[ \t*_]*(?:block\w*|fail\w*|partial\w*|held|hold\w*|could-not-\w+|incomplete|inconclusive)\b`)
+
+// heldVerdictAfter reports whether a verdict that is not a pass
+// (heldLaterVerdictRe) follows the strict marker on line at: later on that
+// line or on any line after it. Every rule 3 supersession needs it false.
+func heldVerdictAfter(lines []string, at int) bool {
+	m := verifyVerdictBoldRe.FindStringIndex(lines[at])
+	if m == nil || heldLaterVerdictRe.MatchString(lines[at][m[1]:]) {
+		return true
+	}
+	for _, l := range lines[at+1:] {
+		if heldLaterVerdictRe.MatchString(l) {
+			return true
+		}
+	}
+	return false
+}
+
+// heldPassSupersedes returns the first line of the entry whose live strict
+// **VERIFY: PASS** supersedes every entry before it (rule 3d), and whether
+// there is one. It is the LAST entry after the first that carries the marker
+// heldEntryPass accepts; the text before the first heading is never one.
+// Supersession is off when any later verdict reads BLOCKED, FAIL, PARTIAL or
+// another non-pass state (heldLaterVerdictRe) anywhere after that marker, on
+// its own line or any later one, and when the entry's heading is not one the
+// page surely draws (heldBoundaryDoubt, the check rule 3c applies).
+func heldPassSupersedes(lines []string, live, inFence []bool, html []int, starts []int) (int, bool) {
+	for e := len(starts) - 1; e >= 1; e-- {
+		lo, hi := starts[e], len(lines)
+		if e+1 < len(starts) {
+			hi = starts[e+1]
+		}
+		at := heldEntryPass(lines, live, lo, hi)
+		if at < 0 {
+			continue
+		}
+		if heldVerdictAfter(lines, at) {
+			return -1, false
+		}
+		if heldBoundaryDoubt(lines, live, inFence, html, lo, lo, len(lines)) {
+			return -1, false
+		}
+		return lo, true
+	}
+	return -1, false
 }
 
 // heldCellRanges returns the byte range of each cell's content in a table
@@ -1737,7 +1826,8 @@ func heldWitnessTrailerEnd(lines []string, inFence []bool, header, j, hi int) in
 
 // heldScanScope returns what the held scan reads of evidence (split on "\n"),
 // under the rules documented above. Rule 3c is read only when latestRun is
-// true, which only the flip-side callers pass (flipHeldRefusal).
+// true, which only the flip-side callers pass (flipHeldRefusal). Rule 3d is
+// read on every read, and on that one only behind heldWitnessInLatest.
 func heldScanScope(evidence string, latestRun bool) heldScope {
 	lines := strings.Split(evidence, "\n")
 	out := make([]heldLineRead, len(lines))
@@ -1852,10 +1942,10 @@ func heldScanScope(evidence string, latestRun bool) heldScope {
 
 	heldCanonKeys(out, keys, starts[len(starts)-1])
 
-	scope := heldScope{lines: out, from: -1}
+	scope := heldScope{lines: out, from: -1, pass: -1}
 	if len(starts) > 1 {
 		last := starts[len(starts)-1]
-		if heldEntryPass(lines, live, last, len(lines)) {
+		if at := heldEntryPass(lines, live, last, len(lines)); at >= 0 && !heldVerdictAfter(lines, at) {
 			if latestRun && heldLatestRule && aligned[len(starts)-1] && heldLatestClean(lines, live, out, tables, last) &&
 				heldRunDated(lines[last:], inFence[last:]) && !heldBoundaryDoubt(lines, live, inFence, html, last, last, len(lines)) &&
 				heldWitnessInLatest(evidence) {
@@ -1869,8 +1959,26 @@ func heldScanScope(evidence string, latestRun bool) heldScope {
 			}
 		}
 	}
+	// Rule 3d, on every read: an entry a later strict PASS supersedes is not
+	// read. The superseding entry is the last one carrying the marker, so
+	// where rules 3a to 3c apply it is the same last entry and 3d only
+	// widens what they drop to everything before it.
+	if heldPassRule {
+		// On the flip read the run verifyflip credits must also lie under the
+		// superseding heading (heldWitnessInLatest, as for 3c): rows above it
+		// that the witness check counts as this run's are not superseded by it.
+		if from, ok := heldPassSupersedes(lines, live, inFence, html, starts); ok && (!latestRun || heldWitnessInLatest(evidence)) {
+			scope.pass = from
+		}
+	}
 	return scope
 }
+
+// heldPassRule turns rule 3d on. It is always true in the binary; it is a
+// variable only so the tests of rules 3a to 3c can read those rules alone, as
+// they still decide every Evidence 3d does not admit (a later non-pass
+// verdict, a doubtful heading).
+var heldPassRule = true
 
 // heldWitnessInLatest reports whether every Date/Runner row of the run
 // verifyflip credits for the latest PASS (flipLatestPass, the very selector

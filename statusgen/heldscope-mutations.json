@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction|TestHeldLatest|TestHeldCarryElement|TestHeldContainerFence|TestVerifyflip|TestHeldWitnessNonZero|TestHeldNonZero|TestHeldProse|TestSh' -count=1 -timeout 300s",
+  "test": "go test . -run 'TestHeldScope|TestHeldScan|TestHeldRegex|TestCloseVerify|TestVerifyPassHeld|HeldContradiction|TestHeldLatest|TestHeldCarryElement|TestHeldContainerFence|TestVerifyflip|TestHeldWitnessNonZero|TestHeldNonZero|TestHeldProse|TestSh|TestHeldSupersede|TestHeldLaterVerdictRe' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — supersession drops every earlier hold (the S1 defect)",
     "file": "heldscope.go",
@@ -226,8 +226,8 @@
     {
       "name": "S1: the scan drops every earlier hit without the cover check",
       "file": "verifyissues.go",
-      "old": "if superseded && i < scope.from {",
-      "new": "if (superseded || scope.from >= 0) && i < scope.from {"
+      "old": "if covered && i < scope.from {",
+      "new": "if (covered || scope.from >= 0) && i < scope.from {"
     },
     {
       "name": "S1-r2: any visible result covers, beside a placeholder or note",
@@ -994,8 +994,8 @@
     {
       "name": "#4294 observe: fail is not a hold word",
       "file": "heldscope.go",
-      "old": "|fail\\w*|",
-      "new": "|"
+      "old": "|fail\\w*|skip",
+      "new": "|skip"
     },
     {
       "name": "#4294 observe: skip is not a hold word",
@@ -1078,14 +1078,14 @@
     {
       "name": "#4294 observe: incomplete is not a hold word",
       "file": "heldscope.go",
-      "old": "|incomplete|",
-      "new": "|"
+      "old": "|incomplete|partial",
+      "new": "|partial"
     },
     {
       "name": "#4294 observe: partial is not a hold word",
       "file": "heldscope.go",
-      "old": "|partial\\w*|",
-      "new": "|"
+      "old": "|partial\\w*|offline",
+      "new": "|offline"
     },
     {
       "name": "#4294 observe: offline is not a hold word",
@@ -1686,6 +1686,90 @@
       "file": "heldscope.go",
       "old": "\tif items && heldOneLineItem(l) {",
       "new": "\tif false && items && heldOneLineItem(l) {"
+    },
+    {
+      "name": "3d: rule 3d never supersedes (an earlier hold a later strict PASS entry supersedes still refuses)",
+      "file": "heldscope.go",
+      "old": "\t\t\tscope.pass = from\n",
+      "new": "\t\t\t_, scope.pass = from, -1\n"
+    },
+    {
+      "name": "3d: the superseding entry is not read at full strength (every hit drops once 3d applies)",
+      "file": "verifyissues.go",
+      "old": "if i < scope.pass {",
+      "new": "if scope.pass >= 0 {"
+    },
+    {
+      "name": "3d: the flip read supersedes without the witness check on the credited run",
+      "file": "heldscope.go",
+      "old": "ok && (!latestRun || heldWitnessInLatest(evidence))",
+      "new": "ok"
+    },
+    {
+      "name": "3d: a later non-pass verdict on a later line does not keep the hold",
+      "file": "heldscope.go",
+      "old": "for _, l := range lines[at+1:] {",
+      "new": "for _, l := range lines[at+1 : at+1] {"
+    },
+    {
+      "name": "3d: a later non-pass verdict on the marker's own line does not keep the hold",
+      "file": "heldscope.go",
+      "old": "if m == nil || heldLaterVerdictRe.MatchString(lines[at][m[1]:]) {",
+      "new": "if m == nil {"
+    },
+    {
+      "name": "3d: a superseding heading the page may not draw still supersedes",
+      "file": "heldscope.go",
+      "old": "\t\tif heldBoundaryDoubt(lines, live, inFence, html, lo, lo, len(lines)) {\n\t\t\treturn -1, false\n\t\t}\n",
+      "new": "\t\t_ = heldBoundaryDoubt\n"
+    },
+    {
+      "name": "3d: the first strict PASS entry supersedes, not the last",
+      "file": "heldscope.go",
+      "old": "for e := len(starts) - 1; e >= 1; e-- {",
+      "new": "for e := 1; e < len(starts); e++ {"
+    },
+    {
+      "name": "3d: the autoflip drops superseded holds without the witness check",
+      "file": "verifyissues.go",
+      "old": "\t\trefusals = superseded\n",
+      "new": "\t\trefusals = superseded[:0]\n"
+    },
+    {
+      "name": "3d: a later PARTIAL verdict does not keep the hold",
+      "file": "heldscope.go",
+      "old": "fail\\w*|partial\\w*|held|",
+      "new": "fail\\w*|held|"
+    },
+    {
+      "name": "3d: a later FAIL verdict does not keep the hold",
+      "file": "heldscope.go",
+      "old": "block\\w*|fail\\w*|partial",
+      "new": "block\\w*|partial"
+    },
+    {
+      "name": "3d: a later BLOCKED verdict does not keep the hold",
+      "file": "heldscope.go",
+      "old": "(?:block\\w*|fail",
+      "new": "(?:fail"
+    },
+    {
+      "name": "3d: the later-verdict read is case-sensitive (verify: blocked is missed)",
+      "file": "heldscope.go",
+      "old": "`(?i)(?:^|[^a-z0-9])verify[",
+      "new": "`(?:^|[^a-z0-9])verify["
+    },
+    {
+      "name": "3d: the later-verdict read misses an emphasised label (**VERIFY:** BLOCKED)",
+      "file": "heldscope.go",
+      "old": "verify[ \\t*_]*:[ \\t*_]*(?:block",
+      "new": "verify[ \\t]*:[ \\t]*(?:block"
+    },
+    {
+      "name": "3d: rules 3a to 3c ignore a later non-pass verdict on the marker's line",
+      "file": "heldscope.go",
+      "old": "at >= 0 && !heldVerdictAfter(lines, at) {",
+      "new": "at >= 0 {"
     }
   ]
 }
