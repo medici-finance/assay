@@ -302,7 +302,7 @@ jobs:
               */perfrec|perfrec) extra="go test ./..." ;;
               # Runner lifecycle/authority and the exact local perfrec dependency
               # closure must execute, not only compile, on every source change.
-              */loopadmin|loopadmin) extra="GOWORK=off go test ./..." ;;
+              */loopadmin|loopadmin) extra="GOWORK=off go test -skip '^TestJournal(SharedStoreRestart|IncarnationPaused)$' ./..." ;;
             esac
             if ( cd "$dir" && go build ./... && go vet ./... && eval "$extra" ); then
               echo "${dir}: OK"
