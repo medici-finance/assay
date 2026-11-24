@@ -20,7 +20,7 @@ func (f *subjectForge) ListCommentsTyped(deskkit.ForgeRepo, int, deskkit.TargetK
 	return f.comments, nil
 }
 
-func (f *subjectForge) GetIssue(deskkit.ForgeRepo, int) (*deskkit.Issue, error) {
+func (f *subjectForge) GetIssueTyped(deskkit.ForgeRepo, int, deskkit.TargetKind) (*deskkit.Issue, error) {
 	return f.issue, nil
 }
 

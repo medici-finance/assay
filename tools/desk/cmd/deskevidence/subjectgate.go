@@ -116,7 +116,7 @@ func rulingSubjectGateAt(fg deskkit.Forge, fr deskkit.ForgeRepo, root, target st
 			return deskkit.Refused(fmt.Sprintf("refused: landing %s: the ruling comment %d is not on %s#%d (deleted or never there)", target, commentID, linkRepo.Slug(), issueNo))
 		}
 	}
-	if iss, ierr := fg.GetIssue(linkRepo, issueNo); ierr == nil && iss != nil {
+	if iss, ierr := fg.GetIssueTyped(linkRepo, issueNo, deskkit.TargetIssue); ierr == nil && iss != nil {
 		in.Issue = &deskkit.RulingIssueObservation{Repo: linkRepo.Slug(), Number: iss.Number, Body: iss.Body}
 	}
 	r := deskkit.RulingSubjectGate(in)
