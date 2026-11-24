@@ -69,7 +69,7 @@ func TestTargetRefusedPreClaim(t *testing.T) {
 			if c.optIn {
 				tgOptIn(t, home)
 			}
-			s.replies = happyReplies("/private/tmp/verifier-home")
+			s.replies = happyReplies(t.TempDir())
 			if rc := run(c.args(root)); rc != deskkit.ExitRefused {
 				t.Fatalf("%s: rc = %d, want %d", c.name, rc, deskkit.ExitRefused)
 			}
@@ -89,7 +89,7 @@ func TestTargetHeadNotFetched(t *testing.T) {
 	plantScripts(t, root)
 	t.Setenv("DESK_LOOP", "verify-desk")
 	tgOptIn(t, home)
-	s.replies = append([]reply{{match: "rev-parse --verify --quiet", code: 1}}, happyReplies("/private/tmp/verifier-home")...)
+	s.replies = append([]reply{{match: "rev-parse --verify --quiet", code: 1}}, happyReplies(t.TempDir())...)
 	if rc := run(tgArgs(t, root, "--target-change", "12", "--target-head", tgHead)); rc != deskkit.ExitUnverifiable {
 		t.Fatalf("rc = %d, want %d", rc, deskkit.ExitUnverifiable)
 	}
@@ -109,7 +109,7 @@ func TestTargetCutsAtHead(t *testing.T) {
 	plantScripts(t, root)
 	t.Setenv("DESK_LOOP", "verify-desk")
 	tgOptIn(t, home)
-	s.replies = happyReplies("/private/tmp/verifier-home")
+	s.replies = happyReplies(t.TempDir())
 	prompt := filepath.Join(t.TempDir(), "p.md")
 	args := []string{"example-stream/07", "--root", root, "--repo", allowedRepo, "--kit", "verifier",
 		"--model", "gpt-6-astra", "--brief", "spec.md", "--prompt-file", prompt, "--target-change", "12", "--target-head", tgHead}
