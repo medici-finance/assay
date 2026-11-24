@@ -2803,7 +2803,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		}
 		container, admissionErr = containerAdmission(*admissionReceipt, root, path)
 		if admissionErr != nil {
-			fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
 			return verifyrunExitCouldNot
 		}
 		sourceReceipt = container.cell.Acceptance != nil && container.cell.Acceptance.SourceRecord != ""
@@ -2834,7 +2834,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		var admissionErr error
 		attestation, path, admittedHome, npmStaging, admissionErr = verifierAdmission(admissionRoot, path)
 		if admissionErr != nil {
-			fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
 			return verifyrunExitCouldNot
 		}
 		// A cross-repository admission has moved path to the tracking checkout,
