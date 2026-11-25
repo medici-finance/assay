@@ -182,7 +182,20 @@ func attestVerifierDispatch(o dispatchOpts, repo, home string) (string, error) {
 		}
 		trackingRoot = dl.trackingRoot
 	}
-	if err := deskkit.PrepareVerifierAttestationAt(home, repo, brief, o.model, o.tier, trackingRoot); err != nil {
+	if o.hasVerifierTarget() {
+		// Pre-merge admission (#7623) reads the change and its reviews from the forge
+		// BEFORE the run record exists; a forge that cannot be resolved is could-not-check.
+		if trackingRoot != "" {
+			return "", deskkit.Refused("a pre-merge verifier target is never admitted for a cross-repository brief")
+		}
+		f, err := deskkit.ResolveVerifierHeadForge(repo)
+		if err != nil {
+			return "", err
+		}
+		if err := deskkit.PrepareVerifierHeadAttestationAt(home, repo, brief, o.model, o.tier, o.verifierTarget(), f); err != nil {
+			return "", err
+		}
+	} else if err := deskkit.PrepareVerifierAttestationAt(home, repo, brief, o.model, o.tier, trackingRoot); err != nil {
 		return "", err
 	}
 	// Marked BEFORE the stamp is issued: if the admission below is held or
