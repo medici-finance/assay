@@ -178,6 +178,11 @@ type dispatchOpts struct {
 	// repo its item-key prefix or brief-v2 id names, and its deliverable PR opens in --repo. Without
 	// it, a --repo that differs from the resolved repo stays the HARD FAIL (deliverable.go).
 	crossRepo bool
+	// targetChange and targetHead are --target-change / --target-head (#7623): a verifier
+	// run admitted at an UNMERGED change head instead of merged main. Both or neither;
+	// verifier kit only; admission rules live in deskkit.AdmitVerifierHead.
+	targetChange int
+	targetHead   string
 	// contextSnapshot and contextReceipt are --context-snapshot / --context-receipt (statusgen/21,
 	// pickup.go): the receipt is rechecked against the snapshot before the claim.
 	contextSnapshot, contextReceipt string
@@ -294,7 +299,7 @@ func dispatch(o dispatchOpts) error {
 		}
 		shownBranch := branch
 		if plan.detached {
-			shownBranch = fmt.Sprintf("(detached off origin/main — %s touches no branch)", o.kit)
+			shownBranch = fmt.Sprintf("(detached off %s — %s touches no branch)", detachedBaseLabel(o), o.kit)
 		}
 		claimBanner := ""
 		if ns := plan.claimNamespace(); ns != repo {
@@ -589,7 +594,7 @@ func dispatch(o dispatchOpts) error {
 		idSuffix = " identity=" + deskkit.RoleIdentityLabel(plan.identityRole)
 	}
 	if plan.detached {
-		o.say("%s OK: %s detached off origin/main (%s: no branch)%s", stepWorktreeCreate, home, o.kit, idSuffix)
+		o.say("%s OK: %s detached off %s (%s: no branch)%s", stepWorktreeCreate, home, detachedBaseLabel(o), o.kit, idSuffix)
 	} else {
 		o.say("%s OK: %s on %s%s", stepWorktreeCreate, home, branch, idSuffix)
 	}
@@ -969,6 +974,9 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	if o.kit == "verifier" && (o.model == "" || o.brief == "" || o.pr != 0) {
 		return plan, deskkit.Refused("verifier dispatch requires explicit --model and a source brief; --pr is not a pre-work attestation target")
 	}
+	if err := verifierTargetShape(o); err != nil {
+		return plan, err
+	}
 
 	// --worktree is accepted ONLY together with --dry-run. On a real dispatch the home is the
 	// path deskwt printed and nothing else, so an operator-stated one must never reach it —
@@ -1097,6 +1105,11 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		repo = dl.repo
 	} else if repo, err = o.resolveRepo(); err != nil {
 		return plan, err
+	}
+	if o.hasVerifierTarget() {
+		if err := verifierTargetPreconditions(o, dl, repo); err != nil {
+			return plan, err
+		}
 	}
 	if !deskkit.IsAllowedRepo(repo) {
 		return plan, deskkit.Refused(fmt.Sprintf(

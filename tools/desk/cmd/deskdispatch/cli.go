@@ -86,6 +86,8 @@ func dispatchBindings(mode string) []cli.Binding {
 			str("worktree", "", "operator-stated existing home, with --dry-run only"), boolean("rework", "follow up a merged delivery on a new branch"),
 			boolean("attest-worker", "fresh worker: create, stamp, close and read back pre-work attestation"),
 			boolean("cross-repo", "brief homed in tracking repo; deliverable in --repo with Cross-repo-brief trailer"),
+			integer("target-change", "verifier kit only: unmerged change whose head the run is admitted at (with --target-head; opted-in repos only)"),
+			str("target-head", "", "verifier kit only: exact 40-hex head of --target-change the reviewer App approved; a moved head voids the run"),
 			str("context-snapshot", "", "statusgen context snapshot DIR; recheck --context-receipt before the claim"),
 			str("context-receipt", "", "context-handoff receipt the brief was authored against (with --context-snapshot)"),
 			str(deskkit.ScanOverrideFlag, "", deskkit.OutboundOverrideHelp), boolean("kits", "list embedded prompt kits and exit"))
@@ -104,6 +106,9 @@ func newDispatchCLI(mode string, env dispatchCLI) *cobra.Command {
 		"Modes: --stamp-only, --check-verifier, --attest-verifier, --stage-npm. Request each mode's --help.\n" +
 		"Dispatch steps: " + strings.Join(dispatchSteps, ", ") + ".\n" +
 		"Operational reference: docs/desk-tools/deskdispatch.md"
+	if mode == "" || mode == "--check-verifier" || mode == "--attest-verifier" {
+		root.Long += "\n\n" + verifierTargetHelp
+	}
 	set := cli.Declare(root, dispatchBindings(mode)...)
 	if mode == "" {
 		root.Long += "\nAfter an explicit reclaim of an unlaunched lease, run " +
@@ -192,6 +197,8 @@ func newDispatchCLI(mode string, env dispatchCLI) *cobra.Command {
 			o.rework = v.Bool("rework")
 			o.attestWorker = v.Bool("attest-worker")
 			o.crossRepo = v.Bool("cross-repo")
+			o.targetChange = v.Int("target-change")
+			o.targetHead = v.String("target-head")
 			o.contextSnapshot = v.String("context-snapshot")
 			o.contextReceipt = v.String("context-receipt")
 			override = v.String(deskkit.ScanOverrideFlag)
