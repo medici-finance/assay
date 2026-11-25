@@ -755,10 +755,16 @@ explicit disposition on a finding class — "won't fix", "fixed a different way"
 separately", or a dispute backed with evidence — is an ANSWER to that class, with or without a
 code change. Your next move on that class is exactly one of two:
 
-1. **Accept** — the class resolves. The resolution evidence is the disposition's own words with
-   the head they were made at, not a code read: `resolved-by-author-disposition` is a legitimate
-   resolution, recorded in the verdict's typed finding block (clause 14) so a later reader sees
-   why the class closed. **The flip gates are unchanged:** the common case — a "won't fix" with
+1. **Accept** — the class resolves. The resolution evidence is the disposition itself, not a
+   code read: `resolved-by-author-disposition` is a legitimate resolution, recorded in the
+   verdict's typed finding block (clause 14) so a later reader sees why the class closed.
+   Encode it in `review-finding/v1` exactly this way: `state: resolved` (v1's state set is
+   closed, so the disposition is never the state — an unknown state refuses the whole block);
+   `evidenceHead` = the head THIS review is taken at, never the head the disposition was made
+   at (a resolution whose `evidenceHead` is not the reviewed head is reset to
+   `fixed-awaiting-review` and the class keeps blocking); `resolution` carrying
+   `resolved-by-author-disposition`; and the disposition's comment link and the head it was
+   made at in `evidence` or `explanation`. **The flip gates are unchanged:** the common case — a "won't fix" with
    no new commit — leaves your own standing CHANGES_REQUESTED at an unchanged head, and the
    same-head CR-to-APPROVE rule (clause 12) plus the flip gate's standing-CR refusal still
    stand. The accepted disposition ends your ARGUMENT, not the pipeline's gate: the CR clears

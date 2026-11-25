@@ -220,6 +220,7 @@ var reviewObligations = []obligation{
 
 	{22, "An explicit disposition on a finding class", bothLanes},
 	{22, "`resolved-by-author-disposition` is a legitimate resolution", bothLanes},
+	{22, "`evidenceHead` = the head THIS review is taken at", bothLanes},
 	{22, "The accepted disposition ends your ARGUMENT, not the pipeline's gate", bothLanes},
 	{22, "name the class in your verdict as an arbiter hand-off for the desk to file", bothLanes},
 	{22, "The hand-off changes nothing about blocking", bothLanes},
