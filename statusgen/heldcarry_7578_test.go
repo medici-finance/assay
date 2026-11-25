@@ -82,6 +82,11 @@ func TestHeldCarryProseStillDoubts(t *testing.T) {
 	rawRow := strings.Replace(vlRow2, "| 2026-08-13 |", "| 2026-08-13 <textarea> |", 1)
 	carryRow := strings.Replace(vlRow2, "| 2026-08-13 |", "| 2026-08-13 <s> |", 1)
 	closeRow := strings.Replace(vlRow2, "| 2026-08-13 |", "| 2026-08-13 </s> |", 1)
+	// object, applet and marquee push their own active-formatting marker, so
+	// closing the cell keeps a formatting element opened before them open.
+	markRow := func(tag string) string {
+		return strings.Replace(vlRow2, "| 2026-08-13 |", "| 2026-08-13 <s><"+tag+"> |", 1)
+	}
 	header := strings.SplitN(witnessTableFor(vfRow1), "\n", 2)[0]
 	cases := []struct{ name, text string }{
 		{"open a href", "See <a href=x>the log"},
@@ -102,6 +107,9 @@ func TestHeldCarryProseStillDoubts(t *testing.T) {
 		{"header with no delimiter row", "\n" + header + "\n" + vlRow2 + "\n" + carryRow},
 		{"fence ends the table", "\n" + witnessTableFor(vfRow1) + "\n```\nx\n```\n" + carryRow},
 		{"closer in a witness row", "x <s>\n\n" + witnessTableFor(vfRow1, closeRow)},
+		{"object in witness row", "\n" + witnessTableFor(vfRow1, markRow("object"))},
+		{"applet in witness row", "\n" + witnessTableFor(vfRow1, markRow("applet"))},
+		{"marquee in witness row", "\n" + witnessTableFor(vfRow1, markRow("MARQUEE"))},
 	}
 	for _, c := range cases {
 		if !hc7578Carry(c.text) {

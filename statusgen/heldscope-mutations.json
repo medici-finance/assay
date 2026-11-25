@@ -1746,6 +1746,12 @@
       "file": "heldscope.go",
       "old": "} else if n, ok := heldCloseTag(l[p:]); ok && heldCarryTags[n] {",
       "new": "} else if false {"
+    },
+    {
+      "name": "#7578 carry: object, applet and marquee do not end the witness exemption",
+      "file": "heldscope.go",
+      "old": "tr td th template select object applet marquee`) {",
+      "new": "tr td th template select`) {"
     }
   ]
 }

@@ -2114,10 +2114,13 @@ func heldCarryElement(lines []string, inFence []bool) bool {
 // heldCellEscapeTags are the elements whose tags, in a table cell, can carry
 // what follows out of that cell: a table-structure tag closes the cell or the
 // table early, so the rest of the row renders outside it; a template's end
-// tag is ignored there, so the template swallows the rest of the page; and a
-// select switches the parser to its own mode. A witness row holding any of
-// them, as an opener or a closer, anywhere on the line, is not a contained
-// cell (heldCarryView).
+// tag is ignored there, so the template swallows the rest of the page; a
+// select switches the parser to its own mode; and object, applet and marquee
+// each push their own active-formatting marker, so closing the cell clears
+// the list only back to that inner marker and a formatting element opened
+// before it in the cell is reopened after the table. A witness row holding
+// any of them, as an opener or a closer, anywhere on the line, is not a
+// contained cell (heldCarryView).
 var heldCellEscapeTags = map[string]bool{}
 
 // heldWitnessDelims maps each verifyrun witness table header line
@@ -2126,7 +2129,7 @@ var heldWitnessDelims = map[string]string{}
 
 func init() {
 	for _, t := range strings.Fields(`table caption colgroup col tbody thead tfoot
-		tr td th template select`) {
+		tr td th template select object applet marquee`) {
 		heldCellEscapeTags[t] = true
 	}
 	for _, h := range []string{witnessHeader, witnessHeaderFailFirst} {
@@ -2148,16 +2151,20 @@ func init() {
 //     page may read as part of an HTML block is read raw.
 //   - In a row of a verifyrun witness table, identified exactly, the "<" of
 //     each heldCarryTags opener and closer is hidden. Each cell renders as a
-//     td, and an HTML parser closes every formatting element (and details,
-//     del, ins) opened inside a td when that td closes, so such an element
-//     cannot reach past its cell; a closer there cannot close one opened
-//     outside it either. The table is exact: a header line byte for byte in
-//     heldWitnessHeaders at the first line or after a blank line, verifyrun's
-//     own delimiter row under it, every line from the header to the row
-//     starting "|" at column 0 and rendered as block text, with no carriage
-//     return, and the row itself a witness row (isWitnessRow). A row holding
-//     any heldCellEscapeTags tag is not exempt, and ends the exemption for
-//     the rest of the table. heldRawTags openers in a row still count.
+//     td. When a td closes, an HTML parser pops every element opened inside
+//     it (details, del and ins included) and clears the active formatting
+//     elements back to the last marker. That marker is the td's own unless
+//     the cell opened an element that pushes one: td, th, caption, template,
+//     object, applet or marquee, all in heldCellEscapeTags. In a row holding
+//     none of them, no such element can reach past its cell, and a closer
+//     there cannot close one opened outside it either. The table is exact: a
+//     header line byte for byte in heldWitnessHeaders at the first line or
+//     after a blank line, verifyrun's own delimiter row under it, every line
+//     from the header to the row starting "|" at column 0 and rendered as
+//     block text, with no carriage return, and the row itself a witness row
+//     (isWitnessRow). A row holding any heldCellEscapeTags tag is not exempt,
+//     and ends the exemption for the rest of the table. heldRawTags openers
+//     in a row still count.
 //
 // Everything else, prose and table cells written by hand included, is read
 // as before.
