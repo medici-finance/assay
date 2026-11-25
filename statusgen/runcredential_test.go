@@ -543,3 +543,71 @@ func TestRunCredMintStubbed(t *testing.T) {
 		t.Fatal("the stub wrote a credential")
 	}
 }
+
+// regression: #7623
+// TestRunCredNeverInArgv: the verifier's run credential never appears on a
+// command line. The minter is handed only the role, the repository and an
+// output path; a forge row's own process sees the credential's path in its
+// environment and never the value on its argv; and the cleanup that revokes
+// it starts no process (it is an in-process request carrying the value in a
+// header), so no step's argv, log or output ever holds the value.
+func TestRunCredNeverInArgv(t *testing.T) {
+	t.Run("mint and cleanup", func(t *testing.T) {
+		res, out, _, calls, log := rcRun(t, true, "ok")
+		if res.code != verifyrunExitPass {
+			t.Fatalf("exit %d, want pass:\n%s", res.code, out)
+		}
+		args, err := os.ReadFile(log)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(args), rcMinted) {
+			t.Fatalf("the credential value reached the minter's argv: %q", args)
+		}
+		if strings.Count(string(args), "\n") != 1 {
+			t.Fatalf("desktoken ran %d times; the cleanup must start no process", strings.Count(string(args), "\n"))
+		}
+		revoked := false
+		for _, s := range calls.seen {
+			if strings.HasPrefix(s, "DELETE ") {
+				revoked = revoked || s == "DELETE /installation/token Bearer "+rcMinted
+			}
+		}
+		if !revoked {
+			t.Fatalf("the cleanup did not revoke through the request header: %q", calls.seen)
+		}
+		if strings.Contains(out, rcMinted) {
+			t.Fatal("the credential value reached the run's output")
+		}
+	})
+	t.Run("forge row", func(t *testing.T) {
+		plan := resolveShellPlan()
+		if !plan.ok {
+			t.Skip("no runnable shell: " + plan.reason)
+		}
+		if _, err := exec.LookPath("ps"); err != nil {
+			t.Skip("no ps to read a row's own argv")
+		}
+		path := rcCredFile(t, rcRead)
+		prev := runReadCredentialMint
+		runReadCredentialMint = func(string, string) (string, error) { return "", nil }
+		t.Cleanup(func() { runReadCredentialMint = prev })
+		cred := &runReadCredential{repo: "example-org/one"}
+		cred.once.Do(func() { cred.path, cred.secret = path, rcMinted })
+		admitted := plan
+		admitted.env = admittedRowEnv(os.Environ())
+		admitted.readCred = cred
+		// The row prints its own shell's full command line and every argument.
+		row := `printf 'argv=%s|%s\n' "$0" "$*"; ps -o args= -p $$ # --acceptance-forge`
+		got := runVerifyCommandWith(t.TempDir(), row, 30*time.Second, nil, admitted, rowShellSh)
+		if got.couldNotRun || got.exit != 0 {
+			t.Fatalf("row did not run: %+v", got)
+		}
+		if !strings.Contains(string(got.output), "argv=") {
+			t.Fatalf("row printed no argv: %q", got.output)
+		}
+		if strings.Contains(string(got.output), rcMinted) {
+			t.Fatalf("the credential value reached a forge row's argv: %q", got.output)
+		}
+	})
+}

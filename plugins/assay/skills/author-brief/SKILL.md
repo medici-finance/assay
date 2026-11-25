@@ -645,7 +645,7 @@ whole plan in context.
 ## Enforcement status of these rules (generated — do not hand-edit)
 
 Regenerate with `statusgen enforcement-status` piped through the skillslint sync
-(`go run ./tools/skillslint --sync`); the byte-diff gate in the skillslint CI job fails
+(`cd tools/skillslint && go run . --sync --root ../..`); the byte-diff gate in the skillslint CI job fails
 if this block drifts from the lint's rule registry. Hand-edit it and the gate reddens.
 
 This table reports what `statusgen --lint` enforces, **not** what the methodology

@@ -1,0 +1,173 @@
+{
+  "test": "go test ./internal/deskkit/ ./cmd/deskdispatch/ -count=1 -timeout 300s -run '^TestPremerge|^TestTarget'",
+  "control": {
+    "name": "CONTROL - a closed change reads as open",
+    "file": "internal/deskkit/verifierhead.go",
+    "old": "\tif pr.State != \"open\" {\n",
+    "new": "\tif pr.State == \"open\" {\n"
+  },
+  "mutations": [
+    {
+      "name": "drop the approval check (an unapproved head is admitted)",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif why := premergeApprovalProblem(reviewer, reviews, t.Head); why != \"\" {\n",
+      "new": "\tif why := premergeApprovalProblem(reviewer, reviews, t.Head); false && why != \"\" {\n"
+    },
+    {
+      "name": "count any login's approval, not only the reviewer App's",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\t\tif !SameActor(r.Author.Login, reviewer) {\n\t\t\tcontinue\n\t\t}\n\t\tif r.State ==",
+      "new": "\t\tif !SameActor(r.Author.Login, reviewer) {\n\t\t\tr.Author.Login = reviewer\n\t\t}\n\t\tif r.State =="
+    },
+    {
+      "name": "a later approval launders a reviewer-App request for changes at the same head",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\t\tif r.State == \"CHANGES_REQUESTED\" && r.CommitID == head {\n",
+      "new": "\t\tif false && r.State == \"CHANGES_REQUESTED\" && r.CommitID == head {\n"
+    },
+    {
+      "name": "drop the head-bind (a moved head is admitted)",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif pr.HeadSHA != t.Head {\n",
+      "new": "\tif false && pr.HeadSHA != t.Head {\n"
+    },
+    {
+      "name": "drop the head re-read after the reviews",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif _, err := premergeHead(f, fr, t); err != nil {\n\t\treturn err\n\t}\n\t// Last,",
+      "new": "\t// Last,"
+    },
+    {
+      "name": "drop the use-point recheck (admission is never re-read after dispatch)",
+      "file": "internal/deskkit/verifierattestation.go",
+      "old": "\t\tif err = AdmitVerifierHead(f, r.Binding.Repo, bindingHeadTarget(r.Binding)); err != nil {\n",
+      "new": "\t\tif false {\n"
+    },
+    {
+      "name": "drop the opt-in check (every repository admits pre-merge runs)",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif err := VerifierPremergeOptedIn(repo); err != nil {\n\t\treturn err\n\t}\n\treviewer, excluded",
+      "new": "\treviewer, excluded"
+    },
+    {
+      "name": "allow the implementer as witness (author exclusion dropped)",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\t\tif SameActor(author, login) {\n",
+      "new": "\t\tif false && SameActor(author, login) {\n"
+    },
+    {
+      "name": "an unreadable change author is admitted",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif strings.TrimSpace(author) == \"\" {\n",
+      "new": "\tif false {\n"
+    },
+    {
+      "name": "an unreadable review list reads as no reviews to refuse on",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif err != nil {\n\t\treturn Unverifiable(fmt.Sprintf(\"pre-merge verifier admission could not read change %d's reviews\", t.Change), err)\n",
+      "new": "\tif false {\n\t\treturn Unverifiable(fmt.Sprintf(\"pre-merge verifier admission could not read change %d's reviews\", t.Change), err)\n"
+    },
+    {
+      "name": "a pre-merge run lands Evidence",
+      "file": "internal/deskkit/verifierattestation.go",
+      "old": "\t\tif phase == verifierEvidence {\n\t\t\treturn r.VerifierReceipt, Refused(\"a pre-merge verifier run never lands Evidence",
+      "new": "\t\tif false {\n\t\t\treturn r.VerifierReceipt, Refused(\"a pre-merge verifier run never lands Evidence"
+    },
+    {
+      "name": "an abbreviated head is accepted as a target",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "`^[0-9a-f]{40}$`",
+      "new": "`^[0-9a-fA-F]{7,40}$`"
+    },
+    {
+      "name": "drop the security-lane requirement (correctness approval alone admits)",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif why := premergeSecurityProblem(reviewer, reviews, t.Head); why != \"\" {\n",
+      "new": "\tif why := premergeSecurityProblem(reviewer, reviews, t.Head); false && why != \"\" {\n"
+    },
+    {
+      "name": "a security pass at any commit counts",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\t\tcase HasSecurityReviewPass(r.Body) && r.CommitID == head && premergeSecPassGrants(r):\n",
+      "new": "\t\tcase HasSecurityReviewPass(r.Body) && premergeSecPassGrants(r):\n"
+    },
+    {
+      "name": "a later security pass launders a security fail at the same head",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\t\t\tif r.CommitID == head {\n\t\t\t\treturn \"the reviewer App's security lane failed this head\"\n",
+      "new": "\t\t\tif false {\n\t\t\t\treturn \"the reviewer App's security lane failed this head\"\n"
+    },
+    {
+      "name": "a security pass by any login counts",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\t\tif !SameActor(r.Author.Login, reviewer) {\n\t\t\tcontinue\n\t\t}\n\t\tswitch {\n",
+      "new": "\t\tswitch {\n"
+    },
+    {
+      "name": "a fork head is admitted",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tcase CrossRepoSame:\n\tcase CrossRepoFork:\n",
+      "new": "\tcase CrossRepoSame, CrossRepoFork:\n\tcase \"fork-disabled\":\n"
+    },
+    {
+      "name": "an unreadable head repository reads as the base repository",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tswitch pr.CrossRepo {\n\tcase CrossRepoSame:\n",
+      "new": "\tswitch pr.CrossRepo {\n\tcase CrossRepoSame, \"\":\n"
+    },
+    {
+      "name": "drop the trusted-author check",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif !TrustedPublicAuthor(login) || !TrustedAuthorID(login, pr.Author.ID) {\n",
+      "new": "\tif false {\n"
+    },
+    {
+      "name": "widen author trust to any configured login",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\tif !TrustedPublicAuthor(login) || !TrustedAuthorID(login, pr.Author.ID) {\n",
+      "new": "\tif !TrustedAuthor(login) || !TrustedAuthorID(login, pr.Author.ID) {\n"
+    },
+    {
+      "name": "drop the contained-runner refusal from admission",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\treturn PremergeRunnerProblem()\n}\n",
+      "new": "\treturn nil\n}\n"
+    },
+    {
+      "name": "the production runner check reads as contained",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "var premergeRunnerContained = func() bool { return false }\n",
+      "new": "var premergeRunnerContained = func() bool { return true }\n"
+    },
+    {
+      "name": "dispatch skips the contained-runner check before the claim",
+      "file": "cmd/deskdispatch/verifiertarget.go",
+      "old": "\treturn premergeRunnerFn()\n}\n",
+      "new": "\treturn nil\n}\n"
+    },
+    {
+      "name": "an approval whose body speaks for the security lane still counts as the correctness approval",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\t\tif state == \"APPROVED\" && (HasSecurityReviewPass(r.Body) || HasSecurityReviewFail(r.Body)) {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "a security pass from a non-standing review state (dismissed) counts",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\treturn SecurityPassStateStands(r.State) && r.State != \"APPROVED\" && !HasCorrectnessVerdictLine(r.Body)",
+      "new": "\treturn r.State != \"APPROVED\" && !HasCorrectnessVerdictLine(r.Body)"
+    },
+    {
+      "name": "a security pass inside an approval body counts for the security lane",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\treturn SecurityPassStateStands(r.State) && r.State != \"APPROVED\" && !HasCorrectnessVerdictLine(r.Body)",
+      "new": "\treturn SecurityPassStateStands(r.State) && !HasCorrectnessVerdictLine(r.Body)"
+    },
+    {
+      "name": "a security pass whose body also carries a correctness verdict counts",
+      "file": "internal/deskkit/verifierhead.go",
+      "old": "\treturn SecurityPassStateStands(r.State) && r.State != \"APPROVED\" && !HasCorrectnessVerdictLine(r.Body)",
+      "new": "\treturn SecurityPassStateStands(r.State) && r.State != \"APPROVED\""
+    }
+  ]
+}

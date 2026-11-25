@@ -122,6 +122,11 @@ const (
 // bucket accounting all still apply, so a runaway deskevidence loop is stopped exactly as
 // before; only the steady-state throughput ceiling moved. Lowering it is the safe direction;
 // raising it needs the kind of argument the cap constants above require of themselves.
+//
+// In a project that has armed the verdict-transcription lane, deskevidence is break-glass plus
+// the residual route (non-PASS Evidence, outcome records, irreversible-brief Evidence), and
+// routine verdict landings meter under VerdictIssueTool. The cap stays at its value because it
+// still serves unarmed projects and the verify-desk width arm in width.go reads it.
 var unnumberedBucketCap = map[string]int{
 	"deskevidence": deskevidenceUnnumberedCap,
 }
