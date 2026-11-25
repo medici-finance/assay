@@ -1126,8 +1126,10 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   When the change's author (or a trusted human maintainer) answers a finding class explicitly
   — won't fix, fixed a different way, tracked separately, or a dispute backed with evidence —
   the reviewer's next move on that class is exactly one of two, whether or not code changed:
-  ACCEPT it (the class resolves as `resolved-by-author-disposition` in the verdict's finding
-  block, the disposition's words and head as the evidence; the flip gates are untouched, so a
+  ACCEPT it (the class resolves in the verdict's finding block as `state: resolved`, with
+  `evidenceHead` the reviewed head and `resolution` carrying `resolved-by-author-disposition`,
+  the disposition's comment link and its own head in `evidence` or `explanation` — the kit's
+  §22 states this v1 encoding; the flip gates are untouched, so a
   standing request-for-changes at an unchanged head clears at the next push or by the human)
   or ESCALATE it once (the kit's reviewer-named arbiter hand-off, filed by the desk, changing
   nothing about the finding's blocking status). A re-statement round is neither. The security
