@@ -30,7 +30,7 @@
 // The allowlist is embedded rather than read from disk at run time on purpose.
 // The file is checked in next to the tool, so it belongs to the TOOL, not to the
 // --root being linted; resolving it relative to a cwd that `make skillslint`,
-// `go test`, and `go run ./tools/skillslint --root ..` each set differently is a
+// `go test`, and `cd tools/skillslint && go run . --root ../..` each set differently is a
 // could-not-check waiting to happen, and a lint that cannot find its own data
 // file must not degrade to a quiet pass. `go:embed` makes the lookup unfailable
 // while keeping the single checked-in file the only place to edit.

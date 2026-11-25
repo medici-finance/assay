@@ -13,7 +13,7 @@ loose `~/.claude` rule files).
 
 The rules text — including the version the banner announces — is GENERATED
 from the single source `plugins/assay/resident-rules.md` by
-`go run ./tools/harnessgen resident` (see that file's own header for the
+`cd tools/harnessgen && go run . resident --root ../..` (see that file's own header for the
 mechanism); `inject-resident-rules.sh` reads the generated
 `resident-rules.payload.txt` rather than carrying its own copy, and the
 banner's version is derived from `plugins/assay/.claude-plugin/plugin.json`,

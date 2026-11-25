@@ -7,8 +7,8 @@ place and divergence is impossible, not merely detected.
 
 Do not hand-edit the generated artifacts. Regenerate them with:
 
-    go run ./tools/harnessgen resident          # write the artifacts
-    go run ./tools/harnessgen resident --check   # CI: fail if they drift from this source
+    cd tools/harnessgen && go run . resident --root ../..          # write the artifacts
+    cd tools/harnessgen && go run . resident --check --root ../..   # CI: fail if they drift from this source
 
 Generated artifacts:
 
