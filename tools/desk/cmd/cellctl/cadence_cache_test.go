@@ -17,6 +17,7 @@ import (
 // regression: #4172 — actual reaped child, cache Finish and supervisor clock;
 // no operator Check/clean occurs between the two process enrollments.
 func TestCadenceCacheMaintenance(t *testing.T) {
+	exe := buildTestHarness(t, "cadence")
 	for _, mode := range []string{"build", "age-during-interval", "maintenance-failure"} {
 		t.Run(mode, func(t *testing.T) {
 			c := codexEnvironmentCell(t)
@@ -39,8 +40,6 @@ func TestCadenceCacheMaintenance(t *testing.T) {
 			must(t, err)
 			defer l.Close()
 			c.cadenceLease = l
-			exe, err := os.Executable()
-			must(t, err)
 			wt := t.TempDir()
 			record := filepath.Join(t.TempDir(), "passes")
 			env := c.cacheEnv([]string{"ASSAY_SOURCE_REVISION=fixture-revision", "DESK_LOOP=worker-desk", "DESK_ROOTS=example/repo=/a path", "ASSAY_COCKPIT=herdr", "FIXTURE_CWD=" + wt, "FIXTURE_RECORD=" + record})
