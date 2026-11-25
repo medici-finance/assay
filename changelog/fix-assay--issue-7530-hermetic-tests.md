@@ -1,2 +1,0 @@
-### Fixed
-- Two test groups no longer depend on the machine they run on. The desk-tools override-identity tests skip with a stated reason when the running uid has no passwd entry, instead of panicking on a nil user. The eleven statusgen autonomy-gate tests now give their fake forge CLI a placeholder token variable of their own, so they pass in a verifier worktree with no token variable set. The forge-credential guard itself is unchanged.

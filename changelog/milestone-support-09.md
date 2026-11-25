@@ -1,3 +1,0 @@
-### Added
-- Human rulings now bind the exact brief revision they name. A ruling comment carries a `Ruling-Subject: <typed ref@N> card=none|sha256:<hex>` line, and both `statusgen --decision-gate` and `deskevidence` refuse a ruling whose subject, revision or decision card no longer matches the brief. Rulings with no subject line keep their old meaning only when created before the fixed cutover.
-- `statusgen/workref` gains `Subject` and `SameSubject`; `contexthandoff.ResolveWorkSubject` and `domain.NewWorkAt`/`CheckSubject` keep the requested revision beside the unchanged legacy `fullId`, so an alias can never erase or substitute it. Existing records, grammars and digests are unchanged.
