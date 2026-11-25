@@ -15,6 +15,7 @@ import (
 
 // regression: #6455
 func TestShellOracleParity(t *testing.T) {
+	t.Parallel()
 	suite, err := filepath.Abs("../../../cellctl/tests/parity.test.sh")
 	if err != nil {
 		t.Fatal(err)
