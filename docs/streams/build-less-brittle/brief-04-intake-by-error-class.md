@@ -15,7 +15,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 5
+version: 6
 authored: "2026-09-24 by the build-less-brittle authoring session (read-only; author-brief format)"
 sources:
   - "medici-finance/assay#2789; scratch-isolation amendment, freshness-checked 2026-10-13 @ 53c536312"
@@ -159,7 +159,7 @@ still has that diff to read after merge (re-authored in version 4, #1977).
 | 3 | `grep -c -e '2nd merged fix' -e 'second merged fix' plugins/assay/skills/intake-desk/SKILL.md` | ≥ `1` |
 | 4 | `s=$(sed -n '/Recurrence-promotion/,/^$/p' plugins/assay/skills/pr-review-desk/SKILL.md); echo "$s" \| grep -q 'error-class' && ! echo "$s" \| grep -qi 'guardrail-promotion' && echo REDIRECTED` | `REDIRECTED` (the paragraph routes to a class issue and no longer to a guardrail) |
 | 5 | `grep -c '^func cmdAttach' tools/desk/cmd/deskfile/deskfile.go` | `1` (the verb the skill names exists) |
-| 6 | `grep -c '"blocked": true' statusgen/checks.go` | `1` (the status token the skill uses is valid) |
+| 6 | `grep -cE -- '^[[:space:]]*validBriefStatus[[:space:]]*=.*"blocked":[[:space:]]*true' statusgen/checks.go` | `1` (the status token the skill uses is valid) |
 | 7 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/04$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/intake-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/intake-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 8 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/04$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/pr-review-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
 | 9 | `impl=$(git log --first-parent --format=%H --grep='^Brief: build-less-brittle/04$' refs/remotes/origin/main -- . ':!docs/streams' ':!changelog' \| tail -1); base=${impl:+$impl~1}; base=${base:-$(git merge-base refs/remotes/origin/main HEAD)}; tip=${impl:-HEAD}; test "$(git rev-parse "$base")" != "$(git rev-parse "$tip")" && test "$(git show "$tip:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" -le "$(git show "$base:plugins/assay/skills/worker-desk/SKILL.md" \| wc -l)" && echo NET-OK` | `NET-OK` |
