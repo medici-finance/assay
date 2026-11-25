@@ -1664,5 +1664,124 @@
     "file": "journal/config.go",
     "old": "func (c Config) GoString() string",
     "new": "func (c Config) goString() string"
+  },
+  {
+    "test": "TestLoopAdminLaunchBudgetBrake",
+    "why": "graph-execution/41 row 4: treat unreadable launch use as zero",
+    "file": "journal/ledger.go",
+    "old": "\tif err != nil {\n\t\treturn time.Time{}, errors.Join(ErrUsageUnknown, classify(ctx, \"admit\", err))\n\t}\n\tif unknown > 0 {",
+    "new": "\tif err != nil {\n\t\tused, unknown = 0, 0\n\t}\n\tif unknown > 0 {"
+  },
+  {
+    "test": "TestLoopAdminLaunchBudgetBrake",
+    "why": "graph-execution/41 row 4: admit beside an unknown launch of the profile",
+    "file": "journal/ledger.go",
+    "old": "if unknown > 0 {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestLoopAdminLaunchBudgetBrake",
+    "why": "graph-execution/41 row 4: admit past a spent window budget",
+    "file": "journal/ledger.go",
+    "old": "if used >= max {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestLoopAdminLaunchBudgetBrake",
+    "why": "graph-execution/41 row 4: refuse when no pacing estimate is available",
+    "file": "journal/ledger.go",
+    "old": "\tvar pace time.Time\n\tif last.Valid && max > 0 {",
+    "new": "\tif !last.Valid {\n\t\treturn time.Time{}, ErrUsageUnknown\n\t}\n\tvar pace time.Time\n\tif max > 0 {"
+  },
+  {
+    "test": "TestJournalPassiveRestore",
+    "why": "graph-execution/41 row 5: accept a missing referenced artifact",
+    "file": "journal/restore.go",
+    "old": "\t\tf, err := store.Open(ctx, r.Ref)\n\t\tif err != nil {\n\t\t\treturn ErrRestoreHeld\n\t\t}",
+    "new": "\t\tf, err := store.Open(ctx, r.Ref)\n\t\tif err != nil {\n\t\t\tcontinue\n\t\t}"
+  },
+  {
+    "test": "TestJournalPassiveRestore",
+    "why": "graph-execution/41 row 5: accept a corrupt referenced artifact",
+    "file": "journal/restore.go",
+    "old": "if \"sha256:\"+hex.EncodeToString(h.Sum(nil)) != r.Digest {",
+    "new": "if \"sha256:\"+hex.EncodeToString(h.Sum(nil)) == \"\" {"
+  },
+  {
+    "test": "TestJournalPassiveRestore",
+    "why": "graph-execution/41 row 5: leave a restored activation open (auto-launch on restore)",
+    "file": "journal/restore.go",
+    "old": "\"UPDATE loopadmin.activation SET paused = true, recorded_at = now() WHERE cell_id = $1\", cell)",
+    "new": "\"SELECT $1::text\", cell)"
+  },
+  {
+    "test": "TestJournalPassiveRestore",
+    "why": "graph-execution/41 row 5: ignore restore provenance from outside the database",
+    "file": "journal/incarnation.go",
+    "old": "if cur.ID == r.IncarnationID || cur.KeyRef == r.KeyRef {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestJournalPassiveRestore",
+    "why": "graph-execution/41 row 5: count no restored ledger rows, so a restore regains allowance",
+    "file": "journal/ledger.go",
+    "old": "(SELECT count(*) FROM loopadmin.launch WHERE profile = $1 AND launched_at",
+    "new": "(SELECT count(*) FROM loopadmin.launch WHERE profile = $1 AND cell_id = '' AND launched_at"
+  },
+  {
+    "test": "TestJournalFixtureDisposability",
+    "why": "graph-execution/41 row 7: accept a non-loopback DSN",
+    "file": "journal/fixture_test.go",
+    "old": "if ip == nil || !ip.IsLoopback() {\n\t\treturn Config{}, errDSN",
+    "new": "if ip == nil {\n\t\treturn Config{}, errDSN"
+  },
+  {
+    "test": "TestJournalFixtureDisposability",
+    "why": "graph-execution/41 row 7: accept a database other than postgres",
+    "file": "journal/fixture_test.go",
+    "old": "if u.Path != \"/postgres\" {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestJournalFixtureDisposability",
+    "why": "graph-execution/41 row 7: drop a database whose marker does not match",
+    "file": "journal/fixture_test.go",
+    "old": "want != \"\" && marker == want &&",
+    "new": "true &&"
+  },
+  {
+    "test": "TestJournalFixtureDisposability",
+    "why": "graph-execution/41 row 7: leave PG* variables set to empty instead of unset",
+    "file": "journal/fixture_test.go",
+    "old": "if err := os.Unsetenv(key); err != nil {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestJournalRuntimeGrants",
+    "why": "graph-execution/41 row 8: let the runtime role rewrite and delete consumed launches",
+    "file": "journal/migrations/00002_ledger.sql",
+    "old": "GRANT SELECT, INSERT ON loopadmin.launch TO loopadmin_runtime;",
+    "new": "GRANT SELECT, INSERT, UPDATE, DELETE ON loopadmin.launch TO loopadmin_runtime;"
+  },
+  {
+    "test": "TestJournalRuntimeGrants",
+    "why": "graph-execution/41 row 8: let the runtime role write budgets",
+    "file": "journal/migrations/00002_ledger.sql",
+    "old": "GRANT SELECT ON loopadmin.profile_budget TO loopadmin_runtime;",
+    "new": "GRANT SELECT, INSERT, UPDATE ON loopadmin.profile_budget TO loopadmin_runtime;"
+  },
+  {
+    "test": "TestJournalRuntimeGrants",
+    "why": "graph-execution/41 row 8: let the runtime role create objects in the journal schema",
+    "file": "journal/migrations/00002_ledger.sql",
+    "old": "GRANT USAGE ON SCHEMA loopadmin TO loopadmin_runtime;",
+    "new": "GRANT USAGE, CREATE ON SCHEMA loopadmin TO loopadmin_runtime;"
+  },
+  {
+    "test": "TestJournalPassiveRestore",
+    "why": "accept a restore check that paused no activation record",
+    "file": "journal/restore.go",
+    "old": "if n, err := res.RowsAffected(); err != nil || n == 0 {",
+    "new": "if n, err := res.RowsAffected(); err != nil || n < 0 {"
   }
 ]

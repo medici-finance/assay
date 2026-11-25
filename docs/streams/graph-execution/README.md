@@ -118,7 +118,7 @@ or removing any human gate (spec §5 states the divergence).
 | 35 | [Runtime gate for signal patterns - admission refusal, class routes and the liveness hold](brief-35-signal-pattern-runtime.md) | 2 | M | todo | — | — |
 | 36 | [Canonical PostgreSQL foundation for read-only consumers](brief-36-canonical-postgresql-foundation-for-read-only-consumers.md) | 0 | L | implemented | — | — |
 | 40 | [Extract the shared process runner with launch custody intact](brief-40-extract-the-shared-process-runner-with-launch-custody-intact.md) | 1 | M | implemented | — | — |
-| 41 | [Persist loop-admin journal and recovery in PostgreSQL](brief-41-persist-loop-admin-journal-and-recovery-in-postgresql.md) | 2 | L | todo | — | — |
+| 41 | [Persist loop-admin journal and recovery in PostgreSQL](brief-41-persist-loop-admin-journal-and-recovery-in-postgresql.md) | 2 | L | implemented | — | — |
 | 42 | [Supervise bounded invocations through the durable journal](brief-42-supervise-bounded-invocations-through-the-durable-journal.md) | 6 | M | todo | — | — |
 | 43 | [Expose caller-scoped launch control and qualify the shared journey](brief-43-expose-caller-scoped-launch-control-and-qualify-the-shared-journey.md) | 7 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
