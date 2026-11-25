@@ -86,11 +86,20 @@ func TestCoverageReplayKeepsHolds(t *testing.T) {
 func TestCoverageReplayRefusesUnresolvedSubjects(t *testing.T) {
 	f := newGitV2Fixture(t).build()
 	gv2Git(t, f.Root, "checkout", "--detach", f.Base)
-	for _, revision := range []string{f.Base[:12], f.Merge} {
-		var out, diagnostic bytes.Buffer
-		if code := runCoverageReplay(f.Root, gv2BriefID, revision, true, &out, &diagnostic); code != coverageExitCouldNot || out.Len() != 0 || diagnostic.Len() == 0 {
-			t.Errorf("replay at %s: exit %d, stdout=%q, stderr=%q", revision, code, &out, &diagnostic)
-		}
+	for _, tc := range []struct {
+		name, revision, reason string
+	}{
+		{"abbreviated", f.Base[:12], "requires a full local commit SHA"},
+		{"missing", strings.Repeat("0", len(f.Base)), "does not resolve to that commit"},
+		{"not an ancestor", f.Merge, "be an ancestor of checkout HEAD"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out, diagnostic bytes.Buffer
+			code := runCoverageReplay(f.Root, gv2BriefID, tc.revision, true, &out, &diagnostic)
+			if code != coverageExitCouldNot || out.Len() != 0 || !strings.Contains(diagnostic.String(), tc.reason) {
+				t.Errorf("replay at %s: exit %d, stdout=%q, stderr=%q, want reason %q", tc.revision, code, &out, &diagnostic, tc.reason)
+			}
+		})
 	}
 }
 
