@@ -380,6 +380,68 @@ RISK-VALUE: NAMED, NOT DERIVED — deskread probe timeout = 15*time.Second @ sta
 
 **VERIFY: PASS** — 4 of 4 rows pass at source 876ca4bca37c (rows 1-3 in the closed container bracket, verdict=match; row 4 in the host lane with its pinned delivery range). Gate model, every risk answer no. The verified flip is held by medici-finance/assay#4823, and the outcome record is blocked on it.
 
+### Non-implementer verifier run — 2026-11-25 — claude-opus-5-5 (strong), source 77ff0f2222a2
+
+Fresh re-verification of statusgen/26 at merged main 77ff0f2222a28df926c38ad30fea4a368173712e in a new dispatched detached home (attestation medici-finance/assay#7729, claude-opus-5-5, tier strong). The runner is not the implementer. This block is a new run under a new admission and changes nothing in the blocks above. Deliveries: PR #3759 (merge 44829891e8f7, first parent 205c8b46a6b4) and its follow-up PR #4541 (merge 5a4a3edda5c8, first parent 4264d1027198, an ancestor of the verified head). Brief frontmatter: gate model, every risk answer no, not irreversible. Installed statusgen and deskdispatch v1.0.94 throughout; no locally built binary. `deskdispatch --check-verifier` returned rc=0 before any row ran. `deskpathguard rederive` reported 4 rows, 0 author-added, all from-base.
+
+Changes since the earlier passes: `git diff` over the brief's Context files and consumers entries (the same scope the 2026-11-14 block lists) is empty from 876ca4bca37c and from 1f5392225471 to this source. The delivered code under verification is unchanged. The installed statusgen is not: v1.0.94 carries d9083c3a28 (merged in PR #7208, issue #4560), under which a consumers self-route corroborates only when the delivery diff touches its site. This changes row 4's result below.
+
+Two attempts under one admission (run 59871218b15fb7e5), in lanes whose `--rows` selections are disjoint and together cover all 4 rows. The host lane ran first and the container bracket last:
+
+- Attempt 1, row 4 (class check): this row reads git history, so it ran on the darwin-arm64 host from 06:38:58Z to 06:39:04Z as `statusgen verifyrun --rows 4 --dry-run`, in the declared verifier Git environment, offline, with KUBECONFIG pointed at the null device and no forge credential in the environment. The table and attestation line below are reproduced unchanged, and nothing was written to the home.
+- Attempt 2, rows 1-3 (check:ci): these ran in the released verify-runner v1.0.94 image (linux/arm64, native; statusgen v1.0.94, go1.27.4, git 2.56.1), launched by digest only (the Container-Image line), with `--timeout 45m` and every row's command unchanged, inside an admission bracket opened and closed on the host from the same working directory. The open step started at 06:40:58Z and filled a new, empty module cache outside the home. The container ran with network none, a read-only root, all capabilities dropped, no-new-privileges and a non-root uid. The home, its repository's git directory, the module cache and the receipt were mounted read-only, with GOPROXY=off, GOTOOLCHAIN=local and GOFLAGS=-mod=readonly. The witness below is reproduced byte for byte.
+
+#### Host lane (row 4, class check)
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `(out=$(mktemp) && trap 'rm -f "$out"' 0 && statusgen --root . --consumers --brief statusgen/26 --delivery 5a4a3edda5c801b72e4e40bd17d68bfc6f946550 --base 4264d1027198b8f257a95e1630f07cac358fcd6f > "$out" && grep -F -- 'summary: 12 corroborated, 0 disproved, 3 unchecked,' "$out")` | fail exit=1 | sha256:df3b2eceae35 | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7729 run=59871218b15fb7e5dbe48d0ae0abd8a6a42d9336fd9bb2891a5ff69ff3f5060b source=77ff0f2222a28df926c38ad30fea4a368173712e brief=docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md model=claude-opus-5-5 tier=strong
+
+#### Container-lane witness (rows 1-3)
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestSharedPhaseRecorderFlow$' ./... > "$out" && grep -F -- '--- PASS: TestSharedPhaseRecorderFlow ' "$out")` | pass exit=0 sandbox=container-netns | sha256:be3bcb9e5b4a | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestInvocationSnapshotReuseParity$' ./... > "$out" && grep -F -- '--- PASS: TestInvocationSnapshotReuseParity ' "$out")` | pass exit=0 sandbox=container-netns | sha256:52450ccc7bde | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd statusgen && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerformanceKeepsCredentialBoundary$' ./... > "$out" && grep -F -- '--- PASS: TestPerformanceKeepsCredentialBoundary ' "$out")` | pass exit=0 sandbox=container-netns | sha256:73916e1256c3 | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:9f9dc8e41b551f84bcb466458b62ba7a4d70436974ad0e17cc8ba433bcd1ccc6
+Container-Image: sha256:79e23ec185b1d5afe40cd92a25d9f7b18fd824f5678bf6c945443753ee6f509a
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7729 run=59871218b15fb7e5dbe48d0ae0abd8a6a42d9336fd9bb2891a5ff69ff3f5060b source=77ff0f2222a28df926c38ad30fea4a368173712e brief=docs/streams/statusgen/brief-26-extend-statusgen-phase-measurements-through-the-shared-performance-recorder.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=59871218b15fb7e5dbe48d0ae0abd8a6a42d9336fd9bb2891a5ff69ff3f5060b source=77ff0f2222a28df926c38ad30fea4a368173712e tree=sha256:9f9dc8e41b551f84bcb466458b62ba7a4d70436974ad0e17cc8ba433bcd1ccc6 witness=sha256:f06b03c5d48c4413e31f6acc2216f6dce95c59ad0dfdcf997937964590e4d35f opened=2026-11-25T06:41:09Z closed=2026-11-25T06:41:59Z before=receipt after=check-verifier
+
+#### Row 4 result
+
+Row 4 exited 1: its grep for the exact line "summary: 12 corroborated, 0 disproved, 3 unchecked," found no match. Supplemental probe S1 below shows the consumers check itself exited 0 and printed "summary: 10 corroborated, 0 disproved, 5 unchecked, 0 brief(s) claiming nothing". Two self-routes that earlier statusgen releases counted as corroborated are now UNCHECKED: "statusgen/go.mod and go.sum: follow-up statusgen/26" and "tools/desk/cmd/deskperf/: follow-up statusgen/26 (read actual statusgen records)". For each, the tool says the diff "touches none of" the site, "so nothing shows this delivery carried the site". `git diff` confirms that neither delivery range (205c8b46a6b4..44829891e8f7 nor 4264d1027198..5a4a3edda5c8) touches statusgen/go.mod, statusgen/go.sum or tools/desk/cmd/deskperf/. No entry is DISPROVED. Under d9083c3a28 such a self-route reads UNCHECKED and never DISPROVED.
+
+The row's pinned summary was computed under the earlier self-route rule, which the #4560 fix replaced. Whether these two self-route claims hold (for example, whether deskperf reads statusgen records with no change of its own) is a judgment the instrument now declines to make. It is not an observed routing failure. This is a check-definition defect of the class tracked in #4560, which is open. Needed: a reviewed amendment of row 4, either of its Expect summary or of the two consumers entries, that keeps --brief, the pinned --delivery and --base and the corroboration obligation, then a fresh verifier dispatch. Next actor: the brief author.
+
+#### Row accounting
+
+- Rows 1, 2 and 3 pass inside the container bracket. Each greps its own named PASS line, so a missing selector would have failed the row.
+- Row 4 ran in the host lane and exited 1. It is recorded as could-not-check (check-definition, #4560), not as a pass and not as an observed failed obligation.
+- 4 rows total: 3 passed, 0 failed obligations, 1 could-not-check (row 4). No could-not-check result is counted as a pass.
+- `statusgen verifyrun --bracket-digest` on the closed witness (06:41:59Z, run from inside the home) reported witness=sha256:f06b03c5d48c4413e31f6acc2216f6dce95c59ad0dfdcf997937964590e4d35f recorded=sha256:f06b03c5d48c4413e31f6acc2216f6dce95c59ad0dfdcf997937964590e4d35f verdict=match span-lines=tree-digest:1,container-image:1,attestation:1. Its `--credit` reading needs the witness lines committed, so it is taken after this block lands.
+- The home was clean (no tracked, untracked or ignored change) before and after both lanes.
+
+#### Supplemental observations — no acceptance credit
+
+These were recorded on 2026-11-25 by the same verifier session (claude-opus-5-5) at the same source. They discharge no row.
+
+- S1 (06:39:19Z to 06:39:21Z, darwin-arm64 host, clean home, declared verifier Git environment, no forge credential): the row 4 statusgen command without the grep exited 0 and printed "summary: 10 corroborated, 0 disproved, 5 unchecked, 0 brief(s) claiming nothing". The 5 unchecked entries are the two self-routes named above and the brief's three declared out-of-scope claims (tools/desk/cmd/deskread, statusgen/contexthandoff/ and qualgen/), left to review as the row's Expect states.
+- Negative controls, read at this source: the three named tests exercise the production owners with the stated breaks planted. TestSharedPhaseRecorderFlow has the copied-writer parity control (statusgen/perfrecord_test.go:1101-1135). TestInvocationSnapshotReuseParity plants the head-only mutant in brieffile.go and the prior-readset mutant in readmemo.go (statusgen/perfsnapshot_test.go:213 and :218). TestPerformanceKeepsCredentialBoundary plants a direct credential getter (statusgen/perfrecord_test.go:1383, the "no credential getter" subtest), which must be seen.
+
+#### Risk-bearing values
+
+Brief risk metadata is present and every field is no; the item is not irreversible. Enumerated over the literals the deliveries introduce in statusgen/perfrecord.go, statusgen/readmemo.go, statusgen/bench/perfworkload.sh and statusgen/testdata/perfworkload/sizes.json, re-read at this source. None of those files changed since the 2026-11-14 pass, so every literal sits at the line that block names. sizes.json also carries a real-shape workload (4x8, 24 merges) that the 2026-11-14 block did not list; it is listed below. readmemo.go adds counters with no literal bound. The highest-ranked is the phase roster, because records written under a wrong roster stay wrong for deskperf readers; it is still reversible by an edit and a release.
+
+RISK-VALUE: DERIVED — perfV3Phases = {"discover","parse","evaluate","render","write","deskread"} @ statusgen/perfrecord.go:261 — covers the brief's Interface contract (discovery/load, parse, evaluation, rendering, and the deskread child), plus the write phase, and matches the phase roster docs/telemetry.md line 370 documents element for element.
+RISK-VALUE: DERIVED — perfToolName = "statusgen" @ statusgen/perfrecord.go:51 — the record's tool field, a constant rather than argv[0], so a renamed or wrapped binary still emits records under the tool name the brief names.
+RISK-VALUE: NAMED, NOT DERIVED — deskread probe timeout = 15*time.Second @ statusgen/perfrecord.go:436, cmd.WaitDelay = time.Second @ statusgen/perfrecord.go:440, bench SAMPLES default 20 @ statusgen/bench/perfworkload.sh:13, go test -timeout=240s @ statusgen/bench/perfworkload.sh:16, workload sizes small 2x4, large 12x20 and real-shape 4x8 with 24 merges @ statusgen/testdata/perfworkload/sizes.json:1 — reversible operational knobs and fixture sizes; ranked last and out of scope for derivation by design.
+
+**VERIFY: BLOCKED** — rows 1-3 pass at source 77ff0f2222a2 in the closed container bracket (verdict=match); row 4 exits 1 because its pinned 12/0/3 summary predates the #4560 self-route fix shipped in v1.0.94, which now prints 10 corroborated, 0 disproved, 5 unchecked (check-definition, #4560). No acceptance obligation was observed to fail.
+
 ## Review
 
 Gate: model; all risk answers are no. Reject false-zero, stale-hit, silently changed legacy semantics or unmeasured savings claims.
