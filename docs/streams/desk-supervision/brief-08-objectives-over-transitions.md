@@ -794,5 +794,63 @@ Risk-bearing value: the frontmatter risk fields are present and all no, and irre
 
 **VERIFY: FAIL** — row 7: exit 1, the report has no decision: adopt-candidate or decision: reject line (decision: could-not-check at 08-report.md line 96; medici-finance/assay#2816 open). 6 of 10 rows pass; rows 2, 3 and 8 are could-not-run (medici-finance/assay#6904 and medici-finance/assay#6770, medici-finance/assay#2679, medici-finance/assay#1702).
 
+### Verifier re-run — 2026-11-25 (desk-supervision/08, source 77ff0f2222a2)
+
+Non-implementer verifier (claude-opus-5-5, tier strong) at merged main 77ff0f2222a28df926c38ad30fea4a368173712e, darwin arm64, statusgen v1.0.94, git 2.56.1. Admission: `deskdispatch --check-verifier` exited 0 before any row, binding run 604a32fcbb6e to attestation medici-finance/assay#7673. `deskpathguard rederive` exited 0 and reported 10 rows, 0 author-added, base 77ff0f2222a2; every re-derived Command, Expect and class equals the table's. Every row is class check (row 10 is check +mutation). None is check:ci, so the container bracket selection is empty and the host selection is rows 1 to 10: disjoint, and together the whole table. The frontmatter risk fields are present and all no, so no row carries a fail-first obligation. One attempt, `statusgen verifyrun --rows 1,2,3,4,5,6,7,8,9,10`, ran 2026-11-25T03:47:30Z to 03:47:36Z with KUBECONFIG=/dev/null and the verifier Git environment, and exited 1. The witness table below is its output, unedited.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && GOWORK=off go run ./cmd/deskdispatch --kits` | pass exit=0 | sha256:62a34e5296d6 | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `bash -o pipefail -c 'cd tools/desk && GOWORK=off GOPROXY=off go run ./cmd/deskdispatch assay/desk-supervision/08 --dry-run --kit worker-objective --root ../.. \| grep -F "KUBECONFIG=/dev/null" >/dev/null'` | fail exit=1 | sha256:e1a1c874a650 | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk/cmd/deskdispatch/references && awk '/<!-- common-clauses:begin -->/,/<!-- common-clauses:end -->/' worker-prompt-objective.md \| diff - common-clauses.md` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `ls tools/skillbench/fixtures/worker-kit/ \| wc -l` | pass exit=0 | sha256:30179a803d48 | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `bash docs/streams/desk-supervision/verify.d/08-reduction.sh` | pass exit=0 | sha256:47c9dec5f1b3 | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `for a in with-overlay without-overlay; do ls docs/streams/desk-supervision/08-arms/$a \| wc -l; done` | pass exit=0 | sha256:9be9b418f3b8 | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `grep -E -e '^decision: adopt-candidate — ' -e '^decision: reject — ' docs/streams/desk-supervision/08-report.md` | fail exit=1 | sha256:e3b0c44298fc | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `grep -c 'wedges' docs/streams/desk-supervision/08-report.md` | fail exit=0 | sha256:06e9d52c1720 | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 9 | `python3 docs/streams/desk-supervision/verify.d/08-consumers.py` | pass exit=0 | sha256:5cffef493b51 | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 10 | `python3 docs/streams/desk-supervision/verify.d/08-mutations.py` | pass exit=0 | sha256:fe939745f9de | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7673 run=604a32fcbb6e3eda96fc1e82b4a1e667628753bf3ae25ea10ff215e4701e2089 source=77ff0f2222a28df926c38ad30fea4a368173712e brief=docs/streams/desk-supervision/brief-08-objectives-over-transitions.md model=claude-opus-5-5 tier=strong
+
+`statusgen verifyrun --check` on this brief, after the attempt, exit 2:
+
+```
+row 1: pass — witness matches the row and passed
+row 2: fail — the witness records a failure
+row 3: could-not-run — the witness records a different command than the Verify row now carries — the row changed after it was run, so the recorded output proves nothing about it
+row 4: pass — witness matches the row and passed
+row 5: pass — witness matches the row and passed
+row 6: pass — witness matches the row and passed
+row 7: fail — the witness records a failure
+row 8: fail — the witness records a failure
+row 9: pass — witness matches the row and passed
+row 10: pass — witness matches the row and passed
+docs/streams/desk-supervision/brief-08-objectives-over-transitions.md: 6 pass, 3 fail, 1 could-not-run/missing (of 10 Verify rows); 0 author-added with no acceptance credit
+```
+
+Source drift since the 2026-11-22 entry (e4acd02ff3eb to 77ff0f2222a2), read with git diff over the delivered paths: the objective kit, common-clauses.md, kits.go, the skillbench tool and fixtures, 08-report.md, the 08-arms tree, the three verify.d instruments and loopengine liveness.go are byte-unchanged. Only deskdispatch cli.go (two verifier-kit flags, target-change and target-head) and the review and verifier prompt kits changed; neither touches the worker-objective kit or the default kit.
+
+Row accounting. The witness above is the record. Each row is classed on its own observed grounds, and no row is hand-credited:
+
+- Rows 1, 4, 5, 6, 9 and 10 pass in the witness and in `--check`. Row 5's digest differs from the 2026-11-22 entry because the reducer's stderr names its mktemp report path (skillbench main.go line 99, "skillbench: wrote" plus the path), which differs every run; the script's own 15/15 and safety-floor oracles still gate its exit.
+- Row 7 fails its obligation, a delivery failure. The witness records fail exit=1 with empty output (sha256:e3b0c44298fc is the empty-input digest). The report's only decision line, 08-report.md line 96, reads "decision: could-not-check — check_pass_rate 100%/15 vs 100%/15; wedges could-not-check in both arms (observer logs absent)". The 30 stored run directories hold only diff.patch and run.json (30 of each), with no observer log. This is the implementation blocker medici-finance/assay#2816, and the brief's own Rework boundary keeps row 7 red until observer-based runs exist.
+- Row 2 is could-not-run, an admitted-lane configuration refusal. The witness and `--check` both record fail exit=1. Supplemental probe, no acceptance credit: the row's producer run with an empty HOME printed "assay-config: REFUSED — no roster configured", "could-not-check: assay/desk-tools inactive — assay.roster.trust unset or malformed", "deskdispatch activation could not be established" and "exit status 6", and `go run` exited 1 with no stdout, so the KUBECONFIG=/dev/null clause is never observed. The same producer under the verifier's ordinary configuration exited 0, and its prompt carried one KUBECONFIG=/dev/null line. That the admitted run hit this same refusal is inferred from the matching exit, not read from its output (the witness keeps only a digest). Trackers cited in the 2026-11-22 entry: medici-finance/assay#6904 and medici-finance/assay#6770.
+- Row 3 is could-not-run, a witness cell parser defect. The witness records pass exit=0 with empty diff output (sha256:e3b0c44298fc). `--check` reports could-not-run ("the witness records a different command") because the witness cell parser loses the HTML-comment tokens in this command; the re-derived row is unchanged. Tracker: medici-finance/assay#2679.
+- Row 8 is could-not-run, an Expect-reader defect. The witness and `--check` both record fail exit=0. The output digest sha256:06e9d52c1720 equals the digest of the line "6", and 6 meets the Expect "1 or more". The witness fails it because the Expect reader requires an output line equal to "1". Tracker: medici-finance/assay#1702.
+
+The tracker states above were not re-read in this run: this verifier lane makes no forge reads, so their open or closed state is could-not-check here.
+
+Totals: 10 required rows, all 10 run in one attempt. 6 pass (1, 4, 5, 6, 9, 10). 1 fails (7). 3 are could-not-run (2, 3, 8). The `--check` tally of 6 pass, 3 fail and 1 could-not-run counts rows 2 and 8 as fail. This entry classes them could-not-run for the reasons above and does not count them as passes.
+
+Risk-bearing value: the frontmatter risk fields are present and all no, and irreversible is no, so the trigger does not fire. The enumeration is kept for continuity. It covers delivery badd7b58c (#1266) and rework 41f875fc2 (#3239), and each literal was re-read at 77ff0f2222a2:
+
+- RISK-VALUE: DERIVED — kitFile["worker-objective"] = "references/worker-prompt-objective.md" @ tools/desk/cmd/deskdispatch/kits.go:53 — the kit is registered only by name, and the dispatcher default stays str("kit", "worker", ...) @ tools/desk/cmd/deskdispatch/cli.go:78, so the overlay is opt-in, as the brief's facts require. Reversible by an edit.
+- RISK-VALUE: DERIVED — grep -Fc '100% (n=15/15)' must equal 2 @ docs/streams/desk-supervision/verify.d/08-reduction.sh:11 — 5 fixture tasks at 3 runs each give 15 runs per arm, and two arms give two pass-rate lines. This agrees with rows 4 and 6 (5 fixtures; 15 and 15 run directories).
+- RISK-VALUE: NAMED, NOT DERIVED — HeartbeatGap = 20 * time.Minute @ tools/desk/internal/loopengine/liveness.go:92 — the report names it as the wedge threshold, but neither arm has an observer log, so no wedge count derives from it. That is the row 7 failure. This diff did not introduce it.
+- Ranked last, not derived (operational knobs): --date 2026-09-17 @ 08-reduction.sh:9; the DELIVERY pin badd7b58c @ 08-consumers.py:14; subprocess timeouts 20 @ 08-consumers.py:22 and 08-mutations.py:17,19,34, and 90 @ 08-mutations.py:25.
+
+**VERIFY: FAIL** — row 7: exit 1, the report has no decision: adopt-candidate or decision: reject line (decision: could-not-check at 08-report.md line 96; medici-finance/assay#2816). 6 of 10 rows pass; rows 2, 3 and 8 are could-not-run (medici-finance/assay#6904 and medici-finance/assay#6770, medici-finance/assay#2679, medici-finance/assay#1702).
+
+
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
