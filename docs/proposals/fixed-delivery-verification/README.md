@@ -152,6 +152,59 @@ and row order stay protected. A changed requirement outside that route needs sep
 approved contract/delivery work, not a compatibility rewrite. Do not activate
 reuse by bypassing today's audit, forging a descendant source SHA, or changing an Expect.
 
+## Deciding whether earlier evidence applies
+
+Amendment proposed on 2026-11-25. Use the existing delivery binding and coverage
+evaluator. Decide applicability for each mandatory claim against its approved
+subject and definition.
+
+1. Resolve the approved delivery and criteria before looking for a passing
+   witness. For a delivery claim, use the trusted binding to D and A. For a
+   check whose contract names current behavior, use the current revision and
+   required environment. Keep current-main health owned by its CI and repair paths.
+2. Require independent, admitted execution, the same row and acceptance
+   definition, and a meaningful assertion. Preserve the actual execution revision,
+   runner and verdict. Prefer the latest applicable result within the same
+   subject and definition. A newer applicable failure or unresolved required
+   observation holds credit.
+3. Credit a matching source or establish equivalence of complete relevant
+   inputs, including the command, Expect, build and runtime inputs, and
+   applicable runner and evaluator policy. If the acceptance policy or verifier
+   semantics changed, qualify the recorded output under the new rule when the
+   evidence supports that judgment. Otherwise rerun the affected row on the
+   approved subject. An unclassified read or missing provenance retains the
+   conservative fallback.
+4. Have the existing coverage, reconciliation and closeout paths report the
+   same per-row disposition and reason. A missing or stale proof calls for
+   a targeted rerun. A known failed assertion stays held and routes to the
+   existing repair or protected amendment process. An issue can carry a gap
+   outside the accepted claim with an owner and retest trigger.
+
+The November 25 desktools-v2 pilot gives two discriminating cases. In /05 row 5,
+a marketplace-only edit preserved both named test passes. A change in
+`gitcore/checkout.go` hit the shared Go dependency floor, and a planted missing
+diagnostic failed the actual assertion. The Linux recorder withheld a reusable
+read set because it could not classify an out-of-tree scratch access. The
+compiler floor alone cannot authorize reuse for that row.
+
+In /46 row 9, the same immutable delivery produced 20 corroborated routes under
+the earlier verifier and 8 corroborated with 12 unchecked under the verifier
+including [PR #7208](https://github.com/medici-finance/assay/pull/7208). Both
+consumers invocations exited zero. The row's exact assertion catches the
+difference. Under each verifier the pinned routing result also survived a
+later planted CLI regression. The current CLI test caught that regression.
+Validate verifier changes on pinned cases like /46 and compare obligations,
+routes and verdicts together. Keep current behavior checks in pre-merge and
+main CI.
+
+Before enabling credit, the existing owners must replay these cases through the
+same evaluator used for closure, alongside a changed Verify row, an unknown
+input and a later same-subject failure. An unrelated release should preserve
+an independently applicable PASS. A changed dependency, a changed criterion or
+an incompatible verifier result should hold only the affected proof. Keep the
+delivery history intact and qualify one open brief before applying the rule
+across the backlog.
+
 ## Main health stays with CI and the existing repair flow
 
 Existing `.github/workflows/ci.yml` already runs on pushes to main. It evaluates H,
