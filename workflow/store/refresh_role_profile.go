@@ -1,6 +1,8 @@
 package store
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"strings"
 	"unicode/utf8"
@@ -15,6 +17,42 @@ import (
 // memberships or object ownership. Migration authority is a separate identity.
 type RefreshRoleProfile struct {
 	Database, Operator, Runtime string
+}
+
+// OpenRefreshRuntime opens the existing schema with the selected restricted
+// login. It runs no migrations, grants, or profile initialization.
+func OpenRefreshRuntime(ctx context.Context, c Config, p RefreshRoleProfile) (*DB, error) {
+	if !p.valid() || c.Database != p.Database || c.User != p.Runtime || c.Password == "" || c.TLS == nil {
+		return nil, failure(ctx, "open refresh runtime", InvalidConfig)
+	}
+	db, err := Open(ctx, c)
+	if err != nil {
+		return nil, err
+	}
+	// Use the same effective privilege envelope as the operator grant manifest.
+	// Check the identity and the privileges on the same PostgreSQL session.
+	conn, err := db.db.Conn(ctx)
+	if err == nil {
+		err = checkRefreshRuntime(ctx, conn, p)
+		_ = conn.Close()
+	}
+	if err != nil {
+		_ = db.Close()
+		return nil, failure(ctx, "open refresh runtime", InvalidConfig)
+	}
+	return db, nil
+}
+
+func checkRefreshRuntime(ctx context.Context, conn *sql.Conn, p RefreshRoleProfile) error {
+	var matches bool
+	err := conn.QueryRowContext(ctx, `
+		SELECT session_user=current_user AND current_database()=$1 AND current_user=$2`,
+		p.Database, p.Runtime).Scan(&matches)
+	if err != nil || !matches {
+		return failure(ctx, "check refresh runtime identity", InvalidConfig)
+	}
+	_, err = conn.ExecContext(ctx, refreshRoleChecks(true))
+	return err
 }
 
 type refreshTableRole struct {
@@ -43,6 +81,10 @@ func roleIdentifier(s string) bool {
 	return s != "" && len(s) <= 63 && utf8.ValidString(s) && !strings.ContainsRune(s, 0)
 }
 
+func (p RefreshRoleProfile) valid() bool {
+	return roleIdentifier(p.Database) && roleIdentifier(p.Operator) && roleIdentifier(p.Runtime) && p.Operator != p.Runtime
+}
+
 func roleColumns(columns string) string {
 	items := strings.Fields(columns)
 	for i, item := range items {
@@ -58,7 +100,7 @@ func roleLiteral(s string) string { return "'" + strings.ReplaceAll(s, "'", "''"
 // ownership/membership and callable user SECURITY DEFINER paths refuse the whole
 // transaction. It is not an installer, connection API or automatic startup path.
 func (p RefreshRoleProfile) SQL() (string, error) {
-	if !roleIdentifier(p.Database) || !roleIdentifier(p.Operator) || !roleIdentifier(p.Runtime) || p.Operator == p.Runtime {
+	if !p.valid() {
 		return "", refresh.ErrPolicy
 	}
 	database := pgx.Identifier{p.Database}.Sanitize()

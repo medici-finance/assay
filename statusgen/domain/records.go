@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/statusgen/contexthandoff"
+	"github.com/medici-finance/assay/statusgen/workref"
 )
 
 const Schema = "verification-domain-v1"
@@ -51,6 +52,61 @@ func NewWork(ref, declaring, instance, node string, ordinal uint64) (WorkIdentit
 	}
 	w := WorkIdentity{q.String(), instance, instance + "." + node, instance + "." + node + ".a" + strconv.FormatUint(ordinal, 10)}
 	return w, w.Validate()
+}
+
+// NewWorkAt is the version-aware edge adapter in front of NewWork. It resolves
+// a typed brief reference through contexthandoff.ResolveWorkSubject, calls the
+// unchanged NewWork with the compatibility fullId, and returns the existing
+// WorkIdentity together with the retained exact subject. The identity record
+// carries no revision, so its form and digest are unchanged.
+func NewWorkAt(ref string, declaring *workref.Context, registry workref.Registry, instance, node string, ordinal uint64) (WorkIdentity, workref.Subject, error) {
+	q, subject, err := contexthandoff.ResolveWorkSubject(ref, declaring, registry)
+	if err != nil {
+		return WorkIdentity{}, workref.Subject{}, refuse("work-identity")
+	}
+	w, err := NewWork(q.String(), "", instance, node, ordinal)
+	if err != nil {
+		return WorkIdentity{}, workref.Subject{}, err
+	}
+	return w, subject, nil
+}
+
+// EvidenceRevision is the revision the brief at the judged base carries for
+// Evidence: its explicit version: when declared (version > 0), else 1 for a
+// brief-v2-or-later schema, else none (zero) for brief-v1.
+func EvidenceRevision(schema string, version uint64) uint64 {
+	if version > 0 {
+		return version
+	}
+	if schema == "" || schema == "brief-v1" {
+		return 0
+	}
+	return 1
+}
+
+// CheckSubject compares the approved subject, rebuilt from the brief at the
+// judged base, with the subject the Evidence presents. A different subject is
+// checked-failed; an approved revision met by a presented reference with none
+// is could-not-check, so a normalized legacy id never erases a revision. It
+// replaces no other check: AcceptanceBinding.Validate still binds the candidate.
+func CheckSubject(approved, presented workref.Subject) error {
+	if approved.Revision != 0 && presented.Revision == 0 && approved.LogicalKey == presented.LogicalKey {
+		return unknown("work-subject")
+	}
+	if !workref.SameSubject(approved, presented) {
+		return refuse("work-subject")
+	}
+	return nil
+}
+
+// ValidateSubjectEvidence runs the subject check alongside the unchanged
+// candidate check. Both must pass: a matching subject never stands in for a
+// stale or substituted candidate.
+func ValidateSubjectEvidence(b AcceptanceBinding, c Candidate, approved, presented workref.Subject) error {
+	if err := CheckSubject(approved, presented); err != nil {
+		return err
+	}
+	return b.Validate(c)
 }
 
 var (

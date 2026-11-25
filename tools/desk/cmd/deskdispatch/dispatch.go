@@ -160,6 +160,12 @@ type dispatchOpts struct {
 	promptFile  string
 	quiet       bool
 	dryRun      bool
+
+	// npmPackage, npmCache and npmBuild are --stage-npm's --package, --cache and
+	// --build: the admitted npm staging step of a verifier run (#7572).
+	npmPackage string
+	npmCache   string
+	npmBuild   bool
 	// itemAlias is the `<alias>:` prefix split off the item key (deliverable.go) — the alias the
 	// brief is TRACKED under. item carries the key WITHOUT it, so every derivation below (claim
 	// key, branch, worktree name) sees the ordinary grammar.
@@ -172,6 +178,11 @@ type dispatchOpts struct {
 	// repo its item-key prefix or brief-v2 id names, and its deliverable PR opens in --repo. Without
 	// it, a --repo that differs from the resolved repo stays the HARD FAIL (deliverable.go).
 	crossRepo bool
+	// targetChange and targetHead are --target-change / --target-head (#7623): a verifier
+	// run admitted at an UNMERGED change head instead of merged main. Both or neither;
+	// verifier kit only; admission rules live in deskkit.AdmitVerifierHead.
+	targetChange int
+	targetHead   string
 	// contextSnapshot and contextReceipt are --context-snapshot / --context-receipt (statusgen/21,
 	// pickup.go): the receipt is rechecked against the snapshot before the claim.
 	contextSnapshot, contextReceipt string
@@ -186,7 +197,8 @@ type dispatchOpts struct {
 	// run carries what the dispatch minted back to cmdDispatch's audit line. A POINTER, because
 	// dispatch() works on copies of the options (resolveBrief returns a new value) and the audit
 	// line is written from the caller's copy. nil on paths that mint nothing (--stamp-only).
-	run *dispatchRun
+	reviewRun string // embedded by the Go claim tool at review acquisition
+	run       *dispatchRun
 }
 
 // dispatchRun is the per-run state a dispatch hands back to its own audit line.
@@ -287,7 +299,7 @@ func dispatch(o dispatchOpts) error {
 		}
 		shownBranch := branch
 		if plan.detached {
-			shownBranch = fmt.Sprintf("(detached off origin/main — %s touches no branch)", o.kit)
+			shownBranch = fmt.Sprintf("(detached off %s — %s touches no branch)", detachedBaseLabel(o), o.kit)
 		}
 		claimBanner := ""
 		if ns := plan.claimNamespace(); ns != repo {
@@ -439,6 +451,13 @@ func dispatch(o dispatchOpts) error {
 		}
 	}
 
+	// A review checkout and its claim share this per-run identity. Reusing the
+	// desk session and claim key for a later review must not reuse its lease.
+	var dispatchRef string
+	if reviewKit(o.kit) {
+		dispatchRef = mintDispatchRef(plan)
+		o.reviewRun = dispatchRef
+	}
 	// ADMISSION (example-stream/18) then the durable item claim, as one sequence: see admitAndClaim.
 	if err := admitAndClaim(o, plan, claimRepo, auth, func() error {
 		return stepClaim(o, claimRepo, plan.claimTool, plan.claimToolIsScript, auth, plan.claimKey)
@@ -454,7 +473,12 @@ func dispatch(o dispatchOpts) error {
 	// the claim key alone names the ITEM, which every re-dispatch, re-review and stale reclaim
 	// reuses. A mint failure (the secure source failing) is a WARNING: the dispatch proceeds with
 	// no ref and never falls back to a weaker source.
-	dispatchRef := mintDispatchRef(o, plan)
+	if !reviewKit(o.kit) {
+		dispatchRef = mintDispatchRef(plan)
+	}
+	if o.run != nil {
+		o.run.dispatchRef = dispatchRef
+	}
 
 	// 2 — the agent's worktree, in the ITEM's repo. deskwt owns the safety here (a
 	// sanctioned path prefix, an unambiguous base, no clobber of an existing target), so
@@ -570,7 +594,7 @@ func dispatch(o dispatchOpts) error {
 		idSuffix = " identity=" + deskkit.RoleIdentityLabel(plan.identityRole)
 	}
 	if plan.detached {
-		o.say("%s OK: %s detached off origin/main (%s: no branch)%s", stepWorktreeCreate, home, o.kit, idSuffix)
+		o.say("%s OK: %s detached off %s (%s: no branch)%s", stepWorktreeCreate, home, detachedBaseLabel(o), o.kit, idSuffix)
 	} else {
 		o.say("%s OK: %s on %s%s", stepWorktreeCreate, home, branch, idSuffix)
 	}
@@ -604,6 +628,7 @@ func dispatch(o dispatchOpts) error {
 				stepWorktreeCreate, home, ext.run.Said())
 		}
 		recordDispatchRefInWorktree(o, home, dispatchRef)
+
 	}
 
 	// before_run — runs after the worktree is prepared and BEFORE the prompt is emitted (the
@@ -949,6 +974,9 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	if o.kit == "verifier" && (o.model == "" || o.brief == "" || o.pr != 0) {
 		return plan, deskkit.Refused("verifier dispatch requires explicit --model and a source brief; --pr is not a pre-work attestation target")
 	}
+	if err := verifierTargetShape(o); err != nil {
+		return plan, err
+	}
 
 	// --worktree is accepted ONLY together with --dry-run. On a real dispatch the home is the
 	// path deskwt printed and nothing else, so an operator-stated one must never reach it —
@@ -1077,6 +1105,11 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 		repo = dl.repo
 	} else if repo, err = o.resolveRepo(); err != nil {
 		return plan, err
+	}
+	if o.hasVerifierTarget() {
+		if err := verifierTargetPreconditions(o, dl, repo); err != nil {
+			return plan, err
+		}
 	}
 	if !deskkit.IsAllowedRepo(repo) {
 		return plan, deskkit.Refused(fmt.Sprintf(
@@ -1439,6 +1472,9 @@ func stepClaim(o dispatchOpts, repo, script string, isScript bool, auth claimAut
 				"double-dispatches.", stepClaimAcquire, script), err)
 	}
 	args := []string{"acquire", claimKey, "--repo", repo}
+	if o.reviewRun != "" && !isScript {
+		args = append(args, "--review-run", o.reviewRun)
+	}
 	if o.branch != "" {
 		args = append(args, "--branch", o.branch)
 	}

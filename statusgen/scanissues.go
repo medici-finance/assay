@@ -768,6 +768,12 @@ func scanReadSummary(total int, skipped []scanRepoSkip) string {
 // everything (--dry-run) or writes the files. It never pushes, never mutates
 // GitHub, and never touches STATUS.md. Returns a process exit code.
 func runScanIssues(root string, dryRun bool, list issueLister, comments commentLister, bless issueBlessChecker, hold labelHoldChecker) int {
+	return runScanIssuesWith(root, dryRun, scanPublishOpts{}, list, comments, bless, hold)
+}
+
+// runScanIssuesWith is runScanIssues plus the publication of recorded intake judgments
+// (scanpublish.go). With a zero scanPublishOpts it is exactly runScanIssues.
+func runScanIssuesWith(root string, dryRun bool, publish scanPublishOpts, list issueLister, comments commentLister, bless issueBlessChecker, hold labelHoldChecker) int {
 	// P3: the effective-configuration echo now runs ONCE from main, for every mode
 	// (it used to fire only here, so --lint — the mode the consumer's CI runs —
 	// printed nothing about the roster it judged with).
@@ -841,10 +847,7 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 		if len(unblockPlans) == 0 && len(plans) == 0 && len(closeOuts) == 0 && !partial {
 			fmt.Println("scan-issues: no changes — nothing to create or retire")
 		}
-		if partial {
-			return 2
-		}
-		return 0
+		return finishPublish(root, publish, true, partial)
 	}
 
 	// Write path (non-dry-run): apply the unblocks the dry-run branch only
@@ -873,10 +876,7 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 		if len(closeOuts) == 0 && !partial {
 			fmt.Println("scan-issues: no unhandled open issues — nothing to create or retire")
 		}
-		if partial {
-			return 2
-		}
-		return 0
+		return finishPublish(root, publish, false, partial)
 	}
 
 	readmeCreated, err := openScanStream(root)
@@ -897,6 +897,18 @@ func runScanIssues(root string, dryRun bool, list issueLister, comments commentL
 	// The successfully-read repos' work is applied above; a partial scan still
 	// returns the could-not-check code so the run is never mistaken for a
 	// complete, authoritative sweep (#186).
+	return finishPublish(root, publish, false, partial)
+}
+
+// finishPublish runs the publication pass after the scan's own writes and folds its outcome
+// into the exit code: a judgment log that exists but cannot be read is a could-not-check (2),
+// like an unread repository; judgments the pass declines to publish are named and counted,
+// and never change the code.
+func finishPublish(root string, publish scanPublishOpts, dryRun, partial bool) int {
+	if _, err := publishHandoffs(root, publish, dryRun, os.Stdout); err != nil {
+		emitNotices([]string{"scan-issues: handoffs: " + err.Error()})
+		return 2
+	}
 	if partial {
 		return 2
 	}
