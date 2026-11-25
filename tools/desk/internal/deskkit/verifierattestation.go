@@ -60,6 +60,11 @@ type VerifierReceipt struct {
 	// it rechecked World (#7353). It is never persisted: the landing that was
 	// admitted records it in its own landing record (ToolUpgrade.Trailer).
 	ToolUpgrade *ToolUpgrade `json:"-"`
+	// NpmStaging is the run's admitted npm dependency set (#7572), bound once by
+	// StageVerifierNpm and local-only like World. Admission passes over its
+	// staged directories only while their bytes hash to its digest; the
+	// executor writes that digest on the witness as its Npm-Staging line.
+	NpmStaging *NpmStaging `json:",omitempty"`
 }
 type verifierLocal struct {
 	VerifierReceipt
@@ -183,6 +188,11 @@ func verifierLocalCheck(root, brief string, r verifierLocal, phase verifierPhase
 	if b.Version != 1 || len(b.Run) != 64 || len(b.Source) != 40 || b.Repo == "" || b.Brief == "" {
 		return Refused("invalid verifier binding")
 	}
+	if b.Targeted() {
+		if why := attestation.PreMergeProblem(b); why != "" {
+			return Refused("invalid pre-merge verifier binding: " + why)
+		}
+	}
 	if _, err := hex.DecodeString(b.Run); err != nil {
 		return Refused("invalid verifier run identifier")
 	}
@@ -242,8 +252,20 @@ func verifierLocalCheck(root, brief string, r verifierLocal, phase verifierPhase
 	if phase == verifierEvidence {
 		allowed[index] = true
 	}
-	if err := verifierSourceClosure(home, b.Source, checkout, allowed); err != nil {
+	// A run with an npm staging record (#7572) has its staged directories passed
+	// over by the closure, and only then if their bytes still hash to the
+	// recorded digest. Without a record nothing is passed over.
+	var staged []string
+	if r.NpmStaging != nil {
+		staged = r.NpmStaging.stagedDirs()
+	}
+	if err := verifierSourceClosureStaged(home, b.Source, checkout, allowed, staged); err != nil {
 		return err
+	}
+	if r.NpmStaging != nil {
+		if err := verifierNpmCheck(home, b.Source, *r.NpmStaging); err != nil {
+			return err
+		}
 	}
 	if phase == verifierEvidence {
 		_, nn, _ := r.VerifierReceipt.verifierBriefKey()
@@ -280,6 +302,26 @@ func PrepareVerifierAttestationAt(root, repo, brief, model, tier, expectedTracki
 	if filepath.IsAbs(brief) && !verifierContains(root, brief) {
 		return prepareVerifierCrossRepo(root, repo, brief, model, tier, expectedTrackingRoot)
 	}
+	return prepareVerifierAt(root, repo, brief, model, tier, VerifierHeadTarget{}, nil)
+}
+
+// PrepareVerifierHeadAttestationAt prepares a PRE-MERGE run (#7623): the home
+// is detached at t.Head, an unmerged change head, rather than at origin/main.
+// The run is admitted only when AdmitVerifierHead admits t against f, and the
+// binding records t, so every later admission re-reads the change and refuses
+// a moved head. Cross-repository runs are refused: a pre-merge target is a
+// same-repository change only.
+func PrepareVerifierHeadAttestationAt(root, repo, brief, model, tier string, t VerifierHeadTarget, f Forge) error {
+	if t.IsZero() {
+		return Refused("a pre-merge verifier run needs a target change and head")
+	}
+	if filepath.IsAbs(brief) && !verifierContains(root, brief) {
+		return Refused("a pre-merge verifier run is same-repository only; a cross-repository brief is refused")
+	}
+	return prepareVerifierAt(root, repo, brief, model, tier, t, f)
+}
+
+func prepareVerifierAt(root, repo, brief, model, tier string, t VerifierHeadTarget, f Forge) error {
 	desk, _ := RoleAppLogin(DispatcherRole)
 	if !verifierAuthority(desk) {
 		return Refused("pre-work attestation requires distinct configured desk and verifier actors")
@@ -308,12 +350,21 @@ func PrepareVerifierAttestationAt(root, repo, brief, model, tier, expectedTracki
 	if err != nil {
 		return err
 	}
-	main, err := verifierGit(home, "rev-parse", "refs/remotes/origin/main")
-	if err != nil {
-		return err
-	}
-	if head != main {
-		return Refused("fresh verifier source is not origin/main")
+	if t.IsZero() {
+		main, err := verifierGit(home, "rev-parse", "refs/remotes/origin/main")
+		if err != nil {
+			return err
+		}
+		if head != main {
+			return Refused("fresh verifier source is not origin/main")
+		}
+	} else {
+		if head != t.Head {
+			return Refused("fresh pre-merge verifier source is not the target head")
+		}
+		if err := AdmitVerifierHead(f, repo, t); err != nil {
+			return err
+		}
 	}
 	original, err := os.ReadFile(path)
 	if err != nil {
@@ -327,7 +378,7 @@ func PrepareVerifierAttestationAt(root, repo, brief, model, tier, expectedTracki
 	if _, err = rand.Read(nonce); err != nil {
 		return err
 	}
-	r := verifierLocal{Home: home, VerifierReceipt: VerifierReceipt{Binding: VerifierBinding{Version: 1, Run: verifierDigest(nonce), HomeSHA256: verifierDigest([]byte(home)), Repo: repo, Source: head, Brief: filepath.ToSlash(rel), BriefSHA256: verifierDigest(original), PlanSHA256: verifierDigest(withoutEvidence(original)), Model: stamp.Model, Tier: stamp.Tier, Checkout: checkout.String()}}}
+	r := verifierLocal{Home: home, VerifierReceipt: VerifierReceipt{Binding: VerifierBinding{Version: 1, Run: verifierDigest(nonce), HomeSHA256: verifierDigest([]byte(home)), Repo: repo, Source: head, Brief: filepath.ToSlash(rel), BriefSHA256: verifierDigest(original), PlanSHA256: verifierDigest(withoutEvidence(original)), Model: stamp.Model, Tier: stamp.Tier, Checkout: checkout.String(), TargetChange: t.Change, TargetHead: t.Head}}}
 	record, err := verifierRecordPath(home)
 	if err != nil {
 		return err
@@ -447,6 +498,17 @@ func checkVerifierRun(root, brief string, f Forge, phase verifierPhase, requireW
 	}
 	if err = verifierLocalCheck(root, brief, r, phase); err != nil {
 		return r.VerifierReceipt, err
+	}
+	if r.Binding.Targeted() {
+		// A pre-merge run (#7623) never lands Evidence or advances lifecycle:
+		// the merged-main run is still owed. At every other use point the
+		// change is read again, so a moved head voids the admission.
+		if phase == verifierEvidence {
+			return r.VerifierReceipt, Refused("a pre-merge verifier run never lands Evidence; verify merged main for the Evidence row")
+		}
+		if err = AdmitVerifierHead(f, r.Binding.Repo, bindingHeadTarget(r.Binding)); err != nil {
+			return r.VerifierReceipt, err
+		}
 	}
 	if requireWorld && r.WorldRequired && r.World == nil {
 		return r.VerifierReceipt, Refused("verifier run has no admitted prerequisite record (its prepare-step admission was held or could not check); no Verify rows or Evidence admitted; recover with deskdispatch --attest-verifier --root <home>, which re-admits it")

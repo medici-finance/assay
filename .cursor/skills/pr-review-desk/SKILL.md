@@ -1122,6 +1122,22 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   that cannot be honestly `n/a`'d and was not checked is `could-not-check`, never a silent
   approve. The register's home is that reference — this body never restates its rows. The
   project layer may append classes and never removes a base one.
+- **An author's explicit disposition on a finding is final — accept it or escalate it once.**
+  When the change's author (or a trusted human maintainer) answers a finding class explicitly
+  — won't fix, fixed a different way, tracked separately, or a dispute backed with evidence —
+  the reviewer's next move on that class is exactly one of two, whether or not code changed:
+  ACCEPT it (the class resolves in the verdict's finding block as `state: resolved`, with
+  `evidenceHead` the reviewed head and `resolution` carrying `resolved-by-author-disposition`,
+  the disposition's comment link and its own head in `evidence` or `explanation` — the kit's
+  §22 states this v1 encoding; the flip gates are untouched, so a
+  standing request-for-changes at an unchanged head clears at the next push or by the human)
+  or ESCALATE it once (the kit's reviewer-named arbiter hand-off, filed by the desk, changing
+  nothing about the finding's blocking status). A re-statement round is neither. The security
+  lane and every security / public-surface / leak finding never take the Accept move, and a
+  safety-consequence finding always escalates. Silence, a bare "done", or a disposition from
+  an identity the trust gate does not pass is no disposition; the ordinary rules govern. The
+  rule's home is the review kit (`review-prompt.md` §22, "An author's explicit disposition on
+  a finding is final"); this body never restates its boundaries.
 - **Decision-drift pass — does this diff contradict a record no one is holding in their head.**
   Check the diff against three BOUNDED sources only, never a whole-repo archaeology pass: (a) the
   owning brief's own Context/constraints, (b) a finding in the findings register that names the
@@ -1327,12 +1343,17 @@ concluding anything about install state.
 - **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
   workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
   standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
-  `gh pr create --draft`). **The verify desk lands its own work**: its Evidence + status flips commit
-  straight to `main` as the project directs — no push-go is needed there and none should be waited
-  for. Any `main` push not covered by a standing authorization is gated on the driver's explicit go;
-  committing local work is always fine. A guard/hook-BLOCKED push is a STOP signal — never route the
-  same write through another tool. Each desk's own grants and denials (what it may flip, file, close,
-  or land) stay in its skill, directly below this block.
+  `gh pr create --draft`).
+  **The verify desk lands verdicts through the project's verdict-transcription lane** where the
+  project has armed it — a signed verdict issue that a workflow lands on `main`, never a session
+  push; where the lane is not armed it lands per its own skill's §Landing. Those two routes need
+  no push-go and none should be waited for; a break-glass `main` write in a project where the
+  lane is armed is NOT one of them: it is for when the lane is down, and it waits for the
+  driver's go. Any `main` push not covered by a standing authorization is
+  gated on the driver's explicit go; committing local work is always fine. A guard/hook-BLOCKED
+  push is a STOP signal — never route the same write through another tool. Each desk's own
+  grants and denials (what it may flip, file, close, or land) stay in its skill, directly below
+  this block.
   - Desk-specific: this desk flips PRs ready via `deskflip` (merge stays the human's) and does NOT
     commit Evidence (that is verify-desk / post-merge).
 - **Reversibility test — default-forward on anything a human-held gate still catches:** before
