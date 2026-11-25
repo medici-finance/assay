@@ -329,6 +329,132 @@ One attempt in this dispatch, 2026-11-19T03:44:26Z to 2026-11-19T03:51:02Z, 6 ro
 
 **VERIFY: FAIL** — row 1 fails in its admitted lane: TestHydrateBudget exits 1 on the ratio (10.6x to 11.9x against the 10x budget, count clause holding) in the 6-CPU network-off runner container, though it passes on a 16-CPU darwin host. Rows 2, 3 and 5 pass. Rows 4 and 6 could not run, for the same environment and configuration reasons as the 2026-11-18 pass (no git directory or `SG_OLD_BIN` in the container lane; lint without operator configuration or forge authority). The follow-up delivery restored the 10x constants but the concurrency-based fix does not hold them on a smaller runner.
 
+### Non-implementer re-verify, 2026-11-25: claude-opus-5-5, strong
+
+Admitted source is merged main 77ff0f2222a28df926c38ad30fea4a368173712e, dispatcher attestation [#7730](https://github.com/medici-finance/assay/issues/7730). This pass re-runs the table after the 2026-11-19 FAIL above, at a later main. Since that pass's source 37483b76bf, the one hydration-path change is commit 03fd36c89e ("lint brief file declarations during authoring"). It renames the mode argument of checkBriefFilesMode to includeCostlyNotices, and it also gates the new declaredFilesNotices call behind that argument, so hydration still skips the history-backed notice and now skips the declaration notice too. The runner is not the implementer. Every frontmatter risk answer is `no`, so no row carries a fail-first obligation. The host rows ran first and the container bracket last.
+
+#### Host rows 3, 5 and 6 (verifyrun, before the bracket opened)
+
+Rows 3, 5 and 6 are not `check:ci`, so they ran on the darwin host from 06:48:38Z to 06:48:45Z, before the bracket opened. The host selection and the container selection below are disjoint, and together they cover all six rows.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 3 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && ASSAY_HYDRATE_TREE="$(cd .. && pwd)" GOWORK=off go test -count=1 -v -run "^TestHydrateRealTree$" . > "$check_output" && grep -F -- "--- PASS: TestHydrateRealTree " "$check_output")` | pass exit=0 | sha256:33db35d67e47 | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -n -F -e "dominant:" -e "commit:" statusgen/bench/hydration-profile.md` | pass exit=0 | sha256:f83e1f0906e1 | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `(cd statusgen && GOWORK=off go build -o "${TMPDIR:-/tmp}/sg-44" .) && "${TMPDIR:-/tmp}/sg-44" --root . --lint` | fail exit=5 | sha256:c97a0ebdbe13 | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7730 run=1b7b6b29b214823c49952a663d801af0a5dd3b22470a6acccb2979c14a9f7120 source=77ff0f2222a28df926c38ad30fea4a368173712e brief=docs/streams/statusgen/brief-44-hydration-budget-profile-a-real-tree-and-remove-the-dominant-cost.md model=claude-opus-5-5 tier=strong
+
+#### Container execution witness (closed bracket)
+
+These are the bytes of the closed witness file as the bracket steps wrote them. The host open ran at 06:51:00Z, container rows 1, 2 and 4 ran from 06:55:47Z to 07:06:19Z, and the host close ran at 07:06:53Z. All three steps ran from the home with no edit to it in between. On the closed file, `statusgen verifyrun --bracket-digest` reported `verdict=match` with `span-lines=tree-digest:1,container-image:1,attestation:1`.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestHydrateBudget$" . > "$check_output" && grep -F -- "--- PASS: TestHydrateBudget " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:163579a2bf59 | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd statusgen && check_output=$(mktemp) && trap 'rm -f "$check_output"' 0 && GOWORK=off go test -count=1 -v -run "^TestHydrateBudgetPlant$" . > "$check_output" && grep -F -- "--- PASS: TestHydrateBudgetPlant " "$check_output")` | pass exit=0 sandbox=container-netns | sha256:32bd5485c6b1 | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd statusgen && GOWORK=off go test -count=1 ./...)` | could-not-run exit=- sandbox=container-netns — timed out after 10m0s — no verdict was produced | sha256:e3b0c44298fc | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:b796c606581d958d9242d00b1c26d46f168776a4aa8ce44da633fc85f2c9a14c
+Container-Image: sha256:79e23ec185b1d5afe40cd92a25d9f7b18fd824f5678bf6c945443753ee6f509a
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7730 run=1b7b6b29b214823c49952a663d801af0a5dd3b22470a6acccb2979c14a9f7120 source=77ff0f2222a28df926c38ad30fea4a368173712e brief=docs/streams/statusgen/brief-44-hydration-budget-profile-a-real-tree-and-remove-the-dominant-cost.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=1b7b6b29b214823c49952a663d801af0a5dd3b22470a6acccb2979c14a9f7120 source=77ff0f2222a28df926c38ad30fea4a368173712e tree=sha256:b796c606581d958d9242d00b1c26d46f168776a4aa8ce44da633fc85f2c9a14c witness=sha256:06fe7422e9465f5ce564a59dbf4d527ba89af0e134c94caf69d017517ae376bf opened=2026-11-25T06:51:00Z closed=2026-11-25T07:06:53Z before=receipt after=check-verifier
+
+#### Execution envelope
+
+Darwin has no host network-namespace lane, so rows 1, 2 and 4 ran in the pinned v1.0.94 runner image ghcr.io/medici-finance/verify-runner@sha256:79e23ec185b1d5afe40cd92a25d9f7b18fd824f5678bf6c945443753ee6f509a. It was launched by digest only, with no platform flag, and the container saw 6 CPUs. The container flags were `--network none --read-only --cap-drop ALL` and a writable tmpfs at /tmp, with `HOME` and `GOCACHE` under it. The admitted home was mounted at /work and the receipt read-only. The container also got the flags the open step printed: the module cache built by `--open-bracket --module-cache`, mounted read-only at /go/pkg/mod, the roster copy, mounted read-only, and `GOPROXY=off`, `GOTOOLCHAIN=local` and `GOFLAGS=-mod=readonly`.
+
+The host rows ran with the declared verifier Git environment: every `GIT_*` variable unset, plus `GIT_CONFIG_GLOBAL=/dev/null`, `GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_COUNT=0` and `GIT_TERMINAL_PROMPT=0`. They also had `KUBECONFIG=/dev/null`, no forge token, and statusgen v1.0.94 as installed. No locally built statusgen ran an admitted row.
+
+Rows 1 to 3 send verbose output to a temporary file and print only the grep'd PASS line, so their recorded output hashes cover only that line.
+
+#### Observed per row
+
+- **Row 1, PASS.** The admitted container witness exited 0 with the PASS line. The pass is not stable in this lane. Three diagnostic runs of the same test, in the same image with the same mounts and flags, followed the bracket from 07:07:12Z (no acceptance credit). One passed and two failed on the ratio alone:
+  - `hydrate_budget_test.go:176: 32 briefs: bare 85.626µs, hydrated 674.879µs (7.9x), history queries 0, parses 32`, which passed.
+  - `hydrate_budget_test.go:181: hydration budget: ratio: hydrated 1.008464ms is 11.4x bare 88.793µs, budget 10x`
+  - `hydrate_budget_test.go:181: hydration budget: ratio: hydrated 1.001922ms is 11.4x bare 88.167µs, budget 10x`
+
+  The count clause held in every run: 0 history queries, and 32 parses for 32 briefs. The row is credited on its admitted witness. The 6-CPU result still sits on both sides of 10x, as the 2026-11-19 pass found (10.6x to 11.9x), so the core-count dependence recorded on [#6900](https://github.com/medici-finance/assay/issues/6900) still applies. A later run in this lane can fail this row.
+- **Row 2, PASS.** Exit 0 with the PASS line. `TestHydrateBudgetPlant` sets the hook `briefHistoryNoticesInHydration` to true on the committed fixture under statusgen/testdata/hydrate-plant/. The hook is declared at statusgen/brieffile.go:1690 and set only at statusgen/hydrate_budget_test.go:190. The test requires the budget failure to name both the count and the ratio.
+- **Row 3, PASS.** Exit 0 with the PASS line. The test ran rather than skipping: it skips only when `ASSAY_HYDRATE_TREE` is empty, and the row sets it. It logs both wall times. The supplemental probe below shows 7.9x on this tree, under the 10x budget.
+- **Row 4, could-not-run (environment).** The container witness records `timed out after 10m0s — no verdict was produced`. A diagnostic run of the same command followed the bracket, in the same image with the same mounts and flags but the home mounted read-only and `-timeout 60m` (07:07:31Z to 07:29:06Z, no acceptance credit). The statusgen package used 4 seconds of CPU in 21 minutes, so it was blocked, not slow. A SIGQUIT goroutine dump names the blocked test:
+  - TestFlipVerdictsOncePerRun, subtest "run evaluates the hold once" (statusgen/boardhonestyflip_test.go:366). It calls `run(root, "lint", …)` inside captureStdout (statusgen/alarms_test.go:217), which redirects stdout to a bare os.Pipe and reads it only after the function returns.
+  - The lint writer was parked in a pipe write at renderNoticeText (statusgen/notice_report.go:519). The fixture's lint output overran the pipe buffer, and nothing drains the pipe until the write returns.
+  - This is the same bare-pipe deadlock class that [#6584](https://github.com/medici-finance/assay/issues/6584) records for the desk-tools tests. None of these files was touched by either delivery, or changed since the 2026-11-19 source.
+
+  The same diagnostic also shows `TestGitCeilingOnlyDown` failing in statusgen/internal/gitlaunch with `could-not-check prior ratchet revision: exit status 128`. As on 2026-11-19, the home's git directory is not mounted in the lane. Twelve other statusgen packages reported `ok`. Tests after the blocked one never ran. Those include the `SG_OLD_BIN` and pushcred tests that failed for environment reasons on 2026-11-19, which are still open as [#7662](https://github.com/medici-finance/assay/issues/7662) and [#6998](https://github.com/medici-finance/assay/issues/6998).
+
+  Row 4's obligation is unobserved; this pass did not see it fail. The open issue for the timeout is [#7297](https://github.com/medici-finance/assay/issues/7297). Its stated cause is load, while this diagnostic shows a deadlock.
+- **Row 5, PASS.** Both lines printed: `commit: 1db3085ddbdc8314ab46cdcd8a0ac4e256580d68` and the `dominant:` line, which names newestFailFix, waitingBriefNotice, checkBriefFiles and loadHydratedStreams. At that commit, an ancestor of this source, each function exists:
+  - `func newestFailFix` at statusgen/stalefail.go:79
+  - `func waitingBriefNotice` at statusgen/stalefail.go:221
+  - `func checkBriefFiles` at statusgen/brieffile.go:1613
+  - `func loadHydratedStreams` at statusgen/load.go:366
+
+  At this source the diff changes each function or its caller:
+  - newestFailFix counts `staleFailHistoryQueries.Add(1)` (statusgen/stalefail.go:80).
+  - The waitingBriefNotice call is gated by `if includeCostlyNotices` (statusgen/brieffile.go:2136).
+  - checkBriefFiles is `return checkBriefFilesMode(streams, allStreams, true)` (statusgen/brieffile.go:1683).
+  - loadHydratedStreams calls `checkBriefFilesMode(streams, streams, briefHistoryNoticesInHydration)` (statusgen/load.go:377).
+
+  The dereference holds.
+- **Row 6, could-not-run (instrument configuration).** The witness exited 5. The row runs with no operator roster in its environment. Two diagnostic runs of the same command (no acceptance credit) show why:
+  - With an empty HOME it exits 5 with `LINT: REFUSED configuration; trust-dependent checks could-not-check`.
+  - With the cell's roster it exits 1 with `LINT: FAIL 3 problem(s)`. All three PROBLEMs read `protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required`, for desk-tools/37, desktools-v2/65 and forge-neutral/54.
+
+  No PROBLEM names this brief or a delivered file; this brief draws only NOTICEs. The obligation went unobserved here; this delivery did not fail it. The open lint blocker is [#4823](https://github.com/medici-finance/assay/issues/4823).
+
+#### Supplemental probe (no acceptance credit)
+
+Date 2026-11-25; Runner assay-verifier-app[bot] @ 77ff0f2222a2. On the darwin host after the host rows, `ASSAY_HYDRATE_TREE=<this home> GOWORK=off go test -count=1 -v -run '^(TestHydrateBudget|TestHydrateRealTree)$' .` exited 0 with these logged lines:
+
+- `hydrate_budget_test.go:176: 32 briefs: bare 295.5µs, hydrated 1.687166ms (5.7x), history queries 0, parses 32`
+- `hydrate_budget_test.go:218: … 645 briefs, bare 4.9065ms, hydrated 38.806375ms (7.9x), history queries 0, parses 645`
+
+#### Risk-bearing values: enumerate, rank, derive
+
+Every frontmatter risk answer is `no`. The enumeration covers both deliveries plus the later hydration-path change 03fd36c89e. It includes production and test literals, cited at this source:
+
+- `hydrateRatioBudget = 10.0` @ statusgen/hydrate_budget_test.go:29
+- `hydrateRealTreeBudget = 10.0` @ statusgen/hydrate_budget_test.go:30
+- `hydrateRuns = 9` @ statusgen/hydrate_budget_test.go:31
+- `hydrateSynthRuns = 9` @ statusgen/hydrate_budget_test.go:32
+- history-query bound `m.historyQueries != 0` @ statusgen/hydrate_budget_test.go:158
+- parse bound `m.parses > int64(m.briefs)` @ statusgen/hydrate_budget_test.go:161
+- `hydrateCorpus = hydrateShape{streams: 4, briefsPerStream: 8, merges: 24}` @ statusgen/hydrate_budget_test.go:170
+- worker count `min(runtime.GOMAXPROCS(0), len(unique))` @ statusgen/brieffile.go:590
+- `checkBriefFilesMode(streams, allStreams, true)` @ statusgen/brieffile.go:1683
+- `var briefHistoryNoticesInHydration bool` (zero value false) @ statusgen/brieffile.go:1690, which gates `if includeCostlyNotices` @ statusgen/brieffile.go:1780 and @ statusgen/brieffile.go:2136
+- read buffer `size := 512` @ statusgen/readmemo.go:197
+- placeholder globs `"issue-*.md", "*-issue-*.md"` @ statusgen/placeholder.go:216 and :232
+
+Nothing here is irreversible: an edit and a release fix any of these values. Ranking:
+1. The two ratio budgets and the worker count. Together they decide whether the brief's 10x holds where the row runs.
+2. The production mode arguments. A wrong value restores the cost or drops a lint notice.
+3. Run counts, corpus shape, buffer size and globs. These are reversible knobs.
+
+- RISK-VALUE: DERIVED — hydrateRatioBudget = 10.0 @ statusgen/hydrate_budget_test.go:29 — it is the bound the brief pins: Task 4 and Verify row 1 say hydrated is at most 10 times bare.
+- RISK-VALUE: DERIVED — hydrateRealTreeBudget = 10.0 @ statusgen/hydrate_budget_test.go:30 — Verify row 3 requires "the same budget" as row 1.
+- RISK-VALUE: NAMED, NOT DERIVED — worker count min(runtime.GOMAXPROCS(0), len(unique)) @ statusgen/brieffile.go:590 — the 10x result depends on it, and nothing shows the bound holds at the core counts the row runs on. At 6 CPUs in this lane the synthetic corpus gave 7.9x once and 11.4x twice. Deriving the bound would need the floor ratio as a function of available CPUs, and the delivery does not supply it.
+- RISK-VALUE: DERIVED — briefHistoryNoticesInHydration = false (zero value) @ statusgen/brieffile.go:1690, with checkBriefFilesMode(streams, allStreams, true) @ statusgen/brieffile.go:1683 — hydration discards checkBriefFiles' problems and notices and calls it only for the frontmatter side effect. So the two notices gated by includeCostlyNotices (the history-backed waiting notice and the declaration notice) have no reader there. Lint and STATUS pass true, so no reported notice disappears.
+- RISK-VALUE: DERIVED — history-query bound 0 @ statusgen/hydrate_budget_test.go:158 and parse bound one per brief @ statusgen/hydrate_budget_test.go:161 — with notices off, any history query during hydration is the removed cost returning, and the brief asks that countable work happen at most once per brief.
+
+#### Attempts
+
+This dispatch made two attempts, in order:
+1. Host run of rows 3, 5 and 6, from 2026-11-25T06:48:38Z to 2026-11-25T06:48:45Z, 3 rows run.
+2. Container bracket for rows 1, 2 and 4, from 2026-11-25T06:50:47Z (the open step) to 2026-11-25T07:06:53Z (the close step), 3 rows run.
+
+Both are recorded as uncredited, credit-unchecked: this runner established no credit for either witness. The diagnostics for rows 1, 4 and 6 and the supplemental probe re-ran no admitted row for credit.
+
+`statusgen verifyrun --check` on the brief reads 4 pass, 1 fail and 1 could-not-run of 6 rows. It counts row 6's exit-5 witness as a failure, and the per-row accounting above says why that row was unobserved rather than failed. On the brief, `--bracket-digest` reports `verdict=match` for this pass's witness (sha256:06fe7422e946).
+
+**VERIFY: BLOCKED** — rows 1, 2, 3 and 5 pass on their admitted witnesses. Two rows could not run, and no obligation failed:
+- Row 4: the full statusgen suite hit verifyrun's 10-minute limit in the 6-CPU network-off container ([#7297](https://github.com/medici-finance/assay/issues/7297)).
+- Row 6: lint has no operator configuration or forge authority in the row's environment ([#4823](https://github.com/medici-finance/assay/issues/4823)).
+
+Row 1 passed this time, but diagnostic runs straddle the 10x bound in the same lane (7.9x, 11.4x, 11.4x), so the core-count risk on [#6900](https://github.com/medici-finance/assay/issues/6900) stands.
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Not a core-system surface: nothing
 here writes, authenticates or reaches a network. Reviewer records verdict + date in the stream
