@@ -156,6 +156,19 @@ func fieldOf(msg, key string) string {
 	return ""
 }
 
+// The note is free text. Keep all structural fields ahead of it.
+func withReviewRun(msg, run string) string {
+	if run == "" {
+		return msg
+	}
+	before, note, found := strings.Cut(msg, " note=")
+	before += " review-run=" + run
+	if found {
+		return before + " note=" + note
+	}
+	return before
+}
+
 // ageMinutes parses the claim's stamped ISO date and returns whole minutes since, mirroring the
 // bash `age_minutes`. ok=false when the date is unparseable — the caller treats that as
 // unverifiable, never as age 0.
@@ -205,7 +218,7 @@ func dashOrValue(s string) string {
 // --- verbs ------------------------------------------------------------------
 
 // semantic: S-claim
-func cmdAcquire(id, owner, branch string) int {
+func cmdAcquire(id, owner, branch, reviewRun string) int {
 	msg, err := claimMessage(id, owner, "claimed", branch, "")
 	if err != nil {
 		errf("%v", err)
@@ -215,6 +228,7 @@ func cmdAcquire(id, owner, branch string) int {
 	if rc, stop := checkAliases(id, ""); stop {
 		return rc
 	}
+	msg = withReviewRun(msg, reviewRun)
 	switch store.CreateIfAbsent(id, msg) {
 	case deskkit.ClaimWriteApplied:
 		if rc, stop := checkAliases(id, msg); stop {
@@ -260,7 +274,7 @@ func cmdAcquire(id, owner, branch string) int {
 	if hage >= ttl {
 		logf("stale claim on %s: state=%s age=%dm >= %dm TTL — reclaiming", id, dashOrValue(state), hage, ttl)
 		reason := fmt.Sprintf("TTL: state=%s age=%dm >= %dm", dashOrValue(state), hage, ttl)
-		return cmdSteal(id, owner, reason, &ref)
+		return cmdSteal(id, owner, reason, reviewRun, &ref)
 	}
 	reportHolder(id, ref.Msg, ref.Date)
 	logf("  live (age %dm < %dm TTL for state=%s)", hage, ttl, dashOrValue(state))
@@ -295,6 +309,7 @@ func cmdProgress(id, owner, branch string) int {
 	if rc, stop := checkAliases(id, ""); stop {
 		return rc
 	}
+	msg = withReviewRun(msg, fieldOf(ref.Msg, "review-run"))
 	switch store.UpdateFrom(id, ref.Version, msg) {
 	case deskkit.ClaimWriteApplied:
 		logf("progressed %s (state=dispatched branch=%s owner=%s) — TTL now %dm", id, dashIfEmpty(branch), owner, dispatchedTTL())
@@ -362,7 +377,7 @@ func writeReleasedRecord(id, repo string) {
 	}
 }
 
-func cmdSteal(id, owner, reason string, expired *deskkit.ClaimStoreRecord) int {
+func cmdSteal(id, owner, reason, reviewRun string, expired *deskkit.ClaimStoreRecord) int {
 	if reason == "" {
 		errf("refused: steal requires --reason (a takeover with no recorded reason is a hand-delete)")
 		return exitRefused
@@ -376,6 +391,7 @@ func cmdSteal(id, owner, reason string, expired *deskkit.ClaimStoreRecord) int {
 		errf("%v", err)
 		return exitRefused
 	}
+	msg = withReviewRun(msg, reviewRun)
 	var ref deskkit.ClaimStoreRecord
 	status := deskkit.ClaimReadHeld
 	if expired != nil {
