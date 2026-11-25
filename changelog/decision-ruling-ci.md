@@ -1,2 +1,2 @@
 ### Fixed
-- Pull requests that add decision records or change ruling links now run the same corroboration checks as findings changes. (#6077)
+- Pull requests that change the active or archived board now run corroboration, including when a brief’s decision issue changes and its ruling link stays the same. (#6077)
