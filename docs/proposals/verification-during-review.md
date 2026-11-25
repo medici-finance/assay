@@ -28,7 +28,7 @@ authority, current branch requirements, and the existing authority for `done`.
 Inspected public Assay main at `9c284587ff373eda0e606739b863474e6ccd3bff` on
 2026-11-25. The behavior below is source-observed.
 
-- [Pre-merge verifier dispatch](../desk-tools/deskdispatch.md) and [issue #7623](https://github.com/medici-finance/assay/issues/7623) already distinguish an exact unmerged head from merged main. This path is disabled pending credential-free containment. Its approved-head checks include a same-repository trusted author, exact-head reviewer-App approval and a separate security pass. It currently forbids credit and Evidence landing from a pre-merge run.
+- [Pre-merge verifier dispatch](../desk-tools/deskdispatch.md) and [issue #7623](https://github.com/medici-finance/assay/issues/7623) already distinguish an exact unmerged head from merged main. The existing `--target-head` kit checks out the PR head alone. This path is disabled pending credential-free containment. Its approved-head checks include a same-repository trusted author, exact-head reviewer-App approval and a separate security pass. It currently forbids credit and Evidence landing from a pre-merge run.
 - [Lifecycle §2.4](../../spec/lifecycle-v1.md#24-verified) requires independent execution on merged main. Credit at merge needs an explicit amendment to that contract and the protected landing path. This draft records the proposal.
 - Assay already defines a [candidate and acceptance binding](../../spec/verification-domain-v1.md) and [independent evidence provenance](../../spec/evidence-provenance-v1.md). The [candidate-workspace brief](../streams/graph-execution/brief-23-candidate-workspaces.md) owns the reusable workspace design. Reuse its identity and validation contract at the Git boundary. Full workflow-runtime adoption is outside this pilot.
 - The [fixed-delivery verification proposal](fixed-delivery-verification/README.md) deals with the subject of acceptance after delivery. This draft deals with when eligible evidence can be collected and how it can be credited at merge. A result accepted at merge may still hit the separate current-main coverage requirement on the existing `done` path.
@@ -44,7 +44,8 @@ Inspected public Assay main at `9c284587ff373eda0e606739b863474e6ccd3bff` on
 | Merge | Human driver through the existing merge path | A trusted forge observation identifies the merged PR, reviewed head, target ref and actual landed commit. A closed but unmerged PR provides no landing fact. |
 | Credit and publish | Existing verification and Evidence publication owners | Validate the witness against what landed. Add the witness and the `verified` transition in one scoped publication. A failed, incomplete or unbound result stays in the normal verification or repair flow. |
 
-For the first pilot, request verification after both exact-head verdicts. This
+The pilot adds the combined head-and-base freeze described above. For the first
+pilot, request verification after both exact-head verdicts. This
 keeps the existing admission order while moving the work ahead of merge.
 Preparation can overlap review. Scheduling execution before both verdicts would
 change the admission rule and is outside the pilot.
@@ -160,6 +161,6 @@ through their existing owners. Review changes against [Go engineering
 guidance](../go-engineering.md), [Assay contracts](../contracts.md) and
 the protected acceptance and provenance rules cited above. At implementation
 pickup, refresh the public main revision and the delivery state of #7623 and
-candidate-workspace /23. Record which existing seams are available and which
+the candidate-workspace brief `graph-execution/23`. Record which existing seams are available and which
 still need an adapter. The approved spec can then supply self-contained briefs
 and acceptance tests through the normal authoring process.
