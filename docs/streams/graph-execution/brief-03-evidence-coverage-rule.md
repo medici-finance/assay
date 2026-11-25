@@ -85,6 +85,8 @@ on this core rule. 14 owns rechecking at the effect/acceptance boundary.
 6. **Docs.** `spec/lifecycle-v1.md`: `verified` gains the coverage condition; `docs/lifecycle.md` and `docs/enforcement-model.md` gain the rule and the row. `changelog/graph-execution-03-coverage.md` (planned).
 
 ## Verify
+
+Row 9 uses the Rule 51 host lane. Run `verifyrun --rule51` for the pinned forge-backed lint stamp.
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
 | 1 | check:ci | `cd statusgen && go test -run TestCoverage ./...` | exit 0 |
@@ -95,7 +97,7 @@ on this core rule. 14 owns rechecking at the effect/acceptance boundary.
 | 6 | check | `statusgen --coverage --json --root . > /tmp/ge03.json; python3 -c 'import json;d=json.load(open("/tmp/ge03.json"));print(sorted({c["result"] for b in d for c in b["claims"]}))'` | the printed set is a subset of `['could-not-check', 'error', 'fail', 'missing', 'pass', 'wrong-revision']` |
 | 7 | check +dereference | `grep -c 'observe' spec/workflow-pattern-v1.md schemas/workflow-pattern-v1.json spec/lifecycle-v1.md` | each count >= 1 |
 | 8 | check:ci +neighbour | `cd statusgen && go test -run TestAutoFlipNoOverride ./... && go test -run TestEvidenceActor ./...` | exit 0 — the no-override pin and the advisory attribution check are untouched |
-| 9 | check | `cd statusgen && go run . --root .. --lint --acceptance-forge` | exit 0; LINT: PASS |
+| 9 | check | `cd statusgen && go run . --root .. --lint` | exit 0; LINT: PASS |
 | 10 | check | `statusgen --consumers --brief graph-execution/03 --root .; echo rc=$?` | `rc=0` on the authoring branch (every entry routes follow-up or out-of-scope); exit 2 (could-not-check) on a fully merged main is acceptable and must be recorded as such, never as pass |
 | 11 | check:ci +mutation | `cd statusgen && go test -count=1 -v -run TestCoverageAdviceCannotSupplyWitness ./...` | exit 0; named test PASS; high-confidence advice does not satisfy missing mandatory evidence |
 | 12 | check:ci +mutation | `cd statusgen && go test -count=1 -v -run TestCoverageAcceptanceDigestChanged ./...` | exit 0; named test PASS; changed acceptance invalidates the affected witness |

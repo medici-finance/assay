@@ -101,9 +101,21 @@ func windowsIgnoredFiles(dir, arch string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("could not check %s on windows/%s: %w", dir, arch, err)
 	}
-	var pkg struct{ IgnoredGoFiles []string }
+	var pkg struct {
+		IgnoredGoFiles []string
+		Error          *struct{ Err string }
+	}
 	if err := json.Unmarshal(out, &pkg); err != nil {
 		return nil, fmt.Errorf("invalid go list output for %s on windows/%s: %w", dir, arch, err)
+	}
+	if pkg.Error != nil && pkg.Error.Err != "" {
+		// A package made entirely of Unix files can itself have no buildable
+		// source on Windows. Go still reports its excluded files in that case.
+		excludedPackage := len(pkg.IgnoredGoFiles) > 0 &&
+			strings.HasPrefix(pkg.Error.Err, "build constraints exclude all Go files in ")
+		if !excludedPackage {
+			return nil, fmt.Errorf("go list for %s on windows/%s: %s", dir, arch, pkg.Error.Err)
+		}
 	}
 	return pkg.IgnoredGoFiles, nil
 }
