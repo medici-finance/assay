@@ -13,7 +13,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 3
+version: 4
 authored: 2026-10-20 by assay-worker-app
 sources:
   - https://github.com/medici-finance/assay/issues/2703#issuecomment-6302222772
@@ -148,7 +148,7 @@ Run from the repository root. Named tests use hermetic fixtures. Worker receipts
 | 5 | `(cd statusgen && o=$(mktemp); go test . -run '^TestBoardCohortFull$' -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- '--- PASS: TestBoardCohortFull' "$o")` | exit 0; actual evidenced #1196 full remains implemented despite later partial and VERIFY FAIL; Evidence-only #2295 cannot replace it; all nine bounded full dispositions retain their reviewed meaning and cache behavior | check:ci +neighbour |
 | 6 | `(cd statusgen && for t in TestRolloutSourceAdmission TestCISliceSourceAdmission TestOwedTaskSourceAdmission TestEvidenceAdmission TestAdmissionCacheAndDelivery TestPartialBackfillSkips TestPartialRegenDriftAgrees TestApplyReconcileWrites; do o=$(mktemp); go test . -run "^$t" -count=1 -timeout 60s -v > "$o" 2>&1 && grep -F -- "--- PASS: $t" "$o"; r=$?; if test "$r" -ne 0; then exit "$r"; fi; done)` | exit 0; existing neighbors pass, including all five apply-prefix tests; no existing partial declaration or protected-cell floor weakened | check:ci +neighbour |
 | 7 | `o=$(mktemp); git diff --name-only 44829891e8f74b1520b64f4180910d96e17be96a^1 44829891e8f74b1520b64f4180910d96e17be96a > "$o" && python3 -c 'import pathlib,sys; actual=set(pathlib.Path(sys.argv[1]).read_text().splitlines()); expected={"changelog/statusgen-26-v3.md","docs/streams/statusgen/README.md","docs/telemetry.md","statusgen/brieffile.go","statusgen/dispatchqueue.go","statusgen/forgeread.go","statusgen/load.go","statusgen/main.go","statusgen/parse.go","statusgen/perfrecord.go","statusgen/perfrecord_test.go"}; assert actual==expected, actual; print("PR 3759: exact eleven delivery paths confirmed")' "$o"` | exit 0; exact confirmation; real Git merge independently corroborates the fixture's delivery paths; semantic completeness still reviewed against the actual brief | check +dereference |
-| 8 | `statusgen --root . --consumers --brief derived-board/11 --delivery "$DELIVERY" --base 5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7` | Set DELIVERY to the immutable implementation delivery commit recorded below; exit 0; 4 corroborated, 0 disproved, 13 unchecked. Unchecked scope remains review. For the pre-merge authoring check omit --delivery and compare the complete working branch against refreshed main cfe5c927ec7049728f4b97306beaedf43a444b9f. | check |
+| 8 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief derived-board/11 --delivery 92315c7fa0f0b1e9a5e66a3c6dfdabc8a1d0cde7 --base 5dcdff9fb1ec67c0bf80aa60f778da5aef4687b7 > "$o" && cat "$o" && grep -Fx -- 'summary: 4 corroborated, 0 disproved, 13 unchecked, 0 brief(s) claiming nothing' "$o")` | Exit 0 and exactly 4 corroborated, 0 disproved, 13 unchecked. The 13 unchecked routes remain explicit review obligations. | check |
 | 9 | `statusgen --root . --lint` | exit 0; LINT PASS; no new PROBLEM or generated-cell write | check |
 
 ## Pre-mortem
