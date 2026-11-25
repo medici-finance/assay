@@ -83,6 +83,14 @@ func resolveResume(o dispatchOpts, plan *dispatchPlan) error {
 
 // Called at the allocation boundary, including by future callers that bypass planning.
 func dispatchBase(o dispatchOpts, plan dispatchPlan) (string, error) {
+	if o.hasVerifierTarget() {
+		// A pre-merge verifier home is cut at the exact admitted head (#7623); the
+		// shape was refused pre-claim unless it is a full 40-hex commit.
+		if !verifierKit(o.kit) || !plan.detached || o.verifierTarget().Problem() != "" {
+			return "", deskkit.Refused("pre-merge verifier allocation lacks a detached verifier home and a full target head")
+		}
+		return o.targetHead, nil
+	}
 	if !workerResume(o) {
 		return mainlineRef, nil
 	}

@@ -51,7 +51,8 @@ def raw_docker_builds(source):
 
 
 def raw_registry_pushes(source):
-    """Line numbers of docker push argument lists not handed to registry_push."""
+    """Line numbers of docker registry-write argument lists (push, manifest
+    push, imagetools create) not handed to registry_push."""
     import ast
     found, inside = [], set()
     tree = ast.parse(source)
@@ -70,7 +71,8 @@ def raw_registry_pushes(source):
             if not (isinstance(item, ast.Constant) and isinstance(item.value, str)):
                 break
             words.append(item.value)
-        if words[:1] == ['docker'] and 'push' in words[1:3]:
+        if words[:1] == ['docker'] and ('push' in words[1:3]
+                                        or words[1:4] == ['buildx', 'imagetools', 'create']):
             found.append(node.lineno)
     return found
 
@@ -1059,8 +1061,22 @@ import hashlib, io, json, os, sys, tarfile
 args = sys.argv[1:]
 with open(os.environ['CALLS'], 'a') as f: f.write(json.dumps(args)+'\\n')
 mode = os.environ.get('MODE', '')
-def digest(ref): return 'sha256:' + hashlib.sha256(ref.encode()).hexdigest()
+# A digest belongs to the image, not the tag: a staging tag names the same image.
+def digest(ref): return 'sha256:' + hashlib.sha256(ref.replace(':staging-', ':').encode()).hexdigest()
 ARCHES = {'linux/amd64': '-linux-amd64', 'linux/arm64': '-linux-arm64'}
+# The registry's version tags (#7619): those attached by imagetools create
+# persist in TAGS, so a second run against the same file is a re-run.
+def held():
+    try: return json.load(open(os.environ['TAGS']))
+    except FileNotFoundError: return {}
+def named(ref):
+    tags = held()
+    if ref in tags: return tags[ref]
+    if mode == 'exists' or (mode == 'arch-tag-exists' and ref.endswith('-linux-arm64')):
+        return digest('old ' + ref)
+    if '/desk-tools:' in ref and mode in ('one-same', 'one-other'):
+        return digest(ref if mode == 'one-same' else 'old ' + ref)
+    return None
 if args[:2] == ['builder', 'prune']: sys.exit(1 if mode == 'prune-fail' else 0)
 if args[:1] == ['info']:
     print('linux/amd64' if mode == 'native-wrong-host' else 'linux/aarch64'); sys.exit(0)
@@ -1088,13 +1104,25 @@ if args[:2] == ['manifest', 'inspect'] and '@' in args[-1]:
     media = 'application/vnd.oci.image.manifest.v1+json' if mode == 'index-not-list' else 'application/vnd.oci.image.index.v1+json'
     print(json.dumps({'schemaVersion': 2, 'mediaType': media, 'manifests': entries})); sys.exit(0)
 if args[:2] == ['manifest', 'inspect']:
-    if mode == 'exists' or (mode == 'arch-tag-exists' and args[-1].endswith('-linux-arm64')):
+    if mode != 'lookup-fail' and named(args[-1]):
         print('{}'); sys.exit(0)
     print('unauthorized' if mode == 'lookup-fail' else 'manifest unknown', file=sys.stderr)
     sys.exit(1)
 if args[:2] == ['manifest', 'create']: sys.exit(0)
 if args[:2] == ['manifest', 'push']:
     if mode != 'index-no-digest': print('sha256:' + 'c'*64)
+    sys.exit(0)
+if args[:3] == ['buildx', 'imagetools', 'inspect']:
+    if not named(args[-1]): print('ERROR: not found', file=sys.stderr); sys.exit(1)
+    print(json.dumps({'mediaType': 'application/vnd.oci.image.manifest.v1+json',
+                      'digest': named(args[-1])})); sys.exit(0)
+if args[:3] == ['buildx', 'imagetools', 'create']:
+    ref = args[args.index('--tag') + 1]
+    if mode == 'tag-fail-pr-review' and '/pr-review-desk:' in ref:
+        print('denied: permission_denied: write_package', file=sys.stderr); sys.exit(1)
+    tags = held()
+    tags[ref] = digest('drift') if mode == 'tag-drift' else args[-1].split('@')[1]
+    with open(os.environ['TAGS'], 'w') as f: json.dump(tags, f)
     sys.exit(0)
 if args[:2] == ['image', 'inspect'] and args[3] == '{{json .Config}}':
     user = {'deskd-root-user': '0:0', 'deskd-named-user': 'deskd', 'deskd-no-user': ''}.get(mode, '65532:65532')
@@ -1118,13 +1146,16 @@ if args[:2] == ['image', 'inspect']:
     if mode == 'missing-digest': sys.exit(0)
     repo = args[-1].rsplit(':', 1)[0]
     if mode == 'wrong-digest-repo': repo = 'ghcr.io/unrelated/image'
-    print(repo + '@' + digest(args[-1]))
+    # A rebuild of the same version yields other digests (verify-runner aside).
+    rebuilt = '#rebuilt' if mode == 'rebuilt' and 'verify-runner' not in repo else ''
+    print(repo + '@' + digest(args[-1] + rebuilt))
 ''')
         docker.chmod(0o755)
         self.out = self.root / 'output'
         self.calls = self.root / 'calls'
         self.env = dict(os.environ, PATH=str(bindir) + os.pathsep + os.environ['PATH'],
-                        CALLS=str(self.calls), PYTHONDONTWRITEBYTECODE='1')
+                        CALLS=str(self.calls), TAGS=str(self.root / 'tags.json'),
+                        PYTHONDONTWRITEBYTECODE='1')
 
     SUITE = ('deskboard', 'cellctl', 'deskpr', 'hooks/pre-push')
 
@@ -1367,12 +1398,14 @@ if args[:2] == ['image', 'inspect']:
         parsed = [json.loads(s) if s.startswith('[') else [] for s in calls]
         pushes = [i for i, c in enumerate(parsed) if c[:1] == ['push']]
         self.assertEqual(len(pushes), 11)
+        # regression: #7619 — every push goes to a staging tag; version tags
+        # are attached by digest afterwards.
         self.assertEqual([parsed[i][1] for i in pushes][-2:],
-                         ['ghcr.io/example/verify-runner:v1.2.3-linux-amd64',
-                          'ghcr.io/example/verify-runner:v1.2.3-linux-arm64'])
+                         ['ghcr.io/example/verify-runner:staging-v1.2.3-linux-amd64',
+                          'ghcr.io/example/verify-runner:staging-v1.2.3-linux-arm64'])
         create = next(i for i, c in enumerate(parsed) if c[:2] == ['manifest', 'create'])
         self.assertEqual(parsed[create][2:], [
-            'ghcr.io/example/verify-runner:v1.2.3',
+            'ghcr.io/example/verify-runner:staging-v1.2.3',
             'ghcr.io/example/verify-runner@' + 'sha256:' + hashlib.sha256(
                 b'ghcr.io/example/verify-runner:v1.2.3-linux-amd64').hexdigest(),
             'ghcr.io/example/verify-runner@' + 'sha256:' + hashlib.sha256(
@@ -1464,7 +1497,8 @@ if args[:2] == ['image', 'inspect']:
                                  'example/assay', runner_platforms=(contract.RUNNER_PLATFORM,))
         self.assertEqual(refs['deskd'], record[0]['ref'])
         calls, at = deskd_calls(case)
-        self.assertIn(deskd, [calls[i][1] for i in at['push']])
+        # regression: #7619 — pushed under its staging tag, tagged by digest after.
+        self.assertIn('ghcr.io/example/assay/deskd:staging-v1.2.3', [calls[i][1] for i in at['push']])
         checks = at['build'] + at['config'] + at['usage'] + at['scan']
         self.assertEqual(len(checks), 4)
         self.assertLess(max(checks), min(at['push']))
@@ -1632,7 +1666,11 @@ if args[:2] == ['image', 'inspect']:
                 case, result = cases[mode], results[mode]
                 self.assertNotEqual(result.returncode, 0, result.stdout)
                 self.assertFalse((case.out / 'release-images.json').exists())
-                if mode in ['exists', 'lookup-fail', 'stale', 'scan-fail', 'arch-tag-exists', 'wrong-arch']:
+                # regression: #7619 — no refusal moves a version tag. An
+                # existing tag is compared by digest after the pushes, so
+                # 'exists' and 'arch-tag-exists' push staging tags first.
+                self.assertFalse(any('"imagetools", "create"' in s for s in case.recorded()))
+                if mode in ['lookup-fail', 'stale', 'scan-fail', 'wrong-arch']:
                     self.assertFalse(any('"push"' in s for s in case.recorded()))
 
     def test_release_has_one_approval_before_all_publication(self):
@@ -2973,8 +3011,11 @@ class PushRetryTest(unittest.TestCase):
 
     # regression: #7619
     def test_server_error_retried(self):
-        # Each fixture matches exactly one 5xx alternative, so dropping or
-        # narrowing any single alternative turns its subtest red.
+        # Each fixture is a 5xx spelling the push must retry. Some match more
+        # than one alternative (HTTP_503 matches the numeric status and
+        # 'service unavailable'), so dropping one alternative need not turn
+        # any subtest here red. test_each_classifier_alternative_pinned is
+        # what pins each alternative on its own.
         for stderr in (HTTP_503, 'HTTP 500\n', 'received unexpected HTTP status: 504\n',
                        'http: 599\n', '500 Internal Server Error\n', '502 Bad Gateway\n',
                        '503 Service Unavailable\n', '504 Gateway Timeout\n'):
@@ -3069,8 +3110,9 @@ class PushRetryTest(unittest.TestCase):
 
     # regression: #7619
     def test_existing_tag_still_refused(self):
-        # The absence pre-check runs once per target, before any push, and an
-        # existing tag still stops the release with nothing pushed.
+        # An existing tag at another digest still stops the release. Since
+        # the digest-first order, it is compared after the pushes, which only
+        # reach staging tags: no version tag is written or moved.
         case = ImagesTest('test_dry_build_never_pushes_or_writes_pinnable_refs')
         case.setUp()
         self.addCleanup(case.doCleanups)
@@ -3078,9 +3120,12 @@ class PushRetryTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('image tag already exists; fix forward', result.stderr)
         calls = [json.loads(s) for s in case.recorded() if s.startswith('[')]
-        self.assertFalse(any(c[:1] == ['push'] or c[:2] == ['manifest', 'push'] for c in calls))
-        self.assertEqual([c for c in calls if c[:2] == ['manifest', 'inspect']],
-                         [['manifest', 'inspect', 'ghcr.io/example/assay/desk-tools:v1.2.3']])
+        writes = [c[-1] for c in calls if c[:1] == ['push'] or c[:2] == ['manifest', 'push']]
+        self.assertEqual(len(writes), 12)
+        self.assertTrue(all(':staging-v1.2.3' in ref for ref in writes))
+        self.assertFalse(any(c[:3] == ['buildx', 'imagetools', 'create'] for c in calls))
+        # Every target is refused at once, so the log names the whole clash.
+        self.assertEqual(result.stderr.count(', this run pushed '), 12)
 
     # regression: #7619
     def test_partial_publish_reported(self):
@@ -3105,7 +3150,9 @@ class PushRetryTest(unittest.TestCase):
         self.assertEqual(raw_registry_pushes(source), [])
         anchor = '    check_runner_platform(ref, platform)\n'
         for plant in ('    run("docker", "push", ref)\n',
-                      '    subprocess.run(["docker", "manifest", "push", ref])\n'):
+                      '    subprocess.run(["docker", "manifest", "push", ref])\n',
+                      # regression: #7619 — a version-tag write is a registry write too.
+                      '    run("docker", "buildx", "imagetools", "create", "--tag", ref, ref)\n'):
             with self.subTest(plant=plant):
                 planted = source.replace(anchor, anchor + plant, 1)
                 self.assertNotEqual(planted, source)
@@ -3143,6 +3190,196 @@ class PushRetryTest(unittest.TestCase):
                     except AssertionError:
                         killed += 1
                 self.assertGreater(killed, 0, 'SURVIVED: ' + name)
+
+
+RUNNER = 'ghcr.io/example/verify-runner:v1.2.3'
+
+
+def tag_targets():
+    """Every version tag a publish attaches, with the digest the fake pushes."""
+    names = load_images().NAMES
+    refs = [f'ghcr.io/example/assay/{n}:v1.2.3' for n in names if n != 'verify-runner']
+    refs += [RUNNER + '-linux-amd64', RUNNER + '-linux-arm64']
+    wanted = {ref: 'sha256:' + hashlib.sha256(ref.encode()).hexdigest() for ref in refs}
+    wanted[RUNNER] = 'sha256:' + 'c' * 64
+    return wanted
+
+
+class DigestFirstTest(unittest.TestCase):
+    """#7619: every image is pushed by digest before any version tag moves, and
+    a version tag already in place must name the digest this run pushed."""
+
+    def fixture(self, tags=None):
+        case = ImagesTest('test_dry_build_never_pushes_or_writes_pinnable_refs')
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        if tags is not None:
+            case.env['TAGS'] = tags.env['TAGS']
+        return case
+
+    def publish(self, mode='', source=None, tags=None):
+        case = self.fixture(tags)
+        if source is not None:
+            case.script.write_text(source)
+        return case, case.invoke(True, mode)
+
+    @staticmethod
+    def calls(case):
+        return [json.loads(s) for s in case.recorded() if s.startswith('[')]
+
+    def creates(self, case):
+        return [(c[c.index('--tag') + 1], c[-1]) for c in self.calls(case)
+                if c[:3] == ['buildx', 'imagetools', 'create']]
+
+    @staticmethod
+    def held(case):
+        path = Path(case.env['TAGS'])
+        return json.loads(path.read_text()) if path.exists() else {}
+
+    def check_push_fail(self, source=None):
+        case, result = self.publish('push-fail-pr-review', source)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('no version tag attached', result.stderr)
+        self.assertEqual(self.creates(case), [])
+        self.assertEqual(self.held(case), {})
+
+    def check_all_tagged(self, source=None):
+        case, result = self.publish('', source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        wanted = tag_targets()
+        self.assertEqual(self.held(case), wanted)
+        self.assertEqual(sorted(self.creates(case)),
+                         sorted((ref, ref.rsplit(':', 1)[0] + '@' + d) for ref, d in wanted.items()))
+        calls = self.calls(case)
+        writes = [i for i, c in enumerate(calls) if c[:1] == ['push'] or c[:2] == ['manifest', 'push']]
+        tags = [i for i, c in enumerate(calls) if c[:3] == ['buildx', 'imagetools', 'create']]
+        self.assertLess(max(writes), min(tags))
+        self.assertTrue(all(':staging-v1.2.3' in calls[i][-1] for i in writes))
+        for image in json.loads((case.out / 'release-images.json').read_text())['images']:
+            ref, pinned = image['ref'].split('@')
+            self.assertEqual(wanted[ref], pinned)
+
+    def partial_tags(self, source=None):
+        """A first run whose tagging stops at pr-review-desk: five tags attached."""
+        first, result = self.publish('tag-fail-pr-review', source)
+        self.assertNotEqual(result.returncode, 0)
+        attached = {ref: d for ref, d in tag_targets().items()
+                    if re.search(r'/(desk-tools|assay-harness|desk-base|intake-desk|worker-desk):', ref)}
+        self.assertEqual(self.held(first), attached)
+        self.assertIn('Version tags written before the failure: ' + ' '.join(attached),
+                      result.stderr)
+        return first, attached
+
+    def check_rerun_same(self, source=None):
+        first, attached = self.partial_tags(source)
+        case, result = self.publish('', source, tags=first)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.held(case), tag_targets())
+        self.assertEqual({ref for ref, _ in self.creates(case)}, set(tag_targets()) - set(attached))
+
+    def check_rerun_new(self, source=None):
+        first, attached = self.partial_tags(source)
+        case, result = self.publish('rebuilt', source, tags=first)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('image tag already exists; fix forward', result.stderr)
+        for ref in attached:
+            self.assertIn(ref, result.stderr)
+        self.assertEqual(self.creates(case), [])
+        self.assertEqual(self.held(case), attached)
+        self.assertFalse((case.out / 'release-images.json').exists())
+
+    def check_same_accepted(self, source=None):
+        case, result = self.publish('one-same', source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        desk_tools = 'ghcr.io/example/assay/desk-tools:v1.2.3'
+        self.assertNotIn(desk_tools, [ref for ref, _ in self.creates(case)])
+        self.assertEqual(len(self.creates(case)), len(tag_targets()) - 1)
+        self.assertTrue((case.out / 'release-images.json').exists())
+
+    def check_other_refused(self, source=None):
+        case, result = self.publish('one-other', source)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('image tag already exists; fix forward: '
+                      'ghcr.io/example/assay/desk-tools:v1.2.3', result.stderr)
+        # Refused on the digests compared, not on the tag's presence alone.
+        old = 'sha256:' + hashlib.sha256(b'old ghcr.io/example/assay/desk-tools:v1.2.3').hexdigest()
+        self.assertIn(f'names {old}, this run pushed {tag_targets()["ghcr.io/example/assay/desk-tools:v1.2.3"]}',
+                      result.stderr)
+        self.assertEqual(self.creates(case), [])
+        self.assertEqual(self.held(case), {})
+        self.assertFalse((case.out / 'release-images.json').exists())
+
+    def check_read_back(self, source=None):
+        case, result = self.publish('tag-drift', source)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('after tagging', result.stderr)
+        self.assertEqual(len(self.creates(case)), 1)
+        # The drifted tag did move, so the failure line must name it.
+        moved = self.creates(case)[0][0]
+        self.assertIn('Version tags written before the failure: ' + moved, result.stderr)
+        self.assertFalse((case.out / 'release-images.json').exists())
+
+    # regression: #7619
+    def test_push_fail_moves_no_tag(self):
+        self.check_push_fail()
+
+    # regression: #7619
+    def test_all_pushed_tags_every(self):
+        self.check_all_tagged()
+
+    # regression: #7619
+    def test_rerun_same_digest_done(self):
+        self.check_rerun_same()
+
+    # regression: #7619
+    def test_rerun_new_digest_refused(self):
+        self.check_rerun_new()
+
+    # regression: #7619
+    def test_same_digest_tag_accepted(self):
+        self.check_same_accepted()
+
+    # regression: #7619
+    def test_other_digest_tag_refused(self):
+        self.check_other_refused()
+
+    # regression: #7619
+    def test_tag_read_back_checked(self):
+        self.check_read_back()
+
+    # regression: #7619
+    def test_digest_mutations_killed(self):
+        # Each planted weakening of the digest-first order must turn a
+        # scenario red. The scenarios run whole publishes, so each mutation
+        # runs them at once in fixtures of its own.
+        source = (HERE / 'images.py').read_text()
+        mutations = {
+            'tag before all pushes succeed': (
+                'digest = push_digest(stage_tag(ref))',
+                'digest = attach_tag(ref, push_digest(stage_tag(ref)), [])'),
+            'accept a mismatching digest': (
+                'clash.append(f"{ref} names {got}, this run pushed {digest}")',
+                'attach[ref] = digest'),
+            'skip the digest compare': ('elif got == digest:', 'elif True:'),
+            'skip the tag read-back': ('if got != digest:', 'if False:'),
+        }
+        scenarios = [self.check_push_fail, self.check_all_tagged, self.check_rerun_new,
+                     self.check_other_refused, self.check_read_back]
+
+        def killed(mutated, scenario):
+            try:
+                scenario(mutated)
+            except AssertionError:
+                return 1
+            return 0
+
+        for name, (old, new) in mutations.items():
+            with self.subTest(mutation=name):
+                self.assertEqual(source.count(old), 1, old)
+                mutated = source.replace(old, new, 1)
+                with ThreadPoolExecutor(max_workers=len(scenarios)) as pool:
+                    kills = sum(pool.map(lambda s: killed(mutated, s), scenarios))
+                self.assertGreater(kills, 0, 'SURVIVED: ' + name)
 
 
 if __name__ == '__main__':
