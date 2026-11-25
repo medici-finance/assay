@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvPassList|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred|TestAdmittedRowInputsPass|TestAdmittedRowSeesDelivery|TestAdmittedRowBareDelivery|TestAdmittedScrubbedInputCouldNotRun|TestAdmittedDroppedInputNotRun|TestAdmittedRowScrubbedRefs|TestScrubbedRowNeverGreen)$' -count=1 -timeout 600s",
+  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvPassList|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred|TestAdmittedRowInputsPass|TestAdmittedRowSeesDelivery|TestAdmittedRowBareDelivery|TestAdmittedScrubbedInputCouldNotRun|TestAdmittedDroppedInputNotRun|TestAdmittedRowScrubbedRefs|TestScrubbedRowNeverGreen|TestAdmittedRowSelfBound|TestAdmittedSelfDefaultRuns|TestAdmittedUnboundRefused)$' -count=1 -timeout 600s",
   "control": {
     "name": "admitted rows keep every credential pointer",
     "file": "verifieradmission.go",
@@ -246,6 +246,72 @@
       "file": "verifieradmission.go",
       "old": "|| !admittedRowOnlyReads(command, name) {",
       "new": "{"
+    },
+    {
+      "name": "an empty default is the row's own value",
+      "file": "admittedrowbind.go",
+      "old": "value := strings.Trim(command[at+op:i], \"\\\"' \\t\")",
+      "new": "value := \"x\" + strings.Trim(command[at+op:i], \"\\\"' \\t\")"
+    },
+    {
+      "name": "an alternate or guard form is the row's own value",
+      "file": "admittedrowbind.go",
+      "old": "case strings.HasPrefix(rest, \":-\"), strings.HasPrefix(rest, \":=\"):",
+      "new": "case strings.HasPrefix(rest, \":-\"), strings.HasPrefix(rest, \":=\"), strings.HasPrefix(rest, \":+\"), strings.HasPrefix(rest, \":?\"):"
+    },
+    {
+      "name": "a prefix assignment binds the command's own arguments",
+      "file": "admittedrowbind.go",
+      "old": "return at < b.to && quote >= 0",
+      "new": "return at < b.to"
+    },
+    {
+      "name": "a shell assignment reaches a child's script",
+      "file": "admittedrowbind.go",
+      "old": "return quote == b.quote",
+      "new": "return true"
+    },
+    {
+      "name": "a read inside the assigned value is the row's own",
+      "file": "admittedrowbind.go",
+      "old": "if at < b.from {",
+      "new": "if at < 0 {"
+    },
+    {
+      "name": "an assignment after a pipe or || binds",
+      "file": "admittedrowbind.go",
+      "old": "start, assigning = true, false",
+      "new": "start, assigning = true, true"
+    },
+    {
+      "name": "an assignment inside parentheses binds",
+      "file": "admittedrowbind.go",
+      "old": "if depth == 0 && assigning {",
+      "new": "if assigning {"
+    },
+    {
+      "name": "a background assignment binds",
+      "file": "admittedrowbind.go",
+      "old": "return j, j+1 < len(command) && command[j+1] == '&'",
+      "new": "return j, true"
+    },
+    {
+      "name": "a pwsh read of a bound name is the row's own",
+      "file": "admittedrowbind.go",
+      "old": "case loc[2] >= 0:\n\t\t\tif strings.EqualFold(command[loc[2]:loc[3]], name) {",
+      "new": "case loc[2] >= 0:\n\t\t\tif false {"
+    },
+    {
+      "name": "a quoted assignment binds",
+      "file": "admittedrowbind.go",
+      "old": "\t\tcase '\"':\n\t\t\te, ok := admittedRowDoubleQuoteEnd(command, i)\n\t\t\tif !ok {\n\t\t\t\treturn binds, quotes\n\t\t\t}\n\t\t\ti = e\n\t\t\tcontinue\n",
+      "new": "\t\tcase '\"':\n\t\t\tstart = true\n"
+    },
+    {
+      "name": "every read of a scrubbed name is the row's own",
+      "file": "verifieradmission.go",
+      "old": "\t\tif admittedRowSelfBound(command, name) {\n",
+      "new": "\t\tif true {\n"
     }
   ]
 }

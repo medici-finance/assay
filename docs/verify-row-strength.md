@@ -330,9 +330,16 @@ tells the verifier to export. It leaves out a name the scrub already dropped bef
 existed (a forge credential, `GIT_*`, `GH_*`), a name the shell or the run sets (`PWD`, `RANDOM`,
 `TMPDIR`), a lower-case or mixed-case `$name` (a shell local; the `$env:` and `%NAME%` forms count
 in any case), and a name the row also assigns or names bare (`NAME=...`, `for NAME in`,
-`printenv NAME`). The rule reads the row's text, not the shell's parse, so a read with a default
-(`${NAME:-}`) counts too. A row that reads a dropped variable some other way, or names it bare,
-runs and sees it unset. The note is not permission to run the row outside admission: which rows to
+`printenv NAME`). It also leaves out, for any dropped name, `ASSAY_*` included, a name the row
+binds itself, because the row then sees its own value and never an inherited one: every read is a
+non-empty default (`${NAME:-x}`, `${NAME:=x}`, `${NAME-x}`, `${NAME=x}`), or comes after the row's
+own `NAME=value` or `export NAME=value` at the start of a top-level command, or after a
+`${NAME:=x}`, or sits in a single-quoted script under a leading `NAME=value cmd`. A bare read, an
+empty default (`${NAME:-}`), `${NAME:?}`, `${NAME:+x}`, a read before the assignment, a read in the
+prefixed command's own arguments, and an assignment in a subshell, a pipeline or a quoted string
+still count. The scrub does not change: an inherited value is removed either way. The rule reads
+the row's text, not the shell's parse, so a form it cannot place counts. A row that reads a dropped
+variable some other way, or names it bare, runs and sees it unset. The note is not permission to run the row outside admission: which rows to
 amend, or which inputs to carry in, is the author's call.
 
 What a row can still reach today, because it runs as the invoking user:
