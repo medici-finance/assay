@@ -217,6 +217,20 @@ var reviewObligations = []obligation{
 	{21, "The project layer may append classes for its stack and may never remove a base class", []string{laneC}},
 	{21, "a class that cannot be honestly `n/a`'d and was not checked is `could-not-check`, never a silent APPROVE", []string{laneC}},
 	{21, "The coverage contract and its class register are the correctness lane's", []string{laneS}},
+
+	{22, "An explicit disposition on a finding class", bothLanes},
+	{22, "`resolved-by-author-disposition` is a legitimate resolution", bothLanes},
+	{22, "The accepted disposition ends your ARGUMENT, not the pipeline's gate", bothLanes},
+	{22, "name the class in your verdict as an arbiter hand-off for the desk to file", bothLanes},
+	{22, "The hand-off changes nothing about blocking", bothLanes},
+	{22, "A re-statement round is neither", bothLanes},
+	{22, "**Explicit dispositions only.**", bothLanes},
+	{22, "A safety-consequence finding is never accepted on a disposition alone", bothLanes},
+	{22, "The security lane never takes the Accept move", bothLanes},
+	{22, "only a recorded human ruling clears it", bothLanes},
+	{22, "an untrusted author's disposition is not a disposition at all", bothLanes},
+	{22, "A code change alone is not new evidence about the disposition", bothLanes},
+	{22, "**Nothing here touches the flip gates.**", bothLanes},
 }
 
 var clauseHeadingRE = regexp.MustCompile(`^## (\d+)\. `)
