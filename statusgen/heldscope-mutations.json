@@ -1702,14 +1702,14 @@
     {
       "name": "#7578 carry: a verifyrun witness row's carried tags still count",
       "file": "heldscope.go",
-      "old": "if !isWitnessRow(l) {\n\t\t\tcontinue // a row verifyrun did not write",
-      "new": "if true {\n\t\t\tcontinue // a row verifyrun did not write"
+      "old": "if c := witnessCells(l); c == nil || len(c) < cols {",
+      "new": "if c := witnessCells(l); c == nil || len(c) < cols || true {"
     },
     {
       "name": "#7578 carry: any row of a witness table is exempt, verifyrun's or not",
       "file": "heldscope.go",
-      "old": "if !isWitnessRow(l) {\n\t\t\tcontinue // a row verifyrun did not write",
-      "new": "if false {\n\t\t\tcontinue // a row verifyrun did not write"
+      "old": "if c := witnessCells(l); c == nil || len(c) < cols {",
+      "new": "if c := witnessCells(l); false && (c == nil || len(c) < cols) {"
     },
     {
       "name": "#7578 carry: a table-structure or template tag does not end the witness exemption",
@@ -1752,6 +1752,18 @@
       "file": "heldscope.go",
       "old": "tr td th template select object applet marquee`) {",
       "new": "tr td th template select`) {"
+    },
+    {
+      "name": "#7578 carry S4-1: a line that is not a witness row is skipped and keeps the exemption",
+      "file": "heldscope.go",
+      "old": "\t\t\twitness = 0 // the page may end the table at a row verifyrun did not write\n",
+      "new": "\t\t\t// the page may end the table at a row verifyrun did not write\n"
+    },
+    {
+      "name": "#7578 carry S4-1: a row with fewer cells than the header keeps the exemption",
+      "file": "heldscope.go",
+      "old": "c == nil || len(c) < cols {",
+      "new": "c == nil || cols < 0 {"
     }
   ]
 }

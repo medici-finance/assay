@@ -111,6 +111,37 @@ func TestHeldCarryProseStillDoubts(t *testing.T) {
 		{"applet in witness row", "\n" + witnessTableFor(vfRow1, markRow("applet"))},
 		{"marquee in witness row", "\n" + witnessTableFor(vfRow1, markRow("MARQUEE"))},
 	}
+	// Every line between the delimiter row and a carried-tag witness row
+	// that the page may read as the end of the table (S4-1): a row with no
+	// cell, a blank line, any line that starts another block, and any line
+	// that is not itself a witness row. The rows after it render as text.
+	for _, end := range []struct{ name, line string }{
+		{"pipe-only line", "|"},
+		{"pipe and space line", "| "},
+		{"pipe and tab line", "|\t"},
+		{"spaces-only line", "   "},
+		{"ATX heading", "# Heading"},
+		{"setext underline", "==="},
+		{"thematic break", "***"},
+		{"dash thematic break", "---"},
+		{"blockquote", "> quote"},
+		{"bullet list item", "- item"},
+		{"ordered list item", "1. item"},
+		{"HTML block", "<div>"},
+		{"indented code", "    code"},
+		{"link reference definition", "[x]: /y"},
+		{"line with no pipe", "plain text"},
+		{"empty-celled row", "| | | | | | |"},
+		{"hand row", "| 3 | x | y | z | w | v |"},
+	} {
+		cases = append(cases, struct{ name, text string }{end.name + " before a witness row",
+			"\n" + witnessTableFor(vfRow1, end.line, carryRow)})
+	}
+	// Under the fail-first header a six-cell row is padded with an empty
+	// cell; the page may end a table that pads too many, so such a row is
+	// not exempt.
+	cases = append(cases, struct{ name, text string }{"short row under the fail-first header",
+		"\n" + witnessHeaderFailFirst + "\n" + vfRow1 + " base=- not-selected |\n" + carryRow})
 	for _, c := range cases {
 		if !hc7578Carry(c.text) {
 			t.Errorf("%s: heldCarryElement(%q) = false, want true", c.name, c.text)
@@ -123,6 +154,24 @@ func TestHeldCarryProseStillDoubts(t *testing.T) {
 		ev := vlOldHeld() + c.text + vlLatestRun()
 		if heldScanScope(ev, true).latest {
 			t.Errorf("%s: latest = true, want the run boundary doubted\n%s", c.name, ev)
+		}
+	}
+}
+
+// TestHeldCarryTableRowsKept: rows the page keeps in the witness table stay
+// exempt: a row with more cells than the header, and a fail-first row with
+// its Base cell.
+// regression: #7578
+func TestHeldCarryTableRowsKept(t *testing.T) {
+	carry := strings.Replace(vlRow2, "| 2026-08-13 |", "| 2026-08-13 <s> |", 1)
+	for _, c := range []struct{ name, text string }{
+		{"carried tag", "\n" + witnessTableFor(vfRow1, carry)},
+		{"extra cell", "\n" + witnessTableFor(vfRow1, carry+" more |")},
+		{"fail-first rows", "\n" + witnessHeaderFailFirst + "\n" + vfRow1 + " base=- not-selected |\n" + carry + " base=- not-selected |"},
+		{"placeholder after a carried row", "\n" + witnessTableFor(vfRow1, carry, hc7578Row)},
+	} {
+		if hc7578Carry(c.text) {
+			t.Errorf("%s: heldCarryElement(%q) = true, want false", c.name, c.text)
 		}
 	}
 }

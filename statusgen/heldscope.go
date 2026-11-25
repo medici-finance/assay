@@ -2159,12 +2159,17 @@ func init() {
 //     none of them, no such element can reach past its cell, and a closer
 //     there cannot close one opened outside it either. The table is exact: a
 //     header line byte for byte in heldWitnessHeaders at the first line or
-//     after a blank line, verifyrun's own delimiter row under it, every line
-//     from the header to the row starting "|" at column 0 and rendered as
-//     block text, with no carriage return, and the row itself a witness row
-//     (isWitnessRow). A row holding any heldCellEscapeTags tag is not exempt,
-//     and ends the exemption for the rest of the table. heldRawTags openers
-//     in a row still count.
+//     after a blank line, verifyrun's own delimiter row under it, and every
+//     line from there to the row a witness row (isWitnessRow) with at least
+//     as many cells as the header, starting "|" at column 0, rendered as
+//     block text, with no carriage return. The page can end a table at a
+//     line the scan cannot follow: a blank line, a line that starts another
+//     block, a row with no cell ("|" alone), and, past a cap on cells padded
+//     into short rows, a short row. So the first line that is not such a row
+//     ends the exemption for the rest of the table; a row verifyrun did not
+//     write is not skipped. A row holding any heldCellEscapeTags tag is not
+//     exempt, and ends the exemption too. heldRawTags openers in a row still
+//     count.
 //
 // Everything else, prose and table cells written by hand included, is read
 // as before.
@@ -2173,8 +2178,8 @@ func heldCarryView(lines []string, inFence []bool) []string {
 	live := heldRender(lines)
 	var code inlineCodeScan
 	// witness is 0 outside a verifyrun witness table, 1 on its delimiter
-	// row, 2 on its data rows.
-	witness := 0
+	// row, 2 on its data rows; cols is the table's header column count.
+	witness, cols := 0, 0
 	for i, l := range lines {
 		out[i] = l
 		if inFence[i] {
@@ -2197,7 +2202,7 @@ func heldCarryView(lines []string, inFence []bool) []string {
 		}
 		if heldWitnessHeaders[l] && (i == 0 || isBlankLine(lines[i-1])) && i+1 < len(lines) &&
 			!inFence[i+1] && lines[i+1] == heldWitnessDelims[l] && live[i] && live[i+1] {
-			witness = 1
+			witness, cols = 1, strings.Count(l, "|")-1
 			continue
 		}
 		if witness == 1 { // the delimiter row, matched with its header
@@ -2208,8 +2213,9 @@ func heldCarryView(lines []string, inFence []bool) []string {
 			witness = 0
 			continue
 		}
-		if !isWitnessRow(l) {
-			continue // a row verifyrun did not write
+		if c := witnessCells(l); c == nil || len(c) < cols {
+			witness = 0 // the page may end the table at a row verifyrun did not write
+			continue
 		}
 		b := []byte(out[i])
 		for p := 0; p+1 < len(l); p++ {
