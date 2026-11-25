@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"strings"
 	"sync"
 
@@ -34,14 +33,14 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 	verb := args[0]
 	rest := args[1:]
 
-	var id, repoFlag, owner, branch, reason, tokenFile string
+	var id, repoFlag, owner, branch, reason, tokenFile, reviewRun string
 	// The optional positional id: the first token, unless it is a flag or empty.
 	if len(rest) > 0 && rest[0] != "" && !strings.HasPrefix(rest[0], "-") {
 		id = rest[0]
 		rest = rest[1:]
 	}
 	valueFlags := map[string]*string{
-		"--repo": &repoFlag, "--owner": &owner, "--branch": &branch, "--reason": &reason, "--token-file": &tokenFile,
+		"--review-run": &reviewRun, "--repo": &repoFlag, "--owner": &owner, "--branch": &branch, "--reason": &reason, "--token-file": &tokenFile,
 	}
 	for i := 0; i < len(rest); i++ {
 		// A value flag takes its value as the next argument or after "=". The spaced form never
@@ -89,6 +88,10 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 		}
 	}
 
+	if reviewRun != "" && (verb != "acquire" || !deskkit.ValidDispatchRef(id, reviewRun)) {
+		errf("refused: --review-run must name this acquire's dispatch ref")
+		return exitRefused
+	}
 	selectContext()
 	// An inferred slug and its forge host must come from the same origin read.
 	readOrigin := sync.OnceValues(func() (string, error) { return checkedOriginURL(".") })
@@ -176,7 +179,7 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 		}
 		switch verb {
 		case "acquire":
-			return cmdAcquire(id, owner, branch)
+			return cmdAcquire(id, owner, branch, reviewRun)
 		case "progress":
 			if branch == "" {
 				errf("refused: progress requires --branch")
@@ -186,7 +189,7 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 		case "release":
 			return cmdRelease(id, repo, owner)
 		case "steal":
-			return cmdSteal(id, owner, reason, nil)
+			return cmdSteal(id, owner, reason, "", nil)
 		case "show":
 			return cmdShow(id)
 		}
@@ -211,10 +214,8 @@ func spacedValue(rest []string, i int) (string, int) {
 }
 
 func defaultOwner() string {
-	for _, env := range []string{"DESK_SESSION", "CLAUDE_SESSION_ID"} {
-		if v := strings.TrimSpace(os.Getenv(env)); v != "" {
-			return v
-		}
+	if owner := deskkit.ResolveSessionName(""); owner != "" {
+		return owner
 	}
 	return "unknown"
 }

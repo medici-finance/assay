@@ -188,7 +188,7 @@ func cursorCmd(args []string) int {
 				return exitCouldNotCheck
 			}
 			if string(got) != o.want {
-				fmt.Fprintf(os.Stderr, "harnessgen cursor --check: DRIFT — committed %s %s differs from %s; run `go run ./tools/harnessgen cursor` and commit\n", o.what, o.path, o.source)
+				fmt.Fprintf(os.Stderr, "harnessgen cursor --check: DRIFT — committed %s %s differs from %s; run `cd tools/harnessgen && go run . cursor --root ../..` and commit\n", o.what, o.path, o.source)
 				rc = exitDrift
 				continue
 			}

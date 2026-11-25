@@ -20,16 +20,20 @@
 // resolved house value used to pass lint by sitting in one (#236, #238).
 // See README.md and each file's header for what it checks and why.
 //
-//	go run ./tools/skillslint                 # lint the plugin tree under the cwd
-//	go run ./tools/skillslint --root ..       # lint a sibling checkout
-//	go run ./tools/skillslint --sync          # REGENERATE every guardrail copy
-//	go run ./tools/skillslint --sync --allow-ambiguous-extent  # also take an
+//	cd tools/skillslint && go run . --root ../..   # lint the plugin tree at the repo root
+//	cd tools/skillslint && go run . --root <dir>   # lint a sibling checkout
+//	cd tools/skillslint && go run . --root ../.. --sync   # REGENERATE every guardrail copy
+//	cd tools/skillslint && go run . --root ../.. --sync --allow-ambiguous-extent  # also take an
 //	                                               # ambiguous removal extent's
 //	                                               # longest match instead of
 //	                                               # refusing it (see guardrail.go)
-//	go run ./tools/skillslint --skills-dir <dir>  # adopter reach: structural +
+//	cd tools/skillslint && go run . --skills-dir <dir>  # adopter reach: structural +
 //	                                               # conformance ONLY, over
 //	                                               # <dir>/*/SKILL.md (repeatable)
+//
+// The repository has no root go.mod or go.work, so every form runs from inside
+// the tool's own module (tools/skillslint); --root points at the repo root.
+//
 //	make skillslint                           # the check form
 //	make guardrail-sync                       # the --sync form
 //
@@ -217,7 +221,7 @@ func main() {
 		}
 	case erep.Failed != nil:
 		fmt.Fprintf(os.Stderr, "skillslint: %s: %s\n", erep.Failed.Path, erep.Failed.Msg)
-		fmt.Fprintf(os.Stderr, "ENFORCEMENT-BLOCK: FAIL — the generated enforcement-status block drifted from the lint registry. Fix the registry in statusgen and run `go run ./tools/skillslint --sync`; do not hand-edit the block.\n")
+		fmt.Fprintf(os.Stderr, "ENFORCEMENT-BLOCK: FAIL — the generated enforcement-status block drifted from the lint registry. Fix the registry in statusgen and run `cd tools/skillslint && go run . --sync --root ../..`; do not hand-edit the block.\n")
 		if exit < 1 {
 			exit = 1
 		}

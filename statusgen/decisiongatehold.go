@@ -121,6 +121,7 @@ type gateBrief struct {
 	Status        string   // the README row's status ("" = no row)
 	DecisionIssue int      // frontmatter decision-issue: (0 = absent)
 	Ruling        string   // frontmatter ruling: ("" = absent)
+	Version       uint64   // explicit frontmatter version: (0 = absent; never defaulted)
 	Path          string   // repo-relative brief file ("" = a row with no file)
 	Readme        string   // repo-relative stream README ("" = none)
 
@@ -692,6 +693,18 @@ func readGateFrontmatter(gb *gateBrief, raw []byte) {
 	gb.PermID = str("id")
 	gb.BriefID = str("brief")
 	gb.Ruling = str("ruling")
+	switch v := data["version"].(type) {
+	case int:
+		if v > 0 {
+			gb.Version = uint64(v)
+		}
+	case int64:
+		if v > 0 {
+			gb.Version = uint64(v)
+		}
+	case uint64:
+		gb.Version = v
+	}
 	switch n := data["decision-issue"].(type) {
 	case int:
 		gb.DecisionIssue = n
@@ -1485,7 +1498,7 @@ func briefIssueRulesOn(body, repo string, boardIDs, fmBriefs, repoAliases []stri
 // resolveDecisionGateFaults is layer two over judged faults. The forge is
 // contacted only for a fault layer one accepts; a fault it refuses is refused
 // here with the same reason.
-func resolveDecisionGateFaults(c *ghClient, repo string, faults []gateFault, logins map[string]string, repoAliases []string) []decisionGateResult {
+func resolveDecisionGateFaults(c *ghClient, repo string, faults []gateFault, logins map[string]string, repoAliases []string, registry func() (*graphRepos, error)) []decisionGateResult {
 	var out []decisionGateResult
 	for _, f := range faults {
 		board := f.primary().Board
@@ -1500,7 +1513,7 @@ func resolveDecisionGateFaults(c *ghClient, repo string, faults []gateFault, log
 				Detail: fmt.Sprintf("this change %s; the repository could not be determined from the origin remote, so the ruling link %s cannot be checked against it (%s)", f.what(), r.Rec.Ruling, decisionGateSpecRef)})
 			continue
 		}
-		o := resolveBriefRuling(c, repo, r.Rec.Path, r.Rec.Ruling, f.boardNames(), f.briefIDs(), logins, repoAliases)
+		o := resolveBriefRuling(c, repo, r.Rec.Path, r.Rec.Ruling, f.boardNames(), f.briefIDs(), logins, repoAliases, subjectOf(r.Rec, registry))
 		if o.Present && o.Reason == rulingOK {
 			out = append(out, decisionGateResult{Board: board, Detail: fmt.Sprintf("ruled by %s (%s)", o.Author, o.Detail)})
 			continue
@@ -1517,12 +1530,13 @@ func resolveDecisionGateFaults(c *ghClient, repo string, faults []gateFault, log
 // condition 6 the brief's own decision-gate marker (briefIssueRulesOn). names
 // are the board-id spellings the ruling comment may name, tried in order; only
 // a comment that names none of the earlier spellings is worth a second read.
-func resolveBriefRuling(c *ghClient, repo, path, ruling string, names, briefIDs []string, logins map[string]string, repoAliases []string) rulingOutcome {
+func resolveBriefRuling(c *ghClient, repo, path, ruling string, names, briefIDs []string, logins map[string]string, repoAliases []string, subject gateSubject) rulingOutcome {
 	binding := rulingIssueBinding{
 		what: "brief " + strings.Join(names, " / "),
 		rules: func(iss rulingIssue, _ rulingLink) bool {
 			return briefIssueRulesOn(iss.Body, repo, names, briefIDs, repoAliases)
 		},
+		subject: subject.bind,
 	}
 	var o rulingOutcome
 	for _, id := range names {
@@ -1551,12 +1565,12 @@ func decisionGateAgainst(root, repo, baseRev string, rulings bool) []decisionGat
 		lane = briefRulingLane(root, repo, baseRev, baseSnap, headSnap)
 	}
 	return append(decisionGateJudged(repo, judgeDecisionGate(baseSnap, headSnap),
-		func() []string { return decisionGateAliases(root, baseRev, repo) }), lane...)
+		func() []string { return decisionGateAliases(root, baseRev, repo) }, decisionGateRegistry(root, baseRev)), lane...)
 }
 
 // decisionGateJudged resolves judged faults, building the forge client and
 // reading the login map and the repository's aliases only when a fault needs them.
-func decisionGateJudged(repo string, faults []gateFault, aliasesFn func() []string) []decisionGateResult {
+func decisionGateJudged(repo string, faults []gateFault, aliasesFn func() []string, registry func() (*graphRepos, error)) []decisionGateResult {
 	if len(faults) == 0 {
 		return nil
 	}
@@ -1571,7 +1585,21 @@ func decisionGateJudged(repo string, faults []gateFault, aliasesFn func() []stri
 			break
 		}
 	}
-	return resolveDecisionGateFaults(c, repo, faults, logins, aliases)
+	return resolveDecisionGateFaults(c, repo, faults, logins, aliases, registry)
+}
+
+// decisionGateRegistry reads the alias registry as committed at rev — the
+// judged base, like decisionGateAliases — for the ruling-subject binding. rev
+// "" reads the tree at root as it stands. It is read only when a ruling comment
+// carries a subject line; an absent or unreadable registry holds that ruling.
+func decisionGateRegistry(root, rev string) func() (*graphRepos, error) {
+	return func() (*graphRepos, error) {
+		if rev == "" {
+			reg, _, err := loadGraphRepos(root)
+			return reg, err
+		}
+		return graphReposAtRev(root, rev, "docs/streams/graph-repos.yaml")
+	}
 }
 
 // decisionGateAliases is the aliases the alias registry declares for repo
@@ -1773,7 +1801,7 @@ func closeVerifyDecisionGate(root, readme string, updated []byte) error {
 	}
 	faults := judgeDecisionGate(gateSnapshotOnDisk(root), gateSnapshotOnDiskWith(root, rel, updated))
 	repo := repoFromOriginAtFn(root)
-	rs := decisionGateJudged(repo, faults, func() []string { return decisionGateAliases(root, "", repo) })
+	rs := decisionGateJudged(repo, faults, func() []string { return decisionGateAliases(root, "", repo) }, decisionGateRegistry(root, ""))
 	var lines []string
 	for _, r := range rs {
 		if r.Refused {

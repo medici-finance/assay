@@ -22,6 +22,7 @@ var trustKeysNeverExtension = []string{
 	EnvHumanLoginMap,
 	EnvRunCredentials,
 	EnvStampTrustedLogins,
+	EnvVerifierPremergeRepos,
 }
 
 // extCatalogueAllowList — the extension catalogue, committed. Adding a key to extKeyNames fails

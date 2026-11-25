@@ -2747,7 +2747,8 @@ deskpost finish review example-org/project 42 --verdict approve \
 ```
 
 The arguments after `finish review` / `finish security-review` are that verb's own, parsed by
-the same code, plus `--claim` — the claim key the review assignment names.
+the same code, plus `--claim` — the claim key the review assignment names. Run the
+command from the assigned review checkout and pass an absolute path for `--body-file`.
 
 | Step | What runs | A stop here means |
 |---|---|---|
@@ -2816,13 +2817,15 @@ apply and none of this runs.
   its key, and no record behind the key states a lane. A security review dispatched under a
   key with no `security` segment would be accepted by `finish review` and refused by `finish
   security-review`. The check does not prove which lane a key was dispatched for.
-- **Who holds the claim is not checked.** The claim record names the dispatcher that placed
-  it, and a reviewer is handed the key and nothing that identifies that dispatcher, so
-  `finish` has nothing sound to compare. A run that holds this lane's key for this change can
-  release that claim whoever placed it — as the release command in the assignment can.
-- **"Already gone" is verified, never assumed.** A delete the forge answers with not-found is
-  followed by a read of that one ref; only a positive "absent" is reported as
-  `already-released`. A forbidden, a server error or an unreadable ref is a failed release.
+- **Only the finishing run can release its review lease.** Review dispatch records a
+  unique dispatch ref in the review checkout and the acquiring desk in its dispatch receipt. The Go claim
+  tool places that ref on the lease at acquisition and preserves it across progress. After
+  confirming the verdict, finish reads the holder and run and deletes only the exact
+  revision it observed. A successor from the same desk has its own dispatch ref.
+- An absent claim returns `already-released`. An unreadable or changed lease stays held.
+  If the checkout, dispatch receipt, or claim lacks run evidence (including a claim acquired by an older
+  tool or a legacy shell script), the verdict stands and the dispatching desk retains
+  cleanup responsibility. A transient failure can be retried from the original checkout.
 - **Two audit rows on a full run.** The first is the post step's, as for the plain verdict
   verbs. The confirm is a read and writes none. The second is the release step's, verb
   `finish:release`: `ok` when the claim was released, `noop` when it was already gone, and
@@ -2833,10 +2836,9 @@ apply and none of this runs.
   result line. `--wait` and `--explain` act on step 1 as they do on the plain verbs.
 - **The result line's `review=`** is the forge's own link to the review when the listing
   carries one, otherwise `<owner/repo>#<pr>/review-<id>`. The tool never builds a link.
-- **Limit.** With no claim store configured the claim is a ref on the forge and the release is
-  a typed ref delete under the reviewer identity. A forge whose API cannot delete a ref
-  outside its branch namespace answers that step with a refusal; `finish` then stops at step
-  3 with the verdict posted, and the release command in the assignment remains the way out.
+- With the legacy forge-ref store, finish reads the annotated claim and sends a
+  conditional Git deletion under the reviewer identity. A receiver refusal or an
+  unreadable ref leaves the verdict posted and the release unconfirmed.
 
 ### Verdict format (the machine-checkable review body)
 
@@ -7793,9 +7795,10 @@ on the PR's `dispatched-model:` label, which joins via `pr`.
 The record is the dispatcher's own account. `tier` is the `--tier` flag, `session_tag` is an
 environment value, a `released` line's `dispatch_ref` is read from worktree config, and
 `attempt_local` counts lines already in this file. Only `model_stamp: applied` reports an act,
-the stamp step's own OK. The record is analysis data: never an authenticated log, and never an input to a
-control. A missing line is not evidence that no dispatch ran, since a failed write is
-non-fatal. These records support aggregate analysis per brief, tier and kit. They are never
+the stamp step's own OK. The receipt is unauthenticated. For a review, `deskpost finish` checks it against the
+assigned checkout's dispatch ref and the held lease's owner and run. A missing or mismatched
+receipt leaves the lease held. Dispatch can continue if writing the record fails, so the log can
+be incomplete. These records support aggregate analysis per brief, tier and kit. They are never
 used to rank people or agents.
 
 ## The dispatch-claim store — `ResolveClaimStore`
