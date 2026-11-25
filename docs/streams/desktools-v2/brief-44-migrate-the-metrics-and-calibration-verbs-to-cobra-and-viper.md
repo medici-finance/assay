@@ -13,7 +13,7 @@ risk: {"regulatory": "no", "customer": "no", "irreversible": "no", "sensitive-da
 issues: [2111]
 schema: "brief-v2"
 outcome: none
-version: 1
+version: 2
 id: "6c5b81a6-f61b-4c9e-93c7-97e7ca2b7c46"
 authored: "2026-10-04 by desktools-v2/15"
 sources:
@@ -96,7 +96,7 @@ they already exist.
 | 6 | check | `cd tools/desk && GOOS=windows go vet ./cmd/opmetrics ./cmd/deskcalibrate ./cmd/deskreconcile ./cmd/muhar` | exit 0; the owned packages compile for Windows (native Windows behaviour runs on the CI lane, not here) |
 | 7 | check +dereference | `f=$(mktemp) && cd tools/desk && CLI_OWNER=desktools-v2/44 go test -count=1 -v ./internal/clicontract -run '^TestCLIOwnerMigrated$' > "$f" 2>&1 && grep -F -e "--- PASS: TestCLIOwnerMigrated " "$f"` | exit 0; TestCLIOwnerMigrated PASS; every row this brief owns is migrated, the registry validates and the contract tests pass in each migrated package |
 | 8 | check | `bash tools/desk/internal/regression/check-floor.sh` | exit 0; every inherited floor seed still runs and passes |
-| 9 | check | `statusgen --root . --consumers` | exit 0; no declared consumer routing disproved by the change |
+| 9 | check | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desktools-v2/44 --delivery 6e3d42887efb787c20a4aea3065cc6d36ae85e09 --base cad1291a10d2f9cb053714db3966c0ba1065a285 > "$o" && cat "$o" && grep -Fx -- 'summary: 5 corroborated, 0 disproved, 8 unchecked, 0 brief(s) claiming nothing' "$o")` | Exit 0 and exactly 5 corroborated, 0 disproved, 8 unchecked. Each of the eight unchecked entries remains a separate review obligation; this row does not credit them. |
 
 ## Pre-mortem
 

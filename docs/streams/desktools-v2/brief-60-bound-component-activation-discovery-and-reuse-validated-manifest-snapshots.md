@@ -11,7 +11,7 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
 outcome: none
-version: 2
+version: 3
 id: b88b1948-7284-4281-b8a4-e7d128862840
 authored: 2026-10-16 by performance brief authoring
 sources:
@@ -126,7 +126,7 @@ break planted, not a duplicate checker.
 | 2 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestActivationSnapshotIsNotAuthority$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestActivationSnapshotIsNotAuthority ' "$out")` | exit 0; named PASS; changing config/provider requirements or root identity recomputes activation and inactive refuses through the direct lower API; cached boolean acceptance fails |
 | 3 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestActivationSnapshotCorruptionAndBounds$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestActivationSnapshotCorruptionAndBounds ' "$out")` | exit 0; named PASS; corrupt or oversized indexes, concurrent writers and nested checkout changes preserve documented fallback and bounded storage; accepting a corrupt index fails |
 | 4 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestCompiledStartupDiscoveryWorkload$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestCompiledStartupDiscoveryWorkload ' "$out")` | exit 0; named PASS; compiled board/dispatch/token fixture runs retain behavior and report external cold/warm time plus scan counts; planted pre-timer full scan is visible |
-| 5 | check +dereference | `statusgen --root . --consumers --brief desktools-v2/60` | exit 0; actual implementation diff corroborates declared routing; out-of-scope sufficiency remains review, and no unavailable check is recorded as a pass. |
+| 5 | check +dereference | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desktools-v2/60 --delivery 74f50d985cc1224c252a348c65d3639fe2a08aa2 --base 8121208a6a4fb011ed1b0e7a00bd983a5aa4feeb > "$o" && cat "$o" && grep -Fx -- 'summary: 9 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing' "$o")` | Exit 0 and exactly 9 corroborated, 0 disproved, 2 unchecked. The two out-of-scope judgments remain reviewer-owned. Unavailable is not a pass. |
 
 ## Pre-mortem and detection
 

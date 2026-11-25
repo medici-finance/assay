@@ -39,7 +39,7 @@ consumers:
     consuming brief — house-private verify scripts + committed fixtures exercising this brief's
     CLI/Go surface — lives on that repo's own board, which this repo's
     consumers-corroboration pass cannot read or verify; tracked there, not here)."
-version: 1
+version: 2
 id: 0350262d-2d1a-4a4d-af21-880ad708e0c8
 ---
 
@@ -179,7 +179,7 @@ gated behind the SAME R-7 enactment gate as the existing same-repo lane
 | 3 | check | `cd statusgen && go test -run ScanDelta . -v` | exit 0 — 14 tests: the roundtrip, the six negative-path fixtures (same-repo, contradicted-author, unreadable-author-accepted, container-not-issue-loop, wrong-role, wrong-key, edited-body, no-pubkey, unsupported-class) and the four `runTranscribeScanDelta` sweep/gate/apply/flood/skip tests |
 | 4 | check | `cd statusgen && go test -run TranscribeScan . && go test -run Verdict . && go test -run PubkeyVar .` | exit 0 — the pre-existing same-repo R-7 lane and R-6 verdict-lane suites are unaffected by the shared-decoder generalisation (`verdictDecodePubkeyVar`'s new `varName` parameter) |
 | 5 | check | `test ! -e .github/verify && test -z "$(git ls-files "*.pem" "*.key" "*issue-loop-pubkey*")"` | exit 0 — NEGATIVE PATH: no `.github/verify/` directory and no key-material path of any kind lands in this tree for either role |
-| 6 | check | `cd tools/desk && gofmt -l cmd/deskverdict/ internal/deskkit/verdict.go internal/deskkit/verdict_test.go && cd ../statusgen && gofmt -l transcribescan.go transcribeverdict.go transcribeverdict_test.go transcribescandelta_test.go main.go` | exit 0, empty output (gofmt-clean) |
+| 6 | check | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && (cd tools/desk && gofmt -l cmd/deskverdict/ internal/deskkit/verdict.go internal/deskkit/verdict_test.go) > "$o" && (cd statusgen && gofmt -l transcribescan.go transcribeverdict.go transcribeverdict_test.go transcribescandelta_test.go main.go) >> "$o" && cat "$o" && test ! -s "$o")` | exit 0, empty output (gofmt-clean) |
 | 7 | check +mutation | `cd tools/desk && go test ./internal/deskkit/ -run '^TestRoleMismatchRefusedBeforeCrypto$' -count=1 -v` | exit 0 baseline. MUTATION: in `VerifyVerdictBodyForRole` (`tools/desk/internal/deskkit/verdict.go`), delete the `if declared := extractDeclaredRole(body); declared != wantRole { return VerdictRefused, … }` block — the declared-role check this brief adds. The test then REDDENS: `role mismatch must be REFUSED even with a cryptographically valid signature, got 0 (verified: …)`. Restoring the block returns it to exit 0. This is the row that proves the SECOND trust layer (declaration, independent of the crypto) actually reddens when removed, not merely that it is documented. |
 
 Row 3 is the fail-first-worthy row: every one of its 14 tests was run against the pre-fix tree

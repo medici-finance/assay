@@ -107,7 +107,7 @@ consumers:
     forge call; desklabel is an ADDITIONAL, narrower verb for a role acting on a label outside
     those fixed flows — e.g. clearing a stale `superseded?` after a dispute — not a replacement
     for any of their internal label writes)"
-version: 2
+version: 3
 id: 6f2c9a7e-3b1d-4e5a-9c2f-8a7d5e1b4c93
 ---
 
@@ -313,19 +313,19 @@ Planned test deliverables: `TestDesklabelRefusesUnownedLabel` (planned),
 
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check:ci | `cd tools/desk && go build ./... && go test ./...` | exit 0 |
+| 1 | check:ci | `cd tools/desk && go build ./cmd/desklabel ./internal/forgeban && go test -count=1 -timeout 5m ./cmd/desklabel ./internal/forgeban` | Exit 0; the command and the forge-use ratchet build and pass their suites. |
 | 2 | check:ci | `cd tools/desk && go test ./cmd/desklabel/... -count=1` | exit 0 — the new verb's suite is green |
 | 3 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run TestNoForgeCLIShellout -count=1 && go test ./internal/deskkit/ -run TestForgeNoPassthrough -count=1` | exit 0 — the seam grows one op and stays closed |
 | 4 | check:ci +dereference | `cd tools/desk && go test ./internal/deskkit/ -run TestApplyIssueLabelsBothBackends -count=1 -v` | exit 0 — GitHub's `apply_issue_labels` golden case pins the shared-helper wire (identical request shape to `ApplyLabels`); GitLab's pins `PUT /projects/:id/issues/:iid` with `add_labels`/`remove_labels`, distinct from the MR path |
 | 5 | check:ci +flow | `cd tools/desk && go test ./cmd/desklabel/... -run TestDesklabelAppliesOwnedLabelGitHub -count=1 -v && go test ./cmd/desklabel/... -run TestDesklabelAppliesOwnedLabelGitLab -count=1 -v` | exit 0 — POSITIVE, both forges: a role applies/clears a label it owns end to end (session role → vocabulary check → `GetIssue` kind resolution → the correct one of `ApplyLabels`/`ApplyIssueLabels`) |
-| 6 | check:ci | `cd tools/desk && go test ./cmd/desklabel/... -run TestDesklabelRefusesUnownedLabel -count=1 -v` | **negative path**: a worker-role session calling `desklabel add … approval-needed` (reviewer-owned) REFUSES (exit 5) before any forge call — asserted on a recording fake forge showing zero calls; the error names both roles |
-| 7 | check:ci | `cd tools/desk && go test ./cmd/desklabel/... -run TestDesklabelRefusesHumanDecidedForEveryRole -count=1 -v` | **negative path**: EVERY resolved role (worker, reviewer, and any other role the roster's loop→role map carries) is refused (exit 5) on `human-decided`, zero forge calls in every case |
+| 6 | check:ci | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -C tools/desk -v -count=1 -timeout 5m -run '^TestDesklabelRefusesUnownedLabel$' ./cmd/desklabel > "$o" && grep -F -- '--- PASS: TestDesklabelRefusesUnownedLabel ' "$o")` | Exit 0 and named PASS from the test. The worker request for reviewer-owned approval-needed is refused with exit 5; the recording forge receives zero calls and the refusal names both roles. |
+| 7 | check:ci | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -C tools/desk -v -count=1 -timeout 5m -run '^TestDesklabelRefusesHumanDecidedForEveryRole$' ./cmd/desklabel > "$o" && grep -F -- '--- PASS: TestDesklabelRefusesHumanDecidedForEveryRole ' "$o")` | Exit 0 and named PASS from the test. Every resolved role is refused with exit 5 on human-decided; the recording forge receives zero calls. |
 | 8 | check:ci | `cd tools/desk && go test ./cmd/desklabel/... -run TestDesklabelSharedVocabularyAnyRole -count=1 -v` | exit 0 — `question`/`help wanted`/`needs-decision` succeed under BOTH a worker-role and a reviewer-role session (no role-check fires on the shared set) |
 | 9 | check | `test -d tools/desk/cmd/desklabel && { grep -rn -e 'flag.String("as"' -e '"--as"' tools/desk/cmd/desklabel --include='*.go' \|\| [ $? -eq 1 ]; } \| { grep -v _test.go \|\| [ $? -eq 1 ]; } \| wc -l` | output is `0` — no role-override flag exists; the acting role is read from the session only. Re-written 2026-10-03 (#1862): every grep stage tolerates only the no-match status, so a missing path or a grep error fails the row instead of passing it. The `test -d` leg covers BSD grep, which stays silent on an absent directory under `--include`. |
 | 10 | check:ci | `cd tools/desk && go test ./internal/forgeban/... -count=1` | exit 0 — the ratchet is unaffected (desklabel is a new verb; no permit row to retire) |
-| 11 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/15` | exit 0 — every `consumers:` routing claim is corroborated against this branch's own diff |
+| 11 | check:ci +dereference | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief forge-neutral/15 --delivery 2d29666225b7146227700367fb659ec899ebbfdc --base bfe06363fd732f31faf19af5fc03eeffdbd929d9 > "$o" && cat "$o" && grep -Fx -- 'summary: 3 corroborated, 0 disproved, 3 unchecked, 0 brief(s) claiming nothing' "$o")` | Exit 0 and exactly 3 corroborated, 0 disproved, 3 unchecked. The historical routes for the three external forge files do not match the implementation snapshot; their actual backend routing and the two exclusions still require independent review. |
 | 12 | check | `grep -c 'desklabel' tools/desk/README.md` | prints a value ≥ 1 — the docs-index row (this repo's desk-verbs index) exists |
-| 13 | check +mutation | **Mutation demonstration for the role-ownership guard.** In the vocabulary lookup (the function `desklabel` calls before any forge read/write), force it to always report "owned by the caller's own role" — e.g. change its return to `return true, callerRole` unconditionally — then `cd tools/desk && go test ./cmd/desklabel/... -count=1`; restore the file and re-run | exit **1** on the mutant: `TestDesklabelRefusesUnownedLabel` reddens (a worker-role session can now write a reviewer-owned label), exit **0** again after restoring. Proves the ownership check is a live control, not a decoration nothing exercises |
+| 13 | check +mutation | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk run ./cmd/muhar -spec cmd/desklabel/mutations.json -j 2 > "$o" && cat "$o" && grep -F -- 'the ownership check always reports' "$o" && grep -F -- '0 NOT CAUGHT, 0 could-not-mutate.' "$o")` | Exit 0; the checked-in ownership mutant is killed on the production path. The healthy suite passes, the forgery is caught, and every mutation has a decisive result. |
 
 ## Pre-mortem → detection map
 

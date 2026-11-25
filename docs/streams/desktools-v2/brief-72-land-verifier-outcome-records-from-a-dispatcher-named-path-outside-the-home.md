@@ -10,7 +10,7 @@ gate: model
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: no}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 authored: 2026-10-22 by statusgen newbrief
 sources:
   - 'desktools-v2: Land verifier outcome records from a dispatcher-named path outside the home'
@@ -93,9 +93,9 @@ at implemented.
 | 1 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskdispatch/ -run '^TestVerifierOutcomePath$' -count=1 -v` | exit 0 and named PASS; the verifier prompt contains one absolute outcome path outside the home and the `--outcome-record … --root` command; an allocation that resolves inside the home or root is refused; two claims dispatched with prompt files in one directory get different outcome directories; a claim key containing `/`, `\` or `..` (for example `a/b`) is refused on both the prompt-file and the cache branch, with no directory created, while `a-b` is accepted; non-verifier prompts carry no such line; mutation: rewrite the claim key with `sanitizeSegment` instead of refusing it — the `a/b` case must fail |
 | 2 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskevidence/ -run '^TestOutcomeRecordOutsideRoot$' -count=1 -v` | exit 0 and named PASS; with `--root`, a relative path and an in-home absolute path (including through a symlink alias) are refused before any forge read; an outside path proceeds to admission; mutation: drop the `pathWithin(root, …)` check — the in-home absolute and symlink-alias cases must fail |
 | 3 | check:ci | `cd tools/desk && go test ./cmd/deskevidence/ ./cmd/deskdispatch/ ./internal/deskkit/ -count=1` | exit 0; existing outcome-record, packet and admission tests unchanged |
-| 4 | check | `git diff origin/main -- tools/desk/internal/deskkit/verifiersource.go tools/desk/internal/deskkit/verifierattestation.go tools/desk/internal/deskkit/verifyoutcomes.go \| wc -l` | pre-merge, on the implementation branch: output is `0` (admission and record format untouched). On merged main the diff against `origin/main` is empty by construction, so a post-merge run cannot discriminate |
+| 4 | check | `git diff --exit-code 924cd4cfb6fd618d3ee1a4da3bcc395b129038b8 6cdcf0c06afa2a9995a9ab96541f1730c6f7241d -- tools/desk/internal/deskkit/verifiersource.go tools/desk/internal/deskkit/verifierattestation.go tools/desk/internal/deskkit/verifyoutcomes.go` | Exit 0 with an empty diff for the three admission and record-format files at the delivered change. |
 | 5 | check:ci | `cd tools/desk && go run ./cmd/deskinstall --harness cursor --forge github --repo ../.. --bundle ../../plugins/assay --check` | exit 0; no Cursor-mirror drift reported |
-| 6 | check | `statusgen --root . --consumers --brief desktools-v2/72 --base $(git merge-base origin/main HEAD)` | pre-merge, on the implementation branch: exit 0; declared implementation sites and follow-up references corroborate; out-of-scope judgments remain UNCHECKED and reviewer-owned; completeness is not proved |
+| 6 | check | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desktools-v2/72 --delivery 6cdcf0c06afa2a9995a9ab96541f1730c6f7241d --base 924cd4cfb6fd618d3ee1a4da3bcc395b129038b8 > "$o" && cat "$o" && grep -Fx -- 'summary: 3 corroborated, 0 disproved, 2 unchecked, 0 brief(s) claiming nothing' "$o")` | Exit 0 and exactly 3 corroborated, 0 disproved, 2 unchecked. The admission and record-format exclusions still require review; the report does not establish completeness. |
 | 7 | check | `statusgen --root . --lint` | exit 0; no PROBLEM line names this brief |
 
 Pre-mortem: a prompt path that lands inside the home on some layout (for example a
