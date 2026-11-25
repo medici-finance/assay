@@ -61,8 +61,7 @@ ONLY="${PARITY_ONLY:-}"
 cells=0; divergent=0; divergent_names=()
 
 # -------------------- stubs
-# Written once into $T/stub and symlinked into every fixture's own bin, so the two implementations
-# see the SAME stub behaviour and a stub's own path normalises away with the fixture root.
+# Each fixture has the same stub behaviour. A stub's own path normalises away with its fixture root.
 mk_stubs(){
   local b="$1"
   mkdir -p "$b"
@@ -435,14 +434,33 @@ verdict(){
 }
 
 # -------------------- one matrix cell
+# All eight verbs for a kind/harness/cockpit start from the same state. Build
+# that state once per side. Give every verb its own copy, including Git files,
+# mode bits and symlinks. Root-relative configuration and the fixture's own
+# absolute symlinks resolve at the same path whenever the copy is restored.
+fresh_verb_fixture(){
+  local root="$1"; shift
+  if [[ -e "$root" ]]; then
+    echo "parity: previous fixture still exists: $root" >&2
+    return 1
+  fi
+  if [[ -d "$root.pristine" ]]; then
+    cp -pRP "$root.pristine" "$root"
+  else
+    mkdir -p "$root" || return 1
+    mk_fixture "$root" "$@" github || return 1
+    cp -pRP "$root" "$root.pristine"
+  fi
+}
+
 # cell_case <id> <kind> <harness> <cockpit> <verb-and-args...>
 cell_case(){
   local id="$1" kind="$2" harness="$3" cockpit="$4"; shift 4
   [[ -z "$ONLY" || "$id" == *"$ONLY"* ]] || return 0
-  local rootA="$T/a/$cells" rootB="$T/b/$cells"
-  mkdir -p "$rootA" "$rootB"
-  mk_fixture "$rootA" "$kind" "$harness" "$cockpit" github
-  mk_fixture "$rootB" "$kind" "$harness" "$cockpit" github
+  local key="$kind-$harness-$cockpit"
+  local rootA="$T/a/$key" rootB="$T/b/$key"
+  fresh_verb_fixture "$rootA" "$kind" "$harness" "$cockpit" || exit 2
+  fresh_verb_fixture "$rootB" "$kind" "$harness" "$cockpit" || exit 2
   fixture_ok "$id" "$rootA" "$rootB" || return 0
   run_impl "$rootA" "$CELLCTL_A" "$T/outA" "$kind" "$harness" "$@"
   run_impl "$rootB" "$CELLCTL_B" "$T/outB" "$kind" "$harness" "$@"
