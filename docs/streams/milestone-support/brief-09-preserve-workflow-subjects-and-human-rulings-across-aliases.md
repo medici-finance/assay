@@ -119,6 +119,73 @@ The wrong-but-plausible delivery is the mutation named in each Verify row. Each 
 
 <!-- Empty by design. Independent verifier records actual commit, environment, command/exit, named test and mutation result, coverage/unknowns and evidence location. -->
 
+Independent verification by assay-verifier-app[bot] on 2026-11-25, not the implementer, at merged main
+b03d8dace34d491cf14b46e9d9d96243a7a3b752. The delivering change is 1da47cb40f8c28caee6064c591f1aa9100cf99ad,
+merged by d9e5c38b9aa160c9b24b299de7729d74f2744640 (medici-finance/assay#7548).
+All three Verify rows are check:ci and ran network-off in the rule-45 container bracket on a darwin host:
+host open, then the release-pinned verify-runner v1.0.94 image with no network, then host close. The image
+digest in the Container-Image line matches the v1.0.94 release image pin, whose checksums.txt digest equals
+the house v1.0.94 pin. The open step provisioned the Go module cache recorded in the Module-Cache line.
+
+Fail-first. The brief declares sensitive-data: yes, so every row is risk-bearing. The same container run
+replayed each row at the delivering merge's first parent, 034614a8c462, from the history pack exported by
+the open step. Each row exited 1 there and 0 at head (Base column). The base red comes from the named tests
+being absent at 034614a8c462: none of the three test functions exists there, and each exists once at head.
+The supplemental mutation run below shows the tests also discriminate on behavior.
+
+An earlier bracket on the same tree and run (opened 2026-11-25T01:45:43Z, closed 01:46:35Z) passed all
+three rows but did not run fail-first. It is superseded by the bracket below and earns no credit.
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPrefixedHandoffSubject$' ./contexthandoff/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestPrefixedHandoffSubject ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-25 | assay-verifier-app[bot] @ b03d8dace34d (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=034614a8c462 red rc=1 · head=b03d8dace34d · delivering=d9e5c38b9aa1 output=sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 log=row-000001.log |
+| 2 | `(cd tools/desk && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestRulingAliasAuthority$' ./internal/deskkit/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestRulingAliasAuthority ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-25 | assay-verifier-app[bot] @ b03d8dace34d (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=034614a8c462 red rc=1 · head=b03d8dace34d · delivering=d9e5c38b9aa1 output=sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 log=row-000002.log |
+| 3 | `(cd statusgen && milestone_verify_out=$(mktemp "${TMPDIR:-/tmp}/milestone-verify.XXXXXX") && trap 'rm -f "$milestone_verify_out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPrefixedVerifySubject$' ./domain/... > "$milestone_verify_out" && grep -q -- '--- PASS: TestPrefixedVerifySubject ' "$milestone_verify_out")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-25 | assay-verifier-app[bot] @ b03d8dace34d (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=034614a8c462 red rc=1 · head=b03d8dace34d · delivering=d9e5c38b9aa1 output=sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 log=row-000003.log |
+Tree-Digest: sha256:007edb0104afa72e62bfc880083c700fecec91a78f95c845b3652ce5953c6cae
+Container-Image: sha256:79e23ec185b1d5afe40cd92a25d9f7b18fd824f5678bf6c945443753ee6f509a
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7644 run=a5946c973c1715ce57e8137f3094a33b1e327429fd79931de1a53618549390e3 source=b03d8dace34d491cf14b46e9d9d96243a7a3b752 brief=docs/streams/milestone-support/brief-09-preserve-workflow-subjects-and-human-rulings-across-aliases.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=a5946c973c1715ce57e8137f3094a33b1e327429fd79931de1a53618549390e3 source=b03d8dace34d491cf14b46e9d9d96243a7a3b752 tree=sha256:007edb0104afa72e62bfc880083c700fecec91a78f95c845b3652ce5953c6cae witness=sha256:102e9705746e566fa09a245d67fe040583faf0ef3f1bcb15dc3c28795794ef06 opened=2026-11-25T01:53:08Z closed=2026-11-25T02:02:51Z before=receipt after=check-verifier
+
+Supplemental host check, no acceptance credit. On 2026-11-25 the verifier ran the brief's declared
+mutation manifest (09-mutations.json, through 09-mutate.py) against a throwaway snapshot of the same
+tree outside the home. Every baseline passed: TestPrefixedHandoffSubject, TestPrefixedVerifySubject,
+TestDecisionGateRulingSubject, TestRulingAliasAuthority and TestEvidenceRulingSubjectGate. All 21
+mutations were caught, each turning its named test red: handoff-revision-erased,
+subject-by-compatibility-id, verify-revision-erased, omitted-v2-version-zero, legacy-id-erases-revision,
+subject-short-circuits-candidate, statusgen-subject-hook-dropped, statusgen-marker-stream-number-only,
+missing-version-defaults-to-1, bot-actor-accepted, edited-comment-accepted, copied-ruling-accepted,
+card-version-as-authority, card-digest-skipped, unexpected-card-ignored, removed-card-as-legacy,
+cutover-timestamp-omitted, broken-line-falls-to-legacy, same-subject-ignores-revision,
+evidence-subject-check-skipped and landing-ruling-gate-skipped. The manifest carries no separate
+grammar-broadening or digested-revision-field mutation. TestPrefixedHandoffSubject asserts those two
+cases directly instead: it pins the recorded handoff digests and checks that the strict legacy grammar
+refuses prefixed and revisioned spellings. The stream-and-number-only marker mutation is caught by
+TestDecisionGateRulingSubject, which is outside the three Verify rows.
+
+Risk-bearing values. The brief declares sensitive-data: yes. This enumeration covers the non-test Go
+files of the delivering change. Ranked by the harm a wrong value does:
+
+1. RulingSubjectCutover = "2026-12-01T00:00:00Z" @ statusgen/workref/subject.go:66. It decides which
+   subject-less human rulings keep their logical-key-only meaning across revisions. Both the statusgen
+   and deskkit gates read it through workref.BindRulingSubject. A wrong value can let a ruling carry
+   over to a different revision. The constant can be fixed by an edit and a redeploy, but a transition
+   admitted in the meantime is not undone by that.
+2. EvidenceRevision default: return 1 @ statusgen/domain/records.go:84, and brief-v1 or empty schema
+   returns 0 @ statusgen/domain/records.go:81. A wrong default makes Evidence bind the wrong revision.
+3. Actor guard: Author.Type != "User" or a "[bot]" login suffix @ tools/desk/internal/deskkit/rulingsubjectgate.go:119.
+   A wrong value lets a bot or App account rule.
+4. Card digest shape: sha256:[0-9a-f]{64} @ statusgen/workref/subject.go:69-70.
+5. Subject line prefix: "Ruling-Subject:" @ statusgen/workref/subject.go:60.
+6. Brief path pattern @ tools/desk/cmd/deskevidence/subjectgate.go:39. This one selects which landings
+   are checked; it is reversible and ranks last.
+
+RISK-VALUE: NAMED, NOT DERIVED — RulingSubjectCutover = "2026-12-01T00:00:00Z" @ statusgen/workref/subject.go:66 — approved design point 4 calls the cutover "a fixed implementation rollout value, recorded when the bridge is enabled". The delivering change and the v1.0.94 release are both dated 2026-11-24. That leaves about a week in which a new human ruling with no subject line still binds logical-key-only. Neither the DR record nor the brief says why this date was chosen, and the spec fixes no value, so the verifier could not derive it. Whether that window matches the intended enablement point is a question for the human gate.
+RISK-VALUE: DERIVED — EvidenceRevision brief-v2 default = 1 @ statusgen/domain/records.go:84 — approved design point 3: "An omitted version is 1 for brief-v2 and unrevisioned for brief-v1". The mutation omitted-v2-version-zero is caught.
+RISK-VALUE: DERIVED — actor guard Author.Type != "User" @ tools/desk/internal/deskkit/rulingsubjectgate.go:119 — the preserved Actor rule admits only a personal account mapped as a human, never a bot or App. On the forge a personal account has type User, and a missing type holds. The mutation bot-actor-accepted is caught.
+
+**VERIFY: PASS** — 3 of 3 rows pass in the closed container bracket (bracket digest verdict=match), and each row is red at base 034614a8c462 under fail-first. The brief has gate: human and risk sensitive-data: yes, so a model cannot sign it off; sign-off and the cutover question go to the human gate.
+
 ## Review
 
 Gate: human, derived from the declared risks. Independent review checks compatibility and consumer-flow evidence. No reviewer/worker stamp, release permission or acceptance receipt is created by this authoring change.
