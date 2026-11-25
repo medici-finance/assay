@@ -800,95 +800,96 @@ RISK-VALUE: DERIVED — exitLockWait = deskkit.AuditLockWait = 60 * time.Second 
 
 **VERIFY: BLOCKED** — 7 of 10 rows pass; rows 1 and 8 are uncovered because the container has no git directory (medici-finance/assay#4327; blocker medici-finance/assay#6298), and row 9 could not run under admission (medici-finance/assay#7086). No delivered obligation was observed failing.
 
-### Verification — desk-supervision/33 at f7e97e6a9e47467a9d9bb117692541dde0f35dc1 (2026-11-24)
+### Verification — desk-supervision/33 at b03d8dace34d491cf14b46e9d9d96243a7a3b752 (2026-11-25)
 
-Rows 1–8 and 10, container admission bracket (attempt 1; row 1 hit the 10-minute per-row limit):
+Rows 1–8 and 10, one closed container admission bracket:
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
-| 1 | `(cd statusgen && go test ./...) && (cd tools/desk && go test ./cmd/scanloop/...)` | could-not-run exit=- sandbox=container-netns — timed out after 10m0s — no verdict was produced | sha256:e3b0c44298fc | 2026-11-24 | assay-verifier-app[bot] @ f7e97e6a9e47 (on-behalf-of human:ian) (forge-identity) |
-| 2 | `cd tools/desk && go test ./cmd/scanloop/ -run '^TestExitRecord_Validate$' -v > "${TMPDIR:-/tmp}/b33-validate.out" 2>&1 && grep -F -e '--- PASS: TestExitRecord_Validate' "${TMPDIR:-/tmp}/b33-validate.out"` | pass exit=0 sandbox=container-netns | sha256:08998c1803c9 | 2026-11-24 | assay-verifier-app[bot] @ f7e97e6a9e47 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
-| 3 | `cd statusgen && go test . -run '^TestIntakeExits_MappingAndStamp$' -v > "${TMPDIR:-/tmp}/b33-map.out" 2>&1 && grep -F -e '--- PASS: TestIntakeExits_MappingAndStamp' "${TMPDIR:-/tmp}/b33-map.out"` | pass exit=0 sandbox=container-netns | sha256:9502b638f134 | 2026-11-24 | assay-verifier-app[bot] @ f7e97e6a9e47 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
-| 4 | `cd tools/desk && go test ./cmd/scanloop/ -run '^TestLandVerb_OneExitPerItem$' -v > "${TMPDIR:-/tmp}/b33-land.out" 2>&1 && grep -F -e '--- PASS: TestLandVerb_OneExitPerItem' "${TMPDIR:-/tmp}/b33-land.out"` | pass exit=0 sandbox=container-netns | sha256:6f38a7544752 | 2026-11-24 | assay-verifier-app[bot] @ f7e97e6a9e47 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
-| 5 | `cd tools/desk && go test ./cmd/scanloop/ -run '^TestDrainPass_WritesExitRecords$' -v > "${TMPDIR:-/tmp}/b33-flow.out" 2>&1 && grep -F -e '--- PASS: TestDrainPass_WritesExitRecords' "${TMPDIR:-/tmp}/b33-flow.out"` | pass exit=0 sandbox=container-netns | sha256:7827e784182d | 2026-11-24 | assay-verifier-app[bot] @ f7e97e6a9e47 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
-| 6 | `(cd statusgen && go test . -run '^TestIntakeExitSchema_MatchesDoc$' -v > "${TMPDIR:-/tmp}/b33-sg-schema.out" 2>&1 && grep -F -e '--- PASS: TestIntakeExitSchema_MatchesDoc' "${TMPDIR:-/tmp}/b33-sg-schema.out") && (cd tools/desk && go test ./cmd/scanloop/ -run '^TestIntakeExitSchema_MatchesDoc$' -v > "${TMPDIR:-/tmp}/b33-sl-schema.out" 2>&1 && grep -F -e '--- PASS: TestIntakeExitSchema_MatchesDoc' "${TMPDIR:-/tmp}/b33-sl-schema.out")` | pass exit=0 sandbox=container-netns | sha256:55999241c271 | 2026-11-24 | assay-verifier-app[bot] @ f7e97e6a9e47 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
-| 7 | `statusgen --intake-exits --json --root .` | pass exit=0 sandbox=container-netns | sha256:b53bf30e62b8 | 2026-11-24 | assay-verifier-app[bot] @ f7e97e6a9e47 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
-| 8 | `statusgen --consumers --root .` | pass exit=0 sandbox=container-netns | sha256:2b52863d9021 | 2026-11-24 | assay-verifier-app[bot] @ f7e97e6a9e47 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
-| 10 | `cd tools/desk && go test ./cmd/scanloop/ -run '^TestExitEvent_' -v > "${TMPDIR:-/tmp}/b33-event.out" 2>&1 && grep -c -E -e '^--- PASS: TestExitEvent_' "${TMPDIR:-/tmp}/b33-event.out"` | pass exit=0 sandbox=container-netns | sha256:7de1555df0c2 | 2026-11-24 | assay-verifier-app[bot] @ f7e97e6a9e47 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
-Tree-Digest: sha256:4658ba1b5b06e4f45dbbc88207aa95ac62c12d294cd5bccdb02b9cb2937c3324
-Container-Image: sha256:d3d958719dea47fc611e096612c1478bcc07376b7f9783f92433ac8faeeee380
+| 1 | `(cd statusgen && go test ./...) && (cd tools/desk && go test ./cmd/scanloop/...)` | fail exit=1 sandbox=container-netns | sha256:e5d53fd6e904 | 2026-11-25 | assay-verifier-app[bot] @ b03d8dace34d (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/scanloop/ -run '^TestExitRecord_Validate$' -v > "${TMPDIR:-/tmp}/b33-validate.out" 2>&1 && grep -F -e '--- PASS: TestExitRecord_Validate' "${TMPDIR:-/tmp}/b33-validate.out"` | pass exit=0 sandbox=container-netns | sha256:d835e032b2e3 | 2026-11-25 | assay-verifier-app[bot] @ b03d8dace34d (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd statusgen && go test . -run '^TestIntakeExits_MappingAndStamp$' -v > "${TMPDIR:-/tmp}/b33-map.out" 2>&1 && grep -F -e '--- PASS: TestIntakeExits_MappingAndStamp' "${TMPDIR:-/tmp}/b33-map.out"` | pass exit=0 sandbox=container-netns | sha256:3a0a71df1834 | 2026-11-25 | assay-verifier-app[bot] @ b03d8dace34d (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/scanloop/ -run '^TestLandVerb_OneExitPerItem$' -v > "${TMPDIR:-/tmp}/b33-land.out" 2>&1 && grep -F -e '--- PASS: TestLandVerb_OneExitPerItem' "${TMPDIR:-/tmp}/b33-land.out"` | pass exit=0 sandbox=container-netns | sha256:6f38a7544752 | 2026-11-25 | assay-verifier-app[bot] @ b03d8dace34d (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/scanloop/ -run '^TestDrainPass_WritesExitRecords$' -v > "${TMPDIR:-/tmp}/b33-flow.out" 2>&1 && grep -F -e '--- PASS: TestDrainPass_WritesExitRecords' "${TMPDIR:-/tmp}/b33-flow.out"` | pass exit=0 sandbox=container-netns | sha256:7827e784182d | 2026-11-25 | assay-verifier-app[bot] @ b03d8dace34d (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `(cd statusgen && go test . -run '^TestIntakeExitSchema_MatchesDoc$' -v > "${TMPDIR:-/tmp}/b33-sg-schema.out" 2>&1 && grep -F -e '--- PASS: TestIntakeExitSchema_MatchesDoc' "${TMPDIR:-/tmp}/b33-sg-schema.out") && (cd tools/desk && go test ./cmd/scanloop/ -run '^TestIntakeExitSchema_MatchesDoc$' -v > "${TMPDIR:-/tmp}/b33-sl-schema.out" 2>&1 && grep -F -e '--- PASS: TestIntakeExitSchema_MatchesDoc' "${TMPDIR:-/tmp}/b33-sl-schema.out")` | pass exit=0 sandbox=container-netns | sha256:55999241c271 | 2026-11-25 | assay-verifier-app[bot] @ b03d8dace34d (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `statusgen --intake-exits --json --root .` | pass exit=0 sandbox=container-netns | sha256:376f048153f5 | 2026-11-25 | assay-verifier-app[bot] @ b03d8dace34d (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `statusgen --consumers --root .` | pass exit=0 sandbox=container-netns | sha256:271cd0c38f25 | 2026-11-25 | assay-verifier-app[bot] @ b03d8dace34d (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/scanloop/ -run '^TestExitEvent_' -v > "${TMPDIR:-/tmp}/b33-event.out" 2>&1 && grep -c -E -e '^--- PASS: TestExitEvent_' "${TMPDIR:-/tmp}/b33-event.out"` | pass exit=0 sandbox=container-netns | sha256:7de1555df0c2 | 2026-11-25 | assay-verifier-app[bot] @ b03d8dace34d (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:007edb0104afa72e62bfc880083c700fecec91a78f95c845b3652ce5953c6cae
+Container-Image: sha256:79e23ec185b1d5afe40cd92a25d9f7b18fd824f5678bf6c945443753ee6f509a
 Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
-Verification-Attestation: medici-finance/assay#7577 run=41477dad60f31ce007f77e7cba44e6b46520f502608749f259303a8c86672c35 source=f7e97e6a9e47467a9d9bb117692541dde0f35dc1 brief=docs/streams/desk-supervision/brief-33-intake-exit-record.md model=claude-opus-5-5 tier=strong
-Admission-Bracket: run=41477dad60f31ce007f77e7cba44e6b46520f502608749f259303a8c86672c35 source=f7e97e6a9e47467a9d9bb117692541dde0f35dc1 tree=sha256:4658ba1b5b06e4f45dbbc88207aa95ac62c12d294cd5bccdb02b9cb2937c3324 witness=sha256:97872aa3cf8db7f439946b22174885d8c46e4e9b8c581ffa2f48da5c0fcb34e2 opened=2026-11-24T17:42:59Z closed=2026-11-24T17:54:41Z before=receipt after=check-verifier
+Verification-Attestation: medici-finance/assay#7646 run=20ecda061fe07fb8f989ebc06a8e333d4a476f2f9bb0e9449c199fc73b52b8cd source=b03d8dace34d491cf14b46e9d9d96243a7a3b752 brief=docs/streams/desk-supervision/brief-33-intake-exit-record.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=20ecda061fe07fb8f989ebc06a8e333d4a476f2f9bb0e9449c199fc73b52b8cd source=b03d8dace34d491cf14b46e9d9d96243a7a3b752 tree=sha256:007edb0104afa72e62bfc880083c700fecec91a78f95c845b3652ce5953c6cae witness=sha256:82d389dd7cb5212603614d0dc714d8dd44d8de49c55c73683ee0ce618a26ec85 opened=2026-11-25T01:50:06Z closed=2026-11-25T02:02:31Z before=receipt after=check-verifier
 
-Row 1 alone, second container admission bracket (attempt 2, per-row limit 40 minutes):
-
-| # | Command | Result | Output | Date | Runner |
-|---|---------|--------|--------|------|--------|
-| 1 | `(cd statusgen && go test ./...) && (cd tools/desk && go test ./cmd/scanloop/...)` | fail exit=1 sandbox=container-netns | sha256:d5ca64ddf483 | 2026-11-24 | assay-verifier-app[bot] @ f7e97e6a9e47 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
-Tree-Digest: sha256:4658ba1b5b06e4f45dbbc88207aa95ac62c12d294cd5bccdb02b9cb2937c3324
-Container-Image: sha256:d3d958719dea47fc611e096612c1478bcc07376b7f9783f92433ac8faeeee380
-Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
-Verification-Attestation: medici-finance/assay#7577 run=41477dad60f31ce007f77e7cba44e6b46520f502608749f259303a8c86672c35 source=f7e97e6a9e47467a9d9bb117692541dde0f35dc1 brief=docs/streams/desk-supervision/brief-33-intake-exit-record.md model=claude-opus-5-5 tier=strong
-Admission-Bracket: run=41477dad60f31ce007f77e7cba44e6b46520f502608749f259303a8c86672c35 source=f7e97e6a9e47467a9d9bb117692541dde0f35dc1 tree=sha256:4658ba1b5b06e4f45dbbc88207aa95ac62c12d294cd5bccdb02b9cb2937c3324 witness=sha256:5ecfef68729278a10afcf8fc84a56ca399e9ad87d49efb3ee1b6ccd4e2d96dd8 opened=2026-11-24T17:55:21Z closed=2026-11-24T18:07:02Z before=receipt after=check-verifier
-
-Row 9 (dereference row; reads the live operator record file, so it runs on the verifier host after both brackets closed; attempt 3):
+Row 9 (dereference row; it reads the live operator record file, so it runs on the verifier host, after the bracket closed):
 
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
-| 9 | `jq -rs 'map(select(.decided_by == "judgment")) \| last \| "\(.item) \(.exit) \(.artifact)"' "$HOME/.config/assay/intake-exits.jsonl"` | fail exit=2 | sha256:12788a4d3edd | 2026-11-24 | assay-verifier-app[bot] @ f7e97e6a9e47 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
-Verification-Attestation: medici-finance/assay#7577 run=41477dad60f31ce007f77e7cba44e6b46520f502608749f259303a8c86672c35 source=f7e97e6a9e47467a9d9bb117692541dde0f35dc1 brief=docs/streams/desk-supervision/brief-33-intake-exit-record.md model=claude-opus-5-5 tier=strong
+| 9 | `jq -rs 'map(select(.decided_by == "judgment")) \| last \| "\(.item) \(.exit) \(.artifact)"' "$HOME/.config/assay/intake-exits.jsonl"` | fail exit=2 | sha256:e7303a70c50c | 2026-11-25 | assay-verifier-app[bot] @ b03d8dace34d (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7646 run=20ecda061fe07fb8f989ebc06a8e333d4a476f2f9bb0e9449c199fc73b52b8cd source=b03d8dace34d491cf14b46e9d9d96243a7a3b752 brief=docs/streams/desk-supervision/brief-33-intake-exit-record.md model=claude-opus-5-5 tier=strong
 
-**Runner and settings.** Both brackets ran `statusgen verifyrun` v1.0.92 inside the verify-runner image (digest above; a local v1.0.92 release `verify-runner-image.txt` to match it against was not available). Flags: `--network none --read-only --cap-drop ALL --security-opt no-new-privileges`, uid 501, an exec tmpfs at `/tmp`, the home and its common git directory mounted read-only, and `GOPROXY=off GOTOOLCHAIN=local GOFLAGS=-mod=readonly`. Each bracket used a fresh read-only module cache, and both caches had the same digest (above). The witness-skew fixture was mounted read-only as `SG_OLD_BIN`. It is statusgen v1.0.52, built from tag commit 2718fc978b74 for linux/arm64 (sha256 3b06c67f31fd).
+**Runner and settings.** The bracket ran `statusgen verifyrun` v1.0.94 inside the pinned verify-runner v1.0.94 image (the Container-Image digest above; it equals the house pin), run natively as linux/arm64. Flags: `--network none --read-only --cap-drop ALL --security-opt no-new-privileges`, uid 501, an exec tmpfs at `/tmp`, and the home and its common git directory bind-mounted read-only at their host paths. The environment was `GOPROXY=off GOTOOLCHAIN=local GOFLAGS=-mod=readonly`, with the fresh read-only module cache from the open step (the Module-Cache digest above). The runner passed `--rows 1,2,3,4,5,6,7,8,10` and a per-row runner limit of `--timeout 40m`. Neither changes a row command; every row ran exactly as the Verify table writes it, one after another. The witness-skew fixture was mounted read-only and exported as `SG_OLD_BIN`: statusgen v1.0.52, built for linux/arm64 from tag commit 2718fc978b74, sha256 3b06c67f31fd.
 
 Bracket timings:
 
-- Bracket 1 opened at 17:42:59Z. The container ran from 17:43:21Z to 17:54:07Z, and the bracket closed at 17:54:41Z.
-- Bracket 2 opened at 17:55:21Z. The container ran from 17:55:32Z to 18:06:25Z, and the bracket closed at 18:07:02Z.
-- Row 9 ran on the darwin host through `statusgen verifyrun --rows 9` from 18:07:25Z to 18:07:40Z.
+- The bracket opened at 01:50:06Z.
+- A first container start, at 01:51:01Z, used `-v` bind mounts. This host's container runtime did not surface those mounts at their host paths, and admission refused before any row ran: "the receipt carries a module cache, but the home lists no Go module roots". No row executed, so this is not an attempt. The container started again with `--mount type=bind` and the same sources.
+- The second container run lasted from 01:52:34Z to 02:02:14Z. The bracket closed at 02:02:31Z.
+- Row 9 ran on the darwin host through `statusgen verifyrun --rows 9 --dry-run`, from 02:02:45Z to 02:02:49Z.
 
 Admission and digest checks:
 
-- `deskdispatch --check-verifier` returned rc=0 before the rows and rc=0 after this Evidence edit, with the same binding (run 41477dad60f3, source f7e97e6a9e47).
-- `--bracket-digest` returned verdict=match, rc=0 for both closed witness files.
+- `deskdispatch --check-verifier` returned rc=0 before the rows and rc=0 after this Evidence edit, both times with binding run 20ecda061fe0 and source b03d8dace34d.
+- `--bracket-digest` returned verdict=match, rc=0.
 
-**Row 1 (fail, exit 1): instrument, not delivered code.** In bracket 1 the row was could-not-run: it hit the default 10-minute per-row limit and produced no verdict. In bracket 2, with a 40-minute limit, it exited 1 after about 11 minutes.
+**Row 1 (fail, exit 1): the admitted environment drops the witness-skew fixture, not delivered code.** An admitted row keeps only the allow-listed inherited variables (`admittedRowPassNames`, `statusgen/verifieradmission.go:244`, plus the named row inputs). `SG_OLD_BIN` is not on that list, so the runner's export never reaches the row.
 
-A supplemental diagnosis ran outside the brackets, earning no credit, in the same image and mounts with the git environment hardened. It re-ran both halves of the row command from 18:07:22Z to 18:18:24Z:
+The root statusgen package's `TestWitnessSkewOldReader` and `TestWitnessV1Unchanged` read that variable and never skip (`statusgen/witnessv2_skew_test.go:103` and `:209`). Without it they fail.
 
-- **`tools/desk/cmd/scanloop` half:** passed (rc=0).
-- **`statusgen` half:** failed (rc=1). 14 packages passed. The root `statusgen` package failed for two reasons:
-  - The package ran into `go test`'s default 10-minute package timeout: `panic: test timed out after 10m0s` at 600.058s. The test running at that moment, `TestRowreadHoldsNoToken`, had been running for only 4s, so the package's total wall-clock time exceeded the limit; no single test hung.
-  - One wall-clock ratio test failed: `TestHydrateBudget` measured 11.6x against its 10x budget (hydrate_budget_test.go:181).
+Two supplemental diagnoses ran outside the bracket in the same image and mounts, for no credit:
 
-Neither failure involves an intake-exit test or a file this brief delivered. The brief's own tests (rows 2–6 and 10) pass in the same image. Another verifier bracket was running on the same host during this window. The git-directory class from 2026-11-19 (medici-finance/assay#4327) no longer appears, because the common git directory is now mounted. That also accounts for row 8 now passing.
+- **`SG_OLD_BIN` set, git environment hardened** (02:03:01Z to 02:09:21Z): both halves of the row passed. The `statusgen` half passed all 15 packages, the root package in 336.8s. The `tools/desk/cmd/scanloop` half passed.
+- **Environment reduced to the allow-list** (02:10:59Z to 02:17:55Z): fresh `HOME` and `TMPDIR`, `GIT_CONFIG_GLOBAL=/dev/null`, and no `SG_OLD_BIN`. Exactly two tests failed, `TestWitnessSkewOldReader` and `TestWitnessV1Unchanged`, each with "SG_OLD_BIN is unset". Every other statusgen package passed. The root package took 381.9s.
 
-This run observes no delivered obligation failing. Row 1's obligation (the whole suite green) is uncovered. The 10-minute package budget class has no issue reference in this run.
+What the diagnoses rule out:
 
-**Row 9 (fail, exit 2): could-not-run under admission.** The admitted host row runs with an empty `HOME` and no roster (medici-finance/assay#7103). The operator record file is therefore absent, and `jq` exits 2.
+- The 10-minute `go test` package deadline (medici-finance/assay#4391) did not fire in either diagnosis. The 2026-11-24 attempt's `TestHydrateBudget` ratio miss did not recur either.
+- The installed v1.0.94 allow-list is the same code as the home's `statusgen/verifieradmission.go`, which has not changed since v1.0.94's source.
 
-A supplemental host read of the live file, earning no credit, found:
+The sibling class for a row precondition variable dropped by admission is medici-finance/assay#7582 (`SIBLING_PR`, desk-supervision/24 row 10). That issue covers its own row, and no issue at this source tracks the dropped `SG_OLD_BIN` fixture variable.
 
-- 1586 records, all with `decided_by` set to judgment.
-- Exit counts: placeholder 661, bug 626, needs-decision 169, rejected-watching 129, finding 1.
-- The newest record was triaged at 2026-11-24T17:43:54Z by intake-desk at tier strong. Its exit is `placeholder`, and both its item and its artifact are the same issue on a private repository in the configured repo set.
+Row 1's obligation, the whole suite green, is uncovered under admission. Outside admission both halves pass. No intake-exit test fails anywhere.
+
+**Row 9 (fail, exit 2): could-not-run under admission (medici-finance/assay#7086).** The admitted host row runs with a fresh, empty `HOME`, so `$HOME/.config/assay/intake-exits.jsonl` does not exist there and `jq` exits 2.
+
+A supplemental host read of the live operator file, for no credit, found:
+
+- 1639 records, all with `decided_by` set to judgment.
+- Exit counts: placeholder 690, bug 635, needs-decision 176, rejected-watching 137, finding 1.
+- The row's own query prints one line. The newest judgment record was triaged at 2026-11-25T01:48:40Z by intake-desk at tier strong. Its exit is `rejected-watching`, and its item and artifact are the same issue on a private repository in the configured repo set.
 - No record carries a title, author, body or login key.
 - The file mode is 0600.
 
-The artifact's existence was not dereferenced, because this run held no forge token and minted none. That dereference is could-not-check.
+A read-only forge read as the verifier App dereferenced that artifact: it exists and is open. The row's label clauses apply only to `needs-decision` and `bug`, so none applies to a `rejected-watching` record.
 
-**Change since the prior verification source (44a02f3d).** The delivering merge (bfef0dab238a, PR #2424) is an ancestor of f7e97e6a. In the delivered area only `tools/desk/internal/deskkit/verifyoutcomejoin.go` changed, which is the desk-supervision/28 validator (a refactor that shares outcome decoding). Its dispatch-ref pattern now sits at line 34 with the same grammar as before. The exit-record, land, intake-exits, schema, audit-lock and loop-name files are unchanged, and every literal below re-reads at the same file and line.
+**Change since the last landed verification source (44a02f3d).** The delivering merge (bfef0dab238a, PR #2424) is an ancestor of b03d8dac. In the delivered area:
 
-**Fail-first.** No row is risk-bearing: every risk answer in the brief is no, nothing is irreversible, and the row tags are mutation, flow, neighbour and dereference. The fail-first selection is therefore empty.
+- `tools/desk/internal/deskkit/verifyoutcomejoin.go` was refactored by desk-supervision/28. Its dispatch-ref pattern now sits at line 34.
+- intake-class-routing/02 made `scanloop land` refuse a bare `bug` or `placeholder` exit without `--handoff` (`tools/desk/cmd/scanloop/landverb.go:90-93`). Its tests moved the `TestExitEvent_` fixtures from `bug` to `finding`, and they still count 4 (row 10). `TestLandVerb_OneExitPerItem` still passes (row 4). This is a later brief's narrowing of which exits `land` accepts. It leaves the one-exit-per-item contract this brief delivered unchanged.
+- `statusgen/main.go` gained only the `--scan-issues --judgments` flags.
+
+The exit-record, intake-exits, schema, audit-lock and loop-name files are unchanged, and every literal below re-reads at the same file and line.
+
+**Fail-first.** No row is risk-bearing: every risk answer in the brief is no, nothing is irreversible, and the row tags are mutation, flow, neighbour and dereference. The fail-first selection is empty.
 
 RISK-VALUE: DERIVED — intakeExitRoles = ["the-desk","worker-desk","pr-review-desk","verify-desk","intake-desk","driver"] @ tools/desk/cmd/scanloop/exitrecord.go:72 and statusgen/intakeexits.go:61 — the five canonical loop names (canonicalLoopNames, tools/desk/internal/deskkit/loopnames.go:77) plus the neutral driver; matches the schema doc's closed set.
-RISK-VALUE: DERIVED — record file mode = 0o600 @ tools/desk/cmd/scanloop/exitrecord.go:366 — owner-only, required for a file that may carry a clear dispatch_ref.
+RISK-VALUE: DERIVED — record file mode = 0o600 @ tools/desk/cmd/scanloop/exitrecord.go:366 — owner-only, required for a file that may carry a clear dispatch_ref; the live operator file reads 0600.
 RISK-VALUE: DERIVED — intakeExitSchema = "intake-exit-v1" @ tools/desk/cmd/scanloop/exitrecord.go:29 and statusgen/intakeexits.go:27 — Task step 1 fixes the literal so both writers concatenate.
 RISK-VALUE: DERIVED — trackedExits = [ExitPlaceholder, ExitBug, ExitFinding, ExitNeedsDecision, ExitRejectedWatching] @ tools/desk/cmd/scanloop/land.go:41 — the five tracked exits of the intake contract.
-RISK-VALUE: NAMED, NOT DERIVED — dispatchRefRe = `^[A-Za-z0-9][A-Za-z0-9._/-]*--[A-Za-z0-9._/-]+@[0-9]{8}T[0-9]{6}Z\.[0-9a-f]{12}$` @ tools/desk/cmd/scanloop/exitrecord.go:100 — not equivalent to the desk-supervision/28 validator at tools/desk/internal/deskkit/verifyoutcomejoin.go:34, which takes a 1 to 226 byte printable-ASCII prefix without '@' and has no `--` requirement; routed to medici-finance/assay#2668.
+RISK-VALUE: NAMED, NOT DERIVED — dispatchRefRe = `^[A-Za-z0-9][A-Za-z0-9._/-]*--[A-Za-z0-9._/-]+@[0-9]{8}T[0-9]{6}Z\.[0-9a-f]{12}$` @ tools/desk/cmd/scanloop/exitrecord.go:100 — not equivalent to the desk-supervision/28 validator at tools/desk/internal/deskkit/verifyoutcomejoin.go:34, which takes a 1 to 226 byte printable-ASCII prefix without '@' and has no `--` requirement; routed to medici-finance/assay#2668, open.
 RISK-VALUE: DERIVED — exitLockWait = deskkit.AuditLockWait = 60 * time.Second @ tools/desk/cmd/scanloop/exitrecord.go:268 and tools/desk/internal/deskkit/auditlock.go:27 — reversible knob, ranked last.
 
-**VERIFY: BLOCKED** — 8 of 10 rows pass, and no delivered obligation was observed failing. Row 1 is uncovered: the root statusgen package exceeds `go test`'s 10-minute package budget in the container, and `TestHydrateBudget` misses its wall-clock ratio. Both are outside the delivered intake-exit code. Row 9 could not run under admission because of the empty `HOME` (medici-finance/assay#7103).
+**VERIFY: BLOCKED** — 8 of 10 rows pass, and no delivered obligation was observed failing. Row 1 fails under admission only because the admitted row environment drops `SG_OLD_BIN`, which the witness-skew tests need; with it set, both halves of the row pass. The 10-minute package deadline (medici-finance/assay#4391) did not fire. Row 9 could not run under admission (medici-finance/assay#7086).
 
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.
