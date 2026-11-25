@@ -36,7 +36,7 @@ consumers:
   - "tools/desk/cmd/repohardenguard/repohardenguard_test.go: follow-up forge-gitlab/12 (this brief — a GitLab fixture block with a `not available — Premium` row and a tier-403 row)"
   - "docs/streams/forge-gitlab/inventory.md (op 38 GitLab column) + edition-matrix.md (a row per kind): follow-up forge-gitlab/12"
   - "docs/adopting-assay-gitlab.md (the GitLab checklist template + the auditor role's minimum project role per kind): follow-up forge-gitlab/12"
-version: 1
+version: 2
 id: 7882834e-dcfc-4116-96aa-b211accb9610
 ---
 
@@ -123,12 +123,12 @@ row on CE; secret push protection is Ultimate and is `not available — Ultimate
 ## Verify (executable — no prose-only DoD items)
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd tools/desk && go build ./... && go test ./...` | exit 0 | check:ci |
+| 1 | `cd tools/desk && go build ./cmd/repohardenguard ./internal/deskkit && go test -count=1 -timeout 5m ./cmd/repohardenguard ./internal/deskkit` | Exit 0; the guard and its backend build and pass their suites. | check:ci |
 | 2 | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGitlabGolden -v && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -v && go test ./internal/deskkit/ -run TestForgeNoPassthrough -v` | exit 0; output contains `PASS`; the `push_rules_premium_gated` (planned) golden records a 403 classified could-not-check | check:ci +mutation |
 | 3 | `cd tools/desk && go test ./cmd/repohardenguard/ -run TestGitLabNotAvailableNoRequest -v && go test ./cmd/repohardenguard/ -run TestGitLabTierGateCouldNotCheck -v` | exit 0; output contains `PASS` — a `not available` row issues zero reads; a tier-403 row is could-not-check, never a value (`TestGitLabNotAvailableNoRequest` (planned), `TestGitLabTierGateCouldNotCheck` (planned)) | check +flow |
 | 4 | `curl -sS -o /dev/null -w '%{http_code}' -H "PRIVATE-TOKEN: $(cat "$(desktoken auditor --forge gitlab --repo "$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+/[^/]+?)(\.git)?$#\1#')")")" "$GITLAB_API_BASE/projects/$(git config --get remote.origin.url \| sed -E 's#.*[:/]([^/]+)/([^/]+?)(\.git)?$#\1%2F\2#')/protected_branches"` | `200` — the auditor PAT at its documented minimum project role can read the protected-branches document (dereferences the role the adopter doc states) | gate:model +dereference |
 | 5 | `grep -c 'not available — Premium' docs/adopting-assay-gitlab.md` | `1` or more — the CE template records the Premium row as a divergence, not as a check | check |
-| 6 | `statusgen --root . --consumers` | exit 0 | check |
+| 6 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief forge-gitlab/12 --delivery 4ce477d7100bc65a57e7fd1a1510bc2f86d22b76 --base 39a637693e6257df64ba0a126550d1a0ff070458 > "$o" && cat "$o" && grep -Fx -- 'summary: 5 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing' "$o")` | Exit 0 and exactly 5 corroborated, 0 disproved, 0 unchecked. Unchecked routes still require independent review. The auditor PAT and live authorization are checked separately. | check |
 
 ### Pre-mortem → detection map
 | Failure mode of the work | Caught by |

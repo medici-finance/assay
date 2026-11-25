@@ -102,7 +102,7 @@ consumers:
   - "docs/streams/forge-neutral/brief-13-write-verbs-c-deskpr-deskfile-deskclose.md: fixed-here
     (the `unblocks:` edge `newbrief` wrote there is graph housekeeping for this brief's `depends:`,
     and IS part of this authoring PR's diff; no other content in brief 13 changes)"
-version: 2
+version: 3
 id: 9abfee7a-f0af-48d7-89aa-e36cf5d67ddb
 ---
 
@@ -351,7 +351,7 @@ below are this brief's planned test deliverables, created by the implementer:
 
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check:ci | `cd tools/desk && go build ./... && go test ./...` | exit 0 |
+| 1 | check:ci | `cd tools/desk && go build ./cmd/deskclose ./internal/deskkit && go test -count=1 -timeout 5m ./cmd/deskclose ./internal/deskkit` | Exit 0; the command and its forge/read support package build and pass their suites. |
 | 2 | check:ci | `cd tools/desk && go test ./cmd/deskclose/... -count=1` | exit 0 — `duplicate`/`superseded`/`review-request`/`manifest` unmodified AND green alongside the two new modes |
 | 3 | check:ci +flow | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawSucceedsOnOwnDraft -count=1 -v` | exit 0 — the authoring App closes its own draft PR (`--because abandoned`, and separately `--because superseded --by <ref>`); asserts exactly one `PostComment` then one `CloseIssue`, zero calls against any OTHER item |
 | 4 | check:ci | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdrawRefusesNonAuthor -count=1 -v` | **negative path**: the same PR, a DIFFERENT minted role attempting self-withdraw → refused, ZERO forge writes (recording fake shows no `PostComment`/`CloseIssue`/`ReopenIssue` calls) |
@@ -366,7 +366,7 @@ below are this brief's planned test deliverables, created by the implementer:
 | 13 | check | `grep -cE -e 'sender\.type' -e 'gh issue reopen' .github/workflows/verify-gate-close.yml` | ≥ 2 — the independent server-side guard this brief's gate-why depends on is present and UNCHANGED (this row also serves as the "did not touch `.github/workflows/*`" spot-check; the full check is `git diff origin/main -- .github/workflows` being empty) |
 | 14 | check:ci +dereference | `cd tools/desk && go test ./internal/deskkit/ -run TestReopenIssueOpBothBackends -count=1 -v && go test ./internal/deskkit/ -run TestForgeGithubGolden -count=1 && go test ./internal/deskkit/ -run TestForgeGitlabGolden -count=1 && go test ./internal/deskkit/ -run TestForgeGitlabCoverage -count=1` | exit 0 on every chained command — `ReopenIssue` pinned on both backends' wire and reconciled against inventory row 38; no generic/passthrough method added (`TestForgeNoPassthrough` implicitly covered by the golden/coverage run) |
 | 15 | check | `grep -c 'self-withdraw' docs/streams/forge-gitlab/inventory.md tools/desk/cmd/deskclose/main.go; grep -c 'verify-gate-refire' docs/streams/forge-gitlab/inventory.md tools/desk/cmd/deskclose/main.go` | each grep's total across both files ≥ 1 — both new modes are named in the usage text and (for the op they introduce) the inventory |
-| 16 | check +mutation | `cd tools/desk && go test ./cmd/deskclose/... -run TestSelfWithdraw -count=1` | exit 0 on the unmutated tree. **Mutation for the self-withdraw authorship pin:** in the id-comparison this brief adds (the line comparing `pr.Author.ID` against the roster's pinned bot id), disable the id half — change it to always pass (e.g. `id == id \|\| true`-shaped) — and re-run the command: exit **1** on the mutant, `TestSelfWithdrawIDPinRejectsLoginOnlyMatch` fails (a login-only match now closes a draft it did not author). Restore and re-run: exit 0. Proves the id half of the pin is a LIVE control, not a comment |
+| 16 | check +mutation | `grep -qF -- 'if pr.Author.ID != self.id {' tools/desk/cmd/deskclose/lanes.go && (o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -C tools/desk -v -count=1 -timeout 5m -run '^TestSelfWithdrawIDPinRejectsLoginOnlyMatch$' ./cmd/deskclose > "$o" && grep -F -- '--- PASS: TestSelfWithdrawIDPinRejectsLoginOnlyMatch ' "$o")` | exit 0 on the unmutated tree. **Mutation for the self-withdraw authorship pin:** in the id-comparison this brief adds (the line comparing `pr.Author.ID` against the roster's pinned bot id), disable the id half — change it to always pass (e.g. `id == id \|\| true`-shaped) — and re-run the command: exit **1** on the mutant, `TestSelfWithdrawIDPinRejectsLoginOnlyMatch` fails (a login-only match now closes a draft it did not author). Restore and re-run: exit 0. Proves the id half of the pin is a LIVE control, not a comment |
 | 17 | check:ci +dereference | `d=$(mktemp -d) && git clone -q --shared --no-checkout . "$d" && git -C "$d" checkout -q --detach 5f906464a && statusgen --consumers --root "$d" --brief forge-neutral/16 --base d97abb672~1; s=$?; rm -rf "$d"; exit $s` | exit 0; summary `4 corroborated, 0 disproved, 1 unchecked` — every `consumers:` routing claim is judged against this brief's own implementation diff (the authoring merge's parent to the implementation merge), pinned in a throwaway clone so later changes on main cannot be read as this brief's. The one UNCHECKED entry is `.github/workflows/verify-gate-close.yml` (`out-of-scope`, a reviewer judgement; row 13 is its spot-check). Needs full history (not a shallow clone) |
 
 ## Pre-mortem → detection map
