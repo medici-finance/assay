@@ -44,8 +44,8 @@
 // no token of its own. No network, no gh, or an unauthenticated gh yields
 // `unreachable` for every remote source — never a false `in-sync`.
 //
-//	go run ./tools/plugindrift                     # advisory, exit 0
-//	go run ./tools/plugindrift --fail-on-drift     # exit 1 on drift
+//	cd tools/plugindrift && go run . --root ../..                    # advisory, exit 0
+//	cd tools/plugindrift && go run . --root ../.. --fail-on-drift    # exit 1 on drift
 //	make plugin-drift
 package main
 
