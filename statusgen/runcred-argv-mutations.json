@@ -1,0 +1,23 @@
+{
+  "test": "go test . -count=1 -timeout 300s -run '^TestRunCredNeverInArgv$'",
+  "control": {
+    "name": "CONTROL - the run credential is never revoked at run end",
+    "file": "runcredential.go",
+    "old": "\tif c.secret != \"\" {\n\t\tif err := revokeRunCredential(c.secret); err != nil && w != nil {\n",
+    "new": "\tif false {\n\t\tif err := revokeRunCredential(c.secret); err != nil && w != nil {\n"
+  },
+  "mutations": [
+    {
+      "name": "put the credential on a forge row's argv",
+      "file": "verifyrun.go",
+      "old": "\targv = append(argv, unescapePipes(command))\n",
+      "new": "\targv = append(argv, unescapePipes(command))\n\tif plan.readCred != nil && plan.readCred.secret != \"\" {\n\t\targv = append(argv, plan.readCred.secret)\n\t}\n"
+    },
+    {
+      "name": "the cleanup revokes through a process that takes the credential on its command line",
+      "file": "runcredential.go",
+      "old": "\t\tif err := revokeRunCredential(c.secret); err != nil && w != nil {\n",
+      "new": "\t\tif err := exec.Command(\"desktoken\", \"--revoke\", c.secret).Run(); err != nil && w != nil {\n"
+    }
+  ]
+}
