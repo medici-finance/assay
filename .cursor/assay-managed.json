@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "1.0.94",
+  "version": "1.0.95",
   "files": {
     ".cursor/references/claude-code.md": "631d34768071706854effdc48aa369b7aea9192191c832559a72595932b938f5",
     ".cursor/references/codex.md": "83e0b2ec78ceaa33e28c0569c98dfb93618d641c5552af12de5fb1cac32bec11",
@@ -15,13 +15,13 @@
     ".cursor/references/milestone-authoring.md": "f510d0d74761d1bb7840f26860eb33ac375b9e838678a4c8c45fcf6af4ac6f00",
     ".cursor/references/standing-note.md": "5b846214744e16741227a6f15728f062eb6df8ff2974e007463621f423803fb0",
     ".cursor/references/tick-contract.md": "65e6ac141091a31120f5eefd126891409ed1a92c376d6ef3f99fd8ea52e86ee7",
-    ".cursor/rules/assay.mdc": "f1acc3af8454efbe1cdc65b0316def9ae2fefcd429430dfe10d939e4fed38beb",
+    ".cursor/rules/assay.mdc": "c7c6a2375f5e7cae27c808151ea67f2d3c890e53ac22161cd075a74cc967e5d7",
     ".cursor/skills/adopt/SKILL.md": "e438b5a1993ca87f9e90167e01b7beda8ea772d2378bf7baeb88f0dc3bba9c5c",
     ".cursor/skills/article-craft/SKILL.md": "59c94edeb4af0eb7df0e50b30e4dadbaca39ad898cfd1cdc381dfe170d424d88",
     ".cursor/skills/article-craft/references/editorial-calibration.md": "0b268eb4ac4ed150b4070437c9119aafd3ce07ce5d2bfdaa27b87830ab7ff8f8",
     ".cursor/skills/article-craft/references/genres.md": "ee92e267fed72fdc2d6a1721db4e3be2d803d5bdd3c8d155093751b6dd67fe0c",
     ".cursor/skills/ask-decision/SKILL.md": "454e81d5c1ebc0785752554cb026c48038272cc34c761dbaf4d886f50a86237f",
-    ".cursor/skills/author-brief/SKILL.md": "2ef9f1d01b13e799271478caf1bee9731aaf8ed32b8c6af2dd2526eda9287b93",
+    ".cursor/skills/author-brief/SKILL.md": "f2486036b5884850386f677bdcc6c101cac804a52dfd07887d429a45c2ae51e3",
     ".cursor/skills/author-spec/SKILL.md": "fc8b98f94bcccb43d7cd0f2a5a261c61ffe6f4a017d9c9dd968fbd060b6959a7",
     ".cursor/skills/author-spec/references/quality-requirements.md": "b89b1d814fa8737f73273c964cf94a772321e4006161a8e0422f54c1acb2901b",
     ".cursor/skills/author-spec/references/review-prompts.md": "3b75799a47769ad8d469880aaf97b5b69c9e3bfc0ce400e36052b598873a06a6",
@@ -31,7 +31,7 @@
     ".cursor/skills/intake-desk/SKILL.md": "24430fdb260e8be4caebede0aa530ef5b98e6e85e097a7ce28772d906ddedbf1",
     ".cursor/skills/pdfingest/SETUP.md": "9636918a889243a0289c083f8d61a7d3da7a601ee80e0c3ecd329c6d4b4cba4a",
     ".cursor/skills/pdfingest/SKILL.md": "18d69fb22a5d6ccbb9cb8a174f9d8f5ef5a9154d9cb305a89f630f12991feea9",
-    ".cursor/skills/pr-review-desk/SKILL.md": "c717bd4dc835b3376c9fd60bc0a40b42cd0cba331bff313fd12d46b0d6656a36",
+    ".cursor/skills/pr-review-desk/SKILL.md": "b502f0ff744e08d95dbc4430d920c9c97ab2bff9342cdaaeaa9733e347819cb0",
     ".cursor/skills/pr-review-desk/references/leak-audience-check.md": "9d3163bb0fa0da74865ef128409866fa6e5ecbf9d2e64858a7addac9db8ed568",
     ".cursor/skills/pr-review-desk/references/merge-time-recheck.md": "558248aa76c930c578c2fb256ee9c14a1ae5dd066202053499b4e422ad33791e",
     ".cursor/skills/pr-review-desk/references/out-of-scope-filing.md": "d850da0002a43a5ecca1a6c6fab054c8d70731ca6b341209ddb9268ed3e7d2bc",
@@ -52,5 +52,5 @@
     ".cursor/skills/worker-desk/SKILL.md": "2d267c039300a56714fa2f924237898d3def764470d3034623cb3a1b07117f13",
     ".cursor/skills/worker-desk/references/dispatch-runbook.md": "d963d6d60b67b4f0c73b0ded4fd4cddb27e16b98979372dafa925ff30d76978e"
   },
-  "bindingsSha256": "3406c0e9488d49b8e936e897461abd4e2d1665cbb6a59fa6dadc91448f002a2d"
+  "bindingsSha256": "8c1e029cd72c7b02854f1512dd06da4b311d2d0c0c7efafc0fd60c7490fbb036"
 }

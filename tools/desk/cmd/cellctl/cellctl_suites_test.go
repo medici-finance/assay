@@ -60,6 +60,7 @@ func runCellctlSuite(t *testing.T, suite string, tools []string, args ...string)
 //
 // regression: #6175
 func TestHarnessShellSuite(t *testing.T) {
+	t.Parallel()
 	out := runCellctlSuite(t, "harness.test.sh", []string{"bash", "git"})
 	if n := strings.Count(out, "\n  ok    "); n < 40 {
 		t.Fatalf("harness.test.sh ran only %d assertions:\n%s", n, out)
@@ -74,6 +75,7 @@ func TestHarnessShellSuite(t *testing.T) {
 //
 // regression: #6183
 func TestProviderShellSuite(t *testing.T) {
+	t.Parallel()
 	out := runCellctlSuite(t, "provider.test.sh", []string{"bash", "git"})
 	if n := strings.Count(out, "\n  ok    "); n < 60 {
 		t.Fatalf("provider.test.sh ran only %d assertions:\n%s", n, out)
@@ -104,6 +106,7 @@ var scrubbedCaseDefRE = regexp.MustCompile(`(?m)^case_([a-z][a-z_]*)\(\)\s*\{`)
 //
 // regression: #6175
 func TestScrubbedCellShellSuite(t *testing.T) {
+	t.Parallel()
 	src, err := os.ReadFile(filepath.Join("..", "..", "..", "cellctl", "tests", "scrubbed-cell.test.sh"))
 	if err != nil {
 		t.Fatal(err)

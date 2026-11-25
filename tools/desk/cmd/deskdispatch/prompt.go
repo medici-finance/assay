@@ -103,6 +103,10 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 		// is named as the tree the PR under review belongs to, which is the value the review
 		// clauses require path claims to be resolved against.
 		fmt.Fprintf(&b, "- **Target repo:** `%s` — the repository the PR under review belongs to; resolve every path claim there.\n", repo)
+	case verifier && o.hasVerifierTarget():
+		// A pre-merge run (#7623) executes an unmerged head: say so, and say that it
+		// never lands Evidence and dies with the head.
+		fmt.Fprintf(&b, "- **Target repo:** `%s` — your Verify table runs against change %d at EXACTLY head `%s`, an UNMERGED head the reviewer App approved. This run never lands Evidence; if the change's head moves, the admission is void and every row refuses.\n", repo, o.targetChange, o.targetHead)
 	case verifier:
 		// A verifier opens no PR either — its deliverable is a written verdict against MERGED
 		// main, never an implementer's branch. Naming the repo as where a PR "opens" would be
