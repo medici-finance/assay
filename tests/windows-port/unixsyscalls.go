@@ -3,14 +3,16 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"go/ast"
-	"go/build"
 	"go/parser"
 	"go/token"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -28,6 +30,8 @@ func main() {
 }
 
 func checkTrees(roots ...string) (int, error) {
+	type targetPackage struct{ dir, arch string }
+	ignoredByTarget := make(map[targetPackage][]string)
 	count := 0
 	for _, root := range roots {
 		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, err error) error {
@@ -52,13 +56,18 @@ func checkTrees(roots ...string) (int, error) {
 				return nil
 			}
 			for _, arch := range []string{"amd64", "arm64"} {
-				target := build.Default
-				target.GOOS, target.GOARCH, target.CgoEnabled = "windows", arch, true
-				included, err := target.MatchFile(filepath.Dir(path), name)
-				if err != nil {
-					return err
+				dir := filepath.Dir(path)
+				key := targetPackage{dir, arch}
+				ignored, ok := ignoredByTarget[key]
+				if !ok {
+					var err error
+					ignored, err = windowsIgnoredFiles(dir, arch)
+					if err != nil {
+						return err
+					}
+					ignoredByTarget[key] = ignored
 				}
-				if included {
+				if !slices.Contains(ignored, name) {
 					return fmt.Errorf("COMPILED ON windows/%s: %s", arch, path)
 				}
 			}
@@ -70,6 +79,21 @@ func checkTrees(roots ...string) (int, error) {
 		}
 	}
 	return count, nil
+}
+
+func windowsIgnoredFiles(dir, arch string) ([]string, error) {
+	cmd := exec.Command("go", "list", "-e", "-json", ".")
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), "GOOS=windows", "GOARCH="+arch, "CGO_ENABLED=1")
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("could not check %s on windows/%s: %w", dir, arch, err)
+	}
+	var pkg struct{ IgnoredGoFiles []string }
+	if err := json.Unmarshal(out, &pkg); err != nil {
+		return nil, fmt.Errorf("invalid go list output for %s on windows/%s: %w", dir, arch, err)
+	}
+	return pkg.IgnoredGoFiles, nil
 }
 
 func usesUnixSyscall(file *ast.File) bool {
