@@ -203,6 +203,23 @@ it — a stale install otherwise produces a stale board with no signal. The tag 
 stamped at link time by `release-statusgen.yml`
 (`-ldflags "-X main.statusgenVersion=<tag>"`).
 
+### Replay coverage at an earlier commit
+
+```sh
+statusgen --coverage --brief <stream>/<NN> --coverage-replay-at <full-commit-sha> --json
+```
+
+The offline comparison applies the existing coverage evaluator to the checkout's
+Verify and Evidence sections at both `HEAD` and a named local ancestor. Each
+side reports per-row results, reasons and any available execution revision. Use
+an ancestor that contains the Evidence records to examine the effect of later
+pin or input changes. For example, a v2 record introduced after the supplied
+commit will still report a missing record there. Cross-repository attestations
+require separate source history and are outside this comparison.
+
+The output is advisory. No Verify rows run, and the command grants no closure
+credit. Omit `--json` for a text report.
+
 ### `reconcile` — derive lifecycle state from PRs, witnesses and approvals
 
 `statusgen reconcile` is a positional sub-command (like `verifyrun`) that derives
