@@ -251,7 +251,7 @@ carrying a `source:` block, still ported/pinned against `medici-finance/assay`'s
 operating rules no longer live inline in the `inject-resident-rules.sh` heredoc.
 Their single source is now `plugins/assay/resident-rules.md` (one `## R<N>`
 section per rule). Every per-harness delivery artifact is GENERATED from it by
-`tools/harnessgen` (`go run ./tools/harnessgen resident`) and byte-compared in CI
+`tools/harnessgen` (`cd tools/harnessgen && go run . resident --root ../..`) and byte-compared in CI
 (`resident --check`, wired in `.github/workflows/tools.yml`):
 
 - `hooks/resident-rules.payload.txt` — the Claude Code SessionStart payload; the

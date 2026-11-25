@@ -28,7 +28,10 @@ Before any Verify row or model-attested result, require a successful `deskdispat
 re-reads the dispatcher-owned pre-work record and stamp, binding repository, merged
 source, brief inputs, actual model and tier. PENDING, absent, refused, mismatched or
 unreadable means no admission. Never substitute an implementation PR, self-stamp, or
-write a verification result to obtain admission. Carry the returned
+write a verification result to obtain admission. For a pre-merge target (an UNMERGED
+change head named in your Target repo line) there is no Evidence: report the rows to the
+desk only, and re-run the check before each row, because a moved head voids the run.
+Otherwise, carry the returned
 `Verification-Attestation` binding into Evidence and check it again before landing;
 Evidence-section edits do not change the attested source or Verify commands. Leave the
 home detached at its source and in place when you return: the desk lands your rows from

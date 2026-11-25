@@ -4,58 +4,36 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"runtime"
 	"testing"
 	"time"
 
+	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-func init() {
-	if os.Getenv("CELLCTL_FEATURE_FIXTURE") != "1" {
-		return
-	}
-	if len(os.Args) != 3 || os.Args[1] != "features" || os.Args[2] != "list" {
-		os.Exit(23)
-	}
-	if expected := os.Getenv("FEATURE_EXPECT_HOME"); expected != "" && os.Getenv("CODEX_HOME") != expected {
-		os.Exit(24)
-	}
-	if expected := os.Getenv("FEATURE_EXPECT_CWD"); expected != "" {
-		cwd, _ := os.Getwd()
-		real, _ := filepath.EvalSymlinks(expected)
-		if cwd != real {
-			os.Exit(25)
-		}
-	}
-	if os.Getenv("FEATURE_FAIL") == "1" {
-		os.Exit(26)
-	}
-	_, _ = os.Stdout.WriteString(os.Getenv("FEATURE_OUTPUT"))
-	os.Exit(0)
-}
-
-func TestCodexFeatureProbeUsesEffectiveCLI(t *testing.T) {
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := os.ReadFile(exe)
-	if err != nil {
-		t.Fatal(err)
-	}
-	bin := t.TempDir()
-	name := "codex"
+// Build a small CLI before the production clock starts. The probes exercise
+// process startup and exit, without charging initialization of the entire Go
+// test binary against a feature or cadence deadline.
+func buildTestHarness(t *testing.T, name string) string {
+	t.Helper()
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	if err := os.WriteFile(filepath.Join(bin, name), b, 0700); err != nil {
-		t.Fatal(err)
+	out := filepath.Join(t.TempDir(), name)
+	cmd := exec.Command("go", "build", "-o", out, "./testdata/harness")
+	if b, err := goquiet.Cmd(cmd).CombinedOutput(); err != nil {
+		t.Fatalf("building test harness: %v\n%s", err, b)
 	}
+	return out
+}
+
+func TestCodexFeatureProbeUsesEffectiveCLI(t *testing.T) {
+	bin := filepath.Dir(buildTestHarness(t, "codex"))
 	t.Setenv("PATH", bin)
-	t.Setenv("CELLCTL_FEATURE_FIXTURE", "1")
 	c := &Cell{Repo: t.TempDir(), Home: t.TempDir(), Kind: "scrubbed"}
 	t.Setenv("FEATURE_EXPECT_HOME", filepath.Join(c.Home, ".codex"))
 	t.Setenv("FEATURE_EXPECT_CWD", c.Repo)
