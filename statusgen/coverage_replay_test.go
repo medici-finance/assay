@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -89,6 +90,21 @@ func TestCoverageReplayRefusesUnresolvedSubjects(t *testing.T) {
 		var out, diagnostic bytes.Buffer
 		if code := runCoverageReplay(f.Root, gv2BriefID, revision, true, &out, &diagnostic); code != coverageExitCouldNot || out.Len() != 0 || diagnostic.Len() == 0 {
 			t.Errorf("replay at %s: exit %d, stdout=%q, stderr=%q", revision, code, &out, &diagnostic)
+		}
+	}
+}
+
+func TestCoverageReplayUnwritableOutput(t *testing.T) {
+	f := newGitV2Fixture(t).build()
+	out, err := os.Open(f.BriefPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = out.Close() }()
+	for _, jsonMode := range []bool{false, true} {
+		var diagnostic bytes.Buffer
+		if code := runCoverageReplay(f.Root, gv2BriefID, f.Merge, jsonMode, out, &diagnostic); code != coverageExitCouldNot || diagnostic.Len() == 0 {
+			t.Errorf("json=%v: replay returned %d, stderr=%q for unwritable output", jsonMode, code, &diagnostic)
 		}
 	}
 }

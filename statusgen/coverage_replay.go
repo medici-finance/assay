@@ -22,7 +22,8 @@ type coverageReplayReport struct {
 // not resolve a trusted delivery or advance the brief.
 func runCoverageReplay(root, brief, revision string, jsonMode bool, out, diagnostic io.Writer) int {
 	fail := func(err any) int {
-		fmt.Fprintf(diagnostic, "statusgen: coverage replay: %v\n", err)
+		// The failure exit still reaches the caller if stderr is unavailable.
+		_, _ = fmt.Fprintf(diagnostic, "statusgen: coverage replay: %v\n", err)
 		return coverageExitCouldNot
 	}
 	stream, num, ok := briefStreamNum(brief)
@@ -93,15 +94,18 @@ func runCoverageReplay(root, brief, revision string, jsonMode bool, out, diagnos
 		}
 		return coverageExitOK
 	}
-	fmt.Fprintln(out, "Coverage replay uses the checkout's Verify and Evidence sections. Results are advisory and grant no closure credit.")
+	text := []byte("Coverage replay uses the checkout's Verify and Evidence sections. Results are advisory and grant no closure credit.\n")
 	for _, row := range []struct {
 		label string
 		side  coverageReplaySide
 	}{{"HEAD", report.Head}, {"Replay", report.Replay}} {
-		fmt.Fprintf(out, "%s %s  %s\n", row.label, row.side.Revision, coverageLine(row.side.Coverage))
+		text = fmt.Appendf(text, "%s %s  %s\n", row.label, row.side.Revision, coverageLine(row.side.Coverage))
 		for _, claim := range row.side.Coverage.Claims {
-			fmt.Fprintf(out, "  %s  %s  %s\n", claim.Claim, claim.Result, claim.Reason)
+			text = fmt.Appendf(text, "  %s  %s  %s\n", claim.Claim, claim.Result, claim.Reason)
 		}
+	}
+	if _, err := out.Write(text); err != nil {
+		return fail(err)
 	}
 	return coverageExitOK
 }
