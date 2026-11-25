@@ -17,7 +17,7 @@ import (
 func TestCursorCommittedRuleMatchesSource(t *testing.T) {
 	if code := cursorCmd([]string{"--check", "--root", "../.."}); code != exitClean {
 		t.Fatalf("cursor --check against the repo root returned %d, want %d (clean) — "+
-			"the committed rule is out of sync with the resident source; run `go run ./tools/harnessgen cursor` and commit", code, exitClean)
+			"the committed rule is out of sync with the resident source; run `cd tools/harnessgen && go run . cursor --root ../..` and commit", code, exitClean)
 	}
 }
 
