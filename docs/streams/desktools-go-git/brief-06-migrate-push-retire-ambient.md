@@ -709,7 +709,7 @@ Supplemental, no acceptance credit. These rows discharge no Verify row.
 |---|---------|----------|----------|------|--------|
 | S1 (no acceptance credit; row 6 diagnosis) | row 6's clone, checkout and copy steps by hand into a throwaway directory outside the home, without the case test, printing each count and exit status | observation only | cc0ef547~1: `git-exec sites: 188 (direct spawns: 45, seam call sites: 143)`, then `FAIL: could-not-check: pin file scripts/git-exec-pin.txt is missing or unreadable`, exit 2; cc0ef547: `git-exec sites: 187 (direct spawns: 44, seam call sites: 143)`, then the same refusal, exit 2 | 2026-11-25 | host verifier, claude-opus-5-5 @ 77ff0f2222a2 |
 
-Attempt disclosure: one witness run over the whole table, credited, with no retries. The per-row readings and S1 are supplemental reads, not runs of the Verify table.
+Attempt disclosure: one witness run over the whole table, uncredited (credit-unchecked), with no retries. This brief's Evidence carries no `Admission-Bracket:` line, so the credit check had no bracket to credit and could not complete. The per-row readings and S1 are supplemental reads, not runs of the Verify table.
 
 Fail-first: the frontmatter answers all four risk questions no and no Verify row carries a risk-bearing, live, mutating or end-to-end tag, so no fail-first witness is owed.
 
@@ -728,7 +728,7 @@ RISK-VALUE: DERIVED — PushOpts.Force = false (unset) @ tools/desk/cmd/deskpr/p
 RISK-VALUE: DERIVED — len(dests) != 1 refuses @ tools/desk/cmd/deskpr/push.go:185. git push sends to every push URL a remote lists while gitcore.Push sends to one; refusing anything but exactly one keeps a migrated push from silently reaching fewer destinations.
 RISK-VALUE: NAMED, NOT DERIVED — pre-push hook remote sha = all zeros @ tools/desk/internal/deskkit/prepush.go:72 — git's "not known to exist" id; whether every hook tolerates it is open-ended and not checkable offline. Open as medici-finance/assay#4194 (read OPEN on 2026-11-25).
 
-**VERIFY: FAIL** — row 6 exit=1 on the single credited witness run at 77ff0f2222a2 (5 pass, 1 fail, 0 could-not-run). Check-definition defect: the counting script row 6 copies needs a pin file and counts 188 then 187 in the old trees; the one-spawn removal still holds. Rows 1 to 5 pass. Route: #2337.
+**VERIFY: FAIL** — row 6 exit=1 on the single witness run, uncredited (credit-unchecked), at 77ff0f2222a2 (5 pass, 1 fail, 0 could-not-run). Check-definition defect: the counting script row 6 copies needs a pin file and counts 188 then 187 in the old trees; the one-spawn removal still holds. Rows 1 to 5 pass. Route: #2337.
 
 Lifecycle: this block does not edit the stream index row; a verifier never sets or clears a lifecycle state.
 
