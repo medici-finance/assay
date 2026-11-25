@@ -4,6 +4,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/parser"
@@ -16,17 +17,28 @@ import (
 	"strings"
 )
 
+var errWindowsSyscall = errors.New("Unix-only syscall is part of the Windows build")
+
 func main() {
+	os.Exit(run())
+}
+
+func run() int {
 	count, err := checkTrees("statusgen", "tools/desk")
-	if err != nil {
+	switch {
+	case errors.Is(err, errWindowsSyscall):
 		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		return 1
+	case err != nil:
+		fmt.Fprintln(os.Stderr, "COULD-NOT-CHECK:", err)
+		return 2
+	case count == 0:
+		fmt.Fprintln(os.Stderr, "VACUOUS: no Unix-only syscall uses found")
+		return 1
+	default:
+		fmt.Printf("OK %d\n", count)
+		return 0
 	}
-	if count == 0 {
-		fmt.Fprintln(os.Stderr, "no Unix-only syscall uses found")
-		os.Exit(1)
-	}
-	fmt.Printf("OK %d\n", count)
 }
 
 func checkTrees(roots ...string) (int, error) {
@@ -68,7 +80,7 @@ func checkTrees(roots ...string) (int, error) {
 					ignoredByTarget[key] = ignored
 				}
 				if !slices.Contains(ignored, name) {
-					return fmt.Errorf("COMPILED ON windows/%s: %s", arch, path)
+					return fmt.Errorf("COMPILED ON windows/%s: %s: %w", arch, path, errWindowsSyscall)
 				}
 			}
 			count++
