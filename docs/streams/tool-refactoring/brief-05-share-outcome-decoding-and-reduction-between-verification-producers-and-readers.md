@@ -13,7 +13,7 @@ design: DR-tool-refactoring-05
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 id: cca3ff32-d298-45a7-9f43-d7cfc226253a
 outcome: none
 authored: 2026-11-12 by author-brief session
@@ -117,16 +117,16 @@ The statusgen/evaluation outcome package owns outcome decoding and reduction. De
 
 ## Verify
 
-Row 4 runs only in a clean isolated checkout of the independently resolved implementation delivery D, with its protected delivery binding checked by the existing owner. There HEAD is D and HEAD^ is its first parent. Do not select current integration HEAD as a convenient substitute. If D or its binding cannot be established, record could-not-check. Other rows keep their admitted source and recorded witness identity.
+Row 4 reads the immutable delivery snapshot and its first-parent diff from local Git history. It executes no code from the snapshot. Missing history is could-not-check.
 
 The named tests below are implementation deliverables, not tests claimed to exist today. Each row requires the named `--- PASS:` line as well as exit 0, so a vacuous selector cannot pass. Class controls plant a second defect site outside the reported instance and prove the guard catches it; retain that positive control. Record the pre-fix red and post-fix green.
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd statusgen && GOWORK=off go test -v ./evaluation -run '^TestOutcomeProtocolMatrix$' -count=1` | exit 0; output contains "--- PASS: TestOutcomeProtocolMatrix"; wire vocabulary and reducer matrix | check:ci +dereference |
-| 2 | `cd statusgen && GOWORK=off go test -v ./evaluation -run '^TestOutcomeProtocolClassGuard$' -count=1` | exit 0; output contains "--- PASS: TestOutcomeProtocolClassGuard"; writer/reader drift and second enum plant | check:ci +mutation +neighbour |
-| 3 | `cd tools/desk && GOWORK=off go test -v ./cmd/deskevidence -run '^TestOutcomeProtocolFlow$' -count=1` | exit 0; output contains "--- PASS: TestOutcomeProtocolFlow"; publication and queue reader flow | check:ci +flow |
-| 4 | `statusgen --root . --consumers --brief tool-refactoring/05 --delivery "$(git rev-parse HEAD)" --base "$(git rev-parse HEAD^)"` | exit 0; zero disproved and zero unchecked consumer routes for the delivered brief | check:ci +flow |
+| 1 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -C statusgen/evaluation -v -count=1 -timeout 5m -run '^TestOutcomeProtocolMatrix$' . > "$o" && grep -F -- '--- PASS: TestOutcomeProtocolMatrix ' "$o" && grep -F -- '--- PASS: TestOutcomeProtocolMatrix/rows:_the_reduction_of_counts,_held_rows_and_row_results ' "$o")` | exit 0; output contains "--- PASS: TestOutcomeProtocolMatrix"; wire vocabulary and reducer matrix | check:ci +dereference |
+| 2 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -C statusgen/evaluation -v -count=1 -timeout 5m -run '^TestOutcomeProtocolClassGuard$' . > "$o" && grep -F -- '--- PASS: TestOutcomeProtocolClassGuard ' "$o")` | exit 0; output contains "--- PASS: TestOutcomeProtocolClassGuard"; writer/reader drift and second enum plant | check:ci +mutation +neighbour |
+| 3 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -C tools/desk -v -count=1 -timeout 5m -run '^TestOutcomeProtocolFlow$' ./cmd/deskevidence > "$o" && grep -F -- '--- PASS: TestOutcomeProtocolFlow ' "$o")` | exit 0; output contains "--- PASS: TestOutcomeProtocolFlow"; publication and queue reader flow | check:ci +flow |
+| 4 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief tool-refactoring/05 --delivery d14b0b9429679c545d185df9d2fdf954ea0791ae --base 0e5d78dae6dfbfea84d4ea66c356d498d2428329 > "$o" && cat "$o" && grep -Fx -- 'summary: 8 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing' "$o")` | Exit 0 and exactly 8 corroborated, 0 disproved, 0 unchecked. Zero unchecked routes are required. | check:ci +flow |
 
 ## Definition of Done
 

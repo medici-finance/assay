@@ -7,7 +7,7 @@
 set -euo pipefail
 
 # The payload text — including the version banner — is GENERATED from the single
-# source (plugins/assay/resident-rules.md) by `go run ./tools/harnessgen resident`;
+# source (plugins/assay/resident-rules.md) by `cd tools/harnessgen && go run . resident --root ../..`;
 # do not hand-edit resident-rules.payload.txt or re-embed the rules text here.
 # Read it relative to THIS script, not $CLAUDE_PLUGIN_ROOT or the caller's cwd, so
 # the hook works both as the plugin invokes it and as this file's own README
