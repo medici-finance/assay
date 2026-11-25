@@ -47,18 +47,25 @@ Exit 6 means a required observation could not be checked.`,
 			}
 			a, err := readInboxAction(repo, n, observer())
 			if err != nil {
-				fmt.Fprintf(stderr, "deskinbox: %s#%d could-not-check: %s\n", repo, n, cleanText(err.Error()))
+				_, _ = fmt.Fprintf(stderr, "deskinbox: %s#%d could-not-check: %s\n", repo, n, cleanText(err.Error()))
 				return codeErr(deskkit.ExitCodeOf(err))
 			}
-			fmt.Fprintf(stdout, "%s#%d — %s\nState: %s\nNext owner: %s\nNext action: %s\n", repo, n, a.Title, a.State, a.Owner, a.Act)
+			// Compose the report in memory, where a write cannot fail, then write
+			// it once. A report that cannot be written exits unverifiable.
+			var b strings.Builder
+			fmt.Fprintf(&b, "%s#%d — %s\nState: %s\nNext owner: %s\nNext action: %s\n", repo, n, a.Title, a.State, a.Owner, a.Act)
 			if a.command != "" {
-				fmt.Fprintln(stdout, "Command:")
-				fmt.Fprintln(stdout, a.command)
+				b.WriteString("Command:\n")
+				b.WriteString(a.command + "\n")
 			}
 			for _, line := range [][2]string{{"Issue", a.URL}, {"Evidence", a.Evidence}, {"Desk verification", a.Verify}} {
 				if line[1] != "" {
-					fmt.Fprintf(stdout, "%s: %s\n", line[0], line[1])
+					fmt.Fprintf(&b, "%s: %s\n", line[0], line[1])
 				}
+			}
+			if _, err := io.WriteString(stdout, b.String()); err != nil {
+				_, _ = fmt.Fprintf(stderr, "deskinbox: %s#%d could-not-check: report write failed: %s\n", repo, n, cleanText(err.Error()))
+				return codeErr(deskkit.ExitUnverifiable)
 			}
 			if a.State == "unknown" {
 				return codeErr(deskkit.ExitUnverifiable)
@@ -120,7 +127,7 @@ func readInboxAction(repo string, number int, observers ...deskkit.RequestObserv
 	}
 	action := screenDecision(iss, a, cs)
 	if action.awaitsPacket && !hasInboxLabel(iss.Labels, "needs-decision") {
-		links := sheetLink.FindAllStringSubmatch(visibleDecisionText(iss.Body), -1)
+		links := sheetLink.FindAllStringSubmatch(deskkit.VisibleDecisionText(iss.Body), -1)
 		if len(links) == 1 {
 			return readRunsheet(f, fr, iss, a, links[0][1])
 		}
@@ -146,7 +153,7 @@ var (
 
 func screenDecision(iss *deskkit.Issue, a inboxAction, cs []deskkit.Comment) inboxAction {
 	raw := iss.Body
-	issueText := visibleDecisionText(raw)
+	issueText := deskkit.VisibleDecisionText(raw)
 	body := issueText
 	options := deskkit.ParseDecisionOptions(body)
 	// A status update or repetition of the same options cannot erase a
@@ -156,7 +163,7 @@ func screenDecision(iss *deskkit.Issue, a inboxAction, cs []deskkit.Comment) inb
 		if c.Minimized || c.Author.ID == 0 || c.Author.Type != "Bot" || !deskkit.TrustedAuthorID(c.Author.Login, c.Author.ID) {
 			continue
 		}
-		proposal := visibleDecisionText(c.Body)
+		proposal := deskkit.VisibleDecisionText(c.Body)
 		asked := deskkit.ParseDecisionOptions(proposal)
 		if asked.Stated() && (!slices.Equal(asked.Letters, options.Letters) || !slices.Equal(asked.Texts, options.Texts)) {
 			if c.UpdatedAt == "" || c.UpdatedAt != c.CreatedAt {
@@ -176,7 +183,7 @@ func screenDecision(iss *deskkit.Issue, a inboxAction, cs []deskkit.Comment) inb
 		if err != nil || editErr != nil || !spoke.Equal(edit) {
 			return a.next("unknown", "desk", "Reconcile the ratifying identity's edited or undated response.")
 		}
-		lines := nonblankLines(bodyLines(visibleDecisionText(c.Body)))
+		lines := nonblankLines(bodyLines(deskkit.VisibleDecisionText(c.Body)))
 		if len(lines) > 0 && (anchor >= 0 || options.Stated()) {
 			first := strings.TrimSpace(demd(lines[0]))
 			match := rulingLetter.FindStringSubmatch(first)
@@ -239,58 +246,4 @@ func screenDecision(iss *deskkit.Issue, a inboxAction, cs []deskkit.Comment) inb
 	a.Evidence = strings.Join(choices, " | ")
 	a.Verify = "The desk reads the authorized person's ruling on this issue, records it, and confirms the escalation label moved."
 	return a.next("ready", "human", "Reply on "+a.URL+" with your chosen option ("+strings.Join(options.Letters, "/")+").")
-}
-
-// Ignore HTML comments, fenced samples, block quotes and indented code when
-// screening for a ruling, an option or the fields of a reversible default.
-func visibleDecisionText(body string) string {
-	var lines []string
-	var fence string
-	var hidden bool
-	for _, line := range toLines(body) {
-		// A comment closes even on an indented or quoted line. Consume its
-		// terminator before deciding how Markdown treats the remaining text.
-		if hidden {
-			_, tail, ok := strings.Cut(line, "-->")
-			if !ok {
-				continue
-			}
-			line, hidden = tail, false
-		}
-		trim := strings.TrimSpace(line)
-		if fence != "" {
-			if strings.HasPrefix(trim, fence) && strings.Trim(trim, fence[:1]) == "" {
-				fence = ""
-			}
-			continue
-		}
-		if !hidden && (strings.HasPrefix(trim, "```") || strings.HasPrefix(trim, "~~~")) {
-			fence = trim[:len(trim)-len(strings.TrimLeft(trim, trim[:1]))]
-			continue
-		}
-		if strings.HasPrefix(line, "    ") || strings.HasPrefix(line, "\t") || strings.HasPrefix(trim, ">") {
-			continue
-		}
-		var visible strings.Builder
-		for len(line) > 0 {
-			if hidden {
-				_, tail, ok := strings.Cut(line, "-->")
-				if !ok {
-					break
-				}
-				line = tail
-				hidden = false
-			} else {
-				part, tail, ok := strings.Cut(line, "<!--")
-				visible.WriteString(part)
-				if !ok {
-					break
-				}
-				line = tail
-				hidden = true
-			}
-		}
-		lines = append(lines, visible.String())
-	}
-	return strings.Join(lines, "\n")
 }

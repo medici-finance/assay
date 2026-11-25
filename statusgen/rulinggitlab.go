@@ -213,6 +213,12 @@ func resolveGitLabRuling(out rulingOutcome, link rulingLink, rec decisionRecordS
 	if !binding.rules(rulingIssue{Body: iss.Body}, link) {
 		return refuse(rulingUnrelatedIssue, "%s carries no decision-gate marker for %s — the note is not on this record's decision issue", where, binding.what)
 	}
+	// 7. The ruling binds the exact work subject (only when the caller says so).
+	if binding.subject != nil {
+		if r, why := binding.subject(cm.Body, cm.CreatedAt, iss.Body); r != rulingOK {
+			return refuse(r, "note %d on %s: %s", link.CommentID, where, why)
+		}
+	}
 
 	out.Reason = rulingOK
 	out.Body = cm.Body

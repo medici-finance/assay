@@ -18,7 +18,9 @@ const rowCredMarker = "planted-stored-login-marker"
 // XDG_CONFIG_HOME), a role key file named by an ASSAY_* variable, the verify
 // loop's DESK_LOOP, a cell's CELLCTL_GH_AMBIENT copy of the login, and the
 // marker itself in an ASSAY_* and a GH_* variable, and in a row input that
-// passes the scrub by name only when it holds a commit id. Stub `gh` and `desktoken`
+// passes the scrub by name only when it holds a commit id. It also plants a
+// pointer at that key directory under a family no list names, and an agent
+// socket path: the pass list drops both by default. Stub `gh` and `desktoken`
 // on PATH answer with the marker whenever their inputs lead them to it. It
 // returns the planted home.
 func rowCredPlant(t *testing.T) string {
@@ -58,6 +60,8 @@ func rowCredPlant(t *testing.T) string {
 	t.Setenv("GH_FIXTURE_LOGIN", rowCredMarker)
 	t.Setenv("CELLCTL_GH_AMBIENT", rowCredMarker)
 	t.Setenv("ASSAY_DELIVERY_BASE_SHA", rowCredMarker)
+	t.Setenv("EXAMPLE_TOOL_CONFIG_DIR", keyDir)
+	t.Setenv("SSH_AUTH_SOCK", filepath.Join(home, "agent.sock"))
 	return home
 }
 
@@ -69,7 +73,7 @@ func rowCredProbe(t *testing.T, rec string) string {
 	t.Helper()
 	probe := filepath.Join(t.TempDir(), "probe.sh")
 	script := "printf '%s' \"$HOME\" > '" + rec + "'\n" +
-		"for v in DESK_LOOP GH_CONFIG_DIR XDG_CONFIG_HOME ASSAY_ROLE_KEY_FILE ASSAY_FIXTURE_LOGIN GH_FIXTURE_LOGIN CELLCTL_GH_AMBIENT; do\n" +
+		"for v in DESK_LOOP GH_CONFIG_DIR XDG_CONFIG_HOME ASSAY_ROLE_KEY_FILE ASSAY_FIXTURE_LOGIN GH_FIXTURE_LOGIN CELLCTL_GH_AMBIENT EXAMPLE_TOOL_CONFIG_DIR SSH_AUTH_SOCK; do\n" +
 		"  eval \"[ -z \\\"\\${$v+set}\\\" ]\" || { echo \"$v reached the row\" >&2; exit 11; }\n" +
 		"done\n" +
 		"out=$(gh auth token 2>/dev/null; desktoken worker 2>/dev/null; cat \"$HOME/.config/gh/hosts.yml\" \"$HOME/.config/assay/role.key\" 2>/dev/null; env)\n" +
@@ -128,24 +132,65 @@ func TestAdmittedRowsNoCred(t *testing.T) {
 }
 
 // TestAdmittedEnvScrubsCred pins the scrub one variable at a time, whatever
-// its case, beside variables that only resemble one.
+// its case. Each credential pointer is refused by the deny layer itself
+// (admittedRowDenied), not only left off the pass list, so a pass-list entry
+// added later cannot carry one through. A variable that only resembles one is
+// not refused by that layer.
 func TestAdmittedEnvScrubsCred(t *testing.T) {
 	gone := []string{"HOME=/h", "Home=/h", "DESK_LOOP=verify-desk", "desk_loop=x",
 		"XDG_CONFIG_HOME=/h/.config", "CELLCTL_GH_AMBIENT=x", "GH_CONFIG_DIR=/h/gh",
 		"GH_HOST=example.invalid", "gh_anything=x", "ASSAY_APP_PEM_FILE=/k", "Assay_Roster=x",
 		"GIT_CONFIG_GLOBAL=/h/.gitconfig", runCredentialEnv + "=/elsewhere",
-		rowreadSocketVar + "=/elsewhere/sock"}
-	kept := []string{"PATH=/bin", "HOMEBREW_PREFIX=/opt", "EXAMPLE_SETTING=s", "XDG_CACHE_HOME=/c",
+		rowreadSocketVar + "=/elsewhere/sock", "BASH_ENV=/h/rc", "GITHUB_TOKEN=x"}
+	lookalike := []string{"PATH=/bin", "HOMEBREW_PREFIX=/opt", "EXAMPLE_SETTING=s", "XDG_CACHE_HOME=/c",
 		"GHOST=x", "MY_ASSAY_NOTE=x", "GIT_CONFIG_GLOBAL=" + os.DevNull}
-	env := admittedRowEnv(append(append([]string{}, gone...), kept...))
+	env := admittedRowEnv(append(append([]string{}, gone...), lookalike...))
 	for _, kv := range gone {
 		if slices.Contains(env, kv) {
 			t.Errorf("admitted row environment carries %s", kv)
 		}
+		if !admittedRowDenied(kv) {
+			t.Errorf("the deny layer does not refuse %s", kv)
+		}
 	}
-	for _, kv := range kept {
+	for _, kv := range lookalike {
+		if admittedRowDenied(kv) {
+			t.Errorf("the deny layer refuses %s, which only resembles a credential pointer", kv)
+		}
+	}
+	for _, kv := range []string{"PATH=/bin", "GIT_CONFIG_GLOBAL=" + os.DevNull} {
 		if !slices.Contains(env, kv) {
 			t.Errorf("admitted row environment dropped %s", kv)
+		}
+	}
+}
+
+// regression: #6792
+// TestAdmittedEnvPassList: the scrub is an allow-list. A variable reaches an
+// admitted row only when it is on the pass list (admittedRowPassNames, or a
+// locale LC_* setting), so a family nobody listed is dropped by default: an
+// agent socket, a runtime directory, another tool's config pointer, a CI
+// runtime variable, the Windows profile, and a name that only extends a
+// listed one. A listed proxy or module proxy that carries a user name in its
+// URL is dropped too.
+func TestAdmittedEnvPassList(t *testing.T) {
+	kept := []string{"PATH=/bin", "Path=C:\\bin", "LANG=C.UTF-8", "LC_ALL=C", "TERM=dumb", "TZ=UTC",
+		"CI=true", "SSL_CERT_FILE=/etc/ssl/cert.pem", "GOFLAGS=-mod=readonly", "GOMODCACHE=/go/pkg/mod",
+		"GOPROXY=off", "GOTOOLCHAIN=local", "GODEBUG=multipathtcp=0", "GOCACHE=/c", "GOPATH=/g",
+		"HTTPS_PROXY=http://proxy.example.invalid:3128", "no_proxy=localhost", "SystemRoot=C:\\Windows"}
+	gone := []string{"SSH_AUTH_SOCK=/tmp/agent", "SSH_ASKPASS=/bin/ask", "XDG_RUNTIME_DIR=/run/user/1",
+		"DOCKER_CONFIG=/h/.docker", "KUBECONFIG=/h/.kube/config", "EXAMPLE_TOOL_CONFIG_DIR=/h/tool",
+		"OTHERFORGE_LOGIN=x", "ACTIONS_RUNTIME_URL=https://example.invalid", "CI_EXAMPLE_LOGIN=x",
+		"PATHEXTRA=x", "GOAUTH=git", "GOENV=/h/go.env", "APPDATA=D:\\prof\\AppData", "USERPROFILE=D:\\prof",
+		"LCX=x", "HTTPS_PROXY=http://fixture@proxy.example.invalid:3128", "GOPROXY=https://fixture@mod.example.invalid"}
+	for _, kv := range kept {
+		if !slices.Contains(admittedRowEnv([]string{kv}), kv) {
+			t.Errorf("admitted row environment dropped the listed %s", kv)
+		}
+	}
+	for _, kv := range gone {
+		if slices.Contains(admittedRowEnv([]string{kv}), kv) {
+			t.Errorf("admitted row environment carries %q, which is not on the pass list", kv)
 		}
 	}
 }
@@ -158,13 +203,15 @@ const (
 )
 
 // regression: F5
-// TestAdmittedRowInputsPass: the two named delivery coordinates reach an
-// admitted row, by exact name and only with a full commit id as the value.
-// Every other ASSAY_* variable is still dropped: one that only extends or
-// shortens an allowed name, a lower-case copy, a database DSN, a cell API
-// setting, a role key path, and an allowed name carrying any other value.
+// TestAdmittedRowInputsPass: the named delivery coordinates (the ASSAY_* pair
+// and the unprefixed DELIVERY_HEAD/DELIVERY_BASE pair) reach an admitted row,
+// by exact name and only with a full commit id as the value. Every other
+// ASSAY_* variable is still dropped: one that only extends or shortens an
+// allowed name, a lower-case copy, a database DSN, a cell API setting, a role
+// key path, and an allowed name carrying any other value.
 func TestAdmittedRowInputsPass(t *testing.T) {
-	kept := []string{"ASSAY_DELIVERY_SHA=" + rowInputSHA, "ASSAY_DELIVERY_BASE_SHA=" + rowInputBase}
+	kept := []string{"ASSAY_DELIVERY_SHA=" + rowInputSHA, "ASSAY_DELIVERY_BASE_SHA=" + rowInputBase,
+		"DELIVERY_HEAD=" + rowInputSHA, "DELIVERY_BASE=" + rowInputBase}
 	for _, kv := range kept {
 		if !slices.Contains(admittedRowEnv([]string{kv}), kv) {
 			t.Errorf("admitted row environment dropped the named row input %s", kv)
@@ -174,7 +221,9 @@ func TestAdmittedRowInputsPass(t *testing.T) {
 		"ASSAY_DELIVERY_REF=" + rowInputSHA, "assay_delivery_sha=" + rowInputSHA, "Assay_Delivery_Base_Sha=" + rowInputSHA,
 		"ASSAY_TEST_POSTGRES_DSN=postgres://example.invalid/db", "ASSAY_CELL_API_URL=https://example.invalid",
 		"ASSAY_ROLE_KEY_FILE=/k", "ASSAY_DELIVERY_SHA=" + rowCredMarker, "ASSAY_DELIVERY_SHA=" + rowInputSHA[:12],
-		"ASSAY_DELIVERY_BASE_SHA=" + strings.ToUpper(rowInputSHA), "ASSAY_DELIVERY_BASE_SHA=" + rowInputSHA + "\nx"}
+		"ASSAY_DELIVERY_BASE_SHA=" + strings.ToUpper(rowInputSHA), "ASSAY_DELIVERY_BASE_SHA=" + rowInputSHA + "\nx",
+		"DELIVERY_HEAD=" + rowInputSHA[:12], "DELIVERY_BASE=" + rowCredMarker, "delivery_head=" + rowInputSHA,
+		"DELIVERY_HEAD_EXTRA=" + rowInputSHA, "DELIVERY=" + rowInputSHA}
 	for _, kv := range gone {
 		if slices.Contains(admittedRowEnv([]string{kv}), kv) {
 			t.Errorf("admitted row environment carries %q, which is outside the named row inputs", kv)
@@ -205,6 +254,28 @@ func TestAdmittedRowSeesDelivery(t *testing.T) {
 			}
 			if !admit && code != verifyrunExitFail {
 				t.Fatalf("plant did not land: the unadmitted row did not see the DSN (exit %d)", code)
+			}
+		})
+	}
+}
+
+// regression: #6802
+// TestAdmittedRowBareDelivery: end to end through verifyrun, an admitted row
+// written against the unprefixed delivery pair (DELIVERY_HEAD, DELIVERY_BASE),
+// the form older consumer-diff Verify rows read, still sees both while each
+// holds a full commit id. The allow-list would otherwise drop them, and such a
+// row would fail at its own test -n instead of checking the delivery. The
+// unadmitted control proves the row itself passes with the pair set.
+func TestAdmittedRowBareDelivery(t *testing.T) {
+	row := `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$DELIVERY_HEAD" = ` + rowInputSHA +
+		` && test "$DELIVERY_BASE" = ` + rowInputBase
+	for _, admit := range []bool{true, false} {
+		t.Run(map[bool]string{true: "admitted", false: "control"}[admit], func(t *testing.T) {
+			root, _ := admittedFixture(t, admit)
+			t.Setenv("DELIVERY_HEAD", rowInputSHA)
+			t.Setenv("DELIVERY_BASE", rowInputBase)
+			if code := verifyrunRow(t, root, row); code != verifyrunExitPass {
+				t.Fatalf("row lost the unprefixed delivery pair (exit %d)", code)
 			}
 		})
 	}
@@ -264,6 +335,68 @@ func TestAdmittedScrubbedInputCouldNotRun(t *testing.T) {
 	}
 }
 
+// regression: F-caller-set-row-inputs
+// TestAdmittedDroppedInputNotRun: under admission, a row that reads a variable
+// its caller exported and the allow-list drops (the kit variables Verify rows
+// name: DT03_KIT, a PR number, a pointer such as XDG_RUNTIME_DIR) is
+// could-not-run with a note naming it, never fail: the row would otherwise run
+// with the variable unset and record a defect in a delivery that may be correct.
+// The unadmitted control, with the same inputs set, runs and passes each row. A
+// row that sets the same name itself still runs under admission and passes.
+func TestAdmittedDroppedInputNotRun(t *testing.T) {
+	rows := map[string]string{
+		"DT03_KIT":        `test -r "$DT03_KIT/probe.txt"`,
+		"PR":              `test "${PR:?needs the pr number}" = 42`,
+		"XDG_RUNTIME_DIR": `test -n "${XDG_RUNTIME_DIR:-}"`,
+	}
+	kit := t.TempDir()
+	if err := os.WriteFile(filepath.Join(kit, "probe.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, row := range rows {
+		for _, admit := range []bool{true, false} {
+			t.Run(name+map[bool]string{true: "/admitted", false: "/control"}[admit], func(t *testing.T) {
+				root, _ := admittedFixture(t, admit)
+				t.Setenv("DT03_KIT", kit)
+				t.Setenv("PR", "42")
+				t.Setenv("XDG_RUNTIME_DIR", "/run/user/1000")
+				got, out := captureVerifyrunOut(t, []string{"--brief", droppedInputBrief(t, row), "--root", root, "--dry-run"})
+				if !admit {
+					if got.code != verifyrunExitPass {
+						t.Fatalf("plant did not land: the unadmitted row did not pass (exit %d):\n%s", got.code, out)
+					}
+					return
+				}
+				if got.code != verifyrunExitCouldNot || !strings.Contains(out, name) ||
+					!strings.Contains(out, "not permission to run it outside admission") {
+					t.Fatalf("admitted row that reads the dropped %s gave exit %d, want could-not-run (exit %d) naming it:\n%s",
+						name, got.code, verifyrunExitCouldNot, out)
+				}
+			})
+		}
+	}
+	t.Run("sets its own name", func(t *testing.T) {
+		root, _ := admittedFixture(t, true)
+		t.Setenv("DT03_KIT", kit)
+		row := `for DT03_KIT in "$PWD"; do test -d "$DT03_KIT"; done && D=$(pwd) && test -d "$D"`
+		if got, out := captureVerifyrunOut(t, []string{"--brief", droppedInputBrief(t, row), "--root", root, "--dry-run"}); got.code != verifyrunExitPass {
+			t.Fatalf("admitted row that sets its own variables gave exit %d, want pass:\n%s", got.code, out)
+		}
+	})
+}
+
+// droppedInputBrief writes a one-row brief and returns its path.
+func droppedInputBrief(t *testing.T, row string) string {
+	t.Helper()
+	tick := string(rune(96))
+	brief := filepath.Join(t.TempDir(), "brief.md")
+	body := "# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | " + tick + row + tick + " | exit 0 |\n\n## Evidence\n\n"
+	if err := os.WriteFile(brief, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return brief
+}
+
 // regression: #6773
 // TestScrubbedRowNeverGreen: a row's own text can make it could-not-run under
 // admission, so could-not-run must never clear anything. The verdict is
@@ -300,10 +433,12 @@ func TestScrubbedRowNeverGreen(t *testing.T) {
 
 // regression: F6
 // TestAdmittedRowScrubbedRefs pins the rule's boundary. A read counts when it
-// is written as $NAME, ${NAME...}, $env:NAME or %NAME% of an ASSAY_* name the
-// scrub drops whatever its value, wherever it sits in the text. The delivery
-// coordinates, a name the run set after the scrub, other families and a name
-// read without that syntax do not count.
+// is written as $NAME, ${NAME...}, $env:NAME or %NAME% of a name the scrub
+// drops whatever its value, wherever it sits in the text: any ASSAY_* name, or
+// another capitalised name the allow-list drops that the row only reads. The
+// delivery coordinates, a name the run set after the scrub, the pass list, the
+// named refusals that were dropped before the allow-list, a name the row also
+// assigns or names bare, and a name read without that syntax do not count.
 func TestAdmittedRowScrubbedRefs(t *testing.T) {
 	cred := runCredentialEnv + "=/run/cred"
 	cases := []struct {
@@ -324,6 +459,25 @@ func TestAdmittedRowScrubbedRefs(t *testing.T) {
 		{`cat "$` + runCredentialEnv + `"`, nil, []string{runCredentialEnv}},
 		{`test -n "$HOME" && test -z "$GH_TOKEN" && echo "$DESK_LOOP" "$GIT_DIR"`, nil, nil},
 		{`printenv ASSAY_TEST_POSTGRES_DSN; grep -c ASSAY_TEST_POSTGRES_DSN f`, nil, nil},
+		// Any other variable the allow-list drops counts while the row only reads it.
+		{`test -r "$DT03_KIT/a.txt" && test -x "$DT03_SWEEP" && cat "${DT03_KIT}/b"`, nil, []string{"DT03_KIT", "DT03_SWEEP"}},
+		{`test -n "$D" && git rev-parse "$D^1"`, nil, []string{"D"}},
+		{`H=$(gh pr view "$PR"); test -n "${SIBLING_PR:?need it}"`, nil, []string{"PR", "SIBLING_PR"}},
+		{`test -n "${GITLAB_API_BASE:-}" && echo %USERPROFILE% $env:Kit_Dir`, nil, []string{"GITLAB_API_BASE", "USERPROFILE", "Kit_Dir"}},
+		{`echo $XDG_RUNTIME_DIR $SSH_AUTH_SOCK $GITHUB_ACTIONS`, nil, []string{"XDG_RUNTIME_DIR", "SSH_AUTH_SOCK", "GITHUB_ACTIONS"}},
+		// A name the row sets or names bare itself is the row's own.
+		{`for D in a b; do test -n "$D"; done`, nil, nil},
+		{`D=$(mktemp -d) && test -d "$D"`, nil, nil},
+		{`read -r KIT < f && test -r "$KIT"`, nil, nil},
+		{`printenv DT03_KIT; test -r "$DT03_KIT"`, nil, nil},
+		// Lower and mixed case $name is a local; the explicit env forms count in any case.
+		{`n=1; test "$n" = 1 && test -n "${kit_dir}" && $true`, nil, nil},
+		// Shell and run variables, the pass list, the named inputs and the named refusals do not count.
+		{`cd "$PWD" && echo "$RANDOM" "$TMPDIR" "$PATH" "$USER" "$LANG" "$LC_ALL" "$GOFLAGS" "$CI" "$LASTEXITCODE"`, nil, nil},
+		{`test -n "$DELIVERY_HEAD" && test -n "${DELIVERY_BASE}"`, nil, nil},
+		{`test -z "$GITHUB_TOKEN" && test -z "$GH_HOST" && echo "$GIT_DIR" "$ENV" "$BASH_ENV"`, nil, nil},
+		// A name already in the admitted environment is not removed.
+		{`test -r "$DT03_KIT"`, []string{"DT03_KIT=/k"}, nil},
 	}
 	for _, c := range cases {
 		if got := admittedRowScrubbedRefs(c.command, c.env); !slices.Equal(got, c.want) {

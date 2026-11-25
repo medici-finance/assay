@@ -90,6 +90,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -671,8 +672,9 @@ type shellPlan struct {
 }
 
 // admittedScrubbedNote is the could-not-run note for an admitted row that
-// reads scrubbed ASSAY_* inputs. It names the inputs and says what running the
-// row outside admission takes, so the note never reads as permission to do it.
+// reads inputs the scrub removed (admittedRowScrubbedRefs). It names the inputs
+// and says what running the row outside admission takes, so the note never
+// reads as permission to do it.
 func admittedScrubbedNote(names []string) string {
 	return "the row reads " + strings.Join(names, ", ") +
 		", which an admitted run removes from every row's environment, so it cannot run as written here." +
@@ -696,7 +698,8 @@ func removeRowScratch(dir string) {
 }
 
 // rowEnv is the environment every Verify row of the run executes in: the
-// caller's own, unless the run was admitted, when it is admittedRowEnv's.
+// caller's own, unless the run was admitted, when it is admittedRowEnv's
+// allow-list.
 func (p shellPlan) rowEnv() []string {
 	if p.env != nil {
 		return p.env
@@ -947,9 +950,11 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	// A row of an admitted run gets a HOME and a TMPDIR of its own, so it
 	// finds nothing an earlier row of the run left there.
 	if plan.rowScratch != "" {
-		// A row that reads an ASSAY_* input the scrub removed cannot run as
-		// written under admission. It is could-not-run, never a fail: its own
-		// guard on the missing value would otherwise read as a regression. Nor
+		// A row that reads an input the scrub removed (an ASSAY_* variable, or
+		// any other variable the allow-list drops that the row only reads)
+		// cannot run as written under admission. It is could-not-run, never a
+		// fail: its own guard on the missing value would otherwise read as a
+		// defect in the delivery. Nor
 		// is it ever a pass: the row's text chooses this outcome, so it must
 		// not be one that clears anything. The note does not grant a run
 		// outside admission either, where the row sees everything the scrub
@@ -2209,6 +2214,10 @@ Flags:
                     SKIPPED (runner-executed, not selected here); legacy rows and
                     check:ci rows are unaffected. check:ci rows always run network-off.
   --acceptance-forge  explicitly permit fresh human-approval reads on the host.
+  --source-acceptance  with --open-bracket and --acceptance-record, transport the exact
+                    descriptor and table digest in the receipt. The planned Verify section
+                    must equal the admitted source byte for byte. The network-off container
+                    uses that source and the receipt. Close still needs the host record.
   --acceptance-record <file>  coordinate-only protected-table descriptor; same-repository
                     host execution or a closed container-netns transition bracket. One
                     Verification-Table line is a protected record: original
@@ -2485,6 +2494,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// and once from the ErrHelp branch below.
 	fs.Usage = func() {}
 	briefPath := fs.String("brief", "", "brief file whose Verify table to run")
+	sourceAcceptance := fs.Bool("source-acceptance", false, "open a protected bracket with the Verify table supplied by admitted source")
 	transitionRecord := fs.String("acceptance-record", "", "coordinate-only protected record or transition descriptor; host or closed container-netns bracket; host transitions require --acceptance-forge")
 	checkMode := fs.Bool("check", false, "audit an existing witness table instead of running anything")
 	dryRun := fs.Bool("dry-run", false, "print the witness table without writing it back")
@@ -2523,6 +2533,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return 0
 		}
 		fmt.Fprint(stderr, verifyrunUsage)
+		return verifyrunExitUsageError
+	}
+	if *sourceAcceptance && (!*openBracket || *transitionRecord == "") {
+		_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: --source-acceptance requires --open-bracket and --acceptance-record")
 		return verifyrunExitUsageError
 	}
 	if *rule51Mode && (*checkMode || *inContainer || *sandbox == sandboxContainerNetns || *openBracket || *closeBracket || *bracketDigestMode) {
@@ -2697,7 +2711,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitUsageError
 		}
 		if *openBracket {
-			return runOpenAcceptance(*rootDir, path, *openOut, *moduleCacheDir, *historyOut, *transitionRecord, *rosterCopy, stdout, stderr)
+			return runOpenAcceptance(*rootDir, path, *openOut, *moduleCacheDir, *historyOut, *transitionRecord, *rosterCopy, *sourceAcceptance, stdout, stderr)
 		}
 		return runCloseBracket(*rootDir, path, *admissionReceipt, *witnessFile, *transitionRecord, *kubeObservation, stdout, stderr)
 	}
@@ -2754,14 +2768,26 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// admission is established, and for the rest of an admitted run.
 	prevAdmission := verifyrunAdmission.Swap(verifyrunPending)
 	defer verifyrunAdmission.Store(prevAdmission)
-	attestation, admittedHome, containerTree := "", "", ""
+	attestation, admittedHome, containerTree, npmStaging := "", "", "", ""
 	var container containerAdmit
 	var runCred *runReadCredential
+	sourceReceipt := false
 	if *sandbox == sandboxContainerNetns && !*checkMode {
 		// Inside a --network none container admission is never run: the host's
 		// receipt is read instead, and the host closes the bracket afterwards.
 		root := *rootDir
 		if root == "" {
+			// A source-backed container never needs Git, even to reject an
+			// invocation missing its root. Inspect this hint before legacy
+			// root discovery. containerAdmission still validates the receipt.
+			raw, err := os.ReadFile(*admissionReceipt)
+			var hint struct {
+				Acceptance *json.RawMessage `json:"acceptance"`
+			}
+			if err != nil || json.Unmarshal(raw, &hint) != nil || hint.Acceptance != nil {
+				_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: supply --root for a protected or unreadable container receipt")
+				return verifyrunExitCouldNot
+			}
 			root = repoRootFor(path)
 		}
 		var admissionErr error
@@ -2777,8 +2803,26 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		}
 		container, admissionErr = containerAdmission(*admissionReceipt, root, path)
 		if admissionErr != nil {
-			fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
 			return verifyrunExitCouldNot
+		}
+		sourceReceipt = container.cell.Acceptance != nil && container.cell.Acceptance.SourceRecord != ""
+		if sourceReceipt {
+			var problem string
+			switch {
+			case *rootDir == "":
+				problem = "requires --root"
+			case *failFirstMode:
+				problem = "refuses --fail-first"
+			case *inContainer:
+				problem = "refuses --in-container"
+			case *transitionRecord != "":
+				problem = "already supplies --acceptance-record"
+			}
+			if problem != "" {
+				_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: source receipt", problem)
+				return verifyrunExitCouldNot
+			}
 		}
 		attestation, containerTree = container.attestation, container.tree
 		verifyrunAdmission.Store(admissionState(attestation))
@@ -2788,9 +2832,9 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			admissionRoot = repoRootFor(path)
 		}
 		var admissionErr error
-		attestation, path, admittedHome, admissionErr = verifierAdmission(admissionRoot, path)
+		attestation, path, admittedHome, npmStaging, admissionErr = verifierAdmission(admissionRoot, path)
 		if admissionErr != nil {
-			fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
 			return verifyrunExitCouldNot
 		}
 		// A cross-repository admission has moved path to the tracking checkout,
@@ -2848,7 +2892,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 		if why := verifyrunRootBelowToplevel(root); why != "" {
-			fmt.Fprintln(stderr, "statusgen verifyrun:", why)
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun:", why)
 			return verifyrunExitUsageError
 		}
 		ef := *envFile
@@ -2879,9 +2923,9 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	}
 
 	root := rowRoot()
-	if *sandbox != sandboxContainerNetns || *transitionRecord == "" {
+	if *sandbox != sandboxContainerNetns || (*transitionRecord == "" && !sourceReceipt) {
 		if why := verifyrunRootBelowToplevel(root); why != "" {
-			fmt.Fprintln(stderr, "statusgen verifyrun:", why)
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun:", why)
 			return verifyrunExitUsageError
 		}
 	}
@@ -2994,7 +3038,12 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		// form. A refused one is named here, and a row that reads it is
 		// could-not-run.
 		if kv, why := admittedReplayInput(environ, root); why != "" {
-			fmt.Fprintf(stderr, "statusgen verifyrun: %s is not passed to the rows: %s\n", admittedReplayInputVar, why)
+			// This line is the run's only record that the replay path was
+			// withheld. A run that cannot write it cannot report its rows'
+			// inputs, so it stops as could-not-run.
+			if _, werr := fmt.Fprintf(stderr, "statusgen verifyrun: %s is not passed to the rows: %s\n", admittedReplayInputVar, why); werr != nil {
+				return verifyrunExitCouldNot
+			}
 		} else if kv != "" {
 			plan.env = append(plan.env, kv)
 		}
@@ -3190,6 +3239,11 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		}
 		table += "\n" + containerWitnessLines(*imageDigest, containerTree, container.moduleCache, attestation)
 	} else if attestation != "" {
+		if npmStaging != "" {
+			// The staged npm dependency set the rows ran on (#7572); admission
+			// bound the staged directories to this digest before any row ran.
+			table += "\n" + npmStaging
+		}
 		table += "\n" + attestation + "\n"
 	}
 

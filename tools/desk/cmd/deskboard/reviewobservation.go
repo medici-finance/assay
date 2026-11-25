@@ -33,6 +33,9 @@ func resolveObservation(p prBase, rs reviewState, reviews []review, ciRequired b
 	}
 	f.OwnFilesChanged, f.RiskClassed, f.RiskReason = in.ownFilesChanged, in.riskClassed, in.riskReason
 	f.NonCommitResolution, f.NonCommitResolutionNote = in.nonCommitResolution, in.nonCommitResolutionNote
+	// #2690: the same declaration hold the actions row was classified with, so the
+	// review-queue observation cannot recommend a flip or merge the actions row refuses.
+	f.DeclarationHold = in.declarationHold
 	// Use the existing marker parser/reducer on the correctness lane independently;
 	// the legacy aggregate may include security grants and cannot establish this lane.
 	correctness := make([]review, 0, len(reviews))

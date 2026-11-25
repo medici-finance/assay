@@ -886,6 +886,11 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			"refused: landing %s would move, relabel or drop a gate: human brief with no human ruling on its decision issue (decision-gate hold, lifecycle-v1 §4.5):\n%s",
 			targetRepoPath, strings.Join(gateRefused, "\n")))
 	}
+	// Ruling subject: the in-process gate binds the recorded
+	// ruling to this brief's exact work subject, beside the statusgen run above.
+	if err := rulingSubjectGateFn(fg, fr, landedRoot, targetRepoPath, remoteContent, commitContent); err != nil {
+		return err
+	}
 	// The board the gates judged was read from the forge at closureRef, and the decision-gate
 	// judge reads who wrote each ruling from the forge: neither is pinned by the conditional
 	// write. Both are re-read in the write window — the board must be the one judged, and the
@@ -908,6 +913,9 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		}
 		if len(again) > 0 {
 			return changedSincePrep("the decision-gate verdict", deskkit.Refused(strings.Join(again, "\n")))
+		}
+		if err := rulingSubjectGateFn(ac.freshForge, fr, landedRoot, targetRepoPath, remoteContent, commitContent); err != nil {
+			return changedSincePrep("the ruling-subject verdict", err)
 		}
 		return nil
 	})

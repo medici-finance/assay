@@ -81,3 +81,33 @@ func TestReleaseAndAliasCleanupPreserveRacingSuccessor(t *testing.T) {
 		})
 	}
 }
+
+// regression: #7432
+func TestReviewLeaseRunAcrossAcquireProgressAndTakeover(t *testing.T) {
+	const key = "a--pr-108"
+	const first = key + "@20260101T010101Z.000000000001"
+	const second = key + "@20260101T010101Z.000000000002"
+	f := newStore()
+	call, _, errOut := harness(t, f)
+	run := func(want string, args ...string) {
+		t.Helper()
+		args = append(args, "--repo", aliasRepo, "--owner", "same-desk")
+		if code := call(args...); code != 0 {
+			t.Fatalf("%v exit=%d: %s", args, code, errOut.String())
+		}
+		if got := fieldOf(f.claims[key].msg, "review-run"); got != want {
+			t.Fatalf("%v retained review-run %q, want %q", args, got, want)
+		}
+	}
+	run(first, "acquire", key, "--review-run", first)
+	run(first, "progress", key, "--branch", "-")
+	run("", "steal", key, "--reason", "replacement")
+	run("", "release", key)
+	run(second, "acquire", key, "--review-run", second)
+	if code := call("acquire", key, "--repo", aliasRepo, "--owner", "same-desk", "--review-run", "other@20260101T010101Z.000000000001"); code != exitRefused {
+		t.Fatalf("invalid dispatch ref returned %d", code)
+	}
+	f.seedClaim(key, "same-desk", "claimed", "", 24*time.Hour)
+	run(first, "acquire", key, "--review-run", first)
+	run(first, "progress", key, "--branch", "-")
+}
