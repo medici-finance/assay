@@ -57,6 +57,13 @@ type Policy struct {
 	// and is reported stale with its age. omitempty keeps a policy that never
 	// set it serialized byte-identically to one written before it existed.
 	MeasurementMaxAge int64 `json:"measurement_max_age_seconds,omitempty"`
+	// GoTmp exports GOTMPDIR=<root>/tmp, so the work directories cmd/go
+	// creates for every build ("go-build*") land under the managed root, where
+	// maintenance removes the ones a killed build left behind (sweepTmp).
+	// Resolve sets it. False is a policy serialized before the field existed:
+	// omitempty keeps it byte-identical and Env then exports no GOTMPDIR, so a
+	// consumer launched by an older cellctl still matches its own policy.
+	GoTmp bool `json:"gotmpdir,omitempty"`
 }
 
 // MeasurementBound is the freshness bound the policy asks bounded launch
@@ -194,6 +201,7 @@ func Resolve(cell string, get func(string) string) (*Policy, error) {
 		}
 		p.TrimMinAge = int64(d / time.Second)
 	}
+	p.GoTmp = true
 	switch get("CELL_GO_TRIMPATH") {
 	case "", "on":
 		p.GoFlags = TrimpathFlag
@@ -238,6 +246,9 @@ func (p Policy) Validate() error {
 func (p Policy) Env() []string {
 	b, _ := json.Marshal(p)
 	env := []string{EnvPolicy + "=" + string(b), "GOCACHE=" + filepath.Join(p.Root, "build"), "GOMODCACHE=" + filepath.Join(p.Root, "mod"), "GOPATH=" + filepath.Join(p.Root, "gopath")}
+	if p.GoTmp {
+		env = append(env, "GOTMPDIR="+filepath.Join(p.Root, tmpDir))
+	}
 	if p.GoFlags != "" {
 		env = append(env, "GOFLAGS="+p.GoFlags)
 	}

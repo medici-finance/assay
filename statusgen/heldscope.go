@@ -210,9 +210,10 @@ import (
 //     grammar; a HELD there is read as its own occurrence). Wording the
 //     grammar does not recognise is read as a hold.
 //
-//  5. Sourced definitions (#4536). A column-zero RISK-VALUE: DERIVED
+//  5. Sourced definitions (#4536, #4200). A standalone or bulleted RISK-VALUE: DERIVED
 //     record with a source path and line number may declare a quoted state
-//     literal or explain a normative state relation (heldRiskDefinition).
+//     literal, explain a normative state relation, or map declared exit codes
+//     to outcomes (heldRiskDefinition).
 //     Only the occurrence inside the recognised phrase is excluded, never
 //     the entire line, an unsourced note or a results-table cell. Unrecognised
 //     wording and any independent hold remain read. The source locator is
@@ -1698,7 +1699,9 @@ var (
 	heldWitnessTrailerRes = []*regexp.Regexp{
 		regexp.MustCompile(`^Tree-Digest: sha256:[0-9a-f]{64}$`),
 		regexp.MustCompile(`^Container-Image: sha256:[0-9a-f]{64}$`),
+		regexp.MustCompile(`^Kubernetes-Observation: sha256:[0-9a-f]{64}$`),
 		regexp.MustCompile(`^Module-Cache: sha256:[0-9a-f]{64}$`),
+		regexp.MustCompile(`^Npm-Staging: sha256:[0-9a-f]{64}$`),
 		regexp.MustCompile(`^Verification-Attestation: [A-Za-z0-9._-]+/[A-Za-z0-9._-]+#[0-9]+ run=[0-9a-f]{64} (?:source-repo=[A-Za-z0-9._-]+/[A-Za-z0-9._-]+ )?source=[0-9a-f]{40} (?:tracking-source=[0-9a-f]{40} )?brief=[A-Za-z0-9._/-]+ model=[A-Za-z0-9._:\[\]-]+ tier=[a-z]+$`),
 		regexp.MustCompile(`^Admission-Bracket: run=[0-9a-f]{64} source=[0-9a-f]{40} tree=sha256:[0-9a-f]{64} witness=sha256:[0-9a-f]{64} opened=[0-9TZ:+.-]+ closed=[0-9TZ:+.-]+ before=receipt after=check-verifier$`),
 	}
@@ -1956,10 +1959,13 @@ func heldStripHidesLive(evidence string) bool {
 // heading hold any row a witness reader the flip runs could credit: a
 // Date/Runner row (flipDateRunnerRows), or any Evidence row the witness
 // check reads as a witness (parseEvidenceRows, isWitnessRow), whatever its
-// table's header says. A protected-table marker anywhere makes the witness
-// check read the full history (closureRunWitnesses), so it counts too.
+// table's header says. A protected-table marker anywhere hands the witness
+// check the full record (closureRunWitnesses); the protected audit then reads
+// witnesses only from the run flipLatestPass selects, the run this gate reads,
+// whenever the record holds a verdict (protectedSelectsRun). Only a protected
+// record it would read whole keeps 3c off on the marker alone (#5541).
 func heldCreditedAbove(above []string, evidence string) bool {
-	if hasProtectedTableMarker(evidence) {
+	if hasProtectedTableMarker(evidence) && !protectedSelectsRun(evidence) {
 		return true
 	}
 	if rows, _ := flipDateRunnerRows(above); len(rows) > 0 {
@@ -2068,11 +2074,15 @@ func init() {
 }
 
 // heldCarryElement reports whether lines, outside top-level fenced code, open
-// a heldCarryTags or heldRawTags element more often than they close it. An
-// opener counts wherever it appears (in a code span or a comment too), so
-// this over-refuses by design; a placeholder such as <name> names no such
-// element and is not read.
+// a heldCarryTags or heldRawTags element more often than they close it. It
+// reads the lines as heldCarryView leaves them, which hides only the two
+// places the page can never open such an element from (#7578): a certain
+// inline code span, and a carried element inside a cell of a verifyrun
+// witness table. Anywhere else an opener counts wherever it appears (in prose,
+// in an uncertain code span, in a comment too), so this over-refuses by
+// design; a placeholder such as <name> names no such element and is not read.
 func heldCarryElement(lines []string, inFence []bool) bool {
+	lines = heldCarryView(lines, inFence)
 	open := map[string]int{}
 	for i, l := range lines {
 		if inFence[i] {
@@ -2095,6 +2105,145 @@ func heldCarryElement(lines []string, inFence []bool) bool {
 	}
 	for _, c := range open {
 		if c > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// heldCellEscapeTags are the elements whose tags, in a table cell, can carry
+// what follows out of that cell: a table-structure tag closes the cell or the
+// table early, so the rest of the row renders outside it; a template's end
+// tag is ignored there, so the template swallows the rest of the page; a
+// select switches the parser to its own mode; and object, applet and marquee
+// each push their own active-formatting marker, so closing the cell clears
+// the list only back to that inner marker and a formatting element opened
+// before it in the cell is reopened after the table. A witness row holding
+// any of them, as an opener or a closer, anywhere on the line, is not a
+// contained cell (heldCarryView).
+var heldCellEscapeTags = map[string]bool{}
+
+// heldWitnessDelims maps each verifyrun witness table header line
+// (heldWitnessHeaders) to the delimiter row verifyrun writes under it.
+var heldWitnessDelims = map[string]string{}
+
+func init() {
+	for _, t := range strings.Fields(`table caption colgroup col tbody thead tfoot
+		tr td th template select object applet marquee`) {
+		heldCellEscapeTags[t] = true
+	}
+	for _, h := range []string{witnessHeader, witnessHeaderFailFirst} {
+		parts := strings.SplitN(h, "\n", 2)
+		heldWitnessDelims[parts[0]] = parts[1]
+	}
+}
+
+// heldCarryView returns lines as heldCarryElement reads them (#7578). Fenced
+// lines are returned as they are; heldCarryElement skips them itself. On
+// every other line two things are hidden, each read fail-closed:
+//   - A certain inline code span (inlineCodeScan, the masker the held scan
+//     uses, driven over the same lines in the same order) is overwritten byte
+//     for byte, on a line the page certainly renders as block text
+//     (heldRender) only. Markdown renders a code span's text as text, never
+//     as a tag, so "<a ...>" inside one opens nothing. A span the masker
+//     cannot settle (an unpaired backtick, a "<" or link tail before it, a
+//     paragraph left open by an earlier line) is not hidden, and a line the
+//     page may read as part of an HTML block is read raw.
+//   - In a row of a verifyrun witness table, identified exactly, the "<" of
+//     each heldCarryTags opener and closer is hidden. Each cell renders as a
+//     td. When a td closes, an HTML parser pops every element opened inside
+//     it (details, del and ins included) and clears the active formatting
+//     elements back to the last marker. That marker is the td's own unless
+//     the cell opened an element that pushes one: td, th, caption, template,
+//     object, applet or marquee, all in heldCellEscapeTags. In a row holding
+//     none of them, no such element can reach past its cell, and a closer
+//     there cannot close one opened outside it either. The table is exact: a
+//     header line byte for byte in heldWitnessHeaders at the first line or
+//     after a blank line, verifyrun's own delimiter row under it, and every
+//     line from there to the row a witness row (isWitnessRow) with at least
+//     as many cells as the header, starting "|" at column 0, rendered as
+//     block text, with no carriage return. The page can end a table at a
+//     line the scan cannot follow: a blank line, a line that starts another
+//     block, a row with no cell ("|" alone), and, past a cap on cells padded
+//     into short rows, a short row. So the first line that is not such a row
+//     ends the exemption for the rest of the table; a row verifyrun did not
+//     write is not skipped. A row holding any heldCellEscapeTags tag is not
+//     exempt, and ends the exemption too. heldRawTags openers in a row still
+//     count.
+//
+// Everything else, prose and table cells written by hand included, is read
+// as before.
+func heldCarryView(lines []string, inFence []bool) []string {
+	out := make([]string, len(lines))
+	live := heldRender(lines)
+	var code inlineCodeScan
+	// witness is 0 outside a verifyrun witness table, 1 on its delimiter
+	// row, 2 on its data rows; cols is the table's header column count.
+	witness, cols := 0, 0
+	for i, l := range lines {
+		out[i] = l
+		if inFence[i] {
+			if heldFenceToggle(l) {
+				code.fenceLine(l)
+			}
+			witness = 0
+			continue
+		}
+		if strings.TrimSpace(l) == "" {
+			if isBlankLine(l) {
+				code.blank()
+			}
+			witness = 0
+			continue
+		}
+		masked := code.mask(l)
+		if live[i] {
+			out[i] = masked
+		}
+		if heldWitnessHeaders[l] && (i == 0 || isBlankLine(lines[i-1])) && i+1 < len(lines) &&
+			!inFence[i+1] && lines[i+1] == heldWitnessDelims[l] && live[i] && live[i+1] {
+			witness, cols = 1, strings.Count(l, "|")-1
+			continue
+		}
+		if witness == 1 { // the delimiter row, matched with its header
+			witness = 2
+			continue
+		}
+		if witness == 0 || !live[i] || !strings.HasPrefix(l, "|") || hasBareCR(l) || heldCellEscape(l) {
+			witness = 0
+			continue
+		}
+		if c := witnessCells(l); c == nil || len(c) < cols {
+			witness = 0 // the page may end the table at a row verifyrun did not write
+			continue
+		}
+		b := []byte(out[i])
+		for p := 0; p+1 < len(l); p++ {
+			if l[p] != '<' {
+				continue
+			}
+			if isASCIILetter(l[p+1]) && heldCarryTags[heldElementName(l[p+1:])] {
+				b[p] = inlineCodeMask
+			} else if n, ok := heldCloseTag(l[p:]); ok && heldCarryTags[n] {
+				b[p] = inlineCodeMask
+			}
+		}
+		out[i] = string(b)
+	}
+	return out
+}
+
+// heldCellEscape reports whether line holds an opener or a closer of a
+// heldCellEscapeTags element anywhere, code spans included.
+func heldCellEscape(line string) bool {
+	for p := 0; p+1 < len(line); p++ {
+		if line[p] != '<' {
+			continue
+		}
+		if isASCIILetter(line[p+1]) && heldCellEscapeTags[heldElementName(line[p+1:])] {
+			return true
+		}
+		if n, ok := heldCloseTag(line[p:]); ok && heldCellEscapeTags[n] {
 			return true
 		}
 	}
@@ -2581,10 +2730,22 @@ func heldBlankRanges(s string, rs [][2]int) string {
 // identifiers, even in assignment syntax, may be row/run observations.
 const heldRiskStateDecl = `(?:Present = "present"|Missing = "missing"|(?:CouldNotCheck|Unavailable) = "could-not-check")`
 
+// Source locators in a derivation can cite individual lines, ranges, or a
+// second named source. They delimit the declaration and its rationale.
+const heldRiskLine = `[1-9][0-9]*(?:-[1-9][0-9]*)?`
+const heldRiskSource = `[a-zA-Z0-9_./-]+:` + heldRiskLine + `(?:, *` + heldRiskLine + `)*`
+const heldRiskWord = `[a-z][a-z-]*`
+const heldRiskCodePair = `[0-9]+ ` + heldRiskWord + `(?: or ` + heldRiskWord + `)?`
+
 var (
-	heldRiskRecordRe  = regexp.MustCompile(`^RISK-VALUE: DERIVED — ([^@|\r\n]+) @ [a-zA-Z0-9_./-]+:[1-9][0-9]*(?:-[1-9][0-9]*)? — `)
-	heldRiskLiteralRe = regexp.MustCompile(`^` + heldRiskStateDecl + `(?:(?:, | and )` + heldRiskStateDecl + `)*$`)
-	heldRiskMeaningRe = regexp.MustCompile(`(?i)\bmissing and could-not-check cannot release assessment\b|\ba timeout maps to could-not-check, never to permitted\b|\bretirement may remain held separately\b|\bcomplete/retirement-held (?:must|to) stay distinct from complete\b`)
+	heldRiskRecordRe     = regexp.MustCompile(`^(?:[-*+] )?RISK-VALUE: DERIVED — ([^@|\r\n]+) @ ` + heldRiskSource + `(?: and [a-z]+(?: [a-z]+)* @ ` + heldRiskSource + `)* — `)
+	heldRiskExitCodesRe  = regexp.MustCompile(`^exit codes = ([0-9]+(?:, *[0-9]+)+)$`)
+	heldRiskPositionalRe = regexp.MustCompile(`^(?:the )?(?:spec|contract) maps (` + heldRiskWord + `(?:/` + heldRiskWord + `)+) respectively\b`)
+	heldRiskNumberedRe   = regexp.MustCompile(`^(?:the )?(?:brief's |spec's |contract's )?(?:exit-code )?table: (` + heldRiskCodePair + `(?:, ` + heldRiskCodePair + `)+)(?:[.;]|$)`)
+	heldRiskStateSetRe   = regexp.MustCompile(`^settled states = "` + heldRiskWord + `"(?:, "` + heldRiskWord + `")+$`)
+	heldRiskStateListRe  = regexp.MustCompile(`\b` + heldRiskWord + `(?:, ` + heldRiskWord + `)* or ` + heldRiskWord + ` states stay presented\b`)
+	heldRiskLiteralRe    = regexp.MustCompile(`^` + heldRiskStateDecl + `(?:(?:, | and )` + heldRiskStateDecl + `)*$`)
+	heldRiskMeaningRe    = regexp.MustCompile(`(?i)\bmissing and could-not-check cannot release assessment\b|\ba timeout maps to could-not-check, never to permitted\b|\bretirement may remain held separately\b|\bcomplete/retirement-held (?:must|to) stay distinct from complete\b`)
 )
 
 // heldRiskDefinition reports whether this occurrence is a declared literal
@@ -2596,22 +2757,56 @@ func heldRiskDefinition(clean string, h []int) bool {
 	if record == nil {
 		return false
 	}
-	var spans [][]int
+	declaration := clean[record[2]:record[3]]
 	if h[1] <= record[3] {
 		// The whole declaration list must match: accepting a substring
 		// would hide an observation before or beside a valid constant.
-		return heldRiskLiteralRe.MatchString(clean[record[2]:record[3]])
-	} else if h[0] >= record[1] && !heldNamesRowRe.MatchString(clean[record[1]:]) {
-		for _, span := range heldRiskMeaningRe.FindAllStringIndex(clean[record[1]:], -1) {
-			spans = append(spans, []int{record[1] + span[0], record[1] + span[1]})
-		}
+		return heldRiskLiteralRe.MatchString(declaration)
 	}
-	for _, span := range spans {
-		if span[0] <= h[0] && h[1] <= span[1] {
+	meaning := clean[record[1]:]
+	if h[0] < record[1] || heldNamesRowRe.MatchString(meaning) {
+		return false
+	}
+	start, end := h[0]-record[1], h[1]-record[1]
+	if declared := heldRiskExitCodesRe.FindStringSubmatch(declaration); declared != nil &&
+		heldRiskExitMeaning(strings.Split(declared[1], ","), meaning, start, end) {
+		return true
+	}
+	return heldRiskPhrase(heldRiskMeaningRe, meaning, start, end) ||
+		(heldRiskStateSetRe.MatchString(declaration) && heldRiskPhrase(heldRiskStateListRe, meaning, start, end))
+}
+
+func heldRiskPhrase(pattern *regexp.Regexp, meaning string, start, end int) bool {
+	for _, span := range pattern.FindAllStringIndex(meaning, -1) {
+		if span[0] <= start && end <= span[1] {
 			return true
 		}
 	}
 	return false
+}
+
+// An ordered list supplies one outcome per declared exit code. An explicit
+// table must repeat those same codes in order. Only occurrences within the
+// mapping itself are definitions; later observations still count as holds.
+func heldRiskExitMeaning(codes []string, meaning string, start, end int) bool {
+	if m := heldRiskPositionalRe.FindStringSubmatchIndex(meaning); m != nil {
+		return m[2] <= start && end <= m[3] && strings.Count(meaning[m[2]:m[3]], "/")+1 == len(codes)
+	}
+	m := heldRiskNumberedRe.FindStringSubmatchIndex(meaning)
+	if m == nil || start < m[2] || end > m[3] {
+		return false
+	}
+	pairs := strings.Split(meaning[m[2]:m[3]], ", ")
+	if len(pairs) != len(codes) {
+		return false
+	}
+	for i, pair := range pairs {
+		code, _, _ := strings.Cut(pair, " ")
+		if code != strings.TrimSpace(codes[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // heldNamesRowNumRe matches a line naming a numbered Verify row: "row 3",

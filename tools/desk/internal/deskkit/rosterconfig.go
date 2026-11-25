@@ -290,14 +290,14 @@ const (
 	// which is what recognised-and-ignored keys are one bug report away from being.)
 	EnvAllowCluster = "ASSAY_ALLOW_CLUSTER"
 
-	// EnvHomeRepo and EnvScanRepos are STATUSGEN-only roster values (the home repo
-	// and the --scan-issues scope). deskkit does not consume them — but the two
-	// readers share one roster.env, and an unknown key in the ASSAY_ namespace
-	// is a NOTICE here since #1261 (statusgen still REFUSES the whole configuration).
-	// So deskkit must RECOGNISE them, or a roster.env that configures statusgen would
-	// draw an unknown-key NOTICE from the desk tools on every run. They are recognised
-	// here and otherwise ignored. KEEP IN SYNC
-	// with statusgen/rosterconfig.go's scanEnvHomeRepo / scanEnvScanRepos.
+	// EnvHomeRepo and EnvScanRepos are the roster values statusgen's --scan-issues
+	// reads (the home repo and the scan scope). The two readers share one
+	// roster.env, and an unknown key in the ASSAY_ namespace is a NOTICE here since
+	// #1261 (statusgen still REFUSES the whole configuration), so deskkit RECOGNISES
+	// both. EnvHomeRepo is also PARSED into Config.HomeRepo: statusgen names the home
+	// repo's placeholder with the bare `issue-N.md`, and the scan-carrier lane reads the
+	// same value to know which repository a bare placeholder belongs to (#7023). KEEP
+	// IN SYNC with statusgen/rosterconfig.go's scanEnvHomeRepo / scanEnvScanRepos.
 	EnvHomeRepo  = "ASSAY_HOME_REPO"
 	EnvScanRepos = "ASSAY_SCAN_REPOS"
 
@@ -481,6 +481,17 @@ const (
 	// is fixed. Never a partial binding. Unset is complete: no repo is bound and deskrun
 	// dispatches nothing.
 	EnvRunCredentials = "ASSAY_RUN_CREDENTIALS"
+
+	// EnvVerifierPremergeRepos (ASSAY_VERIFIER_PREMERGE_REPOS) opts a repository IN to
+	// pre-merge verifier runs (#7623): a verifier dispatched at an unmerged change head
+	// (deskdispatch --target-change/--target-head), whose rows run unmerged code with the
+	// verifier's credential. Comma-separated full `owner/name` slugs, each also on
+	// ASSAY_ALLOWED_REPOS at admission. DEFAULT OFF: unset, every repository refuses a pre-merge run.
+	// It widens what code runs with a credential, so it is a TRUST key: a basename, a
+	// pattern or a repeated repository lands in Config.Problems and refuses
+	// the WHOLE roster. It is read from the roster file only, never from the checkout
+	// under test and never from a CI environment.
+	EnvVerifierPremergeRepos = "ASSAY_VERIFIER_PREMERGE_REPOS"
 	// EnvClaimStore (ASSAY_CLAIM_STORE) names where this cell keeps its DISPATCH CLAIMS:
 	// `file` or `service` — one value for the cell, or comma-separated
 	// `owner/name=<store>` entries for a cell whose repos genuinely differ. It is CONSUMED
@@ -751,11 +762,23 @@ type Config struct {
 	// ResolveRunCredential (runcredential.go), never directly.
 	RunCredentials map[string]RunCredential
 
+	// PremergeRepos is the pre-merge verifier opt-in parsed from
+	// ASSAY_VERIFIER_PREMERGE_REPOS, keyed by the LOWERCASED full `owner/name` slug.
+	// Empty when unset or invalid — every repository then refuses a pre-merge run.
+	// Read through VerifierPremergeOptedIn (verifierhead.go), never directly.
+	PremergeRepos map[string]bool
+
 	// ReleaseRepo is the configured release home (EnvReleaseRepo), empty when
 	// unset — the consumer applies its own shipped default, so "unset" and
 	// "configured to the default" are the same behaviour rather than two states
 	// this struct has to distinguish.
 	ReleaseRepo string
+
+	// HomeRepo is the configured home repo (EnvHomeRepo): the ONE owner/name whose
+	// issues statusgen's scanner names with the bare `issue-N.md` placeholder. Empty
+	// when unset or not an owner/name slug — then no repository owns the bare name,
+	// exactly as statusgen gives no repo the bare filename without it.
+	HomeRepo string
 
 	// WriteguardCallout is the absolute path of the adopter's writeguard callout
 	// (EnvWriteguardCallout), empty when unset. Empty means the compiled generic
@@ -925,11 +948,11 @@ type ExtKeyResult struct {
 // only the five keys the docs/adopting-assay.md §2 inventory names at the time
 // brief 00 landed; it is included here so a future manifest that injects
 // `assay.roster.ext.repo-forges` resolves against a REAL per-key result rather
-// than one this loader never populates. ASSAY_CHANNEL_DRIFT_TARGET and
-// ASSAY_HOME_REPO are STATUSGEN-only (recognised, never parsed, here — see
-// their own const comments): this loader has no shape to validate for either,
-// so their status can only ever be ExtOK (present) or ExtUnset (absent),
-// never ExtInvalid. ASSAY_RUN_CREDENTIALS is deliberately ABSENT: it chooses
+// than one this loader never populates. ASSAY_CHANNEL_DRIFT_TARGET is
+// STATUSGEN-only (recognised, never parsed, here — see its const comment): its
+// status can only ever be ExtOK (present) or ExtUnset (absent), never
+// ExtInvalid. ASSAY_HOME_REPO is parsed as one owner/name slug (Config.HomeRepo)
+// and reads ExtInvalid when it is not one. ASSAY_RUN_CREDENTIALS is deliberately ABSENT: it chooses
 // which credential a desk write runs as, so it is a trust key whose problems
 // refuse the whole roster (a driver ruling). extcatalogue_test.go pins this
 // catalogue to a committed allow-list and fails on any trust key reaching it.
@@ -1791,6 +1814,8 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	// so a malformed value refuses the whole roster via bad, never just this one feature (a
 	// driver ruling reclassified it from the extension catalogue). ---
 	cfg.RunCredentials = parseRunCredentials(vals[EnvRunCredentials], bad)
+	// --- pre-merge verifier opt-in (ASSAY_VERIFIER_PREMERGE_REPOS), a TRUST key (#7623).
+	cfg.PremergeRepos = parsePremergeRepos(vals[EnvVerifierPremergeRepos], bad)
 
 	// --- auto-approve lane keys (ASSAY_AUTOAPPROVE_*) — passed through RAW. ---
 	// Deliberately NOT validated here: a malformed lane key must close the lane and nothing
@@ -1921,14 +1946,26 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	// stamped from a half-applied map and nothing else in the roster is dropped.
 	cfg.GitLabRoleEmails, cfg.GitLabRoleEmailsProblem = parseGitLabRoleEmails(vals[EnvGitLabRoleEmails], cfg)
 
-	// --- statusgen-only extension keys deskkit recognises but does not parse ---
-	// ASSAY_CHANNEL_DRIFT_TARGET and ASSAY_HOME_REPO have no shape this reader
-	// validates (see their const comments) — presence is all cfg.Ext can report
-	// for either, so a component that ever injects
-	// assay.roster.ext.channel-drift-target or assay.roster.ext.home-repo sees OK
-	// when the operator set something and UNSET when they did not, never INVALID.
+	// --- statusgen-only extension key deskkit recognises but does not parse ---
+	// ASSAY_CHANNEL_DRIFT_TARGET has no shape this reader validates (see its const
+	// comment) — presence is all cfg.Ext can report, so a component that ever
+	// injects assay.roster.ext.channel-drift-target sees OK when the operator set
+	// something and UNSET when they did not, never INVALID.
 	recordExt(&cfg, EnvChannelDriftTarget, vals[EnvChannelDriftTarget], extAccumulator{})
-	recordExt(&cfg, EnvHomeRepo, vals[EnvHomeRepo], extAccumulator{})
+
+	// --- home repo (ASSAY_HOME_REPO), an EXTENSION key ---
+	// One owner/name slug, the same shape statusgen accepts. A malformed value
+	// leaves HomeRepo empty (no repository owns the bare placeholder name) and is
+	// recorded INVALID; it never refuses the roster.
+	var homeRepoIssue extAccumulator
+	if raw := strings.TrimSpace(vals[EnvHomeRepo]); raw != "" {
+		if owner, name := splitRepo(raw); owner == "" || name == "" {
+			homeRepoIssue.bad("%s: %q is not an owner/name repo slug", EnvHomeRepo, raw)
+		} else {
+			cfg.HomeRepo = raw
+		}
+	}
+	recordExt(&cfg, EnvHomeRepo, vals[EnvHomeRepo], homeRepoIssue)
 
 	if len(problems) > 0 {
 		// Fail closed, P1: a refused roster loads NOTHING, however well-formed its other keys

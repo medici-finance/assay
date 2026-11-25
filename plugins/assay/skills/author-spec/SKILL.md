@@ -62,6 +62,10 @@ install does not ship.
 ## Start from the controlling source
 
 Find the existing spec, relevant decisions, affected consumers and current implementation.
+Resolve existing owners from the project's ownership records, roster and accepted
+decisions. Cite the evidence for implementation and approval separately. If a new
+assignment is needed, propose a specific owner with reasons and ask the authorized
+person only for the appointment or grant that remains open.
 Choose **create** only when no sufficient source exists, **adopt** when an existing artifact
 already settles the needed questions, or **revise** for a bounded change to that source.
 Keep adequate formats and content. Adoption may need only citations and a short gap note;

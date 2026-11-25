@@ -58,11 +58,18 @@ func IsOutboundChecked(f Forge) bool {
 	return ok
 }
 
-// backendOf returns the backend behind the checking decorator (f itself when it is not
-// wrapped). Package-internal: only deskkit may see a backend type.
+// backendOf returns the backend behind the checking decorator and the evidence-landing
+// read scope (f itself when it is not wrapped). Package-internal: only deskkit may see a
+// backend type. The landing scope is unwrapped too: EvidenceLandingForge builds it only
+// around a bare GitHub or GitLab backend, and a backend-only read (ReadTreeListing,
+// ReadDescendantDiff) on a landing's forge must reach that backend rather than read as
+// "not served" (#5913).
 func backendOf(f Forge) Forge {
 	if w, ok := f.(*outboundForge); ok {
-		return w.Forge
+		f = w.Forge
+	}
+	if e, ok := f.(*evidenceLandingForge); ok {
+		return e.Forge
 	}
 	return f
 }
@@ -186,9 +193,15 @@ func (o *outboundForge) WriteFile(repo ForgeRepo, in WriteFileInput) (*WriteFile
 	}
 	// in.Content is the file's full new content, line-aligned with `added`: the evidence the
 	// session-id arm's one brief-frontmatter exemption reads (#2022). It is never scanned.
+	fields := []OutboundField{{"path", in.File}, {in.File, added}, {OutboundFieldCommitMessage, in.Message}}
+	sources := map[string]string{in.File: string(in.Content)}
+	// A companion is create-only (WriteFileInput.Companions), so all of it is new.
+	for _, c := range in.Companions {
+		fields = append(fields, OutboundField{"path", c.File}, OutboundField{c.File, string(c.Content)})
+		sources[c.File] = string(c.Content)
+	}
 	if err := OutboundCheck(OutboundWrite{Role: o.role, Repo: repo.Slug(), Kind: OutboundKindFile,
-		Fields:      []OutboundField{{"path", in.File}, {in.File, added}, {OutboundFieldCommitMessage, in.Message}},
-		FileSources: map[string]string{in.File: string(in.Content)}}); err != nil {
+		Fields: fields, FileSources: sources}); err != nil {
 		return nil, err
 	}
 	return o.Forge.WriteFile(repo, in)

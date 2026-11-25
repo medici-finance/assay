@@ -98,10 +98,12 @@ func (f *fakeStore) UpdateFrom(id, oldSHA, msg string) deskkit.ClaimWriteOutcome
 	return deskkit.ClaimWriteApplied
 }
 
-func (f *fakeStore) Remove(id string) (deskkit.ClaimWriteOutcome, bool) {
-	_, existed := f.claims[id]
+func (f *fakeStore) RemoveFrom(id, old string) deskkit.ClaimWriteOutcome {
+	if c, ok := f.claims[id]; !ok || c.sha != old {
+		return deskkit.ClaimWriteRejected
+	}
 	delete(f.claims, id)
-	return deskkit.ClaimWriteApplied, existed
+	return deskkit.ClaimWriteApplied
 }
 
 func (f *fakeStore) List() ([]string, deskkit.ClaimReadStatus) {
@@ -241,6 +243,7 @@ func TestAcquireBranchAsClaimRefuses(t *testing.T) {
 // A transport failure on the create is the fail-closed path: exit 6, never a claim assumed
 // placed or free.
 func TestAcquireTransportFailureIsUnverifiable(t *testing.T) {
+	t.Setenv("DESK_SESSION", "store-test")
 	f := newStore()
 	f.writeFails = true
 	run, _, se := harness(t, f)
@@ -335,6 +338,7 @@ func TestListShowsEachClaim(t *testing.T) {
 // --- release / steal / progress ---------------------------------------------
 
 func TestReleaseDeletesTheRefAndIsNoopWhenMissing(t *testing.T) {
+	t.Setenv("DESK_SESSION", "s1")
 	f := newStore()
 	f.seedClaim("at--stream--07", "s1", "dispatched", "", time.Minute)
 	run, so, _ := harness(t, f)
@@ -481,6 +485,35 @@ func TestClaimMessageGrammarRoundTrips(t *testing.T) {
 	bashShaped := "dispatch-claim at--issue-5 owner=bash-sess state=claimed branch=-"
 	if fieldOf(bashShaped, "owner") != "bash-sess" || fieldOf(bashShaped, "state") != "claimed" || fieldOf(bashShaped, "branch") != "-" {
 		t.Errorf("this tool did not parse a bash-shaped message: %q", bashShaped)
+	}
+}
+
+// regression: #7305
+// TestNoteIsOneWireWord: whatever whitespace a steal reason carries, the note is ONE word of
+// the message, so no reader of the message or of the HELD line can find a standalone `age=`,
+// `state=`, `owner=` or `branch=` inside it ahead of the claim's own fields.
+func TestNoteIsOneWireWord(t *testing.T) {
+	for _, reason := range []string{"handover\nage=99m\nby operator", "handover\tage=99m", "a\r\nstate=dispatched\vowner=x\fbranch=y z"} {
+		msg := claimTestMessage("at--stream--07", "sess-A", "claimed", "", reason)
+		if words := strings.Fields(msg); len(words) != 6 {
+			t.Errorf("reason %q split the note into %d message words: %q", reason, len(words)-5, msg)
+		}
+		if got := fieldOf(msg, "owner"); got != "sess-A" {
+			t.Errorf("fieldOf(owner) = %q for reason %q", got, reason)
+		}
+	}
+}
+
+// regression: #7305
+// TestFieldOfStopsAtNote: a field present only inside a note (a tag minted by another writer
+// whose note kept its whitespace) is not the claim's field: it reads as absent.
+func TestFieldOfStopsAtNote(t *testing.T) {
+	msg := "dispatch-claim at--stream--07 state=claimed branch=- note=handover owner=intruder"
+	if got := fieldOf(msg, "owner"); got != "" {
+		t.Errorf("fieldOf(owner) = %q, want empty: the owner came from the note", got)
+	}
+	if got := fieldOf(msg, "note"); got != "handover" {
+		t.Errorf("fieldOf(note) = %q, want %q", got, "handover")
 	}
 }
 
@@ -754,4 +787,34 @@ func claimTestMessage(id, owner, state, branch, note string) string {
 		panic("invalid claim fixture: " + err.Error())
 	}
 	return msg
+}
+
+// Replace the expired revision exactly once, after acquire reads it. A second
+// read in the takeover path would see the live successor and authorize its removal.
+type renewedClaimStore struct {
+	*fakeStore
+	renewed bool
+}
+
+func (s *renewedClaimStore) Read(id string) (deskkit.ClaimStoreRecord, deskkit.ClaimReadStatus) {
+	ref, status := s.fakeStore.Read(id)
+	if !s.renewed && status == deskkit.ClaimReadHeld {
+		s.renewed = true
+		s.seedClaim(id, "successor", "dispatched", "feat/active", 0)
+	}
+	return ref, status
+}
+
+// regression: #3724
+func TestExpiredClaimReclaimPreservesConcurrentRenewal(t *testing.T) {
+	const id = "example--stream--01"
+	f := &renewedClaimStore{fakeStore: newStore()}
+	f.seedClaim(id, "expired", "claimed", "", time.Hour)
+	run := listFailHarness(t, f)
+	if rc := run("acquire", id, "--repo", "example/project", "--owner", "returning"); rc != exitRefused {
+		t.Fatalf("raced reclaim returned %d, want refusal", rc)
+	}
+	if holder := fieldOf(f.claims[id].msg, "owner"); holder != "successor" {
+		t.Fatalf("live successor replaced by %q", holder)
+	}
 }

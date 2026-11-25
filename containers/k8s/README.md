@@ -21,6 +21,9 @@ packaging review does not supply it. Agent-execution/09 owns managed boot and
 isolation; desk-containers/28 owns the managed operator; /29 owns real-profile
 qualification. A Running Pod does not acquire a role lease or authorize effects.
 
+The [five-role lifecycle rehearsal](../../docs/kubernetes-compatibility-qualification.md)
+exercises the compiled CLI against a local Kubernetes fixture.
+
 Each desk's container log is also a session transcript: `tty: true` sends terminal
 output, including echoed input and anything a command prints, to the runtime log.
 Treat logs as compatibility key-custody material even if a session normally prints
@@ -119,6 +122,10 @@ local schemas, without a default/HTTP fallback. Missing tools/caches report
 only completed clean checks exit 0. No kubectl or discovery call runs. These
 checks prove packaging; runtime behavior, endpoint reachability, effective policy,
 model usage and recovery remain for qualification.
+
+Offline tooling uses Go’s default cache locations or the exported `GOPATH`,
+`GOMODCACHE`, `GOCACHE` and `GOTMPDIR` paths. Export a custom cache path
+when it was configured through `go env -w`. The child processes set `GOENV=off`.
 
 The package source scan is independent of the repository-wide credential scan.
 It scans the whole tracked/unignored package, including unrendered examples and

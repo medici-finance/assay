@@ -14,6 +14,7 @@ import (
 )
 
 func TestClaimToolUnsetKeyUsesTheForgeStoreAndPrintsTheNoticeLast(t *testing.T) {
+	t.Setenv("DESK_SESSION", "store-test")
 	f := newStore()
 	f.writeFails = true // the verb's own refusal must stay the FIRST stderr line
 	run, _, se := harness(t, f)
@@ -66,6 +67,7 @@ func TestClaimToolConfiguredStoreThatDoesNotResolveNeverBuildsTheForgeStore(t *t
 // and the last stderr line is the NOTICE naming the configured store.
 // regression: #2753
 func TestClaimToolUnshippedFallback(t *testing.T) {
+	t.Setenv("DESK_SESSION", "store-test")
 	for v, ships := range map[string]string{
 		deskkit.ClaimStoreFile:    "ships the file store",
 		deskkit.ClaimStoreService: "ships the served store",

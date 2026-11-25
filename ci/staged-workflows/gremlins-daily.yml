@@ -58,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           go version
-          # The checkout is the disposable root: mutant copies go under it (see run.sh).
+          # run.sh sweeps a copy of the checkout without .git and never writes the checkout (see run.sh).
           bash tools/gremlins/run.sh --root . -o "${RUNNER_TEMP}/gremlins-out"
 
       - name: Job summary

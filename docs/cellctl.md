@@ -1830,6 +1830,7 @@ is refused rather than launching codex against Anthropic with a provider the ope
 | `CODEX_MODEL_<role>` | **codex**-namespace per-role model override, same `-`-as-`_` role naming; the Opus refusal does NOT apply here (Opus is a Claude-only concept) |
 | `TIER_MODEL_TOP_CLAUDE` / `_MID_CLAUDE` / `_FAST_CLAUDE` | overrides one entry of the claude column of the tier-map fallback (compiled defaults `fable`/`sonnet`/`haiku`) |
 | `TIER_MODEL_TOP_CODEX` / `_MID_CODEX` / `_FAST_CODEX` | overrides one entry of the codex column of the tier-map fallback (compiled default `gpt-5.6-terra` for all three today) |
+| `TIER_MODEL_TOP_CURSOR` / `_MID_CURSOR` / `_FAST_CURSOR` | overrides one entry of the cursor column of the tier-map fallback (no compiled default). `TIER_MODEL_TOP_CURSOR` has a second meaning: it is the strong-tier model id the standing Cursor desk boot prompt names for a strong subagent; unset or `auto`, the prompt names no id and the hold stays unless the session's own model is confirmed strong |
 | `CELL_HARNESS` | the harness every role window boots on: `claude` (default) or `codex`; `--harness` overrides it per run (see *Harnesses*); `--set` persists the override, `cellctl set --harness` the same without a boot |
 | `CELL_KIND` / `CELL_COCKPIT` / `CELL_PROVIDER` | overridable per run with `--kind` / `--cockpit` / `--provider` on `desk`/`up`, persisted by `--set` or `cellctl set --kind/--cockpit/--provider`, read back by `cellctl show` (see *Every per-run choice*) |
 | `CELL_PROVIDER` | the default provider name for `cellctl desk`/`up` (unset = Anthropic); `--provider` overrides it per run — see *Providers* |
@@ -1840,6 +1841,18 @@ is refused rather than launching codex against Anthropic with a provider the ope
 | `CELL_DB_PASSFILE` | the absolute path of that database's pgpass file (mode `0600` or `0400`, outside the repository); exported as `PGPASSFILE` when `CELL_DB_DSN` is set, so libpq reads the password itself and it is never an environment value or an argv element |
 | `CELL_ROLE_SECRETS` | role-secret bindings for a native container cell, comma-separated `<owner>/<repo>:<role>:<service>=<absolute path>` entries: the project must be the container cell's repository, the role `worker-desk` or `verify-desk` (any other role refuses every launch), the service a `service:<name>` name. Each file is mounted read-only at `/run/secrets/role-<service>` into that role's container only, and `ASSAY_ROLE_SECRET_<SERVICE>_FILE` (`.` and `-` spelled `_`) names the path; no value is ever read, printed or exported. Read from `cell.env` only: a value from the shell or `defaults.env` is refused. See *Role secrets* below |
 | `CELL_ROLE_SECRET_SURFACE` | the read-isolation surface the cell declares for its role secrets; only `container` is accepted this release. Unset, `host` (per-role OS identity launch is not built yet) or anything else binds no role secret: `check` reports a MISS and `desk` refuses |
+
+**Reserved key, not yet a lever: `CELL_DEV_ENV_FILE`.** It is kept out of the table above
+because `cellctl` does not read it yet: no surface binds the file until the design-decision
+record `DR-desk-containers-35` is approved, and the launcher behaviour (the
+`ASSAY_CELL_DEV_ENV_FILE` path, the coordinator's write verb and its change receipts) lands with
+brief desk-containers/37, which also makes it a lever. The key names the cell's one dev-env
+file, an absolute path outside every git checkout and worktree: `NAME=value` and `#` comment
+lines only, every name in the `DEVENV_[A-Z0-9_]+` namespace, every value dev-only and at least 8
+characters. The coordinator role is its only writer; worker, reviewer and verifier read it only;
+intake neither. A Verify row receives only the names its `Env` cell declares
+(`service:<name>:<NAME>[,<NAME>…]`). It is read from `cell.env` only, never `defaults.env` or
+the launching shell. The contract is [`containers/secrets.md`](../containers/secrets.md) §4.5.
 
 ### Machine-wide defaults — `defaults.env`
 
@@ -2474,6 +2487,41 @@ still applies, and only a larger number widens the window. Scrubbed cells do not
 compose this variable — their launch environment is exactly the allowlist in
 [The composed environment](#the-composed-environment) — and neither do container
 cells, whose launch is delegated to the operator's own launcher.
+
+## `cellctl gc` — a read-only reclaim report
+
+`cellctl gc <cell> [--role <role>]` runs the dry form of each existing reclaim target and
+prints one JSON line per target on stdout: `target`, `outcome` (`planned`, `skipped`,
+`failed` or `could-not-check`), `bytes` (what the target measured in its scope; null where
+it measured no figure), and an optional `items` and `detail`. There is no "would reclaim"
+byte figure: no target's dry run forecasts one. The targets are:
+
+- `scratch`: the managed task scratch sweep's dry run
+  ([Managed task scratch](cellctl-scratch.md)); `items` is how many entries it would act
+  on. The dry run takes the sweep's own locks, so while a sibling's sweep holds them the
+  line can report `failed`; on a cell with no scratch root yet, the dry run creates the
+  empty root and its owner record, as `cellctl scratch <cell> sweep` does;
+- `go-cache`: the managed Go cache's recorded measurement
+  ([Managed Go caches](cellctl-go-cache.md)), read through the cache's bounded metadata
+  reader; nothing is walked and no cache lock is taken. `bytes` is the recorded logical
+  size, and `detail` names the recorded outcome and when it was measured. A recorded
+  `storage-deferred` (over budget or floor) is `planned`, with the reason in `detail`; a
+  recorded `could-not-check`, or no recorded measurement at all, is `could-not-check`.
+  `skipped` while `CELL_GO_CACHE` is off;
+- `worktrees:<owner/repo>`: the installed `deskwt prune --repo <path> --no-cache --dry-run`,
+  once per `CELL_ROOTS` checkout, run as the role's loop (`DESK_LOOP`) when `--role` is given.
+
+gc adds no delete logic of its own. A target that fails or could not check is reported, the
+remaining targets still run, and the exit code is 1. `--role` applies to this report only.
+
+**Apply is held.** `gc --plan [--json]` writes a plan and changes nothing else. `gc --run`
+and `gc --apply <plan-id>` are the state-changing forms
+[cell-op-v1](../spec/cell-op-v1.md) §5 names: they are refused off a terminal and in a desk
+session, and on a terminal they show the plan and ask for its confirm code. Every gc plan
+action then refuses, so a confirmed apply reclaims nothing. Apply stays held until
+cell-op-v1 specifies a non-interactive maintenance class. Reclamation stays with the
+existing verbs (`cellctl scratch <cell> sweep --apply`, `cellctl cache <cell> clean`,
+`deskwt prune`) and the desk supervisor's own periodic scratch sweep.
 
 ## Host desk cadence
 

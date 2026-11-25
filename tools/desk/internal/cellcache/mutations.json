@@ -220,8 +220,8 @@
     {
       "name": "directory entry members not walked before removal (bytes unmeasured)",
       "file": "internal/cellcache/cache.go",
-      "old": "size, err := m.verifiedTreeSize(path)",
-      "new": "size, err := int64(0), error(nil)"
+      "old": "size, _, err := m.verifiedTreeSize(path)",
+      "new": "size, _, err := int64(0), time.Time{}, error(nil)"
     },
     {
       "name": "admission leans on an unstamped or future-dated estimate",
@@ -438,6 +438,54 @@
       "file": "cmd/cellctl/cache.go",
       "old": "r, err := cellcache.Prepare(*p)",
       "new": "r, err := cellcache.Check(*p, false)"
+    },
+    {
+      "name": "GOTMPDIR sweep ignores live consumer records",
+      "file": "internal/cellcache/tmpsweep.go",
+      "old": "if held := at.Add(-AdmitMtimeSlack); held.Before(cut) {",
+      "new": "if held := at.Add(-AdmitMtimeSlack); false && held.Before(cut) {"
+    },
+    {
+      "name": "GOTMPDIR sweep judges a work directory by its top-level time only",
+      "file": "internal/cellcache/tmpsweep.go",
+      "old": "return total, newest, newest.Before(ageCut), nil",
+      "new": "return total, newest, newest.Before(ageCut) || true, nil"
+    },
+    {
+      "name": "GOTMPDIR sweep selects names cmd/go never created",
+      "file": "internal/cellcache/tmpsweep.go",
+      "old": "if !strings.HasPrefix(name, goBuildPrefix) {",
+      "new": "if false {"
+    },
+    {
+      "name": "a dry GOTMPDIR sweep removes",
+      "file": "internal/cellcache/tmpsweep.go",
+      "old": "\t\tif !dry {\n\t\t\tif err := m.removeTree(path); err != nil {",
+      "new": "\t\tif true {\n\t\t\tif err := m.removeTree(path); err != nil {"
+    },
+    {
+      "name": "fresh maintenance skips the GOTMPDIR sweep",
+      "file": "internal/cellcache/maintenance.go",
+      "old": "r.Tmp = sweepTmpLocked(p, time.Now())",
+      "new": "_ = sweepTmpLocked"
+    },
+    {
+      "name": "managed policy exports no GOTMPDIR",
+      "file": "internal/cellcache/policy.go",
+      "old": "\tp.GoTmp = true\n",
+      "new": "\tp.GoTmp = false\n"
+    },
+    {
+      "name": "enrollment does not create the managed GOTMPDIR",
+      "file": "internal/cellcache/tmpsweep.go",
+      "old": "return []string{\"build\", \"mod\", \"gopath\", tmpDir}",
+      "new": "return []string{\"build\", \"mod\", \"gopath\"}"
+    },
+    {
+      "name": "a held work directory is reported without its holding record",
+      "file": "internal/cellcache/tmpsweep.go",
+      "old": "res.Held = append(res.Held, fmt.Sprintf(",
+      "new": "_ = append(res.Held, fmt.Sprintf("
     }
   ]
 }

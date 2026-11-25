@@ -133,6 +133,24 @@ not own.
   coordinator is the only reader that can turn it into an act. A stream head that ages there
   silently is a desk miss, not a planner miss: on 2026-09-11 a 16-day-old head with three
   dependents sat unoffered while the desk read the table as context.
+- **Authoring-stamp sweep — every sweep, ticks included. The coordinator PULLS the stamp.**
+  `worker-desk`'s post-open hand-off is the fast path; this sweep is the backstop for a dropped
+  one, because `deskdispatch --stamp-only` refuses a merged change and a stamp missed before merge
+  can never land. Run `deskboard prs` (its JSON rows; `--table` prints the two fields under the
+  row). It reads the desk's whole repo set and writes nothing. A row carrying
+  `authoringStamp` is an open PR whose body names a `Worker-Attestation:` record and whose labels
+  lack a complete `authored-model:` / `authored-tier:` pair:
+  - `authoringStamp: missing`: run the row's `stampOnly` line exactly as printed
+    (`deskdispatch --stamp-only --repo <r> --pr <N> --attestation <record> --model <record Model>
+    --tier <record Tier> --kit <record Kit>`). The verb built it from the validated record, so
+    never type or edit a model, tier or kit by hand. Require the applied-and-verified receipt.
+  - `refused: …` or `could-not-check: …` (no `stampOnly` line), or a `--stamp-only` refusal:
+    STOP for that PR. Report it with the refusal line verbatim (a filed issue, per the noise
+    floor) and never route around it: no hand-applied label, no other identity, no re-dispatch.
+    Every other PR in the sweep continues.
+  The ready-flip enforces the same thing from the other side: both flip verbs refuse an attested
+  PR that is unstamped or whose pair disagrees with its record (`authoring-stamp`), and print
+  this same line. A refusal that reaches you that way is handled by this bullet.
 - **HARD GATE — no state-of-play claim without a fresh sweep.** Before this desk EVER reports
   state-of-play ("N mid-flight", "nothing awaiting", "current", "idle", "caught up") it is a HARD
   PRECONDITION that it has *just* run that sweep and confirmed `awaiting == 0` with no actionable
@@ -147,10 +165,14 @@ not own.
   labelled `question` keeps moving on its stated default. Idle only when a fresh sweep confirms the
   board is empty: answer "what am I waiting on and why" at any moment — "nothing, I just haven't
   re-swept" is stale, not idle.
-- **Console noise floor.** Three output classes: **actionable** (a needs-decision item, a register
-  defect, an error, a question) always printed in full; the **full board** only when it changed or on
-  request; otherwise ONE **quiet** line — timestamp, boards swept, delta count, actionable count,
-  next wake. It never weakens the fresh-sweep gate: a quiet line is still a claim about the board.
+- **Console noise floor.** For routine human inbox prompts, use `deskinbox changes` and the
+  delivery procedure in [ask-decision](../ask-decision/SKILL.md#a-named-issue-or-a-routine-notification).
+  On an older installation without `changes`, surface a newly actionable human gate once through
+  the project's escalation channel and keep the open item as its record. Use `deskinbox show`
+  when the driver names an issue and the verb is available. Print actionable desk errors and register
+  defects in full. Print the full board on change or request; otherwise print one quiet line
+  with the timestamp, boards swept, delta count, actionable count and next wake. A quiet line
+  still requires a fresh board sweep.
 - **Receipt on every human-typed message.** After ANY human-typed message, the FIRST line of your
   turn is `deskack --repo <repo> "<your reading in at most 12 words>"`
   (role from `$DESK_LOOP`; omit `--repo <repo>` when no repo is named), then act.
@@ -177,12 +199,17 @@ not own.
 - **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
   workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
   standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
-  `gh pr create --draft`). **The verify desk lands its own work**: its Evidence + status flips commit
-  straight to `main` as the project directs — no push-go is needed there and none should be waited
-  for. Any `main` push not covered by a standing authorization is gated on the driver's explicit go;
-  committing local work is always fine. A guard/hook-BLOCKED push is a STOP signal — never route the
-  same write through another tool. Each desk's own grants and denials (what it may flip, file, close,
-  or land) stay in its skill, directly below this block.
+  `gh pr create --draft`).
+  **The verify desk lands verdicts through the project's verdict-transcription lane** where the
+  project has armed it — a signed verdict issue that a workflow lands on `main`, never a session
+  push; where the lane is not armed it lands per its own skill's §Landing. Those two routes need
+  no push-go and none should be waited for; a break-glass `main` write in a project where the
+  lane is armed is NOT one of them: it is for when the lane is down, and it waits for the
+  driver's go. Any `main` push not covered by a standing authorization is
+  gated on the driver's explicit go; committing local work is always fine. A guard/hook-BLOCKED
+  push is a STOP signal — never route the same write through another tool. Each desk's own
+  grants and denials (what it may flip, file, close, or land) stay in its skill, directly below
+  this block.
   - Desk-specific: **this coordinator is PRs-only** (2026-08-15) — it lands nothing on `main`; doc
     edits and brief rows travel as draft PRs. The cross-machine dispatch race is arbitrated by
     `worker-desk`'s durable `refs/heads/dispatch/*` claim, which is atomic create-if-absent, TTL'd,

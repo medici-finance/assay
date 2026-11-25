@@ -63,6 +63,16 @@ func hasProtectedTableMarker(evidence string) bool {
 	return len(protectedMarkers(text)) > 0 || len(protectedMarkersNamed(text, "Acceptance-Transition:")) > 0
 }
 
+// protectedSelectsRun reports whether the protected audit of evidence reads
+// its witnesses from the latest strict PASS run alone (flipLatestPass's Run)
+// rather than from the full record: it does whenever the Evidence records a
+// verdict. protectedAcceptanceFor selects its run on this, and rule 3c's
+// witness gate (heldCreditedAbove) reads the same answer, so the two cannot
+// drift apart (#5541).
+func protectedSelectsRun(evidence string) bool {
+	return len(flipVerdictTokens(strings.Split(string(normalizeProtectedEvidence(evidence)), "\n"))) > 0
+}
+
 // closureRunWitnesses owns the full-record/selected-run boundary. Protected
 // records retain full history for the canonical audit to select its current run.
 // Ordinary records audit only normalizedRun. If that canonical audit would newly
@@ -102,7 +112,7 @@ func protectedAcceptanceFor(verify, evidence, proposal string, paths ...string) 
 	// Selected-run callers preserve record classification through closureRunWitnesses.
 	// Select its strict current run here; earlier markers establish protected
 	// context but cannot supply missing current provenance or witnesses.
-	if proposal == "" && len(flipVerdictTokens(strings.Split(string(text), "\n"))) > 0 {
+	if proposal == "" && protectedSelectsRun(evidence) {
 		p, err := flipLatestPass(evidence)
 		if err != nil {
 			return protectedPlan{}, "protected table: " + err.Error()
@@ -328,8 +338,8 @@ func originalDefinitionDrift(baseline, delivered string) string {
 // closure and the consumer-delivery derivation (consumerdelivery.go) both call
 // it, so a triple that fails here fails both. It does NOT choose which marker
 // supplies the triple: the closure reads the current run's marker, the
-// derivation reads every marker in the committed Evidence and refuses
-// distinct triples. why is empty on success.
+// derivation authenticates each distinct triple in the committed Evidence
+// and requires them all to name one delivery. why is empty on success.
 func deliveryCoordinates(dir, delivery, base, original string) (parents []string, why string) {
 	head, ok := (coverageRepo{root: dir}).ResolveCommit("HEAD")
 	if !ok || !isObjectID(head) {

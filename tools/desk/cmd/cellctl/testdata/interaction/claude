@@ -1,0 +1,57 @@
+#!/usr/bin/env python3
+"""Deterministic local agent/model adapter for the compatibility qualification fixture."""
+import hashlib
+import json
+import os
+from pathlib import Path
+import signal
+import sys
+import tty
+
+role = os.environ["ASSAY_CELL_ROLE"]
+work = Path.cwd()
+pid = os.getpid()
+
+
+def event(kind, **fields):
+    with (work / "calls.jsonl").open("a") as stream:
+        print(json.dumps(dict(kind=kind, pid=pid, **fields)), file=stream)
+
+
+def snapshot():
+    data = (work / "input.txt").read_bytes()
+    return f"{role} {len(data.splitlines())} {hashlib.sha256(data).hexdigest()}"
+
+
+expected = ["--model", "offline-fixture-" + role, "--append-system-prompt-file",
+            "/work/role.md", f"Read /opt/assay/plugin/skills/{role}/SKILL.md and run that role under its existing STOP, claim and human gates."]
+if sys.argv[1:] != expected or os.environ["DESK_LOOP"] != role:
+    sys.exit("incorrect role/harness/launch binding")
+event("agent", argv=sys.argv[1:], python=sys.version.split()[0])
+if os.environ.get("FIXTURE_DUPLICATE") == "1":
+    sys.exit(0)
+tty.setraw(0)
+def stop_on_signal(number, frame):
+    event("signal", number=number)
+    sys.exit(1)
+
+
+for sig in (signal.SIGHUP, signal.SIGTERM):
+    signal.signal(sig, stop_on_signal)
+for line in sys.stdin:
+    command = line.rstrip("\r\n")
+    if command == "work":
+        event("model")
+        result = snapshot()
+        (work / "result.txt").write_text(result + "\n")
+        print("RESULT " + result, flush=True)
+    elif command == "read":
+        print("RETAINED " + (work / "result.txt").read_text().strip(), flush=True)
+    elif command == "size":
+        size = os.get_terminal_size(0)
+        print(f"SIZE {size.columns}x{size.lines}", flush=True)
+    elif command == "identity":
+        print(f"IDENTITY {role} {pid}", flush=True)
+    else:
+        sys.exit("unexpected fixture input")
+event("eof")

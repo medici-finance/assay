@@ -388,6 +388,55 @@ RISK-VALUE: DERIVED — negative-cost rejection `n < 0` → failed @ tools/desk/
 
 **VERIFY: PASS**
 
+### Independent re-verification, container lane, release v1.0.91 — 2026-11-22 (dispatched verifier, claude-opus-5-5, tier strong)
+
+Subject: merged source e4acd02ff3eb2724940ece59d38b1f646f9dee9f. The brief is already verified on main; this section re-runs the whole table at the current source with the installed desk tools and statusgen v1.0.91. The home was detached at that commit and clean (no modified, untracked or ignored file) before the first row. Admission: `deskdispatch --check-verifier --root <home> --brief <brief>` exited 0 before the first row (attestation #7447, run 76214f3fa511); the bracket open and close steps each re-ran it with the same binding (the Admission-Bracket line below records before=receipt after=check-verifier). The runner is not the implementer.
+
+Transition coordinates, checked independently before execution: delivery 578a9f39d73e is the two-parent merge of PR #3583 (parents 1b00388fb9c5 and e4c3c2499e2d); the parents' unique merge-base is 331aba8f343c. The Verify section hashes identically at original 2dbc1d762d07, base and delivery, changes only at amendment e2b00ebe0f49 (merge of PR #4228), and is byte-identical between the amendment and this source. Both delivery and amendment are ancestors of the source. `deskpathguard rederive` re-derived 4 rows, 0 author-added. No Verify row carries a risk-bearing, live, mutating or end-to-end tag and every brief-wide risk answer is no, so no row owes a fail-first witness.
+
+Environment: macOS host (darwin arm64), git 2.56.0, installed desk shims and statusgen v1.0.91, KUBECONFIG=/dev/null, the verifier Git environment (GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_NOSYSTEM=1, GIT_CONFIG_COUNT=0), no GH_TOKEN in any verifyrun environment, offline apart from the read-only approval lookup, the release-asset read and the module-cache download at bracket open.
+
+Row 4 (check) ran first on the host under the approved acceptance transition (#4230), selected with `--rows 4`, with `--acceptance-record` naming the coordinates below and `--acceptance-forge`. verifyrun printed `acceptance transition: reading approval https://github.com/medici-finance/assay/issues/4230#issuecomment-6373797887` and executed the approved amended row 4.
+
+Acceptance-Changes: 4=Command
+Verification-Table: delivery=578a9f39d73ec48bdc07fbdfd3938edb463e7b9b base=331aba8f343c828763a1fae23c4cba26abff7560 original=2dbc1d762d07ac2a2eb7575de2ddd40bf48dc081
+Acceptance-Transition: amendment=e2b00ebe0f495037dcfd1483429cfe8ef3c24570 approval=https://github.com/medici-finance/assay/issues/4230#issuecomment-6373797887
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 4 | `statusgen --root . --consumers --brief desktools-v2/65 --delivery 578a9f39d73ec48bdc07fbdfd3938edb463e7b9b --base 1b00388fb9c5bd17c0817ae3a49751607b0d9cae` | pass exit=0 | sha256:0cc41c54eca5 | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb2724940ece59d38b1f646f9dee9f (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7447 run=76214f3fa5111cd485c1dbd8f43d2b21fe058e8da26a00c92b62de242fde1ced source=e4acd02ff3eb2724940ece59d38b1f646f9dee9f brief=docs/streams/desktools-v2/brief-65-measure-own-forge-request-timing-and-graphql-cost.md model=claude-opus-5-5 tier=strong
+
+Rows 1–3 (check:ci) then ran in the container lane under rule 45, selected with `--rows 1,2,3`; the only change in the home when the bracket opened was the row 4 witness above, inside this Evidence section. Image: the v1.0.90 release pin ghcr.io/medici-finance/verify-runner:v1.0.90@sha256:4e8e3c80a075c552de0966c886784c6020153c27e624f8a1ce988aa3b0590217, read from the v1.0.90 release asset verify-runner-image.txt, whose sha256 7c6bf6829080 matched the release checksums file; the image was pulled by that digest and its repo digest matched. The container ran linux/arm64 under the image's own statusgen with `--network none`, a read-only root filesystem, all capabilities dropped, no-new-privileges, the home mounted read-only at its own path, no gitdir mount, the bracket's downloaded module cache (digest 7f8fa9800956) mounted read-only at /go/pkg/mod, and GOPROXY=off, GOFLAGS=-mod=readonly, GOTOOLCHAIN=local. `--open-bracket` (with `--module-cache` into a new empty directory outside the home) and `--close-bracket` ran on the host with the cwd at the home root, and `--bracket-digest` on the closed witness file reported verdict=match with span-lines=tree-digest:1,container-image:1,attestation:1.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3ForgeAttemptTimingFlow$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestPerfV3ForgeAttemptTimingFlow ' "$out")` | pass exit=0 sandbox=container-netns | sha256:61c9046e315a | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3GraphQLCostCoverage$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestPerfV3GraphQLCostCoverage ' "$out")` | pass exit=0 sandbox=container-netns | sha256:b05409c300df | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3ForgeObservationParity$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestPerfV3ForgeObservationParity ' "$out")` | pass exit=0 sandbox=container-netns | sha256:206c0921c1ad | 2026-11-22 | assay-verifier-app[bot] @ e4acd02ff3eb (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:2dd1d64e48f3563f30ff7999a151e15511d1e262b9e7b6b3219bad289c33efe8
+Container-Image: sha256:4e8e3c80a075c552de0966c886784c6020153c27e624f8a1ce988aa3b0590217
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7447 run=76214f3fa5111cd485c1dbd8f43d2b21fe058e8da26a00c92b62de242fde1ced source=e4acd02ff3eb2724940ece59d38b1f646f9dee9f brief=docs/streams/desktools-v2/brief-65-measure-own-forge-request-timing-and-graphql-cost.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=76214f3fa5111cd485c1dbd8f43d2b21fe058e8da26a00c92b62de242fde1ced source=e4acd02ff3eb2724940ece59d38b1f646f9dee9f tree=sha256:2dd1d64e48f3563f30ff7999a151e15511d1e262b9e7b6b3219bad289c33efe8 witness=sha256:590b108d512044b5ed5663433166a36c6fc65d39c101105b23c6166cef9ed90a opened=2026-11-22T18:49:00Z closed=2026-11-22T18:49:51Z before=receipt after=check-verifier
+
+Results: rows 1–3 pass exit 0 in the container lane, each command ending in its own named `--- PASS:` grep, with output hashes 61c9046e315a, b05409c300df and 206c0921c1ad. Row 4 passes exit 0 on the host (output hash 0cc41c54eca5). Every Runner cell carries a `reads could-not-check` note from the read-set recorder (Linux-only on the darwin host; absent from the image build). That note concerns the read-set recorder, not the row's result.
+
+Supplemental, no acceptance credit:
+- Row 4's command re-run on the host at the source for primary-output inspection: exit 0, `consumers corroboration — base 1b00388fb9c5bd17c0817ae3a49751607b0d9cae..578a9f39d73ec48bdc07fbdfd3938edb463e7b9b (immutable delivered snapshot), 1 brief(s)` and `summary: 8 corroborated, 0 disproved, 1 unchecked, 0 brief(s) claiming nothing`. The one unchecked entry is statusgen/ (out-of-scope), a reviewer judgement the row's Expect leaves to review.
+
+Disclosed attempts: one host run of row 4 and one bracket run of rows 1–3. No run was made outside these, and none was discarded.
+
+Totals: 4 required original rows; 4 pass, 0 fail, 0 could-not-run.
+
+Risk-bearing values. I enumerated literals over the delivery diff of #3583 (1b00388fb9c5..578a9f39d73e, 25 files) and re-resolved each at this source. The status-class split `status / 100` @ tools/desk/internal/deskkit/forgeobserve.go:118 with 304 split out @ :115, and the GraphQL cost deferral `status/100 == 2` @ forgeobserve.go:157, are reversible classification knobs and rank last. The top-ranked values are the metadata selections that change what is sent to a provider, and the guard on what is recorded as measured:
+
+RISK-VALUE: DERIVED — GitHub same-operation metadata selection = ` _assayPerf:rateLimit{cost}` @ tools/desk/internal/deskkit/forgepoints.go:28 — GitHub's GraphQL rate-limit documentation returns the point cost of the enclosing query through `rateLimit { cost }`; the brief (Task 2) names exactly this field and forbids a separate request. The `_assayPerf` alias keeps it apart from business fields. It is appended only to the closed compiled query list (forgepoints.go:15), and only when the base is `GitHubAPIBase = "https://api.github.com"` @ tools/desk/internal/credential/github.go:40 (gate @ tools/desk/internal/deskkit/forge_github.go:310).
+RISK-VALUE: DERIVED — GitLab metadata selection = ` _assayPerf:queryComplexity{score}` @ tools/desk/internal/deskkit/forge_gitlab.go:1404, read key `"score"` @ tools/desk/internal/deskkit/forgepoints.go:76, gated on `GitLabAPIBase = "https://gitlab.com"` @ tools/desk/internal/deskkit/forge_gitlab.go:65 — GitLab's GraphQL `queryComplexity { score }` is the query's complexity in GitLab's own unit. The code records it as unit gitlab-complexity and never as GitHub points, as the brief requires.
+RISK-VALUE: DERIVED — negative-cost rejection `n < 0` → failed @ tools/desk/internal/deskkit/forgepoints.go:83, and missing or null metadata → unknown @ forgepoints.go:66 and :79 — provider cost and complexity are non-negative counts. The brief requires that missing is never recorded as zero, and that numeric zero is recorded only when measured.
+
+**VERIFY: PASS**
+
 ## Review
 
 Gate: model. Reject changed legacy meanings, guessed identity/cost, lost coverage or optional measurement that changes an operation.

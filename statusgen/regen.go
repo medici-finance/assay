@@ -54,6 +54,13 @@ func runRegen(args []string, stdout, stderr *os.File) int {
 
 	rc := reconcileOK
 	for _, s := range streams {
+		// The milestone region is independent of board: generated.
+		if changed, err := rewriteMilestoneRegion(s, s.Dir+"/README.md"); err != nil {
+			fmt.Fprintf(stderr, "PROBLEM: %v\n", err)
+			rc = reconcileUsageErr
+		} else if changed {
+			fmt.Fprintf(stdout, "regenerated %s milestone region\n", s.Dir+"/README.md")
+		}
 		if s.Board != "generated" {
 			// Per brief-04: an ungenerated board is rendered as today (hand table)
 			// and NOTICEd — the per-stream migration signal brief 06 flips fleet-wide.

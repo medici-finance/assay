@@ -1,6 +1,6 @@
 {
   "build": "GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./internal/gitquiet && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./internal/regression && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./cmd/deskclaim-ref && (cd ../../gitquiet && GOWORK=off GOPROXY=off GOSUMDB=off go test -mod=readonly -vet=off -c -o /dev/null ./goquiet)",
-  "test": "go test ./internal/gitquiet/ ./internal/regression/ ./cmd/deskclaim-ref/ -count=1 -timeout 300s -run '^Test(NewReposForkNoMaintenance|TemplateConfigParses|TemplateDirExplicit|GitPackagesInstallQuiet|GuardControl|ShellFixtureReposQuiet|Reg727WorktreeOrigin|GitDirFixtureIsolation|GoPackagesQuietHome|GoGuardControl|GoQuietOffPin|GoQuietHostUntouched)$'",
+  "test": "go test ./internal/gitquiet/ ./internal/regression/ ./cmd/deskclaim-ref/ -count=1 -timeout 300s -run '^Test(NewReposForkNoMaintenance|TemplateConfigParses|TemplateDirExplicit|GitPackagesInstallQuiet|GuardControl|ShellFixtureReposQuiet|Reg727WorktreeOrigin|GitDirFixtureIsolation|GoPackagesQuietHome|GoGuardControl|GoQuietOffPin|GoQuietHostUntouched|AdapterRefusesTempInRepo)$'",
   "control": {
     "name": "CONTROL — the desk adapter never installs the shared template",
     "file": "internal/gitquiet/gitquiet.go",
@@ -109,6 +109,18 @@
       "file": "../../gitquiet/goquiet/goquiet.go",
       "old": "rel != \"mode\" {",
       "new": "rel == \"never\" {"
+    },
+    {
+      "name": "temp-root refusal: the shared Run never checks the temporary roots — the adapter's binary runs with TMPDIR inside a repository",
+      "file": "../../gitquiet/gitquiet.go",
+      "old": "\tif err := checkTempRoots(); err != nil {",
+      "new": "\tif err := error(nil); err != nil {"
+    },
+    {
+      "name": "temp-root refusal: the adapter installs the template but skips the shared Run's check — the planted set-url rewrites the enclosing repository's origin",
+      "file": "internal/gitquiet/gitquiet.go",
+      "old": "return shared.Run(m)",
+      "new": "return func() int { restore, err := shared.Install(); if err != nil { return 1 }; defer restore(); return m.Run() }()"
     }
   ]
 }

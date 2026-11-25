@@ -366,12 +366,23 @@ type Issue struct {
 // Review is one review/approval on a change (GitHub review ↔ GitLab MR approval). CommitID
 // pins the verdict to a reviewed head — the property "read reviews at head" depends on.
 type Review struct {
-	ID          int64
-	Author      Account
-	State       string // APPROVED | CHANGES_REQUESTED | COMMENTED | DISMISSED | PENDING
-	CommitID    string
-	Body        string
-	SubmittedAt string
+	URL           string `json:",omitempty"` // provider permalink; absent when no review object exists
+	accountIDOnly bool   // native GitLab approval has an actor ID, no submission ID
+	ID            int64
+	Author        Account
+	State         string // APPROVED | CHANGES_REQUESTED | COMMENTED | DISMISSED | PENDING
+	CommitID      string
+	Body          string
+	SubmittedAt   string
+}
+
+// SubmissionID names a review or verdict note. A native GitLab approval identifies
+// its actor only; that number must never be cited as a review.
+func (r Review) SubmissionID() int64 {
+	if r.accountIDOnly {
+		return 0
+	}
+	return r.ID
 }
 
 // ChangedFile is one entry of a change's file list. PreviousFilename is set only on a
@@ -401,6 +412,8 @@ type ChangedFile struct {
 // stamp silently keeps whichever entry the forge happened to list last. Consumer:
 // cmd/deskflip's latest-run-per-name reduction.
 type StatusContext struct {
+	RunID     string `json:",omitempty"`
+	URL       string `json:",omitempty"`
 	State     string // success | pending | failure | error
 	Context   string
 	CreatedAt string // RFC3339, "" when the forge reported none
@@ -413,6 +426,9 @@ type StatusContext struct {
 // not stamped — sorts OLDEST at the consumer, which is the fail-safe direction: a stampless
 // queued orphan never supersedes a completed run. Consumer: cmd/deskflip.
 type CheckRun struct {
+	URL   string `json:",omitempty"` // provider details page
+	JobID string `json:",omitempty"`
+	RunID string `json:",omitempty"` // owning workflow run or pipeline, for deskrun log
 	// ID is the forge's own identifier for this RUN — GitHub's check-run id, GitLab's
 	// pipeline-job id — rendered as a string so the interface stays forge-neutral about
 	// how each forge numbers them. It identifies one EXECUTION, not the check: a re-run of
@@ -773,6 +789,25 @@ type WriteFileInput struct {
 	// A backend lacking an atomic branch-head precondition must refuse it;
 	// file-level ExpectedSHA alone cannot protect closure in other files.
 	ExpectedHead string
+	// Delete removes File instead of writing it: Content must be empty, and the removal
+	// is accepted only as a conditional, pinned commit (ExpectedSHA on the file AND
+	// ExpectedHead on the branch), so it lands through the same forge-signed commit
+	// path as a pinned write and never as a local commit. A backend without that
+	// pinned path refuses it. Consumer: cmd/deskevidence --remove-superseded.
+	Delete bool
+	// Companions are further files committed in the SAME commit as File: a
+	// witness row's read-set file, which coverage honours only when it
+	// arrives with its row. Each is create-only: one already on the base
+	// with the same bytes is left as it is, and one with other bytes refuses
+	// the write. A backend that cannot commit them with File atomically
+	// refuses; it never lands File alone.
+	Companions []CompanionFile
+}
+
+// CompanionFile is one file WriteFileInput.Companions adds in File's commit.
+type CompanionFile struct {
+	File    string
+	Content []byte
 }
 
 // expectedSHAPrecondition is the backend-neutral half of WriteFileInput.ExpectedSHA and
@@ -991,8 +1026,10 @@ type ReviewQueue struct {
 // different answer).
 type QueuedChange struct {
 	OpenChange
-	Reviews         []Review
-	ReviewsComplete bool
+	// A complete head-pinned check population for monitor deltas. Advisory only.
+	MonitorChecksComplete bool `json:"-"`
+	Reviews               []Review
+	ReviewsComplete       bool
 }
 
 // ChangeStates is the set of change lifecycle states a ListChanges read is scoped to. It is a
@@ -1880,8 +1917,8 @@ type Forge interface {
 	// introduced, in the forge's order. Complete is true only when the read is known to hold
 	// every commit (GitHub: the listed count equals the change's own commit count, since the
 	// list stops at 250; GitLab: the walk ended below the page ceiling). Consumer: cmd/deskread's
-	// `change-commits` kind; statusgen's auto-flip owner check is the consumer to come
-	// (forge-neutral brief 18).
+	// `change-commits` kind, which statusgen's GitLab auto-flip reads for its owner check
+	// (forge-neutral brief 18, #7202).
 	ListChangeCommits(repo ForgeRepo, number int) (*ChangeCommits, error)
 	// RepoDefaultBranch (op 58, forge-neutral brief 33) reads the repository's default branch. An
 	// empty answer is could-not-check, never "main". It is its own operation, not a
@@ -1891,8 +1928,9 @@ type Forge interface {
 	RepoDefaultBranch(repo ForgeRepo) (string, error)
 	// PRTrustEvents reads a change's trust-gate content events: the body-edit time plus every
 	// comment, review and review-comment with its author identity and edit time, bounded to a
-	// single page and reporting completeness (see TrustPayload). Consumer: cmd/deskboard's
-	// prBlessed (freeze rule). A forge whose content-edit / numeric-actor-id semantics do not
+	// single page and reporting completeness (see TrustPayload). Consumers: cmd/deskboard's
+	// prBlessed, and cmd/deskread's `change-trust` kind for statusgen's GitLab auto-flip (freeze
+	// rule). A forge whose content-edit / numeric-actor-id semantics do not
 	// map 1:1 returns could-not-check naming the gap.
 	PRTrustEvents(repo ForgeRepo, number int) (*TrustPayload, error)
 	// IssueTrustEvents is PRTrustEvents' issue twin (an issue has no reviews or review
@@ -2049,7 +2087,8 @@ type Forge interface {
 	// repository/commits/:sha/merge_requests`), in any state. An empty list is the ANSWER "no
 	// change is behind this commit". The caller reads each change with GetPullRequest for its
 	// merged state, merge time and base. Consumer: cmd/deskautolane's enactment gate, whose
-	// time check keys on the merging change's merge time, never a commit date (freeze rule).
+	// time check keys on the merging change's merge time, never a commit date, and cmd/deskread's
+	// `commit-changes` kind for statusgen's GitLab auto-flip (freeze rule).
 	ListCommitChanges(repo ForgeRepo, sha string) ([]int, error)
 	// CompareRefs compares two refs and returns the files that differ plus the divergence
 	// counts and the forge's own status word (see RefComparison). A forge that does not report

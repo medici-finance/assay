@@ -135,7 +135,9 @@ func cmdPlan(args []string) error {
 	// before.
 	if representedPRs != nil {
 		if resolved, rerr := resolveRepoForPlan(*root, *repo); rerr == nil {
-			f.Represented = representedSourceFor(resolved, f.candidateBriefIDs, f.declaredPartials)
+			index := &deskkit.IssuePRIndex{List: representedPRs, Lookup: briefChangeLookup}
+			f.issueIndex, f.issueBoardRepo = index, resolved
+			f.Represented = representedSourceFor(resolved, f.candidateBriefIDs, f.declaredPartials, index)
 		} else {
 			heldErr := rerr
 			f.Represented = func() (map[string]deskkit.RepresentedPR, error) { return nil, heldErr }
@@ -165,6 +167,11 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 	// unchecked rows must not read as idle at a glance. The rows themselves are listed below.
 	if len(unchecked) > 0 {
 		fmt.Fprintf(out, "COULD-NOT-CHECK: %d row(s) NOT dispatched — representing PR unknown (listed below)\n", len(unchecked))
+	}
+	for _, hold := range f.issuePRHoldRows() {
+		if _, err := fmt.Fprintf(out, "ISSUE-PR HOLD %s\n", hold); err != nil {
+			return err
+		}
 	}
 	for _, it := range items {
 		tier, terr := f.TierPolicy(it)

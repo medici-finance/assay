@@ -68,6 +68,10 @@ type queryFailure struct {
 // (assay-inbox.sh:364-386). A repo whose read failed is counted in `failures` and excluded
 // from the queue, never silently treated as empty.
 func fetchQueue(repos []string, observers ...deskkit.RequestObserver) (sorted []item, failures []queryFailure) {
+	return fetchQueueMatching(repos, hasEscalationLabel, observers...)
+}
+
+func fetchQueueMatching(repos []string, matches func([]string) bool, observers ...deskkit.RequestObserver) (sorted []item, failures []queryFailure) {
 	for _, repo := range repos {
 		if strings.TrimSpace(repo) == "" {
 			continue
@@ -83,7 +87,7 @@ func fetchQueue(repos []string, observers ...deskkit.RequestObserver) (sorted []
 			continue
 		}
 		for _, is := range issues {
-			if !hasEscalationLabel(is.Labels) {
+			if !matches(is.Labels) {
 				continue
 			}
 			sorted = append(sorted, item{

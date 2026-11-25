@@ -34,8 +34,15 @@ import (
 //	    literal `Security-Review: pass` line (#216)
 //	(f) desk-decided (attention-budget/19, #1694): the SAME condition deskflip enforces —
 //	    deskkit.DeskDecidedRefusal, one shared implementation
+//	(g) authoring-stamp (#6855): the SAME condition deskflip enforces — a PR whose body names
+//	    a `Worker-Attestation:` record must carry the matching stamp-authority authored-model /
+//	    authored-tier pair; deskkit.AuthoringStampGate, one shared implementation
+//	(h) not-reverted (#6254): the SAME condition deskflip enforces — a head the post-flip
+//	    backstop already returned to draft is not flipped again (deskkit.NotRevertedHold). This
+//	    is the ONE read of the comment surface `ready` makes, and it is refuse-only: a match can
+//	    only stop the flip, nothing read there can admit one (#513)
 //	TOCTOU: re-read the PR immediately before the flip; if the head moved, refuse; and
-//	    re-run (f) against the re-read body, labels and reviews
+//	    re-run (f) and (g) against the re-read body, labels and reviews
 func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 	repo := owner + "/" + name
 
@@ -303,6 +310,33 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 			return refused("ready", repo, pr, head, reason)
 		}
 
+		// (g) authoring-stamp (#6855). `deskdispatch --stamp-only` refuses a merged change, so an
+		// attested worker change that leaves draft unstamped can be merged past the only point its
+		// stamp could land. deskflip holds ready on it; this verb performs the same mutation, so it
+		// holds on the SAME shared condition (deskkit.AuthoringStampGate). The record is read at
+		// most once per invocation, through the reviewer App's forge.
+		fr := deskkit.ForgeRepo{Owner: owner, Name: name}
+		readRecord := onceWorkerRecord()
+		if res, stop := authoringStamp(repo, pr, head, fr, info.Body, tl, readRecord); stop {
+			return res
+		}
+
+		// (h) not-reverted (#6254). A head the post-flip backstop already returned to draft would be
+		// reverted again by the same flip, so refuse it here exactly as deskflip does (the shared
+		// deskkit.NotRevertedHold). This is the ONLY place `ready` reads the comment surface, and the
+		// read is REFUSE-ONLY (#513): the verdict, CI, security and stamp gates above are decided
+		// from reviews, rollups and labels alone, and no comment can satisfy any of them. A thread
+		// that cannot be read is could-not-check, never "not reverted".
+		comments, err := client.listChangeComments(pr)
+		if err != nil {
+			return unverifiableNoWrite("ready", repo, pr, head,
+				"PR #"+fmt.Sprint(pr)+"'s comments could not be read, so whether the post-flip check already "+
+					"reverted this head is unknown: "+firstLineOf(err.Error()), err)
+		}
+		if reason, held := deskkit.NotRevertedHold(comments, pr, head, short(head)); held {
+			return unverifiableNoWrite("ready", repo, pr, head, reason, nil)
+		}
+
 		// TOCTOU: re-read the PR immediately before the flip. If the head moved since the
 		// checks above, refuse — the verified state is stale (GitHub's ready mutation has
 		// no compare-and-swap).
@@ -326,11 +360,17 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 		if reason := deskDecidedRefusal(pr, info2, reviews2, head); reason != "" {
 			return refused("ready", repo, pr, head, reason)
 		}
+		// (g) again on the re-read body and present labels: a line added, or a stamp removed,
+		// between the reads moves no head. The attributed events are the first read's.
+		tl2 := deskkit.StampTimeline{Present: info2.labelNames(), Events: tl.Events}
+		if res, stop := authoringStamp(repo, pr, head, fr, info2.Body, tl2, readRecord); stop {
+			return res
+		}
 
 		if opts.dryRun {
 			return dryRun("ready", repo, pr, head,
 				"DRY RUN: every ready precondition holds at "+short(head)+" (open+draft, trusted author, "+
-					"App APPROVED at head, CI green, security-review gate satisfied, desk-decided clear, head stable) — "+
+					"App APPROVED at head, CI green, security-review gate satisfied, desk-decided clear, authoring stamp clear, not reverted, head stable) — "+
 					"stopped before markPullRequestReadyForReview")
 		}
 		if err := client.markReadyForReview(info.NodeID); err != nil {

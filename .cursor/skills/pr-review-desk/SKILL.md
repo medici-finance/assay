@@ -575,6 +575,17 @@ as the planner and acts on its rows.
   here; there is no override flag, no un-ready verb, no merge verb. Exit 5 = a condition failed
   (fix it, or leave the PR parked); exit 6 = a condition could not be READ (blind, never green).
 - **A ready-flip is an authority-bearing write, so it needs a strong-tier session** — deskflip's model-capability floor refuses a flip whose dispatch is ATTESTED below the strong tier, and admits with a NOTICE any session carrying no strength attestation: an unattested or human-driven one, a `dispatched-tier:any` dispatch (since `any` records that the brief demanded no particular tier rather than that a weak runner ran), and a stamp that has AGED OUT because the dispatch claim behind it was released — a dead cycle's stamp attests nothing about the write in front of you, so the PR reads unstamped rather than being bricked by an attestation nobody can repair. The NOTICE is not a clearance — delegate work downward freely, but escalate the flip upward rather than issue it from a below-tier session.
+- **An attested worker PR leaves draft only with its authoring stamp (`authoring-stamp`).** When the
+  PR body carries a `Worker-Attestation:` line, both flip verbs (`deskflip` and `deskpost ready`)
+  read that record and refuse, exit 5, unless the PR carries the `authored-model:` /
+  `authored-tier:` pair the record selected, applied by a stamp authority. An unstamped,
+  incomplete, foreign-applied or mismatched pair all refuse, and the refusal prints the exact
+  `deskdispatch --stamp-only … --attestation <N> --model … --tier … --kit …` line built from the
+  record. An unreadable record is exit 6. A PR with no line is unaffected. Ready is the last
+  machine gate before the human's merge, and `--stamp-only` refuses a merged change, so a stamp
+  that misses this gate can never land. That stamp is the coordinator's act, not this desk's:
+  hand the refused PR and its printed line to `the-desk` and leave the PR parked. Never apply an
+  `authored-*` label yourself.
 - **Your dispatch is what makes a review verdict attestable — stamp it.** The floor accepts a `dispatched-*` stamp only from the App that DISPATCHED the session, and for the review lane that App is the reviewer App, not the desk App: this loop drives its own reviewers, so it is this loop's dispatch that must carry the model attestation. `deskdispatch --kit review` mints the reviewer identity and applies the stamp for you; a reviewer launched by any path that skips it carries no attestation, and its verdict clears the floor only on the unstamped NOTICE branch. **That NOTICE branch is RISK-CONDITIONAL (ruling 3):** on a risk-classed PR — every public-repo PR, and any diff touching a security path — a security-review-bearing verdict must carry a trustable strong-tier attestation, so an UNSTAMPED verdict there REFUSES rather than proceeds. Dispatch such reviewers strong-tier through `deskdispatch --kit review`; the NOTICE-proceed is left only for unstamped NON-risk PRs. Never apply a `dispatched-*` label by hand — a stamp the session could have written for itself is the self-report the whole mechanism exists to defeat.
   Only the human's explicit waiver substitutes for a missing security artifact. Post the wrap-up
   comment listing filed follow-ups as `<repo>#<N>` pointers. **Merge stays the human's.**
@@ -1111,6 +1122,22 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   that cannot be honestly `n/a`'d and was not checked is `could-not-check`, never a silent
   approve. The register's home is that reference — this body never restates its rows. The
   project layer may append classes and never removes a base one.
+- **An author's explicit disposition on a finding is final — accept it or escalate it once.**
+  When the change's author (or a trusted human maintainer) answers a finding class explicitly
+  — won't fix, fixed a different way, tracked separately, or a dispute backed with evidence —
+  the reviewer's next move on that class is exactly one of two, whether or not code changed:
+  ACCEPT it (the class resolves in the verdict's finding block as `state: resolved`, with
+  `evidenceHead` the reviewed head and `resolution` carrying `resolved-by-author-disposition`,
+  the disposition's comment link and its own head in `evidence` or `explanation` — the kit's
+  §22 states this v1 encoding; the flip gates are untouched, so a
+  standing request-for-changes at an unchanged head clears at the next push or by the human)
+  or ESCALATE it once (the kit's reviewer-named arbiter hand-off, filed by the desk, changing
+  nothing about the finding's blocking status). A re-statement round is neither. The security
+  lane and every security / public-surface / leak finding never take the Accept move, and a
+  safety-consequence finding always escalates. Silence, a bare "done", or a disposition from
+  an identity the trust gate does not pass is no disposition; the ordinary rules govern. The
+  rule's home is the review kit (`review-prompt.md` §22, "An author's explicit disposition on
+  a finding is final"); this body never restates its boundaries.
 - **Decision-drift pass — does this diff contradict a record no one is holding in their head.**
   Check the diff against three BOUNDED sources only, never a whole-repo archaeology pass: (a) the
   owning brief's own Context/constraints, (b) a finding in the findings register that names the
@@ -1316,12 +1343,17 @@ concluding anything about install state.
 - **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
   workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
   standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
-  `gh pr create --draft`). **The verify desk lands its own work**: its Evidence + status flips commit
-  straight to `main` as the project directs — no push-go is needed there and none should be waited
-  for. Any `main` push not covered by a standing authorization is gated on the driver's explicit go;
-  committing local work is always fine. A guard/hook-BLOCKED push is a STOP signal — never route the
-  same write through another tool. Each desk's own grants and denials (what it may flip, file, close,
-  or land) stay in its skill, directly below this block.
+  `gh pr create --draft`).
+  **The verify desk lands verdicts through the project's verdict-transcription lane** where the
+  project has armed it — a signed verdict issue that a workflow lands on `main`, never a session
+  push; where the lane is not armed it lands per its own skill's §Landing. Those two routes need
+  no push-go and none should be waited for; a break-glass `main` write in a project where the
+  lane is armed is NOT one of them: it is for when the lane is down, and it waits for the
+  driver's go. Any `main` push not covered by a standing authorization is
+  gated on the driver's explicit go; committing local work is always fine. A guard/hook-BLOCKED
+  push is a STOP signal — never route the same write through another tool. Each desk's own
+  grants and denials (what it may flip, file, close, or land) stay in its skill, directly below
+  this block.
   - Desk-specific: this desk flips PRs ready via `deskflip` (merge stays the human's) and does NOT
     commit Evidence (that is verify-desk / post-merge).
 - **Reversibility test — default-forward on anything a human-held gate still catches:** before

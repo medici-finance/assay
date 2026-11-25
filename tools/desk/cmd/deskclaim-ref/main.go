@@ -40,7 +40,7 @@
 //
 //	deskclaim-ref acquire  <id> [--repo O/R] [--owner O] [--branch B]
 //	deskclaim-ref progress <id> [--repo O/R] [--owner O] --branch B
-//	deskclaim-ref release  <id> [--repo O/R]
+//	deskclaim-ref release  <id> [--repo O/R] [--owner O]
 //	deskclaim-ref steal    <id> --reason "<why>" [--repo O/R] [--owner O]
 //	deskclaim-ref show     <id> [--repo O/R]
 //	deskclaim-ref list          [--repo O/R]
@@ -91,7 +91,7 @@ tools/dispatch-claim.sh; the only claim path that runs native on Windows).
 USAGE:
   deskclaim-ref acquire  <id> [--repo O/R] [--owner O] [--branch B]
   deskclaim-ref progress <id> [--repo O/R] [--owner O] --branch B
-  deskclaim-ref release  <id> [--repo O/R]
+  deskclaim-ref release  <id> [--repo O/R] [--owner O]
   deskclaim-ref steal    <id> --reason "<why>" [--repo O/R] [--owner O]
   deskclaim-ref show     <id> [--repo O/R]
   deskclaim-ref list          [--repo O/R]
@@ -100,16 +100,28 @@ USAGE:
 <id> is the claim key: <repo>--<stream>--<NN> or <repo>--issue-<NN>. The <repo> prefix is
 MANDATORY — a bare stream name cross-locks another repo's stream.
 
+A value flag takes "--flag value" or "--flag=value". A missing or empty value, one made only
+of whitespace, or another "--" option where the value belongs, is refused (exit 5). A
+"--perf-*" flag also refuses a missing value or a "--" option in its place, but an empty
+value there clears the inherited performance value. "--branch -" records a branchless
+claim (a detached review or verify home).
+
 The forge credential is read from --token-file <0600 file> when given, else GH_TOKEN /
 GITHUB_TOKEN / GITLAB_TOKEN. The forge (github/gitlab) resolves from ASSAY_REPO_FORGES or the
 origin remote host; every forge call is an in-process git-smart-HTTP request (no gh/glab CLI).
 
 acquire   take the claim if free; reclaim it if the holder is past its TTL; refuse (exit 5)
-          if a live holder owns it. Never steals a live claim inline.
+          if a live holder owns it. Review dispatch supplies --review-run <dispatch ref>
+          to bind its checkout to this acquisition and subsequent progress.
 progress  advance an acquired claim to state=dispatched (TTL 20m -> 120m).
-release   delete the claim ref (branch-as-claim takes over). A missing claim is a no-op.
+release   delete the caller-owned claim at the revision read. A missing claim is a no-op.
+          A different or unidentified owner is refused (exit 5). The owner defaults to
+          DESK_SESSION, then CLAUDE_SESSION_ID. Legacy ownerless claims require an explicit
+          takeover or an expired lease before another worker can acquire them.
 steal     forcibly take the claim, recording --reason in the replacement — an auditable
-          takeover, not a hand-delete.
+          takeover, not a hand-delete. If you reclaimed an unlaunched lease, run
+          deskclaim-ref release <id> --repo O/R --token-file FILE in the same DESK_SESSION,
+          then rerun the original deskdispatch command with its normal admission flags.
 show      print the claim's holder/state/branch/age, or FREE. A claim still at state=claimed
           past CLAIMED_TTL_MIN (default 20m) carries a trailing PREPARED-NOT-LAUNCHED note:
           its dispatch was prepared and never progressed, so no agent is known to run behind it.

@@ -1,6 +1,8 @@
 package contexthandoff
 
 import (
+	"fmt"
+
 	"github.com/medici-finance/assay/statusgen/workref"
 	"regexp"
 )
@@ -42,4 +44,25 @@ func ResolveQualifiedID(ref string, declaring *QID) (QID, error) {
 		return QID{}, err
 	}
 	return QID{Cell: resolved.Cell, Repo: resolved.Repo, Stream: resolved.Stream, NN: resolved.Number}, nil
+}
+
+// ResolveWorkSubject is the version-aware edge adapter in front of the strict
+// legacy grammar. It resolves a typed brief reference against the declaring
+// root and registry, passes the reference's old unprefixed fullId to the
+// unchanged ResolveQualifiedID, and returns that QID with the retained exact
+// subject. A milestone has no fullId alias and is refused. No handoff record
+// field is added, so every record keeps its canonical form and digest.
+func ResolveWorkSubject(ref string, declaring *workref.Context, registry workref.Registry) (QID, workref.Subject, error) {
+	resolved, err := workref.Resolve(ref, declaring, registry, workref.TypedBrief)
+	if err != nil {
+		return QID{}, workref.Subject{}, err
+	}
+	if resolved.Compatibility == "" {
+		return QID{}, workref.Subject{}, fmt.Errorf("%q has no brief fullId", ref)
+	}
+	q, err := ResolveQualifiedID(resolved.Compatibility, nil)
+	if err != nil {
+		return QID{}, workref.Subject{}, err
+	}
+	return q, workref.SubjectOf(resolved), nil
 }

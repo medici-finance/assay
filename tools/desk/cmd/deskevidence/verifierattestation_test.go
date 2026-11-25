@@ -88,7 +88,7 @@ func TestVerifierEvidenceTargetBoundToAttestedBrief(t *testing.T) {
 	t.Run("outcome-record", func(t *testing.T) {
 		f, errBuf := setupFake(t)
 		verifierEvidenceAdmissionFn = stub
-		rec := `{"brief":"y/02","ts":"2026-10-06T00:00:00Z","verdict":"verified","digest":"0123456789abcdef"}`
+		rec := `{"brief":"y/02","ts":"2026-10-06T00:00:00Z","outcome":"verified","digest":"0123456789abcdef"}`
 		root := t.TempDir()
 		// The record sits OUTSIDE the home, where a --root landing requires it.
 		record := writeRepoFile(t, "record.json", rec)

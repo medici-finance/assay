@@ -6,7 +6,7 @@
 # something somebody has to remember to notice.
 #
 # Run:  make plugin-drift                      (advisory; always exit 0)
-#       go run ./tools/plugindrift --fail-on-drift   (exit 1 on any drift)
+#       cd tools/plugindrift && go run . --fail-on-drift --root ../..   (exit 1 on any drift)
 #
 # CANONICAL-HERE. Since the harness-portability/02 authority flip (2026-08-11)
 # the five method-text skills are declared `canonical:` — the bundle IS their
@@ -49,6 +49,13 @@ files: []
   # the key never having existed.
 
 canonical:
+  - path: skills/article-craft/SKILL.md
+    reason: >-
+      Portable article briefing, genre selection, evidence review and reader comprehension.
+      The bundled genre and calibration references accompany the canonical skill.
+  - path: skills/prose-cadence/SKILL.md
+    reason: >-
+      Canonical revision method for pacing and register in verified long-form prose.
   # ---------------------------------------------------------------------------
   # education/04 (Phase 0 ruling 2) / assay-dogfood/07. intake-desk moved here
   # from `files:` — the convergence brief replaced the hand-scrubbed port
@@ -240,8 +247,8 @@ unported:
 #     The Codex AGENTS.md fragment (HP/03 ruling A1: Codex CLI for v1), framed
 #     as one `## ` section for AGENTS.md composition (HP/01 §3.1).
 #
-# Regenerate:  go run ./tools/harnessgen resident
-# CI enforces: go run ./tools/harnessgen resident --check   (.github/workflows/tools.yml)
+# Regenerate:  cd tools/harnessgen && go run . resident --root ../..
+# CI enforces: cd tools/harnessgen && go run . resident --check --root ../..   (.github/workflows/tools.yml)
 #   0 clean · 1 drift (source edited without regenerating, or an artifact
 #   hand-edited) · 2 could-not-check (source missing/unparseable). The check
 #   also runs in tools/harnessgen's unit suite (TestCommittedArtifactsMatchSource),
@@ -283,7 +290,7 @@ unported:
 #     removing a skill. No exclusions today — every current skill runs/degrades/
 #     refuses on Codex CLI, all of which ship (see references/codex.md).
 #
-# Regenerate:  go run ./tools/harnessgen codex
+# Regenerate:  cd tools/harnessgen && go run . codex --root ../..
 # CI enforces: tools/harnessgen's unit suite (TestCodexCommittedManifestMatchesSource
 #   + the TestCodex* skew/coverage/binding tests) runs `codex --check` against the
 #   repo root inside the harnessgen `go test` matrix leg (.github/workflows/tools.yml,

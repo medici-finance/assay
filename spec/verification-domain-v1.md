@@ -37,6 +37,18 @@ and their existing semantic owners. Neither a digest nor a valid record proves a
 those observations. Importers must bind their importing cell/repository and authenticated
 source before using a record; this package performs no authorization.
 
+A typed or revisioned work reference (`b-NN`, `<ref>@N`) never reaches `NewWork` directly.
+`NewWorkAt` resolves it through `contexthandoff.ResolveWorkSubject`, calls the unchanged
+`NewWork` with the compatibility ID, and returns the `workref.Subject` beside the
+`WorkIdentity`. `CheckSubject(approved, presented)` refuses with checked-failed
+`work-subject` when the two subjects differ, and is could-not-check `work-subject` when the
+approved side has a revision and the presented side has none, so a normalized legacy ID can
+never erase a requested revision. `EvidenceRevision` builds the approved revision from a
+brief: its explicit `version`, else 1 for brief-v2, else unrevisioned. The check runs
+beside `AcceptanceBinding.Validate` and replaces nothing; no record field or digest
+changes. Any later workflow owner that binds work, evidence or rulings must compare
+subjects with `workref.SameSubject` and must not add its own alias reduction.
+
 The schema's remaining definitions are the closed state vocabularies:
 `stage-state`, `component-state`, `execution-state`, `acceptance-state`,
 `publication-state`, `retirement-state` and `hold-kind`. Their enums are the normative

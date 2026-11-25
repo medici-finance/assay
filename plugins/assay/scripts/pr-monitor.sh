@@ -92,6 +92,7 @@ prints one line per change:
 
   PR-EVENT: <slug>#<num> <kind> <old> -> <new>
     kind ∈ opened | pushed | draft-flip | state | merge-state | closed
+           | review | checks (when the installed Go monitor supports feedback)
 
 Forge-aware read: when `deskmonitor` is on PATH, a legacy cycle is run by
 `deskmonitor pr` (same arguments, knobs, state files, output and exit codes), which
@@ -309,7 +310,17 @@ if [[ -n "${PR_MONITOR_REVIEW_OBSERVATION:-}" ]]; then
   done
   observed=$(mktemp "${PR_MONITOR_REVIEW_OBSERVATION}.XXXXXX") || classified_hold "artifact directory unavailable"
   planned=$(mktemp "${PR_MONITOR_REVIEW_OBSERVATION}.XXXXXX") || { rm -f "$observed"; classified_hold "plan scratch unavailable"; }
-  if ! deskboard review-queue --out "$observed" > /dev/null; then
+  # Matching adapters carry only opaque head-bound feedback tokens in a private
+  # companion to the SAME collection. Older producer/consumer pairs keep the prior recipe.
+  feedback_args=()
+  feedback=""
+  if command -v deskmonitor >/dev/null 2>&1 && [[ "$(deskmonitor pr --help 2>/dev/null)" == *"--from-review"* ]] &&
+     [[ "$(deskboard review-queue --help 2>/dev/null)" == *"--feedback-out"* ]]; then
+    feedback=$(mktemp "${observed}.feedback.XXXXXX") || classified_hold "feedback scratch unavailable"
+    trap 'rm -f "$feedback"' EXIT
+    feedback_args=(--feedback-out "$feedback")
+  fi
+  if ! deskboard review-queue --out "$observed" "${feedback_args[@]}" > /dev/null; then
     rm -f "$observed" "$planned"
     classified_hold "review-queue incomplete, quarantined, degraded or unavailable"
   fi
@@ -324,13 +335,21 @@ if [[ -n "${PR_MONITOR_REVIEW_OBSERVATION:-}" ]]; then
   if ! reviewloop plan --snapshot "$observed" --selection "$selection" --now "$moment" > "$planned"; then
     rm -f "$observed" "$planned"; classified_hold "shared planner refused observation/policy";
   fi
-  CLASSIFIED_JSON=$(jq -ce '[.inputs.changes[] | {repo:.identity.repository.repository, number:.identity.number, headRefOid:.identity.head, isDraft:.facts.change.IsDraft, state:"OPEN", mergeStateStatus:.facts.change.MergeStateStatus}]' "$observed") || {
-    rm -f "$observed" "$planned"; classified_hold "invalid classified event inputs";
-  }
+  if [[ -z "$feedback" ]]; then
+    CLASSIFIED_JSON=$(jq -ce '[.inputs.changes[] | {repo:.identity.repository.repository, number:.identity.number, headRefOid:.identity.head, isDraft:.facts.change.IsDraft, state:"OPEN", mergeStateStatus:.facts.change.MergeStateStatus}]' "$observed") || {
+      rm -f "$observed" "$planned"; classified_hold "invalid classified event inputs";
+    }
+  fi
   # Hand off private artifact paths, not the full population on every wake.
   # The complete plan remains advisory and consumers validate the observation.
   mv "$planned" "${PR_MONITOR_REVIEW_OBSERVATION}.plan" || { rm -f "$observed" "$planned"; classified_hold "plan publication failed"; }
   mv "$observed" "$PR_MONITOR_REVIEW_OBSERVATION" || { rm -f "$observed"; classified_hold "artifact publication failed"; }
+  if [[ -n "$feedback" ]]; then
+    deskmonitor pr --from-review "$PR_MONITOR_REVIEW_OBSERVATION" "$feedback" "${REPOS[@]}" || classified_hold "feedback or event checkpoint unavailable"
+    printf 'REVIEW-PLAN: %s\n' "${PR_MONITOR_REVIEW_OBSERVATION}.plan"
+    printf 'REVIEW-OBSERVATION: %s\n' "$PR_MONITOR_REVIEW_OBSERVATION"
+    exit 0
+  fi
   printf 'REVIEW-PLAN: %s\n' "${PR_MONITOR_REVIEW_OBSERVATION}.plan"
   printf 'REVIEW-OBSERVATION: %s\n' "$PR_MONITOR_REVIEW_OBSERVATION"
 fi

@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
 // settledCI is an Evidence table whose only Verify row (1) has a complete run.
@@ -261,8 +263,8 @@ func TestBucketAwaitingUnrecognisedAndFutureAreCouldNotCheck(t *testing.T) {
 	}
 	// Case and padding of a known value still classify.
 	for _, outcome := range []string{" Verify-Fail ", "BLOCKED"} {
-		if classifyOutcome(outcome) == outcomeUnrecognised {
-			t.Errorf("classifyOutcome(%q) = unrecognised", outcome)
+		if evaluation.ClassifyOutcome(outcome) == evaluation.OutcomeUnrecognised {
+			t.Errorf("evaluation.ClassifyOutcome(%q) = unrecognised", outcome)
 		}
 	}
 }
@@ -281,7 +283,7 @@ func TestAwaitOutcomesFutureEndToEnd(t *testing.T) {
 	if oc := awaitOutcomesFor(s, "01"); !oc.Future {
 		t.Errorf("future-dated record not flagged: %+v", oc)
 	}
-	if oc := awaitOutcomesFor(s, "02"); oc.Future || oc.Latest == nil || classifyOutcome(oc.Latest.Outcome) != outcomeUnrecognised {
+	if oc := awaitOutcomesFor(s, "02"); oc.Future || oc.Latest == nil || evaluation.ClassifyOutcome(oc.Latest.Outcome) != evaluation.OutcomeUnrecognised {
 		t.Errorf("unrecognised record not carried: %+v", oc)
 	}
 	if oc := awaitOutcomesFor(s, "03"); oc.Future || oc.Latest != nil {

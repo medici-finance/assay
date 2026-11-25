@@ -29,7 +29,7 @@ maintainer rather than applied by any automation. This paragraph
 binds the DESK's own writes; the worker is bound to the same fragment rule through the changelog clause
 `deskdispatch` emits verbatim in the worker kit.
 
-The "one item = one branch = one PR, and a merged or closed PR is DONE" invariant now has a mechanical
+The "one item = one branch = one PR, and a merged or closed PR is DONE" invariant has a mechanical
 backstop: the `desksupervise` observer reconciles every in-flight dispatch claim each tick and STOPS
 (and, for a terminal verdict, releases) any run whose item became ineligible mid-run — its PR was merged
 or closed, its board row flipped off `todo`/`in-progress`, or its claim was released/stolen — so the rule
@@ -509,6 +509,13 @@ and the coordinator's `--stamp-only` call (optionally `--attestation <N>`) refus
 whose branch, kit or model/tier disagrees with that record. The record constrains the PR
 stamp; it never stands in for it.
 
+This hand-off is the FAST path, not the only one. `--stamp-only` refuses a merged change, so two
+backstops cover a dropped hand-off. The coordinator's every-sweep authoring-stamp step (`the-desk`
+§The loop) lists each open PR whose `Worker-Attestation:` line has no complete `authored-*` pair
+(`deskboard prs`, `authoringStamp` / `stampOnly`) and runs the printed line. And both ready-flip
+verbs refuse that PR (condition `authoring-stamp`) until the pair stands and matches the record.
+Send the hand-off anyway: it lands the stamp a sweep earlier, and nothing in this desk's own lane changes.
+
 ## Dispatch — `deskdispatch <item-key>` runs the ceremony
 
 The per-item ceremony is mechanical and lives in the verb: claim-acquire → worktree-create in the
@@ -918,12 +925,17 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
 - **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
   workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
   standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
-  `gh pr create --draft`). **The verify desk lands its own work**: its Evidence + status flips commit
-  straight to `main` as the project directs — no push-go is needed there and none should be waited
-  for. Any `main` push not covered by a standing authorization is gated on the driver's explicit go;
-  committing local work is always fine. A guard/hook-BLOCKED push is a STOP signal — never route the
-  same write through another tool. Each desk's own grants and denials (what it may flip, file, close,
-  or land) stay in its skill, directly below this block.
+  `gh pr create --draft`).
+  **The verify desk lands verdicts through the project's verdict-transcription lane** where the
+  project has armed it — a signed verdict issue that a workflow lands on `main`, never a session
+  push; where the lane is not armed it lands per its own skill's §Landing. Those two routes need
+  no push-go and none should be waited for; a break-glass `main` write in a project where the
+  lane is armed is NOT one of them: it is for when the lane is down, and it waits for the
+  driver's go. Any `main` push not covered by a standing authorization is
+  gated on the driver's explicit go; committing local work is always fine. A guard/hook-BLOCKED
+  push is a STOP signal — never route the same write through another tool. Each desk's own
+  grants and denials (what it may flip, file, close, or land) stay in its skill, directly below
+  this block.
   - Desk-specific: **any cluster or live-infrastructure contact is outside a worker's envelope —
     read-only included.** Mutating verbs stay denied for every desk role; a worker that needs live
     state reports could-not-check + BLOCKED-ON-HUMAN, never a probe.
