@@ -1416,10 +1416,10 @@ Verification-Attestation: medici-finance/assay#7717 run=a3cffec76d39cbe5d4cc2d4b
 - 2 rows on the host: rows 6 and 7.
 
 Two rows do not pass, and neither is an observed failure of an obligation this brief delivered:
-- Row 10 stays held on its check definition (medici-finance/assay#1927).
-- Row 9 is held. Its printed rc is 1 because of the main-wide lint red (medici-finance/assay#4823), and no PROBLEM names this brief. Its verifyrun cell reads pass only because `; echo rc=$?` exits 0; this pass does not credit it.
+- Row 10 is recorded `could-not-run` and stays held on its check definition (medici-finance/assay#1927). The consumers gate produced no decisive reading for the row's Expect: it printed PRODUCER-DELIVERY: COULD-NOT-CHECK with 0 disproved.
+- Row 9 is recorded `fail`. It ran and printed rc=1 against its Expect `rc=0` (rule 37), as the 2026-10-30 and 2026-11-13 records graded it. The cause is the main-wide offline lint red (medici-finance/assay#4823), and no PROBLEM names this brief. Its verifyrun cell reads pass only because `; echo rc=$?` exits 0. That trailing `; echo` also puts the row outside rule 51's exact class, so the `--rule51` lane cannot credit it either. The row's check definition is tracked on medici-finance/assay#7773.
 
-Grading either row would need a reading of a check definition or of a lint scope that this verifier does not own, so both are recorded as BLOCKED against their open issues. A fresh verifier dispatch is due once medici-finance/assay#1927 and medici-finance/assay#4823 resolve.
+Neither non-pass row traces to the delivery, so the run is recorded as BLOCKED against the rows' check definitions. A fresh verifier dispatch is due once medici-finance/assay#7773 (row 9) and medici-finance/assay#1927 (row 10) resolve. medici-finance/assay#4823 is context for row 9: its resolution alone cannot clear the row.
 
 **Risk-bearing values.** The trigger did not fire. Risk metadata is present, irreversible is no, and the change is statusgen tooling. The values were enumerated anyway and re-read at 77ff0f2222a2 over statusgen/coverage.go, statusgen/evaluation/coverage.go, coverage_api.go, coverage_repo.go, identity.go and the verifyrun truncation. The read-set floor's own constants belong to build-less-brittle/15 and are not enumerated here. Every entry can be reversed by an edit and a redeploy.
 
@@ -1447,7 +1447,7 @@ Ranking: the revision-shape bounds come first, then the exit codes, then the sea
   - A change made only under docs/streams, or only to STATUS.md, never stales a witness in the conservative scope.
   - A row that reads docs/streams, such as row 9's lint, could keep a reused pass after an edit there.
 
-**VERIFY: BLOCKED** — row 10 held on its check definition (medici-finance/assay#1927, open) and row 9 on the main-wide lint red (medici-finance/assay#4823, open). Witness at 77ff0f2222a2: the other 12 rows pass with their Expect met (10 in the bracketed network-off container, digest match, row 1 included; 2 on the host). No delivered obligation was observed failing. Coverage stays held.
+**VERIFY: BLOCKED** — row 9 recorded fail and held on its check definition (medici-finance/assay#7773, open; main-wide lint red medici-finance/assay#4823 as context), and row 10 recorded could-not-run and held on its check definition (medici-finance/assay#1927, open). Witness at 77ff0f2222a2: the other 12 rows pass with their Expect met (10 in the bracketed network-off container, digest match, row 1 included; 2 on the host). No delivered obligation was observed failing. Coverage stays held.
 
 ## Review
 Gate: model (from frontmatter). Reviewer records verdict + date in the stream README table.
