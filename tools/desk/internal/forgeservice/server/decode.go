@@ -1,6 +1,5 @@
-// Package server is preparation for the read-only forge-service handler.
-// The wire-only preparation is unqualified. It opens no listener and grants
-// no caller authority or forge access.
+// Package server contains unqualified read-only forge-service preparation.
+// The package opens no listener and grants no caller authority or forge access.
 package server
 
 import (

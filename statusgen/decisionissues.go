@@ -387,6 +387,13 @@ func renderCardLinks(c gateCard) string {
 // the reader constrains only a card a filer or a person adds to a
 // decision-gate body.
 func readGateCard(body string) (*gateCard, error) {
+	c, _, err := readGateCardBlock(body)
+	return c, err
+}
+
+// readGateCardBlock is readGateCard that also returns the card block: the exact
+// card line, delimiters included, that a ruling-subject line digests.
+func readGateCardBlock(body string) (*gateCard, string, error) {
 	// A forge web edit stores CRLF; card and marker checks read one form.
 	body = strings.ReplaceAll(body, "\r\n", "\n")
 	prose := stripCode(body)
@@ -398,25 +405,25 @@ func readGateCard(body string) (*gateCard, error) {
 	}
 	switch {
 	case len(lines) == 0:
-		return nil, nil
+		return nil, "", nil
 	case len(lines) > 1 || strings.Count(prose, cardPrefix) != 1:
 		// A second record, even mid-line, makes the present card ambiguous.
-		return nil, fmt.Errorf("ambiguous card links")
+		return nil, "", fmt.Errorf("ambiguous card links")
 	case !strings.HasSuffix(lines[0], " -->"):
-		return nil, fmt.Errorf("malformed card links")
+		return nil, "", fmt.Errorf("malformed card links")
 	}
 	raw := strings.TrimSuffix(strings.TrimPrefix(lines[0], cardPrefix), " -->")
 	var c gateCard
 	dec := json.NewDecoder(strings.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&c); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if (c.Purpose == cardDecision && verifyMarkerRe.MatchString(body)) || (c.Purpose == cardAcceptance && (decisionGateMarkerRe.MatchString(body) || decisionMarkerRe.MatchString(body))) {
-		return nil, fmt.Errorf("combined cards are unsupported")
+		return nil, "", fmt.Errorf("combined cards are unsupported")
 	}
 	if c.Schema != "gate-card/v1" || (c.Purpose != cardDecision && c.Purpose != cardAcceptance) || c.Brief == "" || !refInRepoBriefRe.MatchString(c.Local) || c.Version < 1 {
-		return nil, fmt.Errorf("invalid card links")
+		return nil, "", fmt.Errorf("invalid card links")
 	}
 	// Canonical identity may be local or v2; neither may name a different item.
 	if c.Brief != c.Local {
@@ -424,11 +431,11 @@ func readGateCard(body string) (*gateCard, error) {
 		// classifier; this check only checks internal consistency, never resolves it.
 		_, alias, stream, num, ok := parseBriefV2ID(c.Brief)
 		if !ok || alias == "" || stream+"/"+num != c.Local {
-			return nil, fmt.Errorf("mixed card identities")
+			return nil, "", fmt.Errorf("mixed card identities")
 		}
 	}
 	if dec.Decode(new(any)) != io.EOF {
-		return nil, fmt.Errorf("trailing card data")
+		return nil, "", fmt.Errorf("trailing card data")
 	}
-	return &c, nil
+	return &c, lines[0], nil
 }
