@@ -32,6 +32,11 @@ func landedClosureTree(root, target string, before, after []byte, exists bool, f
 	if !isVerifyOutcomesSidecar(target) || len(verifiedBriefsAdded(before, after, exists)) == 0 {
 		return root, "", noop, nil
 	}
+	return pinLandedClosureTree(root, target, before, exists, fg, repo, branch, receipt)
+}
+
+func pinLandedClosureTree(root, target string, before []byte, exists bool, fg deskkit.Forge, repo deskkit.ForgeRepo, branch string, receipt deskkit.VerifierReceipt) (string, string, func(), error) {
+	noop := func() {}
 	tip, err := fg.GetCommit(repo, branch)
 	if err != nil || tip == nil || len(tip.SHA) != 40 {
 		return "", "", noop, deskkit.Unverifiable("cannot resolve exact landed closure commit", err)

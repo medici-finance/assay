@@ -283,6 +283,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// for a BLOCKED or could-not-check re-run of a verified or done brief, whose Evidence
 	// append the verdict gate refuses (outcomeonly.go).
 	outcomeOnly := fs.Bool("outcome-only", false, "with --outcome-record: record a non-decisive re-run of a verified or done brief whose Evidence append is refused; the record states evidence_withheld and its sha is the admitted observation commit")
+	flipVerified := fs.Bool("flip-verified", false, "with --outcome-record: commit a model-gated verified transition and its PASS record together")
 	// --remove-superseded removes ONE outcome record that the --superseded-by record for the
 	// same brief supersedes, as a pinned conditional forge write (removesuperseded.go).
 	removeSuperseded := fs.String("remove-superseded", "", "repo-relative path of an outcome record to remove; it must be superseded by the --superseded-by record for the same brief (lands as a pinned conditional forge write)")
@@ -381,7 +382,10 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		if ferr := refuseUnhonouredFlags(fs, routeOutcomeRecord); ferr != nil {
 			return ferr
 		}
-		return cmdOutcomeRecordWrite(*outcomeRecord, repoSlug, owner, name, branch, *root, *outcomeOnly, *dryRun, ac)
+		if *flipVerified && *outcomeOnly {
+			return deskkit.Refused("refused: --flip-verified and --outcome-only are mutually exclusive")
+		}
+		return cmdOutcomeRecordWrite(*outcomeRecord, repoSlug, owner, name, branch, *root, *outcomeOnly, *flipVerified, *dryRun, ac)
 	}
 	if *outcomeOnly {
 		return deskkit.Refused("refused: --outcome-only is valid only with --outcome-record")

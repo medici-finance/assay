@@ -66,6 +66,7 @@ package main
 // it with the lint before/after and the verifier-identity commit on a branch.
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -116,6 +117,8 @@ Flags:
   --brief <stream>/<NN>   the brief key (required)
   --sha <sha>             the commit the recorded run must name (7–40 hex, required)
   --runner <login>        the runner login the recorded run must name (required)
+  --plan-outcome <binding> with --dry-run and a full --sha, read a candidate outcome on stdin
+                           and emit a JSON README plan for a paired verifier landing
   --root <dir>            repo root (default: the cwd)
   --dry-run               print the stamp, write nothing
 `
@@ -166,6 +169,10 @@ var (
 
 // runVerifyflip is the `statusgen verifyflip` entry point.
 func runVerifyflip(args []string, stdout, stderr io.Writer) int {
+	return runVerifyflipInput(args, os.Stdin, stdout, stderr)
+}
+
+func runVerifyflipInput(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("verifyflip", flag.ContinueOnError)
 	defer transitionFlags(fs)()
 	fs.SetOutput(stderr)
@@ -175,6 +182,7 @@ func runVerifyflip(args []string, stdout, stderr io.Writer) int {
 	runner := fs.String("runner", "", "")
 	rootDir := fs.String("root", ".", "")
 	dryRun := fs.Bool("dry-run", false, "")
+	planOutcome := fs.String("plan-outcome", "", "")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			fmt.Fprint(stdout, verifyflipUsage)
@@ -192,7 +200,23 @@ func runVerifyflip(args []string, stdout, stderr io.Writer) int {
 		return verifyflipExitCouldNotCheck
 	}
 
-	plan, err := planVerifyFlip(*rootDir, *briefKey, *sha, *runner)
+	var candidate *flipOutcomeCandidate
+	hasCandidate := false
+	fs.Visit(func(f *flag.Flag) { hasCandidate = hasCandidate || f.Name == "plan-outcome" })
+	if hasCandidate {
+		if !*dryRun || len(*sha) != 40 || *planOutcome == "" {
+			fmt.Fprintln(stderr, "statusgen verifyflip: --plan-outcome requires an attestation binding, --dry-run, and a full --sha")
+			return verifyflipExitCouldNotCheck
+		}
+		const maxRecordBytes = 1 << 20
+		raw, err := io.ReadAll(io.LimitReader(stdin, maxRecordBytes+1))
+		if err != nil || len(raw) > maxRecordBytes {
+			fmt.Fprintln(stderr, "statusgen verifyflip: cannot read candidate outcome record")
+			return verifyflipExitCouldNotCheck
+		}
+		candidate = &flipOutcomeCandidate{raw: raw, binding: *planOutcome}
+	}
+	plan, err := planVerifyFlipWithOutcome(*rootDir, *briefKey, *sha, *runner, candidate)
 	if err != nil {
 		var r *flipRefusal
 		if errors.As(err, &r) {
@@ -205,6 +229,14 @@ func runVerifyflip(args []string, stdout, stderr io.Writer) int {
 	rel, rerr := filepath.Rel(*rootDir, plan.Readme)
 	if rerr != nil {
 		rel = plan.Readme
+	}
+	if candidate != nil {
+		plan.Readme = filepath.ToSlash(rel)
+		if err := json.NewEncoder(stdout).Encode(plan); err != nil {
+			fmt.Fprintf(stderr, "statusgen verifyflip: could-not-check — write plan: %v\n", err)
+			return verifyflipExitCouldNotCheck
+		}
+		return verifyflipExitOK
 	}
 	fmt.Fprintf(stdout, "brief: %s\nreadme: %s\nverified-stamp: %s\n", *briefKey, filepath.ToSlash(rel), plan.Stamp)
 	if *dryRun {
@@ -231,6 +263,15 @@ func runVerifyflip(args []string, stdout, stderr io.Writer) int {
 // planVerifyFlip runs every check and returns what would be written. A
 // *flipRefusal error refuses; any other error is could-not-check.
 func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, error) {
+	return planVerifyFlipWithOutcome(root, key, wantSHA, wantRunner, nil)
+}
+
+type flipOutcomeCandidate struct {
+	raw     []byte
+	binding string
+}
+
+func planVerifyFlipWithOutcome(root, key, wantSHA, wantRunner string, candidate *flipOutcomeCandidate) (verifyFlipPlan, error) {
 	stream, num, ok := splitBriefKey(key)
 	if !ok || strings.Contains(stream, ":") {
 		return verifyFlipPlan{}, fmt.Errorf("--brief must be <stream>/<NN>, got %q", key)
@@ -350,7 +391,13 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 	// verify-outcome record. Its latest record must name this revision and say
 	// verified; absent, another revision or another result refuses, and an
 	// unreadable record is could-not-check (flipoutcome.go).
-	if err := flipOutcomeCheck(root, key, wantSHA); err != nil {
+	if candidate != nil {
+		bindings := protectedMarkersNamed(normalizedProtectedEvidence(run), "Verification-Attestation:")
+		if len(bindings) != 1 || !bindings[0].literal || bindings[0].text != candidate.binding {
+			return verifyFlipPlan{}, refuseFlip("the latest PASS must name exactly the admitted verification attestation")
+		}
+	}
+	if err := flipOutcomeCheck(root, key, wantSHA, candidate); err != nil {
 		return verifyFlipPlan{}, err
 	}
 
