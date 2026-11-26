@@ -47,7 +47,7 @@ func TestProjectedMirrorAccountsForCompleteInventory(t *testing.T) {
 				if test.overflow {
 					padding = strings.Repeat("x", int(adapters.MaxUpdateBytes)/2)
 				}
-				writeMetadataFixture(w, more, number, padding)
+				writeMetadataFixture(t, w, more, number, padding)
 			})
 			source, err := NewGitHubMetadataMirrorIngestSource(fixture.source.source, fixture.admission.ID(),
 				fixture.plan.AttemptGrant.SourceID, fixture.clock.Now, fixture.authority)
@@ -73,8 +73,12 @@ func TestProjectedMirrorAccountsForCompleteInventory(t *testing.T) {
 	}
 }
 
-func writeMetadataFixture(w http.ResponseWriter, more bool, number int, padding string) {
-	fmt.Fprintf(w, `{"data":{"repository":{"nameWithOwner":"o/r","pullRequests":{"totalCount":2,"pageInfo":{"hasNextPage":%t,"endCursor":"page-2"},"nodes":[{"number":%d,"title":"title","state":"OPEN","createdAt":"2026-11-02T12:00:00Z","updatedAt":"2026-11-02T12:00:00Z","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","labels":{"totalCount":0,"nodes":[],"pageInfo":{"hasNextPage":false}},"reviewRequests":{"totalCount":0,"nodes":[],"pageInfo":{"hasNextPage":false}}}]}}},"padding":"%s"}`, more, number, padding)
+func writeMetadataFixture(t *testing.T, w http.ResponseWriter, more bool, number int, padding string) {
+	t.Helper()
+	_, err := fmt.Fprintf(w, `{"data":{"repository":{"nameWithOwner":"o/r","pullRequests":{"totalCount":2,"pageInfo":{"hasNextPage":%t,"endCursor":"page-2"},"nodes":[{"number":%d,"title":"title","state":"OPEN","createdAt":"2026-11-02T12:00:00Z","updatedAt":"2026-11-02T12:00:00Z","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","labels":{"totalCount":0,"nodes":[],"pageInfo":{"hasNextPage":false}},"reviewRequests":{"totalCount":0,"nodes":[],"pageInfo":{"hasNextPage":false}}}]}}},"padding":"%s"}`, more, number, padding)
+	if err != nil {
+		t.Errorf("write metadata response: %v", err)
+	}
 }
 
 func TestProjectedMirrorWarmsProvisionedPostgres(t *testing.T) {
@@ -93,7 +97,7 @@ func TestProjectedMirrorWarmsProvisionedPostgres(t *testing.T) {
 				return
 			}
 		}
-		writeMetadataFixture(w, n == 1, n, "")
+		writeMetadataFixture(t, w, n == 1, n, "")
 	}))
 	defer upstream.Close()
 	repo := ForgeRepo{Owner: "o", Name: "r"}
@@ -158,7 +162,7 @@ func TestProjectedMirrorWarmsProvisionedPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer raw.Close()
+	defer func() { _ = raw.Close() }()
 	var used, observed int
 	err = raw.QueryRowContext(ctx, `SELECT (SELECT http_used FROM public.refresh_budgets),
 		(SELECT count(*) FROM public.refresh_attempts WHERE observed AND response_complete)`).Scan(&used, &observed)
