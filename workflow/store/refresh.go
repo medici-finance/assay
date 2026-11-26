@@ -198,6 +198,20 @@ func (g *RefreshGate) grant(f refreshFill, k refresh.FillKey) mirror.AttemptGran
 	return mirror.AttemptGrant{ID: string(f.generation), Generation: string(f.generation), SourceID: k.SourceID, Scope: k.Scope, CallerID: string(f.owner), AccessEpoch: k.AccessEpoch, ConfigEpoch: k.ConfigEpoch, PolicyClass: k.PolicyClass, PolicyEpoch: k.PolicyEpoch, MaxHTTPAttempts: g.config.Native.PerFill, ExpiresAt: f.expires}
 }
 func (g *RefreshGate) Acquire(ctx context.Context, d refresh.Demand) (refresh.Ticket, error) {
+	return g.acquire(ctx, d, false)
+}
+
+// AcquireWarm supplies bounded background demand without changing the
+// provisioned interactive wait. The caller remains subject to its current
+// authority, normal waiter cap, shared fill quota and reservation budget.
+func (g *RefreshGate) AcquireWarm(ctx context.Context, d refresh.Demand) (refresh.Ticket, error) {
+	if d.Requirements.RequireReviews {
+		return refresh.Ticket{}, refresh.ErrPolicy
+	}
+	return g.acquire(ctx, d, true)
+}
+
+func (g *RefreshGate) acquire(ctx context.Context, d refresh.Demand, warm bool) (refresh.Ticket, error) {
 	if g == nil || ctx == nil {
 		return refresh.Ticket{}, refresh.ErrHeld
 	}
@@ -311,7 +325,11 @@ func (g *RefreshGate) Acquire(ctx context.Context, d refresh.Demand) (refresh.Ti
 	if e != nil {
 		return refresh.Ticket{}, e
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO public.refresh_waiters(ticket_id,admission,fill_key,generation,caller_id,reviews,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7)`, []byte(id), []byte(g.config.AdmissionID), key, f.generation, []byte(d.CallerID), d.Requirements.RequireReviews, now.Add(g.config.Limits.WaitTimeout)); e != nil {
+	waiterExpiry := now.Add(g.config.Limits.WaitTimeout)
+	if warm {
+		waiterExpiry = f.expires
+	}
+	if _, e = tx.ExecContext(ctx, `INSERT INTO public.refresh_waiters(ticket_id,admission,fill_key,generation,caller_id,reviews,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7)`, []byte(id), []byte(g.config.AdmissionID), key, f.generation, []byte(d.CallerID), d.Requirements.RequireReviews, waiterExpiry); e != nil {
 		return refresh.Ticket{}, refresh.ErrHeld
 	}
 	if e = g.current(ctx, d.CallerID, d.Key.Scope); e != nil {
@@ -357,10 +375,24 @@ func refreshState(f refreshFill, now time.Time, reviews bool) refresh.State {
 	return s
 }
 func (g *RefreshGate) Wait(ctx context.Context, t refresh.Ticket) (refresh.State, error) {
+	if g == nil {
+		return refresh.State{}, refresh.ErrHeld
+	}
+	return g.wait(ctx, t, g.config.Limits.WaitTimeout)
+}
+
+func (g *RefreshGate) WaitWarm(ctx context.Context, t refresh.Ticket) (refresh.State, error) {
+	if g == nil {
+		return refresh.State{}, refresh.ErrHeld
+	}
+	return g.wait(ctx, t, g.config.Limits.FillTimeout)
+}
+
+func (g *RefreshGate) wait(ctx context.Context, t refresh.Ticket, timeout time.Duration) (refresh.State, error) {
 	if g == nil || ctx == nil {
 		return refresh.State{}, refresh.ErrHeld
 	}
-	ctx, cancel := context.WithTimeout(ctx, g.config.Limits.WaitTimeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	timer := time.NewTicker(g.config.PollInterval)
 	defer timer.Stop()
