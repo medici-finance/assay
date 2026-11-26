@@ -1,0 +1,83 @@
+{
+  "test": "go test ./internal/deskkit/ -count=1 -timeout 300s -run 'TestBackstop|TestRevertMarker|TestNotReverted|TestReadyBackstop'",
+  "control": {
+    "name": "CONTROL — invert the recorded-cause test (a revert whose cause still holds clears, and one whose cause cleared holds)",
+    "file": "internal/deskkit/readybackstop.go",
+    "old": "\tif len(still) > 0 {\n\t\treturn \"the cause it recorded still holds: \"",
+    "new": "\tif len(still) == 0 {\n\t\treturn \"the cause it recorded still holds: \""
+  },
+  "mutations": [
+    {
+      "name": "#7096: a recorded cause that still holds no longer holds the head (the latch clears on any read — reddens TestNotRevertedCauseStillHolds)",
+      "file": "internal/deskkit/readybackstop.go",
+      "old": "\tif len(still) > 0 {\n\t\treturn \"the cause it recorded still holds: \"",
+      "new": "\tif false && len(still) > 0 {\n\t\treturn \"the cause it recorded still holds: \""
+    },
+    {
+      "name": "#7096: a FAILED fresh read releases the head (the latch fails open — reddens TestNotRevertedReadFailsClosed)",
+      "file": "internal/deskkit/readybackstop.go",
+      "old": "firstLineOf(err.Error()) + \"), so it still holds.\" + tail, true",
+      "new": "firstLineOf(err.Error()) + \"), so it still holds.\" + tail, false"
+    },
+    {
+      "name": "#7096: a fresh read that returns NOTHING releases the head (reddens TestNotRevertedReadFailsClosed)",
+      "file": "internal/deskkit/readybackstop.go",
+      "old": "\"returned nothing, so it still holds.\" + tail, true",
+      "new": "\"returned nothing, so it still holds.\" + tail, false"
+    },
+    {
+      "name": "#7096: a fresh read of ANOTHER head (or none) releases this one (reddens TestNotRevertedReadFailsClosed)",
+      "file": "internal/deskkit/readybackstop.go",
+      "old": "\"still holds.%s\", lead(reverts[0]), req.HeadSHA, tail), true",
+      "new": "\"still holds.%s\", lead(reverts[0]), req.HeadSHA, tail), false"
+    },
+    {
+      "name": "#7096: a backend serving NO requirement read releases the head (reddens TestNotRevertedReadFailsClosed)",
+      "file": "internal/deskkit/readybackstop.go",
+      "old": "\"so flipping it again would be reverted again.\" + tail, true\n\t}\n\treq, err := reread()",
+      "new": "\"so flipping it again would be reverted again.\" + tail, false\n\t}\n\treq, err := reread()"
+    },
+    {
+      "name": "#7096: an unrecognised or empty recorded cause is treated as cleared (reddens TestNotRevertedReadFailsClosed)",
+      "file": "internal/deskkit/readybackstop.go",
+      "old": "\t\tif !backstopIn(knownRevertCauses, c) {",
+      "new": "\t\tif false && !backstopIn(knownRevertCauses, c) {"
+    },
+    {
+      "name": "#7096: the loop cap is lifted (a head reverted three times is re-read and flipped again — reddens TestNotRevertedCapAndNoRead)",
+      "file": "internal/deskkit/readybackstop.go",
+      "old": "\tif n := len(reverts); n >= ReadyBackstopRevertCap {",
+      "new": "\tif n := len(reverts); n >= ReadyBackstopRevertCap+100 {"
+    },
+    {
+      "name": "#7096: a legacy (no-cause) or unreadable-cause marker clears on a PARTIAL read (reddens TestNotRevertedLegacyMarker)",
+      "file": "internal/deskkit/readybackstop.go",
+      "old": "\tif !r.Recorded || backstopIn(r.Causes, RevertCauseUnreadable) {\n\t\tif len(now) == 0 {",
+      "new": "\tif !r.Recorded || backstopIn(r.Causes, RevertCauseUnreadable) {\n\t\tif true {"
+    },
+    {
+      "name": "#7096: a mergeable UNKNOWN that never settles is recorded as a cause (the backstop reverts and writes the marker — reddens TestBackstopMergeableUnknownNeverSettles)",
+      "file": "internal/deskkit/readybackstop.go",
+      "old": "\t\t\t\tif u.Cause != RevertCauseMergeable {",
+      "new": "\t\t\t\tif true {"
+    },
+    {
+      "name": "#7096: mergeable UNKNOWN is judged at once instead of re-read (reddens TestBackstopMergeableUnknownSettles)",
+      "file": "internal/deskkit/readybackstop.go",
+      "old": "\t\tif !req.mergeableUnsettled() {\n\t\t\treturn req.unmet(), false",
+      "new": "\t\tif true {\n\t\t\treturn req.unmet(), false"
+    },
+    {
+      "name": "#7096: the revert marker records no cause (every revert reads legacy — reddens TestBackstopRevertRecordsCause)",
+      "file": "internal/deskkit/readybackstop.go",
+      "old": "\t\t\tout.Unmet, out.Causes = unmetLines(unmet), unmetCauses(unmet)",
+      "new": "\t\t\tout.Unmet = unmetLines(unmet)"
+    },
+    {
+      "name": "#7096: the pre-fix latch (every matched revert holds, even once a fresh read shows its cause cleared — reddens TestNotRevertedCauseCleared and TestNotRevertedLegacyMarker)",
+      "file": "internal/deskkit/readybackstop.go",
+      "old": "\"read shows that cleared, so the revert no longer holds this head\", pr, shown, strings.Join(cleared, \"; \")), false",
+      "new": "\"read shows that cleared, so the revert no longer holds this head\", pr, shown, strings.Join(cleared, \"; \")), true"
+    }
+  ]
+}
