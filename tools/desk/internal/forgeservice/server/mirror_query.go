@@ -25,26 +25,28 @@ const PostgresSnapshot = "postgres-mirror-snapshot-v1"
 // MirrorQueryConfig comes from trusted composition. The source and admission
 // must already have the selected repository and read-only credential bound.
 type MirrorQueryConfig struct {
-	Connection store.Config
-	Roles      store.RefreshRoleProfile
-	Profile    store.RefreshConfig
-	Limits     store.MirrorLimits
-	Provenance string
-	Verifier   *auth.Verifier
-	Admission  mirror.Admission
-	Source     *deskkit.MirrorReadSource
+	Connection   store.Config
+	Roles        store.RefreshRoleProfile
+	Profile      store.RefreshConfig
+	Limits       store.MirrorLimits
+	Provenance   string
+	Verifier     *auth.Verifier
+	Admission    mirror.Admission
+	Source       *deskkit.MirrorReadSource
+	MetadataOnly bool
 }
 
 type MirrorQueryHandler struct {
-	profile   store.RefreshConfig
-	verifier  *auth.Verifier
-	admission mirror.Admission
-	source    *deskkit.MirrorReadSource
-	policy    auth.GrantScope
-	db        *store.DB
-	mirror    *store.MirrorStore
-	lifetime  context.Context
-	stop      context.CancelFunc
+	profile      store.RefreshConfig
+	verifier     *auth.Verifier
+	admission    mirror.Admission
+	source       *deskkit.MirrorReadSource
+	metadataOnly bool
+	policy       auth.GrantScope
+	db           *store.DB
+	mirror       *store.MirrorStore
+	lifetime     context.Context
+	stop         context.CancelFunc
 }
 
 type wallClock struct{}
@@ -67,7 +69,7 @@ func OpenMirrorQuery(ctx context.Context, c MirrorQueryConfig) (*MirrorQueryHand
 		PolicyEpoch: f.PolicyEpoch, Limits: f.Limits}
 	if p.Caller.ID == "" || p.Scope.Validate() != nil || p.Caller != expected ||
 		p.Scope.Repository != c.Source.RepositoryID() || p.Scope.AdmissionID != c.Admission.ID() ||
-		p.Scope.AdmissionID != f.AdmissionID || p.SourceID != f.SourceID {
+		p.Scope.AdmissionID != f.AdmissionID || p.SourceID != f.SourceID || (c.MetadataOnly && (p.Scope.Kind != mirror.Changes || !c.Source.SupportsGitHubMetadata())) {
 		return nil, auth.ErrConfig
 	}
 	openCtx, cancelOpen := context.WithTimeout(ctx, c.Connection.Timeout)
@@ -83,7 +85,7 @@ func OpenMirrorQuery(ctx context.Context, c MirrorQueryConfig) (*MirrorQueryHand
 	}
 	lifetime, stop := context.WithCancel(ctx)
 	return &MirrorQueryHandler{
-		profile: c.Profile, verifier: c.Verifier, admission: c.Admission, source: c.Source,
+		profile: c.Profile, verifier: c.Verifier, admission: c.Admission, source: c.Source, metadataOnly: c.MetadataOnly,
 		policy: p, db: db, mirror: observations, lifetime: lifetime, stop: stop,
 	}, nil
 }
@@ -144,16 +146,7 @@ func (h *MirrorQueryHandler) Handle(r *http.Request, grant auth.SignedGrant) ([]
 		if err != nil {
 			return denied()
 		}
-		clock := wallClock{}
-		gate, err := h.db.Refresh(h.mirror, h.profile, authority, clock)
-		if err != nil {
-			return nil, auth.ErrConfig
-		}
-		source, err := deskkit.NewMirrorIngestSource(h.source, p.Scope.AdmissionID, p.SourceID, clock.Now, gate)
-		if err != nil {
-			return nil, auth.ErrConfig
-		}
-		coordinator, err := refresh.New(h.lifetime, h.mirror, source, gate, clock, p.SourceID, authority)
+		coordinator, err := h.mirrorCoordinator(authority)
 		if err != nil {
 			return nil, auth.ErrConfig
 		}
@@ -187,6 +180,42 @@ func (h *MirrorQueryHandler) Handle(r *http.Request, grant auth.SignedGrant) ([]
 		return service.EncodeResponse(service.Held(q, mirror.Unknown), q)
 	}
 	return data, nil
+}
+
+// WarmMetadata is an in-process entry point for the trusted background runner.
+// It consumes the existing signed grant and exposes no snapshot data.
+func (h *MirrorQueryHandler) WarmMetadata(ctx context.Context, grant auth.SignedGrant) (bool, error) {
+	if h == nil || !h.metadataOnly {
+		return false, auth.ErrConfig
+	}
+	authority, err := h.verifier.BindRefresh(grant)
+	if err != nil {
+		return false, err
+	}
+	coordinator, err := h.mirrorCoordinator(authority)
+	if err != nil {
+		return false, err
+	}
+	p := h.policy
+	return coordinator.Warm(ctx, h.admission, mirror.Query{Scope: p.Scope, MaxAge: p.Caller.Limits.MaxFreshness}, p.Caller)
+}
+
+func (h *MirrorQueryHandler) mirrorCoordinator(authority refresh.CallerAuthority) (*refresh.Coordinator, error) {
+	clock := wallClock{}
+	gate, err := h.db.Refresh(h.mirror, h.profile, authority, clock)
+	if err != nil {
+		return nil, auth.ErrConfig
+	}
+	openSource := deskkit.NewMirrorIngestSource
+	if h.metadataOnly {
+		openSource = deskkit.NewGitHubMetadataMirrorIngestSource
+	}
+	p := h.policy
+	source, err := openSource(h.source, p.Scope.AdmissionID, p.SourceID, clock.Now, gate)
+	if err != nil {
+		return nil, auth.ErrConfig
+	}
+	return refresh.New(h.lifetime, h.mirror, source, gate, clock, p.SourceID, authority)
 }
 
 func mirrorReply(q service.Request, result refresh.Result, success bool, now time.Time) service.Response {

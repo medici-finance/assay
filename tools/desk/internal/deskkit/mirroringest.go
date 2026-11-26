@@ -17,12 +17,13 @@ import (
 // mirrorIngestSource joins the existing admitted native read composition to the
 // canonical observation port. It owns no credentials, storage or refresh loop.
 type mirrorIngestSource struct {
-	source      *MirrorReadSource
-	admissionID string
-	repository  mirror.RepositoryID
-	now         func() time.Time
-	sourceID    string
-	authority   mirror.AttemptAuthority
+	source          *MirrorReadSource
+	admissionID     string
+	repository      mirror.RepositoryID
+	now             func() time.Time
+	sourceID        string
+	authority       mirror.AttemptAuthority
+	metadataBackend *GitHubForge
 }
 
 // NewMirrorIngestSource accepts a previously admitted source and a trusted explicit
@@ -30,6 +31,10 @@ type mirrorIngestSource struct {
 // trusted credential composition, never by a request. This consistency binding
 // does not independently prove credential-installation selection.
 func NewMirrorIngestSource(source *MirrorReadSource, admissionID, sourceID string, now func() time.Time, authority mirror.AttemptAuthority) (mirror.Source, error) {
+	return newMirrorIngestSource(source, admissionID, sourceID, now, authority)
+}
+
+func newMirrorIngestSource(source *MirrorReadSource, admissionID, sourceID string, now func() time.Time, authority mirror.AttemptAuthority) (*mirrorIngestSource, error) {
 	if source == nil || source.forge == nil || admissionID == "" || strings.TrimSpace(admissionID) != admissionID || sourceID == "" || strings.TrimSpace(sourceID) != sourceID || now == nil || nilMirrorInput(authority) {
 		return nil, Refused("mirror observation source needs an admitted reader, bound admission/source, explicit clock and attempt authority")
 	}
@@ -38,6 +43,42 @@ func NewMirrorIngestSource(source *MirrorReadSource, admissionID, sourceID strin
 		return nil, err
 	}
 	return &mirrorIngestSource{source: source, admissionID: admissionID, repository: repo, now: now, sourceID: sourceID, authority: authority}, nil
+}
+
+// NewGitHubMetadataMirrorIngestSource selects the bounded pull request metadata
+// projection for a repository-scoped read-only GitHub backend. The native
+// transport still uses the canonical attempt authority and admission checks.
+func NewGitHubMetadataMirrorIngestSource(source *MirrorReadSource, admissionID, sourceID string, now func() time.Time, authority mirror.AttemptAuthority) (mirror.Source, error) {
+	joined, err := newMirrorIngestSource(source, admissionID, sourceID, now, authority)
+	if err != nil {
+		return nil, err
+	}
+	joined.metadataBackend = source.githubMetadataBackend()
+	if joined.metadataBackend == nil {
+		return nil, Refused("metadata inventory requires a repo-scoped read-only GitHub backend")
+	}
+	return joined, nil
+}
+
+// SupportsGitHubMetadata reports whether the already admitted backend is
+// eligible for the fixed metadata projection, without doing network I/O.
+func (s *MirrorReadSource) SupportsGitHubMetadata() bool {
+	return s.githubMetadataBackend() != nil
+}
+
+func (s *MirrorReadSource) githubMetadataBackend() *GitHubForge {
+	if s == nil || s.provider != ForgeGitHub {
+		return nil
+	}
+	ro, ok := s.forge.(*readOnlyForge)
+	if !ok {
+		return nil
+	}
+	g, ok := ro.inner.(*GitHubForge)
+	if !ok || !strings.EqualFold(g.onlyRepo, s.repo.Slug()) {
+		return nil
+	}
+	return g
 }
 
 // RepositoryID is the canonical identity of the already-admitted source.
@@ -87,7 +128,7 @@ func (s *mirrorIngestSource) Scan(ctx context.Context, a mirror.Admission, scope
 	if err := scope.Validate(); err != nil {
 		return mirror.ScanResult{}, err
 	}
-	if scope.Repository != s.repository || scope.AdmissionID != s.admissionID || nilMirrorInput(a) || a.ID() != s.admissionID {
+	if (s.metadataBackend != nil && scope.Kind != mirror.Changes) || scope.Repository != s.repository || scope.AdmissionID != s.admissionID || nilMirrorInput(a) || a.ID() != s.admissionID {
 		return mirror.ScanResult{}, mirror.ErrPermission
 	}
 	if err := a.Authorize(ctx, scope.Repository); err != nil {
@@ -110,7 +151,13 @@ func (s *mirrorIngestSource) Scan(ctx context.Context, a mirror.Admission, scope
 	if scope.Kind == mirror.Changes {
 		kind = MirrorChanges
 	}
-	r, err := s.source.Read(ctx, kind, adapters.UpdateQuery{Since: plan.Since})
+	var r MirrorReadResult
+	var err error
+	if s.metadataBackend != nil {
+		r, err = s.readMetadata(ctx, attempt)
+	} else {
+		r, err = s.source.Read(ctx, kind, adapters.UpdateQuery{Since: plan.Since})
+	}
 	if err != nil {
 		if errors.Is(err, mirror.ErrAttemptHeld) || errors.Is(err, mirror.ErrPermission) {
 			return mirror.ScanResult{}, err

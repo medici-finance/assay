@@ -1,8 +1,10 @@
 package deskkit
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -38,6 +40,8 @@ type mirrorAttemptState struct {
 	receipt      mirror.AttemptReceipt
 	pending      *mirrorPendingAttempt
 	reservations map[string]bool
+	metadataOnly bool
+	metadataBody []byte
 }
 
 type mirrorPendingAttempt struct {
@@ -76,8 +80,13 @@ unwrapped:
 	case *GitHubForge:
 		origin, err = url.Parse(g.baseURL())
 		if err == nil {
-			origin.Path = strings.TrimRight(origin.Path, "/") + "/repos/" + s.source.repo.Slug() + "/" + rel
+			suffix := "/repos/" + s.source.repo.Slug() + "/" + rel
+			if s.metadataBackend != nil {
+				suffix = "/graphql"
+			}
+			origin.Path = strings.TrimRight(origin.Path, "/") + suffix
 			origin.RawPath = ""
+
 		}
 	case *GitLabForge:
 		// Reuse the selected SDK's actual base-path construction, without any
@@ -111,7 +120,7 @@ unwrapped:
 		}
 	}
 	return &mirrorAttemptState{ctx: ctx, scope: scope, repository: s.repository, sourceID: s.sourceID, admissionID: s.admissionID, admission: a, grant: plan.AttemptGrant, authority: s.authority, now: s.now,
-		origin: *origin, path: origin.EscapedPath(), since: plan.Since, page: 1, reservations: map[string]bool{},
+		origin: *origin, path: origin.EscapedPath(), since: plan.Since, page: 1, reservations: map[string]bool{}, metadataOnly: s.metadataBackend != nil,
 		receipt: mirror.AttemptReceipt{Grant: plan.AttemptGrant, HTTP: mirror.WorkCount{Known: true}, DecodedBytes: mirror.WorkCount{Known: true}, Retry: mirror.RetryEvidence{Knowledge: mirror.RetryNoConstraint}}}, nil
 }
 
@@ -182,7 +191,22 @@ func (s *mirrorAttemptState) roundTrip(base http.RoundTripper, r *http.Request) 
 	if s.page < 1 || s.page > maxPages {
 		return nil, s.hold(mirror.AttemptUnknownHeld)
 	}
-	if r == nil || r.URL == nil || r.Method != http.MethodGet || r.URL.Scheme != s.origin.Scheme || r.URL.Host != s.origin.Host || (r.Host != "" && r.Host != s.origin.Host) || r.URL.User != nil || r.URL.Opaque != "" || r.URL.Fragment != "" || r.URL.EscapedPath() != s.path || r.URL.RawQuery != s.query() || s.grant.Validate(now) != nil || s.grant.Scope != s.scope || s.scope.Repository != s.repository || s.grant.SourceID != s.sourceID || s.scope.AdmissionID != s.admissionID || s.pending != nil || nilMirrorInput(s.authority) {
+	if r == nil || r.URL == nil || r.URL.Scheme != s.origin.Scheme || r.URL.Host != s.origin.Host || (r.Host != "" && r.Host != s.origin.Host) || r.URL.User != nil || r.URL.Opaque != "" || r.URL.Fragment != "" || r.URL.EscapedPath() != s.path || s.grant.Validate(now) != nil || s.grant.Scope != s.scope || s.scope.Repository != s.repository || s.grant.SourceID != s.sourceID || s.scope.AdmissionID != s.admissionID || s.pending != nil || nilMirrorInput(s.authority) {
+		return nil, s.hold(mirror.AttemptUnknownHeld)
+	}
+	if s.metadataOnly {
+		if r.Method != http.MethodPost || r.URL.RawQuery != "" || r.URL.ForceQuery ||
+			r.Body == nil || len(s.metadataBody) == 0 || r.ContentLength != int64(len(s.metadataBody)) {
+			return nil, s.hold(mirror.AttemptUnknownHeld)
+		}
+		raw, err := io.ReadAll(io.LimitReader(r.Body, int64(len(s.metadataBody))+1))
+		_ = r.Body.Close()
+		if err != nil || !bytes.Equal(raw, s.metadataBody) {
+			return nil, s.hold(mirror.AttemptUnknownHeld)
+		}
+		r = r.Clone(r.Context())
+		r.Body = io.NopCloser(bytes.NewReader(raw))
+	} else if r.Method != http.MethodGet || r.URL.RawQuery != s.query() {
 		return nil, s.hold(mirror.AttemptUnknownHeld)
 	}
 	if err := r.Context().Err(); err != nil {
