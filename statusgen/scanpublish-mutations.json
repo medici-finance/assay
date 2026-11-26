@@ -1,0 +1,41 @@
+{
+  "test": "go test . -count=1 -timeout 300s -run '^TestPublic(CoverageEmbeddedTags|CoverageMarshaler|CoverageRootMarshal|CoverageShape|UncoveredFields)$'",
+  "control": {
+    "name": "coverage walk drops the shape comparison",
+    "file": "scanpublish.go",
+    "old": "} else if got := leafShape(ft); got != want {",
+    "new": "} else if got := leafShape(ft); false && got != want {"
+  },
+  "mutations": [
+    {
+      "name": "coverage walk skips an unexported embedded struct carrying a json tag",
+      "file": "scanpublish.go",
+      "old": "if tag == \"-\" || (!f.IsExported() && (!f.Anonymous || ft.Kind() != reflect.Struct)) {",
+      "new": "if tag == \"-\" || !f.IsExported() {"
+    },
+    {
+      "name": "coverage walk promotes an embedded struct only when it has no json tag at all",
+      "file": "scanpublish.go",
+      "old": "f.Anonymous && nested && name == \"\" {",
+      "new": "f.Anonymous && nested && name+tag == \"\" {"
+    },
+    {
+      "name": "coverage walk walks a self-marshalling type field by field",
+      "file": "scanpublish.go",
+      "old": "func marshalsItself(t reflect.Type) bool {\n\tif t == reflect.TypeOf(time.Time{}) {",
+      "new": "func marshalsItself(t reflect.Type) bool {\n\tif true || t == reflect.TypeOf(time.Time{}) {"
+    },
+    {
+      "name": "marshalsItself ignores a pointer-receiver method",
+      "file": "scanpublish.go",
+      "old": "for _, x := range []reflect.Type{t, reflect.PointerTo(t)} {",
+      "new": "for _, x := range []reflect.Type{t} {"
+    },
+    {
+      "name": "the record type itself is not checked for its own marshaler",
+      "file": "scanpublish.go",
+      "old": "\tif marshalsItself(t) {\n\t\tout = append(out, \"the record itself (shape marshaler)\")",
+      "new": "\tif false && marshalsItself(t) {\n\t\tout = append(out, \"the record itself (shape marshaler)\")"
+    }
+  ]
+}

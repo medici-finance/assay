@@ -101,6 +101,15 @@ func briefTierRefusal(o dispatchOpts) error {
 		stepClaimAcquire, briefLabel(o), b.ExecTier, o.tier, b.ExecTier))
 }
 
+// decisionRepo is the tracking repository the decision gate resolved for this plan, or repo when
+// the plan carries none (a same-repository item, where tracking and deliverable are one).
+func (p dispatchPlan) decisionRepo(repo string) string {
+	if strings.TrimSpace(p.decision.repo) != "" {
+		return p.decision.repo
+	}
+	return repo
+}
+
 // briefDecisionHold holds a fresh worker dispatch of a human-gated brief whose decision issue
 // is still waiting on a ruling.
 func briefDecisionHold(o dispatchOpts, plan dispatchPlan, repo string) error {
@@ -114,7 +123,16 @@ func briefDecisionHold(o dispatchOpts, plan dispatchPlan, repo string) error {
 	note := func(why string) {
 		fmt.Fprintf(os.Stderr, "deskdispatch: decision hold: %s — dispatching; the human gate still binds approval.\n", why)
 	}
-	fg, fr, err := decisionWaitForgeFn(repo)
+	// The decision issue is read where it LIVES: the repository that tracks the brief, resolved
+	// pre-claim into plan.decision, never the deliverable repo this dispatch claims in. A bare
+	// `decision-issue: #N` on a homed-in brief otherwise read an unrelated issue (or none) in
+	// the deliverable repo and the hold never fired (#6494, #6274).
+	items, err := deskkit.NewItemRepos(plan.decisionRepo(repo), repo)
+	if err != nil {
+		note("could not resolve the repository the brief's decision issue lives in")
+		return nil
+	}
+	fg, fr, err := decisionWaitForgeFn(items.DecisionRepo())
 	if err != nil || fg == nil {
 		note("could not reach the forge to read the brief's decision issue")
 		return nil

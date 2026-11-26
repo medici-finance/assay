@@ -58,11 +58,18 @@ func IsOutboundChecked(f Forge) bool {
 	return ok
 }
 
-// backendOf returns the backend behind the checking decorator (f itself when it is not
-// wrapped). Package-internal: only deskkit may see a backend type.
+// backendOf returns the backend behind the checking decorator and the evidence-landing
+// read scope (f itself when it is not wrapped). Package-internal: only deskkit may see a
+// backend type. The landing scope is unwrapped too: EvidenceLandingForge builds it only
+// around a bare GitHub or GitLab backend, and a backend-only read (ReadTreeListing,
+// ReadDescendantDiff) on a landing's forge must reach that backend rather than read as
+// "not served" (#5913).
 func backendOf(f Forge) Forge {
 	if w, ok := f.(*outboundForge); ok {
-		return w.Forge
+		f = w.Forge
+	}
+	if e, ok := f.(*evidenceLandingForge); ok {
+		return e.Forge
 	}
 	return f
 }

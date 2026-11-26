@@ -95,16 +95,26 @@ roll remains a separate downstream job under its own existing identity.
    push. A failure stops the same job before any tag or GitHub release write.
 4. Serialize the publication job on the resolved umbrella version before registry
    absence checks, including dispatches with or without a leading `v`.
-   Publish the versioned images and read their registry digests. Refuse an
-   existing image tag, an indeterminate registry lookup, or a missing/wrong
-   digest. verify-runner is pushed as two per-platform tags
-   (`<umbrella-tag>-linux-amd64`, `<umbrella-tag>-linux-arm64`, both
-   absence-checked with the rest), then joined under the umbrella tag as one
-   image index naming those two pushed digests. The index is read back by its
-   digest and must list exactly those two platforms and digests. Attach the references and their checksums to the draft GitHub release
-   before its single immutable publish. A partial registry push is not atomic:
-   if a later push fails, no complete image manifest or GitHub release is
-   published; recover by fixing forward with the next version.
+   Push every image by digest first, under a `staging-<umbrella-tag>` tag in
+   its own repository, and read its registry digest. Refuse an indeterminate
+   registry lookup or a missing/wrong digest. verify-runner is pushed as two
+   per-platform images, then joined as one image index naming those two pushed
+   digests. The index is read back by its digest and must list exactly those
+   two platforms and digests. Only when every push has succeeded are the
+   version tags (the umbrella tag on every image, plus
+   `<umbrella-tag>-linux-amd64` and `<umbrella-tag>-linux-arm64` on the runner
+   platforms) attached, each by digest, and read back. A version tag that
+   already names the digest this run pushed is left as it is; one that names
+   any other digest refuses the release before any tag moves. Attach the
+   references and their checksums to the draft GitHub release before its
+   single immutable publish. A failed push leaves no version tag behind, so the
+   same version can be published again. Tagging is not atomic: if attaching a
+   tag fails part-way, the log lists every tag already written, including one
+   whose read-back failed, and a re-run completes only if its rebuilt images
+   have the same digests; otherwise fix forward with the next version. The
+   `staging-<umbrella-tag>` tags are the publisher's working state, not
+   release references: they can name an image that was never released or one
+   that differs from the published version, so never pin them.
 
 Dry runs use the same one-approval job: they build and check the images but
 push none, write no pinnable-reference files, cut no tag and publish no GitHub

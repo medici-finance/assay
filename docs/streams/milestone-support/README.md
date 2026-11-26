@@ -36,7 +36,7 @@ Existing independent human, review, verification and adoption gates remain in fo
 | 06 | [Bind milestone acceptance to existing evidence and decisions](brief-06-bind-milestone-acceptance-to-existing-evidence-and-decisions.md) | 4 | M | implemented | — | — |
 | 07 | [Evaluate milestone readiness through the canonical eligibility API](brief-07-evaluate-milestone-readiness-through-the-canonical-eligibility-api.md) | 5 | M | implemented | — | — |
 | 08 | [Normalize PR trailers and claims through the shared resolver](brief-08-normalize-pr-trailers-and-claims-through-the-shared-resolver.md) | 3 | M | implemented | — | — |
-| 09 | [Preserve workflow subjects and human rulings across aliases](brief-09-preserve-workflow-subjects-and-human-rulings-across-aliases.md) | 4 | M | todo | — | — |
+| 09 | [Preserve workflow subjects and human rulings across aliases](brief-09-preserve-workflow-subjects-and-human-rulings-across-aliases.md) | 4 | M | implemented | — | — |
 | 10 | [Enforce milestone capabilities at dispatch and pickup](brief-10-enforce-milestone-capabilities-at-dispatch-and-pickup.md) | 6 | M | todo | — | — |
 | 11 | [Project milestone state into stream views and deskboard](brief-11-project-milestone-state-into-stream-views-and-deskboard.md) | 6 | M | verified | 2026-11-21 assay-verifier-app[bot] @ 2aafcfe485c7 (claude-opus-5-5) | — |
 | 12 | [Preserve milestone scope and identity in history and exports](brief-12-preserve-milestone-scope-and-identity-in-history-and-exports.md) | 6 | M | todo | — | — |

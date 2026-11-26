@@ -243,9 +243,10 @@ func (r *Repo) originRawConfig() (*format.Config, error) {
 // OriginConfigInjected identifies command-priority config outside the origin
 // snapshot profile. Native authority consumers must also refuse it: a local
 // URL reset cannot suppress a later command-priority reset plus foreign URL.
-// A count that CommandConfigQualified accepts (zero, or exactly the grep pins
-// an admitted row carries) is inside the profile, as is an unset or empty
-// count, which git reads as no entries; any other count is outside (#7007).
+// A count that CommandConfigQualified accepts (zero, exactly the grep pins
+// an admitted row carries, or exactly core.quotePath=false) is inside the
+// profile, as is an unset or empty count, which git reads as no entries; any
+// other count is outside (#7007, #7533).
 func OriginConfigInjected() bool {
 	count := os.Getenv("GIT_CONFIG_COUNT")
 	return (count != "" && !CommandConfigQualified()) || os.Getenv("GIT_CONFIG_PARAMETERS") != "" || os.Getenv("GIT_CONFIG") != ""

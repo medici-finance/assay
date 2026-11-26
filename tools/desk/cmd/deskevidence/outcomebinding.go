@@ -75,6 +75,37 @@ func admittedRunComplete(fr deskkit.ForgeRepo, receipt deskkit.VerifierReceipt) 
 	return receipt.CheckEvidenceTarget(b.Brief)
 }
 
+// outcomeEvidenceInRoot makes an outcome record's Evidence commit readable in a
+// cross-repository read root before anything reads it locally. That root is the
+// verifier's own tracking clone, cut at the admitted tracking source; the
+// Evidence then lands through the forge, so the clone's object store never
+// holds the commit the record names. Both local reads of it, the Evidence
+// binding (gitShowAt) and the observation's input shape (newGitOutcomeTree),
+// would otherwise refuse every cross-repository record. The landed
+// repository's main and the landing branch are fetched into the same private
+// refs the landed closure uses (landedBaseline), so nothing another worktree
+// reads moves. A same-repository root is left exactly as it is.
+func outcomeEvidenceInRoot(root string, receipt deskkit.VerifierReceipt, fr deskkit.ForgeRepo, branch, sha string) error {
+	if receipt.Binding.Version != 2 || len(sha) != 40 {
+		return nil // the binding itself refuses a malformed sha
+	}
+	if _, err := hex.DecodeString(sha); err != nil || localCommit(root, sha) {
+		return nil
+	}
+	if _, err := landedBaselineFn(root, receipt, fr, branch); err != nil {
+		return err
+	}
+	if !localCommit(root, sha) {
+		return deskkit.Unverifiable("could-not-check: the outcome record's Evidence commit "+sha+
+			" is not on "+fr.Slug()+" main or "+branch, nil)
+	}
+	return nil
+}
+
+func localCommit(root, sha string) bool {
+	return outcomeGit(root, "cat-file", "-e", sha+"^{commit}").Run() == nil
+}
+
 // An outcome may hold future verification work. Admission alone does not prove
 // that this run's Evidence landed: its earlier write may have been refused.
 // Read both the named commit and target branch before publishing a new receipt.

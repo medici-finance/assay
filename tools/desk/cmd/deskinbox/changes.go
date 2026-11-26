@@ -33,18 +33,18 @@ func newChangesCommand(out, stderr io.Writer, now time.Time, pre func(io.Writer)
 		RunE: func(cmd *cobra.Command, args []string) error {
 			deskkit.PerfCommand(perfVerbs, "changes")
 			if cmd.Flags().Changed("ack") && opts.ack == "" {
-				fmt.Fprintln(stderr, "deskinbox: --ack needs a delivery receipt")
+				_, _ = fmt.Fprintln(stderr, "deskinbox: --ack needs a delivery receipt")
 				return codeErr(deskkit.ExitRefused)
 			}
 			if strings.TrimSpace(opts.consumer) == "" || opts.remindAfter < 0 {
-				fmt.Fprintln(stderr, "deskinbox: provide a nonempty --consumer and a nonnegative --remind-after")
+				_, _ = fmt.Fprintln(stderr, "deskinbox: provide a nonempty --consumer and a nonnegative --remind-after")
 				return codeErr(deskkit.ExitRefused)
 			}
 			if code := begin(stderr, pre); code != deskkit.ExitOK {
 				return codeErr(code)
 			}
 			if err := runChanges(out, args, now, opts, *observer); err != nil {
-				fmt.Fprintln(stderr, "deskinbox changes:", err)
+				_, _ = fmt.Fprintln(stderr, "deskinbox changes:", err)
 				return codeErr(deskkit.ExitCodeOf(err))
 			}
 			return nil

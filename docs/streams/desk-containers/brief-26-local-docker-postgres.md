@@ -215,6 +215,44 @@ Row 9 diagnosis. The parity harness runs each side under env -i with a throwaway
 Attempts: (1) 2026-11-13T23:21:59Z to 2026-11-13T23:33:48Z, rows 1 to 12 (13 rows, with the five row 7 mutations inside the span), credited.
 
 **VERIFY: FAIL** — row 9: the shell-oracle parity no longer holds, with 8 of 200 cells divergent on the labels rows added after delivery (medici-finance/assay#6455). Row 11 is BLOCKED (environment, medici-finance/assay#4823). The other 11 rows pass, including all five row 7 mutations CAUGHT. Status is left for the human gate.
+### Independent recheck of rows 9 and 11, 2026-11-23
+
+The verifier reran the two rows held in the 2026-11-14 outcome after the parity repair in #6521 and the Rule 51 witness implementation in #7236. The witness audit credits both rows. It reports no execution witness for the other eleven rows in this run. The earlier outcome records eleven passes. The brief remains implemented and its final acceptance stays with the human custodian.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 9 | `bash tools/cellctl/tests/postgres-verify.sh 9` | pass exit=0 | sha256:0f4a381a6812 | 2026-11-23 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 11 | `statusgen --root . --lint` | fail exit=5 rule51=pass forge-rc=0 forge-out=sha256:031c0cae0654 pin=v1.0.92 cred=verifier-run-read cred-digest=sha256:4b27bccb65cd stamp=sha256:05f4e22bb69f8ae3c8a156be84e887578f34a176ed06a803211b8a5574d2cc5e | sha256:3a9c739aef4a | 2026-11-23 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7512 run=e9381744378164614ad43efdb0a49078eb4b2085f60311d4810b2a911d81ca67 source=52f341a6e0dc25f7cdc915377f3e9ce6728df746 brief=docs/streams/desk-containers/brief-26-local-docker-postgres.md model=gpt-6.2-astra tier=strong
+### Remaining row evidence, November 23, 2026
+
+On the same attested source, the witness audit now credits 11 of 13 rows. Row 10 returned 1 in the full cellctl package check. Row 8 separately passed the focused cell database test. Row 7 has historical independent evidence but no execution witness for this run. A comparison with the previous attested source found no changes under the PostgreSQL fixture directory. Review of that history alone supplies no new row 7 credit.
+
+The first scratch database check returned 6 because its digest-pinned PostgreSQL image was missing from the local cache. The verifier populated the local cache from the pinned image and reran the original command. The second witness credits row 12.
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `ASSAY_PG_SECRETS_DIR="$(mktemp -d)" docker compose -f containers/postgres/compose.yaml config -q` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-23 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `img=$(ASSAY_PG_SECRETS_DIR="$(mktemp -d)" docker compose -f containers/postgres/compose.yaml config --images) && printf '%s\n' "$img" \| grep -Eq '^postgres:18\.[0-9]+-trixie@sha256:[0-9a-f]{64}$' && docker buildx imagetools inspect "$img" > /dev/null` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-23 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `bash tools/cellctl/tests/postgres-verify.sh 3` | pass exit=0 | sha256:8f1d1ac22afc | 2026-11-23 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `ASSAY_PG_SECRETS_DIR="$(mktemp -d)" docker compose -f containers/postgres/compose.yaml config --format json \| jq -e '[.services.postgres.ports[].host_ip] \| all(. == "127.0.0.1")'` | pass exit=0 | sha256:a17fcf0a2f50 | 2026-11-23 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `bash tools/cellctl/tests/postgres-verify.sh 5` | pass exit=0 | sha256:ee2924067a99 | 2026-11-23 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `shellcheck containers/postgres/*.sh` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-23 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/cellctl/ -run '^TestCellDB$' -count=1 -v > "${TMPDIR:-/tmp}/celldb.out" 2>&1 && grep -F -e '--- PASS: TestCellDB (' "${TMPDIR:-/tmp}/celldb.out"` | pass exit=0 | sha256:d6b0d7ab2a4d | 2026-11-23 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 10 | `bash tools/cellctl/tests/postgres-verify.sh 10` | fail exit=1 | sha256:b559ecaf9227 | 2026-11-23 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 11a | `statusgen --root . --consumers --brief desk-containers/26` | pass exit=0 | sha256:1e4a8b7bfbac | 2026-11-23 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 12 | `bash tools/cellctl/tests/postgres-verify.sh 12` | fail exit=6 | sha256:3ba344bf9c59 | 2026-11-23 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7512 run=e9381744378164614ad43efdb0a49078eb4b2085f60311d4810b2a911d81ca67 source=52f341a6e0dc25f7cdc915377f3e9ce6728df746 brief=docs/streams/desk-containers/brief-26-local-docker-postgres.md model=gpt-6.2-astra tier=strong
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 12 | `bash tools/cellctl/tests/postgres-verify.sh 12` | pass exit=0 | sha256:65a7f43318e2 | 2026-11-24 | assay-verifier-app[bot] @ 52f341a6e0dc (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7512 run=e9381744378164614ad43efdb0a49078eb4b2085f60311d4810b2a911d81ca67 source=52f341a6e0dc25f7cdc915377f3e9ce6728df746 brief=docs/streams/desk-containers/brief-26-local-docker-postgres.md model=gpt-6.2-astra tier=strong
+### Independent verification disposition, November 23, 2026
+
+**VERIFY: FAIL** — the witness audit credits 11 of 13 current rows. Row 10’s full package check exited 1. The diagnostic repeat reported two failing tests, then reached the package’s existing ten-minute limit. The failing tests, command and output are recorded in medici-finance/assay#7525 for the worker.
+
+Row 7 has no current execution witness. Its prior independent controls are recorded under medici-finance/assay#6449. Verify-desk owns the remaining row coverage and independent recheck after the package repair. Final sensitive-data acceptance stays with the human custodian.
 
 ## Review
 Gate: human, `sensitive-data: yes`: the brief designs credential custody (see `gate-why`). The other three risk answers are no. No credential is committed: the superuser password and each cell's password live in operator-created files outside the repository. The brief follows `containers/secrets.md` unchanged and leaves it unedited. Every test server is throwaway. A restore renames the previous database aside rather than dropping it, so nothing done here is irreversible. The reviewer checks:

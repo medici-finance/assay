@@ -472,10 +472,9 @@ Rules that make the relay honest:
   three follow-on choices, the relay records "B"; the follow-ons are NEW questions for a
   later turn.
 - **A silence is not a ruling.** No answer means the item stays in the queue.
-- **Then move the label.** Adjust or remove the escalation label per the vocabulary the
-  `intake-desk` skill defines — that relabel, not the close, is what takes the item off the
-  driver's queue. Close authority, and the rule that a decided issue's close comment must name
-  the tracker carrying the remaining work, are that skill's; follow them there.
+- **Record the queue transition.** The human-decided close below verifies the reply
+  and tracker, then moves `needs-decision` to `human-decided`. Preview with `--dry-run`.
+  The intake desk’s close rules still govern when the continuing work has a tracker.
 
 To close a ruled decision, use `deskclose triage --disposition human-decided --decision
 <the ruling's permalink> --tracker <ref>`, never a hand close first. That lane writes the

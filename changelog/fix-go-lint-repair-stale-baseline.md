@@ -1,3 +1,0 @@
-### Fixed
-- `deskboard change --table` now exits unverifiable (6) when the table cannot be written, instead of exiting 0 with a partial or missing table. The verb's report is composed in memory and written once, and the write error reaches the caller.
-- The go-lint ratchet repairs the findings that merged after the baseline was measured (unchecked writes and closes in `deskboard`, `deskmonitor`, `cellctl` tests, `cellcadence` and `statusgen`, two boolean expressions in the brief Context scope parser, a switch in the `deskboard` command setup, an error-not-last test helper, and one unused constant), and prunes 24 baseline allowances that no longer match a live finding. Nothing was added to the baseline, and the gate passes at main.

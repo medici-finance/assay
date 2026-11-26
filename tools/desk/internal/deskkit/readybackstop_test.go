@@ -169,13 +169,12 @@ func TestBackstopRevertMarker(t *testing.T) {
 	if HasReadyBackstopRevert(r.comments[0], "def456") || HasReadyBackstopRevert(r.comments[0], "") {
 		t.Error("the marker matched another head or an empty head")
 	}
-	// Only deskflip reads the marker; deskpost ready never reads comments (its anti-forgery
-	// control), so the comment must name deskflip alone as the verb that will not re-flip
-	// (review F4).
+	// Both flip verbs read the marker (deskflip since #6253, deskpost ready since #6254, each
+	// through NotRevertedHold), so the comment names both as refusing a re-flip.
 	body := r.comments[0]
-	if !strings.Contains(body, "deskflip will not flip this head again; a new head clears that.") ||
-		strings.Contains(body, "ready verbs") || strings.Contains(body, "deskpost") {
-		t.Errorf("revert comment = %q, want it to name only deskflip as refusing a re-flip", body)
+	if !strings.Contains(body, "Neither deskflip nor deskpost ready will flip this head again; a new head clears that.") ||
+		strings.Contains(body, "ready verbs") {
+		t.Errorf("revert comment = %q, want it to name deskflip and deskpost ready as refusing a re-flip", body)
 	}
 	inline := "see " + ReadyBackstopRevertMarker("abc123") + " here"
 	if HasReadyBackstopRevert(inline, "abc123") {

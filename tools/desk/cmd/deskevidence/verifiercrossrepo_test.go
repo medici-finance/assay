@@ -123,22 +123,25 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 	}
 	br := receipt.BriefRoot
 	t.Cleanup(func() { os.RemoveAll(filepath.Dir(br)) })
-	// The fake forge commits in a separate real repository and supplies its
-	// objects to the retained tracking home without moving the admitted HEAD.
+	// The fake forge commits in a separate real repository. As with a real
+	// forge write, the retained tracking home never receives those objects:
+	// the outcome landing must fetch the landed Evidence commit itself.
 	remote := filepath.Join(t.TempDir(), "remote")
 	crossLandGit(t, tracking, "clone", "--no-hardlinks", tracking, remote)
 	crossLandGit(t, remote, "config", "user.name", "assay-verifier-app[bot]")
 	crossLandGit(t, remote, "config", "user.email", "300000005+assay-verifier-app[bot]@users.noreply.github.com")
+	crossLandGit(t, remote, "update-ref", "refs/heads/main", "HEAD")
+	crossLandGit(t, remote, "checkout", "-q", "-B", "evidence-branch")
 	api.commit = func(file, content string) string {
 		p := filepath.Join(remote, file)
 		os.MkdirAll(filepath.Dir(p), 0700)
 		os.WriteFile(p, []byte(content), 0600)
 		crossLandGit(t, remote, "add", file)
 		crossLandGit(t, remote, "commit", "-m", "Evidence fixture")
-		sha := crossLandGit(t, remote, "rev-parse", "HEAD")
-		crossLandGit(t, br, "fetch", remote, "HEAD")
-		return sha
+		return crossLandGit(t, remote, "rev-parse", "HEAD")
 	}
+	var fetched []string
+	landedForgeFetch(t, remote, &fetched)
 	oldMint := mintTokenFn
 	mintTokenFn = func(string) (deskkit.RoleCredential, error) {
 		return deskkit.RoleCredential{Token: ghToken, Resolution: deskkit.ForgeResolution{Kind: deskkit.ForgeGitHub}}, nil
@@ -221,6 +224,9 @@ func crossRepoOutcomeRun(t *testing.T, decls []string, withOther bool) {
 	}
 	if len(api.puts) != 2 {
 		t.Fatalf("outcome writes %d", len(api.puts))
+	}
+	if len(fetched) == 0 {
+		t.Fatal("outcome bound an Evidence commit the tracking home never fetched")
 	}
 	var wr deskkit.WakeReceipt
 	if err := json.Unmarshal([]byte(api.puts[1].Content), &wr); err != nil {

@@ -44,7 +44,6 @@ var sessionEnvRead = regexp.MustCompile(`"(DESK_SESSION|CLAUDE_SESSION_ID)"`)
 var sessionEnvReaders = map[string]string{
 	"writeguard/guard.go":          "presence check (is this a desk session at all?), never resolves a name",
 	"deskclaim/claim.go":           "resolveOwner reads --owner first, then the environment",
-	"deskclaim-ref/args.go":        "defaultOwner is the fallback after --owner, which it consults first",
 	"deskdispatch/dispatch.go":     "dispatchSessionSuffix takes no flag; it names the dispatcher's own session",
 	"cellctl/codex_environment.go": "launcher: forwards the variable to a child, resolves no name",
 	"cellctl/comms.go":             "launcher: sets the variable for a child, resolves no name",

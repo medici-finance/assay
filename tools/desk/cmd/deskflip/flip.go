@@ -651,15 +651,8 @@ func checkNotReverted(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, head s
 			"condition %s: PR #%d's comments could not be read, so whether the post-flip check already "+
 				"reverted this head is unknown: %s", condNotReverted, o.pr, firstLine(err.Error())), err)
 	}
-	if c, ok := deskkit.FindReadyBackstopRevert(comments, head); ok {
-		ref := c.URL
-		if ref == "" {
-			ref = fmt.Sprintf("comment %d", c.DatabaseID)
-		}
-		return deskkit.Unverifiable(fmt.Sprintf(
-			"condition %s: the post-flip check already returned PR #%d to draft at %s (%s): the forge "+
-				"reported it not mergeable right after a flip at this head, so flipping it again would be "+
-				"reverted again. A new head clears this condition.", condNotReverted, o.pr, short(head), ref), nil)
+	if reason, held := deskkit.NotRevertedHold(comments, o.pr, head, short(head)); held {
+		return deskkit.Unverifiable(fmt.Sprintf("condition %s: %s", condNotReverted, reason), nil)
 	}
 	o.say("%s OK: no post-flip revert recorded at %s", condNotReverted, short(head))
 	return nil

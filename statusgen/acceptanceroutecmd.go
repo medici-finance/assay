@@ -99,7 +99,7 @@ func runAcceptanceRoute(args []string, stdout, stderr io.Writer) int {
 		return runAcceptanceRouteWorkflow(args, stdout, stderr)
 	}
 	if len(args) == 0 || args[0] != "prepare" {
-		fmt.Fprintln(stderr, "usage: statusgen acceptance-route {prepare|issue|close} --root DIR --brief REF")
+		_, _ = fmt.Fprintln(stderr, "usage: statusgen acceptance-route {prepare|issue|close} --root DIR --brief REF")
 		return 2
 	}
 	fs := flag.NewFlagSet("acceptance-route prepare", flag.ContinueOnError)
@@ -114,7 +114,7 @@ func runAcceptanceRoute(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if fs.NArg() != 0 || *ref == "" || *input == "" {
-		fmt.Fprintln(stderr, "acceptance-route prepare requires --brief and --input")
+		_, _ = fmt.Fprintln(stderr, "acceptance-route prepare requires --brief and --input")
 		return 2
 	}
 	path, err := filepath.Abs(*root)
@@ -122,18 +122,22 @@ func runAcceptanceRoute(args []string, stdout, stderr io.Writer) int {
 		err = writeAcceptancePreparation(path, *ref, *input, stdout)
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, "statusgen:", err)
+		_, _ = fmt.Fprintln(stderr, "statusgen:", err)
 		return 1
 	}
 	return 0
 }
 
-func writeAcceptancePreparation(root, ref, inputPath string, out io.Writer) error {
+func writeAcceptancePreparation(root, ref, inputPath string, out io.Writer) (err error) {
 	in, err := os.Open(inputPath)
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() {
+		if cerr := in.Close(); cerr != nil && err == nil {
+			err = cerr
+		}
+	}()
 	dec := json.NewDecoder(in)
 	dec.DisallowUnknownFields()
 	var input acceptancePreparationInput
