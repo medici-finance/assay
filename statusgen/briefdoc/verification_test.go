@@ -370,6 +370,7 @@ var retainedLiftSites = map[string]string{
 	"../tools/desk/cmd/deskevidence/principalstamp.go:codeSpanEnd":  "scans Evidence prose for a stamp span, never a Verify Command cell",
 	"verifyissues.go:fenceLineValid":                                "judges a Markdown code-fence line in an issue body",
 	"admittedrowbind.go:admittedRowBindings":                        "skips a shell backquote substitution in an already-lifted Verify command, never a Markdown code span",
+	"admittedrowbind.go:admittedRowSubstEnd":                        "finds the close of a shell backquote substitution in an already-lifted Verify command, never a Markdown code span",
 	"../tools/desk/internal/deskkit/readybackstop.go:revertedState": "reads a forge comment's merge-state sentence, never a Verify cell",
 }
 

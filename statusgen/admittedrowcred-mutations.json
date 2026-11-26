@@ -323,7 +323,7 @@
       "name": "a colon-assign in a pipeline segment binds",
       "file": "admittedrowbind.go",
       "old": "if after || leaves {",
-      "new": "if false {"
+      "new": "if (after || leaves) \u0026\u0026 false {"
     },
     {
       "name": "a colon-assign inside parentheses or a substitution binds",
