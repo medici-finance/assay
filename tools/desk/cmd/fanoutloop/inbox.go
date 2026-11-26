@@ -487,17 +487,20 @@ func (f *FanoutLoop) applyCarriedHolds(items []loopengine.Item) []loopengine.Ite
 		return items
 	}
 	results := f.rereadCarriedHolds()
-	standing := map[string]int{} // normalised hold key -> index into results
+	// normalised hold key -> every standing hold that names it, so two holds on one item both
+	// read as matched.
+	standing := map[string][]int{}
 	for i, r := range results {
 		if r.read.Holds() {
-			standing[strings.ToLower(strings.TrimSpace(r.hold.Item))] = i
+			k := strings.ToLower(strings.TrimSpace(r.hold.Item))
+			standing[k] = append(standing[k], i)
 		}
 	}
 	kept := items[:0:0]
 	for _, it := range items {
 		withheld := false
 		for _, k := range holdKeys(it, f.issueBoardRepo) {
-			if i, ok := standing[k]; ok {
+			for _, i := range standing[k] {
 				results[i].matched = true
 				withheld = true
 			}
@@ -525,7 +528,9 @@ func carriedHoldLine(r carriedHoldResult) string {
 		return fmt.Sprintf("DROPPED HOLD: %s (lift met: %s)", r.hold.Item, r.read.Why)
 	case !r.matched:
 		return fmt.Sprintf("HOLD UNMATCHED: %s — still standing (%s) but names NO item in this run's queue, so it "+
-			"withheld nothing; <item> must be the DISPATCH item ID, its claim key, or its repo-qualified claim key",
+			"withheld nothing; check the <item> spelling (the DISPATCH item ID, its claim key, or its "+
+			"repo-qualified claim key); an item not in this run's queue (in flight, withheld or landed) "+
+			"also reads unmatched",
 			r.hold.Item, r.read.Why)
 	case r.read.State == deskkit.DecisionHoldUnknown:
 		return fmt.Sprintf("HOLD COULD-NOT-CHECK: %s — kept, NOT dispatched (%s)", r.hold.Item, r.read.Why)
@@ -591,7 +596,9 @@ func liveInboxIssues(repo, role string, resolve forgeResolver) func() ([]InboxIs
 		var out []InboxIssue
 		for _, is := range issues {
 			cand := issueflow.CandidateForLabels(issueflow.Candidate{}, is.Labels)
-			if !issueflow.Select(issueflow.Inbox, cand, role) && !(cand.AddressUnknown && carriesAddress(is.Labels, role)) {
+			// A malformed address that names this desk is kept so the lane lists it as held.
+			malformed := cand.AddressUnknown && carriesAddress(is.Labels, role)
+			if !malformed && !issueflow.Select(issueflow.Inbox, cand, role) {
 				continue
 			}
 			ii := InboxIssue{Repo: repo, Number: is.Number, Title: is.Title, Labels: is.Labels, Author: is.Author.Login}

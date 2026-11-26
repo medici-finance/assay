@@ -494,4 +494,20 @@ func TestCarriedHoldKeyForms(t *testing.T) {
 	if !strings.Contains(got, "=== DISPATCH alpha/01") {
 		t.Errorf("an unmatched hold withheld alpha/01:\n%s", got)
 	}
+
+	// Two standing holds that name the same item both withhold it, and neither reads unmatched.
+	f = inboxLoop(t, func() ([]InboxIssue, error) { return nil, nil }, nil)
+	f.DecisionHolds = []CarriedHold{{Item: "alpha/01", Repo: fr, Issue: 77}, {Item: "ALPHA/01", Repo: fr, Issue: 78}}
+	f.ReadDecisionHold = live
+	out.Reset()
+	if err := renderPlan(f, &out); err != nil {
+		t.Fatal(err)
+	}
+	got = out.String()
+	if strings.Contains(got, "HOLD UNMATCHED") || strings.Count(got, "HOLD LIVE: ") != 2 {
+		t.Errorf("both holds on alpha/01 must read HOLD LIVE, neither unmatched:\n%s", got)
+	}
+	if strings.Contains(got, "=== DISPATCH alpha/01") {
+		t.Errorf("two standing holds did not withhold alpha/01:\n%s", got)
+	}
 }

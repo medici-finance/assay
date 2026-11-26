@@ -407,7 +407,8 @@ could-not-check, never "no repos".
   `plan` as `--decision-hold <item>=<owner/name>#<N>`, where `<item>` is the item's DISPATCH ID as
   `plan` prints it (`alpha/01`, `<repo>--issue-<NN>`), its claim key (`alpha--01`), or the
   repo-qualified claim key `deskdispatch` acquires (`<repo>--alpha--01`). A standing hold that names
-  nothing in the queue prints `HOLD UNMATCHED:` and withholds nothing: fix the `<item>` spelling.
+  nothing in the queue prints `HOLD UNMATCHED:` and withholds nothing: check the `<item>` spelling; an
+  item not in this run's queue (in flight, withheld or landed) also reads unmatched.
   Its decision issue closed with `human-decided`
   lifts it (`DROPPED HOLD: <item> (lift met: ...)`) and the item is offered again; open, closed without
   that label, or unreadable keeps it (`HOLD LIVE:` / `HOLD COULD-NOT-CHECK:`), each with its source on

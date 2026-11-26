@@ -406,7 +406,8 @@ repo-qualified claim key deskdispatch acquires (<short>--alpha--01); case does n
 re-reads the decision issue. Closed with human-decided prints 'DROPPED HOLD: <item> (lift met: ...)'
 and the item is offered again. Open, closed without human-decided, or unreadable prints 'HOLD LIVE:' or
 'HOLD COULD-NOT-CHECK:' and the item is withheld from the queue. A standing hold that names no item in
-the queue prints 'HOLD UNMATCHED:' and withholds nothing.
+the queue prints 'HOLD UNMATCHED:' and withholds nothing: check the <item> spelling, though an item not
+in this run's queue (in flight, withheld or landed) also reads unmatched.
 
 Right after the item count, 'plan' prints a 'classes: resume=<n> rework=<n> fresh=<n> (...)' line: the
 per-class concurrency RESERVATION (example-stream/05) worker-desk's width carries alongside its pool
