@@ -3,6 +3,7 @@ package deskkit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -70,13 +71,60 @@ func TestProjectedMirrorAccountsForCompleteInventory(t *testing.T) {
 				got.Records[1].Labels == nil || got.Records[1].RequestedReviewers == nil {
 				t.Fatalf("could not establish complete metadata without bodies: complete=%t records=%d err=%v", got.Complete, len(got.Records), err)
 			}
+			row := got.Records[0]
+			if row.Author.Login != "fixture-author[bot]" || len(row.RequestedReviewers) != 2 ||
+				row.RequestedReviewers[0].Login != "fixture-reviewer[bot]" || row.RequestedReviewers[1].Login != "fixture-reviewer" {
+				t.Fatalf("metadata actors lost their REST identity: author=%q reviewers=%v", row.Author.Login, row.RequestedReviewers)
+			}
+		})
+	}
+}
+
+func TestProjectedMirrorRefusesUnpinnedMetadataRequest(t *testing.T) {
+	for _, test := range []struct {
+		name, method, query, body string
+	}{
+		{"different body", http.MethodPost, "", "other"},
+		{"different length", http.MethodPost, "", "longer"},
+		{"query string", http.MethodPost, "?fixture=1", "fixed"},
+		{"different method", http.MethodGet, "", "fixed"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := newNativeFixture(t, ForgeGitHub, mirror.Changes, func(http.ResponseWriter, *http.Request) {
+				t.Error("unexpected fixture server call")
+			})
+			source, err := NewGitHubMetadataMirrorIngestSource(fixture.source.source, fixture.admission.ID(),
+				fixture.plan.AttemptGrant.SourceID, fixture.clock.Now, fixture.authority)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx := context.Background()
+			state, err := newMirrorAttempt(ctx, source.(*mirrorIngestSource), fixture.admission, fixture.scope, fixture.plan)
+			if err != nil {
+				t.Fatal(err)
+			}
+			state.metadataBody = []byte("fixed")
+			request, err := http.NewRequestWithContext(ctx, test.method, state.origin.String()+test.query, strings.NewReader(test.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = request.Body.Close() })
+			var sent bool
+			_, err = state.roundTrip(nativeRT(func(*http.Request) (*http.Response, error) {
+				sent = true
+				return nil, errors.New("unexpected transport call")
+			}), request)
+			var held *mirror.AttemptError
+			if sent || !errors.As(err, &held) || held.Hold != mirror.AttemptUnknownHeld || state.snapshot().HTTP.Value != 0 {
+				t.Fatalf("request crossed metadata fence: sent=%t err=%v", sent, err)
+			}
 		})
 	}
 }
 
 func writeMetadataFixture(t *testing.T, w http.ResponseWriter, more bool, number int, padding string) {
 	t.Helper()
-	_, err := fmt.Fprintf(w, `{"data":{"repository":{"nameWithOwner":"o/r","pullRequests":{"totalCount":2,"pageInfo":{"hasNextPage":%t,"endCursor":"page-2"},"nodes":[{"number":%d,"title":"title","state":"OPEN","createdAt":"2026-11-02T12:00:00Z","updatedAt":"2026-11-02T12:00:00Z","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","labels":{"totalCount":0,"nodes":[],"pageInfo":{"hasNextPage":false}},"reviewRequests":{"totalCount":0,"nodes":[],"pageInfo":{"hasNextPage":false}}}]}}},"padding":"%s"}`, more, number, padding)
+	_, err := fmt.Fprintf(w, `{"data":{"repository":{"nameWithOwner":"o/r","pullRequests":{"totalCount":2,"pageInfo":{"hasNextPage":%t,"endCursor":"page-2"},"nodes":[{"number":%d,"title":"title","state":"OPEN","createdAt":"2026-11-02T12:00:00Z","updatedAt":"2026-11-02T12:00:00Z","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"fixture-author","databaseId":11,"__typename":"Bot"},"labels":{"totalCount":0,"nodes":[],"pageInfo":{"hasNextPage":false}},"reviewRequests":{"totalCount":2,"nodes":[{"requestedReviewer":{"login":"fixture-reviewer","databaseId":12,"__typename":"Bot"}},{"requestedReviewer":{"login":"fixture-reviewer","databaseId":13,"__typename":"User"}}],"pageInfo":{"hasNextPage":false}}}]}}},"padding":"%s"}`, more, number, padding)
 	if err != nil {
 		t.Errorf("write metadata response: %v", err)
 	}

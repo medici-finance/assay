@@ -73,7 +73,12 @@ type metadataActor struct {
 }
 
 func (a metadataActor) update() adapters.UpdateActor {
-	return adapters.UpdateActor{Login: a.Login, ID: a.ID, Type: a.Kind}
+	login := a.Login
+	if a.Kind == "Bot" {
+		// GraphQL uses the bare slug. Mirror identities follow the REST spelling.
+		login += "[bot]"
+	}
+	return adapters.UpdateActor{Login: login, ID: a.ID, Type: a.Kind}
 }
 
 type metadataLabel struct{ Name string }
