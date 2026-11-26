@@ -87,17 +87,28 @@ reviewable artifact, not a run.
   `--lint`; the live corroborate step's `--corroborate --pr` runs the network lane only on PRs
   that touch a findings entry; and `deskevidence` / `--close-verify` run the network check
   themselves.
-- `verify-gate-open.yml` and `verify-gate-close.yml` — live workflow twins,
-  byte-identical to their live counterparts and enforced by
-  `declared-changes.json`. They carry the canonical adjudicated acceptance route
-  for verification-handoff/03 under #4993. After an independent verifier
+- `verify-gate-open.yml` and `verify-gate-close.yml` — they carry the canonical
+  adjudicated acceptance route under #4993. After an independent verifier
   publishes the body rendered by `statusgen acceptance-route prepare`, an exact
   human adjudication comment on that issue triggers the canonical issuer. Its
   concurrency group is set on the job, so a comment the job's `if:` skips never
   queues in it. The close workflow admits only the resulting card, rereads the
   human closer and revalidates the adjudication before the existing
-  board-writer push. Other briefs keep their ordinary card route; the close
-  step's decision-gate refusal branch, in the next entry, is live for every brief.
+  board-writer push. The close step's decision-gate refusal branch, in the next
+  entry, is live for every brief. **Pending promotion** (`declared-changes.json`
+  mode `pending`): the staged copies extend the route from
+  verification-handoff/03 to any `gate: human` brief whose Evidence the full
+  hold scan holds. The issuer takes the brief from the authenticated
+  preparation instead of a fixed `--brief`, and refuses a preparation or
+  adjudication made for another brief or an older source. The ordinary issuer
+  files no card for a brief that `--verify-issues` marks `adjudicationRoute`,
+  where it previously excluded only /03's marker. The close step routes any
+  card carrying an adjudication marker to `acceptance-route close`, where it
+  previously routed only /03. A card without that marker keeps the ordinary
+  close and its full hold scan. Until promotion, the live twins keep the
+  /03-only route. Promote both files together by copying each staged file over
+  its live counterpart in a maintainer-credentialled commit, then set both
+  entries back to `identical`.
 
 - `verify-gate-close.yml` also carries the decision-gate refusal branch in the
   "Advance ..." step, live for every brief. When `statusgen --close-verify`

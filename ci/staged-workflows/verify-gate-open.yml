@@ -64,10 +64,11 @@ jobs:
     # workflow, so it is entered only once the `if:` above admits the run: a
     # comment from anyone off the bless roster never queues in the group and so
     # cannot displace a pending issuer or adjudication run. The group is keyed
-    # by event class: issuer runs (push, dispatch) file every card
-    # except verification-handoff/03's, and adjudication runs (comment) file only
-    # that one, so the two never race on one marker, and a main push can no
-    # longer displace a pending adjudication run, nor a comment an issuer run.
+    # by event class: issuer runs (push, dispatch) file ordinary cards only for
+    # briefs the full hold scan does not hold, and adjudication runs (comment)
+    # file a card only for a brief that scan does hold, so at one source the
+    # two never claim one marker, and a main push can no longer displace a
+    # pending adjudication run, nor a comment an issuer run.
     concurrency:
       group: verify-gate-open-${{ github.event_name == 'issue_comment' && 'adjudication' || 'issuer' }}
       cancel-in-progress: false
@@ -137,10 +138,11 @@ jobs:
         if: github.event_name != 'issue_comment'
         run: |
           set -euo pipefail
-          # The reviewed separate contract is scoped to verification-handoff/03.
+          # A brief the full hold scan holds is accepted only through the
+          # adjudicated route below (#4993), so no ordinary card is filed for it.
           "${RUNNER_TEMP}/statusgen" --root . --verify-issues \
             --existing-markers "${RUNNER_TEMP}/markers.txt" \
-            | jq 'map(select(.marker != "<!-- verify-gate: verification-handoff/03 -->"))' \
+            | jq 'map(select(.adjudicationRoute != true))' \
             > "${RUNNER_TEMP}/issues.json"
 
       - name: Compute the adjudicated acceptance card
@@ -157,7 +159,9 @@ jobs:
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
         run: |
           set -euo pipefail
-          "${RUNNER_TEMP}/statusgen" acceptance-route issue --root . --brief verification-handoff/03 \
+          # No brief flag: the issuer reads the brief the preparation binds, then
+          # authenticates that preparation and refuses any other brief.
+          "${RUNNER_TEMP}/statusgen" acceptance-route issue --root . \
             --preparation "$PREPARATION" --ruling "$RULING" \
             --existing-markers "${RUNNER_TEMP}/markers.txt" --acceptance-forge > "${RUNNER_TEMP}/issues.json"
 

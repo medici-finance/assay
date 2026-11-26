@@ -24,8 +24,17 @@ func TestStagedAcceptanceRouteWorkflowPair(t *testing.T) {
 						continue
 					}
 					count++
-					if !strings.Contains(step.Run, "verification-handoff/03") || !strings.Contains(step.Run, "--acceptance-forge") {
+					// The route serves any gate: human brief (#4993): no step
+					// names a fixed brief. The issuer takes the brief from the
+					// authenticated preparation; the close takes it from the card.
+					if strings.Contains(step.Run, "verification-handoff/") || !strings.Contains(step.Run, "--acceptance-forge") {
 						t.Errorf("unexpected route scope in step %s", step.Name)
+					}
+					if command == "acceptance-route issue" && strings.Contains(step.Run, "--brief") {
+						t.Errorf("issuer step %s must derive the brief from the preparation, not --brief", step.Name)
+					}
+					if command == "acceptance-route close" && !strings.Contains(step.Run, `if [ "$route" = "adjudicated" ]`) {
+						t.Errorf("close step %s must route on the card's adjudication marker", step.Name)
 					}
 					if step.Env["DESKREAD_CI_WORKFLOW_TOKEN"] != "${{ github.token }}" ||
 						step.Env["GH_TOKEN"] != "${{ github.token }}" ||
@@ -71,5 +80,36 @@ func TestStagedAcceptanceCloseKeepsOrdinaryRefusalReport(t *testing.T) {
 	staged := refusalReport("../ci/staged-workflows/" + workflow)
 	if staged != live {
 		t.Fatal("promotion would change the live ordinary close refusal report")
+	}
+}
+
+// The staged pair routes by the full hold scan and the card's adjudication
+// marker, never by a hard-wired brief (#4993).
+func TestStagedAcceptanceRouteServesAnyBrief(t *testing.T) {
+	for _, path := range []string{"verify-gate-open.yml", "verify-gate-close.yml"} {
+		raw, err := os.ReadFile("../ci/staged-workflows/" + path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(string(raw), "verification-handoff/03") {
+			t.Errorf("%s still hard-wires verification-handoff/03", path)
+		}
+	}
+	open, err := os.ReadFile("../ci/staged-workflows/verify-gate-open.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(open), `jq 'map(select(.adjudicationRoute != true))'`) {
+		t.Error("ordinary issuer must skip every brief the full hold scan routes to adjudication")
+	}
+	if strings.Contains(string(open), `select(.marker !=`) {
+		t.Error("ordinary issuer must not exclude a fixed marker")
+	}
+	closeRaw, err := os.ReadFile("../ci/staged-workflows/verify-gate-close.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(closeRaw), `*'<!-- verify-gate-adjudication:'*) route=adjudicated ;;`) {
+		t.Error("close must route any card carrying an adjudication marker to the adjudicated close")
 	}
 }

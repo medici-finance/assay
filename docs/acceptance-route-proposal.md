@@ -4,6 +4,15 @@ Status: **proposed, not ratified or implemented**. This document supplies no
 verification credit, acceptance authority or scan exemption. It does not make
 verification-handoff/03 ready for final acceptance.
 
+**Extension to any brief.** A later ruling, [relayed](https://github.com/medici-finance/assay/issues/4993#issuecomment-7115589994) and [ratified](https://github.com/medici-finance/assay/issues/4993#issuecomment-7115641667) on #4993,
+extends the route from verification-handoff/03 to any `gate: human` brief
+whose latest run still carries hold text. Each brief needs its own exact human
+adjudication. A preparation or adjudication binds one brief path, blob and
+source revision, and the route refuses it for any other brief or a changed
+source. The full hold scan, landed Evidence and every binding below are
+unchanged. The staged `verify-gate-open.yml` and `verify-gate-close.yml` under
+`ci/staged-workflows/` carry the extension until a maintainer promotes them.
+
 ## Recorded authority and remaining boundary
 
 The [human ruling on #4995](https://github.com/medici-finance/assay/pull/4995#issuecomment-6530834192)

@@ -40,6 +40,13 @@ type verifyIssue struct {
 	Labels []string `json:"labels"`
 	Marker string   `json:"marker"`
 	Body   string   `json:"body"`
+	// AdjudicationRoute marks an ordinary card whose close would refuse on
+	// the full hold scan (closeVerifyHeldRefusal). Such a brief is accepted
+	// only through the source-bound adjudication route, so a workflow that
+	// carries that route files no ordinary card for it, leaving the gate
+	// marker free for the adjudicated card. It is a routing hint: it grants
+	// nothing, and the ordinary close keeps its full scan.
+	AdjudicationRoute bool `json:"adjudicationRoute,omitempty"`
 }
 
 // verifyMarkerRe matches a hidden idempotency marker in an issue body (or a
@@ -1509,13 +1516,15 @@ func verifyIssues(root string, streams []*Stream, existing map[string]bool) []ve
 					continue
 				}
 				card := makeGateCard(root, bf, cardAcceptance)
+				held, _ := unroutedHeldLine(bf.Evidence, false)
 				out = append(out, verifyIssue{
-					Card:   card,
-					Brief:  bf.Brief,
-					Title:  issueTitle("verify-gate: ", bf.Brief, bf.Title),
-					Labels: []string{"verify-gate"},
-					Marker: marker,
-					Body:   renderVerifyWith(root, bf, card),
+					Card:              card,
+					Brief:             bf.Brief,
+					Title:             issueTitle("verify-gate: ", bf.Brief, bf.Title),
+					Labels:            []string{"verify-gate"},
+					Marker:            marker,
+					Body:              renderVerifyWith(root, bf, card),
+					AdjudicationRoute: held,
 				})
 				continue
 			}

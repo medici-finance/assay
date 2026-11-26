@@ -10,6 +10,9 @@ import (
 // specific to the issue publisher or human closer remain at those boundaries.
 func verifyAcceptanceReadiness(root, path string, m acceptanceManifest, preparation int, ruling string,
 	forge *ghClient, humanLogins map[string]string, ciWorkflowToken bool) error {
+	if err := checkAcceptanceBriefBinding(root, path, m); err != nil {
+		return err
+	}
 	source, err := readAcceptanceSourceAt(root, path, m.Source.Revision)
 	if err != nil {
 		return err
@@ -63,6 +66,19 @@ func verifyAcceptanceReadiness(root, path string, m acceptanceManifest, preparat
 		return err
 	}
 	return creditAcceptanceRuns(path, definition.verify, m.Runs, ciWorkflowToken)
+}
+
+// checkAcceptanceBriefBinding refuses a preparation, and so any adjudication
+// of it, that names a brief other than the one being issued or closed. The
+// route applies to any gate: human brief, so a record made for one brief must
+// never stand in for another. The full source comparison that follows also
+// binds the path; this check names the cause before any other read.
+func checkAcceptanceBriefBinding(root, path string, m acceptanceManifest) error {
+	rel, inside := relWithin(root, path)
+	if !inside || rel == "" || m.Source.BriefPath != rel {
+		return fmt.Errorf("acceptance adjudication: the preparation binds brief %q, not %q", m.Source.BriefPath, rel)
+	}
+	return nil
 }
 
 func checkAcceptanceLatestRun(run string, selected []acceptanceRun) error {

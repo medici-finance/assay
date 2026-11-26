@@ -32,9 +32,11 @@
     "reason": "Classified board push (#2910): credential preflight and per-class push failures in regen and model-autoflip, plus the lint job step running their tests; pending maintainer promotion (README Contents). Its full-history regen checkout line (fetch-depth: 0, #3364) is already live (#3385), and the staged line is byte-identical to it."
   },
   "verify-gate-open.yml": {
-    "mode": "identical"
+    "mode": "pending",
+    "reason": "Adjudicated acceptance route for any gate: human brief (#4993): issuer derives the brief from the authenticated preparation and the ordinary issuer skips any brief the full hold scan holds; pending maintainer promotion (README Contents)."
   },
   "verify-gate-close.yml": {
-    "mode": "identical"
+    "mode": "pending",
+    "reason": "Adjudicated acceptance route for any gate: human brief (#4993): close routes a card carrying an adjudication marker to the adjudicated close for any brief; pending maintainer promotion (README Contents)."
   }
 }
