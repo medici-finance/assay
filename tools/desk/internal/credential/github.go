@@ -526,6 +526,17 @@ func ExchangeJWT(c *http.Client, jwt, installID string) (*TokenResult, error) {
 	return exchangeJWTBody(c, jwt, installID, nil)
 }
 
+// ExchangeRepositoryJWT requests an installation credential for one repository.
+func ExchangeRepositoryJWT(c *http.Client, jwt, installID, repository string) (*TokenResult, error) {
+	payload, err := json.Marshal(struct {
+		Repositories []string `json:"repositories"`
+	}{[]string{repository}})
+	if err != nil {
+		return nil, err
+	}
+	return exchangeJWTBody(c, jwt, installID, payload)
+}
+
 // exchangeJWTBody is ExchangeJWT with an access_tokens request body: the forge-side narrowing
 // (repositories, permissions) a ScopeReadOnly mint asks for.
 func exchangeJWTBody(c *http.Client, jwt, installID string, payload []byte) (*TokenResult, error) {

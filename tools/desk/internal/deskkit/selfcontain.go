@@ -501,7 +501,12 @@ func notUNCLead(c byte) bool {
 // category order, plus the notice lines. The outbound-write check (outbound.go) reads the
 // whole list, because whether a write may be overridden depends on whether ANY finding is
 // in a non-overridable category, not only on the first.
-func selfContainFindings(surface, s string, o SelfContainOpts) (findings []scFinding, notices []string) {
+func selfContainFindings(surface, s string, o SelfContainOpts) ([]scFinding, []string) {
+	priv, privShort := privateRepoNames(o.Repo)
+	return scanSelfContainment(surface, s, o, priv, privShort, WithheldIdentifiers())
+}
+
+func scanSelfContainment(surface, s string, o SelfContainOpts, priv, privShort map[string]bool, withheld []string) (findings []scFinding, notices []string) {
 	// The workpad marker line (workpad.go) is exempt from every
 	// category below by EXACT LINE match — see StripWorkpadMarkerLine's own comment. It is
 	// a fixed, content-free string with no slash, no `#N`, no path and no session/agent
@@ -509,7 +514,6 @@ func selfContainFindings(surface, s string, o SelfContainOpts) (findings []scFin
 	// rather than incidental, the same way bodycheck.go's scanSurface guarantees it for
 	// the credential scan.
 	s = StripWorkpadMarkerLine(s)
-	priv, privShort := privateRepoNames(o.Repo)
 	refuse := func(category, span, why string, at int, withheld bool) {
 		findings = append(findings, scFinding{
 			category: category, span: span, why: why, withheld: withheld, line: lineOf(s, at),
@@ -588,7 +592,6 @@ func selfContainFindings(surface, s string, o SelfContainOpts) (findings []scFin
 	// configured the key — in roster.env, where every other ASSAY_ value lives — looking for
 	// a typo in a file that was correct, rather than at the reader that was not consulting
 	// it. A could-not-check has to say where it looked.
-	withheld := WithheldIdentifiers()
 	if len(withheld) == 0 {
 		notices = append(notices, fmt.Sprintf(
 			"%s: withheld register identifiers NOT CHECKED — %s is not configured in roster.env "+
