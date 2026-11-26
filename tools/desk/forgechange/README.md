@@ -1,8 +1,8 @@
 # Forge change library
 
-Import `github.com/medici-finance/assay/tools/desk/forgechange` to build a GitHub PR or GitLab MR tool. Construct a client with the forge name, canonical HTTPS project URL, repository slug and credential. Use `OpenChanges`, `Comments`, `Change` and `ChangedFiles` for reads. `MintGitHubToken` exchanges an App private key for an installation token restricted to one repository.
+Import `github.com/medici-finance/assay/tools/desk/forgechange` to build a GitHub PR or GitLab MR tool. Construct a client with the forge name, canonical HTTPS project URL, repository slug and credential. The project URL binds GitHub to github.com and GitLab to its configured HTTPS installation. Use `OpenChanges`, `Comments`, `Change` and `ChangedFiles` for reads. `MintGitHubToken` exchanges an App private key for an installation token restricted to one repository.
 
-`PublishComment` posts an ordinary conversation comment. Supply the reviewed head, the operator-authorized repository visibility and any publication scan inputs. The library checks current visibility and head before writing or accepting an already-posted receipt. Callers own credential caching, retries and the publication receipt store. Use the `PublicationNotice` callback to collect the diagnostic when the publication policy supplies no withheld identifiers.
+`PublishComment` posts an ordinary conversation comment. Supply the reviewed head, the operator-authorized repository visibility and any publication scan inputs. The library checks current visibility and head before writing or accepting an already-posted receipt. Callers own credential caching, retries and the publication receipt store. The library trims whitespace and normalizes case in publication lists. For private repositories, it checks both full slugs and short references such as `name#4`. Use the `PublicationNotice` callback to collect sanitized scan notices, including when no withheld identifiers are supplied.
 
 `ChangedFiles` brackets the file list with change reads and returns the observed head. Compare it with any earlier head before using their data together.
 

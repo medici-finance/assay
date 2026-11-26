@@ -7,10 +7,9 @@ package deskkit
 //
 // THE CONTRACT, stated once so every later brief inherits it rather than re-deriving it:
 //
-//  1. RESOLUTION. Desk commands do not choose a forge. ForgeFor takes no forge
-//     parameter and reads no forge-selecting flag or environment variable. The
-//     standalone change client binds its own configuration to one repository
-//     and returns only change operations. Resolution order for ForgeFor:
+//  1. RESOLUTION. The forge that serves a desk repository is never a caller's
+//     choice. ForgeFor takes no forge parameter and reads no forge-selecting
+//     flag or environment variable. Resolution order:
 //
 //     a. the repo's configured forge — ASSAY_REPO_FORGES in the roster (rosterconfig.go);
 //     b. failing that, the origin remote's host, mapped to a forge ONLY when the mapping

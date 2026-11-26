@@ -564,7 +564,8 @@ func scanSelfContainment(surface, s string, o SelfContainOpts, priv, privShort m
 	// house repo, not only about the issue number hanging off it.
 	for _, idx := range reQualifiedRef.FindAllStringSubmatchIndex(s, -1) {
 		slug := strings.ToLower(s[idx[2]:idx[3]])
-		if !priv[slug] {
+		// A sentence-ending period can be absorbed into the repository name.
+		if !priv[slug] && !priv[strings.TrimRight(slug, ".")] {
 			continue
 		}
 		whole := s[idx[0]:idx[1]]
@@ -703,24 +704,30 @@ func bareRefNotices(surface, s string, hint int) []string {
 // the write-budget starvation #209/#1255 record.
 func privateRepoNames(self string) (slugs map[string]bool, shorts map[string]bool) {
 	slugs, shorts = map[string]bool{}, map[string]bool{}
-	selfLower := strings.ToLower(self)
 	_, selfName := splitRepo(self)
 	for repo, pol := range EffectiveConfig().Repos {
-		if pol.Visibility != VisibilityPrivate {
-			continue
-		}
-		if strings.EqualFold(repo, selfLower) {
-			continue
-		}
-		slugs[strings.ToLower(repo)] = true
-		if _, name := splitRepo(repo); name != "" && !strings.EqualFold(name, selfName) {
-			shorts[strings.ToLower(name)] = true
-			if lbl := RepoShortLabel(repo); lbl != "" && !strings.EqualFold(lbl, selfName) {
-				shorts[strings.ToLower(lbl)] = true
+		if pol.Visibility == VisibilityPrivate && addPrivateRepoNames(slugs, shorts, self, selfName, repo) {
+			if label := RepoShortLabel(repo); label != "" && !strings.EqualFold(label, selfName) {
+				shorts[strings.ToLower(label)] = true
 			}
 		}
 	}
 	return slugs, shorts
+}
+
+// addPrivateRepoNames records names shared by the desk and standalone scans.
+// The return value allows the desk to add an alias for the same repository.
+func addPrivateRepoNames(slugs, shorts map[string]bool, self, selfName, repo string) bool {
+	if strings.EqualFold(repo, self) {
+		return false
+	}
+	slugs[strings.ToLower(repo)] = true
+	_, name := splitRepo(repo)
+	if name == "" || strings.EqualFold(name, selfName) {
+		return false
+	}
+	shorts[strings.ToLower(name)] = true
+	return true
 }
 
 // containsToken reports whether lowered carries tok as a whole token — bounded on both

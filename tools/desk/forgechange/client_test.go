@@ -42,8 +42,9 @@ func TestPublishBindsCommentToChangeAndPolicy(t *testing.T) {
 			for _, tc := range []struct {
 				name, current, visibility, state, body, wantErr string
 				maxVisibility                                   string
-				withheld                                        []string
-				alreadyPosted, wantNotice                       bool
+				withheld, privateRepos, humans                  []string
+				alreadyPosted                                   bool
+				wantNotice                                      string
 				posts                                           int
 			}{
 				{name: "fresh", current: head, visibility: "private", state: "open", body: report, posts: 1},
@@ -58,7 +59,21 @@ func TestPublishBindsCommentToChangeAndPolicy(t *testing.T) {
 					body: "Reference to restricted-fixture.", maxVisibility: "public",
 					withheld: []string{"  ResTRicted-Fixture  "}, wantErr: "withheld.identifier"},
 				{name: "missing withheld policy", current: head, visibility: "internal", state: "open",
-					body: report, maxVisibility: "internal", withheld: []string{" "}, wantNotice: true, posts: 1},
+					body: report, maxVisibility: "internal", withheld: []string{" "}, wantNotice: "withheld identifiers could not be checked", posts: 1},
+				{name: "padded private repository", current: head, visibility: "public", state: "open",
+					body: "Reference to example-org/private-fixture.", maxVisibility: "public",
+					privateRepos: []string{"  Example-Org/Private-Fixture  "}, withheld: []string{"withheld-fixture"},
+					wantErr: "selfcontain.private-repository-name"},
+				{name: "private short reference", current: head, visibility: "public", state: "open",
+					body: "Reference to private-fixture#4.", maxVisibility: "public",
+					privateRepos: []string{"example-org/private-fixture"}, withheld: []string{"withheld-fixture"},
+					wantErr: "selfcontain.cross-repo-reference"},
+				{name: "bare private name notice", current: head, visibility: "public", state: "open",
+					body: "Reference to private-fixture.", maxVisibility: "public",
+					privateRepos: []string{"example-org/private-fixture"}, withheld: []string{"withheld-fixture"},
+					wantNotice: "publication scan flagged a possible private reference", posts: 1},
+				{name: "padded human login", current: head, visibility: "private", state: "open",
+					body: "I (Alex) have decided to publish this.", humans: []string{"  ALEx  "}, wantErr: "voice.ruling-claim"},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					posts := 0
@@ -104,12 +119,13 @@ func TestPublishBindsCommentToChangeAndPolicy(t *testing.T) {
 						maxVisibility = "private"
 					}
 					err = c.PublishComment(Publication{Number: 7, Head: head, Body: tc.body, MaxVisibility: maxVisibility,
-						AlreadyPosted: tc.alreadyPosted, WithheldIdentifiers: tc.withheld})
-					if tc.wantNotice && (len(notices) != 1 || !strings.Contains(notices[0], "withheld identifiers could not be checked")) {
-						t.Errorf("missing safe withheld-policy notice: %v", notices)
-					}
-					if !tc.wantNotice && len(notices) != 0 {
-						t.Errorf("unexpected notices: %v", notices)
+						AlreadyPosted: tc.alreadyPosted, WithheldIdentifiers: tc.withheld, PrivateRepositories: tc.privateRepos, HumanLogins: tc.humans})
+					if tc.wantNotice != "" {
+						if len(notices) != 1 || !strings.Contains(notices[0], tc.wantNotice) || strings.Contains(notices[0], "private-fixture") {
+							t.Errorf("expected one sanitized notice containing %q, got %v", tc.wantNotice, notices)
+						}
+					} else if len(notices) != 0 {
+						t.Errorf("unexpected publication notice: %v", notices)
 					}
 					if (tc.wantErr == "" && err != nil) || (tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr))) {
 						t.Fatalf("PublishComment error = %v, want %q", err, tc.wantErr)
@@ -304,5 +320,25 @@ func TestChangedFilesRefusesMovingHead(t *testing.T) {
 	}
 	if _, err := c.ChangedFiles(7); err == nil || !strings.Contains(err.Error(), "change moved") {
 		t.Fatalf("file read accepted a moving change: %v", err)
+	}
+}
+
+func TestStandaloneProviderMatchesProjectOrigin(t *testing.T) {
+	for _, test := range []struct {
+		forge, project string
+	}{
+		{"github", "https://gitlab.example/prefix/org/repo"},
+		{"gitlab", "https://github.com/org/repo"},
+	} {
+		t.Run(test.forge, func(t *testing.T) {
+			client := &http.Client{Transport: transportFunc(func(*http.Request) (*http.Response, error) {
+				t.Fatal("mismatched project reached the network")
+				return nil, nil
+			})}
+			got, err := New(Config{Forge: test.forge, ProjectURL: test.project, Repository: "org/repo", Token: "fixture", HTTPClient: client})
+			if err == nil || got != nil {
+				t.Fatalf("accepted %s as a %s project", test.project, test.forge)
+			}
+		})
 	}
 }

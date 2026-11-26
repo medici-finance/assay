@@ -68,9 +68,10 @@ func (c *StandaloneChanges) checkComment(in StandalonePublication, live string) 
 	if liveRank < 0 || configuredRank < liveRank {
 		return errors.New("repository visibility exceeds the configured publication scope or could not be verified")
 	}
+	humans := splitWithheldIdentifiers(strings.Join(in.HumanLogins, ","))
 	scanners := outboundScanners{
 		rulingClaim: func(surface string, text []byte) error {
-			if name, found := impersonatedRulingBy(markerSurface(string(text)), in.HumanLogins); found {
+			if name, found := impersonatedRulingBy(markerSurface(string(text)), humans); found {
 				return impersonationRefusal(surface, name)
 			}
 			return nil
@@ -78,27 +79,34 @@ func (c *StandaloneChanges) checkComment(in StandalonePublication, live string) 
 		personalData: func(text string) []piiFinding { return scanPersonalData(text, defaultEmailAllowed) },
 	}
 	repo := c.repo.Slug()
+	missingWithheld := false
 	if configuredRank > 0 {
 		private := make(map[string]bool, len(in.PrivateRepositories))
-		for _, name := range in.PrivateRepositories {
-			if !strings.EqualFold(name, repo) {
-				private[strings.ToLower(name)] = true
-			}
+		shorts := make(map[string]bool, len(in.PrivateRepositories))
+		_, selfName := splitRepo(repo)
+		for _, name := range splitWithheldIdentifiers(strings.Join(in.PrivateRepositories, ",")) {
+			addPrivateRepoNames(private, shorts, repo, selfName, name)
 		}
 		withheld := splitWithheldIdentifiers(strings.Join(in.WithheldIdentifiers, ","))
-		if len(withheld) == 0 {
+		missingWithheld = len(withheld) == 0
+		if missingWithheld {
 			c.notice(standaloneWithheldNotice)
 		}
 		scanners.selfContain = func(surface, text string, opts SelfContainOpts) ([]scFinding, []string) {
-			return scanSelfContainment(surface, text, opts, private, nil, withheld)
+			return scanSelfContainment(surface, text, opts, private, shorts, withheld)
 		}
 	}
 	write := OutboundWrite{Repo: repo, Kind: OutboundKindComment, NumberHint: in.Number, Visibility: configured}
-	findings, _ := scanOutboundField(write, OutboundField{Name: "body", Text: in.Body}, scanners)
+	findings, notices := scanOutboundField(write, OutboundField{Name: "body", Text: in.Body}, scanners)
 	if len(findings) != 0 {
 		first := findings[0]
 		// Logs may be shared with a wider audience than the comment being checked.
 		return fmt.Errorf("comment body refused by %s at line %d", first.rule, first.line)
+	}
+	// Desk notices can quote matched text. Report additional notices without
+	// excerpts, excluding the missing-withheld diagnostic already sent above.
+	if len(notices) > 1 || (len(notices) == 1 && !missingWithheld) {
+		c.notice("NOTICE: publication scan flagged a possible private reference or personal-data shape")
 	}
 	return nil
 }

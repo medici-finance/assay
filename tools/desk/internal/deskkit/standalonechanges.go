@@ -11,7 +11,6 @@ import (
 )
 
 type StandaloneChangeConfig struct {
-	Forge      string // github or gitlab
 	ProjectURL string // canonical HTTPS web URL
 	Repository string // owner/project
 	Token      string
@@ -20,6 +19,10 @@ type StandaloneChangeConfig struct {
 	// PublicationNotice receives a diagnostic when part of the publication
 	// policy could not be checked. A nil handler writes the diagnostic to stderr.
 	PublicationNotice func(string)
+
+	// GitLabInstance is the preconfigured GitLab installation URL. The project
+	// must match this instance and installation path before any network access.
+	GitLabInstance string
 
 	// GitLabLoopback is an optional HTTPS origin on 127.0.0.1 for a caller's
 	// validating TLS proxy. The installation path still comes from ProjectURL.
@@ -65,15 +68,20 @@ func NewStandaloneChanges(cfg StandaloneChangeConfig) (*StandaloneChanges, error
 	c := &StandaloneChanges{repo: ForgeRepo{Owner: owner, Name: name}, notice: notice}
 	var gitlabBase string
 	apiBase := GitHubAPIBase
-	switch cfg.Forge {
-	case "github":
-		if proj.Host != "github.com" || proj.Path != "/"+cfg.Repository || cfg.GitLabLoopback != "" {
+	kind := ForgeGitHub
+	switch {
+	case strings.EqualFold(proj.Hostname(), "github.com"):
+		if proj.Host != "github.com" || proj.Path != "/"+cfg.Repository || cfg.GitLabInstance != "" || cfg.GitLabLoopback != "" {
 			return nil, errors.New("GitHub project must be on github.com")
 		}
 		c.changeURL = cfg.ProjectURL + "/pull/"
-	case "gitlab":
+	case cfg.GitLabInstance != "":
+		kind = ForgeGitLab
 		base := *proj
 		base.Path = strings.TrimSuffix(proj.Path, "/"+cfg.Repository)
+		if base.String() != cfg.GitLabInstance {
+			return nil, errors.New("GitLab project URL must match the configured installation")
+		}
 		if base.Path != "" {
 			for _, segment := range strings.Split(strings.TrimPrefix(base.Path, "/"), "/") {
 				if !standalonePathSegment.MatchString(segment) || segment == "." || segment == ".." {
@@ -92,9 +100,9 @@ func NewStandaloneChanges(cfg StandaloneChangeConfig) (*StandaloneChanges, error
 		apiBase = gitlabBase
 		c.changeURL = cfg.ProjectURL + "/-/merge_requests/"
 	default:
-		return nil, errors.New("forge must be github or gitlab")
+		return nil, errors.New("project must identify github.com or the configured GitLab installation")
 	}
-	forge, err := newStandaloneChangeBackend(ForgeKind(cfg.Forge), c.repo, cfg.Token, gitlabBase, standaloneBoundHTTP(cfg.HTTPClient, apiBase))
+	forge, err := newStandaloneChangeBackend(kind, c.repo, cfg.Token, gitlabBase, standaloneBoundHTTP(cfg.HTTPClient, apiBase))
 	if err != nil {
 		return nil, err
 	}
