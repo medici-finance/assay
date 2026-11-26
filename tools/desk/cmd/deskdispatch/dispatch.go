@@ -801,7 +801,7 @@ func (o dispatchOpts) notLaunched(plan dispatchPlan, repo, home string) {
 	if tool == "" {
 		tool = claimScriptRel
 	}
-	cred := claimCredArg(tool, stampRoleForKit(o.kit), repo, dispatcherLoop())
+	cred := claimCredArg(tool, claimRoleForKit(o.kit), repo, dispatcherLoop())
 	branch := plan.branch
 	if branch == "" {
 		branch = "-" // a detached review/verify home has no branch; the claim records "-"
@@ -1535,7 +1535,7 @@ func stepClaim(o dispatchOpts, repo, script string, isScript bool, auth claimAut
 						"flight, a branch-as-claim the tool keeps) reclaim deliberately with `%s steal %s "+
 						"--repo %s --reason <why>%s`. If you reclaim an unlaunched lease, release it in that session before rerunning dispatch (see --help). Existing claim: %s.",
 					stepClaimAcquire, claimKey, state, ageMin, script, claimKey, repo,
-					claimCredArg(script, stampRoleForKit(o.kit), repo, dispatcherLoop()), holder))
+					claimCredArg(script, claimRoleForKit(o.kit), repo, dispatcherLoop()), holder))
 			}
 			return deskkit.Refused(fmt.Sprintf(
 				"step %s: %s is already claimed by a LIVE holder — do not proceed. Existing claim: %s. "+
@@ -1623,7 +1623,7 @@ func releaseClaim(o dispatchOpts, script string, auth claimAuth, claimKey, repo 
 	r := runCmdEnv(o.root, auth.env, script, append([]string{"release", claimKey, "--repo", repo}, auth.args...)...)
 	if r.err != nil {
 		return "NOT released (release failed: " + r.run.Said() + ") — release it by hand: " +
-			script + " release " + claimKey + " --repo " + repo + claimCredArg(script, stampRoleForKit(o.kit), repo, dispatcherLoop())
+			script + " release " + claimKey + " --repo " + repo + claimCredArg(script, claimRoleForKit(o.kit), repo, dispatcherLoop())
 	}
 	return "released"
 }
@@ -1739,10 +1739,11 @@ type claimAuth struct {
 // tools read only the AMBIENT credential — bare `gh api` in the script, GH_TOKEN/--token-file
 // in the binary — so a dispatch from a sandboxed desk window, which holds no ambient `gh`
 // login, failed closed at claim-acquire on every fresh item while every other write verb
-// minted its own role token and succeeded. The mint is the same role token the stamp step
-// attests under (the dispatching role stampRoleForKit names), taken here through mintTokenFn
-// because the claim runs four steps before the stamp — which reads its own credential inside
-// deskkit.ResolveForge.
+// minted its own role token and succeeded. The mint is the dispatching loop's claim role
+// (claimRoleForKit), taken here through mintTokenFn because the claim runs four steps before
+// the stamp — which reads its own credential inside deskkit.ResolveForge. That is the stamp's
+// role too, except for a verifier dispatch from a verify-desk window, which claims as verifier
+// so its own window can advance and release the claim without a cross-role mint (#7815).
 //
 // PRECEDENCE. An explicit GH_TOKEN already in the environment wins and nothing is minted —
 // but only once verifyInheritedToken shows it IS the dispatching role's credential (issue
@@ -1769,7 +1770,7 @@ type claimAuth struct {
 // hold for both — a forge that cannot be resolved refuses here, before any claim, rather than
 // guessing.
 func resolveClaimAuth(o dispatchOpts, repo string, forgeKind deskkit.ForgeKind, isScript bool) (claimAuth, error) {
-	role := stampRoleForKit(o.kit)
+	role := claimRoleForKit(o.kit)
 	// forgeKind is pre-resolved by planClaim for review and verifier dispatches;
 	// a worker dispatch leaves it empty, so resolve it HERE, at execution time — after every
 	// caller-flag precondition has passed, so a flag-mistake refusal never pays for this git
@@ -2099,7 +2100,7 @@ func stepDecision(o dispatchOpts, gateHuman bool, target decisionTarget, script 
 	if port {
 		// The port takes the script's argv plus --as: the role the claim was taken under, whose
 		// own credential it resolves through the roster. It is handed no credential.
-		role := stampRoleForKit(o.kit)
+		role := claimRoleForKit(o.kit)
 		r = runCmdEnv(o.root, nil, goDecisionBinary, "ensure", briefArg(o), "--repo", repo, "--at", "start", "--as", role)
 		source = "the " + role + " role credential (resolved by " + goDecisionBinary + ")"
 	} else {
@@ -2405,6 +2406,35 @@ func stampRoleForKit(kit string) string {
 	}
 	return deskkit.DispatcherRole
 }
+
+// claimRoleForKit names the App role every write to this dispatch's CLAIM runs under: the
+// acquire (and the show on contention), the release on an abort, the decision gate that rides
+// the same credential resolution, and every claim command printed for the dispatching window
+// (the NOT LAUNCHED progress/release hint, the stale-claim steal hint, the release-by-hand hint).
+//
+// One role for all of them, and it is the dispatching loop's own (#7815). A verify-desk window
+// that claimed as the desk App could advance and release its own claim only through a
+// cross-role desk mint, which a session's permission layer is right to refuse; when it did,
+// verifier dispatch stopped and the prepared claims expired at their TTL. So a verifier
+// dispatch from a window whose loop acts as the verifier role claims as verifier, and the
+// printed follow-up commands name the verifier credential that window already holds.
+//
+// Every other case keeps stampRoleForKit: the-desk claims as desk, a review kit as reviewer,
+// a worker kit as desk. An unset or unknown loop also falls back, so the printed command
+// still meets desktoken's own loop check. The claim's holder is the session name the claim
+// tool records, never the App, so no claim reader changes with the role it is written under.
+// The model stamp is a separate attestation and stays on stampRoleForKit.
+func claimRoleForKit(kit string) string {
+	if verifierKit(kit) {
+		if role, _, err := deskkit.SessionTokenRole(toolName); err == nil && role == verifierClaimRole {
+			return verifierClaimRole
+		}
+	}
+	return stampRoleForKit(kit)
+}
+
+// verifierClaimRole is the App role a verify-desk window claims a verifier dispatch under.
+const verifierClaimRole = "verifier"
 
 // stampKindForKit picks the label pair a kit's stamp is written to (#2760). The review
 // and verifier kits write dispatched-*, the session attestation their readers consume.
