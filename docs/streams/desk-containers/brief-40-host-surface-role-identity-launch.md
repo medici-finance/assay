@@ -33,6 +33,7 @@ sources:
   - "docs/streams/decisions/DR-desk-containers-34.md: the approved design record, which already covers per-role OS identity on a host."
   - "freshness-checked 2026-11-17 @ e259796bb (origin/main): tools/desk/cmd/cellctl/{rolesecret.go,rolesecret_test.go,launch.go,desk.go,cell.go,envkeys.go,hotfix_unix.go}."
   - "freshness-checked 2026-11-21 @ 09c51fcf7 (origin/main): tools/desk/cmd/cellctl/{launch.go,git.go,sessionroots.go,cadence.go,envkeys.go,rolesecret.go} (the launcher's git calls, the run directory mode, both host-refusal texts)."
+  - "freshness-checked 2026-11-26 @ c48fba82e (origin/main): `launch.go` (tmux server started with `-S` and no `-f`, `worktree add` and `worktree lock`), `git.go`, `sessionroots.go`, `cadence.go`, `hotfix.go` (the two `GIT_CONFIG_NOSYSTEM`/`GIT_CONFIG_GLOBAL` lines), the host-refusal text (`rolesecret.go`, `envkeys.go`); unchanged on main since 2026-11-22, and no `CELL_ROLE_IDENTITIES`, `hostmap-` or `host-worker-window` text exists under `tools/`, `containers/` or `docs/cellctl.md`."
   - "freshness-checked 2026-11-22 @ 236854c9d (origin/main): the host-refusal text (`rolesecret.go`, `envkeys.go`), the `run` directory mode and the launcher's git calls (`launch.go`), `roleSecretHolderRoles` and the two flow test names are unchanged; no `CELL_ROLE_IDENTITIES`, `hostmap-` or `host-worker-window` text exists under `tools/`, `containers/` or `docs/cellctl.md`."
 exec-tier: strong
 exec-tier-why: >-
@@ -60,7 +61,7 @@ files: `tools/desk/cmd/cellctl/{rolesecret.go,rolesecret_test.go,envkeys.go,chec
 `containers/secrets.md`, `docs/cellctl.md`,
 `changelog/role-secrets-host-surface.md` (planned).
 
-facts (freshness-checked 2026-11-17 @ e259796bb; the launcher-git fact 2026-11-21 @ 09c51fcf7):
+facts (freshness-checked 2026-11-17 @ e259796bb; the launcher-git fact 2026-11-21 @ 09c51fcf7; the launcher-config fact 2026-11-26 @ c48fba82e):
 
 - `rolesecret.go` `roleSecretSurfaceProblem()` refuses the host surface outright:
   `CELL_ROLE_SECRET_SURFACE=host is not built yet (per-role OS identity launch is a follow-up)`.
@@ -81,6 +82,13 @@ facts (freshness-checked 2026-11-17 @ e259796bb; the launcher-git fact 2026-11-2
   at launch (`launch.go` `worktree add` and `worktree lock`; `git.go` fetch of main), in the
   stream roots (`git.go`), and in every `CELL_ROOTS` checkout, which `sessionroots.go`
   fetches into at boot and before every cadence pass (`cadence.go`).
+- The launcher's own git and tmux read configuration outside any checkout. cellctl starts the
+  tmux server with `-S` and no `-f` (`launch.go`), so tmux loads the system and the launcher's
+  user tmux configuration, where a `run-shell` line runs as the launcher. The launcher's git
+  reads the system git config, the user git config and any file those include, and its fetch
+  over ssh reads the user's ssh client config. Only the hotfix build pins any of this:
+  `hotfix.go` sets `GIT_CONFIG_NOSYSTEM=1` and `GIT_CONFIG_GLOBAL=/dev/null` for its git
+  calls, and pins no hooks path, file-system monitor or ssh command.
 - Precedent for running a child as another uid: `hotfix_unix.go` `hotfixDropAttr` sets
   `syscall.Credential` when cellctl runs as root under sudo. Nothing else in cellctl switches
   identity.
@@ -99,7 +107,7 @@ design-fit:
   owner: cellctl (it already owns role-secret custody and window launch)
   contract: none — extends the cell config key registry and `containers/secrets.md`
   retires: [the blanket host-surface refusal in roleSecretSurfaceProblem]
-  weight: verbs +0, flags +0, config keys +1 (the role-to-identity map, counted in desk-containers/34's design-fit and not built there), refusal predicates +identity/elevation/root-equivalent/launcher-writable/host-writable/ancestor/socket/home
+  weight: verbs +0, flags +0, config keys +1 (the role-to-identity map, counted in desk-containers/34's design-fit and not built there), refusal predicates +identity/elevation/root-equivalent/launcher-writable/launcher-config/host-writable/ancestor/entry/link/socket/home
   why-add: The map and the checks were approved in DR-desk-containers-34 as part of the custody path; leaving the host surface refused was the considered alternative, and the driver chose to build it (#6301).
 
 ## Read first
@@ -208,10 +216,21 @@ Default if no answer: none — blocks until answered. Until it is answered the h
      code in those commands: a `post-checkout` hook on `worktree add`, a
      `reference-transaction` hook on fetch, and command-valued config such as
      `core.sshCommand`, `core.fsmonitor` and a credential helper. So a non-holder that can
-     write any of them runs code as the launcher. A non-holding
+     write any of them runs code as the launcher. The same goes for every file such a git
+     configuration includes (`include.path`, `includeIf`), which is probed too. A non-holding
      identity also must not be able to connect to the launcher-owned `<cell dir>/run/tmux.sock`
      (probed as `W_OK` on the socket and `X_OK` on `run`). A success, or a probe that cannot
      run, refuses.
+     The launcher also reads configuration that lives outside every checkout, and a list of
+     such files is never complete, so two layers cover it. First, the launcher pins it on a
+     host surface (Task 3). Second, the check probes the files it would otherwise read, in case
+     a launcher call is ever added without the pin: the system and user git config
+     (`/etc/gitconfig`, `~/.gitconfig`, `$XDG_CONFIG_HOME/git/config`), the user ssh client
+     config (`~/.ssh/config`) and the system and user tmux config (`/etc/tmux.conf`,
+     `~/.tmux.conf`, `$XDG_CONFIG_HOME/tmux/tmux.conf`), together with each file the pin names
+     (Task 3). A directory probe on the home does not cover these files: a group or
+     access-control grant on the file itself lets a non-holder write it while the home stays
+     closed, which the Ancestors, entries and links check below covers.
    - **Writable paths.** As each non-holding identity, a write-permission probe (`access(2)`
      with `W_OK`, which honours access-control lists and groups) must fail on every path a
      holder executes or reads as configuration: the git common directory, its `config` and
@@ -219,17 +238,33 @@ Default if no answer: none — blocks until answered. Until it is answered the h
      identity map; every directory on the holder window's PATH, the cell's shim directory
      included; the holder's home; and the directory holding each secret file. A probe that
      cannot run refuses.
-   - **Ancestors and ownership.** A probe of the named path alone is not enough. A non-holder
-     that can write a directory's parent can rename the directory and put its own in its
-     place, and a non-holder that owns a path whose write bit is cleared fails `W_OK` yet can
-     `chmod u+w` it at any time. So for every path in the Root-equivalent access, Launching
-     identity and Writable paths sets, and for each of that path's ancestors up to `/`, the
-     check refuses when a non-holding identity can write it (the same `W_OK` probe, run as
-     that identity) or owns it (its owner uid is that identity's). One exemption: an ancestor
-     with the sticky bit set (such as `/tmp`) that a non-holder can write is allowed only when
-     the child under it on the path is owned by a trusted identity: root, the holder, or the
-     launching identity. Each refusal names the path, the ancestor and whether it was write
-     access or ownership.
+   - **Ancestors, entries and links.** A probe of the named path alone is not enough, in
+     three ways. All three apply to every path in the Root-equivalent access, Launching
+     identity and Writable paths sets.
+     - *Ancestors and ownership.* A non-holder that can write a directory's parent can rename
+       the directory and put its own in its place, and a non-holder that owns a path whose
+       write bit is cleared fails `W_OK` yet can `chmod u+w` it at any time. So for each such
+       path and each of its ancestors up to `/`, the check refuses when a non-holding
+       identity can write it (the same `W_OK` probe, run as that identity) or owns it (its
+       owner uid is that identity's). One exemption: an ancestor with the sticky bit set
+       (such as `/tmp`) that a non-holder can write is allowed only when the child under it
+       on the path is owned by a trusted identity: root, the holder, or the launching
+       identity.
+     - *Entries inside a probed directory.* A failing `W_OK` on a directory stops a non-holder
+       creating, deleting or renaming entries in it, but not overwriting an entry it can
+       already write through a group or access-control grant. So each entry that the
+       identity executes or reads inside a probed directory is itself probed, with the same
+       write, ownership and ancestor rule: every executable resolved on each probed PATH (the
+       switch command, `tmux`, `git`, the harness and `cellctl`), every file now in a probed
+       `hooks` directory, and the startup and configuration files read in each probed home.
+     - *Symlinked paths.* `access(2)` follows symlinks, but a walk up to `/` of the path as
+       written never reaches the target's own parent. So every symlink component of a probed
+       path is probed too, with its owner read by `lstat` (a link a non-holder owns refuses
+       even when its target is closed), and the resolved target and each of the target's
+       ancestors up to `/` get the same write, ownership and ancestor rule. A path that
+       cannot be resolved refuses.
+     Each refusal names the path, the ancestor, entry or link, and whether it was write access
+     or ownership.
    - **Window separation.** A holder role's window gets its own tmux server and socket, and
      its own home, both owned by the holder identity, writable by no other identity, and not
      reachable by any non-holding identity (the socket's directory is owner-only). The one
@@ -251,14 +286,28 @@ Default if no answer: none — blocks until answered. Until it is answered the h
    - **Seam.** All identity probes go through one package seam, `roleSecretIdentityProbe`, so
      the in-tree tests inject results. The real probe runs as the identity through the switch
      the Human decision picks; it never reads mode bits as a stand-in. The owner of a path
-     and an ancestor's sticky bit (Ancestors and ownership) are read with `stat` as well as,
-     never instead of, the probe.
+     and an ancestor's sticky bit (Ancestors, entries and links) are read with `stat`, and a
+     link's owner with `lstat`, as well as, never instead of, the probe.
 3. **Launch under the role identity.** On a verified host surface, `cellctl desk` re-runs the
    Task 2 check, then starts the role's window under the mapped identity through the switch
    the Human decision picks. A holder window's environment carries its role-secret path
    variables, built after `unsetRoleSecretEnv` the same way the container plan builds them,
    and never a value. A non-holder window keeps `unsetRoleSecretEnv`. A window that cannot be
-   started under its identity refuses, and never falls back to the launcher's identity. The
+   started under its identity refuses, and never falls back to the launcher's identity.
+   On a host surface the launcher also pins the configuration its own git and tmux read, so
+   that nothing outside the probed paths can make the launcher run code. Every git the
+   launcher runs, and every tool it starts that runs git (such as `deskwt`), gets this
+   through its environment, not through `-c` flags, so a child inherits it:
+   `GIT_CONFIG_NOSYSTEM=1`; `GIT_CONFIG_GLOBAL` naming an empty launcher-owned file in the
+   cell directory; and `GIT_CONFIG_COUNT` with key and value pairs that set `core.hooksPath`
+   to an empty launcher-owned directory in the cell directory, `core.fsmonitor` to `false`
+   and `core.sshCommand` to `ssh -F` plus a launcher-owned file in the cell directory (`-F`
+   makes ssh ignore the system client config). Command-scope configuration outranks a
+   checkout's own `config`, so the launcher's git runs no hook and no checkout-set command
+   in these three keys. The tmux server is started with `-f` naming a launcher-owned file in
+   the cell directory. Each file and directory named here is probed by Task 2's Launching
+   identity bullet. The pin does not replace the probe of a checkout's `config` and `hooks`,
+   because git has command-valued keys beyond these three. The
    launch receipt from desk-containers/34 records the identity login beside role, service
    and path.
 4. **Lift the refusal.** `roleSecretSurfaceProblem()` accepts `host` only once Task 2's check
@@ -271,15 +320,21 @@ Default if no answer: none — blocks until answered. Until it is answered the h
    `hostmap-reviewer-uid-zero`, `hostmap-reviewer-elevates` and
    `hostmap-reviewer-writes-holder-path` (a table over a writable git directory, identity
    map, PATH directory and home), each running the host check with the identity probe
-   injected and expecting a refusal; they may share a table with `TestRoleSecretHostSurface`
+   injected and expecting a refusal; they may share a table with `TestRoleSecretHostSurface` (planned)
    but must run under the first test's name. In `deskdispatch`, `TestRoleSecretUntrustedHead`
    gains the subtest `host-worker-window`: a holding window whose path variable names a file
    under a holder's home, not a container mount, gets the same refusals and admissions as the
    container window.
 5. **Checkouts.** A holder role works in checkouts its own identity owns. If the dispatcher
    would create a holder's worktree from a checkout a non-holder can write, Task 2's
-   writable-path check refuses; it does not create a separate clone. Record the operator
-   recipe (one clone per holder identity) in `containers/secrets.md`.
+   writable-path check refuses; it does not create a separate clone. A non-holding role
+   likewise works in a clone its own identity owns, and the launcher runs no git in it:
+   the Launching identity probe set covers every checkout the launcher runs git in, so a
+   checkout a non-holder must write can never be one of them, and a non-holder cannot
+   commit in a worktree of the cell repo. On a host surface a non-holding role's worktree is
+   therefore created and kept current by that role's own identity, through the switch, not
+   by the launcher. Record the operator recipe (one clone per role identity, holders and
+   non-holders alike) in `containers/secrets.md`.
 6. **Flow tests and operator recipe.** Add the two host flow tests below. They read the
    provisioned identities from the test-only variable `CELLCTL_TEST_ROLE_IDS`, the same
    grammar as Task 1 plus one key, `elevating=<login>`, naming an identity the operator gave
@@ -300,7 +355,8 @@ Default if no answer: none — blocks until answered. Until it is answered the h
    the switch rule from the Human decision, one clone per holder identity, the identity-map
    key) beside the container recipe, with its operator preconditions the check cannot see: no
    container daemon on unauthenticated loopback TCP, and no non-holding user in a group such
-   as `lxd`, `libvirt` or `disk`. `docs/cellctl.md`: the identity-map key and what the host
+   as `lxd`, `libvirt` or `disk`. The recipe also names the launcher's pinned configuration
+   files (Task 3) and says that every non-holding role works in a clone its own identity owns. `docs/cellctl.md`: the identity-map key and what the host
    check refuses. A changelog fragment.
 
 ## Interface contract
@@ -337,8 +393,8 @@ adds, and row 9 runs on a diff that does not yet hold the implementation.
 
 | # | Class | Env | Command | Expect |
 |---|---|---|---|---|
-| 1 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretHostSurface$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretHostSurface ' "$o")` | Named PASS with the identity probe injected; each case refuses with its own reason: no map, a role missing from the map, a reviewer on a holder's identity or the file owner's, a reviewer at uid 0, a reviewer that elevates without a prompt to root, to a holder or to the launching identity, a reviewer that can write a rootful container runtime socket or a holder's or the launcher's rootless one (a rootless socket of its own passes), a coordinator or intake on a holder's identity, the launcher being a role identity, a writable git common directory, hooks, cell config, identity map, PATH directory, holder home or secret directory, a writable cellctl binary or its directory, launcher PATH directory, launcher home or shell startup file, switch rule file, cell directory, `run` directory or launcher-owned cell home, a writable git common directory, `config` or `hooks` of the cell repo, a stream root or a `CELL_ROOTS` checkout the launcher runs git in, a probed path whose ancestor a reviewer can write, a probed path or ancestor a reviewer owns with its write bit cleared, a reviewer-writable sticky ancestor over a reviewer-owned child (a sticky ancestor over a trusted-owned child passes), a launcher tmux socket a non-holder can connect to, a non-holding window handed the launcher-owned cell home, a shared tmux socket or home for a holder, a dev-env file a holder can read, and a probe that cannot run; a fully separated map passes and the expected owner is the role's identity. |
-| 2 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretHostLaunch$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretHostLaunch ' "$o")` | Named PASS with the switch seam injected; a verified host cell launches each window under its mapped identity, the worker window alone carries the path variable and no value, reviewer, intake and coordinator windows carry none, a window that cannot be switched refuses rather than falling back to the launcher's identity, and the receipt names the identity login. |
+| 1 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretHostSurface$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretHostSurface ' "$o")` | Named PASS with the identity probe injected; each case refuses with its own reason: no map, a role missing from the map, a reviewer on a holder's identity or the file owner's, a reviewer at uid 0, a reviewer that elevates without a prompt to root, to a holder or to the launching identity, a reviewer that can write a rootful container runtime socket or a holder's or the launcher's rootless one (a rootless socket of its own passes), a coordinator or intake on a holder's identity, the launcher being a role identity, a writable git common directory, hooks, cell config, identity map, PATH directory, holder home or secret directory, a writable cellctl binary or its directory, launcher PATH directory, launcher home or shell startup file, switch rule file, cell directory, `run` directory or launcher-owned cell home, a writable git common directory, `config` or `hooks` of the cell repo, a stream root or a `CELL_ROOTS` checkout the launcher runs git in, a launcher-read git, ssh or tmux config file a reviewer can write (the system or user git config, a file a probed git config includes, the ssh client config, the tmux config), a launcher git call or tmux start that is not pinned (global and system git config, hooks path, file-system monitor, ssh command, `-f`), a writable entry inside a probed directory (a group-writable `git`, switch, `tmux`, harness or `cellctl` executable on a PATH, an existing hook file, a startup file in a home), a PATH entry or home that is a symlink whose resolved target or the target's parent a reviewer can write, a symlink a reviewer owns, a probed path whose ancestor a reviewer can write, a probed path or ancestor a reviewer owns with its write bit cleared, a reviewer-writable sticky ancestor over a reviewer-owned child (a sticky ancestor over a trusted-owned child passes), a launcher tmux socket a non-holder can connect to, a non-holding window handed the launcher-owned cell home, a shared tmux socket or home for a holder, a dev-env file a holder can read, and a probe that cannot run; a fully separated map passes and the expected owner is the role's identity. |
+| 2 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretHostLaunch$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretHostLaunch ' "$o")` | Named PASS with the switch seam injected; a verified host cell launches each window under its mapped identity, every git the launcher runs and the tmux server start carry the pinned configuration, the worker window alone carries the path variable and no value, reviewer, intake and coordinator windows carry none, a window that cannot be switched refuses rather than falling back to the launcher's identity, and the receipt names the identity login. |
 | 3 | check +flow | host:multi-user | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretLaunchFlow$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretLaunchFlow ' "$o")` | Named PASS on a POSIX host provisioned per Task 6; the compiled cellctl checks a host-surface scratch cell, launches a worker window whose dispatched child sees only the path variable, then refuses once the fixture is group-readable; no output contains the fixture contents. The same command as desk-containers/34 row 5. |
 | 4 | check +flow | host:multi-user | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretReadDenyFlow$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretReadDenyFlow ' "$o")` | Named PASS on a POSIX host provisioned per Task 6; a reviewer child fails to open the fixture with a permission error and a worker child opens it; a map putting the reviewer on the worker's identity is refused at check before any window starts; a reviewer mapped to the elevating identity is refused by the real elevation probe; no output contains the fixture contents. The same command as desk-containers/34 row 9. |
 | 5 | check | tree | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && go -C tools/desk test -count=1 -v ./cmd/cellctl/ -run '^TestRoleSecretReadIsolation$' > "$o" 2>&1 && grep -F -- '--- PASS: TestRoleSecretReadIsolation ' "$o" && grep -F -- '--- PASS: TestRoleSecretReadIsolation/hostmap-reviewer-on-holder-identity ' "$o" && grep -F -- '--- PASS: TestRoleSecretReadIsolation/hostmap-reviewer-uid-zero ' "$o" && grep -F -- '--- PASS: TestRoleSecretReadIsolation/hostmap-reviewer-elevates ' "$o" && grep -F -- '--- PASS: TestRoleSecretReadIsolation/hostmap-reviewer-writes-holder-path ' "$o")` | Named PASS for the test and for each of the four `hostmap-` subtests, which exist only after this change. desk-containers/34 row 8 still holds after the host refusal is lifted: an unmapped host surface, an unset surface and an unknown surface each still refuse, and the host-surface cases row 8's Expect lists (a reviewer on a holder's identity, uid 0, elevation, a writable git directory, map, PATH or home) are now exercised by those subtests, run under this test's name. |
@@ -386,6 +442,18 @@ adds, and row 9 runs on a diff that does not yet hold the implementation.
   A pane left running a launcher shell after the role process exits would read injected
   input as the launcher: review-only (the pane command is the switch itself and the pane
   closes on exit).
+- A reviewer that can write a file the launcher reads as configuration outside any checkout
+  (its user or system git config or a file that config includes, a `core.hooksPath` target, its
+  ssh client config, or the tmux config the server reads at start), through a group or access
+  grant on the file while the home directory itself stays closed. The next fetch or tmux start
+  runs the planted command as the launcher: row 1 (the launcher pins that configuration and
+  the check probes the files it would otherwise read) and row 2 (the pin is on every call).
+- A reviewer overwrites an entry it can already write inside a root-owned directory every
+  directory probe passes: a group-writable `git`, `tmux` or switch executable on a PATH, an
+  existing hook, or a startup file in a home. Or a PATH entry or home is a symlink into a
+  tree the reviewer can write, so the walk of the path as written never reaches the target's
+  parent: row 1 (each executable, hook and startup file is probed, and every symlink component
+  and the resolved target's ancestors are probed).
 - Root without a prompt by a route no socket probe sees (a daemon on unauthenticated loopback
   TCP, `lxd`, `libvirt` or `disk` group membership): no row; the host recipe names these as
   operator preconditions.
