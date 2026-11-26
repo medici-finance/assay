@@ -209,7 +209,7 @@ func (c *StandaloneChanges) ChangedFiles(number int) (StandaloneChangeFiles, err
 	}
 	out := StandaloneChangeFiles{HeadSHA: pr.HeadSHA, Complete: len(files) == pr.ChangedFiles, ChangedFiles: pr.ChangedFiles, Files: make([]StandaloneChangeFile, 0, len(files))}
 	for _, file := range files {
-		out.Files = append(out.Files, StandaloneChangeFile{file.Filename, file.PreviousFilename, file.Status, file.Patch, file.PatchAbsent})
+		out.Files = append(out.Files, StandaloneChangeFile(file))
 	}
 	return out, nil
 }
