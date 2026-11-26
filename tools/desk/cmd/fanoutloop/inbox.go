@@ -1,0 +1,461 @@
+package main
+
+import (
+	"fmt"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+
+	"github.com/medici-finance/assay/deskcore/issueflow"
+	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
+	"github.com/medici-finance/assay/tools/desk/internal/topology"
+)
+
+// inbox.go — the addressed-inbox offer lane and the per-tick re-read of carried decision holds.
+//
+// The board lane only sees a `to:worker` message once intake has filed a placeholder brief for
+// it, and the work-ready issue projection deliberately excludes addressed issues. So an issue
+// addressed to this desk with no placeholder was read by nothing that dispatches: it sat in
+// `issueboard issues --projection inbox --to worker` while the pool idled. This lane turns those
+// inbox issues into dispatch offers in the leading (addressed) lane, behind the same gates every
+// other offer passes:
+//
+//   - trust: an untrusted author without a current blessing is QUARANTINED, never offered;
+//   - decision: an issue carrying a decision-owed label (needs-decision, question), help wanted,
+//     or a system-state label is HELD, never offered;
+//   - dedupe: an issue an issue-loop placeholder already carries flows through the board lane,
+//     and an issue with an open or merged PR (`Issue:` trailer) or a live dispatch claim is HELD;
+//   - width: items join the same queue, so the pool width and the class reservation bound them
+//     exactly as they bound every other item.
+//
+// Every could-not-check read HOLDS the issue (or the whole lane), never offers it.
+
+// kindInbox tags an item offered from the addressed issue inbox. classOf buckets it as fresh work.
+const kindInbox = "inbox-issue"
+
+// InboxIssue is one open issue addressed to this desk, as the inbox source read it.
+type InboxIssue struct {
+	Repo   string // owner/name
+	Number int
+	Title  string
+	Labels []string
+	Author string
+	// Trusted is the trust gate's answer: a trusted author, or an untrusted author with a
+	// current blessing read in full.
+	Trusted bool
+	// TrustUnknown, when non-empty, is why the trust gate could not be read. The issue is held.
+	TrustUnknown string
+}
+
+// inboxHold is one inbox issue the lane read and did not offer, with the reason.
+type inboxHold struct {
+	ref    string // owner/name#N
+	reason string
+}
+
+// CarriedHold is a decision hold carried from an earlier tick: the held item and the decision
+// issue that is its source. The plan re-reads the source on every run.
+type CarriedHold struct {
+	Item  string // the held item's ID or claim key, as the plan prints it
+	Repo  deskkit.ForgeRepo
+	Issue int
+}
+
+// carriedHoldResult is one carried hold after this tick's re-read.
+type carriedHoldResult struct {
+	hold CarriedHold
+	read deskkit.DecisionHold
+}
+
+// inboxItemID is the dispatch key for an inbox issue: the `<short>--issue-<N>` claim-key form
+// deskdispatch accepts for issue-only work (with --repo naming the target), so the plan key, the
+// claim key and the release key are one string.
+func inboxItemID(repo string, n int) string {
+	return fmt.Sprintf("%s--issue-%d", deskkit.RepoShortLabel(repo), n)
+}
+
+func (it InboxIssue) ref() string { return it.Repo + "#" + strconv.Itoa(it.Number) }
+
+func (it InboxIssue) toItem(targetSHA, role string) loopengine.Item {
+	return loopengine.Item{
+		ID:        inboxItemID(it.Repo, it.Number),
+		TargetSHA: targetSHA,
+		Payload: map[string]string{
+			"repo":  it.Repo,
+			"kind":  kindInbox,
+			"issue": strconv.Itoa(it.Number),
+			"title": it.Title,
+			"to":    role,
+		},
+	}
+}
+
+// labelSetHas reports whether any label is in set (lower-cased, trimmed).
+func labelSetHas(labels []string, set map[string]bool) (string, bool) {
+	for _, l := range labels {
+		if n := strings.ToLower(strings.TrimSpace(l)); set[n] {
+			return strings.TrimSpace(l), true
+		}
+	}
+	return "", false
+}
+
+// inboxLabelHold returns why an inbox issue's labels keep it out of dispatch, or "".
+func inboxLabelHold(labels []string) string {
+	t := topology.Compiled()
+	decision := t.DecisionOwedLabelSet()
+	decision[deskkit.DecisionLabel] = true
+	if l, ok := labelSetHas(labels, decision); ok {
+		return fmt.Sprintf("decision gate: carries %q; a decision-owed issue is never offered", l)
+	}
+	if l, ok := labelSetHas(labels, map[string]bool{"help wanted": true}); ok {
+		return fmt.Sprintf("carries %q; it waits on a human, not a worker", l)
+	}
+	if l, ok := labelSetHas(labels, t.SystemStateLabelSet()); ok {
+		return fmt.Sprintf("carries system-state label %q; it is not work", l)
+	}
+	return ""
+}
+
+// inboxLane builds the inbox offers for this run. It never returns an error: a failed read is a
+// HOLD recorded for the plan output, so one unreadable source cannot fail the whole plan.
+func (f *FanoutLoop) inboxLane(role string) []loopengine.Item {
+	if f.Inbox == nil || role == "" {
+		return nil
+	}
+	issues, err := f.Inbox()
+	if err != nil {
+		f.noteInboxLaneHeld(fmt.Sprintf("could not read the addressed inbox (%v)", err))
+		return nil
+	}
+	if f.issueIndex == nil {
+		f.noteInboxLaneHeld("no PR index is wired to check each issue for an open or merged PR; " +
+			"an inbox issue is never offered unchecked")
+		return nil
+	}
+	sort.SliceStable(issues, func(i, j int) bool {
+		if !strings.EqualFold(issues[i].Repo, issues[j].Repo) {
+			return strings.ToLower(issues[i].Repo) < strings.ToLower(issues[j].Repo)
+		}
+		return issues[i].Number < issues[j].Number
+	})
+	placeholders, phErr := placeholderIssues(f.Root, f.issueBoardRepo)
+	var out []loopengine.Item
+	seen := map[string]bool{}
+	for _, iss := range issues {
+		ref := iss.ref()
+		key := strings.ToLower(ref)
+		if seen[key] || iss.Number <= 0 || !deskkit.ValidRepoSlug(iss.Repo) {
+			continue
+		}
+		seen[key] = true
+		if !issueflow.Select(issueflow.Inbox, issueflow.CandidateForLabels(issueflow.Candidate{}, iss.Labels), role) {
+			continue // not addressed to this desk (or a malformed address): not this lane's row
+		}
+		id := inboxItemID(iss.Repo, iss.Number)
+		if f.isHandled(id) {
+			continue
+		}
+		if iss.TrustUnknown != "" {
+			f.noteInboxHold(ref, "trust could-not-check: "+iss.TrustUnknown)
+			continue
+		}
+		if !iss.Trusted {
+			f.noteInboxHold(ref, fmt.Sprintf("QUARANTINED: author %q is untrusted and the issue has no current blessing", iss.Author))
+			continue
+		}
+		if why := inboxLabelHold(iss.Labels); why != "" {
+			f.noteInboxHold(ref, why)
+			continue
+		}
+		if phErr != nil {
+			f.noteInboxHold(ref, "placeholder could-not-check: "+phErr.Error())
+			continue
+		}
+		if ph, ok := placeholders[key]; ok {
+			f.noteInboxHold(ref, "issue-loop placeholder "+ph+" carries it; it dispatches through the board lane")
+			continue
+		}
+		pr, merr := f.issueIndex.Match(deskkit.DispatchIssue{Repo: iss.Repo, Number: iss.Number})
+		if merr != nil {
+			f.noteInboxHold(ref, "issue PR could-not-check: "+merr.Error())
+			continue
+		}
+		if pr.Unchecked != "" {
+			f.noteInboxHold(ref, "issue PR could-not-check: "+pr.Unchecked)
+			continue
+		}
+		if pr.Number != 0 {
+			f.noteInboxHold(ref, deskkit.DispatchIssue{Repo: iss.Repo, Number: iss.Number}.Representation(pr))
+			continue
+		}
+		held, cerr := f.issueClaimHeld(iss.Repo, iss.Number)
+		if cerr != nil {
+			f.noteInboxHold(ref, "dispatch claim could-not-check: "+cerr.Error())
+			continue
+		}
+		if held {
+			f.noteInboxHold(ref, "live dispatch claim "+id+" is held")
+			continue
+		}
+		out = append(out, iss.toItem(f.TargetSHA, role))
+	}
+	return out
+}
+
+func (f *FanoutLoop) noteInboxHold(ref, reason string) {
+	f.mu.Lock()
+	f.inboxHolds = append(f.inboxHolds, inboxHold{ref: ref, reason: reason})
+	f.mu.Unlock()
+}
+
+func (f *FanoutLoop) noteInboxLaneHeld(reason string) {
+	f.mu.Lock()
+	f.inboxHeld = reason
+	f.mu.Unlock()
+}
+
+func (f *FanoutLoop) inboxHoldRows() ([]inboxHold, string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]inboxHold(nil), f.inboxHolds...), f.inboxHeld
+}
+
+// issueClaimHeld reports whether a live dispatch claim names this issue. IssueClaim overrides the
+// read; the default lists the root checkout's local claim refs in both claim namespaces.
+func (f *FanoutLoop) issueClaimHeld(repo string, n int) (bool, error) {
+	if f.IssueClaim != nil {
+		return f.IssueClaim(repo, n)
+	}
+	return localIssueClaimHeld(f.Root, repo, n)
+}
+
+// claimRefMatches reports whether ref is the issue's claim ref (exact) or a suffixed re-dispatch
+// of it (`--<suffix>`). The `--` boundary keeps issue-1 from matching issue-12.
+func claimRefMatches(ref, prefix string) bool {
+	r := strings.TrimSpace(ref)
+	return r == prefix || strings.HasPrefix(r, prefix+"--")
+}
+
+// issueClaimPrefixes are the two namespaces a dispatch claim can live in: where claims are
+// acquired today and where the Go claim readers list them.
+func issueClaimPrefixes(repo string, n int) []string {
+	key := inboxItemID(repo, n)
+	return []string{deskkit.DispatchClaimActiveRefsPrefix + key, deskkit.ClaimRefsPrefix + key}
+}
+
+// localIssueClaimHeld is the offline claim read: the root checkout's local claim refs.
+func localIssueClaimHeld(root, repo string, n int) (bool, error) {
+	for _, prefix := range issueClaimPrefixes(repo, n) {
+		cmd := exec.Command("git", "-C", root, "for-each-ref", "--format=%(refname)", prefix, prefix+"--*")
+		out, err := cmd.Output()
+		if err != nil {
+			return false, fmt.Errorf("cannot list local claim refs under %s: %w", prefix, err)
+		}
+		for _, ln := range strings.Split(string(out), "\n") {
+			if claimRefMatches(ln, prefix) {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
+// placeholderIssues maps every issue-loop placeholder under root to the source issue it carries
+// (`owner/name#N`, lower-cased -> placeholder id). An unreadable placeholder is an error: the lane
+// cannot tell which issue it carries, so it must not offer any issue as uncarried.
+func placeholderIssues(root, boardRepo string) (map[string]string, error) {
+	out := map[string]string{}
+	if strings.TrimSpace(root) == "" {
+		return out, nil
+	}
+	matches, err := filepath.Glob(filepath.Join(root, "docs", "streams", "*", "*issue-*.md"))
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range matches {
+		stem := strings.TrimSuffix(filepath.Base(m), ".md")
+		if deskkit.PlaceholderIssueNumber(stem) == 0 {
+			continue
+		}
+		id := filepath.Base(filepath.Dir(m)) + "/" + stem
+		issue, perr := deskkit.DispatchPlaceholder(root, boardRepo, id)
+		if perr != nil {
+			return nil, perr
+		}
+		if issue.Number > 0 {
+			out[strings.ToLower(issue.Repo+"#"+strconv.Itoa(issue.Number))] = id
+		}
+	}
+	return out, nil
+}
+
+// --- carried decision holds -----------------------------------------------------------------
+
+// rereadCarriedHolds re-reads every carried decision hold's source this run and returns the
+// results in the order the holds were given. ReadDecisionHold overrides the read (tests); the
+// default reads the issue through the session's forge.
+func (f *FanoutLoop) rereadCarriedHolds() []carriedHoldResult {
+	var out []carriedHoldResult
+	for _, h := range f.DecisionHolds {
+		var r deskkit.DecisionHold
+		if f.ReadDecisionHold != nil {
+			r = f.ReadDecisionHold(h.Repo, h.Issue)
+		} else {
+			fg, err := f.forgeResolver()(h.Repo)
+			if err != nil {
+				r = deskkit.DecisionHold{Repo: h.Repo, Issue: h.Issue, State: deskkit.DecisionHoldUnknown,
+					Why: fmt.Sprintf("decision issue %s#%d could not be read: %v", h.Repo.Slug(), h.Issue, err)}
+			} else {
+				r = deskkit.RereadDecisionHold(fg, h.Repo, h.Issue)
+			}
+		}
+		out = append(out, carriedHoldResult{hold: h, read: r})
+	}
+	return out
+}
+
+// applyCarriedHolds withholds every queued item whose carried hold still stands this run, and
+// records each hold's re-read for the plan output.
+func (f *FanoutLoop) applyCarriedHolds(items []loopengine.Item) []loopengine.Item {
+	if len(f.DecisionHolds) == 0 {
+		return items
+	}
+	results := f.rereadCarriedHolds()
+	standing := map[string]bool{}
+	for _, r := range results {
+		if r.read.Holds() {
+			standing[strings.ToLower(strings.TrimSpace(r.hold.Item))] = true
+		}
+	}
+	f.mu.Lock()
+	f.carriedHolds = results
+	f.mu.Unlock()
+	if len(standing) == 0 {
+		return items
+	}
+	kept := items[:0:0]
+	for _, it := range items {
+		if standing[strings.ToLower(it.ID)] || standing[strings.ToLower(claimKey(it))] {
+			continue
+		}
+		kept = append(kept, it)
+	}
+	return kept
+}
+
+func (f *FanoutLoop) carriedHoldRows() []carriedHoldResult {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]carriedHoldResult(nil), f.carriedHolds...)
+}
+
+// parseCarriedHold parses one `--decision-hold <item>=<owner/name>#<N>` value.
+func parseCarriedHold(v string) (CarriedHold, error) {
+	item, ref, ok := strings.Cut(v, "=")
+	item = strings.TrimSpace(item)
+	if !ok || item == "" {
+		return CarriedHold{}, fmt.Errorf("--decision-hold %q is not <item>=<owner/name>#<N>", v)
+	}
+	fr, n, err := deskkit.ParseIssueRef(ref)
+	if err != nil {
+		return CarriedHold{}, fmt.Errorf("--decision-hold %q: %v", v, err)
+	}
+	return CarriedHold{Item: item, Repo: fr, Issue: n}, nil
+}
+
+// holdList is the repeatable --decision-hold flag.
+type holdList []CarriedHold
+
+func (h *holdList) String() string { return fmt.Sprintf("%d hold(s)", len(*h)) }
+
+func (h *holdList) Set(v string) error {
+	c, err := parseCarriedHold(v)
+	if err != nil {
+		return err
+	}
+	*h = append(*h, c)
+	return nil
+}
+
+// --- live sources -------------------------------------------------------------------------
+
+// liveInboxIssues reads the open issues addressed to role across the configured scan scope,
+// through the typed forge, with the same trust gate the issue board applies: a trusted author
+// passes; any other author passes only on a current blessing read in full. An empty or
+// unconfigured scan scope is could-not-check, never an empty inbox.
+func liveInboxIssues(role string, resolve forgeResolver) func() ([]InboxIssue, error) {
+	return func() ([]InboxIssue, error) {
+		if err := deskkit.ScanScopeError(); err != nil {
+			return nil, err
+		}
+		var out []InboxIssue
+		for _, slug := range deskkit.ScanRepos() {
+			owner, name, ok := strings.Cut(slug, "/")
+			if !ok || !deskkit.ValidRepoSlug(slug) {
+				return nil, fmt.Errorf("scan scope entry %q is not owner/name", slug)
+			}
+			fr := deskkit.ForgeRepo{Owner: owner, Name: name}
+			fg, err := resolve(fr)
+			if err != nil {
+				return nil, fmt.Errorf("cannot resolve a forge for %s: %w", slug, err)
+			}
+			if fg == nil {
+				return nil, fmt.Errorf("no forge for %s", slug)
+			}
+			issues, err := fg.ListOpenIssues(fr)
+			if err != nil {
+				return nil, fmt.Errorf("cannot list open issues in %s: %w", slug, err)
+			}
+			for _, is := range issues {
+				if !issueflow.Select(issueflow.Inbox, issueflow.CandidateForLabels(issueflow.Candidate{}, is.Labels), role) {
+					continue
+				}
+				ii := InboxIssue{Repo: slug, Number: is.Number, Title: is.Title, Labels: is.Labels, Author: is.Author.Login}
+				if deskkit.TrustedAuthor(is.Author.Login) {
+					ii.Trusted = true
+				} else if tp, terr := fg.IssueTrustEvents(fr, is.Number); terr != nil || tp == nil {
+					ii.TrustUnknown = fmt.Sprintf("cannot read trust events for %s#%d", slug, is.Number)
+				} else {
+					ii.Trusted = tp.Complete && deskkit.Blessed(tp.BodyEdited, tp.Events)
+				}
+				out = append(out, ii)
+			}
+		}
+		return out, nil
+	}
+}
+
+// liveIssueClaim reads the issue's dispatch claim refs on the forge, in both claim namespaces.
+// A failed listing is could-not-check, never "no claim".
+func liveIssueClaim(resolve forgeResolver) func(string, int) (bool, error) {
+	return func(repo string, n int) (bool, error) {
+		owner, name, ok := strings.Cut(repo, "/")
+		if !ok {
+			return false, fmt.Errorf("repo %q is not owner/name", repo)
+		}
+		fr := deskkit.ForgeRepo{Owner: owner, Name: name}
+		fg, err := resolve(fr)
+		if err != nil {
+			return false, err
+		}
+		if fg == nil {
+			return false, fmt.Errorf("no forge for %s", repo)
+		}
+		for _, prefix := range issueClaimPrefixes(repo, n) {
+			refs, lerr := fg.MatchingRefs(fr, prefix)
+			if lerr != nil {
+				return false, lerr
+			}
+			for _, r := range refs {
+				if claimRefMatches(r, prefix) {
+					return true, nil
+				}
+			}
+		}
+		return false, nil
+	}
+}

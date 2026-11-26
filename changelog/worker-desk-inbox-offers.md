@@ -1,0 +1,3 @@
+### Fixed
+- `fanoutloop plan` now offers open issues addressed `to:worker` that no placeholder carries, in the leading addressed lane. Each one must pass the trust, decision-label and dedupe gates first. Every inbox issue it does not offer is listed under `INBOX NOT OFFERED` with the reason, and a failed inbox read prints `INBOX LANE HELD:` instead of reading as an empty inbox.
+- `fanoutloop plan --decision-hold <item>=<owner/name>#<N>` re-reads a carried decision hold on every run. A decision issue closed with `human-decided` lifts the hold. Any other read keeps the item out of the queue, and the plan prints the source on the same line.
