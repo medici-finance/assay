@@ -342,7 +342,7 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 			return unverifiableNoWrite("ready", repo, pr, head, reason, nil)
 		}
 		if reason != "" {
-			fmt.Fprintf(stderr, "deskpost: not-reverted: %s\n", reason)
+			_, _ = fmt.Fprintf(stderr, "deskpost: not-reverted: %s\n", reason)
 		}
 
 		// TOCTOU: re-read the PR immediately before the flip. If the head moved since the
