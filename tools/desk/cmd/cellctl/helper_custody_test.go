@@ -78,6 +78,15 @@ func TestDeskdCustodyOverridesCachedOperatorRosterAndRestores(t *testing.T) {
 }
 
 func TestDeskdCoordinateUsesCellOriginNotCallerDirectory(t *testing.T) {
+	// Establish the local-origin fixture explicitly. Test launchers can carry
+	// their own command-scope Git config, which an authority read must refuse.
+	t.Setenv("GIT_CONFIG_COUNT", "0")
+	for _, key := range []string{"GIT_CONFIG_PARAMETERS", "GIT_CONFIG"} {
+		t.Setenv(key, "")
+		if err := os.Unsetenv(key); err != nil {
+			t.Fatal(err)
+		}
+	}
 	repo := t.TempDir()
 	for _, args := range [][]string{{"init", repo}, {"-C", repo, "remote", "add", "origin", "git@github.com:example-org/actual-project.git"}} {
 		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
@@ -88,6 +97,12 @@ func TestDeskdCoordinateUsesCellOriginNotCallerDirectory(t *testing.T) {
 	if got := c.deskdRepo().Slug(); got != "example-org/actual-project" {
 		t.Fatalf("coordinate = %s", got)
 	}
+	t.Run("command-scoped origin is refused", func(t *testing.T) {
+		t.Setenv("GIT_CONFIG_COUNT", "1")
+		t.Setenv("GIT_CONFIG_KEY_0", "remote.origin.url")
+		t.Setenv("GIT_CONFIG_VALUE_0", "https://github.com/example-org/other-project.git")
+		assertDies(t, "unqualified origin", func() { c.deskdRepo() })
+	})
 	c.Env = envWith(map[string]string{"CELL_REPO_SLUG": "configured-org/explicit"})
 	if got := c.deskdRepo().Slug(); got != "configured-org/explicit" {
 		t.Fatalf("explicit coordinate = %s", got)

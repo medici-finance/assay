@@ -98,6 +98,16 @@ func newRunReadCredential(attestation string) *runReadCredential {
 	return &runReadCredential{repo: m[1]}
 }
 
+// bind makes this credential available to the admitted forge reader until
+// the host step returns. The caller establishes admission separately.
+func (c *runReadCredential) bind(stderr io.Writer) func() {
+	previous := currentRunCredential.Swap(c)
+	return func() {
+		currentRunCredential.Store(previous)
+		c.close(stderr)
+	}
+}
+
 // ensure mints the credential on first use and returns its file path and
 // value. The error names the reason. It never contains the value.
 func (c *runReadCredential) ensure() (string, string, error) {

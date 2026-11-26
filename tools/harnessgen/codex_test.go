@@ -17,7 +17,7 @@ import (
 func TestCodexCommittedManifestMatchesSource(t *testing.T) {
 	if code := codexCmd([]string{"--check", "--root", "../.."}); code != exitClean {
 		t.Fatalf("codex --check against the repo root returned %d, want %d (clean) — "+
-			"the committed manifest is out of sync with the metadata source; run `go run ./tools/harnessgen codex` and commit", code, exitClean)
+			"the committed manifest is out of sync with the metadata source; run `cd tools/harnessgen && go run . codex --root ../..` and commit", code, exitClean)
 	}
 }
 

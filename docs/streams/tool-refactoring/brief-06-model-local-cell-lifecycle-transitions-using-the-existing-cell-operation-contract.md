@@ -13,7 +13,7 @@ design: DR-cell-lifecycle
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 id: 9c11fcfe-e4f4-42e7-9695-0b33e634328a
 outcome: none
 authored: 2026-11-12 by author-brief session
@@ -113,16 +113,16 @@ The existing internal/cellcadence owner owns role-state judgments. Loopadmin ret
 
 ## Verify
 
-Row 4 runs only in a clean isolated checkout of the independently resolved implementation delivery D, with its protected delivery binding checked by the existing owner. There HEAD is D and HEAD^ is its first parent. Do not select current integration HEAD as a convenient substitute. If D or its binding cannot be established, record could-not-check. Other rows keep their admitted source and recorded witness identity.
+Row 4 reads the immutable delivery snapshot and its first-parent diff from local Git history. It executes no code from the snapshot. Missing history is could-not-check.
 
 The named tests below are implementation deliverables, not tests claimed to exist today. Each row requires the named `--- PASS:` line as well as exit 0, so a vacuous selector cannot pass. Class controls plant a second defect site outside the reported instance and prove the guard catches it; retain that positive control. Record the pre-fix red and post-fix green.
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd tools/desk && GOWORK=off go test -v ./internal/cellcadence -run '^TestCellLifecycleMatrix$' -count=1` | exit 0; output contains "--- PASS: TestCellLifecycleMatrix"; transition and ownership matrix | check:ci +dereference |
-| 2 | `cd tools/desk && GOWORK=off go test -v ./internal/cellcadence -run '^TestCellLifecycleClassGuard$' -count=1` | exit 0; output contains "--- PASS: TestCellLifecycleClassGuard"; reused pid and stale-generation plants | check:ci +mutation +neighbour |
-| 3 | `cd tools/desk && GOWORK=off go test -v ./cmd/cellctl -run '^TestCellLifecyclePlanFlow$' -count=1` | exit 0; output contains "--- PASS: TestCellLifecyclePlanFlow"; checkpoint/holder adapter flow | check:ci +flow |
-| 4 | `statusgen --root . --consumers --brief tool-refactoring/06 --delivery "$(git rev-parse HEAD)" --base "$(git rev-parse HEAD^)"` | exit 0; zero disproved and zero unchecked consumer routes for the delivered brief | check:ci +flow |
+| 1 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -C tools/desk -v -count=1 -timeout 5m -run '^TestCellLifecycleMatrix$' ./internal/cellcadence > "$o" && grep -F -- '--- PASS: TestCellLifecycleMatrix ' "$o")` | exit 0; output contains "--- PASS: TestCellLifecycleMatrix"; transition and ownership matrix | check:ci +dereference |
+| 2 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -C tools/desk -v -count=1 -timeout 5m -run '^TestCellLifecycleClassGuard$' ./internal/cellcadence > "$o" && grep -F -- '--- PASS: TestCellLifecycleClassGuard ' "$o")` | exit 0; output contains "--- PASS: TestCellLifecycleClassGuard"; reused pid and stale-generation plants | check:ci +mutation +neighbour |
+| 3 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -C tools/desk -v -count=1 -timeout 5m -run '^TestCellLifecyclePlanFlow$' ./cmd/cellctl > "$o" && grep -F -- '--- PASS: TestCellLifecyclePlanFlow ' "$o")` | exit 0; output contains "--- PASS: TestCellLifecyclePlanFlow"; checkpoint/holder adapter flow | check:ci +flow |
+| 4 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief tool-refactoring/06 --delivery efe590fbbbb05d2251adca8353435d873e91beb4 --base 64b655c6c009e8153b161cc0dbed397935730653 > "$o" && cat "$o" && grep -Fx -- 'summary: 5 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing' "$o")` | Exit 0 and exactly 5 corroborated, 0 disproved, 0 unchecked. Zero unchecked routes are required. | check:ci +flow |
 
 ## Definition of Done
 
