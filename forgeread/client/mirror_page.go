@@ -7,7 +7,7 @@ import (
 	"github.com/medici-finance/assay/forgeread/service"
 )
 
-// DoMirrorPage makes one attempt using the explicitly configured page endpoint.
+// DoMirrorPage makes one attempt at the client's configured endpoint.
 // A restart response asks the caller to discard the partial traversal.
 func (c *Client) DoMirrorPage(ctx context.Context, q service.MirrorPageRequest) (out service.MirrorPageResponse, report Report, err error) {
 	start := time.Now()
@@ -23,6 +23,7 @@ func (c *Client) DoMirrorPage(ctx context.Context, q service.MirrorPageRequest) 
 	if err != nil {
 		return out, report, err
 	}
+	// Bind response validation to the request as encoded, including its scope.
 	q, err = service.DecodeMirrorPageRequest(data)
 	if err != nil {
 		return out, report, err

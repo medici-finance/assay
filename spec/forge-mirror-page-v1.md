@@ -2,11 +2,11 @@
 
 ## Architecture pickup
 
-The baseline is Assay main `4c4ac6e5` and the offline read-only runtime binding
-in draft PR #7609. The forge-service-v1 contract allows 256 records and 1 MiB per
-message, and its mirror-query response represents a complete population. The
-selected pilot repository had about 3,569 pull requests. A bounded variant can
-fit this repository without changing the existing wire or its ceilings.
+The offline read-only runtime binding merged in
+[PR #7609](https://github.com/medici-finance/assay/pull/7609). The forge-service-v1
+contract allows 256 records and 1 MiB per message, and its mirror-query response
+represents a complete population. A client needs bounded pagination when the
+shared store holds a larger population.
 
 This proposal affects the forge-neutral/39 wire owner, the canonical PostgreSQL
 mirror store under /52, and the /56 serving and client integration. The
@@ -37,8 +37,8 @@ establishes current caller and admission independently, and the handler
 rechecks them after encoding. A moved or stale snapshot requires an explicit
 restart, without records or an automatic client retry.
 
-The first page may use the existing read-through coordinator. Continuations
-read the same scoped snapshot version from PostgreSQL with an indexed
+The first page uses the existing read-through coordinator to load a complete
+snapshot before reading its bounded page from PostgreSQL. Continuations read the same scoped snapshot version from PostgreSQL with an indexed
 record-number boundary. They neither refresh the source nor join a different
 generation. The existing native scan and its limits continue to govern cold
 inventory acquisition.

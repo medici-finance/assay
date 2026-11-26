@@ -7,14 +7,31 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/forgeread/mirror"
+	"github.com/medici-finance/assay/forgeread/refresh"
 	"github.com/medici-finance/assay/forgeread/service"
 	"github.com/medici-finance/assay/tools/desk/internal/forgeservice/auth"
 	"github.com/medici-finance/assay/workflow/store"
 )
 
+// mirrorPageAccess is the handler's trusted authorization and storage boundary.
+type mirrorPageAccess interface {
+	authorizeMirrorQuery(context.Context, service.Request, auth.SignedGrant) (auth.SignedGrant, bool)
+	readMirrorQuery(context.Context, auth.SignedGrant, time.Duration) (refresh.Result, error)
+	readStoredPage(ctx context.Context, version string, observed time.Time, after int64, maxRecords, maxBytes int) (store.MirrorPage, error)
+	releaseMirrorQuery(context.Context, auth.SignedGrant) bool
+}
+
 // HandlePage is the offline companion to Handle. Only a first page can join
 // read-through work. Continuations use an exact stored version and keyset.
 func (h *MirrorQueryHandler) HandlePage(r *http.Request, grant auth.SignedGrant) ([]byte, error) {
+	return h.handlePage(r, grant, h)
+}
+
+func (h *MirrorQueryHandler) readStoredPage(ctx context.Context, version string, observed time.Time, after int64, maxRecords, maxBytes int) (store.MirrorPage, error) {
+	return h.mirror.ReadPage(ctx, h.admission, h.policy.Scope, version, observed, after, maxRecords, maxBytes)
+}
+
+func (h *MirrorQueryHandler) handlePage(r *http.Request, grant auth.SignedGrant, access mirrorPageAccess) ([]byte, error) {
 	body, err := readMirrorBody(r)
 	if err != nil {
 		return nil, err
@@ -24,13 +41,12 @@ func (h *MirrorQueryHandler) HandlePage(r *http.Request, grant auth.SignedGrant)
 		return nil, err
 	}
 	q := request.Query
-	scope := h.policy.Scope
 	ctx, cancel := context.WithTimeout(r.Context(), h.policy.Caller.Limits.WaitTimeout)
 	defer cancel()
 	denied := func() ([]byte, error) {
 		return encodePageHold(request, mirror.Permission, false)
 	}
-	grant, allowed := h.authorizeMirrorQuery(ctx, q, grant)
+	grant, allowed := access.authorizeMirrorQuery(ctx, q, grant)
 	if !allowed {
 		return denied()
 	}
@@ -40,7 +56,7 @@ func (h *MirrorQueryHandler) HandlePage(r *http.Request, grant auth.SignedGrant)
 		if err != nil {
 			return nil, err
 		}
-		if !h.releaseMirrorQuery(ctx, grant) {
+		if !access.releaseMirrorQuery(ctx, grant) {
 			return denied()
 		}
 		return data, nil
@@ -57,7 +73,7 @@ func (h *MirrorQueryHandler) HandlePage(r *http.Request, grant auth.SignedGrant)
 			return finish(encodePageHold(request, mirror.Unknown, true))
 		}
 	} else {
-		result, err := h.readMirrorQuery(ctx, grant, age)
+		result, err := access.readMirrorQuery(ctx, grant, age)
 		if deniedRead(result, err) {
 			return denied()
 		}
@@ -67,7 +83,7 @@ func (h *MirrorQueryHandler) HandlePage(r *http.Request, grant auth.SignedGrant)
 		}
 		version, observed = result.Snapshot.Version, result.Snapshot.Coverage.LastComplete
 	}
-	page, err := h.mirror.ReadPage(ctx, h.admission, scope, version, observed, after,
+	page, err := access.readStoredPage(ctx, version, observed, after,
 		min(request.Limit, h.limits.MaxRecords), min(service.MaxMessageBytes, h.limits.MaxBytes))
 	if errors.Is(err, mirror.ErrPermission) {
 		return denied()
@@ -79,7 +95,7 @@ func (h *MirrorQueryHandler) HandlePage(r *http.Request, grant auth.SignedGrant)
 	if err != nil {
 		return finish(encodePageHold(request, mirror.Truncated, false))
 	}
-	if !h.releaseMirrorQuery(ctx, grant) {
+	if !access.releaseMirrorQuery(ctx, grant) {
 		return denied()
 	}
 	if !pageFresh(observed, age, time.Now()) {
