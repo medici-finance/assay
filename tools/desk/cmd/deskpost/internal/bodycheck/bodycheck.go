@@ -25,7 +25,7 @@ import (
 
 // MaxBodyBytes is the size cap for any text written to GitHub (16 KiB). A body over
 // the cap is refused (never truncated).
-const MaxBodyBytes = 16 * 1024
+const MaxBodyBytes = deskkit.OutboundBodyMaxBytes
 
 // h2Heading matches a Markdown H2 section heading line ("## Something"). At least one is
 // required in a review body (the desk's posted-review convention).
