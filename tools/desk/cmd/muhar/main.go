@@ -489,10 +489,10 @@ func sweep(o options, stdout, stderr io.Writer) (code int) {
 			for i, d := range dirs {
 				out := filepath.Join(filepath.Dir(overlay), fmt.Sprintf("probe-%d.out", i))
 				cmd := exec.Command("go", "build", "-gcflags=-e", "-o", out, d)
-				if root != "" {
-					cmd.Dir = root
-				}
 				cmd.Env = env
+				if root != "" {
+					startIn(cmd, root)
+				}
 				b, err := trackedOutput(cmd, true)
 				all.Write(b)
 				if err != nil {
