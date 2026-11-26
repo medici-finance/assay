@@ -2852,13 +2852,11 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		// revoked and removed when the run returns.
 		if attestation != "" {
 			runCred = newRunReadCredential(attestation)
-			currentRunCredential.Store(runCred)
-			defer func() {
-				currentRunCredential.Store(nil)
-				runCred.close(stderr)
-			}()
+			release := runCred.activate(stderr)
+			defer release()
+		} else {
+			verifyrunAdmission.Store(verifyrunUnadmitted)
 		}
-		verifyrunAdmission.Store(admissionState(attestation))
 	}
 	// rowRoot is where the Verify rows run: the admitted deliverable home for a
 	// cross-repository run, else --root, else the brief's repository toplevel.

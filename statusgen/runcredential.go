@@ -98,6 +98,18 @@ func newRunReadCredential(attestation string) *runReadCredential {
 	return &runReadCredential{repo: m[1]}
 }
 
+// activate makes the checked host run's credential available to the forge
+// reader. Its caller owns this scope and must release it before returning.
+func (c *runReadCredential) activate(stderr io.Writer) func() {
+	previous := currentRunCredential.Swap(c)
+	state := verifyrunAdmission.Swap(verifyrunAdmitted)
+	return func() {
+		currentRunCredential.Store(previous)
+		verifyrunAdmission.Store(state)
+		c.close(stderr)
+	}
+}
+
 // ensure mints the credential on first use and returns its file path and
 // value. The error names the reason. It never contains the value.
 func (c *runReadCredential) ensure() (string, string, error) {
