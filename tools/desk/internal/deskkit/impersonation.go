@@ -128,6 +128,10 @@ func ImpersonatedRulingClaim(text string) (name string, found bool) {
 		names = append(names, n)
 	}
 	sort.Strings(names)
+	return impersonatedRulingBy(text, names)
+}
+
+func impersonatedRulingBy(text string, names []string) (string, bool) {
 	for _, n := range names {
 		parenRe, dashRe, firstPersonRe := humanRulingRes(n)
 		// First person is NEVER a relay — "I (Alex) have decided" is this account writing in

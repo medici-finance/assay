@@ -347,8 +347,8 @@
     {
       "name": "#203 — stop refusing a PRIVATE repo slug on a public body",
       "file": "internal/deskkit/selfcontain.go",
-      "old": "\t\tif !priv[slug] {",
-      "new": "\t\tif !priv[slug] || true {"
+      "old": "\t\tif !priv[slug] && !priv[strings.TrimRight(slug, \".\")] {",
+      "new": "\t\tif !priv[slug] && !priv[strings.TrimRight(slug, \".\")] || true {"
     },
     {
       "name": "#203 — degrade the withheld-register category to a NOTICE even when it IS configured",
