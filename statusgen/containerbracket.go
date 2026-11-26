@@ -1482,8 +1482,10 @@ func hostAcceptance(home, brief, record string, check []byte, hostLine string, s
 	// Both callers obtained hostLine from the fresh host check. At close it
 	// must also match the witness before it can authorize a read.
 	cred := newRunReadCredential(hostLine)
-	release := cred.activate(stderr)
+	release := cred.bind(stderr)
 	defer release()
+	previousAdmission := verifyrunAdmission.Swap(verifyrunAdmitted)
+	defer verifyrunAdmission.Store(previousAdmission)
 	plan, descriptor, _, why := planAcceptanceRecord(brief, verify, evidence, record)
 	if why != "" {
 		return nil, "", why

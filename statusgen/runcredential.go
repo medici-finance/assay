@@ -98,14 +98,12 @@ func newRunReadCredential(attestation string) *runReadCredential {
 	return &runReadCredential{repo: m[1]}
 }
 
-// activate makes the checked host run's credential available to the forge
-// reader. Its caller owns this scope and must release it before returning.
-func (c *runReadCredential) activate(stderr io.Writer) func() {
+// bind makes this credential available to the admitted forge reader until
+// the host step returns. The caller establishes admission separately.
+func (c *runReadCredential) bind(stderr io.Writer) func() {
 	previous := currentRunCredential.Swap(c)
-	state := verifyrunAdmission.Swap(verifyrunAdmitted)
 	return func() {
 		currentRunCredential.Store(previous)
-		verifyrunAdmission.Store(state)
 		c.close(stderr)
 	}
 }
