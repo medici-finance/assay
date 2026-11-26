@@ -14,6 +14,7 @@ import (
 	"github.com/medici-finance/assay/forgeread/adapters"
 	"github.com/medici-finance/assay/forgeread/mirror"
 	"github.com/medici-finance/assay/forgeread/refresh"
+	"github.com/medici-finance/assay/workflow/store"
 )
 
 func TestProjectedMirrorAccountsForCompleteInventory(t *testing.T) {
@@ -113,7 +114,8 @@ func TestProjectedMirrorWarmsProvisionedPostgres(t *testing.T) {
 	cfg.Limits.WaitTimeout = time.Second
 	cfg.Limits.FillTimeout = 8 * time.Second
 	authority := &persistedCallerAuthority{config: cfg, repository: scope.Repository}
-	db := newPersistedMirrorSQL(t, cfg, authority, []string{"caller-a"}, true)
+	limits := store.MirrorLimits{MaxRecords: 128, MaxBytes: 1 << 20}
+	db := newPersistedMirrorSQL(t, cfg, authority, []string{"caller-a"}, true, limits)
 	if _, err := db.operator.ProvisionRefresh(ctx, *db.initial); err != nil {
 		t.Fatal(err)
 	}
