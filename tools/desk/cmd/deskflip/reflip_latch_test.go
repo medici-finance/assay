@@ -21,7 +21,7 @@ func metReq(t *testing.T, review string) string {
 }
 
 // A revert recorded for a review decision that a fresh read shows APPROVED no longer holds the
-// head: it flips, and says what cleared (the #7310 shape).
+// head: it flips, and says what cleared (a review re-approved at the same head).
 //
 // regression: #7096
 func TestReflipRecordedCauseCleared(t *testing.T) {

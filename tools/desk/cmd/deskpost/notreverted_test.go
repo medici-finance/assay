@@ -156,8 +156,8 @@ func causeRevertComment(id int, login, head string, causes ...string) map[string
 	return c
 }
 
-// A revert recorded for the review decision clears when a fresh read shows it APPROVED: the
-// #7310 shape, re-approved at the same head.
+// A revert recorded for the review decision clears when a fresh read shows it APPROVED: a
+// review re-approved at the same head.
 //
 // regression: #7096
 func TestReadyNotRevertedCauseCleared(t *testing.T) {

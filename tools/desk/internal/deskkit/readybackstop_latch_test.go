@@ -164,8 +164,8 @@ func latchHold(comments []Comment, req *MergeRequirements, err error) (string, b
 	return reason, held, reads
 }
 
-// A recorded cause that a fresh read shows cleared no longer holds the head: the #7310 shape,
-// reverted on CHANGES_REQUESTED and since re-approved at the same head.
+// A recorded cause that a fresh read shows cleared no longer holds the head: a change reverted
+// on CHANGES_REQUESTED and since re-approved at the same head.
 //
 // regression: #7096
 func TestNotRevertedCauseCleared(t *testing.T) {
