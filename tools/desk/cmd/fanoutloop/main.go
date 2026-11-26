@@ -126,7 +126,8 @@ func cmdPlan(args []string) error {
 		"defaults to the repo the configured roots map --root to, else the checkout's origin remote")
 	var holds holdList
 	fs.Var(&holds, "decision-hold", "a decision hold carried from an earlier tick, as <item>=<owner/name>#<N> "+
-		"(repeatable); its decision issue is re-read this run: closed with human-decided lifts it, anything else keeps it")
+		"(repeatable); <item> is the DISPATCH ID, its claim key, or the repo-qualified claim key; its decision issue is "+
+		"re-read this run: closed with human-decided lifts it, anything else keeps it")
 	if err := fs.Parse(args); err != nil {
 		return deskkit.Refused("bad flags: " + err.Error())
 	}
@@ -151,8 +152,9 @@ func cmdPlan(args []string) error {
 			// The addressed inbox lane reads through the same live forge seam, and only when the PR
 			// index it dedupes against is wired.
 			if inboxLive {
-				f.Inbox = liveInboxIssues(f.inboxRole(), f.forgeResolver())
+				f.Inbox = liveInboxIssues(resolved, f.inboxRole(), f.forgeResolver())
 				f.IssueClaim = liveIssueClaim(f.forgeResolver())
+				f.LabelHistory = liveLabelHistory(f.forgeResolver())
 			}
 		} else {
 			heldErr := rerr
@@ -171,7 +173,9 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 	if err != nil {
 		return deskkit.Unverifiable("cannot read the Next-up queue", err)
 	}
-	fmt.Fprintf(out, "worker-desk plan: %d item(s) to dispatch (addressed to:worker items first, board rows then inbox issues, then orphan resumes, then Next-up in board order)\n", len(items))
+	if _, err := fmt.Fprintf(out, "worker-desk plan: %d item(s) to dispatch (addressed to:worker items first, board rows then inbox issues, then orphan resumes, then Next-up in board order)\n", len(items)); err != nil {
+		return err
+	}
 	fmt.Fprintln(out, classLine(items))
 	// The fresh lane HELD on a could-not-check represented read (#1339): stated up front so a reader
 	// never mistakes an empty fresh lane for "nothing to do" when it is actually "could not verify".
@@ -189,20 +193,18 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 			return err
 		}
 	}
-	// Carried decision holds, each re-read THIS run, with its source on the same line.
+	// Carried decision holds, each re-read THIS run, with its source on the same line. A standing
+	// hold that named no item in this run's queue withheld nothing, and says so.
 	for _, r := range f.carriedHoldRows() {
-		switch r.read.State {
-		case deskkit.DecisionHoldLifted:
-			fmt.Fprintf(out, "DROPPED HOLD: %s (lift met: %s)\n", r.hold.Item, r.read.Why)
-		case deskkit.DecisionHoldUnknown:
-			fmt.Fprintf(out, "HOLD COULD-NOT-CHECK: %s — kept, NOT dispatched (%s)\n", r.hold.Item, r.read.Why)
-		default:
-			fmt.Fprintf(out, "HOLD LIVE: %s — NOT dispatched (%s)\n", r.hold.Item, r.read.Why)
+		if _, err := fmt.Fprintln(out, carriedHoldLine(r)); err != nil {
+			return err
 		}
 	}
 	inboxHolds, inboxHeld := f.inboxHoldRows()
 	if inboxHeld != "" {
-		fmt.Fprintf(out, "INBOX LANE HELD: %s\n", inboxHeld)
+		if _, err := fmt.Fprintf(out, "INBOX LANE HELD: %s\n", inboxHeld); err != nil {
+			return err
+		}
 	}
 	for _, it := range items {
 		tier, terr := f.TierPolicy(it)
@@ -242,9 +244,13 @@ func renderPlan(f *FanoutLoop, out io.Writer) error {
 	// INBOX NOT OFFERED: addressed inbox issues the lane read and did not offer: quarantined
 	// (untrusted), decision-held, already carried by a placeholder, PR or claim, or could-not-check.
 	if len(inboxHolds) > 0 {
-		fmt.Fprintf(out, "\n=== INBOX NOT OFFERED: %d issue(s) addressed to this desk — held or quarantined; NOT dispatched ===\n", len(inboxHolds))
+		if _, err := fmt.Fprintf(out, "\n=== INBOX NOT OFFERED: %d issue(s) addressed to this desk — held or quarantined; NOT dispatched ===\n", len(inboxHolds)); err != nil {
+			return err
+		}
 		for _, h := range inboxHolds {
-			fmt.Fprintf(out, "  %s — %s\n", h.ref, h.reason)
+			if _, err := fmt.Fprintf(out, "  %s — %s\n", h.ref, h.reason); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -383,18 +389,24 @@ typed open+merged-changes op is the cutover work), so the shipped offline build 
 and offers rows as before until it is wired. The autonomous drive / live-window cutover is gate:human
 — BLOCKED-ON-IAN.
 
-The addressed lane also carries open issues labelled to:worker that no placeholder brief carries
-(the addressed inbox). Each is offered only when its author is trusted (or the issue holds a current
-blessing), it carries no needs-decision, question, help wanted or system-state label, no issue-loop
-placeholder carries it, no open or merged PR names it in an Issue: trailer, and no dispatch claim
-<short>--issue-<N> is live. Every other inbox issue is listed under 'INBOX NOT OFFERED' with why (an
-untrusted one as QUARANTINED). A failed read holds the issue, or the whole lane ('INBOX LANE HELD:'),
-and never offers it. The lane reads the forge only when the PR index is wired.
+The addressed lane also carries open issues labelled to:worker in the repo --root maps to (the
+addressed inbox; another repo's issues are its own root's plan's). Each is offered only when its
+author is trusted (or the issue holds a current blessing), it carries no needs-decision, question,
+help wanted or system-state label, its label history holds no event for one of those labels (a
+removed park stays held), no issue-loop placeholder in --root or any configured root carries it, no
+open or merged PR names it in an Issue: trailer, and no dispatch claim <short>--issue-<N> is live.
+Every other inbox issue, a malformed to: address naming this desk included, is listed under 'INBOX
+NOT OFFERED' with why (an untrusted one as QUARANTINED). A failed read holds the issue, or the whole
+lane ('INBOX LANE HELD:'), and never offers it. The lane reads the forge only when the PR index is
+wired, through the same forge seam; a GitLab root follows that index's support.
 
---decision-hold <item>=<owner/name>#<N> carries a decision hold from an earlier tick. Every run re-reads
-the decision issue. Closed with human-decided prints 'DROPPED HOLD: <item> (lift met: ...)' and the
-item is offered again. Open, closed without human-decided, or unreadable prints 'HOLD LIVE:' or 'HOLD
-COULD-NOT-CHECK:' and the item is withheld from the queue.
+--decision-hold <item>=<owner/name>#<N> carries a decision hold from an earlier tick. <item> is the
+item's DISPATCH ID as plan prints it (alpha/01, <short>--issue-<N>), its claim key (alpha--01), or the
+repo-qualified claim key deskdispatch acquires (<short>--alpha--01); case does not matter. Every run
+re-reads the decision issue. Closed with human-decided prints 'DROPPED HOLD: <item> (lift met: ...)'
+and the item is offered again. Open, closed without human-decided, or unreadable prints 'HOLD LIVE:' or
+'HOLD COULD-NOT-CHECK:' and the item is withheld from the queue. A standing hold that names no item in
+the queue prints 'HOLD UNMATCHED:' and withholds nothing.
 
 Right after the item count, 'plan' prints a 'classes: resume=<n> rework=<n> fresh=<n> (...)' line: the
 per-class concurrency RESERVATION (example-stream/05) worker-desk's width carries alongside its pool

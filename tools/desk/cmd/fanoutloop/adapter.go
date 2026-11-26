@@ -105,8 +105,8 @@ type FanoutLoop struct {
 	// the exempt lanes still flow. SelectQueue records the hold reason in freshHeld for the plan output.
 	Represented func() (map[string]deskkit.RepresentedPR, error)
 
-	// Inbox is the addressed-inbox source: open issues labelled `to:<this desk's role>` across the
-	// scan scope. nil = NONE (the offline reference build reads no forge); cmdPlan wires the live
+	// Inbox is the addressed-inbox source: open issues labelled `to:<this desk's role>` in the plan's
+	// own repo (the repo --root maps to). nil = NONE (the offline reference build reads no forge); cmdPlan wires the live
 	// source beside the PR index. Each issue is offered in the leading addressed lane only if it
 	// passes the trust, decision and dedupe gates in inbox.go; a source error HOLDS the lane.
 	Inbox func() ([]InboxIssue, error)
@@ -114,6 +114,14 @@ type FanoutLoop struct {
 	// checkout's local claim refs; cmdPlan wires the forge listing. An error is could-not-check
 	// and holds that issue.
 	IssueClaim func(repo string, n int) (bool, error)
+	// LabelHistory reads an inbox issue's whole label history for the label-removal hold. nil HOLDS
+	// the inbox lane (an issue is never offered on its current labels alone); cmdPlan wires the
+	// forge read. An error or an incomplete history is could-not-check and holds that issue.
+	LabelHistory func(repo string, n int) (*deskkit.LabelHistory, error)
+	// PlaceholderRoots lists the configured roots whose issue-loop placeholders the inbox lane
+	// dedupes against, beside Root. nil reads deskkit.ConfiguredRoots. An error, or a root that
+	// cannot be resolved, is could-not-check and holds the inbox lane.
+	PlaceholderRoots func() ([]deskkit.RootConfig, error)
 	// DecisionHolds are decision holds carried from an earlier tick. SelectQueue re-reads each
 	// one's decision issue on EVERY call: a closed issue carrying `human-decided` lifts the hold;
 	// an open one (or one closed without that label, or an unreadable one) keeps it, and the held

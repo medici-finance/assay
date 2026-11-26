@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -39,6 +40,10 @@ func inboxLoop(t *testing.T, inbox func() ([]InboxIssue, error), prs []deskkit.P
 			return prs, false, nil
 		}},
 		IssueClaim: func(repo string, n int) (bool, error) { return claims[n], nil },
+		LabelHistory: func(string, int) (*deskkit.LabelHistory, error) {
+			return &deskkit.LabelHistory{Complete: true, Events: []deskkit.LabelEvent{{Name: "bug"}, {Name: "to:worker"}}}, nil
+		},
+		PlaceholderRoots: func() ([]deskkit.RootConfig, error) { return nil, nil },
 	}
 }
 
@@ -288,5 +293,205 @@ func TestParseCarriedHold(t *testing.T) {
 		if _, err := parseCarriedHold(bad); err == nil {
 			t.Errorf("parseCarriedHold(%q) accepted", bad)
 		}
+	}
+}
+
+// TestInboxLabelRemovalHold: the inbox lane applies the label-removal hold. An issue whose
+// needs-decision (or any held label) was REMOVED is still held; so is one whose history is
+// incomplete, unreadable, or names a label the forge no longer reports. With no history reader
+// wired, the whole lane is held.
+func TestInboxLabelRemovalHold(t *testing.T) {
+	histories := map[int]*deskkit.LabelHistory{
+		21: {Complete: true, Events: []deskkit.LabelEvent{{Name: "needs-decision", AppliedBy: "someone"}, {Name: "needs-decision", Removed: true, AppliedBy: "someone"}}},
+		22: {Complete: false},
+		23: {Complete: true, Events: []deskkit.LabelEvent{{Name: ""}}},
+		24: {Complete: true, Events: []deskkit.LabelEvent{{Name: "help wanted", Removed: true}}},
+		26: nil,
+	}
+	issues := []InboxIssue{inboxIssue(21, true), inboxIssue(22, true), inboxIssue(23, true), inboxIssue(24, true), inboxIssue(25, true), inboxIssue(26, true)}
+	f := inboxLoop(t, func() ([]InboxIssue, error) { return issues, nil }, nil)
+	f.LabelHistory = func(_ string, n int) (*deskkit.LabelHistory, error) {
+		if n == 25 {
+			return nil, errors.New("history refused")
+		}
+		return histories[n], nil
+	}
+	items, err := f.SelectQueue()
+	if err != nil {
+		t.Fatalf("SelectQueue: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != "alpha/01" {
+		t.Fatalf("queue = %v, want only the board row", itemIDs(items))
+	}
+	for n, want := range map[int]string{
+		21: `label-removal hold: the label history holds an event for "needs-decision"`,
+		22: "label history could-not-check",
+		23: "a label the forge no longer names",
+		24: `"help wanted" (removed)`,
+		25: "label history could-not-check: history refused",
+		26: "label history could-not-check",
+	} {
+		if got := holdFor(f, n); !strings.Contains(got, want) {
+			t.Errorf("issue #%d hold = %q, want it to contain %q", n, got, want)
+		}
+	}
+
+	f = inboxLoop(t, func() ([]InboxIssue, error) { return []InboxIssue{inboxIssue(42, true)}, nil }, nil)
+	f.LabelHistory = nil
+	items, err = f.SelectQueue()
+	if err != nil {
+		t.Fatalf("SelectQueue: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("queue = %v, want only the board row", itemIDs(items))
+	}
+	if _, held := f.inboxHoldRows(); !strings.Contains(held, "no label-history reader") {
+		t.Errorf("lane hold = %q, want the missing label-history reader", held)
+	}
+}
+
+// TestInboxOtherRepoNotOffered: the lane offers only the plan's own repo; an issue from another
+// repo is listed and held, so another root's plan (with that repo's SHA) is the one to offer it.
+func TestInboxOtherRepoNotOffered(t *testing.T) {
+	other := inboxIssue(31, true)
+	other.Repo = "example-org/other"
+	f := inboxLoop(t, func() ([]InboxIssue, error) { return []InboxIssue{other}, nil }, nil)
+	items, err := f.SelectQueue()
+	if err != nil {
+		t.Fatalf("SelectQueue: %v", err)
+	}
+	if len(items) != 1 || items[0].ID != "alpha/01" {
+		t.Fatalf("queue = %v, want only the board row", itemIDs(items))
+	}
+	holds, _ := f.inboxHoldRows()
+	if len(holds) != 1 || !strings.Contains(holds[0].reason, "not this plan's repo") {
+		t.Errorf("holds = %+v, want the other-repo issue held", holds)
+	}
+}
+
+// TestInboxMalformedAddressListed: an issue whose to: labels name this desk but conflict is listed
+// as could-not-check, never offered and never dropped unseen.
+func TestInboxMalformedAddressListed(t *testing.T) {
+	bad := inboxIssue(32, true, "to:verifier")
+	f := inboxLoop(t, func() ([]InboxIssue, error) { return []InboxIssue{bad}, nil }, nil)
+	items, err := f.SelectQueue()
+	if err != nil {
+		t.Fatalf("SelectQueue: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("queue = %v, want only the board row", itemIDs(items))
+	}
+	if got := holdFor(f, 32); !strings.Contains(got, "address could-not-check") {
+		t.Errorf("hold = %q", got)
+	}
+}
+
+// TestInboxPlaceholderInOtherRoot: a placeholder in ANY configured root carries the issue, and an
+// unreadable configured root holds every issue as placeholder could-not-check.
+func TestInboxPlaceholderInOtherRoot(t *testing.T) {
+	f := inboxLoop(t, func() ([]InboxIssue, error) { return []InboxIssue{inboxIssue(42, true)}, nil }, nil)
+	sibling := t.TempDir()
+	dir := filepath.Join(sibling, "docs", "streams", "issue-loop")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ph := "---\nschema: placeholder-v1\nbrief: issue-loop/issue-42\nrepo: " + inboxTestRepo + "\nissue: 42\n---\n"
+	if err := os.WriteFile(filepath.Join(dir, "issue-42.md"), []byte(ph), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f.PlaceholderRoots = func() ([]deskkit.RootConfig, error) {
+		// A second checkout of the same board repo: its placeholder still carries the issue.
+		return []deskkit.RootConfig{{Repo: inboxTestRepo, Path: sibling}}, nil
+	}
+	items, err := f.SelectQueue()
+	if err != nil {
+		t.Fatalf("SelectQueue: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("queue = %v, want only the board row", itemIDs(items))
+	}
+	if got := holdFor(f, 42); !strings.Contains(got, "issue-loop/issue-42") {
+		t.Errorf("hold = %q, want the sibling root's placeholder", got)
+	}
+
+	f = inboxLoop(t, func() ([]InboxIssue, error) { return []InboxIssue{inboxIssue(42, true)}, nil }, nil)
+	f.PlaceholderRoots = func() ([]deskkit.RootConfig, error) {
+		return []deskkit.RootConfig{{Repo: "example-org/sibling", Path: filepath.Join(sibling, "missing")}}, nil
+	}
+	if items, err = f.SelectQueue(); err != nil || len(items) != 1 {
+		t.Fatalf("queue = %v (%v), want only the board row", itemIDs(items), err)
+	}
+	if got := holdFor(f, 42); !strings.Contains(got, "placeholder could-not-check") {
+		t.Errorf("hold = %q, want placeholder could-not-check", got)
+	}
+}
+
+// TestLocalIssueClaimHeld: the offline claim read sees a local claim ref in either namespace, and
+// a root that is not a git checkout is could-not-check, never "no claim".
+func TestLocalIssueClaimHeld(t *testing.T) {
+	if _, err := localIssueClaimHeld(t.TempDir(), inboxTestRepo, 42); err == nil {
+		t.Fatal("a non-checkout root read as no claim; want could-not-check")
+	}
+	root := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", root}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q")
+	run("commit", "-q", "--allow-empty", "-m", "init")
+	held, err := localIssueClaimHeld(root, inboxTestRepo, 42)
+	if err != nil || held {
+		t.Fatalf("no claim refs: held=%v err=%v", held, err)
+	}
+	prefixes := issueClaimPrefixes(inboxTestRepo, 42)
+	if len(prefixes) == 0 {
+		t.Fatal("no claim prefixes")
+	}
+	run("update-ref", prefixes[0], "HEAD")
+	if held, err = localIssueClaimHeld(root, inboxTestRepo, 42); err != nil || !held {
+		t.Fatalf("claim ref %s present: held=%v err=%v", prefixes[0], held, err)
+	}
+}
+
+// TestCarriedHoldKeyForms: a carried hold names its item by DISPATCH ID, claim key, or the
+// repo-qualified claim key deskdispatch acquires; any of them withholds the item. A standing hold
+// that names nothing in the queue is reported as unmatched, and the item still flows.
+func TestCarriedHoldKeyForms(t *testing.T) {
+	fr := deskkit.ForgeRepo{Owner: "example-org", Name: "example"}
+	live := func(r deskkit.ForgeRepo, n int) deskkit.DecisionHold {
+		return deskkit.DecisionHold{Repo: r, Issue: n, State: deskkit.DecisionHoldLive, Why: "open"}
+	}
+	qualified := deskkit.RepoShortLabel(inboxTestRepo) + "--alpha--01"
+	for _, key := range []string{"alpha/01", "alpha--01", qualified, strings.ToUpper(qualified)} {
+		f := inboxLoop(t, func() ([]InboxIssue, error) { return nil, nil }, nil)
+		f.DecisionHolds = []CarriedHold{{Item: key, Repo: fr, Issue: 77}}
+		f.ReadDecisionHold = live
+		items, err := f.SelectQueue()
+		if err != nil {
+			t.Fatalf("SelectQueue: %v", err)
+		}
+		if len(items) != 0 {
+			t.Errorf("hold %q did not withhold alpha/01: %v", key, itemIDs(items))
+		}
+	}
+
+	f := inboxLoop(t, func() ([]InboxIssue, error) { return nil, nil }, nil)
+	f.DecisionHolds = []CarriedHold{{Item: "beta/09", Repo: fr, Issue: 77}}
+	f.ReadDecisionHold = live
+	var out bytes.Buffer
+	if err := renderPlan(f, &out); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "HOLD UNMATCHED: beta/09") || strings.Contains(got, "HOLD LIVE: beta/09") {
+		t.Errorf("an unmatched standing hold must be reported as unmatched, never as held:\n%s", got)
+	}
+	if !strings.Contains(got, "=== DISPATCH alpha/01") {
+		t.Errorf("an unmatched hold withheld alpha/01:\n%s", got)
 	}
 }

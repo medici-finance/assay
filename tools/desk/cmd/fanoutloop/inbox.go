@@ -2,13 +2,13 @@ package main
 
 import (
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/medici-finance/assay/deskcore/issueflow"
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/loopengine"
 	"github.com/medici-finance/assay/tools/desk/internal/topology"
@@ -26,8 +26,16 @@ import (
 //   - trust: an untrusted author without a current blessing is QUARANTINED, never offered;
 //   - decision: an issue carrying a decision-owed label (needs-decision, question), help wanted,
 //     or a system-state label is HELD, never offered;
-//   - dedupe: an issue an issue-loop placeholder already carries flows through the board lane,
-//     and an issue with an open or merged PR (`Issue:` trailer) or a live dispatch claim is HELD;
+//   - label history: an issue whose label history holds ANY event for one of those labels (applied
+//     or removed, by anyone), an event for a label the forge no longer names, or an incomplete
+//     history is HELD. Current labels alone would let anyone with label-write un-park an
+//     undecided issue by removing its label; who cleared a park is statusgen's label-removal hold
+//     to decide, so this lane never offers such an issue on its own reading;
+//   - scope: only the plan's own repo (the repo --root maps to) is read, so each root's plan
+//     offers only its own repo's issues and stamps its own merged-main SHA on them;
+//   - dedupe: an issue an issue-loop placeholder in ANY configured root already carries flows
+//     through the board lane, and an issue with an open or merged PR (`Issue:` trailer) or a live
+//     dispatch claim is HELD;
 //   - width: items join the same queue, so the pool width and the class reservation bound them
 //     exactly as they bound every other item.
 //
@@ -59,15 +67,21 @@ type inboxHold struct {
 // CarriedHold is a decision hold carried from an earlier tick: the held item and the decision
 // issue that is its source. The plan re-reads the source on every run.
 type CarriedHold struct {
-	Item  string // the held item's ID or claim key, as the plan prints it
+	// Item names the held item in any of the forms holdKeys derives: the item ID exactly as plan
+	// prints it on its DISPATCH line (`alpha/01`, `<short>--issue-7`), its claim key (`alpha--01`),
+	// or the repo-qualified dispatch claim key deskdispatch acquires (`<short>--alpha--01`).
+	Item  string
 	Repo  deskkit.ForgeRepo
 	Issue int
 }
 
-// carriedHoldResult is one carried hold after this tick's re-read.
+// carriedHoldResult is one carried hold after this tick's re-read. matched reports whether the
+// hold named an item in this run's queue; a standing hold that matched nothing withheld nothing,
+// and the plan says so instead of claiming it held.
 type carriedHoldResult struct {
-	hold CarriedHold
-	read deskkit.DecisionHold
+	hold    CarriedHold
+	read    deskkit.DecisionHold
+	matched bool
 }
 
 // inboxItemID is the dispatch key for an inbox issue: the `<short>--issue-<N>` claim-key form
@@ -103,19 +117,74 @@ func labelSetHas(labels []string, set map[string]bool) (string, bool) {
 	return "", false
 }
 
-// inboxLabelHold returns why an inbox issue's labels keep it out of dispatch, or "".
-func inboxLabelHold(labels []string) string {
+// carriesAddress reports whether labels include `to:<role>` (case-insensitive).
+func carriesAddress(labels []string, role string) bool {
+	want := "to:" + strings.ToLower(strings.TrimSpace(role))
+	for _, l := range labels {
+		if strings.ToLower(strings.TrimSpace(l)) == want {
+			return true
+		}
+	}
+	return false
+}
+
+// inboxLabelSets is the label vocabulary the inbox gates hold on: the decision-owed set (plus
+// needs-decision itself), help wanted, and the system-state set. It is the file's ONE compiled
+// topology read (a declared build-time cap, see internal/topology/secondcell_test.go).
+type inboxLabelSets struct {
+	decision, helpWanted, systemState map[string]bool
+}
+
+func compiledInboxLabelSets() inboxLabelSets {
 	t := topology.Compiled()
 	decision := t.DecisionOwedLabelSet()
 	decision[deskkit.DecisionLabel] = true
-	if l, ok := labelSetHas(labels, decision); ok {
+	return inboxLabelSets{decision: decision, helpWanted: map[string]bool{"help wanted": true}, systemState: t.SystemStateLabelSet()}
+}
+
+// any reports whether name (lower-cased, trimmed) is in any of the three sets.
+func (s inboxLabelSets) any(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	return s.decision[n] || s.helpWanted[n] || s.systemState[n]
+}
+
+// inboxLabelHold returns why an inbox issue's current labels keep it out of dispatch, or "".
+func inboxLabelHold(labels []string, sets inboxLabelSets) string {
+	if l, ok := labelSetHas(labels, sets.decision); ok {
 		return fmt.Sprintf("decision gate: carries %q; a decision-owed issue is never offered", l)
 	}
-	if l, ok := labelSetHas(labels, map[string]bool{"help wanted": true}); ok {
+	if l, ok := labelSetHas(labels, sets.helpWanted); ok {
 		return fmt.Sprintf("carries %q; it waits on a human, not a worker", l)
 	}
-	if l, ok := labelSetHas(labels, t.SystemStateLabelSet()); ok {
+	if l, ok := labelSetHas(labels, sets.systemState); ok {
 		return fmt.Sprintf("carries system-state label %q; it is not work", l)
+	}
+	return ""
+}
+
+// inboxLabelHistoryHold is the label-removal hold for the inbox lane: the SAME superset test
+// issueboard applies (labelHistoryHold), over the labels inboxLabelHold holds on. It returns why
+// the history keeps the issue out of dispatch, or "". It never decides WHO removed a label or
+// whether a ratifying comment followed: that rule lives once, in statusgen's label-removal hold.
+// So the lane errs toward holding: an incomplete history, an event for a label the forge no
+// longer names, or ANY event (applied or removed, by anyone) for a held label keeps the issue out.
+func inboxLabelHistoryHold(h *deskkit.LabelHistory, sets inboxLabelSets) string {
+	if h == nil || !h.Complete {
+		return "label history could-not-check: the forge's history is incomplete; an issue whose park " +
+			"may have been removed is never offered on its current labels"
+	}
+	for _, e := range h.Events {
+		if strings.TrimSpace(e.Name) == "" {
+			return "label-removal hold: the label history holds an event for a label the forge no longer names"
+		}
+		if sets.any(e.Name) {
+			verb := "applied"
+			if e.Removed {
+				verb = "removed"
+			}
+			return fmt.Sprintf("label-removal hold: the label history holds an event for %q (%s); "+
+				"an issue once parked is never offered on its current labels, the scanner's label-removal hold decides it", e.Name, verb)
+		}
 	}
 	return ""
 }
@@ -136,13 +205,25 @@ func (f *FanoutLoop) inboxLane(role string) []loopengine.Item {
 			"an inbox issue is never offered unchecked")
 		return nil
 	}
+	if f.LabelHistory == nil {
+		f.noteInboxLaneHeld("no label-history reader is wired to apply the label-removal hold; " +
+			"an inbox issue is never offered on its current labels alone")
+		return nil
+	}
+	ownRepo := strings.TrimSpace(f.issueBoardRepo)
+	if !deskkit.ValidRepoSlug(ownRepo) {
+		f.noteInboxLaneHeld(fmt.Sprintf("the plan's own repo %q is not owner/name; the lane offers only "+
+			"that repo's issues, so it cannot offer any", ownRepo))
+		return nil
+	}
 	sort.SliceStable(issues, func(i, j int) bool {
 		if !strings.EqualFold(issues[i].Repo, issues[j].Repo) {
 			return strings.ToLower(issues[i].Repo) < strings.ToLower(issues[j].Repo)
 		}
 		return issues[i].Number < issues[j].Number
 	})
-	placeholders, phErr := placeholderIssues(f.Root, f.issueBoardRepo)
+	placeholders, phErr := f.allPlaceholderIssues()
+	sets := compiledInboxLabelSets()
 	var out []loopengine.Item
 	seen := map[string]bool{}
 	for _, iss := range issues {
@@ -152,8 +233,18 @@ func (f *FanoutLoop) inboxLane(role string) []loopengine.Item {
 			continue
 		}
 		seen[key] = true
-		if !issueflow.Select(issueflow.Inbox, issueflow.CandidateForLabels(issueflow.Candidate{}, iss.Labels), role) {
-			continue // not addressed to this desk (or a malformed address): not this lane's row
+		cand := issueflow.CandidateForLabels(issueflow.Candidate{}, iss.Labels)
+		if cand.AddressUnknown && carriesAddress(iss.Labels, role) {
+			// It names this desk but its address is malformed or conflicting: listed, never offered.
+			f.noteInboxHold(ref, "address could-not-check: its to: labels are malformed or conflicting")
+			continue
+		}
+		if !issueflow.Select(issueflow.Inbox, cand, role) {
+			continue // not addressed to this desk: not this lane's row
+		}
+		if !strings.EqualFold(iss.Repo, ownRepo) {
+			f.noteInboxHold(ref, "not this plan's repo ("+ownRepo+"); only the plan whose root maps to "+iss.Repo+" offers it")
+			continue
 		}
 		id := inboxItemID(iss.Repo, iss.Number)
 		if f.isHandled(id) {
@@ -167,7 +258,7 @@ func (f *FanoutLoop) inboxLane(role string) []loopengine.Item {
 			f.noteInboxHold(ref, fmt.Sprintf("QUARANTINED: author %q is untrusted and the issue has no current blessing", iss.Author))
 			continue
 		}
-		if why := inboxLabelHold(iss.Labels); why != "" {
+		if why := inboxLabelHold(iss.Labels, sets); why != "" {
 			f.noteInboxHold(ref, why)
 			continue
 		}
@@ -190,6 +281,15 @@ func (f *FanoutLoop) inboxLane(role string) []loopengine.Item {
 		}
 		if pr.Number != 0 {
 			f.noteInboxHold(ref, deskkit.DispatchIssue{Repo: iss.Repo, Number: iss.Number}.Representation(pr))
+			continue
+		}
+		hist, herr := f.LabelHistory(iss.Repo, iss.Number)
+		if herr != nil {
+			f.noteInboxHold(ref, "label history could-not-check: "+herr.Error())
+			continue
+		}
+		if why := inboxLabelHistoryHold(hist, sets); why != "" {
+			f.noteInboxHold(ref, why)
 			continue
 		}
 		held, cerr := f.issueClaimHeld(iss.Repo, iss.Number)
@@ -247,21 +347,62 @@ func issueClaimPrefixes(repo string, n int) []string {
 	return []string{deskkit.DispatchClaimActiveRefsPrefix + key, deskkit.ClaimRefsPrefix + key}
 }
 
-// localIssueClaimHeld is the offline claim read: the root checkout's local claim refs.
+// localIssueClaimHeld is the offline claim read: the root checkout's local claim refs, read
+// in-process through gitcore (no git binary). An unopenable checkout or an unreadable ref store is
+// could-not-check, never "no claim".
 func localIssueClaimHeld(root, repo string, n int) (bool, error) {
+	r, err := gitcore.Open(root)
+	if err != nil {
+		return false, fmt.Errorf("cannot open %s to list local claim refs: %w", root, err)
+	}
+	refs, err := r.Refs()
+	if err != nil {
+		return false, fmt.Errorf("cannot list local claim refs in %s: %w", root, err)
+	}
 	for _, prefix := range issueClaimPrefixes(repo, n) {
-		cmd := exec.Command("git", "-C", root, "for-each-ref", "--format=%(refname)", prefix, prefix+"--*")
-		out, err := cmd.Output()
-		if err != nil {
-			return false, fmt.Errorf("cannot list local claim refs under %s: %w", prefix, err)
-		}
-		for _, ln := range strings.Split(string(out), "\n") {
-			if claimRefMatches(ln, prefix) {
+		for name := range refs {
+			if claimRefMatches(name, prefix) {
 				return true, nil
 			}
 		}
 	}
 	return false, nil
+}
+
+// allPlaceholderIssues maps every issue-loop placeholder in this loop's Root AND in every configured
+// root to the source issue it carries. A placeholder is not root-local to its issue's repo (its
+// frontmatter names the source repo), so a placeholder in another root still carries an issue this
+// plan would otherwise offer. Any root that cannot be read is an error: the lane cannot tell which
+// issues it carries, so it must not offer any issue as uncarried.
+func (f *FanoutLoop) allPlaceholderIssues() (map[string]string, error) {
+	out, err := placeholderIssues(f.Root, f.issueBoardRepo)
+	if err != nil {
+		return nil, err
+	}
+	listRoots := f.PlaceholderRoots
+	if listRoots == nil {
+		listRoots = deskkit.ConfiguredRoots
+	}
+	roots, err := listRoots()
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the configured roots to check their placeholders: %w", err)
+	}
+	for _, rc := range roots {
+		abs, rerr := deskkit.ResolveRoot(rc)
+		if rerr != nil {
+			return nil, rerr
+		}
+		more, perr := placeholderIssues(abs, rc.Repo)
+		if perr != nil {
+			return nil, perr
+		}
+		for k, v := range more {
+			if _, ok := out[k]; !ok {
+				out[k] = rc.Repo + ":" + v
+			}
+		}
+	}
+	return out, nil
 }
 
 // placeholderIssues maps every issue-loop placeholder under root to the source issue it carries
@@ -318,32 +459,56 @@ func (f *FanoutLoop) rereadCarriedHolds() []carriedHoldResult {
 	return out
 }
 
+// holdKeys is every spelling a carried hold may use for it: the item ID as plan prints it, its
+// claim key (claimKey), and the repo-qualified dispatch claim key deskdispatch acquires for it
+// (its claimKeyFor rule: a key already carrying `--` or a qualified selector passes through,
+// anything else is prefixed with the repo's short label). All lower-cased.
+func holdKeys(it loopengine.Item, defaultRepo string) []string {
+	keys := []string{strings.ToLower(it.ID), strings.ToLower(claimKey(it))}
+	id := strings.TrimSpace(it.ID)
+	if deskkit.NegotiatedWorkSyntax(id) || strings.Contains(id, ":") || strings.Contains(id, "--") {
+		return keys
+	}
+	repo := strings.TrimSpace(it.Payload["repo"])
+	if repo == "" {
+		repo = strings.TrimSpace(defaultRepo)
+	}
+	if repo == "" {
+		return keys
+	}
+	qualified := deskkit.RepoShortLabel(repo) + "--" + strings.ReplaceAll(strings.Trim(id, "/"), "/", "--")
+	return append(keys, strings.ToLower(qualified))
+}
+
 // applyCarriedHolds withholds every queued item whose carried hold still stands this run, and
-// records each hold's re-read for the plan output.
+// records each hold's re-read (and whether it matched a queued item) for the plan output.
 func (f *FanoutLoop) applyCarriedHolds(items []loopengine.Item) []loopengine.Item {
 	if len(f.DecisionHolds) == 0 {
 		return items
 	}
 	results := f.rereadCarriedHolds()
-	standing := map[string]bool{}
-	for _, r := range results {
+	standing := map[string]int{} // normalised hold key -> index into results
+	for i, r := range results {
 		if r.read.Holds() {
-			standing[strings.ToLower(strings.TrimSpace(r.hold.Item))] = true
+			standing[strings.ToLower(strings.TrimSpace(r.hold.Item))] = i
+		}
+	}
+	kept := items[:0:0]
+	for _, it := range items {
+		withheld := false
+		for _, k := range holdKeys(it, f.issueBoardRepo) {
+			if i, ok := standing[k]; ok {
+				results[i].matched = true
+				withheld = true
+			}
+		}
+		if !withheld {
+			kept = append(kept, it)
 		}
 	}
 	f.mu.Lock()
 	f.carriedHolds = results
 	f.mu.Unlock()
-	if len(standing) == 0 {
-		return items
-	}
-	kept := items[:0:0]
-	for _, it := range items {
-		if standing[strings.ToLower(it.ID)] || standing[strings.ToLower(claimKey(it))] {
-			continue
-		}
-		kept = append(kept, it)
-	}
 	return kept
 }
 
@@ -351,6 +516,22 @@ func (f *FanoutLoop) carriedHoldRows() []carriedHoldResult {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return append([]carriedHoldResult(nil), f.carriedHolds...)
+}
+
+// carriedHoldLine renders one carried hold's re-read for the plan output.
+func carriedHoldLine(r carriedHoldResult) string {
+	switch {
+	case r.read.State == deskkit.DecisionHoldLifted:
+		return fmt.Sprintf("DROPPED HOLD: %s (lift met: %s)", r.hold.Item, r.read.Why)
+	case !r.matched:
+		return fmt.Sprintf("HOLD UNMATCHED: %s — still standing (%s) but names NO item in this run's queue, so it "+
+			"withheld nothing; <item> must be the DISPATCH item ID, its claim key, or its repo-qualified claim key",
+			r.hold.Item, r.read.Why)
+	case r.read.State == deskkit.DecisionHoldUnknown:
+		return fmt.Sprintf("HOLD COULD-NOT-CHECK: %s — kept, NOT dispatched (%s)", r.hold.Item, r.read.Why)
+	default:
+		return fmt.Sprintf("HOLD LIVE: %s — NOT dispatched (%s)", r.hold.Item, r.read.Why)
+	}
 }
 
 // parseCarriedHold parses one `--decision-hold <item>=<owner/name>#<N>` value.
@@ -383,49 +564,67 @@ func (h *holdList) Set(v string) error {
 
 // --- live sources -------------------------------------------------------------------------
 
-// liveInboxIssues reads the open issues addressed to role across the configured scan scope,
-// through the typed forge, with the same trust gate the issue board applies: a trusted author
-// passes; any other author passes only on a current blessing read in full. An empty or
-// unconfigured scan scope is could-not-check, never an empty inbox.
-func liveInboxIssues(role string, resolve forgeResolver) func() ([]InboxIssue, error) {
+// liveInboxIssues reads the open issues addressed to role in the plan's OWN repo (the repo --root
+// maps to), through the typed forge, with the same trust gate the issue board applies: a trusted
+// author passes; any other author passes only on a current blessing read in full. Reading only the
+// own repo keeps one issue from being offered by every root's plan, and keeps each prompt's
+// merged-main SHA the SHA of the issue's own repo. An issue whose to: labels name this desk but are
+// malformed or conflicting is kept, so the lane lists it rather than dropping it unseen.
+func liveInboxIssues(repo, role string, resolve forgeResolver) func() ([]InboxIssue, error) {
 	return func() ([]InboxIssue, error) {
-		if err := deskkit.ScanScopeError(); err != nil {
-			return nil, err
+		owner, name, ok := strings.Cut(repo, "/")
+		if !ok || !deskkit.ValidRepoSlug(repo) {
+			return nil, fmt.Errorf("the plan's repo %q is not owner/name", repo)
+		}
+		fr := deskkit.ForgeRepo{Owner: owner, Name: name}
+		fg, err := resolve(fr)
+		if err != nil {
+			return nil, fmt.Errorf("cannot resolve a forge for %s: %w", repo, err)
+		}
+		if fg == nil {
+			return nil, fmt.Errorf("no forge for %s", repo)
+		}
+		issues, err := fg.ListOpenIssues(fr)
+		if err != nil {
+			return nil, fmt.Errorf("cannot list open issues in %s: %w", repo, err)
 		}
 		var out []InboxIssue
-		for _, slug := range deskkit.ScanRepos() {
-			owner, name, ok := strings.Cut(slug, "/")
-			if !ok || !deskkit.ValidRepoSlug(slug) {
-				return nil, fmt.Errorf("scan scope entry %q is not owner/name", slug)
+		for _, is := range issues {
+			cand := issueflow.CandidateForLabels(issueflow.Candidate{}, is.Labels)
+			if !issueflow.Select(issueflow.Inbox, cand, role) && !(cand.AddressUnknown && carriesAddress(is.Labels, role)) {
+				continue
 			}
-			fr := deskkit.ForgeRepo{Owner: owner, Name: name}
-			fg, err := resolve(fr)
-			if err != nil {
-				return nil, fmt.Errorf("cannot resolve a forge for %s: %w", slug, err)
+			ii := InboxIssue{Repo: repo, Number: is.Number, Title: is.Title, Labels: is.Labels, Author: is.Author.Login}
+			if deskkit.TrustedAuthor(is.Author.Login) {
+				ii.Trusted = true
+			} else if tp, terr := fg.IssueTrustEvents(fr, is.Number); terr != nil || tp == nil {
+				ii.TrustUnknown = fmt.Sprintf("cannot read trust events for %s#%d", repo, is.Number)
+			} else {
+				ii.Trusted = tp.Complete && deskkit.Blessed(tp.BodyEdited, tp.Events)
 			}
-			if fg == nil {
-				return nil, fmt.Errorf("no forge for %s", slug)
-			}
-			issues, err := fg.ListOpenIssues(fr)
-			if err != nil {
-				return nil, fmt.Errorf("cannot list open issues in %s: %w", slug, err)
-			}
-			for _, is := range issues {
-				if !issueflow.Select(issueflow.Inbox, issueflow.CandidateForLabels(issueflow.Candidate{}, is.Labels), role) {
-					continue
-				}
-				ii := InboxIssue{Repo: slug, Number: is.Number, Title: is.Title, Labels: is.Labels, Author: is.Author.Login}
-				if deskkit.TrustedAuthor(is.Author.Login) {
-					ii.Trusted = true
-				} else if tp, terr := fg.IssueTrustEvents(fr, is.Number); terr != nil || tp == nil {
-					ii.TrustUnknown = fmt.Sprintf("cannot read trust events for %s#%d", slug, is.Number)
-				} else {
-					ii.Trusted = tp.Complete && deskkit.Blessed(tp.BodyEdited, tp.Events)
-				}
-				out = append(out, ii)
-			}
+			out = append(out, ii)
 		}
 		return out, nil
+	}
+}
+
+// liveLabelHistory reads one issue's whole label history through the typed forge. A read error is
+// could-not-check and holds the issue.
+func liveLabelHistory(resolve forgeResolver) func(string, int) (*deskkit.LabelHistory, error) {
+	return func(repo string, n int) (*deskkit.LabelHistory, error) {
+		owner, name, ok := strings.Cut(repo, "/")
+		if !ok {
+			return nil, fmt.Errorf("repo %q is not owner/name", repo)
+		}
+		fr := deskkit.ForgeRepo{Owner: owner, Name: name}
+		fg, err := resolve(fr)
+		if err != nil {
+			return nil, err
+		}
+		if fg == nil {
+			return nil, fmt.Errorf("no forge for %s", repo)
+		}
+		return fg.IssueLabelHistory(fr, n)
 	}
 }
 
