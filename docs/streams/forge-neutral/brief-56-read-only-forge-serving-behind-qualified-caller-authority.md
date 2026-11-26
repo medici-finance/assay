@@ -4,7 +4,7 @@ title: Read-only forge serving behind qualified caller authority
 why: "The shared mirror can fill its own misses, but clients still lack a qualified read-only serving boundary. A bounded handler can expose that existing read owner without waiting for write executors, while keeping caller authentication, current admission and private-cache release independently enforced."
 wave: 8
 depends: ["forge-neutral/55", "forge-neutral/39", "forge-neutral/57"]
-unblocks: ["forge-neutral/40"]
+unblocks: ["forge-neutral/40", "forge-neutral/58"]
 split-from: forge-neutral/40
 effort: L
 gate: human
