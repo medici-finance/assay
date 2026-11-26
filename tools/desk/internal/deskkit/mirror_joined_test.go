@@ -41,12 +41,7 @@ type persistedMirrorFixture struct {
 func persistedMirrorConfig(admission, source string) store.RefreshConfig {
 	return store.RefreshConfig{AdmissionID: admission, SourceID: source, AccessEpoch: "access-1", ConfigEpoch: "config-1", PolicyClass: "synthetic", PolicyEpoch: "policy-1", Limits: refresh.Limits{CallerFillsPerWindow: 100, AdmissionFillsPerWindow: 1000, FillWindow: time.Hour, MinFreshness: time.Nanosecond, MaxFreshness: time.Hour, ActiveFills: 5, QueuedCallers: 100, AdmissionFills: 50, AdmissionWaiters: 1000, FailureEntries: 100, WaitTimeout: 45 * time.Second, FillTimeout: 30 * time.Second, Cooldown: time.Second, FailureTTL: time.Minute, Refresh: mirror.RefreshPolicy{Overlap: time.Minute, FullInventoryInterval: time.Nanosecond}}, Native: store.NativeLimits{CallerPerWindow: 100, AdmissionPerWindow: 1000, SourcePerWindow: 1000, PerFill: 20, Concurrent: 5, Reservations: 1000, Window: time.Hour}, PollInterval: 25 * time.Millisecond}
 }
-func newPersistedMirrorFixture(t *testing.T, c store.RefreshConfig, authority refresh.CallerAuthority, callers []string) persistedMirrorFixture {
-	t.Helper()
-	return newPersistedMirrorSQL(t, c, authority, callers, false)
-}
-
-func newPersistedMirrorSQL(t *testing.T, c store.RefreshConfig, authority refresh.CallerAuthority, callers []string, provisioned bool) persistedMirrorFixture {
+func newPersistedMirrorSQL(t *testing.T, c store.RefreshConfig, authority refresh.CallerAuthority, callers []string, provisioned bool, limits store.MirrorLimits) persistedMirrorFixture {
 	t.Helper()
 	f := pgtestfixture.New(t)
 	cfg := f.Config
@@ -90,7 +85,7 @@ func newPersistedMirrorSQL(t *testing.T, c store.RefreshConfig, authority refres
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { db.Close() })
-	observations, e := db.Mirror(store.MirrorLimits{MaxRecords: 128, MaxBytes: 1 << 20})
+	observations, e := db.Mirror(limits)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -157,6 +152,11 @@ func newPersistedNative(t *testing.T, provider ForgeKind, kind mirror.RecordKind
 
 func newPersistedNativeSQL(t *testing.T, provider ForgeKind, kind mirror.RecordKind, handler http.HandlerFunc, callers []string, provisioned bool, options ...func(*store.RefreshConfig)) persistedNative {
 	t.Helper()
+	return newPersistedNativeWithLimits(t, provider, kind, handler, callers, provisioned, store.MirrorLimits{MaxRecords: 128, MaxBytes: 1 << 20}, options...)
+}
+
+func newPersistedNativeWithLimits(t *testing.T, provider ForgeKind, kind mirror.RecordKind, handler http.HandlerFunc, callers []string, provisioned bool, limits store.MirrorLimits, options ...func(*store.RefreshConfig)) persistedNative {
+	t.Helper()
 	requests := &atomic.Int64{}
 	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests.Add(1)
@@ -174,12 +174,7 @@ func newPersistedNativeSQL(t *testing.T, provider ForgeKind, kind mirror.RecordK
 		option(&profile)
 	}
 	authority := &persistedCallerAuthority{config: profile}
-	var sql persistedMirrorFixture
-	if provisioned {
-		sql = newPersistedMirrorSQL(t, profile, authority, callers, true)
-	} else {
-		sql = newPersistedMirrorFixture(t, profile, authority, callers)
-	}
+	sql := newPersistedMirrorSQL(t, profile, authority, callers, provisioned, limits)
 	var forge Forge
 	if provider == ForgeGitHub {
 		forge = &GitHubForge{Token: ciFixtureToken, BaseURL: server.URL, Client: client, onlyRepo: "o/r"}
@@ -215,6 +210,7 @@ func TestMirrorProvisionedReadThrough(t *testing.T) {
 	if os.Getenv("ASSAY_TEST_POSTGRES_DSN") == "" {
 		t.Skip("explicit disposable container required; ordinary skip is not provisioned integration proof")
 	}
+	t.Run("cold-inventory", checkPersistedColdInventory)
 	for _, provider := range []ForgeKind{ForgeGitHub, ForgeGitLab} {
 		t.Run(string(provider), func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
