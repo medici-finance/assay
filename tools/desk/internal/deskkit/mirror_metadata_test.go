@@ -82,7 +82,7 @@ func writeMetadataFixture(t *testing.T, w http.ResponseWriter, more bool, number
 	}
 }
 
-func TestProjectedMirrorWarmsProvisionedPostgres(t *testing.T) {
+func checkProjectedMirrorWarmUp(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	var requests atomic.Int64

@@ -235,7 +235,7 @@ func (g *RefreshGate) acquire(ctx context.Context, d refresh.Demand, warm bool) 
 	if e != nil {
 		return refresh.Ticket{}, e
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if e = g.lockCaller(ctx, tx, d.CallerID); e != nil {
 		return refresh.Ticket{}, e
 	}
@@ -251,7 +251,8 @@ func (g *RefreshGate) acquire(ctx context.Context, d refresh.Demand, warm bool) 
 	if e != nil && !fresh {
 		return refresh.Ticket{}, refresh.ErrHeld
 	}
-	if !fresh && d.Requirements.RequireReviews && f.reviews != nil && now.Before(*f.reviews) {
+	reviewHold := d.Requirements.RequireReviews && f.reviews != nil && now.Before(*f.reviews)
+	if !fresh && reviewHold {
 		return refresh.Ticket{}, refresh.ErrHeld
 	}
 	if !fresh && !bytes.Equal(f.identity, identity) {
@@ -264,7 +265,11 @@ func (g *RefreshGate) acquire(ctx context.Context, d refresh.Demand, warm bool) 
 	if ownwait >= g.config.Limits.QueuedCallers || allwait >= g.config.Limits.AdmissionWaiters {
 		return refresh.Ticket{}, refresh.ErrQuota
 	}
-	owner := fresh || f.state == "pending" && !now.Before(f.expires) || f.state != "pending" && !(f.state == "held" || f.retry != nil && now.Before(*f.retry) || f.base != nil && now.Before(*f.base) || d.Requirements.RequireReviews && f.reviews != nil && now.Before(*f.reviews))
+	pending := f.state == "pending"
+	retryReady := f.retry == nil || !now.Before(*f.retry)
+	baseReady := f.base == nil || !now.Before(*f.base)
+	owner := fresh || pending && !now.Before(f.expires) ||
+		!pending && f.state != "held" && retryReady && baseReady && !reviewHold
 	if !fresh && (f.state == "held" || f.state != "pending" && !owner) {
 		return refresh.Ticket{}, refresh.ErrHeld
 	}
@@ -402,7 +407,7 @@ func (g *RefreshGate) wait(ctx context.Context, t refresh.Ticket, timeout time.D
 			return refresh.State{}, e
 		}
 		f, _, _, reviews, e := g.ticket(ctx, tx, t)
-		tx.Rollback()
+		_ = tx.Rollback()
 		if e != nil {
 			return refresh.State{}, e
 		}
