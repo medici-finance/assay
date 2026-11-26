@@ -34,6 +34,10 @@ func TestAdmittedRowSelfBound(t *testing.T) {
 		{`ASSAY_X=/row sh -c 'test -d "$ASSAY_X"'`, nil},
 		{`env ASSAY_X=/row sh -c 'test "$ASSAY_X" = /row'`, nil},
 		{`sh -c ': ${ASSAY_X:=/row}; test -d "$ASSAY_X"'`, nil},
+		{`true && : "${ASSAY_X:=/row}"; test -d "$ASSAY_X"`, nil},
+		{`: "${ASSAY_X:=/row}" 2>&1; test -d "$ASSAY_X"`, nil},
+		{`echo "$(true)" && : "${ASSAY_X:=/row}"; test -d "$ASSAY_X"`, nil},
+		{`sh -c 'true; : ${ASSAY_X:=/row}; test -d "$ASSAY_X"'`, nil},
 		{`test -n "${GITLAB_API_BASE:-https://example.invalid}"`, nil},
 		// An inherited value would be observed: still refused.
 		{`test -n "$ASSAY_X"`, x},
@@ -51,6 +55,16 @@ func TestAdmittedRowSelfBound(t *testing.T) {
 		{`ASSAY_X=/row; sh -c 'test -n "$ASSAY_X"'`, x},
 		{`sh -c ': ${ASSAY_X:=/row}'; test -n "$ASSAY_X"`, x},
 		{`(ASSAY_X=/row); test -n "$ASSAY_X"`, x},
+		{`(: "${ASSAY_X:=/row}"); test -z "$ASSAY_X"`, x},
+		{`true | : "${ASSAY_X:=/row}"; test -z "$ASSAY_X"`, x},
+		{`: "${ASSAY_X:=/row}" | cat; test -z "$ASSAY_X"`, x},
+		{`v=$(: "${ASSAY_X:=/row}"); test -z "$ASSAY_X"`, x},
+		{"v=`: ${ASSAY_X:=/row}`; test -z \"$ASSAY_X\"", x},
+		{`sh -c ": \${ASSAY_X:=/row}"; test -z "$ASSAY_X"`, x},
+		{`true || : "${ASSAY_X:=/row}"; test -z "$ASSAY_X"`, x},
+		{`: "${ASSAY_X:=/row}" & test -z "$ASSAY_X"`, x},
+		{`sh -c '(: ${ASSAY_X:=/row}); test -z "$ASSAY_X"'`, x},
+		{`sh -c 'true | : ${ASSAY_X:=/row}; test -z "$ASSAY_X"'`, x},
 		{`(ASSAY_X=/row; true); test -n "$ASSAY_X"`, x},
 		{`sh -c "ASSAY_X=/row; test -n \"\$ASSAY_X\""`, x},
 		{`true | ASSAY_X=/row; test -n "$ASSAY_X"`, x},
@@ -121,16 +135,22 @@ func TestAdmittedSelfDefaultRuns(t *testing.T) {
 // TestAdmittedUnboundRefused: under admission, a row that would observe an
 // inherited ASSAY_* value is still could-not-run with the note naming it: a
 // bare or guarded read, an empty default, a read before the row's assignment,
-// a prefixed command's own argument, and an assignment made in a subshell. The
+// a prefixed command's own argument, and an assignment, written NAME=value or
+// ${NAME:=x}, made in a subshell, the background or a child script (a pipe cannot be
+// written in a table cell, so the unit table pins that one). The
 // unadmitted control, with the value set, passes each row.
 func TestAdmittedUnboundRefused(t *testing.T) {
 	rows := map[string]string{
-		"alt":      `test "${ASSAY_X:+set}" = set`,
-		"guard":    `test -n "${ASSAY_X:?}"`,
-		"empty":    `test "${ASSAY_X:-}" = /inherited`,
-		"before":   `test -n "$ASSAY_X" && ASSAY_X=/row`,
-		"argument": `ASSAY_X=/row test "$ASSAY_X" = /inherited`,
-		"subshell": `(ASSAY_X=/row); test "$ASSAY_X" = /inherited`,
+		"alt":            `test "${ASSAY_X:+set}" = set`,
+		"guard":          `test -n "${ASSAY_X:?}"`,
+		"empty":          `test "${ASSAY_X:-}" = /inherited`,
+		"before":         `test -n "$ASSAY_X" && ASSAY_X=/row`,
+		"argument":       `ASSAY_X=/row test "$ASSAY_X" = /inherited`,
+		"subshell":       `(ASSAY_X=/row); test "$ASSAY_X" = /inherited`,
+		"colon-subshell": `(: "${ASSAY_X:=/row}"); test "$ASSAY_X" = /inherited`,
+		"colon-bg":       `: "${ASSAY_X:=/row}" & wait; test "$ASSAY_X" = /inherited`,
+		"colon-subst":    `v=$(: "${ASSAY_X:=/row}"); test "$ASSAY_X" = /inherited`,
+		"colon-child":    `sh -c ": \${ASSAY_X:=/row}"; test "$ASSAY_X" = /inherited`,
 	}
 	for name, row := range rows {
 		for _, admit := range []bool{true, false} {

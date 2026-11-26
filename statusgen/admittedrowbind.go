@@ -62,7 +62,11 @@ func (b admittedRowBind) covers(at, quote int) bool {
 // ${NAME} read is the row's own when it is
 //
 //   - a non-empty default: ${NAME:-x}, ${NAME:=x}, ${NAME-x} or ${NAME=x};
-//   - after ${NAME:=x} or ${NAME=x} in the same shell;
+//   - after ${NAME:=x} or ${NAME=x} in the same shell: not inside ( ), $( ) or
+//     a backquote pair, not in a command that is part of a pipeline, follows
+//     ||, or is sent to the background, and not behind an escaped $, since a
+//     child shell or subshell makes that assignment and the row's shell does
+//     not (a single-quoted script is read the same way, as a script of its own);
 //   - after NAME=value standing alone, or export NAME=value, at the start of a
 //     top-level command that is not part of a pipeline, not after ||, and not
 //     sent to the background, since none of those assign in the row's shell;
@@ -73,7 +77,9 @@ func (b admittedRowBind) covers(at, quote int) bool {
 // (${NAME:-}, whose row still needs the input), ${NAME:?}, ${NAME:+x}, a
 // length or indirection, any $env:NAME or %NAME% read, a read in a prefixed
 // command's own arguments, and a read after an assignment made inside
-// parentheses, a quoted string, or after then, do or else on the same line.
+// parentheses, a quoted string, a pipeline, after ||, or in the background,
+// whether written NAME=value or ${NAME:=x}, or after then, do or else on the
+// same line.
 //
 // It reads text order, not control flow: an assignment the row may skip at run
 // time (false && NAME=x; echo $NAME, or a line of an if body) still covers the
@@ -97,6 +103,7 @@ func admittedRowSelfBound(command, name string) bool {
 		}
 	}
 	reads := 0
+	var transient [][2]int
 	for _, loc := range admittedRowRefRe.FindAllStringSubmatchIndex(command, -1) {
 		start, end := loc[0], loc[1]
 		switch {
@@ -118,7 +125,18 @@ func admittedRowSelfBound(command, name string) bool {
 		if strings.HasPrefix(command[start:], "${") && command[start+2] != '#' && command[start+2] != '!' {
 			if assigns, after, ok := admittedRowDefault(command, end); ok {
 				if assigns {
-					own = append(own, admittedRowBind{name: name, kind: bindShell, from: after, quote: quote})
+					if transient == nil {
+						transient = admittedRowTransient(command, 0, len(command))
+						for _, q := range quotes {
+							transient = append(transient, admittedRowTransient(command, q[0]+1, q[1])...)
+						}
+					}
+					// An assignment inside ( ), $( ), a backquote, a pipeline
+					// segment, after ||, in the background, or behind an
+					// escaped $ is not made in the shell that reads later.
+					if !admittedRowInSpan(transient, start) && !admittedRowEscaped(command, start) {
+						own = append(own, admittedRowBind{name: name, kind: bindShell, from: after, quote: quote})
+					}
 				}
 				continue
 			}
@@ -161,6 +179,152 @@ func admittedRowDefault(command string, at int) (assigns bool, after int, ok boo
 		}
 	}
 	return false, 0, false
+}
+
+// admittedRowInSpan reports whether offset at lies inside one of spans.
+func admittedRowInSpan(spans [][2]int, at int) bool {
+	return slices.ContainsFunc(spans, func(s [2]int) bool { return s[0] <= at && at < s[1] })
+}
+
+// admittedRowEscaped reports whether the $ at offset at is escaped by an odd
+// run of backslashes, so the shell that reads the text never expands it.
+func admittedRowEscaped(command string, at int) bool {
+	n := 0
+	for k := at - 1; k >= 0 && command[k] == '\\'; k-- {
+		n++
+	}
+	return n%2 == 1
+}
+
+// admittedRowTransient returns the spans of command[lo:hi] in which an
+// assignment does not reach the shell that runs the rest of the text: inside
+// ( ), $( ), <( ) or a backquote pair, and in a command that is part of a
+// pipeline, follows ||, or is sent to the background. A single-quoted span is
+// skipped whole (the caller scans its inside as a script of its own), and an
+// open quote or substitution makes the rest transient, so it is refused.
+func admittedRowTransient(command string, lo, hi int) [][2]int {
+	var spans [][2]int
+	segStart, after := lo, false
+	// seg closes the command that began at segStart and ended at end. It is
+	// transient when a pipe or || led into it, or a pipe or a lone & follows.
+	seg := func(end int, leaves bool) {
+		if after || leaves {
+			spans = append(spans, [2]int{segStart, end})
+		}
+	}
+	for i := lo; i < hi; {
+		switch c := command[i]; c {
+		case '\\':
+			i += 2
+		case '\'':
+			e := strings.IndexByte(command[i+1:hi], '\'')
+			if e < 0 {
+				return append(spans, [2]int{i, hi})
+			}
+			i += e + 2
+		case '"':
+			e, ok := admittedRowDoubleQuoteEnd(command, i)
+			if !ok || e > hi {
+				return append(spans, [2]int{i, hi})
+			}
+			for k := i + 1; k < e-1; k++ {
+				switch {
+				case command[k] == '\\':
+					k++
+				case command[k] == '`' || command[k] == '(' && command[k-1] == '$':
+					m := admittedRowSubstEnd(command, k, e-1)
+					spans = append(spans, [2]int{k, m})
+					k = m - 1
+				}
+			}
+			i = e
+		case '`', '(':
+			m := admittedRowSubstEnd(command, i, hi)
+			spans = append(spans, [2]int{i, m})
+			i = m
+		case '#':
+			if i == lo || strings.IndexByte(" \t;&|()\n", command[i-1]) >= 0 {
+				nl := strings.IndexByte(command[i:hi], '\n')
+				if nl < 0 {
+					i = hi
+				} else {
+					i += nl
+				}
+				continue
+			}
+			i++
+		case ';', '\n':
+			seg(i, false)
+			segStart, after = i+1, false
+			i++
+		case '&':
+			switch {
+			case i+1 < hi && command[i+1] == '&':
+				seg(i, false)
+				i += 2
+				segStart, after = i, false
+			case i > lo && command[i-1] == '>' || i+1 < hi && command[i+1] == '>':
+				i++ // a redirection (2>&1, &>), not an operator
+			default:
+				seg(i, true)
+				i++
+				segStart, after = i, false
+			}
+		case '|':
+			leaves := true
+			if i+1 < hi && command[i+1] == '|' {
+				leaves = false
+				i++
+			} else if i+1 < hi && command[i+1] == '&' {
+				i++
+			}
+			seg(i, leaves)
+			i++
+			segStart, after = i, true
+		default:
+			i++
+		}
+	}
+	seg(hi, false)
+	return spans
+}
+
+// admittedRowSubstEnd returns the offset just past the substitution or
+// subshell opening at k (a backquote, or a parenthesis, whose matching close it
+// finds past quotes and nested pairs), or hi when it is never closed.
+func admittedRowSubstEnd(command string, k, hi int) int {
+	if command[k] == '`' {
+		if e := strings.IndexByte(command[k+1:hi], '`'); e >= 0 {
+			return k + e + 2
+		}
+		return hi
+	}
+	depth := 0
+	for i := k; i < hi; i++ {
+		switch command[i] {
+		case '\\':
+			i++
+		case '\'':
+			e := strings.IndexByte(command[i+1:hi], '\'')
+			if e < 0 {
+				return hi
+			}
+			i += e + 1
+		case '"':
+			e, ok := admittedRowDoubleQuoteEnd(command, i)
+			if !ok || e > hi {
+				return hi
+			}
+			i = e - 1
+		case '(':
+			depth++
+		case ')':
+			if depth--; depth == 0 {
+				return i + 1
+			}
+		}
+	}
+	return hi
 }
 
 // admittedRowAssignRe matches an assignment word's NAME= at a word's start.

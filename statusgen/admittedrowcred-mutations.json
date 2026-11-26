@@ -308,6 +308,36 @@
       "new": "\t\tcase '\"':\n\t\t\tstart = true\n"
     },
     {
+      "name": "a colon-assign inside a subshell, pipeline or child script binds",
+      "file": "admittedrowbind.go",
+      "old": "if !admittedRowInSpan(transient, start) && !admittedRowEscaped(command, start) {",
+      "new": "if true {"
+    },
+    {
+      "name": "a colon-assign behind an escaped dollar binds",
+      "file": "admittedrowbind.go",
+      "old": " && !admittedRowEscaped(command, start) {",
+      "new": " {"
+    },
+    {
+      "name": "a colon-assign in a pipeline segment binds",
+      "file": "admittedrowbind.go",
+      "old": "if after || leaves {",
+      "new": "if false {"
+    },
+    {
+      "name": "a colon-assign inside parentheses or a substitution binds",
+      "file": "admittedrowbind.go",
+      "old": "\t\t\tspans = append(spans, [2]int{i, m})\n\t\t\ti = m\n",
+      "new": "\t\t\ti = m\n"
+    },
+    {
+      "name": "a colon-assign in a backgrounded command binds",
+      "file": "admittedrowbind.go",
+      "old": "\t\t\t\tseg(i, true)\n\t\t\t\ti++\n",
+      "new": "\t\t\t\tseg(i, false)\n\t\t\t\ti++\n"
+    },
+    {
       "name": "every read of a scrubbed name is the row's own",
       "file": "verifieradmission.go",
       "old": "\t\tif admittedRowSelfBound(command, name) {\n",

@@ -334,10 +334,11 @@ in any case), and a name the row also assigns or names bare (`NAME=...`, `for NA
 binds itself, because the row then sees its own value and never an inherited one: every read is a
 non-empty default (`${NAME:-x}`, `${NAME:=x}`, `${NAME-x}`, `${NAME=x}`), or comes after the row's
 own `NAME=value` or `export NAME=value` at the start of a top-level command, or after a
-`${NAME:=x}`, or sits in a single-quoted script under a leading `NAME=value cmd`. A bare read, an
-empty default (`${NAME:-}`), `${NAME:?}`, `${NAME:+x}`, a read before the assignment, a read in the
-prefixed command's own arguments, and an assignment in a subshell, a pipeline or a quoted string
-still count. The scrub does not change: an inherited value is removed either way. The rule reads
+`${NAME:=x}` made in the row's own shell, or sits in a single-quoted script under a leading
+`NAME=value cmd`. A bare read, an empty default (`${NAME:-}`), `${NAME:?}`, `${NAME:+x}`, a read
+before the assignment, a read in the prefixed command's own arguments, and an assignment, whether
+`NAME=value` or `${NAME:=x}`, made in a subshell (`( )`, `$( )` or a backquote pair), a pipeline,
+after `||`, in the background, in a quoted string or in an escaped child script still count. The scrub does not change: an inherited value is removed either way. The rule reads
 the row's text, not the shell's parse, so a form it cannot place counts. A row that reads a dropped
 variable some other way, or names it bare, runs and sees it unset. The note is not permission to run the row outside admission: which rows to
 amend, or which inputs to carry in, is the author's call.
