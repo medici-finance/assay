@@ -12,8 +12,10 @@ risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 gate-why: "Accept only the demonstrated caller/current-authority binding and private-data release boundary for mirror-query. A missing qualified producer/profile is an implementation blocker; a human acceptance cannot make one exist or activate a service."
 decision-trigger: spec
 issues: []
+delivery:
+  - {in: "assay#7820", covers: partial, note: "Repository-scoped pull request metadata warm-up and disposable PostgreSQL pagination checks. Caller authority qualification, the private serving workload and human acceptance remain open."}
 schema: brief-v2
-version: 2
+version: 3
 authored: 2026-11-04 by statusgen newbrief
 outcome: none
 design: DR-forge-library
