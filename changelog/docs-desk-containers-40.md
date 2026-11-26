@@ -1,0 +1,1 @@
+- New desk-containers brief 40 plans role secrets on a host: each desk role window runs as its own OS user, and `cellctl check` verifies that reviewer, intake and coordinator users can neither read a worker's or verifier's secret nor write anything those windows run.

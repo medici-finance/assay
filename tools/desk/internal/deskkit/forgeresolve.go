@@ -7,9 +7,9 @@ package deskkit
 //
 // THE CONTRACT, stated once so every later brief inherits it rather than re-deriving it:
 //
-//  1. RESOLUTION. The forge that serves a repo is never a caller's choice. ForgeFor takes
-//     no forge parameter, reads no forge-selecting flag or environment variable, and no
-//     other exported symbol in this package accepts one. Resolution order:
+//  1. RESOLUTION. The forge that serves a desk repository is never a caller's
+//     choice. ForgeFor takes no forge parameter and reads no forge-selecting
+//     flag or environment variable. Resolution order:
 //
 //     a. the repo's configured forge — ASSAY_REPO_FORGES in the roster (rosterconfig.go);
 //     b. failing that, the origin remote's host, mapped to a forge ONLY when the mapping
@@ -47,6 +47,7 @@ package deskkit
 
 import (
 	"fmt"
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -787,6 +788,37 @@ func ResolveForge(repo ForgeRepo, role string, observers ...RequestObserver) (Fo
 		return nil, ForgeResolution{}, Unverifiable(fmt.Sprintf(
 			"forge resolution for %s returned an unrecognised kind %q", repo.Slug(), res.Kind), nil)
 	}
+}
+
+// newStandaloneChangeBackend binds the adapters to an application's explicit
+// repository, transport and credential. The forgechange library provides the
+// publication policy and exposes only the change operations.
+func newStandaloneChangeBackend(kind ForgeKind, repo ForgeRepo, token, gitlabBase string, client *http.Client) (Forge, error) {
+	switch kind {
+	case ForgeGitHub:
+		return &GitHubForge{Token: token, Client: client, onlyRepo: repo.Slug()}, nil
+	case ForgeGitLab:
+		return &GitLabForge{Token: token, BaseURL: gitlabBase, Client: client, onlyRepo: repo.Slug()}, nil
+	default:
+		return nil, Refused("forge must be github or gitlab")
+	}
+}
+
+// standaloneOpenChangeNumbers returns the same open population without GitLab
+// pipeline lookups, which callers that only need IDs would otherwise discard.
+func standaloneOpenChangeNumbers(f Forge, repo ForgeRepo) ([]int, bool, error) {
+	if gitlab, ok := f.(*GitLabForge); ok {
+		return gitlab.openChangeNumbers(repo)
+	}
+	open, err := f.ListOpenChanges(repo)
+	if err != nil {
+		return nil, false, err
+	}
+	numbers := make([]int, 0, len(open.Changes))
+	for _, change := range open.Changes {
+		numbers = append(numbers, change.Number)
+	}
+	return numbers, open.TruncatedAtCap, nil
 }
 
 // ciTokenAPIBase redirects the CI workflow-token transport's GitHub backend at a test server.
