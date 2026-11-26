@@ -199,13 +199,14 @@ func (s *mirrorAttemptState) roundTrip(base http.RoundTripper, r *http.Request) 
 			r.Body == nil || len(s.metadataBody) == 0 || r.ContentLength != int64(len(s.metadataBody)) {
 			return nil, s.hold(mirror.AttemptUnknownHeld)
 		}
-		raw, err := io.ReadAll(io.LimitReader(r.Body, int64(len(s.metadataBody))+1))
+		raw, err := ReadForgeBodyUpTo(r.Body, "mirror metadata request", int64(len(s.metadataBody)))
 		_ = r.Body.Close()
 		if err != nil || !bytes.Equal(raw, s.metadataBody) {
 			return nil, s.hold(mirror.AttemptUnknownHeld)
 		}
 		r = r.Clone(r.Context())
 		r.Body = io.NopCloser(bytes.NewReader(raw))
+		r.GetBody = nil
 	} else if r.Method != http.MethodGet || r.URL.RawQuery != s.query() {
 		return nil, s.hold(mirror.AttemptUnknownHeld)
 	}
