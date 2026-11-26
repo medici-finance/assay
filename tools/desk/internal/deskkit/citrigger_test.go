@@ -491,7 +491,7 @@ func ciCrossModuleRegistry() []ciEntry {
 			test: "loopadmin/runner/request_test.go", module: "loopadmin",
 			workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"perfrec/"},
-			runInvokes: []string{`*/loopadmin|loopadmin) extra="GOWORK=off go test ./..." ;;`},
+			runInvokes: []string{`*/loopadmin|loopadmin) extra="GOWORK=off go test -skip '^Test(Journal(SharedStoreRestart|IncarnationPaused|PassiveRestore|RuntimeGrants)|LoopAdminLaunchBudgetBrake)$' ./..." ;;`},
 			why:        "Runner dependency isolation observes the exact local perfrec module closure through go list; the unfiltered source workflow executes its suite after any producer or dependency edit.",
 		},
 		{

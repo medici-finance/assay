@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run '^Test(FlipShaFormAgree|TransitionMixedForms|TransitionWitnessTree|EvidenceOnlyTreeClean|EvidenceOnlyNeedsEvidence|EvidenceConflictDirty|TransitionThenBracket|VerifyrunRowsTransitionSplitRunsDoNotClose|VerifyrunRowsMixedAssembly|MixedTransitionProductionFlow|ShRunnerCellsAgree|ShCloseStampAgrees|ShCheckVerified[A-Za-z]*|ShFlip[A-Za-z]*)$' -count=1 -timeout 300s",
+  "test": "go test . -run '^Test(FlipShaFormAgree|TransitionMixedForms|TransitionWitnessTree|EvidenceOnlyTreeClean|EvidenceOnlyNeedsEvidence|EvidenceConflictDirty|TransitionThenBracket|VerifyrunRowsTransitionSplitRunsDoNotClose|VerifyrunRowsMixedAssembly|MixedTransitionProductionFlow|ShRunnerCellsAgree|ShCloseStampAgrees|ShCheckVerified[A-Za-z]*|ShFlip[A-Za-z]*|FlipSourceTagOneRunner|FlipSourceTagNearMiss|VflipSourceTagMixed|CloseRunnerTreeMixed)$' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — the pre-#4299 sha check (every row must name the first row's sha exactly)",
     "file": "runnercell.go",
@@ -156,6 +156,24 @@
       "file": "containerbracket.go",
       "old": "\tr.RunnerTree = briefTreeSHA(home, brief)",
       "new": "\tr.RunnerTree = treeSHA(home)"
+    },
+    {
+      "name": "a different tree suffix no longer refuses (+dirty agrees with a bare sha or +unknown) (#5530)",
+      "file": "runnercell.go",
+      "old": "\t\t\tif !r.clean || !r0.clean || r.tree != r0.tree {",
+      "new": "\t\t\tif !r.clean || !r0.clean {"
+    },
+    {
+      "name": "the tree suffix is not read apart from the qualifier list (a shared +dirty blocks the reading) (#5530)",
+      "file": "runnercell.go",
+      "old": "\tr.tree = runnerTreeRe.FindString(m[3])",
+      "new": "\tr.tree = \"\""
+    },
+    {
+      "name": "the agreed tail drops the shared tree suffix (#5530)",
+      "file": "runnercell.go",
+      "old": "\ttail = r0.tree\n",
+      "new": "\ttail = \"\"\n"
     }
   ]
 }

@@ -29,6 +29,7 @@ import (
 type Placeholder struct {
 	HandoffAssessment issueflow.IntakeAssessment
 	Handoff           string
+	HandoffOpened     string // the `handoff-opened:` key, as written
 	Path              string
 	Brief             string   // "<stream>/<stem>", e.g. "issue-loop/issue-300"
 	Issue             int      // GitHub issue number
@@ -187,23 +188,37 @@ func derivePlaceholderEffort(labels []string, title string) string {
 // placeholderFilePaths returns the sorted, de-duplicated placeholder file paths
 // (issue-<NN>.md and <repo-slug>-issue-<NN>.md) in a stream directory. Non-
 // conforming names that a loose glob may catch are filtered by placeholderNameRe.
+//
+// It matches both globs against ONE listing of the directory, read through
+// readDirMemo, which briefFilePaths then shares, instead of two filepath.Glob
+// listings per stream: on a real tree each directory open is a measurable part of
+// what hydration costs next to the bare load (statusgen/44, issue #6900). An
+// unreadable directory yields no paths, as Glob did.
 func placeholderFilePaths(s *Stream) []string {
-	var matches []string
-	for _, pat := range []string{"issue-*.md", "*-issue-*.md"} {
-		m, _ := filepath.Glob(filepath.Join(s.Dir, pat))
-		matches = append(matches, m...)
+	entries, err := readDirMemo(s.Dir)
+	if err != nil {
+		return nil
 	}
-	seen := map[string]bool{}
 	var out []string
-	for _, p := range matches {
-		if seen[p] || !placeholderNameRe.MatchString(filepath.Base(p)) {
+	for _, e := range entries {
+		name := e.Name()
+		if !placeholderGlobMatch(name) || !placeholderNameRe.MatchString(name) {
 			continue
 		}
-		seen[p] = true
-		out = append(out, p)
+		out = append(out, filepath.Join(s.Dir, name))
 	}
 	sort.Strings(out)
 	return out
+}
+
+// placeholderGlobMatch reports whether name matches either placeholder glob.
+func placeholderGlobMatch(name string) bool {
+	for _, pat := range []string{"issue-*.md", "*-issue-*.md"} {
+		if ok, _ := filepath.Match(pat, name); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // archivedPlaceholderFilePaths returns the sorted, de-duplicated placeholder file
@@ -364,6 +379,7 @@ func parsePlaceholderFile(path string) (*Placeholder, bool, error) {
 	handoff, _ := data["handoff"].(string)
 	ph.Handoff = handoff
 	opened, _ := data["handoff-opened"].(string)
+	ph.HandoffOpened = opened
 	h, herr := readIntakeHandoff(path, handoff)
 	ph.HandoffAssessment = assessRecordedIntake(h, fmt.Sprintf("%s#%d", ph.Repo, ph.Issue), opened, ph.Labels, herr == nil)
 	return ph, true, nil

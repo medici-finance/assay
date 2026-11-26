@@ -100,8 +100,13 @@ func TestVerifierDispatchAdmissionEndToEnd(t *testing.T) {
 			git("config", "user.name", "fixture")
 			git("config", "user.email", "fixture@example.invalid")
 			outputHome := t.TempDir()
-			t.Setenv("VERIFY_OUTPUT", outputHome)
-			body := "# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | " + string(rune(96)) + "touch \"$VERIFY_OUTPUT/row-one\"" + string(rune(96)) + " | exit 0 |\n| 2 | " + string(rune(96)) + "touch \"$VERIFY_OUTPUT/row-two\"" + string(rune(96)) + " | exit 0 |\n\n## Evidence\n\nPending.\n"
+			// An admitted row's environment is an allow-list (#6792), so a
+			// fixture-only variable never reaches it: each row names its output
+			// file by absolute path instead.
+			touch := func(name string) string {
+				return string(rune(96)) + "touch '" + filepath.Join(outputHome, name) + "'" + string(rune(96))
+			}
+			body := "# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | " + touch("row-one") + " | exit 0 |\n| 2 | " + touch("row-two") + " | exit 0 |\n\n## Evidence\n\nPending.\n"
 			os.WriteFile(filepath.Join(home, "spec.md"), []byte(body), 0600)
 			git("add", "spec.md")
 			git("commit", "-m", "fixture")

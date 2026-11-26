@@ -130,6 +130,10 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if jerr != nil {
 		return jerr
 	}
+	// The outcome word must be one every reader classifies identically (evaluation vocabulary).
+	if oerr := deskkit.CheckOutcomeField(join); oerr != nil {
+		return oerr
+	}
 	var submitted deskkit.WakeReceipt
 	if uerr := json.Unmarshal(rec.Raw, &submitted); uerr != nil {
 		return deskkit.Refused("refused: invalid --outcome-record JSON: " + uerr.Error())
@@ -320,6 +324,10 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if landedHead != "" {
 		closureRef = landedHead
 	}
+	// Both bindings below read the named commit from evidenceRoot's object store.
+	if err := outcomeEvidenceInRoot(evidenceRoot, receipt, fr, branch, outcome.SHA); err != nil {
+		return err
+	}
 	// The Evidence binding, or under --outcome-only the check that this run's Evidence
 	// append is exactly the one the verdict gate refuses (outcomeonly.go, #5759).
 	if err := gateOutcomeEvidence(outcomeOnly, evidenceRoot, landedRoot, targetRepoPath, fg, fr, closureRef, receipt, outcome, commitContent, ac.options); err != nil {
@@ -504,7 +512,7 @@ func landOutcomeRecordAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug,
 	pr, perr := deskkit.CreateHeldDraftChange(fg, fr, deskkit.DraftChangeInput{
 		Title: "Evidence: " + target,
 		Body: "Verify-outcome record for `" + brief + "`, landed on branch `" + side + "` and opened as a " +
-			"draft change because the default branch `" + base + "` takes no direct write on this forge.\n\n" + ac.attestation,
+			"draft change because the default branch `" + base + "` takes no direct write on this forge.\n\n" + ac.attestationRecord(),
 		Head: side,
 		Base: base,
 	})

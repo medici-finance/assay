@@ -93,3 +93,28 @@ func TestVflipRiskDefinition(t *testing.T) {
 		})
 	}
 }
+
+// regression: #4200
+func TestHeldRiskOutcomeMappings(t *testing.T) {
+	const pass = "**VERIFY: PASS**\n\n"
+	const positional = "RISK-VALUE: DERIVED — exit codes = 0,5,6,1 @ tools/desk/internal/cellop/result.go:48,50,52,54 — spec maps ok/refused/could-not-check/failure respectively and unknown outcomes must not imply success."
+	const numbered = "- RISK-VALUE: DERIVED — exit codes = 0, 5, 6, 1 @ tools/desk/internal/cellop/result.go:48, 50, 52, 54 — the brief's table: 0 ok, 5 refused, 6 could-not-check, 1 failed or partial. Any other outcome maps to 1, never 0."
+	const states = `- RISK-VALUE: DERIVED — settled states = "observed", "external-wait" @ tools/desk/cmd/scanloop/observations.go:75 and the landing gate @ handoffrecord.go:110 — the spec's retention section lists exactly these as discharging a retained event; owed, held or unreadable states stay presented, and a newer source event is a new key.`
+	cases := []heldScanCase{
+		{"positional mapping", pass + positional, false},
+		{"code-labelled mapping", pass + numbered, false},
+		{"state enumeration", pass + states, false},
+		{"another contract and outcome order", pass + "RISK-VALUE: DERIVED — exit codes = 7,0 @ cli/exit.go:1-3 — spec maps could-not-check/ok respectively.", false},
+		{"named row still held", pass + numbered + " Row 4 HELD pending access.", true},
+		{"independent prose hold", pass + positional + " Separate smoke run: HELD.", true},
+		{"unrouted verification result", pass + positional + "\n| # | Command | Result |\n|---|---|---|\n| 4 | check | could-not-check |", true},
+		{"unsourced derivation", pass + strings.Replace(positional, " @ tools/desk/internal/cellop/result.go:48,50,52,54", "", 1), true},
+		{"existing meaning with an exit declaration", pass + "RISK-VALUE: DERIVED — exit codes = 5,6 @ example.go:1 — a timeout maps to could-not-check, never to permitted.", false},
+		{"numbered table disagrees with declaration", pass + strings.Replace(numbered, "6 could-not-check", "9 could-not-check", 1), true},
+		{"mapping omits an exit", pass + strings.Replace(positional, "/failure respectively", " respectively", 1), true},
+		{"run inside a sourced note", pass + strings.Replace(positional, "spec maps ok/refused/could-not-check/failure respectively", "the smoke run was could-not-check", 1), true},
+		{"mapping in result cell", heldEv(positional), true},
+		{"unreadable state is an actual hold", pass + strings.Replace(states, "owed, held or unreadable states stay presented", "the smoke run is held", 1), true},
+	}
+	runHeldLayerCases(t, cases)
+}

@@ -16,7 +16,7 @@ Both report the same version: the Claude manifest's `version`, which the release
 stamp copies into every Cursor surface.
 
 **Route 1: Cursor plugin, from a team marketplace import (follows a branch).**
-The repo carries a Cursor marketplace at `.cursor-plugin/marketplace.json`. Its one
+The repo carries a Cursor marketplace at `.cursor-plugin/marketplace.json`. Its methodology
 entry points at `plugins/assay`, whose `.cursor-plugin/plugin.json` names the rule
 (`cursor/assay.mdc`) and `skills/`. The marketplace entry carries no version. Cursor
 merges the plugin manifest over the entry, so `plugins/assay/.cursor-plugin/plugin.json`
@@ -175,7 +175,7 @@ launches a stronger configured model (see its row).
 |---|---|
 | `worker-desk` | A worker for an item whose brief declares `exec-tier: strong`, and a re-dispatch or shepherd pass on a finding class at round ≥ 2: `deskdispatch --kit worker --tier strong --model <id>`. |
 | `verify-desk` | Only the floor-tier re-verify of a `gate: human` brief, the one sanctioned pass above the local tier: `deskdispatch --kit verifier --tier strong --model <id>`. Every other verifier runs at the local session model, never at a stronger configured model (`verify-desk`, "Tier — the two-stamp model"). A brief that declares `exec-tier: strong` keeps that tier in the verifier admission. If the local session model is below strong, hold the item; never launch a stronger model to clear it. |
-| `pr-review-desk` | A reviewer for a risk-flagged item, a weight-growth review, the security lane on a risk-classed PR, and the deep-set correctness, fact-check and fail-first lanes: `deskdispatch --kit review --tier strong --model <id>`. The session that issues a ready-flip must also be strong-tier. |
+| `pr-review-desk` | A reviewer for a risk-flagged item, a weight-growth review, the security lane on a risk-classed PR, and the deep-set correctness, fact-check and fail-first lanes: `deskdispatch --kit review --tier strong --model <id>`. The ready-flip must run on a strong-tier model: a review window not confirmed strong launches a subagent on the configured strong-tier id to run `deskflip`, and hands the flip off when no id is configured. |
 | `intake-desk` | The window that does judgment triage (classifying entries, authoring decision issues, scoping, inline brief authoring), and the worker it fans out to merge a duplicate's evidence. |
 | `the-desk` | The coordinator window itself, and the brief authoring it fans out (design-tier work under `author-brief`'s model-tier gate). Its research and drafting fan-out names no tier. |
 
@@ -193,9 +193,12 @@ launches a stronger configured model (see its row).
   existing permission posture. Availability alone does not establish a model's
   execution tier.
 - **The loop's own session:** where the row names a window rather than a dispatch
-  (intake judgment, the coordinator, a ready-flip), start that window on the configured
+  (intake judgment, the coordinator), start that window on the configured
   model: headless with the same `--model` flag, in the IDE by selecting that model for
   the chat. Auto, or a model the session cannot confirm, does not meet the floor.
+  A ready-flip is not such a window: a review window not confirmed strong launches a
+  subagent on the configured strong-tier id, per the IDE or headless bullet above, to run
+  `deskflip`, and hands the flip off when no strong-tier id is configured.
 - **Attestation and pickup:** before `deskdispatch`, confirm the launch configuration
   resolves to the required model. Pass `--tier strong` and that model's concrete ID
   as `--model`, dropping any bracketed options for the stamp (which accepts lowercase
@@ -208,11 +211,32 @@ launches a stronger configured model (see its row).
   the verifier's `deskdispatch --check-verifier` receipt, and the review dispatch's
   model stamp that the ready-flip floor reads. Never self-attest or replace an
   unresolved model identity with the requested one.
+- **Cell default is not the live session model.** `CURSOR_MODEL_default=auto` (or any
+  value) is the cell's launch pin for the windows it starts; it says nothing about
+  whether this desk may launch a configured strong subagent. A desk reading `auto` there
+  does not conclude the cell cannot run strong work: it resolves `strong` to the
+  adopter's configured strong-tier model id (the cell's `TIER_MODEL_TOP_CURSOR`, which
+  `cellctl desk` names in the boot prompt), sets the subagent to that id and launches
+  per the IDE or headless bullet above. The routine verify drain is the exception: it
+  runs at its local session model and never launches the configured id (see its row). A session whose live model the desk has
+  confirmed is already strong (the session's own model line or the CLI `system` / `init`
+  `model` field names a strong-tier model) is not held for an `exec-tier: strong` item
+  solely because the cell default is `auto`. A parent that is strong still does not set
+  a subagent whose definition pins another model.
 - **Hold:** a missing pin, Auto, an unconfirmed inherit, a weaker fallback, an
-  unresolvable identity or a pickup tier failure holds the item, for every loop. File
-  it under that loop's own escalation procedure. A session below the floor does
+  unresolvable identity or a pickup tier failure holds the item, for every loop. The
+  hold is judged on the model that will run the work. A launched subagent is held
+  when its served model (the task card, or the CLI `system` / `init` `model` field) is
+  unconfirmed, a weaker fallback or an unconfirmed inherit, whatever strong id the cell
+  configures. When the session itself runs the work, it is held when its live model is
+  unconfirmed, weaker or an unconfirmed inherit and there is no configured strong id
+  to launch instead; the routine verify drain never launches one, so its session is
+  held on its own model whatever id is configured (see its row). The hold does not apply merely because the cell default reads
+  `auto`. File it under that loop's own escalation procedure. A session below the floor does
   only the work its skill allows below it: intake queues the judgment work instead of
-  doing it inline, the review loop escalates a ready-flip instead of issuing it, and
+  doing it inline, the review loop launches a subagent on the configured strong-tier id
+  to issue a ready-flip, or hands the flip off when no id is configured, instead of
+  issuing it itself, and
   the verify drain holds an `exec-tier: strong` brief its local session model cannot
   meet instead of launching a stronger model.
 
@@ -271,9 +295,11 @@ degradations than Codex** because isolation is native on the IDE surface and the
 | `intake-desk` | **runs** — triage/classification is interactive text plus `gh` reads/writes; `gh` write verbs need the adopter's permission posture to allow them (§2.8) — a config precondition, not a gate degradation. Its judgment window and its duplicate-merge worker run at strong tier per [Execution model selection](#execution-model-selection); below that floor it queues the judgment work, never authors inline. |
 | `market-intelligence` | **runs** — research + reads; no dispatch/isolation/gate needs. |
 | `pdfingest` | **runs** — local PDF ingestion, no dispatch/isolation/gate surface; the default posture allows local reads. Any outbound fetch or external-binary call is a permission-posture precondition (§2.8) → the skill states the blocked fetch in-session rather than silently skipping it. |
-| `pr-review-desk` | **runs** — the review **verdict** is text and is never degraded; posting the review and the draft→ready flip need `gh` writes → permission-posture precondition (§2.8). The review gate is upheld or the skill refuses; it never silently degrades. Strong-tier review dispatches and the ready-flip session follow [Execution model selection](#execution-model-selection). |
+| `pr-review-desk` | **runs** — the review **verdict** is text and is never degraded; posting the review and the draft→ready flip need `gh` writes → permission-posture precondition (§2.8). The review gate is upheld or the skill refuses; it never silently degrades. Strong-tier review dispatches and the ready-flip's strong-tier model follow [Execution model selection](#execution-model-selection). |
 | `pr-shepherd` | **runs on the IDE surface** — cloud background agents provide **native isolated git worktrees** (§2.9 `supported`), which is the one capability this skill treats as a floor. **Headless (`cursor-agent`): conditional on `[needs: live-install confirmation]`** — if the headless posture permits `git worktree add` (§2.8) it **runs**; if the sandbox blocks that ref-write it **refuses rather than drive the PR from the shared checkout**. Its watch loop needs no durable poll — the body states the periodic `gh pr view` read as the primary form and `capability:durable-monitor` only as an alternative, so the §2.6/§2.7 gap **degrades to the stated poll**, not to blindness. Discovery-mode fan-out (one shepherd per PR) **degrades: serial, one PR at a time, stated in-session** where headless parallel dispatch is unconfirmed (§2.5). Gates are unchanged: it never flips, merges or closes, and the security-gate carve-out is a refusal, never a degradation. *(Derived from this file's own capability rows plus the skill's declared needs — not a separate live measurement.)* |
 | `session-coach` | **runs** — reads the session's own record (transcript, tool calls, subagent transcripts) and writes one coaching note outside any repository; no `gh`, no dispatch, no isolation and no gate authority. Where the note's location is one the permission posture does not let it write (§2.8), that is a permission-posture precondition stated in-session — the note is never written into the repository instead. A piece of the record the session cannot read is marked as such in the note, per the body. No dispatch/isolation/gate surface.  *(Derived from the skill body and this harness's capability rows; not a live measurement.)* |
+| `article-craft` | **runs** — draft and review local text. A fresh reader can perform the independent comprehension check. A single-session read is recorded as a self-check. |
+| `prose-cadence` | **runs** — revise a supplied passage and compare it with the verified original in the same session. |
 | `system-demo` | **runs** — authoring a storyboard and, when requested, a local static player is text/local-file work; it writes only within the session's own workspace, needs no `gh`, no dispatch, no isolation and no gate authority. No dispatch/isolation/gate surface. |
 | `the-desk` | **runs** — coordination; its worker fan-out **degrades: serial with an in-session statement** if headless parallel dispatch is unconfirmed (§2.5); the review/merge gate is unchanged (the human merges). Isolation of dispatched implementers is delegated to `worker-desk` (below). The coordinator window and its brief-authoring fan-out follow [Execution model selection](#execution-model-selection). |
 | `trace-path-to-live` | **runs** — read-only: it fetches each stream root, runs the existing `statusgen` and `deskboard` readers, and writes one self-contained page outside any repository; no dispatch, no isolation and no gate authority. The forge reads (fetch, open PRs, claims) need network and `gh` access; where the permission posture blocks one (§2.8), that reader is marked `could-not-check` on the page and stated in-session, never shown as empty. Where the page's location cannot be written, that is stated in-session; the page is never written into the repository instead.  *(Derived from the skill body and this harness's capability rows; not a live measurement.)* |

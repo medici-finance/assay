@@ -857,7 +857,7 @@ func TestLabelHoldMainWiring(t *testing.T) {
 		t.Fatal(err)
 	}
 	text := string(src)
-	for _, call := range []string{"runScanIssues(", "runTranscribeScan("} {
+	for _, call := range []string{"runScanIssuesWith(", "runTranscribeScan("} {
 		i := strings.Index(text, call)
 		if i < 0 {
 			t.Fatalf("main.go: no %s call", call)

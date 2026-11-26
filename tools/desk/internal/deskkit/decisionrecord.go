@@ -87,7 +87,7 @@ type HumanDecisionRecord struct {
 // The Options grammar — byte-for-byte the oracle's (assay-inbox.sh, the `$oraw`/`$opts`
 // block), formerly inline in cmd/deskinbox/format.go.
 var (
-	decOptionsHeadingRe = regexp.MustCompile(`(?i)^[ \t]*#{1,6}[ \t]*Options?\b`)
+	decOptionsHeadingRe = regexp.MustCompile(`(?i)^[ \t]*(?:#{1,6}[ \t]*Options?\b|Options?:[ \t]*$)`)
 	decHTMLCommentRe    = regexp.MustCompile(`^[ \t]*<!--`)
 	decHeadingLineRe    = regexp.MustCompile(`^[ \t]*#{1,6}[ \t]`)
 	decOptionLineRe     = regexp.MustCompile(`^(?:[-*][ \t]*)?(?:\*\*)?[A-Da-d1-4][.)][ \t]`)
@@ -128,34 +128,7 @@ func (o DecisionOptions) Walk() []int {
 // standalone `(recommended)` marker (decMarkerSpans) appears across those options, every
 // marker cut from the text. HTML comments are invisible.
 func ParseDecisionOptions(body string) DecisionOptions {
-	var bl []string
-	inComment := false
-	for _, l := range decLines(body) {
-		for {
-			if inComment {
-				end := strings.Index(l, "-->")
-				if end < 0 {
-					l = ""
-					break
-				}
-				l = l[end+3:]
-				inComment = false
-				continue
-			}
-			start := strings.Index(l, "<!--")
-			if start < 0 {
-				break
-			}
-			end := strings.Index(l[start+4:], "-->")
-			if end < 0 {
-				l = l[:start]
-				inComment = true
-				break
-			}
-			l = l[:start] + l[start+4+end+3:]
-		}
-		bl = append(bl, l)
-	}
+	bl := decLines(VisibleDecisionText(body))
 	type rawOpt struct{ let, txt string }
 	var raw []rawOpt
 	for _, l := range decSection(bl, decOptionsHeadingRe) {
@@ -300,6 +273,60 @@ func decSection(bl []string, re *regexp.Regexp) []string {
 	return nil
 }
 
+// VisibleDecisionText ignores HTML comments, fenced samples, block quotes and indented code when
+// screening for a ruling, an option or the fields of a reversible default.
+func VisibleDecisionText(body string) string {
+	var lines []string
+	var fence string
+	var hidden bool
+	for _, line := range decLines(body) {
+		// A comment closes even on an indented or quoted line. Consume its
+		// terminator before deciding how Markdown treats the remaining text.
+		if hidden {
+			_, tail, ok := strings.Cut(line, "-->")
+			if !ok {
+				continue
+			}
+			line, hidden = tail, false
+		}
+		trim := strings.TrimSpace(line)
+		if fence != "" {
+			if strings.HasPrefix(trim, fence) && strings.Trim(trim, fence[:1]) == "" {
+				fence = ""
+			}
+			continue
+		}
+		if !hidden && (strings.HasPrefix(trim, "```") || strings.HasPrefix(trim, "~~~")) {
+			fence = trim[:len(trim)-len(strings.TrimLeft(trim, trim[:1]))]
+			continue
+		}
+		if strings.HasPrefix(line, "    ") || strings.HasPrefix(line, "\t") || strings.HasPrefix(trim, ">") {
+			continue
+		}
+		var visible strings.Builder
+		for len(line) > 0 {
+			if hidden {
+				_, tail, ok := strings.Cut(line, "-->")
+				if !ok {
+					break
+				}
+				line = tail
+				hidden = false
+			} else {
+				part, tail, ok := strings.Cut(line, "<!--")
+				visible.WriteString(part)
+				if !ok {
+					break
+				}
+				line = tail
+				hidden = true
+			}
+		}
+		lines = append(lines, visible.String())
+	}
+	return strings.Join(lines, "\n")
+}
+
 // ---------------------------------------------------------------- the anchor and the pick
 
 // The ruling grammar. Its first-line shapes are the oracle's `isruling` (assay-inbox.sh): the
@@ -320,7 +347,7 @@ var (
 	relayAnswerRe       = regexp.MustCompile(`\b[Aa]nswer:\s*`)
 	relayAnswerLetterRe = regexp.MustCompile(`^([A-D1-4])(?:$|[^A-Za-z0-9])`)
 	// The brief marker statusgen writes: one whole line `<!-- needs-decision: <stream>/<NN> -->`.
-	decisionBriefLineRe = regexp.MustCompile(`^<!-- needs-decision: (\S+) -->$`)
+	decisionBriefLineRe = regexp.MustCompile(`^<!-- (?:needs-decision|decision-gate): (\S+) -->$`)
 	// A brief id: `<stream>/<NN>`, lower-case stream, at most 64 + 1 + 4 bytes.
 	decBriefIDRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}/[0-9]{1,4}$`)
 )
@@ -374,10 +401,14 @@ func parseDecisionBrief(body string) string {
 		if m == nil {
 			continue
 		}
-		if !decBriefIDRe.MatchString(m[1]) || (brief != "" && brief != m[1]) {
+		id := m[1]
+		if alt := otherDecisionBriefSpelling(id); alt != "" {
+			id = alt
+		}
+		if !decBriefIDRe.MatchString(id) || (brief != "" && brief != id) {
 			return ""
 		}
-		brief = m[1]
+		brief = id
 	}
 	return brief
 }
@@ -511,7 +542,13 @@ func parseRulingPick(body string, comments []Comment, anchorIdx, rulingIdx int, 
 		anchorIdx = -1
 	}
 
-	ls := rulingContentLines(ruling.Body)
+	reply := ruling.Body
+	if board := parseDecisionBrief(body); board != "" {
+		if value, ok := strings.CutPrefix(strings.TrimSpace(reply), board+":"); ok {
+			reply = strings.TrimSpace(value)
+		}
+	}
+	ls := rulingContentLines(reply)
 	if len(ls) == 0 {
 		return DecisionPickUnparsed, DecisionViaDirect, relayIdx
 	}

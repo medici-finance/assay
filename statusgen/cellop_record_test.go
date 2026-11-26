@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // The explicitly authorized editorial repair must remain consumable by the
@@ -44,23 +46,70 @@ track: platform
 	// decision authority are separate gates; this makes no network call or write.
 	at := time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC)
 	brief := filepath.Join(dir, name)
-	// The record as landed closes on a later VERIFY: FAIL entry: the latest
-	// run is not a PASS, so the one-step close must refuse rather than stamp
-	// the earlier PASS run (#5229).
-	if err := os.WriteFile(brief, raw, 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, _, err := closeVerifyFlipPlan(root, "desk-containers/15", at); err == nil || !strings.Contains(err.Error(), "VERIFY: FAIL, not PASS") {
-		t.Fatalf("completion reader must refuse a record whose latest verdict is a FAIL; got %v", err)
-	}
-	// The retained verifier record itself — every entry up to the later FAIL
-	// entry — must stay consumable.
+	// Freeze each case at its own Evidence entry. A later verifier run must
+	// neither erase an earlier refusal nor change the retained PASS fixture.
 	const failEntry = "### Non-implementer execution witness — 2026-11-01"
-	fs, fe := strings.Index(string(raw), failEntry), strings.Index(string(raw), "\n## Review")
-	if fs < 0 || fe < fs {
-		t.Fatal("later FAIL entry or Review section missing from the retained record")
+	const blockedEntry = "### Independent bounded verification — 2026-11-20"
+	body, review, ok := strings.Cut(string(raw), "\n## Review")
+	if !ok {
+		t.Fatal("Review section missing from the retained record")
 	}
-	record := string(raw)[:fs] + string(raw)[fe+1:]
+	review = "\n## Review" + review
+	pass, _, ok := strings.Cut(body, failEntry)
+	if !ok {
+		t.Fatal("November 1 FAIL entry missing from the retained record")
+	}
+	throughEntry := func(heading string) string {
+		t.Helper()
+		prefix, entry, found := strings.Cut(body, heading)
+		if !found {
+			t.Fatalf("retained Evidence lacks %q", heading)
+		}
+		entry, _, _ = strings.Cut(entry, "\n### ")
+		return prefix + heading + strings.TrimRight(entry, "\n") + "\n" + review
+	}
+
+	// The November 20 entry records a BLOCKED verdict. Its exit-code mapping
+	// describes cellctl's API, so that mapping must not be the refusal.
+	// Separately contradict a PASS with an actual held Result cell to keep
+	// exercising the earlier, more specific held-row check.
+	held := pass + "### Independent run\n| # | Command | Result |\n|---|---|---|\n| 12 | lint | could-not-check |\n\n**VERIFY: PASS**\n"
+	for _, tc := range []struct{ name, input, refusal string }{
+		{"historical FAIL", throughEntry(failEntry), "VERIFY: FAIL, not PASS"},
+		{"historical BLOCKED", throughEntry(blockedEntry), "VERIFY: BLOCKED, not PASS"},
+		{"non-deferred held row", held + review, "still says HELD/could-not-check"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := os.WriteFile(brief, []byte(tc.input), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			path, plan, id, err := closeVerifyFlipPlan(root, "desk-containers/15", at)
+			if err == nil || !strings.Contains(err.Error(), tc.refusal) {
+				t.Fatalf("want refusal containing %q, got %v", tc.refusal, err)
+			}
+			if path != "" || plan != nil || id != "" {
+				t.Fatal("refused closure returned a plan")
+			}
+			got, err := os.ReadFile(brief)
+			if err != nil || string(got) != tc.input {
+				t.Fatalf("refused closure changed the Evidence fixture (read error %v)", err)
+			}
+		})
+	}
+	t.Run("November 22 verified record", func(t *testing.T) {
+		const entryHeading = "### Non-implementer verifier run — 2026-11-22"
+		if err := os.WriteFile(brief, []byte(throughEntry(entryHeading)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, plan, id, err := closeVerifyFlipPlan(root, "desk-containers/15", at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id != "desk-containers/15" || !strings.Contains(string(plan), "| done | 2026-11-22 assay-verifier-app[bot]") {
+			t.Fatalf("latest PASS did not supply its own verifier stamp: %s", plan)
+		}
+	})
+	record := pass + strings.TrimPrefix(review, "\n")
 	if err := os.WriteFile(brief, []byte(record), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +149,7 @@ track: platform
 	legacy := "| # | Command | Expected | Observed (exit + key output) | Date / Runner |\n" +
 		"|---|---------|----------|------------------------------|---------------|\n"
 	for _, line := range lines[2:] {
-		cells := splitRowEscaped(line)
+		cells := briefdoc.SplitRowEscaped(line)
 		if len(cells) != 6 {
 			t.Fatalf("canonical Evidence row has %d cells: %s", len(cells), line)
 		}

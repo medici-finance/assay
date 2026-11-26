@@ -103,5 +103,143 @@ Failure modes mapped: a wrong-but-plausible example in the procedure → row 1; 
 <!-- appended at implementation time by a NON-implementer: one row per Verify item
      (command, exit code, output line(s) or hash, date, runner). -->
 
+### Verification 2026-11-18 at 283b024f3331
+
+Independent post-merge verification of merged main 283b024f33318f1d811b8e0f42df6f7f63608fa8 by a non-implementer verifier: model claude-opus-5-5, tier strong. The delivery is PR #6309 (merge 8a1afee596d8, first parent 83f7b9ebd512). Pre-work admission: `deskdispatch --check-verifier` exited 0 before any row ran, binding run c43d97e3133f, source 283b024f3331, model claude-opus-5-5 and tier strong. The Verify table is not protected. Re-derivation (`deskpathguard rederive`) found 7 rows, every one from-base, and 0 author-added.
+
+Verification-Attestation: medici-finance/assay#6892 run=c43d97e3133fbdff2fb0636b6f1cadfd20446bf03ce32225ff09fdc4f82832a0 source=283b024f33318f1d811b8e0f42df6f7f63608fa8 brief=docs/streams/intake-class-routing/brief-01-record-and-publish-a-handoff-for-every-judged-issue.md model=claude-opus-5-5 tier=strong
+
+Lanes. Rows 1, 2, 3, 4, 6 and 7 are check:ci rows. They ran in the container lane under one admission bracket, `statusgen verifyrun --rows 1,2,3,4,6,7`, in three steps:
+
+1. `--open-bracket` on the host, with a new empty module cache.
+2. `--sandbox=container-netns` inside `docker run --rm --network none --read-only` on the release-pinned runner image `ghcr.io/medici-finance/verify-runner:v1.0.87@sha256:c67baa7a3c8ba3d514128f31340489146525a50c29ebb641a68899c650d354a1`. The digest is read from the v1.0.87 release asset verify-runner-image.txt, whose sha256 matches the release checksums.txt.
+3. `--close-bracket` on the host.
+
+Inside the container the user was non-root (uid 501). The home, its git directory and the module cache were mounted read-only. The module proxy was off and the toolchain local. The build cache and temp directory were container-local. HOME held only a roster copy, with no key, App configuration or forge credential. The declared verifier Git environment was exported. Only the witness directory was writable. `statusgen verifyrun --bracket-digest` on the closed witness reports `verdict=match span-lines=tree-digest:1,container-image:1,attestation:1`.
+
+Row 5 is class `check +flow` with env host:intake-installation, so it is not a container row. It is recorded below as could-not-run.
+
+Attempts. Attempt 1 (14:33:54Z) was refused at container admission before any row ran: `container admission refused; no Verify rows executed: GOSUMDB=off; go.sum verification stays on in the container`. It was superseded by attempt 2, the same run without that variable. Attempt 2 (14:34:20Z to 14:35:26Z) is the witness below.
+
+Container witness, the closed witness file's bytes:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestHandoffProcedureExamples$' ./cmd/scanloop > "$o" && grep -q -- '--- PASS: TestHandoffProcedureExamples ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ 283b024f3331 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestHandoffExamplesFlagPlant$' ./cmd/scanloop > "$o" && grep -q -- '--- PASS: TestHandoffExamplesFlagPlant ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ 283b024f3331 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `test "$(wc -l < plugins/assay/skills/intake-desk/SKILL.md)" -le 710 && grep -c 'references/intake-handoff.md' plugins/assay/skills/intake-desk/SKILL.md` | pass exit=0 sandbox=container-netns | sha256:4355a46b19d3 | 2026-11-18 | assay-verifier-app[bot] @ 283b024f3331 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd tools/skillslint && GOWORK=off go test -count=1 ./...)` | pass exit=0 sandbox=container-netns | sha256:fa56c79c027b | 2026-11-18 | assay-verifier-app[bot] @ 283b024f3331 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --consumers --brief assay:assay:intake-class-routing:01` | fail exit=2 sandbox=container-netns | sha256:05ff11b146b2 | 2026-11-18 | assay-verifier-app[bot] @ 283b024f3331 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(k=$(tr '\n' ' ' < plugins/assay/skills/intake-desk/SKILL.md) && r=$(tr '\n' ' ' < plugins/assay/references/intake-handoff.md) && for p in 'scrub its free-text' 'not an assignment authority' 'Do not promote raw placeholders'; do case "$k" in *"$p"*) ;; *) echo "skill lost: $p"; exit 1;; esac; done && for p in 'scrub its free-text' 'spec/intake-handoff-v1.md'; do case "$r" in *"$p"*) ;; *) echo "reference lacks: $p"; exit 1;; esac; done)` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-18 | assay-verifier-app[bot] @ 283b024f3331 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:1efe6c181cc7f3cd68aeef2ed8ec2ef27c832d9b0ca1ecad663a759e8ba6f410
+Container-Image: sha256:c67baa7a3c8ba3d514128f31340489146525a50c29ebb641a68899c650d354a1
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#6892 run=c43d97e3133fbdff2fb0636b6f1cadfd20446bf03ce32225ff09fdc4f82832a0 source=283b024f33318f1d811b8e0f42df6f7f63608fa8 brief=docs/streams/intake-class-routing/brief-01-record-and-publish-a-handoff-for-every-judged-issue.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=c43d97e3133fbdff2fb0636b6f1cadfd20446bf03ce32225ff09fdc4f82832a0 source=283b024f33318f1d811b8e0f42df6f7f63608fa8 tree=sha256:1efe6c181cc7f3cd68aeef2ed8ec2ef27c832d9b0ca1ecad663a759e8ba6f410 witness=sha256:1ff4ce65a3f33aaa995caf855da64b69b0d9880e51efb959d522d761656ddd48 opened=2026-11-18T14:32:40Z closed=2026-11-18T14:38:39Z before=receipt after=check-verifier
+
+Row 6 disposition. The tool-written cell reads `fail exit=2`, but the command did not check anything. Its own output under the declared verifier Git environment is: "statusgen: --consumers: COULD-NOT-CHECK: assay:assay:intake-class-routing:01 is not in the diff against 283b024f33318f1d811b8e0f42df6f7f63608fa8, and the brief's delivery could not be derived: ... the history cannot be searched through the library read path (native discovery/config/shallow environment profile) ... No routing claim was corroborated and none was disproved." So the "0 disproved" obligation was not observed to fail. It is could-not-check, and this pass counts it as could-not-run.
+
+I then ran a supplemental diagnostic in the same image and mounts, outside the bracket, changing one variable per run. It carries no acceptance credit. `GIT_CONFIG_COUNT=0` alone produces the COULD-NOT-CHECK exit 2. Without it, the same command exits 0 with "summary: 3 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing". The declared verifier environment must stay as declared, so the row stays held. It is attached to medici-finance/assay#6851, the same class: the zero config count selects a native Git profile the library refuses.
+
+Row 5, the live witness. It could not run: its precondition is unmet on every installation.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 5 | `statusgen --root . --next-up --span 100000 \| grep -c '"stream": *"issue-loop"'` | prints 1 in the root that holds the placeholder, after one direct repair was recorded and published by the reference's steps | could-not-run: precondition unmet. No direct repair has been recorded and hand-published on any installation, so no root holds a published companion to read. At the four stream roots of one adopting installation, read at their main, there are 0 committed handoff companions and 0 placeholders with a handoff key. Recording and publishing a judgment is an intake act through a reviewed intake change, not a verifier act. Blocker filed: medici-finance/assay#6898 | 2026-11-18 | assay-verifier-app[bot] (claude-opus-5-5 verifier, tier strong) (on-behalf-of human:ian) |
+
+Supplemental observation for row 5 (no acceptance credit). I ran the row's command with installed statusgen v1.0.87 at a read-only snapshot of each of that installation's four roots' main. It printed 0 at every root. At the root that holds the issue-loop placeholders, `heldByStreamCap` was 0 and `heldByDriveWorkerCap` was absent (0). That is the row's stated "before" state, the same as README §1.1. It is not the "after" witness the row owes.
+
+Supplemental observations. These carry no acceptance credit and are not execution witnesses for any row.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 6-diag | the row 6 command in the same image and mounts, outside the bracket, with one Git variable changed per run | diagnostic only | exit 2 COULD-NOT-CHECK only when GIT_CONFIG_COUNT=0 is set; with it unset, exit 0 and "summary: 3 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing" | 2026-11-18 | assay-verifier-app[bot] (claude-opus-5-5 verifier, tier strong) (on-behalf-of human:ian) |
+| 5-before | the row 5 command, run with installed statusgen v1.0.87 at a read-only snapshot of each of one installation's four stream roots' main | diagnostic only (the row's "before" state) | exit 0 and printed 0 at every root; at the root that holds the issue-loop placeholders, heldByStreamCap 0 and heldByDriveWorkerCap absent (0); 0 committed handoff companions and 0 placeholders with a handoff key | 2026-11-18 | assay-verifier-app[bot] (claude-opus-5-5 verifier, tier strong) (on-behalf-of human:ian) |
+
+Risk-bearing values. Every risk answer is "no" and none is irreversible. The diff touches procedure text and tests only. Enumerated over the delivering commits 35324857dd02 and d29fc9130e66:
+
+- `n != 6` @ tools/desk/cmd/scanloop/procedure_examples_test.go:100
+- `n != 3` @ :128
+- `len(problems) != 3` @ :131
+- planted defect lines 8, 31 and 50 @ :137-139
+
+Row 3 also pins the skill bound `-le 710`; the skill is 655 lines at this commit. All are reversible test or procedure constants.
+
+- RISK-VALUE: DERIVED — `n != 6` @ tools/desk/cmd/scanloop/procedure_examples_test.go:100 — the reference's judgment table in §2 has exactly 6 rows, and it carries exactly 6 expect labels (reference lines 68, 91, 114, 137, 160 and 183), one per row as Task 2 requires.
+- RISK-VALUE: DERIVED — planted lines 8, 31 and 50 @ tools/desk/cmd/scanloop/procedure_examples_test.go:137-139 — they equal the three expect labels in the plant file (lines 8, 31 and 50). Line 50 is the brief's planted direct repair with a different successor, and the test requires it reported exactly once.
+
+Tally: 7 rows. 5 passed (1, 2, 3, 4, 7) in the closed container bracket. 2 could-not-run (5: live precondition unmet, medici-finance/assay#6898; 6: could-not-check under the declared verifier Git environment, medici-finance/assay#6851). No obligation was observed to fail.
+
+**VERIFY: BLOCKED** — rows 5 and 6 could-not-run (5: no direct repair has been recorded and published on any installation; 6: consumers gate COULD-NOT-CHECK under GIT_CONFIG_COUNT=0); rows 1, 2, 3, 4 and 7 pass.
+
+### Verification 2026-11-25 at 77ff0f2222a2
+
+Independent post-merge verification of merged main 77ff0f2222a28df926c38ad30fea4a368173712e by a non-implementer verifier: model claude-opus-5-5, tier strong. The delivery is PR #6309 (merge 8a1afee596d8, first parent 83f7b9ebd512). No later commit changes the reference, the plant file or the example test. Pre-work admission: deskdispatch --check-verifier exited 0 before any row ran, binding run a5b8aa2f36e0, source 77ff0f2222a2, model claude-opus-5-5 and tier strong.
+
+Verification-Attestation: medici-finance/assay#7724 run=a5b8aa2f36e05241340fa01f9df516ae586f10a92424f25a6eef5936dd4ff41a source=77ff0f2222a28df926c38ad30fea4a368173712e brief=docs/streams/intake-class-routing/brief-01-record-and-publish-a-handoff-for-every-judged-issue.md model=claude-opus-5-5 tier=strong
+
+Lanes and attempts. The host row ran first and the container bracket last.
+
+1. Attempt 1 (06:35:26Z to 06:35:44Z) ran row 5 (class check +flow, env host:intake-installation) on the host with `statusgen verifyrun --rows 5` in the admitted home. Its tool-written witness follows.
+2. Attempt 2 (06:36:26Z to 06:37:16Z) ran rows 1, 2, 3, 4, 6 and 7, the check:ci rows, under one closed admission bracket. `--open-bracket` ran on the host with a new empty module cache. `--sandbox=container-netns` ran inside `docker run --rm --network none --read-only` on the release-pinned runner image, referenced by digest only: `ghcr.io/medici-finance/verify-runner@sha256:79e23ec185b1d5afe40cd92a25d9f7b18fd824f5678bf6c945443753ee6f509a`. That digest is read from the v1.0.94 release asset verify-runner-image.txt (sha256 b84a5313465398445e4183fae8f028f4c05be38bbf5ee69bda2d6a11ded2296e, as listed in the release checksums.txt, whose own sha256 d2aede211b5996e3c56044d3ccdb3a2b10b9e31632ff8315f06763f6c0d72716 matches the house pin). `--close-bracket` ran on the host from the same working directory as the open step.
+
+Inside the container the user was non-root. The home, its git directory and the module cache were mounted read-only. The module proxy was off and the toolchain local. HOME was a container-local temporary directory with no key, App configuration or forge credential. Only the witness directory was writable. `statusgen verifyrun --bracket-digest` on the closed witness reports `verdict=match span-lines=tree-digest:1,container-image:1,attestation:1`.
+
+Host witness for row 5 (attempt 1), the tool-written bytes:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 5 | `statusgen --root . --next-up --span 100000 \| grep -c '"stream": *"issue-loop"'` | fail exit=1 | sha256:f0db833bc78c | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7724 run=a5b8aa2f36e05241340fa01f9df516ae586f10a92424f25a6eef5936dd4ff41a source=77ff0f2222a28df926c38ad30fea4a368173712e brief=docs/streams/intake-class-routing/brief-01-record-and-publish-a-handoff-for-every-judged-issue.md model=claude-opus-5-5 tier=strong
+
+
+Row 5 disposition. The tool-written cell reads `fail exit=1` because `grep -c` printed 0 in the admitted home. That output is not an observed failure of the row's obligation. The same next-up output in the home reports `heldByStreamCap` 23 and no `heldByDriveWorkerCap` (absent, so 0). The row's Expect states that a printed 0 with either count above 0 is could-not-check. The admitted home also has no issue-loop stream at all. The row's env is host:intake-installation, the root that holds the placeholder, and on this installation that root is another repository's stream root. verifyrun runs a cross-repository verifier's rows only in the admitted home and refuses any other root. So row 5 is could-not-run here. It stays held on medici-finance/assay#6898, which is open and records this same hold.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 5 | `statusgen --root . --next-up --span 100000 \| grep -c '"stream": *"issue-loop"'` | prints 1 in the root that holds the placeholder, after one direct repair was recorded and published by the reference's steps; a printed 0 with heldByStreamCap or heldByDriveWorkerCap above 0 is could-not-check | could-not-run: the row's root is not the admitted home. In the admitted home the command printed 0 (exit 1), with heldByStreamCap 23 and heldByDriveWorkerCap absent, and the home has no issue-loop stream. The placeholder root is another repository's stream root, which no admitted verifier home is. Blocker: medici-finance/assay#6898 | 2026-11-25 | assay-verifier-app[bot] (claude-opus-5-5 verifier, tier strong) (on-behalf-of human:ian) |
+
+Container witness (attempt 2), the closed witness file's bytes:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestHandoffProcedureExamples$' ./cmd/scanloop > "$o" && grep -q -- '--- PASS: TestHandoffProcedureExamples ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `(cd tools/desk && o=$(mktemp "${TMPDIR:-/tmp}/icr.XXXXXX") && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestHandoffExamplesFlagPlant$' ./cmd/scanloop > "$o" && grep -q -- '--- PASS: TestHandoffExamplesFlagPlant ' "$o")` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `test "$(wc -l < plugins/assay/skills/intake-desk/SKILL.md)" -le 710 && grep -c 'references/intake-handoff.md' plugins/assay/skills/intake-desk/SKILL.md` | pass exit=0 sandbox=container-netns | sha256:4355a46b19d3 | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `(cd tools/skillslint && GOWORK=off go test -count=1 ./...)` | pass exit=0 sandbox=container-netns | sha256:aac471f18604 | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `statusgen --consumers --brief assay:assay:intake-class-routing:01` | pass exit=0 sandbox=container-netns | sha256:d987de6a475d | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `(k=$(tr '\n' ' ' < plugins/assay/skills/intake-desk/SKILL.md) && r=$(tr '\n' ' ' < plugins/assay/references/intake-handoff.md) && for p in 'scrub its free-text' 'not an assignment authority' 'Do not promote raw placeholders'; do case "$k" in *"$p"*) ;; *) echo "skill lost: $p"; exit 1;; esac; done && for p in 'scrub its free-text' 'spec/intake-handoff-v1.md'; do case "$r" in *"$p"*) ;; *) echo "reference lacks: $p"; exit 1;; esac; done)` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-25 | assay-verifier-app[bot] @ 77ff0f2222a2 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:a0f0d8b90f220888c7df757df4e1db4168d199ffa919995c418b21c58b52d5b0
+Container-Image: sha256:79e23ec185b1d5afe40cd92a25d9f7b18fd824f5678bf6c945443753ee6f509a
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7724 run=a5b8aa2f36e05241340fa01f9df516ae586f10a92424f25a6eef5936dd4ff41a source=77ff0f2222a28df926c38ad30fea4a368173712e brief=docs/streams/intake-class-routing/brief-01-record-and-publish-a-handoff-for-every-judged-issue.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=a5b8aa2f36e05241340fa01f9df516ae586f10a92424f25a6eef5936dd4ff41a source=77ff0f2222a28df926c38ad30fea4a368173712e tree=sha256:a0f0d8b90f220888c7df757df4e1db4168d199ffa919995c418b21c58b52d5b0 witness=sha256:3dd1dc3b2b1dc0051bbacb12a745d79fa6a40fe3304450c4953634c818624c25 opened=2026-11-25T06:36:26Z closed=2026-11-25T06:37:16Z before=receipt after=check-verifier
+
+Output assertions. verifyrun grades the exit code. Row 3's output digest sha256:4355a46b19d3 is the digest of the single line "1", so it printed 1. Row 7's digest sha256:e3b0c44298fc is the digest of empty output, so it printed nothing. Rows 4 and 6 also expect output text. The supplemental host reads below show it. They carry no acceptance credit.
+
+Supplemental observations. These carry no acceptance credit and are not execution witnesses for any row.
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 6-diag | the row 6 command on the host in the admitted home, under the declared verifier Git environment, after the bracket closed | diagnostic only | exit 0 and "summary: 3 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing" | 2026-11-25 | assay-verifier-app[bot] (claude-opus-5-5 verifier, tier strong) (on-behalf-of human:ian) |
+| 4-diag | the row 4 command on the host in the admitted home, with the module proxy off, after the bracket closed | diagnostic only | exit 0 and one line beginning "ok" for the skillslint package | 2026-11-25 | assay-verifier-app[bot] (claude-opus-5-5 verifier, tier strong) (on-behalf-of human:ian) |
+
+Risk-bearing values. Every risk answer is "no" and none is irreversible. The enumeration covers the delivering diff 83f7b9ebd512..8a1afee596d8, eight paths: the reference, its generated copy, the skill and its generated copy, the harness digest, the changelog fragment, the example test and the plant file. The literals it introduces:
+
+- `n != 6` @ tools/desk/cmd/scanloop/procedure_examples_test.go:100
+- `n != 3` @ tools/desk/cmd/scanloop/procedure_examples_test.go:128
+- `len(problems) != 3` @ tools/desk/cmd/scanloop/procedure_examples_test.go:131
+- planted defect lines 8, 31 and 50 @ tools/desk/cmd/scanloop/procedure_examples_test.go:137-139
+- `found != 1` @ tools/desk/cmd/scanloop/procedure_examples_test.go:148
+
+Row 3 also pins the skill bound `-le 710`. The skill is 655 lines at this commit. Each is a test or procedure constant, reversible by an edit, so the ranking only orders them. The example count and the planted lines rank first, because a wrong value there would let the example check pass vacuously.
+
+- RISK-VALUE: DERIVED — `n != 6` @ tools/desk/cmd/scanloop/procedure_examples_test.go:100 — the reference's judgment table has exactly 6 rows (reference lines 34 to 39), and the reference carries exactly 6 expect labels (lines 68, 91, 114, 137, 160 and 183), one per row as Task 2 requires.
+- RISK-VALUE: DERIVED — planted lines 8, 31 and 50 @ tools/desk/cmd/scanloop/procedure_examples_test.go:137-139 — they equal the three expect labels in the plant file (lines 8, 31 and 50). The record after line 50 is the brief's planted direct repair whose successor (example-org/example#99) differs from its item (example-org/example#3). The test requires it reported exactly once.
+
+Tally: 7 rows. 6 passed (1, 2, 3, 4, 6, 7) in the closed container bracket. 1 could-not-run (5: the row's root is not the admitted home, medici-finance/assay#6898). No obligation was observed to fail.
+
+**VERIFY: BLOCKED** — row 5 could-not-run (it printed 0 in the admitted home with heldByStreamCap 23; the placeholder root is another repository's stream root; medici-finance/assay#6898); rows 1, 2, 3, 4, 6 and 7 pass.
+
 ## Review
 Gate: model (from frontmatter — all four risk answers no). Reviewer records verdict + date in the stream README table.

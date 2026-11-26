@@ -204,7 +204,10 @@ func TestReadyCommentedLaneBothBodyGrantsNothing(t *testing.T) {
 // So the five live comment-shaped artifacts of #513 remain invisible here BY DESIGN — the
 // fix is the new post shape plus the skill change, not a widened reader. This test fails if
 // someone later teaches gate (e) to read comments without revisiting that decision, and it
-// asserts the stronger form: the ready path makes NO request to the comments endpoint at all.
+// asserts the stronger form: the ready path refuses at gate (e) BEFORE it reaches the comment
+// thread. (#6254 lets ready read comments, but only inside the refuse-only not-reverted check,
+// which runs after every admission gate; a comment still never admits. TestForgery37_NoCommentAdmits
+// pins that side.)
 func TestReadyIssueCommentSecurityPassNeitherSatisfiesNorIsRead(t *testing.T) {
 	f, _ := setupFake(t)
 	f.files = riskyFiles()

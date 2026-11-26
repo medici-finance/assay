@@ -22,6 +22,8 @@ gate-why: >-
 decision-trigger: creation
 issues: [6615]
 decision-issue: 6615
+delivery:
+  - {in: "assay#7093", covers: partial, note: "the settled part only: the declared-names Env form and its deny-by-default lint, the section 4.5 file contract with the surface rule left open, and the CELL_DEV_ENV_FILE key documented as reserved; the surface option, DR-desk-containers-35 and Verify row 7 remain owed on the decision issue"}
 schema: brief-v2
 version: 4
 authored: 2026-11-16 by assay-worker-app (issue #6615)

@@ -90,6 +90,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -106,6 +107,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 	"github.com/medici-finance/assay/statusgen/evaluation"
 )
 
@@ -199,6 +201,10 @@ type witness struct {
 	// naming the recorded read-set file, or `(reads could-not-check: <why>)`.
 	// "" (a row that did not execute) adds nothing.
 	Reads string
+	// Rule51 is the rule-51 lane's stamp (rule51.go): the tokens `verifyrun
+	// --rule51` writes into the Result cell of an in-class row whose offline
+	// run failed. "" for every other row, which then renders byte-identical.
+	Rule51 string
 	// Note is console-only commentary (why could-not-run, which Expect
 	// constraints were undecidable). It is deliberately NOT written into the
 	// row: the row is a record, and free text in a record is where a caption
@@ -223,6 +229,9 @@ func (w witness) row() string {
 	}
 	if w.Sandbox != "" {
 		result += " sandbox=" + w.Sandbox
+	}
+	if w.Rule51 != "" {
+		result += " " + w.Rule51
 	}
 	if w.State == stateAuthorAdded {
 		result += "; no acceptance credit"
@@ -366,7 +375,7 @@ var witnessStateRe = regexp.MustCompile(`\b(could-not-run|pass|fail)\b`)
 // alone appears in prose Evidence already on main, and a bare `sha256:` could
 // be a hash someone pasted.
 func witnessCells(text string) []string {
-	cells := splitRowEscaped(strings.TrimSpace(text))
+	cells := briefdoc.SplitRowEscaped(strings.TrimSpace(text))
 	if len(cells) < witnessCellCount {
 		return nil
 	}
@@ -403,7 +412,7 @@ func witnessCommandOf(text string) string {
 	if cells == nil {
 		return ""
 	}
-	return codeSpan(cells[witnessCellCommand])
+	return briefdoc.CodeSpan(cells[witnessCellCommand])
 }
 
 // The tree token follows the Runner cell's ` @ ` marker (witness.row() writes
@@ -652,11 +661,20 @@ type shellPlan struct {
 	// rowScratch, when set (an admitted run), is the directory under which
 	// each row gets its own fresh HOME and TMPDIR, removed when the row ends.
 	rowScratch string
+	// rowRoster is the validated configuration to install in this execution's
+	// fresh HOME (rostercopy.go). Container rows get their receipted copy.
+	rowRoster []byte
+	// rule51 turns on the rule-51 lane (verifyrun --rule51, rule51.go).
+	rule51 bool
+	// rule51HostRoster is captured before any authored row runs. Only the
+	// pinned native companion uses it. Authored host rows keep an empty HOME.
+	rule51HostRoster []byte
 }
 
 // admittedScrubbedNote is the could-not-run note for an admitted row that
-// reads scrubbed ASSAY_* inputs. It names the inputs and says what running the
-// row outside admission takes, so the note never reads as permission to do it.
+// reads inputs the scrub removed (admittedRowScrubbedRefs). It names the inputs
+// and says what running the row outside admission takes, so the note never
+// reads as permission to do it.
 func admittedScrubbedNote(names []string) string {
 	return "the row reads " + strings.Join(names, ", ") +
 		", which an admitted run removes from every row's environment, so it cannot run as written here." +
@@ -680,7 +698,8 @@ func removeRowScratch(dir string) {
 }
 
 // rowEnv is the environment every Verify row of the run executes in: the
-// caller's own, unless the run was admitted, when it is admittedRowEnv's.
+// caller's own, unless the run was admitted, when it is admittedRowEnv's
+// allow-list.
 func (p shellPlan) rowEnv() []string {
 	if p.env != nil {
 		return p.env
@@ -931,9 +950,11 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 	// A row of an admitted run gets a HOME and a TMPDIR of its own, so it
 	// finds nothing an earlier row of the run left there.
 	if plan.rowScratch != "" {
-		// A row that reads an ASSAY_* input the scrub removed cannot run as
-		// written under admission. It is could-not-run, never a fail: its own
-		// guard on the missing value would otherwise read as a regression. Nor
+		// A row that reads an input the scrub removed (an ASSAY_* variable, or
+		// any other variable the allow-list drops that the row only reads)
+		// cannot run as written under admission. It is could-not-run, never a
+		// fail: its own guard on the missing value would otherwise read as a
+		// defect in the delivery. Nor
 		// is it ever a pass: the row's text chooses this outcome, so it must
 		// not be one that clears anything. The note does not grant a run
 		// outside admission either, where the row sees everything the scrub
@@ -941,7 +962,7 @@ func runVerifyCommandWith(root, command string, timeout time.Duration, wrapper [
 		if names := admittedRowScrubbedRefs(command, plan.rowEnv()); len(names) > 0 {
 			return runResult{exit: -1, couldNotRun: true, reason: admittedScrubbedNote(names)}
 		}
-		dir, vars, err := admittedRowDirs(plan.rowScratch)
+		dir, vars, err := admittedRowDirs(plan.rowScratch, plan.rowRoster)
 		if err != nil {
 			return runResult{exit: -1, couldNotRun: true,
 				reason: "could-not-check: cannot make the row's own HOME: " + err.Error()}
@@ -1545,7 +1566,7 @@ type verifyRow struct {
 	// this shell; a shell unavailable on the runner's OS is could-not-run.
 	Shell string
 	// Obligations are the row's KNOWN `+`-prefixed obligation tokens
-	// (rowclass.go's splitRowClassCell / verifyRowCells.obligations) — mutation,
+	// (briefdoc.SplitRowClassCell / verifyRowCells.obligations) — mutation,
 	// flow, dereference, neighbour. graph-execution/03's coverage rule reads
 	// `flow` here for the pattern join's integration check (Task item 2): a
 	// `+flow` row is the one obligation token that proves a Verify row exercises
@@ -1598,39 +1619,24 @@ func numberedVerifyRows(verifySection string) ([]verifyRow, []bool) {
 // row's trimmed Class cell.
 func verifyRowsOf(verifySection string, numbered *[]bool, classCells *[]string) []verifyRow {
 	var rows []verifyRow
-	ordinal := 0
-	verifyRowTable(verifySection, func(r verifyRowCells) {
-		cmd := verifyCommand(r.Command)
-		if strings.TrimSpace(cmd) == "" && strings.TrimSpace(r.Expect) == "" {
-			return
-		}
-		ordinal++
-		id := strconv.Itoa(ordinal)
-		v := normalizeRowID(r.Num)
-		if v != "" {
-			id = v
-		}
-		row := verifyRow{ID: id, Command: cmd, CommandCell: strings.TrimSpace(r.Command), Expect: r.Expect, Class: r.class(), Classed: r.Classed, Shell: r.shell(), Obligations: r.obligations(), RiskText: strings.TrimSpace(r.Command) + " " + strings.TrimSpace(r.Expect)}
-		if first, why := proseLedCommandWhy(r.Command); why != "" {
-			what := "first span "
-			if why == shellCommentMarkedWhy || why == shellNoOpMarkedWhy {
-				what = "marked command "
-			}
-			row.ProseLed = what + strings.ReplaceAll(first, "|", "\\|") + " is " + why
-		}
-		rows = append(rows, row)
+	// Row identity, command lift and the prose-led verdict are compiled once, by
+	// the document owner (briefdoc.CompileVerification); only the class, shell
+	// and obligation MEANING, which needs this package's constants, is added here.
+	for _, c := range briefdoc.CompileVerification(verifySection) {
+		cells := verifyRowCells{Class: c.ClassCell, Classed: c.Classed, Shell: c.ShellCell}
+		rows = append(rows, verifyRow{ID: c.ID, Command: c.Command, CommandCell: c.CommandCell, Expect: c.Expect, Class: cells.class(), Classed: c.Classed, Shell: cells.shell(), Obligations: cells.obligations(), RiskText: c.CommandCell + " " + strings.TrimSpace(c.Expect), ProseLed: c.ProseLed})
 		if numbered != nil {
-			*numbered = append(*numbered, v != "")
+			*numbered = append(*numbered, c.Numbered)
 		}
 		if classCells != nil {
-			*classCells = append(*classCells, strings.TrimSpace(r.Class))
+			*classCells = append(*classCells, c.ClassCell)
 		}
-	})
+	}
 	return rows
 }
 
 // parseRowSelector splits a --rows value into row IDs (desktools-v2/74). Each
-// element is read the way a Verify `#` cell is (normalizeRowID), so the selector
+// element is read the way a Verify `#` cell is (briefdoc.NormalizeRowID), so the selector
 // and the Evidence reader agree on what an ID is. It returns the IDs in
 // selector order and as a set, or the reason the value is refused.
 func parseRowSelector(value string) ([]string, map[string]bool, string) {
@@ -1640,7 +1646,7 @@ func parseRowSelector(value string) ([]string, map[string]bool, string) {
 	parts := strings.Split(value, ",")
 	ids, set := make([]string, 0, len(parts)), make(map[string]bool, len(parts))
 	for i, part := range parts {
-		id := normalizeRowID(part)
+		id := briefdoc.NormalizeRowID(part)
 		if id == "" {
 			return nil, nil, fmt.Sprintf("element %d is empty; every comma-separated element names one Verify row ID", i+1)
 		}
@@ -1837,7 +1843,7 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 				note = ran + "; " + note
 			}
 		}
-		out = append(out, witness{
+		w := witness{
 			ID:           r.ID,
 			Command:      r.Command,
 			State:        state,
@@ -1850,7 +1856,22 @@ func runWitnessesSandboxed(plan shellPlan, sandbox, root string, rows []verifyRo
 			Sandbox:      rowSandbox,
 			Note:         note,
 			Reads:        rowReads(tree, res),
-		})
+		}
+		// The rule-51 lane (rule51.go): an in-class row the offline run
+		// recorded red also gets the forge form's stamp. The row itself, its
+		// command and its offline result are unchanged.
+		if plan.rule51 && state == stateFail && !captureFailed && plan.interruption() == "" && rule51Class(r.Command, r.Expect) {
+			forgePlan := rowPlan
+			forgePlan.readSet = nil
+			var n51 string
+			w.Rule51, n51 = runRule51(forgePlan, sandbox, root, w, timeout)
+			if w.Note == "" {
+				w.Note = n51
+			} else {
+				w.Note += "; " + n51
+			}
+		}
+		out = append(out, w)
 		if captureFailed {
 			break
 		}
@@ -1875,7 +1896,7 @@ func rowReads(tree string, res runResult) string {
 // proseLedNote is the could-not-run note for a prose-led row: the lint's
 // stable rule tag first (greppable in Evidence), then the reason and the fix.
 func proseLedNote(reason string) string {
-	return ruleProseLedCommand + ": not executed; the " + reason + ", not a command. " + proseLedRemedy(reason)
+	return ruleProseLedCommand + ": not executed; the " + reason + ", not a command. " + briefdoc.ProseLedRemedy(reason)
 }
 
 // witnessTable renders a full Evidence table for a run.
@@ -2005,7 +2026,17 @@ func checkWitnesses(verifySection, evidenceSection string) []checkFinding {
 				}
 				out = append(out, checkFinding{r.ID, statePass, "witness matches the row and passed"})
 			case stateFail:
-				out = append(out, checkFinding{r.ID, stateFail, "the witness records a failure"})
+				// A rule-51 lane witness (rule51.go) is credited only when its
+				// stamp holds; an unstamped failure is unchanged.
+				stamped, credited, why := rule51Credit(r, latest)
+				switch {
+				case credited:
+					out = append(out, checkFinding{r.ID, statePass, why})
+				case stamped:
+					out = append(out, checkFinding{r.ID, stateFail, "the witness records a failure; its rule-51 stamp is not credited: " + why})
+				default:
+					out = append(out, checkFinding{r.ID, stateFail, "the witness records a failure"})
+				}
 			default:
 				out = append(out, checkFinding{r.ID, stateCouldNotRun,
 					"the witness records could-not-run — the row produced no verdict"})
@@ -2135,7 +2166,7 @@ Usage:
                       --container-image-digest sha256:<64 hex> --witness <file>
   statusgen verifyrun --close-bracket --root <home> --brief <path> --admission-receipt <receipt>
                       --witness <file>
-  statusgen verifyrun --bracket-digest --witness <file> [--credit --source <40 hex>]
+  statusgen verifyrun --bracket-digest --witness <file> [--credit --source <40 hex> [--ci-workflow-token]]
 
 Runs each Verify row's Command in a fresh subshell at the repo root and appends
 one witness row per Verify row to the brief's ` + "`## Evidence`" + ` section:
@@ -2183,6 +2214,10 @@ Flags:
                     SKIPPED (runner-executed, not selected here); legacy rows and
                     check:ci rows are unaffected. check:ci rows always run network-off.
   --acceptance-forge  explicitly permit fresh human-approval reads on the host.
+  --source-acceptance  with --open-bracket and --acceptance-record, transport the exact
+                    descriptor and table digest in the receipt. The planned Verify section
+                    must equal the admitted source byte for byte. The network-off container
+                    uses that source and the receipt. Close still needs the host record.
   --acceptance-record <file>  coordinate-only protected-table descriptor; same-repository
                     host execution or a closed container-netns transition bracket. One
                     Verification-Table line is a protected record: original
@@ -2239,6 +2274,17 @@ Flags:
                     GOTOOLCHAIN=local. The container run checks the mount,
                     the environment and the digest before any row, and its
                     witness records Module-Cache: <digest> (#4683).
+  --roster-copy <file>  with --open-bracket, read the host roster through the
+                    owner-checked loader and write only the keys statusgen
+                    reads (trusted identities, repository set, product keys;
+                    never a credential or any other key) to this new 0600 file
+                    outside the home, and record its digest in the receipt.
+                    The step prints the container flag that mounts the copy
+                    read-only at /run/assay-roster/roster.env. Before any row
+                    the container run checks the mount, the digest and that
+                    the copy loads, then gives each row's fresh HOME the copy
+                    as its config-home roster, so rows that run statusgen
+                    --lint load it (#6904).
   --history-pack <file>  with container-netns --fail-first, import that pack
                     into private scratch for baseline checkouts. Its source must
                     equal the admitted source. Head rows still run on --root.
@@ -2259,6 +2305,8 @@ Flags:
   --witness <file>  container-netns: a NEW file outside the home the witness
                     (table, Tree-Digest, Container-Image, attestation) is written
                     to. --close-bracket and --bracket-digest: that file.
+  --kubernetes-observation <sha256:digest>
+                    host close only: bind the observed Kubernetes execution to the witness.
   --close-bracket   host step after a container run: re-run the check, recompute
                     the home's tree digest, and append one Admission-Bracket line
                     to --witness only when the check re-admits the run the
@@ -2334,6 +2382,10 @@ Flags:
                     Commit authors are author-asserted, not authorization;
                     the record is the forge-attributed anchor.
   --source          the 40-hex source commit --credit binds the attestation to.
+  --ci-workflow-token
+                    with --credit: use deskread's explicit same-repository
+                    CI workflow-token transport for attestation reads.
+                    Requires a CI job and DESKREAD_CI_WORKFLOW_TOKEN.
   --in-container    run the rows inside the PINNED harness container instead of on
                     the host — the supported execution-witness runner on Windows,
                     where a native pipefail bash is unreliable (#1418). Reads the
@@ -2342,6 +2394,23 @@ Flags:
                     unpinned/placeholder digest. Bind-mounts the checkout at /work,
                     maps --user to the host uid:gid (POSIX) so Evidence lands
                     host-owned, and passes ONLY --env-file through for credentials.
+  --rule51          rule-51 lane (docs/brief-rules.md rule 51): for a row whose command
+                    is exactly a repo-wide ` + "`statusgen [--root .] --lint`" + ` (or
+                    ` + "`cd statusgen && go run . --root .. --lint`" + `; no --diff-base,
+                    no other flag or shell text) and whose Expect is a clean exit,
+                    when the offline run records it fail, an admitted host run also
+                    runs this binary as ` + "`--root . --lint --acceptance-forge`" + ` under
+                    the run's verifier read credential. The row's witness keeps its
+                    authored command and offline result and gains a stamp in its
+                    Result cell: ` + "`rule51=<state> forge-rc=<n> forge-out=sha256:<12>`" + `
+                    ` + "`pin=<version> cred=verifier-run-read cred-digest=sha256:<12>`" + `
+                    ` + "`stamp=sha256:<64>`" + `. --check and the closure gate credit the row
+                    only when that stamp binds to the witness, the forge run exited 0
+                    with LINT: PASS, the pin is a release tag and the tree is clean.
+                    The pinned forge lint alone receives the validated statusgen keys from
+                    the host roster in its fresh HOME. Missing or invalid configuration
+                    records could-not-run. A hand citation is never credited. Not with --check,
+                    --in-container, --sandbox container-netns or the bracket steps
   --fail-first      fail-first audit (verify-integrity/03): BEFORE the head run, check
                     the base out into a temporary worktree and run each
                     RISK-BEARING row there (brief-wide risk yes, or a
@@ -2425,6 +2494,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// and once from the ErrHelp branch below.
 	fs.Usage = func() {}
 	briefPath := fs.String("brief", "", "brief file whose Verify table to run")
+	sourceAcceptance := fs.Bool("source-acceptance", false, "open a protected bracket with the Verify table supplied by admitted source")
 	transitionRecord := fs.String("acceptance-record", "", "coordinate-only protected record or transition descriptor; host or closed container-netns bracket; host transitions require --acceptance-forge")
 	checkMode := fs.Bool("check", false, "audit an existing witness table instead of running anything")
 	dryRun := fs.Bool("dry-run", false, "print the witness table without writing it back")
@@ -2444,12 +2514,16 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	openOut := fs.String("out", "", "with --open-bracket: the receipt file to write, outside the home")
 	historyOut := fs.String("history-out", "", "with --open-bracket: export admitted HEAD history to a new Git object pack outside the home")
 	moduleCacheDir := fs.String("module-cache", "", "with --open-bracket: download the home's Go module roots into this new directory outside the home and record its digest in the receipt")
+	rosterCopy := fs.String("roster-copy", "", "with --open-bracket: write the host roster's statusgen keys to this new file outside the home for the container, and record its digest in the receipt")
 	historyPack := fs.String("history-pack", "", "container-netns --fail-first: read-only admitted-source Git object pack for isolated baseline checkouts")
+	kubeObservation := fs.String("kubernetes-observation", "", "host close only: sha256 digest of observed Kubernetes execution")
 	closeBracket := fs.Bool("close-bracket", false, "host close step of a container run: re-check admission and the tree digest, then append Admission-Bracket to --witness")
 	witnessFile := fs.String("witness", "", "container-netns: the new file outside the home the witness is written to; with --close-bracket or --bracket-digest: that file")
 	creditMode := fs.Bool("credit", false, "with --bracket-digest and --source: judge each bracket's credit (provenance, record, binding)")
+	creditCI := fs.Bool("ci-workflow-token", false, "with --credit: use the same-repository CI workflow-token transport")
 	creditSource := fs.String("source", "", "with --credit: the 40-hex source commit under verification")
 	bracketDigestMode := fs.Bool("bracket-digest", false, "read-only: check every Admission-Bracket line of --witness <file> against the digest of its span, one line per bracket")
+	rule51Mode := fs.Bool("rule51", false, "rule-51 lane: an admitted host run also runs `--lint --acceptance-forge` for each repo-wide lint row the offline run recorded red, and stamps that row's witness with the result")
 	rowsFlag := fs.String("rows", "", "comma-separated Verify row IDs (the # column) to run and record; every other row is reported not selected")
 	// --help is handled by ContinueOnError returning flag.ErrHelp; print the
 	// usage and exit 0, because asking for help is not an error.
@@ -2461,6 +2535,14 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		fmt.Fprint(stderr, verifyrunUsage)
 		return verifyrunExitUsageError
 	}
+	if *sourceAcceptance && (!*openBracket || *transitionRecord == "") {
+		_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: --source-acceptance requires --open-bracket and --acceptance-record")
+		return verifyrunExitUsageError
+	}
+	if *rule51Mode && (*checkMode || *inContainer || *sandbox == sandboxContainerNetns || *openBracket || *closeBracket || *bracketDigestMode) {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --rule51 runs rows in the host lane only: it does not combine with --check, --in-container, --sandbox "+sandboxContainerNetns+" or the bracket steps; no row ran")
+		return verifyrunExitUsageError
+	}
 	if *baseLog != "" && (!*failFirstMode || *checkMode || *inContainer || *openBracket || *closeBracket || *bracketDigestMode) {
 		fmt.Fprintln(stderr, "statusgen verifyrun: --base-log requires --fail-first row execution; no row ran")
 		return verifyrunExitUsageError
@@ -2469,12 +2551,19 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// --rows (desktools-v2/74) narrows which Verify rows a run executes and
 	// records; it never narrows an audit. It is checked before any mode runs, so
 	// a refused selector runs no row and writes nothing, --dry-run included.
-	rowsSet := false
+	rowsSet, observationSet := false, false
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "rows" {
 			rowsSet = true
 		}
+		if f.Name == "kubernetes-observation" {
+			observationSet = true
+		}
 	})
+	if observationSet && (!*closeBracket || *kubeObservation == "") {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --kubernetes-observation requires --close-bracket and a sha256 digest")
+		return verifyrunExitUsageError
+	}
 	var selectedIDs []string
 	var selectedSet map[string]bool
 	if rowsSet {
@@ -2499,16 +2588,20 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	if *bracketDigestMode {
 		var others []string
 		fs.Visit(func(f *flag.Flag) {
-			if f.Name != "bracket-digest" && f.Name != "witness" && f.Name != "credit" && f.Name != "source" {
+			if f.Name != "bracket-digest" && f.Name != "witness" && f.Name != "credit" && f.Name != "source" && f.Name != "ci-workflow-token" {
 				others = append(others, "--"+f.Name)
 			}
 		})
 		if len(others) > 0 || fs.NArg() > 0 || *witnessFile == "" {
-			fmt.Fprintf(stderr, "statusgen verifyrun: --bracket-digest takes only --witness <file> [--credit --source <40 hex>] (got %s)\n", strings.Join(append(others, fs.Args()...), " "))
+			_, _ = fmt.Fprintf(stderr, "statusgen verifyrun: --bracket-digest takes only --witness <file> [--credit --source <40 hex> [--ci-workflow-token]] (got %s)\n", strings.Join(append(others, fs.Args()...), " "))
 			return verifyrunExitUsageError
 		}
 		if *creditMode != (*creditSource != "") || (*creditMode && !creditSourceOK(*creditSource)) {
 			fmt.Fprintln(stderr, "statusgen verifyrun: --credit and --source <40 lowercase hex> go together")
+			return verifyrunExitUsageError
+		}
+		if *creditCI && !*creditMode {
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: --ci-workflow-token requires --bracket-digest and --credit")
 			return verifyrunExitUsageError
 		}
 		raw, err := os.ReadFile(*witnessFile)
@@ -2525,6 +2618,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		var cc *creditContext
 		if *creditMode {
 			cc = newCreditContext(*witnessFile, *creditSource, string(raw))
+			cc.ciWorkflowToken = *creditCI
 		}
 		anyCouldNot := false
 		for _, c := range checks {
@@ -2561,8 +2655,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		}
 		return code
 	}
-	if *creditMode || *creditSource != "" {
-		fmt.Fprintln(stderr, "statusgen verifyrun: --credit and --source are read-only options of --bracket-digest")
+	if *creditMode || *creditSource != "" || *creditCI {
+		_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: --credit, --source and --ci-workflow-token are read-only options of --bracket-digest")
 		return verifyrunExitUsageError
 	}
 
@@ -2579,6 +2673,10 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// and image digest before anything else happens.
 	if *moduleCacheDir != "" && !*openBracket {
 		fmt.Fprintln(stderr, "statusgen verifyrun: --module-cache only applies to --open-bracket")
+		return verifyrunExitUsageError
+	}
+	if *rosterCopy != "" && !*openBracket {
+		fmt.Fprintln(stderr, "statusgen verifyrun: --roster-copy only applies to --open-bracket")
 		return verifyrunExitUsageError
 	}
 	if *historyOut != "" && !*openBracket {
@@ -2613,9 +2711,9 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitUsageError
 		}
 		if *openBracket {
-			return runOpenAcceptance(*rootDir, path, *openOut, *moduleCacheDir, *historyOut, *transitionRecord, stdout, stderr)
+			return runOpenAcceptance(*rootDir, path, *openOut, *moduleCacheDir, *historyOut, *transitionRecord, *rosterCopy, *sourceAcceptance, stdout, stderr)
 		}
-		return runCloseBracket(*rootDir, path, *admissionReceipt, *witnessFile, stdout, stderr, *transitionRecord)
+		return runCloseBracket(*rootDir, path, *admissionReceipt, *witnessFile, *transitionRecord, *kubeObservation, stdout, stderr)
 	}
 	if *sandbox == sandboxContainerNetns && *transitionRecord != "" {
 		if *rootDir == "" {
@@ -2670,14 +2768,26 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	// admission is established, and for the rest of an admitted run.
 	prevAdmission := verifyrunAdmission.Swap(verifyrunPending)
 	defer verifyrunAdmission.Store(prevAdmission)
-	attestation, admittedHome, containerTree := "", "", ""
+	attestation, admittedHome, containerTree, npmStaging := "", "", "", ""
 	var container containerAdmit
 	var runCred *runReadCredential
+	sourceReceipt := false
 	if *sandbox == sandboxContainerNetns && !*checkMode {
 		// Inside a --network none container admission is never run: the host's
 		// receipt is read instead, and the host closes the bracket afterwards.
 		root := *rootDir
 		if root == "" {
+			// A source-backed container never needs Git, even to reject an
+			// invocation missing its root. Inspect this hint before legacy
+			// root discovery. containerAdmission still validates the receipt.
+			raw, err := os.ReadFile(*admissionReceipt)
+			var hint struct {
+				Acceptance *json.RawMessage `json:"acceptance"`
+			}
+			if err != nil || json.Unmarshal(raw, &hint) != nil || hint.Acceptance != nil {
+				_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: supply --root for a protected or unreadable container receipt")
+				return verifyrunExitCouldNot
+			}
 			root = repoRootFor(path)
 		}
 		var admissionErr error
@@ -2693,8 +2803,26 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		}
 		container, admissionErr = containerAdmission(*admissionReceipt, root, path)
 		if admissionErr != nil {
-			fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
 			return verifyrunExitCouldNot
+		}
+		sourceReceipt = container.cell.Acceptance != nil && container.cell.Acceptance.SourceRecord != ""
+		if sourceReceipt {
+			var problem string
+			switch {
+			case *rootDir == "":
+				problem = "requires --root"
+			case *failFirstMode:
+				problem = "refuses --fail-first"
+			case *inContainer:
+				problem = "refuses --in-container"
+			case *transitionRecord != "":
+				problem = "already supplies --acceptance-record"
+			}
+			if problem != "" {
+				_, _ = fmt.Fprintln(stderr, "statusgen verifyrun: source receipt", problem)
+				return verifyrunExitCouldNot
+			}
 		}
 		attestation, containerTree = container.attestation, container.tree
 		verifyrunAdmission.Store(admissionState(attestation))
@@ -2704,9 +2832,9 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			admissionRoot = repoRootFor(path)
 		}
 		var admissionErr error
-		attestation, path, admittedHome, admissionErr = verifierAdmission(admissionRoot, path)
+		attestation, path, admittedHome, npmStaging, admissionErr = verifierAdmission(admissionRoot, path)
 		if admissionErr != nil {
-			fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun:", admissionErr)
 			return verifyrunExitCouldNot
 		}
 		// A cross-repository admission has moved path to the tracking checkout,
@@ -2724,11 +2852,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		// revoked and removed when the run returns.
 		if attestation != "" {
 			runCred = newRunReadCredential(attestation)
-			currentRunCredential.Store(runCred)
-			defer func() {
-				currentRunCredential.Store(nil)
-				runCred.close(stderr)
-			}()
+			release := runCred.bind(stderr)
+			defer release()
 		}
 		verifyrunAdmission.Store(admissionState(attestation))
 	}
@@ -2764,7 +2889,7 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 			return verifyrunExitCouldNot
 		}
 		if why := verifyrunRootBelowToplevel(root); why != "" {
-			fmt.Fprintln(stderr, "statusgen verifyrun:", why)
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun:", why)
 			return verifyrunExitUsageError
 		}
 		ef := *envFile
@@ -2795,9 +2920,9 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	}
 
 	root := rowRoot()
-	if *sandbox != sandboxContainerNetns || *transitionRecord == "" {
+	if *sandbox != sandboxContainerNetns || (*transitionRecord == "" && !sourceReceipt) {
 		if why := verifyrunRootBelowToplevel(root); why != "" {
-			fmt.Fprintln(stderr, "statusgen verifyrun:", why)
+			_, _ = fmt.Fprintln(stderr, "statusgen verifyrun:", why)
 			return verifyrunExitUsageError
 		}
 	}
@@ -2906,7 +3031,26 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		}
 		defer removeRowScratch(scratch)
 		plan.env = append(admittedRowEnv(environ), admittedRowGo(environ)...)
+		// The one declared replay path reaches the rows only in its checked
+		// form. A refused one is named here, and a row that reads it is
+		// could-not-run.
+		if kv, why := admittedReplayInput(environ, root); why != "" {
+			// This line is the run's only record that the replay path was
+			// withheld. A run that cannot write it cannot report its rows'
+			// inputs, so it stops as could-not-run.
+			if _, werr := fmt.Fprintf(stderr, "statusgen verifyrun: %s is not passed to the rows: %s\n", admittedReplayInputVar, why); werr != nil {
+				return verifyrunExitCouldNot
+			}
+		} else if kv != "" {
+			plan.env = append(plan.env, kv)
+		}
 		plan.rowScratch = scratch
+		plan.rowRoster = container.roster
+		if *rule51Mode && !netnsContainer {
+			// A missing or refused roster leaves the companion unable to run.
+			// Other rows still produce their own independent results.
+			plan.rule51HostRoster, _, _ = renderRosterCopy()
+		}
 		if sock, sockDir, err := rowreadSocketPath(scratch); err == nil {
 			if sockDir != "" {
 				defer removeRowScratch(sockDir)
@@ -3039,6 +3183,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 	if !*dryRun && !netnsContainer {
 		plan.readSet = newReadSetTarget(root, path, plan.rowEnv())
 	}
+	// The rule-51 lane stamps the head run only, never a fail-first base run.
+	plan.rule51 = *rule51Mode
 	ws := runWitnessesSandboxed(plan, *sandbox, root, rows, runner, runnerSource, executionTree, nowFunc().Format("2006-01-02"), *timeout, *ci)
 	if ff != nil {
 		for i := range ws {
@@ -3090,6 +3236,11 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		}
 		table += "\n" + containerWitnessLines(*imageDigest, containerTree, container.moduleCache, attestation)
 	} else if attestation != "" {
+		if npmStaging != "" {
+			// The staged npm dependency set the rows ran on (#7572); admission
+			// bound the staged directories to this digest before any row ran.
+			table += "\n" + npmStaging
+		}
 		table += "\n" + attestation + "\n"
 	}
 

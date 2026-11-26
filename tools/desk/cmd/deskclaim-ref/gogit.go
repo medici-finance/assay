@@ -143,29 +143,12 @@ func (g *gogitStore) refName(id string) plumbing.ReferenceName {
 }
 
 func (g *gogitStore) Read(id string) (deskkit.ClaimStoreRecord, deskkit.ClaimReadStatus) {
-	refs, err := gitcore.List(gitcore.ListOpts{URL: g.url, Auth: g.auth})
-	if err != nil {
-		g.fail(err)
-		return deskkit.ClaimStoreRecord{}, deskkit.ClaimReadUnverifiable
+	lease := deskkit.ForgeClaimLease{Endpoint: gitcore.ListOpts{URL: g.url, Auth: g.auth}}
+	record, status := lease.Read(id)
+	if status == deskkit.ClaimReadUnverifiable {
+		g.fail(fmt.Errorf("%s", lease.TransportCause()))
 	}
-	sha, found := findRef(refs, refPrefix+"/"+id)
-	if !found {
-		// A clean advertisement with no matching ref is FREE (the brief's rule); only a
-		// transport/auth/not-found error above is could-not-check.
-		return deskkit.ClaimStoreRecord{}, deskkit.ClaimReadFree
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
-	defer cancel()
-	payload, perr := gitcore.FetchTagPayload(ctx, g.url, g.auth, plumbing.NewHash(sha))
-	if perr != nil {
-		g.fail(perr)
-		return deskkit.ClaimStoreRecord{}, deskkit.ClaimReadUnverifiable
-	}
-	return deskkit.ClaimStoreRecord{
-		Version: sha,
-		Msg:     strings.TrimRight(payload.Message, "\n"),
-		Date:    payload.When.UTC().Format(time.RFC3339),
-	}, deskkit.ClaimReadHeld
+	return record, status
 }
 
 func (g *gogitStore) CreateIfAbsent(id, msg string) deskkit.ClaimWriteOutcome {
@@ -200,15 +183,15 @@ func (g *gogitStore) mintAndPush(id, msg string, old plumbing.Hash) deskkit.Clai
 	return deskkit.ClaimWriteApplied
 }
 
-func (g *gogitStore) Remove(id string) (deskkit.ClaimWriteOutcome, bool) {
-	ctx, cancel := context.WithTimeout(context.Background(), storeTimeout)
-	defer cancel()
-	res, err := gitcore.DeleteRefTrace(ctx, g.url, g.auth, g.refName(id), claimTrace)
-	if err != nil {
-		g.fail(err)
-		return deskkit.ClaimWriteUnverifiable, false
+// RemoveFrom requires the server object ID from a successful Read of this claim.
+// Git's conditional delete relies on that object still existing at the receiver.
+func (g *gogitStore) RemoveFrom(id, old string) deskkit.ClaimWriteOutcome {
+	lease := deskkit.ForgeClaimLease{Endpoint: gitcore.ListOpts{URL: g.url, Auth: g.auth}, Trace: claimTrace}
+	result := lease.RemoveFrom(id, old)
+	if result != deskkit.ClaimWriteApplied {
+		g.fail(fmt.Errorf("%s", lease.TransportCause()))
 	}
-	return deskkit.ClaimWriteApplied, res == gitcore.DeleteDone
+	return result
 }
 
 func (g *gogitStore) List() ([]string, deskkit.ClaimReadStatus) {

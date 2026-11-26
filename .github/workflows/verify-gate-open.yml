@@ -20,17 +20,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
-
-# Serialise runs of this emitter: the marker check-then-act window sits between
-# "collect existing markers" and "create issue", so two overlapping runs both
-# miss each other's issue and file duplicates. Keyed on the workflow — NOT the
-# ref — so a workflow_dispatch from any branch serialises against main pushes
-# too. No cancel-in-progress: a queued run must still execute (it no-ops once
-# the first run's issues exist); a cancelled run could die mid-create and leave
-# the gate un-filed.
-concurrency:
-  group: verify-gate-open
-  cancel-in-progress: false
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -41,11 +32,51 @@ env:
 
 jobs:
   open:
+    # A comment run is admitted only when a HUMAN on the bless roster
+    # (vars.ASSAY_BLESS_LOGIN, `login:id` or bare logins, comma- or
+    # space-separated: the same roster verify-gate-close admits) wrote it. Title
+    # and body prefixes alone are text anyone can type, and an admitted run
+    # enters the concurrency group below, where it would displace a pending
+    # issuer or adjudication run. The login match is bounded on both sides: the
+    # roster is padded with a space, a login is preceded by a space or comma and
+    # followed by `:`, a comma or a space, so no login matches inside another.
+    # GitHub expression string comparison ignores case, as logins do.
+    if: >-
+      github.event_name != 'issue_comment' ||
+      (github.event.issue.pull_request == null &&
+       github.event.comment.user.type == 'User' &&
+       startsWith(github.event.issue.title, 'Acceptance preparation: ') &&
+       startsWith(github.event.comment.body, 'Approve acceptance-adjudication v1') &&
+       (contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(' {0}:', github.event.comment.user.login)) ||
+        contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(',{0}:', github.event.comment.user.login)) ||
+        contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(' {0},', github.event.comment.user.login)) ||
+        contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(',{0},', github.event.comment.user.login)) ||
+        contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(' {0} ', github.event.comment.user.login)) ||
+        contains(format(' {0} ', vars.ASSAY_BLESS_LOGIN), format(',{0} ', github.event.comment.user.login))))
+    # Serialise runs of this emitter: the marker check-then-act window sits between
+    # "collect existing markers" and "create issue", so two overlapping runs both
+    # miss each other's issue and file duplicates. Keyed on the event class — NOT
+    # the ref — so a workflow_dispatch from any branch serialises against main
+    # pushes too. No cancel-in-progress, so a running run is never cancelled: a
+    # cancelled run could die mid-create and leave the gate un-filed. GitHub keeps
+    # at most one pending run per group, so within one event class a newer pending
+    # run replaces an older pending one. The group is set on the job, not the
+    # workflow, so it is entered only once the `if:` above admits the run: a
+    # comment from anyone off the bless roster never queues in the group and so
+    # cannot displace a pending issuer or adjudication run. The group is keyed
+    # by event class: issuer runs (push, dispatch) file every card
+    # except verification-handoff/03's, and adjudication runs (comment) file only
+    # that one, so the two never race on one marker, and a main push can no
+    # longer displace a pending adjudication run, nor a comment an issuer run.
+    concurrency:
+      group: verify-gate-open-${{ github.event_name == 'issue_comment' && 'adjudication' || 'issuer' }}
+      cancel-in-progress: false
     runs-on: medici-builder-public
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       # Runner + Go install mirror the board workflow: this self-hosted runner
       # has no Docker and no reach to the release-asset CDN, so Go is fetched by
@@ -65,6 +96,13 @@ jobs:
           set -euo pipefail
           go version
           ( cd statusgen && go build -o "${RUNNER_TEMP}/statusgen" . )
+
+      - name: Build the adjudication reader
+        if: github.event_name == 'issue_comment'
+        run: |
+          set -euo pipefail
+          ( cd tools/desk && go build -o "${RUNNER_TEMP}/deskread" ./cmd/deskread )
+          echo "${RUNNER_TEMP}" >> "${GITHUB_PATH}"
 
       # The self-hosted runner image does not ship the gh CLI. Install a pinned,
       # sha256-verified release to $GITHUB_PATH when it is missing (same release
@@ -87,35 +125,41 @@ jobs:
           tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/gh.tar.gz"
           echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
 
-      - name: Collect markers of existing verify-gate issues (open + closed)
+      - name: Read all canonical verify-gate issues
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # `--state all` so a brief that ever had an issue never gets a second
-          # one. Extract just the hidden markers so statusgen stays offline.
-          #
-          # Every command here carries `|| true` for the same reason the close
-          # workflow's marker parse does: `grep` exits 1 on the wholly legitimate
-          # "no verify-gate issues exist yet" case, and an empty markers file is
-          # the CORRECT input to the next step (everything eligible is newly
-          # eligible). Without the guard, a `set -o pipefail` / `shell: bash`
-          # added later would abort the first run this workflow ever makes on a
-          # repo. The file is created either way, so the next step never reads a
-          # missing path.
-          gh issue list --repo "$GITHUB_REPOSITORY" --label verify-gate \
-            --state all --limit 1000 --json body --jq '.[].body' \
-            > "${RUNNER_TEMP}/issue-bodies.txt" || true
-          grep -o '<!-- verify-gate: [^>]* -->' "${RUNNER_TEMP}/issue-bodies.txt" \
-            > "${RUNNER_TEMP}/markers.txt" || true
-          echo "existing markers:"; cat "${RUNNER_TEMP}/markers.txt" || true
+          set -euo pipefail
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues?labels=verify-gate&state=all&per_page=100" \
+            --jq '.[] | select(.pull_request == null) | .body' > "${RUNNER_TEMP}/markers.txt"
 
-      - name: Compute newly-eligible verify-gate issues
+      - name: Compute newly-eligible ordinary verify-gate issues
+        if: github.event_name != 'issue_comment'
         run: |
           set -euo pipefail
+          # The reviewed separate contract is scoped to verification-handoff/03.
           "${RUNNER_TEMP}/statusgen" --root . --verify-issues \
-            --existing-markers "${RUNNER_TEMP}/markers.txt" > "${RUNNER_TEMP}/issues.json"
-          echo "eligible: $(jq 'length' "${RUNNER_TEMP}/issues.json")"
-          cat "${RUNNER_TEMP}/issues.json"
+            --existing-markers "${RUNNER_TEMP}/markers.txt" \
+            | jq 'map(select(.marker != "<!-- verify-gate: verification-handoff/03 -->"))' \
+            > "${RUNNER_TEMP}/issues.json"
+
+      - name: Compute the adjudicated acceptance card
+        if: github.event_name == 'issue_comment'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DESKREAD_CI_WORKFLOW_TOKEN: ${{ github.token }}
+          PREPARATION: ${{ github.event.issue.number }}
+          RULING: ${{ github.event.comment.html_url }}
+          ASSAY_BLESS_LOGIN: ${{ vars.ASSAY_BLESS_LOGIN }}
+          ASSAY_TRUSTED_LOGINS: ${{ vars.ASSAY_TRUSTED_LOGINS }}
+          ASSAY_TRUSTED_BOT_SLUGS: ${{ vars.ASSAY_TRUSTED_BOT_SLUGS }}
+          ASSAY_ALLOWED_REPOS: ${{ vars.ASSAY_ALLOWED_REPOS }}
+          ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/statusgen" acceptance-route issue --root . --brief verification-handoff/03 \
+            --preparation "$PREPARATION" --ruling "$RULING" \
+            --existing-markers "${RUNNER_TEMP}/markers.txt" --acceptance-forge > "${RUNNER_TEMP}/issues.json"
 
       - name: Create one issue per eligible brief
         env:

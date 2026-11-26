@@ -147,6 +147,31 @@ func (sc *sweepCtx) adminDirFor(guard *pathGuard, rt string) (string, error) {
 	return sc.admins.lookup(rt)
 }
 
+// adminEntryFor is the inventory's admin entry for rt WITHOUT re-reading its gitdir pointer
+// (the per-candidate read budget, #3187). Only the claim gate uses it: a run key read from a
+// moved entry can at worst name another run's claim, and a removal still has to pass the
+// tree's own safety gates (clean, untracked included; every commit on the remote).
+func (sc *sweepCtx) adminEntryFor(guard *pathGuard, rt string) (string, error) {
+	if guard.commonDir != sc.commonDir {
+		return "", deskkit.Unverifiable("admin registry belongs to a different common Git store", nil)
+	}
+	if sc.admins == nil {
+		sc.admins = loadWorktreeAdminIndex(sc.commonDir)
+	}
+	idx := sc.admins
+	if idx.err != nil {
+		return "", deskkit.Unverifiable("cannot read the complete worktree admin registry", idx.err)
+	}
+	if idx.ambiguous[rt] {
+		return "", deskkit.Unverifiable("multiple admin entries point at "+rt, nil)
+	}
+	admin, ok := idx.paths[rt]
+	if !ok {
+		return "", deskkit.Unverifiable("no admin entry points at "+rt, nil)
+	}
+	return admin, nil
+}
+
 func (sc *sweepCtx) adminEntryAge(guard *pathGuard, rt string, now time.Time) (time.Duration, error) {
 	admin, err := sc.adminDirFor(guard, rt)
 	if err != nil {

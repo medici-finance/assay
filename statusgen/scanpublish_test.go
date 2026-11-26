@@ -1,0 +1,836 @@
+package main
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"reflect"
+	"sort"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/medici-finance/assay/deskcore/issueflow"
+)
+
+// scanpublish_test.go — the scan publishes recorded intake judgments (intake-class-routing/02).
+
+const (
+	pubOpenedA = "2026-11-10T09:00:00Z"
+	pubOpenedB = "2026-11-12T09:00:00Z"
+)
+
+// pubRoot is an empty scan root with the issue-loop stream directory present.
+func pubRoot(t *testing.T) (root, dir string) {
+	t.Helper()
+	root = t.TempDir()
+	dir = filepath.Join(root, "docs", "streams", scanStreamName)
+	if err := os.MkdirAll(filepath.Join(dir, archiveDirName), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return root, dir
+}
+
+func pubPlaceholder(t *testing.T, dir, repo string, issue int) string {
+	t.Helper()
+	path := filepath.Join(dir, placeholderFileName(repo, issue))
+	if err := os.WriteFile(path, []byte(renderPlaceholder(repo, issue, "model", nil)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// pubRepair is a direct-repair judgment on the issue itself.
+func pubRepair(item, opened string, revision int, evidence string) issueflow.IntakeHandoff {
+	return issueflow.IntakeHandoff{Schema: issueflow.IntakeHandoffSchema, Item: item, Opened: opened, Revision: revision,
+		DecidingRole: "intake-desk", Disposition: issueflow.Repair, Route: "repair", Successor: item, Evidence: evidence}
+}
+
+// pubExternal is an external-prerequisite judgment: its action and wake condition are free text.
+func pubExternal(item, opened, evidence string) issueflow.IntakeHandoff {
+	return issueflow.IntakeHandoff{Schema: issueflow.IntakeHandoffSchema, Item: item, Opened: opened, Revision: 1,
+		DecidingRole: "intake-desk", Disposition: issueflow.External, Route: "external", ExternalRole: "human",
+		RequiredAction: "rotate the signing key", WakeCondition: "the key has been rotated", Evidence: evidence}
+}
+
+func pubLog(t *testing.T, records ...issueflow.IntakeHandoff) string {
+	t.Helper()
+	var b bytes.Buffer
+	for _, r := range records {
+		raw, err := json.Marshal(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		b.Write(raw)
+		b.WriteByte('\n')
+	}
+	path := filepath.Join(t.TempDir(), "intake-handoffs-v1.jsonl")
+	if err := os.WriteFile(path, b.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func pubParse(t *testing.T, path string) *Placeholder {
+	t.Helper()
+	ph, ok, err := parsePlaceholderFile(path)
+	if err != nil || !ok {
+		t.Fatalf("parse %s: ok=%v err=%v", path, ok, err)
+	}
+	return ph
+}
+
+func pubEligible(ph *Placeholder) bool {
+	s := &Stream{Name: scanStreamName, Status: "active"}
+	return eligibleBase([]*Stream{s}, s, ph.toBrief(), nil, nil)
+}
+
+// treeDigest hashes every file under dir, by relative path, so "writes nothing" is a comparison.
+func treeDigest(t *testing.T, dir string) string {
+	t.Helper()
+	var lines []string
+	err := filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		raw, rerr := os.ReadFile(p)
+		if rerr != nil {
+			return rerr
+		}
+		rel, _ := filepath.Rel(dir, p)
+		lines = append(lines, fmt.Sprintf("%s %x", rel, sha256.Sum256(raw)))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sort.Strings(lines)
+	return strings.Join(lines, "\n")
+}
+
+// TestScanPublishesHandoff — a recorded direct repair is published by the scan and the placeholder
+// becomes eligible; a judgment for an event the log shows to be older, or one a reopen already spent,
+// is not published and the placeholder stays held; a second scan with no change writes nothing.
+//
+// regression: F-judged-no-publisher — a recorded judgment lived only in a local log and nothing wrote the companion, so the issue stayed a placeholder the board held forever.
+func TestScanPublishesHandoff(t *testing.T) {
+	home := scanHomeRepo()
+	item := fmt.Sprintf("%s#77", home)
+
+	t.Run("a real scan creates the placeholder and publishes its judgment", func(t *testing.T) {
+		root := t.TempDir()
+		if err := os.CopyFS(root, os.DirFS("testdata/goodrepo")); err != nil {
+			t.Fatal(err)
+		}
+		data := map[string][]ghIssue{home: {{Number: 77, Title: "a bug", Labels: lbl("bug")}}}
+		list := fixtureLister(data, "")
+		opts := scanPublishOpts{Judgments: pubLog(t, pubRepair(item, pubOpenedA, 1, item))}
+		dir := filepath.Join(root, "docs", "streams", scanStreamName)
+		path := filepath.Join(dir, "issue-77.md")
+
+		if code := runScanIssuesWith(root, false, scanPublishOpts{}, list, nilCommentLister, blessAll, labelHoldClearAll); code != 0 {
+			t.Fatalf("scan without the log exited %d", code)
+		}
+		if pubEligible(pubParse(t, path)) {
+			t.Fatal("raw scanner placeholder was eligible before any judgment was published")
+		}
+		if code := runScanIssuesWith(root, false, opts, list, nilCommentLister, blessAll, labelHoldClearAll); code != 0 {
+			t.Fatalf("publishing scan exited %d", code)
+		}
+		ph := pubParse(t, path)
+		if ph.Handoff != "issue-77.handoff.json" || ph.HandoffOpened != pubOpenedA {
+			t.Fatalf("pointer = %q / %q", ph.Handoff, ph.HandoffOpened)
+		}
+		if !pubEligible(ph) {
+			t.Fatalf("a published direct repair did not reach the board: %+v", ph.HandoffAssessment)
+		}
+		// A second scan with no change writes nothing.
+		before := treeDigest(t, root)
+		if code := runScanIssuesWith(root, false, opts, list, nilCommentLister, blessAll, labelHoldClearAll); code != 0 {
+			t.Fatalf("second scan exited %d", code)
+		}
+		if after := treeDigest(t, root); after != before {
+			t.Fatalf("an unchanged second scan wrote:\nbefore:\n%s\nafter:\n%s", before, after)
+		}
+	})
+
+	t.Run("a later revision replaces the companion; the latest event wins; older events are ignored", func(t *testing.T) {
+		root, dir := pubRoot(t)
+		path := pubPlaceholder(t, dir, home, 77)
+		older := pubRepair(item, pubOpenedA, 1, "F-old-finding")
+		log := pubLog(t, older, pubRepair(item, pubOpenedB, 1, "F-first"), pubRepair(item, pubOpenedB, 2, "F-second"))
+		res, err := publishHandoffs(root, scanPublishOpts{Judgments: log}, false, io.Discard)
+		if err != nil || res.Published != 1 {
+			t.Fatalf("publish: %+v %v", res, err)
+		}
+		cur, _, err := readCompanionIn(dir, "issue-77.handoff.json")
+		if err != nil || cur.Opened != pubOpenedB || cur.Revision != 2 || cur.Evidence != "F-second" {
+			t.Fatalf("companion = %+v %v", cur, err)
+		}
+		if ph := pubParse(t, path); ph.HandoffOpened != pubOpenedB || !pubEligible(ph) {
+			t.Fatalf("pointer %q eligible=%v", ph.HandoffOpened, pubEligible(ph))
+		}
+		// A revision 3 recorded afterwards replaces it.
+		log = pubLog(t, older, pubRepair(item, pubOpenedB, 1, "F-first"), pubRepair(item, pubOpenedB, 2, "F-second"), pubRepair(item, pubOpenedB, 3, "F-third"))
+		if res, err = publishHandoffs(root, scanPublishOpts{Judgments: log}, false, io.Discard); err != nil || res.Published != 1 {
+			t.Fatalf("revision 3: %+v %v", res, err)
+		}
+		if cur, _, _ = readCompanionIn(dir, "issue-77.handoff.json"); cur.Revision != 3 {
+			t.Fatalf("revision 3 did not replace the companion: %+v", cur)
+		}
+	})
+
+	t.Run("a record for an older event than the published one is not published", func(t *testing.T) {
+		root, dir := pubRoot(t)
+		path := pubPlaceholder(t, dir, home, 77)
+		if _, err := publishHandoffs(root, scanPublishOpts{Judgments: pubLog(t, pubRepair(item, pubOpenedB, 1, "F-new"))}, false, io.Discard); err != nil {
+			t.Fatal(err)
+		}
+		before := treeDigest(t, root)
+		var res scanPublishResult
+		var err error
+		stderr := captureStderr(t, func() {
+			res, err = publishHandoffs(root, scanPublishOpts{Judgments: pubLog(t, pubRepair(item, pubOpenedA, 1, "F-old"))}, false, io.Discard)
+		})
+		if err != nil || res.Published != 0 || res.Unpublished != 1 {
+			t.Fatalf("older event: %+v %v", res, err)
+		}
+		if !strings.Contains(stderr, item) || !strings.Contains(stderr, "later event") {
+			t.Fatalf("the skipped judgment was not named: %q", stderr)
+		}
+		if treeDigest(t, root) != before {
+			t.Fatal("an older-event record changed the published judgment")
+		}
+		if ph := pubParse(t, path); ph.HandoffOpened != pubOpenedB {
+			t.Fatalf("pointer moved to %q", ph.HandoffOpened)
+		}
+	})
+
+	t.Run("a reactivated placeholder's spent judgment is not published again", func(t *testing.T) {
+		root, dir := pubRoot(t)
+		path := pubPlaceholder(t, dir, home, 77)
+		log := pubLog(t, pubRepair(item, pubOpenedA, 1, "F-spent"))
+		if _, err := publishHandoffs(root, scanPublishOpts{Judgments: log}, false, io.Discard); err != nil {
+			t.Fatal(err)
+		}
+		// The issue was reopened: reactivation strips the pointer and a new event owes a new judgment.
+		if err := applyCloseOut(closeOutPlan{Path: path, Action: "reactivate", Gate: "model"}); err != nil {
+			t.Fatal(err)
+		}
+		if pubParse(t, path).Handoff != "" {
+			t.Fatal("reactivation kept the pointer")
+		}
+		var res scanPublishResult
+		stderr := captureStderr(t, func() {
+			res, _ = publishHandoffs(root, scanPublishOpts{Judgments: log}, false, io.Discard)
+		})
+		ph := pubParse(t, path)
+		if res.Published != 0 || res.Unpublished != 1 || ph.Handoff != "" || pubEligible(ph) {
+			t.Fatalf("a spent judgment was republished: %+v handoff=%q eligible=%v", res, ph.Handoff, pubEligible(ph))
+		}
+		if !strings.Contains(stderr, "spent") {
+			t.Fatalf("not named: %q", stderr)
+		}
+		// A judgment for a newer event IS published.
+		log = pubLog(t, pubRepair(item, pubOpenedA, 1, "F-spent"), pubRepair(item, pubOpenedB, 1, "F-new-event"))
+		if res, _ = publishHandoffs(root, scanPublishOpts{Judgments: log}, false, io.Discard); res.Published != 1 || !pubEligible(pubParse(t, path)) {
+			t.Fatalf("the new event's judgment was not published: %+v", res)
+		}
+	})
+
+	t.Run("a record for another issue, an undecodable line and an absent log do not publish", func(t *testing.T) {
+		root, dir := pubRoot(t)
+		path := pubPlaceholder(t, dir, home, 77)
+		other := pubRepair(fmt.Sprintf("%s#78", home), pubOpenedA, 1, "F-other")
+		log := pubLog(t, other)
+		if err := os.WriteFile(log, []byte(mustRead(t, log)+"{not json\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var res scanPublishResult
+		stderr := captureStderr(t, func() { res, _ = publishHandoffs(root, scanPublishOpts{Judgments: log}, false, io.Discard) })
+		if res.Published != 0 || res.Unpublished != 1 || !strings.Contains(stderr, "line 2") {
+			t.Fatalf("res=%+v stderr=%q", res, stderr)
+		}
+		if ph := pubParse(t, path); ph.Handoff != "" || pubEligible(ph) {
+			t.Fatal("placeholder was published from someone else's judgment")
+		}
+		before := treeDigest(t, root)
+		var out bytes.Buffer
+		if res, err := publishHandoffs(root, scanPublishOpts{Judgments: filepath.Join(t.TempDir(), "absent.jsonl")}, false, &out); err != nil || res != (scanPublishResult{}) {
+			t.Fatalf("absent log: %+v %v", res, err)
+		}
+		if treeDigest(t, root) != before {
+			t.Fatal("an absent log wrote")
+		}
+	})
+
+	t.Run("dry-run lists and writes nothing", func(t *testing.T) {
+		root, dir := pubRoot(t)
+		pubPlaceholder(t, dir, home, 77)
+		before := treeDigest(t, root)
+		var out bytes.Buffer
+		res, err := publishHandoffs(root, scanPublishOpts{Judgments: pubLog(t, pubRepair(item, pubOpenedA, 1, item))}, true, &out)
+		if err != nil || res.Published != 1 || !strings.Contains(out.String(), "would publish issue-77.handoff.json") {
+			t.Fatalf("dry-run: %+v %v %q", res, err, out.String())
+		}
+		if treeDigest(t, root) != before {
+			t.Fatal("dry-run wrote")
+		}
+	})
+}
+
+// TestScanPublishKeepsRegister — the intake register lane's handoff and exit exports are byte-identical
+// before and after a publishing scan, and the register's own files are untouched.
+//
+// regression: F-judged-no-publisher — publication must not change the intake register lane's exports.
+func TestScanPublishKeepsRegister(t *testing.T) {
+	root, dir := pubRoot(t)
+	home := scanHomeRepo()
+	item := fmt.Sprintf("%s#77", home)
+	pubPlaceholder(t, dir, home, 77)
+
+	entryDir := filepath.Join(root, "docs", "streams", "intake", "completed")
+	if err := os.MkdirAll(entryDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	entry := filepath.Join(entryDir, "I-test.md")
+	if err := os.WriteFile(entry, []byte("---\nid: I-test\ndate: 2026-10-25\ntitle: Handoff fixture\ndisposition: scoped\nscoped-to: issue #77\ntriaged: 2026-10-25\ntriaged-by: intake-desk\ntriager-tier: strong\nhandoff: handoff.json\nhandoff-opened: \"2026-10-25T12:00:00Z\"\n---\nFixture\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	reg := pubRepair("I-test", "2026-10-25T12:00:00Z", 1, item)
+	reg.Successor = item // the register entry is routed to the issue
+	raw, _ := json.Marshal(reg)
+	if err := os.WriteFile(filepath.Join(entryDir, "handoff.json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	export := func() (handoffs, exits string) {
+		t.Helper()
+		var h, e, errb bytes.Buffer
+		if code := writeIntakeHandoffs(root, &h, &errb); code != 0 {
+			t.Fatalf("handoff export: %d %s", code, &errb)
+		}
+		if code := writeIntakeExits(root, true, &e, &errb); code != 0 {
+			t.Fatalf("exit export: %d %s", code, &errb)
+		}
+		return h.String(), e.String()
+	}
+	h0, e0 := export()
+	if !strings.Contains(h0, "observed") {
+		t.Fatalf("fixture register entry is not observed: %s", h0)
+	}
+	register0 := treeDigest(t, filepath.Join(root, "docs", "streams", "intake"))
+
+	res, err := publishHandoffs(root, scanPublishOpts{Judgments: pubLog(t, pubRepair(item, pubOpenedA, 1, item))}, false, io.Discard)
+	if err != nil || res.Published != 1 {
+		t.Fatalf("publishing scan: %+v %v", res, err)
+	}
+	h1, e1 := export()
+	if h1 != h0 || e1 != e0 {
+		t.Fatalf("a publishing scan changed the register export:\nhandoffs before:\n%s\nafter:\n%s\nexits before:\n%s\nafter:\n%s", h0, h1, e0, e1)
+	}
+	if treeDigest(t, filepath.Join(root, "docs", "streams", "intake")) != register0 {
+		t.Fatal("a publishing scan wrote under the intake register")
+	}
+}
+
+// pubGitRoot is a scan root that is a git checkout whose origin is origin ("" = no remote).
+func pubGitRoot(t *testing.T, origin string) (root, dir string) {
+	t.Helper()
+	root, dir = pubRoot(t)
+	for _, args := range [][]string{{"init", "-q"}} {
+		if out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	if origin != "" {
+		if out, err := exec.Command("git", "-C", root, "remote", "add", "origin", origin).CombinedOutput(); err != nil {
+			t.Fatalf("git remote add: %v %s", err, out)
+		}
+	}
+	return root, dir
+}
+
+// TestScanPublishScrubBoundary — free text reaches a committed companion only when a commit target was
+// supplied, the root's origin push destination names that same repository, and the roster marks it
+// private. Otherwise only a typed-reference repair is published and the rest are named and counted.
+//
+// regression: F-judged-free-text-public — publishing a judgment copies free text into a committed file, which in a public repository would leak it.
+func TestScanPublishScrubBoundary(t *testing.T) {
+	const (
+		private  = "example-org/agents"       // marked :private in the fixture roster
+		public   = "example-org/ledger-k8s"   // marked :public
+		unlisted = "example-org/never-listed" // not in the roster
+		homeRepo = "example-org/tracker"      // the roster's home repository, marked :private
+	)
+	url := func(r string) string { return "https://github.com/" + r + ".git" }
+	// The scp-style spelling carries the git user; it is built from parts so no user-at-host literal sits in
+	// this file (the host is the public forge's own, which names no machine and no person).
+	scpUser := "git"
+
+	type outcome struct{ prose, typed, external bool }
+	all := outcome{true, true, true}
+	onlyTyped := outcome{false, true, false}
+
+	cases := []struct {
+		name   string
+		target string // the commit target supplied to the scan
+		origin string // the root's origin ("" = none)
+		source string // the repository the scanned issues come from
+		home   string // roster HOME_REPO
+		want   outcome
+	}{
+		{"public root", public, url(public), homeRepo, homeRepo, onlyTyped},
+		{"unlisted root", unlisted, url(unlisted), homeRepo, homeRepo, onlyTyped},
+		{"private root", private, url(private), homeRepo, homeRepo, all},
+		{"private root, scp-style origin", private, scpUser + "@" + "github.com:" + private + ".git", homeRepo, homeRepo, all},
+		{"public root scanning an issue from a private repo", public, url(public), private, homeRepo, onlyTyped},
+		{"private root scanning an issue from a public repo", private, url(private), public, homeRepo, all},
+		{"home marked private, target public", public, url(public), homeRepo, homeRepo, onlyTyped},
+		{"home marked private, target unlisted", unlisted, url(unlisted), homeRepo, homeRepo, onlyTyped},
+		{"no target supplied, private origin, private home", "", url(private), homeRepo, homeRepo, onlyTyped},
+		{"private target, origin names a public repo", private, url(public), homeRepo, homeRepo, onlyTyped},
+		{"private target, origin names an unlisted repo", private, url(unlisted), homeRepo, homeRepo, onlyTyped},
+		{"private target, origin cannot be read", private, "", homeRepo, homeRepo, onlyTyped},
+		{"private target, origin is not a repository url", private, "/some/local/path", homeRepo, homeRepo, onlyTyped},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			scanWithRoster(t, rosterWith(map[string]string{scanEnvHomeRepo: tc.home}))
+			root, dir := pubGitRoot(t, tc.origin)
+			item := func(n int) string { return fmt.Sprintf("%s#%d", tc.source, n) }
+			phs := map[string]string{
+				"prose":    pubPlaceholder(t, dir, tc.source, 1),
+				"typed":    pubPlaceholder(t, dir, tc.source, 2),
+				"external": pubPlaceholder(t, dir, tc.source, 3),
+			}
+			log := pubLog(t,
+				pubRepair(item(1), pubOpenedA, 1, "reproduced on the staging cluster last Tuesday"),
+				pubRepair(item(2), pubOpenedA, 1, item(2)),
+				pubExternal(item(3), pubOpenedA, "F-needs-key-rotation"),
+			)
+			var res scanPublishResult
+			var err error
+			stderr := captureStderr(t, func() {
+				res, err = publishHandoffs(root, scanPublishOpts{Judgments: log, Target: tc.target}, false, io.Discard)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := map[string]bool{"prose": tc.want.prose, "typed": tc.want.typed, "external": tc.want.external}
+			published := 0
+			for name, path := range phs {
+				got := pubParse(t, path).Handoff != ""
+				_, statErr := os.Stat(filepath.Join(dir, handoffCompanionName(path)))
+				if got != want[name] || (statErr == nil) != want[name] {
+					t.Errorf("%s: pointer=%v companion=%v, want published=%v\n%s", name, got, statErr == nil, want[name], stderr)
+				}
+				if got {
+					published++
+				}
+			}
+			if res.Published != published || res.Unpublished != 3-published {
+				t.Errorf("counts = %+v, want %d published", res, published)
+			}
+			if !tc.want.prose && !strings.Contains(stderr, item(1)+": evidence is not a typed reference") {
+				t.Errorf("free-prose evidence not named with its field:\n%s", stderr)
+			}
+			if !tc.want.external && !strings.Contains(stderr, item(3)+": required_action is free text") {
+				t.Errorf("external judgment's free-text action not named with its field:\n%s", stderr)
+			}
+			// Free text must not be on disk anywhere when it was not published.
+			if !tc.want.external {
+				if strings.Contains(treeText(t, root), "rotate the signing key") || strings.Contains(treeText(t, root), "the key has been rotated") {
+					t.Error("a withheld free-text field reached the tree")
+				}
+			}
+		})
+	}
+}
+
+// treeText concatenates every file under root except .git, for "this text is nowhere" checks.
+func treeText(t *testing.T, root string) string {
+	t.Helper()
+	var b strings.Builder
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		raw, _ := os.ReadFile(p)
+		b.Write(raw)
+		return nil
+	})
+	return b.String()
+}
+
+// TestScanPublishPublicAllowlist — under a public root every string field of a judgment must be a
+// closed shape: prose in author_tier or in any verification.source field is held back, named with
+// its field, and never reaches the tree. A typed repair and a full typed verification block pass.
+//
+// regression: F-judged-free-text-public — the scrub listed four free-text fields and published the rest of the record whole.
+func TestScanPublishPublicAllowlist(t *testing.T) {
+	const prose = "see the internal runbook at the staging bastion"
+	home := scanHomeRepo()
+	item := fmt.Sprintf("%s#77", home)
+	verified := func(mut func(*issueflow.IntakeHandoff)) issueflow.IntakeHandoff {
+		h := pubRepair(item, pubOpenedA, 1, item)
+		h.Verification = &issueflow.Handoff{Schema: issueflow.HandoffSchema, Disposition: issueflow.Repair, DecidingRole: "intake-desk", Successor: item,
+			Source: issueflow.HandoffSource{Repo: home, Brief: "alpha/01", SourceVersion: "1", SourceRevision: "0123abcd", ReceiptID: "receipt-1", CaseID: "repair/existing", Rows: []int{1, 2}, BlockerRef: "#12"}}
+		if mut != nil {
+			mut(&h)
+		}
+		return h
+	}
+	cases := []struct {
+		name  string
+		h     issueflow.IntakeHandoff
+		field string // "" = published
+	}{
+		{"typed repair", pubRepair(item, pubOpenedA, 1, item), ""},
+		{"typed verification block", verified(nil), ""},
+		{"author_tier prose", verified(func(h *issueflow.IntakeHandoff) { h.AuthorTier = prose }), "author_tier"},
+		{"source_version prose", verified(func(h *issueflow.IntakeHandoff) { h.Verification.Source.SourceVersion = prose }), "verification.source.source_version"},
+		{"source_revision prose", verified(func(h *issueflow.IntakeHandoff) { h.Verification.Source.SourceRevision = prose }), "verification.source.source_revision"},
+		{"receipt_id prose", verified(func(h *issueflow.IntakeHandoff) { h.Verification.Source.ReceiptID = prose }), "verification.source.receipt_id"},
+		{"case_id prose", verified(func(h *issueflow.IntakeHandoff) { h.Verification.Source.CaseID = prose }), "verification.source.case_id"},
+		{"overlong evidence", pubRepair(item, pubOpenedA, 1, "F-"+strings.Repeat("a", 200)), "evidence"},
+		{"external_role prose", func() issueflow.IntakeHandoff {
+			h := pubRepair(item, pubOpenedA, 1, item)
+			h.ExternalRole = prose
+			return h
+		}(), "external_role"},
+		{"deciding_role prose", func() issueflow.IntakeHandoff {
+			h := pubRepair(item, pubOpenedA, 1, item)
+			h.DecidingRole = prose
+			return h
+		}(), "deciding_role"},
+		{"successor prose", func() issueflow.IntakeHandoff {
+			h := pubRepair(item, pubOpenedA, 1, item)
+			h.Successor = prose
+			return h
+		}(), "successor"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root, dir := pubRoot(t)
+			path := pubPlaceholder(t, dir, home, 77)
+			var res scanPublishResult
+			var err error
+			stderr := captureStderr(t, func() {
+				res, err = publishHandoffs(root, scanPublishOpts{Judgments: pubLog(t, tc.h)}, false, io.Discard)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			published := pubParse(t, path).Handoff != ""
+			if tc.field == "" {
+				if !published || res.Published != 1 {
+					t.Fatalf("a closed-shape judgment was held back: %+v\n%s", res, stderr)
+				}
+				return
+			}
+			if published || res.Unpublished != 1 || !strings.Contains(stderr, tc.field) {
+				t.Fatalf("published=%v res=%+v, want unpublished naming %q:\n%s", published, res, tc.field, stderr)
+			}
+			if strings.Contains(treeText(t, root), "staging bastion") {
+				t.Fatal("prose from a withheld field reached the tree")
+			}
+		})
+	}
+}
+
+// TestPublicAllowlistEveryString — every string field of a judgment, found by walking the record's
+// type rather than by a hand list, is refused under a public root when it carries prose, and the
+// refusal names that field. A string field added to the record later is walked here too, so it
+// turns this test red until publicFormRefusal checks it.
+//
+// regression: F-judged-allowlist-default — the allowlist checked only the fields it named, so a field added later was published whole.
+func TestPublicAllowlistEveryString(t *testing.T) {
+	const prose = "see the internal runbook at the staging bastion"
+	home := scanHomeRepo()
+	item := fmt.Sprintf("%s#77", home)
+	base := func() issueflow.IntakeHandoff {
+		h := pubRepair(item, pubOpenedA, 1, item)
+		h.Verification = &issueflow.Handoff{Schema: issueflow.HandoffSchema, Disposition: issueflow.Repair, DecidingRole: "intake-desk", Successor: item,
+			Source: issueflow.HandoffSource{Repo: home, Brief: "alpha/01", SourceVersion: "1", SourceRevision: "0123abcd", ReceiptID: "receipt-1", CaseID: "repair/existing", Rows: []int{1, 2}, BlockerRef: "#12"}}
+		return h
+	}
+	if got := publicFormRefusal(base()); got != "" {
+		t.Fatalf("the typed base record is refused: %s", got)
+	}
+	var paths []string
+	var walk func(v reflect.Value, prefix string, at []int)
+	walk = func(v reflect.Value, prefix string, at []int) {
+		for i := 0; i < v.NumField(); i++ {
+			f := v.Type().Field(i)
+			if !f.IsExported() {
+				continue
+			}
+			path := prefix + jsonFieldName(f)
+			idx := append(append([]int{}, at...), i)
+			ft := f.Type
+			if ft.Kind() == reflect.Pointer {
+				ft = ft.Elem()
+			}
+			switch {
+			case ft.Kind() == reflect.String:
+				paths = append(paths, path)
+				t.Run(path, func(t *testing.T) {
+					h := base()
+					fieldByIndex(reflect.ValueOf(&h).Elem(), idx).SetString(prose)
+					got := publicFormRefusal(h)
+					if got == "" || !strings.HasPrefix(got, path+" ") {
+						t.Fatalf("%s set to prose: refusal %q, want one naming %s", path, got, path)
+					}
+				})
+			case ft.Kind() == reflect.Struct && ft != reflect.TypeOf(time.Time{}):
+				fv := v.Field(i)
+				if fv.Kind() == reflect.Pointer {
+					fv = fv.Elem()
+				}
+				walk(fv, path+".", idx)
+			}
+		}
+	}
+	walk(reflect.ValueOf(base()), "", nil)
+	if len(paths) < 20 {
+		t.Fatalf("walked %d string fields, want every one of the record's (at least 20): %v", len(paths), paths)
+	}
+}
+
+// fieldByIndex follows idx through v, dereferencing a pointer on the way.
+func fieldByIndex(v reflect.Value, idx []int) reflect.Value {
+	for _, i := range idx {
+		if v.Kind() == reflect.Pointer {
+			v = v.Elem()
+		}
+		v = v.Field(i)
+	}
+	return v
+}
+
+// TestPublicUncoveredFields — the coverage walk finds a field the list does not name, at the top
+// level and inside a nested block, and finds none in the judgment record as it stands.
+//
+// regression: F-judged-allowlist-default — a field added to the record was never looked at.
+func TestPublicUncoveredFields(t *testing.T) {
+	type inner struct {
+		Repo  string    `json:"repo"`
+		Extra int       `json:"extra"`
+		At    time.Time `json:"at"`
+	}
+	type probe struct {
+		Schema string `json:"schema"`
+		Note   string `json:"note,omitempty"`
+		Block  *inner `json:"block"`
+		hidden string
+	}
+	_ = probe{hidden: "unexported fields are skipped"}.hidden
+	covered := map[string]string{"schema": "string", "block.repo": "string", "block.at": "time"}
+	got := strings.Join(uncoveredFields(reflect.TypeOf(probe{}), "", covered), ",")
+	if got != "note,block.extra" {
+		t.Fatalf("uncovered = %q, want note,block.extra", got)
+	}
+	if u := publicUncovered(); len(u) > 0 {
+		t.Fatalf("the judgment record has fields the public allowlist does not cover: %v", u)
+	}
+}
+
+// TestPublicCoverageShape — a listed field whose type no longer matches the shape it was checked
+// for, and a field promoted from an unexported embedded struct, are both reported.
+//
+// regression: F-judged-allowlist-shape — coverage was by path only (review finding 6362-a6).
+func TestPublicCoverageShape(t *testing.T) {
+	type source struct {
+		Rows  []string       `json:"rows"`
+		Extra map[string]int `json:"extra"`
+		Any   any            `json:"any"`
+	}
+	type promoted struct {
+		Comment string `json:"comment"`
+	}
+	type probe struct {
+		promoted
+		Schema string `json:"schema"`
+		Source source `json:"source"`
+		Skip   string `json:"-"`
+	}
+	covered := map[string]string{"schema": "string", "source.rows": "[]int", "source.extra": "map[string]int", "source.any": "string"}
+	got := strings.Join(uncoveredFields(reflect.TypeOf(probe{}), "", covered), ",")
+	want := "comment,source.rows (shape []string, listed as []int),source.any (shape interface, listed as string)"
+	if got != want {
+		t.Fatalf("uncovered = %q, want %q", got, want)
+	}
+	if u := publicUncovered(); len(u) > 0 {
+		t.Fatalf("the judgment record has fields the public allowlist does not cover: %v", u)
+	}
+}
+
+// TestPublicCoverageEmbeddedTags plants one embedded struct per json tag shape and requires the
+// coverage walk to name its field at the path encoding/json writes it to: promoted for no tag or an
+// options-only tag, nested under the name for a named tag. A walk that skips any of them is fail-open.
+// regression: 6362-a8
+func TestPublicCoverageEmbeddedTags(t *testing.T) {
+	type plain struct {
+		A string `json:"a"`
+	}
+	type opts struct {
+		B string `json:"b"`
+	}
+	type named struct {
+		C string `json:"c"`
+	}
+	type Exported struct {
+		D string `json:"d"`
+	}
+	type hidden struct {
+		E string `json:"e"`
+	}
+	cases := []struct {
+		name  string
+		probe any
+		want  string
+	}{
+		{"untagged", struct{ plain }{}, "a"},
+		{"options-only", struct {
+			opts `json:",omitempty"`
+		}{}, "b"},
+		{"named", struct {
+			named `json:"inner"`
+		}{}, "inner.c"},
+		{"exported options-only", struct {
+			Exported `json:",omitempty"`
+		}{}, "d"},
+		{"pointer named", struct {
+			*named `json:"inner"`
+		}{&named{}}, "inner.c"},
+		{"dash", struct {
+			hidden `json:"-"`
+		}{}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := strings.Join(uncoveredFields(reflect.TypeOf(c.probe), "", map[string]string{}), ",")
+			if got != c.want {
+				t.Fatalf("uncovered = %q, want %q", got, c.want)
+			}
+			// The probe's own control: encoding/json writes exactly the leaf the walk names.
+			b, err := json.Marshal(c.probe)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want := map[string]string{"": `{}`, "a": `{"a":""}`, "b": `{"b":""}`, "d": `{"d":""}`, "inner.c": `{"inner":{"c":""}}`}[c.want]
+			if string(b) != want {
+				t.Fatalf("encoding/json wrote %s, want %s: the probe does not match the walk's path", b, want)
+			}
+		})
+	}
+}
+
+// covMarshalBlob has no exported field, but encoding/json writes whatever its MarshalJSON returns.
+type covMarshalBlob struct{ text string }
+
+func (b covMarshalBlob) MarshalJSON() ([]byte, error) { return json.Marshal(b.text) }
+
+// covTextLevel is an int kind that encoding/json writes as text, through MarshalText.
+type covTextLevel int
+
+func (covTextLevel) MarshalText() ([]byte, error) { return []byte("PROSE"), nil }
+
+// covPtrBlob marshals itself only through a pointer receiver, which encoding/json calls on the
+// value a pointer field points at.
+type covPtrBlob struct{ text string }
+
+func (b *covPtrBlob) MarshalJSON() ([]byte, error) { return json.Marshal(b.text) }
+
+// TestPublicCoverageMarshaler plants a field whose type marshals itself (a struct with only
+// unexported fields and a MarshalJSON, the same reached through a pointer field with a
+// pointer-receiver MarshalJSON, and an int kind with a MarshalText) and requires the coverage
+// walk to report it with the shape "marshaler": unlisted, and listed as the kind it looks like.
+// regression: security advisory A7 on this change (a self-marshalling type escaped the walk);
+// the pointer field pins advisory A9 and finding 6362-a11 (the pointer-receiver arm).
+func TestPublicCoverageMarshaler(t *testing.T) {
+	type probe struct {
+		Schema string         `json:"schema"`
+		Blob   covMarshalBlob `json:"blob"`
+		Ptr    *covPtrBlob    `json:"ptr"`
+		Level  covTextLevel   `json:"level"`
+		Levels []covTextLevel `json:"levels"`
+		At     time.Time      `json:"at"`
+	}
+	covered := map[string]string{"schema": "string", "level": "int", "levels": "[]int", "at": "time"}
+	got := strings.Join(uncoveredFields(reflect.TypeOf(probe{}), "", covered), ",")
+	want := "blob,ptr,level (shape marshaler, listed as int),levels (shape []marshaler, listed as []int)"
+	if got != want {
+		t.Fatalf("uncovered = %q, want %q", got, want)
+	}
+	// The probe's own control: encoding/json writes the planted text through each marshaler.
+	b, err := json.Marshal(probe{Blob: covMarshalBlob{"PROSE"}, Ptr: &covPtrBlob{"PROSE"}, Level: 1, Levels: []covTextLevel{1}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(b), "PROSE") != 4 {
+		t.Fatalf("encoding/json wrote %s, want PROSE four times: the probe does not marshal itself", b)
+	}
+	if u := publicUncovered(); len(u) > 0 {
+		t.Fatalf("the judgment record has fields the public allowlist does not cover: %v", u)
+	}
+}
+
+// covRootSelf is a record whose own MarshalJSON decides what is written: its fields are all
+// covered, yet what encoding/json writes is the method's text.
+type covRootSelf struct {
+	Schema string `json:"schema"`
+}
+
+func (covRootSelf) MarshalJSON() ([]byte, error) { return []byte(`{"schema":"PROSE"}`), nil }
+
+// covRootPtrSelf is the same through a pointer receiver.
+type covRootPtrSelf struct {
+	Schema string `json:"schema"`
+}
+
+func (*covRootPtrSelf) MarshalJSON() ([]byte, error) { return []byte(`{"schema":"PROSE"}`), nil }
+
+// TestPublicCoverageRootMarshal requires a record type that marshals itself to be reported as
+// the record itself, though every field it declares is covered; a plain record reports nothing.
+// regression: security advisory A8 on this change (the record type itself was never checked).
+func TestPublicCoverageRootMarshal(t *testing.T) {
+	type plain struct {
+		Schema string `json:"schema"`
+	}
+	covered := map[string]string{"schema": "string"}
+	for _, tc := range []struct {
+		name string
+		typ  reflect.Type
+		want string
+	}{
+		{"value receiver", reflect.TypeOf(covRootSelf{}), "the record itself (shape marshaler)"},
+		{"pointer receiver", reflect.TypeOf(covRootPtrSelf{}), "the record itself (shape marshaler)"},
+		{"plain record", reflect.TypeOf(plain{}), ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := strings.Join(uncoveredRecord(tc.typ, covered), ","); got != tc.want {
+				t.Fatalf("uncovered = %q, want %q", got, tc.want)
+			}
+		})
+	}
+	// The probes' own control: encoding/json writes the method's text, not the field's value.
+	for _, v := range []any{covRootSelf{Schema: "x"}, &covRootPtrSelf{Schema: "x"}} {
+		if b, err := json.Marshal(v); err != nil || !strings.Contains(string(b), "PROSE") {
+			t.Fatalf("encoding/json wrote %s (%v), want the method's PROSE", b, err)
+		}
+	}
+}

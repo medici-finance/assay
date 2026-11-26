@@ -18,6 +18,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -289,7 +291,7 @@ func TestTriageDecisionLabelControl(t *testing.T) {
 		assertNoWrites(t, s)
 	})
 
-	t.Run("needs-decision refused under human-decided", func(t *testing.T) {
+	t.Run("unstructured reply cannot clear needs-decision", func(t *testing.T) {
 		s, rul := triageWorld(t)
 		url := plantDecision(s, triageIssue, "7005")
 		s.items[fmt.Sprintf("%s#%d", testRepo, triageIssue)] =
@@ -386,4 +388,241 @@ func TestTriageDryRunWritesNothing(t *testing.T) {
 		t.Fatalf("want exit 0 dry-run, got %d\n%s", code, out)
 	}
 	assertNoWrites(t, s)
+}
+
+const queuedAsk = "<!-- decision-gate: assay:demo:sample:02 -->\n\nOptions:\n\n1. Prepare the candidate.\n2. Return it.\n"
+
+func queuedWorld(t *testing.T, body, reply string) (*stubRemote, string, string) {
+	t.Helper()
+	s, rul, _ := recWorld(t, recT0)
+	key := fmt.Sprintf("%s#%d", testRepo, triageIssue)
+	s.items[key] = strings.Replace(s.items[key], `{"name":"human-decided"}`, `{"name":"needs-decision"},{"name":"keep"}`, 1)
+	s.items[key] = strings.Replace(s.items[key], strconv.Quote(recIssueBody()), strconv.Quote(body), 1)
+	url := plantAtComment(s, triageIssue, "7007", blessLogin, blessID, "User", recT1, reply)
+	return s, rul, url
+}
+
+func TestTriageQueuedDecision(t *testing.T) {
+	s, rul, url := queuedWorld(t, queuedAsk, " sample/02: 1")
+	code, out := recClose(t, rul, url, "--dry-run")
+	if code != 0 || !strings.Contains(out, "needs-decision -> human-decided") {
+		t.Fatalf("dry-run did not describe the verified transition: code %d: %s", code, out)
+	}
+	assertNoWrites(t, s)
+	code, out = recClose(t, rul, url)
+	if code != 0 {
+		t.Fatalf("close: code %d: %s", code, out)
+	}
+	it, err := fetchItem(testRepo, triageIssue, deskkit.TargetIssue)
+	if err != nil || !it.closed() || hasLabel(it, labelNeedsDecision) || !hasLabel(it, dispositionHumanDecided) || !hasLabel(it, "keep") {
+		t.Fatalf("issue after close: %+v (%v)", it, err)
+	}
+	if rec := recDecode(t, s); rec.Picked != "1" || rec.Brief != "sample/02" {
+		t.Fatalf("wrong recorded ruling: %+v", rec)
+	}
+	writes := len(s.writes())
+	if code, _ := recClose(t, rul, url); code != 0 || len(s.writes()) != writes {
+		t.Fatal("closed replay must be a no-op")
+	}
+}
+
+func TestTriageQueueRefusals(t *testing.T) {
+	for _, reply := range []string{"1", "sample/03: 1", "sample/02: 3", "sample/02: 1?", "> sample/02: 1", "    sample/02: 1", "sample/02: 1 or 2", "sample/02: 1 — if it passes"} {
+		t.Run(reply, func(t *testing.T) {
+			s, rul, url := queuedWorld(t, queuedAsk, reply)
+			if code, _ := recClose(t, rul, url); code != deskkit.ExitRefused {
+				t.Fatalf("want refusal, got %d", code)
+			}
+			assertNoWrites(t, s)
+		})
+	}
+	for _, tc := range []struct {
+		name  string
+		code  int
+		stage func(*stubRemote)
+	}{
+		{"edited", 5, func(s *stubRemote) {
+			plantEditedComment(s, triageIssue, "7007", blessLogin, blessID, "User", recT1, "2026-10-04T00:00:00Z", "sample/02: 1")
+		}},
+		{"hidden", 5, func(s *stubRemote) {
+			s.comment["7007"] = strings.Replace(s.comment["7007"], `"minimized":false`, `"minimized":true`, 1)
+		}},
+		{"another human reply", 5, func(s *stubRemote) {
+			plantAtComment(s, triageIssue, "7008", blessLogin, blessID, "User", "2026-10-04T00:00:00Z", "Wait")
+		}},
+		{"reopened", 5, func(s *stubRemote) {
+			s.queueStateEvents = []deskkit.IssueStateEvent{{Kind: deskkit.IssueEventReopened, CreatedAt: recT1}}
+		}},
+		{"requeued", 5, func(s *stubRemote) {
+			s.queueLabelEvents = []deskkit.LabelEvent{{Name: labelNeedsDecision, CreatedAt: recT1}}
+		}},
+		{"incomplete label history", 6, func(s *stubRemote) { s.queueLabelsIncomplete = true }},
+		{"incomplete reopen history", 6, func(s *stubRemote) { s.queueStatesIncomplete = true }},
+		{"record thread unreadable on second read", 6, func(s *stubRemote) {
+			s.threadFailFrom[fmt.Sprintf("%s#%d", testRepo, triageIssue)] = 2
+		}},
+		{"trusted question after ruling", 5, func(s *stubRemote) {
+			plantAtComment(s, triageIssue, "7008", recAppSlug, recAppID, "Bot", "2026-10-04T00:00:00Z", "## Options\nA. Start over\nB. Stop")
+		}},
+		{"reply update predates its creation", 5, func(s *stubRemote) {
+			plantEditedComment(s, triageIssue, "7007", blessLogin, blessID, "User", recT1, recT0, "sample/02: 1")
+		}},
+		{"unknown body edits", 6, func(s *stubRemote) { s.bodyEditUnknown = true }},
+		{"body changed", 5, func(s *stubRemote) {
+			s.bodyEdited[fmt.Sprintf("%s#%d", testRepo, triageIssue)] = "2026-10-04T00:00:00Z"
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, rul, url := queuedWorld(t, queuedAsk, "sample/02: 1")
+			tc.stage(s)
+			if code, _ := recClose(t, rul, url); code != tc.code {
+				t.Fatalf("want %d, got %d", tc.code, code)
+			}
+			assertNoWrites(t, s)
+		})
+	}
+}
+
+func TestTriageQueuedRelay(t *testing.T) {
+	const offered = "## Options\nA. Ship\nB. Return"
+	const relayAt = "2026-10-02T08:00:00Z"
+	for _, tc := range []struct {
+		name, reply, relayUpdated, reason string
+	}{
+		{"ratified", "ratified", relayAt, ""},
+		{"qualified reply", "ratified in principle", relayAt, "does not select one offered option"},
+		{"no ratification", "received", relayAt, "does not resolve to an offered choice"},
+		{"relay edited after ruling", "ratified", "2026-10-04T00:00:00Z", "changed after the decision"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, rul, url := queuedWorld(t, offered, tc.reply)
+			plantEditedComment(s, triageIssue, "7006", recAppSlug, recAppID, "Bot", relayAt, tc.relayUpdated, "Answer: B")
+			code, out := recClose(t, rul, url)
+			if tc.reason == "" {
+				if code != deskkit.ExitOK {
+					t.Fatalf("ratified relay: exit %d, want 0: %s", code, out)
+				}
+				if rec := recDecode(t, s); rec.Picked != "B" || rec.PickedVia != deskkit.DecisionViaRatified {
+					t.Fatalf("recorded %q via %q, want B via the relay", rec.Picked, rec.PickedVia)
+				}
+				return
+			}
+			detail := recLastTriageDetail(t, os.Getenv("HOME"))
+			if code != deskkit.ExitRefused || !strings.Contains(detail, tc.reason) {
+				t.Fatalf("exit %d, detail %q; want refusal containing %q", code, detail, tc.reason)
+			}
+			assertNoWrites(t, s)
+		})
+	}
+}
+
+func TestTriageQueuedLabelAcknowledgedWithoutChange(t *testing.T) {
+	for _, label := range []string{dispositionHumanDecided, labelNeedsDecision} {
+		t.Run(label, func(t *testing.T) {
+			s, rul, url := queuedWorld(t, queuedAsk, "sample/02: 1")
+			s.unreflectedLabel = label
+			code, _ := recClose(t, rul, url)
+			detail := recLastTriageDetail(t, os.Getenv("HOME"))
+			if code != deskkit.ExitUnverifiable || !strings.Contains(detail, "decision label "+label+" did not reach") {
+				t.Fatalf("unreflected %s: exit %d, want 6 at read-back; detail %q", label, code, detail)
+			}
+			it, err := fetchItem(testRepo, triageIssue, deskkit.TargetIssue)
+			if err != nil || it.closed() || !hasLabel(it, labelNeedsDecision) ||
+				hasLabel(it, dispositionHumanDecided) != (label == labelNeedsDecision) {
+				t.Fatalf("unexpected issue after acknowledged %s: %+v (%v)", label, it, err)
+			}
+		})
+	}
+}
+
+func TestTriageQueuedLabelRetry(t *testing.T) {
+	s, rul, url := queuedWorld(t, queuedAsk, "sample/02: 2")
+	s.failApply = true
+	if code, _ := recClose(t, rul, url); code == 0 {
+		t.Fatal("failed add must hold the close")
+	}
+	it, _ := fetchItem(testRepo, triageIssue, deskkit.TargetIssue)
+	if !hasLabel(it, labelNeedsDecision) || hasLabel(it, dispositionHumanDecided) || it.closed() {
+		t.Fatalf("failed add: %+v", it)
+	}
+	s.failApply = false
+	s.failRemove = true
+	if code, _ := recClose(t, rul, url); code == 0 {
+		t.Fatal("failed removal must hold the close")
+	}
+	it, _ = fetchItem(testRepo, triageIssue, deskkit.TargetIssue)
+	if !hasLabel(it, labelNeedsDecision) || !hasLabel(it, dispositionHumanDecided) || it.closed() {
+		t.Fatalf("partial transition: %+v", it)
+	}
+	s.failRemove = false
+	if code, out := recClose(t, rul, url); code != 0 {
+		t.Fatalf("retry %d: %s", code, out)
+	}
+	if rec := recDecode(t, s); rec.Picked != "2" {
+		t.Fatalf("return decision recorded as %+v", rec)
+	}
+}
+
+func TestTriageQueuedCloseRetryReadsNewReply(t *testing.T) {
+	s, rul, url := queuedWorld(t, queuedAsk, "sample/02: 1")
+	key := fmt.Sprintf("%s#%d", testRepo, triageIssue)
+	s.failPost[key] = true
+	if code, _ := recClose(t, rul, url); code == 0 {
+		t.Fatal("failed receipt must leave the issue open")
+	}
+	it, _ := fetchItem(testRepo, triageIssue, deskkit.TargetIssue)
+	if hasLabel(it, labelNeedsDecision) || !hasLabel(it, dispositionHumanDecided) || it.closed() {
+		t.Fatalf("partial close: %+v", it)
+	}
+	s.failPost[key] = false
+	plantAtComment(s, triageIssue, "7008", blessLogin, blessID, "User", "2026-10-04T00:00:00Z", "Hold")
+	writes := len(s.writes())
+	if code, _ := recClose(t, rul, url); code != deskkit.ExitRefused || len(s.writes()) != writes {
+		t.Fatalf("stale ruling on retry: exit %d", code)
+	}
+}
+
+func TestTriageQueueVisibleOffer(t *testing.T) {
+	for _, body := range []string{"~~~\n## Options\nA. example\n~~~", "> ## Options\n> A. example", "    ## Options\n    A. example"} {
+		s, rul, url := queuedWorld(t, body, "A")
+		if code, _ := recClose(t, rul, url); code != deskkit.ExitRefused {
+			t.Fatalf("example option in %q: exit %d", body, code)
+		}
+		assertNoWrites(t, s)
+	}
+	_, rul, url := queuedWorld(t, "## Options\nA. Ship\nB. Return", "B")
+	if code, _ := recClose(t, rul, url); code != 0 {
+		t.Fatalf("direct issue choice: exit %d", code)
+	}
+}
+
+func TestTriageQueuedProtectedOrSameTracker(t *testing.T) {
+	for _, label := range []string{deskkit.VerifyGateLabel, "human-only"} {
+		s, rul, url := queuedWorld(t, queuedAsk, "sample/02: 1")
+		key := fmt.Sprintf("%s#%d", testRepo, triageIssue)
+		s.items[key] = strings.Replace(s.items[key], `"name":"keep"`, `"name":`+strconv.Quote(label), 1)
+		if code, _ := recClose(t, rul, url); code != deskkit.ExitRefused {
+			t.Fatalf("label %s: %d", label, code)
+		}
+		assertNoWrites(t, s)
+	}
+	s, rul, url := queuedWorld(t, queuedAsk, "sample/02: 1")
+	if code, _ := recClose(t, rul, url, "--tracker", fmt.Sprint(triageIssue)); code != deskkit.ExitRefused {
+		t.Fatalf("self tracker: %d", code)
+	}
+	assertNoWrites(t, s)
+}
+
+func TestTriageQueueGitLab(t *testing.T) {
+	s, rul, _ := queuedWorld(t, queuedAsk, "sample/02: 1")
+	s.forge = deskkit.ForgeGitLab
+	s.host = glHost
+	url := fmt.Sprintf("https://%s/%s/-/issues/%d#note_7007", glHost, testRepo, triageIssue)
+	if code, out := recClose(t, rul, url); code != 0 {
+		t.Fatalf("GitLab decision: %d %s", code, out)
+	}
+	it, err := fetchItem(testRepo, triageIssue, deskkit.TargetIssue)
+	if err != nil || !it.closed() || hasLabel(it, labelNeedsDecision) || !hasLabel(it, dispositionHumanDecided) {
+		t.Fatalf("issue: %+v (%v)", it, err)
+	}
 }

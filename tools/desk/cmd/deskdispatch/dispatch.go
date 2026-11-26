@@ -160,6 +160,12 @@ type dispatchOpts struct {
 	promptFile  string
 	quiet       bool
 	dryRun      bool
+
+	// npmPackage, npmCache and npmBuild are --stage-npm's --package, --cache and
+	// --build: the admitted npm staging step of a verifier run (#7572).
+	npmPackage string
+	npmCache   string
+	npmBuild   bool
 	// itemAlias is the `<alias>:` prefix split off the item key (deliverable.go) — the alias the
 	// brief is TRACKED under. item carries the key WITHOUT it, so every derivation below (claim
 	// key, branch, worktree name) sees the ordinary grammar.
@@ -172,6 +178,11 @@ type dispatchOpts struct {
 	// repo its item-key prefix or brief-v2 id names, and its deliverable PR opens in --repo. Without
 	// it, a --repo that differs from the resolved repo stays the HARD FAIL (deliverable.go).
 	crossRepo bool
+	// targetChange and targetHead are --target-change / --target-head (#7623): a verifier
+	// run admitted at an UNMERGED change head instead of merged main. Both or neither;
+	// verifier kit only; admission rules live in deskkit.AdmitVerifierHead.
+	targetChange int
+	targetHead   string
 	// contextSnapshot and contextReceipt are --context-snapshot / --context-receipt (statusgen/21,
 	// pickup.go): the receipt is rechecked against the snapshot before the claim.
 	contextSnapshot, contextReceipt string
@@ -186,7 +197,8 @@ type dispatchOpts struct {
 	// run carries what the dispatch minted back to cmdDispatch's audit line. A POINTER, because
 	// dispatch() works on copies of the options (resolveBrief returns a new value) and the audit
 	// line is written from the caller's copy. nil on paths that mint nothing (--stamp-only).
-	run *dispatchRun
+	reviewRun string // embedded by the Go claim tool at review acquisition
+	run       *dispatchRun
 }
 
 // dispatchRun is the per-run state a dispatch hands back to its own audit line.
@@ -287,10 +299,14 @@ func dispatch(o dispatchOpts) error {
 		}
 		shownBranch := branch
 		if plan.detached {
-			shownBranch = fmt.Sprintf("(detached off origin/main — %s touches no branch)", o.kit)
+			shownBranch = fmt.Sprintf("(detached off %s — %s touches no branch)", detachedBaseLabel(o), o.kit)
 		}
-		fmt.Printf("deskdispatch: PLAN (dry run — nothing touched) item=%s repo=%s tier=%s kit=%s branch=%s%s\n",
-			o.item, repo, o.tier, o.kit, shownBranch, wtBanner)
+		claimBanner := ""
+		if ns := plan.claimNamespace(); ns != repo {
+			claimBanner = " claim-repo=" + ns
+		}
+		fmt.Printf("deskdispatch: PLAN (dry run — nothing touched) item=%s repo=%s%s tier=%s kit=%s branch=%s%s\n",
+			o.item, repo, claimBanner, o.tier, o.kit, shownBranch, wtBanner)
 		for i, s := range dispatchSteps {
 			fmt.Printf("  %d %s\n", i+1, s)
 		}
@@ -326,6 +342,8 @@ func dispatch(o dispatchOpts) error {
 				return oerr
 			}
 			plan.outcomePath = dir
+			// The snapshot retention, listed and never applied: a dry run removes nothing.
+			reportVerifySnaps(plan.claimKey, true)
 		}
 		prompt, perr := assemblePrompt(o, plan, plan.home)
 		if perr != nil {
@@ -419,31 +437,48 @@ func dispatch(o dispatchOpts) error {
 	// the forge-ref store writes refs on the forge; a store that writes none is handed none.
 	// (Every store this build can resolve to is the forge-ref store, so every dispatch still
 	// mints here exactly as before; the decision gate below reads the same resolution.)
+	claimRepo := plan.claimNamespace()
 	var auth claimAuth
 	if plan.claimStore.NeedsForgeCredential {
 		var aerr error
-		auth, aerr = resolveClaimAuth(o, repo, plan.forgeKind, plan.claimToolIsScript)
+		claimKind := plan.forgeKind
+		if plan.claimForgeKind != "" {
+			claimKind = plan.claimForgeKind
+		}
+		auth, aerr = resolveClaimAuth(o, claimRepo, claimKind, plan.claimToolIsScript)
 		if aerr != nil {
 			return aerr
 		}
 	}
 
+	// A review checkout and its claim share this per-run identity. Reusing the
+	// desk session and claim key for a later review must not reuse its lease.
+	var dispatchRef string
+	if reviewKit(o.kit) {
+		dispatchRef = mintDispatchRef(plan)
+		o.reviewRun = dispatchRef
+	}
 	// ADMISSION (example-stream/18) then the durable item claim, as one sequence: see admitAndClaim.
-	if err := admitAndClaim(o, plan, repo, auth, func() error {
-		return stepClaim(o, repo, plan.claimTool, plan.claimToolIsScript, auth, plan.claimKey)
+	if err := admitAndClaim(o, plan, claimRepo, auth, func() error {
+		return stepClaim(o, claimRepo, plan.claimTool, plan.claimToolIsScript, auth, plan.claimKey)
 	}); err != nil {
 		return err
 	}
 	o.say("%s OK: %s claimed in %s (claim key %s) via %s, store %s, authenticated by %s",
-		stepClaimAcquire, o.item, repo, plan.claimKey, plan.claimTool, plan.claimStore.Label(), auth.source)
+		stepClaimAcquire, o.item, claimRepo, plan.claimKey, plan.claimTool, plan.claimStore.Label(), auth.source)
 	// From here every abort returns through held.settle, which releases the claim (#2355).
-	held := &heldClaim{o: o, tool: plan.claimTool, key: plan.claimKey, repo: repo, auth: auth}
+	held := &heldClaim{o: o, tool: plan.claimTool, key: plan.claimKey, repo: claimRepo, auth: auth}
 
 	// dispatch_ref: the per-RUN key, minted right after the claim stands —
 	// the claim key alone names the ITEM, which every re-dispatch, re-review and stale reclaim
 	// reuses. A mint failure (the secure source failing) is a WARNING: the dispatch proceeds with
 	// no ref and never falls back to a weaker source.
-	dispatchRef := mintDispatchRef(o, plan)
+	if !reviewKit(o.kit) {
+		dispatchRef = mintDispatchRef(plan)
+	}
+	if o.run != nil {
+		o.run.dispatchRef = dispatchRef
+	}
 
 	// 2 — the agent's worktree, in the ITEM's repo. deskwt owns the safety here (a
 	// sanctioned path prefix, an unambiguous base, no clobber of an existing target), so
@@ -494,6 +529,11 @@ func dispatch(o dispatchOpts) error {
 		return held.settle(wt.run.FailVerbatim(deskkit.ExitUnverifiable, msg))
 	}
 	home := firstLine(wt.stdout)
+	_, receipt, _ := strings.Cut(strings.TrimSpace(wt.stdout), "\n")
+	handoff := workerResume(o) && strings.TrimSpace(receipt) == deskkit.BriefHandoffReceipt
+	if handoff && dispatchRef == "" {
+		return held.settle(deskkit.Unverifiable("brief handoff requires a new dispatch receipt; the original home is retained", nil))
+	}
 	// Absoluteness is tested with homeIsAbsolute (filepath.IsAbs under the host-OS seam), not a
 	// literal leading-slash prefix: deskwt is Windows-aware and on native Windows deliberately picks
 	// the sanctioned <repo-root>/.claude/worktrees/ prefix, whose home is a drive-rooted `C:\...`
@@ -512,6 +552,12 @@ func dispatch(o dispatchOpts) error {
 			"step %s: `deskwt add %s` exited 0 but named no absolute worktree path (%q). The agent's home "+
 				"is the isolation floor every other clause rests on, so a home this verb cannot state is a "+
 				"dispatch it must not make. The claim was %s.", stepWorktreeCreate, wtName, wt.stdout, released), nil))
+	}
+	// From here an abort also removes the home this run created (abortHome), so a refused
+	// dispatch leaves no full checkout behind. A resumed worker's adopted home and a
+	// verifier's custody home are never this run's to discard.
+	if !workerResume(o) && !verifierKit(o.kit) {
+		held.home = home
 	}
 	// IDENTITY, worktree-scoped (#1490). The dispatched agent's worktree must commit under its
 	// OWN role's App identity, not the identity the shared checkout carries — otherwise a
@@ -548,7 +594,7 @@ func dispatch(o dispatchOpts) error {
 		idSuffix = " identity=" + deskkit.RoleIdentityLabel(plan.identityRole)
 	}
 	if plan.detached {
-		o.say("%s OK: %s detached off origin/main (%s: no branch)%s", stepWorktreeCreate, home, o.kit, idSuffix)
+		o.say("%s OK: %s detached off %s (%s: no branch)%s", stepWorktreeCreate, home, detachedBaseLabel(o), o.kit, idSuffix)
 	} else {
 		o.say("%s OK: %s on %s%s", stepWorktreeCreate, home, branch, idSuffix)
 	}
@@ -561,20 +607,29 @@ func dispatch(o dispatchOpts) error {
 	// the two-layer stop; a failure here degrades to Layer B (the desk window's cadence sweep)
 	// and is REPORTED, never silent — but it never fails the dispatch, which is already claimed,
 	// homed and identity-stamped.
-	if ext := runCmd(home, "git", "config", "extensions.worktreeConfig", "true"); ext.err == nil {
-		if rk := runCmd(home, "git", "config", "--worktree", "assay.runKey", plan.claimKey); rk.err == nil {
-			o.say("%s OK: recorded run key %s (assay.runKey) in %s", stepWorktreeCreate, plan.claimKey, home)
+	if !handoff {
+		if ext := runCmd(home, "git", "config", "extensions.worktreeConfig", "true"); ext.err == nil {
+			// Where the claim was taken, recorded BEFORE the key so a key never exists without
+			// its namespace unless the write failed (deskwt holds a key with no recorded namespace:
+			// "absent from this repo's claim listing" proves a release only for the repo and
+			// store the claim was taken in). A cross-repository verifier claims in the TRACKING
+			// repo while its home is cut from the deliverable checkout.
+			recordClaimNamespace(o, home, plan)
+			if rk := runCmd(home, "git", "config", "--worktree", "assay.runKey", plan.claimKey); rk.err == nil {
+				o.say("%s OK: recorded run key %s (assay.runKey) in %s", stepWorktreeCreate, plan.claimKey, home)
+			} else {
+				o.say("%s WARNING: could not record assay.runKey=%s in %s (%s) — the per-run stop's "+
+					"cooperative layer is off for this run; the desk-window sweep still covers it",
+					stepWorktreeCreate, plan.claimKey, home, rk.run.Said())
+			}
 		} else {
-			o.say("%s WARNING: could not record assay.runKey=%s in %s (%s) — the per-run stop's "+
-				"cooperative layer is off for this run; the desk-window sweep still covers it",
-				stepWorktreeCreate, plan.claimKey, home, rk.run.Said())
+			o.say("%s WARNING: could not enable extensions.worktreeConfig in %s (%s) — the per-run "+
+				"stop's cooperative layer is off for this run; the desk-window sweep still covers it",
+				stepWorktreeCreate, home, ext.run.Said())
 		}
-	} else {
-		o.say("%s WARNING: could not enable extensions.worktreeConfig in %s (%s) — the per-run "+
-			"stop's cooperative layer is off for this run; the desk-window sweep still covers it",
-			stepWorktreeCreate, home, ext.run.Said())
+		recordDispatchRefInWorktree(o, home, dispatchRef)
+
 	}
-	recordDispatchRefInWorktree(o, home, dispatchRef)
 
 	// before_run — runs after the worktree is prepared and BEFORE the prompt is emitted (the
 	// agent's "run"). FATAL failure class: a failure ABORTS the attempt — no prompt is
@@ -644,6 +699,7 @@ func dispatch(o dispatchOpts) error {
 		// stays open, which never binds a change and is never listed as work.
 		receipt, aerr := attestWorkerDispatchFn(o, plan, repo, home)
 		if aerr != nil {
+			held.home = "" // the attestation record names this home: keep it for recovery
 			released := held.release()
 			return held.settle(deskkit.Unverifiable(fmt.Sprintf("step %s: worker pre-work attestation failed; NO prompt emitted. "+
 				"The claim was %s; the worktree %s is kept. Re-dispatch for a new run after investigating: %v",
@@ -667,7 +723,22 @@ func dispatch(o dispatchOpts) error {
 		return held.settle(serr)
 	}
 	o.say("%s %s", stepModelStamp, stamp)
-	writeDispatchRecord(o, plan, dispatchRef, stamp)
+	if handoff {
+		// Preserve the previous key until all fallible preparation has finished.
+		// Write the run record before exposing its PR key to the resumed worker.
+		rec := buildDispatchRecord(o, plan, dispatchRef, stamp)
+		if err := appendDispatchRecord(&rec); err != nil {
+			return held.settle(deskkit.Unverifiable("could not record the brief-to-PR dispatch; original checkout retained", err))
+		}
+		if r := runCmd(home, "git", "config", "--worktree", "assay.runKey", plan.claimKey); r.err != nil {
+			return held.settle(deskkit.Unverifiable("could not record the PR run key; retry the PR dispatch", r.err))
+		}
+		if r := runCmd(home, "git", "config", "--worktree", "assay.dispatchRef", dispatchRef); r.err != nil {
+			return held.settle(deskkit.Unverifiable("could not record the PR dispatch receipt; retry the PR dispatch", r.err))
+		}
+	} else {
+		writeDispatchRecord(o, plan, dispatchRef, stamp)
+	}
 
 	// 6 — the review-lane queue label. When a reviewer is dispatched onto a known change,
 	// apply `authorization-needed` forge-neutrally (the resolved forge's idempotent label
@@ -700,6 +771,8 @@ func dispatch(o dispatchOpts) error {
 			return held.settle(oerr)
 		}
 		plan.outcomePath = dir
+		// Idle verification snapshots go, as week-old outcome records just did; never this claim's.
+		reportVerifySnaps(plan.claimKey, false)
 		// The verifier's read-ahead packet is built only after provenance is established.
 		plan.packetPath = buildPacketFn(o, plan, repo, home)
 		plan.performancePath = writePerformanceHandoff(plan.childPerformance)
@@ -713,7 +786,7 @@ func dispatch(o dispatchOpts) error {
 	if emitErr == nil {
 		// 8 — say what has NOT happened. This verb prepares a run; it never starts the agent, so
 		// the claim just placed has no progress behind it until the caller launches and advances it.
-		o.notLaunched(plan, repo, home)
+		o.notLaunched(plan, plan.claimNamespace(), home)
 	}
 	return held.settle(emitErr)
 }
@@ -767,6 +840,14 @@ type dispatchPlan struct {
 	// derived once from the item key by claimKeyFor, so the acquire call and the release
 	// hint in the prompt cannot drift onto two different keys.
 	claimKey string
+	// claimRepo is the repository whose claim namespace holds the durable claim. It is the
+	// deliverable repo (repo) for every dispatch but a cross-repository VERIFIER, whose claim is
+	// taken in the TRACKING repo — where the brief, its board row, its Evidence and its outcome
+	// record live — so the one invocation verifyloop prints claims, verifies and lands in the
+	// same tracking namespace (#5999). Read it through claimNamespace, never directly.
+	claimRepo string
+	// claimForgeKind is the forge serving claimRepo; empty when it is repo's own forge.
+	claimForgeKind deskkit.ForgeKind
 	// claimTool is the RESOLVED claim-tool invocation target: the absolute
 	// tools/dispatch-claim.sh path when the resolved root carries it, else the bare
 	// goClaimBinary name (deskclaim-ref) resolved on PATH. claimToolIsScript records which,
@@ -892,6 +973,9 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	}
 	if o.kit == "verifier" && (o.model == "" || o.brief == "" || o.pr != 0) {
 		return plan, deskkit.Refused("verifier dispatch requires explicit --model and a source brief; --pr is not a pre-work attestation target")
+	}
+	if err := verifierTargetShape(o); err != nil {
+		return plan, err
 	}
 
 	// --worktree is accepted ONLY together with --dry-run. On a real dispatch the home is the
@@ -1022,6 +1106,11 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	} else if repo, err = o.resolveRepo(); err != nil {
 		return plan, err
 	}
+	if o.hasVerifierTarget() {
+		if err := verifierTargetPreconditions(o, dl, repo); err != nil {
+			return plan, err
+		}
+	}
 	if !deskkit.IsAllowedRepo(repo) {
 		return plan, deskkit.Refused(fmt.Sprintf(
 			"step %s: %s is not in the desk repo set — this verb dispatches work only into repos the desk "+
@@ -1055,11 +1144,30 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 	// another store. An unset key, or a valid key naming a store this build does not ship
 	// (medici-finance/assay#2753), is the one-window legacy resolution, whose NOTICE is printed
 	// on every run.
-	store, serr := deskkit.ResolveClaimStore(repo)
+	// A cross-repository VERIFIER claims in the TRACKING repo (#5999): the Verify rows run against
+	// the deliverable, but the brief, its Evidence and its outcome record land in the tracking repo,
+	// so its claim does too — one invocation that claims, verifies and lands, all keyed to the repo
+	// the verify queue names the item by. Worker and review dispatches keep the deliverable claim.
+	if verifierKit(o.kit) && dl.crossRepo(o.root) {
+		target, terr := verifierTrackingTarget(o, dl)
+		if terr != nil {
+			return plan, terr
+		}
+		tracking := target.Repo.Slug()
+		if !deskkit.IsAllowedRepo(tracking) {
+			return plan, deskkit.Refused(fmt.Sprintf(
+				"step %s: the tracking repo %s is not in the desk repo set — a cross-repository verifier "+
+					"claims there, so it must be rostered. Nothing was claimed.", stepClaimAcquire, tracking))
+		}
+		plan.claimRepo = tracking
+		plan.claimForgeKind = target.Kind
+		plan.outcomeTarget = target
+	}
+	store, serr := deskkit.ResolveClaimStore(plan.claimNamespace())
 	if serr != nil {
 		return plan, deskkit.Unverifiable(fmt.Sprintf(
 			"step %s: no dispatch claim can be taken for %s — the claim store did not resolve. Nothing was "+
-				"claimed, cut or minted.", stepClaimAcquire, repo), serr)
+				"claimed, cut or minted.", stepClaimAcquire, plan.claimNamespace()), serr)
 	}
 	plan.claimStore = store
 	if store.Notice != "" {
@@ -1090,18 +1198,8 @@ func validateCallerPreconditions(o dispatchOpts) (dispatchPlan, error) {
 			return plan, ferr
 		}
 		plan.forgeKind = target.Kind
-		if verifierKit(o.kit) {
+		if verifierKit(o.kit) && !dl.crossRepo(o.root) {
 			plan.outcomeTarget = target
-			if dl.crossRepo(o.root) {
-				tracking, err := verifierTrackingRepo(o, dl)
-				if err != nil {
-					return plan, err
-				}
-				plan.outcomeTarget, err = resolveTargetForge(tracking, dl.trackingRoot)
-				if err != nil {
-					return plan, err
-				}
-			}
 		}
 	}
 
@@ -1374,6 +1472,9 @@ func stepClaim(o dispatchOpts, repo, script string, isScript bool, auth claimAut
 				"double-dispatches.", stepClaimAcquire, script), err)
 	}
 	args := []string{"acquire", claimKey, "--repo", repo}
+	if o.reviewRun != "" && !isScript {
+		args = append(args, "--review-run", o.reviewRun)
+	}
 	if o.branch != "" {
 		args = append(args, "--branch", o.branch)
 	}
@@ -1385,6 +1486,15 @@ func stepClaim(o dispatchOpts, repo, script string, isScript bool, auth claimAut
 	case deskkit.ExitRefused:
 		show := runCmdEnv(o.root, auth.env, script, append([]string{"show", claimKey, "--repo", repo}, auth.args...)...)
 		holder := firstLine(show.stdout)
+		var primary string
+		for line := range strings.SplitSeq(show.stdout, "\n") {
+			fields := strings.Fields(strings.TrimPrefix(line, "dispatch-claim: "))
+			if len(fields) >= 2 && fields[0] == "HELD" && fields[1] == claimKey {
+				primary = line
+				holder = line
+				break
+			}
+		}
 		// ALIAS-HELD: the key itself reads FREE but another spelling of the same PR is live
 		// (medici-finance/assay#3700). That is a live holder by definition, so it is named as
 		// one and never run through the staleness read below, which would take state/age from
@@ -1417,13 +1527,13 @@ func stepClaim(o dispatchOpts, repo, script string, isScript bool, auth claimAut
 		// a ref the claim tool would reclaim on its very next acquire.
 		if show.err == nil && strings.TrimSpace(show.stdout) != "" &&
 			!strings.Contains(show.stdout, "FREE "+claimKey) {
-			if stale, state, ageMin := holderIsStale(show.stdout); stale {
+			if stale, state, ageMin := holderIsStale(primary); stale {
 				return deskkit.Refused(fmt.Sprintf(
 					"step %s: %s is held by a STALE claim (state=%s age=%dm, past its TTL) — a dead "+
 						"dispatcher's claim, NOT a live holder. It is reclaimable: the claim tool reclaims a "+
 						"stale claim on its next `acquire`, so re-run; if it persists (its branch is still in "+
 						"flight, a branch-as-claim the tool keeps) reclaim deliberately with `%s steal %s "+
-						"--repo %s --reason <why>%s`. This verb still does not steal inline. Existing claim: %s.",
+						"--repo %s --reason <why>%s`. If you reclaim an unlaunched lease, release it in that session before rerunning dispatch (see --help). Existing claim: %s.",
 					stepClaimAcquire, claimKey, state, ageMin, script, claimKey, repo,
 					claimCredArg(script, stampRoleForKit(o.kit), repo, dispatcherLoop()), holder))
 			}
@@ -1518,6 +1628,15 @@ func releaseClaim(o dispatchOpts, script string, auth claimAuth, claimKey, repo 
 	return "released"
 }
 
+// claimNamespace is the repository the durable claim is taken, advanced and released in:
+// claimRepo when the plan routed it (a cross-repository verifier, #5999), else the deliverable.
+func (p dispatchPlan) claimNamespace() string {
+	if p.claimRepo != "" {
+		return p.claimRepo
+	}
+	return p.repo
+}
+
 // heldClaim is the item claim from the moment stepClaim places it until the dispatch either
 // emits its prompt or aborts. It is the ONE place a post-claim abort releases: every return in
 // dispatch() after the claim goes through settle, so a refusal later in the run (the decision
@@ -1528,6 +1647,9 @@ type heldClaim struct {
 	tool, key    string
 	repo, phrase string
 	auth         claimAuth
+	// home is the worktree this run created, set once it stands; "" when there is none or
+	// it must be kept. A release that succeeds removes it (abortHome).
+	home string
 }
 
 // release releases the claim once and returns releaseClaim's phrase; later calls return the
@@ -1535,8 +1657,24 @@ type heldClaim struct {
 func (h *heldClaim) release() string {
 	if h.phrase == "" {
 		h.phrase = releaseClaim(h.o, h.tool, h.auth, h.key, h.repo)
+		if h.home != "" && h.phrase == "released" {
+			h.phrase += abortHome(h.o, h.home)
+		}
 	}
 	return h.phrase
+}
+
+// abortHome removes the home an aborted dispatch created, through `deskwt remove` so every
+// one of its gates (dirty, unpushed, a live claim, a foreign lock) still applies — never a
+// raw delete. It runs only after the claim release succeeded: with the claim still held,
+// deskwt would rightly refuse, and a home whose claim could not be released is evidence.
+// A refusal is reported, never fatal: the abort's own error is what the caller acts on.
+func abortHome(o dispatchOpts, home string) string {
+	r := runCmd(o.root, "deskwt", "remove", home)
+	if r.err != nil {
+		return "; its worktree " + home + " was NOT removed (" + r.run.Said() + ") — remove it with `deskwt remove " + home + "`"
+	}
+	return "; its worktree " + home + " was removed"
 }
 
 // settle passes a nil error through (the dispatch succeeded and the claim is the agent's). A
@@ -1810,16 +1948,37 @@ func resolveClaimAuthGitLab(role, repo string, isScript bool) (claimAuth, error)
 // is named here against the same contract rather than as a bare literal.
 const claimedClaimTTL = 20 * time.Minute
 
-// claimStateFieldRe / claimAgeFieldRe pull the `state=` and `age=<N>m` fields out of the claim
-// tool's `show` output (dispatch-claim.sh cmd_show prints
-// `HELD <id> — ... state=<state> ... age=<N>m`).
-var (
-	claimStateFieldRe = regexp.MustCompile(`state=([A-Za-z]+)`)
-	claimAgeFieldRe   = regexp.MustCompile(`age=(\d+)m`)
-)
+// claimLineFields reads the `state=` and `age=<N>m` fields from the claim tool's primary HELD
+// line by their POSITION in the wire grammar, never by the first match anywhere on the line.
+// The tool prints `HELD <id> — dispatch-claim <id> owner=… state=… branch=… [note=…] at=<date>
+// age=<N>m[ PREPARED-NOT-LAUNCHED …]`. The note is holder-written text: a steal reason, or a tag
+// minted by another writer, can leave whitespace in it, so a note may hold standalone `state=`
+// or `age=` words (medici-finance/assay#7305). So:
+//
+//   - state is the first `state=` word BEFORE the first `note=` word, where the builder writes
+//     it; one found only after the note is not the claim's own and reads as absent;
+//   - age is the LAST `age=` word on the line: the tool writes its own after the whole claim
+//     message, and the PREPARED-NOT-LAUNCHED suffix carries no `age=` word. An unreadable last
+//     age (`age=?m`) stays unreadable; it never falls back to an earlier, note-supplied one.
+func claimLineFields(line string) (state, age string) {
+	inNote := false
+	for _, word := range strings.Fields(line) {
+		if strings.HasPrefix(word, "note=") {
+			inNote = true
+		}
+		if v, ok := strings.CutPrefix(word, "state="); ok && !inNote && state == "" {
+			state = v
+		}
+		if v, ok := strings.CutPrefix(word, "age="); ok {
+			age = v
+		}
+	}
+	return state, age
+}
 
-// holderIsStale reports whether a claim `show` output describes a holder past its state's TTL —
-// a DEAD claim the two-phase dispatch-claim contract makes reclaimable, not a live holder.
+// holderIsStale reports whether a claim tool's primary HELD line describes a holder past its
+// state's TTL — a DEAD claim the two-phase dispatch-claim contract makes reclaimable, not a live
+// holder. The fields come from claimLineFields, never from a first match on the line.
 //
 // The TTLs are that contract: state=dispatched → deskkit.DefaultStaleClaim (120m),
 // state=claimed → claimedClaimTTL (20m). A missing or unparseable state/age, or an
@@ -1827,17 +1986,15 @@ var (
 // and never reported as reclaimable, the same fail-closed direction deskkit's own isStale
 // takes (never steal a claim you cannot prove is dead). state and ageMin are returned for the
 // message even when stale is false, so the caller can name what it read.
-func holderIsStale(showOut string) (stale bool, state string, ageMin int) {
+func holderIsStale(line string) (stale bool, state string, ageMin int) {
 	ageMin = -1
-	sm := claimStateFieldRe.FindStringSubmatch(showOut)
-	am := claimAgeFieldRe.FindStringSubmatch(showOut)
-	if sm != nil {
-		state = strings.ToLower(sm[1])
-	}
-	if am == nil {
+	rawState, rawAge := claimLineFields(line)
+	state = strings.ToLower(rawState)
+	digits, ok := strings.CutSuffix(rawAge, "m")
+	if !ok || digits == "" || strings.Trim(digits, "0123456789") != "" {
 		return false, state, ageMin
 	}
-	n, err := strconv.Atoi(am[1])
+	n, err := strconv.Atoi(digits)
 	if err != nil {
 		return false, state, ageMin
 	}

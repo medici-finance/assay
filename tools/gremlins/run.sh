@@ -7,11 +7,12 @@
 # itself broke (install, pin check, a Gremlins failure, a package whose tests are
 # red in the mutant copy layout, or no evidence at all). See README.md here.
 #
-# RUN IT IN A DISPOSABLE CHECKOUT. Gremlins copies the Go module into
-# $TMPDIR/gremlins-*/wd-* for every mutant. The desk module reaches files two
-# levels up (its go.mod replaces ../../forgeread, and tests read ../../docs), so
-# TMPDIR is set to the checkout root: then wd-*/../.. is the checkout root and
-# those paths resolve. The copies are deleted on exit.
+# THE SWEPT TREE HAS NO .git. Gremlins copies the Go module into $TMPDIR/gremlins-*/wd-*
+# for every mutant, and the module reaches two levels up (go.mod replaces ../../forgeread,
+# tests read ../../docs), so TMPDIR must be a root laid out like the checkout. The run
+# makes that root itself: a copy of the checkout without .git, in a fresh temporary
+# directory. The shared git test harness refuses a TMPDIR inside a repository. The
+# checkout is never written. The copy and the mutant copies are deleted on exit.
 #
 # usage: run.sh -o OUT_DIR [-b SECONDS] [-w WORKERS] [--day N] [--root DIR]
 #               [--gremlins BIN] [PKG[:SECONDS] ...]
@@ -80,19 +81,27 @@ case "$budget$workers" in *[!0-9]*) die "budget and workers must be whole number
 [ -n "$day" ] || day=$(($(date -u +%s) / 86400))
 [ -n "$root" ] || root="$here/../.."
 root="$(cd "$root" && pwd)"
-module="$root/tools/desk"
-[ -f "$module/go.mod" ] || die "no tools/desk/go.mod under $root"
+[ -f "$root/tools/desk/go.mod" ] || die "no tools/desk/go.mod under $root"
 command -v timeout >/dev/null || die "GNU timeout is required"
-for left in "$root"/gremlins-*; do
-	[ -e "$left" ] && die "$left exists; run in a fresh disposable checkout"
-done
 
 mkdir -p "$out/bin"
 out="$(cd "$out" && pwd)"
-gotmp="$(mktemp -d "${TMPDIR:-/tmp}/gremlins-gotmp.XXXXXX")"
+gotmp="" stage=""
 # shellcheck disable=SC2329 # invoked by the EXIT trap
-cleanup() { rm -rf "$root"/gremlins-* "$gotmp"; }
+cleanup() { rm -rf "$stage" "$gotmp"; }
 trap cleanup EXIT
+gotmp="$(mktemp -d "${TMPDIR:-/tmp}/gremlins-gotmp.XXXXXX")"
+
+# The swept tree: the checkout without .git, so no repository encloses any directory the
+# tests use as TMPDIR. Git inside a test would otherwise discover the checkout's own
+# repository and could write to it.
+stage="$(mktemp -d "${TMPDIR:-/tmp}/gremlins-root.XXXXXX")"
+if git -C "$stage" rev-parse --git-dir >/dev/null 2>&1; then
+	die "$stage is inside a git repository; point TMPDIR outside every repository"
+fi
+(cd "$root" && tar --exclude=./.git -cf - .) | tar -xf - -C "$stage" || die "cannot copy $root to $stage"
+module="$stage/tools/desk"
+[ -f "$module/go.mod" ] || die "no tools/desk/go.mod in the copy of $root"
 
 # --- install and verify the pinned Gremlins --------------------------------
 if [ -z "$gremlins" ]; then
@@ -161,13 +170,13 @@ for spec in "${pkgs[@]}"; do
 	# 3. Copy probe, the positive control for the layout: the package's tests must
 	# pass in a module copy two levels below the root, exactly where Gremlins puts
 	# each mutant. Red here means every kill below would be false.
-	probe="$root/gremlins-probe/wd-probe"
+	probe="$stage/gremlins-probe/wd-probe"
 	mkdir -p "$(dirname "$probe")"
 	cp -R "$module" "$probe"
 	rc=0
-	(cd "$probe" && TMPDIR="$root" GOTMPDIR="$gotmp" timeout --kill-after=30 "$b" \
+	(cd "$probe" && TMPDIR="$stage" GOTMPDIR="$gotmp" timeout --kill-after=30 "$b" \
 		go test -count=1 "./$pkg") >"$dir/probe.log" 2>&1 || rc=$?
-	rm -rf "$root/gremlins-probe"
+	rm -rf "$stage/gremlins-probe"
 	if [ "$rc" -ne 0 ]; then
 		record "$pkg" probe-red "$(wall)" "$rc" - "$dir/probe.log" "$bin"
 		continue
@@ -178,7 +187,7 @@ for spec in "${pkgs[@]}"; do
 	args=(unleash --workers "$workers" "${MUTATORS[@]}" -o "$dir/report.json")
 	[ -z "$exclude" ] || args+=(--exclude-files "$exclude")
 	rc=0
-	(cd "$module" && TMPDIR="$root" GOTMPDIR="$gotmp" GOFLAGS=-count=1 \
+	(cd "$module" && TMPDIR="$stage" GOTMPDIR="$gotmp" GOFLAGS=-count=1 \
 		timeout --signal=INT --kill-after=60 "$b" "$gremlins" "${args[@]}" "$pkg") >"$dir/run.log" 2>&1 || rc=$?
 	case "$rc" in
 	0) if [ -s "$dir/report.json" ]; then state=ok; else state=failed; fi ;;
@@ -187,12 +196,12 @@ for spec in "${pkgs[@]}"; do
 	esac
 	record "$pkg" "$state" "$(wall)" "$rc" "$dir/report.json" "$dir/run.log" "$bin"
 	echo "   $state in $(wall)s"
-	rm -rf "$root"/gremlins-*
+	rm -rf "$stage"/gremlins-*
 done
 
 # --- triage -----------------------------------------------------------------
 rc=0
-"$out/bin/gremlintriage" triage -manifest "$manifest" -module-root "$module" \
+"$out/bin/gremlintriage" triage -manifest "$manifest" -module-root "$root/tools/desk" \
 	-md "$out/summary.md" -json "$out/triage.json" || rc=$?
 echo "summary: $out/summary.md"
 exit "$rc"

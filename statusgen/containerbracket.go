@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/deskcore/attestation"
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // The container bracket (desktools-v2/71). A runner inside a --network none
@@ -141,7 +142,10 @@ type bracketReceipt struct {
 	// ModuleCache is the module cache the open step downloaded for the home
 	// (--module-cache, #4683); nil when the open step downloaded none.
 	ModuleCache *receiptModuleCache `json:"module_cache,omitempty"`
-	Acceptance  *receiptAcceptance  `json:"acceptance,omitempty"`
+	// Roster is the roster copy the open step wrote for the container
+	// (--roster-copy, #6904); nil when it wrote none.
+	Roster     *receiptRoster     `json:"roster,omitempty"`
+	Acceptance *receiptAcceptance `json:"acceptance,omitempty"`
 }
 
 // receiptRunnerRe is the shape of a runner token executingRunner derives: a
@@ -263,6 +267,9 @@ func readBracketReceipt(path, home, brief string) (bracketReceipt, string, strin
 		return r, "", "", err
 	}
 	if err := moduleCacheRequirementProblem(home, r.ModuleCache); err != nil {
+		return r, "", "", err
+	}
+	if err := receiptRosterProblem(r.Roster); err != nil {
 		return r, "", "", err
 	}
 	b, err := checkBinding(r.Check)
@@ -393,6 +400,7 @@ type containerAdmit struct {
 	attestation, tree string
 	cell              bracketReceipt // Runner, RunnerSource, RunnerTree, OnBehalfOf
 	moduleCache       string         // the receipt's module cache digest, "" with none
+	roster            []byte         // the verified roster copy each row's HOME holds, nil with none
 }
 
 // containerAdmission is the container half: the host's receipt replaces
@@ -417,8 +425,14 @@ func containerAdmission(receiptPath, root, brief string) (containerAdmit, error)
 		}
 		moduleCache = r.ModuleCache.Digest
 	}
+	var roster []byte
+	if r.Roster != nil {
+		if roster, err = containerRosterCopy(root, r.Roster); err != nil {
+			return containerAdmit{}, fmt.Errorf("container admission refused; no Verify rows executed: %w", err)
+		}
+	}
 	cell := bracketReceipt{Check: r.Check, Runner: r.Runner, RunnerSource: r.RunnerSource, RunnerTree: r.RunnerTree, OnBehalfOf: r.OnBehalfOf, Acceptance: r.Acceptance}
-	return containerAdmit{attestation: line, tree: tree, cell: cell, moduleCache: moduleCache}, nil
+	return containerAdmit{attestation: line, tree: tree, cell: cell, moduleCache: moduleCache, roster: roster}, nil
 }
 
 // relWithin returns p's slash path relative to root when p lies inside root,
@@ -577,10 +591,13 @@ func runOpenBracket(home, brief, out, moduleCache string, stdout, stderr io.Writ
 	if len(historyOut) > 0 {
 		history = historyOut[0]
 	}
-	return runOpenAcceptance(home, brief, out, moduleCache, history, "", stdout, stderr)
+	return runOpenAcceptance(home, brief, out, moduleCache, history, "", "", false, stdout, stderr)
 }
 
-func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record string, stdout, stderr io.Writer) int {
+// runOpenAcceptance is the open step with every option. With rosterCopy it
+// also writes the container's roster copy (rostercopy.go) to that new file and
+// records it in the receipt.
+func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record, rosterCopy string, sourceAcceptance bool, stdout, stderr io.Writer) int {
 	refuse := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "statusgen verifyrun --open-bracket: refused, no receipt written: "+format+"\n", a...)
 		return verifyrunExitCouldNot
@@ -594,6 +611,17 @@ func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record string,
 	if moduleCache != "" {
 		if p := moduleCachePathProblem(home, moduleCache); p != "" {
 			return refuse("%s", p)
+		}
+	}
+	if rosterCopy != "" {
+		if p := rosterCopyPathProblem(home, rosterCopy); p != "" {
+			return refuse("%s", p)
+		}
+		if canonicalPath(rosterCopy) == canonicalPath(out) || (historyOut != "" && canonicalPath(rosterCopy) == canonicalPath(historyOut)) {
+			return refuse("--roster-copy needs its own output file")
+		}
+		if _, _, err := renderRosterCopy(); err != nil {
+			return refuse("%v", err)
 		}
 	}
 	// The Runner cell is derived here, on the host, where the home's git
@@ -610,7 +638,7 @@ func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record string,
 	if err != nil {
 		return refuse("%v", err)
 	}
-	_, hostBrief, admitted, err := verifierAdmissionReceipt(check, brief)
+	hostLine, hostBrief, admitted, err := verifierAdmissionReceipt(check, brief)
 	if err != nil {
 		return refuse("%v", err)
 	}
@@ -642,9 +670,29 @@ func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record string,
 	var acceptance *receiptAcceptance
 	if record != "" {
 		var why string
-		acceptance, _, why = hostAcceptance(home, brief, record, check)
+		var descriptor string
+		acceptance, descriptor, why = hostAcceptance(home, brief, record, check, hostLine, stderr)
 		if why != "" {
 			return refuse("%s", why)
+		}
+		if sourceAcceptance {
+			current, _, err := briefSections(brief)
+			if err != nil {
+				return refuse("%v", err)
+			}
+			if acceptance.Verify != current {
+				return refuse("source acceptance requires the byte-identical planned Verify section in admitted source")
+			}
+			// Use only descriptor bytes the planner just authenticated. A coordinate
+			// file may end with one newline; other encodings stay on the full-record path.
+			if acceptanceSHA([]byte(descriptor)) != acceptance.DescriptorSHA {
+				descriptor += "\n"
+			}
+			if len(descriptor) > 16384 || acceptanceSHA([]byte(descriptor)) != acceptance.DescriptorSHA {
+				return refuse("source acceptance requires a bounded canonical coordinate record")
+			}
+			acceptance.SourceRecord = descriptor
+			acceptance.Verify = ""
 		}
 		cell.RunnerTree = acceptance.Source
 	}
@@ -686,6 +734,12 @@ func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record string,
 			return refuse("%v", err)
 		}
 	}
+	var roster *receiptRoster
+	if rosterCopy != "" {
+		if roster, err = writeRosterCopy(rosterCopy); err != nil {
+			return refuse("%v", err)
+		}
+	}
 	quoted := func(s string) string { b, _ := json.Marshal(s); return string(b) }
 	body := `{"check":` + string(check) + `,"tree":"` + tree + `","opened":"` + opened +
 		`","runner":` + quoted(cell.Runner) + `,"runner_source":` + quoted(cell.RunnerSource) +
@@ -696,6 +750,13 @@ func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record string,
 			return refuse("%v", err)
 		}
 		body += `,"module_cache":` + string(m)
+	}
+	if roster != nil {
+		m, err := json.Marshal(roster)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		body += `,"roster":` + string(m)
 	}
 	if acceptance != nil {
 		a, err := json.Marshal(acceptance)
@@ -712,6 +773,10 @@ func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record string,
 	if mc != nil {
 		fmt.Fprintf(stdout, "module-cache %s digest=%s roots=%s\n", moduleCache, mc.Digest, strings.Join(mc.Roots, ","))
 		fmt.Fprintf(stdout, "container flags: %s\n", strings.Join(containerModuleCacheFlags(moduleCache), " "))
+	}
+	if roster != nil {
+		fmt.Fprintf(stdout, "roster-copy %s digest=%s keys=%s\n", rosterCopy, roster.Digest, strings.Join(roster.Keys, ","))
+		fmt.Fprintf(stdout, "container flags: %s\n", strings.Join(containerRosterFlags(rosterCopy), " "))
 	}
 	return verifyrunExitPass
 }
@@ -758,6 +823,9 @@ func findContainerBlock(text string) (containerBlock, error) {
 	}
 	lines := strings.Split(strings.TrimSuffix(text, "\n"), "\n")
 	for _, l := range lines {
+		if strings.HasPrefix(strings.TrimSpace(l), "Kubernetes-Observation:") {
+			return containerBlock{}, fmt.Errorf("the container witness already carries a host Kubernetes observation")
+		}
 		if strings.HasPrefix(strings.TrimSpace(l), strings.TrimSpace(admissionBracketPrefix)) {
 			return containerBlock{}, fmt.Errorf("this witness already carries an %sline", admissionBracketPrefix)
 		}
@@ -861,14 +929,13 @@ func witnessSeparatorLine(l string) bool {
 // exactly the run the witness and the receipt name AND the home's recomputed
 // tree digest equals both the receipt's tree and the witness's Tree-Digest.
 // Any mismatch or refusal writes nothing.
-func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stderr io.Writer, records ...string) int {
-	record := ""
-	if len(records) > 0 {
-		record = records[0]
-	}
+func runCloseBracket(home, brief, receiptPath, witnessPath, record, observation string, stdout, stderr io.Writer) int {
 	refuse := func(format string, a ...any) int {
 		fmt.Fprintf(stderr, "statusgen verifyrun --close-bracket: refused, nothing appended: "+format+"\n", a...)
 		return verifyrunExitCouldNot
+	}
+	if observation != "" && !sha256DigestRe.MatchString(observation) {
+		return refuse("Kubernetes observation must be a sha256 digest")
 	}
 	if rel, ok := relWithin(home, witnessPath); ok {
 		return refuse("the witness %s sits inside the home (%s)", witnessPath, rel)
@@ -966,22 +1033,6 @@ func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stder
 		}
 		cellBrief = hostBrief
 	}
-	if receipt.Acceptance != nil {
-		fresh, descriptor, why := hostAcceptance(home, brief, record, receipt.Check)
-		if why != "" {
-			return refuse("%s", why)
-		}
-		if !reflect.DeepEqual(fresh, receipt.Acceptance) {
-			return refuse("acceptance plan differs from the host re-plan (including the byte-exact execution table)")
-		}
-		current, _, err := briefSections(brief)
-		if err != nil {
-			return refuse("%v", err)
-		}
-		if why := acceptanceWitness(fresh, descriptor, block, current); why != "" {
-			return refuse("%s", why)
-		}
-	}
 	host, ok := hostRunnerCell(home, cellBrief)
 	if !ok {
 		return refuse("could-not-attribute — no executing identity is available on the host for %s, so the runner the receipt names cannot be confirmed", home)
@@ -1013,12 +1064,37 @@ func runCloseBracket(home, brief, receiptPath, witnessPath string, stdout, stder
 	if hostLine != block.attestation {
 		return refuse("the host check does not re-admit the run the witness names (run, source, brief, model or tier differ):\n  witness: %s\n  host:    %s", block.attestation, hostLine)
 	}
+	if receipt.Acceptance != nil {
+		fresh, descriptor, why := hostAcceptance(home, brief, record, check, hostLine, stderr)
+		if why != "" {
+			return refuse("%s", why)
+		}
+		current, _, err := briefSections(brief)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		observed, why := receipt.Acceptance.withSourceTable(current)
+		if why != "" {
+			return refuse("%s", why)
+		}
+		if !reflect.DeepEqual(fresh, observed) {
+			return refuse("acceptance plan differs from the host re-plan (including the byte-exact execution table)")
+		}
+		if why := acceptanceWitness(fresh, descriptor, block, current); why != "" {
+			return refuse("%s", why)
+		}
+	}
 	opened, _ := time.Parse(time.RFC3339, receipt.Opened)
 	closed := nowFunc().UTC()
 	if !closed.Truncate(time.Second).After(opened) {
 		return refuse("the close at %s is not after the receipt's opened time %s; the bracket's opened= must precede its closed=, so re-run the close once the clock has passed the open", closed.Format(time.RFC3339), receipt.Opened)
 	}
 	above := strings.Join(block.lines, "\n") + "\n"
+	// The host supplies the observation only after validating the complete,
+	// unmodified container witness. Include it in the same atomic close.
+	if observation != "" {
+		above += "Kubernetes-Observation: " + observation + "\n"
+	}
 	witness, err := bracketDigest(above)
 	if err != nil {
 		return refuse("%v", err)
@@ -1317,7 +1393,7 @@ func isWitnessHeaderLine(l string) bool {
 
 // witnessRunnerColumn is the Runner cell's index in a witness header line.
 func witnessRunnerColumn(header string) int {
-	for i, c := range splitRowEscaped(header) {
+	for i, c := range briefdoc.SplitRowEscaped(header) {
 		if strings.TrimSpace(c) == "Runner" {
 			return i
 		}
@@ -1333,7 +1409,7 @@ var onBehalfOfStampRe = regexp.MustCompile(`\(on-behalf-of human:[^\s()]+\)`)
 var cellWhitespaceRe = regexp.MustCompile(`[ \t]+`)
 
 // normaliseRunnerCell rewrites a table row's Runner cell (cell index col,
-// counted as splitRowEscaped counts them: `\|` is cell content): stamp
+// counted as briefdoc.SplitRowEscaped counts them: `\|` is cell content): stamp
 // removed, whitespace runs collapsed, trimmed. The rest of the row is kept
 // byte for byte. A row with too few cells is returned unchanged.
 func normaliseRunnerCell(row string, col int) string {
@@ -1363,15 +1439,18 @@ func normaliseRunnerCell(row string, col int) string {
 // The host re-derives every field at close; the offline reader checks internal
 // consistency and executes Verify verbatim without consulting Git or the forge.
 type receiptAcceptance struct {
-	DescriptorSHA string            `json:"descriptor_sha256"`
-	Source        string            `json:"source"`
-	RunSet        []string          `json:"run_set"`
-	Changes       string            `json:"changes"`
-	Added         []string          `json:"author_added"`
-	Verify        string            `json:"verify"`
-	VerifySHA     string            `json:"verify_sha256"`
-	Original      string            `json:"original"`
-	Revisions     map[string]string `json:"revisions"`
+	DescriptorSHA string   `json:"descriptor_sha256"`
+	Source        string   `json:"source"`
+	RunSet        []string `json:"run_set"`
+	Changes       string   `json:"changes"`
+	Added         []string `json:"author_added"`
+	Verify        string   `json:"verify,omitempty"`
+	// SourceRecord carries only the protected coordinates. The admitted Verify section
+	// supplies the exact plan bytes at execution, bound by VerifySHA and the home digest.
+	SourceRecord string            `json:"source_record,omitempty"`
+	VerifySHA    string            `json:"verify_sha256"`
+	Original     string            `json:"original"`
+	Revisions    map[string]string `json:"revisions"`
 }
 
 func acceptanceSHA(raw []byte) string {
@@ -1379,7 +1458,7 @@ func acceptanceSHA(raw []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func hostAcceptance(home, brief, record string, check []byte) (*receiptAcceptance, string, string) {
+func hostAcceptance(home, brief, record string, check []byte, hostLine string, stderr io.Writer) (*receiptAcceptance, string, string) {
 	binding, err := checkBinding(check)
 	if err != nil {
 		return nil, "", err.Error()
@@ -1400,6 +1479,13 @@ func hostAcceptance(home, brief, record string, check []byte) (*receiptAcceptanc
 	if err != nil {
 		return nil, "", err.Error()
 	}
+	// Both callers obtained hostLine from the fresh host check. At close it
+	// must also match the witness before it can authorize a read.
+	cred := newRunReadCredential(hostLine)
+	release := cred.bind(stderr)
+	defer release()
+	previousAdmission := verifyrunAdmission.Swap(verifyrunAdmitted)
+	defer verifyrunAdmission.Store(previousAdmission)
 	plan, descriptor, _, why := planAcceptanceRecord(brief, verify, evidence, record)
 	if why != "" {
 		return nil, "", why
@@ -1426,19 +1512,49 @@ func hostAcceptance(home, brief, record string, check []byte) (*receiptAcceptanc
 	return a, descriptor, ""
 }
 
+// withSourceTable expands only after checking the exact descriptor and Verify bytes.
+func (a *receiptAcceptance) withSourceTable(current string) (*receiptAcceptance, string) {
+	if a.SourceRecord == "" {
+		return a, ""
+	}
+	if a.Verify != "" || acceptanceSHA([]byte(current)) != a.VerifySHA ||
+		acceptanceSHA([]byte(a.SourceRecord)) != a.DescriptorSHA {
+		return nil, "source acceptance table or descriptor differs from the receipt"
+	}
+	full := *a
+	full.Verify, full.SourceRecord = current, ""
+	return &full, ""
+}
+
 func containerAcceptance(receipt bracketReceipt, record, verify string) (protectedPlan, string, bool, string) {
 	fail := func(why string) (protectedPlan, string, bool, string) {
 		return protectedPlan{}, "", false, "statusgen verifyrun: container acceptance refused; no row ran: " + why
 	}
 	a := receipt.Acceptance
-	if a == nil || record == "" {
+	if a == nil || (a.SourceRecord == "" && record == "") {
 		return fail("receipt acceptance and --acceptance-record must both be present")
 	}
 	binding, err := checkBinding(receipt.Check)
 	if err != nil || binding.Version != 1 {
 		return fail("--acceptance-record requires host execution and same-repository admission")
 	}
-	raw, descriptor, transition, why := readAcceptanceRecord(record)
+	var raw []byte
+	var descriptor, why string
+	var transition bool
+	if a.SourceRecord != "" {
+		if record != "" {
+			return fail("source acceptance already supplies its coordinate record")
+		}
+		raw = []byte(a.SourceRecord)
+		descriptor = strings.TrimSpace(a.SourceRecord)
+		a, why = a.withSourceTable(verify)
+		if why != "" {
+			return fail(why)
+		}
+		transition, why = acceptanceRecordKind(descriptor)
+	} else {
+		raw, descriptor, transition, why = readAcceptanceRecord(record)
+	}
 	if why != "" {
 		return fail(why)
 	}

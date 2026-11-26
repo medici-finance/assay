@@ -17,7 +17,7 @@ import (
 func TestCursorCommittedRuleMatchesSource(t *testing.T) {
 	if code := cursorCmd([]string{"--check", "--root", "../.."}); code != exitClean {
 		t.Fatalf("cursor --check against the repo root returned %d, want %d (clean) — "+
-			"the committed rule is out of sync with the resident source; run `go run ./tools/harnessgen cursor` and commit", code, exitClean)
+			"the committed rule is out of sync with the resident source; run `cd tools/harnessgen && go run . cursor --root ../..` and commit", code, exitClean)
 	}
 }
 
@@ -289,11 +289,20 @@ func TestCursorRootMarketplace(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(catalog), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	editorial := filepath.Join(root, "plugins", "editorial", ".cursor-plugin")
+	if err := os.MkdirAll(editorial, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(editorial, "plugin.json"), []byte(`{"name":"editorial","version":"1.0.0"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	catalogBody := `{
   "name": "assay",
   "owner": { "name": "example-owner" },
   "plugins": [
-    { "name": "assay", "source": "./plugins/assay", "version": "1.2.3" }
+    { "name": "assay", "source": "./plugins/assay", "version": "1.2.3" },
+    { "name": "editorial", "source": "./plugins/editorial" },
+    { "name": "claude-only", "source": "./plugins/claude-only" }
   ]
 }
 `
@@ -321,11 +330,14 @@ func TestCursorRootMarketplace(t *testing.T) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatalf("marketplace is not JSON: %v", err)
 	}
-	if m.Name != "assay" || m.Owner.Name != "example-owner" || len(m.Plugins) != 1 {
-		t.Fatalf("marketplace = %s, want name assay, owner example-owner, one plugin", raw)
+	if m.Name != "assay" || m.Owner.Name != "example-owner" || len(m.Plugins) != 2 {
+		t.Fatalf("marketplace = %s, want name assay, owner example-owner, two Cursor plugins", raw)
 	}
 	if m.Plugins[0]["name"] != "assay" || m.Plugins[0]["source"] != "./plugins/assay" {
 		t.Fatalf("marketplace entry = %v, want assay at ./plugins/assay", m.Plugins[0])
+	}
+	if m.Plugins[1]["name"] != "editorial" || m.Plugins[1]["source"] != "./plugins/editorial" {
+		t.Fatalf("editorial marketplace entry = %v", m.Plugins[1])
 	}
 	if _, has := m.Plugins[0]["version"]; has {
 		t.Fatalf("marketplace entry carries a version — the plugin manifest must be the one Cursor version location")

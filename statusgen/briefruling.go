@@ -172,7 +172,7 @@ func briefRulingLane(root, repo, base string, baseSnap, headSnap gateSnapshot) [
 		if len(names) == 0 {
 			names = []string{h.Board}
 		}
-		o := resolveBriefRuling(c, repo, h.Path, h.Ruling, names, briefIDs, logins, aliases)
+		o := resolveBriefRuling(c, repo, h.Path, h.Ruling, names, briefIDs, logins, aliases, subjectOf(h, decisionGateRegistry(root, base)))
 		if o.Present && o.Reason == rulingOK {
 			out = append(out, decisionGateResult{Board: h.Board,
 				Detail: fmt.Sprintf("%s: ruling: link added or changed by this change, ruled by %s (%s)", h.Path, o.Author, o.Detail)})

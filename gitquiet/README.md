@@ -21,6 +21,28 @@ manifest's test command inside `tools/desk`. The existing CI desk suite exercise
 the adapter and shared implementation; general module discovery also builds and
 vets this module.
 
+## Temporary roots outside every repository
+
+`Run` also refuses to run a package's tests when the temporary root (`os.TempDir()`,
+from `TMPDIR`, or `TMP`/`TEMP` on Windows) or `GOTMPDIR` (where `t.TempDir()` creates
+directories when it is set) is inside a git repository. A fixture that runs git in an
+empty temporary directory and expects "not a git repository" would otherwise discover
+the enclosing repository and write to it; from a linked worktree that is the shared
+checkout's config. The probe asks git itself with every inherited `GIT_*` variable
+removed, because an isolating child drops `GIT_CEILING_DIRECTORIES` too. A root git
+cannot check is refused as could-not-check: that includes a root inside a repository owned
+by another account (the probe keeps git's ownership check, so it never parses that
+repository's config) and any error other than one that starts with git's own
+`fatal: not a git repository`. With no git on `PATH` there is nothing that could discover
+a repository, and the probe passes. Point `TMPDIR` and `GOTMPDIR` at a
+directory outside every repository to clear the refusal.
+
+The desk CI shards run this refusal through the adapter's own test
+(`tools/desk/internal/gitquiet`: `TestAdapterRefusesTempInRepo`), and this module's tests
+and mutation map hold the same checks at the source. A harness that must put `TMPDIR`
+under a checkout (the daily Gremlins sweep once did) copies the tree without `.git`
+instead; `tools/gremlins/run.sh` does.
+
 ## Go telemetry in a scratch home (`goquiet`)
 
 The `goquiet` subpackage closes the same class of defect for the go command. Unless

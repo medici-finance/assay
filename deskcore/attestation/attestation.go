@@ -16,6 +16,10 @@ type Profile uint8
 const (
 	ContainerV1 Profile = iota
 	GeneralV1V2
+	// PreMergeV1 admits only a same-repository binding that names an
+	// unmerged change head (#7623). ContainerV1 and GeneralV1V2 refuse such a
+	// binding, so every crediting and scheduling reader fails closed on it.
+	PreMergeV1
 )
 const Title = "[verification-attestation] "
 const Preamble = "Dispatcher-owned pre-work attestation. This record contains NO verification result.\n\n"
@@ -39,6 +43,31 @@ type Binding struct {
 	// binding stays comparable; empty, it renders exactly as before. The '@'
 	// keeps each commit a bare git SHA to the outbound body scanner.
 	SiblingSources string `json:",omitempty"`
+	// TargetChange and TargetHead name the unmerged change and its exact head
+	// commit a pre-merge run is admitted at (#7623). Both are empty on every
+	// merged-main binding, which then renders exactly as before.
+	TargetChange int    `json:",omitempty"`
+	TargetHead   string `json:",omitempty"`
+}
+
+// Targeted reports whether the binding names an unmerged change head.
+func (b Binding) Targeted() bool { return b.TargetChange != 0 || b.TargetHead != "" }
+
+// PreMergeProblem checks a pre-merge binding's target: a same-repository
+// version-1 binding, a positive change number, and a 40-hex head that is the
+// bound source commit itself.
+func PreMergeProblem(b Binding) string {
+	switch {
+	case b.Version != 1:
+		return "a pre-merge binding must be a same-repository (version 1) binding"
+	case b.TargetChange <= 0:
+		return "a pre-merge binding needs a positive change number"
+	case len(b.TargetHead) != 40 || !creditHexCommitRe.MatchString(b.TargetHead):
+		return "a pre-merge binding's head is not a 40-hex commit"
+	case b.TargetHead != b.Source:
+		return "a pre-merge binding's head is not its bound source commit"
+	}
+	return ""
 }
 
 // ParseSiblingSources decodes SiblingSources. It refuses a malformed entry, a
@@ -102,8 +131,15 @@ func siblingSourcesProblem(b Binding) string {
 }
 
 func BindingProblem(b Binding, repo string, profile Profile, sourceAllowed bool) string {
-	if profile != ContainerV1 && profile != GeneralV1V2 {
+	if profile != ContainerV1 && profile != GeneralV1V2 && profile != PreMergeV1 {
 		return "unsupported attestation profile"
+	}
+	if profile == PreMergeV1 {
+		if why := PreMergeProblem(b); why != "" {
+			return why
+		}
+	} else if b.Targeted() {
+		return "a pre-merge (unmerged head) binding is never admitted for crediting, scheduling or Evidence"
 	}
 	switch {
 	case b.Version == 2 && profile == ContainerV1:

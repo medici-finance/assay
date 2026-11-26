@@ -1112,6 +1112,114 @@ RISK-VALUE: DERIVED — help tokens = {"-h","-help","--help"} @ tools/desk/inter
 
 **VERIFY: BLOCKED** — 17 of 20 rows passed in the admitted witness, and no acceptance obligation failed. Row 18 was not run: its live forge timings need a network-on lane with App identity (medici-finance/assay#4119). Row 19 is not settled: the whole-board lint is red on main only for neighbour briefs desk-tools/37, desktools-v2/65 and forge-neutral/54 (medici-finance/assay#4823), and its witness `pass` is the `; echo $?` artefact (medici-finance/assay#1906). Row 20 is the structural merged-tree case of medici-finance/assay#1281; its `fail` cell is the same artefact. Status stays where it is.
 
+### 2026-11-19 non-implementer verify-desk run on merged main 44a02f3d — admitted container witness (17 of 20 rows green; rows 18, 19 and 20 not settled; no acceptance obligation broken)
+
+This run re-verifies the brief at a newer source, 44a02f3dc7ab850eec2143981f060769ca9b492c, with statusgen v1.0.88 (verifier model claude-opus-5-5, tier strong). The earlier runs stay as dated history. Since the 2026-11-13 source 9338d440, 15 non-merge commits change the deskboard or deskflip packages. Two are desk-tools/48 (96810e71a, e44143b11: landing capacity in the throughput view). Two more change deskboard reads (f89e33981 batches stalled draft comment reads; 429785860 shares zero-CI observations). c24f37ea0 restores a deskboard mutation anchor. The rest change deskflip's ready backstop, BLOCKED handling, HEARTBEAT lease renewal, URL userinfo redaction and help text. None changes the flipConditions list, roots.go, sweep.go, desktoolspin.go, offlinecheck.go or helprequest.go.
+
+How it ran:
+
+- The host is darwin, where verifyrun cannot sandbox a check:ci row, so every witnessed row ran inside one closed admission bracket. The bracket was `statusgen verifyrun --open-bracket` on the host with a fresh module cache, then `statusgen verifyrun --sandbox=container-netns` in a `--network none` container, then `statusgen verifyrun --close-bracket` on the host. Every step ran from inside the home.
+- The image is the release verify-runner v1.0.88, pinned by its index digest sha256:dd758003b77fc718ec5b9b3e3a34529a422eb87316a605207bdad2560ca169bc (the Container-Image below).
+- The container ran with:
+  - a read-only root;
+  - every capability dropped, with no-new-privileges;
+  - a non-root user;
+  - the fresh module cache (the Module-Cache below) mounted read-only;
+  - GOPROXY=off, GOTOOLCHAIN=local, -mod=readonly and KUBECONFIG=/dev/null.
+- The container saw the detached home at the source commit, with the repository's git directory mounted read-only. It carried no forge secret. The trust roster reached it only as the bracket's read-only roster copy.
+- The bracket selected rows 1-17, 19 and 20, with `--timeout 45m` so the row 11 mutation harness could finish. The home was writable because that harness edits files in place.
+- Every mutant was restored. `git status` in the home was clean after the run, and the close step re-digested the same Tree-Digest that the open step recorded.
+- `statusgen verifyrun --bracket-digest` reports `verdict=match` for the Admission-Bracket line below. The row filter left row 18 out; it is recorded below.
+
+Witness bytes, exactly as verifyrun wrote and closed them:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `cd tools/desk && go build ./... && go vet ./...` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestPooledSweepNamesFailingRepo$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r2-1.out" 2>&1 && grep -F -e '--- PASS: TestPooledSweepNamesFailingRepo' "${TMPDIR:-/tmp}/dt27-r2-1.out"` | pass exit=0 sandbox=container-netns | sha256:e3e125eb0157 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestPooledOutputMatchesSerial$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r3-1.out" 2>&1 && grep -F -e '--- PASS: TestPooledOutputMatchesSerial' "${TMPDIR:-/tmp}/dt27-r3-1.out"` | pass exit=0 sandbox=container-netns | sha256:0c26f0e6f91d | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestOutOfInstallationRepoIsCouldNotCheck$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r4-1.out" 2>&1 && grep -F -e '--- PASS: TestOutOfInstallationRepoIsCouldNotCheck' "${TMPDIR:-/tmp}/dt27-r4-1.out" && go test ./cmd/deskboard/ -run '^TestOtherReadErrorsStillFailTheRunClosed$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r4-2.out" 2>&1 && grep -F -e '--- PASS: TestOtherReadErrorsStillFailTheRunClosed' "${TMPDIR:-/tmp}/dt27-r4-2.out" && go test ./cmd/deskboard/ -run '^TestOutOfInstallationMatcherIsLive$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r4-3.out" 2>&1 && grep -F -e '--- PASS: TestOutOfInstallationMatcherIsLive' "${TMPDIR:-/tmp}/dt27-r4-3.out" && go test ./cmd/deskboard/ -run '^TestPolicyDriftNeverFailsTheRun$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r4-4.out" 2>&1 && grep -F -e '--- PASS: TestPolicyDriftNeverFailsTheRun' "${TMPDIR:-/tmp}/dt27-r4-4.out"` | pass exit=0 sandbox=container-netns | sha256:acaee0246b67 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestPerRootPoolFailsClosed$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r5-1.out" 2>&1 && grep -F -e '--- PASS: TestPerRootPoolFailsClosed' "${TMPDIR:-/tmp}/dt27-r5-1.out" && go test ./cmd/deskboard/ -run '^TestPerRootPoolMatchesSerial$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r5-2.out" 2>&1 && grep -F -e '--- PASS: TestPerRootPoolMatchesSerial' "${TMPDIR:-/tmp}/dt27-r5-2.out" && go test ./cmd/deskboard/ -run '^TestPerRootPoolLowestIndexErr$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r5-3.out" 2>&1 && grep -F -e '--- PASS: TestPerRootPoolLowestIndexErr' "${TMPDIR:-/tmp}/dt27-r5-3.out"` | pass exit=0 sandbox=container-netns | sha256:3fcad662ef15 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 6 | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestThroughputResolvesOnce$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r6-1.out" 2>&1 && grep -F -e '--- PASS: TestThroughputResolvesOnce' "${TMPDIR:-/tmp}/dt27-r6-1.out" && go test ./cmd/deskboard/ -run '^TestRootProbesOnlyInResolver$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r6-2.out" 2>&1 && grep -F -e '--- PASS: TestRootProbesOnlyInResolver' "${TMPDIR:-/tmp}/dt27-r6-2.out"` | pass exit=0 sandbox=container-netns | sha256:843ad7695cbf | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 7 | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestThroughputSharedRootFailureBlindsBothStages$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r7-1.out" 2>&1 && grep -F -e '--- PASS: TestThroughputSharedRootFailureBlindsBothStages' "${TMPDIR:-/tmp}/dt27-r7-1.out" && go test ./cmd/deskboard/ -run '^TestThroughputSharedBlindCount$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r7-2.out" 2>&1 && grep -F -e '--- PASS: TestThroughputSharedBlindCount' "${TMPDIR:-/tmp}/dt27-r7-2.out" && go test ./cmd/deskboard/ -run '^TestThroughputActionsOnlyBlind$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r7-3.out" 2>&1 && grep -F -e '--- PASS: TestThroughputActionsOnlyBlind' "${TMPDIR:-/tmp}/dt27-r7-3.out"` | pass exit=0 sandbox=container-netns | sha256:1efb3f14ab5c | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 8 | `cd tools/desk && go test ./cmd/deskboard/ -run '^TestStalePinResolvesPerPlatformArtifact$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r8-1.out" 2>&1 && grep -F -e '--- PASS: TestStalePinResolvesPerPlatformArtifact' "${TMPDIR:-/tmp}/dt27-r8-1.out"` | pass exit=0 sandbox=container-netns | sha256:2a1501131b51 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 9 | `cd tools/desk && go test ./cmd/deskflip/ -run '^TestConditionListIsTheDocumentedContract$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r9-1.out" 2>&1 && grep -F -e '--- PASS: TestConditionListIsTheDocumentedContract' "${TMPDIR:-/tmp}/dt27-r9-1.out" && go test ./cmd/deskflip/ -count=1` | pass exit=0 sandbox=container-netns | sha256:eb80f702b523 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 10 | `cd tools/desk && go test ./cmd/deskflip/ -run '^TestMergeableRefusalCostsOneForgeRead$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r10-1.out" 2>&1 && grep -F -e '--- PASS: TestMergeableRefusalCostsOneForgeRead' "${TMPDIR:-/tmp}/dt27-r10-1.out" && go test ./cmd/deskflip/ -run '^TestRollupIsReadOnceAcrossBothConsumers$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r10-2.out" 2>&1 && grep -F -e '--- PASS: TestRollupIsReadOnceAcrossBothConsumers' "${TMPDIR:-/tmp}/dt27-r10-2.out" && go test ./cmd/deskflip/ -run '^TestSharedRollupFailureKeepsEachConditionsOwnName$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r10-3.out" 2>&1 && grep -F -e '--- PASS: TestSharedRollupFailureKeepsEachConditionsOwnName' "${TMPDIR:-/tmp}/dt27-r10-3.out"` | pass exit=0 sandbox=container-netns | sha256:a4927615a907 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 11 | `cd tools/desk && go run ./cmd/muhar -spec cmd/deskboard/mutations.json && go run ./cmd/muhar -spec cmd/deskflip/mutations.json` | pass exit=0 sandbox=container-netns | sha256:50a98147f85b | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 12 | `cd tools/desk && go test -timeout 300s ./cmd/deskboard/... ./cmd/deskflip/... -count=1` | pass exit=0 sandbox=container-netns | sha256:ed2557e118d8 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 13 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestHelpOnlyHasNoFalsePositive$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r13-1.out" 2>&1 && grep -F -e '--- PASS: TestHelpOnlyHasNoFalsePositive' "${TMPDIR:-/tmp}/dt27-r13-1.out"` | pass exit=0 sandbox=container-netns | sha256:2555e4d31979 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 14 | `cd tools/desk && go test ./cmd/deskpr/ -run '^TestHelpWritesNoAuditRow$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r14-1.out" 2>&1 && grep -F -e '--- PASS: TestHelpWritesNoAuditRow' "${TMPDIR:-/tmp}/dt27-r14-1.out" && go test ./cmd/deskwt/ -run '^TestHelpWritesNoAuditRow$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r14-2.out" 2>&1 && grep -F -e '--- PASS: TestHelpWritesNoAuditRow' "${TMPDIR:-/tmp}/dt27-r14-2.out" && go test ./cmd/deskfile/ -run '^TestHelpWritesNoAuditRow$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r14-3.out" 2>&1 && grep -F -e '--- PASS: TestHelpWritesNoAuditRow' "${TMPDIR:-/tmp}/dt27-r14-3.out" && go test ./cmd/desktoken/ -run '^TestTierTwoHelpNoRow$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r14-4.out" 2>&1 && grep -F -e '--- PASS: TestTierTwoHelpNoRow' "${TMPDIR:-/tmp}/dt27-r14-4.out" && go test ./cmd/deskpost/ -run '^TestTierTwoHelpNoRow$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r14-5.out" 2>&1 && grep -F -e '--- PASS: TestTierTwoHelpNoRow' "${TMPDIR:-/tmp}/dt27-r14-5.out" && go test ./cmd/deskreply/ -run '^TestTierTwoHelpNoRow$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r14-6.out" 2>&1 && grep -F -e '--- PASS: TestTierTwoHelpNoRow' "${TMPDIR:-/tmp}/dt27-r14-6.out"` | pass exit=0 sandbox=container-netns | sha256:c55cbd0090dc | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 15 | `cd tools/desk && go test ./cmd/deskpost/internal/bodycheck/ -run '^TestSchemaRefusalNamesTheOfflineCheck$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r15-1.out" 2>&1 && grep -F -e '--- PASS: TestSchemaRefusalNamesTheOfflineCheck' "${TMPDIR:-/tmp}/dt27-r15-1.out" && go test ./cmd/deskpr/ -run '^TestSchemaRefusalNamesTheOfflineCheck$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r15-2.out" 2>&1 && grep -F -e '--- PASS: TestSchemaRefusalNamesTheOfflineCheck' "${TMPDIR:-/tmp}/dt27-r15-2.out" && go test ./cmd/deskreply/ -run '^TestSchemaRefusalNamesTheOfflineCheck$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r15-3.out" 2>&1 && grep -F -e '--- PASS: TestSchemaRefusalNamesTheOfflineCheck' "${TMPDIR:-/tmp}/dt27-r15-3.out"` | pass exit=0 sandbox=container-netns | sha256:4c53541e062a | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 16 | `cd tools/desk && go test ./cmd/deskpr/ -run '^TestCheckIsOfflineAndGatesRatherThanPreviews$' -v -count=1 > "${TMPDIR:-/tmp}/dt27-r16-1.out" 2>&1 && grep -F -e '--- PASS: TestCheckIsOfflineAndGatesRatherThanPreviews' "${TMPDIR:-/tmp}/dt27-r16-1.out"` | pass exit=0 sandbox=container-netns | sha256:5a914f8f7cda | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 17 | `cd tools/desk && gofmt -l cmd/deskboard cmd/deskflip cmd/deskpost cmd/deskpr cmd/deskreply cmd/deskwt cmd/deskfile cmd/desktoken internal/deskkit > /tmp/dt27-fmt.out; test ! -s /tmp/dt27-fmt.out` | pass exit=0 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 19 | `cd statusgen && go run . --root .. --lint; echo $?` | pass exit=0 sandbox=container-netns | sha256:69ceff406871 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+| 20 | `cd statusgen && go run . --root .. --consumers --brief assay:assay:desk-tools:27; echo $?` | fail exit=0 sandbox=container-netns | sha256:fa8ca12ba755 | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) |
+Tree-Digest: sha256:eaacf725b2f3d1ebdc71c4d0e9450a8495567b4b004086ad057e724d82cb6c52
+Container-Image: sha256:dd758003b77fc718ec5b9b3e3a34529a422eb87316a605207bdad2560ca169bc
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7159 run=b775a7c4fe1b5358061fc47d5da9c1a74632651e3ab058f614df0cd88ee4ba09 source=44a02f3dc7ab850eec2143981f060769ca9b492c brief=docs/streams/desk-tools/brief-27-deskboard-concurrency-and-refusal-ergonomics.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=b775a7c4fe1b5358061fc47d5da9c1a74632651e3ab058f614df0cd88ee4ba09 source=44a02f3dc7ab850eec2143981f060769ca9b492c tree=sha256:eaacf725b2f3d1ebdc71c4d0e9450a8495567b4b004086ad057e724d82cb6c52 witness=sha256:3e0a2eabf1c6ce53f5f13e024dcd0845f29a4fcf60655942bfae205a0f9d434f opened=2026-11-19T05:24:00Z closed=2026-11-19T05:42:50Z before=receipt after=check-verifier
+
+Rows the witness does not settle:
+
+| # | Command | Expected | Observed | Date | Runner |
+|---|---------|----------|----------|------|--------|
+| 18 | `for v in prs stalled actions throughput; do /usr/bin/time -p deskboard $v > /dev/null 2> /tmp/dt27-$v.time; grep '^real' /tmp/dt27-$v.time; done` | four real lines recorded against the baseline 20.10 s / 58.48 s / 70.79 s / 82.82 s | could-not-run: the --rows filter kept this row out of the witness. The four timings need live forge reads under App credentials, which the offline, network-off verifier envelope does not allow. A network-off container would only time failing reads, so no timing is recorded or invented. Blocker: medici-finance/assay#4119 (open) | 2026-11-19 | assay-verifier-app[bot] @ 44a02f3dc7ab (claude-opus-5-5 verifier) (on-behalf-of human:ian) |
+
+Row 19 is not settled. Its witness `pass` is not a lint pass:
+
+- The command ends in `; echo $?`, so its shell always exits 0, and verifyrun scores the cell `pass` whatever the lint printed. medici-finance/assay#1906 (open) tracks that gap in the lint.
+- A supplemental probe, labelled separately, earns no row credit. It ran the same lint and consumers commands without the trailing echo. It used the same image with network none and the home read-only, outside any bracket, after the bracket closed, at 2026-11-19T05:43Z. Its HOME held a user-owned copy of the roster. Two earlier probe tries were discarded: they placed the roster where statusgen does not read it, or in a root-owned directory, and statusgen refused the configuration.
+- The lint printed `LINT: FAIL 112 problem(s)`, then `exit status 1`. No PROBLEM line names desk-tools/27.
+- Three of the 112 come from the same neighbour briefs as in earlier runs: desk-tools/37, desktools-v2/65 and forge-neutral/54. Each reads `protected table: acceptance transition: could-not-check human authority: --acceptance-forge is required`, as tracked in medici-finance/assay#4823 (open).
+- The other 109 are new against the 2026-11-13 probe. Each is a `[verify-obligation]` line that says a neighbour brief changed a check-shaped control but declares no `+mutation` row. They span about twenty streams; the largest counts are statusgen, desk-tools, desk-supervision and forge-gitlab.
+- The obligation-derivation code did not change since 9338d440. The 109 may therefore come from this container's history read path rather than from main itself; this run cannot tell which. Either way, the whole-board lint is red at this source only for neighbour briefs, so row 19 cannot be settled.
+
+Row 20 is not settled, and it is not a product failure:
+
+- The witness marks row 20 `fail exit=0`. That cell is the same `; echo $?` scoring artefact (medici-finance/assay#1906).
+- The supplemental probe shows what the command printed. The consumers verb reported COULD-NOT-CHECK: assay:assay:desk-tools:27 is not in the diff against the source commit, and the brief's delivery could not be derived, because the committed Evidence has no Verification-Table marker naming the delivery. No routing claim was corroborated and none was disproved. It then printed `exit status 2`.
+- The row's own Expect cell says exit 2 is reported as itself and never as a pass. This is the structural merged-tree case of medici-finance/assay#1281 (open).
+
+Row 9's Expect text is out of date. This is check-definition drift, not a failure.
+
+- The Expect text says `flipConditions` has ten entries. At this source it still has eleven, because not-reverted sits directly before head-stable.
+- `TestConditionListIsTheDocumentedContract` deliberately pins all eleven (medici-finance/assay#6253 review F2).
+- The nine conditions this brief ordered keep their relative order, head-stable stays last, and row 9 passes in the witness.
+
+Risk-bearing values, re-checked at 44a02f3d. The brief's risk metadata answers no to every question, including irreversible: no. No Verify row is risk-bearing, so no fail-first witness is owed.
+
+ENUMERATE, with each literal at the same line as in the 2026-11-13 run:
+
+- `flipConditions` @ tools/desk/cmd/deskflip/flip.go:92-104.
+- rootConcurrency = 4 @ tools/desk/cmd/deskboard/roots.go:46, used as rootPoolLimit @ roots.go:52.
+- sweepConcurrency = 6 @ tools/desk/cmd/deskboard/sweep.go:59.
+- DeskToolsArtifact = strings.Join([]string{"desk", "tools"}, "-") @ tools/desk/internal/deskkit/desktoolspin.go:26.
+- deskToolsTarballSuffix = ".tar.gz" @ desktoolspin.go:71.
+- deskPlatform = runtime.GOOS + "-" + runtime.GOARCH @ tools/desk/cmd/deskboard/main.go:863.
+- offlineHintTemplate @ tools/desk/internal/deskkit/offlinecheck.go:34.
+- The help tokens @ tools/desk/internal/deskkit/helprequest.go:52-54.
+
+RANK. The gate order and the help tokens rank first, because each guards an outward act or an audit row. The pin names and the hint text come next: a wrong value gives a drift banner or a weaker message, and nothing is written. The two pool widths rank last, as reversible operational knobs.
+
+RISK-VALUE: DERIVED — flipConditions = [caller-role, app-token, pr-open-draft, mergeable, reviewer-approved, checks-green, desk-decided, model-floor, security-verdict, not-reverted, head-stable] @ tools/desk/cmd/deskflip/flip.go:92-104.
+- The flip needs every condition to hold, so the order only chooses which refusal fires first.
+- mergeable reads the PR document that pr-open-draft already fetched, so no condition comes before the read that supplies its input.
+- The commits since 9338d440 change what happens after a flip (the backstop, BLOCKED handling, lease renewal and redaction). They do not change this list or its order.
+- Rows 9, 10 and 11 pass in the witness.
+
+RISK-VALUE: DERIVED — help tokens = {"-h","-help","--help"} @ tools/desk/internal/deskkit/helprequest.go:52-54.
+- They are a strict subset of the tokens Go's flag package maps to ErrHelp, and they match only as the sole token after a subcommand.
+- A miss falls through to normal parsing and its audit row, which is the safe direction.
+- Rows 13 and 14 pass in the witness.
+
+**VERIFY: BLOCKED** — 17 of 20 rows passed in the admitted witness, and no acceptance obligation failed.
+- Row 18 was not run, because its live forge timings need a network-on lane with App identity (medici-finance/assay#4119).
+- Row 19 is not settled, and its witness `pass` is the `; echo $?` artefact (medici-finance/assay#1906). The whole-board lint is red only for neighbour briefs: three from medici-finance/assay#4823, plus 109 new verify-obligation lines, none of which names this brief.
+- Row 20 is the structural merged-tree case of medici-finance/assay#1281, and its `fail` cell is the same artefact.
+
+Status stays where it is.
+
 ## Review
 
 Gate: model (all four risk answers no). Model-gated because both hazards are mechanically

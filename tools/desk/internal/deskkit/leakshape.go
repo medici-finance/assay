@@ -40,10 +40,11 @@ package deskkit
 // does not load, or a rule that fails its own positive control (each rule carries a canary it
 // MUST match before its silence over the tree means anything) all yield could-not-check.
 //
-// NO `\b`. Every pattern uses explicit character classes and anchors only. RE2 does accept
-// the word-boundary escape, but other engines this repo's patterns get copied into (git
+// NO WORD-BOUNDARY ESCAPE. Every pattern uses explicit character classes and anchors only.
+// RE2 does accept the escape, but other engines this repo's patterns get copied into (git
 // grep's ERE among them) silently accept it and match nothing, which reads a dirty tree as
-// clean. A test pins the absence.
+// clean. A test pins its absence from the rules and from every byte of this stage's files,
+// comments included, so the escape is named here and never spelled.
 //
 // THE ALLOW FILE. A documented example — a test fixture that needs a home path to exercise a
 // path guard, a placeholder remote in a doc comment — is a reviewed exception, not a blind
@@ -129,8 +130,8 @@ type shapeRule struct {
 }
 
 // The default rules, one variable each so a rule is dropped from leakShapeRules by name.
-// Left boundaries are explicit negated classes (RE2 has no look-behind, and `\b` is banned),
-// so the boundary character is consumed outside the value group.
+// Left boundaries are explicit negated classes (RE2 has no look-behind, and the word-boundary
+// escape is banned), so the boundary character is consumed outside the value group.
 
 // shapeRuleHome matches an absolute per-user home directory.
 var shapeRuleHome = shapeRule{

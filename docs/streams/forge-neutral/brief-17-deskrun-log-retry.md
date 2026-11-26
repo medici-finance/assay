@@ -53,7 +53,7 @@ consumers:
   - "tools/desk/cmd/deskrun: follow-up forge-neutral/17-implementation (the `log`/`retry` subcommands on the verb brief 14 creates)"
   - "docs/streams/forge-gitlab/inventory.md: follow-up forge-neutral/17-implementation (two appended rows, numbered after whichever rows brief 14 lands first)"
   - "tools/desk/internal/forgeban/allowlist.go: out-of-scope (this brief adds no new call site outside the enumerated ops, so no permit row is added or retired here)"
-version: 1
+version: 2
 id: f7a8021b-db1e-433d-9ef7-40afb1b6f0b5
 ---
 
@@ -209,12 +209,12 @@ implementer: `TestDeskrunLogSucceedsWorkerAndReviewer` (planned), `TestDeskrunRe
 |---|-------|---------|--------|
 | 1 | check:ci | `cd tools/desk && go build ./... && go test ./...` | exit 0 |
 | 2 | check:ci +flow | `cd tools/desk && go test ./cmd/deskrun/... -run TestDeskrunLogSucceedsWorkerAndReviewer -count=1 -v` | exit 0; the fixture run's log is read successfully under BOTH the worker-role and reviewer-role fixture credential, on both forges (GitHub fixture + GitLab fixture) — POSITIVE, proves the broad grant actually works end to end (verb → `ForgeFor` → backend) for both roles rather than only the one the implementer tested first |
-| 3 | check:ci | `cd tools/desk && go test ./cmd/deskrun/... -run TestDeskrunRetryRefusesOnHumanRoster -count=1 -v` | **negative path**: with the roster's retry-role entry bound to a human login (fixture), `deskrun retry` REFUSES (exit 5), performs zero forge requests (asserted via a recording fake), and the refusal message names the role and the resolved human login — both forges |
+| 3 | check:ci | `cd tools/desk && go test ./cmd/deskrun/... -run TestDeskrunRetryRefusesOnHumanRoster -count=1 -v` | exit 0 — **negative path**: with the roster's retry-role entry bound to a human login (fixture), `deskrun retry` REFUSES (exit 5), performs zero forge requests (asserted via a recording fake), and the refusal message names the role and the resolved human login — both forges |
 | 4 | check:ci | `cd tools/desk && go test ./cmd/deskrun/... -run TestDeskrunRetrySucceedsOnAppRoster -count=1 -v` | with the roster's retry-role entry bound to a dedicated App/token (fixture), `deskrun retry` succeeds and issues exactly one retry request against the fixture run — both forges |
 | 5 | check:ci | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeNoPassthroughAfterRunLogRetry -count=1 -v` | exit 0 — the two new ops do not widen the seam into a generic/endpoint-taking method; `.github/workflows/forge-surface-control.yml`'s no-passthrough shape check stays green |
 | 6 | check:ci +dereference | `cd tools/desk && go test ./internal/deskkit/ -run TestForgeGithubGolden -count=1 && go test ./internal/deskkit/ -run TestForgeGitlabGolden -count=1` | exit 0 — `run_log` / `retry_run` golden-pinned contract cases pin each backend's REAL wire shape (not merely that a case exists) for both new ops |
 | 7 | check | `grep -cE -e 'RunLog' -e 'RetryRun' docs/streams/forge-gitlab/inventory.md` | prints `2` or more — both ops are recorded in the frozen op table with a ticked `gitlab impl` column |
-| 8 | check | a docs-index row confirming both verbs are listed in the desk-verbs index (exact file TBD by whatever brief 14 creates) | `grep -cE -e 'deskrun log' -e 'deskrun retry' <that index file>` prints `2` or more |
+| 8 | check | `grep -cE -e 'deskrun log' -e 'deskrun retry' tools/desk/README.md` | prints `2`, exit 0 |
 | 9 | check:ci +dereference | `statusgen --root . --consumers --brief forge-neutral/17` | exit 0 — every `consumers:` routing claim is corroborated against this branch's own diff, not merely counted as present |
 | 10 | check:ci +mutation | `cd tools/desk && go test ./cmd/deskrun/... -count=1` — the test command this mutation row is judged by. **Mutation demonstration for the retry refusal and the custody gate.** In `cmdRetry`, ignore the resolver's refusal so a human-bound repo proceeds (then, separately, make `githubCustodyMint` accept any role, and widen the `log` role check) — run the command above on each mutated tree; restore each file and re-run it | exit **0** on the unmutated tree; exit non-zero on every mutated tree (the committed `cmd/deskrun/mutations.json` entries, run with `muhar -spec`, all report CAUGHT) — exit **0** again after restoring. Proves the human-bound refusal and the closed credential set are live controls, not checks nothing exercises |
 

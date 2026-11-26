@@ -137,6 +137,73 @@ func TestTemplateDirExplicit(t *testing.T) {
 	}
 }
 
+// childEnv is the switch that makes TestAdapterChild run: only the reexecuted child of
+// TestAdapterRefusesTempInRepo sets it.
+const childEnv = "GITQUIET_ADAPTER_CHILD"
+
+// TestAdapterChild is the planted fixture, run only as that child: it runs
+// `git remote set-url` in an empty t.TempDir() with every inherited GIT_* variable
+// removed and expects no repository there. It writes to whatever repository discovery
+// finds above the temporary root.
+func TestAdapterChild(t *testing.T) {
+	if os.Getenv(childEnv) != "1" {
+		t.Skip("run only as TestAdapterRefusesTempInRepo's child")
+	}
+	cmd := exec.Command("git", "-C", t.TempDir(), "remote", "set-url", "origin", "https://example.invalid/planted.git")
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(strings.ToUpper(kv), "GIT_") {
+			cmd.Env = append(cmd.Env, kv)
+		}
+	}
+	out, err := cmd.CombinedOutput()
+	t.Logf("planted set-url: err=%v %s", err, out)
+}
+
+// TestAdapterRefusesTempInRepo — the desk adapter refuses a temporary root inside a
+// repository, as the shared module's Run does. Every git-using test package under
+// tools/desk reaches the shared Run through this adapter, and the desk shards run this
+// test, so the refusal (rule R-temp-root-in-repo) is exercised in CI: a test binary whose
+// TMPDIR or GOTMPDIR sits inside a repository exits non-zero before running a test, and the
+// enclosing repository's origin URL is never rewritten; the same binary with both roots
+// outside every repository runs the planted fixture (the control).
+//
+// regression: F-temp-root-in-repo
+func TestAdapterRefusesTempInRepo(t *testing.T) {
+	const want = "https://example.invalid/o/r.git"
+	root := t.TempDir()
+	repo := filepath.Join(root, "repo")
+	git(t, root, "", "init", "-q", repo)
+	git(t, repo, "", "remote", "add", "origin", want)
+	child := func(tmp, gotmp string) (string, error) {
+		t.Helper()
+		for _, d := range []string{tmp, gotmp} {
+			if err := os.MkdirAll(d, 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}
+		cmd := exec.Command(os.Args[0], "-test.run=^TestAdapterChild$", "-test.count=1", "-test.v")
+		cmd.Env = append(os.Environ(), childEnv+"=1", "TMPDIR="+tmp, "TMP="+tmp, "TEMP="+tmp, "GOTMPDIR="+gotmp)
+		out, err := cmd.CombinedOutput()
+		return string(out), err
+	}
+	inside, outside := filepath.Join(repo, "tmp"), filepath.Join(root, "outside")
+	// Each root alone: os.MkdirTemp("", ...) creates under TMPDIR, t.TempDir() under GOTMPDIR.
+	for _, c := range [][2]string{{inside, inside}, {inside, outside}, {outside, inside}} {
+		out, err := child(c[0], c[1])
+		if got := git(t, repo, "", "config", "--get", "remote.origin.url"); got != want {
+			t.Errorf("TMPDIR=%s GOTMPDIR=%s: the planted fixture rewrote the enclosing repository's origin URL to %q", c[0], c[1], got)
+			git(t, repo, "", "remote", "set-url", "origin", want)
+		}
+		if err == nil || !strings.Contains(out, "gitquiet: refusing to run the tests") || !strings.Contains(out, repo) {
+			t.Errorf("TMPDIR=%s GOTMPDIR=%s: the binary ran instead of refusing (err %v):\n%s", c[0], c[1], err, out)
+		}
+	}
+	out, err := child(outside, outside)
+	if err != nil || !strings.Contains(out, "--- PASS: TestAdapterChild") {
+		t.Errorf("control: roots outside every repository, the binary did not run the test (err %v):\n%s", err, out)
+	}
+}
+
 // --- class guard ------------------------------------------------------------------
 
 // namesGit reports whether a file names the git binary (a "git" string literal).

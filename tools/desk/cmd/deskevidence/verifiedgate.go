@@ -31,6 +31,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/medici-finance/assay/statusgen/evaluation"
+
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -42,10 +44,6 @@ const (
 	closureNotAccepted                       // the stuck-flip shape: no stamp, or an unwitnessed/failing row
 	closureCouldNotErr                       // could-not-check (unreadable/unknown brief); carried as an error
 )
-
-// verifiedGateOutcome is the value of a sidecar row's `outcome` field this gate
-// keys on. Only `verified` is gated.
-const verifiedGateOutcome = "verified"
 
 // verifiedOutcomeGateRow is the subset of a verify-outcomes sidecar row the gate reads.
 type verifiedOutcomeGateRow struct {
@@ -76,7 +74,7 @@ func verifiedBriefsAdded(remoteContent, commitContent []byte, remoteExists bool)
 			continue
 		}
 		brief := strings.TrimSpace(row.Brief)
-		if brief == "" || row.Outcome != verifiedGateOutcome {
+		if brief == "" || evaluation.ClassifyOutcome(row.Outcome) != evaluation.OutcomePass {
 			continue
 		}
 		if seen[brief] {

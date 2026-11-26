@@ -103,6 +103,10 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 		// is named as the tree the PR under review belongs to, which is the value the review
 		// clauses require path claims to be resolved against.
 		fmt.Fprintf(&b, "- **Target repo:** `%s` — the repository the PR under review belongs to; resolve every path claim there.\n", repo)
+	case verifier && o.hasVerifierTarget():
+		// A pre-merge run (#7623) executes an unmerged head: say so, and say that it
+		// never lands Evidence and dies with the head.
+		fmt.Fprintf(&b, "- **Target repo:** `%s` — your Verify table runs against change %d at EXACTLY head `%s`, an UNMERGED head the reviewer App approved. This run never lands Evidence; if the change's head moves, the admission is void and every row refuses.\n", repo, o.targetChange, o.targetHead)
 	case verifier:
 		// A verifier opens no PR either — its deliverable is a written verdict against MERGED
 		// main, never an implementer's branch. Naming the repo as where a PR "opens" would be
@@ -115,9 +119,17 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 		fmt.Fprintf(&b, "- **Target repo:** `%s` — the PR opens THERE, not anywhere else.\n", repo)
 	}
 	if plan.dl.crossRepo(o.root) {
+		readOnly := "The tracking checkout is READ-ONLY for you."
+		if verifier {
+			// A verifier DOES write the tracking side — its Evidence — but only in the isolated
+			// tracking clone admission binds, never the dispatcher's shared checkout (#5999).
+			readOnly = fmt.Sprintf("Your claim, Evidence and outcome record land in %s. The shared tracking checkout "+
+				"is READ-ONLY for you; the brief's Evidence is edited only in the isolated tracking clone the "+
+				"Specification line names.", trackingLabel(plan.dl))
+		}
 		fmt.Fprintf(&b, "- **Tracked in:** %s — the brief and its board row live there; the deliverable lands in `%s` "+
-			"(alias `%s`, resolved from %s through the alias registry). The tracking checkout is READ-ONLY for you.\n",
-			trackingLabel(plan.dl), repo, plan.dl.alias, plan.dl.source)
+			"(alias `%s`, resolved from %s through the alias registry). %s\n",
+			trackingLabel(plan.dl), repo, plan.dl.alias, plan.dl.source, readOnly)
 	}
 	fmt.Fprintf(&b, "- **Checkout base:** `%s` — the `git -C` source your worktree is cut FROM. It is not your writable root.\n", base)
 	fmt.Fprintf(&b, "- **Your home worktree:** `%s` — every file operation stays under it.\n", home)
@@ -132,11 +144,22 @@ func assemblePrompt(o dispatchOpts, plan dispatchPlan, home string) (string, err
 	fmt.Fprintf(&b, "- **Execution tier:** `%s`\n", o.tier)
 	if strings.TrimSpace(o.brief) != "" {
 		spec := briefArg(o)
-		if spec == o.brief && filepath.IsAbs(spec) && plan.dl.crossRepo(o.root) {
+		switch {
+		case verifier && plan.dl.crossRepo(o.root) && plan.verifierBriefRoot != "":
+			// The admitted, isolated tracking clone: the ONE tree whose brief Evidence a cross-repo
+			// verifier edits. Calling it read-only and "implement to its contract" contradicted the
+			// Evidence instruction below (#5999).
+			fmt.Fprintf(&b, "- **Specification:** `%s` (the isolated tracking clone admission bound) — run its Verify "+
+				"table against the target repo; its Evidence section is the only thing you edit, here and nowhere else.\n", spec)
+		case verifier && plan.dl.crossRepo(o.root):
+			fmt.Fprintf(&b, "- **Specification:** `%s` (the shared tracking checkout — READ-ONLY for you) — run its Verify "+
+				"table against the target repo. The real dispatch names the isolated tracking clone admission binds; "+
+				"its Evidence section is the only thing you edit, and only there.\n", spec)
+		case spec == o.brief && filepath.IsAbs(spec) && plan.dl.crossRepo(o.root):
 			// Found only in the tracking checkout — name it there, and say it is a READ source.
 			fmt.Fprintf(&b, "- **Specification:** `%s` (in the tracking checkout — READ-ONLY for you) — implement to "+
 				"its contract; do not expand scope.\n", spec)
-		} else {
+		default:
 			fmt.Fprintf(&b, "- **Specification:** `%s` — implement to its contract; do not expand scope.\n", spec)
 		}
 	}
@@ -472,12 +495,11 @@ func writeReviewAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 			home, head, home)
 	}
 	writeReviewRound(b, plan.round)
-	if writeReviewFinish(b, o, plan, repo) {
-		b.WriteString("If `finish` stops at its release step, the verdict stands and the claim is still held — " +
-			"release it with:\n\n")
-	} else {
-		b.WriteString("Release the dispatch claim once your verdict is posted:\n\n")
+	if writeReviewFinish(b, o, plan, repo, home) {
+		b.WriteString("If the release step fails, retry from this checkout after a transient error. If the lease has changed or ownership cannot be proved, leave it with the dispatching desk.\n\n")
+		return
 	}
+	b.WriteString("Release the dispatch claim once your verdict is posted:\n\n")
 	writeReleaseClaim(b, o, plan, repo)
 }
 
@@ -487,7 +509,7 @@ func writeReviewAssignment(b *strings.Builder, o dispatchOpts, plan dispatchPlan
 // whether it wrote anything. The key and lane are judged by the SAME deskkit functions finish
 // itself judges them by — a key finish would refuse gets no finish line, only the release line,
 // and the lane verb is the one finish pairs with this key, never one it would refuse.
-func writeReviewFinish(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo string) bool {
+func writeReviewFinish(b *strings.Builder, o dispatchOpts, plan dispatchPlan, repo, home string) bool {
 	if o.pr <= 0 || deskkit.ValidateReviewClaimKey(plan.claimKey, repo, o.pr) != nil {
 		return false
 	}
@@ -495,9 +517,9 @@ func writeReviewFinish(b *strings.Builder, o dispatchOpts, plan dispatchPlan, re
 	if deskkit.ReviewClaimKeyIsSecurity(plan.claimKey, o.pr) {
 		verb, verdicts = "security-review", "pass|fail"
 	}
-	b.WriteString("Post your verdict, confirm it and release the dispatch claim in ONE step:\n\n")
-	fmt.Fprintf(b, "```\ndeskpost finish %s %s %d --verdict %s --head <full head sha> --body-file <file> --claim %q\n```\n\n",
-		verb, repo, o.pr, verdicts, plan.claimKey)
+	b.WriteString("Post your verdict, confirm it and release the dispatch claim in ONE step from the assigned review checkout. Supply the verdict body file by absolute path:\n\n")
+	fmt.Fprintf(b, "```\ncd -- %s && deskpost finish %s %s %d --verdict %s --head <full head sha> --body-file <file> --claim %q\n```\n\n",
+		deskkit.ShellSingleQuote(home), verb, repo, o.pr, verdicts, plan.claimKey)
 	return true
 }
 
@@ -566,6 +588,9 @@ func writeReleaseClaim(b *strings.Builder, o dispatchOpts, plan dispatchPlan, re
 		releaseTool = claimScriptRel
 	}
 	role, _ := kitRole(o.kit)
+	if plan.claimRepo != "" {
+		repo = plan.claimRepo // the claim namespace, not the deliverable (#5999)
+	}
 	fmt.Fprintf(b, "```\n%s release %q --repo %s%s\n```\n", releaseTool, plan.claimKey, repo,
 		claimCredArg(releaseTool, role, repo, agentLoop(role)))
 }

@@ -77,8 +77,10 @@ import (
 // It is NEVER looked up in the human-login map.
 const decisionPlaceholderName = "<name>"
 
-// rulingURLGrammar is the one documented ruling-link form, quoted in messages.
-const rulingURLGrammar = "https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<ID>"
+// rulingURLGrammar names the documented ruling-link forms, quoted in messages:
+// a GitHub issue comment, or a GitLab issue note on the configured GitLab host
+// (rulinggitlab.go, #7252).
+const rulingURLGrammar = "https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<ID> (or, on a GitLab-hosted repository, " + gitlabRulingURLGrammar + ")"
 
 // decisionRulingURLRe is rulingURLGrammar as a regexp. Anchored at both ends: a
 // pull-request URL, a bare issue URL, a comment on a different host, or trailing
@@ -93,16 +95,20 @@ var issueAPIURLRe = regexp.MustCompile(`/repos/([^/]+)/([^/]+)/issues/([0-9]+)$`
 
 // rulingLink is a parsed ruling: URL.
 type rulingLink struct {
-	Repo      string // "owner/repo"
+	Repo      string // "owner/repo"; on GitLab the full project path
 	Issue     int
-	CommentID int64
+	CommentID int64 // the GitHub comment id, or the GitLab note id
+	// GitLab marks a GitLab issue-note link; Host is then its (configured) host.
+	GitLab bool
+	Host   string
 }
 
-// parseRulingURL parses a ruling: value against the one documented grammar.
+// parseRulingURL parses a ruling: value against the documented grammars: the
+// GitHub form, or the GitLab form on the configured GitLab host only.
 func parseRulingURL(raw string) (rulingLink, bool) {
 	m := decisionRulingURLRe.FindStringSubmatch(strings.TrimSpace(raw))
 	if m == nil {
-		return rulingLink{}, false
+		return parseGitLabRulingURL(raw)
 	}
 	n, err1 := strconv.Atoi(m[3])
 	id, err2 := strconv.ParseInt(m[4], 10, 64)
@@ -266,6 +272,11 @@ type rulingIssueBinding struct {
 	// names the record; a non-empty result refuses with that detail. Only an
 	// Evidence-Repair approval sets it (#6616).
 	comment func(body string) string
+	// subject, when set, binds the ruling to the exact work subject after the
+	// issue is shown to rule on the record (milestone-support/09): the comment
+	// body and the forge's creation time, and the current issue body. A
+	// non-empty reason refuses with that detail.
+	subject func(comment, createdAt, issueBody string) (rulingReason, string)
 }
 
 // resolveRulingOn is resolveRuling with condition 6 supplied by the caller. Every
@@ -301,6 +312,10 @@ func resolveRulingOn(c *ghClient, prRepo string, rec decisionRecordStamp, humanL
 	}
 	if !strings.EqualFold(link.Repo, prRepo) {
 		return refuse(rulingUnrelatedIssue, "ruling links %s#%d, outside %s where the record lives — a decision issue for this record is in its own repository", link.Repo, link.Issue, prRepo)
+	}
+	if link.GitLab {
+		// A GitLab note is read through deskread, never this GitHub client.
+		return resolveGitLabRuling(out, link, rec, humanLogins, binding)
 	}
 	if c == nil {
 		return refuse(rulingUnresolvable, "no forge client — the ruling link could not be resolved")
@@ -384,32 +399,11 @@ func resolveRulingOn(c *ghClient, prRepo string, rec decisionRecordStamp, humanL
 
 	// 4. The author maps to a human allowed to decide — and to THE human the stamp
 	// names, when it names one.
-	if len(rec.Names) > 0 {
-		matched := ""
-		var want []string
-		for _, n := range rec.Names {
-			login, known := humanLogins[n]
-			if !known {
-				want = append(want, fmt.Sprintf("human:%s (no mapping in %s)", n, scanEnvHumanLoginMap))
-				continue
-			}
-			want = append(want, fmt.Sprintf("human:%s → %s", n, login))
-			if strings.EqualFold(login, cm.User.Login) {
-				matched = n
-				break
-			}
-		}
-		if matched == "" {
-			return refuse(rulingWrongAuthor, "comment %d is authored by %s, but decided-by names %s", link.CommentID, cm.User.Login, strings.Join(want, ", "))
-		}
-		out.Name = matched
-	} else {
-		name := humanNameForLogin(humanLogins, cm.User.Login)
-		if name == "" {
-			return refuse(rulingWrongAuthor, "comment %d is authored by %s, which maps to no human in %s — not a human allowed to decide", link.CommentID, cm.User.Login, scanEnvHumanLoginMap)
-		}
-		out.Name = name
+	name, why := rulingAuthorName(rec, humanLogins, cm.User.Login)
+	if why != "" {
+		return refuse(rulingWrongAuthor, "comment %d is authored by %s, %s", link.CommentID, cm.User.Login, why)
 	}
+	out.Name = name
 
 	// 5. The comment names THIS record, in text the human wrote (and, by 2b, did
 	// not edit afterwards). The issue-body marker checked in 6 is editable after
@@ -446,6 +440,13 @@ func resolveRulingOn(c *ghClient, prRepo string, rec decisionRecordStamp, humanL
 		return refuse(rulingUnrelatedIssue, "%s#%d carries no decision-gate marker for %s — the comment is not on this record's decision issue", link.Repo, link.Issue, binding.what)
 	}
 
+	// 7. The ruling binds the exact work subject (only when the caller says so).
+	if binding.subject != nil {
+		if r, why := binding.subject(cm.Body, cm.CreatedAt, iss.Body); r != rulingOK {
+			return refuse(r, "comment %d on %s#%d: %s", link.CommentID, link.Repo, link.Issue, why)
+		}
+	}
+
 	out.Reason = rulingOK
 	out.Body = cm.Body
 	url := cm.HTMLURL
@@ -454,6 +455,31 @@ func resolveRulingOn(c *ghClient, prRepo string, rec decisionRecordStamp, humanL
 	}
 	out.Detail = url
 	return out
+}
+
+// rulingAuthorName is condition 4 for both forges: the author login maps to a
+// human allowed to decide — and to THE human the record names, when it names one.
+// A non-empty why is the refusal detail, following "authored by <login>, ".
+func rulingAuthorName(rec decisionRecordStamp, humanLogins map[string]string, login string) (name, why string) {
+	if len(rec.Names) == 0 {
+		if name = humanNameForLogin(humanLogins, login); name == "" {
+			return "", fmt.Sprintf("which maps to no human in %s — not a human allowed to decide", scanEnvHumanLoginMap)
+		}
+		return name, ""
+	}
+	var want []string
+	for _, n := range rec.Names {
+		l, known := humanLogins[n]
+		if !known {
+			want = append(want, fmt.Sprintf("human:%s (no mapping in %s)", n, scanEnvHumanLoginMap))
+			continue
+		}
+		want = append(want, fmt.Sprintf("human:%s → %s", n, l))
+		if strings.EqualFold(l, login) {
+			return n, ""
+		}
+	}
+	return "", "but decided-by names " + strings.Join(want, ", ")
 }
 
 // humanNameForLogin reverse-resolves a login through the human-login map. ""
@@ -612,12 +638,16 @@ func isDecisionRecordPath(path string) bool {
 // diff ADDS OR EDITS (at least one added line), in first-seen order. A declared fixture corpus is skipped
 // exactly as stampsInDiff skips it.
 func decisionRecordsInDiff(root, diff string) []string {
+	return decisionRecordsInAddedLines(addedDiffLines(root, diff))
+}
+
+func decisionRecordsInAddedLines(added []diffAddedLine) []string {
 	var out []string
 	seen := map[string]bool{}
 	// The one shared diff walker (addedDiffLines, corroboratescope.go) already skips
 	// a declared fixture corpus; a decision record is never a .patch file, so the
 	// walker's embedded-patch rule never touches this lane.
-	for _, al := range addedDiffLines(root, diff) {
+	for _, al := range added {
 		cur := al.File
 		if cur == "" || seen[cur] || !isDecisionRecordPath(cur) {
 			continue
@@ -639,13 +669,17 @@ func decisionRecordsInDiff(root, diff string) []string {
 // (record-not-named, with a detail naming the missing id); the register lint reports
 // the same record.
 func loadDecisionRecordStamp(root, file string) decisionRecordStamp {
-	rec := decisionRecordStamp{File: file}
 	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
+	return parseDecisionRecordStamp(file, string(raw), err)
+}
+
+func parseDecisionRecordStamp(file, content string, err error) decisionRecordStamp {
+	rec := decisionRecordStamp{File: file}
 	if err != nil {
 		rec.LoadErr = err.Error()
 		return rec
 	}
-	fm, _, ferr := splitFrontmatter(string(raw))
+	fm, _, ferr := splitFrontmatter(content)
 	if ferr != nil {
 		rec.LoadErr = ferr.Error()
 		return rec

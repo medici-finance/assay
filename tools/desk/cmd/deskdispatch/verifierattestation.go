@@ -68,6 +68,43 @@ func executeVerifier(mode string, o dispatchOpts) (err error) {
 	return json.NewEncoder(os.Stdout).Encode(receipt)
 }
 
+// executeStageNpm is --stage-npm: the admitted npm staging step of an existing
+// verifier run (#7572). It stages the package's dependencies from a cache filled
+// before the run, binds their digest to the run record, and prints the receipt
+// carrying it. Row admission (--check-verifier) then passes over only the staged
+// directories, and only while they still hash to that digest.
+func executeStageNpm(o dispatchOpts) (err error) {
+	if o.root == "" || o.npmPackage == "" || o.npmCache == "" {
+		return deskkit.Refused("--stage-npm requires --root, --package and --cache")
+	}
+	var receipt deskkit.VerifierReceipt
+	defer func() {
+		if !o.dryRun {
+			result, detail := deskkit.ResultOK, "stage-npm "+receipt.EvidenceBinding()
+			if err != nil {
+				result = deskkit.ResultUnverifiable
+				if deskkit.ExitCodeOf(err) == deskkit.ExitRefused {
+					result = deskkit.ResultRefused
+				}
+				detail = firstLine(err.Error())
+			}
+			_ = deskkit.Log(deskkit.Entry{Tool: toolName, Verb: "stage-npm", Result: result, Detail: detail})
+		}
+	}()
+	if o.dryRun {
+		if err := deskkit.PlanVerifierAttestation(o.root, o.brief); err != nil {
+			return err
+		}
+		fmt.Println("PLAN: stage the package's npm dependencies offline into the verifier home and bind their digest; no forge access")
+		return nil
+	}
+	receipt, err = deskkit.StageVerifierNpm(o.root, o.brief, o.npmPackage, o.npmCache, o.npmBuild)
+	if err != nil {
+		return err
+	}
+	return json.NewEncoder(os.Stdout).Encode(receipt)
+}
+
 var attestVerifierDispatchFn = attestVerifierDispatch
 
 // verifierEmittedDest is the file a --prompt-file dispatch actually writes:
@@ -112,18 +149,22 @@ func verifierPrivatePromptDestination(file string) error {
 	}
 }
 
-// verifierTrackingRepo supplies the same tracking identity to the preview and
-// the fresh attestation check. Return the checkout spelling used by the publisher.
-func verifierTrackingRepo(o dispatchOpts, dl deliverable) (string, error) {
-	actual, err := deskkit.OriginRepoSlug(o.claimRoot)
-	if err != nil || !dl.crossRepo(o.root) || dl.trackingRepo == "" || !strings.EqualFold(actual, dl.trackingRepo) || !vpWithin(o.claimRoot, o.brief) {
-		return "", deskkit.Refused("cross-repository verifier requires the resolved tracking repository and its brief under --claim-root")
+// verifierTrackingTarget binds the tracking brief to the checkout whose forge
+// and repository will receive the outcome. Attestation repeats the check.
+func verifierTrackingTarget(o dispatchOpts, dl deliverable) (deskkit.ForgeResolution, error) {
+	target, err := deskkit.VerifierTrackingForge(dl.trackingRoot, o.brief)
+	if err != nil {
+		return deskkit.ForgeResolution{}, err
 	}
-	return actual, nil
+	if !dl.crossRepo(o.root) || !strings.EqualFold(target.Repo.Slug(), dl.trackingRepo) || !vpWithin(dl.trackingRoot, o.brief) {
+		return deskkit.ForgeResolution{}, deskkit.Refused("cross-repository verifier requires the resolved tracking repository and its brief under --claim-root")
+	}
+	return target, nil
 }
 
 func attestVerifierDispatch(o dispatchOpts, repo, home string) (string, error) {
 	brief := o.brief
+	var trackingRoot string
 	if filepath.IsAbs(brief) && vpWithin(o.root, brief) {
 		var err error
 		brief, err = filepath.Rel(o.root, brief)
@@ -136,11 +177,25 @@ func attestVerifierDispatch(o dispatchOpts, repo, home string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if _, err := verifierTrackingRepo(o, dl); err != nil {
+		if _, err := verifierTrackingTarget(o, dl); err != nil {
 			return "", err
 		}
+		trackingRoot = dl.trackingRoot
 	}
-	if err := deskkit.PrepareVerifierAttestation(home, repo, brief, o.model, o.tier); err != nil {
+	if o.hasVerifierTarget() {
+		// Pre-merge admission (#7623) reads the change and its reviews from the forge
+		// BEFORE the run record exists; a forge that cannot be resolved is could-not-check.
+		if trackingRoot != "" {
+			return "", deskkit.Refused("a pre-merge verifier target is never admitted for a cross-repository brief")
+		}
+		f, err := deskkit.ResolveVerifierHeadForge(repo)
+		if err != nil {
+			return "", err
+		}
+		if err := deskkit.PrepareVerifierHeadAttestationAt(home, repo, brief, o.model, o.tier, o.verifierTarget(), f); err != nil {
+			return "", err
+		}
+	} else if err := deskkit.PrepareVerifierAttestationAt(home, repo, brief, o.model, o.tier, trackingRoot); err != nil {
 		return "", err
 	}
 	// Marked BEFORE the stamp is issued: if the admission below is held or

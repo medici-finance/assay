@@ -18,6 +18,16 @@
     },
     {
       "class": "test",
+      "pattern": "containers/k8s/compatibility/qualify.sh",
+      "reason": "desk-containers/32 source-checkout entrypoint for the offline five-role CLI qualification fixture; it is not installed in the release."
+    },
+    {
+      "class": "test",
+      "pattern": "containers/k8s/compatibility/qualify.py",
+      "reason": "desk-containers/32 test runner invoked by qualify.sh to check named go test results from the synthetic lifecycle fixture."
+    },
+    {
+      "class": "test",
       "pattern": "containers/k8s/compatibility/desk-session.test.sh",
       "reason": "desk-containers/31 offline private-Linux-PID1 regression fixture; synthetic agent, explicit local daemon, cached image and no network"
     },
@@ -30,6 +40,11 @@
       "class": "test",
       "pattern": "containers/k8s/compatibility/fake-agent.fixture.py",
       "reason": "desk-containers/31 synthetic offline agent used only by the bounded PID1 fixture, never packaged or released as an agent"
+    },
+    {
+      "class": "test",
+      "pattern": "containers/k8s/compatibility/qualify_controlled_restart.py",
+      "reason": "desk-containers/32 source-checkout controlled-restart fixture invoked by qualify.sh for compiled cellctl and offline PID-1 checks."
     },
     {
       "class": "test",
@@ -255,6 +270,11 @@
       "class": "test",
       "pattern": "tests/stream-brief/**",
       "reason": "offline acceptance runners for stream contracts; CI and verifiers run them, never an operator entrypoint"
+    },
+    {
+      "class": "test",
+      "pattern": "tests/windows-port",
+      "reason": "windows-port/00 source-only syscall and build-constraint checker invoked by Verify row 8; never installed or released as an operator CLI"
     },
     {
       "class": "test",
