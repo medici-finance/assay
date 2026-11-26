@@ -41,7 +41,9 @@ func TestPublishBindsCommentToChangeAndPolicy(t *testing.T) {
 			}
 			for _, tc := range []struct {
 				name, current, visibility, state, body, wantErr string
-				alreadyPosted                                   bool
+				maxVisibility                                   string
+				withheld                                        []string
+				alreadyPosted, wantNotice                       bool
 				posts                                           int
 			}{
 				{name: "fresh", current: head, visibility: "private", state: "open", body: report, posts: 1},
@@ -52,6 +54,11 @@ func TestPublishBindsCommentToChangeAndPolicy(t *testing.T) {
 				{name: "visibility changed", current: head, visibility: "public", state: "open", body: report, wantErr: "visibility exceeds"},
 				{name: "sensitive content", current: head, visibility: "private", state: "open", body: "Contact owner" + "@" + "fixture.company",
 					wantErr: "pii.email"},
+				{name: "mixed-case withheld identifier", current: head, visibility: "public", state: "open",
+					body: "Reference to restricted-fixture.", maxVisibility: "public",
+					withheld: []string{"  ResTRicted-Fixture  "}, wantErr: "withheld.identifier"},
+				{name: "missing withheld policy", current: head, visibility: "internal", state: "open",
+					body: report, maxVisibility: "internal", withheld: []string{" "}, wantNotice: true, posts: 1},
 			} {
 				t.Run(tc.name, func(t *testing.T) {
 					posts := 0
@@ -77,7 +84,7 @@ func TestPublishBindsCommentToChangeAndPolicy(t *testing.T) {
 						case "POST " + postPath:
 							posts++
 							var payload map[string]any
-							if err := json.NewDecoder(req.Body).Decode(&payload); err != nil || payload["body"] != report {
+							if err := json.NewDecoder(req.Body).Decode(&payload); err != nil || payload["body"] != tc.body {
 								t.Fatalf("wrong comment payload: %v (%v)", payload, err)
 							}
 							return jsonResponse(req, 201, `{"id":19}`), nil
@@ -86,11 +93,24 @@ func TestPublishBindsCommentToChangeAndPolicy(t *testing.T) {
 							return nil, errors.New("unexpected request")
 						}
 					})}
-					c, err := New(Config{Forge: forge, ProjectURL: project, Repository: "org/repo", Token: "fixture", HTTPClient: client})
+					var notices []string
+					c, err := New(Config{Forge: forge, ProjectURL: project, Repository: "org/repo", Token: "fixture",
+						HTTPClient: client, PublicationNotice: func(message string) { notices = append(notices, message) }})
 					if err != nil {
 						t.Fatal(err)
 					}
-					err = c.PublishComment(Publication{Number: 7, Head: head, Body: tc.body, MaxVisibility: "private", AlreadyPosted: tc.alreadyPosted})
+					maxVisibility := tc.maxVisibility
+					if maxVisibility == "" {
+						maxVisibility = "private"
+					}
+					err = c.PublishComment(Publication{Number: 7, Head: head, Body: tc.body, MaxVisibility: maxVisibility,
+						AlreadyPosted: tc.alreadyPosted, WithheldIdentifiers: tc.withheld})
+					if tc.wantNotice && (len(notices) != 1 || !strings.Contains(notices[0], "withheld identifiers could not be checked")) {
+						t.Errorf("missing safe withheld-policy notice: %v", notices)
+					}
+					if !tc.wantNotice && len(notices) != 0 {
+						t.Errorf("unexpected notices: %v", notices)
+					}
 					if (tc.wantErr == "" && err != nil) || (tc.wantErr != "" && (err == nil || !strings.Contains(err.Error(), tc.wantErr))) {
 						t.Fatalf("PublishComment error = %v, want %q", err, tc.wantErr)
 					}
@@ -134,21 +154,39 @@ func TestMintUsesOnlyConfiguredRepository(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	until := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
-	transport := transportFunc(func(req *http.Request) (*http.Response, error) {
-		if req.Method != "POST" || req.URL.String() != "https://api.github.com/app/installations/2/access_tokens" {
-			t.Fatalf("unexpected mint request: %s %s", req.Method, req.URL)
-		}
-		var body struct{ Repositories []string }
-		if err := json.NewDecoder(req.Body).Decode(&body); err != nil || !reflect.DeepEqual(body.Repositories, []string{"repo"}) {
-			t.Fatalf("unexpected mint payload: %v (%v)", body, err)
-		}
-		return jsonResponse(req, 201, fmt.Sprintf(`{"token":"fixture","expires_at":%q}`, until)), nil
-	})
+	future := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
 	pemData := pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)})
-	token, err := MintGitHubToken(&http.Client{Transport: transport}, "1", "2", "repo", pemData)
-	if err != nil || token.Value != "fixture" || token.ExpiresAt.Format(time.RFC3339) != until {
-		t.Fatalf("unexpected token or expiry: %v", err)
+	for _, tc := range []struct {
+		name, expiry string
+		status       int
+		wantErr      string
+	}{
+		{name: "created", status: http.StatusCreated, expiry: future},
+		{name: "other success status", status: http.StatusOK, expiry: future, wantErr: "did not grant"},
+		{name: "expired", status: http.StatusCreated, expiry: "2000-01-01T00:00:00Z", wantErr: "no valid expiry"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			transport := transportFunc(func(req *http.Request) (*http.Response, error) {
+				if req.Method != "POST" || req.URL.String() != "https://api.github.com/app/installations/2/access_tokens" {
+					t.Fatalf("unexpected mint request: %s %s", req.Method, req.URL)
+				}
+				var body struct{ Repositories []string }
+				if err := json.NewDecoder(req.Body).Decode(&body); err != nil || !reflect.DeepEqual(body.Repositories, []string{"repo"}) {
+					t.Fatalf("unexpected mint payload: %v (%v)", body, err)
+				}
+				return jsonResponse(req, tc.status, fmt.Sprintf(`{"token":"fixture","expires_at":%q}`, tc.expiry)), nil
+			})
+			result, err := MintGitHubToken(&http.Client{Transport: transport}, "1", "2", "repo", pemData)
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) || result.Value != "" {
+					t.Fatalf("mint result should be empty with %q, got %v", tc.wantErr, err)
+				}
+				return
+			}
+			if err != nil || result.Value != "fixture" || result.ExpiresAt.Format(time.RFC3339) != future {
+				t.Fatalf("unexpected token or expiry: %v", err)
+			}
+		})
 	}
 }
 
@@ -167,5 +205,104 @@ func TestGitLabCredentialDoesNotFollowRedirect(t *testing.T) {
 	}
 	if _, err := c.Change(7); err == nil || calls != 1 {
 		t.Fatalf("redirect should fail after one request, got %d calls and %v", calls, err)
+	}
+}
+
+func TestGitLabOpenChangesReportsCap(t *testing.T) {
+	var rows []map[string]int
+	for number := 1; number <= 100; number++ {
+		rows = append(rows, map[string]int{"iid": number})
+	}
+	raw, err := json.Marshal(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg := Config{Forge: "gitlab", ProjectURL: "https://gitlab.example/org/repo", Repository: "org/repo",
+		Token: "fixture", HTTPClient: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+			return jsonResponse(req, 200, string(raw)), nil
+		})}}
+	c, err := New(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	numbers, capped, err := c.OpenChanges()
+	if len(numbers) != len(rows) || !capped || err != nil {
+		t.Fatalf("OpenChanges returned %d rows, capped %v, error %v", len(numbers), capped, err)
+	}
+}
+
+func TestGitHubChangeReads(t *testing.T) {
+	const project = "https://github.com/org/repo"
+	head := strings.Repeat("a", 40)
+	current := head
+	client, err := New(Config{Forge: "github", ProjectURL: project, Repository: "org/repo", Token: "fixture",
+		HTTPClient: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+			switch req.Method + " " + req.URL.Path {
+			case "POST /graphql":
+				var query struct {
+					Query     string         `json:"query"`
+					Variables map[string]any `json:"variables"`
+				}
+				if err := json.NewDecoder(req.Body).Decode(&query); err != nil {
+					t.Fatal(err)
+				}
+				if query.Variables["owner"] != "org" || query.Variables["name"] != "repo" {
+					t.Fatalf("wrong repository: %v", query.Variables)
+				}
+				if strings.Contains(query.Query, "pullRequests(") {
+					return jsonResponse(req, 200, `{"data":{"repository":{"pullRequests":{"nodes":[{"number":7}]}}}}`), nil
+				}
+				if query.Variables["number"] != float64(7) || !strings.Contains(query.Query, "comments(") {
+					t.Fatalf("wrong comment query: %v", query.Variables)
+				}
+				return jsonResponse(req, 200, `{"data":{"repository":{"pullRequest":{"comments":{"nodes":[{"databaseId":21,"author":{"login":"fixture","__typename":"User","databaseId":4},"body":"/review","createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z"}]}}}}}`), nil
+			case "GET /repos/org/repo/pulls/7":
+				return jsonResponse(req, 200, fmt.Sprintf(`{"number":7,"state":"open","head":{"sha":%q},"html_url":%q,"changed_files":2}`, current, project+"/pull/7")), nil
+			case "GET /repos/org/repo/pulls/7/files":
+				return jsonResponse(req, 200, `[{"filename":"image.png","status":"added"}]`), nil
+			default:
+				t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
+				return nil, errors.New("unexpected request")
+			}
+		})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	numbers, capped, err := client.OpenChanges()
+	if !reflect.DeepEqual(numbers, []int{7}) || capped || err != nil {
+		t.Fatalf("open changes: %v, %v, %v", numbers, capped, err)
+	}
+	comments, err := client.Comments(7)
+	if err != nil || len(comments) != 1 || comments[0].AuthorID != 4 || comments[0].AuthorType != "User" || comments[0].DatabaseID != 21 {
+		t.Fatalf("unexpected comments: %v, %v", comments, err)
+	}
+	files, err := client.ChangedFiles(7)
+	if err != nil || files.Complete || files.ChangedFiles != 2 || files.HeadSHA != head ||
+		len(files.Files) != 1 || files.Files[0].Filename != "image.png" || !files.Files[0].PatchAbsent {
+		t.Fatalf("unexpected incomplete file list: %v, %v", files, err)
+	}
+}
+
+func TestChangedFilesRefusesMovingHead(t *testing.T) {
+	head := strings.Repeat("a", 40)
+	transport := transportFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/repos/org/repo/pulls/7":
+			return jsonResponse(req, 200, fmt.Sprintf(`{"number":7,"state":"open","head":{"sha":%q},"html_url":"https://github.com/org/repo/pull/7","changed_files":1}`, head)), nil
+		case "/repos/org/repo/pulls/7/files":
+			head = strings.Repeat("b", 40)
+			return jsonResponse(req, 200, `[{"filename":"example.txt"}]`), nil
+		default:
+			t.Fatalf("unexpected request: %s", req.URL)
+			return nil, errors.New("unexpected request")
+		}
+	})
+	c, err := New(Config{Forge: "github", ProjectURL: "https://github.com/org/repo", Repository: "org/repo",
+		Token: "fixture", HTTPClient: &http.Client{Transport: transport}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.ChangedFiles(7); err == nil || !strings.Contains(err.Error(), "change moved") {
+		t.Fatalf("file read accepted a moving change: %v", err)
 	}
 }

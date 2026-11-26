@@ -8,7 +8,9 @@ package deskkit
 // THE CONTRACT, stated once so every later brief inherits it rather than re-deriving it:
 //
 //  1. RESOLUTION. Desk commands do not choose a forge. ForgeFor takes no forge
-//     parameter and reads no forge-selecting flag or environment variable. Resolution order:
+//     parameter and reads no forge-selecting flag or environment variable. The
+//     standalone change client binds its own configuration to one repository
+//     and returns only change operations. Resolution order for ForgeFor:
 //
 //     a. the repo's configured forge — ASSAY_REPO_FORGES in the roster (rosterconfig.go);
 //     b. failing that, the origin remote's host, mapped to a forge ONLY when the mapping
@@ -789,10 +791,10 @@ func ResolveForge(repo ForgeRepo, role string, observers ...RequestObserver) (Fo
 	}
 }
 
-// NewStandaloneChangeForge binds the adapters to an application's explicit
+// newStandaloneChangeBackend binds the adapters to an application's explicit
 // repository, transport and credential. The forgechange library provides the
 // publication policy and exposes only the change operations.
-func NewStandaloneChangeForge(kind ForgeKind, repo ForgeRepo, token, gitlabBase string, client *http.Client) (Forge, error) {
+func newStandaloneChangeBackend(kind ForgeKind, repo ForgeRepo, token, gitlabBase string, client *http.Client) (Forge, error) {
 	switch kind {
 	case ForgeGitHub:
 		return &GitHubForge{Token: token, Client: client, onlyRepo: repo.Slug()}, nil
@@ -803,9 +805,9 @@ func NewStandaloneChangeForge(kind ForgeKind, repo ForgeRepo, token, gitlabBase 
 	}
 }
 
-// StandaloneOpenChangeNumbers returns the same open population without GitLab
+// standaloneOpenChangeNumbers returns the same open population without GitLab
 // pipeline lookups, which callers that only need IDs would otherwise discard.
-func StandaloneOpenChangeNumbers(f Forge, repo ForgeRepo) ([]int, bool, error) {
+func standaloneOpenChangeNumbers(f Forge, repo ForgeRepo) ([]int, bool, error) {
 	if gitlab, ok := f.(*GitLabForge); ok {
 		return gitlab.openChangeNumbers(repo)
 	}

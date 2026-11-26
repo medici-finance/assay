@@ -526,8 +526,17 @@ func ExchangeJWT(c *http.Client, jwt, installID string) (*TokenResult, error) {
 	return exchangeJWTBody(c, jwt, installID, nil)
 }
 
-// ExchangeRepositoryJWT requests an installation credential for one repository.
-func ExchangeRepositoryJWT(c *http.Client, jwt, installID, repository string) (*TokenResult, error) {
+// MintStandaloneGitHub uses an explicit App identity for one repository. This
+// operation has no desk role, audit log, or credential cache.
+func MintStandaloneGitHub(c *http.Client, appID, installID, repository string, pem []byte, now time.Time) (*TokenResult, error) {
+	key, err := ParsePrivateKey(pem)
+	if err != nil {
+		return nil, err
+	}
+	jwt, err := BuildJWT(appID, now, key)
+	if err != nil {
+		return nil, err
+	}
 	payload, err := json.Marshal(struct {
 		Repositories []string `json:"repositories"`
 	}{[]string{repository}})

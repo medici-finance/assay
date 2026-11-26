@@ -1,7 +1,6 @@
 package forgechange
 
 import (
-	"errors"
 	"net/http"
 	"time"
 
@@ -16,14 +15,8 @@ type InstallationToken struct {
 // MintGitHubToken exchanges the caller's App key for a token scoped to a single
 // repository in the named installation. The caller owns credential storage.
 func MintGitHubToken(client *http.Client, appID, installationID, repository string, pem []byte) (InstallationToken, error) {
-	if !idPattern.MatchString(appID) || !idPattern.MatchString(installationID) {
-		return InstallationToken{}, errors.New("GitHub App and installation IDs must be positive integers")
-	}
-	if !repoPattern.MatchString("owner/"+repository) || repository == "." || repository == ".." {
-		return InstallationToken{}, errors.New("invalid GitHub repository name")
-	}
 	token, expires, err := deskkit.MintStandaloneGitHubToken(
-		boundHTTP(client, deskkit.GitHubAPIBase), appID, installationID, repository, pem)
+		client, appID, installationID, repository, pem)
 	if err != nil {
 		return InstallationToken{}, err
 	}
