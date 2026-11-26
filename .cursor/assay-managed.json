@@ -4,7 +4,7 @@
   "files": {
     ".cursor/references/claude-code.md": "631d34768071706854effdc48aa369b7aea9192191c832559a72595932b938f5",
     ".cursor/references/codex.md": "83e0b2ec78ceaa33e28c0569c98dfb93618d641c5552af12de5fb1cac32bec11",
-    ".cursor/references/cursor.md": "d137c1e32bb69adc8ef24efb5a612405faf6b7687e224d161f3dfa7662eaba46",
+    ".cursor/references/cursor.md": "4b8e0a7e2dde56c348ea149b286e1f0dacc5763789123f29c8c25052bbfef957",
     ".cursor/references/desk-common.md": "4e86aecfd2b5065569252102cbc664e1226d99aa4e1cd50725af14677d2e057c",
     ".cursor/references/desk-shell.md": "60ca4987a77fc71d38f3298bc7fcc51d31f1d2c2e88debcaad30cd2d23b9e81b",
     ".cursor/references/handoff-note.md": "db49ec02dced63b33a8a891ae6e9e8465f7bad4c134d93d260ac77fbba987136",
@@ -31,7 +31,7 @@
     ".cursor/skills/intake-desk/SKILL.md": "24430fdb260e8be4caebede0aa530ef5b98e6e85e097a7ce28772d906ddedbf1",
     ".cursor/skills/pdfingest/SETUP.md": "9636918a889243a0289c083f8d61a7d3da7a601ee80e0c3ecd329c6d4b4cba4a",
     ".cursor/skills/pdfingest/SKILL.md": "18d69fb22a5d6ccbb9cb8a174f9d8f5ef5a9154d9cb305a89f630f12991feea9",
-    ".cursor/skills/pr-review-desk/SKILL.md": "b502f0ff744e08d95dbc4430d920c9c97ab2bff9342cdaaeaa9733e347819cb0",
+    ".cursor/skills/pr-review-desk/SKILL.md": "c97db27bcb7de9a09d9a89abde067d5ee9079a91a4f1453891f855b3dc9a88ea",
     ".cursor/skills/pr-review-desk/references/leak-audience-check.md": "9d3163bb0fa0da74865ef128409866fa6e5ecbf9d2e64858a7addac9db8ed568",
     ".cursor/skills/pr-review-desk/references/merge-time-recheck.md": "558248aa76c930c578c2fb256ee9c14a1ae5dd066202053499b4e422ad33791e",
     ".cursor/skills/pr-review-desk/references/out-of-scope-filing.md": "d850da0002a43a5ecca1a6c6fab054c8d70731ca6b341209ddb9268ed3e7d2bc",
