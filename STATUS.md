@@ -20,7 +20,7 @@ _Repo: `medici-finance/assay` — this board covers the streams in this repo onl
 | [composability](docs/streams/composability/README.md) | P2 | active | 2/6 | 2026-11-25 |  |
 | [contributor-trust](docs/streams/contributor-trust/README.md) | P1 | active | 1/9 | 2026-11-19 |  |
 | [derived-board](docs/streams/derived-board/README.md) | P1 | active | 3/11 | 2026-11-25 |  |
-| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 3/40 | 2026-11-26 |  |
+| [desk-containers](docs/streams/desk-containers/README.md) | P2 | active | 3/40 | 2026-11-27 |  |
 | [desk-supervision](docs/streams/desk-supervision/README.md) | P2 | active | 10/37 | 2026-11-26 |  |
 | [desk-tools](docs/streams/desk-tools/README.md) | P2 | active | 14/65 | 2026-11-27 |  |
 | [desktools-go-git](docs/streams/desktools-go-git/README.md) | P2 | active | 5/8 | 2026-11-19 |  |
@@ -150,7 +150,7 @@ _Held by per-stream caps: 20 brief(s) across 3 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 157784562 2026-11-27T01:30:08Z_
+_last regen: c2ff4974b 2026-11-27T03:31:13Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -171,7 +171,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 157784562 2026-11-27T01:30:08Z_
+_last regen: c2ff4974b 2026-11-27T03:31:13Z_
 
 **Progress:** 37/100 brief items done.
 
@@ -329,12 +329,12 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | derived-board | 03 [exec:strong] | implemented | 4610 | 5 | 11d | worker | fix, cite medici-finance/assay#2852 | — | — |
 | tool-refactoring | 01 [exec:strong] | implemented | 4550 | 5 | 5d | worker | fix, cite medici-finance/assay#1702 | — | — |
 | build-less-brittle | 12 [exec:strong] | implemented | 3610 | 1 | 11d | worker | fix, cite medici-finance/assay#4169 | — | — |
-| desk-containers | 26 | implemented | 3610 | 5 | 11d | worker | fix, cite medici-finance/assay#7525 | — | — |
+| desk-containers | 26 | implemented | 3610 | 5 | 11d | worker | fix, cite medici-finance/assay#7835 | — | — |
 | forge-neutral | 04 [exec:strong] | implemented | 3610 | 3 | 11d | worker | fix, cite medici-finance/assay#1281 | — | — |
 | statusgen | 44 [exec:strong] | implemented | 3590 | 5 | 9d | worker | fix, cite medici-finance/assay#7771 | — | — |
 | tool-refactoring | 03 [exec:strong] | implemented | 3550 | 3 | 5d | worker | fix, cite medici-finance/assay#7389 | — | — |
+| tool-refactoring | 06 [exec:strong] | implemented | 3060 | 2 | 6d | worker | fix, cite medici-finance/assay#7389 | — | — |
 | tool-refactoring | 05 [exec:strong] | implemented | 3050 | 2 | 5d | worker | fix, cite medici-finance/assay#7389 | — | — |
-| tool-refactoring | 06 [exec:strong] | implemented | 3050 | 2 | 6d | worker | fix, cite medici-finance/assay#7389 | — | — |
 | graph-execution | 41 [exec:strong] | implemented | 3020 | 2 | 2d | worker | fix, cite medici-finance/assay#7134 | — | — |
 | desktools-v2 | 60 [exec:strong] | implemented | 2610 | 3 | 11d | worker | fix, cite medici-finance/assay#1927 | — | — |
 | measured-status | 05 [exec:strong] | implemented | 2310 | 0 | 11d | worker | fix, cite #3038 | — | — |
@@ -349,7 +349,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 48 [exec:strong] | implemented | 2090 | 2 | 9d | worker | fix, cite medici-finance/assay#6977 | — | — |
 | intake-class-routing | 04 [exec:strong] | implemented | 2090 | 0 | 9d | worker | fix, cite medici-finance/assay#6099 | — | — |
 | intake-class-routing | 05 | implemented | 2090 | 0 | 9d | worker | fix, cite medici-finance/assay#7068 | — | — |
-| intake-class-routing | 02 [exec:strong] | implemented | 2010 | 0 | 47h | worker | fix, cite medici-finance/assay#7803 | — | — |
+| intake-class-routing | 02 [exec:strong] | implemented | 2020 | 0 | 2d | worker | fix, cite medici-finance/assay#7803 | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1610 | 1 | 11d | worker | fix, cite medici-finance/assay#7027 | — | — |
 | desktools-go-git | 06 | verified | 1610 | 1 | 11d | worker | fix, cite medici-finance/assay#2337 | 2026-10-30 assay-verifier-app[bot] @ 40925e8233c8 (forge-identity) | — |
 | desktools-v2 | 20 [exec:strong] | implemented | 1610 | 1 | 11d | worker | fix, cite medici-finance/assay#1927 | — | — |
@@ -374,7 +374,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-gitlab | 18 [exec:strong] | implemented | 1110 | 0 | 11d | worker | fix, cite medici-finance/assay#5782 | — | — |
 | statusgen | 26 [exec:strong] | implemented | 1110 | 0 | 11d | worker | fix, cite medici-finance/assay#4560 | — | — |
 | statusgen | 40 [exec:strong] | implemented | 1110 | 0 | 11d | worker | fix, cite medici-finance/assay#2715 | — | — |
-| desk-tools | 33 [exec:strong] | implemented | 1010 | 0 | 36h | worker | fix, cite medici-finance/assay#4823 | — | — |
+| desk-tools | 33 [exec:strong] | implemented | 1010 | 0 | 47h | worker | fix, cite medici-finance/assay#4823 | — | — |
 
 ### Environment-blocked (43)
 
@@ -399,7 +399,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-supervision | 13 [exec:strong] | implemented | 2110 | 2 | 11d | operator | environment blocker, cite medici-finance/assay#7103 | — | — |
 | forge-neutral | 14 [exec:strong] | implemented | 2110 | 0 | 11d | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
 | measured-status | 01 | implemented | 2110 | 0 | 11d | operator | environment blocker, cite #4823 | — | — |
-| desk-tools | 50 [exec:strong] | implemented | 2090 | 2 | 9d | operator | environment blocker, cite medici-finance/assay#7036 | — | — |
+| desk-tools | 50 [exec:strong] | implemented | 2090 | 2 | 10d | operator | environment blocker, cite medici-finance/assay#7036 | — | — |
 | desk-tools | 62 [exec:strong] | implemented | 2090 | 2 | 9d | operator | environment blocker, cite medici-finance/assay#6444 | — | — |
 | intake-class-routing | 01 [exec:strong] | implemented | 2090 | 0 | 9d | operator | environment blocker, cite medici-finance/assay#6898 | — | — |
 | intake-class-routing | 03 | implemented | 2090 | 0 | 9d | operator | environment blocker, cite medici-finance/assay#1800 | — | — |
@@ -421,7 +421,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 57 [exec:strong] | implemented | 1110 | 0 | 11d | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
 | iso-9001 | 06 [exec:strong] | implemented | 1110 | 0 | 11d | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
 | statusgen | 18 | implemented | 1110 | 0 | 11d | operator | environment blocker, cite medici-finance/assay#4823 | — | — |
-| agent-execution | 10 [exec:strong] | implemented | 1080 | 0 | 8d | operator | environment blocker, cite medici-finance/assay#6208 | — | — |
+| agent-execution | 10 [exec:strong] | implemented | 1080 | 0 | 9d | operator | environment blocker, cite medici-finance/assay#6208 | — | — |
 | desk-tools | 68 [exec:strong] | implemented | 1030 | 0 | 3d | operator | environment blocker, cite medici-finance/assay#4327 | — | — |
 
 ### Runner-pending (44)
@@ -528,7 +528,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | verification-handoff | 11d | 01 |
 | windows-port | 11d | 03 |
 | tool-refactoring | 6d | 06 |
-| intake-class-routing | 47h | 02 |
+| intake-class-routing | 2d | 02 |
 
 ## Unresolved findings
 
