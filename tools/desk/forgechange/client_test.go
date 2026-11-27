@@ -1,6 +1,7 @@
 package forgechange
 
 import (
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -140,18 +141,20 @@ func TestPublishBindsCommentToChangeAndPolicy(t *testing.T) {
 }
 
 func TestGitLabDiscoveryAvoidsPipelineReads(t *testing.T) {
+	head4, head7 := strings.Repeat("4", 40), strings.Repeat("7", 40)
 	calls := 0
 	transport := transportFunc(func(req *http.Request) (*http.Response, error) {
 		calls++
+		// Any pipeline lookup, or any other read, fails the test here.
 		if req.URL.EscapedPath() != "/api/v4/projects/org%2Frepo/merge_requests" || req.URL.Query().Get("state") != "opened" {
 			t.Fatalf("unexpected discovery request %s", req.URL)
 		}
-		if calls == 1 {
-			r := jsonResponse(req, 200, `[{"iid":4}]`)
+		if req.URL.Query().Get("page") != "2" {
+			r := jsonResponse(req, 200, fmt.Sprintf(`[{"iid":4,"state":"opened","draft":true,"author":{"id":52,"username":"contributor"},"sha":%q,"target_branch":"main"}]`, head4))
 			r.Header.Set("X-Next-Page", "2")
 			return r, nil
 		}
-		return jsonResponse(req, 200, `[{"iid":7}]`), nil
+		return jsonResponse(req, 200, fmt.Sprintf(`[{"iid":7,"state":"opened","title":"Draft: wip","author":{"id":53,"username":"other"},"sha":%q,"target_branch":"release"}]`, head7)), nil
 	})
 	cfg := Config{Forge: "gitlab", ProjectURL: "https://gitlab.example/org/repo", Repository: "org/repo",
 		Token: "fixture", HTTPClient: &http.Client{Transport: transport}}
@@ -162,6 +165,20 @@ func TestGitLabDiscoveryAvoidsPipelineReads(t *testing.T) {
 	numbers, capped, err := c.OpenChanges()
 	if !reflect.DeepEqual(numbers, []int{4, 7}) || capped || err != nil || calls != 2 {
 		t.Fatalf("OpenChanges = %v, %v, %v after %d calls", numbers, capped, err, calls)
+	}
+	raw, err := json.Marshal(numbers)
+	if err != nil || string(raw) != "[4,7]" {
+		t.Fatalf("OpenChanges JSON = %s (%v)", raw, err)
+	}
+	rows, capped, err := c.OpenChangeRows()
+	want := []OpenChange{
+		{Number: 4, Author: Account{ID: 52, Login: "contributor"}, Draft: true, State: "open", HeadSHA: head4, BaseRef: "main",
+			URL: "https://gitlab.example/org/repo/-/merge_requests/4"},
+		{Number: 7, Author: Account{ID: 53, Login: "other"}, Draft: true, State: "open", HeadSHA: head7, BaseRef: "release",
+			URL: "https://gitlab.example/org/repo/-/merge_requests/7"},
+	}
+	if !reflect.DeepEqual(rows, want) || capped || err != nil || calls != 4 {
+		t.Fatalf("OpenChangeRows = %+v, %v, %v after %d calls", rows, capped, err, calls)
 	}
 }
 
@@ -340,5 +357,290 @@ func TestStandaloneProviderMatchesProjectOrigin(t *testing.T) {
 				t.Fatalf("accepted %s as a %s project", test.project, test.forge)
 			}
 		})
+	}
+}
+
+func TestChangeCarriesAuthorAndDraft(t *testing.T) {
+	head := strings.Repeat("a", 40)
+	for _, tc := range []struct {
+		forge, project, path, body, wantJSON string
+	}{
+		{"github", "https://github.com/org/repo", "/repos/org/repo/pulls/7",
+			fmt.Sprintf(`{"number":7,"state":"open","draft":true,"user":{"login":"contributor","id":41,"type":"User"},"head":{"sha":%q},"base":{"ref":"main"},"html_url":"https://github.com/org/repo/pull/7","changed_files":1}`, head),
+			`{"state":"open","headSha":"` + head + `","baseRef":"main","url":"https://github.com/org/repo/pull/7","changedFiles":1,"author":{"id":41,"login":"contributor","type":""},"draft":true}`},
+		{"gitlab", "https://gitlab.example/org/repo", "/api/v4/projects/org%2Frepo/merge_requests/7",
+			fmt.Sprintf(`{"iid":7,"state":"opened","draft":true,"author":{"id":52,"username":"contributor"},"sha":%q,"target_branch":"main","changes_count":"1","web_url":"https://gitlab.example/org/repo/-/merge_requests/7"}`, head),
+			`{"state":"open","headSha":"` + head + `","baseRef":"main","url":"https://gitlab.example/org/repo/-/merge_requests/7","changedFiles":1,"author":{"id":52,"login":"contributor","type":""},"draft":true}`},
+	} {
+		t.Run(tc.forge, func(t *testing.T) {
+			c, err := New(Config{Forge: tc.forge, ProjectURL: tc.project, Repository: "org/repo", Token: "fixture",
+				HTTPClient: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+					if req.Method != http.MethodGet || req.URL.EscapedPath() != tc.path {
+						t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
+					}
+					return jsonResponse(req, 200, tc.body), nil
+				})}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			change, err := c.Change(7)
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, err := json.Marshal(change)
+			if err != nil || string(raw) != tc.wantJSON {
+				t.Fatalf("Change JSON = %s (%v)\nwant %s", raw, err, tc.wantJSON)
+			}
+		})
+	}
+}
+
+func TestChangedFilesIgnoresDraftFlip(t *testing.T) {
+	head := strings.Repeat("a", 40)
+	draft := false
+	transport := transportFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.Path {
+		case "/repos/org/repo/pulls/7":
+			return jsonResponse(req, 200, fmt.Sprintf(`{"number":7,"state":"open","draft":%t,"user":{"login":"contributor","id":41},"head":{"sha":%q},"html_url":"https://github.com/org/repo/pull/7","changed_files":1}`, draft, head)), nil
+		case "/repos/org/repo/pulls/7/files":
+			draft = true
+			return jsonResponse(req, 200, `[{"filename":"example.txt","status":"modified","patch":"@@"}]`), nil
+		default:
+			t.Fatalf("unexpected request: %s", req.URL)
+			return nil, errors.New("unexpected request")
+		}
+	})
+	c, err := New(Config{Forge: "github", ProjectURL: "https://github.com/org/repo", Repository: "org/repo",
+		Token: "fixture", HTTPClient: &http.Client{Transport: transport}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files, err := c.ChangedFiles(7)
+	if err != nil {
+		t.Fatalf("a draft flip during the file read failed it: %v", err)
+	}
+	raw, err := json.Marshal(files)
+	want := `{"headSha":"` + head + `","complete":true,"changedFiles":1,"files":[{"filename":"example.txt","status":"modified","patch":"@@","patchAbsent":false}]}`
+	if err != nil || string(raw) != want {
+		t.Fatalf("ChangedFiles JSON = %s (%v)\nwant %s", raw, err, want)
+	}
+}
+
+func TestOpenChangeRowsGitHub(t *testing.T) {
+	head4, head7 := strings.Repeat("4", 40), strings.Repeat("7", 40)
+	calls := 0
+	c, err := New(Config{Forge: "github", ProjectURL: "https://github.com/org/repo", Repository: "org/repo", Token: "fixture",
+		HTTPClient: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+			calls++
+			if req.Method != http.MethodPost || req.URL.Path != "/graphql" {
+				t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
+			}
+			var query struct {
+				Query     string         `json:"query"`
+				Variables map[string]any `json:"variables"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&query); err != nil {
+				t.Fatal(err)
+			}
+			for _, want := range []string{"pullRequests(states:OPEN", "orderBy:{field:CREATED_AT,direction:DESC}", "isDraft", "...on User{databaseId}", "...on Bot{databaseId}", "headRefOid"} {
+				if !strings.Contains(query.Query, want) {
+					t.Errorf("row query lacks %q: %s", want, query.Query)
+				}
+			}
+			for _, bad := range []string{"statusCheckRollup", "reviews(", "comments("} {
+				if strings.Contains(query.Query, bad) {
+					t.Errorf("row query requests %q: %s", bad, query.Query)
+				}
+			}
+			if query.Variables["owner"] != "org" || query.Variables["name"] != "repo" {
+				t.Fatalf("wrong repository: %v", query.Variables)
+			}
+			return jsonResponse(req, 200, fmt.Sprintf(`{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[`+
+				`{"number":7,"state":"OPEN","isDraft":true,"author":{"login":"helper","__typename":"Bot","databaseId":99},"headRefOid":%q,"baseRefName":"main"},`+
+				`{"number":4,"state":"OPEN","isDraft":false,"author":{"login":"contributor","__typename":"User","databaseId":41},"headRefOid":%q,"baseRefName":"release"}]}}}}`, head7, head4)), nil
+		})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, capped, err := c.OpenChangeRows()
+	want := []OpenChange{
+		{Number: 7, Author: Account{ID: 99, Login: "helper[bot]", Type: "Bot"}, Draft: true, State: "open", HeadSHA: head7, BaseRef: "main", URL: "https://github.com/org/repo/pull/7"},
+		{Number: 4, Author: Account{ID: 41, Login: "contributor", Type: "User"}, State: "open", HeadSHA: head4, BaseRef: "release", URL: "https://github.com/org/repo/pull/4"},
+	}
+	if err != nil || capped || calls != 1 || !reflect.DeepEqual(rows, want) {
+		t.Fatalf("OpenChangeRows = %+v, %v, %v after %d calls", rows, capped, err, calls)
+	}
+	raw, err := json.Marshal(rows[0])
+	wantJSON := `{"number":7,"author":{"id":99,"login":"helper[bot]","type":"Bot"},"draft":true,"state":"open","headSha":"` + head7 + `","baseRef":"main","url":"https://github.com/org/repo/pull/7"}`
+	if err != nil || string(raw) != wantJSON {
+		t.Fatalf("row JSON = %s (%v)\nwant %s", raw, err, wantJSON)
+	}
+}
+
+func TestOpenChangeRowsGitHubReportsCap(t *testing.T) {
+	page := 0
+	c, err := New(Config{Forge: "github", ProjectURL: "https://github.com/org/repo", Repository: "org/repo", Token: "fixture",
+		HTTPClient: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+			var query struct {
+				Variables map[string]any `json:"variables"`
+			}
+			if err := json.NewDecoder(req.Body).Decode(&query); err != nil {
+				t.Fatal(err)
+			}
+			first := int(query.Variables["first"].(float64))
+			nodes := make([]string, 0, first)
+			for i := 0; i < first; i++ {
+				nodes = append(nodes, fmt.Sprintf(`{"number":%d,"state":"OPEN","headRefOid":%q}`, 1000-page*first-i, strings.Repeat("c", 40)))
+			}
+			page++
+			return jsonResponse(req, 200, fmt.Sprintf(`{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":true,"endCursor":"c%d"},"nodes":[%s]}}}}`,
+				page, strings.Join(nodes, ","))), nil
+		})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows, capped, err := c.OpenChangeRows()
+	if err != nil || !capped || len(rows) != 100 || rows[0].Number != 1000 {
+		t.Fatalf("OpenChangeRows returned %d rows, capped %v, error %v", len(rows), capped, err)
+	}
+}
+
+func TestOpenChangeRowsRefusesIncompleteRow(t *testing.T) {
+	c, err := New(Config{Forge: "github", ProjectURL: "https://github.com/org/repo", Repository: "org/repo", Token: "fixture",
+		HTTPClient: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+			return jsonResponse(req, 200, `{"data":{"repository":{"pullRequests":{"pageInfo":{"hasNextPage":false},"nodes":[{"number":7,"state":"OPEN"}]}}}}`), nil
+		})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rows, _, err := c.OpenChangeRows(); err == nil || rows != nil {
+		t.Fatalf("a row without a head was accepted: %v, %v", rows, err)
+	}
+}
+
+func TestGitLabOpenChangeRowsReportsCap(t *testing.T) {
+	var rows []map[string]any
+	for number := 1; number <= 100; number++ {
+		rows = append(rows, map[string]any{"iid": number, "state": "opened", "sha": strings.Repeat("d", 40)})
+	}
+	raw, err := json.Marshal(rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	c, err := New(Config{Forge: "gitlab", ProjectURL: "https://gitlab.example/org/repo", Repository: "org/repo",
+		Token: "fixture", HTTPClient: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+			calls++
+			if req.URL.EscapedPath() != "/api/v4/projects/org%2Frepo/merge_requests" {
+				t.Fatalf("unexpected request %s", req.URL)
+			}
+			return jsonResponse(req, 200, string(raw)), nil
+		})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, capped, err := c.OpenChangeRows()
+	if len(got) != len(rows) || !capped || err != nil || calls != 1 {
+		t.Fatalf("OpenChangeRows returned %d rows, capped %v, error %v after %d calls", len(got), capped, err, calls)
+	}
+}
+
+func TestChangesUpdatedSince(t *testing.T) {
+	bound := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		forge, project, path, body string
+		wantQuery                  map[string]string
+	}{
+		{"github", "https://github.com/org/repo", "/repos/org/repo/pulls",
+			`[{"number":9,"state":"open","draft":true,"title":"t","updated_at":"2026-10-01T12:00:05Z","user":{"login":"contributor","id":41,"type":"User"},"head":{"sha":"h9","ref":"topic"},"base":{"sha":"b","ref":"main","repo":{"full_name":"org/repo"}}},` +
+				`{"number":8,"state":"open","draft":false,"title":"t","updated_at":"2026-10-01T12:00:01Z","user":{"login":"contributor","id":41,"type":"User"},"head":{"sha":"h8","ref":"topic"},"base":{"sha":"b","ref":"main","repo":{"full_name":"org/repo"}}},` +
+				`{"number":3,"state":"closed","title":"t","updated_at":"2026-09-30T00:00:00Z","user":{"login":"contributor","id":41,"type":"User"},"head":{"sha":"h3","ref":"topic"},"base":{"sha":"b","ref":"main","repo":{"full_name":"org/repo"}}}]`,
+			map[string]string{"state": "all", "sort": "updated", "direction": "desc"}},
+		{"gitlab", "https://gitlab.example/org/repo", "/api/v4/projects/org%2Frepo/merge_requests",
+			`[{"iid":9,"state":"opened","draft":true,"title":"t","updated_at":"2026-10-01T12:00:05Z","author":{"username":"contributor","id":52,"bot":false},"sha":"h9","source_branch":"topic","target_branch":"main"},` +
+				`{"iid":8,"state":"opened","work_in_progress":false,"title":"t","updated_at":"2026-10-01T12:00:01Z","author":{"username":"contributor","id":52,"bot":false},"sha":"h8","source_branch":"topic","target_branch":"main"}]`,
+			map[string]string{"state": "all", "order_by": "updated_at", "sort": "desc", "updated_after": "2026-10-01T12:00:00Z"}},
+	} {
+		t.Run(tc.forge, func(t *testing.T) {
+			calls := 0
+			c, err := New(Config{Forge: tc.forge, ProjectURL: tc.project, Repository: "org/repo", Token: "fixture",
+				HTTPClient: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+					calls++
+					if req.Method != http.MethodGet || req.URL.EscapedPath() != tc.path {
+						t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
+					}
+					for key, want := range tc.wantQuery {
+						if got := req.URL.Query().Get(key); got != want {
+							t.Errorf("query %s = %q, want %q", key, got, want)
+						}
+					}
+					return jsonResponse(req, 200, tc.body), nil
+				})}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := c.ChangesUpdatedSince(context.Background(), UpdateQuery{Since: bound})
+			if err != nil || calls != 1 {
+				t.Fatalf("ChangesUpdatedSince: %v after %d calls", err, calls)
+			}
+			if got.Incomplete || !got.ObservedUpTo.Equal(bound.Add(5*time.Second)) || got.Provider != tc.forge || got.Repository != "org/repo" || !got.Since.Equal(bound) {
+				t.Fatalf("coverage = %+v", got.UpdateCoverage)
+			}
+			if len(got.Records) != 2 || got.Records[0].Number != 9 || !got.Records[0].Draft || got.Records[1].Number != 8 || got.Records[1].Draft ||
+				got.Records[0].HeadSHA != "h9" || got.Records[0].Author.Login != "contributor" || got.Records[0].Author.ID == 0 {
+				t.Fatalf("records = %+v", got.Records)
+			}
+		})
+	}
+}
+
+func TestChangesUpdatedSinceIncompleteKeepsWatermark(t *testing.T) {
+	page := 0
+	c, err := New(Config{Forge: "gitlab", ProjectURL: "https://gitlab.example/org/repo", Repository: "org/repo", Token: "fixture",
+		HTTPClient: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+			page++
+			r := jsonResponse(req, 200, fmt.Sprintf(`[{"iid":%d,"state":"opened","title":"t","updated_at":"2026-10-01T12:00:00Z","author":{"username":"contributor","id":52},"sha":"h"}]`, page))
+			r.Header.Set("X-Next-Page", fmt.Sprint(page+1))
+			return r, nil
+		})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.ChangesUpdatedSince(context.Background(), UpdateQuery{})
+	if err != nil || !got.Incomplete || !got.ObservedUpTo.IsZero() || got.LimitReason != "page-limit" {
+		t.Fatalf("page ceiling: %+v, %v", got.UpdateCoverage, err)
+	}
+}
+
+func TestChangesUpdatedSinceHonorsCanceledContext(t *testing.T) {
+	c, err := New(Config{Forge: "github", ProjectURL: "https://github.com/org/repo", Repository: "org/repo", Token: "fixture",
+		HTTPClient: &http.Client{Transport: transportFunc(func(req *http.Request) (*http.Response, error) {
+			t.Fatalf("a canceled read reached the network: %s", req.URL)
+			return nil, errors.New("unexpected request")
+		})}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := c.ChangesUpdatedSince(ctx, UpdateQuery{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled read returned %v", err)
+	}
+}
+
+func TestExistingReadJSONUnchanged(t *testing.T) {
+	for _, tc := range []struct {
+		value any
+		want  string
+	}{
+		{Comment{AuthorID: 4, AuthorType: "User", DatabaseID: 21, URL: "u", CreatedAt: "c", UpdatedAt: "d", Body: "b"},
+			`{"authorId":4,"authorType":"User","databaseId":21,"url":"u","createdAt":"c","updatedAt":"d","body":"b"}`},
+		{Files{HeadSHA: "h", ChangedFiles: 1, Files: []File{{Filename: "f", PatchAbsent: true}}},
+			`{"headSha":"h","complete":false,"changedFiles":1,"files":[{"filename":"f","status":"","patchAbsent":true}]}`},
+	} {
+		raw, err := json.Marshal(tc.value)
+		if err != nil || string(raw) != tc.want {
+			t.Errorf("JSON = %s (%v), want %s", raw, err, tc.want)
+		}
 	}
 }

@@ -297,3 +297,31 @@ func testPullsBoundary(t *testing.T) {
 		t.Fatalf("bounded local filter: %+v requests=%d", got, len(a.queries))
 	}
 }
+
+// TestIncrementalDraft reads the draft flag from each provider's change row.
+// GitLab still reports older merge requests through work_in_progress, so either
+// field marks the change as a draft; an absent field stays false.
+func TestIncrementalDraft(t *testing.T) {
+	for _, tc := range []struct {
+		provider, field string
+		want            bool
+	}{
+		{"github", `"draft":true`, true},
+		{"github", `"draft":false`, false},
+		{"github", "", false},
+		{"gitlab", `"draft":true`, true},
+		{"gitlab", `"work_in_progress":true`, true},
+		{"gitlab", `"draft":false,"work_in_progress":false`, false},
+		{"gitlab", "", false},
+	} {
+		row := updateRow(tc.provider, "changes", 7, "2026-10-01T12:00:00Z")
+		if tc.field != "" {
+			row = strings.TrimSuffix(row, "}") + "," + tc.field + "}"
+		}
+		a := &incrementalAccess{provider: tc.provider, kind: "changes", pages: []string{"[" + row + "]"}}
+		_, _, records, err := readUpdates(context.Background(), tc.provider, "changes", a, adapters.UpdateQuery{})
+		if err != nil || len(records) != 1 || records[0].Draft != tc.want {
+			t.Fatalf("%s %s: draft = %+v, %v; want %v", tc.provider, tc.field, records, err, tc.want)
+		}
+	}
+}

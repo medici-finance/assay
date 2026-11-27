@@ -821,6 +821,19 @@ func standaloneOpenChangeNumbers(f Forge, repo ForgeRepo) ([]int, bool, error) {
 	return numbers, open.TruncatedAtCap, nil
 }
 
+// standaloneOpenChangeRows returns the open population as rows from one list read per page:
+// GitHub through the row document, GitLab without a pipeline lookup per head.
+func standaloneOpenChangeRows(f Forge, repo ForgeRepo) (*OpenChanges, error) {
+	switch backend := f.(type) {
+	case *GitHubForge:
+		return backend.openChangeRows(repo)
+	case *GitLabForge:
+		return backend.openChangeRows(repo)
+	default:
+		return nil, Refused("open change rows need a GitHub or GitLab backend")
+	}
+}
+
 // ciTokenAPIBase redirects the CI workflow-token transport's GitHub backend at a test server.
 // It is EMPTY in production (the real API host) and set only through SetCITokenAPIBaseForTest;
 // the constructor never reads an environment variable for it, so a hostile GITHUB_API_URL cannot
