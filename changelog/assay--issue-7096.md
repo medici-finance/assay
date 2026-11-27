@@ -1,0 +1,4 @@
+### Fixed
+
+- The post-flip check no longer locks a head out of ready on a transient read. A `mergeable` verdict of `UNKNOWN` (the forge recomputing after the base branch moved) is re-read within the 30s bound, and one that never settles is could-not-check: the change stays ready and no revert marker is written.
+- A post-flip revert now records why it reverted (`mergeable`, `review`, `checks`, `rules`, `coverage` or `unreadable`) in its marker. The `not-reverted` condition of `deskflip` and `deskpost ready` stops holding the head once a fresh merge-requirement read shows that cause no longer holds, so a change re-approved at the same head can be flipped again. A cause that still holds, a read that fails, an unrecognised cause, or three reverts at one head keep refusing. A marker written before this change records no cause and clears only when the fresh read shows every requirement met.

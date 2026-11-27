@@ -147,3 +147,55 @@ func TestReadyNotRevertedUnreadableFailsClosed(t *testing.T) {
 		})
 	}
 }
+
+// causeRevertComment is a backstop revert comment for head whose marker records causes (#7096).
+func causeRevertComment(id int, login, head string, causes ...string) map[string]any {
+	c := revertComment(id, login, head)
+	c["body"] = strings.Replace(c["body"].(string), deskkit.ReadyBackstopRevertMarker(head),
+		deskkit.ReadyBackstopRevertMarkerFor(head, causes), 1)
+	return c
+}
+
+// A revert recorded for the review decision clears when a fresh read shows it APPROVED: a
+// review re-approved at the same head.
+//
+// regression: #7096
+func TestReadyNotRevertedCauseCleared(t *testing.T) {
+	f := approvedGreenFake(t)
+	f.issueComments = []map[string]any{causeRevertComment(900, reviewerBotDisplay(), testHead, deskkit.RevertCauseReview)}
+	f.mergeReqJSON = mergeReqJSON(t, testHead, "MERGEABLE", "APPROVED", [2]string{"build-test", "SUCCESS"})
+
+	if code := run(readyArgs(exampleRepo)); code != 0 || f.flips != 1 {
+		t.Fatalf("exit = %d flips = %d, want a flip: the recorded cause cleared", code, f.flips)
+	}
+}
+
+// The same revert while the review decision still reads CHANGES_REQUESTED keeps refusing.
+//
+// regression: #7096
+func TestReadyNotRevertedCauseHolds(t *testing.T) {
+	f := approvedGreenFake(t)
+	f.issueComments = []map[string]any{causeRevertComment(900, reviewerBotDisplay(), testHead, deskkit.RevertCauseReview)}
+	f.mergeReqJSON = mergeReqJSON(t, testHead, "MERGEABLE", "CHANGES_REQUESTED", [2]string{"build-test", "SUCCESS"})
+
+	if code := run(readyArgs(exampleRepo)); code != deskkit.ExitUnverifiable || f.flips != 0 {
+		t.Fatalf("exit = %d flips = %d, want could-not-check and no flip: the cause still holds", code, f.flips)
+	}
+	if d := lastAudit(t).Detail; !strings.Contains(d, "still holds") || !strings.Contains(d, "CHANGES_REQUESTED") {
+		t.Fatalf("the refusal should name the holding cause, got: %s", d)
+	}
+}
+
+// A marker written before causes were recorded clears when every requirement reads met; the
+// failed-read case is TestReadyNotRevertedRefusesHead (the read answers 502).
+//
+// regression: #7096
+func TestReadyNotRevertedLegacyMarkerAllMet(t *testing.T) {
+	f := approvedGreenFake(t)
+	f.issueComments = []map[string]any{revertComment(900, reviewerBotDisplay(), testHead)}
+	f.mergeReqJSON = mergeReqJSON(t, testHead, "MERGEABLE", "APPROVED", [2]string{"build-test", "SUCCESS"})
+
+	if code := run(readyArgs(exampleRepo)); code != 0 || f.flips != 1 {
+		t.Fatalf("exit = %d flips = %d, want a flip: every requirement now reads met", code, f.flips)
+	}
+}
