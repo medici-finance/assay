@@ -45,6 +45,9 @@ func TestOutcomeForgeRecipes(t *testing.T) {
 		if permitted != (forge == deskkit.ForgeGitHub) {
 			t.Errorf("forge %q: explicit approval recipe permission=%v", forge, permitted)
 		}
+		if paired := strings.Contains(out.String(), "--flip-verified"); paired != permitted {
+			t.Errorf("forge %q: paired flip recipe=%v, want %v", forge, paired, permitted)
+		}
 	}
 }
 
