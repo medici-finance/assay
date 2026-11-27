@@ -173,8 +173,13 @@ func TestBodycheckPositives(t *testing.T) {
 // still runs but no longer looks at the thing it was built to look at reports green
 // forever. Dropping the go.sum artifact because it is inconvenient would leave both other
 // tests passing and the go.sum class unmeasured.
+//
+// The required set is DERIVED from the benign-shape registry (benignNamedFixtures): every
+// fixture an entry names as Admitted or Bounds, plus the fixtures only a literal arm
+// decides. The catalogue below predates the registry and must stay a subset of it, so a
+// registry edit cannot drop a fixture the catalogue was built to keep.
 func TestBodycheckCorpusCoversEveryCataloguedShape(t *testing.T) {
-	required := map[string]string{
+	catalogued := map[string]string{
 		"neg-go-sum-checksums.txt":                 "shape 4 — go.sum h1: digests",
 		"neg-package-lock-integrity.txt":           "shape 4 — SRI integrity fields",
 		"neg-key-path-shell-assignment.txt":        "key=path Evidence idiom",
@@ -204,6 +209,13 @@ func TestBodycheckCorpusCoversEveryCataloguedShape(t *testing.T) {
 		"neg-url-userinfo-placeholders.txt":        "the url-userinfo arm — placeholders and username-only forms",
 		"neg-go-buildinfo-godebug.txt":             "#6821 — a Go build-info GODEBUG settings row",
 		"pos-godebug-token-value.txt":              "#6821 — a token value behind the GODEBUG head stays refused",
+	}
+	required := benignNamedFixtures()
+	for file, why := range catalogued {
+		if _, ok := required[file]; !ok {
+			t.Errorf("catalogued artifact %s (%s) is named by no registry entry", file, why)
+		}
+		required[file] = why
 	}
 	present := map[string]bool{}
 	for _, a := range loadCorpus(t) {
