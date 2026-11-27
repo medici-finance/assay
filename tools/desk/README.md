@@ -3697,8 +3697,10 @@ because a session sets its own environment. **A shared config home gives no sepa
 between roles.** Give each role window its own `ASSAY_CONFIG_HOME`. It holds the key,
 `apps.env` entry and token cache of each role that a tool run in that window acts as, and no
 other role's. That is the window's own role, plus `desk` in a `worker-desk` or `verify-desk`
-window, because `deskdispatch` takes the claim and the model stamp as the desk App for worker
-and verifier kits. It also includes the role a dispatched agent mints, and `worker` or
+window, because `deskdispatch` takes the model stamp as the desk App for worker and verifier
+kits, and the claim as the desk App for a worker kit. A verifier dispatch from a `verify-desk`
+window takes its claim as the verifier App, so that window advances and releases the claim with
+its own credential and no `--cross-role` mint (#7815). It also includes the role a dispatched agent mints, and `worker` or
 `verifier` wherever `deskreply` or `deskevidence` runs. A review kit claims and stamps as
 `reviewer` wherever it is dispatched, and the table gives `the-desk` no `reviewer` key, so
 review kits are dispatched from `pr-review-desk`; from a `the-desk` home provisioned by the
