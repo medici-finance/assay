@@ -765,10 +765,13 @@ admission; with `--root`, `deskevidence` refuses a relative or in-home `--outcom
 `rows_run`, disposition and reason; a discarded run keeps its entry). `deskperf reruns` counts them. A record a newer record for the same brief supersedes leaves the tree only through `deskevidence
 --remove-superseded <record> --superseded-by <newer record>`: one pinned, conditional forge commit
 under the same identity and attestation, refused for any path that is not a superseded outcome
-record. Never remove a record with a local commit. On PASS write the same row's shape with `"outcome":"verified"` only AFTER
-the Evidence, execution witnesses, Status `verified` (or `done`), and dated Verified stamp have
-landed on the target branch and `statusgen --lint --acceptance-forge` accepts that same tree
-on the host. Before writing,
+record. Never remove a record with a local commit. On a strict PASS for a reversible, model-gated
+brief at `implemented`, land its Evidence first, then land the outcome record with `--flip-verified`.
+Use `"outcome":"verified"` and put the full admitted observation SHA in `source_sha`.
+The verb derives the dated stamp from the admitted PASS and commits the record and status row
+together on a pinned GitHub branch head. For other briefs, including human-gated and irreversible
+work, wait until the authorized transition has landed. The ordinary `--outcome-record` form
+checks that the target branch already holds the verified or done closure. Before writing,
 refresh only the brief in the verifier home from the target branch
 (`git -C <home> fetch origin <branch>`, then `git -C <home> show FETCH_HEAD:<path> > <home>/<path>`).
 Use the full `git -C <home> rev-parse FETCH_HEAD` as the record's Evidence commit SHA.
@@ -783,7 +786,9 @@ Supplied input-change receipts must describe the same admitted inputs. Never che
 the home, because moving its detached HEAD refuses admission. Leave the stream README as the run left it: its attested bytes plus this brief's own
 row's lifecycle cells, which the row-scoped landing already put on the target branch. Admission
 refuses any other change to it (another row, prose, or this row's authoring cells), and before
-execution it refuses any change at all. `deskevidence --root <home>` checks the closure and compares
+execution it refuses any change at all. With `--flip-verified`, leave the README unchanged in
+the home; the verb plans the row from the pinned target tree. For an ordinary verified record,
+`deskevidence --root <home>` checks the closure and compares
 the brief and stream README with the target branch; if another row of that README moved on the
 target branch after dispatch, the outcome record refuses, and the brief is re-dispatched from the
 current target branch rather than the README being refreshed. Evidence-only landings that leave Status `implemented` MUST NOT record a
@@ -894,15 +899,17 @@ commit straight to `main` as the verifier App — human:<name>'s authorization o
 plus the unarmed-project standing path.** Nothing else, nobody else: not another verb, not another file
 class, not another desk, not a wider branch grant.
 
-Interface: `deskevidence --help` — positional `<owner/repo> <branch>`, `--evidence-file` required (plus
-`--brief-path` to merge a row into a brief's Evidence section), ONE file per invocation, and it **mints
+Interface: `deskevidence --help` — positional `<owner/repo> <branch>`, then one of the landing forms
+below. The verb **mints
 its own verifier App token in-process and does NOT read `GH_TOKEN`** (prefixing it with a token `cat`
 only misleads). Set `VERIFIER_MAIN_OK=1`. Every landing passes `--root <the dispatched verifier home>`,
 where admission is checked. The admitted forms are:
 - Evidence rows: `--brief-path <brief> --evidence-file <absolute fragment path>`, with the fragment written to the desk's own scratch OUTSIDE the home (a fragment inside the home is an untracked file and refuses admission).
 - Stream-index flip: edit the home's tracked `README.md` row, then `--evidence-file docs/streams/<stream>/README.md --row <NN>`.
 - Outcome record: `--outcome-record <absolute file outside the home>`.
-For GitHub, all three forms and `deskevidence flip` pass `--acceptance-forge` explicitly
+- Verified flip and outcome record: `--outcome-record <absolute file outside the home> --flip-verified`
+  after the strict PASS Evidence lands on the same branch.
+For GitHub, pass `--acceptance-forge` explicitly on every form and on `deskevidence flip`
 on the host. The full landed closure lint may need fresh corroboration of an approved
 transition; the emitted outcome command carries that permission too. An outcome record
 refuses on a lint PROBLEM naming the brief it closes or naming no brief; a PROBLEM naming
@@ -969,11 +976,11 @@ a branch as the target instead of `main`:
    branch of that name wherever one exists, and the push then silently seeds the branch from a stale
    commit.
 
-1. **`deskevidence <owner/repo> verify-desk/<stream>-<NN>-evidence-<YYYYMMDD>`, ONE invocation per
-   file** — the same one-file-per-call interface and `--root <verifier home>` landing forms as
-   **Interface** above, just aimed at the branch: first the brief's
+1. Use the `deskevidence` forms above with `--root <verifier home>` and target
+   `verify-desk/<stream>-<NN>-evidence-<YYYYMMDD>`. Land the brief's
    `## Evidence` rows (`--evidence-file` plus `--brief-path`), then the stream README row flip
-   `implemented → verified`. **Both land on the SAME branch and ride in the SAME PR** — an Evidence PR
+   `implemented → verified`. On a strict model-gated PASS, use the paired
+   `--outcome-record <file> --flip-verified` form for the flip. **Both land on the SAME branch and ride in the SAME PR** — an Evidence PR
    that carries the rows but not the flip leaves the board lying, and a flip without the rows is a
    stamp. `VERIFIER_MAIN_OK` is a main-push switch and is irrelevant here; every other guard (repo
    allowlist, BodyCheck, the outward-write rate limit, the bot-USER attribution check, the audit line)

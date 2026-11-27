@@ -20,7 +20,7 @@ func TestStandaloneChangeClientExposesOnlyScopedOperations(t *testing.T) {
 	for i := 0; i < typ.NumMethod(); i++ {
 		methods = append(methods, typ.Method(i).Name)
 	}
-	want := []string{"Change", "ChangedFiles", "ChangesUpdatedSince", "Comments", "OpenChangeRows", "OpenChanges", "PublishComment"}
+	want := []string{"AddReaction", "Change", "ChangedFiles", "ChangesUpdatedSince", "Comments", "OpenChangeRows", "OpenChanges", "PublishComment"}
 	if typ != reflect.TypeOf((*StandaloneChanges)(nil)) || !reflect.DeepEqual(methods, want) {
 		t.Fatalf("standalone constructor exposed %v with methods %v; want only %v", typ, methods, want)
 	}

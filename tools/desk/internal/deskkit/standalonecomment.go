@@ -25,49 +25,92 @@ type StandalonePublication struct {
 }
 
 func (c *StandaloneChanges) PublishComment(in StandalonePublication) error {
-	if !standaloneSHAPattern.MatchString(in.Head) {
+	return c.publishToChange(standaloneChangeWrite{
+		number: in.Number, head: in.Head, maxVisibility: in.MaxVisibility,
+		validate: func() error {
+			if strings.TrimSpace(in.Body) == "" || len(in.Body) > OutboundBodyMaxBytes {
+				return fmt.Errorf("comment body must contain between 1 and %d bytes of text", OutboundBodyMaxBytes)
+			}
+			return nil
+		},
+		scan: func(configured Visibility) error { return c.checkComment(in, configured) },
+		write: func() error {
+			if in.AlreadyPosted {
+				return nil
+			}
+			ref, err := c.forge.PostCommentTyped(c.repo, in.Number, TargetChange, in.Body)
+			if err != nil {
+				return standaloneOperationError("post comment", err)
+			}
+			if ref == nil || ref.DatabaseID < 1 {
+				return errors.New("forge did not confirm the posted comment")
+			}
+			return nil
+		},
+	})
+}
+
+// standaloneChangeWrite is one outward write to a change. Every standalone
+// write verb goes through publishToChange so that each one gets the same
+// visibility scope and head pin.
+type standaloneChangeWrite struct {
+	number        int
+	head          string
+	maxVisibility string
+	// validate checks the verb's own input before any network access.
+	validate func() error
+	// scan checks verb content against the configured publication scope after
+	// the live visibility is known to be inside it. Nil means no free text.
+	scan func(configured Visibility) error
+	// write runs only after every check passed for the current head.
+	write func() error
+}
+
+// publishToChange runs the shared publication guard and then the write: a full
+// reviewed head, the verb's input check, the live repository visibility within
+// the operator-authorized scope, the verb's content scan, and an open change
+// whose current head is the reviewed head.
+func (c *StandaloneChanges) publishToChange(w standaloneChangeWrite) error {
+	if !standaloneSHAPattern.MatchString(w.head) {
 		return errors.New("a full reviewed head is required to publish")
 	}
-	if strings.TrimSpace(in.Body) == "" || len(in.Body) > OutboundBodyMaxBytes {
-		return fmt.Errorf("comment body must contain between 1 and %d bytes of text", OutboundBodyMaxBytes)
+	if w.validate != nil {
+		if err := w.validate(); err != nil {
+			return err
+		}
 	}
 	visibility, err := c.forge.RepoVisibility(c.repo)
 	if err != nil {
 		return standaloneOperationError("read repository visibility", err)
 	}
-	if err := c.checkComment(in, visibility); err != nil {
-		return err
+	configured := ParseVisibility(w.maxVisibility)
+	configuredRank := visibilityExposure(configured)
+	liveRank := visibilityExposure(ParseVisibility(visibility))
+	if liveRank < 0 || configuredRank < liveRank {
+		return errors.New("repository visibility exceeds the configured publication scope or could not be verified")
 	}
-	change, err := c.Change(in.Number)
+	if w.scan != nil {
+		if err := w.scan(configured); err != nil {
+			return err
+		}
+	}
+	change, err := c.Change(w.number)
 	if err != nil {
 		return err
 	}
 	if change.State != "open" && change.State != "opened" {
 		return errors.New("change is no longer open")
 	}
-	if change.HeadSHA != in.Head {
-		return fmt.Errorf("reviewed head %s differs from current head %s", in.Head, change.HeadSHA)
+	if change.HeadSHA != w.head {
+		return fmt.Errorf("reviewed head %s differs from current head %s", w.head, change.HeadSHA)
 	}
-	if in.AlreadyPosted {
-		return nil
-	}
-	ref, err := c.forge.PostCommentTyped(c.repo, in.Number, TargetChange, in.Body)
-	if err != nil {
-		return standaloneOperationError("post comment", err)
-	}
-	if ref == nil || ref.DatabaseID < 1 {
-		return errors.New("forge did not confirm the posted comment")
-	}
-	return nil
+	return w.write()
 }
 
-func (c *StandaloneChanges) checkComment(in StandalonePublication, live string) error {
-	configured := ParseVisibility(in.MaxVisibility)
+// checkComment scans a comment body. publishToChange has already checked that
+// the live visibility is inside the configured scope.
+func (c *StandaloneChanges) checkComment(in StandalonePublication, configured Visibility) error {
 	configuredRank := visibilityExposure(configured)
-	liveRank := visibilityExposure(ParseVisibility(live))
-	if liveRank < 0 || configuredRank < liveRank {
-		return errors.New("repository visibility exceeds the configured publication scope or could not be verified")
-	}
 	humans := splitWithheldIdentifiers(strings.Join(in.HumanLogins, ","))
 	scanners := outboundScanners{
 		rulingClaim: func(surface string, text []byte) error {
