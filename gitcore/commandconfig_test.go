@@ -40,6 +40,11 @@ func TestScopedRemoteQualifiedConfig(t *testing.T) {
 	}{
 		{"count-zero", [][2]string{{"GIT_CONFIG_COUNT", "0"}}, true},
 		{"admitted-grep-pins", grepPinEnv, true},
+		{"review-kit-identity", [][2]string{
+			{"GIT_CONFIG_COUNT", "2"},
+			{"GIT_CONFIG_KEY_0", "user.name"}, {"GIT_CONFIG_VALUE_0", "Review fixture"},
+			{"GIT_CONFIG_KEY_1", "user.email"}, {"GIT_CONFIG_VALUE_1", "review@example.invalid"},
+		}, false},
 		{"one-grep-pin", [][2]string{{"GIT_CONFIG_COUNT", "1"}, {"GIT_CONFIG_KEY_0", "grep.patternType"}, {"GIT_CONFIG_VALUE_0", "default"}}, false},
 		{"pins-plus-url", append(withPin(0, "3"), [2]string{"GIT_CONFIG_KEY_2", "remote.origin.url"}, [2]string{"GIT_CONFIG_VALUE_2", foreign}), false},
 		{"pin-value-changed", withPin(2, "fixed"), false},

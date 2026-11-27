@@ -98,6 +98,33 @@ func TestDerivedHistoryMergeCommit(t *testing.T) {
 	}
 }
 
+// regression: #7509
+func TestDerivedHistoryKitIdentity(t *testing.T) {
+	root, base, delivery := historyFixture(t, []string{"web/fixed.go: fixed-here"}, historyShape{
+		merge: true, messages: []string{trailer("implement", "alpha/01")},
+	})
+	qgcSetenv(t, [][2]string{
+		{"GIT_CONFIG_COUNT", "2"},
+		{"GIT_CONFIG_KEY_0", "user.name"}, {"GIT_CONFIG_VALUE_0", "Review fixture"},
+		{"GIT_CONFIG_KEY_1", "user.email"}, {"GIT_CONFIG_VALUE_1", "review@example.invalid"},
+	})
+	if read := gitCoreFor(root); read.native == "" {
+		t.Fatal("the identity exception must be scoped to delivery history")
+	}
+	wantDerivedPass(t, root, base, delivery)
+	t.Run("additional configuration", func(t *testing.T) {
+		t.Setenv("GIT_CONFIG_COUNT", "3")
+		t.Setenv("GIT_CONFIG_KEY_2", "core.abbrev")
+		t.Setenv("GIT_CONFIG_VALUE_2", "12")
+		wantCouldNotCheck(t, root, "native discovery/config/shallow environment profile")
+	})
+	t.Run("second key replaced", func(t *testing.T) {
+		t.Setenv("GIT_CONFIG_KEY_1", "core.abbrev")
+		t.Setenv("GIT_CONFIG_VALUE_1", "12")
+		wantCouldNotCheck(t, root, "native discovery/config/shallow environment profile")
+	})
+}
+
 // regression: #6099
 func TestDerivedHistorySquash(t *testing.T) {
 	root, base, delivery := historyFixture(t, []string{"web/fixed.go: fixed-here"}, historyShape{messages: []string{trailer("implement (#7)", "alpha/01")}})

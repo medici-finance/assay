@@ -108,6 +108,10 @@ func configCountNative() bool {
 }
 
 func gitCoreFor(root string) gitCoreRead {
+	return gitCoreForConfig(root, configCountNative())
+}
+
+func gitCoreForConfig(root string, nativeCommandConfig bool) gitCoreRead {
 	// These unstripped native policies are observed per operation, including
 	// explicitly empty values. They are never frozen in the repository cache.
 	for _, key := range []string{"GIT_CEILING_DIRECTORIES", "GIT_DISCOVERY_ACROSS_FILESYSTEM", "GIT_CONFIG_PARAMETERS", "GIT_SHALLOW_FILE"} {
@@ -115,7 +119,7 @@ func gitCoreFor(root string) gitCoreRead {
 			return gitCoreRead{native: "native discovery/config/shallow environment profile"}
 		}
 	}
-	if configCountNative() {
+	if nativeCommandConfig {
 		return gitCoreRead{native: "native discovery/config/shallow environment profile"}
 	}
 	if activeGitReads == nil {

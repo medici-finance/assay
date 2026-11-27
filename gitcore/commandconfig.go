@@ -82,3 +82,18 @@ func commandConfigIs(count string, set [][2]string) bool {
 	}
 	return true
 }
+
+// CommitIdentityConfigOnly reports whether the review kit supplies precisely
+// its two author settings. A reader of existing commit history can admit this
+// environment without changing the profile of an origin or authority reader.
+func CommitIdentityConfigOnly() bool {
+	if _, set := os.LookupEnv("GIT_CONFIG"); set {
+		return false
+	}
+	if _, set := os.LookupEnv("GIT_CONFIG_PARAMETERS"); set {
+		return false
+	}
+	return os.Getenv("GIT_CONFIG_COUNT") == "2" &&
+		os.Getenv("GIT_CONFIG_KEY_0") == "user.name" && os.Getenv("GIT_CONFIG_VALUE_0") != "" &&
+		os.Getenv("GIT_CONFIG_KEY_1") == "user.email" && os.Getenv("GIT_CONFIG_VALUE_1") != ""
+}
