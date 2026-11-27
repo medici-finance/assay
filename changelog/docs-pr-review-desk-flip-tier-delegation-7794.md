@@ -1,2 +1,0 @@
-### Changed
-- `pr-review-desk`: a ready-flip now needs a strong-tier model rather than a strong-tier session. A review window not on a confirmed strong tier (Auto included) spawns a sub-agent on a named strong-tier model id to run `deskflip`, and hands the flip off when the harness configures no strong-tier id. The `deskflip` model-capability floor on the review dispatch stamp is unchanged (#7794).
