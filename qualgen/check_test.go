@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
-
-	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // --- fixture helpers: real git repos via requireGit/gitCmd/mine (mine_test.go,
@@ -235,53 +235,155 @@ func testCheckOutputFormats(t *testing.T) {
 	if string(report.Extensions) != "{}" {
 		t.Errorf("extensions = %q, want an empty object", report.Extensions)
 	}
-	validateCheckOutputSchema(t, stdout.Bytes())
 	unmeasured, advised := report.Files[0], report.Files[1]
 	if unmeasured.Path != unusualPath || unmeasured.CouldNotScreen == nil || !*unmeasured.CouldNotScreen ||
 		unmeasured.Reason == "" || unmeasured.Advisories == nil || len(unmeasured.Advisories) != 0 {
-		t.Errorf("unexpected unmeasured row: %+v", unmeasured)
+		t.Fatalf("unexpected unmeasured row: %+v", unmeasured)
 	}
 	if advised.Path != "a.go" || advised.CouldNotScreen == nil || *advised.CouldNotScreen || advised.Reason != "" ||
 		len(advised.Advisories) != 1 || advised.Advisories[0].Kind != "coupling-partner" ||
 		!strings.Contains(advised.Advisories[0].Detail, "b.go") {
-		t.Errorf("unexpected advisory row: %+v", advised)
+		t.Fatalf("unexpected advisory row: %+v", advised)
+	}
+	assertCheckOutputSchema(t, stdout.Bytes())
+}
+
+// These contract checks pin the subset of the published schema owned by the
+// check command. They compare it with the real CLI document, including both
+// reason states, without bringing a schema interpreter into the module.
+func assertCheckOutputSchema(t *testing.T, output []byte) {
+	t.Helper()
+	raw, err := os.ReadFile("../schemas/qualgen-check-v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema struct {
+		checkObjectSchema
+		Defs map[string]checkObjectSchema `json:"$defs"`
+	}
+	if err := json.Unmarshal(raw, &schema); err != nil {
+		t.Fatal(err)
+	}
+
+	var result map[string]any
+	if err := json.Unmarshal(output, &result); err != nil {
+		t.Fatal(err)
+	}
+	assertCheckObjectSchema(t, "result", schema.checkObjectSchema, result)
+	if schema.Properties["schema_version"].Const != result["schema_version"] {
+		t.Fatal("schema must pin the emitted core version")
+	}
+	files := result["files"].([]any)
+	unmeasured, measured := files[0].(map[string]any), files[1].(map[string]any)
+	assertCheckObjectSchema(t, "file", schema.Defs["file"], unmeasured, measured)
+	assertCheckObjectSchema(t, "advisory", schema.Defs["advisory"], measured["advisories"].([]any)[0].(map[string]any))
+
+	file := schema.Defs["file"]
+	if schema.Properties["files"].Items.Ref != "#/$defs/file" ||
+		file.Properties["advisories"].Items.Ref != "#/$defs/advisory" ||
+		file.If.Properties["could_not_screen"].Const != true ||
+		!slices.Equal(file.Then.Required, []string{"reason"}) ||
+		!slices.Equal(file.Else.Not.Required, []string{"reason"}) {
+		t.Fatal("schema must link the file and advisory shapes and condition reason on could_not_screen")
+	}
+
+	extensions := schema.Properties["extensions"]
+	name := extensions.PropertyNames.Pattern
+	ok, err := regexp.MatchString(name, "future-analysis")
+	if err != nil || !ok || name == "" || extensions.AdditionalProperties.Ref != "#/$defs/extension" {
+		t.Fatal("schema must admit a future optional extension by name")
+	}
+	extension := schema.Defs["extension"]
+	assertCheckObjectSchema(t, "extension", extension, map[string]any{"version": 2, "data": map[string]any{}})
+	version := extension.Properties["version"]
+	if version.Minimum != 1 || version.Maximum != 2147483647 {
+		t.Fatal("extension versions must be independently chosen positive integers")
 	}
 }
 
-func validateCheckOutputSchema(t *testing.T, output []byte) {
-	t.Helper()
-	const schemaPath = "../schemas/qualgen-check-v1.json"
-	raw, err := os.ReadFile(schemaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
-	if err != nil {
-		t.Fatal(err)
-	}
-	compiler := jsonschema.NewCompiler()
-	if err := compiler.AddResource(schemaPath, doc); err != nil {
-		t.Fatal(err)
-	}
-	schema, err := compiler.Compile(schemaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+type checkSchemaProperty struct {
+	Type    string `json:"type"`
+	Const   any    `json:"const"`
+	Pattern string `json:"pattern"`
+	Minimum int    `json:"minimum"`
+	Maximum int    `json:"maximum"`
+	Items   struct {
+		Ref string `json:"$ref"`
+	} `json:"items"`
+	PropertyNames struct {
+		Pattern string `json:"pattern"`
+	} `json:"propertyNames"`
+	AdditionalProperties struct {
+		Ref string `json:"$ref"`
+	} `json:"additionalProperties"`
+}
 
-	var payload map[string]any
-	if err := json.Unmarshal(output, &payload); err != nil {
-		t.Fatal(err)
+type checkObjectSchema struct {
+	Type                 string                         `json:"type"`
+	AdditionalProperties *bool                          `json:"additionalProperties"`
+	Required             []string                       `json:"required"`
+	Properties           map[string]checkSchemaProperty `json:"properties"`
+	If                   struct {
+		Properties map[string]checkSchemaProperty `json:"properties"`
+	} `json:"if"`
+	Then struct {
+		Required []string `json:"required"`
+	} `json:"then"`
+	Else struct {
+		Not struct {
+			Required []string `json:"required"`
+		} `json:"not"`
+	} `json:"else"`
+}
+
+func assertCheckObjectSchema(t *testing.T, name string, schema checkObjectSchema, samples ...map[string]any) {
+	t.Helper()
+	if schema.Type != "object" || schema.AdditionalProperties == nil || *schema.AdditionalProperties {
+		t.Fatalf("%s must be a closed object in the schema", name)
 	}
-	if err := schema.Validate(payload); err != nil {
-		t.Fatalf("check output against JSON Schema: %v", err)
+	seen := make(map[string]int)
+	for _, sample := range samples {
+		for _, key := range schema.Required {
+			if _, ok := sample[key]; !ok {
+				t.Fatalf("%s is missing required property %q", name, key)
+			}
+		}
+		for key, value := range sample {
+			property, declared := schema.Properties[key]
+			if !declared {
+				t.Fatalf("%s property %q is missing from the schema", name, key)
+			}
+			var wantType string
+			switch value.(type) {
+			case string:
+				wantType = "string"
+			case bool:
+				wantType = "boolean"
+			case []any:
+				wantType = "array"
+			case map[string]any:
+				wantType = "object"
+			case int:
+				wantType = "integer"
+			default:
+				t.Fatalf("unexpected %s.%s value type %T", name, key, value)
+			}
+			if property.Const != nil {
+				if property.Const != value {
+					t.Fatalf("%s.%s does not match the schema constant", name, key)
+				}
+			} else if property.Type != wantType {
+				t.Fatalf("%s.%s schema type = %q, want %q", name, key, property.Type, wantType)
+			}
+			seen[key]++
+		}
 	}
-	future := map[string]any{"version": 2, "data": map[string]any{"observations": []any{}}}
-	payload["extensions"] = map[string]any{"future-analysis": future}
-	if err := schema.Validate(payload); err != nil {
-		t.Fatalf("v1 core with a future optional extension: %v", err)
+	if len(seen) != len(schema.Properties) {
+		t.Fatalf("%s schema lists properties absent from all wire examples", name)
 	}
-	future["version"] = 0
-	if err := schema.Validate(payload); err == nil {
-		t.Fatal("schema accepted an extension with version zero")
+	for key, count := range seen {
+		if (count == len(samples)) != slices.Contains(schema.Required, key) {
+			t.Fatalf("%s.%s requiredness does not match the wire examples", name, key)
+		}
 	}
 }

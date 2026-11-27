@@ -451,7 +451,7 @@ func ciCrossModuleRegistry() []ciEntry {
 		{test: "qualgen/check_test.go", module: "qualgen", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"schemas/qualgen-check-v1.json"},
 			runInvokes: []string{`*/qualgen|qualgen) extra="GOWORK=off go test -count=1 -timeout=60s -run '^(TestM2.*|TestCLILegacyForms)$' ." ;;`},
-			why:        "TestCLILegacyForms validates real check output against the published schema on pull requests and main."},
+			why:        "TestCLILegacyForms compares the real check wire shape with the published schema on pull requests and main."},
 		{test: "perfrec/v4_schema_test.go", module: "perfrec", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"schemas/perf-v4.json"},
 			runInvokes: []string{`*/perfrec|perfrec) extra="go test ./..." ;;`},
