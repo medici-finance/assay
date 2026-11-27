@@ -51,9 +51,11 @@ For the history baseline, read `tip_sha` from the supplied tracking root's
 `docs/quality/mine.json` while holding the same snapshot stable across the
 header read and check.
 
-Each distinct path has one entry, sorted by path. `could_not_screen` marks
-insufficient mined history and carries a `reason`. Live advisories may still
-be present for that path. A screened path with no advisories has
+The result has one entry per distinct input path, in sorted order. Match entries
+to requested paths by exact string equality. The JSON encoder replaces invalid
+UTF-8 bytes with U+FFFD. Treat any requested path without one exact match as unscreened.
+`could_not_screen` marks insufficient mined history and carries a `reason`.
+Live advisories may still be present for that path. A screened path with no advisories has
 `could_not_screen: false` and an empty `advisories` array. Use `kind` to
 identify advisories and `detail` for display. A successful screen exits zero.
 Command errors exit nonzero and write diagnostics to stderr.
