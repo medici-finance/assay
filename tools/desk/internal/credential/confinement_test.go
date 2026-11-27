@@ -28,11 +28,12 @@ const (
 var credentialImporters = map[string]bool{"internal/deskkit": true, "cmd/desktoken": true}
 
 // operationSites are the only functions that may RUN a provider operation (credential.GitHub /
-// credential.GitLab): "<dir>|<func>". A new call site is a new adapter and needs review.
+// credential.GitLab / credential.MintStandaloneGitHub): "<dir>|<func>". A new call site is a new adapter and needs review.
 var operationSites = map[string]bool{
-	"internal/deskkit|providerMint":  true,
-	"cmd/desktoken|cmdTokenMeasured": true,
-	"cmd/desktoken|cmdGitLabRotate":  true,
+	"internal/deskkit|providerMint":              true,
+	"internal/deskkit|MintStandaloneGitHubToken": true,
+	"cmd/desktoken|cmdTokenMeasured":             true,
+	"cmd/desktoken|cmdGitLabRotate":              true,
 }
 
 type siteHit struct{ key, pos string }
@@ -90,7 +91,7 @@ func scanShipped(t *testing.T, root string) (importers map[string]string, ops []
 				if !ok {
 					return true
 				}
-				if id, ok := sel.X.(*ast.Ident); ok && id.Name == alias && (sel.Sel.Name == "GitHub" || sel.Sel.Name == "GitLab") {
+				if id, ok := sel.X.(*ast.Ident); ok && id.Name == alias && (sel.Sel.Name == "GitHub" || sel.Sel.Name == "GitLab" || sel.Sel.Name == "MintStandaloneGitHub") {
 					ops = append(ops, siteHit{key: dir + "|" + fn.Name.Name, pos: fset.Position(sel.Pos()).String()})
 				}
 				return true

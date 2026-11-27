@@ -864,6 +864,16 @@ const (
 // stale-approval test (#3093, ReviewPredatesHead) at the same zero request/point cost.
 const ghOpenChangesQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$first,after:$after,orderBy:{field:CREATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number title body state isDraft createdAt lastEditedAt updatedAt author{login __typename} mergeStateStatus mergeable headRefOid headRefName baseRefName labels(first:100){nodes{name}} commits(last:1){nodes{commit{oid committedDate statusCheckRollup{contexts(first:100){nodes{__typename ...on CheckRun{databaseId name status conclusion startedAt completedAt} ...on StatusContext{context state createdAt}}}}}}}}}}}`
 
+// ghOpenChangeRowsQuery is the open-change row read behind StandaloneChanges.OpenChangeRows. It
+// walks the SAME population as ghOpenChangesQuery — pullRequests(states:OPEN) ordered
+// CREATED_AT DESC through openChangesRead, so the cap and its truncation signal are shared —
+// but requests only the row fields: number, state, draft flag, head oid, base branch and the
+// author with its kind and numeric id. The board document's author carries no databaseId, and
+// an automatic-review whitelist pins on the id, so the id is read through the concrete-type
+// fragments (the Actor interface has no databaseId), as ghListChangesQuery does. No rollup and
+// no per-change connection: one bounded read per page, no checks or actions scope.
+const ghOpenChangeRowsQuery = `query($owner:String!,$name:String!,$first:Int!,$after:String){repository(owner:$owner,name:$name){pullRequests(states:OPEN,first:$first,after:$after,orderBy:{field:CREATED_AT,direction:DESC}){pageInfo{hasNextPage endCursor} nodes{number state isDraft author{login __typename ...on User{databaseId} ...on Bot{databaseId}} headRefOid baseRefName}}}}`
+
 // ghListChangesQuery is the states-scoped, cursor-paginated changes read behind ListChanges. It
 // requests EXACTLY the ChangeRef fields — number, state, head oid, source branch (headRefName),
 // title, body (with its link trailers), mergedAt — and no rollup, so it carries none of
@@ -915,6 +925,9 @@ type ghOpenChangeNode struct {
 	Author       *struct {
 		Login    string `json:"login"`
 		Typename string `json:"__typename"`
+		// DatabaseID is selected only by ghOpenChangeRowsQuery; the board documents do not
+		// request it, so their changes keep Account.ID 0 exactly as before.
+		DatabaseID int64 `json:"databaseId"`
 	} `json:"author"`
 	MergeStateStatus string          `json:"mergeStateStatus"`
 	Mergeable        string          `json:"mergeable"`
@@ -1108,7 +1121,7 @@ func ghOpenChange(n ghOpenChangeNode) OpenChange {
 		if n.Author.Typename == "Bot" {
 			login += "[bot]"
 		}
-		oc.Author = Account{Login: login}
+		oc.Author = Account{Login: login, ID: n.Author.DatabaseID}
 	}
 	for _, l := range n.Labels.Nodes {
 		oc.Labels = append(oc.Labels, l.Name)
@@ -1148,6 +1161,26 @@ func (g *GitHubForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
 		Cap:            forgeOpenChangesCap,
 		TruncatedAtCap: truncated,
 	}, nil
+}
+
+// openChangeRows reads ListOpenChanges' population through ghOpenChangeRowsQuery and maps each
+// node through the same ghOpenChange. Author.ID is the GraphQL databaseId (REST `user.id`) and
+// Author.Type is the actor's __typename (REST `user.type`: User, Bot, …), empty when the
+// author is null. Labels, rollup and edit times are not requested and stay empty.
+func (g *GitHubForge) openChangeRows(repo ForgeRepo) (*OpenChanges, error) {
+	nodes, _, truncated, err := g.openChangesRead(repo, ghOpenChangeRowsQuery, "open-change-rows")
+	if err != nil {
+		return nil, err
+	}
+	changes := make([]OpenChange, 0, len(nodes))
+	for _, n := range nodes {
+		oc := ghOpenChange(n)
+		if n.Author != nil {
+			oc.Author.Type = n.Author.Typename
+		}
+		changes = append(changes, oc)
+	}
+	return &OpenChanges{Changes: changes, Cap: forgeOpenChangesCap, TruncatedAtCap: truncated}, nil
 }
 
 // ReviewQueueSnapshot is ListOpenChanges and every change's ReviewsAtHead in the same paged
