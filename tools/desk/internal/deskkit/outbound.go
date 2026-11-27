@@ -319,8 +319,22 @@ func outboundWriter() io.Writer {
 	return outboundNotices
 }
 
-// outboundScanField runs every layer over one field.
-func outboundScanField(w OutboundWrite, fd OutboundField, public bool) (refusals []outboundFinding, notices []string) {
+type outboundScanners struct {
+	rulingClaim  func(string, []byte) error
+	personalData func(string) []piiFinding
+	selfContain  func(string, string, SelfContainOpts) ([]scFinding, []string)
+}
+
+func outboundScanField(w OutboundWrite, fd OutboundField, public bool) ([]outboundFinding, []string) {
+	scanners := outboundScanners{rulingClaim: ScanSurfaceRulingClaim, personalData: personalDataScan}
+	if public {
+		scanners.selfContain = selfContainFindings
+	}
+	return scanOutboundField(w, fd, scanners)
+}
+
+// scanOutboundField composes the checks shared by desk and standalone writers.
+func scanOutboundField(w OutboundWrite, fd OutboundField, scanners outboundScanners) (refusals []outboundFinding, notices []string) {
 	text := StripWorkpadMarkerLine(fd.Text)
 	surface := strings.TrimSpace(w.Kind + " " + fd.Name)
 	digest := Sha256Hex([]byte(fd.Text))
@@ -343,11 +357,11 @@ func outboundScanField(w OutboundWrite, fd OutboundField, public bool) (refusals
 		add(rule, line, trimRefusedPrefix(err.Error()), f)
 	}
 	// voice.ruling-claim — the impersonation guard, unchanged.
-	if err := ScanSurfaceRulingClaim(surface, []byte(text)); err != nil {
-		add(RuleVoiceRulingClaim, rulingClaimLine(surface, text), trimRefusedPrefix(err.Error()), nil)
+	if err := scanners.rulingClaim(surface, []byte(text)); err != nil {
+		add(RuleVoiceRulingClaim, rulingClaimLine(surface, text, scanners.rulingClaim), trimRefusedPrefix(err.Error()), nil)
 	}
 	// pii.* — the personal-data pass.
-	for _, p := range personalDataScan(text) {
+	for _, p := range scanners.personalData(text) {
 		switch p.rule {
 		case RulePIIPhoneAmbiguous:
 			notices = append(notices, fmt.Sprintf("%s at %s:%d — %q is shaped like a telephone "+
@@ -363,7 +377,7 @@ func outboundScanField(w OutboundWrite, fd OutboundField, public bool) (refusals
 		}
 	}
 	// selfcontain.* and withheld.identifier — public and unknown-visibility targets only.
-	if public {
+	if scanners.selfContain != nil {
 		opts := SelfContainOpts{Repo: w.Repo, NumberHint: w.NumberHint}
 		if w.Kind == OutboundKindFile {
 			// A file write's content and path fields get the synthetic-fixture exemption
@@ -373,7 +387,7 @@ func outboundScanField(w OutboundWrite, fd OutboundField, public bool) (refusals
 				opts.FilePath, opts.FileSource = fd.Name, src
 			}
 		}
-		findings, scNotices := selfContainFindings(surface, text, opts)
+		findings, scNotices := scanners.selfContain(surface, text, opts)
 		for _, n := range scNotices {
 			// A category that could not run is a property of the configuration, not of this
 			// field: drop the surface prefix so the per-context dedupe prints it ONCE.
@@ -395,9 +409,9 @@ func outboundScanField(w OutboundWrite, fd OutboundField, public bool) (refusals
 
 // rulingClaimLine finds the first line that trips the impersonation guard on its own, for
 // the refusal's location. A claim the guard only sees across lines reports line 1.
-func rulingClaimLine(surface, text string) int {
+func rulingClaimLine(surface, text string, check func(string, []byte) error) int {
 	for i, ln := range strings.Split(text, "\n") {
-		if ScanSurfaceRulingClaim(surface, []byte(ln)) != nil {
+		if check(surface, []byte(ln)) != nil {
 			return i + 1
 		}
 	}
