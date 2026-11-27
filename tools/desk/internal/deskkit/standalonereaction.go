@@ -13,8 +13,9 @@ import (
 type StandaloneReaction struct {
 	Number int
 	Head   string
-	// Content is a GitHub reaction value: +1, -1, laugh, confused, heart,
-	// hooray, rocket or eyes. GitLab receives the matching award emoji.
+	// Content is a GitHub reaction value: laugh, confused, heart, hooray,
+	// rocket or eyes. GitLab receives the matching award emoji. +1 and -1 are
+	// refused: an App's thumbs-up on a change reads as an approval.
 	Content       string
 	MaxVisibility string // operator-authorized private, internal or public
 }
@@ -22,9 +23,14 @@ type StandaloneReaction struct {
 // standaloneReactionAwards maps each admitted reaction to its GitLab award
 // name. It is the inverse of gitlabAwardToReaction, which pairs GitHub's eight
 // reactions with GitLab's emoji by glyph, so the two directions cannot drift.
+// The approval-shaped +1 and -1 are left out, so they have no GitLab name and
+// are refused before any request.
 var standaloneReactionAwards = func() map[string]string {
 	out := make(map[string]string, len(gitlabAwardToReaction))
 	for award, content := range gitlabAwardToReaction {
+		if content == "+1" || content == "-1" {
+			continue
+		}
 		out[content] = award
 	}
 	return out
@@ -38,7 +44,7 @@ func (c *StandaloneChanges) AddReaction(in StandaloneReaction) error {
 		number: in.Number, head: in.Head, maxVisibility: in.MaxVisibility,
 		validate: func() error {
 			if !admitted {
-				return errors.New("reaction must be one of +1, -1, laugh, confused, heart, hooray, rocket or eyes")
+				return errors.New("reaction must be one of laugh, confused, heart, hooray, rocket or eyes")
 			}
 			return nil
 		},

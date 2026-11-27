@@ -109,7 +109,7 @@ func reactionClient(t *testing.T, f reactionForge, fx reactionFixture, requests 
 
 func TestAddReactionRequestShape(t *testing.T) {
 	head := strings.Repeat("a", 40)
-	gitlabNames := map[string]string{"+1": "thumbsup", "-1": "thumbsdown", "laugh": "laughing", "confused": "confused",
+	gitlabNames := map[string]string{"laugh": "laughing", "confused": "confused",
 		"heart": "heart", "hooray": "tada", "rocket": "rocket", "eyes": "eyes"}
 	for _, f := range reactionForges() {
 		for content, award := range gitlabNames {
@@ -138,7 +138,7 @@ func TestAddReactionRequestShape(t *testing.T) {
 func TestAddReactionRefusesUnlistedContent(t *testing.T) {
 	head := strings.Repeat("a", 40)
 	for _, f := range reactionForges() {
-		for _, content := range []string{"", "EYES", " eyes", ":eyes:", "thumbsup", "tada", "laughing", "party", "eyes\n"} {
+		for _, content := range []string{"", "+1", "-1", "thumbsup", "thumbsdown", "EYES", " eyes", ":eyes:", "tada", "laughing", "party", "eyes\n"} {
 			t.Run(f.forge+"/"+content, func(t *testing.T) {
 				var requests []string
 				var writes []map[string]any
@@ -170,7 +170,10 @@ func TestAddReactionDuplicateIsSuccess(t *testing.T) {
 			postBody: taken, userID: 5, awards: `[{"id":2,"name":"eyes","user":{"id":9}}]`}},
 		{name: "own award of another name", forge: "gitlab", wantReads: true, wantErr: "HTTP 404", fx: reactionFixture{postStatus: 404,
 			postBody: taken, userID: 5, awards: `[{"id":3,"name":"heart","user":{"id":5}}]`}},
-		{name: "forbidden award", forge: "gitlab", wantErr: "HTTP 403", fx: reactionFixture{postStatus: 403, postBody: `{"message":"403 Forbidden"}`}},
+		// The caller's own matching award is present, so a 403 that reached the
+		// duplicate confirmation would wrongly succeed.
+		{name: "forbidden award", forge: "gitlab", wantErr: "HTTP 403", fx: reactionFixture{postStatus: 403,
+			postBody: `{"message":"403 Forbidden"}`, userID: 5, awards: `[{"id":3,"name":"eyes","user":{"id":5}}]`}},
 	} {
 		t.Run(tc.forge+"/"+tc.name, func(t *testing.T) {
 			var f reactionForge
