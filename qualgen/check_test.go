@@ -3,8 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
+
+	"github.com/santhosh-tekuri/jsonschema/v6"
 )
 
 // --- fixture helpers: real git repos via requireGit/gitCmd/mine (mine_test.go,
@@ -232,6 +235,7 @@ func testCheckOutputFormats(t *testing.T) {
 	if string(report.Extensions) != "{}" {
 		t.Errorf("extensions = %q, want an empty object", report.Extensions)
 	}
+	validateCheckOutputSchema(t, stdout.Bytes())
 	unmeasured, advised := report.Files[0], report.Files[1]
 	if unmeasured.Path != unusualPath || unmeasured.CouldNotScreen == nil || !*unmeasured.CouldNotScreen ||
 		unmeasured.Reason == "" || unmeasured.Advisories == nil || len(unmeasured.Advisories) != 0 {
@@ -241,5 +245,43 @@ func testCheckOutputFormats(t *testing.T) {
 		len(advised.Advisories) != 1 || advised.Advisories[0].Kind != "coupling-partner" ||
 		!strings.Contains(advised.Advisories[0].Detail, "b.go") {
 		t.Errorf("unexpected advisory row: %+v", advised)
+	}
+}
+
+func validateCheckOutputSchema(t *testing.T, output []byte) {
+	t.Helper()
+	const schemaPath = "../schemas/qualgen-check-v1.json"
+	raw, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := jsonschema.UnmarshalJSON(bytes.NewReader(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	compiler := jsonschema.NewCompiler()
+	if err := compiler.AddResource(schemaPath, doc); err != nil {
+		t.Fatal(err)
+	}
+	schema, err := compiler.Compile(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(output, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if err := schema.Validate(payload); err != nil {
+		t.Fatalf("check output against JSON Schema: %v", err)
+	}
+	future := map[string]any{"version": 2, "data": map[string]any{"observations": []any{}}}
+	payload["extensions"] = map[string]any{"future-analysis": future}
+	if err := schema.Validate(payload); err != nil {
+		t.Fatalf("v1 core with a future optional extension: %v", err)
+	}
+	future["version"] = 0
+	if err := schema.Validate(payload); err == nil {
+		t.Fatal("schema accepted an extension with version zero")
 	}
 }

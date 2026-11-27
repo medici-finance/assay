@@ -47,6 +47,9 @@ qualgen check --json --literal-paths --repo /path/to/repository \
 Validate `schema_version` before reading the result. `repo_head` is the commit
 used for the live `reference-rot` advisory. Compare it with the revision
 under review before using those advisories.
+For the history baseline, read `tip_sha` from the supplied tracking root's
+`docs/quality/mine.json` while holding the same snapshot stable across the
+header read and check.
 
 Each distinct path has one entry, sorted by path. `could_not_screen` marks
 insufficient mined history and carries a `reason`. Live advisories may still

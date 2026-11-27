@@ -448,6 +448,10 @@ func ciCrossModuleRegistry() []ciEntry {
 		{test: "tools/desk/cmd/cellctl/kube_compat_preparation_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"containers/k8s/compatibility/prepare.py", "containers/k8s/compatibility/desk-session.py"}, runInvokes: deskShardInvokes, why: "Compiled preparation CLI checks the exact delegate and image-owned initializer against cold synthetic volumes; workflow has no path filter"},
 		{test: "tools/desk/internal/kubecompat/profile_contract_test.go", module: "tools/desk", workflow: ".github/workflows/ci.yml", prJob: deskFloorJob, pushJob: deskFloorJob, reads: []string{"containers/k8s/compatibility/cellctl-config.schema.json", "containers/k8s/compatibility/desk-session.py", "containers/k8s/compatibility/prepare.py", "containers/k8s/compatibility/prepare.test.py", "containers/k8s/check.py", "containers/k8s/testdata/mutations.py"}, runInvokes: deskShardInvokes, why: "Pins compatibility source/schema, hash parity, cold preparation and a checker source-tree snapshot across fixture imports; workflow has no path filter"},
 
+		{test: "qualgen/check_test.go", module: "qualgen", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
+			reads:      []string{"schemas/qualgen-check-v1.json"},
+			runInvokes: []string{`*/qualgen|qualgen) extra="GOWORK=off go test -count=1 -timeout=60s -run '^(TestM2.*|TestCLILegacyForms)$' ." ;;`},
+			why:        "TestCLILegacyForms validates real check output against the published schema on pull requests and main."},
 		{test: "perfrec/v4_schema_test.go", module: "perfrec", workflow: ".github/workflows/ci.yml", prJob: floorJob, pushJob: floorJob,
 			reads:      []string{"schemas/perf-v4.json"},
 			runInvokes: []string{`*/perfrec|perfrec) extra="go test ./..." ;;`},

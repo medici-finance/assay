@@ -6,6 +6,7 @@ toolchain go1.27.4
 
 require (
 	github.com/go-git/go-git/v5 v5.19.3
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
 	github.com/spf13/viper v1.20.1
