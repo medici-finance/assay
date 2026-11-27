@@ -33,6 +33,10 @@ func (r *Repo) checkOriginIncludes(raw *format.Config, file string) error {
 	if !raw.HasSection("include") && !raw.HasSection("includeIf") {
 		return nil
 	}
+	texts, err := gitDirTexts(r.dir)
+	if err != nil {
+		return unavailable("repository layout is unreadable")
+	}
 	admin, _, err := resolveGitDir(r.dir)
 	if err != nil {
 		return unavailable("repository layout is unreadable")
@@ -41,9 +45,28 @@ func (r *Repo) checkOriginIncludes(raw *format.Config, file string) error {
 	if err != nil {
 		return unavailable("repository layout is unreadable")
 	}
+	observer := originIncludes{texts: texts, stack: map[string]bool{}}
+	observer.branch, observer.known = headBranch(admin)
+	if canonical, err := filepath.EvalSymlinks(file); err == nil {
+		observer.stack[canonical] = true
+	}
+	return observer.includes(raw, file, 0)
+}
+
+// gitDirTexts returns the spellings of dir's git directory Git may match a gitdir
+// include condition against.
+func gitDirTexts(dir string) ([]string, error) {
+	admin, _, err := resolveGitDir(dir)
+	if err != nil {
+		return nil, err
+	}
+	admin, err = filepath.Abs(admin)
+	if err != nil {
+		return nil, err
+	}
 	physical, err := filepath.EvalSymlinks(admin)
 	if err != nil {
-		return unavailable("repository layout is unreadable")
+		return nil, err
 	}
 	// Git matches its realpath, then its absolute spelling (which follows $PWD
 	// when $PWD names the current directory). Extra spellings only widen matches.
@@ -55,12 +78,7 @@ func (r *Repo) checkOriginIncludes(raw *format.Config, file string) error {
 			}
 		}
 	}
-	observer := originIncludes{texts: texts, stack: map[string]bool{}}
-	observer.branch, observer.known = headBranch(admin)
-	if canonical, err := filepath.EvalSymlinks(file); err == nil {
-		observer.stack[canonical] = true
-	}
-	return observer.includes(raw, file, 0)
+	return texts, nil
 }
 
 // headBranch mirrors Git's onbranch input: the short name of the branch HEAD

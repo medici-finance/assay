@@ -1,1 +1,0 @@
-- Prepare a separate bounded mirror-page endpoint and typed client call. Continuations retain one authorized snapshot version and use a PostgreSQL keyset read.
