@@ -108,7 +108,7 @@ func checkMain(o checkOptions, stdout, stderr io.Writer) int {
 
 	paths, err := expandCheckPaths(o.Repo, rawPaths, o.LiteralPaths)
 	if err != nil {
-		fmt.Fprintln(stderr, "qualgen check:", err)
+		_, _ = fmt.Fprintln(stderr, "qualgen check:", err)
 		return 1
 	}
 	if len(paths) == 0 {
@@ -119,12 +119,12 @@ func checkMain(o checkOptions, stdout, stderr io.Writer) int {
 	store := NewStore(o.Out)
 	result, err := screenPaths(o.Repo, store, paths)
 	if err != nil {
-		fmt.Fprintln(stderr, "qualgen check:", err)
+		_, _ = fmt.Fprintln(stderr, "qualgen check:", err)
 		return 1
 	}
 	if o.JSON {
 		if err := json.NewEncoder(stdout).Encode(result); err != nil {
-			fmt.Fprintln(stderr, "qualgen check: write JSON:", err)
+			_, _ = fmt.Fprintln(stderr, "qualgen check: write JSON:", err)
 			return 1
 		}
 	} else {
