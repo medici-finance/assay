@@ -99,14 +99,16 @@ func (r *Repo) credentialIncludeReason(raw *format.Config) string {
 // checkoutCondition decodes the two condition spellings actions/checkout writes:
 // gitdir:<dir> and gitdir:<dir>/worktrees/*. Any other grammar (gitdir/i:,
 // onbranch:, hasconfig:, a relative, "~", "./" or trailing-slash pattern, or a
-// glob anywhere else) is refused rather than evaluated.
+// glob anywhere else) is refused rather than evaluated. The root "/" is refused
+// too: it is clean, but it ends in "/", and Git expands such a pattern to "/**",
+// which matches every git directory.
 func checkoutCondition(condition string) (dir string, worktrees, ok bool) {
 	dir, ok = strings.CutPrefix(condition, "gitdir:")
 	if !ok {
 		return "", false, false
 	}
 	dir, worktrees = strings.CutSuffix(dir, "/worktrees/*")
-	if !cleanAbsolute(dir) || strings.ContainsAny(dir, "*?[\\") {
+	if dir == "/" || !cleanAbsolute(dir) || strings.ContainsAny(dir, "*?[\\") {
 		return "", false, false
 	}
 	return dir, worktrees, true

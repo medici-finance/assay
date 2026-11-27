@@ -242,6 +242,8 @@ func TestCheckoutCredentialIncludeRefusals(t *testing.T) {
 		{name: "condition-onbranch", want: notCondition, setup: badEntry(func(checkoutFixture) string { return "onbranch:main" })},
 		{name: "condition-hasconfig", want: notCondition, setup: badEntry(func(checkoutFixture) string { return "hasconfig:remote.*.url:https://github.com/**" })},
 		{name: "condition-prefix", want: notCondition, setup: badEntry(func(fx checkoutFixture) string { return "gitdir:" + filepath.Dir(fx.admin) + "/" })},
+		{name: "condition-root", want: notCondition, setup: badEntry(func(checkoutFixture) string { return "gitdir:/" })},
+		{name: "condition-root-worktrees", want: notCondition, setup: badEntry(func(checkoutFixture) string { return "gitdir://worktrees/*" })},
 		{name: "condition-relative", want: notCondition, setup: badEntry(func(checkoutFixture) string { return "gitdir:.git" })},
 		{name: "condition-home", want: notCondition, setup: badEntry(func(checkoutFixture) string { return "gitdir:~/" })},
 		{name: "condition-absolute-glob", want: notCondition, setup: badEntry(func(checkoutFixture) string { return "gitdir:/**" })},
@@ -298,5 +300,23 @@ func TestCheckoutCredentialIncludeReasonQuotesNothing(t *testing.T) {
 		if strings.Contains(why, leak) {
 			t.Fatalf("refusal quotes %q: %s", leak, why)
 		}
+	}
+}
+
+// A root gitdir condition ends in "/", which Git expands to "/**": it names every
+// repository, so its target must never be skipped as a nonmatch. The native
+// control proves Git merges that target here (PR review finding S1 on #7836).
+func TestCheckoutCredentialIncludeRootConditionIsRefused(t *testing.T) {
+	fx := newCheckoutFixture(t)
+	other := filepath.Join(t.TempDir(), "other.config")
+	if err := os.WriteFile(other, []byte("[core]\n\tworktree = /example.invalid\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fx.config(t, "includeIf.gitdir:/.path", other)
+	if got, err := fx.f.Git("config", "--get", "core.worktree"); err != nil || got != "/example.invalid" {
+		t.Fatalf("native Git did not merge the gitdir:/ include: %q %v", got, err)
+	}
+	if why := fx.reason(t, fx.f.Dir); !strings.HasPrefix(why, includeRefusal+" (an include condition other than a literal gitdir path") {
+		t.Fatalf("gitdir:/ include was not refused: %q", why)
 	}
 }
