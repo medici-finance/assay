@@ -7,16 +7,27 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/medici-finance/assay/forgeread/adapters"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
 type (
 	Client      = deskkit.StandaloneChanges
 	Change      = deskkit.StandaloneChange
+	Account     = deskkit.StandaloneAccount
+	OpenChange  = deskkit.StandaloneOpenChange
 	File        = deskkit.StandaloneChangeFile
 	Files       = deskkit.StandaloneChangeFiles
 	Comment     = deskkit.StandaloneChangeComment
 	Publication = deskkit.StandalonePublication
+
+	// UpdateQuery, ChangeUpdates and ChangeUpdate are the incremental read's request and
+	// result (Client.ChangesUpdatedSince).
+	UpdateQuery    = adapters.UpdateQuery
+	UpdateCoverage = adapters.UpdateCoverage
+	UpdateActor    = adapters.UpdateActor
+	ChangeUpdates  = adapters.ChangeUpdates
+	ChangeUpdate   = adapters.ChangeUpdate
 )
 
 // Config describes a trusted project and credential.

@@ -1,6 +1,7 @@
 package deskkit
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -8,6 +9,8 @@ import (
 	"os"
 	"regexp"
 	"strings"
+
+	"github.com/medici-finance/assay/forgeread/adapters"
 )
 
 type StandaloneChangeConfig struct {
@@ -32,6 +35,7 @@ type StandaloneChangeConfig struct {
 // StandaloneChanges binds all operations to one repository. Use one client per goroutine.
 type StandaloneChanges struct {
 	forge     Forge
+	kind      ForgeKind
 	repo      ForgeRepo
 	changeURL string
 	notice    func(string)
@@ -106,7 +110,7 @@ func NewStandaloneChanges(cfg StandaloneChangeConfig) (*StandaloneChanges, error
 	if err != nil {
 		return nil, err
 	}
-	c.forge = forge
+	c.forge, c.kind = forge, kind
 	return c, nil
 }
 
@@ -159,12 +163,81 @@ func (c *StandaloneChanges) OpenChanges() ([]int, bool, error) {
 	return numbers, capped, nil
 }
 
+// StandaloneAccount identifies a change author. ID is the forge's permanent numeric id;
+// match on it rather than on Login, which a forge can recycle. Type is the forge's actor
+// kind (GitHub: User, Bot, …) where the read reports one, and empty where it does not:
+// empty means not reported, never User.
+type StandaloneAccount struct {
+	ID    int64  `json:"id"`
+	Login string `json:"login"`
+	Type  string `json:"type"`
+}
+
+func standaloneAccount(a Account) StandaloneAccount {
+	return StandaloneAccount{ID: a.ID, Login: a.Login, Type: a.Type}
+}
+
+// StandaloneOpenChange is one row of OpenChangeRows.
+type StandaloneOpenChange struct {
+	Number  int               `json:"number"`
+	Author  StandaloneAccount `json:"author"`
+	Draft   bool              `json:"draft"`
+	State   string            `json:"state"`
+	HeadSHA string            `json:"headSha"`
+	BaseRef string            `json:"baseRef"`
+	URL     string            `json:"url"`
+}
+
+// OpenChangeRows returns the open changes newest first, with author, draft flag and head,
+// and whether the provider scan was capped. It makes one list read per page and no read per
+// change: on GitLab it does not look up each head's pipeline. A row with no positive number
+// or no full head SHA fails the whole read.
+func (c *StandaloneChanges) OpenChangeRows() ([]StandaloneOpenChange, bool, error) {
+	open, err := standaloneOpenChangeRows(c.forge, c.repo)
+	if err != nil {
+		return nil, false, standaloneOperationError("list open changes", err)
+	}
+	rows := make([]StandaloneOpenChange, 0, len(open.Changes))
+	for _, change := range open.Changes {
+		if change.Number <= 0 || !standaloneSHAPattern.MatchString(change.HeadSHA) {
+			return nil, false, errors.New("forge returned an invalid or incomplete open change")
+		}
+		rows = append(rows, StandaloneOpenChange{
+			Number: change.Number, Author: standaloneAccount(change.Author), Draft: change.Draft,
+			State: strings.ToLower(change.State), HeadSHA: change.HeadSHA, BaseRef: change.BaseRef,
+			URL: fmt.Sprintf("%s%d", c.changeURL, change.Number),
+		})
+	}
+	return rows, open.TruncatedAtCap, nil
+}
+
+// ChangesUpdatedSince reads the changes updated at or after q.Since in every lifecycle
+// state. A zero Since reads the bounded full inventory. Store ObservedUpTo as the next
+// Since only when the result is complete; an Incomplete result has a zero ObservedUpTo
+// and must not move a stored bound. Records carry no reviews, checks or comments.
+func (c *StandaloneChanges) ChangesUpdatedSince(ctx context.Context, q adapters.UpdateQuery) (adapters.ChangeUpdates, error) {
+	source, err := NewMirrorReadSource(c.forge, ForgeResolution{Kind: c.kind, Repo: c.repo})
+	if err != nil {
+		return adapters.ChangeUpdates{}, standaloneOperationError("list updated changes", err)
+	}
+	read, err := source.Read(ctx, MirrorChanges, q)
+	if err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return adapters.ChangeUpdates{}, ctxErr
+		}
+		return adapters.ChangeUpdates{}, standaloneOperationError("list updated changes", err)
+	}
+	return adapters.ChangeUpdates{UpdateCoverage: read.UpdateCoverage, Records: read.Changes}, nil
+}
+
 type StandaloneChange struct {
-	State        string `json:"state"`
-	HeadSHA      string `json:"headSha"`
-	BaseRef      string `json:"baseRef"`
-	URL          string `json:"url"`
-	ChangedFiles int    `json:"changedFiles"`
+	State        string            `json:"state"`
+	HeadSHA      string            `json:"headSha"`
+	BaseRef      string            `json:"baseRef"`
+	URL          string            `json:"url"`
+	ChangedFiles int               `json:"changedFiles"`
+	Author       StandaloneAccount `json:"author"`
+	Draft        bool              `json:"draft"`
 }
 
 func (c *StandaloneChanges) Change(number int) (StandaloneChange, error) {
@@ -179,7 +252,8 @@ func (c *StandaloneChanges) Change(number int) (StandaloneChange, error) {
 		!standaloneSHAPattern.MatchString(pr.HeadSHA) {
 		return StandaloneChange{}, errors.New("forge returned a mismatched or incomplete change")
 	}
-	return StandaloneChange{State: strings.ToLower(pr.State), HeadSHA: pr.HeadSHA, BaseRef: pr.BaseRef, URL: pr.URL, ChangedFiles: pr.ChangedFiles}, nil
+	return StandaloneChange{State: strings.ToLower(pr.State), HeadSHA: pr.HeadSHA, BaseRef: pr.BaseRef, URL: pr.URL, ChangedFiles: pr.ChangedFiles,
+		Author: standaloneAccount(pr.Author), Draft: pr.Draft}, nil
 }
 
 type StandaloneChangeFile struct {
@@ -212,6 +286,9 @@ func (c *StandaloneChanges) ChangedFiles(number int) (StandaloneChangeFiles, err
 	if err != nil {
 		return StandaloneChangeFiles{}, err
 	}
+	// Author and draft flag are reported but do not bracket the file list: a draft flip
+	// during the read leaves the files at this head valid.
+	after.Author, after.Draft = pr.Author, pr.Draft
 	if after != pr {
 		return StandaloneChangeFiles{}, errors.New("change moved during the file read")
 	}

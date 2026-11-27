@@ -791,8 +791,9 @@ func (s *stub) mutated() []string {
 		if r.Method == http.MethodGet {
 			continue
 		}
-		if r.Method == http.MethodPost && r.Path == "/graphql" && (isTrustRead(r.Body) || isCommentWalk(r.Body)) {
-			continue // a GraphQL READ (the PR body's edit time, the comment thread), not a mutation
+		if r.Method == http.MethodPost && r.Path == "/graphql" &&
+			(isTrustRead(r.Body) || isCommentWalk(r.Body) || isMergeReqRead(r.Body)) {
+			continue // a GraphQL READ (the PR body's edit time, the comment thread, the merge requirements), not a mutation
 		}
 		out = append(out, r.String())
 	}
@@ -908,6 +909,12 @@ const riskyPath = ".github/workflows/ci.yml"
 func isCommentWalk(body string) bool {
 	return strings.Contains(body, "isMinimized") && !strings.Contains(body, "lastEditedAt") &&
 		!strings.Contains(body, "mutation")
+}
+
+// isMergeReqRead reports whether a GraphQL body is the merge-requirement READ the not-reverted
+// condition re-judges a recorded revert with (#7096).
+func isMergeReqRead(body string) bool {
+	return strings.Contains(body, "requiredStatusCheckContexts") && !strings.Contains(body, "mutation")
 }
 
 func isTrustRead(body string) bool {

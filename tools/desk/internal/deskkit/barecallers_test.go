@@ -68,6 +68,8 @@ var bareResolverAllowList = map[string]struct {
 		"pinned fail-closed decision-gate read"},
 	"internal/deskkit/decisionensure.go#GetIssue": {3, "decision-issue dedupe reads, kept on the same " +
 		"fail-closed resolver as the decision-gate wait so the two cannot disagree on one number"},
+	"internal/deskkit/decisionhold.go#GetIssue": {1, "a carried decision hold's re-read, kept on the same " +
+		"fail-closed resolver as the decision-gate wait: an ambiguous number is could-not-check and keeps the hold"},
 
 	// --- the entry points themselves: implementations and pure delegation ---
 	"internal/deskkit/readonlyforge.go#GetIssue": {1, "the read-only decorator delegating the bare entry point"},

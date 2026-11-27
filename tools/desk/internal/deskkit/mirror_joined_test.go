@@ -211,6 +211,7 @@ func TestMirrorProvisionedReadThrough(t *testing.T) {
 		t.Skip("explicit disposable container required; ordinary skip is not provisioned integration proof")
 	}
 	t.Run("cold-inventory", checkPersistedColdInventory)
+	t.Run("metadata-warm-up", checkProjectedMirrorWarmUp)
 	for _, provider := range []ForgeKind{ForgeGitHub, ForgeGitLab} {
 		t.Run(string(provider), func(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
