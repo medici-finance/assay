@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -179,5 +180,62 @@ func TestCheck_NoHistoryIsCouldNotScreen(t *testing.T) {
 	}
 	if len(fr.Advisories) != 0 {
 		t.Errorf("a could-not-screen file must raise no advisory (nothing measured to flag on), got %+v", fr.Advisories)
+	}
+}
+
+// Exercise the public CLI with a real mined snapshot and an independent JSON
+// consumer. In particular, a diff path can contain glob syntax and newlines.
+func testCheckOutputFormats(t *testing.T) {
+	requireGit(t)
+	dir := couplingFixtureRepo(t)
+	store := mineFixture(t, dir)
+	head := strings.TrimSpace(gitCmd(t, dir, "rev-parse", "HEAD"))
+	const unusualPath = "-missing[1]: path\n.go"
+
+	var stdout, stderr bytes.Buffer
+	textArgs := []string{"check", "--out", store.root, "--repo", dir, "*.go"}
+	if rc := dispatch(textArgs, &stdout, &stderr); rc != 0 || stderr.Len() != 0 {
+		t.Fatalf("check: exit %d, stderr %q", rc, stderr.String())
+	}
+	const wantText = "a.go: no advisory signal in this screen\nb.go: no advisory signal in this screen\n"
+	if stdout.String() != wantText {
+		t.Fatalf("default check output = %q, want %q", stdout.String(), wantText)
+	}
+	stdout.Reset()
+
+	args := []string{"check", "--json", "--literal-paths", "--out", store.root, "--repo", dir,
+		"--", "a.go", unusualPath, "a.go"}
+	if rc := dispatch(args, &stdout, &stderr); rc != 0 || stderr.Len() != 0 {
+		t.Fatalf("check --json: exit %d, stderr %q", rc, stderr.String())
+	}
+
+	var report struct {
+		SchemaVersion string `json:"schema_version"`
+		RepoHead      string `json:"repo_head"`
+		Files         []struct {
+			Path           string `json:"path"`
+			CouldNotScreen *bool  `json:"could_not_screen"`
+			Reason         string `json:"reason"`
+			Advisories     []struct {
+				Kind   string `json:"kind"`
+				Detail string `json:"detail"`
+			} `json:"advisories"`
+		} `json:"files"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("expected one JSON document, got %q: %v", stdout.String(), err)
+	}
+	if report.SchemaVersion != "qualgen-check-v1" || report.RepoHead != head || len(report.Files) != 2 {
+		t.Fatalf("unexpected screen envelope: %+v", report)
+	}
+	unmeasured, advised := report.Files[0], report.Files[1]
+	if unmeasured.Path != unusualPath || unmeasured.CouldNotScreen == nil || !*unmeasured.CouldNotScreen ||
+		unmeasured.Reason == "" || unmeasured.Advisories == nil || len(unmeasured.Advisories) != 0 {
+		t.Errorf("unexpected unmeasured row: %+v", unmeasured)
+	}
+	if advised.Path != "a.go" || advised.CouldNotScreen == nil || *advised.CouldNotScreen || advised.Reason != "" ||
+		len(advised.Advisories) != 1 || advised.Advisories[0].Kind != "coupling-partner" ||
+		!strings.Contains(advised.Advisories[0].Detail, "b.go") {
+		t.Errorf("unexpected advisory row: %+v", advised)
 	}
 }

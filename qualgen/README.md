@@ -14,6 +14,51 @@ go build -o qualgen .
 `check <paths>` emits advisory notices. Help documents the options. No tracker,
 telemetry collection, credential lookup or network query runs implicitly.
 
+## JSON advisory output
+
+```sh
+qualgen check --json --literal-paths --repo /path/to/repository \
+  --out /path/to/tracking-root -- src/client.go 'src/options[1].go'
+```
+
+`--json` writes one JSON object to stdout with this structure:
+
+```json
+{
+  "schema_version": "qualgen-check-v1",
+  "repo_head": "0123456789abcdef0123456789abcdef01234567",
+  "files": [
+    {
+      "path": "src/client.go",
+      "could_not_screen": false,
+      "advisories": [{"kind": "coupling-partner", "detail": "historically coupled to src/server.go, not in this screened set — check that partner too"}]
+    },
+    {
+      "path": "src/options[1].go",
+      "could_not_screen": true,
+      "reason": "no measurable mined history for this path",
+      "advisories": []
+    }
+  ]
+}
+```
+
+Validate `schema_version` before reading the result. `repo_head` is the commit
+used for the live `reference-rot` advisory. Compare it with the revision
+under review before using those advisories.
+
+Each distinct path has one entry, sorted by path. `could_not_screen` marks
+insufficient mined history and carries a `reason`. Live advisories may still
+be present for that path. A screened path with no advisories has
+`could_not_screen: false` and an empty `advisories` array. Use `kind` to
+identify advisories and `detail` for display. A successful screen exits zero.
+Command errors exit nonzero and write diagnostics to stderr.
+
+Use `--literal-paths` with paths from a diff. It preserves glob characters and
+screens paths absent from the checkout, including deleted files. `--` allows
+filenames that start with a dash. Without these options, `check` uses its normal
+glob expansion and text output.
+
 ## Defect tracing from recorded issue and PR metadata
 
 ```sh
