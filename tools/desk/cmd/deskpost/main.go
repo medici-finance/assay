@@ -527,10 +527,11 @@ the two verdict verbs (a risk-classed PR needs BOTH at the same head):
                    unflippable (#513 / #438).
   ready            also refuses (exit 6, could-not-check) a head the post-flip check below
                    already returned to draft: a trusted comment carrying that check's hidden
-                   marker for the CURRENT head. The same condition as deskflip's
-                   not-reverted. It is the one read of the comment thread `+"`ready`"+`
-                   makes, and it can only refuse, never admit. A comment thread it cannot
-                   read is also exit 6. A new head clears it (#6254).
+                   marker for the CURRENT head, while a fresh merge-requirement read shows
+                   the cause the marker records still holds (#7096). The same condition as
+                   deskflip's not-reverted. It is the one read of the comment thread `+"`ready`"+`
+                   makes, and it can only refuse, never admit. A comment thread or a
+                   requirement read it cannot read is also exit 6. A new head clears it (#6254).
 
 targets:
   comment        reviewer-role callers only: DESK_LOOP must resolve to reviewer.
@@ -564,8 +565,11 @@ after the ready flip:
                  the review decision, every required check at the head): any one unmet,
                  a read that fails, or a base-branch rule the read sees but does not
                  evaluate (conversation resolution, signed commits, a merge queue ...)
-                 reverts the same way and the comment names it; all met, with no such
-                 rule, leaves it ready with a could-not-check comment and notice.
+                 reverts the same way and the comment names it, its marker recording the
+                 cause; all met, with no such rule, leaves it ready with a could-not-check
+                 comment and notice. A mergeable verdict of UNKNOWN is re-read within the
+                 same 30s bound; still UNKNOWN then, it is could-not-check and never a
+                 recorded cause (#7096).
                  CLEAN, HAS_HOOKS, UNSTABLE and BEHIND leave it ready. Anything else at 30s, a draft included, leaves it ready with a
                  could-not-check comment and notice. This is
                  the only un-ready and never a verb of its own (ruling:
