@@ -56,6 +56,18 @@ var emailAllowedExact = []string{"noreply" + "@" + "github.com"}
 // emailAllowed reports whether addr is on the compiled allow-list or is the no-reply
 // address of one of the roster's own bot identities.
 func emailAllowed(addr string) bool {
+	if defaultEmailAllowed(addr) {
+		return true
+	}
+	for _, b := range EffectiveConfig().BotIdents {
+		if b.CommitEmailSpec().Accepts(strings.ToLower(addr)) {
+			return true
+		}
+	}
+	return false
+}
+
+func defaultEmailAllowed(addr string) bool {
 	a := strings.ToLower(addr)
 	for _, e := range emailAllowedExact {
 		if a == e {
@@ -80,11 +92,6 @@ func emailAllowed(addr string) bool {
 			}
 		}
 	}
-	for _, b := range EffectiveConfig().BotIdents {
-		if b.CommitEmailSpec().Accepts(a) {
-			return true
-		}
-	}
 	return false
 }
 
@@ -98,10 +105,14 @@ type piiFinding struct {
 // personalDataScan returns every personal-data finding in s, refusals and notices alike,
 // in text order per rule. It is pure: no I/O beyond the roster accessor emailAllowed reads.
 func personalDataScan(s string) []piiFinding {
+	return scanPersonalData(s, emailAllowed)
+}
+
+func scanPersonalData(s string, allowEmail func(string) bool) []piiFinding {
 	var out []piiFinding
 	for _, loc := range reEmail.FindAllStringIndex(s, -1) {
 		span := s[loc[0]:loc[1]]
-		if emailAllowed(span) || isGitRemoteUserinfo(s, loc[0], loc[1]) {
+		if allowEmail(span) || isGitRemoteUserinfo(s, loc[0], loc[1]) {
 			continue
 		}
 		out = append(out, piiFinding{rule: RulePIIEmail, line: lineOf(s, loc[0]), span: span})

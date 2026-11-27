@@ -166,9 +166,15 @@ func (t mirrorResponseTransport) RoundTrip(r *http.Request) (out *http.Response,
 	// Default net/http transports have already decoded their automatic gzip
 	// response; explicit gzip from an injected transport is decoded above. The
 	// cap therefore measures JSON bytes, not Content-Length or compressed bytes.
-	body, err := io.ReadAll(io.LimitReader(decoded, adapters.MaxUpdateBytes+1))
+	limit := adapters.MaxUpdateBytes + 1
+	if t.attempt != nil && t.attempt.metadataOnly {
+		// A complete projected walk may decode at most the remaining aggregate
+		// budget. At the boundary there is no lookahead byte to prove EOF.
+		limit = adapters.MaxUpdateBytes - t.attempt.snapshot().DecodedBytes.Value
+	}
+	body, err := io.ReadAll(io.LimitReader(decoded, limit))
 	consumed = int64(len(body))
-	if int64(len(body)) > adapters.MaxUpdateBytes {
+	if consumed >= limit {
 		return nil, &mirrorResponseLimitError{}
 	}
 	if err != nil {

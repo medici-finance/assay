@@ -129,7 +129,7 @@ func TestExitEvent_UndeclaredLoopRefused(t *testing.T) {
 	stateDir := isolatedDeskHome(t)
 	t.Setenv("DESK_LOOP", "") // restored after the test; run() sets it in-process
 	code := run([]string{"land", "--item", "medici-finance/assay#77", "--opened", "2026-08-24T11:50:00Z",
-		"--exit", "bug", "--artifact", "#5", "--tier", "strong"})
+		"--exit", "finding", "--artifact", "#5", "--tier", "strong"})
 	if code != deskkit.ExitRefused {
 		t.Fatalf("exit = %d, want %d (refused) for an undeclared loop", code, deskkit.ExitRefused)
 	}
@@ -139,7 +139,7 @@ func TestExitEvent_UndeclaredLoopRefused(t *testing.T) {
 
 	t.Setenv("DESK_LOOP", "verify-desk")
 	if code := run([]string{"land", "--item", "medici-finance/assay#77", "--opened", "2026-08-24T11:50:00Z",
-		"--exit", "bug", "--artifact", "#5", "--tier", "strong"}); code != deskkit.ExitOK {
+		"--exit", "finding", "--artifact", "#5", "--tier", "strong"}); code != deskkit.ExitOK {
 		t.Fatalf("a declared loop was refused: exit %d", code)
 	}
 	lines := readRecordLines(t, stateDir)
@@ -167,7 +167,7 @@ func TestExitEvent_AuditFailureRetryWritesBoth(t *testing.T) {
 		t.Fatal(err)
 	}
 	args := []string{"--item", "medici-finance/assay#77", "--opened", "2026-08-24T11:50:00Z",
-		"--exit", "bug", "--artifact", "#5", "--tier", "strong"}
+		"--exit", "finding", "--artifact", "#5", "--tier", "strong"}
 	if err := cmdLand(args, "intake-desk", &strings.Builder{}); err == nil {
 		t.Fatal("land succeeded with an unwritable audit log")
 	}
@@ -198,7 +198,7 @@ func TestExitEvent_Key(t *testing.T) {
 	land := func(args ...string) error {
 		return cmdLand(append([]string{"--artifact", "#5", "--tier", "strong"}, args...), "intake-desk", &strings.Builder{})
 	}
-	if err := land("--item", "medici-finance/assay#77", "--opened", "2026-08-24T11:50:00Z", "--exit", "bug"); err != nil {
+	if err := land("--item", "medici-finance/assay#77", "--opened", "2026-08-24T11:50:00Z", "--exit", "finding"); err != nil {
 		t.Fatalf("first land: %v", err)
 	}
 	before := recordFileBytes(t, stateDir)
@@ -211,9 +211,9 @@ func TestExitEvent_Key(t *testing.T) {
 			[]string{"--item", "Medici-Finance/Assay#77", "--opened", "2026-08-24T11:50:00Z", "--exit", "needs-decision"}},
 		{"same event, offset spelling of the same instant, different exit",
 			[]string{"--item", "medici-finance/assay#77", "--opened", "2026-08-24T13:50:00+02:00", "--exit", "needs-decision"}},
-		{"opened does not parse", []string{"--item", "medici-finance/assay#78", "--opened", "yesterday", "--exit", "bug"}},
-		{"stray argument", []string{"--item", "medici-finance/assay#78", "--exit", "bug", strings.Repeat("x", 200)}},
-		{"unknown flag", []string{"--item", "medici-finance/assay#78", "--exit", "bug", "--" + strings.Repeat("y", 200)}},
+		{"opened does not parse", []string{"--item", "medici-finance/assay#78", "--opened", "yesterday", "--exit", "finding"}},
+		{"stray argument", []string{"--item", "medici-finance/assay#78", "--exit", "finding", strings.Repeat("x", 200)}},
+		{"unknown flag", []string{"--item", "medici-finance/assay#78", "--exit", "finding", "--" + strings.Repeat("y", 200)}},
 	}
 	for _, tc := range refusals {
 		t.Run(tc.name, func(t *testing.T) {

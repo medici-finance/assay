@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -317,4 +318,45 @@ func TestCheckRecordStringBackstop(t *testing.T) {
 	if err := checkRecordString("f", strings.Repeat("k", 256)); err != nil {
 		t.Errorf("checkRecordString refused 256 bytes, the cap itself: %v", err)
 	}
+}
+
+// regression: #7432
+func TestReviewLeaseRequiresMatchingCheckoutAndDispatchReceipt(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Chdir(t.TempDir())
+	git := func(args ...string) {
+		t.Helper()
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %s: %v: %s", args[0], err, out)
+		}
+	}
+	const key = "project--pr-42"
+	const first = key + "@20260101T010101Z.000000000001"
+	const next = key + "@20260101T010101Z.000000000002"
+	r := validDispatched()
+	r.ClaimKey, r.Kit, r.DispatchRef, r.PR = key, strp("review"), strp(first), intp(42)
+	check := func(repo, want string) {
+		t.Helper()
+		holder, run := WorktreeReviewLeaseIdentity(repo, key)
+		if run != want || (want != "" && holder != r.SessionTag) || (want == "" && holder != "") {
+			t.Fatalf("receipt = (%q,%q), want run %q", holder, run, want)
+		}
+	}
+	git("init", "-q")
+	git("config", "--local", "assay.dispatchRef", first)
+	if err := AppendDispatchRecord(&r); err != nil {
+		t.Fatal(err)
+	}
+	check(r.Repo, "")
+	git("config", "extensions.worktreeConfig", "true")
+	git("config", "--worktree", "assay.dispatchRef", first)
+	check(r.Repo, first)
+	check("example-org/other", "")
+	r.DispatchRef = strp(next)
+	if err := AppendDispatchRecord(&r); err != nil {
+		t.Fatal(err)
+	}
+	check(r.Repo, "")
+	git("config", "--worktree", "assay.dispatchRef", next)
+	check(r.Repo, next)
 }

@@ -638,7 +638,7 @@ func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record, roster
 	if err != nil {
 		return refuse("%v", err)
 	}
-	_, hostBrief, admitted, err := verifierAdmissionReceipt(check, brief)
+	hostLine, hostBrief, admitted, err := verifierAdmissionReceipt(check, brief)
 	if err != nil {
 		return refuse("%v", err)
 	}
@@ -671,7 +671,7 @@ func runOpenAcceptance(home, brief, out, moduleCache, historyOut, record, roster
 	if record != "" {
 		var why string
 		var descriptor string
-		acceptance, descriptor, why = hostAcceptance(home, brief, record, check)
+		acceptance, descriptor, why = hostAcceptance(home, brief, record, check, hostLine, stderr)
 		if why != "" {
 			return refuse("%s", why)
 		}
@@ -1033,26 +1033,6 @@ func runCloseBracket(home, brief, receiptPath, witnessPath, record, observation 
 		}
 		cellBrief = hostBrief
 	}
-	if receipt.Acceptance != nil {
-		fresh, descriptor, why := hostAcceptance(home, brief, record, receipt.Check)
-		if why != "" {
-			return refuse("%s", why)
-		}
-		current, _, err := briefSections(brief)
-		if err != nil {
-			return refuse("%v", err)
-		}
-		observed, why := receipt.Acceptance.withSourceTable(current)
-		if why != "" {
-			return refuse("%s", why)
-		}
-		if !reflect.DeepEqual(fresh, observed) {
-			return refuse("acceptance plan differs from the host re-plan (including the byte-exact execution table)")
-		}
-		if why := acceptanceWitness(fresh, descriptor, block, current); why != "" {
-			return refuse("%s", why)
-		}
-	}
 	host, ok := hostRunnerCell(home, cellBrief)
 	if !ok {
 		return refuse("could-not-attribute — no executing identity is available on the host for %s, so the runner the receipt names cannot be confirmed", home)
@@ -1083,6 +1063,26 @@ func runCloseBracket(home, brief, receiptPath, witnessPath, record, observation 
 	}
 	if hostLine != block.attestation {
 		return refuse("the host check does not re-admit the run the witness names (run, source, brief, model or tier differ):\n  witness: %s\n  host:    %s", block.attestation, hostLine)
+	}
+	if receipt.Acceptance != nil {
+		fresh, descriptor, why := hostAcceptance(home, brief, record, check, hostLine, stderr)
+		if why != "" {
+			return refuse("%s", why)
+		}
+		current, _, err := briefSections(brief)
+		if err != nil {
+			return refuse("%v", err)
+		}
+		observed, why := receipt.Acceptance.withSourceTable(current)
+		if why != "" {
+			return refuse("%s", why)
+		}
+		if !reflect.DeepEqual(fresh, observed) {
+			return refuse("acceptance plan differs from the host re-plan (including the byte-exact execution table)")
+		}
+		if why := acceptanceWitness(fresh, descriptor, block, current); why != "" {
+			return refuse("%s", why)
+		}
 	}
 	opened, _ := time.Parse(time.RFC3339, receipt.Opened)
 	closed := nowFunc().UTC()
@@ -1458,7 +1458,7 @@ func acceptanceSHA(raw []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func hostAcceptance(home, brief, record string, check []byte) (*receiptAcceptance, string, string) {
+func hostAcceptance(home, brief, record string, check []byte, hostLine string, stderr io.Writer) (*receiptAcceptance, string, string) {
 	binding, err := checkBinding(check)
 	if err != nil {
 		return nil, "", err.Error()
@@ -1479,6 +1479,13 @@ func hostAcceptance(home, brief, record string, check []byte) (*receiptAcceptanc
 	if err != nil {
 		return nil, "", err.Error()
 	}
+	// Both callers obtained hostLine from the fresh host check. At close it
+	// must also match the witness before it can authorize a read.
+	cred := newRunReadCredential(hostLine)
+	release := cred.bind(stderr)
+	defer release()
+	previousAdmission := verifyrunAdmission.Swap(verifyrunAdmitted)
+	defer verifyrunAdmission.Store(previousAdmission)
 	plan, descriptor, _, why := planAcceptanceRecord(brief, verify, evidence, record)
 	if why != "" {
 		return nil, "", why

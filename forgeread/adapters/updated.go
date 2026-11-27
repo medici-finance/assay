@@ -64,6 +64,9 @@ type ChangeUpdate struct {
 	// are not read here; an empty slice does not assert no teams were requested.
 	RequestedReviewers []UpdateActor
 	MergedAt           time.Time
+	// Draft is the list endpoint's own draft flag (GitHub `draft`; GitLab `draft`, or
+	// the older `work_in_progress`). Omitted from JSON when false.
+	Draft bool `json:",omitempty"`
 }
 
 // UpdateCoverage describes only this endpoint's bounded walk. Incomplete records

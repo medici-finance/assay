@@ -38,7 +38,8 @@ import (
 //	    a `Worker-Attestation:` record must carry the matching stamp-authority authored-model /
 //	    authored-tier pair; deskkit.AuthoringStampGate, one shared implementation
 //	(h) not-reverted (#6254): the SAME condition deskflip enforces — a head the post-flip
-//	    backstop already returned to draft is not flipped again (deskkit.NotRevertedHold). This
+//	    backstop already returned to draft is not flipped again while the cause its revert
+//	    recorded still holds on a fresh requirement read (deskkit.NotRevertedHold, #7096). This
 //	    is the ONE read of the comment surface `ready` makes, and it is refuse-only: a match can
 //	    only stop the flip, nothing read there can admit one (#513)
 //	TOCTOU: re-read the PR immediately before the flip; if the head moved, refuse; and
@@ -333,8 +334,15 @@ func runReady(owner, name string, pr int, args []string, opts postOpts) int {
 				"PR #"+fmt.Sprint(pr)+"'s comments could not be read, so whether the post-flip check already "+
 					"reverted this head is unknown: "+firstLineOf(err.Error()), err)
 		}
-		if reason, held := deskkit.NotRevertedHold(comments, pr, head, short(head)); held {
+		// The revert stops holding only when a fresh requirement read shows its recorded cause
+		// cleared (#7096); that read can only release this refuse-only hold, never admit a gate.
+		reread := func() (*deskkit.MergeRequirements, error) { return client.mergeRequirements(pr) }
+		reason, held := deskkit.NotRevertedHold(comments, pr, head, short(head), reread)
+		if held {
 			return unverifiableNoWrite("ready", repo, pr, head, reason, nil)
+		}
+		if reason != "" {
+			_, _ = fmt.Fprintf(stderr, "deskpost: not-reverted: %s\n", reason)
 		}
 
 		// TOCTOU: re-read the PR immediately before the flip. If the head moved since the

@@ -96,6 +96,46 @@ deskdispatch --attest-verifier --root HOME [--dry-run]
   search result cannot authorize another issue. Failed dispatch releases its claim and
   retains the worktree for recovery. Reacquire that claim before launching a recovered run.
   PENDING, failed, mismatched or unreadable stamps never admit verification.
+deskdispatch <item> --kit verifier ... --target-change N --target-head SHA
+  PRE-MERGE TARGET (#7623). Runs the Verify table at an UNMERGED change head instead of
+  merged main, so the verifier's credential meets code that review approved but no merge
+  has accepted. INERT TODAY: every target is refused, before the claim and at every use
+  point, until a credential-less, contained runner exists, because a host-lane row runs as
+  the desk's OS user with every same-user credential in reach (stored forge logins, App
+  key files, the credential helper, the ssh home, same-user sockets). The guards below
+  all still run and report. Default off: the repository must be listed on the owner-held roster key
+  ASSAY_VERIFIER_PREMERGE_REPOS (full owner/name slugs; a malformed value refuses the whole
+  roster) and on ASSAY_ALLOWED_REPOS. SHA is the full 40-hex head, already fetched into
+  --root (deskdispatch never fetches it); the home is cut detached at exactly SHA.
+  Admission requires the change open at exactly SHA, the reviewer App's own decisive
+  verdict at SHA APPROVED with no reviewer-App request for changes at SHA (human and other
+  Apps' reviews are not read), the reviewer App's security lane `Security-Review: pass` at
+  SHA in a submitted comment review of its own with no correctness verdict line, and no
+  security fail at SHA (one review body grants one lane: an approval that speaks for the
+  security lane is not the correctness approval), a head branch in the base repository (a fork, or an
+  unreadable head repository, refuses), an author who is a trusted role App or
+  accountable human on the roster, and a change author that is none of the verifier,
+  reviewer or dispatching desk Apps. The head is read again after the reviews, and the whole rule is
+  re-run at every --check-verifier and --attest-verifier: a moved head, a withdrawn
+  approval, a closed change or a removed opt-in refuses (exit 5), and an unreadable forge
+  is could-not-check (exit 6), never admitted. A pre-merge run never lands Evidence and is
+  never credited or scheduled; the merged-main run stays owed. Cross-repository briefs
+  and --cross-repo are refused.
+deskdispatch --stage-npm --root HOME --package DIR --cache CACHE [--build] [--brief PATH]
+  The admitted npm staging step (#7572), the npm counterpart of the container bracket's
+  Go module cache. The home must first pass local pre-work admission. It then runs
+  npm ci --offline --ignore-scripts --cache CACHE in the home-relative package DIR
+  against its attested package-lock.json (CACHE is filled before the run, outside the
+  home) and, with --build, the package's own build script. Both npm commands run under
+  an allow-listed environment with a fresh, empty HOME and TMPDIR, as an admitted
+  Verify row does, so no inherited token, npm config or proxy login reaches them. A
+  staged symlink must resolve, through its whole chain, to an existing path inside
+  its staged directory. It re-closes the home so the
+  step wrote nothing but DIR/node_modules (and DIR/dist with --build), and binds their
+  digest to the run record once. --check-verifier then passes over only those staged
+  directories, and only while they still hash to that digest; any other unattested file,
+  and any staged change, still refuses with exit 5. statusgen verifyrun writes the digest
+  on the host-lane witness as an Npm-Staging: sha256:<hex> line. Same-repository runs only.
 
 WORKER PRE-WORK (--attest-worker, opt-in). A fresh worker dispatch (no --pr) otherwise
 reports its stamp PENDING until the change opens. With --attest-worker (worker kits only;

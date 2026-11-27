@@ -270,6 +270,41 @@ RISK-VALUE: DERIVED — non-positive refusal = total <= 0 @ tools/desk/cmd/muhar
 
 **VERIFY: PASS** — 4 of 4 rows pass with admitted witnesses at merged source 1f5392225471, all four network-off inside one closed admission bracket (verdict=match). No row is risk-bearing, so no fail-first witness is required. The gate is model, and all risk answers are no.
 
+### Verification, 2026-11-25, at merged source 77ff0f2222a28df926c38ad30fea4a368173712e
+
+Independent verifier pass (claude-opus-5-5, strong tier, not the implementer) at merged main 77ff0f2222a28df926c38ad30fea4a368173712e under desk tools v1.0.94, darwin/arm64, git 2.56, KUBECONFIG=/dev/null, with the declared verifier Git environment. Admission (deskdispatch --check-verifier) returned exit 0 before any step ran. Its binding: attestation record medici-finance/assay#7680, run=6322334b79e4fadeb313b48ab3dc21483cf44f46149d8ff7ea5e2b10695542ef, source=77ff0f2222a28df926c38ad30fea4a368173712e, model=claude-opus-5-5, tier=strong.
+
+What changed since the 2026-11-18 pass. The Verify table is no longer the delivered table. Row 4 was rewritten after delivery by commit 74c46b2b97b4, which landed on the first-parent chain as merge 27151ae744db90b695147dcd6e074a5859f5d29c and moved version from 1 to 2. The new row 4 pins --delivery 18056ac181bc and --base ecee257bd067 as literals and drops the DELIVERY_HEAD and DELIVERY_BASE guards. Its Expect and class are unchanged, so this is a Command-only correction of row 4. The Verify section hashes the same at the merge base a7e2f320f8a7, at the delivery 18056ac181bc and at the amendment's first parent 657bbb08f114. It hashes differently at the amendment 27151ae744db and at this source, and those two agree. deskpathguard rederive reported 4 rows, 0 author-added. Since 1f5392225471, 1250 commits landed. None of them touches budget.go, either budget test, the muhar budget sources, the cellctl env, launch or budget sources, or the deskkit file-lock sources. envkeys.go gained unrelated keys, docs/cellctl.md grew, and three unrelated muhar tests changed.
+
+Protected acceptance route. Because the current table differs from the delivered one, rows can be credited only through an approved acceptance transition, run in a closed container-netns transition bracket. Two host open steps were tried. Both refused before any row ran or any receipt was written, the module-cache download never started, and the home stayed clean.
+- Transition descriptor: a delivery=18056ac181bcda0b96f2967950884cb63e64192a, base=a7e2f320f8a76a9cee5cef98cecc40b7a432e782, original=a7e2f320f8a76a9cee5cef98cecc40b7a432e782 table line, plus one transition line with amendment=27151ae744db90b695147dcd6e074a5859f5d29c and approval=https://github.com/medici-finance/assay/issues/4560#issuecomment-7012397400 (the ruling the amendment commit cites). The descriptor was kept outside the home and passed to statusgen verifyrun --open-bracket with --acceptance-record, --acceptance-forge and --source-acceptance. The first try had no read credential and stopped at could-not-check: "no forge token variable is set and the stored forge login is not used where verifier admission is required". The second try used the verifier role App credential, minted with desktoken and passed only to that command. It read the comment and refused: "statusgen verifyrun --open-bracket: refused, no receipt written: protected table: acceptance transition: human approval could not be corroborated: comment 7012397400 on medici-finance/assay does not name the record acceptance-transition — the ruling comment must name the record it rules on".
+- Protected-record descriptor (the table line only): the same open step refused with "protected table: current Verify section differs from immutable delivery", as the contract requires for an amended row.
+
+Observed result per row (date 2026-11-25; runner: this dispatched verifier run, admission run=6322334b79e4 at source 77ff0f2222a2):
+- Row 1: could-not-run. The protected transition plan was refused before execution because no corroborated acceptance-transition approval exists, so the bracket never opened.
+- Row 2: could-not-run, for the same reason as row 1.
+- Row 3: could-not-run, for the same reason as row 1.
+- Row 4: could-not-run, for the same reason as row 1. This is the amended row the missing approval must cover.
+- Supplemental, no acceptance credit, discharges no row: on the host, the current row 4 command was run by hand on the clean home, outside verifyrun. It exited 0 and printed "summary: 5 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing", with all five entries CORROBORATED. This only shows that the amended command passes as written; it is a reading aid.
+
+Needed to unblock (next actor: the driver). Post an unedited comment carrying the exact acceptance-transition payload on a same-repository decision issue whose body carries the acceptance-transition marker for this brief's path. The comment must name delivery 18056ac181bcda0b96f2967950884cb63e64192a, base and original a7e2f320f8a76a9cee5cef98cecc40b7a432e782, amendment 27151ae744db90b695147dcd6e074a5859f5d29c and rows=4: v1 form, or v2 with link=1, predecessor=18056ac181bcda0b96f2967950884cb63e64192a and rows=4:Command. Then dispatch fresh. The cited ruling approved the change, but its comment is not in that form, so the transition owner cannot corroborate it. The covering issue is medici-finance/assay#4560.
+
+Risk-bearing values. The enumeration covers the delivery diff ecee257bd067..18056ac181bc (the muhar budget, harness, runner, selection and main sources, the cellctl budget, env, launch and envkeys sources, and the delivered tests), the brief's Task list, and the row 4 amendment. The lines below were re-read at this source:
+- the non-positive refusal, total <= 0 @ tools/desk/cmd/muhar/budget.go:35
+- the slot lock name, "slot-%d.lock" with mode 0600 @ tools/desk/cmd/muhar/budget.go:47 and tools/desk/cmd/muhar/budget.go:105
+- the lease poll interval, 25 * time.Millisecond @ tools/desk/cmd/muhar/budget.go:126
+- both keys classed envMachine in envGroupHarness @ tools/desk/cmd/cellctl/envkeys.go:101 and tools/desk/cmd/cellctl/envkeys.go:103
+- the row 4 pins, --delivery 18056ac181bcda0b96f2967950884cb63e64192a and --base ecee257bd06719468d82522013ff160272e85c3e, in the brief's Verify row 4
+- test-only values, unchanged since the 2026-11-18 pass (budget_test.go is untouched)
+
+All are reversible, and the item is marked irreversible: no. The slot lock name ranks first, then the non-positive refusal, then the row 4 pins, then the key classification. The poll interval and the test-only values rank last.
+
+RISK-VALUE: DERIVED — slot lock name = "slot-%d.lock" @ tools/desk/cmd/muhar/budget.go:47 — admission is decided only by an exclusive OS lock on a stable file per slot index 0..total-1, so every process sharing the directory must compute the same names. The same format string is used at validation (line 47) and at acquisition (line 105), and budget.go and the file-lock primitives it calls are unchanged since the delivery.
+RISK-VALUE: DERIVED — non-positive refusal = total <= 0 @ tools/desk/cmd/muhar/budget.go:35 — the brief requires partial, non-positive or unreadable configuration to refuse loudly. A total of 0 or less would admit no worker and wait forever. The same line also refuses a missing key, an empty directory or a non-integer value.
+RISK-VALUE: DERIVED — row 4 delivery and base = 18056ac181bcda0b96f2967950884cb63e64192a and ecee257bd06719468d82522013ff160272e85c3e @ the brief's Verify row 4 — 18056ac181bc is on this source's first-parent chain, its parents are ecee257bd067 and 4ef4dffade4a, and ecee257bd067 is its first parent, so the pins name the delivering merge and its pre-merge main.
+
+**VERIFY: BLOCKED** — 0 of 4 rows credited at merged source 77ff0f2222a2. No obligation failed. All four rows are could-not-run because no corroborated acceptance-transition approval exists yet for the post-delivery row 4 amendment 27151ae744db, and an amended protected table runs only on that approval. Blocker: human-action, covered by medici-finance/assay#4560. Gate: model. All risk answers are no.
+
 ## Failure map
 - Two runs each exceed the host total: TestBudgetBoundsTotal records the excess and fails.
 - Cancellation leaves capacity wedged: TestBudgetReleases fails.
