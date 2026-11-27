@@ -768,8 +768,9 @@ record. Never remove a record with a local commit. On a strict PASS for a revers
 brief at `implemented`, land its Evidence first, then land the outcome record with `--flip-verified`.
 Use `"outcome":"verified"` and put the full admitted observation SHA in `source_sha`.
 The verb derives the dated stamp from the admitted PASS and commits the record and status row
-together on a pinned GitHub branch head. For an already verified or done brief, the ordinary
-`--outcome-record` form checks the closure already on the target branch. Before writing,
+together on a pinned GitHub branch head. For other briefs, including human-gated and irreversible
+work, wait until the authorized transition has landed. The ordinary `--outcome-record` form
+checks that the target branch already holds the verified or done closure. Before writing,
 refresh only the brief in the verifier home from the target branch
 (`git -C <home> fetch origin <branch>`, then `git -C <home> show FETCH_HEAD:<path> > <home>/<path>`).
 Use the full `git -C <home> rev-parse FETCH_HEAD` as the record's Evidence commit SHA.

@@ -87,7 +87,9 @@ func guardVerifiedOutcomes(root, landedRoot, target string, before, after []byte
 func requireCleanClosure(problems []string, briefs map[string]bool) error {
 	own, foreign := splitClosureProblems(problems, briefs)
 	for _, p := range foreign {
-		fmt.Fprintf(stderr, "deskevidence: notice: %s — names a brief this record does not close; it is that brief's to fix, not this outcome's to block\n", p)
+		if _, err := fmt.Fprintf(stderr, "deskevidence: notice: %s — names a brief this record does not close; it is that brief's to fix, not this outcome's to block\n", p); err != nil {
+			return deskkit.Unverifiable("cannot report lint findings for other briefs", err)
+		}
 	}
 	if len(own) > 0 {
 		return deskkit.Refused("verified outcome requires a lint-valid closure tree:\n" + strings.Join(own, "\n"))

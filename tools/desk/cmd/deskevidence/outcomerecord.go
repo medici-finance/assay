@@ -436,9 +436,11 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		}
 		ac.successResult = deskkit.ResultNoop
 		ac.detail = fmt.Sprintf("dry-run: would %s %s on %s via conditional forge write for %s (%s, sha256 %s)", action, target, branch, repoSlug, mode, bodyDig)
-		fmt.Fprintf(stdout, "dry-run plan: conditional forge write to %s — %s %s on branch %s (%s for %s), "+
+		if _, err := fmt.Fprintf(stdout, "dry-run plan: conditional forge write to %s — %s %s on branch %s (%s for %s), "+
 			"authenticated as the verifier App (%s); sha256 %s; no local `git commit` in this plan\n",
-			repoSlug, action, target, branch, mode, wr.Brief, deskkit.RoleAppLoginOrEmpty("verifier"), bodyDig)
+			repoSlug, action, target, branch, mode, wr.Brief, deskkit.RoleAppLoginOrEmpty("verifier"), bodyDig); err != nil {
+			return deskkit.Unverifiable("cannot report the outcome landing dry-run plan", err)
+		}
 		return nil
 	}
 

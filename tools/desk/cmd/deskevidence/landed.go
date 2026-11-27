@@ -44,7 +44,7 @@ func pinLandedClosureTree(root, target string, before []byte, exists bool, fg de
 	// The earlier destination read may have used a publication snapshot. It must
 	// agree with this pinned tree before any of its bytes become a write base.
 	current, err := fg.ReadFile(repo, deskkit.ReadFileInput{File: target, Ref: tip.SHA})
-	if err != nil && !(deskkit.IsForgeNotFound(err) && !exists) {
+	if err != nil && (!deskkit.IsForgeNotFound(err) || exists) {
 		return "", "", noop, err
 	}
 	if err == nil {
