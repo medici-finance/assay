@@ -248,6 +248,8 @@ func TestCheckoutCredentialIncludeRefusals(t *testing.T) {
 		{name: "condition-home", want: notCondition, setup: badEntry(func(checkoutFixture) string { return "gitdir:~/" })},
 		{name: "condition-absolute-glob", want: notCondition, setup: badEntry(func(checkoutFixture) string { return "gitdir:/**" })},
 		{name: "condition-other-glob-suffix", want: notCondition, setup: badEntry(func(fx checkoutFixture) string { return "gitdir:" + filepath.Dir(fx.admin) + "/*" })},
+		{name: "condition-non-ascii", want: otherConfig, setup: badEntry(func(checkoutFixture) string { return "gitdir:/github/w\u00f6rkspace/.git" })},
+		{name: "condition-non-ascii-worktrees", want: otherConfig, setup: badEntry(func(checkoutFixture) string { return "gitdir:/github/w\u00f6rkspace/.git/worktrees/*" })},
 		{name: "condition-case-variant", want: otherConfig, setup: badEntry(func(fx checkoutFixture) string { return "gitdir:" + strings.ToUpper(fx.admin) })},
 		{name: "includeif-other-key", want: "an includeIf entry carries a key other than path", setup: func(t *testing.T, fx checkoutFixture) {
 			fx.config(t, "includeIf.gitdir:"+fx.admin+".other", fx.cred)
@@ -318,5 +320,32 @@ func TestCheckoutCredentialIncludeRootConditionIsRefused(t *testing.T) {
 	}
 	if why := fx.reason(t, fx.f.Dir); !strings.HasPrefix(why, includeRefusal+" (an include condition other than a literal gitdir path") {
 		t.Fatalf("gitdir:/ include was not refused: %q", why)
+	}
+}
+
+// A git directory spelled with a non-ASCII byte is not proof that a literal
+// condition misses it: Git may spell the path in another Unicode form than Go.
+// Every entry then counts as matching, so the container entries' targets, absent
+// on this host, are opened and refused, as wildmatchMay treats such input.
+func TestCheckoutCredentialIncludeNonASCIIGitDirOpensEveryTarget(t *testing.T) {
+	fx := newCheckoutFixture(t)
+	linked := filepath.Join(t.TempDir(), "w\u00f6rk")
+	if _, err := fx.f.Git("worktree", "add", "-q", "--detach", linked, "HEAD"); err != nil {
+		t.Fatal(err)
+	}
+	texts, err := gitDirTexts(linked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nonASCII := false
+	for _, text := range texts {
+		nonASCII = nonASCII || !isASCII(text)
+	}
+	if !nonASCII {
+		t.Fatalf("the linked worktree's git dir is spelled in ASCII only: %q", texts)
+	}
+	want := includeRefusal + " (an include target is missing or unreadable"
+	if why := fx.reason(t, linked); !strings.HasPrefix(why, want) {
+		t.Fatalf("reason=%q, want %q", why, want)
 	}
 }

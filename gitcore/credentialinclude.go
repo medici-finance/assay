@@ -37,8 +37,8 @@ var (
 // keys, at least one naming this repository's git directory. An entry that may
 // match is read: its target must be a plain file whose whole text is
 // credentialHeaderLine and credentialValueLine lines. A target behind an entry Git
-// provably does not match is never opened, as Git never opens it (checkout writes
-// container-workspace entries that name no host repository).
+// provably does not match (conditionMayMatch) is never opened, as Git never opens
+// it (checkout writes container-workspace entries that name no host repository).
 //
 // Refused: an unconditional include, any other condition, any other key in an
 // includeIf section, a relative or unclean path, a missing, unreadable, symlinked
@@ -119,11 +119,19 @@ func cleanAbsolute(p string) bool {
 }
 
 // conditionMayMatch over-approximates Git's match of a literal gitdir pattern: a
-// case-only difference still counts as a match (see originIncludes.match), so a
-// target is skipped only when Git provably never opens it. "*" in the worktrees
-// form matches any run of non-slash bytes, the empty run included.
+// case-only difference still counts as a match (see originIncludes.match), and a
+// non-ASCII byte in the pattern or in any spelling counts as a match, as it does
+// in wildmatchMay (Git may spell such a path in another Unicode form than Go
+// does), so a target is skipped only when Git provably never opens it. "*" in the
+// worktrees form matches any run of non-slash bytes, the empty run included.
 func conditionMayMatch(dir string, worktrees bool, texts []string) bool {
+	if !isASCII(dir) {
+		return true
+	}
 	for _, text := range texts {
+		if !isASCII(text) {
+			return true
+		}
 		if !worktrees {
 			if strings.EqualFold(text, dir) {
 				return true
@@ -136,6 +144,15 @@ func conditionMayMatch(dir string, worktrees bool, texts []string) bool {
 		}
 	}
 	return false
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] > 127 {
+			return false
+		}
+	}
+	return true
 }
 
 // openIncludeTarget opens an include target; a test stands in for it to swap the
