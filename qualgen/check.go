@@ -76,7 +76,12 @@ type CheckResult struct {
 	SchemaVersion string             `json:"schema_version"`
 	RepoHead      string             `json:"repo_head"`
 	Files         []FileScreenResult `json:"files"`
+	Extensions    checkExtensions    `json:"extensions"`
 }
+
+// Add registered optional analyses as typed fields here, each with its own
+// version and data object. The zero value emits the required empty object.
+type checkExtensions struct{}
 
 const checkSchemaVersion = "qualgen-check-v1"
 

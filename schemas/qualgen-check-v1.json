@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/medici-finance/assay/schemas/qualgen-check-v1.json",
+  "title": "Qualgen check result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "repo_head", "files", "extensions"],
+  "properties": {
+    "schema_version": {"const": "qualgen-check-v1"},
+    "repo_head": {"type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"},
+    "files": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/file"}
+    },
+    "extensions": {
+      "type": "object",
+      "maxProperties": 8,
+      "propertyNames": {"pattern": "^[a-z][a-z0-9-]{0,31}$"},
+      "additionalProperties": {"$ref": "#/$defs/extension"}
+    }
+  },
+  "$defs": {
+    "file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "could_not_screen", "advisories"],
+      "properties": {
+        "path": {"type": "string"},
+        "could_not_screen": {"type": "boolean"},
+        "reason": {"type": "string", "minLength": 1},
+        "advisories": {
+          "type": "array",
+          "items": {"$ref": "#/$defs/advisory"}
+        }
+      },
+      "if": {"properties": {"could_not_screen": {"const": true}}},
+      "then": {"required": ["reason"]},
+      "else": {"not": {"required": ["reason"]}}
+    },
+    "advisory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "detail"],
+      "properties": {
+        "kind": {"type": "string", "minLength": 1},
+        "detail": {"type": "string", "minLength": 1}
+      }
+    },
+    "extension": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "data"],
+      "properties": {
+        "version": {"type": "integer", "minimum": 1, "maximum": 2147483647},
+        "data": {"type": "object"}
+      }
+    }
+  }
+}

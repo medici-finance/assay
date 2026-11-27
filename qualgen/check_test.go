@@ -210,8 +210,9 @@ func testCheckOutputFormats(t *testing.T) {
 	}
 
 	var report struct {
-		SchemaVersion string `json:"schema_version"`
-		RepoHead      string `json:"repo_head"`
+		SchemaVersion string          `json:"schema_version"`
+		RepoHead      string          `json:"repo_head"`
+		Extensions    json.RawMessage `json:"extensions"`
 		Files         []struct {
 			Path           string `json:"path"`
 			CouldNotScreen *bool  `json:"could_not_screen"`
@@ -227,6 +228,9 @@ func testCheckOutputFormats(t *testing.T) {
 	}
 	if report.SchemaVersion != "qualgen-check-v1" || report.RepoHead != head || len(report.Files) != 2 {
 		t.Fatalf("unexpected screen envelope: %+v", report)
+	}
+	if string(report.Extensions) != "{}" {
+		t.Errorf("extensions = %q, want an empty object", report.Extensions)
 	}
 	unmeasured, advised := report.Files[0], report.Files[1]
 	if unmeasured.Path != unusualPath || unmeasured.CouldNotScreen == nil || !*unmeasured.CouldNotScreen ||

@@ -39,7 +39,8 @@ qualgen check --json --literal-paths --repo /path/to/repository \
       "reason": "no measurable mined history for this path",
       "advisories": []
     }
-  ]
+  ],
+  "extensions": {}
 }
 ```
 
@@ -53,6 +54,20 @@ be present for that path. A screened path with no advisories has
 `could_not_screen: false` and an empty `advisories` array. Use `kind` to
 identify advisories and `detail` for display. A successful screen exits zero.
 Command errors exit nonzero and write diagnostics to stderr.
+
+The [JSON Schema](../schemas/qualgen-check-v1.json) defines the stable core.
+Advisory kinds are open. A client can display the detail of a new kind with
+its generic advisory renderer and apply kind-specific logic to the kinds it
+recognizes.
+
+Optional analyses go in `extensions`, keyed by name. Each entry has an integer
+`version` and a `data` object, for example
+`{"extra-analysis":{"version":1,"data":{}}}`. Qualgen currently emits an empty
+extensions object. Clients can read the core and skip unknown names or versions.
+For a feature that depends on an extension, treat an absent or unsupported
+version as unavailable. Validate the payload of any supported extension before
+using it. A change to an extension's meaning increments its version. A change
+to the core's layout or semantics requires a new core schema version.
 
 Use `--literal-paths` with paths from a diff. It preserves glob characters and
 screens paths absent from the checkout, including deleted files. `--` allows
