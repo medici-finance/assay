@@ -9,17 +9,15 @@ import (
 	"testing"
 
 	"github.com/medici-finance/assay/tools/desk/internal/cellcadence"
+	"github.com/medici-finance/assay/tools/desk/internal/socktest"
 )
 
 // After a certain stop the supervisor removes the socket its killed gateway
 // could not close, so the next run can start. After an uncertain stop it keeps
 // the socket for recover --confirm-stopped, and it never removes a non-socket.
+// regression: #7835
 func TestRemoveStoppedEndpoint(t *testing.T) {
-	dir, err := os.MkdirTemp("", "cce")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	dir := socktest.Dir(t, "cce", "gw.sock")
 	sock := filepath.Join(dir, "gw.sock")
 	plant := func() {
 		ln, err := net.Listen("unix", sock)
