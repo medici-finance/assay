@@ -150,7 +150,7 @@ _Held by per-stream caps: 20 brief(s) across 3 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 157784562 2026-11-27T01:30:08Z_
+_last regen: 873755e9b 2026-11-27T01:34:20Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -171,7 +171,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: 157784562 2026-11-27T01:30:08Z_
+_last regen: 873755e9b 2026-11-27T01:34:20Z_
 
 **Progress:** 37/100 brief items done.
 
@@ -349,7 +349,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desk-tools | 48 [exec:strong] | implemented | 2090 | 2 | 9d | worker | fix, cite medici-finance/assay#6977 | — | — |
 | intake-class-routing | 04 [exec:strong] | implemented | 2090 | 0 | 9d | worker | fix, cite medici-finance/assay#6099 | — | — |
 | intake-class-routing | 05 | implemented | 2090 | 0 | 9d | worker | fix, cite medici-finance/assay#7068 | — | — |
-| intake-class-routing | 02 [exec:strong] | implemented | 2010 | 0 | 47h | worker | fix, cite medici-finance/assay#7803 | — | — |
+| intake-class-routing | 02 [exec:strong] | implemented | 2010 | 0 | 2d | worker | fix, cite medici-finance/assay#7803 | — | — |
 | desk-tools | 21 [exec:strong] | implemented | 1610 | 1 | 11d | worker | fix, cite medici-finance/assay#7027 | — | — |
 | desktools-go-git | 06 | verified | 1610 | 1 | 11d | worker | fix, cite medici-finance/assay#2337 | 2026-10-30 assay-verifier-app[bot] @ 40925e8233c8 (forge-identity) | — |
 | desktools-v2 | 20 [exec:strong] | implemented | 1610 | 1 | 11d | worker | fix, cite medici-finance/assay#1927 | — | — |
@@ -374,7 +374,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | forge-gitlab | 18 [exec:strong] | implemented | 1110 | 0 | 11d | worker | fix, cite medici-finance/assay#5782 | — | — |
 | statusgen | 26 [exec:strong] | implemented | 1110 | 0 | 11d | worker | fix, cite medici-finance/assay#4560 | — | — |
 | statusgen | 40 [exec:strong] | implemented | 1110 | 0 | 11d | worker | fix, cite medici-finance/assay#2715 | — | — |
-| desk-tools | 33 [exec:strong] | implemented | 1010 | 0 | 36h | worker | fix, cite medici-finance/assay#4823 | — | — |
+| desk-tools | 33 [exec:strong] | implemented | 1010 | 0 | 38h | worker | fix, cite medici-finance/assay#4823 | — | — |
 
 ### Environment-blocked (43)
 
@@ -528,7 +528,7 @@ _Deliberately WIDER than `--signoff-digest`: this counts every `gate: human` bri
 | verification-handoff | 11d | 01 |
 | windows-port | 11d | 03 |
 | tool-refactoring | 6d | 06 |
-| intake-class-routing | 47h | 02 |
+| intake-class-routing | 2d | 02 |
 
 ## Unresolved findings
 
