@@ -41,7 +41,12 @@ consumers:
 
 ## Context
 
-files: `tools/desk/internal/forgeservice/auth/`, `tools/desk/internal/forgeservice/server/mirror_query.go`, `tools/desk/internal/forgeservice/server/mirror_page.go`, the adjacent test files, and `changelog/kubernetes-mirror-caller.md` (planned).
+files:
+- `tools/desk/internal/forgeservice/auth/`
+- `tools/desk/internal/forgeservice/server/mirror_query.go`
+- `tools/desk/internal/forgeservice/server/mirror_page.go`
+- `tools/desk/internal/forgeservice/server/mirror_kubernetes_test.go` (planned)
+- `changelog/kubernetes-mirror-caller.md` (planned)
 
 facts:
 - R7 owns mounted caller authority. Amendment 21 specifies machine mTLS, and the local authority ruling on [#5428](https://github.com/medici-finance/assay/issues/5428#issuecomment-6631318014) covers a separate same-engine Linux profile.
