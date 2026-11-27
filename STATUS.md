@@ -150,7 +150,7 @@ _Held by per-stream caps: 19 brief(s) across 3 stream(s) — top: desktools-v2. 
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: ce8266902 2026-11-27T19:17:03Z_
+_last regen: 9ad4c6934 2026-11-27T20:38:32Z_
 
 **Progress:** 12/15 brief items done.
 
@@ -171,7 +171,7 @@ _none_
 
 **State:** `ROLLING` — the fleet has dispatchable or in-flight work; no operator action is needed.
 
-_last regen: ce8266902 2026-11-27T19:17:03Z_
+_last regen: 9ad4c6934 2026-11-27T20:38:32Z_
 
 **Progress:** 37/100 brief items done.
 
@@ -357,7 +357,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 44 [exec:strong] | implemented | 1620 | 1 | 12d | worker | fix, cite medici-finance/assay#1927 | — | — |
 | desktools-v2 | 47 [exec:strong] | implemented | 1620 | 1 | 12d | worker | fix, cite medici-finance/assay#4560 | — | — |
 | desk-tools | 34 [exec:strong] | implemented | 1550 | 1 | 6d | worker | fix, cite medici-finance/assay#7658 | — | — |
-| desk-tools | 61 [exec:strong] | implemented | 1500 | 1 | 4h | worker | fix, cite medici-finance/assay#6978 | — | — |
+| desk-tools | 61 [exec:strong] | implemented | 1500 | 1 | 5h | worker | fix, cite medici-finance/assay#6978 | — | — |
 | desk-supervision | 08 [exec:strong] | implemented | 1120 | 0 | 12d | worker | fix, cite medici-finance/assay#2816 | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1120 | 0 | 12d | worker | fix, cite medici-finance/assay#1546 | — | — |
 | desk-tools | 02 | implemented | 1120 | 0 | 12d | worker | fix, cite medici-finance/assay#1792 — row 5 is a prose PR-body check the witness cannot execute (check-definition); row 1 environment flake #612/#1232; row 4 vacuous post-merge self-diff (#1657 class) | — | — |
