@@ -955,6 +955,20 @@ func (g *GitLabForge) openChangeNumbers(repo ForgeRepo) ([]int, bool, error) {
 	return numbers, capped, nil
 }
 
+// openChangeRows maps the same population through gitlabOpenChange with no head pipeline, so
+// it issues no CI read per change; each row's Rollup is the could-not-check entry.
+func (g *GitLabForge) openChangeRows(repo ForgeRepo) (*OpenChanges, error) {
+	rows, capped, err := g.listOpenMergeRequests(repo)
+	if err != nil {
+		return nil, err
+	}
+	changes := make([]OpenChange, 0, len(rows))
+	for _, mr := range rows {
+		changes = append(changes, gitlabOpenChange(mr, nil))
+	}
+	return &OpenChanges{Changes: changes, Cap: gitlabOpenChangesCap, TruncatedAtCap: capped}, nil
+}
+
 func (g *GitLabForge) listOpenMergeRequests(repo ForgeRepo) ([]*gitlab.BasicMergeRequest, bool, error) {
 	cl, err := g.client()
 	if err != nil {
