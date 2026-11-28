@@ -58,6 +58,14 @@ func validRefreshConfig(c RefreshConfig) bool {
 	l, n := c.Limits, c.Native
 	return c.SourceID != "" && c.AdmissionID != "" && c.AccessEpoch != "" && c.ConfigEpoch != "" && c.PolicyClass != "" && c.PolicyEpoch != "" && l.CallerFillsPerWindow > 0 && l.AdmissionFillsPerWindow >= l.CallerFillsPerWindow && l.FillWindow > 0 && l.MinFreshness > 0 && l.MaxFreshness >= l.MinFreshness && l.ActiveFills > 0 && l.QueuedCallers > 0 && l.AdmissionFills >= l.ActiveFills && l.AdmissionWaiters >= l.QueuedCallers && l.FailureEntries > 0 && l.WaitTimeout > 0 && l.FillTimeout > 0 && l.Cooldown > 0 && l.FailureTTL >= l.Cooldown && l.Refresh.Overlap >= 0 && l.Refresh.FullInventoryInterval > 0 && l.Refresh.FailureBackoff == 0 && n.CallerPerWindow > 0 && n.AdmissionPerWindow >= n.CallerPerWindow && n.SourcePerWindow >= n.AdmissionPerWindow && n.PerFill > 0 && n.Concurrent > 0 && n.Reservations >= n.Concurrent && n.Window > 0 && n.Window == l.FillWindow && c.PollInterval > 0 && c.PollInterval <= l.WaitTimeout
 }
+
+// Validate checks the trusted profile without opening a connection.
+func (c RefreshConfig) Validate() error {
+	if !validRefreshConfig(c) {
+		return refresh.ErrPolicy
+	}
+	return nil
+}
 func validDataClock(clock refresh.Clock) bool {
 	if clock == nil {
 		return false
@@ -190,6 +198,20 @@ func (g *RefreshGate) grant(f refreshFill, k refresh.FillKey) mirror.AttemptGran
 	return mirror.AttemptGrant{ID: string(f.generation), Generation: string(f.generation), SourceID: k.SourceID, Scope: k.Scope, CallerID: string(f.owner), AccessEpoch: k.AccessEpoch, ConfigEpoch: k.ConfigEpoch, PolicyClass: k.PolicyClass, PolicyEpoch: k.PolicyEpoch, MaxHTTPAttempts: g.config.Native.PerFill, ExpiresAt: f.expires}
 }
 func (g *RefreshGate) Acquire(ctx context.Context, d refresh.Demand) (refresh.Ticket, error) {
+	return g.acquire(ctx, d, false)
+}
+
+// AcquireWarm supplies bounded background demand without changing the
+// provisioned interactive wait. The caller remains subject to its current
+// authority, normal waiter cap, shared fill quota and reservation budget.
+func (g *RefreshGate) AcquireWarm(ctx context.Context, d refresh.Demand) (refresh.Ticket, error) {
+	if d.Requirements.RequireReviews {
+		return refresh.Ticket{}, refresh.ErrPolicy
+	}
+	return g.acquire(ctx, d, true)
+}
+
+func (g *RefreshGate) acquire(ctx context.Context, d refresh.Demand, warm bool) (refresh.Ticket, error) {
 	if g == nil || ctx == nil {
 		return refresh.Ticket{}, refresh.ErrHeld
 	}
@@ -213,7 +235,7 @@ func (g *RefreshGate) Acquire(ctx context.Context, d refresh.Demand) (refresh.Ti
 	if e != nil {
 		return refresh.Ticket{}, e
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 	if e = g.lockCaller(ctx, tx, d.CallerID); e != nil {
 		return refresh.Ticket{}, e
 	}
@@ -229,7 +251,8 @@ func (g *RefreshGate) Acquire(ctx context.Context, d refresh.Demand) (refresh.Ti
 	if e != nil && !fresh {
 		return refresh.Ticket{}, refresh.ErrHeld
 	}
-	if !fresh && d.Requirements.RequireReviews && f.reviews != nil && now.Before(*f.reviews) {
+	reviewHold := d.Requirements.RequireReviews && f.reviews != nil && now.Before(*f.reviews)
+	if !fresh && reviewHold {
 		return refresh.Ticket{}, refresh.ErrHeld
 	}
 	if !fresh && !bytes.Equal(f.identity, identity) {
@@ -242,7 +265,11 @@ func (g *RefreshGate) Acquire(ctx context.Context, d refresh.Demand) (refresh.Ti
 	if ownwait >= g.config.Limits.QueuedCallers || allwait >= g.config.Limits.AdmissionWaiters {
 		return refresh.Ticket{}, refresh.ErrQuota
 	}
-	owner := fresh || f.state == "pending" && !now.Before(f.expires) || f.state != "pending" && !(f.state == "held" || f.retry != nil && now.Before(*f.retry) || f.base != nil && now.Before(*f.base) || d.Requirements.RequireReviews && f.reviews != nil && now.Before(*f.reviews))
+	pending := f.state == "pending"
+	retryReady := f.retry == nil || !now.Before(*f.retry)
+	baseReady := f.base == nil || !now.Before(*f.base)
+	owner := fresh || pending && !now.Before(f.expires) ||
+		!pending && f.state != "held" && retryReady && baseReady && !reviewHold
 	if !fresh && (f.state == "held" || f.state != "pending" && !owner) {
 		return refresh.Ticket{}, refresh.ErrHeld
 	}
@@ -303,7 +330,11 @@ func (g *RefreshGate) Acquire(ctx context.Context, d refresh.Demand) (refresh.Ti
 	if e != nil {
 		return refresh.Ticket{}, e
 	}
-	if _, e = tx.ExecContext(ctx, `INSERT INTO public.refresh_waiters(ticket_id,admission,fill_key,generation,caller_id,reviews,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7)`, []byte(id), []byte(g.config.AdmissionID), key, f.generation, []byte(d.CallerID), d.Requirements.RequireReviews, now.Add(g.config.Limits.WaitTimeout)); e != nil {
+	waiterExpiry := now.Add(g.config.Limits.WaitTimeout)
+	if warm {
+		waiterExpiry = f.expires
+	}
+	if _, e = tx.ExecContext(ctx, `INSERT INTO public.refresh_waiters(ticket_id,admission,fill_key,generation,caller_id,reviews,expires_at) VALUES($1,$2,$3,$4,$5,$6,$7)`, []byte(id), []byte(g.config.AdmissionID), key, f.generation, []byte(d.CallerID), d.Requirements.RequireReviews, waiterExpiry); e != nil {
 		return refresh.Ticket{}, refresh.ErrHeld
 	}
 	if e = g.current(ctx, d.CallerID, d.Key.Scope); e != nil {
@@ -349,10 +380,24 @@ func refreshState(f refreshFill, now time.Time, reviews bool) refresh.State {
 	return s
 }
 func (g *RefreshGate) Wait(ctx context.Context, t refresh.Ticket) (refresh.State, error) {
+	if g == nil {
+		return refresh.State{}, refresh.ErrHeld
+	}
+	return g.wait(ctx, t, g.config.Limits.WaitTimeout)
+}
+
+func (g *RefreshGate) WaitWarm(ctx context.Context, t refresh.Ticket) (refresh.State, error) {
+	if g == nil {
+		return refresh.State{}, refresh.ErrHeld
+	}
+	return g.wait(ctx, t, g.config.Limits.FillTimeout)
+}
+
+func (g *RefreshGate) wait(ctx context.Context, t refresh.Ticket, timeout time.Duration) (refresh.State, error) {
 	if g == nil || ctx == nil {
 		return refresh.State{}, refresh.ErrHeld
 	}
-	ctx, cancel := context.WithTimeout(ctx, g.config.Limits.WaitTimeout)
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	timer := time.NewTicker(g.config.PollInterval)
 	defer timer.Stop()
@@ -362,7 +407,7 @@ func (g *RefreshGate) Wait(ctx context.Context, t refresh.Ticket) (refresh.State
 			return refresh.State{}, e
 		}
 		f, _, _, reviews, e := g.ticket(ctx, tx, t)
-		tx.Rollback()
+		_ = tx.Rollback()
 		if e != nil {
 			return refresh.State{}, e
 		}

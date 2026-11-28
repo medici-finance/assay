@@ -19,6 +19,9 @@ domain: complicated
 outcome: none
 gate-why: "Changes how human rulings and verification evidence bind aliases and revisions; the bridge must never transfer a ruling or accepted evidence to another subject."
 decision-trigger: spec
+design: DR-milestone-support-09
+decision-issue: 7088
+ruling: "https://github.com/medici-finance/assay/issues/7088#issuecomment-7103065020"
 sources:
   - docs/streams/milestone-support/README.md
   - spec/milestone-v1.md
@@ -27,15 +30,15 @@ sources:
   - docs/library-first.md
   - "freshness-checked 2026-10-22 @ a631d47ea71b3270ab33ba08af47d3dde8c9e7d5"
 consumers:
-  - "statusgen/contexthandoff/: follow-up milestone-support/09 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/domain/: follow-up milestone-support/09 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/decisionruling.go: follow-up milestone-support/09 (this delivery; replace with fixed-here in implementation)"
-  - "statusgen/decisiongatehold.go: follow-up milestone-support/09 (this delivery; replace with fixed-here in implementation)"
-  - "tools/desk/internal/deskkit/rulinggate.go: follow-up milestone-support/09 (this delivery; replace with fixed-here in implementation)"
-  - "tools/desk/internal/deskkit/briefschemagate.go: follow-up milestone-support/09 (this delivery; replace with fixed-here in implementation)"
-  - "tools/desk/cmd/deskevidence/: follow-up milestone-support/09 (this delivery; replace with fixed-here in implementation)"
-  - "spec/context-handoff-v1.md: follow-up milestone-support/09 (this delivery; replace with fixed-here in implementation)"
-  - "spec/verification-domain-v1.md: follow-up milestone-support/09 (this delivery; replace with fixed-here in implementation)"
+  - "statusgen/contexthandoff/: fixed-here (ResolveWorkSubject edge adapter; strict grammar and digests unchanged)"
+  - "statusgen/domain/: fixed-here (NewWorkAt, EvidenceRevision and CheckSubject beside the unchanged candidate check)"
+  - "statusgen/decisionruling.go: fixed-here (ruling-link lane binds the comment subject line and card)"
+  - "statusgen/decisiongatehold.go: fixed-here (decision-gate hold binds the explicit version and subject)"
+  - "tools/desk/internal/deskkit/rulinggate.go: out-of-scope (register rulings R-N bind no brief subject; unchanged, per the census)"
+  - "tools/desk/internal/deskkit/briefschemagate.go: fixed-here (unchanged: no prefixed-reference capability is advertised; asserted by TestRulingAliasAuthority)"
+  - "tools/desk/cmd/deskevidence/: fixed-here (in-process RulingSubjectGate and Evidence subject check on landings)"
+  - "spec/context-handoff-v1.md: fixed-here (§2/§6 subject adapter and future-owner obligation)"
+  - "spec/verification-domain-v1.md: fixed-here (Records and identity subject check and future-owner obligation)"
   - "docs/streams/milestone-support/brief-10-enforce-milestone-capabilities-at-dispatch-and-pickup.md: follow-up milestone-support/10 (consumes this delivery; exact runtime readers enumerated at pickup)"
   - "docs/streams/milestone-support/brief-12-preserve-milestone-scope-and-identity-in-history-and-exports.md: follow-up milestone-support/12 (consumes this delivery; exact runtime readers enumerated at pickup)"
 ---
@@ -44,7 +47,7 @@ consumers:
 
 ## Context
 
-files: `statusgen/contexthandoff/`, `statusgen/domain/`, `statusgen/decisionruling.go`, `statusgen/decisiongatehold.go`, `tools/desk/internal/deskkit/rulinggate.go`, `tools/desk/internal/deskkit/briefschemagate.go`, `tools/desk/cmd/deskevidence/`, `spec/context-handoff-v1.md`, `spec/verification-domain-v1.md`, `changelog/milestone-support-09.md` (planned), `statusgen/testdata/milestone-support/09-mutations.json` (planned) — New paths and tests are planned implementation deliverables, not current artifacts.
+files: `statusgen/contexthandoff/`, `statusgen/domain/`, `statusgen/decisionruling.go`, `statusgen/decisiongatehold.go`, `tools/desk/internal/deskkit/rulinggate.go`, `tools/desk/internal/deskkit/briefschemagate.go`, `tools/desk/cmd/deskevidence/`, `spec/context-handoff-v1.md`, `spec/verification-domain-v1.md`, `statusgen/workref/subject.go`, `statusgen/rulingsubject.go`, `tools/desk/internal/deskkit/rulingsubjectgate.go`, `changelog/milestone-support-09.md`, `statusgen/testdata/milestone-support/09-mutations.json`.
 
 facts:
 - Source baseline: merged main `a631d47ea71b3270ab33ba08af47d3dde8c9e7d5`, inspected 22 October 2026.
@@ -100,7 +103,7 @@ Consume only delivered prerequisite APIs at reviewed revisions. Shared core func
 
 ## Verify
 
-The following named tests, fixtures and executable mutation maps are FUTURE DELIVERABLES. They are not authoring-time results. Each test must exercise the production entrypoint/API named in Task and fail under its stated wrong-but-plausible mutation. A named PASS guard prevents an absent `-run` target from appearing green. Record concrete mutation commands in this brief's declared mutation manifest; no test may prove completion by file existence alone.
+The named tests and the executable mutation map are delivered by the implementation of DR-milestone-support-09; this text records no result. Each test must exercise the production entrypoint/API named in Task and fail under its stated wrong-but-plausible mutation. A named PASS guard prevents an absent `-run` target from appearing green. Record concrete mutation commands in this brief's declared mutation manifest; no test may prove completion by file existence alone.
 
 | # | Class | Shell | Command | Expect |
 |---|---|---|---|---|
@@ -120,14 +123,15 @@ The wrong-but-plausible delivery is the mutation named in each Verify row. Each 
 
 Gate: human, derived from the declared risks. Independent review checks compatibility and consumer-flow evidence. No reviewer/worker stamp, release permission or acceptance receipt is created by this authoring change.
 
-## Proposed alias and ruling-subject bridge — pending human ruling
+## Approved alias and ruling-subject bridge — DR-milestone-support-09
 
-**Proposal only. No implementation, Task/Verify change, Evidence or lifecycle credit is
-claimed.** This brief is human-gated, and its decision issue is open with no ruling yet.
-This appendix sets out the concrete design that the Human decision section asks for, so
-the maintainer can accept it, correct it or hold it. Until an unedited human ruling
-names this proposal, nothing here changes a shared value, a record digest, a reader
-capability or the meaning of an existing ruling.
+An unedited human ruling on the decision issue accepted option 1, the revised
+bounded bridge reviewed in PR #7091 at `209ea9a125c747497a15be6a7d3daaeb91cd9cf1`,
+and is transcribed in `DR-milestone-support-09`. The ruling comment carries the
+subject line `Ruling-Subject: assay:assay:milestone-support:b-09@1 card=none`.
+The implementation follows the design below and adds nothing beyond it. The
+ruling records no Evidence and advances no lifecycle state; independent
+verification remains required.
 
 ### Architecture pickup and source coverage
 
@@ -153,7 +157,7 @@ Import direction fixes the boundary. `tools/desk` may import public statusgen pa
 `tools/desk/internal`. The shared comparison therefore lives in `statusgen/workref`, and
 each module keeps its own independent check around it.
 
-### Bounded design to rule on
+### Approved bounded design
 
 The design adds one pure value to the existing reference owner, plus thin adapters at
 the existing boundaries. It reuses the typed reference grammar and adds one ruling
@@ -294,48 +298,47 @@ The Human decision section asks for these four rules to be confirmed explicitly.
   existing decision-gate hold, and dispatch admission stays with /10. No new store,
   queue or acceptance authority is introduced.
 
-### Acceptance cases for the post-ruling implementation
+### Acceptance cases
 
-These are proposed cases for the three existing Verify rows. They are not new
-executable checks or reported results. The original commands and Evidence remain
-unchanged.
+These cases are implemented in the three existing Verify rows' tests. They are not
+reported results. The original commands and Evidence remain unchanged.
 
 | Existing future test | Case and expected discrimination |
 |---|---|
-| `TestPrefixedHandoffSubject` (planned) | Recorded handoff fixtures keep their canonical bytes and digests. `ResolveQualifiedID` still refuses `b-09` and `@2` spellings. Mutations: broadening the legacy grammar, or adding a revision field to the digested record, fail. |
-| `TestPrefixedHandoffSubject` (planned) | `ResolveWorkSubject` on `b-09@2` returns the legacy `QID` and revision 2. A milestone reference is refused. A wrong-subject input is refused by `SameSubject` called directly, with the adapter bypassed. Mutation: comparing `Compatibility()` instead of the logical key passes a re-bound alias, so the test fails. |
-| `TestRulingAliasAuthority` (planned) | A mapped human's unedited subject line passes for an alias of the same key and explicit revision, with either the declared absent card or the declared matching card digest. Refuse a copied ruling, different issue or root, wrong or absent explicit version (including a card default of 1), duplicate subject lines, an edited comment, and a bot, App or unmapped actor. Mutations: use the card's version as authority, default a missing brief version to 1, match on stream and number alone, or accept a bot. |
-| `TestRulingAliasAuthority` (planned) | A typed revision-1 ruling holds if its card is edited to version 2 and the brief moves to revision 2. Also hold if the card changes while the brief stays at revision 1, if the card is removed while its marker remains, or if a card is added to a comment that declared `card=none`. Exercise the real lower gate with the upper parser bypassed. Mutations: skip digest verification, treat a removed card as a legacy marker, or ignore unexpected card presence. |
-| `TestRulingAliasAuthority` (planned) | An otherwise valid, unrevisioned pre-cutover ruling keeps logical-key-only meaning. An otherwise identical comment at or after cutover, or with an unknown creation time, holds even on a marker-only issue. A pre-cutover comment with a typed subject and missing card also holds. Mutations: omit the timestamp check or let a failed typed binding fall through to legacy. |
-| `TestPrefixedVerifySubject` (planned) | `NewWorkAt` on `b-09@3` returns the existing `WorkIdentity` and revision 3. Evidence presented for revision 2, or for the legacy id with no revision, is refused (`checked-failed` and `could-not-check` respectively). Mutation: building the subject from the normalized `fullId` erases the revision, so the test fails. |
-| `TestPrefixedVerifySubject` (planned) | With no explicit version, a brief-v2 fixture matches `@1` and holds an unrevisioned reference. A brief-v1 fixture stays unrevisioned. Mutation: treating an omitted brief-v2 version as zero reverses its two outcomes. |
-| `TestPrefixedVerifySubject` (planned) | A matching subject with a stale or substituted candidate is still refused by `AcceptanceBinding.Validate`. Mutation: letting a matching subject short-circuit the candidate check fails. |
+| `TestPrefixedHandoffSubject` | Recorded handoff fixtures keep their canonical bytes and digests. `ResolveQualifiedID` still refuses `b-09` and `@2` spellings. Mutations: broadening the legacy grammar, or adding a revision field to the digested record, fail. |
+| `TestPrefixedHandoffSubject` | `ResolveWorkSubject` on `b-09@2` returns the legacy `QID` and revision 2. A milestone reference is refused. A wrong-subject input is refused by `SameSubject` called directly, with the adapter bypassed. Mutation: comparing `Compatibility()` instead of the logical key passes a re-bound alias, so the test fails. |
+| `TestRulingAliasAuthority` | A mapped human's unedited subject line passes for an alias of the same key and explicit revision, with either the declared absent card or the declared matching card digest. Refuse a copied ruling, different issue or root, wrong or absent explicit version (including a card default of 1), duplicate subject lines, an edited comment, and a bot, App or unmapped actor. Mutations: use the card's version as authority, default a missing brief version to 1, match on stream and number alone, or accept a bot. |
+| `TestRulingAliasAuthority` | A typed revision-1 ruling holds if its card is edited to version 2 and the brief moves to revision 2. Also hold if the card changes while the brief stays at revision 1, if the card is removed while its marker remains, or if a card is added to a comment that declared `card=none`. Exercise the real lower gate with the upper parser bypassed. Mutations: skip digest verification, treat a removed card as a legacy marker, or ignore unexpected card presence. |
+| `TestRulingAliasAuthority` | An otherwise valid, unrevisioned pre-cutover ruling keeps logical-key-only meaning. An otherwise identical comment at or after cutover, or with an unknown creation time, holds even on a marker-only issue. A pre-cutover comment with a typed subject and missing card also holds. Mutations: omit the timestamp check or let a failed typed binding fall through to legacy. |
+| `TestPrefixedVerifySubject` | `NewWorkAt` on `b-09@3` returns the existing `WorkIdentity` and revision 3. Evidence presented for revision 2, or for the legacy id with no revision, is refused (`checked-failed` and `could-not-check` respectively). Mutation: building the subject from the normalized `fullId` erases the revision, so the test fails. |
+| `TestPrefixedVerifySubject` | With no explicit version, a brief-v2 fixture matches `@1` and holds an unrevisioned reference. A brief-v1 fixture stays unrevisioned. Mutation: treating an omitted brief-v2 version as zero reverses its two outcomes. |
+| `TestPrefixedVerifySubject` | A matching subject with a stale or substituted candidate is still refused by `AcceptanceBinding.Validate`. Mutation: letting a matching subject short-circuit the candidate check fails. |
 
-The statusgen decision-gate checks from design point 4 are also covered by existing
-gate test files, extended for the same alias, comment and card cases. After the ruling, these
-cases are implemented through the actual entrypoints. The compiling mutations are
-recorded in the declared `09-mutations.json` (planned), and fail-first results are
-shown before the implementation PR opens. None of the three named tests exists at this
-source revision.
+The statusgen decision-gate checks from design point 4 are covered by
+`TestDecisionGateRulingSubject`, which drives `statusgen --decision-gate` against a
+faked forge for the same alias, comment and card cases. The compiling mutations are
+recorded in the declared `09-mutations.json`; run
+`python3 statusgen/testdata/milestone-support/09-mutate.py` from the repository root
+to apply each mutation and confirm its named test turns red.
 
 ### Consumer census and transition
 
 | Consumer | Disposition |
 |---|---|
-| This brief's design appendix and design changelog fragment | fixed-here: authoring material only; no shared runtime value changes. |
-| `statusgen/workref` (`Subject`, `SameSubject`) and its README | follow-up /09 after the ruling; one pure value and comparison. |
-| `statusgen/contexthandoff/` and `spec/context-handoff-v1.md` §2 and §6 | follow-up /09; the adapter, plus a note that the strict grammar and digests are unchanged. |
-| `statusgen/domain/` and `spec/verification-domain-v1.md` "Records and identity" | follow-up /09; `NewWorkAt` and `CheckSubject` beside the unchanged candidate check, plus the future-workflow obligation. |
-| `statusgen/decisiongatehold.go`, `statusgen/decisionruling.go` and `statusgen/briefruling.go` | follow-up /09; local identity checks and the fetched human-comment binding. |
-| `tools/desk/internal/deskkit/` (`RulingSubjectGate`) and `tools/desk/cmd/deskevidence/` | follow-up /09; the in-process subject check on a landing, beside the unchanged `statusgen --decision-gate` run. |
-| `tools/desk/internal/deskkit/briefschemagate.go` | follow-up /09: an unadvertised prefixed reference stays `could-not-check`. The advertisement itself is follow-up /10. |
+| This brief's design appendix and changelog fragment | fixed-here: the approved design and `changelog/milestone-support-09.md`. |
+| `statusgen/workref` (`Subject`, `SameSubject`) and its README | fixed-here: one pure value and comparison, plus the shared ruling-subject binding rules. |
+| `statusgen/contexthandoff/` and `spec/context-handoff-v1.md` §2 and §6 | fixed-here: the adapter, plus a note that the strict grammar and digests are unchanged. |
+| `statusgen/domain/` and `spec/verification-domain-v1.md` "Records and identity" | fixed-here: `NewWorkAt` and `CheckSubject` beside the unchanged candidate check, plus the future-workflow obligation. |
+| `statusgen/decisiongatehold.go`, `statusgen/decisionruling.go`, `statusgen/rulinggitlab.go` and `statusgen/briefruling.go` | fixed-here: local identity checks and the fetched human-comment binding (`statusgen/rulingsubject.go`). |
+| `tools/desk/internal/deskkit/` (`RulingSubjectGate`) and `tools/desk/cmd/deskevidence/` | fixed-here: the in-process subject check on a landing, beside the unchanged `statusgen --decision-gate` run. |
+| `tools/desk/internal/deskkit/briefschemagate.go` | fixed-here (unchanged): no prefixed-reference capability is advertised, and `TestRulingAliasAuthority` asserts a prefixed-reference requirement is never judged supported. The advertisement itself is follow-up /10. |
 | `tools/desk/internal/deskkit/rulinggate.go`, `signoff.go` and the `deskclose`/`deskmerge` register gates | out-of-scope: register rulings (`R-N`) bind no brief subject; unchanged. |
 | `tools/desk/internal/deskkit/briefadmission.go` and `decisionensure.go` (marker lookup by brief id) | out-of-scope for authority: they find or file the decision issue and grant nothing. Typed marker lookup is follow-up /10 with dispatch admission. |
 | Historical unrevisioned rulings | compatibility only: point 4 uses the forge creation time and existing binding checks; current card absence cannot qualify a new or revision-bound ruling. |
 | Dispatch and pickup, history and exports | follow-up /10 and /12; they consume the bridge. |
 | `workflow/store` and future workflow controller | out-of-scope: the persistence foundation is present and has no ruling-subject consumer. The future controller obligation is documented in the specs only. |
 
-### Decision block
+### Accepted decision block (historical proposal)
 
 **Owner:** the maintainer authorized by the existing /09 decision issue. This gate
 approves how /09 will be implemented. It does not accept any milestone outcome.

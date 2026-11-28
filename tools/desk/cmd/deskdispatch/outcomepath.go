@@ -198,18 +198,22 @@ func writeOutcomeRecordLine(b *strings.Builder, plan dispatchPlan, home string) 
 		return
 	}
 	approvalFlag := ""
+	flipRecipe := ""
 	if plan.outcomeTarget.Kind == deskkit.ForgeGitHub {
 		approvalFlag = " --acceptance-forge"
+		flipRecipe = "For a strict PASS on a reversible model-gated brief at implemented, land Evidence first, " +
+			"put the full admitted observation SHA in source_sha, and add --flip-verified to the command above. " +
+			"It lands the verified status row and its record in one commit on the same branch.\n\n"
 	}
 	fmt.Fprintf(b, "## Outcome record — write it OUTSIDE the home\n\n"+
 		"Outcome directory (dispatcher-named, absolute, outside the home): `%s`. Write the outcome record there "+
 		"and nowhere else: never write the record inside the home `%s` (an untracked file there refuses the "+
 		"admission check). The directory is per claim, so a re-dispatch of the same claim reuses it and an "+
 		"earlier run's record may already be there: write a new file and land only your own. Land it on the host with exactly:\n\n```\ndeskevidence %s main --outcome-record %s --root %s%s\n```\n\n"+
-		"For GitHub, explicit --acceptance-forge permits fresh read-only approval corroboration for the landed closure tree. "+
+		"%sFor GitHub, explicit --acceptance-forge permits fresh read-only approval corroboration for the landed closure tree. "+
 		"A lint PROBLEM naming another brief prints as a notice and does not block this record; one naming this brief, or no brief, still refuses. "+
 		"It supplies no approval and does not repair unknown repository authority. "+
 		"Other forges retain the ordinary landing command; unsupported GitHub approval reads remain held. "+
 		"Retain every refusal; do not retry with stripped Git configuration, another origin or a stored human login.\n\n",
-		plan.outcomePath, home, plan.outcomeTarget.Repo.Slug(), deskkit.ShellSingleQuote(filepath.Join(plan.outcomePath, "<file>.json")), deskkit.ShellSingleQuote(home), approvalFlag)
+		plan.outcomePath, home, plan.outcomeTarget.Repo.Slug(), deskkit.ShellSingleQuote(filepath.Join(plan.outcomePath, "<file>.json")), deskkit.ShellSingleQuote(home), approvalFlag, flipRecipe)
 }

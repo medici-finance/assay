@@ -99,8 +99,6 @@ type ClaimStore interface {
 	// UpdateFrom replaces the claim with one carrying msg, only if it still holds
 	// oldVersion. ClaimWriteRejected == it moved (advanced or stolen) under this caller.
 	UpdateFrom(id, oldVersion, msg string) ClaimWriteOutcome
-	// Remove remains the review-finish operation: delete the standing claim and report whether it existed.
-	Remove(id string) (outcome ClaimWriteOutcome, existed bool)
 	// RemoveFrom deletes only the revision the caller read. A changed or missing
 	// revision is rejected. A release already absent at the initial read is a no-op.
 	RemoveFrom(id, oldVersion string) ClaimWriteOutcome

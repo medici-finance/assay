@@ -272,6 +272,11 @@ type rulingIssueBinding struct {
 	// names the record; a non-empty result refuses with that detail. Only an
 	// Evidence-Repair approval sets it (#6616).
 	comment func(body string) string
+	// subject, when set, binds the ruling to the exact work subject after the
+	// issue is shown to rule on the record (milestone-support/09): the comment
+	// body and the forge's creation time, and the current issue body. A
+	// non-empty reason refuses with that detail.
+	subject func(comment, createdAt, issueBody string) (rulingReason, string)
 }
 
 // resolveRulingOn is resolveRuling with condition 6 supplied by the caller. Every
@@ -433,6 +438,13 @@ func resolveRulingOn(c *ghClient, prRepo string, rec decisionRecordStamp, humanL
 	}
 	if !binding.rules(rulingIssue{Body: iss.Body}, link) {
 		return refuse(rulingUnrelatedIssue, "%s#%d carries no decision-gate marker for %s — the comment is not on this record's decision issue", link.Repo, link.Issue, binding.what)
+	}
+
+	// 7. The ruling binds the exact work subject (only when the caller says so).
+	if binding.subject != nil {
+		if r, why := binding.subject(cm.Body, cm.CreatedAt, iss.Body); r != rulingOK {
+			return refuse(r, "comment %d on %s#%d: %s", link.CommentID, link.Repo, link.Issue, why)
+		}
 	}
 
 	out.Reason = rulingOK

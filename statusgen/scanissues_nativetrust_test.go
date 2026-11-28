@@ -310,9 +310,9 @@ func TestScanIssuesMainWiresNativeReads(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := regexp.MustCompile(`runScanIssues\(\*root, \*scanDryRun, ([^)]*)\)`).FindSubmatch(src)
+	m := regexp.MustCompile(`runScanIssuesWith\(\*root, \*scanDryRun, scanPublishOpts\{[^}]*\}, ([^)]*)\)`).FindSubmatch(src)
 	if m == nil {
-		t.Fatal("main.go: the --scan-issues runScanIssues call was not found")
+		t.Fatal("main.go: the --scan-issues runScanIssuesWith call was not found")
 	}
 	if got, want := string(m[1]), "defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker, defaultScanLabelHoldChecker"; got != want {
 		t.Errorf("main.go wires --scan-issues with (%s), want (%s) — every read on the scanloop path goes "+

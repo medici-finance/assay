@@ -95,6 +95,11 @@ type coverageBinding struct {
 	Node    string
 }
 
+type coverageSelection struct {
+	path string
+	file *BriefFile
+}
+
 // coverageOptions is evaluateCoverage's optional input set.
 type coverageOptions struct {
 	// Bindings maps a brief id ("<stream>/<NN>") to the pattern node it is
@@ -106,6 +111,8 @@ type coverageOptions struct {
 	// Revision is the item's revision to compare witnesses against. "" resolves
 	// to the current tree's HEAD SHA (currentTreeRevision).
 	Revision string
+	// selection uses the same parsed brief for both sides of a diagnostic replay.
+	selection *coverageSelection
 	// Dependencies maps a brief id to its work-input dependency manifest.
 	// Production passes none today, so every claim takes the conservative scope.
 	Dependencies map[string]dependencyManifest
@@ -166,9 +173,18 @@ func evaluateCoverageObserved(root string, streams []*Stream, opts coverageOptio
 	in := evaluation.CoverageInput{Revision: revision, MaxLandingCandidates: maxLandingCandidates}
 	for _, s := range streams {
 		for _, path := range briefFilePaths(s) {
-			bf, ok, err := parseBriefFile(path)
-			if err != nil || !ok {
-				continue // malformed (reported elsewhere) or legacy/opted-out
+			var bf *BriefFile
+			if opts.selection != nil {
+				if path != opts.selection.path {
+					continue
+				}
+				bf = opts.selection.file
+			} else {
+				parsed, ok, err := parseBriefFile(path)
+				if err != nil || !ok {
+					continue // malformed (reported elsewhere) or legacy/opted-out
+				}
+				bf = parsed
 			}
 			_, num, okName := expectedBriefID(path)
 			if !okName {

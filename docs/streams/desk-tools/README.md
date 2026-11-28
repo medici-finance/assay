@@ -209,15 +209,15 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 27 | [`deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check](brief-27-deskboard-concurrency-and-refusal-ergonomics.md) | 2 | M | implemented | — | — |
 | 28 | [Role-keyed verdict signing (deskverdict --key) + the R-7 clause-4 cross-repo scan-delta verify path](brief-28-deskverdict-role-keys-and-scan-delta-verify.md) | 1 | M | implemented | — | — |
 | 29 | [`verifyloop verdict --unsigned-out <file>` — compose the verdict-v1 payload with no key, so a fenced runner composes and the host signs](brief-29-verifyloop-unsigned-compose.md) | 1 | L | implemented | — | — |
-| 30 | [verify-desk lands verdicts through the verdict-transcription lane; `deskevidence` demoted to break-glass](brief-30-verify-desk-landing-by-verdict-issue.md) | 1 | M | todo | — | — |
+| 30 | [verify-desk lands verdicts through the verdict-transcription lane; `deskevidence` demoted to break-glass](brief-30-verify-desk-landing-by-verdict-issue.md) | 1 | M | implemented | — | — |
 | 31 | [The correctness lane carries a coverage contract — a named bug-class register every class of which is accounted in the verdict body (finding, checked-clean, n/a with a reason, or could-not-check)](brief-31-correctness-lane-coverage-contract.md) | 1 | M | implemented | — | — |
-| 33 | [An author's explicit disposition on a finding is final for the reviewer — accept it or escalate it once, never spend a round re-stating it](brief-33-author-disposition-finality.md) | 1 | S | todo | — | — |
+| 33 | [An author's explicit disposition on a finding is final for the reviewer — accept it or escalate it once, never spend a round re-stating it](brief-33-author-disposition-finality.md) | 1 | S | implemented | — | — |
 | 34 | [Pinned golangci-lint across every Go module](brief-34-pinned-golangci-lint-across-every-go-module.md) | 1 | M | implemented | — | — |
 | 35 | [Go security analysis with gosec and govulncheck](brief-35-go-security-analysis-with-gosec-and-govulncheck.md) | 2 | L | todo | — | — |
 | 36 | [The scheduled board reconcile's PR class becomes generated output — auto-approve lane (default) or direct-CI single-writer, per the driver's ruling on #2688](brief-36-reconcile-generated-class.md) | 1 | S | implemented | — | — |
 | 37 | [Review workflow semantic oracle and matched cost baseline](brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md) | 1 | M | verified | 2026-11-19 assay-verifier-app[bot] @ 62a6169dc364 (claude-opus-5-5) | — |
 | 38 | [Correct desk performance attribution and counter coverage](brief-38-correct-desk-performance-attribution-and-counter-coverage.md) | 2 | M | implemented | — | — |
-| 39 | [Extract shared review observation and pure planning contracts](brief-39-extract-shared-review-observation-and-pure-planning-contracts.md) | 2 | M | implemented | — | — |
+| 39 | [Extract shared review observation and pure planning contracts](brief-39-extract-shared-review-observation-and-pure-planning-contracts.md) | 2 | M | done | 2026-11-19 assay-verifier-app[bot] @ 5649360b6fa405a9239de442136db48e21bc1eee (reads could-not-check: a system call from another ABI) (on-behalf-of human:ian) (forge-identity) | 2026-11-27 human:reviewer |
 | 40 | [Deliver one review queue observation and offline planning bridge](brief-40-deliver-one-review-queue-observation-and-offline-planning-bridge.md) | 3 | M | implemented | — | — |
 | 41 | [Share exact-source review preparation context](brief-41-share-exact-source-review-preparation-context.md) | 3 | M | implemented | — | — |
 | 42 | [Narrow issue discovery projections before enrichment](brief-42-narrow-issue-discovery-projections-before-enrichment.md) | 3 | M | implemented | — | — |
@@ -238,7 +238,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 58 | [Benchmark compile-once mutation execution](brief-58-benchmark-compile-once-mutation-execution.md) | 1 | M | todo | — | — |
 | 59 | [Remove incidental prune mutation fixture work](brief-59-remove-incidental-prune-mutation-fixture-work.md) | 1 | M | implemented | — | — |
 | 60 | [Operate is human, and the gate ladder — what an agent fleet owns, what a human owns, and the written condition under which a human gate may ever widen (every threshold recorded as not set)](brief-60-operate-is-human-and-the-gate-ladder.md) | 1 | S | todo | — | — |
-| 61 | [Declare the secret scan's benign shapes in one registry, each entry bounded by a refusal it must keep](brief-61-benign-shape-registry.md) | 1 | L | todo | — | — |
+| 61 | [Declare the secret scan's benign shapes in one registry, each entry bounded by a refusal it must keep](brief-61-benign-shape-registry.md) | 1 | L | implemented | — | — |
 | 62 | [Name the file, line and side of a branch-diff secret-scan refusal, not its line in the stripped diff](brief-62-diff-finding-file-line.md) | 1 | M | implemented | — | — |
 | 63 | [Admit the open false-positive shapes as registry entries, each with the refusals that bound it, and cap word-shaped admission](brief-63-registry-acceptance-shapes.md) | 2 | L | todo | — | — |
 | 64 | [Decide which lines of a branch diff the secret scan reads, and pin the answer](brief-64-diff-scan-scope.md) | 2 | M | todo | — | — |

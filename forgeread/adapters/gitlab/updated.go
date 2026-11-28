@@ -48,7 +48,9 @@ type updatedWire struct {
 		BaseSHA string `json:"base_sha"`
 		HeadSHA string `json:"head_sha"`
 	} `json:"diff_refs"`
-	Reviewers []updateActor `json:"reviewers"`
+	Reviewers      []updateActor `json:"reviewers"`
+	Draft          bool          `json:"draft"`
+	WorkInProgress bool          `json:"work_in_progress"`
 }
 
 func (w updatedWire) issue(repo string, change bool) (adapters.IssueUpdate, error) {
@@ -189,7 +191,7 @@ func (a *Adapter) ChangesUpdatedSince(ctx context.Context, repo string, q adapte
 			if !q.Since.IsZero() && base.UpdatedAt.Before(q.Since) {
 				continue
 			}
-			r := adapters.ChangeUpdate{IssueUpdate: base, Kind: "merge-request", HeadSHA: w.SHA, HeadBranch: w.SourceBranch, BaseBranch: w.TargetBranch, SourceProjectID: w.SourceProjectID, RequestedReviewers: nil}
+			r := adapters.ChangeUpdate{IssueUpdate: base, Kind: "merge-request", HeadSHA: w.SHA, HeadBranch: w.SourceBranch, BaseBranch: w.TargetBranch, SourceProjectID: w.SourceProjectID, RequestedReviewers: nil, Draft: w.Draft || w.WorkInProgress}
 			if w.DiffRefs != nil {
 				r.BaseSHA = w.DiffRefs.BaseSHA
 				if r.HeadSHA == "" {

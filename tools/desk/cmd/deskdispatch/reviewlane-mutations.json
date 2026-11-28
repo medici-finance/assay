@@ -66,6 +66,18 @@
       "file": "cmd/deskdispatch/references/review-prompt.md",
       "old": "<!-- lane:security:end -->\n\n**Bounds on a `design-fit` finding, on every lane.** It names an `S-` row, an `R-` row or the\ncounter delta.",
       "new": "<!-- lane:security:end -->\n\n<!-- lane:correctness:begin -->\n**Bounds on a `design-fit` finding, on every lane.** It names an `S-` row, an `R-` row or the\ncounter delta.\n<!-- lane:correctness:end -->\n"
+    },
+    {
+      "name": "drop clause 22's no-restate paragraph",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "A re-statement round is neither: spending a fresh round re-stating the finding against the\ndisposition, or holding the class blocking purely because no code changed, reopens an argument\nthe author already closed.\n\n",
+      "new": ""
+    },
+    {
+      "name": "drop clause 22's security-lane Accept boundary",
+      "file": "cmd/deskdispatch/references/review-prompt.md",
+      "old": "**The security lane never takes the Accept move** — and neither does any finding in the\n`security` or `public-surface / leak` class. ",
+      "new": ""
     }
   ]
 }

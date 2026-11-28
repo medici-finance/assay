@@ -1,0 +1,35 @@
+{
+  "test": "go test ./attestation/ -count=1 -timeout 120s -run '^TestPreMergeBindingProfiles$'",
+  "control": {
+    "name": "CONTROL - PreMergeV1 is an unsupported profile",
+    "file": "attestation/attestation.go",
+    "old": "\tif profile != ContainerV1 && profile != GeneralV1V2 && profile != PreMergeV1 {\n",
+    "new": "\tif profile != ContainerV1 && profile != GeneralV1V2 {\n"
+  },
+  "mutations": [
+    {
+      "name": "a pre-merge binding is credited, scheduled or admitted for Evidence",
+      "file": "attestation/attestation.go",
+      "old": "\t} else if b.Targeted() {\n",
+      "new": "\t} else if false {\n"
+    },
+    {
+      "name": "a pre-merge binding's head need not be its bound source",
+      "file": "attestation/attestation.go",
+      "old": "\tcase b.TargetHead != b.Source:\n",
+      "new": "\tcase false:\n"
+    },
+    {
+      "name": "a pre-merge binding needs no change number",
+      "file": "attestation/attestation.go",
+      "old": "\tcase b.TargetChange <= 0:\n",
+      "new": "\tcase b.TargetChange < 0:\n"
+    },
+    {
+      "name": "a head-only target reads as no target",
+      "file": "attestation/attestation.go",
+      "old": "return b.TargetChange != 0 || b.TargetHead != \"\"",
+      "new": "return b.TargetChange != 0"
+    }
+  ]
+}

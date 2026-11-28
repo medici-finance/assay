@@ -1,0 +1,65 @@
+{
+  "test": "go test ./forgechange/ ./internal/deskkit/ -count=1 -timeout 300s -run 'Reaction|Award|PublishBinds|StandaloneChange'",
+  "control": {
+    "name": "CONTROL \u2014 the shared guard stops checking that the change is still at the reviewed head",
+    "file": "internal/deskkit/standalonecomment.go",
+    "old": "\tif change.HeadSHA != w.head {",
+    "new": "\tif false && change.HeadSHA != w.head {"
+  },
+  "mutations": [
+    {
+      "name": "#7830 (a): the shared guard runs the write before the change read (reddens TestReactionGuardMatchesPublishComment)",
+      "file": "internal/deskkit/standalonecomment.go",
+      "old": "\tchange, err := c.Change(w.number)\n",
+      "new": "\tif err := w.write(); err != nil {\n\t\treturn err\n\t}\n\tchange, err := c.Change(w.number)\n"
+    },
+    {
+      "name": "#7830: AddReaction widens its own publication scope to public (reddens TestReactionGuardMatchesPublishComment)",
+      "file": "internal/deskkit/standalonereaction.go",
+      "old": "number: in.Number, head: in.Head, maxVisibility: in.MaxVisibility,",
+      "new": "number: in.Number, head: in.Head, maxVisibility: \"public\","
+    },
+    {
+      "name": "#7830 (b): the admitted check is removed (reddens TestAddReactionRefusesUnlistedContent)",
+      "file": "internal/deskkit/standalonereaction.go",
+      "old": "\t\t\tif !admitted {",
+      "new": "\t\t\tif false && !admitted {"
+    },
+    {
+      "name": "#7830: the allowlist re-admits +1 and -1 (reddens TestStandaloneReactionAllowlistExcludesApprovalShapes and TestAddReactionRefusesUnlistedContent)",
+      "file": "internal/deskkit/standalonereaction.go",
+      "old": "\t\tif content == \"+1\" || content == \"-1\" {",
+      "new": "\t\tif false {"
+    },
+    {
+      "name": "#7830: GitHub accepts a confirmation of a different reaction (reddens TestAddReactionDuplicateIsSuccess/github/mismatched_confirmation)",
+      "file": "internal/deskkit/standalonereaction.go",
+      "old": "out.ID < 1 || out.Content != content",
+      "new": "out.ID < 1"
+    },
+    {
+      "name": "#7830 (c): GitLab duplicate confirmation accepts any user's award (reddens TestAddReactionDuplicateIsSuccess/gitlab/another_user's_award)",
+      "file": "internal/deskkit/standalonereaction.go",
+      "old": "a.Name == name && a.User.ID == user.ID",
+      "new": "a.Name == name"
+    },
+    {
+      "name": "#7830: GitLab duplicate confirmation accepts the user's award of any name (reddens TestAddReactionDuplicateIsSuccess/gitlab/own_award_of_another_name)",
+      "file": "internal/deskkit/standalonereaction.go",
+      "old": "a.Name == name && a.User.ID == user.ID",
+      "new": "a.User.ID == user.ID"
+    },
+    {
+      "name": "#7830: GitLab treats a 403 as a possible duplicate and reads awards (reddens TestAddReactionDuplicateIsSuccess/gitlab/forbidden_award)",
+      "file": "internal/deskkit/standalonereaction.go",
+      "old": "!errors.As(mapped, &api) || (",
+      "new": "!errors.As(mapped, &api) || false && ("
+    },
+    {
+      "name": "#7830: a second in-package caller reaches the unguarded GitHub reaction write (reddens TestStandaloneReactionWritesReachedOnlyByAddReaction)",
+      "file": "internal/deskkit/standalonereaction.go",
+      "old": "// addChangeReaction posts one reaction",
+      "new": "func reactionBypass(g *GitHubForge) error { return g.addChangeReaction(ForgeRepo{}, 1, \"eyes\") }\n\n// addChangeReaction posts one reaction"
+    }
+  ]
+}
