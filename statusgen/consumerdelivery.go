@@ -303,7 +303,9 @@ func deriveHistoryDelivery(root, brief string) (delivery, base, source, why stri
 	// The walk and the message scan read through the library, never a new native
 	// launch. A repository profile the library does not qualify is refused, not
 	// read natively: the marker or explicit --delivery/--base remain the remedy.
-	read := gitCoreFor(root)
+	// The review kit supplies commit identity through command config. Those
+	// two settings cannot change an existing commit, its parents or message.
+	read := gitCoreForConfig(root, configCountNative() && !gitcore.CommitIdentityConfigOnly())
 	if read.err != nil {
 		return "", "", "", "the history of HEAD cannot be opened"
 	}
