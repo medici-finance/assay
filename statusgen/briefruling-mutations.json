@@ -1,5 +1,5 @@
 {
-  "test": "go test . -run 'TestBriefRuling|TestStagedCorroborateFilter' -count=1 -timeout 300s",
+  "test": "go test . -run 'TestBriefRuling|Test(Staged|Live)CorroborateFilter' -count=1 -timeout 300s",
   "control": {
     "name": "CONTROL — a refused ruling link read as ruled",
     "file": "briefruling.go",
@@ -74,10 +74,16 @@
       "new": "if false {"
     },
     {
-      "name": "staged step pre-filter back to findings only",
+      "name": "staged corroboration step omits the archived board",
       "file": "../ci/staged-workflows/assay-statusgen.yml",
-      "old": "if [ -z \"$changed\" ] && [ -z \"$ruled\" ]; then",
-      "new": "if [ -z \"$(git diff --name-only HEAD^1 HEAD -- docs/streams/findings/)\" ]; then"
+      "old": "--no-renames --name-only HEAD^1 HEAD -- docs/streams/ docs/archive/",
+      "new": "--no-renames --name-only HEAD^1 HEAD -- docs/streams/"
+    },
+    {
+      "name": "live corroboration step omits the archived board",
+      "file": "../.github/workflows/assay-statusgen.yml",
+      "old": "--no-renames --name-only HEAD^1 HEAD -- docs/streams/ docs/archive/",
+      "new": "--no-renames --name-only HEAD^1 HEAD -- docs/streams/"
     }
   ]
 }

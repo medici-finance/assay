@@ -192,6 +192,85 @@ func TestSchemataOneBuildPerWorker(t *testing.T) {
 // runMuharSpec writes sp as the spec JSON and runs the muhar binary on it at
 // -j 2 with GOFLAGS cleared, returning stdout. The spec is a plain map so the
 // test also runs against a muhar that predates a field.
+// TestSchemataUnderSymlinkedTempDir is the regression for #7819. Worker copies
+// live under TMPDIR, and on macOS the default TMPDIR is reached through a
+// symlink (/var -> /private/var). Every child muhar starts in a copy has an
+// explicit environment, and os/exec then leaves PWD as muhar's own, so the go
+// command named the copy by its physical path while the probe build named its
+// package by the symlinked one: "outside main module", schemata off, and every
+// mutant rebuilt. TMPDIR is pointed through a symlink here, so the property
+// holds on every host, not only on one whose temp directory happens to be one.
+func TestSchemataUnderSymlinkedTempDir(t *testing.T) {
+	needGo(t)
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinked TMPDIR is the unix shape")
+	}
+	work := t.TempDir()
+	bin := filepath.Join(work, "muhar")
+	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
+		t.Fatalf("build muhar: %v\n%s", err, out)
+	}
+	realTmp := filepath.Join(work, "real-tmp")
+	if err := os.Mkdir(realTmp, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	linkTmp := filepath.Join(work, "link-tmp")
+	if err := os.Symlink(realTmp, linkTmp); err != nil {
+		t.Fatal(err)
+	}
+	root := filepath.Join(work, "fx")
+	writeFiles(t, root, map[string]string{
+		"go.mod":     "module example.com/fx\n\ngo 1.21\n",
+		"fx.go":      fxSrc,
+		"fx_test.go": fxTest,
+	})
+	ms, want := fxMutations()
+	raw, err := json.Marshal(map[string]any{
+		"root":      root,
+		"test":      "go test -count=1 ./...",
+		"control":   Mutation{Name: "control", File: "fx.go", Old: "return 0", New: "return -5"},
+		"mutations": ms,
+		"schemata":  true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	specPath := filepath.Join(work, "spec.json")
+	if err := os.WriteFile(specPath, raw, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(bin, "-j", "2", "-spec", specPath)
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "GOFLAGS=") && !strings.HasPrefix(e, "TMPDIR=") {
+			cmd.Env = append(cmd.Env, e)
+		}
+	}
+	cmd.Env = append(cmd.Env, "TMPDIR="+linkTmp)
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("muhar: %v\nstdout:\n%s\nstderr:\n%s", err, out, stderr.String())
+	}
+	if strings.Contains(stderr.String(), "probe build failed") || !strings.Contains(stderr.String(), "share one build per worker") {
+		t.Fatalf("schemata did not engage under a symlinked TMPDIR:\n%s", stderr.String())
+	}
+	for i, m := range ms {
+		line := ""
+		for _, l := range strings.Split(string(out), "\n") {
+			if strings.HasSuffix(l, " "+m.Name) || strings.Contains(l, " "+m.Name+" ") {
+				line = l
+			}
+		}
+		if !strings.Contains(line, want[i].String()+" ") {
+			t.Errorf("mutation %s (%q -> %q): got line %q, want %s", m.Name, m.Old, m.New, line, want[i])
+		}
+	}
+	if !strings.Contains(string(out), "Totals: 14 caught, 1 NOT CAUGHT, 1 could-not-mutate.") {
+		t.Errorf("Totals line changed:\n%s", out)
+	}
+}
+
 func runMuharSpec(t *testing.T, bin, work string, sp map[string]any) string {
 	t.Helper()
 	return runMuharSpecArgs(t, bin, work, sp)

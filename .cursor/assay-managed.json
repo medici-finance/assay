@@ -1,12 +1,12 @@
 {
   "schema": 1,
-  "version": "1.0.95",
+  "version": "1.0.96",
   "files": {
     ".cursor/references/claude-code.md": "631d34768071706854effdc48aa369b7aea9192191c832559a72595932b938f5",
     ".cursor/references/codex.md": "83e0b2ec78ceaa33e28c0569c98dfb93618d641c5552af12de5fb1cac32bec11",
     ".cursor/references/cursor.md": "4b8e0a7e2dde56c348ea149b286e1f0dacc5763789123f29c8c25052bbfef957",
     ".cursor/references/desk-common.md": "4e86aecfd2b5065569252102cbc664e1226d99aa4e1cd50725af14677d2e057c",
-    ".cursor/references/desk-shell.md": "60ca4987a77fc71d38f3298bc7fcc51d31f1d2c2e88debcaad30cd2d23b9e81b",
+    ".cursor/references/desk-shell.md": "d32c9a3e511973779fd779ff5d0b542276639eb2e893b3ca62d2aa3f89104fb7",
     ".cursor/references/handoff-note.md": "db49ec02dced63b33a8a891ae6e9e8465f7bad4c134d93d260ac77fbba987136",
     ".cursor/references/implementation-pickup.md": "8c546416be12ba00bd24b0bc6bac074e1e4e1c8d37afb9a408f4e4703611caad",
     ".cursor/references/intake-class-pass.md": "37bf415a5004ae75cc569d60654e8e35e6a43ce1d890bd8303913b7c672a8475",
@@ -15,7 +15,7 @@
     ".cursor/references/milestone-authoring.md": "f510d0d74761d1bb7840f26860eb33ac375b9e838678a4c8c45fcf6af4ac6f00",
     ".cursor/references/standing-note.md": "5b846214744e16741227a6f15728f062eb6df8ff2974e007463621f423803fb0",
     ".cursor/references/tick-contract.md": "65e6ac141091a31120f5eefd126891409ed1a92c376d6ef3f99fd8ea52e86ee7",
-    ".cursor/rules/assay.mdc": "c7c6a2375f5e7cae27c808151ea67f2d3c890e53ac22161cd075a74cc967e5d7",
+    ".cursor/rules/assay.mdc": "a40e2e83ae41b6f7dc337929dc23b80a0dbcc72b3b79072816c87d70f8b3cb0f",
     ".cursor/skills/adopt/SKILL.md": "e438b5a1993ca87f9e90167e01b7beda8ea772d2378bf7baeb88f0dc3bba9c5c",
     ".cursor/skills/article-craft/SKILL.md": "59c94edeb4af0eb7df0e50b30e4dadbaca39ad898cfd1cdc381dfe170d424d88",
     ".cursor/skills/article-craft/references/editorial-calibration.md": "0b268eb4ac4ed150b4070437c9119aafd3ce07ce5d2bfdaa27b87830ab7ff8f8",
@@ -48,9 +48,9 @@
     ".cursor/skills/trace-path-to-live/references/progress.md": "3802a1f2750f6c2141c818c640078ff921c04c0b441adb2ed364836739cf16a4",
     ".cursor/skills/trace-path-to-live/references/report.md": "a1400f9166900a512ba55e55ed336cb2d12908227838de43200ef10f0e47f4db",
     ".cursor/skills/upgrade-assay/SKILL.md": "629fb0269d7344583a8fca08d801b32a3d8f3dbb28db7fa5af9be732928df775",
-    ".cursor/skills/verify-desk/SKILL.md": "b91ed6c6ec6bdb6b67125688d832f3d5769a0d00c4a9996c539ffceae0f5e6f9",
-    ".cursor/skills/worker-desk/SKILL.md": "2d267c039300a56714fa2f924237898d3def764470d3034623cb3a1b07117f13",
+    ".cursor/skills/verify-desk/SKILL.md": "b52d4659ca900822229e09b2ea4f41d505750090422fd688fd9e4b63c4b6029a",
+    ".cursor/skills/worker-desk/SKILL.md": "cfa8956e3fb3b8e019e091745e3fd771dfa0ba458049445a9127ad45299d6768",
     ".cursor/skills/worker-desk/references/dispatch-runbook.md": "d963d6d60b67b4f0c73b0ded4fd4cddb27e16b98979372dafa925ff30d76978e"
   },
-  "bindingsSha256": "8c1e029cd72c7b02854f1512dd06da4b311d2d0c0c7efafc0fd60c7490fbb036"
+  "bindingsSha256": "23ed11f3ffd1eeaceab3333a85e8716ca397c1e770f4ce959c3b755d78d82903"
 }

@@ -1,8 +1,6 @@
 package main
 
 import (
-	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -202,23 +200,4 @@ func setAlarmConfig(age, flood int) func() {
 	prevAge, prevFlood := standingAgeDays, floodThreshold
 	standingAgeDays, floodThreshold = age, flood
 	return func() { standingAgeDays, floodThreshold = prevAge, prevFlood }
-}
-
-// captureStdout runs fn with os.Stdout redirected to a pipe and returns what it wrote.
-func captureStdout(t *testing.T, fn func()) string {
-	t.Helper()
-	old := os.Stdout
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stdout = w
-	defer func() { os.Stdout = old }()
-	fn()
-	w.Close()
-	data, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(data)
 }
