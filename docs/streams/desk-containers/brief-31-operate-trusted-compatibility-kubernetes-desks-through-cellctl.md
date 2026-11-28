@@ -157,12 +157,13 @@ qualification are separate human-owned acts; an unresolved pin holds delivery/ad
 
 ### Worker pickup while a producer is awaiting verification
 
-Read the [producer's Verify table](brief-15-cell-op-machine-seam.md#verify-executable--no-prose-only-dod-items) alongside the [cell-operation contract](../../../spec/cell-op-v1.md). The whole-brief dependency remains in force. The offline work authorized above has three distinct boundaries.
+Read the [producer's Verify table](brief-15-cell-op-machine-seam.md#verify-executable--no-prose-only-dod-items) alongside the [cell-operation contract](../../../spec/cell-op-v1.md). The whole-brief dependency remains in force. The offline work authorized above has four distinct boundaries, and each of Tasks 1–7 appears in at least one row.
 
 | Work | Contract it exercises | Worker action |
 |---|---|---|
-| Tasks 1, 4 and 6, compiled CLI with a fake transport | /15's versioned result and plan examples, single-use and stale-plan handling, and interactive application | Exercise these cases with fake inputs. A failed producer behavior is a defect to investigate before claiming that consumer behavior works. A repository-wide lint failure leaves /15 open while fake-transport work can continue. |
-| Tasks 3, 6 and 7, preparation and packaging | The preparation command, its typed inputs and local plan/readback behavior | Check the existing preparation checkpoint offline. The protected release owner supplies the real immutable image binding for final delivery. |
+| Tasks 1, 4, 5 and 6, compiled CLI with a fake transport | /15's versioned result and plan examples, single-use and stale-plan handling, and interactive application; Task 5's receipt identity tuple (config digest, StatefulSet UID, Pod UID, container ID and restart count, image, role) and its controlled-stop holds (Verify rows 1, 2, 4 and 6) | Exercise these cases with fake inputs. A failed producer behavior is a defect to investigate before claiming that consumer behavior works. A repository-wide lint failure leaves /15 open while fake-transport work can continue. |
+| Task 2, opt-in compatibility component | Named workloads that begin paused at replicas zero and custody-scoped access, checked offline by the profile checker (Verify row 5) | Author the component and its hostile fixtures offline; the checker makes no discovery or API call. Effective RBAC, network and log custody remain separately human-qualified. |
+| Tasks 3, 6 and 7, launcher, preparation and packaging | Task 3's PID-1 launcher: launch intent before the agent child, refusal of a same-Pod restart and of missing or corrupt history, and the execution-group stop (Verify row 3); the preparation command, its typed inputs and local plan/readback behavior (Verify rows 8–11) | Check the existing preparation checkpoint offline. The protected release owner supplies the real immutable image binding for final delivery. |
 | Final delivery and [hosted qualification](brief-32-qualify-the-compatibility-kubernetes-desk-cell.md) | The completed delivery's actual revision, immutable image and operator-qualified target | Hold the final delivery for its real pins. The custodian owns target authorization and live qualification. |
 
 ## Human decision
