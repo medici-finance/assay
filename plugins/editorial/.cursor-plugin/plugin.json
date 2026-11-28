@@ -1,7 +1,7 @@
 {
   "name": "editorial",
-  "version": "1.0.2",
-  "description": "Write and revise technical articles with Article Craft, Prose Cadence, and Humanizer.",
+  "version": "1.1.0",
+  "description": "Write technical articles, stage presentations, build slide decks and produce explainer videos with supplied audio.",
   "author": {
     "name": "medici-finance"
   },

@@ -1,0 +1,41 @@
+# Fixture: product-pitch with the mechanism pushed to slot 8 of 14 = 57.1%,
+# the exact B3-clean-fail position the bake-off measured. Isolated to the
+# mechanism_by gate: no figures or glossary terms appear in any slot text, so
+# number_gate/glossary stay clean (both blocks present, deliberately empty).
+brief: too-late-mechanism-demo
+genre: product-pitch
+lane: mixed(table)
+classify:
+  chose: {genre: product-pitch, because: "a named buyer can say yes to a priced product this quarter"}
+  rejected: [{genre: executive-explainer, because: "a price is already on offer"}]
+audience: {assumed_knowledge: "n/a", distrusts: "n/a", decision_they_hold: "a purchase", attention_budget: "n/a"}
+belief: "Reconciliation is a structural gap, not a staffing shortfall."
+time_shape: {minutes: 8, medium: deck, seconds_per_slot: 34, floor: 35}
+arc:
+  - {beat: hook, minutes: 0.5}
+  - {beat: problem, minutes: 2.6}
+  - {beat: mechanism, minutes: 2.0}
+  - {beat: proof, minutes: 1.0}
+  - {beat: cost, minutes: 1.0}
+  - {beat: ask, minutes: 0.9}
+bold_moment: {slot: 10, beat: proof, form: "a checkable instance", why: "n/a"}
+number_gate:
+glossary:
+slots:
+  - {n: 1, function: cover, beat: hook, claim: "The system that reconciles nothing on its own is the expensive one."}
+  - {n: 2, function: statement, beat: problem, claim: "Reconciliation is a structural gap, not a staffing shortfall."}
+  - {n: 3, function: fact, beat: problem, claim: "The team spends its slowest week of every month on the same manual re-key."}
+  - {n: 4, function: claim, beat: problem, claim: "This is a permanent cost, not a one-time backlog."}
+  - {n: 5, function: fact, beat: problem, claim: "The same re-key happens on every close, without exception."}
+  - {n: 6, function: claim, beat: problem, claim: "No headcount change removes the underlying gap."}
+  - {n: 7, function: comparison, beat: problem, claim: "Every competitor's manual process shares this same structural gap."}
+  - {n: 8, function: mechanism, beat: mechanism, claim: "The product re-derives every roll-forward from the source ledgers directly."}
+  - {n: 9, function: mechanism, beat: mechanism, claim: "Drift is caught the moment it appears."}
+  - {n: 10, function: statement, beat: proof, claim: "One pilot customer's close moved from days to hours, in their own numbers."}
+  - {n: 11, function: objection, beat: proof, claim: "Building this internally would take the buyer's own team many months."}
+  - {n: 12, function: cost, beat: cost, claim: "The product is priced monthly, not as a one-time fee."}
+  - {n: 13, function: ask, beat: ask, claim: "Start a two-ledger pilot next close."}
+  - {n: 14, function: end, beat: ask, claim: "This is where the manual reconciliation ends."}
+transitions:
+gates: {helicopter: pass, bold_moment: pass, dead_slot: pass, kill_conditions: pass, time_shape: "8min x 60 = 480s / 14 slots = 34.3s/slot"}
+assumptions: []
