@@ -118,7 +118,7 @@ Commands run from this repository root. Named new test contracts below are plann
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd statusgen && go test ./... -run "^TestFixFrontmatter$" -count=1 -v > "${TMPDIR:-/tmp}/notice-31.log" 2>&1 && grep -F -e "--- PASS: TestFixFrontmatter " "${TMPDIR:-/tmp}/notice-31.log"` | exit 0; output contains the named PASS line. Matrix: unique and ambiguous carrying PRs; missing git history; truthful reciprocal sources; closed follow-up target is listed rather than edited; no changed risk/why/Evidence; grandfather boundary and unknown date; malformed candidate rolls back; second run is empty | check:ci +mutation +flow +dereference |
+| 1 | `cd statusgen && go test ./... -run "^TestFixFrontmatter$" -count=1 -v > "${TMPDIR:-/tmp}/notice-31.log" 2>&1 && grep -F -e "--- PASS: TestFixFrontmatter " "${TMPDIR:-/tmp}/notice-31.log"` | exit 0; output contains `--- PASS: TestFixFrontmatter`. Matrix: unique and ambiguous carrying PRs; missing git history; truthful reciprocal sources; closed follow-up target is listed rather than edited; no changed risk/why/Evidence; grandfather boundary and unknown date; malformed candidate rolls back; second run is empty | check:ci +mutation +flow +dereference |
 | 2 | `cd statusgen && go test ./... -count=1` | exit 0; existing closure, witness and differential tests still pass | check:ci +neighbour |
 | 3 | `statusgen --root . --consumers` | exit 0; the implementation diff corroborates the routing commitments | check +flow |
 

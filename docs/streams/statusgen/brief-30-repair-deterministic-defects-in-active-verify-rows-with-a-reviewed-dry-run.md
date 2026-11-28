@@ -85,7 +85,7 @@ Commands run from this repository root. Named new test contracts below are plann
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd statusgen && go test ./... -run "^TestFixRows$" -count=1 -v > "${TMPDIR:-/tmp}/notice-30.log" 2>&1 && grep -F -e "--- PASS: TestFixRows " "${TMPDIR:-/tmp}/notice-30.log"` | exit 0; output contains the named PASS line. Matrix: dry-run changes no bytes; each deterministic repair removes its finding and preserves expectation; unresolved patterns stay untouched; a newly planted second bad row is found; malformed rewrite rolls back all files; historical records and Evidence hashes remain unchanged; repeated write is a no-op | check:ci +mutation +flow +dereference |
+| 1 | `cd statusgen && go test ./... -run "^TestFixRows$" -count=1 -v > "${TMPDIR:-/tmp}/notice-30.log" 2>&1 && grep -F -e "--- PASS: TestFixRows " "${TMPDIR:-/tmp}/notice-30.log"` | exit 0; output contains `--- PASS: TestFixRows`. Matrix: dry-run changes no bytes; each deterministic repair removes its finding and preserves expectation; unresolved patterns stay untouched; a newly planted second bad row is found; malformed rewrite rolls back all files; historical records and Evidence hashes remain unchanged; repeated write is a no-op | check:ci +mutation +flow +dereference |
 | 2 | `cd statusgen && go test ./... -count=1` | exit 0; existing closure, witness and differential tests still pass | check:ci +neighbour |
 | 3 | `statusgen --root . --consumers` | exit 0; the implementation diff corroborates the routing commitments | check +flow |
 
