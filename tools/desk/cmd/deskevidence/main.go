@@ -59,7 +59,8 @@ acceptance transitions and recorded human rulings by child statusgen audits. It 
 approval verdict. Without it amended acceptance remains held; ordinary records
 retain their existing behavior. Each approval target is printed before contact.
 The closure lint covers the whole landed tree, including other briefs' transitions.
-Unknown repository authority and unavailable or refuted approvals still refuse;
+For the closure being recorded, unknown repository authority and unavailable or
+refuted approvals still refuse;
 this flag neither isolates Git configuration nor falls back to a human login.
 Opted-in audits receive only this invocation's minted GitHub verifier credential. Without
 opt-in, audits receive a noncredential refusal marker, closing stored-login fallback;
@@ -112,8 +113,11 @@ the worktree, and is copied before any forge call. If the file is absent there, 
 hashes to another digest, the landing is refused before any write. Land before the
 verifier worktree is removed. A digest the branch already names needs no file.
 
-New verified outcome records additionally require a lint-clean tree and
-statusgen brief --check-verified (verified/done, dated stamp, passing witnesses).
+For a new verified outcome, the writer lints the landed tree. A PROBLEM naming a
+brief the record closes, or lacking a recognizable brief key, refuses the record.
+A PROBLEM naming another brief prints as a notice. The writer also requires
+statusgen brief --check-verified with its Evidence attribution check (verified/done,
+dated stamp, passing witnesses and accepted Evidence attribution).
 The brief and stream README must already match the target branch. Evidence-only
 implemented landings must not append verified outcomes; verify-fail is unchanged.
 

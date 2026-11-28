@@ -330,9 +330,27 @@ tells the verifier to export. It leaves out a name the scrub already dropped bef
 existed (a forge credential, `GIT_*`, `GH_*`), a name the shell or the run sets (`PWD`, `RANDOM`,
 `TMPDIR`), a lower-case or mixed-case `$name` (a shell local; the `$env:` and `%NAME%` forms count
 in any case), and a name the row also assigns or names bare (`NAME=...`, `for NAME in`,
-`printenv NAME`). The rule reads the row's text, not the shell's parse, so a read with a default
-(`${NAME:-}`) counts too. A row that reads a dropped variable some other way, or names it bare,
-runs and sees it unset. The note is not permission to run the row outside admission: which rows to
+`printenv NAME`). It also leaves out, for any dropped name, `ASSAY_*` included, a name the row
+binds itself, because the row then sees its own value and never an inherited one: every read is a
+non-empty default (`${NAME:-x}`, `${NAME:=x}`, `${NAME-x}`, `${NAME=x}`), or comes after the row's
+own `NAME=value` or `export NAME=value` at the start of a top-level command, or after a
+`${NAME:=x}` made in the row's own shell, or sits in a single-quoted script under a leading
+`NAME=value cmd`. With no such binding, a read is not the row's own: a bare read, an empty default
+(`${NAME:-}`), `${NAME:?}`, `${NAME:+x}`, a read before the assignment, or a read in the prefixed
+command's own arguments. An `$env:NAME` or `%NAME%` read never is. An assignment made in a
+subshell (`( )`, `$( )` or a backquote pair), a pipeline, after `||` or in the background binds
+nothing, whether written `NAME=value` or `${NAME:=x}`, and neither does a `${NAME:=x}` behind an
+escaped `$` in a child script. Quotes and `then`/`do`/`else` differ between the two forms.
+`NAME=value` binds nothing inside a quoted string, or after `then`, `do` or `else` on the same
+line. A double-quoted `"${NAME:=x}"` in the row's own shell does bind, one inside a single-quoted
+string binds only for reads in that same string, and `then : "${NAME:=x}"` binds. The rule reads
+the row's text, not the shell's parse or its control flow, so it can take an assignment the shell
+skips or does not keep as binding: for example one after `false &&`; one after a `)` inside `( )`
+or `$( )` that belongs to a `case` pattern or a comment; one inside a `$( )` in a double-quoted
+string that holds double quotes of its own; one in a `{ }` group or loop that is piped or
+backgrounded as a whole, in a pipeline continued on the next line, or in an `&&` list sent to the
+background; or a `${NAME:=x}` written in a comment. Such a row runs and sees the name unset.
+A row that reads a dropped variable some other way, or names it bare, runs and sees it unset. The note is not permission to run the row outside admission: which rows to
 amend, or which inputs to carry in, is the author's call.
 
 What a row can still reach today, because it runs as the invoking user:

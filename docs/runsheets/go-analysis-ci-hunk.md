@@ -10,22 +10,24 @@ an explicit image update, not an unchecked extraction fallback.
 ## Trust and report delivery
 
 The reusable composite action at `actions/go-analysis` owns tool acquisition,
-trusted harness execution, the ratchet, job summary and sanitized artifact
+trusted harness execution, the merge-base comparison, job summary and sanitized artifact
 publication. The workflow below only checks out the target and invokes that action
 at the human-reviewed immutable SHA. This matches the subdirectory-action approach
 being developed for Muhar in #2642; no new repository or Marketplace listing is needed.
 
 The action takes its executable code, analyzer config and pins from its own pinned
-ref, never from the PR. It reads the baseline from a separately checked-out main
-revision. The initial bootstrap is pinned to the reviewed implementation commit;
-after main has a baseline, the action automatically uses that instead. Tool caches
+ref, never from the PR. Since the merge-base gate, it computes the PR's merge base
+against main, scans that revision and the head under the same pinned policy, and
+fails only on what the head adds; no baseline file is read and CI never writes to
+main. Actions pinned before that change still read the committed baseline and
+accept a `bootstrap-revision`; later ones refuse that input. Tool caches
 live outside the analyzed checkout. Failed scans still publish reports, while
 missing reports fail explicitly. See [the action contract](../../actions/go-analysis/README.md).
 
 Desk-tools/35 extends this action with the security scan and feeds its report into
 qualgen. It must also deliver the explicit reviewed contract-migration lane:
 this first action refuses changed tool/config/fingerprint contracts against the
-old baseline, and bootstrap cannot be reused as an upgrade bypass. This first
+merge base's policy, and bootstrap cannot be reused as an upgrade bypass. This first
 hunk does not claim that ingestion or that migration lane already exists.
 
 ## When to apply: after merge
@@ -96,17 +98,68 @@ then repeat the proof on main after that pull request merges. Check the workflow
 commit's history and forge attribution as brief 34's Verify table requires. If acquisition or analysis fails, retain the failure and fix its cause;
 do not add a success fallback or bypass the ratchet.
 
+## Move an existing job to the merge-base gate
+
+Main already carries the `go-lint` job pinned to an earlier action. After the
+merge-base gate's implementation PR merges, a human moves the pin in one
+workflow-only PR. Set `REVIEWED_HEAD` to the merged main commit you reviewed and
+run in a fresh `bash` session:
+
+```sh
+set -eu
+: "${REVIEWED_HEAD:?Set the full merged commit you reviewed}"
+case "$REVIEWED_HEAD" in *[!0-9a-f]*|'') exit 1 ;; esac
+test "${#REVIEWED_HEAD}" -eq 40
+git fetch origin main
+git merge-base --is-ancestor "$REVIEWED_HEAD" refs/remotes/origin/main
+git show "$REVIEWED_HEAD:actions/go-analysis/run.py" | grep -q "bootstrap-revision is retired"
+CI_REVIEW_TREE=$(mktemp -d "${TMPDIR:-/tmp}/go-lint-workflow.XXXXXX")
+git worktree add --detach "$CI_REVIEW_TREE" "$REVIEWED_HEAD"
+cd "$CI_REVIEW_TREE"
+export REVIEWED_HEAD
+python3 - <<'PY'
+import os
+import re
+from pathlib import Path
+p = Path('.github/workflows/ci.yml')
+s = p.read_text()
+pin = re.compile(r'(uses: medici-finance/assay/actions/go-analysis@)[0-9a-f]{40}')
+if len(pin.findall(s)) != 1:
+    raise SystemExit('expected exactly one go-analysis action pin')
+s = pin.sub(r'\g<1>' + os.environ['REVIEWED_HEAD'], s)
+s, dropped = re.subn(r'\n +bootstrap-revision: [0-9a-f]{40}(?=\n)', '', s)
+if dropped != 1:
+    raise SystemExit('expected exactly one bootstrap-revision line')
+s, raised = re.subn(r'(\n  go-lint:\n    runs-on: [^\n]+\n    timeout-minutes: )45\n', r'\g<1>90\n', s)
+if raised != 1:
+    raise SystemExit('go-lint timeout not found at 45; review by hand')
+p.write_text(s)
+PY
+git diff --check
+git diff -- .github/workflows/ci.yml
+```
+
+The diff must touch only the action pin, the removed `bootstrap-revision` line and
+the timeout. Two scans per pull request roughly double the job's analysis time,
+hence 90 minutes. Commit and push it as a workflow-only change under your own
+identity, open a pull request, and let its normal run be the first measurement of
+the merge-base gate. Do not dispatch a workflow. A push to main scans once: the
+head is its own merge base. The scheduled debt report is a separate staged
+workflow, `ci/staged-workflows/go-analysis-debt-report.yml`, promoted on its own;
+it is not a required check.
+
 ## Exact appended job
 
-The extraction command replaces both uses of `BOOTSTRAP_IMPLEMENTATION_SHA` with
-the reviewed commit. The action and its internals are pinned; callers do not copy
+This is the first-install job text, kept for repositories that never had one.
+The extraction command replaces `BOOTSTRAP_IMPLEMENTATION_SHA` with the reviewed
+commit. The action and its internals are pinned; callers do not copy
 the runner logic into their workflows.
 
 <!-- go-lint-job:begin -->
 ```yaml
   go-lint:
     runs-on: medici-builder-public
-    timeout-minutes: 45
+    timeout-minutes: 90
     permissions:
       contents: read
     steps:
@@ -116,12 +169,11 @@ the runner logic into their workflows.
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - name: Run pinned ratcheted Go analysis
+      - name: Run pinned merge-base Go analysis
         uses: medici-finance/assay/actions/go-analysis@BOOTSTRAP_IMPLEMENTATION_SHA
         with:
           root: .
           base-ref: main
-          bootstrap-revision: BOOTSTRAP_IMPLEMENTATION_SHA
           allow-downloads: 'true'
 ```
 <!-- go-lint-job:end -->

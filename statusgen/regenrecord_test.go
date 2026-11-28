@@ -138,6 +138,7 @@ func TestBoardRegenRecordGuardFires(t *testing.T) {
 // A real restore episode makes missing or duplicate DORA recording visible.
 // The fixture does not use GitHub or require credentials.
 func TestWriteAndRecordMatchesSeparatePasses(t *testing.T) {
+	clearAdmittedRowPins(t)
 	fixedNow(t, "2026-08-26T00:00:00Z")
 	t.Setenv("GITHUB_REPOSITORY", "example-org/board")
 	t.Setenv("STATUSGEN_DORA_WORKFLOW", "ci")

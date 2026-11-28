@@ -770,7 +770,11 @@ Use `"outcome":"verified"` and put the full admitted observation SHA in `source_
 The verb derives the dated stamp from the admitted PASS and commits the record and status row
 together on a pinned GitHub branch head. For other briefs, including human-gated and irreversible
 work, wait until the authorized transition has landed. The ordinary `--outcome-record` form
-checks that the target branch already holds the verified or done closure. Before writing,
+checks that the target branch already holds the verified or done closure. Both forms run
+the landed-tree closure check described under **Landing** below. If the Verify table itself
+requires clean repo-wide lint, credit that row only under brief rule 51, with a clean
+host run at the witnessed revision using the pinned statusgen and `--acceptance-forge`.
+Before writing,
 refresh only the brief in the verifier home from the target branch
 (`git -C <home> fetch origin <branch>`, then `git -C <home> show FETCH_HEAD:<path> > <home>/<path>`).
 Use the full `git -C <home> rev-parse FETCH_HEAD` as the record's Evidence commit SHA.
@@ -915,7 +919,7 @@ refuses on a lint PROBLEM naming the brief it closes or naming no brief; a PROBL
 another brief prints as a notice and is that brief's to fix, never this record's to block.
 It supplies no approval or acceptance credit and does not alter authored Verify commands
 or network-off execution. Unknown repository authority, an unavailable approval read and
-a refuted approval still hold or refuse the landing. Keep the diagnostic and route the
+a refuted approval for the closure being recorded still hold or refuse it. Keep the diagnostic and route the
 missing capability; never retry by stripping Git configuration, changing the origin or
 borrowing a stored human login. Diagnose the run environment separately from the missing
 opt-in, because the flag cannot resolve an authority-bearing Git include.
