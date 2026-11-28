@@ -175,6 +175,16 @@ exit reserve) and the summary-line grammar are stated once in
 executable form at `../../scripts/tick-summary.sh`. This section states no rule that file does
 not own.
 
+### Cell-selected tick
+
+When the cell review service supplies an exact repository, PR, head and private
+observation, use that collection as this tick's sweep. Run the existing review
+dispatch procedure for the selected subject, including the cell's claim helper,
+width, required lanes, independent reviewer and live head checks. A moved head,
+insufficient capacity or refusal ends the pass with the reason. Leave re-selection
+and scheduling to the service. This tick has review-dispatch scope only. It cannot
+flip ready, merge, pick up another PR or resume the standing watcher.
+
 ## HARD GATE — no idle claim without a fresh board sweep
 
 **An idle claim is a claim about the QUEUE, and the only evidence about the queue is a fresh

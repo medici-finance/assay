@@ -121,6 +121,7 @@ or removing any human gate (spec §5 states the divergence).
 | 41 | [Persist loop-admin journal and recovery in PostgreSQL](brief-41-persist-loop-admin-journal-and-recovery-in-postgresql.md) | 2 | L | implemented | — | — |
 | 42 | [Supervise bounded invocations through the durable journal](brief-42-supervise-bounded-invocations-through-the-durable-journal.md) | 6 | M | todo | — | — |
 | 43 | [Expose caller-scoped launch control and qualify the shared journey](brief-43-expose-caller-scoped-launch-control-and-qualify-the-shared-journey.md) | 7 | M | todo | — | — |
+| 44 | [Run one cell's review dispatch in a container](brief-44-cell-scoped-review-dispatch.md) | 1 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Structured-work amendment (2026-09-30)
