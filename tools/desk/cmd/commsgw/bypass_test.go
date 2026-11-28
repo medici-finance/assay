@@ -34,6 +34,7 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskfilestub"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 	"github.com/medici-finance/assay/tools/desk/internal/runnertable"
+	"github.com/medici-finance/assay/tools/desk/internal/socktest"
 )
 
 // bypass_test.go — the gateway half of the cross-layer BYPASS BATTERY.
@@ -366,15 +367,11 @@ func startSocketServer(t *testing.T, s SocketServer) string {
 	t.Helper()
 	// A short path: Unix socket paths are capped at ~104 bytes on macOS, and
 	// t.TempDir() names can exceed that.
-	dir, err := os.MkdirTemp("", "gwb")
-	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
-	}
+	dir := socktest.Dir(t, "gwb", "gw.sock")
 	path := filepath.Join(dir, "gw.sock")
 	if runtime.GOOS == "windows" {
 		path = fmt.Sprintf(`\\.\pipe\assay-gw-test-%d-%d`, os.Getpid(), time.Now().UnixNano())
 	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
 	errCh := make(chan error, 1)
 	go func() { errCh <- s.ListenAndServe(path) }()
 	deadline := time.Now().Add(5 * time.Second)

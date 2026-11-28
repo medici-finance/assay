@@ -8,7 +8,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,42 +19,8 @@ import (
 	"github.com/medici-finance/assay/gitquiet/goquiet"
 	"github.com/medici-finance/assay/tools/desk/internal/commsqueue"
 	"github.com/medici-finance/assay/tools/desk/internal/commstransport"
+	"github.com/medici-finance/assay/tools/desk/internal/socktest"
 )
-
-// socketSafeRoot returns a fresh owner-only directory that this test creates
-// and removes, short enough that root/suffix fits a Unix socket address
-// (sun_path is 104 bytes on macOS and 108 on Linux, NUL included). It prefers
-// TMPDIR. A managed task scratch TMPDIR can be too long for that, so it then
-// tries a fresh private directory under /tmp. If neither fits, the socket
-// prerequisite is could-not-check and the test is skipped saying so, never
-// reported as a pass of the round trip.
-func socketSafeRoot(t *testing.T, pattern, suffix string) string {
-	t.Helper()
-	limit := len(syscall.RawSockaddrUnix{}.Path) - 1
-	var tried []string
-	for _, parent := range []string{os.TempDir(), "/tmp"} {
-		dir, err := os.MkdirTemp(parent, pattern)
-		if err != nil {
-			tried = append(tried, fmt.Sprintf("%s: %v", parent, err))
-			continue
-		}
-		resolved, err := filepath.EvalSymlinks(dir)
-		if err != nil {
-			os.RemoveAll(dir)
-			tried = append(tried, fmt.Sprintf("%s: %v", parent, err))
-			continue
-		}
-		if n := len(filepath.Join(resolved, suffix)); n > limit {
-			os.RemoveAll(resolved)
-			tried = append(tried, fmt.Sprintf("%s: socket path %d bytes, limit %d", parent, n, limit))
-			continue
-		}
-		t.Cleanup(func() { os.RemoveAll(resolved) })
-		return resolved
-	}
-	t.Skipf("could-not-check: no owned socket-safe directory for %s (%s)", suffix, strings.Join(tried, "; "))
-	return ""
-}
 
 // Two independent session contexts use shipped client, gateway, drain and reader
 // binaries. Only the model response is a deterministic offline fixture.
@@ -63,7 +28,7 @@ func socketSafeRoot(t *testing.T, pattern, suffix string) string {
 // regression: #3214
 func TestTwoSessionsCommsHelloRoundTrip(t *testing.T) {
 	// initComms puts the gateway socket at <cell dir>/comms/gateway.sock.
-	root := socketSafeRoot(t, "ch-", filepath.Join("comms", "gateway.sock"))
+	root := socktest.Dir(t, "ch-", filepath.Join("comms", "gateway.sock"))
 	bin := filepath.Join(root, "bin")
 	os.Mkdir(bin, 0700)
 	module, err := filepath.Abs("../..")

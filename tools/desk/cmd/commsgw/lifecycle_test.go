@@ -14,20 +14,13 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/tools/desk/internal/commstransport"
+	"github.com/medici-finance/assay/tools/desk/internal/socktest"
 )
 
 // shortPrivateDir keeps socket paths under the ~104-byte macOS cap.
 func shortPrivateDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "gwl")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
-	if err := os.Chmod(dir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	return dir
+	return socktest.Dir(t, "gwl", "gw.sock")
 }
 
 func waitForEndpoint(t *testing.T, path string, exited <-chan error) {

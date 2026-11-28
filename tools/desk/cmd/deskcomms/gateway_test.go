@@ -12,6 +12,7 @@ import (
 
 	"github.com/medici-finance/assay/tools/desk/internal/commstransport"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
+	"github.com/medici-finance/assay/tools/desk/internal/socktest"
 )
 
 // slowGateway listens on a fresh protected local endpoint and answers every
@@ -19,13 +20,7 @@ import (
 // prose gate consults its advisor synchronously before it replies.
 func slowGateway(t *testing.T, delay time.Duration, reply string) string {
 	t.Helper()
-	// A short path: Unix socket paths are capped at ~104 bytes on macOS, and
-	// t.TempDir() names can exceed that.
-	dir, err := os.MkdirTemp("", "dcg")
-	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
-	}
-	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	dir := socktest.Dir(t, "dcg", "gw.sock")
 	path := filepath.Join(dir, "gw.sock")
 	if runtime.GOOS == "windows" {
 		path = fmt.Sprintf(`\\.\pipe\assay-dcg-test-%d-%d`, os.Getpid(), time.Now().UnixNano())
