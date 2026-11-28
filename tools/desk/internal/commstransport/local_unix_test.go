@@ -14,9 +14,10 @@ import (
 
 // privateDir returns a short owner-only directory (socket paths are capped near
 // 104 bytes on macOS, which t.TempDir names can exceed).
+// The length check uses context.sock, the longest name this package binds.
 func privateDir(t *testing.T) string {
 	t.Helper()
-	return socktest.Dir(t, "ct-", "gw.sock")
+	return socktest.Dir(t, "ct-", "context.sock")
 }
 
 func TestListenRefusesSharedParent(t *testing.T) {

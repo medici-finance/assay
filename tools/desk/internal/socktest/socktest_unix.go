@@ -1,8 +1,8 @@
-//go:build !windows
+//go:build unix
 
 // Package socktest provides short owned directories for _test.go files that bind a Unix
-// socket. It is the one place a test obtains a socket directory, so a long managed TMPDIR
-// cannot push a socket path past the platform's sun_path limit.
+// socket. A test whose socket directory would otherwise follow TMPDIR takes it from here,
+// so a long managed TMPDIR cannot push a socket path past the platform's sun_path limit.
 package socktest
 
 import (
@@ -32,16 +32,16 @@ func Dir(t testing.TB, pattern, suffix string) string {
 		}
 		resolved, err := filepath.EvalSymlinks(dir)
 		if err != nil {
-			os.RemoveAll(dir)
+			_ = os.RemoveAll(dir)
 			tried = append(tried, fmt.Sprintf("%s: %v", parent, err))
 			continue
 		}
 		if n := len(filepath.Join(resolved, suffix)); n > limit {
-			os.RemoveAll(resolved)
+			_ = os.RemoveAll(resolved)
 			tried = append(tried, fmt.Sprintf("%s: socket path %d bytes, limit %d", parent, n, limit))
 			continue
 		}
-		t.Cleanup(func() { os.Chmod(resolved, 0700); os.RemoveAll(resolved) })
+		t.Cleanup(func() { _ = os.Chmod(resolved, 0700); _ = os.RemoveAll(resolved) })
 		return resolved
 	}
 	t.Skipf("could-not-check: no owned socket-safe directory for %s (%s)", suffix, strings.Join(tried, "; "))
