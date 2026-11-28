@@ -69,6 +69,7 @@ parked on its own terms. A recorded dependency or passed unit test cannot lift t
 | 08 | [Build the deskd binary and image from public source through the Makefile](brief-08-build-the-deskd-binary-and-image-from-public-source-through-the-makefile.md) | 0 | M | verified | 2026-11-06 assay-verifier-app[bot] @ 7ded00183785 (forge-identity) | — |
 | 09 | [Publish the deskd image through the assay release](brief-09-publish-the-deskd-image-through-the-assay-release.md) | 1 | M | implemented | — | — |
 | 10 | [Serve deskd roadmap and portfolio reads from the board library](brief-10-serve-deskd-roadmap-and-portfolio-reads-from-the-board-library.md) | 4 | M | todo | — | — |
+| 11 | [Qualify the Kubernetes worker-desk mirror caller](brief-11-qualify-the-kubernetes-worker-desk-mirror-caller.md) | 4 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Bounded refactor map
