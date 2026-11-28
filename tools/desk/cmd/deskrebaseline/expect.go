@@ -39,10 +39,15 @@ type expectSpec struct {
 	wantLine string
 	minCount int
 	minSet   bool
+	// claims / claimsUnreadable: the output-containment clauses (expectcontains.go, #7389).
+	claims           []outputClaim
+	claimsUnreadable bool
 }
 
 // decidable reports whether the Expect names a constraint the judge can check (statusgen's
-// decidable), and does not leave the exit open as "non-zero".
+// decidable), and does not leave the exit open as "non-zero". A containment clause does not
+// make a row decidable here: it only adds a way to fail, so #7389 turns no undecided probe
+// into a pass, and a re-baseline never rests on a reading this change introduced.
 func (e expectSpec) decidable() bool {
 	return !e.invalid && !e.nonZero && (e.exitFrom || e.wantLine != "" || e.minSet)
 }
@@ -79,6 +84,8 @@ func parseExpect(cell string) expectSpec {
 		spec.minCount, spec.minSet = n, true
 		spec.invalid = spec.invalid || err != nil
 	}
+	// Containment clauses only add constraints (statusgen parseExpect, #7389).
+	spec.claims, spec.claimsUnreadable = parseOutputClaims(cell)
 	return spec
 }
 
@@ -87,6 +94,14 @@ func parseExpect(cell string) expectSpec {
 func (e expectSpec) judge(ran bool, rc int, out string) judgement {
 	if !ran {
 		return judgeCouldNotRun
+	}
+	for _, c := range e.claims {
+		if c.absent && strings.Contains(out, c.literal) {
+			return judgeFail
+		}
+		if !c.absent && !outputHasClaim([]byte(out), c.literal) {
+			return judgeFail
+		}
 	}
 	if !e.decidable() {
 		return judgeUndecided
@@ -105,6 +120,9 @@ func (e expectSpec) judge(ran bool, rc int, out string) judgement {
 		if n < e.minCount {
 			return judgeFail
 		}
+	}
+	if e.claimsUnreadable {
+		return judgeUndecided
 	}
 	return judgePass
 }

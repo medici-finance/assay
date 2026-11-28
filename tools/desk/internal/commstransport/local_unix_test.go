@@ -8,21 +8,16 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/socktest"
 )
 
 // privateDir returns a short owner-only directory (socket paths are capped near
 // 104 bytes on macOS, which t.TempDir names can exceed).
+// The length check uses context.sock, the longest name this package binds.
 func privateDir(t *testing.T) string {
 	t.Helper()
-	dir, err := os.MkdirTemp("", "ct-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.Chmod(dir, 0700); os.RemoveAll(dir) })
-	if err := os.Chmod(dir, 0700); err != nil {
-		t.Fatal(err)
-	}
-	return dir
+	return socktest.Dir(t, "ct-", "context.sock")
 }
 
 func TestListenRefusesSharedParent(t *testing.T) {

@@ -438,7 +438,9 @@ func TestScrubbedRowNeverGreen(t *testing.T) {
 // another capitalised name the allow-list drops that the row only reads. The
 // delivery coordinates, a name the run set after the scrub, the pass list, the
 // named refusals that were dropped before the allow-list, a name the row also
-// assigns or names bare, and a name read without that syntax do not count.
+// assigns or names bare, a name the row binds itself (a non-empty default or
+// its own assignment before the read, #7134), and a name read without that
+// syntax do not count.
 func TestAdmittedRowScrubbedRefs(t *testing.T) {
 	cred := runCredentialEnv + "=/run/cred"
 	cases := []struct {
@@ -448,8 +450,10 @@ func TestAdmittedRowScrubbedRefs(t *testing.T) {
 	}{
 		{`test -n "$ASSAY_TEST_POSTGRES_DSN" && go test ./x`, nil, []string{"ASSAY_TEST_POSTGRES_DSN"}},
 		{`[ -n "${ASSAY_TEST_PERF_DSN}" ]`, nil, []string{"ASSAY_TEST_PERF_DSN"}},
+		// A non-empty default is the row's own value (#7134); a length or an
+		// indirection still reads the inherited name.
 		{`x=${ASSAY_CELL_API_CONTEXT:-default}; y=${#ASSAY_COHORT_REPLAY}; z=${!ASSAY_CELL}`, nil,
-			[]string{"ASSAY_CELL_API_CONTEXT", "ASSAY_COHORT_REPLAY", "ASSAY_CELL"}},
+			[]string{"ASSAY_COHORT_REPLAY", "ASSAY_CELL"}},
 		{`echo '$ASSAY_OPERATOR_TEST_IMAGE' # $ASSAY_OPERATOR_TEST_IMAGE`, nil, []string{"ASSAY_OPERATOR_TEST_IMAGE"}},
 		{`echo $assay_lower_copy`, nil, []string{"assay_lower_copy"}},
 		{`if ($env:Assay_Test_Postgres_Dsn) { exit 0 }`, nil, []string{"Assay_Test_Postgres_Dsn"}},

@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -51,6 +52,7 @@ type Server struct {
 	LastResize                 kc.Size
 	Fault                      string
 	Calls                      int
+	connections                int
 	Files                      map[string]string
 	AfterStart                 func(string)
 
@@ -80,7 +82,15 @@ func New(t testing.TB) *Server {
 		s.Roles[role] = &RoleState{UID: "pod-" + role, ContainerID: "containerd://" + role, Ready: true}
 	}
 	s.Profile = p
-	s.HTTP = httptest.NewTLSServer(http.HandlerFunc(s.serve))
+	s.HTTP = httptest.NewUnstartedServer(http.HandlerFunc(s.serve))
+	s.HTTP.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateNew {
+			s.mu.Lock()
+			s.connections++
+			s.mu.Unlock()
+		}
+	}
+	s.HTTP.StartTLS()
 	t.Cleanup(s.HTTP.Close)
 	p.Endpoint = s.HTTP.URL
 	ca := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.HTTP.Certificate().Raw})
@@ -339,3 +349,10 @@ func (s *Server) attach(w http.ResponseWriter, req *http.Request, role string, a
 func (s *Server) Input(role string) string { s.mu.Lock(); defer s.mu.Unlock(); return s.Files[role] }
 func (s *Server) Resize() kc.Size          { s.mu.Lock(); defer s.mu.Unlock(); return s.LastResize }
 func (s *Server) ContactCount() int        { s.mu.Lock(); defer s.mu.Unlock(); return s.Calls }
+
+// ConnectionCount includes accepted connections that never produced an HTTP request.
+func (s *Server) ConnectionCount() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.connections
+}

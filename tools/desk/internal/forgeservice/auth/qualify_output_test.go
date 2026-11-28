@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/medici-finance/assay/tools/desk/internal/socktest"
 )
 
 // fakeGit fails with a known exit code, 250 numbered stderr lines and one
@@ -41,11 +43,7 @@ func TestQualifyFixtureShowsOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	// A short directory keeps the Unix socket path under the platform limit.
-	dir, err := os.MkdirTemp("", "qf")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { os.RemoveAll(dir) })
+	dir := socktest.Dir(t, "qf", "s")
 	src, bin := filepath.Join(dir, "src"), filepath.Join(dir, "bin")
 	for _, d := range []string{src, bin} {
 		if err := os.Mkdir(d, 0o700); err != nil {

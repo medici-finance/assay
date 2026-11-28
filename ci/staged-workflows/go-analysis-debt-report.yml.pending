@@ -1,0 +1,1 @@
+New weekly report-only workflow (assay#7421): lists every Go analysis finding on main via the go-analysis action in report mode; never gates and is not a required check. Pending maintainer promotion, not active here.
