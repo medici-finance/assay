@@ -73,19 +73,33 @@ func (b admittedRowBind) covers(at, quote int) bool {
 //   - inside a single-quoted script of the one command a leading NAME=value
 //     cmd or env NAME=value cmd assigns it for.
 //
-// Every other read is not: a bare read before any assignment, an empty default
-// (${NAME:-}, whose row still needs the input), ${NAME:?}, ${NAME:+x}, a
-// length or indirection, any $env:NAME or %NAME% read, a read in a prefixed
-// command's own arguments, and a read after an assignment made inside
-// parentheses, a quoted string, a pipeline, after ||, or in the background,
-// whether written NAME=value or ${NAME:=x}, or after then, do or else on the
-// same line.
+// Every other read is not. An $env:NAME or %NAME% read never is. Neither is a
+// $NAME or ${NAME form that is not a non-empty default and that none of the
+// bindings above covers: a bare read, an empty default (${NAME:-}, whose row
+// still needs the input), ${NAME:?}, ${NAME:+x}, a length or indirection, or a
+// read in a prefixed command's own arguments.
 //
-// It reads text order, not control flow: an assignment the row may skip at run
-// time (false && NAME=x; echo $NAME, or a line of an if body) still covers the
-// later read, and a here-document's lines are read as commands. The row then
-// runs with the name unset, as a printenv NAME row already does; it never sees
-// an inherited value, because the scrub has removed it.
+// An assignment made inside ( ), $( ) or a backquote pair, in a pipeline,
+// after || or in the background binds nothing, written NAME=value or
+// ${NAME:=x}. Quotes and then, do and else differ between the two. NAME=value
+// binds nothing inside a quoted string, or after then, do or else on the same
+// line. A double-quoted "${NAME:=x}" in the row's own shell does bind, one
+// inside a single-quoted string binds only for reads in that same string, and
+// then : "${NAME:=x}" binds.
+//
+// It reads the text, not the shell's parse or its control flow. An assignment
+// the row may skip at run time (false && NAME=x; echo $NAME, or a line of an
+// if body) still covers the later read. It also finds the contexts above only
+// in their plain form, so it can take an assignment the shell does not keep as
+// binding, for example: one after a ) inside ( ) or $( ) that belongs to a
+// case pattern or a comment and so ends the span early; one inside a $( ) in a
+// double-quoted string that holds double quotes of its own; one in a { } group
+// or a loop that is piped or sent to the background as a whole; one in a
+// pipeline continued on the next line, or in an && list sent to the
+// background; a ${NAME:=x} written in a comment; and a here-document's lines,
+// which are read as commands. The row then runs with the name unset, as a
+// printenv NAME row already does; it never sees an inherited value, because
+// the scrub has removed it.
 func admittedRowSelfBound(command, name string) bool {
 	binds, quotes := admittedRowBindings(command)
 	quoteAt := func(at int) int {
