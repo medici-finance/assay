@@ -221,7 +221,7 @@ credited.
 - **Corroborate closure authority on the host.** For GitHub landings, pass `--acceptance-forge` explicitly to
   `deskevidence` for Evidence, row-flip and outcome landings and to `deskevidence flip`.
   A verified outcome lints the entire landed tree, so a protected transition on another
-  brief also needs this permission. The flag permits fresh read-only approval reads;
+  brief may need this permission. The flag permits fresh read-only approval reads;
   it grants no approval, row credit or lifecycle advancement. Keep authored Verify commands
   and network-off execution unchanged. Submit the verified outcome to `deskevidence`:
   lint PROBLEMs on other briefs are notices there. A PROBLEM on a brief the record closes

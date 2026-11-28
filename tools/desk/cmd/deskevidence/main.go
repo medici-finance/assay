@@ -59,7 +59,8 @@ acceptance transitions and recorded human rulings by child statusgen audits. It 
 approval verdict. Without it amended acceptance remains held; ordinary records
 retain their existing behavior. Each approval target is printed before contact.
 The closure lint covers the whole landed tree, including other briefs' transitions.
-Unknown repository authority and unavailable or refuted approvals still refuse;
+For the closure being recorded, unknown repository authority and unavailable or
+refuted approvals still refuse;
 this flag neither isolates Git configuration nor falls back to a human login.
 Opted-in audits receive only this invocation's minted GitHub verifier credential. Without
 opt-in, audits receive a noncredential refusal marker, closing stored-login fallback;
