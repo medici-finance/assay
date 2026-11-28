@@ -140,8 +140,9 @@ func (h *Harness) selectNarrows(root string, m Mutation) bool {
 // goTestCmd is a spec `test` command that selection can model: `go test` with
 // a known set of flags and package patterns, nothing else.
 type goTestCmd struct {
-	flags []string // every flag token except -run, verbatim and in order
+	flags []string // every flag token except -run, in order; -skip as -skip=<re>
 	run   string   // the -run filter ("" = every test)
+	skip  string   // the -skip filter ("" = none)
 	pkgs  []string // package patterns
 }
 
@@ -163,7 +164,7 @@ func parseGoTest(cmd string) (goTestCmd, error) {
 	if len(toks) < 3 || toks[0] != "go" || toks[1] != "test" {
 		return g, fmt.Errorf("-select needs a plain `go test [flags] <packages>` command, got %q", cmd)
 	}
-	seenRun := false
+	seen := map[string]bool{}
 	for i := 2; i < len(toks); i++ {
 		t := toks[i]
 		if !strings.HasPrefix(t, "-") {
@@ -172,25 +173,35 @@ func parseGoTest(cmd string) (goTestCmd, error) {
 		}
 		name, val, hasVal := strings.Cut(t, "=")
 		name = "-" + strings.TrimLeft(name, "-")
-		if name == "-run" {
-			if seenRun {
-				return g, fmt.Errorf("-select: test command passes -run twice")
+		if name == "-run" || name == "-skip" {
+			// -run and -skip are modelled alike: once each, a top-level
+			// pattern only. A narrowed command anchors -run to names listed
+			// under the spec's own -run, drops every name the spec's -skip
+			// matches, and carries that -skip unchanged, so it still runs a
+			// subset of what the full command runs.
+			if seen[name] {
+				return g, fmt.Errorf("-select: test command passes %s twice", name)
 			}
-			seenRun = true
+			seen[name] = true
 			if !hasVal {
 				if i+1 >= len(toks) {
-					return g, fmt.Errorf("-select: -run has no value")
+					return g, fmt.Errorf("-select: %s has no value", name)
 				}
 				i++
 				val = toks[i]
 			}
 			if strings.Contains(val, "/") {
-				return g, fmt.Errorf("-select cannot model a -run filter with a subtest part (%q)", val)
+				return g, fmt.Errorf("-select cannot model a %s filter with a subtest part (%q)", name, val)
 			}
 			if _, err := regexp.Compile(val); err != nil {
-				return g, fmt.Errorf("-select: -run %q: %v", val, err)
+				return g, fmt.Errorf("-select: %s %q: %v", name, val, err)
 			}
-			g.run = val
+			if name == "-run" {
+				g.run = val
+				continue
+			}
+			g.skip = val
+			g.flags = append(g.flags, "-skip="+val)
 			continue
 		}
 		if !selectableFlags[name] {
@@ -369,15 +380,33 @@ func (cs *coverSelector) Prepare(root string) error {
 		}
 		root = wd
 	}
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
 	// The mutated files' packages are what the coverage build instruments.
 	// A file whose directory is not a buildable package is left out, and its
 	// mutations run the full command.
+	//
+	// Every directory is compared in ONE spelling, canonicalDir's: the file's
+	// directory and the package directory `go list` reports are otherwise
+	// spelled independently (a relative root, a root or file reached through
+	// a symlink such as macOS's TMPDIR), and a mismatch instruments nothing.
+	// A directory under the root is handed to `go list` relative to it, so the
+	// go command resolves it against the module it already sees there.
+	canonRoot := canonicalDir(root)
+	fileDir := map[string]string{} // spec-relative file -> canonical dir
 	var dirs []string
 	dirSeen := map[string]bool{}
 	for _, f := range cs.files {
-		d := filepath.Dir(f)
-		if !filepath.IsAbs(d) {
-			d = "./" + filepath.ToSlash(d)
+		abs := f
+		if !filepath.IsAbs(abs) {
+			abs = filepath.Join(root, f)
+		}
+		cd := canonicalDir(filepath.Dir(abs))
+		fileDir[f] = cd
+		d := cd
+		if rel, err := filepath.Rel(canonRoot, cd); err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			d = "./" + filepath.ToSlash(rel)
 		}
 		if !dirSeen[d] {
 			dirSeen[d] = true
@@ -388,22 +417,18 @@ func (cs *coverSelector) Prepare(root string) error {
 	if err != nil {
 		return err
 	}
-	byDir := map[string]string{} // abs dir -> import path
+	byDir := map[string]string{} // canonical dir -> import path
 	var coverpkg []string
 	for _, p := range mpkgs {
 		if p.Error == nil && p.ImportPath != "" {
-			byDir[p.Dir] = p.ImportPath
+			byDir[canonicalDir(p.Dir)] = p.ImportPath
 			coverpkg = append(coverpkg, p.ImportPath)
 		}
 	}
 	// profile key ("importpath/base.go") -> spec-relative file
 	keyToFile := map[string]string{}
 	for _, f := range cs.files {
-		abs := f
-		if !filepath.IsAbs(abs) {
-			abs = filepath.Join(root, f)
-		}
-		if ip, ok := byDir[filepath.Dir(abs)]; ok {
+		if ip, ok := byDir[fileDir[f]]; ok {
 			keyToFile[ip+"/"+filepath.Base(f)] = f
 		}
 	}
@@ -426,6 +451,12 @@ func (cs *coverSelector) Prepare(root string) error {
 	listFilter := cs.cmd.run
 	if listFilter == "" {
 		listFilter = "."
+	}
+	var skip *regexp.Regexp
+	if cs.cmd.skip != "" {
+		if skip, err = regexp.Compile(cs.cmd.skip); err != nil {
+			return fmt.Errorf("-select: -skip %q: %v", cs.cmd.skip, err)
+		}
 	}
 	bins := map[int]string{}
 	for _, p := range tpkgs {
@@ -454,6 +485,12 @@ func (cs *coverSelector) Prepare(root string) error {
 		tp := testPkg{importPath: p.ImportPath, dir: p.Dir}
 		for _, line := range strings.Split(string(out), "\n") {
 			line = strings.TrimSpace(line)
+			// -test.list applies -run but not -skip. A name the spec's -skip
+			// matches is a test the full command never runs, so it is never
+			// attributed, selected or run alone here either.
+			if skip != nil && skip.MatchString(line) {
+				continue
+			}
 			if testNameRe.MatchString(line) {
 				tp.tests = append(tp.tests, len(cs.tests))
 				cs.tests = append(cs.tests, testRef{pkg: pi, name: line})
@@ -683,6 +720,19 @@ func (cs *coverSelector) resolveAlways() error {
 		}
 	}
 	return nil
+}
+
+// canonicalDir is dir made absolute with every symlink resolved, or as close
+// to that as the filesystem allows (a directory that cannot be resolved keeps
+// its absolute, cleaned spelling). It is the one spelling Prepare compares.
+func canonicalDir(dir string) string {
+	if abs, err := filepath.Abs(dir); err == nil {
+		dir = abs
+	}
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		return real
+	}
+	return filepath.Clean(dir)
 }
 
 func tail(b []byte, n int) string {

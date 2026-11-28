@@ -663,3 +663,142 @@ func TestH(t *testing.T) {
 		t.Fatalf("the documented residual no longer reproduces (selected %v): selection now closes it, so update the package comment, -select doc, changelog and PR body\n%s", verdicts(sel), log.String())
 	}
 }
+
+// A spec's -skip (the prune manifest keeps its performance tests out of every
+// mutant run with one) is carried with the same subset semantics as -run: a
+// skipped test is never listed, attributed, run alone, proven or selected, and
+// every narrowed command still carries the spec's -skip. The skipped test here
+// executes every mutated function and fails whenever it runs, so any leak of
+// it into a selected run breaks the run or changes the report. Flags selection
+// does not model stay loud refusals.
+//
+// regression: F-select-skip
+func TestSelectCarriesSkip(t *testing.T) {
+	needGo(t)
+	root := t.TempDir()
+	files := map[string]string{}
+	for k, v := range selModule {
+		files[k] = v
+	}
+	files["p/perf_test.go"] = `package p
+
+import "testing"
+
+func TestPerfScales(t *testing.T) {
+	A(2)
+	B(3)
+	t.Fatal("a skipped performance test ran")
+}
+`
+	writeFiles(t, root, files)
+	s := selSpec()
+	s.Test = "go test ./p/ -count=1 -skip '^TestPerfScales$'"
+	s.Mutations = s.Mutations[:2]
+	cmd, err := parseGoTest(s.Test)
+	if err != nil {
+		t.Fatalf("a -skip spec must be selectable: %v", err)
+	}
+	full := selHarness(t, root, s, nil)
+	if full.Broken {
+		t.Fatalf("full sweep broken: %s", full.BrokenReason)
+	}
+	var mu sync.Mutex
+	var runs [][]string
+	record := func(r string, args []string) bool {
+		mu.Lock()
+		runs = append(runs, append([]string(nil), args...))
+		mu.Unlock()
+		return runGo(r, args)
+	}
+	var log bytes.Buffer
+	sel := selHarness(t, root, s, newCoverSelector(s, cmd, 2, os.Environ(), &log, record))
+	if sel.Broken {
+		t.Fatalf("selected sweep broken: %s\n%s", sel.BrokenReason, log.String())
+	}
+	if got, want := sel.Summary(), full.Summary(); got != want {
+		t.Fatalf("-skip changed the report:\nfull:\n%s\nselected:\n%s\nlog:\n%s", want, got, log.String())
+	}
+	if !strings.Contains(log.String(), "coverage pass recorded 4 tests") {
+		t.Fatalf("the skipped test must not be listed or run alone:\n%s", log.String())
+	}
+	if len(runs) == 0 {
+		t.Fatalf("no narrowed run was made:\n%s", log.String())
+	}
+	for _, args := range runs {
+		joined := strings.Join(args, " ")
+		if !strings.Contains(joined, "-skip=^TestPerfScales$") {
+			t.Fatalf("a narrowed run dropped the spec's -skip: %s", joined)
+		}
+		for i, a := range args {
+			if a == "-run" && strings.Contains(args[i+1], "TestPerfScales") {
+				t.Fatalf("a narrowed run selected the skipped test: %s", joined)
+			}
+		}
+	}
+
+	for _, bad := range []string{
+		"go test -skip '^A$' -skip '^B$' ./p/",
+		"go test -skip 'TestA/sub' ./p/",
+		"go test -skip '(' ./p/",
+		"go test ./p/ -skip",
+		"go test -shuffle=on ./p/",
+		"go test -parallel 4 ./p/",
+	} {
+		if _, err := parseGoTest(bad); err == nil {
+			t.Errorf("parseGoTest(%q) accepted a command selection cannot model", bad)
+		}
+	}
+}
+
+// The coverage pass attributes a profile to a mutated file by matching the
+// file's directory against the package directory `go list` reports. The two
+// are spelled independently: the root may be relative, or reached through a
+// symlink (macOS's TMPDIR and /tmp both are), and a mutation's file may be
+// absolute through a different alias than the root. A spelling mismatch
+// instrumented nothing, and every mutant fell back to the full suite. Each
+// spelling must instrument the mutated file.
+//
+// regression: F-select-path-spelling
+func TestCoverSelectorRootSpellings(t *testing.T) {
+	needGo(t)
+	phys, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod := filepath.Join(phys, "mod")
+	writeFiles(t, mod, selModule)
+	link := filepath.Join(phys, "link")
+	if err := os.Symlink(mod, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	cases := []struct {
+		name, root, file string
+		chdir            string
+	}{
+		{name: "relative-root", root: "mod", file: "p/p.go", chdir: phys},
+		{name: "symlinked-root", root: link, file: "p/p.go"},
+		{name: "abs-file-via-link", root: mod, file: filepath.Join(link, "p", "p.go")},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.chdir != "" {
+				t.Chdir(tc.chdir)
+			}
+			s := selSpec()
+			s.Control.File = tc.file
+			s.Mutations = []Mutation{{Name: "A", File: tc.file, Old: "x > 1", New: "x > 0"}}
+			cmd, err := parseGoTest(s.Test)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var log bytes.Buffer
+			cs := newCoverSelector(s, cmd, 2, os.Environ(), &log, runGo)
+			if err := cs.Prepare(tc.root); err != nil {
+				t.Fatalf("Prepare: %v\n%s", err, log.String())
+			}
+			if !strings.Contains(log.String(), "1 of 1 mutated file(s) instrumented") {
+				t.Fatalf("the mutated file was not instrumented under root %q, file %q:\n%s", tc.root, tc.file, log.String())
+			}
+		})
+	}
+}
