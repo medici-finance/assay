@@ -228,7 +228,7 @@ class Harness(unittest.TestCase):
 
     # regression: F-go-analysis-offline-sumdb
     def test_sumdb_cache_miss(self):
-        prepared = Path(os.environ.get('GO_ANALYSIS_TEST_CACHE', str(OWNER / '.go-analysis')))
+        prepared = Path(os.environ.get('GO_ANALYSIS_TEST_CACHE', str(r.cache_path(OWNER.resolve()))))
         available = prepared / 'modules/cache/download/golang.org/x/mod/@v'
         archive = sorted(available.glob('*.zip'))[0]
         version = archive.name[:-4]
@@ -268,6 +268,58 @@ class Harness(unittest.TestCase):
             server.shutdown()
             server.server_close()
             thread.join()
+
+    # regression: #7658
+    def test_cache_outside_tree(self):
+        with tempfile.TemporaryDirectory() as outside:
+            home = Path(outside).resolve()
+            with mock.patch.dict(os.environ, {'XDG_CACHE_HOME': str(home)}):
+                default = r.cache_path(self.root)
+            self.assertFalse(default.is_relative_to(self.root))
+            self.assertTrue(default.is_relative_to(home))
+            with mock.patch.dict(os.environ, {'XDG_CACHE_HOME': ''}), mock.patch.object(Path, 'home', return_value=home):
+                self.assertTrue(r.cache_path(self.root).is_relative_to(home))
+            self.assertNotEqual(default, r.cache_path(self.root / 'nested'))
+            self.assertEqual(r.cache_path(self.root, home / 'c'), home / 'c')
+            # A link out of the checkout resolves to the outside, a link into it to the inside.
+            (home / 'into').symlink_to(self.root, target_is_directory=True)
+            for inside in [self.root / '.go-analysis', self.root, home / 'into' / 'cache']:
+                with self.assertRaisesRegex(ValueError, 'inside the analyzed checkout'):
+                    r.cache_path(self.root, inside)
+            (self.root / 'out').symlink_to(home, target_is_directory=True)
+            self.assertEqual(r.cache_path(self.root, self.root / 'out' / 'c'), home / 'c')
+            with mock.patch.dict(os.environ, {'XDG_CACHE_HOME': str(self.root)}), mock.patch.object(r.platform, 'system', return_value='Linux'):
+                with self.assertRaisesRegex(ValueError, 'inside the analyzed checkout'):
+                    r.cache_path(self.root)
+
+    # regression: #7658
+    def test_acquire_tree_clean(self):
+        module = self.module('mod')
+        (module / 'go.sum').write_text('example.test/a v1.0.0 h1:x=\n')
+        subprocess.run(['git', '-C', str(self.root), 'add', '--', 'mod/go.sum'], check=True)
+        subprocess.run(['git', '-C', str(self.root), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid',
+                        'commit', '-qm', 'fixture'], check=True)
+        tracked = (module / 'go.sum').read_bytes()
+        bin_dir = self.root.parent / (self.root.name + '-go') / 'bin'
+        bin_dir.mkdir(parents=True)
+        # A stand-in for `go mod download`: it records a checksum line in the go.sum that sits
+        # beside the go.mod it was handed, or beside the module's own go.mod without -modfile.
+        # With PLANT set it also writes into the module directory, as a future command might.
+        (bin_dir / 'go').write_text(
+            '#!/bin/sh\nsum=go.sum\nfor a in "$@"; do case "$a" in -modfile=*) m="${a#-modfile=}"; sum="${m%.mod}.sum";; esac; done\n'
+            'echo "example.test/b v1.0.0/go.mod h1:y=" >> "$sum"\n'
+            '[ -n "$PLANT" ] && echo planted >> go.sum\nexit 0\n')
+        (bin_dir / 'go').chmod(0o755)
+        with tempfile.TemporaryDirectory() as outside:
+            cache = Path(outside).resolve()
+            r.prepare_modules(self.root, cache, bin_dir.parent, dict(os.environ), ['mod'])
+            self.assertEqual((module / 'go.sum').read_bytes(), tracked)
+            status = subprocess.check_output(['git', '-C', str(self.root), 'status', '--porcelain', '--ignored'])
+            self.assertEqual(status, b'')
+            self.assertIn(b'example.test/b', (cache / 'modfiles/0/go.sum').read_bytes())
+            with self.assertRaisesRegex(ValueError, 'changed the analyzed checkout'):
+                r.prepare_modules(self.root, cache, bin_dir.parent, dict(os.environ, PLANT='1'), ['mod'])
+        shutil.rmtree(bin_dir.parent)
 
     # regression: F-go-analysis-propagation
     def test_scan_failures(self):
@@ -345,7 +397,7 @@ class Harness(unittest.TestCase):
 
     # regression: F-go-analysis-controls
     def test_real_analyzers(self):
-        cache = Path(os.getenv('GO_ANALYSIS_TEST_CACHE', str(OWNER / '.go-analysis'))).resolve()
+        cache = Path(os.getenv('GO_ANALYSIS_TEST_CACHE', str(r.cache_path(OWNER.resolve())))).resolve()
         binary, env, _ = r.verify_tool(cache, OWNER)
         target = self.module('real')
         fixture = OWNER / 'scripts/tests/testdata/go-analysis'

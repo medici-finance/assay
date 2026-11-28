@@ -26,6 +26,10 @@ cases = [
     ('related-rules', "for i in kept if i.get('FromLinter') == 'staticcheck'}", 'for i in kept}', 'Harness.test_related_notes'),
     ('related-anchor', "RELATED = re.compile(r'(", "RELATED = re.compile(r'.*?(", 'Harness.test_related_notes'),
     ('related', "if any(RELATED.match(n['Text']).group(1) not in rules for n in notes):", 'if False:', 'Harness.test_related_notes'),
+    ('cache-default', "requested = Path(base) / 'assay' / 'go-analysis' / digest(str(root).encode())[:16]", "requested = root / '.go-analysis'", 'Harness.test_cache_outside_tree'),
+    ('cache-inside', 'if cache.is_relative_to(root.resolve()):', 'if False:', 'Harness.test_cache_outside_tree'),
+    ('modfile', "'mod', 'download', '-modfile=' + str(copy / 'go.mod')]", "'mod', 'download']", 'Harness.test_acquire_tree_clean'),
+    ('tree-drift', 'if tree_state(root, mods) != before:', 'if False:', 'Harness.test_acquire_tree_clean'),
     ('exit', "if proc.returncode not in [0, 1] or (proc.returncode == 0 and issues) or (proc.returncode == 1 and not issues):", 'if False:', 'Harness.test_scan_failures'),
 ]
 with tempfile.TemporaryDirectory() as tmp:

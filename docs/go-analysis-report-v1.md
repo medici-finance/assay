@@ -1,7 +1,8 @@
 # Go analysis report v1
 
 The lint runner writes one JSON object to `report.json` in its selected cache
-(default `.go-analysis/`). This is the common input to the CI gate and the
+(by default a per-checkout directory under the user cache, never inside the
+checkout; see [the operational guide](go-analysis.md#run-locally)). This is the common input to the CI gate and the
 qualgen integration owned by desk-tools/35. It reports upstream analyzer output;
 it does not infer confirmed defects or a composite quality score.
 

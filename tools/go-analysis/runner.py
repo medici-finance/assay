@@ -97,6 +97,52 @@ def environment(cache, toolchain, network=False):
     return env
 
 
+def cache_path(root, requested=None):
+    """The analysis cache: a per-checkout directory under the user cache, never inside the checkout.
+
+    The cache holds toolchains, upstream source and a module cache. Anything that walks the
+    checkout's files would read it there, so an in-tree cache is refused, explicit or not.
+    """
+    if requested is None:
+        base = os.environ.get('XDG_CACHE_HOME', '')
+        if not base or not Path(base).is_absolute():
+            base = Path.home() / ('Library/Caches' if platform.system() == 'Darwin' else '.cache')
+        requested = Path(base) / 'assay' / 'go-analysis' / digest(str(root).encode())[:16]
+    cache = Path(requested).resolve()
+    if cache.is_relative_to(root.resolve()):
+        raise ValueError('analysis cache is inside the analyzed checkout; use --cache with a path outside it')
+    return cache
+
+
+def tree_state(root, mods):
+    """What acquisition must leave unchanged: the work-tree status and every module manifest."""
+    status = git(root, 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignored=matching')
+    manifests = [(m, f, digest((root / m / f).read_bytes()) if (root / m / f).is_file() else None)
+                 for m in mods for f in ['go.mod', 'go.sum']]
+    return status, manifests
+
+
+def prepare_modules(root, cache, go, env, mods):
+    """Fill the module cache for every module without writing to the checkout.
+
+    `go mod download` records missing checksums in go.sum, so it runs against a copy of each
+    module's go.mod/go.sum held in the cache. A tree change afterwards refuses acquisition.
+    """
+    before = tree_state(root, mods)
+    for index, module in enumerate(mods):
+        print('prepare module ' + module, flush=True)
+        copy = cache / 'modfiles' / str(index)
+        copy.mkdir(parents=True, exist_ok=True)
+        for filename in ['go.mod', 'go.sum']:
+            (copy / filename).unlink(missing_ok=True)
+            if (root / module / filename).is_file():
+                (copy / filename).write_bytes((root / module / filename).read_bytes())
+        subprocess.run([str(go / 'bin/go'), 'mod', 'download', '-modfile=' + str(copy / 'go.mod')],
+                       cwd=root / module, env=env, check=True)
+    if tree_state(root, mods) != before:
+        raise ValueError('acquisition changed the analyzed checkout')
+
+
 def acquire(root, cache, owner):
     p = pins(owner)
     system = {'Darwin': 'darwin', 'Linux': 'linux'}.get(platform.system())
@@ -144,9 +190,7 @@ def acquire(root, cache, owner):
         if digest((source / filename).read_bytes()) != p[key]:
             raise ValueError('source build changed dependency graph')
     env = environment(cache, analysis_go, network=True)
-    for module in modules(root):
-        print('prepare module ' + module, flush=True)
-        subprocess.run([str(analysis_go / 'bin/go'), 'mod', 'download'], cwd=root / module, env=env, check=True)
+    prepare_modules(root, cache, analysis_go, env, modules(root))
     receipt = {'pins_sha256': digest((owner / POLICY[1]).read_bytes()),
                'binary_sha256': digest(binary.read_bytes()), 'build_go': p['BUILD_GO'],
                'analysis_go': p['ANALYSIS_GO'], 'version': p['LINT_VERSION']}
@@ -402,7 +446,7 @@ def lint(root, cache, owner, base, trusted_root=None):
     report['totals'] = {d: sum(f.get('disposition') == d for f in report['findings']) for d in ['existing', 'new', 'worsened', 'resolved']}
     target = cache / 'report.json'
     target.write_text(json.dumps(report, indent=2, sort_keys=True) + '\n')
-    print('report ' + str(target.relative_to(root)) if target.is_relative_to(root) else 'report written')
+    print('report ' + str(target))
     print(json.dumps({'state': report['state'], 'gate': report['gate'], 'totals': report['totals']}))
     return exit_code
 
@@ -417,8 +461,11 @@ def main():
     parser.add_argument('--cache', type=Path)
     args = parser.parse_args()
     root = Path(git(args.root, 'rev-parse', '--show-toplevel').decode().strip()).resolve()
-    cache = (args.cache or root / '.go-analysis').resolve()
-    cache.mkdir(exist_ok=True)
+    try:
+        cache = cache_path(root, args.cache)
+    except ValueError as exc:
+        parser.error(str(exc))
+    cache.mkdir(parents=True, exist_ok=True)
     if args.mode == 'acquire':
         if not args.allow_downloads:
             parser.error('acquire requires explicit --allow-downloads')

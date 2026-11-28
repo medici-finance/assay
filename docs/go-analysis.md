@@ -19,9 +19,14 @@ export GO_ANALYSIS_BASE
 bash scripts/go-analysis.sh lint
 ```
 
-Use `--root PATH` to analyze a different checkout and `--cache PATH` for a dedicated
-cache outside that checkout. Run the trusted harness with
-`GO_ANALYSIS_TEST_CACHE=PATH` pointing at that prepared cache. A CI cache must be a
+The cache defaults to a per-checkout directory under the user cache
+(`$XDG_CACHE_HOME`, else `~/Library/Caches` on Darwin and `~/.cache` elsewhere, then
+`assay/go-analysis/<checkout digest>`). It is never inside the checkout: the runner
+refuses a cache that resolves into the analyzed tree, because tests that walk the
+checkout's files would read the toolchains and module cache held there. Use
+`--root PATH` to analyze a different checkout and `--cache PATH` for another cache
+outside that checkout. The trusted harness reads the same default cache; set
+`GO_ANALYSIS_TEST_CACHE=PATH` when acquisition used `--cache`. A CI cache must be a
 fresh directory outside the candidate checkout, not candidate-controlled content.
 The [GitHub Action](../actions/go-analysis/README.md) owns consumer integration;
 the [human workflow runsheet](runsheets/go-analysis-ci-hunk.md) applies the local job.
@@ -34,7 +39,10 @@ a cache-owned file URL, so a checksum cache miss fails locally instead of Go
 falling back to a remote database. A local proxy-trap fixture proves zero attempted
 transport on that miss. Acquisition uses the normal authenticated sumdb.
 Acquisition prepares the module cache separately and does not
-run project tests or generators.
+run project tests or generators. It never writes to the checkout: `go mod download`
+records missing checksums in go.sum, so each module's download runs against a copy
+of its go.mod and go.sum held in the cache (`-modfile`). Acquisition fails if the
+work tree's status or any module's go.mod or go.sum changed while it ran.
 
 ## Pins and source-build qualification
 
@@ -150,9 +158,10 @@ gate result. Incomplete scans cannot resolve debt or report measured zero.
 Desk-tools/35 consumes this same artifact into qualgen; ingestion, vulnerability
 analysis and historical rendering are not implemented by this correctness change.
 
-The committed harness runs 16 tests and 19 guard mutations, with real upstream
+The committed harness runs 18 tests and 23 guard mutations, with real upstream
 analyzer red/green controls. It proves module discovery, source movement, baseline
 monotonicity, duplicate refusal, policy changes, checksum rejection and failure
-propagation in the first/middle/last scan. The action has its own separate wrapper
+propagation in the first/middle/last scan, and that acquisition leaves the
+checkout unchanged with its cache outside it. The action has its own separate wrapper
 controls. Implementation evidence belongs in the PR workpad; independent verifier
 Evidence and actual merged-main CI remain distinct from local results.
