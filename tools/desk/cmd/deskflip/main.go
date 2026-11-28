@@ -156,9 +156,15 @@ nothing is mutated:
                     explicit fail at head blocks the flip whether risk-classed or not.
   not-reverted      the post-flip check (below) has not already returned the PR to draft at
                     the CURRENT head: its revert comment carries a hidden marker naming the
-                    head, and a trusted comment carrying it for this head is could-not-check
-                    (exit 6), naming the comment. Flipping that head again would only be
-                    reverted again. A new head clears it. Read only for a draft PR.
+                    head and the cause it reverted for (mergeable, review, checks, rules,
+                    coverage, unreadable), and a trusted comment carrying it for this head is
+                    could-not-check (exit 6), naming the comment, while a fresh read of the
+                    merge requirements shows that cause still holds. Once the read shows it
+                    cleared, the revert no longer holds the head. A marker that records no
+                    cause (written by an earlier release) or an unreadable read clears only
+                    when the fresh read shows every requirement met. A failed read, an
+                    unrecognised cause, or 3 reverts at one head keep holding. A new head
+                    clears it. Read only for a draft PR.
   head-stable       the head AND the reviewer verdicts are re-read immediately before the
                     mutation. A moved head means the verified state is stale; an unchanged
                     head is not enough on its own, because a security verdict can be
@@ -173,7 +179,7 @@ to 30s: ready means mergeable per the forge. GitHub reports a draft as BLOCKED, 
 that still shows the PR as a draft is never a revert.
   DIRTY             (and NOT a draft) the forge disagrees: the PR goes back to draft, one
                     comment names the state and the head and carries the not-reverted
-                    marker, the queue label is not swapped, and the exit is 5. If the
+                    marker (cause mergeable), the queue label is not swapped, and the exit is 5. If the
                     return to draft fails, the exit is 6 and nothing is retried.
   BLOCKED           (and NOT a draft) GitHub computes BLOCKED for the reader, so it then
                     reads the requirements every reader sees alike: no merge conflict
@@ -181,8 +187,11 @@ that still shows the PR as a draft is never a revert.
                     head. Any one unmet, a read that fails, or a base-branch rule the
                     read sees but does not evaluate (conversation resolution, signed
                     commits, a merge queue ...) reverts exactly as DIRTY does, the comment
-                    naming each one. All met, with no such rule: the PR stays ready with
-                    a could-not-check comment and notice.
+                    naming each one and the marker recording its cause. A mergeable
+                    verdict of UNKNOWN (the forge recomputing after the base moved) is
+                    re-read within the same 30s bound; still UNKNOWN then, it is
+                    could-not-check and never a recorded cause. All met, with no such
+                    rule: the PR stays ready with a could-not-check comment and notice.
   CLEAN, HAS_HOOKS, UNSTABLE, BEHIND
                     (and NOT a draft) the PR stays ready.
   anything else     still unsettled at 30s (UNKNOWN, or still a draft), or unreadable: the

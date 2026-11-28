@@ -15,7 +15,7 @@ ruling: "https://github.com/medici-finance/assay/issues/3536#issuecomment-628204
 design: DR-perf-v3-local
 issues: []
 schema: brief-v3
-version: 3
+version: 4
 id: 3c6c55aa-ddde-467a-8567-763d7072541f
 authored: 2026-10-19 by performance attribution authoring
 sources:
@@ -124,10 +124,10 @@ cannot pass. Plant the stated defect through the production boundary, not a dupl
 
 | # | Class | Command | Expect |
 |---|---|---|---|
-| 1 | check:ci +flow +mutation | `(cd perfrec && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3ContextAndConsent$' ./... > "$out" && grep -F -- '--- PASS: TestPerfV3ContextAndConsent ' "$out")` | exit 0; named PASS. Direct library/writer bypass rejects workflow identifiers in tool profile; invalid/empty/overridden values and qualified same-number issues differ; no-profile v1/v2 fixtures remain unchanged. |
-| 2 | check:ci +flow +mutation | `(cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3RecordToReportFlow$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestPerfV3RecordToReportFlow ' "$out")` | exit 0; named PASS. Real writer to mixed-version deskperf report; duplicates/conflicts, missing IDs, measured-zero/missing points and inclusive times retain correct grouping and coverage. |
-| 3 | check:ci +flow +mutation | `(cd perfrec && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3IsolationAndOverhead$' ./... > "$out" && grep -F -- '--- PASS: TestPerfV3IsolationAndOverhead ' "$out")` | exit 0; named PASS. External module builds without desk/network/credential/DB imports; off creates nothing, bounded failed writes preserve results and matched on/off overhead is reported. |
-| 4 | check +dereference | `statusgen --root . --consumers --brief desktools-v2/63 --delivery 3937f39ae2d00d150633f2c22568a79d1f5efb5a --base b787e831d0be847f1ca81cc48496c8c0deb01fe5` | exit 0; changed consumer routing corroborates the actual diff; unavailable is not pass. |
+| 1 | check:ci +flow +mutation | `grep -qF -- 'func ResolveContext(' perfrec/context.go && (cd perfrec && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3ContextAndConsent$' ./... > "$out" && grep -F -- '--- PASS: TestPerfV3ContextAndConsent ' "$out")` | exit 0; named PASS. Direct library/writer bypass rejects workflow identifiers in tool profile; invalid/empty/overridden values and qualified same-number issues differ; no-profile v1/v2 fixtures remain unchanged. |
+| 2 | check:ci +flow +mutation | `grep -qF -- 'func ReduceV3(' perfrec/reduce.go && (cd tools/desk && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3RecordToReportFlow$' ./internal/deskkit/ > "$out" && grep -F -- '--- PASS: TestPerfV3RecordToReportFlow ' "$out")` | exit 0; named PASS. Real writer to mixed-version deskperf report; duplicates/conflicts, missing IDs, measured-zero/missing points and inclusive times retain correct grouping and coverage. |
+| 3 | check:ci +flow +mutation | `grep -qF -- 'func BeginSelected(' perfrec/v3.go && (cd perfrec && out=$(mktemp) && trap 'rm -f "$out"' 0 && GOWORK=off go test -count=1 -v -run '^TestPerfV3IsolationAndOverhead$' ./... > "$out" && grep -F -- '--- PASS: TestPerfV3IsolationAndOverhead ' "$out")` | exit 0; named PASS. External module builds without desk/network/credential/DB imports; off creates nothing, bounded failed writes preserve results and matched on/off overhead is reported. |
+| 4 | check +dereference | `grep -qF -- 'func ReduceV3(' perfrec/reduce.go && statusgen --root . --consumers --brief desktools-v2/63 --delivery 3937f39ae2d00d150633f2c22568a79d1f5efb5a --base b787e831d0be847f1ca81cc48496c8c0deb01fe5` | exit 0; changed consumer routing corroborates the actual diff; unavailable is not pass. |
 
 ## Pre-mortem and detection
 

@@ -2852,11 +2852,8 @@ func runVerifyrun(args []string, stdout, stderr *os.File) int {
 		// revoked and removed when the run returns.
 		if attestation != "" {
 			runCred = newRunReadCredential(attestation)
-			currentRunCredential.Store(runCred)
-			defer func() {
-				currentRunCredential.Store(nil)
-				runCred.close(stderr)
-			}()
+			release := runCred.bind(stderr)
+			defer release()
 		}
 		verifyrunAdmission.Store(admissionState(attestation))
 	}

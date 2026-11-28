@@ -640,10 +640,12 @@ func flip(o flipOpts) error {
 
 // checkNotReverted refuses a head the post-flip backstop already returned to draft
 // (medici-finance/assay#6253 review F2). The backstop's revert comment carries a hidden marker
-// naming the head (deskkit.ReadyBackstopRevertMarker); a trusted comment carrying it for the
-// CURRENT head means this flip would be reverted again, so the flip stops as could-not-check
-// and names the comment. A new head clears it. An unreadable comment thread is could-not-check
-// too: the condition cannot be shown to hold.
+// naming the head and the causes it reverted for (deskkit.ReadyBackstopRevertMarkerFor); a
+// trusted comment carrying it for the CURRENT head means this flip would be reverted again,
+// so the flip stops as could-not-check and names the comment, until a fresh read of the merge
+// requirements shows the recorded cause no longer holds (#7096, deskkit.NotRevertedHold). A
+// new head clears it too. An unreadable comment thread, or a fresh read that fails, is
+// could-not-check: the condition cannot be shown to hold.
 func checkNotReverted(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, head string) error {
 	comments, err := fg.ListCommentsTyped(fr, o.pr, deskkit.TargetChange)
 	if err != nil {
@@ -651,8 +653,14 @@ func checkNotReverted(o flipOpts, fg deskkit.Forge, fr deskkit.ForgeRepo, head s
 			"condition %s: PR #%d's comments could not be read, so whether the post-flip check already "+
 				"reverted this head is unknown: %s", condNotReverted, o.pr, firstLine(err.Error())), err)
 	}
-	if reason, held := deskkit.NotRevertedHold(comments, o.pr, head, short(head)); held {
+	reread := func() (*deskkit.MergeRequirements, error) { return fg.MergeRequirements(fr, o.pr) }
+	reason, held := deskkit.NotRevertedHold(comments, o.pr, head, short(head), reread)
+	if held {
 		return deskkit.Unverifiable(fmt.Sprintf("condition %s: %s", condNotReverted, reason), nil)
+	}
+	if reason != "" {
+		o.say("%s OK: %s", condNotReverted, reason)
+		return nil
 	}
 	o.say("%s OK: no post-flip revert recorded at %s", condNotReverted, short(head))
 	return nil

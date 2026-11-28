@@ -34,7 +34,32 @@ func New(lifetime context.Context, store mirror.Store, source mirror.Source, gat
 	return c, nil
 }
 
-func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, caller Caller) (result Result, err error) {
+func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, caller Caller) (Result, error) {
+	return c.read(ctx, a, q, caller, nil)
+}
+
+// Warm keeps an authorized server-owned waiter active for the bounded fill.
+// It returns outcome metadata only. Ordinary callers use Read's shorter wait.
+func (c *Coordinator) Warm(ctx context.Context, a mirror.Admission, q mirror.Query, caller Caller) (bool, error) {
+	if c == nil || absent(ctx) {
+		return false, ErrHeld
+	}
+	gate, ok := c.gate.(WarmGate)
+	if !ok || absent(gate) {
+		return false, ErrPolicy
+	}
+	child, cancel := context.WithCancel(ctx)
+	defer cancel()
+	stop := context.AfterFunc(c.lifetime, cancel)
+	defer stop()
+	if c.lifetime.Err() != nil {
+		return false, ErrHeld
+	}
+	result, err := c.read(child, a, Query{Query: q}, caller, gate)
+	return result.Fulfilled, err
+}
+
+func (c *Coordinator) read(ctx context.Context, a mirror.Admission, q Query, caller Caller, warm WarmGate) (result Result, err error) {
 	if c == nil || absent(ctx) {
 		return held(q, mirror.Unknown), ErrHeld
 	}
@@ -44,7 +69,13 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 	if !caller.valid(a, q.Query) {
 		return held(q, mirror.Permission), ErrPolicy
 	}
-	readCtx, cancelRead := context.WithTimeout(ctx, caller.Limits.WaitTimeout)
+	acquire, wait := c.gate.Acquire, c.gate.Wait
+	timeout := caller.Limits.WaitTimeout
+	if warm != nil {
+		acquire, wait = warm.AcquireWarm, warm.WaitWarm
+		timeout = caller.Limits.FillTimeout
+	}
+	readCtx, cancelRead := context.WithTimeout(ctx, timeout)
 	defer cancelRead()
 	ctx = readCtx
 	if err := c.authority.Authorize(ctx, caller, q.Scope); err != nil {
@@ -77,7 +108,7 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 		return c.release(ctx, a, q, caller, r, State{}, err)
 	}
 	key := FillKey{Scope: q.Scope, SourceID: c.sourceID, AccessEpoch: caller.AccessEpoch, ConfigEpoch: caller.ConfigEpoch, PolicyClass: caller.PolicyClass, PolicyEpoch: caller.PolicyEpoch}
-	ticket, err := c.gate.Acquire(ctx, Demand{Key: key, Requirements: Requirements{RequireReviews: q.RequireReviews}, CallerID: caller.ID, Limits: caller.Limits, Now: q.Now})
+	ticket, err := acquire(ctx, Demand{Key: key, Requirements: Requirements{RequireReviews: q.RequireReviews}, CallerID: caller.ID, Limits: caller.Limits, Now: q.Now})
 	if err != nil {
 		out, releaseErr := c.release(ctx, a, q, caller, r, State{Reason: mirror.Unknown}, err)
 		if releaseErr != nil {
@@ -123,9 +154,7 @@ func (c *Coordinator) Read(ctx context.Context, a mirror.Admission, q Query, cal
 		fillCtx, cancel := context.WithTimeout(c.lifetime, caller.Limits.FillTimeout)
 		go func() { defer cancel(); c.fill(fillCtx, ticket, a, q, plan, caller) }()
 	}
-	waitCtx, cancel := context.WithTimeout(ctx, caller.Limits.WaitTimeout)
-	defer cancel()
-	state, err := c.gate.Wait(waitCtx, ticket)
+	state, err := wait(ctx, ticket)
 	if err != nil {
 		if !onlyStaleWait(err) {
 			return held(q, mirror.Transport), err

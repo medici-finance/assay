@@ -64,44 +64,89 @@ const requiredContextAbsent = "ABSENT"
 // requiredContextMet lists the results that satisfy a required context.
 var requiredContextMet = []string{"SUCCESS", "NEUTRAL", "SKIPPED"}
 
+// The causes a merge requirement can be unmet for. The post-flip backstop records the causes
+// it reverted for in its revert marker (ReadyBackstopRevertMarkerFor), and the pre-flip
+// not-reverted condition clears that marker only when a fresh read shows none of its recorded
+// causes still holds (#7096). Each unmet line Unmet returns belongs to exactly one cause.
+const (
+	// RevertCauseMergeable: the conflict verdict is not MERGEABLE (CONFLICTING, not computed,
+	// or not served). A DIRTY merge state records it too.
+	RevertCauseMergeable = "mergeable"
+	// RevertCauseReview: the review decision is not APPROVED (or no review required).
+	RevertCauseReview = "review"
+	// RevertCauseChecks: a required check at the head is not met, or has not reported.
+	RevertCauseChecks = "checks"
+	// RevertCauseRules: the base branch has a rule the read sees but does not evaluate.
+	RevertCauseRules = "rules"
+	// RevertCauseCoverage: the read did not cover the whole rollup and base-branch rules.
+	RevertCauseCoverage = "coverage"
+	// RevertCauseUnreadable: the requirements could not be read, or were read for another
+	// head. It says nothing about which requirement held, so like a marker that records no
+	// cause it clears only when a fresh read shows every requirement met.
+	RevertCauseUnreadable = "unreadable"
+)
+
+// unmetRequirement is one unmet merge requirement: its cause and the line naming it.
+type unmetRequirement struct {
+	Cause string
+	Line  string
+}
+
 // Unmet returns one line per merge requirement the read does not show as met. A read that
 // cannot show a requirement as met counts as unmet: a nil read, an incomplete rollup, a
 // conflict verdict that is not MERGEABLE, or a review decision this check does not recognise.
 // An empty result means every requirement the read covers is met.
 func (m *MergeRequirements) Unmet() []string {
-	if m == nil {
-		return []string{"the merge requirements could not be read"}
-	}
 	var out []string
+	for _, u := range m.unmet() {
+		out = append(out, u.Line)
+	}
+	return out
+}
+
+// unmet is Unmet with each line's cause.
+func (m *MergeRequirements) unmet() []unmetRequirement {
+	if m == nil {
+		return []unmetRequirement{{RevertCauseUnreadable, "the merge requirements could not be read"}}
+	}
+	var out []unmetRequirement
+	add := func(cause, line string) { out = append(out, unmetRequirement{cause, line}) }
 	switch strings.ToUpper(m.Mergeable) {
 	case "MERGEABLE":
 	case "CONFLICTING":
-		out = append(out, "the change has a merge conflict (mergeable is CONFLICTING)")
+		add(RevertCauseMergeable, "the change has a merge conflict (mergeable is CONFLICTING)")
 	default:
-		out = append(out, fmt.Sprintf("the forge has not computed whether the change merges cleanly (mergeable is %q)", m.Mergeable))
+		add(RevertCauseMergeable, fmt.Sprintf("the forge has not computed whether the change merges cleanly (mergeable is %q)", m.Mergeable))
 	}
 	switch strings.ToUpper(m.ReviewDecision) {
 	case "", "APPROVED":
 	case "REVIEW_REQUIRED", "CHANGES_REQUESTED":
-		out = append(out, "the review decision is "+strings.ToUpper(m.ReviewDecision))
+		add(RevertCauseReview, "the review decision is "+strings.ToUpper(m.ReviewDecision))
 	default:
-		out = append(out, fmt.Sprintf("the review decision %q is not one this check recognises", m.ReviewDecision))
+		add(RevertCauseReview, fmt.Sprintf("the review decision %q is not one this check recognises", m.ReviewDecision))
 	}
 	for _, c := range m.Required {
 		switch st := strings.ToUpper(c.State); {
 		case st == requiredContextAbsent:
-			out = append(out, fmt.Sprintf("the required check %s has not reported at the head", c.Name))
+			add(RevertCauseChecks, fmt.Sprintf("the required check %s has not reported at the head", c.Name))
 		case !backstopIn(requiredContextMet, st):
-			out = append(out, fmt.Sprintf("the required check %s is %s", c.Name, st))
+			add(RevertCauseChecks, fmt.Sprintf("the required check %s is %s", c.Name, st))
 		}
 	}
 	for _, r := range m.Unevaluated {
-		out = append(out, "the base branch requires "+r+", which this check does not evaluate")
+		add(RevertCauseRules, "the base branch requires "+r+", which this check does not evaluate")
 	}
 	if !m.Complete {
-		out = append(out, "the read did not cover the whole check rollup and base-branch rules, so a required check may be missing")
+		add(RevertCauseCoverage, "the read did not cover the whole check rollup and base-branch rules, so a required check may be missing")
 	}
 	return out
+}
+
+// mergeableUnsettled reports whether the read's conflict verdict is UNKNOWN: GitHub has not
+// computed it yet (it recomputes every open change's verdict when the base branch moves), so
+// the backstop re-reads it within its bound rather than judging it (#7096).
+func (m *MergeRequirements) mergeableUnsettled() bool {
+	return m != nil && strings.EqualFold(strings.TrimSpace(m.Mergeable), "UNKNOWN")
 }
 
 // mergeRequirementsQuery reads the fields MergeRequirements carries in one GraphQL request:

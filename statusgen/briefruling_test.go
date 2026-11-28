@@ -304,10 +304,10 @@ func TestBriefRulingNoRepo(t *testing.T) {
 	t.Fatalf("an added ruling link with no repository was not refused: %+v", rs)
 }
 
-// ---- the staged workflow's corroborate step -------------------------------------
+// ---- workflow corroboration ----------------------------------------------------
 
 // brCorroborateStep is the corroborate job's --corroborate step from the
-// staged workflow, exactly as the runner executes it.
+// selected workflow, exactly as the runner executes it.
 func brCorroborateStep(t *testing.T) wfStep {
 	t.Helper()
 	for _, st := range stagedWorkflow(t).Jobs["corroborate"].Steps {
@@ -358,6 +358,17 @@ func brRunStep(t *testing.T, base, head map[string]string) (int, string, bool) {
 
 // regression: #2595
 func TestStagedCorroborateFilter(t *testing.T) {
+	testCorroborateFilter(t)
+}
+
+// regression: #6077
+func TestLiveCorroborateFilter(t *testing.T) {
+	t.Setenv("RECONCILEJOB_WORKFLOW", "../.github/workflows/assay-statusgen.yml")
+	testCorroborateFilter(t)
+}
+
+func testCorroborateFilter(t *testing.T) {
+	t.Helper()
 	dr := "docs/streams/decisions/DR-example-ruling-rec.md"
 	for _, tc := range []struct {
 		name       string
@@ -366,11 +377,13 @@ func TestStagedCorroborateFilter(t *testing.T) {
 	}{
 		{"decision record added", brBase(), map[string]string{dr: "---\nid: DR-example-ruling-rec\n---\n"}, true},
 		{"brief ruling added", brBase(), brRuled(), true},
+		{"decision issue changed with the same ruling", brRuled(),
+			map[string]string{dhBriefPath: dhFM("", strings.Replace(dhRuledLines(), "decision-issue: 41", "decision-issue: 42", 1))}, true},
 		{"archived brief ruling added",
 			map[string]string{"docs/archive/s/done/brief-1.md": dhFM("", "decision-issue: 41\n")},
 			map[string]string{"docs/archive/s/done/brief-1.md": dhFM("", dhRuledLines())}, true},
 		{"findings entry", brBase(), map[string]string{"docs/streams/findings/F-example.md": "x\n"}, true},
-		{"brief edit without a ruling", brBase(), map[string]string{dhBriefPath: dhFM("", "decision-issue: 41\nwave-note: x\n")}, false},
+		{"brief edit without a ruling", brBase(), map[string]string{dhBriefPath: dhFM("", "decision-issue: 41\nwave-note: x\n")}, true},
 		{"unrelated file", brBase(), map[string]string{"README.md": "x\n"}, false},
 	} {
 		code, out, ran := brRunStep(t, tc.base, tc.head)
