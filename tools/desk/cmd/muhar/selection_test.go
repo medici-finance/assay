@@ -417,6 +417,26 @@ func TestSelectAlwaysUnknown(t *testing.T) {
 	}
 }
 
+// An always-run name the spec's own -skip excludes is not a test of the suite
+// either, and the refusal names that -skip so it explains itself.
+func TestSelectAlwaysSkipped(t *testing.T) {
+	needGo(t)
+	root := t.TempDir()
+	writeFiles(t, root, selModule)
+	s := selSpec()
+	s.Test = "go test ./p/ -count=1 -skip '^TestSource$'"
+	s.Select = &selectSpec{Always: []string{"TestSource"}}
+	cmd, err := parseGoTest(s.Test)
+	if err != nil {
+		t.Fatalf("a -skip spec must be selectable: %v", err)
+	}
+	var log bytes.Buffer
+	rep := selHarness(t, root, s, newCoverSelector(s, cmd, 1, os.Environ(), &log, runGo))
+	if !rep.Broken || !strings.Contains(rep.BrokenReason, `"TestSource"`) || !strings.Contains(rep.BrokenReason, `-skip "^TestSource$"`) {
+		t.Fatalf("an always-run name the spec skips must break the run, naming the -skip; got broken=%v %q", rep.Broken, rep.BrokenReason)
+	}
+}
+
 // A narrowed set can be red on pristine source even when every test passes
 // alone and the full order passes: here TestT2 cleans up after TestT1, and
 // selection drops TestT2 for a mutant in F. Using that set would report an

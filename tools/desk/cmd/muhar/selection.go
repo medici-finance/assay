@@ -716,7 +716,13 @@ func (cs *coverSelector) resolveAlways() error {
 			}
 		}
 		if !found && len(cs.tests) > 0 {
-			return fmt.Errorf("select.always names %q, which is not a test of the suite (go test %s -run %q)", a, strings.Join(cs.cmd.pkgs, " "), cs.cmd.run)
+			// The suite is what -run selects less what -skip drops, so a name
+			// the spec's own -skip excludes lands here too; name both filters.
+			filter := fmt.Sprintf("-run %q", cs.cmd.run)
+			if cs.cmd.skip != "" {
+				filter += fmt.Sprintf(" -skip %q", cs.cmd.skip)
+			}
+			return fmt.Errorf("select.always names %q, which is not a test of the suite (go test %s %s)", a, strings.Join(cs.cmd.pkgs, " "), filter)
 		}
 	}
 	return nil
