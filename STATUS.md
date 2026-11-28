@@ -269,7 +269,7 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 44 [exec:strong] | implemented | 1620 | 1 | 12d | worker | fix, cite medici-finance/assay#1927 | — | — |
 | desktools-v2 | 47 [exec:strong] | implemented | 1620 | 1 | 12d | worker | fix, cite medici-finance/assay#4560 | — | — |
 | desk-tools | 34 [exec:strong] | implemented | 1560 | 1 | 6d | worker | fix, cite medici-finance/assay#7658 | — | — |
-| desk-tools | 61 [exec:strong] | implemented | 1510 | 1 | 24h | worker | fix, cite medici-finance/assay#6978 | — | — |
+| desk-tools | 61 [exec:strong] | implemented | 1510 | 1 | 25h | worker | fix, cite medici-finance/assay#6978 | — | — |
 | desk-supervision | 08 [exec:strong] | implemented | 1120 | 0 | 12d | worker | fix, cite medici-finance/assay#2816 | — | — |
 | desk-tools | 01 [exec:strong] | implemented | 1120 | 0 | 12d | worker | fix, cite medici-finance/assay#1546 | — | — |
 | desk-tools | 02 | implemented | 1120 | 0 | 12d | worker | fix, cite medici-finance/assay#1792 — row 5 is a prose PR-body check the witness cannot execute (check-definition); row 1 environment flake #612/#1232; row 4 vacuous post-merge self-diff (#1657 class) | — | — |
@@ -353,8 +353,8 @@ _`done‡` / `verified‡` = closed over an **UNRUN risk-bearing Verify row**: a
 | desktools-v2 | 09 [exec:strong] | verified | 9620 | 17 | 12d | CI auto-flip | none; stuck after one main run → file | 2026-09-30 assay-verifier-app[bot] @ ca81ea0a9603 (claude-opus-5-5) | — |
 | desktools-v2 | 61 [exec:strong] | verified | 8120 | 14 | 12d | CI auto-flip | none; stuck after one main run → file | 2026-10-19 assay-verifier-app[bot] @ 0e661b6e15de (claude-opus-5-5) | — |
 | agent-execution | 01 [exec:strong] | verified | 8000 | 14 | 4h | CI auto-flip | none; stuck after one main run → file | 2026-11-28 assay-verifier-app[bot] @ 7c898ad4973ffff3afc873a76c07bb0a0e2db54a (forge-identity) | — |
-| agent-execution | 02 [exec:strong] | implemented | 7620 | 13 | — | verify runner | none | — | — |
 | desk-containers | 06 [exec:strong] | verified | 7620 | 13 | 12d | CI auto-flip | none; stuck after one main run → file | 2026-10-27 assay-verifier-app[bot] @ 47ef38f961aa (forge-identity) | — |
+| agent-execution | 02 [exec:strong] | implemented | 7500 | 13 | <1h | verify runner | none | — | — |
 | milestone-support | 04 [exec:strong] | verified | 6120 | 10 | 12d | CI auto-flip | none; stuck after one main run → file | 2026-11-02 assay-verifier-app[bot] @ cd08e97833cb (forge-identity) | — |
 | milestone-support | 03 [exec:strong] | verified | 5620 | 9 | 12d | CI auto-flip | none; stuck after one main run → file | 2026-11-02 assay-verifier-app[bot] @ fede422ee8a5 (forge-identity) | — |
 | milestone-support | 05 [exec:strong] | verified | 5120 | 8 | 12d | CI auto-flip | none; stuck after one main run → file | 2026-11-04 assay-verifier-app[bot] @ 7f61cff94b18 (forge-identity) | — |
