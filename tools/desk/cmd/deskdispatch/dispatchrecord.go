@@ -14,9 +14,8 @@ import (
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
-// mintDispatchRef mints the run's dispatch_ref from the plan's clock and entropy source and
-// stores it on o.run for the audit line. "" (with a WARNING) when the mint fails.
-func mintDispatchRef(o dispatchOpts, plan dispatchPlan) string {
+// mintDispatchRef mints the run's dispatch_ref from the plan's clock and entropy source for the claim and audit line. "" (with a WARNING) when the mint fails.
+func mintDispatchRef(plan dispatchPlan) string {
 	now := plan.now
 	if now == nil {
 		now = dispatchClock
@@ -26,9 +25,6 @@ func mintDispatchRef(o dispatchOpts, plan dispatchPlan) string {
 		fmt.Fprintf(os.Stderr, "deskdispatch: WARNING: could not mint dispatch_ref for claim key %s: %v — "+
 			"this run's dispatch_ref is null (no weaker source is used)\n", plan.claimKey, err)
 		return ""
-	}
-	if o.run != nil {
-		o.run.dispatchRef = ref
 	}
 	return ref
 }
@@ -144,6 +140,15 @@ func buildDispatchRecord(o dispatchOpts, plan dispatchPlan, ref, stamp string) d
 	if plan.rules != nil {
 		rulesDigest = opt(plan.rules.sha256)
 	}
+	session := deskkit.DispatchRecordSessionTag()
+	// The review claim is acquired under the claim tool's session fallback.
+	// A child process has its own environment, so record the acquiring desk here.
+	if reviewKit(kit) {
+		session = deskkit.ResolveSessionName("")
+		if session == "" || !deskkit.ValidDispatchRecordField("session_tag", session) {
+			session = deskkit.UnknownSessionTag
+		}
+	}
 	return deskkit.DispatchRecord{
 		Event:       deskkit.DispatchEventDispatched,
 		DispatchRef: opt(ref),
@@ -154,7 +159,7 @@ func buildDispatchRecord(o dispatchOpts, plan dispatchPlan, ref, stamp string) d
 		Kit:         opt(kit),
 		Branch:      branch,
 		PR:          pr,
-		SessionTag:  deskkit.DispatchRecordSessionTag(),
+		SessionTag:  session,
 		Tier:        opt(tier),
 		BriefExec:   execTier,
 		BriefEffort: effort,

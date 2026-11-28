@@ -926,8 +926,11 @@ passing run — which is why they are lint rules and not review vigilance.
       **container-netns transition bracket**, opened and closed on the dispatch
       host with the same `--acceptance-record` descriptor. The host plans and
       re-plans through the shared evaluator, re-reading transition approvals
-      with `--acceptance-forge`. Inside it the container executes the receipt's
-      planned table, not the current table; the container refuses forge reads.
+      with `--acceptance-forge`. By default the container takes the same descriptor and executes the
+      table carried in the receipt. If that table is byte-identical to admitted source,
+      the host may add `--source-acceptance` at open. The container then takes only the
+      receipt, checks its approval coordinates and reads the digest-bound table from
+      its explicit `--root`. Both forms keep approval reads on the host.
       Close compares the exact table, descriptor, source, changes and witness
       commands. `deskdispatch --check-verifier` runs only on the dispatch host:
       a different runtime still refuses `environment changed since admission:
@@ -997,6 +1000,22 @@ passing run — which is why they are lint rules and not review vigilance.
       `## Context` (or its spec) describes. A production instance is never a
       Verify environment.
     - `cluster:<name>` — a live cluster, run by the pod runner (`check:cluster`).
+
+    A `service:<name>` cell may also DECLARE the cell dev-env names the row needs
+    (desk-containers/35): `service:<name>:<NAME>[,<NAME>…]`, for example
+    `service:pg-local:DEVENV_PGHOST,DEVENV_PGPORT`. `<name>` keeps its grammar,
+    which admits neither `:` nor `,`, so the form parses without ambiguity. A row
+    that declares no names receives none from the cell's dev-env file
+    ([`../containers/secrets.md`](../containers/secrets.md) §4.5). A declarable
+    name matches `DEVENV_[A-Z0-9_]+` and nothing else (deny by default): no shell,
+    loader, interpreter, forge client, git or Assay component reads that namespace
+    on its own. The row passes a declared value to its tool explicitly in its own
+    command (`PGHOST="$DEVENV_PGHOST" psql …`), where review sees it. In every
+    table with the column, whatever the row's class, `statusgen --lint`
+    hard-errors on a malformed name, a duplicate name, a name outside the
+    allow-list (naming its class where it is a path-and-home, dynamic-loader,
+    interpreter-options, tool-configuration, agent-socket or Assay name) and
+    declared names on any kind but `service`.
 
     `<name>` is lower-case letters, digits, `.`, `_` and `-`. In a table that
     carries the column, `statusgen --lint` hard-errors (PROBLEM) on an Env cell

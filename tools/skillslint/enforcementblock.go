@@ -115,13 +115,13 @@ func CheckEnforcementBlock(root string, derive func() (string, error)) Enforceme
 	start, end, hits := locateEnforcementRegion(fileLines)
 	switch {
 	case hits == 0:
-		return EnforcementReport{Unchecked: &Issue{Path: enforcementSitePath, Msg: fmt.Sprintf("could-not-check: the generated block's anchor line is absent.\n  anchor: %q\n  Either the block was deleted or its first line was hand-edited (run `go run ./tools/skillslint --sync`).", enforcementAnchor)}}
+		return EnforcementReport{Unchecked: &Issue{Path: enforcementSitePath, Msg: fmt.Sprintf("could-not-check: the generated block's anchor line is absent.\n  anchor: %q\n  Either the block was deleted or its first line was hand-edited (run `cd tools/skillslint && go run . --sync --root ../..`).", enforcementAnchor)}}
 	case hits > 1:
 		return EnforcementReport{Unchecked: &Issue{Path: enforcementSitePath, Msg: fmt.Sprintf("could-not-check: the generated block's anchor line occurs %d times, so the block is ambiguous.\n  anchor: %q", hits, enforcementAnchor)}}
 	}
 	got := regionText(fileLines, start, end)
 	if got != want {
-		return EnforcementReport{Failed: &Issue{Path: enforcementSitePath, Msg: fmt.Sprintf("line %d: the generated enforcement-status block has drifted from `statusgen enforcement-status`.\n%s\n  Do not hand-edit the block: change the rule registry in statusgen and run `go run ./tools/skillslint --sync`.", start+1, enforcementDiff(want, got))}}
+		return EnforcementReport{Failed: &Issue{Path: enforcementSitePath, Msg: fmt.Sprintf("line %d: the generated enforcement-status block has drifted from `statusgen enforcement-status`.\n%s\n  Do not hand-edit the block: change the rule registry in statusgen and run `cd tools/skillslint && go run . --sync --root ../..`.", start+1, enforcementDiff(want, got))}}
 	}
 	return EnforcementReport{Compared: true}
 }

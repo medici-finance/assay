@@ -128,6 +128,11 @@ func DeclaredPartialDeliveries(briefContent, briefID, repo string, aliases Deliv
 	if !ok {
 		return nil, "the brief's delivery: is not a list"
 	}
+	return declaredPartialNumbers(list, repo, aliases)
+}
+
+// The caller has already established the source document identity.
+func declaredPartialNumbers(list []interface{}, repo string, aliases DeliveryAliases) (map[int]bool, string) {
 	full := map[int]bool{}
 	partial := map[int]bool{}
 	for _, item := range list {

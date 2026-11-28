@@ -37,6 +37,7 @@ type updatedWire struct {
 	ClosedAt    string    `json:"closed_at"`
 	MergedAt    string    `json:"merged_at"`
 	PullRequest *struct{} `json:"pull_request"`
+	Draft       bool      `json:"draft"`
 	Head        *struct {
 		SHA  string `json:"sha"`
 		Ref  string `json:"ref"`
@@ -198,7 +199,7 @@ func (a *Adapter) ChangesUpdatedSince(ctx context.Context, repo string, q adapte
 			if w.Base.Repo != nil && w.Base.Repo.FullName != "" && !strings.EqualFold(w.Base.Repo.FullName, repo) {
 				return adapters.ChangeUpdates{}, fmt.Errorf("could-not-check: GitHub change belongs to another repository")
 			}
-			r := adapters.ChangeUpdate{IssueUpdate: base, Kind: "pull-request", HeadSHA: w.Head.SHA, BaseSHA: w.Base.SHA, HeadBranch: w.Head.Ref, BaseBranch: w.Base.Ref, RequestedReviewers: nil}
+			r := adapters.ChangeUpdate{IssueUpdate: base, Kind: "pull-request", HeadSHA: w.Head.SHA, BaseSHA: w.Base.SHA, HeadBranch: w.Head.Ref, BaseBranch: w.Base.Ref, RequestedReviewers: nil, Draft: w.Draft}
 			if w.Head.Repo != nil {
 				r.SourceRepository = w.Head.Repo.FullName
 			}

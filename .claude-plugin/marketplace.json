@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-marketplace.json",
   "name": "assay",
-  "description": "The Assay methodology toolkit — the methodology skills, resident rules, and pinned tooling that let a project run the streams/briefs/registers operating model, distributed as versioned Claude Code plugins.",
+  "description": "Assay plugins for software delivery and technical writing. Install the plugins your project needs.",
   "owner": {
     "name": "medici-finance"
   },
@@ -10,12 +10,17 @@
       "name": "assay",
       "source": "./plugins/assay",
       "description": "The Assay methodology as a Claude Code plugin: the portable methodology skills (adopt, author-brief, ask-decision), the five desk-role skills, the worker-side pr-shepherd role, the inbox command, plus the resident operating rules (SessionStart hook). Skills surface namespaced as assay:<name>.",
-      "version": "1.0.91",
+      "version": "1.0.96",
       "license": "Apache-2.0",
       "author": {
         "name": "medici-finance"
       },
       "keywords": ["methodology", "streams", "briefs", "process-desk", "assay"]
+    },
+    {
+      "name": "editorial",
+      "source": "./plugins/editorial",
+      "description": "Write and revise technical articles with Article Craft, Prose Cadence, and Humanizer."
     }
   ]
 }

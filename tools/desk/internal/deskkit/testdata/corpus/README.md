@@ -17,6 +17,14 @@ A change that clears the negatives by widening what the positives admit fails th
 That is not a slogan: #410 measured a 3% false-negative class on the one
 credential format the path rule names, after a comment had asserted the class impossible.
 
+The benign-shape registry (`benignshapes.go`) names its fixtures. Each registry entry
+lists the negative fixtures (or in-test cases) it admits and the positive fixtures (or
+in-test cases) that bound it, and every negative fixture here is named by some entry,
+except the few only a literal credential arm decides, which `benignshapes_test.go` lists
+and checks. The coverage test's required set is derived from those names, so a fixture
+the registry relies on cannot be dropped without a failing test
+(`TestBenignRegistryComplete`, `TestBodycheckCorpusCoversEveryCataloguedShape`).
+
 ## File format
 
     # corpus: <artifact name>

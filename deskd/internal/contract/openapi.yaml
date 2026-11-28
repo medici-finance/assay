@@ -559,7 +559,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/OverridesResponse'
-          description: the cell's override table AFTER the merge, with record_pr naming the record PR's status (could-not-check when the write-issues App is unconfigured)
+          description: the cell's override table AFTER the merge, with record_pr naming the record PR's status (could-not-check when the record-PR App is unconfigured)
       summary: set a cell's operator overrides — service-local state (ruling §10.5), mirrored to cells.yaml by a record PR; no human-authored platform write
       x-kind: local-state
   /v1/desks:

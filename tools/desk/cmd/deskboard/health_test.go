@@ -507,6 +507,7 @@ func nonProbingVerbs() []nonProbingVerb {
 			`[{"number":1,"title":"t","state":"OPEN","isDraft":true,"author":{"login":"shared-agent"},"headRefOid":"abc123","mergeStateStatus":"BLOCKED","statusCheckRollup":[]}]`)
 	}
 	return []nonProbingVerb{
+		{verb: "change", args: []string{"change", repo, "1"}, setup: inspectionSubjectFixture},
 		{verb: "review-queue", args: []string{"review-queue"}, setup: func(t *testing.T) { t.Setenv("DESKBOARD_GH_PRLIST_JSON", "[]") }},
 		{verb: "prs", args: []string{"prs"}, setup: prList},
 		{verb: "queue", args: []string{"queue"}},
@@ -555,6 +556,7 @@ func nonProbingVerbs() []nonProbingVerb {
 			prList(t)
 			t.Setenv("DESKBOARD_GH_PUBLIC_REPOS", strings.Join(publicRepos(), " "))
 		}},
+		{verb: "milestones", args: []string{"milestones", "testdata/milestones/stream-view-v2.json"}},
 		{verb: "reviews", args: []string{"reviews", repo, "1"}, setup: prList},
 		{verb: "diff", args: []string{"diff", repo, "1"}, setup: prList},
 		{verb: "files", args: []string{"files", repo, "1"}, setup: prList},

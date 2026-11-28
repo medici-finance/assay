@@ -129,6 +129,10 @@
         "ciRequired": {
           "type": "boolean"
         },
+        "declarationHold": {
+          "type": "string",
+          "description": "Optional ready-gate desk-decided refusal reason. Present and non-empty when a declaration hold stands, so the row cannot classify FLIP or MERGE-NOW. Omitted when no hold stands; older v1 snapshots omit it."
+        },
         "nonCommitResolution": {
           "type": "boolean"
         },

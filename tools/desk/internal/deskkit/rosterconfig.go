@@ -481,6 +481,17 @@ const (
 	// is fixed. Never a partial binding. Unset is complete: no repo is bound and deskrun
 	// dispatches nothing.
 	EnvRunCredentials = "ASSAY_RUN_CREDENTIALS"
+
+	// EnvVerifierPremergeRepos (ASSAY_VERIFIER_PREMERGE_REPOS) opts a repository IN to
+	// pre-merge verifier runs (#7623): a verifier dispatched at an unmerged change head
+	// (deskdispatch --target-change/--target-head), whose rows run unmerged code with the
+	// verifier's credential. Comma-separated full `owner/name` slugs, each also on
+	// ASSAY_ALLOWED_REPOS at admission. DEFAULT OFF: unset, every repository refuses a pre-merge run.
+	// It widens what code runs with a credential, so it is a TRUST key: a basename, a
+	// pattern or a repeated repository lands in Config.Problems and refuses
+	// the WHOLE roster. It is read from the roster file only, never from the checkout
+	// under test and never from a CI environment.
+	EnvVerifierPremergeRepos = "ASSAY_VERIFIER_PREMERGE_REPOS"
 	// EnvClaimStore (ASSAY_CLAIM_STORE) names where this cell keeps its DISPATCH CLAIMS:
 	// `file` or `service` — one value for the cell, or comma-separated
 	// `owner/name=<store>` entries for a cell whose repos genuinely differ. It is CONSUMED
@@ -750,6 +761,12 @@ type Config struct {
 	// unset or invalid — every repo then reads as unbound. Read through
 	// ResolveRunCredential (runcredential.go), never directly.
 	RunCredentials map[string]RunCredential
+
+	// PremergeRepos is the pre-merge verifier opt-in parsed from
+	// ASSAY_VERIFIER_PREMERGE_REPOS, keyed by the LOWERCASED full `owner/name` slug.
+	// Empty when unset or invalid — every repository then refuses a pre-merge run.
+	// Read through VerifierPremergeOptedIn (verifierhead.go), never directly.
+	PremergeRepos map[string]bool
 
 	// ReleaseRepo is the configured release home (EnvReleaseRepo), empty when
 	// unset — the consumer applies its own shipped default, so "unset" and
@@ -1797,6 +1814,8 @@ func parseConfig(class ToolClass, source string, vals map[string]string) Config 
 	// so a malformed value refuses the whole roster via bad, never just this one feature (a
 	// driver ruling reclassified it from the extension catalogue). ---
 	cfg.RunCredentials = parseRunCredentials(vals[EnvRunCredentials], bad)
+	// --- pre-merge verifier opt-in (ASSAY_VERIFIER_PREMERGE_REPOS), a TRUST key (#7623).
+	cfg.PremergeRepos = parsePremergeRepos(vals[EnvVerifierPremergeRepos], bad)
 
 	// --- auto-approve lane keys (ASSAY_AUTOAPPROVE_*) — passed through RAW. ---
 	// Deliberately NOT validated here: a malformed lane key must close the lane and nothing

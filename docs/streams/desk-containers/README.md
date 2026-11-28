@@ -69,6 +69,7 @@ component list, build/run topology, and open questions.
 | 37 | [cellctl projects the cell dev-env file path to each role and gives the coordinator its write verb](brief-37-cellctl-projects-dev-env-file.md) | 2 | M | todo | — | — |
 | 38 | [Desk skills and docker guidance adopt the cell dev-env file](brief-38-desk-skills-adopt-the-cell-dev-env-file.md) | 3 | S | todo | — | — |
 | 39 | [Adopter migration — retire per-desk .env files for the cell dev-env file](brief-39-adopters-retire-per-desk-env-files.md) | 4 | S | todo | — | — |
+| 40 | [Host-surface role secrets — per-role OS identity launch and its verified checks](brief-40-host-surface-role-identity-launch.md) | 10 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -297,6 +298,30 @@ DR-desk-containers-34 rules for role secrets.
 Tempting-but-wrong first step: having cellctl export the file path to every window first (37
 before 35's decision). Without the write-surface proof that would put one shared credential file
 in every role window of a single-user cell, which is the per-desk sprawl in one place.
+
+### Host-surface role secrets — `40` (added 2026-11-17, issue #6520)
+
+desk-containers/34 built role secrets on the container surface only, under the driver's scope
+ruling on #6065, and refuses every host-surface binding. `desk-containers/40` builds the host
+half: the role-to-identity map, the identity, elevation and writable-path checks, and a launch
+that starts each role window under its own OS identity. Its two flow tests are the ones rows 5
+and 9 of desk-containers/34 name. The driver ruled on #6301 to leave that Verify table as written,
+so desk-containers/34 stays `implemented` until 40 merges and a fresh independent verification
+passes those rows.
+
+- **Wave 10** — `desk-containers/40` (human gate: how the launcher switches to a role's OS
+  identity). It declares no `depends:` edge on 34: 34's code is already on main, and an edge
+  would hold 40 until 34 is verified, which needs 40 first. <!-- graph: not-a-gate -->
+
+I verified desk-containers/40 is the real head by reading `tools/desk/cmd/cellctl/rolesecret.go`:
+"`=host is not built yet (per-role OS identity launch is a follow-up)`"; it showed the host
+surface is refused by one case in `roleSecretSurfaceProblem()`, with no partial host code behind
+it, and `grep -rn -E "func TestRoleSecret(LaunchFlow|ReadDenyFlow)" tools/desk` exits 1, so
+nothing upstream has to land first. The pacing item is 40's human decision.
+
+Tempting-but-wrong first step: deleting the host case in `roleSecretSurfaceProblem()` and adding
+the map before the probes exist. That would let a one-user desktop cell bind a secret that every
+window can open.
 
 ## Shared conventions
 

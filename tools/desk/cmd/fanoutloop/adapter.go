@@ -38,8 +38,11 @@ import (
 // structured Result back. The autonomous cutover — the standing fanout window actually booting this
 // as its driver — is gate:human (BLOCKED-ON-IAN); the SKILL.md repoint is staged, not applied.
 type FanoutLoop struct {
-	Root      string // repo root the default board read scans (STATUS.md + brief files)
-	TargetSHA string // merged-main SHA stamped onto every dispatched Item
+	issueIndex     *deskkit.IssuePRIndex
+	issueBoardRepo string
+	issuePRHolds   []string
+	Root           string // repo root the default board read scans (STATUS.md + brief files)
+	TargetSHA      string // merged-main SHA stamped onto every dispatched Item
 	// RunnerID is intentionally EMPTY for batch-fanout: authorship differs per worker (each draft
 	// PR is authored by the worker App, not this dispatcher), so the engine's author!=runner guard
 	// is disabled and attribution is the adapter's own — exactly the case Config.RunnerID's doc
@@ -102,6 +105,32 @@ type FanoutLoop struct {
 	// the exempt lanes still flow. SelectQueue records the hold reason in freshHeld for the plan output.
 	Represented func() (map[string]deskkit.RepresentedPR, error)
 
+	// Inbox is the addressed-inbox source: open issues labelled `to:<this desk's role>` in the plan's
+	// own repo (the repo --root maps to). nil = NONE (the offline reference build reads no forge); cmdPlan wires the live
+	// source beside the PR index. Each issue is offered in the leading addressed lane only if it
+	// passes the trust, decision and dedupe gates in inbox.go; a source error HOLDS the lane.
+	Inbox func() ([]InboxIssue, error)
+	// IssueClaim reports whether a live dispatch claim names an inbox issue. nil reads the root
+	// checkout's local claim refs; cmdPlan wires the forge listing. An error is could-not-check
+	// and holds that issue.
+	IssueClaim func(repo string, n int) (bool, error)
+	// LabelHistory reads an inbox issue's whole label history for the label-removal hold. nil HOLDS
+	// the inbox lane (an issue is never offered on its current labels alone); cmdPlan wires the
+	// forge read. An error or an incomplete history is could-not-check and holds that issue.
+	LabelHistory func(repo string, n int) (*deskkit.LabelHistory, error)
+	// PlaceholderRoots lists the configured roots whose issue-loop placeholders the inbox lane
+	// dedupes against, beside Root. nil reads deskkit.ConfiguredRoots. An error, or a root that
+	// cannot be resolved, is could-not-check and holds the inbox lane.
+	PlaceholderRoots func() ([]deskkit.RootConfig, error)
+	// DecisionHolds are decision holds carried from an earlier tick. SelectQueue re-reads each
+	// one's decision issue on EVERY call: a closed issue carrying `human-decided` lifts the hold;
+	// an open one (or one closed without that label, or an unreadable one) keeps it, and the held
+	// item is withheld from the queue.
+	DecisionHolds []CarriedHold
+	// ReadDecisionHold overrides how a carried hold's issue is re-read. nil reads it through the
+	// session's forge (deskkit.RereadDecisionHold). Tests inject here.
+	ReadDecisionHold func(repo deskkit.ForgeRepo, issue int) deskkit.DecisionHold
+
 	// Emit is where interim-mode dispatch instructions are printed. nil = stdout.
 	Emit io.Writer
 	// Feeder obtains the structured Result for a dispatched item (interim mode: the operator feeds
@@ -147,6 +176,12 @@ type FanoutLoop struct {
 	// `todo`/`in-progress` (implemented, verified, done, blocked, or malformed). Neither is dispatched.
 	awaitingRework []BoardRow
 	withheld       []BoardRow
+	// inboxHolds / inboxHeld are the inbox lane's plan diagnostics: each inbox issue read and not
+	// offered (with why), and the reason the whole lane was held, if it was. carriedHolds is this
+	// run's re-read of every carried decision hold. All three are reset at the top of SelectQueue.
+	inboxHolds   []inboxHold
+	inboxHeld    string
+	carriedHolds []carriedHoldResult
 }
 
 // statusWithheld is the single choke point that keeps a brief row whose work is not open out of
@@ -223,9 +258,13 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	// Reset the plan diagnostics up front so a re-poll never reports a stale run's landed/held state.
 	f.mu.Lock()
 	f.landedUnreconciled = nil
+	f.issuePRHolds = nil
 	f.awaitingRework = nil
 	f.withheld = nil
 	f.freshHeld = ""
+	f.inboxHolds = nil
+	f.inboxHeld = ""
+	f.carriedHolds = nil
 	f.mu.Unlock()
 
 	// Each lane is assembled into its own slice so the final concatenation states the priority order
@@ -291,6 +330,9 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 			if f.isHandled(r.ID()) || f.statusWithheld(r, true) {
 				continue
 			}
+			if f.issueRepresentationHolds(r) {
+				continue
+			}
 			if rp, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
 				f.noteUnchecked(r, rp)
 				continue
@@ -336,6 +378,9 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 			if f.isHandled(r.ID()) || f.statusWithheld(r, false) {
 				continue
 			}
+			if f.issueRepresentationHolds(r) {
+				continue
+			}
 			if rp, ok := represented[strings.ToLower(r.Stream+"/"+r.Num)]; ok {
 				if f.noteUnchecked(r, rp) {
 					continue
@@ -367,6 +412,11 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 		}
 	}
 
+	// 4. Addressed INBOX issues with no placeholder (inbox.go): directed messages to this desk that
+	// no board row carries. They join the leading addressed lane after the addressed board rows,
+	// each one only past the trust, decision and dedupe gates; a failed read holds, never offers.
+	addressed = append(addressed, f.inboxLane(inbox)...)
+
 	// Concatenate in priority order: addressed, resume (orphans then open-PR resumes), rework, repair,
 	// fresh. Board order is preserved within each lane.
 	out := addressed
@@ -375,7 +425,9 @@ func (f *FanoutLoop) SelectQueue() ([]loopengine.Item, error) {
 	out = append(out, reworkItems...)
 	out = append(out, repairItems...)
 	out = append(out, freshItems...)
-	return out, nil
+	// Carried decision holds are re-read on every call, never remembered: an item whose hold still
+	// stands this run is withheld, and one whose hold lifted is offered again.
+	return f.applyCarriedHolds(out), nil
 }
 
 // landedUnreconciledRows returns the fresh rows the last SelectQueue found already MERGED (a plan
@@ -676,3 +728,29 @@ func (h *handle) Item() loopengine.Item          { return h.item }
 // brief. If the frozen Loop interface ever needed a new hook to fit batch-fanout, THIS line would
 // stop compiling, which is the contract-erosion tripwire.
 var _ loopengine.Loop = (*FanoutLoop)(nil)
+
+// issueRepresentationHolds reports the exact source-repository PR even when the
+// placeholder is hosted on another board and PR numbers overlap between repos.
+func (f *FanoutLoop) issueRepresentationHolds(row BoardRow) bool {
+	if f.issueIndex == nil || deskkit.PlaceholderIssueNumber(row.Num) == 0 {
+		return false
+	}
+	id := row.Stream + "/" + row.Num
+	why, unknown := f.issueIndex.PlaceholderHold(f.Root, f.issueBoardRepo, id)
+	if unknown {
+		return f.noteUnchecked(row, deskkit.RepresentedPR{Unchecked: why})
+	}
+	if why == "" {
+		return false
+	}
+	f.mu.Lock()
+	f.issuePRHolds = append(f.issuePRHolds, id+": "+why)
+	f.mu.Unlock()
+	return true
+}
+
+func (f *FanoutLoop) issuePRHoldRows() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.issuePRHolds...)
+}

@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -14,34 +13,6 @@ type capturedRun struct {
 	log  string // stdout
 	err  string // stderr
 	code int
-}
-
-// captureRun runs fn with stdout+stderr redirected to pipes, returning both plus
-// the exit code fn produced. Pipes are drained concurrently so a large write
-// cannot deadlock on the pipe buffer.
-func captureRun(t *testing.T, fn func() int) capturedRun {
-	t.Helper()
-	oldOut, oldErr := os.Stdout, os.Stderr
-	rOut, wOut, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	rErr, wErr, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stdout, os.Stderr = wOut, wErr
-	defer func() { os.Stdout, os.Stderr = oldOut, oldErr }()
-
-	outCh := make(chan string, 1)
-	errCh := make(chan string, 1)
-	go func() { b, _ := io.ReadAll(rOut); outCh <- string(b) }()
-	go func() { b, _ := io.ReadAll(rErr); errCh <- string(b) }()
-
-	code := fn()
-	wOut.Close()
-	wErr.Close()
-	return capturedRun{log: <-outCh, err: <-errCh, code: code}
 }
 
 // --- fixtures -----------------------------------------------------------------

@@ -12,8 +12,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/medici-finance/assay/gitquiet/goquiet"
 )
 
 // All paths read stay in tools/desk. No cross-module fixture is required.
@@ -99,7 +97,7 @@ func TestNewDeskCommandsAppendPerformance(t *testing.T) {
 		}
 		build := exec.Command("go", "build", "-o", exe, "./cmd/"+name)
 		build.Dir = filepath.Join("..", "..")
-		if out, err := goquiet.Cmd(build).CombinedOutput(); err != nil {
+		if out, err := offlineFixtureGo(t, build).CombinedOutput(); err != nil {
 			t.Fatalf("build %s: %v %s", name, err, out)
 		}
 		var optedInOutput []byte

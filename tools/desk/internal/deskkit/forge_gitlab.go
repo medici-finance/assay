@@ -925,40 +925,81 @@ func (g *GitLabForge) ListLabels(repo ForgeRepo) ([]string, error) {
 // fire the board's non-commit re-review on every unrelated bump); the board reads an empty
 // value as "never edited", the fail-closed direction.
 func (g *GitLabForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
+	rows, capped, err := g.listOpenMergeRequests(repo)
+	if err != nil {
+		return nil, err
+	}
 	cl, err := g.client()
 	if err != nil {
 		return nil, err
 	}
+	changes := make([]OpenChange, 0, len(rows))
+	for _, mr := range rows {
+		changes = append(changes, gitlabOpenChange(mr, g.headPipelineAt(cl, repo, mr.SHA)))
+	}
+	return &OpenChanges{
+		Changes: changes, Cap: gitlabOpenChangesCap, TruncatedAtCap: capped,
+	}, nil
+}
+
+// openChangeNumbers lists the same population without querying CI status for each head.
+func (g *GitLabForge) openChangeNumbers(repo ForgeRepo) ([]int, bool, error) {
+	rows, capped, err := g.listOpenMergeRequests(repo)
+	if err != nil {
+		return nil, false, err
+	}
+	numbers := make([]int, 0, len(rows))
+	for _, mr := range rows {
+		numbers = append(numbers, int(mr.IID))
+	}
+	return numbers, capped, nil
+}
+
+// openChangeRows maps the same population through gitlabOpenChange with no head pipeline, so
+// it issues no CI read per change; each row's Rollup is the could-not-check entry.
+func (g *GitLabForge) openChangeRows(repo ForgeRepo) (*OpenChanges, error) {
+	rows, capped, err := g.listOpenMergeRequests(repo)
+	if err != nil {
+		return nil, err
+	}
+	changes := make([]OpenChange, 0, len(rows))
+	for _, mr := range rows {
+		changes = append(changes, gitlabOpenChange(mr, nil))
+	}
+	return &OpenChanges{Changes: changes, Cap: gitlabOpenChangesCap, TruncatedAtCap: capped}, nil
+}
+
+func (g *GitLabForge) listOpenMergeRequests(repo ForgeRepo) ([]*gitlab.BasicMergeRequest, bool, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, false, err
+	}
 	listPath := fmt.Sprintf("/projects/%s/merge_requests", g.projectPath(repo))
 	state := "opened"
-	changes := make([]OpenChange, 0, gitlabOpenChangesCap)
-	for page := 1; page <= gitlabMaxChangesPage && len(changes) < gitlabOpenChangesCap; page++ {
+	rows := make([]*gitlab.BasicMergeRequest, 0, gitlabOpenChangesCap)
+	for page := 1; page <= gitlabMaxChangesPage; page++ {
 		chunk, resp, lerr := cl.MergeRequests.ListProjectMergeRequests(repo.Slug(),
 			&gitlab.ListProjectMergeRequestsOptions{
 				State:       &state,
 				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
 			})
 		if lerr != nil {
-			return nil, g.mapErr(http.MethodGet, listPath, lerr)
+			return nil, false, g.mapErr(http.MethodGet, listPath, lerr)
 		}
 		for _, mr := range chunk {
 			if mr == nil {
 				continue
 			}
-			changes = append(changes, gitlabOpenChange(mr, g.headPipelineAt(cl, repo, mr.SHA)))
-			if len(changes) >= gitlabOpenChangesCap {
-				break
+			rows = append(rows, mr)
+			if len(rows) >= gitlabOpenChangesCap {
+				return rows, true, nil
 			}
 		}
 		if resp == nil || resp.NextPage == 0 {
-			break
+			return rows, false, nil
 		}
 	}
-	return &OpenChanges{
-		Changes:        changes,
-		Cap:            gitlabOpenChangesCap,
-		TruncatedAtCap: len(changes) >= gitlabOpenChangesCap,
-	}, nil
+	return rows, true, nil
 }
 
 // ReviewQueueSnapshot on GitLab is DEGRADED, and says so per change: it returns exactly
@@ -980,7 +1021,9 @@ func (g *GitLabForge) ReviewQueueSnapshot(repo ForgeRepo) (*ReviewQueue, error) 
 	}
 	changes := make([]QueuedChange, 0, len(oc.Changes))
 	for _, c := range oc.Changes {
-		changes = append(changes, QueuedChange{OpenChange: c, ReviewsComplete: false})
+		change := QueuedChange{OpenChange: c, ReviewsComplete: false}
+		change.MonitorChecksComplete = len(c.Rollup) == 1 && c.Rollup[0].Typename == "StatusContext"
+		changes = append(changes, change)
 	}
 	return &ReviewQueue{Changes: changes, TruncatedAtCap: oc.TruncatedAtCap, Cap: oc.Cap}, nil
 }
@@ -1673,10 +1716,11 @@ func (g *GitLabForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 		r := Review{
 			// GitLab mints no per-approval id; the approver's user id is the only stable
 			// identifier the approvals payload carries.
-			ID:          a.User.ID,
-			Author:      gitlabAccount(a.User.ID, a.User.Username),
-			State:       "APPROVED",
-			SubmittedAt: gitlabTime(approvedAt[a.User.ID]),
+			ID:            a.User.ID,
+			accountIDOnly: true,
+			Author:        gitlabAccount(a.User.ID, a.User.Username),
+			State:         "APPROVED",
+			SubmittedAt:   gitlabTime(approvedAt[a.User.ID]),
 		}
 		if approvalsArePinned {
 			r.CommitID = headSHA
@@ -1711,6 +1755,9 @@ func (g *GitLabForge) ReviewsAtHead(repo ForgeRepo, number int) ([]Review, error
 			State:       state,
 			Body:        n.Body,
 			SubmittedAt: gitlabTime(n.CreatedAt),
+		}
+		if mr.WebURL != "" && n.ID > 0 {
+			r.URL = fmt.Sprintf("%s#note_%d", mr.WebURL, n.ID)
 		}
 		if headArrivedAt != nil && n.CreatedAt != nil && !n.CreatedAt.Before(*headArrivedAt) {
 			r.CommitID = headSHA
@@ -1909,7 +1956,7 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 			out.Statuses = append(out.Statuses, StatusContext{
 				State:     gitlabBuildState(s.Status),
 				Context:   s.Name,
-				CreatedAt: gitlabTime(s.CreatedAt),
+				CreatedAt: gitlabTime(s.CreatedAt), URL: s.TargetURL, RunID: checkRunID(s.PipelineID),
 			})
 		}
 		if resp == nil || resp.NextPage == 0 {
@@ -1942,6 +1989,7 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 		// which against a pipeline-gated project is could-not-check — never a pass.
 		return out, nil
 	}
+	sc.URL, sc.RunID = pipe.WebURL, checkRunID(pipe.ID)
 	out.Statuses = append(out.Statuses, sc)
 	// The forge's own asserted total is raised by the one entry mapped from the pipeline,
 	// so the caller's short-read reconcile (asserted total vs. entries served) stays exact
@@ -1972,7 +2020,7 @@ func (g *GitLabForge) ChecksAtHead(repo ForgeRepo, sha string) (*ChecksAtHead, e
 				// GitHub's check-run id carries: a retried job gets a new one, so a
 				// citation of "the run that turned green" cannot be satisfied by an
 				// earlier execution of the same job name.
-				ID:   checkRunID(j.ID),
+				ID: checkRunID(j.ID), JobID: checkRunID(j.ID), RunID: checkRunID(pipe.ID), URL: j.WebURL,
 				Name: j.Name, Status: status, Conclusion: conclusion,
 				// GitLab's finished_at is the job's true end — the same fact GitHub's
 				// completed_at carries — so the latest-run-per-name reduction orders both

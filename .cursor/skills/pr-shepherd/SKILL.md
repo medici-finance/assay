@@ -135,11 +135,11 @@ purpose is to move the head.
 Say it is red and what you are doing about it — never "waiting for review".
 
 ```bash
-gh pr view <N> --json state,mergeable,reviews,statusCheckRollup   # the watch probe
-gh run view <run-id> --log-failed                                  # read the failure
+deskboard change <owner/repo> <N> [expected-head] --json
+deskrun log <owner/repo> <run-id>
 ```
 
-Reproduce the failing job's command locally in your worktree, fix, push unprompted.
+Use the failed check’s `runId` for the log. External statuses may supply only a URL. An empty or partial check read leaves CI unconfirmed. Reproduce the failing job's command locally in your worktree, fix, push unprompted.
 **"Unrelated flake" needs evidence**: the failure names only files or jobs your diff never
 touched AND it reproduces on main, or it matches a flake the project already tracks — post that
 evidence on the PR, link the tracked flake, and re-run the failed jobs once. Reproduces
@@ -160,9 +160,11 @@ this file whether or not the check has run against it yet.
 **Check what the PR actually owes before you write a fragment for it.** A documentation-only or
 Evidence-only PR owes none — a fragment added on top of one is a code changelog entry describing a
 change that is not in the diff — and some repos' changelog checks classify such a PR themselves and go
-green with no label at all. Where the check does NOT classify it and the branch is genuinely
-documentation-only, the move is to ASK the maintainer for `changelog:skip` and say so on the PR. It is
-never a fragment to invent, and never a label to apply yourself.
+green with no label at all. If that check still needs a waiver for a documentation-only or
+Evidence PR, the maintainer owns it. Check the PR for an existing request or decision.
+When an ask is due, give the maintainer the PR link and the reason once. For other
+non-notable PRs, route the waiver to the role named in project policy. The shepherd
+checks the resulting status and never applies its own waiver.
 
 **Carve-out — when the fix IS the removal of a security control, the red check is NOT yours
 (gate: human).** If the only way to turn a red check green is to delete, disable, or weaken a
@@ -206,8 +208,7 @@ ruling. The same treatment applies to evidence PRs, not only implementation bran
 
 ## 4. Reviewer findings — fix, or dispute with evidence; all of them
 
-Read every review by the reviewer App (`gh pr view <N> --json reviews`, plus the line comments
-via `gh api repos/<owner>/<repo>/pulls/<N>/comments`). For each finding:
+Read the reviewer App’s formal submissions in `deskboard change`. Follow the review permalink for inline findings, including an empty submission body. The change view declares its inline-discussion coverage. On GitHub the role-authenticated `gh api --paginate repos/<owner>/<repo>/pulls/<N>/comments` also reads the inline comments. For each finding:
 
 - **Agree** → fix it in a follow-up commit. Never force-push over reviewed history.
 - **Dispute** → reply with evidence (file:line, command output) via
@@ -228,9 +229,7 @@ cannot post each other's body.
 A shepherd once reported the reviewer App as APPROVED at head, with a plausible timestamp and a
 "supersedes CHANGES_REQUESTED" narrative, for a review that did not exist; the true state was
 CHANGES_REQUESTED with findings still open. When you report to the desk — or in your final report —
-what a review says, quote the review `id` and the verbatim
-`gh api repos/<owner>/<repo>/pulls/<N>/reviews` line it came from, so the reader can re-run that
-read before acting. **You never recommend a ready-flip** (that is the desk's call, §5), and "I
+what a review says, cite its submission ID or provider permalink and quote the verbatim source line. Match its commit to the observed head in `deskboard change`. A missing ID, link or commit stays unknown. The role-scoped `deskread reviews --change owner/repo#N` also carries the submission ID, permalink and original body when supplied. **You never recommend a ready-flip** (that is the desk's call, §5), and "I
 expected an APPROVED but cannot see one" is reported as exactly that — `could-not-check` — never
 converted into "APPROVED, and here is why the tools disagree". An instrument-anomaly claim ("the
 CLI shows the wrong state", "the review is invisible here") needs a reproduction command or it is
@@ -250,12 +249,17 @@ discarded; it must never be the explanation for a verdict you cannot show.
 - **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
   workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
   standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
-  `gh pr create --draft`). **The verify desk lands its own work**: its Evidence + status flips commit
-  straight to `main` as the project directs — no push-go is needed there and none should be waited
-  for. Any `main` push not covered by a standing authorization is gated on the driver's explicit go;
-  committing local work is always fine. A guard/hook-BLOCKED push is a STOP signal — never route the
-  same write through another tool. Each desk's own grants and denials (what it may flip, file, close,
-  or land) stay in its skill, directly below this block.
+  `gh pr create --draft`).
+  **The verify desk lands verdicts through the project's verdict-transcription lane** where the
+  project has armed it — a signed verdict issue that a workflow lands on `main`, never a session
+  push; where the lane is not armed it lands per its own skill's §Landing. Those two routes need
+  no push-go and none should be waited for; a break-glass `main` write in a project where the
+  lane is armed is NOT one of them: it is for when the lane is down, and it waits for the
+  driver's go. Any `main` push not covered by a standing authorization is
+  gated on the driver's explicit go; committing local work is always fine. A guard/hook-BLOCKED
+  push is a STOP signal — never route the same write through another tool. Each desk's own
+  grants and denials (what it may flip, file, close, or land) stay in its skill, directly below
+  this block.
 - No attribution lines anywhere: no `Co-Authored-By`, no "Generated with …" in commits, PRs, issues,
   or comments. If a push is refused over an attribution trailer your harness added, not you (on
   Cursor the host setting `attribution.attributeCommitsToAgent`, and `attribution.attributePRsToAgent`

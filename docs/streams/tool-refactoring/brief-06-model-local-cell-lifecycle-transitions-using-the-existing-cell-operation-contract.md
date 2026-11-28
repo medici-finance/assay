@@ -7,10 +7,13 @@ depends: []
 unblocks: ["tool-refactoring/07"]
 effort: M
 gate: human
+decision-issue: 7066
+ruling: "https://github.com/medici-finance/assay/issues/7066#issuecomment-7053556919"
+design: DR-cell-lifecycle
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}
 issues: []
 schema: brief-v2
-version: 1
+version: 2
 id: 9c11fcfe-e4f4-42e7-9695-0b33e634328a
 outcome: none
 authored: 2026-11-12 by author-brief session
@@ -110,16 +113,16 @@ The existing internal/cellcadence owner owns role-state judgments. Loopadmin ret
 
 ## Verify
 
-Row 4 runs only in a clean isolated checkout of the independently resolved implementation delivery D, with its protected delivery binding checked by the existing owner. There HEAD is D and HEAD^ is its first parent. Do not select current integration HEAD as a convenient substitute. If D or its binding cannot be established, record could-not-check. Other rows keep their admitted source and recorded witness identity.
+Row 4 reads the immutable delivery snapshot and its first-parent diff from local Git history. It executes no code from the snapshot. Missing history is could-not-check.
 
 The named tests below are implementation deliverables, not tests claimed to exist today. Each row requires the named `--- PASS:` line as well as exit 0, so a vacuous selector cannot pass. Class controls plant a second defect site outside the reported instance and prove the guard catches it; retain that positive control. Record the pre-fix red and post-fix green.
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd tools/desk && GOWORK=off go test -v ./internal/cellcadence -run '^TestCellLifecycleMatrix$' -count=1` | exit 0; output contains "--- PASS: TestCellLifecycleMatrix"; transition and ownership matrix | check:ci +dereference |
-| 2 | `cd tools/desk && GOWORK=off go test -v ./internal/cellcadence -run '^TestCellLifecycleClassGuard$' -count=1` | exit 0; output contains "--- PASS: TestCellLifecycleClassGuard"; reused pid and stale-generation plants | check:ci +mutation +neighbour |
-| 3 | `cd tools/desk && GOWORK=off go test -v ./cmd/cellctl -run '^TestCellLifecyclePlanFlow$' -count=1` | exit 0; output contains "--- PASS: TestCellLifecyclePlanFlow"; checkpoint/holder adapter flow | check:ci +flow |
-| 4 | `statusgen --root . --consumers --brief tool-refactoring/06 --delivery "$(git rev-parse HEAD)" --base "$(git rev-parse HEAD^)"` | exit 0; zero disproved and zero unchecked consumer routes for the delivered brief | check:ci +flow |
+| 1 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -C tools/desk -v -count=1 -timeout 5m -run '^TestCellLifecycleMatrix$' ./internal/cellcadence > "$o" && grep -F -- '--- PASS: TestCellLifecycleMatrix ' "$o")` | exit 0; output contains "--- PASS: TestCellLifecycleMatrix"; transition and ownership matrix | check:ci +dereference |
+| 2 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -C tools/desk -v -count=1 -timeout 5m -run '^TestCellLifecycleClassGuard$' ./internal/cellcadence > "$o" && grep -F -- '--- PASS: TestCellLifecycleClassGuard ' "$o")` | exit 0; output contains "--- PASS: TestCellLifecycleClassGuard"; reused pid and stale-generation plants | check:ci +mutation +neighbour |
+| 3 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -C tools/desk -v -count=1 -timeout 5m -run '^TestCellLifecyclePlanFlow$' ./cmd/cellctl > "$o" && grep -F -- '--- PASS: TestCellLifecyclePlanFlow ' "$o")` | exit 0; output contains "--- PASS: TestCellLifecyclePlanFlow"; checkpoint/holder adapter flow | check:ci +flow |
+| 4 | `(o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief tool-refactoring/06 --delivery efe590fbbbb05d2251adca8353435d873e91beb4 --base 64b655c6c009e8153b161cc0dbed397935730653 > "$o" && cat "$o" && grep -Fx -- 'summary: 5 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing' "$o")` | Exit 0 and exactly 5 corroborated, 0 disproved, 0 unchecked. Zero unchecked routes are required. | check:ci +flow |
 
 ## Definition of Done
 
@@ -128,6 +131,148 @@ Every Task path has an actual caller or documented retention reason, consumer fl
 ## Evidence
 
 <!-- Independent verification appends actual commands, exits, output/digests, date and runner after implementation. Empty at authoring. -->
+
+### Non-implementer verifier run: 2026-11-24, container-netns bracket, merged main 034614a8c462b094fa7ec9396c4d70f6e6595a80
+
+The runner is assay-verifier-app[bot] (model claude-opus-5-5, tier strong). It is not the implementer. This is the
+first verification of this brief.
+
+Source: 034614a8c462b094fa7ec9396c4d70f6e6595a80. The delivering change is #7076, merged as
+efe590fbbbb05d2251adca8353435d873e91beb4. Its first parent, 64b655c6c009e8153b161cc0dbed397935730653, is the
+fail-first base. The delivery is on the source's history. This brief's file, and every delivered code, test and
+plant file, is byte-identical at the delivery and at the source. Only shared documentation and the changelog
+(the fragment was folded into v1.0.91) changed since.
+
+The brief answers sensitive-data: yes, so every row is risk-bearing and owes a fail-first witness. The original
+table is the four rows above: `deskpathguard rederive` reports 4 from-base rows and 0 author-added rows.
+
+This is DISPATCH-FOR-EVIDENCE. The run gathers Evidence and a draft outcome record only. The desk never flips this
+brief's status: the human's merge of the Evidence PR is the flip.
+
+Admission: `deskdispatch --check-verifier --root <home> --brief docs/streams/tool-refactoring/brief-06-model-local-cell-lifecycle-transitions-using-the-existing-cell-operation-contract.md`
+exited 0 for this detached home at 2026-11-24T16:28:44Z, before any row ran. It returned attestation #7556,
+run=60599cbb2e397d6da67838690609b3e036879439cec5019c411f8caa43b709ad and source 034614a8c462, with desk tools
+v1.0.92 on darwin arm64 and git 2.56.1.
+
+Every row ran under the declared verifier Git environment: all GIT_* variables and SSH_ASKPASS were unset, then
+GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_NOSYSTEM=1, GIT_CONFIG_COUNT=0 and GIT_TERMINAL_PROMPT=0 were set, along
+with KUBECONFIG=/dev/null.
+
+Rows 1-3 ran in the container-netns admission bracket:
+
+- On the host, `statusgen verifyrun --open-bracket` wrote the receipt, a history pack and a fresh module cache
+  outside the home. It opened at 16:32:12Z.
+- The container ran verify-runner v1.0.92, sha256:d3d958719dea (go1.27.4), under `--network none --read-only`
+  with the home mounted read-only, an exec-enabled tmpfs scratch, GOPROXY=off and GOTOOLCHAIN=local. It ran
+  `statusgen verifyrun --sandbox=container-netns --rows 1,2,3 --fail-first --delivering-commit efe590fbbbb0 --base-log <dir> --history-pack <pack>`.
+- On the host, `statusgen verifyrun --close-bracket` exited 0 and closed it at 16:39:48Z.
+- `statusgen verifyrun --bracket-digest` exited 0 with verdict=match (witness sha256:97d6012caf1b).
+
+Row 4 was outside the `--rows 1,2,3` selection (reasons below).
+
+One attempt ran inside this bracket, 16:38:00Z-16:39:15Z. It exited 1. It recorded rows 1-3 as passing at the
+head and as "non-discriminating — green at base 64b655c6c009". The witness below is that attempt.
+
+Rows 1-3: could-not-run, Expect-reader defect (#7389, in the #1702 class).
+
+The witness records each row as pass exit=0 at the head. Its fail-first result reads each row as
+non-discriminating, green at base, and the run exits 1. Neither reading observed the row's property. Each
+Expect requires the named "--- PASS:" line as well as exit 0, and verifyrun does not read an "output contains"
+Expect: it decides on exit status alone (#7389).
+
+The retained base logs show what the base actually printed:
+
+- Rows 1 and 2, sha256:0458878a898e and sha256:615a38fecc35: "testing: warning: no tests to run", "PASS" and
+  "ok github.com/medici-finance/assay/tools/desk/internal/cellcadence [no tests to run]".
+- Row 3, sha256:64b6602c8123: the same three lines for tools/desk/cmd/cellctl.
+
+None of them prints a "--- PASS:" line. The three named tests do not exist at the base: git grep finds
+TestCellLifecycleMatrix, TestCellLifecycleClassGuard and TestCellLifecyclePlanFlow at the delivery and at the
+source, and none of them at 64b655c6c009. Read against its Expect, each base run is the pre-fix red, and each row
+would discriminate. The green-at-base reading is the reader's artefact, not a property of the rows.
+
+The rows are classed could-not-run, never fail, under reviewer-lane practice:
+https://github.com/medici-finance/assay/pull/7228#pullrequestreview-5979645423 and
+https://github.com/medici-finance/assay/pull/7230#pullrequestreview-5979708866. The witness and its exit 1 still
+record them as non-discriminating.
+
+Row 4: could-not-run, check-definition (#6978).
+
+The row must run in a clean isolated checkout at the delivery D, where HEAD is D. The admitted home is detached at
+034614a8c462, and the brief forbids substituting it. verifyrun has no admitted lane for a row that needs a
+separate checkout at the delivery head (#6978), so the row was left out of the bracket's selection. It has no
+acceptance witness.
+
+Supplemental probes. These carry no acceptance credit and were run after the bracket closed:
+
+- Head output. The three row commands ran verbatim at the source in the same image, network none, home read-only.
+  Each exited 0, printed no "--- FAIL" line, and printed its named line:
+  - "--- PASS: TestCellLifecycleMatrix", with subtests process_identity, record_class, owner_generation, settle,
+    plan_observation and checkpoint_writer passing.
+  - "--- PASS: TestCellLifecycleClassGuard", with subtests "positive control: planted second sites" and
+    "production tree has no second site" passing.
+  - "--- PASS: TestCellLifecyclePlanFlow", with its four subtests passing: preconditions re-measured identically,
+    a reused pid reads dead and is never signalled, a plan goes stale when the owner runs again, and settle
+    finishes only the owner generation down signalled.
+- Row 4 with explicit commits. On the host, in the home and not in a checkout at D, the consumers gate ran with
+  `--delivery efe590fbbbb0 --base 64b655c6c009` in place of the row's HEAD and HEAD^ substitutions. It exited 0
+  and printed "summary: 5 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing" over the immutable
+  delivered snapshot. Each of the five entries is a self-route carried by this diff: lifecycle.go,
+  lifecycle_test.go, down_settle.go, interactive.go and lifecycleplan_test.go. The probe left the home clean. It is
+  not the row as written, because the row's checkout is not D.
+
+Risk-bearing values. Every literal and predicate in the delivery's non-test diff was enumerated:
+
+- The owner-attribution predicate Generation.Attributes @ tools/desk/internal/cellcadence/lifecycle.go:135
+  (start match while the owner record survives; otherwise Sequence != 0 with the same sequence, pid and start).
+- The checkpoint-writer guard Generation.OwnsUnfinished @ lifecycle.go:143-146, including the `g.Sequence == 0 ||`
+  branch, with Generation.Named @ lifecycle.go:123.
+- The legacy unscoped lease-holder acceptance in OwnsCheckpointPID @ lifecycle.go:107.
+- The settle refusal on an unidentified owner, `in.Owner.PID == 0` @ lifecycle.go:210, and the retry on any class
+  but dead @ lifecycle.go:219.
+- The class labels owned, dead, alive and could-not-check @ lifecycle.go:25-28, the plan kinds up, stale and
+  absent @ lifecycle.go:229-231, `ProcessGone ProcessVerdict = iota + 1` @ lifecycle.go:45, and
+  `downStoppedSummary = "stopped by cellctl down"` @ tools/desk/cmd/cellctl/down_settle.go:28.
+
+The first three rank first, because they decide whose checkpoint a teardown may finish and so whether one owner's
+record can be closed out by another's stop. The labels and the summary string are reversible names with no
+authority, and rank last.
+
+RISK-VALUE: DERIVED — Generation.Attributes @ tools/desk/internal/cellcadence/lifecycle.go:135 — a byte-for-byte move of the base's recordIsOwners @ tools/desk/cmd/cellctl/down_settle.go:186 at 64b655c6c009, whose comment derives it from #6251 (a clean exit removes the owner record, so the read checkpoint binds the owner; a zero, unread sequence never matches).
+RISK-VALUE: DERIVED — Generation.OwnsUnfinished `g.Sequence == 0 ||` @ tools/desk/internal/cellcadence/lifecycle.go:146 with Named @ :123 — the base writer Lease.RecordStopped @ tools/desk/internal/cellcadence/interactive.go:101 at 64b655c6c009 accepted any running interactive record with pid > 0 and a matching pid; the new guard keeps that check and adds Named and, when the checkpoint was read, a sequence and start match, so it is never weaker than the base. The down path reaches the writer only after JudgeSettle has required Attributes.
+RISK-VALUE: DERIVED — legacy unscoped holder acceptance `holder.Cell == "" && holder.Role == ""` @ tools/desk/internal/cellcadence/lifecycle.go:107 — carried verbatim from the base's reconcile.go:418 at 64b655c6c009; it widens nothing.
+
+Tool reads after the Evidence was written:
+
+- `statusgen verifyrun --check` exited 2 and printed "3 pass, 0 fail, 1 could-not-run/missing (of 4 Verify rows);
+  0 author-added with no acceptance credit". It reports rows 1-3 as "pass — witness matches the row and passed"
+  and row 4 as "could-not-run — no execution witness in Evidence".
+- The pass that `--check` gives rows 1-3 rests on the witness's exit-status reading (#7389). The same witness's
+  fail-first run exited 1, reading those rows as non-discriminating. So this entry does not count rows 1-3 as
+  passing. It classes them could-not-run for the reasons above.
+- `statusgen verifyrun --bracket-digest --witness` on this brief exited 0 with verdict=match (bracket=L275,
+  witness sha256:97d6012caf1b).
+- With `--credit --source 034614a8c462`, it exited 1 and printed credit=not-credited: "L266 differs from HEAD; an
+  uncommitted line has no author".
+- Post-edit admission: the same `deskdispatch --check-verifier` ran again at 2026-11-24T16:43:14Z and exited 0
+  with the same binding: run=60599cbb2e397d6da67838690609b3e036879439cec5019c411f8caa43b709ad, source
+  034614a8c462, model claude-opus-5-5, tier strong, attestation #7556.
+
+Tally: 0 of 4 rows pass with credit. Rows 1-4 are could-not-run. No credited row failed, and no probe observed an
+obligation failing.
+
+**VERIFY: BLOCKED** — 0/4 rows pass with credit at 034614a8c462; no credited row failed and no probe saw a failure. Rows 1-3 are could-not-run: verifyrun does not read their "output contains --- PASS" Expects, so its fail-first reads a base where the named tests do not exist as green (#7389). Row 4 is could-not-run because it needs a checkout at the delivery and has no admitted lane (#6978). Supplemental, no credit: the head prints each named PASS line, and the consumers gate pinned to the delivery reports 5 corroborated, 0 disproved, 0 unchecked.
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `cd tools/desk && GOWORK=off go test -v ./internal/cellcadence -run '^TestCellLifecycleMatrix$' -count=1` | pass exit=0 sandbox=container-netns | sha256:e852bcceb371 | 2026-11-24 | assay-verifier-app[bot] @ 034614a8c462 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=64b655c6c009 green rc=0 · head=034614a8c462 · delivering=efe590fbbbb0 output=sha256:0458878a898e2ba0bef3612b5c247e276e9af6271e4d4b3eaada4de7fd0b575d log=row-000001.log |
+| 2 | `cd tools/desk && GOWORK=off go test -v ./internal/cellcadence -run '^TestCellLifecycleClassGuard$' -count=1` | pass exit=0 sandbox=container-netns | sha256:744ededde509 | 2026-11-24 | assay-verifier-app[bot] @ 034614a8c462 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=64b655c6c009 green rc=0 · head=034614a8c462 · delivering=efe590fbbbb0 output=sha256:615a38fecc35b4de3c9270a91c6f62a3ca7d91f55753e7361c48505fc2a2e126 log=row-000002.log |
+| 3 | `cd tools/desk && GOWORK=off go test -v ./cmd/cellctl -run '^TestCellLifecyclePlanFlow$' -count=1` | pass exit=0 sandbox=container-netns | sha256:602174e83471 | 2026-11-24 | assay-verifier-app[bot] @ 034614a8c462 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=64b655c6c009 green rc=0 · head=034614a8c462 · delivering=efe590fbbbb0 output=sha256:64b6602c8123e31931599ebbe04e4b7cc8471dece3aad8a07a56c716993a360f log=row-000003.log |
+Tree-Digest: sha256:0d2fc44c1c8d265eb7dca088c90ea5f3c8585cc0ebd893ea66e55cd0a81eb622
+Container-Image: sha256:d3d958719dea47fc611e096612c1478bcc07376b7f9783f92433ac8faeeee380
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7556 run=60599cbb2e397d6da67838690609b3e036879439cec5019c411f8caa43b709ad source=034614a8c462b094fa7ec9396c4d70f6e6595a80 brief=docs/streams/tool-refactoring/brief-06-model-local-cell-lifecycle-transitions-using-the-existing-cell-operation-contract.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=60599cbb2e397d6da67838690609b3e036879439cec5019c411f8caa43b709ad source=034614a8c462b094fa7ec9396c4d70f6e6595a80 tree=sha256:0d2fc44c1c8d265eb7dca088c90ea5f3c8585cc0ebd893ea66e55cd0a81eb622 witness=sha256:97d6012caf1b338e96a038898a97dbff9d5cb23447de13aec12577f1da8d28f6 opened=2026-11-24T16:32:12Z closed=2026-11-24T16:39:48Z before=receipt after=check-verifier
 
 ## Review
 

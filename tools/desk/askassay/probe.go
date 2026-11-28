@@ -91,7 +91,7 @@ var statusgenWriteModes = map[string]bool{
 var deskboardReadVerbs = map[string]bool{
 	"prs": true, "actions": true, "queue": true, "health": true,
 	"awaiting": true, "nextup": true, "scope": true, "policydrift": true,
-	"stalled": true, "reviews": true, "diff": true, "files": true,
+	"stalled": true, "milestones": true, "reviews": true, "diff": true, "files": true,
 	"dispatch": true, "todo": true, "next": true, "next-up": true,
 }
 

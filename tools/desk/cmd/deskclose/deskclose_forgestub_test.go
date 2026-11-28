@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -195,6 +196,14 @@ func (s *stubRemote) ListCommentsTyped(fr deskkit.ForgeRepo, n int, kind deskkit
 		return nil, errors.New("HTTP 502: bad gateway")
 	}
 	return s.listCommentsAt(fr, n, key)
+}
+
+func (s *stubRemote) IssueStateEvents(fr deskkit.ForgeRepo, n int) (*deskkit.IssueStateHistory, error) {
+	return &deskkit.IssueStateHistory{Complete: !s.queueStatesIncomplete, Events: s.queueStateEvents}, nil
+}
+
+func (s *stubRemote) IssueLabelHistory(fr deskkit.ForgeRepo, n int) (*deskkit.LabelHistory, error) {
+	return &deskkit.LabelHistory{Complete: !s.queueLabelsIncomplete, Events: s.queueLabelEvents}, nil
 }
 
 // IssueTrustEvents serves the issue body's last-edit time — the only part of the trust payload
@@ -471,7 +480,7 @@ func (s *stubRemote) ApplyLabels(fr deskkit.ForgeRepo, n int, change deskkit.Lab
 	} else if kind != want {
 		return nil, fmt.Errorf("label target %s on %s#%d, which is an %s", kind, fr.Slug(), n, want)
 	}
-	if s.failApply {
+	if s.failApply || (s.failRemove && len(change.Remove) > 0) {
 		for _, l := range change.Add {
 			s.calls = append(s.calls, []string{kind, "edit", strconv.Itoa(n), "-R", fr.Slug(), "--add-label", l.Name})
 		}
@@ -485,7 +494,41 @@ func (s *stubRemote) ApplyLabels(fr deskkit.ForgeRepo, n int, change deskkit.Lab
 		s.calls = append(s.calls, []string{kind, "edit", strconv.Itoa(n), "-R", fr.Slug(), "--add-label", l.Name})
 		added = append(added, l.Name)
 	}
-	return &deskkit.LabelOutcome{Added: added}, nil
+	for _, name := range change.Remove {
+		s.calls = append(s.calls, []string{kind, "edit", strconv.Itoa(n), "-R", fr.Slug(), "--remove-label", name})
+	}
+	if s.unreflectedLabel != "" && (slices.Contains(added, s.unreflectedLabel) || slices.Contains(change.Remove, s.unreflectedLabel)) {
+		return &deskkit.LabelOutcome{Added: added, Removed: change.Remove}, nil
+	}
+	if change.Target == deskkit.TargetIssue {
+		for _, name := range added {
+			s.queueLabelEvents = append(s.queueLabelEvents, deskkit.LabelEvent{Name: name, AppliedBy: "worker[bot]"})
+		}
+		key := s.stubKey(fr.Slug(), n, change.Target)
+		var issue map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(s.items[key]), &issue); err != nil {
+			return nil, err
+		}
+		var labels []map[string]string
+		if raw := issue["labels"]; raw != nil {
+			if err := json.Unmarshal(raw, &labels); err != nil {
+				return nil, err
+			}
+		}
+		for _, name := range added {
+			if !slices.ContainsFunc(labels, func(l map[string]string) bool { return l["name"] == name }) {
+				labels = append(labels, map[string]string{"name": name})
+			}
+		}
+		labels = slices.DeleteFunc(labels, func(l map[string]string) bool { return slices.Contains(change.Remove, l["name"]) })
+		issue["labels"], _ = json.Marshal(labels)
+		data, err := json.Marshal(issue)
+		if err != nil {
+			return nil, err
+		}
+		s.items[key] = string(data)
+	}
+	return &deskkit.LabelOutcome{Added: added, Removed: change.Remove}, nil
 }
 
 // SearchIssues serves the repair-issue dedupe (postcondition.go) from s.openIssues the way a

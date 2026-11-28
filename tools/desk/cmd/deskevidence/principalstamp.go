@@ -2701,7 +2701,7 @@ func hasEvidenceHeading(lines []string) bool {
 
 // cellSpans returns each table cell's [start,end) byte offsets in line, splitting on `|` but
 // not on an escaped `\|`, and dropping at most one blank cell at each end — the cell
-// boundaries statusgen's splitRowEscaped reads.
+// boundaries statusgen's briefdoc.SplitRowEscaped reads.
 func cellSpans(line string) [][2]int {
 	var spans [][2]int
 	cur := 0

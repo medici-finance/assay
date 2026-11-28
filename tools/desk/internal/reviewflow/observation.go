@@ -82,12 +82,19 @@ type ClassificationFacts struct {
 	RiskReason              string      `json:"riskReason"`
 	NonCommitResolution     bool        `json:"nonCommitResolution"`
 	NonCommitResolutionNote string      `json:"nonCommitResolutionNote"`
+	// DeclarationHold (#2690) is the ready gate's desk-decided refusal reason, reduced by
+	// the producer with deskkit.DeskDecidedRefusal; see ClassifyInput.DeclarationHold. It
+	// is the second additive v1 fact (after ChangeFact.Mergeable, #6262): omitted when no
+	// hold stands, so an observation without a hold is byte-identical to the earlier
+	// profile and older v1 snapshots stay readable. Explicit null is still malformed.
+	DeclarationHold string `json:"declarationHold,omitempty"`
 }
 
 func (f ClassificationFacts) ClassifyInput() ClassifyInput {
 	in := BuildClassifyInput(f.Change, f.Reviews, f.CIRequired, f.ZeroCI)
 	in.OwnFilesChanged, in.RiskClassed, in.RiskReason = f.OwnFilesChanged, f.RiskClassed, f.RiskReason
 	in.NonCommitResolution, in.NonCommitResolutionNote = f.NonCommitResolution, f.NonCommitResolutionNote
+	in.DeclarationHold = f.DeclarationHold
 	return in
 }
 

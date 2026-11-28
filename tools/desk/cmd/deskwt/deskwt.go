@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/gitcore"
+	"github.com/medici-finance/assay/tools/desk/internal/cli"
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -414,6 +415,9 @@ func runAdd(o addOpts) (err error) {
 			return deskkit.Refused("refused: --upstream requires a full commit --base and a fully qualified remote branch, without --detach")
 		}
 	}
+	if o.handoffBrief && (*adoptRun == "" || *role != "worker" || *upstream != "refs/remotes/origin/"+br) {
+		return deskkit.Refused("--handoff-brief requires --role worker, --adopt-run and the PR branch on origin as --upstream")
+	}
 	if *adoptRun != "" && (*upstream == "" || !nameRe.MatchString(*adoptRun) || strings.Contains(*adoptRun, "..")) {
 		return deskkit.Refused("refused: --adopt-run requires --upstream and a single safe run key segment")
 	}
@@ -518,8 +522,17 @@ func runAdd(o addOpts) (err error) {
 		if aerr != nil {
 			return aerr
 		}
+		handoff := false
 		if why != "" {
-			return deskkit.Refused(refusal + " Not adopted as a finished home of run " + *adoptRun + ": " + why + ".")
+			refusal += " Not adopted as a finished home of run " + *adoptRun + ": " + why + "."
+			if !o.handoffBrief {
+				return deskkit.Refused(refusal)
+			}
+			rt, aerr = briefHandoff(guard, dir, candidate, repo, br, *base, *adoptRun)
+			if aerr != nil {
+				return fmt.Errorf("%s Brief handoff: %w", refusal, aerr)
+			}
+			handoff = true
 		}
 		detail, perr := adoptedHome{guard: guard, dir: dir, rt: rt, br: br, upstream: *upstream, runKey: *adoptRun,
 			roleKey: roleKey, name: botName, email: botEmail, repo: repo, lockSession: *lockSession}.provision()
@@ -527,10 +540,16 @@ func runAdd(o addOpts) (err error) {
 			return perr
 		}
 		note := "adopted finished home " + rt + " of run " + *adoptRun + " (branch " + br + " at " + *base + "; clean, unlocked)"
+		if handoff {
+			note = "resumed the same session's brief checkout " + rt + " for " + *adoptRun
+		}
 		ac.detail = note + "; " + detail
 		fmt.Fprintln(os.Stderr, "deskwt: "+note)
 		fmt.Fprintln(os.Stderr, "deskwt: "+detail+" at "+rt)
 		fmt.Println(rt)
+		if handoff {
+			fmt.Println(deskkit.BriefHandoffReceipt)
+		}
 		return nil
 	}
 
@@ -696,11 +715,15 @@ func runRemove(o removeOpts) (err error) {
 	ac := &auditCtx{verb: "remove"}
 	defer func() { ac.finalize(err) }()
 
-	// The ONLY flag is --dry-run (report the before_remove hook plan, touch nothing). A stray
-	// flag — e.g. --force — is a parse error in the Cobra tree (cli.go) before this handler
-	// runs. There is NO force / override flag anywhere in this tool.
+	// The flags are --dry-run (report the before_remove hook plan, touch nothing) and
+	// --claim-repo (name the claim repository of a home that records none; it relaxes no gate).
+	// A stray flag — e.g. --force — is a parse error in the Cobra tree (cli.go) before this
+	// handler runs. There is NO force / override flag anywhere in this tool.
 	dryRun := &o.dryRun
 	path := o.path
+	if o.claimRepo != "" && !deskkit.ValidRepoSlug(o.claimRepo) {
+		return &deskkit.DeskError{Code: cli.ExitUsage, Msg: "deskwt remove: --claim-repo takes <owner>/<name>, got " + fmt.Sprintf("%q", o.claimRepo)}
+	}
 
 	// --dry-run: report the before_remove hook plan and touch nothing.
 	if *dryRun {
@@ -844,7 +867,10 @@ func runRemove(o removeOpts) (err error) {
 	// read — is a live run's, and is refused whether or not anything locked it. A home whose
 	// claim is RELEASED has no owner left, so a lock its agent left behind no longer refuses
 	// it; the untracked-inclusive status read below still does, exactly as for an own lock.
-	claim := claimForRemove(guard, dir, rt)
+	claim, cerr := claimForRemove(guard, dir, rt, o.claimRepo)
+	if cerr != nil {
+		return cerr
+	}
 	if claim.holds() {
 		if claim.state == claimUnknown {
 			return deskkit.Unverifiable("cannot remove "+rt+": "+claim.why, nil)
@@ -880,7 +906,7 @@ func runRemove(o removeOpts) (err error) {
 	if claim.releasedOwner() {
 		// The claim was read before the status gate above; a resume may have re-acquired it
 		// since. Re-read the one key just before the unlock and the delete.
-		if why := claimStillFree(dir, claim.key); why != "" {
+		if why := claimStillFree(dir, claim.remote, claim.key); why != "" {
 			return deskkit.Unverifiable("cannot remove "+rt+": "+why, nil)
 		}
 	}
@@ -976,22 +1002,29 @@ func resolvePath(p string) string {
 // currentRepo verifies dir is inside a git worktree and returns its origin repo in
 // owner/name form. Any state it cannot positively verify is unverifiable (exit 6).
 func currentRepo(dir string) (string, error) {
+	_, repo, err := currentOrigin(dir)
+	return repo, err
+}
+
+// currentOrigin is currentRepo returning, beside the owner/name slug, the origin URL that
+// slug was read from (the claim gate derives a sibling repository's address from it).
+func currentOrigin(dir string) (url, repo string, err error) {
 	gitRepo, err := gitcore.Open(dir)
 	if err != nil || !gitRepo.InsideWorkTree() {
-		return "", deskkit.Unverifiable("not inside a git worktree", err)
+		return "", "", deskkit.Unverifiable("not inside a git worktree", err)
 	}
 	originURL, oerr := deskkit.SlugRemoteURL(gitRepo, "origin")
 	if errors.Is(oerr, gitcore.ErrRemoteScopeUnmerged) {
-		return "", deskkit.Unverifiable("origin could be changed by worktree-scope or include config", oerr)
+		return "", "", deskkit.Unverifiable("origin could be changed by worktree-scope or include config", oerr)
 	}
 	if oerr != nil {
-		return "", deskkit.Unverifiable("cannot read remote.origin.url", oerr)
+		return "", "", deskkit.Unverifiable("cannot read remote.origin.url", oerr)
 	}
 	repo, rerr := parseRepo(originURL)
 	if rerr != nil {
-		return "", deskkit.Unverifiable("cannot parse origin repo", rerr)
+		return "", "", deskkit.Unverifiable("cannot parse origin repo", rerr)
 	}
-	return repo, nil
+	return originURL, repo, nil
 }
 
 // repoOrEmpty is a best-effort repo lookup for the audit line on the remove path (where

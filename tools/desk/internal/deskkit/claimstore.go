@@ -99,9 +99,9 @@ type ClaimStore interface {
 	// UpdateFrom replaces the claim with one carrying msg, only if it still holds
 	// oldVersion. ClaimWriteRejected == it moved (advanced or stolen) under this caller.
 	UpdateFrom(id, oldVersion, msg string) ClaimWriteOutcome
-	// Remove deletes the claim. ClaimWriteApplied == deleted OR already absent (a release is
-	// idempotent); existed reports which.
-	Remove(id string) (outcome ClaimWriteOutcome, existed bool)
+	// RemoveFrom deletes only the revision the caller read. A changed or missing
+	// revision is rejected. A release already absent at the initial read is a no-op.
+	RemoveFrom(id, oldVersion string) ClaimWriteOutcome
 	// List enumerates the ids of the present claims.
 	List() ([]string, ClaimReadStatus)
 	// BranchExists reports whether the branch a holder names exists on the remote
