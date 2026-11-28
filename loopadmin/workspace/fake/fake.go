@@ -40,6 +40,8 @@ type Env struct {
 	FailWorkspace bool
 	// RetireUnknown makes Retire report an unknown outcome.
 	RetireUnknown bool
+	// FailPut makes every Put fail and store nothing.
+	FailPut bool
 
 	Applies, Checkouts, Restores int
 	Retired                      []string
@@ -201,6 +203,9 @@ func (e *Env) Put(_ context.Context, binding string, r workspace.Receipt) error 
 	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.FailPut {
+		return ErrFault
+	}
 	e.receipts[binding] = back
 	return nil
 }

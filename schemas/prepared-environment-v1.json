@@ -125,7 +125,7 @@
         "instance": { "$ref": "#/$defs/instance" },
         "repositories": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/repository" } },
         "environment": { "$ref": "#/$defs/environment" },
-        "writable": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "writable": { "type": "array", "items": { "type": "string", "minLength": 1, "pattern": "^[^\\\\]*$" } },
         "policy": { "$ref": "#/$defs/policy" },
         "candidate": { "$ref": "#/$defs/ref" },
         "acceptance": { "$ref": "#/$defs/ref" },

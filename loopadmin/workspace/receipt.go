@@ -40,7 +40,10 @@ var (
 	// instance as current. Nothing is prepared or reused.
 	ErrUnauthorized = errors.New("prepared-environment: owner or instance is not current")
 	// ErrAdapter: an adapter failed; the receipt keeps the outcome it had
-	// reached (unknown or partial) for the next attempt to reconcile.
+	// reached (unknown or partial) for the next attempt to reconcile. The
+	// returned error's text is the sentinel's alone, but it unwraps to the
+	// adapter's cause for errors.Is and errors.As: callers log only Error(),
+	// never an unwrapped cause, which may carry adapter text.
 	ErrAdapter = errors.New("prepared-environment: adapter failed")
 	// ErrHold: the port refused an action that could lose files or act on an
 	// uncertain allocation. A *Hold carries the reason.
@@ -254,8 +257,10 @@ func (r Request) shape(at string) error {
 		return invalid(at+".environment.harness_bundle", "is not a sha256 digest")
 	case e.Image != "" && !digest.MatchString(e.Image):
 		return invalid(at+".environment.image", "is not a sha256 digest")
-	case e.Tools == nil || e.Skills == nil:
-		return invalid(at+".environment", "needs tools and skills lists")
+	case e.Tools == nil:
+		return invalid(at+".environment.tools", "needs a tools list")
+	case e.Skills == nil:
+		return invalid(at+".environment.skills", "needs a skills list")
 	}
 	for _, list := range [][]Component{e.Tools, e.Skills} {
 		for _, c := range list {
@@ -264,8 +269,15 @@ func (r Request) shape(at string) error {
 			}
 		}
 	}
+	// A nil list would encode as null, which Decode refuses: every required
+	// list is refused nil here, so no receipt the port stores fails to decode.
+	if r.Writable == nil {
+		return invalid(at+".writable", "needs a writable list")
+	}
 	for _, w := range r.Writable {
-		if w == "" || path.IsAbs(w) || path.Clean(w) != w || w == ".." || strings.HasPrefix(w, "../") {
+		// A backslash is refused outright: path is slash-only, so "..\x"
+		// would otherwise pass as clean and relative.
+		if w == "" || strings.Contains(w, `\`) || path.IsAbs(w) || path.Clean(w) != w || w == ".." || strings.HasPrefix(w, "../") {
 			return invalid(at+".writable", "has a path that is not clean and relative")
 		}
 	}

@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"slices"
@@ -117,9 +118,12 @@ func BindingKey(i Instance) string {
 	return i.Cell + "/" + i.Role + "/" + i.ID + "#" + strconv.FormatUint(i.Generation, 10)
 }
 
-// Release hands a ready, file-clean allocation to the retirement owner. A
+// Release hands a clean, observed allocation to the retirement owner,
+// whatever outcome its receipt records: a partial or not-ready workspace that
+// is observable and holds no unpublished files is retired the same way. A
 // missing receipt, an expired allocation, an unknown allocation and
-// unpublished or unknown files each hold.
+// unpublished or unknown files each hold. Release checks no authority: the
+// retirement owner fences which caller may retire which instance.
 func (p *Port) Release(ctx context.Context, inst Instance, expired bool) error {
 	r, found, err := p.Store.Get(ctx, BindingKey(inst))
 	switch {
@@ -181,7 +185,12 @@ func (p *Port) Prepare(ctx context.Context, req Request) (Receipt, error) {
 	r := Receipt{Version: Version, Inputs: req, Outcome: OutcomeUnknown,
 		Validation: Validation{Validator: p.Validator, Observer: p.Observer}}
 	if found {
-		r.Allocation, r.Restored = prior.Allocation, prior.Restored
+		r.Allocation = prior.Allocation
+		// A recorded restoration carries forward only while the request asks
+		// for no other one; a changed source or changed needs restores again.
+		if req.Restore == nil || sameRestore(prior.Restored, *req.Restore) {
+			r.Restored = prior.Restored
+		}
 	}
 	// The intent is durable before the first adapter call, so a crash
 	// between here and the next Put leaves an unknown receipt to reconcile.
@@ -217,6 +226,13 @@ func (p *Port) Prepare(ctx context.Context, req Request) (Receipt, error) {
 			return r, &Hold{HoldNoSource}
 		}
 		if req.Restore.Needs.Files {
+			// Restoring into a workspace an earlier attempt allocated copies
+			// over its files: only when none are unpublished or unknown.
+			if prior.Allocation.Workspace != "" {
+				if pres, err := p.Git.Unpublished(ctx, ws); err != nil || pres != PresenceNone {
+					return r, &Hold{HoldUnpublished}
+				}
+			}
 			if err := p.Resources.RestoreFiles(ctx, src.Allocation.Workspace, ws); err != nil {
 				return r, opaque{ErrAdapter, err}
 			}
@@ -265,12 +281,18 @@ func (p *Port) observe(ctx context.Context, key string, r Receipt) (Receipt, err
 	eff, known, err := p.Resources.Inspect(ctx, r.Allocation.Workspace)
 	if err != nil || !known {
 		r.Outcome = OutcomeUnknown
-		_ = p.Store.Put(ctx, key, r)
+		// A store that cannot record the unknown outcome may still hold an
+		// earlier ready one: that is an adapter failure, not only a hold.
+		if err := p.Store.Put(ctx, key, r); err != nil {
+			return r, opaque{ErrAdapter, err}
+		}
 		return r, &Hold{HoldUnknownAllocation}
 	}
 	if eff.Repositories, err = p.Git.Revisions(ctx, r.Allocation.Workspace); err != nil {
 		r.Outcome = OutcomeUnknown
-		_ = p.Store.Put(ctx, key, r)
+		if perr := p.Store.Put(ctx, key, r); perr != nil {
+			return r, opaque{ErrAdapter, perr}
+		}
 		return r, opaque{ErrAdapter, err}
 	}
 	r.Validation = Validation{Validator: p.Validator, Observer: p.Observer, Checks: Match(r.Inputs, eff)}
@@ -280,7 +302,9 @@ func (p *Port) observe(ctx context.Context, key string, r Receipt) (Receipt, err
 			r.Outcome = OutcomeNotReady
 		}
 	}
-	if err := r.Validate(); err != nil {
+	// The one choke point: a receipt is stored with its observed outcome only
+	// if it survives the same strict decode a caller admits it through.
+	if err := roundTrips(r); err != nil {
 		return r, err
 	}
 	if err := p.Store.Put(ctx, key, r); err != nil {
@@ -290,6 +314,22 @@ func (p *Port) observe(ctx context.Context, key string, r Receipt) (Receipt, err
 		return r, ErrNotReady
 	}
 	return r, nil
+}
+
+// roundTrips validates r by encoding it and decoding it strictly, so every
+// receipt the port stores is one Decode accepts.
+func roundTrips(r Receipt) error {
+	b, err := json.Marshal(r)
+	if err != nil {
+		return invalid("receipt", "does not encode")
+	}
+	_, err = Decode(b)
+	return err
+}
+
+// sameRestore: a recorded restoration is the one req asks for.
+func sameRestore(done *Restored, req Restore) bool {
+	return done != nil && done.Source == req.Source && done.Preserved == req.Needs
 }
 
 // Match is the one validator: it compares each mandatory input of req with

@@ -1811,5 +1811,33 @@
     "file": "workspace/port.go",
     "old": "return i.Cell + \"/\" + i.Role + \"/\" + i.ID + \"#\" + strconv.FormatUint(i.Generation, 10)",
     "new": "return i.Cell + \"/\" + i.Role + \"#\" + strconv.FormatUint(1, 10)"
+  },
+  {
+    "test": "TestReceiptNilListsRefused",
+    "why": "agent-execution/02 review F1: accept a nil writable list, which encodes as null and fails Decode",
+    "file": "workspace/receipt.go",
+    "old": "\tif r.Writable == nil {\n\t\treturn invalid(at+\".writable\", \"needs a writable list\")\n\t}\n",
+    "new": ""
+  },
+  {
+    "test": "TestReceiptNilListsRefused",
+    "why": "agent-execution/02 review F1 class: store an observed receipt without the strict round trip",
+    "file": "workspace/port.go",
+    "old": "if err := roundTrips(r); err != nil {",
+    "new": "if err := r.Validate(); err != nil {"
+  },
+  {
+    "test": "TestObserveStoreFault",
+    "why": "agent-execution/02 review A2: drop the store error when recording an unknown observation",
+    "file": "workspace/port.go",
+    "old": "\t\tif err := p.Store.Put(ctx, key, r); err != nil {\n\t\t\treturn r, opaque{ErrAdapter, err}\n\t\t}\n\t\treturn r, &Hold{HoldUnknownAllocation}",
+    "new": "\t\t_ = p.Store.Put(ctx, key, r)\n\t\treturn r, &Hold{HoldUnknownAllocation}"
+  },
+  {
+    "test": "TestRestoreRebind",
+    "why": "agent-execution/02 review A3: carry a prior restoration forward whatever the request now asks",
+    "file": "workspace/port.go",
+    "old": "if req.Restore == nil || sameRestore(prior.Restored, *req.Restore) {",
+    "new": "if true {"
   }
 ]
