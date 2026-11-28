@@ -8,14 +8,12 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/tools/desk/internal/socktest"
 )
 
 func TestLocalTransportRoundTripAndExclusiveListen(t *testing.T) {
-	dir, err := os.MkdirTemp("", "comms-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dir)
+	dir := socktest.Dir(t, "comms-", "gw.sock")
 	address := filepath.Join(dir, "gw.sock")
 	if runtime.GOOS == "windows" {
 		address = fmt.Sprintf(`\\.\pipe\assay-comms-test-%d-%d`, os.Getpid(), time.Now().UnixNano())
