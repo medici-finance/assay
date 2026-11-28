@@ -337,5 +337,8 @@
       "old": "\t\t\tdotGit = filepath.Join(admin, dotGit)\n",
       "new": ""
     }
-  ]
+  ],
+  "select": {
+    "always": []
+  }
 }
