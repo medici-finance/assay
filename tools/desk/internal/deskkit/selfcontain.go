@@ -153,6 +153,13 @@ var (
 	// scheme's `//`) and a run after a letter or digit (a doubled separator inside a path).
 	reWinUsersPath = regexp.MustCompile(`(?i)\b[a-z]:[\\/]+users[\\/]+[\p{L}\p{N}_$][^\s"'` + "`" + `)\]>,;]*`)
 	reWinUNCPath   = regexp.MustCompile(`[\\/]{2,}[\p{L}\p{N}][\p{L}\p{N}._$-]+[\\/]+[\p{L}\p{N}_$][^\s"'` + "`" + `)\]>,;]*`)
+	// reRegexEscapeHost matches a UNC host segment that is really a regex or string escape
+	// body (#7838): `x` and two hex digits, `u` and four, or `U` and eight, optionally
+	// trailed by the range or name punctuation a character class puts next to it
+	// (`x00-`). A JSON-escaped or Go-quoted character class holding a control-character range
+	// is a run of backslashes, one such body as "host" and the next as "share"; it names no
+	// machine.
+	reRegexEscapeHost = regexp.MustCompile(`^(?:x[0-9A-Fa-f]{2}|u[0-9A-Fa-f]{4}|U[0-9A-Fa-f]{8})[._$-]*$`)
 	// reWorktreeName matches a scratch worktree directory name written WITHOUT its leading
 	// path — `tracker-<item>` — which is how it most often reaches a body (a command line, a
 	// "my worktree is …" sentence). deskwt mints exactly this shape (cmd/deskwt).
@@ -443,6 +450,9 @@ func findAbsMachinePath(s string) []int {
 			if re == reWinUNCPath && loc[0] > 0 && notUNCLead(s[loc[0]-1]) {
 				continue
 			}
+			if re == reWinUNCPath && uncHostIsRegexEscape(s[loc[0]:loc[1]]) {
+				continue
+			}
 			if IsAbsFor("windows", s[loc[0]:loc[1]]) {
 				best = loc
 				break
@@ -488,6 +498,18 @@ func (worktreeNameFinder) FindAllStringIndex(s string, n int) [][]int {
 		out = append(out, m[2:4])
 	}
 	return out
+}
+
+// uncHostIsRegexEscape reports whether the host segment of a UNC-shaped match (the text
+// between its leading separator run and the next separator) is a regex or string escape body
+// rather than a machine name — see reRegexEscapeHost. The match is known to carry a host and
+// a share, so the host is always present.
+func uncHostIsRegexEscape(m string) bool {
+	m = strings.TrimLeft(m, `\/`)
+	if i := strings.IndexAny(m, `\/`); i >= 0 {
+		m = m[:i]
+	}
+	return reRegexEscapeHost.MatchString(m)
 }
 
 // notUNCLead reports whether the byte before a UNC-shaped separator run means the run is not
