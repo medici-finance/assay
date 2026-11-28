@@ -195,6 +195,16 @@ func DecodeRequest(b []byte) (LaunchRequest, error) {
 	return r, nil
 }
 
+// DecodeStrict decodes one document into a defined shape exactly as strictly as
+// a request: no longer than MaxDocumentBytes, exact keys, no repeated key, no
+// null for a defined field or list element, nothing trailing. A refusal wraps
+// ErrInvalidRequest and names a defined path or a byte offset, never content.
+// Contracts layered on this one (the prepared-environment receipt) decode
+// through it instead of keeping a second strict decoder.
+func DecodeStrict(raw []byte, into any) error {
+	return decodeExtension(raw, into, "document")
+}
+
 // decodeError reduces an encoding/json error to its position, so a refusal
 // never carries request content back to whoever logs it.
 func decodeError(err error) error {

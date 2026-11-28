@@ -310,6 +310,26 @@ Attempts: (1) 2026-11-27T01:10:17Z to 2026-11-27T01:19:54Z, 13 rows, uncredited 
 
 **Correction, November 27, 2026 (review of medici-finance/assay#7839).** Row 10's fix issue is medici-finance/assay#7835, and the outcome record's blocker_ref cites it. The two failures in medici-finance/assay#7525 are repaired by medici-finance/assay#7656. The row 10 failure is triggered by the row environment: TestRemoveStoppedEndpoint is unchanged since medici-finance/assay#2141, row 10 passed on 2026-11-13 at 48e6fddbec36, and the same command exits 0 from a plain shell with a shorter TMPDIR. The delivered code passes outside the row environment. The fix belongs in the test, so the class stays implementation. The table and attestation line above the "Full re-verification at 21a57c5cc23c" heading are that heading's witness block, laid out as verifyrun emitted them, the same layout as the November 23 block.
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 10 | `bash tools/cellctl/tests/postgres-verify.sh 10` | pass exit=0 | sha256:9505c8408e70 | 2026-11-28 | assay-verifier-app[bot] @ 022a8c8840d2 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7871 run=9c51b1bf43e9c0ddb28ec3d498662a93b2e4799b27dee2d3aeb8c02ae04d788c source=022a8c8840d22cb195d21502c94077ba4b89829e brief=docs/streams/desk-containers/brief-26-local-docker-postgres.md model=claude-opus-5-5 tier=any
+
+### Row 10 re-run at 022a8c8840d2, November 28, 2026
+
+The table and attestation line directly above this heading are its witness block: one statusgen v1.0.95 verifyrun --rows 10 under the standard witness header on merged main 022a8c8840d22cb195d21502c94077ba4b89829e. Only row 10 ran; verifyrun printed "row <id>: not selected" for the other 12 rows and ran none of them. The host is darwin arm64, with KUBECONFIG=/dev/null and the declared verifier Git environment. deskdispatch --check-verifier exited 0 before the row (medici-finance/assay#7871).
+
+- Row 10 passes, exit 0 (output sha256:9505c8408e70). TestCellDB and the whole cellctl package pass under the verifyrun row environment. The row ran 2026-11-28T14:50:31Z to 14:55:49Z.
+- The darwin socket-path failure recorded on November 27 (medici-finance/assay#7835) is repaired on this head by medici-finance/assay#7855 (merge 73d86a4606, commit 764febfb03). TestRemoveStoppedEndpoint now takes its socket directory from the shared short-path test helper instead of os.MkdirTemp under TMPDIR.
+- Between 21a57c5cc23c and this head, nothing under containers/postgres or tools/cellctl changed, and nothing in docs/cellctl.md. Under tools/desk/cmd/cellctl only three test files changed: comms_unix_test.go, comms_hello_unix_test.go and kube_compat_custody_target_test.go. Row 10 covers all three. The other 12 rows keep their November 27 witnesses, and the risk-value enumeration above still stands.
+- statusgen verifyrun --check on this Evidence reports 13 pass, 0 fail, 0 could-not-run of 13 rows, with 0 author-added.
+
+**Human gate.** This brief is gate: human with risk.sensitive-data: yes, and a model does not sign it off. Decision issue medici-finance/assay#2940 holds the driver's ruling (https://github.com/medici-finance/assay/issues/2940#issuecomment-6668052413). Status is left where it is.
+
+Attempts: (1) 2026-11-28T14:50:31Z to 2026-11-28T14:55:49Z, row 10, uncredited (credit-unchecked).
+
+**VERIFY: PASS** — row 10 passes at 022a8c8840d2 now that medici-finance/assay#7855 is merged. The witness audit credits 13 of 13 rows. Status is left for the human gate.
+
 
 ## Review
 Gate: human, `sensitive-data: yes`: the brief designs credential custody (see `gate-why`). The other three risk answers are no. No credential is committed: the superuser password and each cell's password live in operator-created files outside the repository. The brief follows `containers/secrets.md` unchanged and leaves it unedited. Every test server is throwaway. A restore renames the previous database aside rather than dropping it, so nothing done here is irreversible. The reviewer checks:

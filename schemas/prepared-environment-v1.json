@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://medici-finance.github.io/assay/schemas/prepared-environment-v1.json",
+  "title": "prepared-environment/v1 receipt",
+  "description": "Machine-readable contract for the prepared-environment/v1 receipt (spec/prepared-environment-v1.md): what one instance workspace was prepared from and what was observed in it. The contract is DESCRIPTIVE of shape: required fields, field types and closed value sets. It deliberately does NOT encode the rules the loopadmin/workspace module enforces: no string at any depth carries credential material; repository names are unique; writable paths are clean and relative; a restoration source is another instance; a ready receipt names its preparation and workspace and records a match for every mandatory input (repositories, recipe, tools, skills, harness_bundle, writable, policy, and image when one is requested); a receipt is admitted only for the invocation, owner, instance and workspace it records. Decoding is strict: exact keys, no repeated key, no null for a defined field, nothing trailing.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "inputs", "allocation", "outcome", "validation"],
+  "properties": {
+    "version": { "const": "prepared-environment/v1" },
+    "inputs": { "$ref": "#/$defs/request" },
+    "allocation": { "$ref": "#/$defs/allocation" },
+    "outcome": { "$ref": "#/$defs/outcome" },
+    "validation": { "$ref": "#/$defs/validation" },
+    "artifacts": { "type": "array", "items": { "$ref": "#/$defs/artifact" } },
+    "restored": { "$ref": "#/$defs/restored" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+    "ref": { "description": "An opaque reference; never content.", "type": "string", "minLength": 1 },
+    "outcome": {
+      "description": "unknown (intent written, or observation failed), partial (allocated, unfinished, files preserved), not-ready (observed, some input mismatched), ready (observed, every mandatory input matched).",
+      "enum": ["unknown", "partial", "not-ready", "ready"]
+    },
+    "result": { "enum": ["match", "mismatch"] },
+    "invocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["caller", "id"],
+      "properties": { "caller": { "$ref": "#/$defs/ref" }, "id": { "$ref": "#/$defs/ref" } }
+    },
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "generation", "incarnation", "validated_by"],
+      "properties": {
+        "key": { "$ref": "#/$defs/ref" },
+        "generation": { "type": "integer", "minimum": 1 },
+        "incarnation": { "$ref": "#/$defs/ref" },
+        "validated_by": { "$ref": "#/$defs/ref" }
+      }
+    },
+    "instance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cell", "role", "id", "generation"],
+      "properties": {
+        "cell": { "$ref": "#/$defs/ref" },
+        "role": { "$ref": "#/$defs/ref" },
+        "id": { "$ref": "#/$defs/ref" },
+        "generation": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "repository": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "revision"],
+      "properties": {
+        "name": { "$ref": "#/$defs/ref" },
+        "revision": { "type": "string", "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$" }
+      }
+    },
+    "component": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": { "name": { "$ref": "#/$defs/ref" }, "version": { "$ref": "#/$defs/ref" } }
+    },
+    "recipe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "digest"],
+      "properties": {
+        "id": { "$ref": "#/$defs/ref" },
+        "version": { "$ref": "#/$defs/ref" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "environment": {
+      "description": "What a cell preparation is built from. Instances of one cell with an equal environment may share a preparation; each keeps its own writable workspace.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["recipe", "tools", "skills", "harness_bundle"],
+      "properties": {
+        "recipe": { "$ref": "#/$defs/recipe" },
+        "tools": { "type": "array", "items": { "$ref": "#/$defs/component" } },
+        "skills": { "type": "array", "items": { "$ref": "#/$defs/component" } },
+        "harness_bundle": { "$ref": "#/$defs/digest" },
+        "image": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "policy": {
+      "description": "References to the tool and network policies, never their content.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["tool", "network"],
+      "properties": { "tool": { "$ref": "#/$defs/ref" }, "network": { "$ref": "#/$defs/ref" } }
+    },
+    "preservationNeed": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": {
+        "files": { "type": "boolean" },
+        "conversation": { "type": "boolean" },
+        "process_memory": { "type": "boolean" },
+        "descendants": { "type": "boolean" },
+        "pending_interactions": { "type": "boolean" }
+      }
+    },
+    "restore": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "needs"],
+      "properties": { "source": { "$ref": "#/$defs/instance" }, "needs": { "$ref": "#/$defs/preservationNeed" } }
+    },
+    "request": {
+      "description": "Every mandatory input of one preparation. candidate and acceptance are opaque references.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["invocation", "owner", "instance", "repositories", "environment", "writable", "policy"],
+      "properties": {
+        "invocation": { "$ref": "#/$defs/invocation" },
+        "owner": { "$ref": "#/$defs/owner" },
+        "instance": { "$ref": "#/$defs/instance" },
+        "repositories": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/repository" } },
+        "environment": { "$ref": "#/$defs/environment" },
+        "writable": { "type": "array", "items": { "type": "string", "minLength": 1, "pattern": "^[^\\\\]*$" } },
+        "policy": { "$ref": "#/$defs/policy" },
+        "candidate": { "$ref": "#/$defs/ref" },
+        "acceptance": { "$ref": "#/$defs/ref" },
+        "restore": { "$ref": "#/$defs/restore" }
+      }
+    },
+    "allocation": {
+      "description": "The shared cell preparation and the instance's own writable workspace; empty before the first adapter call.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [],
+      "properties": { "preparation": { "$ref": "#/$defs/ref" }, "workspace": { "$ref": "#/$defs/ref" } }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input", "result"],
+      "properties": { "input": { "type": "string", "minLength": 1 }, "result": { "$ref": "#/$defs/result" } }
+    },
+    "validation": {
+      "description": "Provenance of the outcome: the validator, the observer whose report it compared, and each check.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["validator", "observer"],
+      "properties": {
+        "validator": { "$ref": "#/$defs/ref" },
+        "observer": { "$ref": "#/$defs/ref" },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "ref", "digest"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "ref": { "$ref": "#/$defs/ref" },
+        "digest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "restored": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "preserved"],
+      "properties": { "source": { "$ref": "#/$defs/instance" }, "preserved": { "$ref": "#/$defs/preservationNeed" } }
+    }
+  }
+}

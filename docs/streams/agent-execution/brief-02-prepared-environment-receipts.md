@@ -16,7 +16,7 @@ exec-tier: "strong"
 exec-tier-why: "Cross-component protocol, recovery and authority boundaries require design judgment."
 domain: "complicated"
 outcome: "none"
-consumers: ["loopadmin/workspace: follow-up agent-execution/02 (this brief; flips to fixed-here when the implementation edits the path)", "loopadmin/supervisor: follow-up agent-execution/03", "workflow/executionqualification: follow-up agent-execution/04", "loopadmin/adapters/axcompat: follow-up agent-execution/06", "workflow/workspace: out-of-scope (candidate freeze and acceptance remain graph-execution/23 and /28)"]
+consumers: ["loopadmin/workspace: fixed-here", "loopadmin/runner: fixed-here (exports DecodeStrict and CheckPreservation for reuse)", "loopadmin/supervisor: follow-up agent-execution/03", "workflow/executionqualification: follow-up agent-execution/04", "loopadmin/adapters/axcompat: follow-up agent-execution/06", "workflow/workspace: out-of-scope (candidate freeze and acceptance remain graph-execution/23 and /28)"]
 version: 3
 id: "d3782f80-bb6f-4b7d-9ed5-36994224e9d9"
 ---

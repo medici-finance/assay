@@ -233,6 +233,15 @@ func checkPreservation(have Preservation, need *PreservationNeed, op fieldPath) 
 	return nil
 }
 
+// CheckPreservation refuses a needed continuity dimension that have does not
+// declare supported, with the same reasons a launch uses: unknown with
+// ErrCapabilityUnknown, unsupported with ErrUnsupportedMandatory. A layered
+// contract (prepared-environment restoration) checks its needs through it so
+// the two never read unknown differently.
+func CheckPreservation(have Preservation, need PreservationNeed) error {
+	return checkPreservation(have, &need, "restore")
+}
+
 // Validate checks a declared profile's shape and that its digest is the digest
 // of its content.
 func (p QualifiedProfile) Validate() error {
