@@ -30,7 +30,7 @@ schema: brief-v2
 version: 1
 authored: 2026-11-18 by a worker-desk authoring session (design proposal; no ruling recorded yet); revised 2026-11-22 after round-1 review and 2026-11-27 after round-2 review
 sources:
-  - "medici-finance/assay#7010 (the request, and the decision issue: the coordinator desk cannot waive the changelog check on briefs-only PRs, and the gate never checks who applied the label; its triage comment numbers three options; this brief uses those numbers and narrows options 1 and 2, see Human decision)"
+  - "medici-finance/assay#7010 (the request, and the decision issue: the coordinator desk cannot waive the changelog check on briefs-only PRs, and the gate never checks who applied the label; its triage comment numbers three options; this brief uses those numbers and adds conditions to options 1 and 2, see Human decision)"
   - ".github/workflows/changelog-check.yml header: the label path stays the maintainer's; the Evidence lane is decided in-workflow because handing label-write to an automation App is the widening this repository refuses"
   - "plugins/assay/skills/worker-desk/SKILL.md (a non-notable PR carries the label, 'applied by the desk or a human') and plugins/assay/skills/author-brief/SKILL.md (a non-notable brief 'leaves the changelog:skip waiver to the desk or a human')"
   - "changelog/README.md, section Automatic board reconciliation (the existing narrow classification exception, with an exact-identity and whole-diff check)"
@@ -130,15 +130,16 @@ design-fit:
 
 Decision issue: #7010 (this repository). The human records the ruling there as their own comment,
 `Ruling: 1`, `Ruling: 2` or `Ruling: 3`. The numbers match the triage comment on #7010, but
-options 1 and 2 as specified here are narrower than the text there:
+options 1 and 2 as specified here add conditions the text there does not have:
 
 - Option 1: the issue's path waiver applies to a briefs-only diff whoever the author is. Here the
   PR author must also be named in `ASSAY_BRIEFS_ONLY_ACTORS`, so an unset variable waives nothing.
-- Option 2: the issue adds the desk's App to the label allow-list with no path condition. Here a
-  named identity's label counts only on a briefs-only PR.
+- Option 2: the issue adds the desk's App to the label allow-list with no path condition. Here the
+  list is whatever the variable names (the desk's App, and any other identity the human names), and
+  a named identity's label counts only on a briefs-only PR.
 
 A ruling by number selects the option as this brief specifies it. A human who wants the issue's
-wider text says so on #7010, and this brief is revised before any code. The request as filed asks
+text instead says so on #7010, and this brief is revised before any code. The request as filed asks
 for the coordinator desk to apply the label, which is option 2 below.
 
 Every PR that changes only briefs (a Verify-row amendment, a new brief, a stream README edit)
@@ -175,8 +176,8 @@ nothing.
 ## Ground rules
 - This brief records no ruling. Implement only the option the human records on the decision issue
   (#7010), selected by number and built as this brief specifies it, and nothing from the others.
-  Where the issue's text for an option is wider than this brief's, this brief's text is what gets
-  built; a ruling that asks for the wider text or adds a condition is NEEDS_CONTEXT.
+  Where the issue's text for an option differs from this brief's, this brief's text is what gets
+  built; a ruling that asks for the issue's text or adds a condition is NEEDS_CONTEXT.
 - The Verify table below names, in each row's Expect cell, the options the row applies to. The
   ruling's number alone decides which rows apply. The verifier records a row for another option as
   not applicable and cites the ruling; the implementer never edits, adds or drops a row to fit.
