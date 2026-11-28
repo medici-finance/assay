@@ -334,6 +334,7 @@ The spec is one JSON object. Fields not listed here are ignored.
 | `control` | yes | A mutation object (below) the suite **must** catch. `control.name` and `control.old` must be non-empty, or `muhar` exits 1 before running anything. |
 | `mutations` | no | An array of mutation objects, run in order. An empty or missing array is allowed: the run checks the baseline and the control, then reports `Totals: 0 caught, …`. |
 | `root` | no | The directory that relative `file` paths resolve against and that the test command runs in. If it is empty, both use the directory `muhar` was started in. A relative `root` is resolved from that directory too, not from the spec file's location. |
+| `select` | no | Object with `always`, a list of top-level test names added to every narrowed run. It is read only under `-select`. List only tests that can catch a mutation without executing the mutated function, such as a test that reads source text or a golden file. Leave it empty when no such test exists. Never use it to put the broad suite back. See [Coverage selection](#coverage-selection--select). |
 
 A mutation object:
 
@@ -510,6 +511,49 @@ Totals: 1 caught, 0 NOT CAUGHT, 0 could-not-mutate.
 
 You are responsible for running all `n` shards. `i` must satisfy `0 <= i < n`
 and `n >= 1`; anything else (`3/3`, `-1/3`, `0/0`, `a/3`, `0 / 3`) exits 1.
+
+### Coverage selection (`-select`)
+
+`-select` runs each mutant against only the tests that executed the mutated
+function on pristine source, plus the spec's `select.always` list. The test
+command must be a plain `go test` that selection can model. It may carry `-run`
+and `-skip`, each once and each a top-level pattern. A test the spec's `-skip`
+matches is never listed, attributed or run alone, and every narrowed command
+keeps that `-skip` unchanged. Any other flag that selection does not model is
+refused. A mutation that cannot be attributed runs the full command, and
+stderr says so with `full suite (`. Examples are a mutation in a non-Go file,
+outside any function body, or one that adds or removes a declaration.
+
+**Parity comes before adoption.** Selection can report `CAUGHT` for a mutant
+the full command lets survive. This happens when a test it drops sets or
+clears shared state that a selected test reads (see the package comment in
+`selection.go`). Before a gate relies on `-select`, run the classic sweep and
+the selected sweep of that gate's spec on one revision. Strip each `CAUGHT`
+and `NOT_CAUGHT` line's trailing timeout or error suffix and diff the two
+lists. Adopt only when the per-mutant verdicts are identical and both lanes
+report the gate's exact totals. Equal totals are not enough. Keep the classic
+sweep standing beside the selected one, because selection never replaces it.
+
+**Re-run parity whenever any of these changes:**
+
+- the suite: a test added, removed, renamed or reordered, or a change to
+  shared fixtures, package variables or caches that tests read;
+- the spec: its `test` command, its mutations, its control or
+  `select.always`;
+- the selector: `selection.go`, or the go toolchain's coverage or
+  `-test.list` behaviour.
+
+A parity run vouches only for the suite and spec as they stood on that
+revision.
+
+**Parity record for `cmd/deskwt/prune-mutations.json` (2026-11-28).** Both
+`-j 2` lanes report `Totals: 55 caught, 0 NOT CAUGHT, 0 could-not-mutate.` and
+their per-mutant verdict diff is empty. All 9 mutated files are instrumented,
+and no narrowed set is red on pristine source. `select.always` is empty,
+because the selected lane catches every mutant without it. 50 mutants run
+narrowed, between 4 and 154 of the 196 listed tests. 5 mutants sit outside any
+function body and run the full command. Run side by side on one host, the two
+lanes took about the same wall time, 32 and 33 minutes.
 
 ## Output
 
