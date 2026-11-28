@@ -57,6 +57,15 @@ force unrelated capabilities behind a whole-stream completion gate. Streams with
 outlines or no executable briefs MUST show uncovered planning work rather than invented
 briefs, waves or completion percentages. Fixtures MUST be excluded from delivery totals.
 
+For staged work, the authored scope SHOULD identify the first useful outcome and retained
+later capabilities, with criterion coverage and the joined acceptance owner. Review
+prerequisites at the capability boundary in brief §1.2, including across stream roots;
+whole-stream completion or a larger future operating mode must not gate work that does
+not need it. Record the before/after affected dependency path and the delivery it enables,
+or why no safe split exists. Proposed decomposition is not delivered capability. Use
+existing authored prose until milestone readers support operational records; this adds
+no README field or automatic re-planning behavior.
+
 ## 4. Completion, parking and reporting
 
 Stream status does not establish milestone acceptance; milestone acceptance does not
