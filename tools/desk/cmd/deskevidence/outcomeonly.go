@@ -34,6 +34,7 @@ import (
 	"strings"
 
 	"github.com/medici-finance/assay/statusgen/evaluation"
+
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -60,18 +61,6 @@ func evidenceWithheld(raw []byte) (string, bool) {
 	return s, true
 }
 
-// nonDecisiveVerdictWord maps a non-decisive outcome to the Evidence verdict
-// word a run with that outcome records; "" for a decisive or unknown outcome.
-func nonDecisiveVerdictWord(outcome string) string {
-	switch evaluation.ParseVerificationOutcome(outcome) {
-	case evaluation.OutcomeBlocked:
-		return "BLOCKED"
-	case evaluation.OutcomeNeedsContext:
-		return "NEEDS-CONTEXT"
-	}
-	return ""
-}
-
 // checkOutcomeOnly admits an outcome-only record, or refuses it naming why.
 // root is the landed closure root; tip is the target branch's board, staged over
 // root for the status read (decisionGateBranchBoardFn).
@@ -84,7 +73,7 @@ func checkOutcomeOnly(root string, fr deskkit.ForgeRepo, tip []boardEdit, receip
 	if !ok || reason != evidenceWithheldReason {
 		return deskkit.Refused(mode + "; the record must state \"" + evidenceWithheldKey + "\":\"" + evidenceWithheldReason + "\"")
 	}
-	word := nonDecisiveVerdictWord(outcome.Outcome)
+	word := evaluation.NonDecisiveVerdictWord(outcome.Outcome)
 	if word == "" {
 		return deskkit.Refused(mode + "; outcome " + `"` + outcome.Outcome + `"` +
 			" is decisive or unknown — a verify-fail or verified outcome lands its Evidence first")

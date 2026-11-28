@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"strings"
 	"sync"
 
@@ -34,35 +33,65 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 	verb := args[0]
 	rest := args[1:]
 
-	var id, repoFlag, owner, branch, reason, tokenFile string
+	var id, repoFlag, owner, branch, reason, tokenFile, reviewRun string
 	// The optional positional id: the first token, unless it is a flag or empty.
 	if len(rest) > 0 && rest[0] != "" && !strings.HasPrefix(rest[0], "-") {
 		id = rest[0]
 		rest = rest[1:]
 	}
+	valueFlags := map[string]*string{
+		"--review-run": &reviewRun, "--repo": &repoFlag, "--owner": &owner, "--branch": &branch, "--reason": &reason, "--token-file": &tokenFile,
+	}
 	for i := 0; i < len(rest); i++ {
+		// A value flag takes its value as the next argument or after "=". The spaced form never
+		// takes an empty or blank value or another long option as its value: swallowing the next flag
+		// shifts every later argument, so `--repo --branch -` would read "-" as a flag and
+		// `--repo --branch=-` would select a claim namespace named "--branch=-" (#6896). A
+		// single "-" stays a value: it is the dispatcher's placeholder for a branchless claim.
+		name, value, inline := strings.Cut(rest[i], "=")
+		if dst, ok := valueFlags[name]; ok {
+			if !inline {
+				value, i = spacedValue(rest, i)
+			}
+			if blank(value) {
+				errf("refused: %s requires a value", name)
+				return exitRefused
+			}
+			*dst = value
+			continue
+		}
 		switch rest[i] {
-		case "--repo":
-			repoFlag, i = next(rest, i)
-		case "--owner":
-			owner, i = next(rest, i)
-		case "--branch":
-			branch, i = next(rest, i)
-		case "--reason":
-			reason, i = next(rest, i)
-		case "--token-file":
-			tokenFile, i = next(rest, i)
 		case "-h", "--help":
 			return dieUsage()
 		default:
-			if cli.ManualPerformance(&pc, rest[i], func() string { v, j := next(rest, i); i = j; return v }) {
+			// A performance flag never takes another long option as its value, and a missing
+			// value is refused, since either shifts the arguments that follow. An empty or
+			// blank value is NOT refused: under the shared performance contract it clears the
+			// inherited value and never changes a parser's result (internal/cli/performance.go).
+			flag, missing := rest[i], false
+			if cli.ManualPerformance(&pc, flag, func() string {
+				if i+1 >= len(rest) || strings.HasPrefix(rest[i+1], "--") {
+					missing = true
+					return ""
+				}
+				i++
+				return rest[i]
+			}) {
+				if missing {
+					errf("refused: %s requires a value", name)
+					return exitRefused
+				}
 				continue
 			}
-			errf("refused: unknown flag %s", rest[i])
+			errf("refused: unknown flag %s", flag)
 			return exitRefused
 		}
 	}
 
+	if reviewRun != "" && (verb != "acquire" || !deskkit.ValidDispatchRef(id, reviewRun)) {
+		errf("refused: --review-run must name this acquire's dispatch ref")
+		return exitRefused
+	}
 	selectContext()
 	// An inferred slug and its forge host must come from the same origin read.
 	readOrigin := sync.OnceValues(func() (string, error) { return checkedOriginURL(".") })
@@ -141,9 +170,16 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 			errf("refused: '%s' is not a valid claim key (want <repo>--<stream>--<NN> or <repo>--issue-<NN>)", id)
 			return exitRefused
 		}
+		// A lease written under the anonymous fallback has no identifiable
+		// holder who can release it. Read-only commands and a free release
+		// retain their usual behaviour when there is no session.
+		if (verb == "acquire" || verb == "progress" || verb == "steal") && (owner == "" || owner == "unknown") {
+			errf("refused: %s requires an identified owner; pass --owner or set DESK_SESSION", verb)
+			return exitRefused
+		}
 		switch verb {
 		case "acquire":
-			return cmdAcquire(id, owner, branch)
+			return cmdAcquire(id, owner, branch, reviewRun)
 		case "progress":
 			if branch == "" {
 				errf("refused: progress requires --branch")
@@ -151,9 +187,9 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 			}
 			return cmdProgress(id, owner, branch)
 		case "release":
-			return cmdRelease(id, repo)
+			return cmdRelease(id, repo, owner)
 		case "steal":
-			return cmdSteal(id, owner, reason)
+			return cmdSteal(id, owner, reason, "", nil)
 		case "show":
 			return cmdShow(id)
 		}
@@ -162,20 +198,24 @@ func dispatchVerb(args []string, sinks ...func(perfrec.Context)) int {
 	return dieUsage()
 }
 
-// next returns the value after flag position i and the advanced index. A missing value
-// yields "" (the bash `${2:-}`), which the verb-level checks then refuse where required.
-func next(rest []string, i int) (string, int) {
-	if i+1 < len(rest) {
-		return rest[i+1], i + 1
+// blank reports a value that carries nothing but whitespace. It counts as missing: the repo
+// and credential resolvers trim a flag value and treat an empty result as unset, falling back
+// to the origin remote and the ambient environment credential.
+func blank(v string) bool { return strings.TrimSpace(v) == "" }
+
+// spacedValue returns the value after the flag at position i and the advanced index. A
+// missing or blank value, or another long option in the value's place, yields "" and leaves
+// the index on the flag, so the caller refuses instead of shifting the arguments that follow.
+func spacedValue(rest []string, i int) (string, int) {
+	if i+1 >= len(rest) || blank(rest[i+1]) || strings.HasPrefix(rest[i+1], "--") {
+		return "", i
 	}
-	return "", i
+	return rest[i+1], i + 1
 }
 
 func defaultOwner() string {
-	for _, env := range []string{"DESK_SESSION", "CLAUDE_SESSION_ID"} {
-		if v := strings.TrimSpace(os.Getenv(env)); v != "" {
-			return v
-		}
+	if owner := deskkit.ResolveSessionName(""); owner != "" {
+		return owner
 	}
 	return "unknown"
 }

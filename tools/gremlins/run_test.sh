@@ -17,6 +17,9 @@ pass() { echo "ok: $*"; }
 root="$work/root"
 m="$root/tools/desk"
 mkdir -p "$m"/pkg/{ok,slow,red,boom,big}
+# The checkout's own repository: the sweep must never copy it or write into it.
+mkdir -p "$root/.git"
+echo 'ref: refs/heads/main' >"$root/.git/HEAD"
 printf 'module example.com/fake\n\ngo 1.25\n' >"$m/go.mod"
 for p in ok slow boom big; do
 	printf 'package %s\n\nfunc F(n int) bool {\n\treturn n > 3\n}\n' "$p" >"$m/pkg/$p/f.go"
@@ -70,7 +73,10 @@ if [ "$dry" = 1 ]; then
 	printf '{"go_module":"example.com/fake","files":[{"file_name":"f.go","mutations":[{"type":"CONDITIONALS_BOUNDARY","status":"RUNNABLE","line":4,"column":11},{"type":"CONDITIONALS_NEGATION","status":"RUNNABLE","line":4,"column":11}]}%s]}\n' "$g" >"$out"
 	exit 0
 fi
-printf '%s\t%s\t%s\n' "$pkg" "$TMPDIR" "$excl" >>"$STUB_CALLS"
+seen=no
+[ -e "$TMPDIR/.git" ] && seen=yes
+[ -f "$TMPDIR/tools/desk/go.mod" ] || seen="$seen,no-module"
+printf '%s\t%s\t%s\t%s\n' "$pkg" "$TMPDIR" "$excl" "$seen" >>"$STUB_CALLS"
 mkdir -p "$TMPDIR/gremlins-123/wd-0"
 echo "Gathering coverage... done in $cov"
 case "$pkg" in
@@ -124,9 +130,15 @@ grep -q $'^pkg/slow\tpartial\t' "$work/a/manifest.tsv" || fail "pkg/slow not rec
 grep -qF '`pkg/ok/f.go:4:11` `F` CONDITIONALS_BOUNDARY' "$work/a/summary.md" || fail "candidate row missing"
 # shellcheck disable=SC2016
 grep -qF '`pkg/slow/f.go:4:11`' "$work/a/summary.md" || fail "partial log survivor missing"
-grep -q $'^pkg/ok\t'"$root"$'\t$' "$work/a.calls" || fail "gremlins did not run with TMPDIR at the checkout root"
-ls -d "$root"/gremlins-* >/dev/null 2>&1 && fail "mutant copies left behind"
-pass "manifest, summary, TMPDIR and cleanup"
+# TMPDIR is a copy of the checkout WITHOUT .git: no repository encloses the mutant copies.
+tmp="$(awk -F'\t' '$1 == "pkg/ok" { print $2 }' "$work/a.calls")"
+[ -n "$tmp" ] || fail "gremlins did not run on pkg/ok"
+[ "$tmp" != "$root" ] || fail "gremlins ran with TMPDIR at the checkout itself"
+[ "$(awk -F'\t' '$1 == "pkg/ok" { print $4 }' "$work/a.calls")" = no ] || fail "the swept tree has a .git or no tools/desk module"
+[ ! -e "$tmp" ] || fail "the swept copy was left behind: $tmp"
+[ -f "$root/.git/HEAD" ] || fail "the checkout's .git was disturbed"
+ls -d "$root"/gremlins-* >/dev/null 2>&1 && fail "mutant copies written into the checkout"
+pass "manifest, summary, repository-free TMPDIR and cleanup"
 
 # 2. a package whose tests are red in the copy layout breaks the sweep.
 sweep b "$good_info" pkg/ok pkg/red
@@ -151,15 +163,21 @@ pass "pin check"
 # 5. a slow suite gets today's slice of files only.
 sweep e "$good_info" pkg/big:150
 [ "$rc" = 0 ] || fail "plan sweep exit $rc"
-grep -qF $'pkg/big\t'"$root"$'\t^(?:g\\.go)$' "$work/e.calls" || { fail "day 0 should exclude g.go"; cat "$work/e.calls"; }
+[ "$(awk -F'\t' '$1 == "pkg/big" { print $3 }' "$work/e.calls")" = '^(?:g\.go)$' ] || { fail "day 0 should exclude g.go"; cat "$work/e.calls"; }
 pass "rotation exclusion"
 
-# 6. leftovers from an earlier run refuse the sweep.
-mkdir "$root/gremlins-old"
-sweep f "$good_info" pkg/ok
-[ "$rc" = 2 ] || fail "leftover exit $rc, want 2"
-rmdir "$root/gremlins-old"
-pass "disposable-checkout check"
+# 6. a TMPDIR inside a git repository refuses the sweep before anything runs: the shared
+# git test harness would refuse every package there, and git in a test could write to it.
+git init -q "$work/enclosing"
+mkdir "$work/enclosing/tmp"
+rc=0
+env PATH="$goshim:$PATH" BUILDINFO="$good_info" STUB_CALLS="$work/f.calls" TMPDIR="$work/enclosing/tmp" \
+	bash "$here/run.sh" --root "$root" --gremlins "$stub/gremlins" -o "$work/f" pkg/ok \
+	>"$work/f.out" 2>&1 || rc=$?
+[ "$rc" = 2 ] || fail "TMPDIR in a repository exit $rc, want 2"
+grep -q 'inside a git repository' "$work/f.out" || { fail "TMPDIR in a repository not named"; cat "$work/f.out"; }
+[ -e "$work/f.calls" ] && fail "gremlins ran with TMPDIR inside a repository"
+pass "no TMPDIR inside a repository"
 
 # 7. a pin file that is not one go.sum line for Gremlins refuses before any install.
 alt="$work/alt/tools"

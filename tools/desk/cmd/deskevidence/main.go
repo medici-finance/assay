@@ -49,7 +49,7 @@ USAGE:
   deskevidence <owner/repo> <branch> --evidence-file <repo-path> [--root <dir>]
                [--brief-path <repo-path>] [--append-only] [--allow-shrink]
                [--row <NN> [--row <NN> ...]] [--dry-run] [--acceptance-forge]
-  deskevidence <owner/repo> <branch> --outcome-record <local-file> [--outcome-only]
+  deskevidence <owner/repo> <branch> --outcome-record <local-file> [--outcome-only | --flip-verified]
                [--root <dir>] [--dry-run]
   deskevidence flip --root <worktree> --brief <stream>/<NN> --sha <sha> [--base main] [--dry-run]
   deskevidence --version

@@ -7,7 +7,7 @@ package main
 //
 // These tests pin both halves of the fix:
 //
-//   - the explicit `cmd:` marker, which verifyCommand (and so verifyrun, the
+//   - the explicit `cmd:` marker, which briefdoc.VerifyCommand (and so verifyrun, the
 //     check:ci re-execution lane, newbrief and the row lint) prefers over the
 //     first span;
 //   - the `prose-led-command` lint NOTICE, which flags the #1805 shapes and
@@ -19,8 +19,8 @@ package main
 // tests fail on their assertions — the fail-first run the PR body quotes.
 //
 // The class guard (TestVerifyCommandLiftHasOneChokePoint) is the other half:
-// it fails when any new site lifts a command out of a cell with codeSpan
-// directly, instead of through verifyCommand. Its mutation spec is
+// it fails when any new site lifts a command out of a cell with briefdoc.CodeSpan
+// directly, instead of through briefdoc.VerifyCommand. Its mutation spec is
 // verifyrun-cmdmarker-mutations.json.
 
 import (
@@ -34,6 +34,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 const proseLedRule = "prose-led-command"
@@ -91,8 +93,8 @@ func TestVerifyRunNoMarkerUnchanged(t *testing.T) {
 			if rows[0].Command != c.want {
 				t.Errorf("lifted command = %q, want the legacy first-span lift %q", rows[0].Command, c.want)
 			}
-			if got := codeSpan(c.cell); got != c.want {
-				t.Errorf("fixture drift: codeSpan(%q) = %q, want %q", c.cell, got, c.want)
+			if got := briefdoc.CodeSpan(c.cell); got != c.want {
+				t.Errorf("fixture drift: briefdoc.CodeSpan(%q) = %q, want %q", c.cell, got, c.want)
 			}
 		})
 	}
@@ -370,30 +372,24 @@ func TestTranscribeVerdictRefusesProseLedCheckCI(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // liftPrimitiveAllowList is, per span-scanning primitive, every non-test
-// function permitted to call it. verifyCommand is THE Verify-cell lift; every
+// function permitted to call it. briefdoc.VerifyCommand is THE Verify-cell lift; every
 // other entry reads spans for a purpose that is not "the command to run": a
 // witness row's own Command cell, the lint's JUDGEMENT of a cell (never the
 // text it then lints), or the marker scan itself. A new entry needs the same
-// justification — a site that lifts a Verify command must call verifyCommand.
+// justification — a site that lifts a Verify command must call briefdoc.VerifyCommand.
 //
 // rowFindings is deliberately NOT on any list (#1808 review, CR-1808-1): it
-// lints whatever verifyCommand returns, and the NOTICE text names the span
-// proseLedCommandWhy hands back, so it never calls a primitive itself. A
+// lints whatever briefdoc.VerifyCommand returns, and the NOTICE text names the span
+// briefdoc.ProseLedCommandWhy hands back, so it never calls a primitive itself. A
 // function-keyed allow-list cannot tell a message-text call from a lift inside
 // one function, so the lint function must hold no call at all.
 var liftPrimitiveAllowList = map[string]map[string]string{
-	"codeSpan": {
-		"verifyCommand":    "the one Verify-cell lift (#1805)",
+	"CodeSpan": {
 		"witnessCommandOf": "reads a WITNESS row's Command cell, which verifyrun wrote as exactly one span",
 	},
-	"codeSpans": {
-		"proseLedCommandWhy": "judges whether the cell's first span is a mention; returns that span for the NOTICE text",
-		"rawMarkerPresent":   "the lint's hidden-marker check: a raw marker the rendered scan does not honour",
-	},
-	"renderedCodeSpans": {
-		"markedCommands":             "the honoured-marker scan verifyCommand consults",
-		"transitionContext":          "judges unique visible span and unchanged context; the executable Command remains verifyCommand output",
-		"markerOverridesCommandSpan": "the lint's check that a marker replaces a command-shaped first span",
+	"CodeSpans": {},
+	"RenderedCodeSpans": {
+		"transitionContext": "judges unique visible span and unchanged context; the executable Command remains briefdoc.VerifyCommand output",
 	},
 }
 
@@ -426,9 +422,14 @@ func primitiveCallers(t *testing.T, dir string, allow map[string]map[string]stri
 				if !ok {
 					return true
 				}
-				if id, ok := call.Fun.(*ast.Ident); ok {
-					if _, watched := allow[id.Name]; watched {
-						out[id.Name] = append(out[id.Name], n+":"+fn.Name.Name)
+				// The span primitives live in briefdoc (tool-refactoring/03): a
+				// call is a briefdoc.<Name> selector. A local identifier of the
+				// same name is not the primitive.
+				if sel, ok := call.Fun.(*ast.SelectorExpr); ok {
+					if pkg, ok := sel.X.(*ast.Ident); ok && pkg.Name == "briefdoc" {
+						if _, watched := allow[sel.Sel.Name]; watched {
+							out[sel.Sel.Name] = append(out[sel.Sel.Name], n+":"+fn.Name.Name)
+						}
 					}
 				}
 				return true
@@ -442,7 +443,7 @@ func primitiveCallers(t *testing.T, dir string, allow map[string]map[string]stri
 }
 
 // TestVerifyCommandLiftHasOneChokePoint — the #1805 CLASS guard: "a site lifts
-// the command out of a Verify Command cell by a rule other than verifyCommand's"
+// the command out of a Verify Command cell by a rule other than briefdoc.VerifyCommand's"
 // (the verifyrun first-span lift was one; the check:ci re-execution lane handing
 // the RAW cell to the shell was a second). Any caller of a span-scanning
 // primitive outside its allow-list fails here, naming the site. The positive
@@ -454,12 +455,12 @@ func TestVerifyCommandLiftHasOneChokePoint(t *testing.T) {
 		for _, c := range sites {
 			fn := c[strings.Index(c, ":")+1:]
 			if _, ok := liftPrimitiveAllowList[prim][fn]; !ok {
-				t.Errorf("%s calls %s directly — lift a Verify command through verifyCommand (the #1805 choke point), or add the site to liftPrimitiveAllowList with the reason it is not a Verify-command lift", c, prim)
+				t.Errorf("%s calls %s directly — lift a Verify command through briefdoc.VerifyCommand (the #1805 choke point), or add the site to liftPrimitiveAllowList with the reason it is not a Verify-command lift", c, prim)
 			}
 		}
 	}
 	// Positive controls: the choke point and the marker scan must be visible.
-	for prim, fn := range map[string]string{"codeSpan": "verifyCommand", "renderedCodeSpans": "markedCommands"} {
+	for prim, fn := range map[string]string{"CodeSpan": "witnessCommandOf", "RenderedCodeSpans": "transitionContext"} {
 		seen := false
 		for _, c := range callers[prim] {
 			if strings.HasSuffix(c, ":"+fn) {
@@ -508,19 +509,19 @@ func loadCmdMarkerVectors(t *testing.T) []cmdMarkerVector {
 func TestCmdMarkerSharedVectors(t *testing.T) {
 	for _, v := range loadCmdMarkerVectors(t) {
 		t.Run(v.Name, func(t *testing.T) {
-			m := markedCommands(v.Cell)
+			m := briefdoc.MarkedCommands(v.Cell)
 			switch {
 			case v.Marked == nil && len(m) != 0:
-				t.Errorf("markedCommands(%q) = %q, want no honoured marker", v.Cell, m)
+				t.Errorf("briefdoc.MarkedCommands(%q) = %q, want no honoured marker", v.Cell, m)
 			case v.Marked != nil && (len(m) == 0 || m[0] != *v.Marked):
-				t.Errorf("markedCommands(%q) = %q, want first %q", v.Cell, m, *v.Marked)
+				t.Errorf("briefdoc.MarkedCommands(%q) = %q, want first %q", v.Cell, m, *v.Marked)
 			}
-			want := codeSpan(v.Cell)
+			want := briefdoc.CodeSpan(v.Cell)
 			if v.Marked != nil {
 				want = *v.Marked
 			}
-			if got := verifyCommand(v.Cell); got != want {
-				t.Errorf("verifyCommand(%q) = %q, want %q", v.Cell, got, want)
+			if got := briefdoc.VerifyCommand(v.Cell); got != want {
+				t.Errorf("briefdoc.VerifyCommand(%q) = %q, want %q", v.Cell, got, want)
 			}
 		})
 	}

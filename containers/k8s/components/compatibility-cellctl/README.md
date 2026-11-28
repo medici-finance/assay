@@ -83,3 +83,30 @@ Brief 31 stays blocked until its actual profile and required acceptance are comp
 Neither this checkpoint nor the release source supplies the final delivery merge
 and first parent required by the independent qualification handoff. Deployment,
 credential grants, activation, live model usefulness and adoption remain held.
+
+### Offline interaction suite
+
+From a full source checkout with the candidate's recorded commit available, set
+`ASSAY_TEST_DOCKER_HOST` to an explicit local Unix socket for a disposable test
+daemon. The daemon needs a cached `python:3.13-slim` or a Python 3 Linux image
+selected by its immutable local `sha256:...` ID in `ASSAY_TEST_FIXTURE_IMAGE`.
+The runner resolves the local image ID, disables image pulls and container
+networking, and mounts only a temporary fixture directory. The Go toolchain and
+the desk module dependencies must be available offline.
+
+Run `sh containers/k8s/compatibility/qualify.sh --offline --suite interaction`.
+The compiled CLI talks to a synthetic Kubernetes API. Its terminal reaches the
+candidate source's actual PID-1 launcher, running a pinned synthetic Claude
+adapter in the fixture runtime. Each of the five role records identifies the
+published candidate image, executable and runtime digests, terminal execution,
+request count and retained task result. This exercises the offline interaction
+contract. Running the published images on a Kubernetes target belongs to the
+separately authorized real-profile qualification.
+
+To run just the interaction count controls, use the same explicit Docker socket
+and cached image selection as the five-role check, then run from the repository root:
+
+```sh
+ASSAY_QUALIFY_INTERACTION=1 GOWORK=off GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local \
+  go -C tools/desk test -count=1 -run '^TestKubeCompatInteractionCountControls$' ./cmd/cellctl
+```

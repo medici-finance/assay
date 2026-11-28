@@ -501,7 +501,12 @@ func notUNCLead(c byte) bool {
 // category order, plus the notice lines. The outbound-write check (outbound.go) reads the
 // whole list, because whether a write may be overridden depends on whether ANY finding is
 // in a non-overridable category, not only on the first.
-func selfContainFindings(surface, s string, o SelfContainOpts) (findings []scFinding, notices []string) {
+func selfContainFindings(surface, s string, o SelfContainOpts) ([]scFinding, []string) {
+	priv, privShort := privateRepoNames(o.Repo)
+	return scanSelfContainment(surface, s, o, priv, privShort, WithheldIdentifiers())
+}
+
+func scanSelfContainment(surface, s string, o SelfContainOpts, priv, privShort map[string]bool, withheld []string) (findings []scFinding, notices []string) {
 	// The workpad marker line (workpad.go) is exempt from every
 	// category below by EXACT LINE match — see StripWorkpadMarkerLine's own comment. It is
 	// a fixed, content-free string with no slash, no `#N`, no path and no session/agent
@@ -509,7 +514,6 @@ func selfContainFindings(surface, s string, o SelfContainOpts) (findings []scFin
 	// rather than incidental, the same way bodycheck.go's scanSurface guarantees it for
 	// the credential scan.
 	s = StripWorkpadMarkerLine(s)
-	priv, privShort := privateRepoNames(o.Repo)
 	refuse := func(category, span, why string, at int, withheld bool) {
 		findings = append(findings, scFinding{
 			category: category, span: span, why: why, withheld: withheld, line: lineOf(s, at),
@@ -560,7 +564,8 @@ func selfContainFindings(surface, s string, o SelfContainOpts) (findings []scFin
 	// house repo, not only about the issue number hanging off it.
 	for _, idx := range reQualifiedRef.FindAllStringSubmatchIndex(s, -1) {
 		slug := strings.ToLower(s[idx[2]:idx[3]])
-		if !priv[slug] {
+		// A sentence-ending period can be absorbed into the repository name.
+		if !priv[slug] && !priv[strings.TrimRight(slug, ".")] {
 			continue
 		}
 		whole := s[idx[0]:idx[1]]
@@ -588,7 +593,6 @@ func selfContainFindings(surface, s string, o SelfContainOpts) (findings []scFin
 	// configured the key — in roster.env, where every other ASSAY_ value lives — looking for
 	// a typo in a file that was correct, rather than at the reader that was not consulting
 	// it. A could-not-check has to say where it looked.
-	withheld := WithheldIdentifiers()
 	if len(withheld) == 0 {
 		notices = append(notices, fmt.Sprintf(
 			"%s: withheld register identifiers NOT CHECKED — %s is not configured in roster.env "+
@@ -700,24 +704,30 @@ func bareRefNotices(surface, s string, hint int) []string {
 // the write-budget starvation #209/#1255 record.
 func privateRepoNames(self string) (slugs map[string]bool, shorts map[string]bool) {
 	slugs, shorts = map[string]bool{}, map[string]bool{}
-	selfLower := strings.ToLower(self)
 	_, selfName := splitRepo(self)
 	for repo, pol := range EffectiveConfig().Repos {
-		if pol.Visibility != VisibilityPrivate {
-			continue
-		}
-		if strings.EqualFold(repo, selfLower) {
-			continue
-		}
-		slugs[strings.ToLower(repo)] = true
-		if _, name := splitRepo(repo); name != "" && !strings.EqualFold(name, selfName) {
-			shorts[strings.ToLower(name)] = true
-			if lbl := RepoShortLabel(repo); lbl != "" && !strings.EqualFold(lbl, selfName) {
-				shorts[strings.ToLower(lbl)] = true
+		if pol.Visibility == VisibilityPrivate && addPrivateRepoNames(slugs, shorts, self, selfName, repo) {
+			if label := RepoShortLabel(repo); label != "" && !strings.EqualFold(label, selfName) {
+				shorts[strings.ToLower(label)] = true
 			}
 		}
 	}
 	return slugs, shorts
+}
+
+// addPrivateRepoNames records names shared by the desk and standalone scans.
+// The return value allows the desk to add an alias for the same repository.
+func addPrivateRepoNames(slugs, shorts map[string]bool, self, selfName, repo string) bool {
+	if strings.EqualFold(repo, self) {
+		return false
+	}
+	slugs[strings.ToLower(repo)] = true
+	_, name := splitRepo(repo)
+	if name == "" || strings.EqualFold(name, selfName) {
+		return false
+	}
+	shorts[strings.ToLower(name)] = true
+	return true
 }
 
 // containsToken reports whether lowered carries tok as a whole token — bounded on both

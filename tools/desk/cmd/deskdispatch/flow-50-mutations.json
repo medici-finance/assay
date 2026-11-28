@@ -3,8 +3,8 @@
   "control": {
     "name": "CONTROL - landing no longer rechecks the bound record",
     "file": "internal/deskkit/verifierattestation.go",
-    "old": "\tif r.World != nil {\n\t\tif err = r.World.Recheck(worldRecheckProbes); err != nil {",
-    "new": "\tif r.World != nil && false {\n\t\tif err = r.World.Recheck(worldRecheckProbes); err != nil {"
+    "old": "\tif r.World != nil {\n\t\tif phase == verifierEvidence {",
+    "new": "\tif r.World != nil && false {\n\t\tif phase == verifierEvidence {"
   },
   "mutations": [
     {

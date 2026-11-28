@@ -170,6 +170,7 @@ empty. Repos and roots come from §THE REPO SET, never a pasted list.
 | 5 | `Awaiting implementer rework` board rows | `fanoutloop plan --root <root>` (desk-supervision/05: read per root from `refs/remotes/origin/main:STATUS.md`, the SAME offline ref read row 1 uses — no separate sweep). A verification already FAILED each such row with a cited blocker, so it is worker-owned: `plan` lists it under `AWAITING REWORK, owner worker` with the section's next act (`fix, cite <ref>`) and never offers the delivered brief as IMPLEMENT. The owed work is that cited blocker, worked as its own item (row 6 when it is a trusted work-ready issue; otherwise apply the trust gate before acting on it). Only a row whose status could not be read at all is still offered. Any other brief row whose status is not `todo`/`in-progress` is listed under `WITHHELD BY STATUS` with what it waits on (implemented or verified: the verify-desk queue) |
 | 5b | **Durable repair obligations** — a failed/blocked verification's actionable, still-unresolved obligation (desk-supervision/17) | `fanoutloop plan --root <root>` reads the reconciled obligations across the configured roots' `docs/streams/repair-obligations.jsonl` and surfaces the ASSIGNABLE ones (actionable, unresolved, awaiting-assignment or dead-lease) in the SAME rework lane as row 5. The item's ID is the IMMUTABLE obligation key, so a replacement worker resumes the SAME obligation after a dead lease — never a duplicate |
 | 6 | Un-briefed trusted work-ready issues (§Un-briefed issues) | `issueboard issues --projection work-ready` — fail-closed |
+| 6b | **Addressed inbox** — open `to:worker` issues in the root's own repo (work-ready excludes them) | `fanoutloop plan --root <root>` reads only the repo that root maps to, and offers an issue in the leading addressed lane only when it passes row 6's trust gate, carries no `needs-decision` / `question` / `help wanted` / system-state label, its label history holds no event for one of those labels (a removed park is still held: the label-removal hold decides it, not this lane), and no issue-loop placeholder in any configured root, open or merged PR (`Issue:` trailer) or live `<repo>--issue-<NN>` claim carries it. Every other one, a malformed `to:` address naming this desk included, is listed under `INBOX NOT OFFERED` with why (untrusted = QUARANTINED); a failed read prints `INBOX LANE HELD:`, which is could-not-check, never empty. `issueboard issues --projection inbox --to worker` is the cross-check. The live source reads through the forge the PR index uses; a GitLab root follows that index's support |
 | 7 | A red default branch on a watched repo | `deskboard health` — three-state (green / RED / COULD-NOT-CHECK) |
 | 8 | Cross-root coverage: a board root that no sweep reaches, or a scanned repo with no board | the BOARD ROOTS ∪ SCAN REPOS symmetric difference printed at boot (§THE REPO SET) |
 | 9 | Queue **suppressors** — expired `refs/heads/dispatch/*` claims and dead branch-claims from merged/closed PRs | `desksupervise status --stops` (the liveness observer's runtime snapshot: per-claim liveness, timers-to-fire, and which stops are armed — the one structured read the sweep uses instead of guessing); the raw `git ls-remote origin 'refs/heads/dispatch/*'` + the claim tool's `list`/`show` verbs (`deskclaim-ref`, installed with desk-tools; a repo that ships its own `tools/dispatch-claim.sh` uses that instead) stay as the fallback — run BOTH, since the tool lists the `refs/dispatch/*` namespace it acquires in while that `ls-remote` pattern lists the `refs/heads/dispatch/*` branch refs the Go claim readers use |
@@ -317,7 +318,7 @@ work-readiness checks below until the pin is deliberately upgraded. Do not retry
 failed projected sweep through a broad read. Reverting the plugin and producer pins
 restores the old sweep. See [the compatibility matrix](https://github.com/medici-finance/assay/blob/main/docs/issue-projections.md).
 An empty work-ready observation covers only unrepresented issue candidates; intake,
-addressed inbox, representation/PR checks and watcher health still need their own reads.
+addressed inbox (§Sources of work row 6b), representation/PR checks and watcher health still need their own reads.
 
 ## Un-briefed issues — trusted, work-ready, on NO board (human:<name> 2026-08-13)
 
@@ -399,7 +400,20 @@ could-not-check, never "no repos".
   draft is the reviewers' to retire through the ruled lanes above.
 - A red default branch is work: where the fix is mechanical this desk dispatches it like any other
   item; where it is not, it is filed (§Output contract) and named in the tick's line.
-- The un-briefed-issue sweep (§Un-briefed issues) runs over the same set in the same tick.
+- The un-briefed-issue sweep (§Un-briefed issues) runs over the same set in the same tick, and so
+  does the addressed inbox (§Sources of work row 6b): an inbox issue `plan` OFFERS beside an idle
+  pool is a defect to file, never an idle tick. Issues listed under `INBOX NOT OFFERED` are held on
+  purpose and are not that defect.
+- **Re-read every carried decision hold this tick, never carry it forward on memory.** Pass each one to
+  `plan` as `--decision-hold <item>=<owner/name>#<N>`, where `<item>` is the item's DISPATCH ID as
+  `plan` prints it (`alpha/01`, `<repo>--issue-<NN>`), its claim key (`alpha--01`), or the
+  repo-qualified claim key `deskdispatch` acquires (`<repo>--alpha--01`). A standing hold that names
+  nothing in the queue prints `HOLD UNMATCHED:` and withholds nothing: check the `<item>` spelling; an
+  item not in this run's queue (in flight, withheld or landed) also reads unmatched.
+  Its decision issue closed with `human-decided`
+  lifts it (`DROPPED HOLD: <item> (lift met: ...)`) and the item is offered again; open, closed without
+  that label, or unreadable keeps it (`HOLD LIVE:` / `HOLD COULD-NOT-CHECK:`), each with its source on
+  the same line.
 
 **1. Plan, per root.** `(cd "$root" && deskgit fetch --as worker) && fanoutloop plan --root "$root"` for every BOARD
 ROOT. `plan` is the SHOWN queue: orphan resumes first, then the board in board order, `issue-<NN>`
@@ -653,7 +667,7 @@ deskdispatch <item-key> [--tier strong|any] [--kit worker] [--repo O/N] [--root 
   a Verify row or a human gate, never marks the item done or blocked by itself, and nothing in
   the tooling stops, closes or reverts work because of it. Spend the worker cannot read is
   reported on its workpad as could-not-check, never as "under budget".
-- **Cheap implementers run below the floor, but authority-bearing writes do not**: a review verdict and a ready-flip enforce a model-capability floor keyed on the dispatcher's attested tier, so a dispatch ATTESTED below the strong tier is refused those writes even though it may implement freely — delegate downward, and escalate a verdict or flip to a strong-tier session rather than route around the refusal. A `dispatched-tier:any` stamp is not such an attestation (`any` is the brief's "no tier demanded"), so it proceeds with a NOTICE; nor is a stamp whose dispatch claim has since been RELEASED — a dead cycle's stamp ages out and the PR reads unstamped, rather than being refused harder than an unstamped one. **The unstamped/NOTICE path is RISK-CONDITIONAL for a review verdict (ruling 3):** on a risk-classed PR (every public-repo PR, or a diff touching a security path) a security-review-bearing verdict must carry a trustable strong-tier attestation, so an UNSTAMPED verdict there REFUSES; the NOTICE-proceed holds only for an unstamped NON-risk PR. The convention to escalate still stands.
+- **Cheap implementers run below the floor, but authority-bearing writes do not**: a review verdict and a ready-flip enforce a model-capability floor keyed on the dispatcher's attested tier, so a dispatch ATTESTED below the strong tier is refused those writes even though it may implement freely — delegate downward, and never route around the refusal. A `dispatched-tier:any` stamp is not such an attestation (`any` is the brief's "no tier demanded"), so it proceeds with a NOTICE. Nor is a stamp whose dispatch claim has since been RELEASED, but only `deskpost` can tell: on a review verdict and on `deskpost ready` a dead cycle's stamp ages out and the PR reads unstamped, rather than being refused harder than an unstamped one, while `deskflip` cannot read claim liveness and leaves that stamp standing. **The unstamped/NOTICE path is RISK-CONDITIONAL for a review verdict (ruling 3):** on a risk-classed PR (every public-repo PR, or a diff touching a security path) a security-review-bearing verdict must carry a trustable strong-tier attestation, so an UNSTAMPED verdict there REFUSES; the NOTICE-proceed holds only for an unstamped NON-risk PR. Escalate by authority-bearing write: a verdict comes from a strong-tier reviewer dispatch, and a ready-flip is the pr-review-desk's, which follows the #7794 rule: a session not on a confirmed strong tier spawns a sub-agent on a NAMED strong-tier model id to run `deskflip`, and hands the flip off only when no strong-tier id is configured. Never retry a refusal from another session.
 - **Serialize out-of-repo items** — no worktree isolation, no branch-as-claim: at most ONE in
   flight across all streams, the declaration is the claim, so check in-flight PRs for overlaps first.
 - **Placeholders are dispatchable** (ruling 2, 2026-08-24); `fanoutloop plan` includes them.
@@ -925,12 +939,17 @@ A hit means exit cleanly (restart by `rm <flag>` + re-arm); never halt mid-dispa
 - **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
   workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
   standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
-  `gh pr create --draft`). **The verify desk lands its own work**: its Evidence + status flips commit
-  straight to `main` as the project directs — no push-go is needed there and none should be waited
-  for. Any `main` push not covered by a standing authorization is gated on the driver's explicit go;
-  committing local work is always fine. A guard/hook-BLOCKED push is a STOP signal — never route the
-  same write through another tool. Each desk's own grants and denials (what it may flip, file, close,
-  or land) stay in its skill, directly below this block.
+  `gh pr create --draft`).
+  **The verify desk lands verdicts through the project's verdict-transcription lane** where the
+  project has armed it — a signed verdict issue that a workflow lands on `main`, never a session
+  push; where the lane is not armed it lands per its own skill's §Landing. Those two routes need
+  no push-go and none should be waited for; a break-glass `main` write in a project where the
+  lane is armed is NOT one of them: it is for when the lane is down, and it waits for the
+  driver's go. Any `main` push not covered by a standing authorization is
+  gated on the driver's explicit go; committing local work is always fine. A guard/hook-BLOCKED
+  push is a STOP signal — never route the same write through another tool. Each desk's own
+  grants and denials (what it may flip, file, close, or land) stay in its skill, directly below
+  this block.
   - Desk-specific: **any cluster or live-infrastructure contact is outside a worker's envelope —
     read-only included.** Mutating verbs stay denied for every desk role; a worker that needs live
     state reports could-not-check + BLOCKED-ON-HUMAN, never a probe.

@@ -1,7 +1,9 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -212,5 +214,63 @@ func TestPhantomIsCaughtBeforeTheClaim(t *testing.T) {
 	}
 	if s.ran("deskwt add") {
 		t.Error("a worktree was cut for a phantom item")
+	}
+}
+
+// regression: #6908
+func TestIssuePRBeforeClaim(t *testing.T) {
+	withRepresentedPRs(t, func(repo string) ([]deskkit.PRRef, error) {
+		return []deskkit.PRRef{{Number: 61, State: "OPEN", Body: "Issue: #42"}, {Number: 62, State: "MERGED", Body: "Fixes: #43"}}, nil
+	})
+	root := t.TempDir()
+	for _, tc := range []struct{ key, hint string }{{"example--issue-42", "open PR example-org/example#61"}, {"example--issue-43", "merged PR example-org/example#62"}, {"example--issue-44", ""}} {
+		_, err := phantomCheck(dispatchOpts{kit: "worker", item: tc.key, root: root}, "example-org/example")
+		if tc.hint == "" {
+			if err != nil {
+				t.Fatal(err)
+			}
+			continue
+		}
+		if err == nil || !strings.Contains(err.Error(), tc.hint) || !strings.Contains(err.Error(), "nothing claimed") {
+			t.Errorf("%s: %v", tc.key, err)
+		}
+	}
+}
+
+// Both public spellings of a board row must consult the very same placeholder.
+func TestPlaceholderClaimKeyReadsBoardFile(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	plantFixtureRoster(t, home)
+	root := phantomRegistry(t)
+	dir := filepath.Join(root, "docs", "streams", "issue-loop")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ name, stem, source, delivery, want string }{
+		{"declared partial", "issue-7", allowedRepo, "delivery: [{in: 'example#19', covers: partial}]\n", ""},
+		{"foreign source", "examples-issue-7", "example-org/examples", "", "example-org/examples#7"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			raw := fmt.Sprintf("---\nschema: placeholder-v1\nbrief: issue-loop/%s\nissue: 7\nrepo: %s\n%s---\n", tc.stem, tc.source, tc.delivery)
+			if err := os.WriteFile(filepath.Join(dir, tc.stem+".md"), []byte(raw), 0600); err != nil {
+				t.Fatal(err)
+			}
+			withRepresentedPRs(t, func(repo string) ([]deskkit.PRRef, error) {
+				if tc.want != "" {
+					t.Errorf("read unrelated repo %s despite foreign placeholder", repo)
+				}
+				return []deskkit.PRRef{{Number: 19, State: "MERGED", Body: "Issue: #7"}}, nil
+			})
+			for _, item := range []string{"issue-loop/" + tc.stem, "example--issue-loop--" + tc.stem} {
+				_, err := phantomCheck(dispatchOpts{item: item, root: root, kit: "worker"}, allowedRepo)
+				if tc.want == "" && err != nil {
+					t.Errorf("%s refused declared partial: %v", item, err)
+				}
+				if tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)) {
+					t.Errorf("%s got %v; want source %s in refusal", item, err, tc.want)
+				}
+			}
+		})
 	}
 }

@@ -6,9 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
+	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/medici-finance/assay/gitcore"
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // The transport is deliberately unavailable until a command explicitly opts in.
@@ -352,7 +356,15 @@ func acceptanceStep(path, verify, full, run, delivery, base, original, baseline,
 		}
 		oldContext, oldOK := transitionContext(old)
 		nextContext, nextOK := transitionContext(next)
-		if !oldOK || !nextOK || oldContext != nextContext {
+		column := "Command"
+		if chain != nil && plainTransitionCommand(old) && plainTransitionCommand(next) {
+			column = plainCommandApproval
+			prior := plainCommandRowContext(baseline, source)
+			if prior == nil || !slices.Equal(prior, plainCommandRowContext(delivered, old)) ||
+				!slices.Equal(prior, plainCommandRowContext(amended, next)) {
+				return fail("plain-shell replacement must retain every other original row cell")
+			}
+		} else if !oldOK || !nextOK || oldContext != nextContext {
 			return fail("changed commands require one unambiguous code span and identical surrounding context")
 		}
 		comparable := next
@@ -365,7 +377,7 @@ func acceptanceStep(path, verify, full, run, delivery, base, original, baseline,
 		if !reflect.DeepEqual(source, old) {
 			return fail("a changed command must still carry its complete original delivered definition")
 		}
-		candidates[old.ID], columns[old.ID], required[old.ID] = next, "Command", true
+		candidates[old.ID], columns[old.ID], required[old.ID] = next, column, true
 	}
 	if len(candidates) == 0 {
 		return fail("no changed original command or Expect")
@@ -520,6 +532,9 @@ func acceptanceStep(path, verify, full, run, delivery, base, original, baseline,
 					return fail("only link 1 may cite a v1 approval")
 				}
 				for _, column := range columns {
+					if column == plainCommandApproval {
+						return fail("plain-shell replacement requires an explicit v2 PlainCommand approval")
+					}
 					if column == "Command+Expect" {
 						return fail("v1 approval cannot authorize combined columns")
 					}
@@ -580,7 +595,7 @@ func acceptanceStep(path, verify, full, run, delivery, base, original, baseline,
 	commandCol, expectCol := -1, -1
 	rewritten := map[string]bool{}
 	for i, line := range lines {
-		cells := splitRowEscaped(strings.TrimSpace(line))
+		cells := briefdoc.SplitRowEscaped(strings.TrimSpace(line))
 		for j := range cells {
 			cells[j] = strings.TrimSpace(cells[j])
 		}
@@ -611,7 +626,7 @@ func acceptanceStep(path, verify, full, run, delivery, base, original, baseline,
 			}
 			cells[expectCol] = changed.Expect
 		}
-		if columns[cells[0]] == "Command+Expect" {
+		if columns[cells[0]] == "Command+Expect" || columns[cells[0]] == plainCommandApproval {
 			cells[commandCol] = changed.CommandCell
 		} else if columns[cells[0]] == "Command" {
 			originalCell := originals[cells[0]].CommandCell
@@ -651,12 +666,63 @@ func acceptanceStep(path, verify, full, run, delivery, base, original, baseline,
 	return effective, revisions, ""
 }
 
+// PlainCommand opts into replacing the whole executable cell. A historical
+// Command approval only changes an identified code span; it cannot opt into this.
+const plainCommandApproval = "PlainCommand"
+
+// Markup-like tags, character references and links can change which text a
+// reader sees. Keep ordinary shell redirection and bracket expressions usable.
+var plainCommandMarkup = regexp.MustCompile(`(?i)<(?:[!?]|/?[a-z][^<>]*>)|&[a-z][a-z0-9]*;|\](?:\(|\[)`)
+
+func plainTransitionCommand(row verifyRow) bool {
+	if !row.Classed || (row.Class != classCheck && row.Class != classCheckCI) || row.Shell != "sh" ||
+		row.ProseLed != "" || row.Command == "" || row.Command != row.CommandCell {
+		return false
+	}
+	// Exclude spans, shell comments, markup and invisible formatting. Shell
+	// variables, redirections, quoted arguments and escaped table pipes stay literal.
+	cell := row.CommandCell
+	if strings.ContainsAny(cell, "`#") || plainCommandMarkup.MatchString(cell) {
+		return false
+	}
+	return strings.IndexFunc(cell, func(r rune) bool {
+		return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) || r == '\u2028' || r == '\u2029'
+	}) < 0
+}
+
+// Compare all columns, including Env, extra columns and raw obligation tokens,
+// which the execution projection need not retain. Ambiguous rows fail closed.
+func plainCommandRowContext(table string, row verifyRow) []string {
+	layout := transitionLayout(table)
+	header := strings.Split(layout, "|")
+	col := slices.Index(header, "Command")
+	if col < 0 || slices.Contains(header[col+1:], "Command") {
+		return nil
+	}
+	var context []string
+	for line := range strings.SplitSeq(table, "\n") {
+		cells := briefdoc.SplitRowEscaped(strings.TrimSpace(line))
+		if len(cells) == 0 || strings.TrimSpace(cells[0]) != row.ID {
+			continue
+		}
+		if context != nil || len(cells) != len(header) || strings.TrimSpace(cells[col]) != row.CommandCell {
+			return nil
+		}
+		for i := range cells {
+			cells[i] = strings.TrimSpace(cells[i])
+		}
+		cells[col] = layout
+		context = cells
+	}
+	return context
+}
+
 // transitionContext binds both sides of the unique executable span separately:
 // concatenating them would let context move across the command. Reuse the
 // renderer and execution parser; do not infer a command from surrounding prose.
 func transitionContext(row verifyRow) ([2]string, bool) {
-	spans, plain := renderedCodeSpans(row.CommandCell)
-	if !plain || len(spans) != 1 || !spans[0].cleanEnd || spans[0].text != row.Command || row.ProseLed != "" {
+	spans, plain := briefdoc.RenderedCodeSpans(row.CommandCell)
+	if !plain || len(spans) != 1 || !spans[0].CleanEnd || spans[0].Text != row.Command || row.ProseLed != "" {
 		return [2]string{}, false
 	}
 	before, after, found := strings.Cut(row.CommandCell, codeSpanOf(row.Command))
@@ -709,7 +775,7 @@ func transitionDeliveredEvidencePreserved(historical, delivered string) bool {
 // transitionLayout binds the explicit table header, including column order.
 func transitionLayout(table string) string {
 	for _, line := range strings.Split(table, "\n") {
-		cells := splitRowEscaped(strings.TrimSpace(line))
+		cells := briefdoc.SplitRowEscaped(strings.TrimSpace(line))
 		if len(cells) > 0 && strings.TrimSpace(cells[0]) == "#" {
 			for i := range cells {
 				cells[i] = strings.TrimSpace(cells[i])

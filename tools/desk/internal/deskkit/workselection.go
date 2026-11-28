@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/medici-finance/assay/statusgen/domain"
 	"github.com/medici-finance/assay/statusgen/readercaps"
 	"github.com/medici-finance/assay/statusgen/workref"
 )
@@ -51,6 +52,14 @@ type WorkSelection struct {
 	Subject   BriefSubject
 	ClaimKey  string
 	Aliases   []string
+}
+
+// OperationBrief is the selected subject as the operation-subject owner's
+// declaring brief revision (statusgen/domain). It copies the observed record;
+// it mints no second work or claim identity.
+func (s WorkSelection) OperationBrief() domain.BriefRevision {
+	b := s.Subject
+	return domain.BriefRevision{UUID: b.UUID, Version: b.Version, Repository: b.Repository, Commit: b.Commit, Path: b.Path}
 }
 
 type WorkCatalog struct {

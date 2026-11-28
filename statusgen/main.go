@@ -273,6 +273,8 @@ func run(root, mode string, budget []string, changed []string, scope string) int
 	readmeTableProblems, readmeTableNotices := checkReadmeTables(checkStreams)
 	problems = append(problems, readmeTableProblems...)
 	notices = append(notices, readmeTableNotices...)
+	// milestone-support/11: the separate generated milestone region.
+	problems = append(problems, checkMilestoneRegions(checkStreams)...)
 	// #1250 ordering-gate lint (dependency-graph-design.md §6): flags gate-shaped
 	// README/brief prose ("no X before Y", "blocked on", "gated on") whose real
 	// ordering prerequisite is encoded in no `depends:`/`unblocks:` edge, so an
@@ -1333,6 +1335,9 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "witnessdigest" {
 		exitProcess(runWitnessDigest(os.Args[2:], os.Stdout, os.Stderr))
 	}
+	if len(os.Args) > 1 && os.Args[1] == "preview-stamps" {
+		exitProcess(runPreviewStamps(os.Args[2:], os.Stdout, os.Stderr))
+	}
 	if len(os.Args) > 1 && os.Args[1] == "verifyrun" {
 		exitProcess(runVerifyrun(os.Args[2:], os.Stdout, os.Stderr))
 	}
@@ -1621,6 +1626,9 @@ func main() {
 	if len(os.Args) > 1 && os.Args[1] == "verify-gate-close" {
 		exitProcess(runVerifyGateClose(os.Args[2:], os.Stdout, os.Stderr))
 	}
+	if len(os.Args) > 1 && os.Args[1] == "acceptance-route" {
+		exitProcess(runAcceptanceRoute(os.Args[2:], os.Stdout, os.Stderr))
+	}
 
 	// UNKNOWN POSITIONAL SUBCOMMAND — fail closed (#1075).
 	//
@@ -1642,7 +1650,7 @@ func main() {
 		first := os.Args[1]
 		if first != "" && !strings.HasPrefix(first, "-") {
 			fmt.Fprintf(os.Stderr, "statusgen: unknown subcommand %q\n", first)
-			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, evidenceverdict, verifyflip, mergecheck, shardcheck, conform, brief, context, backfill, reconcile, regen, migrate, lint, verify-gate-close, enforcement-status, phantoms, version")
+			fmt.Fprintln(os.Stderr, "known subcommands: init, newbrief, verifyrun, verifyclosure, evidenceverdict, verifyflip, mergecheck, shardcheck, conform, brief, context, backfill, reconcile, regen, migrate, lint, verify-gate-close, acceptance-route, enforcement-status, phantoms, preview-stamps, version")
 			fmt.Fprintln(os.Stderr, "(for the default regenerate, pass flags only — e.g. --root DIR, --check, --lint)")
 			exitProcess(2)
 		}
@@ -1727,6 +1735,8 @@ func main() {
 	// unhandled one. Never invoked by --lint (no network dependency on the offline
 	// gate); never pushes or mutates GitHub issues (read-only there).
 	scanIssuesMode := flag.Bool("scan-issues", false, "emit placeholder briefs for unhandled OPEN issues across the fixed repo set (reads gh; writes files, never STATUS.md)")
+	scanJudgments := flag.String("judgments", "", "with --scan-issues: a file of recorded intake judgments (intake-handoff-v1, JSON lines); the scan publishes each placeholder's latest recorded judgment as <stem>.handoff.json and sets its handoff keys. Absent file: the scan runs as without it")
+	scanTarget := flag.String("scan-target", "", "with --scan-issues --judgments: the owner/repo this scan's delta is committed to. Free text in a judgment is published only when this repo is marked private in the roster AND the root's origin push destination names it; absent, the root counts as public")
 	scanDryRun := flag.Bool("dry-run", false, "with --scan-issues / --transcribe-scan / --auto-flip-model: list what WOULD happen without writing (the --transcribe-scan `--check` surface)")
 	// --transcribe-scan is the SAME-REPO scan transcriber (scan-lane/01, R-7): it
 	// re-derives the issue-loop placeholder delta for the home repo directly on the
@@ -1841,7 +1851,7 @@ func main() {
 	consumersMode := flag.Bool("consumers", false, "corroborate the consumers: routing claims of the briefs this branch touches against its own diff (exit 1 = a claim is DISPROVED, 2 = the diff could not be taken)")
 	consumersDelivery := flag.String("delivery", "", "--consumers: immutable full delivery commit SHA; requires --brief and --base set to its first parent; evaluates delivered claims and tree, never the working tree")
 	consumersBase := flag.String("base", remoteMainRef, "--consumers: base ref for the three-dot diff; with --brief and no --base/--delivery, a brief the diff does not carry is pinned to the delivery its committed Verification-Table marker records (first parent as base), else COULD-NOT-CHECK")
-	consumersBrief := flag.String("brief", "", "--consumers: check only this brief (<stream>/<NN>); default = every brief file in the diff")
+	consumersBrief := flag.String("brief", "", "brief ID (<stream>/<NN>); optional for --consumers, required for --coverage-replay-at")
 	corroborateMode := flag.Bool("corroborate", false, "check human:<name> stamps against PR reviews/comments for corroboration (requires --pr)")
 	corroboratePRs := flag.String("pr", "", "comma-separated PR numbers (required with --corroborate; with --decision-gate, the PRs to judge)")
 	corroborateRecord := flag.String("ruling-record", "", "with --corroborate instead of --pr: corroborate ONE decision record (repo-relative docs/streams/decisions/<name>.md) through its ruling: link, outside any PR (exit 0 = corroborated, 1 = not, 2 = could-not-check)")
@@ -1913,6 +1923,7 @@ func main() {
 	nextUpMode := flag.Bool("next-up", false, "emit the DISPATCH queue as JSON: the claim-filtered, capped Next-up selection (todo/in-progress, unclaimed, eligible) plus the held-back decomposition (eligible/shown/heldByStreamCap/heldBySpan/claimsKnown). NOT --gate-scores, which is the awaiting-verification backlog")
 	eligibilityMode := flag.Bool("eligibility", false, "emit the eligibility evaluator's verdict for every brief (graph-execution/01): gates:/feathers:/depends: become gating, with a reason. One line per brief (`<id>  <verdict>  <holds…>`), or --json for the full {id,verdict,holds,notices} structure. Exit 0 on any verdict; exit 2 when the tree cannot be read. Offline by construction — a forge-backed gate reports could-not-check regardless of --forge")
 	coverageMode := flag.Bool("coverage", false, "emit the evidence coverage verdict for every brief (graph-execution/03): every mandatory claim (its own Verify rows, plus a bound pattern node's mandatory evidence) must resolve `pass` at the item's revision or the brief is `held`, with the first reason. One line per brief (`<id> released|held <n-claims> <reason>`), or --json for the full {brief,released,claims} structure. Exit 0 on any verdict; exit 2 when the tree cannot be read. Offline by construction, same discipline as --eligibility")
+	coverageReplayAt := flag.String("coverage-replay-at", "", "with --coverage --brief, compare one brief's coverage at HEAD and a full local ancestor commit SHA; read-only, no closure credit")
 	clusterPendingQueueMode := flag.Bool("cluster-pending-queue", false, "emit the pod verify runner's worklist as JSON (verdict-lane/07): the briefs code-verified but cluster-pending — status implemented, every declared `check:cluster` probe parked by the offline lane (a could-not-check marker in Evidence), no VERIFY:FAIL. Each entry carries completion: flip (gate:model, no risk axis yes) or evidence-only (land Evidence, human signs). Read-only, STATUS.md-free")
 	// Gate-effectiveness telemetry: override rate, catch
 	// rate, ceremonial-gate detection. Self-contained diagnostic sub-command,
@@ -1935,6 +1946,10 @@ func main() {
 	changedOnlyFlag := flag.String("changed-only", "", "--lint only: LOCAL pre-push convenience — comma-separated repo-relative paths; scopes the lint to them and prints a loud banner naming what was examined. REFUSES (non-zero, no override) when it detects it is running inside the CI gate (GITHUB_ACTIONS=true) — the CI gate always runs the full unscoped --lint. Mutually exclusive with --changed")
 	scopeFlag := flag.String("scope", "", "restrict per-stream lint to one product (serves:): example-app|example-service|assay|platform; overrides --changed derivation")
 	parseMainFlags()
+	if *coverageReplayAt != "" && (!*coverageMode || *consumersBrief == "" || *consumersMode || *lintMode) {
+		fmt.Fprintln(os.Stderr, "statusgen: --coverage-replay-at requires --coverage and --brief, and cannot be used with --consumers or --lint")
+		exitProcess(2)
+	}
 	if *consumersDelivery != "" && !*consumersMode {
 		fmt.Fprintln(os.Stderr, "statusgen: --delivery requires --consumers")
 		exitProcess(2)
@@ -2056,6 +2071,9 @@ func main() {
 			exitProcess(2)
 		}
 	}
+	if *coverageReplayAt != "" {
+		exitProcess(runCoverageReplay(*root, *consumersBrief, *coverageReplayAt, *doraJSON, os.Stdout, os.Stderr))
+	}
 
 	// Wire the alarm-KPI thresholds before any run — the
 	// --lint standing-alarm NOTICE and the --alarms view both read these.
@@ -2163,13 +2181,21 @@ func main() {
 	// Issue scanner: self-contained, same STATUS.md-free discipline
 	// as the verify-gate modes. READ-only against GitHub — it lists issues and
 	// writes local placeholder files; it never creates or mutates an issue.
+	if (*scanJudgments != "" || *scanTarget != "") && !*scanIssuesMode {
+		fmt.Fprintln(os.Stderr, "statusgen: --judgments and --scan-target apply to --scan-issues only")
+		exitProcess(2)
+	}
+	if *scanTarget != "" && *scanJudgments == "" {
+		fmt.Fprintln(os.Stderr, "statusgen: --scan-target is the commit target for --judgments; pass both or neither")
+		exitProcess(2)
+	}
 	if *scanIssuesMode {
 		// #1223/#1255: ALL THREE forge reads route through the native forge (via the `deskread`
 		// verb), never a `gh` shell-out — the OPEN-issue list (defaultScanIssueLister, #1223),
 		// the un-block comment read and the trust-gate bless read (defaultScanCommentLister,
 		// defaultScanBlessChecker, #1255). A `gh` read left on this path 401s on every rostered
 		// repo under scanloop's replaced HOME.
-		exitProcess(runScanIssues(*root, *scanDryRun, defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker, defaultScanLabelHoldChecker))
+		exitProcess(runScanIssuesWith(*root, *scanDryRun, scanPublishOpts{Judgments: *scanJudgments, Target: *scanTarget}, defaultScanIssueLister, defaultScanCommentLister, defaultScanBlessChecker, defaultScanLabelHoldChecker))
 	}
 	// Same-repo scan transcriber (scan-lane/01, R-7): self-contained,
 	// STATUS.md-free. The workflow's "run" step. INERT until the R-7 sign-off

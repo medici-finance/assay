@@ -129,7 +129,7 @@ func residentCmd(args []string) int {
 			return exitCouldNotCheck
 		}
 		if len(diffs) > 0 {
-			fmt.Fprintln(os.Stderr, "harnessgen resident --check: DRIFT — committed artifacts differ from the source; run `go run ./tools/harnessgen resident` and commit:")
+			fmt.Fprintln(os.Stderr, "harnessgen resident --check: DRIFT — committed artifacts differ from the source; run `cd tools/harnessgen && go run . resident --root ../..` and commit:")
 			for _, d := range diffs {
 				fmt.Fprintf(os.Stderr, "  %s\n", d)
 			}

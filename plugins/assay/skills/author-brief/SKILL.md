@@ -89,6 +89,12 @@ the impacted briefs, their revisions, coverage and each amendment obligation in 
 and say that it is a manual bootstrap. Never invent a receipt or a schema version the
 install does not ship.
 
+When adding a requirement register entry, identify the requester in plain text (for example,
+`asked-by: Project driver`) and start with `status: proposed`. Record acceptance once the
+project's evidence supports the transition. Commit the changes and run `statusgen preview-stamps`
+before publishing. Exit 1 is expected for intended sign-offs. Keep each listed `human:<name>`
+claim backed by that person's own recorded act for online corroboration. Use plain text for attribution.
+
 ## Map work to delivery milestones
 
 When the source defines delivery milestones or the request needs staged outcomes,
@@ -639,7 +645,7 @@ whole plan in context.
 ## Enforcement status of these rules (generated — do not hand-edit)
 
 Regenerate with `statusgen enforcement-status` piped through the skillslint sync
-(`go run ./tools/skillslint --sync`); the byte-diff gate in the skillslint CI job fails
+(`cd tools/skillslint && go run . --sync --root ../..`); the byte-diff gate in the skillslint CI job fails
 if this block drifts from the lint's rule registry. Hand-edit it and the gate reddens.
 
 This table reports what `statusgen --lint` enforces, **not** what the methodology

@@ -130,10 +130,20 @@ ASSAY_REPO_FORGES=example-org/tracker=github
 		reviewtest.Write(t, reviewtest.Response{Exit: 0, Attempts: transport.Snapshot(), HTTPComplete: true})
 		return
 	}
-	exit := run([]string{"review-queue", "--out", out, "--rate-floor", "0"}, &stdout, &stderr)
+	args := []string{"review-queue", "--out", out, "--rate-floor", "0"}
+	feedbackPath := filepath.Join(q.Root, "feedback.json")
+	if throughput {
+		args = append(args, "--feedback-out", feedbackPath)
+	}
+	exit := run(args, &stdout, &stderr)
 	b, _ := os.ReadFile(out)
 	facts := map[string]string{}
 	if throughput && exit == 0 {
+		feedback, err := os.ReadFile(feedbackPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		facts["feedback"] = string(feedback)
 		before := len(transport.Snapshot())
 		depth, _, err := frozenReviewDepth(out, time.Now().UTC())
 		facts["depth"] = fmt.Sprint(depth)

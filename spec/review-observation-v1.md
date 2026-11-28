@@ -89,6 +89,15 @@ the surrounding new envelope uses the explicit lower-camel schema names. Labels 
 checks are explicit arrays, including for measured zero. Required false/zero fields
 must be present in JSON, not silently defaulted.
 
+Two facts are additive and may be absent: `change.Mergeable` and `declarationHold`.
+`declarationHold` is the ready gate's desk-decided refusal reason, reduced by the
+producer with `deskkit.DeskDecidedRefusal`, the function `deskflip` and `deskpost ready`
+call. When it is non-empty the row classifies BLOCKED and never FLIP or MERGE-NOW. The
+producer omits it when no hold stands, so observations without a hold keep the earlier
+encoding, and older v1 snapshots stay readable. Explicit null is malformed. Absence
+carries no evidence that no hold stands. The ready gates still evaluate the hold
+themselves.
+
 Operational owners still resolve authenticated reviewer identity, remove stale
 re-anchored grants, select newest checks with `deskkit.LatestRunPerName`, and verify
 body-edit exemptions with `deskkit.EvaluateBodyEditReverification`. This library does

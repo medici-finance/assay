@@ -44,7 +44,7 @@ func (s *recordFilerStub) RecordIdentity() string { return s.identity }
 func (s *recordFilerStub) FileRecordPR(context.Context, mcp.RecordPRRequest) (mcp.RecordPRResult, error) {
 	s.called = true
 	if s.identity == "" {
-		s.t.Fatalf("FileRecordPR was called with an UNCONFIGURED write-issues App — the filer must never fall back to another identity")
+		s.t.Fatalf("FileRecordPR was called with an UNCONFIGURED record-PR App — the filer must never fall back to another identity")
 	}
 	return mcp.RecordPRResult{Status: "record PR filed (draft)"}, nil
 }
@@ -72,7 +72,7 @@ func postOverride(h http.Handler, cell, body string) *httptest.ResponseRecorder 
 	return rec
 }
 
-// TestOverridesFilerUnconfiguredIsCouldNotCheck (row 7): with no write-issues
+// TestOverridesFilerUnconfiguredIsCouldNotCheck (row 7): with no record-PR
 // App configured, a valid POST still writes the table, files NO PR, reports
 // record_pr: could-not-check, and uses NO fallback identity.
 func TestOverridesFilerUnconfiguredIsCouldNotCheck(t *testing.T) {
@@ -92,7 +92,7 @@ func TestOverridesFilerUnconfiguredIsCouldNotCheck(t *testing.T) {
 		t.Fatalf("the write did not echo: %+v", resp)
 	}
 	if !strings.Contains(resp.RecordPR, "could-not-check") {
-		t.Fatalf("record_pr must be could-not-check when the write-issues App is unconfigured, got %q", resp.RecordPR)
+		t.Fatalf("record_pr must be could-not-check when the record-PR App is unconfigured, got %q", resp.RecordPR)
 	}
 	if stub.called {
 		t.Fatalf("the filer was called despite being unconfigured — no fallback identity is allowed")

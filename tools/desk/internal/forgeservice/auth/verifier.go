@@ -59,6 +59,9 @@ type Verifier struct {
 	clock   refresh.Clock
 }
 
+// Policy returns the trusted scope selected at verifier construction.
+func (v *Verifier) Policy() GrantScope { return v.config.Policy }
+
 func NewVerifier(cfg VerifierConfig, current *CurrentClient, wall refresh.Clock) (*Verifier, error) {
 	if current == nil || !clockPresent(wall) || cfg.Schema != Schema || cfg.Profile != Profile || !text(cfg.Issuer) || !text(cfg.Audience) || !cfg.Bootstrap.valid() || !cfg.Policy.valid() || cfg.Policy.Cell != cfg.Bootstrap.Binding.Cell || cfg.MaxGrantLease <= 0 || cfg.ClockSkew < 0 || cfg.ClockSkew > cfg.MaxGrantLease || cfg.Launch.Validate() != nil || cfg.Launch.Kind != celllaunch.AuthorityCaller || cfg.Launch.Cell != cfg.Policy.Cell || cfg.Launch.Role != cfg.Policy.Role || cfg.Launch.Container.Engine != cfg.Bootstrap.Binding.Engine || cfg.Launch.Container.ID == cfg.Bootstrap.Binding.ContainerID || cfg.CurrentReadLease <= 0 || cfg.MaxRevocationBound < cfg.CurrentReadLease || cfg.MaxFrameBytes <= 0 || cfg.MaxFrameBytes > celllaunch.MaxRecordBytes || !same(cfg.Bootstrap, current.config.Bootstrap) || cfg.MaxFrameBytes != current.config.MaxFrameBytes {
 		return nil, ErrConfig

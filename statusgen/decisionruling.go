@@ -272,6 +272,11 @@ type rulingIssueBinding struct {
 	// names the record; a non-empty result refuses with that detail. Only an
 	// Evidence-Repair approval sets it (#6616).
 	comment func(body string) string
+	// subject, when set, binds the ruling to the exact work subject after the
+	// issue is shown to rule on the record (milestone-support/09): the comment
+	// body and the forge's creation time, and the current issue body. A
+	// non-empty reason refuses with that detail.
+	subject func(comment, createdAt, issueBody string) (rulingReason, string)
 }
 
 // resolveRulingOn is resolveRuling with condition 6 supplied by the caller. Every
@@ -433,6 +438,13 @@ func resolveRulingOn(c *ghClient, prRepo string, rec decisionRecordStamp, humanL
 	}
 	if !binding.rules(rulingIssue{Body: iss.Body}, link) {
 		return refuse(rulingUnrelatedIssue, "%s#%d carries no decision-gate marker for %s — the comment is not on this record's decision issue", link.Repo, link.Issue, binding.what)
+	}
+
+	// 7. The ruling binds the exact work subject (only when the caller says so).
+	if binding.subject != nil {
+		if r, why := binding.subject(cm.Body, cm.CreatedAt, iss.Body); r != rulingOK {
+			return refuse(r, "comment %d on %s#%d: %s", link.CommentID, link.Repo, link.Issue, why)
+		}
 	}
 
 	out.Reason = rulingOK
@@ -626,12 +638,16 @@ func isDecisionRecordPath(path string) bool {
 // diff ADDS OR EDITS (at least one added line), in first-seen order. A declared fixture corpus is skipped
 // exactly as stampsInDiff skips it.
 func decisionRecordsInDiff(root, diff string) []string {
+	return decisionRecordsInAddedLines(addedDiffLines(root, diff))
+}
+
+func decisionRecordsInAddedLines(added []diffAddedLine) []string {
 	var out []string
 	seen := map[string]bool{}
 	// The one shared diff walker (addedDiffLines, corroboratescope.go) already skips
 	// a declared fixture corpus; a decision record is never a .patch file, so the
 	// walker's embedded-patch rule never touches this lane.
-	for _, al := range addedDiffLines(root, diff) {
+	for _, al := range added {
 		cur := al.File
 		if cur == "" || seen[cur] || !isDecisionRecordPath(cur) {
 			continue
@@ -653,13 +669,17 @@ func decisionRecordsInDiff(root, diff string) []string {
 // (record-not-named, with a detail naming the missing id); the register lint reports
 // the same record.
 func loadDecisionRecordStamp(root, file string) decisionRecordStamp {
-	rec := decisionRecordStamp{File: file}
 	raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
+	return parseDecisionRecordStamp(file, string(raw), err)
+}
+
+func parseDecisionRecordStamp(file, content string, err error) decisionRecordStamp {
+	rec := decisionRecordStamp{File: file}
 	if err != nil {
 		rec.LoadErr = err.Error()
 		return rec
 	}
-	fm, _, ferr := splitFrontmatter(string(raw))
+	fm, _, ferr := splitFrontmatter(content)
 	if ferr != nil {
 		rec.LoadErr = ferr.Error()
 		return rec

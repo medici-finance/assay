@@ -17,8 +17,8 @@
     {
       "name": "immutable caller drops parent",
       "file": "cmd/deskevidence/outcomerecord.go",
-      "old": "writeInput.ExpectedHead = landedHead",
-      "new": "writeInput.ExpectedHead = \"\""
+      "old": "ExpectedHead: landedHead,",
+      "new": "ExpectedHead: \"\","
     },
     {
       "name": "remote baseline dropped",

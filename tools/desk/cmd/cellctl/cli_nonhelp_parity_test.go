@@ -190,7 +190,13 @@ func goldenCases() []goldenCase {
 			st("new", "x", "--container-config", "<ROOT>/none.json"),
 			st("new", "x", "--forge", "bogus"),
 		}},
-		{name: "check", steps: []goldenStep{st("check", "example"), st("check", "example", "<ROOT>/claude-config"), st("check", "scrub")}},
+		{name: "check", setup: func(t *testing.T, w *cliWorld) {
+			// The recorded scrubbed check reports a mode violation. MkdirAll
+			// honors umask, so establish this negative control explicitly.
+			if err := os.Chmod(filepath.Join(w.cellsRoot, "scrub", "home", ".config", "assay"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+		}, steps: []goldenStep{st("check", "example"), st("check", "example", "<ROOT>/claude-config"), st("check", "scrub")}},
 		{name: "cadence", steps: []goldenStep{
 			st("cadence", "example", "status"),
 			st("cadence", "example", "stop", "worker-desk"),
@@ -536,7 +542,8 @@ var deliberateDiffs = map[string]deliberateDiff{
 	"cache-enabled/2": {code: 3, why: "cache wipe is now supported", stderrReplace: []string{"status|clean|recover", "status|clean|wipe|recover"}},
 	// #2879 records the compiler-cache trim age in the policy and the trimmed
 	// entries and bytes in every report; the policy also carries the consumers'
-	// GOFLAGS (-trimpath by default); all other transcript bytes stay identical.
+	// GOFLAGS (-trimpath by default) and, since #7275, the managed GOTMPDIR
+	// opt-in; all other transcript bytes stay identical.
 	"cache-enabled/3": {code: 6, stdoutReplace: cacheTrimFields, stderrReplace: []string{"", ""}, why: "#2879: reports carry the build trim age and trimmed bytes"},
 	"cache-enabled/4": {code: 0, stdoutReplace: cacheTrimFields, stderrReplace: []string{"", ""}, why: "#2879: reports carry the build trim age and trimmed bytes"},
 	"version-flag/0":  {code: 0, stderr: "", why: whyNoEcho},
@@ -591,11 +598,11 @@ var deliberateDiffs = map[string]deliberateDiff{
 	"cells-root-spellings/4": {code: 2, stderr: unknownCmd("-cells-root"), why: whyParseText + "; " + whyHookBlocks},
 }
 
-// cacheTrimFields is the #2879 report change, plus the policy's default GOFLAGS, as old/new
-// replacement pairs.
+// cacheTrimFields is the #2879 report change, plus the policy's default GOFLAGS and managed
+// GOTMPDIR (#7275), as old/new replacement pairs.
 func cacheTrimFields() []string {
 	return []string{
-		`"minimum_free_bytes":10737418240}`, `"minimum_free_bytes":10737418240,"build_max_age_seconds":86400,"goflags":"-trimpath"}`,
+		`"minimum_free_bytes":10737418240}`, `"minimum_free_bytes":10737418240,"build_max_age_seconds":86400,"goflags":"-trimpath","gotmpdir":true}`,
 		`"reclaimed_logical_bytes":0,`, `"reclaimed_logical_bytes":0,"trimmed_build_entries":0,"trimmed_build_bytes":0,`,
 	}
 }
@@ -677,45 +684,47 @@ func TestCLINonHelpParity(t *testing.T) {
 	if g.BaseSHA == "" || len(g.Cases) == 0 {
 		t.Fatal("golden file has no base_sha or no cases")
 	}
+	bin := cellctlBinary(t)
 	for _, c := range cases {
-		want, ok := g.Cases[c.name]
-		if !ok {
-			t.Errorf("case %s has no recorded transcript", c.name)
-			continue
-		}
-		got := runGoldenCase(t, cellctlBinary(t), c)
-		got = append([]cliRun(nil), got...)
-		want = append([]cliRun(nil), want...)
-		for i := range got {
-			got[i].Stdout, got[i].Stderr = hostNorm(got[i].Stdout), hostNorm(got[i].Stderr)
-		}
-		for i := range want {
-			want[i].Stdout, want[i].Stderr = hostNorm(want[i].Stdout), hostNorm(want[i].Stderr)
-		}
-		if len(got) != len(want) {
-			t.Errorf("case %s: %d steps recorded, %d run", c.name, len(want), len(got))
-			continue
-		}
-		for i := range want {
-			key := fmt.Sprintf("%s/%d", c.name, i)
-			if d, ok := deliberateDiffs[key]; ok {
-				same := got[i].Code == want[i].Code && got[i].Stdout == want[i].Stdout && got[i].Stderr == want[i].Stderr
-				if same {
-					t.Errorf("%s is listed as a deliberate difference but matches the pre-migration transcript: drop the entry", key)
-				}
-				if !diffHolds(d, got[i], want[i]) {
-					t.Errorf("%s %v: the deliberate difference (%s) no longer holds\n  exit   want %d got %d\n  stdout want %q got %q\n  stderr want %q\n         got  %q",
-						key, want[i].Args, d.why, d.code, got[i].Code, want[i].Stdout, got[i].Stdout, d.stderr, got[i].Stderr)
-				}
-				continue
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			want, ok := g.Cases[c.name]
+			if !ok {
+				t.Fatalf("case %s has no recorded transcript", c.name)
 			}
-			if got[i].Code != want[i].Code || got[i].Stdout != want[i].Stdout || got[i].Stderr != want[i].Stderr {
-				t.Errorf("case %s step %d %v diverges from the pre-migration transcript (%s)\n"+
-					"  exit   want %d got %d\n  stdout want %q\n         got  %q\n  stderr want %q\n         got  %q",
-					c.name, i, want[i].Args, g.BaseSHA, want[i].Code, got[i].Code,
-					want[i].Stdout, got[i].Stdout, want[i].Stderr, got[i].Stderr)
+			got := runGoldenCase(t, bin, c)
+			got = append([]cliRun(nil), got...)
+			want = append([]cliRun(nil), want...)
+			for i := range got {
+				got[i].Stdout, got[i].Stderr = hostNorm(got[i].Stdout), hostNorm(got[i].Stderr)
 			}
-		}
+			for i := range want {
+				want[i].Stdout, want[i].Stderr = hostNorm(want[i].Stdout), hostNorm(want[i].Stderr)
+			}
+			if len(got) != len(want) {
+				t.Fatalf("case %s: %d steps recorded, %d run", c.name, len(want), len(got))
+			}
+			for i := range want {
+				key := fmt.Sprintf("%s/%d", c.name, i)
+				if d, ok := deliberateDiffs[key]; ok {
+					same := got[i].Code == want[i].Code && got[i].Stdout == want[i].Stdout && got[i].Stderr == want[i].Stderr
+					if same {
+						t.Errorf("%s is listed as a deliberate difference but matches the pre-migration transcript: drop the entry", key)
+					}
+					if !diffHolds(d, got[i], want[i]) {
+						t.Errorf("%s %v: the deliberate difference (%s) no longer holds\n  exit   want %d got %d\n  stdout want %q got %q\n  stderr want %q\n         got  %q",
+							key, want[i].Args, d.why, d.code, got[i].Code, want[i].Stdout, got[i].Stdout, d.stderr, got[i].Stderr)
+					}
+					continue
+				}
+				if got[i].Code != want[i].Code || got[i].Stdout != want[i].Stdout || got[i].Stderr != want[i].Stderr {
+					t.Errorf("case %s step %d %v diverges from the pre-migration transcript (%s)\n"+
+						"  exit   want %d got %d\n  stdout want %q\n         got  %q\n  stderr want %q\n         got  %q",
+						c.name, i, want[i].Args, g.BaseSHA, want[i].Code, got[i].Code,
+						want[i].Stdout, got[i].Stdout, want[i].Stderr, got[i].Stderr)
+				}
+			}
+		})
 	}
 	if len(g.Cases) != len(cases) {
 		t.Errorf("golden file holds %d cases, the table has %d: regenerate or remove the stale ones", len(g.Cases), len(cases))
