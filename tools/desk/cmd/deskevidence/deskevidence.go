@@ -283,6 +283,7 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 	// for a BLOCKED or could-not-check re-run of a verified or done brief, whose Evidence
 	// append the verdict gate refuses (outcomeonly.go).
 	outcomeOnly := fs.Bool("outcome-only", false, "with --outcome-record: record a non-decisive re-run of a verified or done brief whose Evidence append is refused; the record states evidence_withheld and its sha is the admitted observation commit")
+	flipVerified := fs.Bool("flip-verified", false, "with --outcome-record: commit a model-gated verified transition and its PASS record together")
 	// --remove-superseded removes ONE outcome record that the --superseded-by record for the
 	// same brief supersedes, as a pinned conditional forge write (removesuperseded.go).
 	removeSuperseded := fs.String("remove-superseded", "", "repo-relative path of an outcome record to remove; it must be superseded by the --superseded-by record for the same brief (lands as a pinned conditional forge write)")
@@ -381,7 +382,10 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		if ferr := refuseUnhonouredFlags(fs, routeOutcomeRecord); ferr != nil {
 			return ferr
 		}
-		return cmdOutcomeRecordWrite(*outcomeRecord, repoSlug, owner, name, branch, *root, *outcomeOnly, *dryRun, ac)
+		if *flipVerified && *outcomeOnly {
+			return deskkit.Refused("refused: --flip-verified and --outcome-only are mutually exclusive")
+		}
+		return cmdOutcomeRecordWrite(*outcomeRecord, repoSlug, owner, name, branch, *root, *outcomeOnly, *flipVerified, *dryRun, ac)
 	}
 	if *outcomeOnly {
 		return deskkit.Refused("refused: --outcome-only is valid only with --outcome-record")
@@ -886,6 +890,11 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 			"refused: landing %s would move, relabel or drop a gate: human brief with no human ruling on its decision issue (decision-gate hold, lifecycle-v1 §4.5):\n%s",
 			targetRepoPath, strings.Join(gateRefused, "\n")))
 	}
+	// Ruling subject: the in-process gate binds the recorded
+	// ruling to this brief's exact work subject, beside the statusgen run above.
+	if err := rulingSubjectGateFn(fg, fr, landedRoot, targetRepoPath, remoteContent, commitContent); err != nil {
+		return err
+	}
 	// The board the gates judged was read from the forge at closureRef, and the decision-gate
 	// judge reads who wrote each ruling from the forge: neither is pinned by the conditional
 	// write. Both are re-read in the write window — the board must be the one judged, and the
@@ -908,6 +917,9 @@ func cmdEvidence(args []string, ac *auditCtx) (err error) {
 		}
 		if len(again) > 0 {
 			return changedSincePrep("the decision-gate verdict", deskkit.Refused(strings.Join(again, "\n")))
+		}
+		if err := rulingSubjectGateFn(ac.freshForge, fr, landedRoot, targetRepoPath, remoteContent, commitContent); err != nil {
+			return changedSincePrep("the ruling-subject verdict", err)
 		}
 		return nil
 	})

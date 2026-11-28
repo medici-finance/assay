@@ -43,8 +43,30 @@ Existing production entrypoints select explicit profiles:
 
 Neither legacy entrypoint gains `b-`, `m-` or revision support. `statusgen/briefv2.go`
 and verification-domain's strict boundary remain unchanged. Capability negotiation,
-record loading, claims and ruling/subject binding belong to subsequent milestone briefs.
+record loading and claims belong to subsequent milestone briefs.
 No operational prefixed writes or milestone capability advertisement is enabled here.
+
+## Work subjects and ruling subjects
+
+`Subject{LogicalKey, Revision}` is built only from a resolved `Result` (`SubjectOf`)
+or from a brief's declared identity and explicit version (`BriefSubject`).
+`SameSubject(approved, presented)` is true only when both keys and both revisions are
+equal. Revision zero means none was supplied; it never equals a positive revision and
+is never filled in from the current brief. A milestone subject never equals a brief
+subject. Callers build both sides under the same revision regime.
+
+`BindRulingSubject` holds the shared rules for a human ruling. The comment carries at
+most one line, `Ruling-Subject: <typed brief ref@N> card=none|sha256:<hex>`
+(`ParseRulingSubject`). Its resolved key and revision must equal the presented brief's
+key and explicit version. `card=none` requires no typed card on the decision issue;
+`card=sha256:<hex>` (`CardDigest`) is taken over the exact card line and must match one
+well-formed card naming the same key and version. A missing, changed, unexpected or
+unreadable card is could-not-check. A comment with no subject line keeps its
+historical logical-key meaning only when the forge reports it was created strictly
+before `RulingSubjectCutover`; an unknown time is could-not-check. The result is
+three-state (`Bound`, `Refused`, `CouldNotCheck`) with a distinct reason. Each module
+reads the comment, issue and card itself and calls these rules; the rules fetch nothing
+and grant nothing.
 
 `tools/desk` requires the existing statusgen module at the repository's placeholder
 pseudo-version and replaces it with `../../statusgen` for source builds. No new module

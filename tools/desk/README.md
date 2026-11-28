@@ -431,7 +431,7 @@ no tool reinvents it with holes:
 | `AllowWrite(tool) error` / `AllowWriteAt(tool, now)` | **Two meters** (C-5/TM-4, #209). Budget: ≤20/tool/rolling hour (`RateLimitPerPRPerHour`, raised 10→20 by PR #1053, 2026-08-14), charged only by attempts that may have reached the remote (`ok`, `unverifiable`). Breaker: 5 consecutive non-progress attempts (`refused`, `noop`) → open for 15m. Neither meter counts `ratelimited`/`disabled` — its own output — which is what made the old single counter non-recovering; nor `dryrun` (#214), which wrote nothing. Exit-4 errors carry a **retry-after** (`RetryAfterOf(err)`). The cap is a **chosen throughput ceiling**, not a figure derived from an incident — `ratelimit.go` states what each value is chosen against. |
 | `AlreadyDone(repo, pr, head, verb) bool` / `AlreadyDoneIn(entries, …)` | Idempotency: only prior `ok`/`noop` entries count as done (C-5). `dryrun` never counts — a rehearsal must not suppress the real write. |
 | audit `result` | `ok` · `noop` (attempted, idempotency short-circuited it) · `dryrun` (`--dry-run`: stopped **before** the write, invisible to both meters, #214) · `refused` · `disabled` · `ratelimited` · `unverifiable` · `contended` (the bounded audit-lock wait ran out before anything was read or sent; invisible to both meters, #6227). |
-| `BodyCheck([]byte) error` | Shared secret scan (C-3); refuses token/PEM/JWT/AKIA/sops shapes + high-entropy runs. Exempts 40/64-char lowercase-hex git SHAs and **paths** — absolute or repo-relative — whose slash-separated segments are *word-shaped* (#1052, #209). Bare CamelCase identifiers are word-shaped too: a 2-4 letter acronym (optionally plural, `PRs`/`IDs`), a `V` version segment of 1-2 digits between words or closing the name (`V1`, `V10`; one per name, sharing the acronym budget), and the numeronyms `K8s`/`I18n`/`L10n`/`A11y` and the term `OAuth` count as words, and one acronym that closes the name spends no acronym budget unless the name carries a version segment (a version and an acronym never share one name); a 40/64-hex git SHA assigned to an ALL-CAPS env var whose name ends in a closed digest key (`SHA`, `SHA1`, `SHA256`, `DIGEST`, `CHECKSUM`, `COMMIT`, or `HEX` directly behind one, as in a Dockerfile `ARG BASE_DIGEST_HEX=<sha256>`) is exempt, unless the name contains a credential stem (`SECRET`, `TOKEN`, `KEY`, `PASS`, …). Any other ALL-CAPS env-var assignment is exempt only when the value is already exempt on its own (a word-shaped identifier, a git SHA or a word-shaped path, as in `make test TEST=<GoTestName>`, `PGDATA=/var/lib/…` or `DELIVERY_HEAD=<sha>`), the key is at most 16 capitals, and the full name carries neither a credential stem nor a digest stem; any other value, and any other key, refuses as on main (#1642). A Go test name with a subtest path (`TestX/sub`) is exempt when its head is such an identifier and its subtest path is at most 16 characters (half the run threshold) of word-shaped segments carrying at most 4 short lowercase characters in total; a run made only of `+` (a `git diff --stat` change bar) is exempt like an all-`=` banner. `${NAME}`/`$NAME` substitutions never form a run (`$`, `{`, `}`, `_` are outside the run class). Refuses `glpat-` GitLab tokens (#1642). Opaque material between slashes still refuses, including an AWS **secret access key**, whose `/` characters defeat a length-only segment gate. **Also refuses impersonated human rulings (#45)**: a body claiming a configured human's decision BY NAME — `"Decision (Alex, ...)"`, `"Ruling: ... — Alex"`, `"I (Alex) have decided"` — is refused categorically, since no desk write path ever posts as a human; see `ImpersonatedRulingClaim` (`impersonation.go`). |
+| `BodyCheck([]byte) error` | Shared secret scan (C-3); refuses token/PEM/JWT/AKIA/sops shapes + high-entropy runs. Exempts only the shapes the benign-shape registry declares (`benignshapes.go`), one entry each, every entry bounded by a refusal its tests keep:<!-- benign-shapes:begin --><br>`git-sha` (run; 4d8e66826 (first scan)): a git SHA (exactly 40 or 64 lowercase hex)<br>`path-like` (run; #209, #1052): a slash-separated path, absolute or repo-relative, built from word-shaped segments<br>`identifier` (run; 8d90074d3; widened by #1643, #2036, #4077): a bare word-shaped CamelCase identifier (a 2-4 letter acronym, optionally plural like PRs, a V plus 1-2 digits like V1, the numeronyms K8s, I18n, L10n, A11y and the term OAuth count as words)<br>`assignment` (run; 4d8e66826 (first scan); #775): a key=VALUE assignment whose key is short or word-shaped and whose value is a git SHA, path or identifier<br>`all-equals` (run; #781): an all-'=' banner separator<br>`issue-list` (run; cea8ebb75): a slash-list of short issue numbers<br>`enum-slash-list` (run; #966): a slash-list of short ALL-CAPS enum words<br>`quantifier-path` (run; #883): a word-shaped path behind one leading '+' quantifier or diff marker<br>`go-subtest` (run; #4077): a Go subtest name (TestX/sub) whose head is an exempt identifier and whose subtest path is words of at most 16 chars<br>`diffstat-bar` (run; #4077): an all-'+' diffstat bar<br>`digest-key` (line; #1643): a git SHA behind an ALL-CAPS env-var key ending in SHA, SHA1, SHA256, DIGEST, CHECKSUM or COMMIT (optionally then HEX), never a credential-named variable<br>`caps-key` (line; #1642): an ALL-CAPS env-var key of up to 16 letters in front of a value exempt on its own, unless the name carries a credential stem such as TOKEN, SECRET, KEY or PASS, or a digest stem<br>`doc-path-hex` (line; cea8ebb75): a doc-path segment of exactly 32 lowercase hex beside a doc extension or a word-shaped segment<br>`k8s-uid` (line; #966): a 32-hex run behind a recognised Kubernetes object-kind prefix and hyphen (pvc-UID and the like)<br>`pgp-fingerprint` (line; #750, #1161): a PGP key fingerprint (40 uppercase hex after a pgp: or fp: field, or on a line that names it with fingerprint, fpr, pgp or gpg)<br>`go-debug-list` (line; #6821): a Go GODEBUG settings list (DefaultGODEBUG= or GODEBUG= then lowercase name=DIGITS items)<br>`go-sum` (artifact; #778): a go.sum h1: digest (exactly 43 base64 and one pad behind the h1: marker)<br>`sri-integrity` (artifact; #778): an SRI integrity digest of the exact length its algorithm fixes (sha256, sha384, sha512)<br>`sops-document` (artifact; #778): the envelope payloads, metadata block and armor bodies of a complete encrypted sops document, and only when the whole surface is one<!-- benign-shapes:end --><br> `${NAME}`/`$NAME` substitutions never form a run (`$`, `{`, `}`, `_` are outside the run class). Refuses `glpat-` GitLab tokens (#1642). Opaque material between slashes still refuses, including an AWS **secret access key**, whose `/` characters defeat a length-only segment gate. **Also refuses impersonated human rulings (#45)**: a body claiming a configured human's decision BY NAME — `"Decision (Alex, ...)"`, `"Ruling: ... — Alex"`, `"I (Alex) have decided"` — is refused categorically, since no desk write path ever posts as a human; see `ImpersonatedRulingClaim` (`impersonation.go`). |
 | `Version()` / `WarnIfUnpinned(w)` | Reports the embedded `sourceSHA`/`builtAt`; warns loudly when unpinned (C-1). |
 | `OperationContext(work, trackingRoot, deliveryRoot, targets)` | Observation adapter for the `statusgen/domain` operation subject. Reads the tracking checkout's origin and HEAD and the delivery checkout's origin, binds the decision target and Evidence destination to the tracking observation and the selected brief path, and returns the subject. Its `Dispatch`, `Review`, `PRPublication` and `EvidencePublication` projections are the only reads. A missing coordinate is `ExitUnverifiable` (6), never another repository; a coordinate that disagrees with the selected brief (a moved tracking checkout, a review or candidate in the wrong repository) is `ExitRefused` (5). It authorizes no effect. No desk verb routes through it yet: deskdispatch, deskpr, deskfile, deskevidence and verifyloop keep their own coordinate derivation until their follow-up migrations move them onto the projections. |
 | exit codes | `ExitOK 0`, `ExitDisabled 3`, `ExitRateLimited 4`, `ExitRefused 5`, `ExitUnverifiable 6`. `ExitCodeOf(err)` maps a typed error, failing **closed** to 6 for any unexpected error. |
@@ -2747,7 +2747,8 @@ deskpost finish review example-org/project 42 --verdict approve \
 ```
 
 The arguments after `finish review` / `finish security-review` are that verb's own, parsed by
-the same code, plus `--claim` — the claim key the review assignment names.
+the same code, plus `--claim` — the claim key the review assignment names. Run the
+command from the assigned review checkout and pass an absolute path for `--body-file`.
 
 | Step | What runs | A stop here means |
 |---|---|---|
@@ -2816,13 +2817,15 @@ apply and none of this runs.
   its key, and no record behind the key states a lane. A security review dispatched under a
   key with no `security` segment would be accepted by `finish review` and refused by `finish
   security-review`. The check does not prove which lane a key was dispatched for.
-- **Who holds the claim is not checked.** The claim record names the dispatcher that placed
-  it, and a reviewer is handed the key and nothing that identifies that dispatcher, so
-  `finish` has nothing sound to compare. A run that holds this lane's key for this change can
-  release that claim whoever placed it — as the release command in the assignment can.
-- **"Already gone" is verified, never assumed.** A delete the forge answers with not-found is
-  followed by a read of that one ref; only a positive "absent" is reported as
-  `already-released`. A forbidden, a server error or an unreadable ref is a failed release.
+- **Only the finishing run can release its review lease.** Review dispatch records a
+  unique dispatch ref in the review checkout and the acquiring desk in its dispatch receipt. The Go claim
+  tool places that ref on the lease at acquisition and preserves it across progress. After
+  confirming the verdict, finish reads the holder and run and deletes only the exact
+  revision it observed. A successor from the same desk has its own dispatch ref.
+- An absent claim returns `already-released`. An unreadable or changed lease stays held.
+  If the checkout, dispatch receipt, or claim lacks run evidence (including a claim acquired by an older
+  tool or a legacy shell script), the verdict stands and the dispatching desk retains
+  cleanup responsibility. A transient failure can be retried from the original checkout.
 - **Two audit rows on a full run.** The first is the post step's, as for the plain verdict
   verbs. The confirm is a read and writes none. The second is the release step's, verb
   `finish:release`: `ok` when the claim was released, `noop` when it was already gone, and
@@ -2833,10 +2836,9 @@ apply and none of this runs.
   result line. `--wait` and `--explain` act on step 1 as they do on the plain verbs.
 - **The result line's `review=`** is the forge's own link to the review when the listing
   carries one, otherwise `<owner/repo>#<pr>/review-<id>`. The tool never builds a link.
-- **Limit.** With no claim store configured the claim is a ref on the forge and the release is
-  a typed ref delete under the reviewer identity. A forge whose API cannot delete a ref
-  outside its branch namespace answers that step with a refusal; `finish` then stops at step
-  3 with the verdict posted, and the release command in the assignment remains the way out.
+- With the legacy forge-ref store, finish reads the annotated claim and sends a
+  conditional Git deletion under the reviewer identity. A receiver refusal or an
+  unreadable ref leaves the verdict posted and the release unconfirmed.
 
 ### Verdict format (the machine-checkable review body)
 
@@ -3695,8 +3697,10 @@ because a session sets its own environment. **A shared config home gives no sepa
 between roles.** Give each role window its own `ASSAY_CONFIG_HOME`. It holds the key,
 `apps.env` entry and token cache of each role that a tool run in that window acts as, and no
 other role's. That is the window's own role, plus `desk` in a `worker-desk` or `verify-desk`
-window, because `deskdispatch` takes the claim and the model stamp as the desk App for worker
-and verifier kits. It also includes the role a dispatched agent mints, and `worker` or
+window, because `deskdispatch` takes the model stamp as the desk App for worker and verifier
+kits, and the claim as the desk App for a worker kit. A verifier dispatch from a `verify-desk`
+window takes its claim as the verifier App, so that window advances and releases the claim with
+its own credential and no `--cross-role` mint (#7815). It also includes the role a dispatched agent mints, and `worker` or
 `verifier` wherever `deskreply` or `deskevidence` runs. A review kit claims and stamps as
 `reviewer` wherever it is dispatched, and the table gives `the-desk` no `reviewer` key, so
 review kits are dispatched from `pr-review-desk`; from a `the-desk` home provisioned by the
@@ -4871,7 +4875,15 @@ the mutation sweep is `cmd/deskclose/mutations.json`.
 ### The human-decided triage close writes a decision record
 
 `deskclose triage --disposition human-decided --decision <ruling permalink> --tracker <ref>`
-closes a ruled decision issue. It authorizes only on the ruling comment on that issue, after
+closes a ruled decision issue. For an issue still labelled `needs-decision`, give it the
+original, unedited human reply and a separate tracker. On a generated decision, the reply
+names the board ID and one offered option, such as `sample/02: 1`. A later human reply,
+a new question, or a reopened decision requires fresh evidence. The command confirms
+`human-decided` before removing `needs-decision`, then posts the ruling and closes the
+issue. A failed label change leaves the issue open and can be retried. Use `--dry-run`
+to preview the labels and closing comment.
+
+It authorizes only on the ruling comment on that issue, after
 verifying that its author is the blessing authority. The permalink is the forge's own link to
 that one comment: `https://github.com/<owner>/<repo>/issues/<N>#issuecomment-<id>` on GitHub,
 `https://<host>/<group>/<project>/-/issues/<N>#note_<id>` on GitLab. Its forge, host and
@@ -7785,9 +7797,10 @@ on the PR's `dispatched-model:` label, which joins via `pr`.
 The record is the dispatcher's own account. `tier` is the `--tier` flag, `session_tag` is an
 environment value, a `released` line's `dispatch_ref` is read from worktree config, and
 `attempt_local` counts lines already in this file. Only `model_stamp: applied` reports an act,
-the stamp step's own OK. The record is analysis data: never an authenticated log, and never an input to a
-control. A missing line is not evidence that no dispatch ran, since a failed write is
-non-fatal. These records support aggregate analysis per brief, tier and kit. They are never
+the stamp step's own OK. The receipt is unauthenticated. For a review, `deskpost finish` checks it against the
+assigned checkout's dispatch ref and the held lease's owner and run. A missing or mismatched
+receipt leaves the lease held. Dispatch can continue if writing the record fails, so the log can
+be incomplete. These records support aggregate analysis per brief, tier and kit. They are never
 used to rank people or agents.
 
 ## The dispatch-claim store — `ResolveClaimStore`

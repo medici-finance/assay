@@ -197,7 +197,7 @@ func boot(o bootOpts) error {
 	// boot reports something other than red. The refusal text reports what the alarm actually
 	// did; it never claims a filing that did not happen.
 	began = time.Now()
-	if r := runCmd("", "deskroster", "preflight", "--role", tokenRole, "--root", o.root); r.err != nil {
+	if r := runCmd("", "deskroster", preflightArgs(o, tokenRole)...); r.err != nil {
 		summary := preflightSummary(r.stderr, r.stdout)
 		outcome, aerr := fileRedPreflightAlarm(o, tokenRole, summary)
 		if aerr != nil {
@@ -608,6 +608,18 @@ func countLines(s string) int {
 		return 0
 	}
 	return strings.Count(s, "\n") + 1
+}
+
+// preflightArgs is the envelope preflight's argv. An explicit --repo is forwarded, so the
+// preflight resolves the same repository (and so the same forge) the token-mint step's
+// resolveRepo does; without it the preflight derives the repository from the landing
+// remote itself, as before (#7533).
+func preflightArgs(o bootOpts, tokenRole string) []string {
+	args := []string{"preflight", "--role", tokenRole, "--root", o.root}
+	if repo := strings.TrimSpace(o.repo); repo != "" {
+		args = append(args, "--repo", repo)
+	}
+	return args
 }
 
 // resolveRepo returns the owner/name the token mints against: --repo when given, else the

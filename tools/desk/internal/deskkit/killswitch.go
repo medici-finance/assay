@@ -88,7 +88,9 @@ func gitWorktreeRunKey() string {
 // A missing file needs no pre-check: `git config --file <missing> --get` exits 1, which is
 // "" below, the same answer as a file without the key. A relative path from rev-parse is
 // relative to dir, and the second git call runs in dir too, so it resolves the same file.
-func worktreeRunKeyIn(dir string) string {
+func worktreeRunKeyIn(dir string) string { return worktreeConfigValue(dir, "assay.runKey") }
+
+func worktreeConfigValue(dir, field string) string {
 	git := func(args ...string) (string, error) {
 		cmd := exec.Command("git", args...)
 		cmd.Dir = dir
@@ -99,7 +101,7 @@ func worktreeRunKeyIn(dir string) string {
 	if err != nil || path == "" {
 		return ""
 	}
-	key, err := git("config", "--file", path, "--get", "assay.runKey")
+	key, err := git("config", "--file", path, "--get", field)
 	if err != nil {
 		return ""
 	}

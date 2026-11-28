@@ -101,8 +101,13 @@ func TestResolveOverrideWhoNeverPanics(t *testing.T) {
 // OverrideIdentity name the login, annotated with the observed account.
 func TestOverrideIdentityResolvesRosterLogin(t *testing.T) {
 	u, err := user.Current()
-	if err != nil || u.Username == "" || strings.ContainsAny(u.Username, ":,; \t\n\r") {
-		t.Skipf("this platform's OS username (%q, %v) cannot be expressed in the map", u.Username, err)
+	if err != nil {
+		// A uid with no passwd entry (a bare container) has no OS account for the
+		// roster to bind; u is nil here, so the skip must not read it.
+		t.Skipf("no OS account for this uid, nothing to bind in the map: %v", err)
+	}
+	if u.Username == "" || strings.ContainsAny(u.Username, ":,; \t\n\r") {
+		t.Skipf("this platform's OS username (%q) cannot be expressed in the map", u.Username)
 	}
 	t.Setenv("DESK_SESSION", "override-identity-test")
 
@@ -123,8 +128,11 @@ func TestOverrideIdentityResolvesRosterLogin(t *testing.T) {
 // row still lands, and its identity cannot be mistaken for a resolved roster login.
 func TestOverrideIdentityFallbackIsMarked(t *testing.T) {
 	u, err := user.Current()
-	if err != nil || u.Username == "" {
-		t.Skipf("no OS username on this platform: %v", err)
+	if err != nil {
+		t.Skipf("no OS account for this uid, so no fallback identity to observe: %v", err)
+	}
+	if u.Username == "" {
+		t.Skip("no OS username on this platform")
 	}
 	t.Setenv("DESK_SESSION", "override-identity-test")
 

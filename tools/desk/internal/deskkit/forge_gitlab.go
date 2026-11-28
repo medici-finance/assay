@@ -925,40 +925,81 @@ func (g *GitLabForge) ListLabels(repo ForgeRepo) ([]string, error) {
 // fire the board's non-commit re-review on every unrelated bump); the board reads an empty
 // value as "never edited", the fail-closed direction.
 func (g *GitLabForge) ListOpenChanges(repo ForgeRepo) (*OpenChanges, error) {
+	rows, capped, err := g.listOpenMergeRequests(repo)
+	if err != nil {
+		return nil, err
+	}
 	cl, err := g.client()
 	if err != nil {
 		return nil, err
 	}
+	changes := make([]OpenChange, 0, len(rows))
+	for _, mr := range rows {
+		changes = append(changes, gitlabOpenChange(mr, g.headPipelineAt(cl, repo, mr.SHA)))
+	}
+	return &OpenChanges{
+		Changes: changes, Cap: gitlabOpenChangesCap, TruncatedAtCap: capped,
+	}, nil
+}
+
+// openChangeNumbers lists the same population without querying CI status for each head.
+func (g *GitLabForge) openChangeNumbers(repo ForgeRepo) ([]int, bool, error) {
+	rows, capped, err := g.listOpenMergeRequests(repo)
+	if err != nil {
+		return nil, false, err
+	}
+	numbers := make([]int, 0, len(rows))
+	for _, mr := range rows {
+		numbers = append(numbers, int(mr.IID))
+	}
+	return numbers, capped, nil
+}
+
+// openChangeRows maps the same population through gitlabOpenChange with no head pipeline, so
+// it issues no CI read per change; each row's Rollup is the could-not-check entry.
+func (g *GitLabForge) openChangeRows(repo ForgeRepo) (*OpenChanges, error) {
+	rows, capped, err := g.listOpenMergeRequests(repo)
+	if err != nil {
+		return nil, err
+	}
+	changes := make([]OpenChange, 0, len(rows))
+	for _, mr := range rows {
+		changes = append(changes, gitlabOpenChange(mr, nil))
+	}
+	return &OpenChanges{Changes: changes, Cap: gitlabOpenChangesCap, TruncatedAtCap: capped}, nil
+}
+
+func (g *GitLabForge) listOpenMergeRequests(repo ForgeRepo) ([]*gitlab.BasicMergeRequest, bool, error) {
+	cl, err := g.client()
+	if err != nil {
+		return nil, false, err
+	}
 	listPath := fmt.Sprintf("/projects/%s/merge_requests", g.projectPath(repo))
 	state := "opened"
-	changes := make([]OpenChange, 0, gitlabOpenChangesCap)
-	for page := 1; page <= gitlabMaxChangesPage && len(changes) < gitlabOpenChangesCap; page++ {
+	rows := make([]*gitlab.BasicMergeRequest, 0, gitlabOpenChangesCap)
+	for page := 1; page <= gitlabMaxChangesPage; page++ {
 		chunk, resp, lerr := cl.MergeRequests.ListProjectMergeRequests(repo.Slug(),
 			&gitlab.ListProjectMergeRequestsOptions{
 				State:       &state,
 				ListOptions: gitlab.ListOptions{PerPage: gitlabPerPage, Page: int64(page)},
 			})
 		if lerr != nil {
-			return nil, g.mapErr(http.MethodGet, listPath, lerr)
+			return nil, false, g.mapErr(http.MethodGet, listPath, lerr)
 		}
 		for _, mr := range chunk {
 			if mr == nil {
 				continue
 			}
-			changes = append(changes, gitlabOpenChange(mr, g.headPipelineAt(cl, repo, mr.SHA)))
-			if len(changes) >= gitlabOpenChangesCap {
-				break
+			rows = append(rows, mr)
+			if len(rows) >= gitlabOpenChangesCap {
+				return rows, true, nil
 			}
 		}
 		if resp == nil || resp.NextPage == 0 {
-			break
+			return rows, false, nil
 		}
 	}
-	return &OpenChanges{
-		Changes:        changes,
-		Cap:            gitlabOpenChangesCap,
-		TruncatedAtCap: len(changes) >= gitlabOpenChangesCap,
-	}, nil
+	return rows, true, nil
 }
 
 // ReviewQueueSnapshot on GitLab is DEGRADED, and says so per change: it returns exactly

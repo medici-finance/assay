@@ -5,14 +5,34 @@ import (
 	"strconv"
 )
 
-// grepPins is the only command-priority config a reader here qualifies: the
-// two grep keys a verifier's admitted row pins so a home's grep config cannot
-// change a row's `git grep` (#2715). Both keys are read by `git grep` alone;
-// neither can change a remote URL, a ref, an object, discovery or shallow
-// state, so the library read and native git agree under them.
+// grepPins is one of the two command-priority config sets a reader here
+// qualifies: the two grep keys a verifier's admitted row pins so a home's grep
+// config cannot change a row's `git grep` (#2715). Both keys are read by
+// `git grep` alone; neither can change a remote URL, a ref, an object,
+// discovery or shallow state, so the library read and native git agree under
+// them.
 var grepPins = [...][2]string{
 	{"grep.patternType", "default"},
 	{"grep.extendedRegexp", "false"},
+}
+
+// quotePathPin is the other qualified set: core.quotePath=false alone (#7533).
+// The key only selects whether native git C-quotes non-ASCII bytes in the paths
+// it prints. It cannot change a remote URL, an insteadOf rule, a ref, an
+// object, discovery or shallow state. The value is pinned to "false" because
+// that is the setting under which native output spells a path the way the
+// library read does.
+var quotePathPin = [...][2]string{
+	{"core.quotePath", "false"},
+}
+
+// qualifiedCommandConfig is the explicit allowlist of command-priority config
+// sets. A set qualifies only as a whole: its count, keys and values byte for
+// byte and in order. Sets are never combined, and no key is matched by prefix
+// or by section.
+var qualifiedCommandConfig = [...][][2]string{
+	grepPins[:],
+	quotePathPin[:],
 }
 
 // GrepPinEnv is the GIT_CONFIG_COUNT/KEY_n/VALUE_n spelling of the qualified
@@ -28,10 +48,10 @@ func GrepPinEnv() []string {
 }
 
 // CommandConfigQualified reports whether GIT_CONFIG_COUNT selects exactly
-// nothing ("0") or exactly the grep pins, byte for byte and in order. Any
-// other count, key or value, an empty count included, is not qualified.
-// GIT_CONFIG_PARAMETERS and GIT_CONFIG are outside this predicate: callers
-// still refuse them on their own.
+// nothing ("0") or exactly one set in qualifiedCommandConfig, byte for byte
+// and in order. Any other count, key or value, an empty count included, is not
+// qualified. GIT_CONFIG_PARAMETERS and GIT_CONFIG are outside this predicate:
+// callers still refuse them on their own.
 func CommandConfigQualified() bool {
 	count, ok := os.LookupEnv("GIT_CONFIG_COUNT")
 	if !ok {
@@ -40,10 +60,21 @@ func CommandConfigQualified() bool {
 	if count == "0" {
 		return true
 	}
-	if count != strconv.Itoa(len(grepPins)) {
+	for _, set := range qualifiedCommandConfig {
+		if commandConfigIs(count, set) {
+			return true
+		}
+	}
+	return false
+}
+
+// commandConfigIs reports whether count and the GIT_CONFIG_KEY_n/VALUE_n
+// entries spell exactly set.
+func commandConfigIs(count string, set [][2]string) bool {
+	if count != strconv.Itoa(len(set)) {
 		return false
 	}
-	for i, kv := range grepPins {
+	for i, kv := range set {
 		n := strconv.Itoa(i)
 		if os.Getenv("GIT_CONFIG_KEY_"+n) != kv[0] || os.Getenv("GIT_CONFIG_VALUE_"+n) != kv[1] {
 			return false

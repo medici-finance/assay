@@ -27,6 +27,20 @@ A later read-only handler must derive authenticated caller/admission/epochs inde
 
 ## Read-through metadata
 
+The unqualified mirror-query handler can compose the existing signed-grant
+verifier, admitted source and canonical PostgreSQL refresh gate. It opens only
+the explicitly selected restricted runtime login and rechecks the current
+caller against the protected authority after response encoding. The preparation
+has no listener. The authority producer and transport still need their qualified
+launch profile for a served deployment.
+
+The explicit `postgres-mirror-snapshot-v1` profile identifies a snapshot by
+its scoped SQL version and original complete-observation time. It does not
+generate a provider revision, progress token, or ordering claim. A query with
+a minimum progress token holds unavailable. A complete snapshot that exceeds
+the wire's record or byte ceilings also holds unavailable without a successful
+partial prefix.
+
 Unfulfilled reads and receipt lookups can carry explicit nullable retry advice from
 the shared owner's qualified floor. The SDK preserves that timestamp and makes no
 automatic retry or provider call. Null is unknown advice, not immediate eligibility.

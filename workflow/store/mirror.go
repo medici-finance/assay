@@ -160,6 +160,11 @@ func (s *MirrorStore) readMirrorRecords(ctx context.Context, tx *sql.Tx, key []b
 		return err
 	}
 	defer rows.Close()
+	return readMirrorRecordRows(rows, h, s.limits.MaxRecords, s.limits.MaxBytes)
+}
+
+func readMirrorRecordRows(rows *sql.Rows, h *mirrorHeader, maxRecords, maxBytes int) error {
+	var err error
 	for rows.Next() {
 		var kind string
 		var number int64
@@ -169,7 +174,7 @@ func (s *MirrorStore) readMirrorRecords(ctx context.Context, tx *sql.Tx, key []b
 		if err = rows.Scan(&kind, &number, &payload, &inventory, &updated, &observed); err != nil {
 			return err
 		}
-		r, e := decodeFact(payload, s.limits.MaxBytes)
+		r, e := decodeFact(payload, maxBytes)
 		if e != nil {
 			return e
 		}
@@ -184,7 +189,7 @@ func (s *MirrorStore) readMirrorRecords(ctx context.Context, tx *sql.Tx, key []b
 			return mirror.ErrInvalid
 		}
 		h.snapshot.Records = append(h.snapshot.Records, r)
-		if len(h.snapshot.Records) > s.limits.MaxRecords {
+		if len(h.snapshot.Records) > maxRecords {
 			return mirror.ErrInvalid
 		}
 	}

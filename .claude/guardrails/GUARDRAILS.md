@@ -106,7 +106,7 @@ ONE policy, role-keyed. The old copies were not different policies — they were
 different ROLES quoting the same policy from their own seat ("pushing to main is
 gated" and "the verify desk lands its own work" are the same grants table). The
 canonical text states the fleet-wide core: merge / workflows / cluster gates, the
-branch-push + draft-PR standing authorization, and the verify-desk `main` grant.
+branch-push + draft-PR standing authorization, and the verify desk's landing rule.
 Each skill keeps its role-specific grants and denials (what it may flip, file,
 close, or land) as its own bullets directly below the block — those are per-desk
 irreducibles, not drift. intake-desk: see "What is NOT here".
@@ -121,12 +121,17 @@ irreducibles, not drift. intake-desk: see "What is NOT here".
 - **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
   workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
   standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
-  `gh pr create --draft`). **The verify desk lands its own work**: its Evidence + status flips commit
-  straight to `main` as the project directs — no push-go is needed there and none should be waited
-  for. Any `main` push not covered by a standing authorization is gated on the driver's explicit go;
-  committing local work is always fine. A guard/hook-BLOCKED push is a STOP signal — never route the
-  same write through another tool. Each desk's own grants and denials (what it may flip, file, close,
-  or land) stay in its skill, directly below this block.
+  `gh pr create --draft`).
+  **The verify desk lands verdicts through the project's verdict-transcription lane** where the
+  project has armed it — a signed verdict issue that a workflow lands on `main`, never a session
+  push; where the lane is not armed it lands per its own skill's §Landing. Those two routes need
+  no push-go and none should be waited for; a break-glass `main` write in a project where the
+  lane is armed is NOT one of them: it is for when the lane is down, and it waits for the
+  driver's go. Any `main` push not covered by a standing authorization is
+  gated on the driver's explicit go; committing local work is always fine. A guard/hook-BLOCKED
+  push is a STOP signal — never route the same write through another tool. Each desk's own
+  grants and denials (what it may flip, file, close, or land) stay in its skill, directly below
+  this block.
 ```
 
 ## guardrail: no-attribution

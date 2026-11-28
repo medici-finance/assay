@@ -261,6 +261,7 @@ unresolved-argv rows (`allowlist.go:227,240`).
 | 55 | [Operator provisioning of known read-only refresh profiles](brief-55-operator-provisioning-of-known-read-only-refresh-profiles.md) | 7 | L | implemented | — | — |
 | 56 | [Read-only forge serving behind qualified caller authority](brief-56-read-only-forge-serving-behind-qualified-caller-authority.md) | 8 | L | todo | — | — |
 | 57 | [Qualified local read-only caller authority and current-state producer](brief-57-qualified-local-read-only-caller-authority-and-current-state-producer.md) | 4 | L | implemented | — | — |
+| 58 | [Refresh the forge cache from GitHub and GitLab CI hints](brief-58-refresh-the-forge-cache-from-github-and-gitlab-ci-hints.md) | 9 | M | todo | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -885,3 +886,13 @@ coverage, so these units do not qualify full45 tool cutover, retention purge or 
 ### Earlier local authority producer
 
 [57](brief-57-qualified-local-read-only-caller-authority-and-current-state-producer.md) owns the missing canonical R3 local producer/current-state/custody qualification. Its actual source/profile precedes56; full40 consumes56 afterward, so no producer is hidden behind the downstream executor.55 remains independently implementable. Retained21 external caller requirements,22's local launcher capability and R7 remote login have distinct scope;57 must demonstrate concrete local compatibility and custody rather than invent a crypto/issuer/TTL choice. Missing producer/profile remains NEEDS_CONTEXT and unqualified, with no premature acceptance fork.
+
+### CI wake-ups after the cache pilot
+
+The wave 9 [CI hint follow-on](brief-58-refresh-the-forge-cache-from-github-and-gitlab-ci-hints.md)
+starts after the [read-only serving path](brief-56-read-only-forge-serving-behind-qualified-caller-authority.md)
+has a working pilot and the [shared hint intake](brief-38-forge-event-adapter-feedback-observations-and-durable-reevaluation-demand.md)
+is available. The pilot is the first check: its served-flow row requires the real client, handler,
+admitted source and PostgreSQL store. A warm-up fixture alone gives no evidence of that path.
+GitHub Actions and GitLab CI will then be able to request a refresh before the review desk wakes.
+The broker uses an outbound stream. Read-through and inventory repair cover missed signals.

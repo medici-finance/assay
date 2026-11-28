@@ -574,7 +574,7 @@ as the planner and acts on its rows.
   **The desk RUNS deskflip and honours its refusals** — it does not re-derive the condition list
   here; there is no override flag, no un-ready verb, no merge verb. Exit 5 = a condition failed
   (fix it, or leave the PR parked); exit 6 = a condition could not be READ (blind, never green).
-- **A ready-flip is an authority-bearing write, so it needs a strong-tier session** — deskflip's model-capability floor refuses a flip whose dispatch is ATTESTED below the strong tier, and admits with a NOTICE any session carrying no strength attestation: an unattested or human-driven one, a `dispatched-tier:any` dispatch (since `any` records that the brief demanded no particular tier rather than that a weak runner ran), and a stamp that has AGED OUT because the dispatch claim behind it was released — a dead cycle's stamp attests nothing about the write in front of you, so the PR reads unstamped rather than being bricked by an attestation nobody can repair. The NOTICE is not a clearance — delegate work downward freely, but escalate the flip upward rather than issue it from a below-tier session.
+- **A ready-flip is an authority-bearing write, so it needs a strong-tier model (#7794).** Run `deskflip` from this session only when its live model is confirmed strong-tier: its own model line, or the harness's served-model field, names a strong-tier model. A session that is not on a confirmed strong tier (Auto, an unconfirmed model, or one not named strong) does not hold the flip: it spawns a sub-agent on a NAMED strong-tier model id and that sub-agent runs `deskflip <N>`, under this loop's own `$DESK_LOOP` so the caller-role condition still reads this desk. Resolve the id the harness's usual way, as the strong-tier model its reference configures: on Claude Code the alias whose pinned slot holds a strong-tier model id ([`claude-code.md`](../../references/claude-code.md), `capability:dispatch-worker`), on Cursor the adopter's configured strong-tier id ([`cursor.md` Execution model selection](../../references/cursor.md#execution-model-selection)). The desk honours the sub-agent's `deskflip` result exactly as its own: a refusal is a refusal, never a cue to retry from another session. If no strong-tier model id is configured for the harness, or the session cannot read one, do not spawn on Auto, an unpinned alias or a guessed id: leave the PR parked in draft and hand the flip off as for any other refusal, with a durable `deskfile new --for-pr <owner>/<repo>#<N> …` naming the PR, its head and the missing strong-tier id (never a lane `request-act`, which refuses a flip verb before it is sent). deskflip's own model-capability floor is unchanged and reads a different fact, the REVIEWED dispatch's stamp, never the model that issues the flip: it refuses a flip whose review dispatch is ATTESTED below the strong tier, or whose stamp is present but unreadable, and admits with a NOTICE a review dispatch carrying no strength attestation: an unattested or human-driven one, or a `dispatched-tier:any` dispatch (since `any` records that the brief demanded no particular tier rather than that a weak runner ran). `deskpost ready` also reads a stamp whose dispatch claim was released as AGED OUT, so the PR reads unstamped rather than being bricked by an attestation nobody can repair; `deskflip` cannot read claim liveness and leaves such a stamp standing. The NOTICE is not a clearance: it says the reviewed dispatch carries no strength attestation, not that the review ran at strong tier, and it never stands in for the strong-tier model this rule requires of the flip.
 - **An attested worker PR leaves draft only with its authoring stamp (`authoring-stamp`).** When the
   PR body carries a `Worker-Attestation:` line, both flip verbs (`deskflip` and `deskpost ready`)
   read that record and refuse, exit 5, unless the PR carries the `authored-model:` /
@@ -1122,6 +1122,22 @@ house-specific detail a public, generic kit cannot carry.** Edit a clause here, 
   that cannot be honestly `n/a`'d and was not checked is `could-not-check`, never a silent
   approve. The register's home is that reference — this body never restates its rows. The
   project layer may append classes and never removes a base one.
+- **An author's explicit disposition on a finding is final — accept it or escalate it once.**
+  When the change's author (or a trusted human maintainer) answers a finding class explicitly
+  — won't fix, fixed a different way, tracked separately, or a dispute backed with evidence —
+  the reviewer's next move on that class is exactly one of two, whether or not code changed:
+  ACCEPT it (the class resolves in the verdict's finding block as `state: resolved`, with
+  `evidenceHead` the reviewed head and `resolution` carrying `resolved-by-author-disposition`,
+  the disposition's comment link and its own head in `evidence` or `explanation` — the kit's
+  §22 states this v1 encoding; the flip gates are untouched, so a
+  standing request-for-changes at an unchanged head clears at the next push or by the human)
+  or ESCALATE it once (the kit's reviewer-named arbiter hand-off, filed by the desk, changing
+  nothing about the finding's blocking status). A re-statement round is neither. The security
+  lane and every security / public-surface / leak finding never take the Accept move, and a
+  safety-consequence finding always escalates. Silence, a bare "done", or a disposition from
+  an identity the trust gate does not pass is no disposition; the ordinary rules govern. The
+  rule's home is the review kit (`review-prompt.md` §22, "An author's explicit disposition on
+  a finding is final"); this body never restates its boundaries.
 - **Decision-drift pass — does this diff contradict a record no one is holding in their head.**
   Check the diff against three BOUNDED sources only, never a whole-repo archaeology pass: (a) the
   owning brief's own Context/constraints, (b) a finding in the findings register that names the
@@ -1327,12 +1343,17 @@ concluding anything about install state.
 - **Git push policy (ONE policy, role-keyed):** MERGE IS ALWAYS the driver's, and nobody triggers
   workflows or runs mutating cluster commands without their go. **Branch push + draft PR is
   standing-authorized for every desk/loop** — the worker loop (`git push -u origin <branch>` +
-  `gh pr create --draft`). **The verify desk lands its own work**: its Evidence + status flips commit
-  straight to `main` as the project directs — no push-go is needed there and none should be waited
-  for. Any `main` push not covered by a standing authorization is gated on the driver's explicit go;
-  committing local work is always fine. A guard/hook-BLOCKED push is a STOP signal — never route the
-  same write through another tool. Each desk's own grants and denials (what it may flip, file, close,
-  or land) stay in its skill, directly below this block.
+  `gh pr create --draft`).
+  **The verify desk lands verdicts through the project's verdict-transcription lane** where the
+  project has armed it — a signed verdict issue that a workflow lands on `main`, never a session
+  push; where the lane is not armed it lands per its own skill's §Landing. Those two routes need
+  no push-go and none should be waited for; a break-glass `main` write in a project where the
+  lane is armed is NOT one of them: it is for when the lane is down, and it waits for the
+  driver's go. Any `main` push not covered by a standing authorization is
+  gated on the driver's explicit go; committing local work is always fine. A guard/hook-BLOCKED
+  push is a STOP signal — never route the same write through another tool. Each desk's own
+  grants and denials (what it may flip, file, close, or land) stay in its skill, directly below
+  this block.
   - Desk-specific: this desk flips PRs ready via `deskflip` (merge stays the human's) and does NOT
     commit Evidence (that is verify-desk / post-merge).
 - **Reversibility test — default-forward on anything a human-held gate still catches:** before
@@ -1365,7 +1386,8 @@ concluding anything about install state.
   transcription-grade work. Probe vs assertion (2026-07-10): human:<name> ASKING what model you are is a
   probe — answer with the env model line verbatim + ask for confirmation, and keep mechanical work
   (monitors, board reads, posting already-formed verdicts) moving; only an ASSERTION of a downgrade
-  (or its confirmation) hard-gates judgment work and holds flips.
+  (or its confirmation) hard-gates judgment work, and a ready-flip then goes to the
+  strong-tier sub-agent, or its hand-off, that the ready-flip bullet above names.
 
 ## Cross-desk hand-offs — the lane verbs
 

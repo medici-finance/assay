@@ -272,13 +272,15 @@ func newPRCmd(env cliEnv) *cobra.Command {
 
 func newCheckCmd(env cliEnv) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "check <paths>... --out <dir> [--repo <dir>]",
+		Use:   "check <paths>... --out <dir> [--repo <dir>] [--json] [--literal-paths]",
 		Short: "brittleness screen for a named file set",
 		Args:  cobra.ArbitraryArgs,
 	}
 	s := declare(cmd,
 		setting{key: "out", kind: kindString, flag: "out", def: "", usage: "tracking root to read mined artifacts from (required)"},
 		setting{key: "repo", kind: kindString, flag: "repo", def: ".", usage: "path to the git repository the screened paths live in (read-only; consulted only for the live reference-rot check)"},
+		setting{key: "json", kind: kindBool, flag: "json", def: false, usage: "emit versioned JSON instead of advisory text"},
+		setting{key: "literal-paths", kind: kindBool, flag: "literal-paths", def: false, usage: "treat every path argument as a filename without glob expansion"},
 	)
 	cmd.RunE = func(cmd *cobra.Command, args []string) error {
 		v, err := resolveFor(cmd, env, "check", s)
@@ -286,9 +288,11 @@ func newCheckCmd(env cliEnv) *cobra.Command {
 			return err
 		}
 		return exitWith(env.verbs.check(checkOptions{
-			Paths: append([]string(nil), args...),
-			Out:   v.str("out"),
-			Repo:  v.str("repo"),
+			Paths:        append([]string(nil), args...),
+			Out:          v.str("out"),
+			Repo:         v.str("repo"),
+			JSON:         v.boolean("json"),
+			LiteralPaths: v.boolean("literal-paths"),
 		}, cmd.OutOrStdout(), cmd.ErrOrStderr()))
 	}
 	return cmd

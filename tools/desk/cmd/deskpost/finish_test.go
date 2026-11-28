@@ -37,30 +37,52 @@ func finishArgs(lane, pr, verdict, head, bodyFile, claim string) []string {
 	return args
 }
 
-// finishHarness is setupFake plus a captured stdout and a forge that answers the claim
-// delete. deleteStatus is the status served for the claim's DELETE (0 → the fake's default
-// 404, exactly what a forge answers for a ref that is already gone).
+// finishHarness records the review API calls and exact revision sent to the claim store.
 type finishHarness struct {
-	f            *fakeGH
-	out, errOut  *bytes.Buffer
-	deleteStatus int
-	claimKey     string // the claim whose DELETE this forge answers; the correctness key unless set
+	f           *fakeGH
+	out, errOut *bytes.Buffer
+	claimKey    string
+	claimRead   deskkit.ClaimReadStatus
+	claimWrite  deskkit.ClaimWriteOutcome
 }
+
+func (h *finishHarness) Read(key string) (deskkit.ClaimStoreRecord, deskkit.ClaimReadStatus) {
+	if key != h.claimKey {
+		return deskkit.ClaimStoreRecord{}, deskkit.ClaimReadFree
+	}
+	return deskkit.ClaimStoreRecord{Version: "lease-version", Msg: "dispatch-claim " + key + " owner=reviews state=claimed branch=- review-run=" + reviewRunFor(key)}, h.claimRead
+}
+
+func reviewRunFor(key string) string { return key + "@20260101T010101Z.000000000001" }
+
+func (h *finishHarness) RemoveFrom(key, old string) deskkit.ClaimWriteOutcome {
+	h.f.mu.Lock()
+	defer h.f.mu.Unlock()
+	h.f.hits = append(h.f.hits, "CAS "+finishRefPath(key))
+	if key != h.claimKey || old != "lease-version" {
+		return deskkit.ClaimWriteRejected
+	}
+	if h.claimWrite == deskkit.ClaimWriteApplied {
+		h.claimRead = deskkit.ClaimReadFree
+	}
+	return h.claimWrite
+}
+
+func (h *finishHarness) TransportCause() string { return "fixture refusal" }
 
 func setupFinish(t *testing.T) *finishHarness {
 	t.Helper()
 	f, errBuf := setupFake(t)
 	f.pullHeads = []string{testHead}
-	h := &finishHarness{f: f, errOut: errBuf, out: &bytes.Buffer{}, deleteStatus: http.StatusNoContent, claimKey: finishClaimKey}
-	saved := stdout
+	h := &finishHarness{f: f, errOut: errBuf, out: &bytes.Buffer{}, claimKey: finishClaimKey}
+	t.Setenv("DESK_SESSION", "reviews")
+	previous, receipt, output := reviewerLease, checkoutReviewIdentity, stdout
+	reviewerLease = func(deskkit.ForgeRepo) (finishLease, error) { return h, nil }
+	checkoutReviewIdentity = func(_, _ string) (string, string) { return "reviews", reviewRunFor(h.claimKey) }
 	stdout = h.out
-	t.Cleanup(func() { stdout = saved })
-	f.intercept = func(method, path string) (int, bool) {
-		if method == http.MethodDelete && strings.HasSuffix(path, finishRefPath(h.claimKey)) && h.deleteStatus != 0 {
-			return h.deleteStatus, true
-		}
-		return 0, false
-	}
+	t.Cleanup(func() {
+		reviewerLease, checkoutReviewIdentity, stdout = previous, receipt, output
+	})
 	return h
 }
 
@@ -83,7 +105,7 @@ func (h *finishHarness) deletes() int {
 	defer h.f.mu.Unlock()
 	n := 0
 	for _, hit := range h.f.hits {
-		if strings.HasPrefix(hit, http.MethodDelete+" ") {
+		if strings.HasPrefix(hit, "CAS ") {
 			n++
 		}
 	}
@@ -158,7 +180,7 @@ func TestFinishHappyPath(t *testing.T) {
 				t.Fatalf("postedReview = %d, want 1", h.f.postedReview)
 			}
 			post := h.order(http.MethodPost, "/pulls/1/reviews")
-			del := h.order(http.MethodDelete, finishRefPath(key))
+			del := h.order("CAS", finishRefPath(key))
 			if post < 0 || del < 0 || post > del {
 				t.Fatalf("want the review POST before the claim DELETE; post at %d, delete at %d: %v", post, del, h.f.hits)
 			}
@@ -365,7 +387,7 @@ func TestFinishRerunFromAnotherSessionPostsOnce(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			h := setupFinish(t)
 			h.claimKey = finishKeyFor(tc.lane)
-			h.deleteStatus = http.StatusInternalServerError
+			h.claimWrite = deskkit.ClaimWriteUnverifiable
 			bf := writeBody(t, "v.md", tc.body)
 			args := finishArgs(tc.lane, "1", tc.verdict, testHead, bf, h.claimKey)
 			if code := run(args); code == 0 {
@@ -377,7 +399,7 @@ func TestFinishRerunFromAnotherSessionPostsOnce(t *testing.T) {
 
 			forgetThisSession(t)
 			h.out.Reset()
-			h.deleteStatus = http.StatusNoContent
+			h.claimWrite = deskkit.ClaimWriteApplied
 			if code := run(args); code != 0 {
 				t.Fatalf("re-run exit = %d, want 0\nstderr: %s", code, h.errOut.String())
 			}
@@ -398,13 +420,12 @@ func TestFinishRerunFromAnotherSessionPostsOnce(t *testing.T) {
 // in the same session, posts nothing, confirms the review that is there and releases.
 func TestFinishRerunAfterALostPostResponse(t *testing.T) {
 	h := setupFinish(t)
-	inner := h.f.intercept
 	failPost := true
 	h.f.intercept = func(method, path string) (int, bool) {
 		if failPost && method == http.MethodPost && reReviews.MatchString(path) {
 			return http.StatusBadGateway, true
 		}
-		return inner(method, path)
+		return 0, false
 	}
 	bf := writeBody(t, "v.md", okReviewBody)
 	args := finishArgs("review", "1", "approve", testHead, bf, finishClaimKey)
@@ -469,14 +490,13 @@ func TestUnreadableReviewsRefuseThePost(t *testing.T) {
 			if strings.Contains(tc.name, "security") {
 				h.claimKey = finishSecurityClaimKey
 			}
-			inner := h.f.intercept
 			reads := 0
 			h.f.intercept = func(method, path string) (int, bool) {
 				if method == http.MethodGet && reReviews.MatchString(path) {
 					reads++
 					return http.StatusInternalServerError, true
 				}
-				return inner(method, path)
+				return 0, false
 			}
 			bf := writeBody(t, "v.md", tc.body)
 
@@ -533,12 +553,11 @@ func TestFinishConfirmFails(t *testing.T) {
 			h := setupFinish(t)
 			h.f.reviewsAfterFirstRead = tc.after
 			if tc.fail != 0 {
-				inner := h.f.intercept
 				h.f.intercept = func(method, path string) (int, bool) {
 					if method == http.MethodGet && reReviews.MatchString(path) && h.f.postedReview > 0 {
 						return tc.fail, true
 					}
-					return inner(method, path)
+					return 0, false
 				}
 			}
 			bf := writeBody(t, "v.md", okReviewBody)
@@ -615,30 +634,26 @@ func TestComparableBodyIgnoresTheTrailerOnly(t *testing.T) {
 // TestFinishReleaseFails: verdict posted and confirmed, release fails — non-zero, the message
 // says the verdict IS posted and the claim is STILL HELD, and no result line is printed.
 func TestFinishReleaseFails(t *testing.T) {
-	t.Run("the forge refuses the delete", func(t *testing.T) {
-		for _, status := range []int{http.StatusForbidden, http.StatusInternalServerError} {
+	for _, tc := range []struct {
+		name  string
+		read  deskkit.ClaimReadStatus
+		write deskkit.ClaimWriteOutcome
+	}{
+		{"receiver refuses deletion", deskkit.ClaimReadHeld, deskkit.ClaimWriteUnverifiable},
+		{"lease moved", deskkit.ClaimReadHeld, deskkit.ClaimWriteRejected},
+		{"lease cannot be read", deskkit.ClaimReadUnverifiable, deskkit.ClaimWriteApplied},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			h := setupFinish(t)
-			h.deleteStatus = status
+			h.claimRead, h.claimWrite = tc.read, tc.write
 			bf := writeBody(t, "v.md", okReviewBody)
 			code := run(finishArgs("review", "1", "approve", testHead, bf, finishClaimKey))
 			assertReleaseStop(t, h, code)
-		}
-	})
-	t.Run("not-found but the claim is still there", func(t *testing.T) {
-		h := setupFinish(t)
-		h.deleteStatus = http.StatusUnprocessableEntity // the single-ref read still answers 200
-		bf := writeBody(t, "v.md", okReviewBody)
-		code := run(finishArgs("review", "1", "approve", testHead, bf, finishClaimKey))
-		assertReleaseStop(t, h, code)
-	})
-	t.Run("not-found and the claim cannot be read", func(t *testing.T) {
-		h := setupFinish(t)
-		h.deleteStatus = http.StatusNotFound
-		h.f.claimRefStatus = http.StatusForbidden
-		bf := writeBody(t, "v.md", okReviewBody)
-		code := run(finishArgs("review", "1", "approve", testHead, bf, finishClaimKey))
-		assertReleaseStop(t, h, code)
-	})
+			if tc.read == deskkit.ClaimReadUnverifiable && h.deletes() != 0 {
+				t.Fatal("attempted deletion after an unreadable lease")
+			}
+		})
+	}
 	t.Run("the release step errors", func(t *testing.T) {
 		h := setupFinish(t)
 		saved := releaseReviewClaimFn
@@ -688,22 +703,24 @@ func assertReleaseStop(t *testing.T, h *finishHarness, code int) {
 // TestFinishClaimAlreadyGone: a claim that is positively absent is not a failure — the
 // result line says so rather than claiming a release this run did not make.
 func TestFinishClaimAlreadyGone(t *testing.T) {
-	for _, status := range []int{http.StatusNotFound, http.StatusUnprocessableEntity} {
-		h := setupFinish(t)
-		h.deleteStatus = status
-		h.f.claimRefStatus = http.StatusNotFound
-		bf := writeBody(t, "v.md", okReviewBody)
+	h := setupFinish(t)
+	h.claimRead = deskkit.ClaimReadFree
+	bf := writeBody(t, "v.md", okReviewBody)
+	for range 2 {
 		if code := run(finishArgs("review", "1", "approve", testHead, bf, finishClaimKey)); code != 0 {
-			t.Fatalf("delete %d: exit = %d, want 0\nstderr: %s", status, code, h.errOut.String())
+			t.Fatalf("absent claim: exit = %d, want 0: %s", code, h.errOut.String())
 		}
-		lines := h.resultLines()
-		if len(lines) != 1 || !strings.HasSuffix(lines[0], " claim=already-released") {
-			t.Fatalf("delete %d: result = %q, want one line ending claim=already-released", status, h.out.String())
-		}
-		rows := releaseRows(t)
-		if len(rows) != 1 || rows[0].Result != deskkit.ResultNoop || !strings.Contains(rows[0].Detail, "claim "+finishClaimKey+" was already released") {
-			t.Fatalf("delete %d: release rows = %+v, want one noop row naming the claim", status, rows)
-		}
+	}
+	if h.deletes() != 0 || h.f.postedReview != 1 {
+		t.Fatalf("posted=%d deletes=%d", h.f.postedReview, h.deletes())
+	}
+	lines := h.resultLines()
+	if len(lines) != 2 || !strings.HasSuffix(lines[0], " claim=already-released") || lines[1] != lines[0] {
+		t.Fatalf("unexpected result lines %q", lines)
+	}
+	rows := releaseRows(t)
+	if len(rows) != 2 || rows[0].Result != deskkit.ResultNoop || rows[1].Result != deskkit.ResultNoop {
+		t.Fatalf("expected two no-op release receipts: %+v", rows)
 	}
 }
 
@@ -711,14 +728,14 @@ func TestFinishClaimAlreadyGone(t *testing.T) {
 // new, confirms the verdict the first run posted, and releases the claim.
 func TestFinishRerunAfterAFailedRelease(t *testing.T) {
 	h := setupFinish(t)
-	h.deleteStatus = http.StatusInternalServerError
+	h.claimWrite = deskkit.ClaimWriteUnverifiable
 	bf := writeBody(t, "v.md", okReviewBody)
 	args := finishArgs("review", "1", "approve", testHead, bf, finishClaimKey)
 	if code := run(args); code == 0 {
 		t.Fatal("first run: exit 0 with the release failing")
 	}
 
-	h.deleteStatus = http.StatusNoContent
+	h.claimWrite = deskkit.ClaimWriteApplied
 	if code := run(args); code != 0 {
 		t.Fatalf("re-run exit = %d, want 0\nstderr: %s", code, h.errOut.String())
 	}
@@ -847,7 +864,7 @@ func TestFinishAcceptsThisLanesSuffixedClaim(t *testing.T) {
 			if code := run(finishArgs(tc.lane, "1", tc.verdict, testHead, bf, tc.key)); code != 0 {
 				t.Fatalf("exit = %d, want 0\nstderr: %s", code, h.errOut.String())
 			}
-			if h.f.hitCount(http.MethodDelete, finishRefPath(tc.key)) != 1 || h.deletes() != 1 {
+			if h.f.hitCount("CAS", finishRefPath(tc.key)) != 1 || h.deletes() != 1 {
 				t.Fatalf("want exactly one delete, of this key's ref: %v", h.f.hits)
 			}
 			if !strings.HasSuffix(strings.TrimSpace(h.out.String()), "claim=released") {
@@ -926,7 +943,7 @@ func TestFinishUnshippedStore(t *testing.T) {
 				t.Fatalf("%s=%s: finish exit = %d, want 0 (an unshipped store is ignored)\nstderr: %s",
 					deskkit.EnvClaimStore, v, code, h.errOut.String())
 			}
-			if h.order(http.MethodDelete, finishRefPath(finishClaimKey)) < 0 || h.deletes() != 1 {
+			if h.order("CAS", finishRefPath(finishClaimKey)) < 0 || h.deletes() != 1 {
 				t.Fatalf("want exactly one DELETE, of the forge claim ref; hits: %v", h.f.hits)
 			}
 			lines := h.resultLines()
