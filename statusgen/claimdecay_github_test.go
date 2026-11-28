@@ -55,6 +55,7 @@ func fakeGraphQL(t *testing.T, serve func(n int, vars map[string]any) (int, stri
 // the origin remote, and clears the Actions endpoint override.
 func offlineGitHubEnv(t *testing.T, token string) {
 	t.Helper()
+	clearAdmittedRowPins(t)
 	t.Setenv("PATH", t.TempDir())
 	t.Setenv("GH_TOKEN", token)
 	t.Setenv("GITHUB_TOKEN", "")

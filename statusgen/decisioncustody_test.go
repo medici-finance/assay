@@ -41,6 +41,7 @@ func TestDecisionRulingCustody(t *testing.T) {
 				dhBriefPath:  dhFM("gate: human", ruling),
 			})
 			storedLog := slStubGH(t)
+			clearAdmittedRowPins(t)
 			slUnset(t, append(forgeTokenVars, "CELLCTL_GH_AMBIENT")...)
 			t.Setenv("DESK_LOOP", "verify-desk")
 			t.Setenv("GH_TOKEN", tc.token)

@@ -156,6 +156,7 @@ echo '[{"observed":true}]'
 			if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0700); err != nil {
 				t.Fatal(err)
 			}
+			clearAdmittedRowPins(t)
 			t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 			t.Setenv("COUNT", count)
 			t.Setenv("MODE", mode)
