@@ -124,7 +124,10 @@ func TestVerifierDispatchAdmissionEndToEnd(t *testing.T) {
 			if rc := run([]string{"example/01", "--root", root, "--repo", allowedRepo, "--kit", "verifier", "--model", model, "--tier", "strong", "--brief", "spec.md", "--prompt-file", prompt}); rc != 0 {
 				t.Fatalf("real verifier-desk dispatch rc=%d", rc)
 			}
-			if len(claimRoles) != 1 || claimRoles[0] != deskkit.DispatcherRole {
+			// The claim runs under the verify-desk window's own verifier App, so the window
+			// advances and releases it without a cross-role desk mint (#7815). The stamp below
+			// stays on the existing desk custody.
+			if len(claimRoles) != 1 || claimRoles[0] != verifierClaimRole {
 				t.Fatalf("claim custody %v", claimRoles)
 			}
 			for _, mint := range gh.minted {

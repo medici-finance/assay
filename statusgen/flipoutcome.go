@@ -93,7 +93,7 @@ import (
 // flipOutcomeCheck cross-checks the brief's latest verify-outcome record under
 // root against a flip of key to verified at wantSHA. A *flipRefusal refuses;
 // any other error is could-not-check.
-func flipOutcomeCheck(root, key, wantSHA string) error {
+func flipOutcomeCheck(root, key, wantSHA string, candidate *flipOutcomeCandidate) error {
 	records, skipped, err := readVerifyOutcomeRecordsSkips(root)
 	if err != nil {
 		return fmt.Errorf("outcome record: verify-outcome records unreadable: %v", err)
@@ -104,6 +104,28 @@ func flipOutcomeCheck(root, key, wantSHA string) error {
 	if err := flipOutcomeCommitted(root, key); err != nil {
 		return err
 	}
+	var next outcomerecord.Record
+	if candidate != nil {
+		var err error
+		next, err = outcomerecord.ParseRecord(candidate.raw)
+		if err != nil {
+			return refuseFlip("invalid candidate outcome record: %v", err)
+		}
+		if next.Brief != key {
+			return refuseFlip("candidate outcome record names %q, expected %q", next.Brief, key)
+		}
+		next.Path, err = outcomerecord.RecordName(next.Raw)
+		if err != nil {
+			return refuseFlip("invalid candidate outcome record: %v", err)
+		}
+		next.Name, next.Source = path.Base(next.Path), "candidate:"+next.Path
+		for _, rec := range records {
+			if rec.Brief == key && rec.Digest == next.Digest {
+				return refuseFlip("candidate outcome record is already recorded: %s", rec.Source)
+			}
+		}
+		records = append(records, next)
+	}
 	latest, future := latestOutcomePerBrief(records)
 	if future[key] {
 		return fmt.Errorf("outcome record: a verify-outcome record for %s is dated beyond the clock-skew tolerance — it never wins, so the latest record is unknown", key)
@@ -112,6 +134,9 @@ func flipOutcomeCheck(root, key, wantSHA string) error {
 	if !ok {
 		return refuseFlip("outcome record absent: no verify-outcome record names %s — the flip needs the record its verify run wrote", key)
 	}
+	if candidate != nil && rec.Source != next.Source {
+		return refuseFlip("candidate outcome record is not the latest for %s; the latest is %s", key, rec.Source)
+	}
 	var o struct {
 		Outcome   string `json:"outcome"`
 		SHA       string `json:"sha"`
@@ -119,6 +144,9 @@ func flipOutcomeCheck(root, key, wantSHA string) error {
 	}
 	if err := json.Unmarshal(rec.Raw, &o); err != nil {
 		return fmt.Errorf("outcome record: %s cannot be read: %v", rec.Source, err)
+	}
+	if candidate != nil && (len(wantSHA) != 40 || !strings.EqualFold(o.SourceSHA, wantSHA)) {
+		return refuseFlip("candidate outcome record source_sha must match the full observation SHA %s", wantSHA)
 	}
 	rev, legacyRev := strings.TrimSpace(o.SourceSHA), false
 	if rev == "" {
@@ -136,6 +164,12 @@ func flipOutcomeCheck(root, key, wantSHA string) error {
 	}
 	if evaluation.ClassifyOutcome(o.Outcome) != evaluation.OutcomePass {
 		return refuseFlip("outcome record result mismatch: the latest verify-outcome record for %s (%s) says outcome %q, the flip requests verified", key, rec.Source, o.Outcome)
+	}
+	// The candidate is permitted only in a read-only plan. Its author comes
+	// from the verifier App's single, parent-pinned commit of the record and
+	// board row. Standalone flips still check the existing adding commit.
+	if candidate != nil {
+		return nil
 	}
 	return flipOutcomeAuthor(root, rec)
 }

@@ -284,7 +284,12 @@ func (r *Repo) NativeDiscoveryReason() (string, error) {
 		return why, nil
 	}
 	if cfg.Raw.HasSection("include") || cfg.Raw.HasSection("includeIf") {
-		return "native discovery config includes are not merged by the selected reader", nil
+		// The reader merges no include. Only the credential-only include
+		// actions/checkout writes is let through, because nothing it can hold
+		// reaches object, ref, worktree or alternates resolution.
+		if why := r.credentialIncludeReason(cfg.Raw); why != "" {
+			return "native discovery config includes are not merged by the selected reader (" + why + ")", nil
+		}
 	}
 	if cfg.Core.IsBare {
 		return "repository declares core.bare", nil

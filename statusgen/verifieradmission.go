@@ -18,9 +18,9 @@ import (
 // It returns the attestation line, the brief to read and, for a version-2
 // (cross-repository) receipt, the admitted deliverable home the rows must run
 // in; a version-1 or unadmitted run returns no home.
-func verifierAdmission(root, brief string) (string, string, string, error) {
+func verifierAdmission(root, brief string) (string, string, string, string, error) {
 	if !verifierAdmissionMarked(root) {
-		return "", brief, "", nil
+		return "", brief, "", "", nil
 	}
 	out, err := exec.Command("deskdispatch", "--check-verifier", "--root", root, "--brief", brief).Output()
 	if err != nil {
@@ -28,9 +28,43 @@ func verifierAdmission(root, brief string) (string, string, string, error) {
 		if exit, ok := err.(*exec.ExitError); ok {
 			detail = strings.TrimSpace(string(exit.Stderr))
 		}
-		return "", "", "", fmt.Errorf("pre-work verifier admission failed; no Verify rows executed: %w: %s", err, detail)
+		return "", "", "", "", fmt.Errorf("pre-work verifier admission failed; no Verify rows executed: %w: %s", err, detail)
 	}
-	return verifierAdmissionReceipt(out, brief)
+	line, path, home, err := verifierAdmissionReceipt(out, brief)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	npm, err := verifierNpmStagingLine(out)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	return line, path, home, npm, nil
+}
+
+// npmStagingPrefix opens the witness line an admitted run with an npm staging
+// record carries (#7572): the npm counterpart of the container bracket's
+// Module-Cache line, written directly above the attestation line.
+const npmStagingPrefix = "Npm-Staging: "
+
+var npmStagingDigestRe = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
+
+// verifierNpmStagingLine is the Npm-Staging witness line for an admission
+// receipt, or "" when the run has no npm staging record. Admission has already
+// bound the staged directories to this digest; a malformed digest refuses.
+func verifierNpmStagingLine(out []byte) (string, error) {
+	var receipt struct {
+		NpmStaging *struct{ Digest string }
+	}
+	if err := json.Unmarshal(out, &receipt); err != nil {
+		return "", fmt.Errorf("unreadable pre-work verifier receipt: %w", err)
+	}
+	if receipt.NpmStaging == nil {
+		return "", nil
+	}
+	if !npmStagingDigestRe.MatchString(receipt.NpmStaging.Digest) {
+		return "", fmt.Errorf("pre-work verifier receipt carries a malformed npm staging digest")
+	}
+	return npmStagingPrefix + receipt.NpmStaging.Digest, nil
 }
 
 func verifierAdmissionReceipt(out []byte, brief string) (string, string, string, error) {

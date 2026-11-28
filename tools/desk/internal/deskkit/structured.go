@@ -278,27 +278,40 @@ func sanctionedSopsDocument(s string) bool {
 	return false
 }
 
-// structuredExemptSpans returns the byte ranges of s that a RECOGNISED STRUCTURED FORMAT
-// accounts for, and which the high-entropy-run loop therefore skips. Every span is
-// anchored on a field marker of its format; nothing here exempts a bare run.
-//
-// The spans are: module checksum digests (`h1:`), SRI integrity digests, the ciphertext
-// payloads of complete sops envelopes, and — inside a well-formed sops document only — the
-// generated `sops:` metadata block and the bodies of armored ciphertext blocks.
-func structuredExemptSpans(s string) []span {
-	var out []span
+// The three span finders below are the registry's artifact-context entries (go-sum,
+// sri-integrity, sops-document in benignshapes.go). Each returns the byte ranges of s
+// that its RECOGNISED STRUCTURED FORMAT accounts for, and which the high-entropy-run loop
+// therefore skips. Every span is anchored on a field marker of its format; nothing here
+// exempts a bare run.
 
+// goSumSpans returns the module checksum digests (`h1:`) of s.
+func goSumSpans(s string) []span {
+	var out []span
 	for _, m := range reGoSumDigest.FindAllStringSubmatchIndex(s, -1) {
 		out = append(out, span{m[2], m[3]})
 	}
+	return out
+}
 
+// sriSpans returns the SRI integrity digests of s whose length is exactly the one their
+// algorithm fixes.
+func sriSpans(s string) []span {
+	var out []span
 	for _, m := range reSRIDigest.FindAllStringSubmatchIndex(s, -1) {
 		alg, payload := s[m[2]:m[3]], s[m[4]:m[5]]
 		if want, ok := sriPayloadLen[alg]; ok && len(payload) == want {
 			out = append(out, span{m[4], m[5]})
 		}
 	}
+	return out
+}
 
+// sopsDocumentSpans returns, inside a SANCTIONED sops document only (see
+// sanctionedSopsDocument), the ciphertext payloads of complete sops envelopes, the
+// generated `sops:` metadata block and the bodies of armored ciphertext blocks within it.
+// On any other surface it returns no span.
+func sopsDocumentSpans(s string) []span {
+	var out []span
 	if !sanctionedSopsDocument(s) {
 		return out
 	}

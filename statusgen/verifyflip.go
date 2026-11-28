@@ -66,6 +66,7 @@ package main
 // it with the lint before/after and the verifier-identity commit on a branch.
 
 import (
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -116,6 +117,8 @@ Flags:
   --brief <stream>/<NN>   the brief key (required)
   --sha <sha>             the commit the recorded run must name (7–40 hex, required)
   --runner <login>        the runner login the recorded run must name (required)
+  --plan-outcome <binding> with --dry-run and a full --sha, read a candidate outcome on stdin
+                           and emit a JSON README plan for a paired verifier landing
   --root <dir>            repo root (default: the cwd)
   --dry-run               print the stamp, write nothing
 `
@@ -175,62 +178,93 @@ func runVerifyflip(args []string, stdout, stderr io.Writer) int {
 	runner := fs.String("runner", "", "")
 	rootDir := fs.String("root", ".", "")
 	dryRun := fs.Bool("dry-run", false, "")
+	planOutcome := fs.String("plan-outcome", "", "")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
-			fmt.Fprint(stdout, verifyflipUsage)
-			return verifyflipExitOK
+			return printVerifyflip(stdout, verifyflipExitOK, "%s", verifyflipUsage)
 		}
-		fmt.Fprint(stderr, verifyflipUsage)
-		return verifyflipExitCouldNotCheck
+		return printVerifyflip(stderr, verifyflipExitCouldNotCheck, "%s", verifyflipUsage)
 	}
 	if fs.NArg() > 0 || *briefKey == "" || *sha == "" || *runner == "" {
-		fmt.Fprint(stderr, verifyflipUsage)
-		return verifyflipExitCouldNotCheck
+		return printVerifyflip(stderr, verifyflipExitCouldNotCheck, "%s", verifyflipUsage)
 	}
 	if !flipShaRe.MatchString(*sha) {
-		fmt.Fprintf(stderr, "statusgen verifyflip: --sha must be 7–40 hex characters, got %q\n", *sha)
-		return verifyflipExitCouldNotCheck
+		return printVerifyflip(stderr, verifyflipExitCouldNotCheck, "statusgen verifyflip: --sha must be 7–40 hex characters, got %q\n", *sha)
 	}
 
-	plan, err := planVerifyFlip(*rootDir, *briefKey, *sha, *runner)
+	var candidate *flipOutcomeCandidate
+	hasCandidate := false
+	fs.Visit(func(f *flag.Flag) { hasCandidate = hasCandidate || f.Name == "plan-outcome" })
+	if hasCandidate {
+		if !*dryRun || len(*sha) != 40 || *planOutcome == "" {
+			return printVerifyflip(stderr, verifyflipExitCouldNotCheck,
+				"statusgen verifyflip: --plan-outcome requires an attestation binding, --dry-run, and a full --sha\n")
+		}
+		const maxRecordBytes = 1 << 20
+		raw, err := io.ReadAll(io.LimitReader(os.Stdin, maxRecordBytes+1))
+		if err != nil || len(raw) > maxRecordBytes {
+			return printVerifyflip(stderr, verifyflipExitCouldNotCheck, "statusgen verifyflip: cannot read candidate outcome record\n")
+		}
+		candidate = &flipOutcomeCandidate{raw: raw, binding: *planOutcome}
+	}
+	plan, err := planVerifyFlipWithOutcome(*rootDir, *briefKey, *sha, *runner, candidate)
 	if err != nil {
 		var r *flipRefusal
 		if errors.As(err, &r) {
-			fmt.Fprintf(stderr, "statusgen verifyflip: %s: %v\n", *briefKey, err)
-			return verifyflipExitRefused
+			return printVerifyflip(stderr, verifyflipExitRefused, "statusgen verifyflip: %s: %v\n", *briefKey, err)
 		}
-		fmt.Fprintf(stderr, "statusgen verifyflip: could-not-check — %s: %v\n", *briefKey, err)
-		return verifyflipExitCouldNotCheck
+		return printVerifyflip(stderr, verifyflipExitCouldNotCheck, "statusgen verifyflip: could-not-check — %s: %v\n", *briefKey, err)
 	}
 	rel, rerr := filepath.Rel(*rootDir, plan.Readme)
 	if rerr != nil {
 		rel = plan.Readme
 	}
-	fmt.Fprintf(stdout, "brief: %s\nreadme: %s\nverified-stamp: %s\n", *briefKey, filepath.ToSlash(rel), plan.Stamp)
-	if *dryRun {
-		fmt.Fprintln(stdout, "dry-run: nothing written")
+	if candidate != nil {
+		plan.Readme = filepath.ToSlash(rel)
+		if err := json.NewEncoder(stdout).Encode(plan); err != nil {
+			return printVerifyflip(stderr, verifyflipExitCouldNotCheck, "statusgen verifyflip: could-not-check — write plan: %v\n", err)
+		}
 		return verifyflipExitOK
+	}
+	if _, err := fmt.Fprintf(stdout, "brief: %s\nreadme: %s\nverified-stamp: %s\n", *briefKey, filepath.ToSlash(rel), plan.Stamp); err != nil {
+		return printVerifyflip(stderr, verifyflipExitCouldNotCheck, "statusgen verifyflip: could-not-check — write stamp: %v\n", err)
+	}
+	if *dryRun {
+		return printVerifyflip(stdout, verifyflipExitOK, "dry-run: nothing written\n")
 	}
 	info, err := os.Lstat(plan.Readme)
 	if err != nil {
-		fmt.Fprintf(stderr, "statusgen verifyflip: could-not-check — %v\n", err)
-		return verifyflipExitCouldNotCheck
+		return printVerifyflip(stderr, verifyflipExitCouldNotCheck, "statusgen verifyflip: could-not-check — %v\n", err)
 	}
 	if !info.Mode().IsRegular() {
-		fmt.Fprintf(stderr, "statusgen verifyflip: %s: %v\n", *briefKey, refuseFlip("%s is not a regular file — the flip never writes through a link", plan.Readme))
-		return verifyflipExitRefused
+		return printVerifyflip(stderr, verifyflipExitRefused, "statusgen verifyflip: %s: %v\n",
+			*briefKey, refuseFlip("%s is not a regular file — the flip never writes through a link", plan.Readme))
 	}
 	if err := os.WriteFile(plan.Readme, plan.Updated, info.Mode().Perm()); err != nil {
-		fmt.Fprintf(stderr, "statusgen verifyflip: could-not-check — write %s: %v\n", plan.Readme, err)
+		return printVerifyflip(stderr, verifyflipExitCouldNotCheck, "statusgen verifyflip: could-not-check — write %s: %v\n", plan.Readme, err)
+	}
+	return printVerifyflip(stdout, verifyflipExitOK, "flipped: implemented → verified\n")
+}
+
+func printVerifyflip(w io.Writer, code int, format string, args ...any) int {
+	if _, err := fmt.Fprintf(w, format, args...); err != nil {
 		return verifyflipExitCouldNotCheck
 	}
-	fmt.Fprintln(stdout, "flipped: implemented → verified")
-	return verifyflipExitOK
+	return code
 }
 
 // planVerifyFlip runs every check and returns what would be written. A
 // *flipRefusal error refuses; any other error is could-not-check.
 func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, error) {
+	return planVerifyFlipWithOutcome(root, key, wantSHA, wantRunner, nil)
+}
+
+type flipOutcomeCandidate struct {
+	raw     []byte
+	binding string
+}
+
+func planVerifyFlipWithOutcome(root, key, wantSHA, wantRunner string, candidate *flipOutcomeCandidate) (verifyFlipPlan, error) {
 	stream, num, ok := splitBriefKey(key)
 	if !ok || strings.Contains(stream, ":") {
 		return verifyFlipPlan{}, fmt.Errorf("--brief must be <stream>/<NN>, got %q", key)
@@ -350,7 +384,13 @@ func planVerifyFlip(root, key, wantSHA, wantRunner string) (verifyFlipPlan, erro
 	// verify-outcome record. Its latest record must name this revision and say
 	// verified; absent, another revision or another result refuses, and an
 	// unreadable record is could-not-check (flipoutcome.go).
-	if err := flipOutcomeCheck(root, key, wantSHA); err != nil {
+	if candidate != nil {
+		bindings := protectedMarkersNamed(normalizedProtectedEvidence(run), "Verification-Attestation:")
+		if len(bindings) != 1 || !bindings[0].literal || bindings[0].text != candidate.binding {
+			return verifyFlipPlan{}, refuseFlip("the latest PASS must name exactly the admitted verification attestation")
+		}
+	}
+	if err := flipOutcomeCheck(root, key, wantSHA, candidate); err != nil {
 		return verifyFlipPlan{}, err
 	}
 

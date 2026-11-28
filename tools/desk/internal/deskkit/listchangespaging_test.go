@@ -134,6 +134,13 @@ func TestPRListReadsShrinkOnCutoff(t *testing.T) {
 			}
 			return len(q.Changes), nil
 		},
+		"ghOpenChangeRowsQuery": func(f *GitHubForge) (int, error) {
+			o, err := f.openChangeRows(pagedRepo)
+			if err != nil {
+				return 0, err
+			}
+			return len(o.Changes), nil
+		},
 		"ghListChangesQuery": func(f *GitHubForge) (int, error) {
 			c, err := f.ListChanges(pagedRepo, OpenAndMerged())
 			if err != nil {

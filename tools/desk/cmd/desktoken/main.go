@@ -43,7 +43,8 @@
 // session of the same OS user. Separation between roles comes from giving each role
 // window its own ASSAY_CONFIG_HOME, holding only the role keys the tools run in that
 // window act as: its own role, plus desk in a worker-desk or verify-desk window,
-// because deskdispatch claims and stamps as desk (the per-window table is in the
+// because deskdispatch stamps as desk, and claims as desk except for a verifier
+// dispatch from verify-desk, which claims as verifier (the per-window table is in the
 // desk-shell reference, §Role separation). File permissions (0600 on a workstation; 0440
 // for a Secret-mounted key read via a pod's fsGroup) protect from other users
 // only, not from other sessions of the same user.
@@ -88,7 +89,8 @@ and the reason into the audit row, a cache reuse included. This is a guard again
 window borrowing a role by mistake, not a boundary. What keeps roles apart is one config
 home per role window, holding only the role keys the tools run in that window act as:
 the window's own role, plus desk in a worker-desk or verify-desk window, because
-deskdispatch claims and stamps as desk. The per-window table is in the desk-shell
+deskdispatch stamps as desk, and claims as desk except for a verifier dispatch from
+verify-desk, which claims as verifier. The per-window table is in the desk-shell
 reference, §Role separation. A separate OS user per role makes that split a boundary.
 
 cell-issues is the write-issues App identity (issues:write + metadata:read only) — it is

@@ -165,6 +165,54 @@ once the Task lands. Row 4 passes today and must still pass. Run from the repo r
 | # | Command | Result | Output | Date | Runner |
 |---|---------|--------|--------|------|--------|
 
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 1 | `grep -rq 'resolved-by-author-disposition' tools/desk/cmd/deskdispatch/references/review-prompt.md && echo ok` | pass exit=0 | sha256:dc51b8c96c2d | 2026-11-25 | assay-verifier-app[bot] @ 9c284587ff37 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 2 | `grep -rq 're-statement round is neither' tools/desk/cmd/deskdispatch/references/review-prompt.md && echo ok` | pass exit=0 | sha256:dc51b8c96c2d | 2026-11-25 | assay-verifier-app[bot] @ 9c284587ff37 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 3 | `grep -q 'disposition' plugins/assay/skills/pr-review-desk/SKILL.md && echo ok` | pass exit=0 | sha256:dc51b8c96c2d | 2026-11-25 | assay-verifier-app[bot] @ 9c284587ff37 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 4 | `cd statusgen && go build -o "${TMPDIR:-/tmp}/dt33-sg" . && "${TMPDIR:-/tmp}/dt33-sg" --root .. --lint 2>&1 \| grep -q 'LINT: PASS' && cd ../tools/skillslint && go run . --root ../.. > /dev/null 2>&1 && echo ok` | fail exit=1 | sha256:e3b0c44298fc | 2026-11-25 | assay-verifier-app[bot] @ 9c284587ff37 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+| 5 | `grep -rq 'never takes the Accept move' tools/desk/cmd/deskdispatch/references/review-prompt.md && echo ok` | pass exit=0 | sha256:dc51b8c96c2d | 2026-11-25 | assay-verifier-app[bot] @ 9c284587ff37 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) |
+Verification-Attestation: medici-finance/assay#7784 run=98968309a37e390c65f42fbd431db3077da702864934331ef4af02a1c2f11046 source=9c284587ff373eda0e606739b863474e6ccd3bff brief=docs/streams/desk-tools/brief-33-author-disposition-finality.md model=claude-opus-5-5 tier=strong
+
+**VERIFY: FAIL** — row 4 exit 1 (the repo-wide offline lint reports 3 PROBLEMs, none on this brief); rows 1, 2, 3 and 5 pass.
+
+Post-merge verification on 2026-11-25 by a non-implementer verifier (model claude-opus-5-5,
+tier strong) at merged main 9c284587ff37, desk tools v1.0.94, darwin arm64 host, declared
+verifier Git environment, admitted by the attestation line above. The delivery is the merge
+f7621fc3966b (delivering commits 864570413110 and 488211ef78dc), an ancestor of the source.
+Every row is classed check (none check:ci), so the rows ran on the host and no container
+bracket applies. The witness table above was written by the installed statusgen verifyrun;
+it is the second of two host attempts in this dispatch (the first ran the same five
+commands from a script over the same tree, with the same per-row results).
+
+- Rows 1, 2 and 5: each prints ok. Clause 22 of the review kit carries the
+  resolved-by-author-disposition resolution form, the sentence "A re-statement round is
+  neither" and the security-lane sentence "The security lane never takes the Accept move".
+- Row 3: prints ok. The pr-review-desk skill body carries the disposition paragraph (6
+  matching lines).
+- Row 4: exit 1, no ok, empty output; the Expect is ok, so the row is graded fail under
+  rule 37. A supplemental diagnostic outside both attempts (no acceptance credit) showed the
+  row's own go build succeeds, its built lint exits 1 with LINT: FAIL 3 problem(s), and the
+  skillslint stage exits 0. The three PROBLEMs are desk-tools/37, desktools-v2/65 and
+  forge-neutral/54, each "protected table: acceptance transition: could-not-check human
+  authority: --acceptance-forge is required". The pinned statusgen v1.0.94 offline lint over
+  the same tree gives the same three PROBLEMs and LINT: FAIL. No PROBLEM line names
+  desk-tools/33. The row's compound command is outside the rule-51 command class, so no
+  rule-51 stamp applies and none was attempted. Open issue for this cause:
+  medici-finance/assay#4823.
+
+Attempts and credit: two host attempts, five rows each. Credit is settled by the desk at
+landing; nothing here states a credit result.
+
+Risk-bearing values: the brief's risk fields are all no and not irreversible, and the diff
+touches no risk-classed path. Enumeration over the delivery diff (review kit clause 22, the
+skill paragraph, the mutation and test entries, the changelog fragment) found two prose
+bounds, both reversible by an edit.
+
+RISK-VALUE: DERIVED — Escalate hand-off bound = ONE @ tools/desk/cmd/deskdispatch/references/review-prompt.md:776 — the brief's Context fixes Escalate as one reviewer-named hand-off, never a fresh finding round.
+RISK-VALUE: DERIVED — legal moves after a disposition = exactly one of two @ tools/desk/cmd/deskdispatch/references/review-prompt.md:756 — the brief's rule names exactly Accept and Escalate, and a re-statement round is neither.
+
+
 ## Review
 Gate: model (from frontmatter). The reviewer answers, in the verdict: (1) is the rule
 scoped to EXPLICIT dispositions only, with silence and bare "done" left to the ordinary

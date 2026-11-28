@@ -43,7 +43,7 @@ func TestWorkrefPublicImportBoundary(t *testing.T) {
 				t.Fatal(err)
 			}
 			switch name {
-			case "fmt", "regexp", "strconv", "strings", "unicode":
+			case "crypto/sha256", "encoding/hex", "fmt", "regexp", "strconv", "strings", "time", "unicode":
 			default:
 				t.Errorf("pure workref boundary: %s imports %s", file, name)
 			}

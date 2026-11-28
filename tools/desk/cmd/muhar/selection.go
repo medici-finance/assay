@@ -335,8 +335,8 @@ func (cs *coverSelector) output(cmd *exec.Cmd, combined bool) ([]byte, error) {
 
 func (cs *coverSelector) goList(root string, patterns []string) ([]listedPkg, error) {
 	cmd := exec.Command("go", append([]string{"list", "-e", "-json"}, patterns...)...)
-	cmd.Dir = root
 	cmd.Env = cs.env
+	startIn(cmd, root)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	out, err := cs.output(cmd, false)
@@ -439,14 +439,14 @@ func (cs *coverSelector) Prepare(root string) error {
 		bin := filepath.Join(tmp, strconv.Itoa(pi)+".test")
 		build := exec.Command("go", append(append([]string{"test", "-c"}, buildFlags...), "-cover",
 			"-coverpkg="+strings.Join(coverpkg, ","), "-o", bin, p.ImportPath)...)
-		build.Dir = root
 		build.Env = cs.env
+		startIn(build, root)
 		if out, err := cs.output(build, true); err != nil {
 			return fmt.Errorf("coverage build of %s: %v: %s", p.ImportPath, err, strings.TrimSpace(string(out)))
 		}
 		list := exec.Command(bin, "-test.list", listFilter)
-		list.Dir = p.Dir
 		list.Env = cs.env
+		startIn(list, p.Dir)
 		out, err := cs.output(list, false)
 		if err != nil {
 			return fmt.Errorf("list tests of %s: %v", p.ImportPath, err)
@@ -490,8 +490,8 @@ func (cs *coverSelector) Prepare(root string) error {
 				prof := filepath.Join(tmp, fmt.Sprintf("c%d.out", id))
 				run := exec.Command(bins[t.pkg], append([]string{"-test.run", "^" + regexp.QuoteMeta(t.name) + "$",
 					"-test.count=1", "-test.coverprofile=" + prof}, runFlags...)...)
-				run.Dir = cs.pkgs[t.pkg].dir
 				run.Env = cs.env
+				startIn(run, cs.pkgs[t.pkg].dir)
 				out, err := cs.output(run, true)
 				if err != nil {
 					results <- res{id: id, err: fmt.Errorf("%s fails when run alone on pristine source (%v) — a narrowed run could go red for a reason that is not the mutation:\n%s",

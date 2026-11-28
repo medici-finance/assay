@@ -73,20 +73,17 @@ reviewable artifact, not a run.
   Until then the cellop sweep runs only by hand
   (`cd tools/desk && go run ./cmd/muhar -j 0 -spec internal/cellop/mutations.json`); its
   anchors are still dry-run on every PR by the muhar stale-anchor guard.
-- `assay-statusgen.yml` — a STAGED TWIN of the live `.github/workflows/assay-statusgen.yml`
-  carrying the decision-gate hold's network layer (`spec/lifecycle-v1.md` §4.5), alongside
-  the classified board push (#2910) described below, which `declared-changes.json` classes
-  `pending`: the
-  corroborate job gains `issues: read` and a `statusgen --decision-gate --pr <N>` step after
-  the corroborate step. The step has no shell path pre-filter: the binary decides from the
-  PR's own file listing whether the board (`docs/streams/` or `docs/archive/`) was touched, and
-  it exits 0 with a notice while the base-built statusgen predates `--decision-gate`. **Pending promotion**:
-  re-base on the live file (three-way) and copy it over the live one in a
-  maintainer-credentialled commit. Promoting it does NOT make the check required; that is a
-  separate branch-protection act. Until promotion, the hold's offline layer still runs in
-  `--lint`; the live corroborate step's `--corroborate --pr` runs the network lane only on PRs
-  that touch a findings entry; and `deskevidence` / `--close-verify` run the network check
-  themselves.
+- `assay-statusgen.yml` stages the decision-gate hold's network check
+  (`spec/lifecycle-v1.md` §4.5) and the classified board push (#2910) described below.
+  The live corroborate job already has `issues: read` and runs the base-built
+  `statusgen --corroborate --pr` on changes under `docs/streams/` or `docs/archive/`.
+  The staged twin adds a separate `statusgen --decision-gate --pr <N>` step after
+  corroboration. That command uses the PR file list to decide whether to check
+  the board. The step skips with a notice if the base binary predates the flag.
+  To promote the twin, reconcile it with the live workflow and have a maintainer
+  commit it. Making the check required is a separate branch-protection change.
+  The hold's offline check runs in `--lint`. `deskevidence` and `--close-verify`
+  run the network check themselves.
 - `verify-gate-open.yml` and `verify-gate-close.yml` — live workflow twins,
   byte-identical to their live counterparts and enforced by
   `declared-changes.json`. They carry the canonical adjudicated acceptance route
