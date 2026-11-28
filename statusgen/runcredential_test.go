@@ -436,6 +436,7 @@ func TestRunCredPlantedRest(t *testing.T) {
 		}
 	})
 	t.Run("outside", func(t *testing.T) {
+		clearAdmittedRowPins(t)
 		t.Setenv("GH_TOKEN", rcDecoy)
 		prev := verifyrunAdmission.Load()
 		t.Cleanup(func() { verifyrunAdmission.Store(prev) })
@@ -524,6 +525,7 @@ func TestRunCredDecayToken(t *testing.T) {
 		}
 	})
 	t.Run("outside", func(t *testing.T) {
+		clearAdmittedRowPins(t)
 		t.Setenv("GH_TOKEN", rcDecoy)
 		prev := verifyrunAdmission.Load()
 		t.Cleanup(func() { verifyrunAdmission.Store(prev) })

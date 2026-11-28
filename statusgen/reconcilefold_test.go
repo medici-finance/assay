@@ -334,6 +334,7 @@ func TestReconcileTokenFileReachesNestedReads(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX-only: the stub gh is a shell script")
 	}
+	clearAdmittedRowPins(t)
 	dir := t.TempDir()
 	tokenFile := filepath.Join(dir, "token")
 	if err := os.WriteFile(tokenFile, []byte("fixture-selected-token\n"), 0o600); err != nil {
