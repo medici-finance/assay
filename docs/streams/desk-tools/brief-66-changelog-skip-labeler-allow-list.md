@@ -28,7 +28,7 @@ issues: [7010]
 outcome: none
 schema: brief-v2
 version: 1
-authored: 2026-11-18 by a worker-desk authoring session (design proposal; no ruling recorded yet); revised 2026-11-22 after round-1 review and 2026-11-27 after round-2 review
+authored: 2026-11-18 by a worker-desk authoring session (design proposal; no ruling recorded yet); revised 2026-11-22 after round-1 review, 2026-11-27 after round-2 review and 2026-11-28 after round-3 review
 sources:
   - "medici-finance/assay#7010 (the request, and the decision issue: the coordinator desk cannot waive the changelog check on briefs-only PRs, and the gate never checks who applied the label; its triage comment numbers three options; this brief uses those numbers and adds conditions to options 1 and 2, see Human decision)"
   - ".github/workflows/changelog-check.yml header: the label path stays the maintainer's; the Evidence lane is decided in-workflow because handing label-write to an automation App is the widening this repository refuses"
@@ -151,9 +151,11 @@ the latest label, and the skill and kit sentences listed under facts are correct
 
 Options, numbered as on #7010:
 1. **Automatic path waiver, no label.** A PR authored by an identity named in the Actions variable
-   `ASSAY_BRIEFS_ONLY_ACTORS` (the coordinator desk's App, and whichever other authors the human
-   names) passes the check, with a notice in the log, when every changed file is a brief or a
-   stream README. No App gets label-write, and the label stays maintainer-only, now enforced. This
+   `ASSAY_BRIEFS_ONLY_ACTORS` (whichever authors the human names) passes the check, with a notice
+   in the log, when every changed file is a brief or a stream README. The two PRs that prompted the
+   request were authored by the worker App, not by the coordinator desk's App, and the worker App
+   also authors code PRs: for an identity like that, the path test is the only bound. No App gets
+   label-write, and the label stays maintainer-only, now enforced. This
    is the same shape as the Evidence lane. The threat it opens: a wrong file-list test could waive
    a PR that changes code, and a brief can carry Verify-row commands that verifier tooling later
    executes. The waiver covers only the changelog check and leaves review in place.
@@ -192,7 +194,10 @@ nothing.
   change and hand the promotion to the human. The promotion is an EDIT of the live workflow: it
   adds this brief's step or steps, the `SKIP` change and any permission step 1 finds needed, and
   keeps the rest of the live file. It is never a verbatim copy of the staged file while the two
-  files differ, whatever the staged copy's header says (see facts).
+  files differ, whatever the staged copy's header says (see facts). The promotion is a commit on
+  the delivering PR's branch, made before that PR merges: the cases read the live file (Task step
+  4), and rows 10, 11, 15 and 17 are read at a delivery that includes it. Until that commit lands,
+  the cases are red. That is expected and is never a reason to point the test elsewhere.
 - Never write a credential-shaped literal into a test. Use fixed fake logins and fake ids.
 
 ## Task
@@ -203,7 +208,11 @@ All options (1, 2 and 3):
    named user's login, including the user's `id` and `role_name`. Under option 2 also record that
    response for an App's bot login.
    Under options 1 and 2 also record (c) the PR file-list read, which the existing classify step
-   already uses. If any read is not available, name the narrowest added scope and put it on #7010
+   already uses. In every option also record (d) whether, on the run that the `labeled` event
+   itself triggers, the issue events read already lists that event. If it does not, that run would
+   stay red after a permitted label: put the proposed handling (for example, taking the applier
+   from the event's `sender` on that run) on #7010 before any code. If any read is not available,
+   name the narrowest added scope and put it on #7010
    before any code. Do not widen the workflow's permissions on a guess.
 2. Add a workflow step named exactly `Classify - who applied changelog:skip`, placed before the
    gate step. The name uses an ASCII hyphen, not the long dash of the existing classify step; the
@@ -215,7 +224,8 @@ All options (1, 2 and 3):
    maintain level and reports a maintain user as `write`. A missing event, an unreadable response,
    an unreadable role, a different id or a login that is not a plain identity outputs not-proven.
 3. Build the `SKIP` input from the label AND an applier the ruled rule allows, as the Evidence
-   lane's output already joins it. The applier rule: the user holds the maintain or admin role.
+   lane's output already joins it. In neither copy does the label term stand alone: it is joined
+   by `&&` to the applier step's output. The applier rule: the user holds the maintain or admin role.
    `check.sh` still receives a plain true or false, and its Unreleased guard still runs first.
    Mirror the added step or steps, the `SKIP` change and any permission step 1 found needed in
    `tools/changelog/changelog-check.yml`. Correct that file's header and say in
@@ -226,9 +236,26 @@ All options (1, 2 and 3):
    `non-maintainer-label` (red), `unlisted-app-label` (red: an App that is not a maintainer and is
    not named by the ruled rule), `unreadable-event` (red) and
    `unreadable-role` (red). The role fixtures copy the response shape the step 1 probe recorded.
+   The script holds no copy of the gate's logic. It decides every case twice, through
+   `.github/workflows/changelog-check.yml` and through `tools/changelog/changelog-check.yml`, as
+   each file is on disk:
+   - it reads the gate step's `SKIP:` line;
+   - it runs, in file order, the `run:` script of every step that line names by `id`, and of every
+     step whose output one of those reads, with a stub `gh` that serves the case's fixtures, the
+     runner variables the scripts use and the variables each `env:` block names (a literal as
+     written, an event or Actions-variable value from the case, a step output from that run);
+   - it evaluates the `SKIP:` expression from the case's label state and those step outputs.
+
+   A green case needs `SKIP` true through both files, and a red case needs it false through both.
+   Whatever colour the case expects, it fails on any of: no `SKIP:` line or more than one; a term
+   or operator the script does not know (it knows the `changelog:skip` label `contains` term,
+   `steps.<id>.outputs.<name> == 'true'`, `&&`, `||` and parentheses); a named step that is missing
+   or placed after its reader; a step script that exits non-zero.
 5. Add `tools/changelog/labeler-mutations.json` (planned). Mutants for every option: drop the
-   applier check, and treat an unreadable event or role as allowed. Each is paired with the case
-   that catches it.
+   applier check, and treat an unreadable event or role as allowed. The first is made on the
+   `SKIP:` line of the live workflow: it puts the bare label term back, so the label counts whoever
+   applied it, and `non-maintainer-label` catches it. The second is made in the applier step's
+   script. Each is paired with the case that catches it.
 6. State the ruled rule once in each file listed under consumers, regenerate `.cursor/skills/`, and
    add to `docs/adopting-assay.md`, beside the roster variables, what the gate now requires of the
    applier and what an adopter must set. Rewrite each sentence listed under facts so none of the
@@ -245,7 +272,8 @@ Option 1 only:
    notice naming the lane in the log, only when its author is an entry of the variable and every
    changed path matches `docs/streams/<stream>/brief-*.md` or `docs/streams/<stream>/README.md`,
    and none is a generated single-writer file or under `.github/`. A path outside that set, an
-   unset variable or a file list that cannot be read leaves the gate in force. Add the cases
+   unset variable or a file list that cannot be read leaves the gate in force. `SKIP` takes this
+   step's output as one more `||` term, in both copies. Add the cases
    `path-waiver-desk-briefs` (green), `path-waiver-not-briefs-only`, `path-waiver-workflow-file`,
    `path-waiver-other-author`, `path-waiver-unset` and `path-waiver-unreadable-files` (all red).
    Add two red cases that keep option 2's allow-list out of this option, both with a label applied
@@ -314,7 +342,9 @@ upstream before delivery, the row is amended by the human, not loosened by the i
 
 | Failure mode | Caught by |
 |---|---|
-| Any label writer still waives the check | row 2 (non-maintainer and unlisted App); row 9 (applier-check mutant) |
+| Any label writer still waives the check, including by a correct applier step beside a bare label term in `SKIP` | row 2 (non-maintainer and unlisted App, decided through the `SKIP:` line and step scripts of both workflow copies, Task step 4); row 9 (the applier-check mutant, made on the live `SKIP:` line) |
+| Options 1 and 2: the briefs-only output is computed but joined into `SKIP` wrongly or not at all, in either copy | rows 4 and 5 (option 1); rows 6 and 7 (option 2); each case is decided through both copies |
+| An `env:` mapping of an event value, an `if:` or other step setting, or the gate step's own `run:` line differs from what the cases assume | No row: the cases supply event values and do not run the gate step. Review-only: the implementation PR's review reads that wiring in both copies |
 | An unreadable event or role is treated as allowed | row 3; row 9 (fail-open mutant) |
 | Option 1: a PR that also changes code, a workflow or a generated file is waived by path, or an unnamed author is | row 5 (not-briefs-only, workflow-file, other-author, unset and unreadable cases); row 9 (path-set and author-binding mutants) |
 | A delivery also builds another option's behaviour: a named identity's label counts under option 1, a label-free path waiver under option 2, either one under option 3 | row 5 (the two listed-label cases); row 7 (`desk-no-label`); row 16; row 9 (the option 1 and option 2 mutants for these) |
