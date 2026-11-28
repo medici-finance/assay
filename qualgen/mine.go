@@ -12,6 +12,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/storer"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // mineOptions are the `mine` verb's parsed settings (cli.go declares them).
@@ -89,14 +90,13 @@ func mine(repoPath, trackingRoot string, stdout io.Writer) error {
 // Store and append the derived metric families. Every step is READ-ONLY against
 // the target repo; the only writes land under trackingRoot.
 func mineWithConfig(repoPath, trackingRoot string, stdout io.Writer, cfg M1Config) error {
-	// EnableDotGitCommonDir: the desk's own operating model dispatches every
-	// worker into its OWN linked worktree (a `.git` file pointing at
-	// `<main>/.git/worktrees/<name>`, common branch refs living in the main
-	// repo's `.git`, per C1). Plain go-git PlainOpen does not follow a linked
-	// worktree's `commondir` file, so `r.Head()` fails to resolve a branch ref
-	// that lives in the common dir with "reference not found" — this was
-	// caught running Verify #7 from inside a real dispatched worktree.
-	r, err := git.PlainOpenWithOptions(repoPath, &git.PlainOpenOptions{EnableDotGitCommonDir: true})
+	// gitcore.OpenGoGit is qualgen's only repository opener (TestNoRawGoGitOpener).
+	// It follows a linked worktree's `commondir` file (the desk dispatches every
+	// worker into its OWN linked worktree, per C1; without it `r.Head()` fails with
+	// "reference not found" for a branch ref living in the common dir), and it
+	// reads a repository carrying extensions.worktreeConfig, which go-git's raw
+	// opener refuses (#6606) — while still refusing any other unsupported extension.
+	r, err := gitcore.OpenGoGit(repoPath)
 	if err != nil {
 		return fmt.Errorf("open repository: %w", err)
 	}

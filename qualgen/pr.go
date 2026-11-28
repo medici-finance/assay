@@ -12,6 +12,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
 	"github.com/go-git/go-git/v5/plumbing/storer"
+	"github.com/medici-finance/assay/gitcore"
 )
 
 // pr.go is the `pr <n>` mode (spec §9.1): the per-PR risk-feature feed. For
@@ -87,7 +88,7 @@ func prMain(o prOptions, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	r, err := git.PlainOpenWithOptions(o.Repo, &git.PlainOpenOptions{EnableDotGitCommonDir: true})
+	r, err := gitcore.OpenGoGit(o.Repo)
 	if err != nil {
 		fmt.Fprintln(stderr, "qualgen pr: open repository:", err)
 		return 1

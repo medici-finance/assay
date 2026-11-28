@@ -7,8 +7,7 @@ import (
 	"os"
 	"time"
 
-	git "github.com/go-git/go-git/v5"
-
+	"github.com/medici-finance/assay/gitcore"
 	"github.com/medici-finance/assay/qualgen/verifier"
 )
 
@@ -142,7 +141,7 @@ func buildVerifier(cfg VerifierConfig) (verifier.AgentVerifier, error) {
 // could-not-measure marker string rather than failing the sweep — the report
 // records what it could see.
 func targetSHA(repoPath string) string {
-	r, err := git.PlainOpenWithOptions(repoPath, &git.PlainOpenOptions{EnableDotGitCommonDir: true})
+	r, err := gitcore.OpenGoGit(repoPath)
 	if err != nil {
 		return "could-not-measure: " + err.Error()
 	}
