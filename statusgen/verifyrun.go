@@ -459,12 +459,20 @@ type expectSpec struct {
 	// the last non-empty output line must be at least N.
 	minCount int
 	minSet   bool
+
+	// claims are the `output contains` / `does not contain` literals
+	// (expectcontains.go, #7389); claimsUnreadable is set when a clause names
+	// output but its literal cannot be read, which is never decided on the exit.
+	claims           []outputClaim
+	claimsUnreadable bool
 }
 
 // decidable reports whether Expect said anything beyond the default exit code.
 // When it did not, `pass` rests on the exit status alone — recorded honestly in
 // the run log rather than dressed up as a full verdict.
-func (e expectSpec) decidable() bool { return e.exitFrom || e.wantLine != "" || e.minSet }
+func (e expectSpec) decidable() bool {
+	return e.exitFrom || e.wantLine != "" || e.minSet || len(e.claims) > 0 || e.claimsUnreadable
+}
 
 var (
 	// `output is `rc=0`` — the dominant convention in the corpus.
@@ -516,6 +524,9 @@ func parseExpect(expect string) expectSpec {
 			spec.minCount, spec.minSet = n, true
 		}
 	}
+	// Containment clauses only ADD constraints: they are read from the whole
+	// cell and change nothing the exit, line and floor reads above found.
+	spec.claims, spec.claimsUnreadable = parseOutputClaims(expect)
 	return spec
 }
 
@@ -548,6 +559,20 @@ func (e expectSpec) verdict(res runResult) (state, note string) {
 		if n < e.minCount {
 			return stateFail, fmt.Sprintf("count %d is below the expected minimum %d", n, e.minCount)
 		}
+	}
+	for _, c := range e.claims {
+		if c.absent && bytes.Contains(res.output, []byte(c.literal)) {
+			return stateFail, fmt.Sprintf("output contains %q, which Expect forbids", c.literal)
+		}
+		if !c.absent && !outputHasClaim(res.output, c.literal) {
+			return stateFail, fmt.Sprintf("output does not contain %q", c.literal)
+		}
+	}
+	// A clause naming output whose literal cannot be read: the command ran,
+	// but the reader cannot say whether it met that clause, so the row is
+	// could-not-run rather than a pass on the exit status (#7389).
+	if e.claimsUnreadable {
+		return stateCouldNotRun, unreadableContainsNote
 	}
 	if !e.decidable() {
 		return statePass, "expect: exit-status only (nothing else in the Expect cell is machine-decidable — the output hash is the record a reviewer weighs)"

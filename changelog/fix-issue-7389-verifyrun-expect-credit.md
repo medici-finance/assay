@@ -1,0 +1,3 @@
+### Fixed
+
+- `statusgen verifyrun` now checks a Verify row's `output contains` and `does not contain` clauses against the command's output. Before, it credited the row on its exit status alone. A `--- PASS: <name>` literal must match go test's own result line for that test, so a renamed or deleted test (`go test` exits 0 with "no tests to run") fails the row. The fail-first base run uses the same reader, so a base without the test now reads red. Before, it read green and the row was reported as non-discriminating. A clause whose literal cannot be read (prose such as "the named PASS line") is now could-not-run instead of a pass. `deskrebaseline` applies the same checks.
