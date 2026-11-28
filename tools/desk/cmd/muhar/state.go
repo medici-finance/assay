@@ -354,8 +354,8 @@ func stateIdentity(s spec, o options) (string, error) {
 		}
 		files[goPath] = true
 		cmd := exec.Command("go", "env", "-json")
-		cmd.Dir = root
 		cmd.Env = append(os.Environ(), assigns...)
+		startIn(cmd, root)
 		out, err := trackedOutput(cmd, false)
 		if err != nil {
 			return "", err
@@ -370,8 +370,8 @@ func stateIdentity(s spec, o options) (string, error) {
 			}
 		}
 		cmd = exec.Command("go", append([]string{"list", "-deps", "-test", "-json"}, args...)...)
-		cmd.Dir = root
 		cmd.Env = append(os.Environ(), assigns...)
+		startIn(cmd, root)
 		out, err = trackedOutput(cmd, false)
 		if err != nil {
 			return "", fmt.Errorf("resolve Go compilation inputs: %w", err)

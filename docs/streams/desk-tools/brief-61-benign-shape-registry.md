@@ -27,6 +27,8 @@ gate-why: >-
   before any later brief widens an entry.
 decision-trigger: creation
 issues: [4284]
+decision-issue: 6804
+ruling: "https://github.com/medici-finance/assay/issues/6804#issuecomment-7102966257"
 outcome: none
 design: DR-scan-admission
 schema: brief-v2
@@ -264,6 +266,90 @@ to a credential control is never adopted by silence.
 
 ## Evidence
 <!-- Independent verifier appends exact commands, outputs, source/run identity, date and runner. This authoring PR claims no future implementation test executed. -->
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 5 | `test -n "${DELIVERY_BASE:-}" && test -n "${DELIVERY_HEAD:-}" && test -f tools/desk/internal/deskkit/benignshapes.go && git diff --quiet "$DELIVERY_BASE" "$DELIVERY_HEAD" -- tools/desk/internal/deskkit/testdata/corpus ':(exclude)tools/desk/internal/deskkit/testdata/corpus/README.md' && o=$(mktemp) && trap 'rm -f "$o"' 0 && git diff --name-only "$DELIVERY_BASE" "$DELIVERY_HEAD" -- tools/desk/internal/deskkit > "$o" && ! grep -v -x -e 'tools/desk/internal/deskkit/corpus_test.go' -e 'tools/desk/internal/deskkit/benignshapes_test.go' -e 'tools/desk/internal/deskkit/benigngolden_test.go' -e 'tools/desk/internal/deskkit/testdata/benign-golden.txt' -e 'tools/desk/internal/deskkit/benignshapes.go' -e 'tools/desk/internal/deskkit/bodycheck.go' -e 'tools/desk/internal/deskkit/structured.go' -e 'tools/desk/internal/deskkit/explain.go' -e 'tools/desk/internal/deskkit/mutations.json' -e 'tools/desk/internal/deskkit/testdata/corpus/README.md' "$o"` | pass exit=0 | sha256:e3b0c44298fc | 2026-11-27 | assay-verifier-app[bot] @ 75cb7f34d193 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) | base=96cdf390cda8 red rc=1 · head=75cb7f34d193 · delivering=382ea1c3e5f4 output=sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 log=row-000001.log |
+| 7 | `test -n "${DELIVERY_HEAD:-}" && test -n "${DELIVERY_BASE:-}" && test "$(git rev-parse HEAD)" = "$DELIVERY_HEAD" && git merge-base --is-ancestor "$DELIVERY_BASE" "$DELIVERY_HEAD" && ! grep -q -e '[:] follow-up ' docs/streams/desk-tools/brief-61-benign-shape-registry.md && grep -F -e 'TestBenignEntriesBounded' docs/contracts.md && o=$(mktemp) && trap 'rm -f "$o"' 0 && statusgen --root . --consumers --brief desk-tools/61 --delivery "$DELIVERY_HEAD" --base "$DELIVERY_BASE" > "$o" 2>&1 && grep -F -e 'summary: 3 corroborated, 0 disproved, 0 unchecked' "$o"` | fail exit=1 | sha256:e3b0c44298fc | 2026-11-27 | assay-verifier-app[bot] @ 75cb7f34d193 (reads could-not-check: recorder is Linux-only (darwin)) (on-behalf-of human:ian) (forge-identity) | base=96cdf390cda8 red rc=1 · head=75cb7f34d193 · delivering=382ea1c3e5f4 output=sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 log=row-000002.log |
+Verification-Attestation: medici-finance/assay#7843 run=364bed2aa198ed18f85c331b9b571ab112323727e9efa245b8705663b6c908c1 source=75cb7f34d193ddb4f295d67c948ae8ce86b7016b brief=docs/streams/desk-tools/brief-61-benign-shape-registry.md model=claude-opus-5-5 tier=strong
+
+| # | Command | Result | Output | Date | Runner | Base |
+|---|---------|--------|--------|------|--------|------|
+| 1 | `cd tools/desk && go test ./internal/deskkit/ -run '^TestBenign' -count=1 -v > "${TMPDIR:-/tmp}/dt61-reg.log" 2>&1 && grep -F -e '--- PASS: TestBenignRegistryComplete ' "${TMPDIR:-/tmp}/dt61-reg.log" && grep -F -e '--- PASS: TestBenignEntriesBounded ' "${TMPDIR:-/tmp}/dt61-reg.log" && grep -F -e '--- PASS: TestBenignKeepsLiteralArms ' "${TMPDIR:-/tmp}/dt61-reg.log" && grep -F -e '--- PASS: TestBenignGoldenVerdicts ' "${TMPDIR:-/tmp}/dt61-reg.log" && grep -F -e '--- PASS: TestBenignRefusalText ' "${TMPDIR:-/tmp}/dt61-reg.log" && grep -F -e '--- PASS: TestBenignDocsParity ' "${TMPDIR:-/tmp}/dt61-reg.log"` | pass exit=0 sandbox=container-netns | sha256:192fb451952f | 2026-11-27 | assay-verifier-app[bot] @ 75cb7f34d193 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=96cdf390cda8 red rc=1 · head=75cb7f34d193 · delivering=382ea1c3e5f4 |
+| 2 | `test -n "${DELIVERY_BASE:-}" && d=$(mktemp -d) && trap 'rm -rf "$d"' 0 && git archive --format=tar "$DELIVERY_BASE" > "$d/base.tar" && mkdir "$d/b" && tar -x -C "$d/b" -f "$d/base.tar" && cp tools/desk/internal/deskkit/benigngolden_test.go "$d/b/tools/desk/internal/deskkit/" && cp tools/desk/internal/deskkit/testdata/benign-golden.txt "$d/b/tools/desk/internal/deskkit/testdata/" && cd "$d/b/tools/desk" && go test ./internal/deskkit/ -run '^TestBenignGoldenVerdicts$' -count=1 -v > "$d/golden.log" 2>&1 && grep -F -e '--- PASS: TestBenignGoldenVerdicts ' "$d/golden.log"` | fail exit=128 sandbox=container-netns | sha256:c4797869dae7 | 2026-11-27 | assay-verifier-app[bot] @ 75cb7f34d193 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=96cdf390cda8 red rc=1 · head=75cb7f34d193 · delivering=382ea1c3e5f4 |
+| 3 | `O=$(mktemp) && trap 'rm -f "$O"' 0 && cd tools/desk && go run ./cmd/muhar -j 2 -spec internal/deskkit/mutations.json > "$O" 2>&1 && grep -F -e 'Harness healthy: baseline GREEN, positive control CAUGHT.' "$O" && grep -F -e ' 0 NOT CAUGHT, 0 could-not-mutate.' "$O" && n=$(grep -c -e '"file": "internal/deskkit/bodycheck.go"' -e '"file": "internal/deskkit/structured.go"' -e '"file": "internal/deskkit/benignshapes.go"' internal/deskkit/mutations.json) && [ "$n" -ge 34 ] && m=$(grep -c -e '"file": "internal/deskkit/benignshapes.go"' internal/deskkit/mutations.json) && [ "$m" -ge 1 ]` | pass exit=0 sandbox=container-netns | sha256:ca4f608802d9 | 2026-11-27 | assay-verifier-app[bot] @ 75cb7f34d193 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=96cdf390cda8 red rc=1 · head=75cb7f34d193 · delivering=382ea1c3e5f4 |
+| 4 | `cd tools/desk && go test ./internal/deskkit/ -count=1 -v > "${TMPDIR:-/tmp}/dt61-all.log" 2>&1 && grep -F -e '--- PASS: TestBodycheckCorpus ' "${TMPDIR:-/tmp}/dt61-all.log" && grep -F -e '--- PASS: TestBenignRegistryComplete ' "${TMPDIR:-/tmp}/dt61-all.log" && ! grep -F -e '--- FAIL' "${TMPDIR:-/tmp}/dt61-all.log"` | fail exit=1 sandbox=container-netns | sha256:e3b0c44298fc | 2026-11-27 | assay-verifier-app[bot] @ 75cb7f34d193 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=96cdf390cda8 red rc=1 · head=75cb7f34d193 · delivering=382ea1c3e5f4 |
+| 6 | `cd tools/desk && test -f internal/deskkit/benignshapes.go && go test ./internal/arch/ -run '^TestOneImplementationPerMeaning$' -count=1 -v > "${TMPDIR:-/tmp}/dt61-arch.log" 2>&1 && grep -F -e '--- PASS: TestOneImplementationPerMeaning ' "${TMPDIR:-/tmp}/dt61-arch.log" && grep -F -x -e 'S-publication-scan 1' internal/arch/markers.txt && go test ./cmd/muhar -run '^TestSpecAnchorsLand$' -count=1 -v > "${TMPDIR:-/tmp}/dt61-anch.log" 2>&1 && grep -F -e '--- PASS: TestSpecAnchorsLand ' "${TMPDIR:-/tmp}/dt61-anch.log"` | pass exit=0 sandbox=container-netns | sha256:a2f70adff64d | 2026-11-27 | assay-verifier-app[bot] @ 75cb7f34d193 (reads could-not-check: no read-set recorder in this build) (on-behalf-of human:ian) (forge-identity) | base=96cdf390cda8 red rc=1 · head=75cb7f34d193 · delivering=382ea1c3e5f4 |
+Tree-Digest: sha256:a543710dbb04b56875593cca8b5a63271be5e17d50f23dd35932870eddb8992e
+Container-Image: sha256:79e23ec185b1d5afe40cd92a25d9f7b18fd824f5678bf6c945443753ee6f509a
+Module-Cache: sha256:7f8fa9800956b328a3851321def73d53e5ec63663bf2209818288608b6dc2ed6
+Verification-Attestation: medici-finance/assay#7843 run=364bed2aa198ed18f85c331b9b571ab112323727e9efa245b8705663b6c908c1 source=75cb7f34d193ddb4f295d67c948ae8ce86b7016b brief=docs/streams/desk-tools/brief-61-benign-shape-registry.md model=claude-opus-5-5 tier=strong
+Admission-Bracket: run=364bed2aa198ed18f85c331b9b571ab112323727e9efa245b8705663b6c908c1 source=75cb7f34d193ddb4f295d67c948ae8ce86b7016b tree=sha256:a543710dbb04b56875593cca8b5a63271be5e17d50f23dd35932870eddb8992e witness=sha256:04d8e45128d9cd998d587b72cad5b982b89f701919eba73baf5bb873964ba589 opened=2026-11-27T15:59:32Z closed=2026-11-27T16:39:44Z before=receipt after=check-verifier
+
+### Verifier notes (assay-verifier-app[bot], non-implementer, 2026-11-27)
+
+- Source: merged main 75cb7f34d193ddb4f295d67c948ae8ce86b7016b, the admitted home, checked by deskdispatch --check-verifier (exit 0) before the rows ran. Attestation medici-finance/assay#7843, model claude-opus-5-5, tier strong. Desk tools v1.0.94, darwin arm64, offline, KUBECONFIG=/dev/null, declared verifier Git environment.
+- Delivery: PR #6808, merge 382ea1c3e5f4f4f5970ece363e25aad7b093d115. Its first parent 96cdf390cda823c874e601c286520c72563c07a4 is the base, per the Review section ("the parent of the delivering merge"). The second parent is 51b6fb71daad66eebede7c6e022e56416ea94ddc and the merge-base of the parents is b03d8dace34d491cf14b46e9d9d96243a7a3b752. bodycheck.go and structured.go are unchanged between b03d8dac and 96cdf390. The rows ran with DELIVERY_HEAD=382ea1c3e5f4 and DELIVERY_BASE=96cdf390cda8. The commits from 382ea1c3 to 75cb7f34 do not touch tools/desk/internal/deskkit.
+- Rows 5 and 7 (check) ran on the host with verifyrun --rows 5,7 --fail-first. That table is above. Rows 1, 2, 3, 4 and 6 (check:ci) ran in the closed container-netns admission bracket that follows it. That table is the bracketed attempt. Its credit read is could-not-check: --bracket-digest --credit needs the witness inside a git work tree.
+- The bracket opened at 2026-11-27T15:59:32Z and closed at 2026-11-27T16:39:44Z, with tree sha256:a543710dbb04, image verify-runner v1.0.94 sha256:79e23ec185b1 (--network none, --read-only), module cache sha256:7f8fa9800956 mounted read-only, and history pack imported for the base. statusgen verifyrun --bracket-digest reports verdict=match, witness sha256:04d8e45128d9. Every row ran red at base 96cdf390cda8.
+- Rows 1, 3 and 6 pass at head in the container and are red at base, so they discriminate. Row 3 is the mutation harness over all 188 entries of mutations.json. Row 5 passes at head on the host and is red at base.
+
+### Rows 2 and 4: container environment, held
+
+- **Row 2** exited 128 at head in the container. The row runs git archive on DELIVERY_BASE in the head tree. The home is a linked worktree, and its .git gitfile points at a Git directory that the bracket deliberately does not mount. In the same image with the same read-only home mount, git archive of 96cdf390 prints "fatal: gitfile does not point to a valid repository: /work/.git" with rc=128. This is the class medici-finance/assay#4327, an environment cause, not the deliverable. The row is held as could-not-run.
+- **Row 4** exited 1 at head in the container. The full deskkit package ran with "--- FAIL" lines only in tests unrelated to this delivery: TestBeaconStoreConcurrentProcessesPreserveFields, five TestLayaAdvisor tests, TestSharedReadLowerScope and TestAttestCaseVariantRoot. None of their files is in the delivering diff. The same command passes on the host with 0 "--- FAIL" (below), so the cause is the container sandbox, not the deliverable. The likely mechanism is the read-only, Git-less mount (the medici-finance/assay#4327 class): the shared-read test reports no origin remote and the attest test reports a different worktree. The laya and beacon-store causes were not traced further. The row is held as could-not-run.
+
+Supplemental diagnostic with no acceptance credit. Both were run on the host on 2026-11-27 by assay-verifier-app[bot], outside the home, in a scratch clone at 75cb7f34d193. The clone was made with git clone --shared from the local repository, with origin set to the forge URL. Each row command was unchanged, under the declared verifier Git environment, with GOPROXY=off, a throwaway HOME and TMPDIR, and no network sandbox:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 2-supp-host | see Verify row 2, with DELIVERY_BASE=96cdf390cda8 | diagnostic only, no acceptance credit | rc=0; "--- PASS: TestBenignGoldenVerdicts (0.39s)" | 2026-11-27 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+| 4-supp-host | see Verify row 4 | diagnostic only, no acceptance credit | rc=0; 2235 top-level PASS, 0 "--- FAIL"; "ok github.com/medici-finance/assay/tools/desk/internal/deskkit 343.173s" | 2026-11-27 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+### Row 7: definition defect, held
+
+Row 7 failed at head (exit 1) on its first guard, before any obligation it checks. The guard requires the HEAD of the home to equal DELIVERY_HEAD. The admitted home is merged main 75cb7f34, not the delivering merge 382ea1c3, and the verifier may not move the admitted home. After merge the row cannot pass in an admitted home, so it is held as could-not-run (check-definition), not judged. This is the same class recorded on desk-tools/48, desk-tools/50 and desk-tools/62.
+
+Supplemental diagnostic with no acceptance credit. These are the row's later clauses, run by hand on the host on 2026-11-27 by assay-verifier-app[bot], in the home at 75cb7f34d193, with the same DELIVERY_HEAD and DELIVERY_BASE:
+
+| # | Command | Result | Output | Date | Runner |
+|---|---------|--------|--------|------|--------|
+| 7-supp | row 7 with the HEAD guard omitted (is-ancestor, follow-up grep, contracts grep, statusgen consumers) | diagnostic only, no acceptance credit | is-ancestor rc=0; follow-up marker grep rc=1 (none); docs/contracts.md names TestBenignEntriesBounded once; statusgen --consumers rc=0 with "summary: 3 corroborated, 0 disproved, 0 unchecked, 0 brief(s) claiming nothing" (all 3 consumer sites CORROBORATED) | 2026-11-27 | assay-verifier-app[bot] (on-behalf-of human:ian) |
+
+### Risk values (sensitive-data: yes)
+
+ENUMERATE. These are the literals that the diff 96cdf390..382ea1c3 introduces, moves or changes in the scanner and its tests, with source lines at 75cb7f34:
+
+1. reBase64ish = [A-Za-z0-9+/=]{32,} @ tools/desk/internal/deskkit/bodycheck.go:23 (base :24)
+2. runThreshold = 32 @ tools/desk/internal/deskkit/bodycheck.go:149 (base :150)
+3. digestKeys = {SHA, SHA1, SHA256, DIGEST, CHECKSUM, COMMIT} @ tools/desk/internal/deskkit/benignshapes.go:244 (base bodycheck.go:247)
+4. credentialStems = {SECRET, TOKEN, PASS, PWD, KEY, AUTH, CRED, PRIV, SESSION, COOKIE, SIGN, HMAC, SALT, API, CERT, BEARER, JWT, SEED} @ tools/desk/internal/deskkit/benignshapes.go:250 (base bodycheck.go:253)
+5. twoLetterWords = 27 entries (Am ... We, Id, Ok) @ tools/desk/internal/deskkit/benignshapes.go:283 (base bodycheck.go:286)
+6. numeronyms = {K8s, I18n, L10n, A11y} @ tools/desk/internal/deskkit/benignshapes.go:226 (base bodycheck.go:229)
+7. mixedCaseWords = {OAuth} @ tools/desk/internal/deskkit/benignshapes.go:236 (base bodycheck.go:239)
+8. k8sUIDPrefixes = {pvc, pv, pod, rs, rc, ds, sts, job, cm, svc} @ tools/desk/internal/deskkit/benignshapes.go:304 (base bodycheck.go:1250)
+9. godebugHeads = {DefaultGODEBUG, GODEBUG} @ tools/desk/internal/deskkit/benignshapes.go:312 (base bodycheck.go:1009)
+10. goTestPrefixes = {Test, Benchmark, Fuzz, Example} @ tools/desk/internal/deskkit/benignshapes.go:293 (base bodycheck.go:902)
+11. Doc text "at most 16 chars" @ tools/desk/internal/deskkit/benignshapes.go:131 and "up to 16 letters" @ tools/desk/internal/deskkit/benignshapes.go:155. These are refusal-message prose carried over from the base refusal text, not the predicates.
+12. goldenRuns = 2000 @ tools/desk/internal/deskkit/benigngolden_test.go:47; goldenSeed = 61 @ :48; run length 30+r.Intn(61) (30 to 90) @ :82; floor refused >= 1000 and clean >= 100 @ :205; mutations.json 188 entries
+13. The DR-scan-admission design record: the authority binding for the design.
+
+RANK. Entries 1 and 2 rank first. A wrong class or threshold lets a credential reach a public forge body, and a publish cannot be undone by an edit. Entries 3 and 4 come next: they decide whether a 64-hex value behind an env key is treated as a digest or as a secret. Entries 5 to 10 widen admission of word-shaped runs. Entries 11 and 12 are prose and test-sample bounds. They can be reverted by an edit and need no derivation.
+
+DERIVE. This brief is a behaviour-preserving move into a registry, and its Review section requires "the literal arms ... byte-identical to the base". I checked this mechanically. The sorted set of all 20 regexp literals in bodycheck.go and structured.go at 96cdf390 equals the set across bodycheck.go, structured.go and benignshapes.go at 75cb7f34. For each closed list in entries 3 to 10, the sha256 of its var block at base (bodycheck.go) equals the sha256 of its var block at source (benignshapes.go).
+
+- RISK-VALUE: DERIVED — reBase64ish = [A-Za-z0-9+/=]{32,} @ tools/desk/internal/deskkit/bodycheck.go:23 — The brief's own constraint is that the literal arms are byte-identical to the base. The regexp literal set is identical at base and source, so this delivery changes nothing about which runs are scanned. The adequacy of the value predates this item and was not re-derived here.
+- RISK-VALUE: DERIVED — runThreshold = 32 @ tools/desk/internal/deskkit/bodycheck.go:149 — It mirrors reBase64ish {32,}, as its comment at :147 says, and is identical at base :150. The registry reads it, and it is not redefined.
+- RISK-VALUE: DERIVED — digestKeys = {SHA, SHA1, SHA256, DIGEST, CHECKSUM, COMMIT} @ tools/desk/internal/deskkit/benignshapes.go:244 — The var block is byte-identical to base bodycheck.go:247, so it was moved, not widened. Its comment gives the derivation: a closed tail list, because a shape rule would admit TOKEN=<64 hex>.
+- RISK-VALUE: DERIVED — credentialStems = 18 stems @ tools/desk/internal/deskkit/benignshapes.go:250 — The var block is byte-identical to base bodycheck.go:253. It is a refusing fence, so moving it cannot widen admission.
+- RISK-VALUE: DERIVED — twoLetterWords = 27 entries @ tools/desk/internal/deskkit/benignshapes.go:283 — The var block is byte-identical to base bodycheck.go:286. The cost measurement in its comment is pinned by TestTwoLetterWordsCostAlmostNothing.
+- RISK-VALUE: DERIVED — numeronyms, mixedCaseWords, k8sUIDPrefixes, godebugHeads, goTestPrefixes @ tools/desk/internal/deskkit/benignshapes.go:226, :236, :304, :312, :293 — Each var block is byte-identical to its base definition in bodycheck.go (:229, :239, :1250, :1009, :902).
+- RISK-VALUE: NAMED, NOT DERIVED — goldenRuns = 2000, goldenSeed = 61, refused >= 1000, clean >= 100 @ tools/desk/internal/deskkit/benigngolden_test.go:47, :48, :205 — These are sample-size bounds for the equivalence golden. No statistical derivation of 2000 runs as sufficient coverage is stated, and I did not compute one. They are test-only and reversible.
+
+### Verdict
+
+**VERIFY: BLOCKED** — 4 of 7 rows met (1, 3 and 6 in the container bracket, 5 on the host), and every one is red at base. 0 failed. 3 rows are held as could-not-run. Rows 2 and 4 hit the container environment (medici-finance/assay#4327); their host diagnostics pass with no credit. Row 7 has a definition defect: its HEAD = DELIVERY_HEAD guard cannot hold in a post-merge admitted home. Status stays implemented. This is a gate:human item, and the verifier flips nothing.
+
 
 ## Review
 Gate: human. Before it leaves `todo`, the design needs an approved `DR-<slug>` record cited by

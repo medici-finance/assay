@@ -266,7 +266,7 @@ window acts as, and no other role's:
 | `the-desk` | `desk`, plus `worker` or `verifier` if it dispatches those kits | a dispatched agent runs in this window's environment and mints its own kit's role |
 | `worker-desk` | `worker`, `desk` | `deskdispatch` takes the claim and the model stamp as `desk`: the dispatcher attests, never the dispatched role |
 | `pr-review-desk` | `reviewer`, plus `worker` if it runs `deskreply` | a review dispatch claims and stamps as `reviewer` |
-| `verify-desk` | `verifier`, `desk` | a verifier dispatch claims and stamps as `desk` |
+| `verify-desk` | `verifier`, `desk` | a verifier dispatch claims as `verifier` and stamps as `desk` |
 | `intake-desk` | `issue-loop`, plus `worker` if it runs `deskreply` | `deskreply` always posts as `worker` |
 
 Add `verifier` to any window that runs `deskevidence`. A review kit claims and stamps as

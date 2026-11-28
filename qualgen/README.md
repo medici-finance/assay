@@ -14,6 +14,71 @@ go build -o qualgen .
 `check <paths>` emits advisory notices. Help documents the options. No tracker,
 telemetry collection, credential lookup or network query runs implicitly.
 
+## JSON advisory output
+
+```sh
+qualgen check --json --literal-paths --repo /path/to/repository \
+  --out /path/to/tracking-root -- src/client.go 'src/options[1].go'
+```
+
+`--json` writes one JSON object to stdout with this structure:
+
+```json
+{
+  "schema_version": "qualgen-check-v1",
+  "repo_head": "0123456789abcdef0123456789abcdef01234567",
+  "files": [
+    {
+      "path": "src/client.go",
+      "could_not_screen": false,
+      "advisories": [{"kind": "coupling-partner", "detail": "historically coupled to src/server.go, not in this screened set — check that partner too"}]
+    },
+    {
+      "path": "src/options[1].go",
+      "could_not_screen": true,
+      "reason": "no measurable mined history for this path",
+      "advisories": []
+    }
+  ],
+  "extensions": {}
+}
+```
+
+Validate `schema_version` before reading the result. `repo_head` is the commit
+used for the live `reference-rot` advisory. Compare it with the revision
+under review before using those advisories.
+For the history baseline, read `tip_sha` from the supplied tracking root's
+`docs/quality/mine.json` while holding the same snapshot stable across the
+header read and check.
+
+The result has one entry per distinct input path, in sorted order. Match entries
+to requested paths by exact string equality. The JSON encoder replaces invalid
+UTF-8 bytes with U+FFFD. Treat any requested path without one exact match as unscreened.
+`could_not_screen` marks insufficient mined history and carries a `reason`.
+Live advisories may still be present for that path. A screened path with no advisories has
+`could_not_screen: false` and an empty `advisories` array. Use `kind` to
+identify advisories and `detail` for display. A successful screen exits zero.
+Command errors exit nonzero and write diagnostics to stderr.
+
+The [JSON Schema](../schemas/qualgen-check-v1.json) defines the stable core.
+Advisory kinds are open. A client can display the detail of a new kind with
+its generic advisory renderer and apply kind-specific logic to the kinds it
+recognizes.
+
+Optional analyses go in `extensions`, keyed by name. Each entry has an integer
+`version` and a `data` object, for example
+`{"extra-analysis":{"version":1,"data":{}}}`. Qualgen currently emits an empty
+extensions object. Clients can read the core and skip unknown names or versions.
+For a feature that depends on an extension, treat an absent or unsupported
+version as unavailable. Validate the payload of any supported extension before
+using it. A change to an extension's meaning increments its version. A change
+to the core's layout or semantics requires a new core schema version.
+
+Use `--literal-paths` with paths from a diff. It preserves glob characters and
+screens paths absent from the checkout, including deleted files. `--` allows
+filenames that start with a dash. Without these options, `check` uses its normal
+glob expansion and text output.
+
 ## Defect tracing from recorded issue and PR metadata
 
 ```sh

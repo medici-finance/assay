@@ -2330,6 +2330,7 @@ These are the surfaces frozen at build time — what your cell cannot change wit
 |---|---|
 | `statusgen/topologyvalues.go` | the system-state and decision-owed label sets, and the default release repo, that `statusgen` reasons about |
 | `tools/desk/cmd/issueboard/board.go` | the system-state and decision-owed label sets the board excludes and escalates on |
+| `tools/desk/cmd/fanoutloop/inbox.go` | the system-state and decision-owed label sets the worker-desk inbox lane holds on |
 | `tools/desk/cmd/deskroster/sets.go` | the cell name, per-repo relationship and App roles `deskroster repos` prints |
 | `tools/desk/cmd/deskrelease/cut.go` | the default repo `deskrelease` cuts a release from |
 | `tools/desk/cmd/desklabel/vocabulary.go` | the decision-owed label set that forms `desklabel`'s shared (any-role) escalation rows |

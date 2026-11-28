@@ -64,8 +64,14 @@
     {
       "name": "#6254: drop the not-reverted refusal on the FLIP path (a head the post-flip check already reverted is flipped again via deskpost ready — reddens TestReadyNotRevertedRefusesHead)",
       "file": "cmd/deskpost/ready.go",
-      "old": "\t\tif reason, held := deskkit.NotRevertedHold(comments, pr, head, short(head)); held {",
-      "new": "\t\tif reason, held := deskkit.NotRevertedHold(comments, pr, head, short(head)); false && held {"
+      "old": "\t\treason, held := deskkit.NotRevertedHold(comments, pr, head, short(head), reread)\n\t\tif held {",
+      "new": "\t\treason, held := deskkit.NotRevertedHold(comments, pr, head, short(head), reread)\n\t\tif false && held {"
+    },
+    {
+      "name": "#7096: deskpost ready passes no fresh merge-requirement read to the latch (a revert whose cause cleared holds the head forever — reddens TestReadyNotRevertedCauseCleared and TestReadyNotRevertedLegacyMarkerAllMet)",
+      "file": "cmd/deskpost/ready.go",
+      "old": "reason, held := deskkit.NotRevertedHold(comments, pr, head, short(head), reread)",
+      "new": "reason, held := deskkit.NotRevertedHold(comments, pr, head, short(head), nil); _ = reread"
     },
     {
       "name": "#6254: an unreadable comment thread reads as not-reverted (the check fails OPEN — reddens TestReadyNotRevertedUnreadableFailsClosed)",
