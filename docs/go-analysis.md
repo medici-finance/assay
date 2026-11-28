@@ -131,6 +131,13 @@ what passes:
 4. CI never writes to main. Main moving on after a branch forked does not change
    that branch's verdict: it is compared with its own merge base until it merges
    main in.
+5. The merge base must be unique. Criss-cross history has several best common
+   ancestors (`git merge-base --all`), and the gate refuses it as could-not-check
+   rather than let git pick one. Merging main in again gives one merge base.
+6. The merge base is an ancestor of the trusted base, never a commit only the pull
+   request carries, but it need not be a commit the gate analyzed before. A finding
+   that exists only in the merged tree, from two changes that are each clean on their
+   own, is not gated by either run; the periodic debt report is where it shows.
 
 `tools/go-analysis/baseline.json` is kept for reporting only. The gate never reads
 it. The debt report uses it to name the owner and linked remediation work of
@@ -170,11 +177,11 @@ coverage state, finding dispositions and gate result. Incomplete scans cannot re
 Desk-tools/35 consumes this same artifact into qualgen; ingestion, vulnerability
 analysis and historical rendering are not implemented by this correctness change.
 
-The committed harness runs 23 tests and 24 guard mutations, with real upstream
+The committed harness runs 25 tests and 26 guard mutations, with real upstream
 analyzer red/green controls. It proves module discovery, source movement, the
 merge-base comparison (a head that adds a finding fails; one that touches none or
 repairs one passes; a moved main does not change a forked branch's verdict),
-duplicate refusal, policy at the merge base, checksum rejection and failure
+duplicate refusal, an ambiguous merge base, policy at the head and at the merge base, checksum rejection and failure
 propagation in the first/middle/last scan and in the merge-base scan. The action has its own separate wrapper
 controls. Implementation evidence belongs in the PR workpad; independent verifier
 Evidence and actual merged-main CI remain distinct from local results.

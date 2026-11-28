@@ -333,13 +333,18 @@ def merge_base(root, base):
     if not base or not re.fullmatch('[0-9a-f]{40}', base):
         raise ValueError('explicit trusted base SHA required')
     try:
-        sha = git(root, 'merge-base', base, 'HEAD').decode().strip()
+        found = git(root, 'merge-base', '--all', base, 'HEAD').decode().split()
     except subprocess.CalledProcessError:
         raise ValueError('merge base unresolvable; the analyzed checkout needs full history and the base commit')
+    if len(found) != 1:
+        # Criss-cross history has several best common ancestors; git would pick one silently.
+        raise ValueError('merge base ambiguous: ' + str(len(found)) + ' candidates')
+    sha = found[0]
     if not re.fullmatch('[0-9a-f]{40}', sha):
         raise ValueError('merge base unresolvable')
-    # By construction the merge base is reachable from the trusted base: reviewed history,
-    # never a commit only the PR carries.
+    # By construction the merge base is an ancestor of the trusted base, never a commit only
+    # the PR carries. It need not be a commit the gate itself ever analyzed: any ancestor of
+    # the base qualifies, including intermediate commits of earlier merged branches.
     return sha
 
 
@@ -354,6 +359,8 @@ class merge_base_tree:
         self.remove()
         git(self.root, 'worktree', 'add', '--quiet', '--detach', str(self.path), self.sha)
         if git(self.path, 'rev-parse', 'HEAD').decode().strip() != self.sha:
+            # __exit__ does not run when __enter__ raises; remove the checkout here.
+            self.remove()
             raise ValueError('merge-base checkout revision mismatch')
         return self.path
 

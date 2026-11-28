@@ -64,7 +64,8 @@ fixtures and the real pinned analyzers.
 `report-path`, `state`, `gate`, `existing`, `new`, `worsened`, and `resolved` are
 outputs. Counts are unset for an incomplete scan: unknown must not look like zero.
 A scan returning nonzero still fails the action; summary and upload steps use
-`always()` and do not convert it to success. Missing or malformed reports fail.
+`always()` and do not convert it to success. Missing or malformed reports fail, and so does a report whose mode differs from
+the requested `mode`: a debt report can never stand in for the gate.
 
 Only sanitized `report.json` is uploaded as
 `go-analysis-lint-<source-sha>-<run-id>-<attempt>`, retained for 14 days. No raw source

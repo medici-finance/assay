@@ -94,6 +94,10 @@ def summary():
     mode = report.get('mode', 'gate')
     if mode not in ['gate', 'debt-report']:
         raise ValueError('unsupported report mode')
+    # A report that never gates is accepted only when the caller asked for one.
+    requested = os.environ.get('INPUT_MODE', 'gate')
+    if mode != {'gate': 'gate', 'report': 'debt-report'}.get(requested):
+        raise ValueError('report mode does not match the requested mode')
     expected_exit = 2 if state == 'could-not-check' else (0 if gate == 'pass' else 1)
     if type(report.get('exit_code')) is not int or report['exit_code'] != expected_exit:
         raise ValueError('inconsistent scan outcome')

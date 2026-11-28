@@ -167,13 +167,34 @@ class ActionTests(unittest.TestCase):
         report = {'schema': 'go-analysis/v1', 'mode': 'debt-report', 'state': 'complete', 'gate': 'pass',
                   'exit_code': 0, 'totals': {'existing': 9, 'new': 0, 'worsened': 0, 'resolved': 0}}
         (self.cache / 'report.json').write_text(json.dumps(report))
-        self.assertEqual(action.summary(), 0)
+        with patch.dict(os.environ, INPUT_MODE='report'):
+            self.assertEqual(action.summary(), 0)
         self.assertEqual(self.outputs()['existing'], '9')
         self.assertIn('never gates', self.summary.read_text())
         report['mode'] = 'lenient'
         (self.cache / 'report.json').write_text(json.dumps(report))
-        with self.assertRaises(ValueError):
-            action.summary()
+        with patch.dict(os.environ, INPUT_MODE='report'):
+            with self.assertRaises(ValueError):
+                action.summary()
+
+    # regression: #7520
+    def test_gate_refuses_debt_report(self):
+        # A never-gating report must not stand in for the gate's verdict.
+        report = {'schema': 'go-analysis/v1', 'mode': 'debt-report', 'state': 'complete', 'gate': 'pass',
+                  'exit_code': 0, 'totals': {'existing': 9, 'new': 0, 'worsened': 0, 'resolved': 0}}
+        (self.cache / 'report.json').write_text(json.dumps(report))
+        for requested in ['gate', None]:
+            env = {'INPUT_MODE': requested} if requested else {}
+            with patch.dict(os.environ, env):
+                if requested is None:
+                    os.environ.pop('INPUT_MODE', None)
+                with self.assertRaisesRegex(ValueError, 'requested mode'):
+                    action.summary()
+        report['mode'] = 'gate'
+        (self.cache / 'report.json').write_text(json.dumps(report))
+        with patch.dict(os.environ, INPUT_MODE='report'):
+            with self.assertRaisesRegex(ValueError, 'requested mode'):
+                action.summary()
 
     def test_cache_in_analyzed_tree_rejected(self):
         with patch.dict(os.environ, RUNNER_TEMP=str(self.repo)):

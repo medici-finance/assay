@@ -113,6 +113,7 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         CACHE: ${{ steps.prepare.outputs.cache }}
+        INPUT_MODE: ${{ inputs.mode }}
       run: python3 "$ACTION_PATH/run.py" summary
     - name: Publish sanitized findings even on failure
       if: always() && steps.prepare.outcome == 'success'

@@ -32,9 +32,9 @@ var goPinExceptions = map[string]string{
 	// digest; moving them is a separately reviewed migration with
 	// before/after evidence (docs/go-analysis.md "Maintain the comparison"),
 	// deferred out of #2918.
-	"tools/go-analysis/pins.env|BUILD_GO":    "baseline migration pending",
-	"tools/go-analysis/pins.env|ANALYSIS_GO": "baseline migration pending",
-	".golangci.yml|golangci go":              "baseline migration pending",
+	"tools/go-analysis/pins.env|BUILD_GO":    "policy migration pending",
+	"tools/go-analysis/pins.env|ANALYSIS_GO": "policy migration pending",
+	".golangci.yml|golangci go":              "policy migration pending",
 }
 
 // goPinSkipFiles are whole files outside the guard, with the reason.

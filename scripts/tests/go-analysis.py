@@ -291,6 +291,36 @@ class MergeBase(unittest.TestCase):
         self.assertEqual((code, report['state']), (2, 'could-not-check'))
         self.assertEqual(report['totals'], dict(existing=0, new=0, worsened=0, resolved=0))
 
+    # regression: #7520
+    def test_policy_at_head(self):
+        # The head is analyzed under the runner's reviewed policy, or not at all.
+        self.branch('loosens')
+        self.write('.golangci.yml', 'version: "2"\n')
+        self.commit('head under another policy')
+        code, report = self.run_gate(self.fork)
+        self.assertEqual((code, report['state']), (2, 'could-not-check'))
+        self.assertNotIn('merge_base_sha', report)
+
+    # regression: #7520
+    def test_ambiguous_merge_base(self):
+        # Criss-cross history has two best common ancestors: refuse rather than pick one.
+        self.git('checkout', '-q', 'main')
+        self.write('mod/m.go', 'package a\n\nfunc M() int { return 1 }\n')
+        main_side = self.commit('main side')
+        self.branch('cross')
+        self.write('mod/c.go', 'package a\n\nfunc C() int { return 1 }\n')
+        branch_side = self.commit('branch side')
+        merge = ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'merge', '-q', '--no-edit']
+        self.git(*merge, main_side)
+        self.git('checkout', '-q', 'main')
+        self.git(*merge, branch_side)
+        base = self.git('rev-parse', 'HEAD')
+        self.git('checkout', '-q', 'cross')
+        self.assertEqual(len(self.git('merge-base', '--all', base, 'HEAD').split()), 2)
+        code, report = self.run_gate(base)
+        self.assertEqual((code, report['state']), (2, 'could-not-check'))
+        self.assertNotIn('merge_base_sha', report)
+
     # regression: #7421
     def test_merge_base_scan_failure(self):
         # An incomplete merge-base scan cannot pass the head or resolve anything.
