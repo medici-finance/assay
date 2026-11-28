@@ -28,6 +28,11 @@
     },
     {
       "class": "test",
+      "pattern": "containers/k8s/compatibility/qualify_custody_target.py",
+      "reason": "desk-containers/32 source-only custody and target qualification fixture invoked by qualify.sh using local manifests and a synthetic Kubernetes API."
+    },
+    {
+      "class": "test",
       "pattern": "containers/k8s/compatibility/desk-session.test.sh",
       "reason": "desk-containers/31 offline private-Linux-PID1 regression fixture; synthetic agent, explicit local daemon, cached image and no network"
     },
