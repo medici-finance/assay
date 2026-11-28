@@ -61,10 +61,12 @@ esac
 	// The fake gh is launched through ghGuard, which refuses to start it when
 	// verifier admission is required here (a verifier worktree's attestation
 	// file) and no forge token variable is set. The fixture supplies its own
-	// placeholder so, outside an admitted run, the outcome does not depend on
-	// whether the caller set one; the fake ignores it, and it is not a
-	// credential. Inside an admitted Verify row or verifyrun ghGuard ignores
-	// token variables by design, so these tests cannot start the fake there.
+	// placeholder so the outcome does not depend on whether the caller set
+	// one; the fake ignores it, and it is not a credential. Inside an admitted
+	// Verify row ghGuard ignores token variables by design, so the fixture also
+	// removes the row's git config pins from this test's environment
+	// (clearAdmittedRowPins). ghGuard itself is unchanged.
+	clearAdmittedRowPins(t)
 	t.Setenv("GH_TOKEN", "fixture-placeholder-not-a-credential")
 	t.Setenv("AUTONOMY_CALLS", log)
 	t.Setenv("AUTONOMY_LIST", list)

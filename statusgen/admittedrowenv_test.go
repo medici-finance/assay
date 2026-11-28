@@ -18,6 +18,7 @@ import (
 // that admits any run. It returns the home and the second tree.
 func admittedFixture(t *testing.T, admit bool) (string, string) {
 	t.Helper()
+	clearAdmittedRowPins(t)
 	if runtime.GOOS == "windows" {
 		t.Skip("POSIX-only: the fake checker is a #!/bin/sh script on PATH")
 	}

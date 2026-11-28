@@ -56,6 +56,7 @@ type netGuard struct {
 // else — exec.LookPath fails closed for every forge tool.
 func installNetGuard(t *testing.T, forgeShims bool) *netGuard {
 	t.Helper()
+	clearAdmittedRowPins(t)
 	gitBin, err := exec.LookPath("git")
 	if err != nil {
 		t.Skip("git not on PATH — cannot build the fixture")
