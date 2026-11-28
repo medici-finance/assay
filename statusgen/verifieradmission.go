@@ -166,7 +166,8 @@ func sameDirectory(a, b string) bool {
 // directory, a profile location) does not reach a row by default. A listed
 // proxy or module proxy whose URL carries a user name is dropped as well. A row
 // that reads a dropped variable by name is could-not-run, not fail
-// (admittedRowScrubbedRefs).
+// (admittedRowScrubbedRefs), unless the row binds that name itself
+// (admittedRowSelfBound): the scrub has still removed the inherited value.
 //
 // The named refusals below (admittedRowDenied) are checked first, so a name
 // added to the pass list later cannot carry one of them through.
@@ -463,12 +464,18 @@ func admittedRowEnvShaped(name string) bool {
 // after the scrub (its run credential path, for a forge row) is in env and does
 // not count.
 //
-// The rule reads the command's text, not the shell's parse. Any $NAME, ${NAME
-// or %NAME% counts, wherever it sits: inside single quotes, in an echo or
-// comment, in a grep pattern, with or without a default (${NAME:-x}). That errs
-// to could-not-run. A read written without that syntax (printenv NAME, env |
-// grep NAME, or a program the row starts reading the variable itself) does not
-// count, and the row runs as before, seeing the variable unset.
+// A name the row binds for itself does not count in either set
+// (admittedRowSelfBound, #7134): every read of it supplies its own non-empty
+// default or follows the row's own assignment, so the row sees its own value
+// and never an inherited one. The scrub still removes the inherited value; this
+// only stops the refusal of a row that does not need it.
+//
+// The rule reads the command's text, not the shell's parse. Any other $NAME,
+// ${NAME or %NAME% counts, wherever it sits: inside single quotes, in an echo
+// or comment, in a grep pattern, or with an empty default (${NAME:-}). That
+// errs to could-not-run. A read written without that syntax (printenv NAME,
+// env | grep NAME, or a program the row starts reading the variable itself)
+// does not count, and the row runs as before, seeing the variable unset.
 func admittedRowScrubbedRefs(command string, env []string) []string {
 	var names []string
 	for _, m := range admittedRowRefRe.FindAllStringSubmatch(command, -1) {
@@ -484,6 +491,9 @@ func admittedRowScrubbedRefs(command string, env []string) []string {
 		}
 		probe := name + "=" + strings.Repeat("0", 40)
 		if slices.Contains(admittedRowEnv([]string{probe}), probe) {
+			continue
+		}
+		if admittedRowSelfBound(command, name) {
 			continue
 		}
 		if !strings.HasPrefix(strings.ToUpper(name), "ASSAY_") {
