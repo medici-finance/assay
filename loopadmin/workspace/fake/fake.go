@@ -18,6 +18,10 @@ import (
 // ErrFault is what a scripted fault returns.
 var ErrFault = errors.New("fake: scripted fault")
 
+// ErrRevisions is what a scripted Revisions fault returns, distinct from
+// ErrFault so a test can tell which adapter's failure a caller received.
+var ErrRevisions = errors.New("fake: scripted revisions fault")
+
 // Env is the fake resources, Git, authority, store and retirement in one
 // value, so a test can script all of them. Use New.
 type Env struct {
@@ -42,6 +46,8 @@ type Env struct {
 	RetireUnknown bool
 	// FailPut makes every Put fail and store nothing.
 	FailPut bool
+	// FailRevisions makes every Revisions call fail.
+	FailRevisions bool
 
 	Applies, Checkouts, Restores int
 	Retired                      []string
@@ -143,6 +149,9 @@ func (e *Env) RestoreFiles(_ context.Context, from, to string) error {
 func (e *Env) Revisions(_ context.Context, ws string) ([]workspace.Repository, error) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
+	if e.FailRevisions {
+		return nil, ErrRevisions
+	}
 	return slices.Clone(e.revisions[ws]), nil
 }
 

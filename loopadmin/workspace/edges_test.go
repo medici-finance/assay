@@ -3,6 +3,7 @@ package workspace_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
@@ -53,8 +54,10 @@ func setNil(v reflect.Value, p string) {
 // when nil, by the request's own validation, so the port never stores or
 // returns a ready receipt that Decode refuses; an empty writable list is a
 // valid request whose ready receipt round-trips and is admitted; a request
-// whose receipt would exceed the decoder's size cap is never ready; and a
-// backslash path is not a clean relative path.
+// over the decoder's size cap is refused by Validate, one whose receipt would
+// exceed the cap is never stored, neither is returned ready, and Admit
+// refuses a receipt over the cap; and a backslash path is not a clean
+// relative path.
 // regression: F-receipt-roundtrip-nil-writable
 func TestReceiptNilListsRefused(t *testing.T) {
 	lists := requiredLists(reflect.TypeOf(workspace.Request{}), "")
@@ -94,16 +97,41 @@ func TestReceiptNilListsRefused(t *testing.T) {
 		t.Fatalf("empty writable: the decoded receipt is not admitted: %v", err)
 	}
 
-	// Over the decoder's size cap: valid in shape, never a ready receipt.
+	// Over the decoder's size cap: valid in shape, refused by the request's
+	// own validation, and never stored or returned as anything ready.
 	big := baseRequest(t)
 	for i := 0; len(big.Writable)*16 < runner.MaxDocumentBytes; i++ {
 		big.Writable = append(big.Writable, "build/output/cache/item-"+strconv.Itoa(i))
 	}
+	if err := big.Validate(); !errors.Is(err, workspace.ErrInvalid) || !strings.Contains(err.Error(), "size cap") {
+		t.Fatalf("oversized request: Validate got %v, want ErrInvalid naming the size cap", err)
+	}
 	env := fake.New()
 	r, err = env.Port(workspace.Port{}).Prepare(ctx, big)
-	s, _ := env.Receipt(workspace.BindingKey(big.Instance))
-	if !errors.Is(err, workspace.ErrInvalid) || s.Outcome == workspace.OutcomeReady {
-		t.Fatalf("oversized receipt: got %q (stored %q) %v, want ErrInvalid and nothing ready", r.Outcome, s.Outcome, err)
+	s, stored := env.Receipt(workspace.BindingKey(big.Instance))
+	if !errors.Is(err, workspace.ErrInvalid) || r.Outcome == workspace.OutcomeReady || stored {
+		t.Fatalf("oversized receipt: got %q (stored %v %q) %v, want ErrInvalid and nothing stored or ready", r.Outcome, stored, s.Outcome, err)
+	}
+
+	// Just under the cap as a request, over it as a receipt: the store choke
+	// point refuses it, so nothing is stored and nothing ready is returned.
+	near := nearCap(t)
+	env = fake.New()
+	r, err = env.Port(workspace.Port{}).Prepare(ctx, near)
+	s, stored = env.Receipt(workspace.BindingKey(near.Instance))
+	if !errors.Is(err, workspace.ErrInvalid) || r.Outcome == workspace.OutcomeReady || stored {
+		t.Fatalf("near-cap request: got %q (stored %v %q) %v, want ErrInvalid and nothing stored or ready", r.Outcome, stored, s.Outcome, err)
+	}
+
+	// Admit refuses a ready-looking receipt Decode would refuse, whoever
+	// built the value.
+	ok, err := fake.New().Port(workspace.Port{}).Prepare(ctx, baseRequest(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ok.Inputs = near
+	if err := ok.Admit(near.Invocation, near.Owner, near.Instance, ok.Allocation.Workspace); !errors.Is(err, workspace.ErrInvalid) {
+		t.Fatalf("over-cap ready receipt: Admit got %v, want ErrInvalid", err)
 	}
 
 	bs := baseRequest(t)
@@ -113,9 +141,32 @@ func TestReceiptNilListsRefused(t *testing.T) {
 	}
 }
 
+// nearCap returns a valid request whose encoding is within 60 bytes under
+// the decoder's size cap, so any receipt that records it is over the cap.
+func nearCap(t *testing.T) workspace.Request {
+	t.Helper()
+	req := baseRequest(t)
+	req.Writable = []string{}
+	b, _ := json.Marshal(req)
+	// Each "build/item-NNNNNN" adds 20 bytes: 17, two quotes and a comma.
+	for i := 0; len(b)+20*(i+1) <= runner.MaxDocumentBytes-20; i++ {
+		req.Writable = append(req.Writable, fmt.Sprintf("build/item-%06d", i))
+	}
+	b, _ = json.Marshal(req)
+	if n := len(b); n > runner.MaxDocumentBytes-20 || n <= runner.MaxDocumentBytes-60 {
+		t.Fatalf("nearCap: built %d bytes, want within 60 under %d", n, runner.MaxDocumentBytes)
+	}
+	if err := req.Validate(); err != nil {
+		t.Fatalf("nearCap: the request is not valid: %v", err)
+	}
+	return req
+}
+
 // TestObserveStoreFault: when an observation cannot be made and the store
 // cannot record the unknown outcome either, the caller gets an adapter
-// failure, never only a hold that hides a store still reading ready.
+// failure, never only a hold that hides a store still reading ready; a
+// receipt returned beside an error never reads ready; and when Revisions
+// fails, the store's own failure is not dropped.
 // regression: F-observe-put-error
 func TestObserveStoreFault(t *testing.T) {
 	req := baseRequest(t)
@@ -133,6 +184,88 @@ func TestObserveStoreFault(t *testing.T) {
 	}
 	if s, _ := env.Receipt(workspace.BindingKey(req.Instance)); s.Outcome != workspace.OutcomeReady {
 		t.Fatalf("control: the failing store changed the stored receipt to %q", s.Outcome)
+	}
+
+	// An observed ready receipt the store cannot record is returned with
+	// ErrAdapter, and never reads ready beside that error.
+	env = fake.New()
+	p = env.Port(workspace.Port{})
+	if _, err := p.Prepare(ctx, req); err != nil {
+		t.Fatal(err)
+	}
+	env.FailPut = true
+	r, err = p.Prepare(ctx, req)
+	if !errors.Is(err, workspace.ErrAdapter) || r.Outcome == workspace.OutcomeReady {
+		t.Fatalf("ready observation and failing store: got %q %v, want ErrAdapter and not ready", r.Outcome, err)
+	}
+
+	// Revisions failing: the unknown outcome is recorded; when the store
+	// cannot record it either, the store's failure is what the caller gets.
+	for _, failPut := range []bool{false, true} {
+		env = fake.New()
+		p = env.Port(workspace.Port{})
+		if _, err := p.Prepare(ctx, req); err != nil {
+			t.Fatal(err)
+		}
+		env.FailRevisions, env.FailPut = true, failPut
+		_, err = p.Prepare(ctx, req)
+		s, _ := env.Receipt(workspace.BindingKey(req.Instance))
+		switch {
+		case !errors.Is(err, workspace.ErrAdapter):
+			t.Fatalf("revisions fault (failing store %v): got %v, want ErrAdapter", failPut, err)
+		case !failPut && (!errors.Is(err, fake.ErrRevisions) || s.Outcome != workspace.OutcomeUnknown):
+			t.Fatalf("revisions fault: got %v (stored %q), want the Revisions failure and unknown stored", err, s.Outcome)
+		case failPut && !errors.Is(err, fake.ErrFault):
+			t.Fatalf("revisions fault and failing store: got %v, want the store's failure", err)
+		}
+	}
+}
+
+// TestRestoreGuardNoReceipt: restoring files into the binding's workspace
+// holds while it has unpublished files, whatever the store records of it:
+// no receipt at all, or an intent receipt with no allocation.
+// regression: F-restore-over-unpublished
+func TestRestoreGuardNoReceipt(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		intent bool
+		pres   workspace.Presence
+	}{
+		{"no receipt", false, workspace.PresencePresent},
+		{"intent receipt", true, workspace.PresencePresent},
+		{"no receipt, unknown files", false, workspace.PresenceUnknown},
+		{"control: clean workspace", false, workspace.PresenceNone},
+	} {
+		env := fake.New()
+		p := env.Port(workspace.Port{Continuity: runner.Preservation{
+			Files: runner.SupportYes, Conversation: runner.SupportNo, ProcessMemory: runner.SupportNo,
+			Descendants: runner.SupportNo, PendingInteractions: runner.SupportNo,
+		}})
+		a := baseRequest(t)
+		if _, err := p.Prepare(ctx, a); err != nil {
+			t.Fatal(err)
+		}
+		b := a
+		b.Instance.ID = "w2"
+		b.Restore = &workspace.Restore{Source: a.Instance, Needs: runner.PreservationNeed{Files: true}}
+		key := workspace.BindingKey(b.Instance)
+		prep, _ := env.Preparation(ctx, b.Instance.Cell, b.Environment)
+		ws, _ := env.Workspace(ctx, key, prep)
+		env.SetUnpublished(ws, tc.pres)
+		if tc.intent {
+			env.SetReceipt(key, workspace.Receipt{Version: workspace.Version, Inputs: b,
+				Outcome: workspace.OutcomeUnknown, Validation: workspace.Validation{Validator: "workspace.Match", Observer: "fake"}})
+		}
+		_, err := p.Prepare(ctx, b)
+		if tc.pres == workspace.PresenceNone {
+			if err != nil || env.Restores != 1 {
+				t.Fatalf("%s: got %v restores=%d, want a restoration", tc.name, err, env.Restores)
+			}
+			continue
+		}
+		if holdReason(t, err) != workspace.HoldUnpublished || env.Restores != 0 {
+			t.Fatalf("%s: restores=%d, want a hold and no copy", tc.name, env.Restores)
+		}
 	}
 }
 

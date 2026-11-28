@@ -12,6 +12,7 @@
 package workspace
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"path"
@@ -218,7 +219,15 @@ func (r Request) Validate() error {
 	if p := credentialPath(reflect.ValueOf(r), "request"); p != "" {
 		return fmt.Errorf("%w: %s", runner.ErrCredential, p)
 	}
-	return r.shape("request")
+	if err := r.shape("request"); err != nil {
+		return err
+	}
+	// A request the decoder's size cap would refuse can never be recorded in
+	// a receipt a caller decodes: refuse it before anything is stored.
+	if b, err := json.Marshal(r); err != nil || len(b) > runner.MaxDocumentBytes {
+		return invalid("request", "is longer than the decoder's size cap")
+	}
+	return nil
 }
 
 func (r Request) shape(at string) error {
@@ -378,9 +387,10 @@ func Decode(b []byte) (Receipt, error) {
 
 // Admit accepts a receipt only as a ready record of this invocation, owner,
 // instance and workspace. A receipt for another instance (a swapped
-// readiness), another invocation or another allocation is refused.
+// readiness), another invocation or another allocation is refused, and so is
+// one Decode would refuse, whoever built the value.
 func (r Receipt) Admit(inv Invocation, owner Owner, inst Instance, workspace string) error {
-	if err := r.Validate(); err != nil {
+	if err := roundTrips(r); err != nil {
 		return err
 	}
 	switch {

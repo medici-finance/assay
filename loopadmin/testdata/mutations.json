@@ -1821,7 +1821,7 @@
   },
   {
     "test": "TestReceiptNilListsRefused",
-    "why": "agent-execution/02 review F1 class: store an observed receipt without the strict round trip",
+    "why": "agent-execution/02 review F1 class: store a receipt without the strict round trip",
     "file": "workspace/port.go",
     "old": "if err := roundTrips(r); err != nil {",
     "new": "if err := r.Validate(); err != nil {"
@@ -1830,8 +1830,8 @@
     "test": "TestObserveStoreFault",
     "why": "agent-execution/02 review A2: drop the store error when recording an unknown observation",
     "file": "workspace/port.go",
-    "old": "\t\tif err := p.Store.Put(ctx, key, r); err != nil {\n\t\t\treturn r, opaque{ErrAdapter, err}\n\t\t}\n\t\treturn r, &Hold{HoldUnknownAllocation}",
-    "new": "\t\t_ = p.Store.Put(ctx, key, r)\n\t\treturn r, &Hold{HoldUnknownAllocation}"
+    "old": "\t\tif err := p.put(ctx, key, r); err != nil {\n\t\t\treturn r, err\n\t\t}\n\t\treturn r, &Hold{HoldUnknownAllocation}",
+    "new": "\t\t_ = p.put(ctx, key, r)\n\t\treturn r, &Hold{HoldUnknownAllocation}"
   },
   {
     "test": "TestRestoreRebind",
@@ -1839,5 +1839,47 @@
     "file": "workspace/port.go",
     "old": "if req.Restore == nil || sameRestore(prior.Restored, *req.Restore) {",
     "new": "if true {"
+  },
+  {
+    "test": "TestReceiptNilListsRefused",
+    "why": "agent-execution/02 review round 2 F1: accept a request over the decoder's size cap",
+    "file": "workspace/receipt.go",
+    "old": "\tif b, err := json.Marshal(r); err != nil || len(b) > runner.MaxDocumentBytes {\n\t\treturn invalid(\"request\", \"is longer than the decoder's size cap\")\n\t}\n",
+    "new": "\t_ = json.Marshal\n"
+  },
+  {
+    "test": "TestReceiptNilListsRefused",
+    "why": "agent-execution/02 review round 2 F1: admit a receipt Decode would refuse",
+    "file": "workspace/receipt.go",
+    "old": "if err := roundTrips(r); err != nil {",
+    "new": "if err := r.Validate(); err != nil {"
+  },
+  {
+    "test": "TestObserveStoreFault",
+    "why": "agent-execution/02 review round 2 F1: return a ready receipt beside an error",
+    "file": "workspace/port.go",
+    "old": "if err != nil && r.Outcome == OutcomeReady {",
+    "new": "if false {"
+  },
+  {
+    "test": "TestObserveStoreFault",
+    "why": "agent-execution/02 review round 2 A7: drop the store error when Revisions fails",
+    "file": "workspace/port.go",
+    "old": "\t\tif perr := p.put(ctx, key, r); perr != nil {\n\t\t\treturn r, perr\n\t\t}\n",
+    "new": "\t\t_ = p.put(ctx, key, r)\n"
+  },
+  {
+    "test": "TestRestoreGuardNoReceipt",
+    "why": "agent-execution/02 security round 2 S5: restore files without the unpublished-files guard",
+    "file": "workspace/port.go",
+    "old": "\t\t\tif err := p.overwrite(ctx, ws, func() error {\n\t\t\t\treturn p.Resources.RestoreFiles",
+    "new": "\t\t\tif err := func(f func() error) error { return f() }(func() error {\n\t\t\t\treturn p.Resources.RestoreFiles"
+  },
+  {
+    "test": "TestRestoreGuardNoReceipt",
+    "why": "agent-execution/02 security round 2 S5 class: overwrite a workspace's files without asking Git",
+    "file": "workspace/port.go",
+    "old": "\tif pres, err := p.Git.Unpublished(ctx, ws); err != nil || pres != PresenceNone {\n\t\treturn &Hold{HoldUnpublished}\n\t}\n\tif err := effect(); err != nil {",
+    "new": "\tif err := effect(); err != nil {"
   }
 ]

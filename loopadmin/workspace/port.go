@@ -157,8 +157,17 @@ func (p *Port) Release(ctx context.Context, inst Instance, expired bool) error {
 // reused, re-observed; any other prior receipt is rebound: a partial or
 // unknown one is reconciled first, and files are never checked out over
 // while unpublished or unknown files are present. Every return path leaves
-// the store holding the receipt as far as it got.
+// the store holding the receipt as far as it got. A receipt returned with an
+// error never reads ready: the caller cannot rely on what was stored.
 func (p *Port) Prepare(ctx context.Context, req Request) (Receipt, error) {
+	r, err := p.prepare(ctx, req)
+	if err != nil && r.Outcome == OutcomeReady {
+		r.Outcome = OutcomeUnknown
+	}
+	return r, err
+}
+
+func (p *Port) prepare(ctx context.Context, req Request) (Receipt, error) {
 	if err := req.Validate(); err != nil {
 		return Receipt{}, err
 	}
@@ -194,8 +203,8 @@ func (p *Port) Prepare(ctx context.Context, req Request) (Receipt, error) {
 	}
 	// The intent is durable before the first adapter call, so a crash
 	// between here and the next Put leaves an unknown receipt to reconcile.
-	if err := p.Store.Put(ctx, key, r); err != nil {
-		return Receipt{}, opaque{ErrAdapter, err}
+	if err := p.put(ctx, key, r); err != nil {
+		return Receipt{}, err
 	}
 	prep, err := p.Resources.Preparation(ctx, req.Instance.Cell, req.Environment)
 	if err != nil {
@@ -210,8 +219,8 @@ func (p *Port) Prepare(ctx context.Context, req Request) (Receipt, error) {
 	}
 	r.Allocation = Allocation{Preparation: prep, Workspace: ws}
 	r.Outcome = OutcomePartial
-	if err := p.Store.Put(ctx, key, r); err != nil {
-		return r, opaque{ErrAdapter, err}
+	if err := p.put(ctx, key, r); err != nil {
+		return r, err
 	}
 	if found && prior.Outcome != OutcomeReady {
 		// Reconcile before retry: the earlier attempt's allocation must be
@@ -226,20 +235,18 @@ func (p *Port) Prepare(ctx context.Context, req Request) (Receipt, error) {
 			return r, &Hold{HoldNoSource}
 		}
 		if req.Restore.Needs.Files {
-			// Restoring into a workspace an earlier attempt allocated copies
-			// over its files: only when none are unpublished or unknown.
-			if prior.Allocation.Workspace != "" {
-				if pres, err := p.Git.Unpublished(ctx, ws); err != nil || pres != PresenceNone {
-					return r, &Hold{HoldUnpublished}
-				}
-			}
-			if err := p.Resources.RestoreFiles(ctx, src.Allocation.Workspace, ws); err != nil {
-				return r, opaque{ErrAdapter, err}
+			// The workspace may hold files whatever the store says of it (no
+			// receipt, or an intent receipt with no allocation), so the copy
+			// goes through the same guard as a checkout.
+			if err := p.overwrite(ctx, ws, func() error {
+				return p.Resources.RestoreFiles(ctx, src.Allocation.Workspace, ws)
+			}); err != nil {
+				return r, err
 			}
 		}
 		r.Restored = &Restored{Source: req.Restore.Source, Preserved: req.Restore.Needs}
-		if err := p.Store.Put(ctx, key, r); err != nil {
-			return r, opaque{ErrAdapter, err}
+		if err := p.put(ctx, key, r); err != nil {
+			return r, err
 		}
 	}
 	actual, err := p.Git.Revisions(ctx, ws)
@@ -247,12 +254,10 @@ func (p *Port) Prepare(ctx context.Context, req Request) (Receipt, error) {
 		return r, opaque{ErrAdapter, err}
 	}
 	if !sameRepos(actual, req.Repositories) {
-		pres, err := p.Git.Unpublished(ctx, ws)
-		if err != nil || pres != PresenceNone {
-			return r, &Hold{HoldUnpublished}
-		}
-		if err := p.Git.Checkout(ctx, ws, req.Repositories); err != nil {
-			return r, opaque{ErrAdapter, err}
+		if err := p.overwrite(ctx, ws, func() error {
+			return p.Git.Checkout(ctx, ws, req.Repositories)
+		}); err != nil {
+			return r, err
 		}
 	}
 	if err := p.Resources.Apply(ctx, ws, req.Writable, req.Policy); err != nil {
@@ -283,15 +288,15 @@ func (p *Port) observe(ctx context.Context, key string, r Receipt) (Receipt, err
 		r.Outcome = OutcomeUnknown
 		// A store that cannot record the unknown outcome may still hold an
 		// earlier ready one: that is an adapter failure, not only a hold.
-		if err := p.Store.Put(ctx, key, r); err != nil {
-			return r, opaque{ErrAdapter, err}
+		if err := p.put(ctx, key, r); err != nil {
+			return r, err
 		}
 		return r, &Hold{HoldUnknownAllocation}
 	}
 	if eff.Repositories, err = p.Git.Revisions(ctx, r.Allocation.Workspace); err != nil {
 		r.Outcome = OutcomeUnknown
-		if perr := p.Store.Put(ctx, key, r); perr != nil {
-			return r, opaque{ErrAdapter, perr}
+		if perr := p.put(ctx, key, r); perr != nil {
+			return r, perr
 		}
 		return r, opaque{ErrAdapter, err}
 	}
@@ -302,13 +307,8 @@ func (p *Port) observe(ctx context.Context, key string, r Receipt) (Receipt, err
 			r.Outcome = OutcomeNotReady
 		}
 	}
-	// The one choke point: a receipt is stored with its observed outcome only
-	// if it survives the same strict decode a caller admits it through.
-	if err := roundTrips(r); err != nil {
+	if err := p.put(ctx, key, r); err != nil {
 		return r, err
-	}
-	if err := p.Store.Put(ctx, key, r); err != nil {
-		return r, opaque{ErrAdapter, err}
 	}
 	if r.Outcome != OutcomeReady {
 		return r, ErrNotReady
@@ -316,8 +316,35 @@ func (p *Port) observe(ctx context.Context, key string, r Receipt) (Receipt, err
 	return r, nil
 }
 
+// put is the one way the port stores a receipt: only one that survives the
+// same strict decode a caller admits it through (ErrInvalid otherwise, and
+// nothing is stored), and a store failure is ErrAdapter.
+func (p *Port) put(ctx context.Context, key string, r Receipt) error {
+	if err := roundTrips(r); err != nil {
+		return err
+	}
+	if err := p.Store.Put(ctx, key, r); err != nil {
+		return opaque{ErrAdapter, err}
+	}
+	return nil
+}
+
+// overwrite is the one way the port replaces a workspace's files (a checkout
+// or a restoration): only when Git reports none unpublished, whatever the
+// store records of the workspace. Present, unknown or unreadable holds.
+func (p *Port) overwrite(ctx context.Context, ws string, effect func() error) error {
+	if pres, err := p.Git.Unpublished(ctx, ws); err != nil || pres != PresenceNone {
+		return &Hold{HoldUnpublished}
+	}
+	if err := effect(); err != nil {
+		return opaque{ErrAdapter, err}
+	}
+	return nil
+}
+
 // roundTrips validates r by encoding it and decoding it strictly, so every
-// receipt the port stores is one Decode accepts.
+// receipt the port stores, and every receipt Admit accepts, is one Decode
+// accepts.
 func roundTrips(r Receipt) error {
 	b, err := json.Marshal(r)
 	if err != nil {
