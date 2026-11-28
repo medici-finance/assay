@@ -346,6 +346,9 @@ func TestCLIConfigFlow(t *testing.T) {
 
 // regression: #2111
 func TestCLILegacyForms(t *testing.T) {
+	// The PR build-test shard selects this suite to exercise the check contract.
+	t.Run("check output formats", testCheckOutputFormats)
+
 	// Every form the consumers write (workflows, docs, Verify rows, the init scaffold).
 	consumer := []struct {
 		args []string

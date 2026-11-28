@@ -515,3 +515,93 @@ func TestSourceAcceptanceBracket(t *testing.T) {
 		})
 	}
 }
+
+// regression: #7805
+// Exercise the same approval client that the host commands use in production.
+func TestProtectedBracketVerifierCredential(t *testing.T) {
+	for _, scenario := range []string{"clean-host", "ambient-credential", "open-mint-refused", "close-mint-refused", "changed-admission"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := transBracketWithSupplement(t, false, false)
+			check := strings.Replace(getFile(t, f.check), "example-org/one", rlRepo, 1)
+			putFile(t, f.check, check)
+			transitionClient = nil
+			slForge(t, f.forge)
+			calls := rcRecord(t)
+			slOutside(t)
+			if scenario != "clean-host" {
+				t.Setenv("GH_TOKEN", rcDecoy)
+			}
+			mode := "ok"
+			if scenario == "open-mint-refused" {
+				mode = "fail"
+			}
+			log := rcMinter(t, mode)
+			args := []string{"--open-bracket", "--root", f.home, "--brief", f.brief, "--out", f.receipt, "--acceptance-record", f.record, "--acceptance-forge", "--source-acceptance"}
+			r, diag := captureVerifyrun(t, args)
+			if scenario == "open-mint-refused" {
+				if r.code != verifyrunExitCouldNot || getFile(t, log) == "" || len(calls.seen) != 0 || getFile(t, f.receipt) != "" {
+					t.Fatal("failed mint must refuse before reading approvals or writing a receipt", r.code, diag, calls.seen)
+				}
+				return
+			}
+			if r.code != 0 {
+				t.Fatal(diag)
+			}
+			checkHost := func(calls []string, mint string) {
+				t.Helper()
+				fields := strings.Fields(mint)
+				if len(fields) != 5 || strings.Join(fields[:4], " ") != "verifier --repo "+rlRepo+" --read-only-out" {
+					t.Fatalf("unexpected mint arguments %q", mint)
+				}
+				if _, err := os.Stat(filepath.Dir(fields[4])); !os.IsNotExist(err) {
+					t.Fatal("credential directory survived host step")
+				}
+				read := false
+				for _, call := range calls {
+					if !strings.HasSuffix(call, " Bearer "+rcMinted) {
+						t.Fatal("wrong credential reached fake forge")
+					}
+					read = read || strings.Contains(call, "/issues/comments/")
+				}
+				if !read || calls[len(calls)-1] != "DELETE /installation/token Bearer "+rcMinted {
+					t.Fatal("expected approval read followed by revocation", calls)
+				}
+			}
+			openMint := getFile(t, log)
+			checkHost(calls.seen, openMint)
+			hostCalls := len(calls.seen)
+			r, diag = captureVerifyrun(t, f.runArgs())
+			beforeClose := getFile(t, f.witness)
+			if r.code != 0 || beforeClose == "" || len(calls.seen) != hostCalls || getFile(t, log) != openMint {
+				t.Fatal("offline row run failed or consulted the forge", diag)
+			}
+			if scenario == "changed-admission" {
+				putFile(t, f.check, strings.Replace(check, rlRepo, "example-org/other", 1))
+			}
+			if scenario == "close-mint-refused" {
+				log = rcMinter(t, "fail")
+			}
+			code, diag := f.close(t, true)
+			if scenario == "changed-admission" || scenario == "close-mint-refused" {
+				if code != verifyrunExitCouldNot || len(calls.seen) != hostCalls || getFile(t, f.witness) != beforeClose {
+					t.Fatal("refused close must preserve witness without an approval read", code, diag)
+				}
+				if scenario == "changed-admission" && getFile(t, log) != openMint {
+					t.Fatal("minted before re-admitting the witnessed run")
+				}
+				if scenario == "close-mint-refused" && getFile(t, log) == "" {
+					t.Fatal("close did not attempt a fresh mint")
+				}
+				return
+			}
+			if code != 0 {
+				t.Fatal(diag)
+			}
+			closeMint := strings.TrimPrefix(getFile(t, log), openMint)
+			checkHost(calls.seen[hostCalls:], closeMint)
+			if closeMint == openMint || strings.Contains(getFile(t, f.receipt)+getFile(t, f.witness)+diag, rcMinted) {
+				t.Fatal("host steps shared a credential file or disclosed its contents")
+			}
+		})
+	}
+}

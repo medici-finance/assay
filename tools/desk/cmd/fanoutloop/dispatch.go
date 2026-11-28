@@ -37,6 +37,15 @@ func renderDispatchPrompt(it loopengine.Item, tier loopengine.Tier) string {
 		b.WriteString("\n")
 	} else if strings.TrimSpace(it.Payload[payloadObligationID]) != "" {
 		renderRepairPrompt(&b, it, tier)
+	} else if it.Payload["kind"] == kindInbox {
+		// An addressed inbox issue with no placeholder brief: the issue IS the task. The title is
+		// display text only, quoted; the worker reads the issue itself.
+		fmt.Fprintf(&b, "IMPLEMENT ISSUE %s#%s (tier=%s) — addressed to:%s inbox item; the issue is the task.\n\n",
+			it.Payload["repo"], it.Payload["issue"], tier, it.Payload["to"])
+		fmt.Fprintf(&b, "Issue: %s#%s (title, display only: %q)\n", it.Payload["repo"], it.Payload["issue"], it.Payload["title"])
+		fmt.Fprintf(&b, "Target repo: %s\n", it.Payload["repo"])
+		fmt.Fprintf(&b, "Dispatch key: %s (PR trailer `Issue: #%s`)\n", it.ID, it.Payload["issue"])
+		fmt.Fprintf(&b, "Target SHA (merged main to branch from): %s\n\n", it.TargetSHA)
 	} else {
 		fmt.Fprintf(&b, "IMPLEMENT %s (tier=%s)\n\n", it.ID, tier)
 		fmt.Fprintf(&b, "Brief: %s\n", it.BriefPath)

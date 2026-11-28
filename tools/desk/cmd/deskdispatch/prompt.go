@@ -605,9 +605,10 @@ func writeReleaseClaim(b *strings.Builder, o dispatchOpts, plan dispatchPlan, re
 //
 // readerLoop is the $DESK_LOOP of the shell that will run the command. desktoken refuses a
 // role that loop does not act as (#6069), and this command uses another role by design (a
-// worker-desk or verify-desk window claims as the desk App; a verifier dispatched from the-desk
-// releases as verifier). In that case the printed mint carries the audited --cross-role
-// override, so the command still runs as printed.
+// worker-desk window claims as the desk App; a verifier dispatched from the-desk releases as
+// verifier). In that case the printed mint carries the audited --cross-role override, so the
+// command still runs as printed. A verify-desk window claims a verifier dispatch as verifier
+// (claimRoleForKit, #7815), so its own hints carry no override.
 func claimCredArg(tool, role, repo, readerLoop string) string {
 	if tool != goClaimBinary {
 		return ""

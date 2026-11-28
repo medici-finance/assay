@@ -372,7 +372,7 @@ var forgeBodyNotForge = map[string]notForgeEntry{
 		"v1_terminal_actions.go:decodeStrict uncapped-body-decode",
 	}},
 	"../../forgeread": {"the forge-service client's answer, read to limit+1 and refused over its limit", []string{
-		"client/client.go:Client.Do uncapped-body-read",
+		"client/client.go:Client.roundTrip uncapped-body-read",
 	}},
 	"../../statusgen/modcachepublic.go": {"reads limit+1 and refuses a body over its limit", []string{
 		"modcachepublic.go:provePublicAssay uncapped-body-read",
@@ -385,7 +385,7 @@ var forgeBodyNotForge = map[string]notForgeEntry{
 		"readcost.go:boardTransport.RoundTrip uncapped-body-read",
 	}},
 	"internal/forgeservice": {"the read-only decoder reads its incoming request to limit+1 and refuses oversized input", []string{
-		"server/decode.go:DecodeMirrorQuery uncapped-body-read",
+		"server/decode.go:readMirrorBody uncapped-body-read",
 	}},
 	"internal/kubecompat": {"a test fixture server reading its own request bodies", []string{
 		"testfixture/server.go:Server.serve uncapped-body-decode",

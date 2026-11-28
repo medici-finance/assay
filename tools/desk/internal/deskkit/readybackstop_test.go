@@ -25,7 +25,10 @@ type backstopRig struct {
 	reqReads int
 }
 
-func (r *backstopRig) run() BackstopOutcome {
+func (r *backstopRig) run() BackstopOutcome { return r.backstop().Run() }
+
+// backstop builds the rig's ReadyBackstop and starts its clock.
+func (r *backstopRig) backstop() ReadyBackstop {
 	r.now = time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	var reqs func() (*MergeRequirements, error)
 	if !r.noReq {
@@ -48,7 +51,7 @@ func (r *backstopRig) run() BackstopOutcome {
 		Deadline:       ReadyBackstopDeadline, Interval: ReadyBackstopInterval,
 		Now:   func() time.Time { return r.now },
 		Sleep: func(d time.Duration) { r.now = r.now.Add(d) },
-	}.Run()
+	}
 }
 
 // regression: #6242
@@ -172,7 +175,8 @@ func TestBackstopRevertMarker(t *testing.T) {
 	// Both flip verbs read the marker (deskflip since #6253, deskpost ready since #6254, each
 	// through NotRevertedHold), so the comment names both as refusing a re-flip.
 	body := r.comments[0]
-	if !strings.Contains(body, "Neither deskflip nor deskpost ready will flip this head again; a new head clears that.") ||
+	if !strings.Contains(body, "Neither deskflip nor deskpost ready will flip this head again while that cause holds; "+
+		"a fresh read showing it no longer holds, or a new head, clears that.") ||
 		strings.Contains(body, "ready verbs") {
 		t.Errorf("revert comment = %q, want it to name deskflip and deskpost ready as refusing a re-flip", body)
 	}
@@ -193,12 +197,14 @@ func metRequirements() *MergeRequirements {
 //
 // regression: #6508
 func TestBackstopBlockedReqUnmet(t *testing.T) {
+	// "mergeable unset" is a verdict the forge does not serve: UNKNOWN is re-read, never judged at
+	// once (#7096, readybackstop_latch_test.go).
 	cases := map[string]struct {
 		edit func(*MergeRequirements)
 		want string
 	}{
 		"conflicting":     {func(m *MergeRequirements) { m.Mergeable = "CONFLICTING" }, "merge conflict"},
-		"mergeable unset": {func(m *MergeRequirements) { m.Mergeable = "UNKNOWN" }, "has not computed"},
+		"mergeable unset": {func(m *MergeRequirements) { m.Mergeable = "" }, "has not computed"},
 		"no approval":     {func(m *MergeRequirements) { m.ReviewDecision = "REVIEW_REQUIRED" }, "REVIEW_REQUIRED"},
 		"changes asked":   {func(m *MergeRequirements) { m.ReviewDecision = "CHANGES_REQUESTED" }, "CHANGES_REQUESTED"},
 		"check failed":    {func(m *MergeRequirements) { m.Required[0].State = "FAILURE" }, "build-test is FAILURE"},
@@ -302,7 +308,7 @@ func TestRevertMarkerBlockedLapses(t *testing.T) {
 	if _, ok := FindReadyBackstopRevert([]Comment{legacy("BLOCKED"), legacy("DIRTY")}, "abc123"); !ok {
 		t.Error("a DIRTY revert did not hold the head")
 	}
-	named := Comment{Body: readyBackstopRevertBody("BLOCKED", "abc123", []string{"the review decision is REVIEW_REQUIRED"})}
+	named := Comment{Body: readyBackstopRevertBody("BLOCKED", "abc123", []string{"the review decision is REVIEW_REQUIRED"}, []string{RevertCauseReview})}
 	named.Author.Login = bot
 	if _, ok := FindReadyBackstopRevert([]Comment{named}, "abc123"); !ok {
 		t.Error("a BLOCKED revert naming an unmet requirement did not hold the head")

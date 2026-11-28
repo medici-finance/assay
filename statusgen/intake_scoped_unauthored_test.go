@@ -1,34 +1,12 @@
 package main
 
 import (
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
-
-// captureStderr runs fn with os.Stderr redirected to a pipe and returns what it
-// wrote. NOTICE lines (emitNotices) go to stderr, so the lint-integration test
-// needs this to observe them (the stdout helper lives in alarms_test.go).
-func captureStderr(t *testing.T, fn func()) string {
-	t.Helper()
-	old := os.Stderr
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	os.Stderr = w
-	defer func() { os.Stderr = old }()
-	fn()
-	w.Close()
-	data, err := io.ReadAll(r)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return string(data)
-}
 
 func TestScopedToStream(t *testing.T) {
 	cases := []struct {
