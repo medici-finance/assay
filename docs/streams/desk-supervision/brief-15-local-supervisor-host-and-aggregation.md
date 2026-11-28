@@ -180,7 +180,7 @@ the operator's own credentials; it does not proceed on a timeout).
 ## Verify (executable — no prose-only DoD items)
 | # | Class | Command | Expect |
 |---|-------|---------|--------|
-| 1 | check | `cd tools/cellctl && bash tests/house-cell.test.sh` | exit 0; output contains a `PASS` line for the new `DESKD=1` case (e.g. `PASS: DESKD=1 house cell requires + supervises a local deskd`) — the whole suite, incl. the existing `DESKD=0` case, stays green |
+| 1 | check | `cd tools/cellctl && bash tests/house-cell.test.sh` | exit 0; output contains `PASS: DESKD=1` (the new `DESKD=1` case, e.g. `PASS: DESKD=1 house cell requires + supervises a local deskd`) — the whole suite, incl. the existing `DESKD=0` case, stays green |
 | 2 | check +flow | `cd tools/desk && GOWORK=off go build ./cmd/desksupervise && ./desksupervise aggregate --json --cells-fixture cmd/desksupervise/testdata/cells \| python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["schema"], len(d["cells"]))'` | exit 0; output is `desksupervise-aggregate-v1 3` |
 | 3 | check +dereference | `cd tools/desk && ./desksupervise aggregate --json --cells-fixture cmd/desksupervise/testdata/cells \| python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["fleet"]["blind_cells"])'` | exit 0; output contains `example-cell-c` (the unreadable cell is named blind, not dropped) |
 | 4 | check +dereference | `cd tools/desk && ./desksupervise aggregate --json --cells-fixture cmd/desksupervise/testdata/cells \| python3 -c 'import json,sys; d=json.load(sys.stdin); c=[x for x in d["cells"] if x["cell"]=="example-cell-c"][0]; print(c["status"])'` | exit 0; output is `could-not-check` |

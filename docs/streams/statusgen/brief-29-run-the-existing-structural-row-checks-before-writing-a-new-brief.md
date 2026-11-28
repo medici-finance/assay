@@ -146,7 +146,7 @@ Commands run from this repository root. Named new test contracts below are plann
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd statusgen && go test ./... -run "^TestNewBriefRowRefusal$" -count=1 -v > "${TMPDIR:-/tmp}/notice-29.log" 2>&1 && grep -F -e "--- PASS: TestNewBriefRowRefusal " "${TMPDIR:-/tmp}/notice-29.log"` | exit 0; output contains the named PASS line. Matrix: one rejected fixture per structural rule; planned and unplanned names; no partial writes to dependencies or README; valid portable commands pass; a hand-authored second bad brief bypasses the generator and is still caught by the PR ratchet | check:ci +mutation +flow +dereference |
+| 1 | `cd statusgen && go test ./... -run "^TestNewBriefRowRefusal$" -count=1 -v > "${TMPDIR:-/tmp}/notice-29.log" 2>&1 && grep -F -e "--- PASS: TestNewBriefRowRefusal " "${TMPDIR:-/tmp}/notice-29.log"` | exit 0; output contains `--- PASS: TestNewBriefRowRefusal`. Matrix: one rejected fixture per structural rule; planned and unplanned names; no partial writes to dependencies or README; valid portable commands pass; a hand-authored second bad brief bypasses the generator and is still caught by the PR ratchet | check:ci +mutation +flow +dereference |
 | 2 | `cd statusgen && go test ./... -count=1` | exit 0; existing closure, witness and differential tests still pass | check:ci +neighbour |
 | 3 | `statusgen --root . --consumers` | exit 0; the implementation diff corroborates the routing commitments | check +flow |
 

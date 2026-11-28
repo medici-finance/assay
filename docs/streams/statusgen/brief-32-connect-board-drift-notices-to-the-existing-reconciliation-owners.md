@@ -87,7 +87,7 @@ Commands run from this repository root. Named new test contracts below are plann
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd statusgen && go test ./... -run "^TestNoticeLoopClosure$" -count=1 -v > "${TMPDIR:-/tmp}/notice-32.log" 2>&1 && grep -F -e "--- PASS: TestNoticeLoopClosure " "${TMPDIR:-/tmp}/notice-32.log"` | exit 0; output contains the named PASS line. Matrix: foreign-owned/already-delivered rows cannot dispatch; authoring-only PR does not advance status; absent forge state remains unknown; Verified actor follows accepted run; unique register link repairs once; ambiguous link does not change | check:ci +mutation +flow +dereference |
+| 1 | `cd statusgen && go test ./... -run "^TestNoticeLoopClosure$" -count=1 -v > "${TMPDIR:-/tmp}/notice-32.log" 2>&1 && grep -F -e "--- PASS: TestNoticeLoopClosure " "${TMPDIR:-/tmp}/notice-32.log"` | exit 0; output contains `--- PASS: TestNoticeLoopClosure`. Matrix: foreign-owned/already-delivered rows cannot dispatch; authoring-only PR does not advance status; absent forge state remains unknown; Verified actor follows accepted run; unique register link repairs once; ambiguous link does not change | check:ci +mutation +flow +dereference |
 | 2 | `cd statusgen && go test ./... -count=1` | exit 0; existing closure, witness and differential tests still pass | check:ci +neighbour |
 | 3 | `statusgen --root . --consumers` | exit 0; the implementation diff corroborates the routing commitments | check +flow |
 

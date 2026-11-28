@@ -86,7 +86,7 @@ Commands run from this repository root. Named new test contracts below are plann
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd statusgen && go test ./... -run "^TestRuntimeNoticeSeverity$" -count=1 -v > "${TMPDIR:-/tmp}/notice-33.log" 2>&1 && grep -F -e "--- PASS: TestRuntimeNoticeSeverity " "${TMPDIR:-/tmp}/notice-33.log"` | exit 0; output contains the named PASS line. Matrix: every registered promoted rule agrees between runtime and rendered table; untouched legacy stays unchanged; newly introduced active defect fails; historical record stays frozen; new closure remains strict; missing cleanup receipt cannot be reported as promoted | check:ci +mutation +flow +dereference |
+| 1 | `cd statusgen && go test ./... -run "^TestRuntimeNoticeSeverity$" -count=1 -v > "${TMPDIR:-/tmp}/notice-33.log" 2>&1 && grep -F -e "--- PASS: TestRuntimeNoticeSeverity " "${TMPDIR:-/tmp}/notice-33.log"` | exit 0; output contains `--- PASS: TestRuntimeNoticeSeverity`. Matrix: every registered promoted rule agrees between runtime and rendered table; untouched legacy stays unchanged; newly introduced active defect fails; historical record stays frozen; new closure remains strict; missing cleanup receipt cannot be reported as promoted | check:ci +mutation +flow +dereference |
 | 2 | `cd statusgen && go test ./... -count=1` | exit 0; existing closure, witness and differential tests still pass | check:ci +neighbour |
 | 3 | `statusgen --root . --consumers` | exit 0; the implementation diff corroborates the routing commitments | check +flow |
 

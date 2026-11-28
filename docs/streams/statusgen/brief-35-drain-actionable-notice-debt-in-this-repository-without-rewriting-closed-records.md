@@ -104,7 +104,7 @@ Commands run from this repository root. Named new test contracts below are plann
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd statusgen && go test ./... -run "^TestNoticeRatchet$" -count=1 -v > "${TMPDIR:-/tmp}/notice-35.log" 2>&1 && grep -F -e "--- PASS: TestNoticeRatchet " "${TMPDIR:-/tmp}/notice-35.log"` | exit 0; output contains the named PASS line. Matrix: the installed ratchet still rejects a second newly introduced bad row after cleanup | check:ci +mutation +flow +dereference |
+| 1 | `cd statusgen && go test ./... -run "^TestNoticeRatchet$" -count=1 -v > "${TMPDIR:-/tmp}/notice-35.log" 2>&1 && grep -F -e "--- PASS: TestNoticeRatchet " "${TMPDIR:-/tmp}/notice-35.log"` | exit 0; output contains `--- PASS: TestNoticeRatchet`. Matrix: the installed ratchet still rejects a second newly introduced bad row after cleanup | check:ci +mutation +flow +dereference |
 | 2 | `cd statusgen && go test ./... -count=1` | exit 0; existing closure, witness and differential tests still pass | check:ci +neighbour |
 | 3 | `statusgen --root . --lint --json > "${TMPDIR:-/tmp}/active-notices.json"` | exit 0; JSON report proves zero active Family A and derivable Family B findings; residuals match the reviewed report | check +dereference |
 | 4 | `git diff --check` | exit 0; output is empty | check:ci |

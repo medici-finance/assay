@@ -91,7 +91,7 @@ Commands run from this repository root. Named new test contracts below are plann
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd statusgen && go test ./... -run "^TestHistoricalNoticeReport$" -count=1 -v > "${TMPDIR:-/tmp}/notice-28.log" 2>&1 && grep -F -e "--- PASS: TestHistoricalNoticeReport " "${TMPDIR:-/tmp}/notice-28.log"` | exit 0; output contains the named PASS line. Matrix: active, pre-existing done, pre-existing verified, unknown-status and newly closed briefs; every included emitter; text/JSON total agreement; detail mode restores individual historical lines; closure and witness failures retain nonzero exit | check:ci +mutation +flow +dereference |
+| 1 | `cd statusgen && go test ./... -run "^TestHistoricalNoticeReport$" -count=1 -v > "${TMPDIR:-/tmp}/notice-28.log" 2>&1 && grep -F -e "--- PASS: TestHistoricalNoticeReport " "${TMPDIR:-/tmp}/notice-28.log"` | exit 0; output contains `--- PASS: TestHistoricalNoticeReport`. Matrix: active, pre-existing done, pre-existing verified, unknown-status and newly closed briefs; every included emitter; text/JSON total agreement; detail mode restores individual historical lines; closure and witness failures retain nonzero exit | check:ci +mutation +flow +dereference |
 | 2 | `cd statusgen && go test ./... -count=1` | exit 0; existing closure, witness and differential tests still pass | check:ci +neighbour |
 | 3 | `statusgen --root . --consumers` | exit 0; the implementation diff corroborates the routing commitments | check +flow |
 

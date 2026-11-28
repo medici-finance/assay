@@ -85,7 +85,7 @@ Commands run from this repository root. Named new test contracts below are plann
 
 | # | Command | Expect | Class |
 |---|---------|--------|-------|
-| 1 | `cd statusgen && go test ./... -run "^TestNoticeRatchet$" -count=1 -v > "${TMPDIR:-/tmp}/notice-27.log" 2>&1 && grep -F -e "--- PASS: TestNoticeRatchet " "${TMPDIR:-/tmp}/notice-27.log"` | exit 0; output contains the named PASS line. Matrix: unchanged legacy debt passes; an added and an edited brief each introduce a second defect and fail; unrelated-file changes pass; moved absolute roots do not inflate debt; historical summaries and missing siblings remain visible; unavailable base cannot print a clean comparison | check:ci +mutation +flow +dereference |
+| 1 | `cd statusgen && go test ./... -run "^TestNoticeRatchet$" -count=1 -v > "${TMPDIR:-/tmp}/notice-27.log" 2>&1 && grep -F -e "--- PASS: TestNoticeRatchet " "${TMPDIR:-/tmp}/notice-27.log"` | exit 0; output contains `--- PASS: TestNoticeRatchet`. Matrix: unchanged legacy debt passes; an added and an edited brief each introduce a second defect and fail; unrelated-file changes pass; moved absolute roots do not inflate debt; historical summaries and missing siblings remain visible; unavailable base cannot print a clean comparison | check:ci +mutation +flow +dereference |
 | 2 | `cd statusgen && go test ./... -count=1` | exit 0; existing closure, witness and differential tests still pass | check:ci +neighbour |
 | 3 | `statusgen --root . --consumers` | exit 0; the implementation diff corroborates the routing commitments | check +flow |
 
