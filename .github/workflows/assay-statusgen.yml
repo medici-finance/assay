@@ -163,9 +163,10 @@ jobs:
   corroborate:
     if: github.event_name == 'pull_request'
     runs-on: medici-builder-public
-    # --corroborate reads the PR's reviews, comments and file list.
+    # Resolving a decision record's ruling also reads issue comments.
     permissions:
       contents: read
+      issues: read
       pull-requests: read
     # GOENV=off: Go's per-user env file (written by `go env -w`, which an
     # earlier job on a reused runner could have run) is ignored. GOTOOLCHAIN=local:
@@ -256,21 +257,23 @@ jobs:
           fi
           tar -C "${RUNNER_TEMP}" -xzf "${RUNNER_TEMP}/gh.tar.gz"
           echo "${RUNNER_TEMP}/gh_2.63.2_linux_amd64/bin" >> "${GITHUB_PATH}"
-      - name: statusgen --corroborate (findings-register transitions)
+      # Every change on the active or archived board reaches the base-built
+      # validator. It decides which findings and ruling links to corroborate.
+      - name: statusgen --corroborate (findings, decision records, ruling links)
         env:
           GH_TOKEN: ${{ github.token }}
           # name:login pairs; unset leaves every human:<name> unmapped, so every
-          # register transition is MISSING-CORROBORATION. Fails closed.
+          # register transition and every ruling link is MISSING-CORROBORATION.
+          # Fails closed.
           ASSAY_HUMAN_LOGIN_MAP: ${{ vars.ASSAY_HUMAN_LOGIN_MAP }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -euo pipefail
-          # Assign first, then test: a failing git diff must red the step, not
-          # read as "no findings touched".
-          changed="$(git diff --no-ext-diff --no-textconv --name-only HEAD^1 HEAD -- docs/streams/findings/)"
+          # Keep the diff separate so a Git error fails the step.
+          changed="$(git diff --no-ext-diff --no-textconv --no-renames --name-only HEAD^1 HEAD -- docs/streams/ docs/archive/)"
           if [ -z "$changed" ]; then
-            echo "PR touches no docs/streams/findings/ entry — register-transition check not applicable"
+            echo "PR touches no board files — corroboration not applicable"
             exit 0
           fi
           # The guard reads the base name live; the tie step checked the event's.

@@ -175,6 +175,8 @@ RISK-VALUE: DERIVED — `capacity < 0` refusal @ tools/desk/internal/reviewflow/
 
 **VERIFY: BLOCKED** — rows 1, 2 and 4 not run to a verdict: the pinned verify-runner image's module cache predates the tools/desk go.sum (#4683). Row 3's consumers check exited 2 (COULD-NOT-CHECK: the delivery could not be derived, and the refusal branch taken was not captured) and needs a pinned delivery/base amendment (#4560). No acceptance obligation was observed failing.
 
+### Independent re-verification — 2026-11-19, desk tools v1.0.89, Linux host lane
+
 Acceptance-Changes: 3=Command
 Verification-Table: delivery=f9cba0a88d39085831c86717aab04736c562a774 base=d41670bde8b11276639b860b7ea775f6cda8970b original=d41670bde8b11276639b860b7ea775f6cda8970b
 Acceptance-Transition: amendment=65c2f44b31a2d5526652a116fe9afb8831c69c59 approval=https://github.com/medici-finance/assay/issues/6856#issuecomment-6989040118
@@ -187,15 +189,17 @@ Acceptance-Transition: amendment=65c2f44b31a2d5526652a116fe9afb8831c69c59 approv
 | 4 | `(cd tools/desk && o=$(mktemp) && trap 'rm -f "$o"' 0 && GOWORK=off go test -count=1 -v -run '^TestReviewPriorityJoin$' ./... > "$o" && grep -F -- '--- PASS: TestReviewPriorityJoin ' "$o")` | pass exit=0 sandbox=unshare | sha256:326ddc22e707 | 2026-11-19 | assay-verifier-app[bot] @ 5649360b6fa405a9239de442136db48e21bc1eee (reads could-not-check: a system call from another ABI) (on-behalf-of human:ian) (forge-identity) | base=85fcd48feaf0 red rc=1 · head=5649360b6fa405a9239de442136db48e21bc1eee · delivering=8c2f9706c9d5 output=sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 log=row-000004.log |
 Verification-Attestation: medici-finance/assay#7245 run=c4e8d126bbf0268397a492ffa0ac3b08766fe623677fe392bcff7716548f19c2 source=5649360b6fa405a9239de442136db48e21bc1eee brief=docs/streams/desk-tools/brief-39-extract-shared-review-observation-and-pure-planning-contracts.md model=claude-opus-5-5 tier=strong
 
-### Independent re-verification — 2026-11-19, desk tools v1.0.89, Linux host lane
+Independent re-verification — 2026-11-19, desk tools v1.0.89, Linux host lane
 
 Verifier: non-implementer, model claude-opus-5-5, tier strong. The witness table directly above is the tool-stamped output of attempt 3, the credited attempt. Host: the OrbStack Linux VM assay-verify-amd64-20261021 (Ubuntu 24.04 amd64, go1.27.4, git 2.56.1, desk tools v1.0.89 from /opt/desk-tools/bin), with KUBECONFIG=/dev/null, every inherited GIT_* variable unset, GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_NOSYSTEM=1, GIT_CONFIG_COUNT=0 and GIT_TERMINAL_PROMPT=0. Every row ran in the host lane under the unshare network sandbox (sandbox=unshare in each row), not the container-netns bracket. Source 5649360b6fa405a9239de442136db48e21bc1eee on main, detached and clean apart from this Evidence section; attestation #7245. Each Runner cell carries the tool's own annotation "(reads could-not-check: a system call from another ABI)", which is printed as stamped.
 
 An earlier container-lane pass for this item on 2026-11-19 (attestation #7242) was discarded and never landed. No row result from it is used here.
 
-Admission witness before attempt 3: `deskdispatch --check-verifier --root <home> --brief <this brief>` exit 0, binding run=c4e8d126bbf0 source=5649360b6fa4 model=claude-opus-5-5 tier=strong. The same check also exited 0 before attempt 1.
+The uppercase path tokens below are illustrative placeholders, not recorded executed command bytes.
 
-Invocation (all three attempts): `statusgen verifyrun --root <home> --brief <this brief> --acceptance-record <descriptor> --acceptance-forge --fail-first --delivering-commit 8c2f9706c9d5b26b14ad3a8123878563896e27fd --base 85fcd48feaf08c69a0c878939702b30f2b608546 --base-log <fresh dir>`. The descriptor holds the two marker lines printed in the witness: Verification-Table delivery=f9cba0a88d39 base=original=d41670bde8b1, and Acceptance-Transition amendment=65c2f44b31a2 with the approval medici-finance/assay#6856 issuecomment-6989040118. verifyrun read that approval itself (line "acceptance transition: reading approval …6856#issuecomment-6989040118"), accepted the transition and printed Acceptance-Changes: 3=Command. Row 3 therefore ran as the approved acceptance transition. The base and delivering commit are re-derived: #3570 (8c2f9706c9d5) is the earliest of the three deliveries (#3570, #3593 at 790003516c1f, #4235 at f9cba0a88d39), and its first parent is 85fcd48feaf0.
+Admission witness before attempt 3: `deskdispatch --check-verifier --root HOME_PATH --brief BRIEF_PATH` exit 0, binding run=c4e8d126bbf0 source=5649360b6fa4 model=claude-opus-5-5 tier=strong. The same check also exited 0 before attempt 1.
+
+Invocation (all three attempts): `statusgen verifyrun --root HOME_PATH --brief BRIEF_PATH --acceptance-record DESCRIPTOR_PATH --acceptance-forge --fail-first --delivering-commit 8c2f9706c9d5b26b14ad3a8123878563896e27fd --base 85fcd48feaf08c69a0c878939702b30f2b608546 --base-log FRESH_DIRECTORY`. The descriptor holds the two marker lines printed in the witness: Verification-Table delivery=f9cba0a88d39 base=original=d41670bde8b1, and Acceptance-Transition amendment=65c2f44b31a2 with the approval medici-finance/assay#6856 issuecomment-6989040118. verifyrun read that approval itself (line "acceptance transition: reading approval …6856#issuecomment-6989040118"), accepted the transition and printed Acceptance-Changes: 3=Command. Row 3 therefore ran as the approved acceptance transition. The base and delivering commit are re-derived: #3570 (8c2f9706c9d5) is the earliest of the three deliveries (#3570, #3593 at 790003516c1f, #4235 at f9cba0a88d39), and its first parent is 85fcd48feaf0.
 
 Environment preparation, disclosed (no credit): the VM had no Go module cache. `go mod download` filled it from git-archive copies of the source and of base 85fcd48feaf0 made outside the home, and an offline `go list -deps -test ./...` (GOPROXY=off) in tools/desk then exited 0 for both trees. Before attempt 2 the build cache was warmed in the home's tools/desk with `go test -p 1 -count=1 -run '^$' ./...` (GOPROXY=off, -mod=readonly). The tree was unchanged by it. Both caches live on the VM's disk and survived the VM restart before attempt 3.
 
@@ -224,7 +228,7 @@ RISK-VALUE: DERIVED — `SelectionEvaluator = "review-selection-v1"` @ tools/des
 RISK-VALUE: DERIVED — `capacity < 0` refusal @ tools/desk/internal/reviewflow/selection.go:94 — spec/review-observation-v1.md line 180 makes zero capacity valid (it preserves every row and source depth), so 0 is the correct lower bound and only negative values are refused.
 The board-age bound `MaxBoardAge = 7 * time.Minute` @ tools/desk/internal/reviewflow/idlegate.go:63 moved unchanged from base tools/desk/cmd/reviewloop/idlegate.go:63 and is an operational knob, ranked below the five above.
 
-Post-Evidence witness: `deskdispatch --check-verifier --root <home> --brief <this brief>` exit 0 after this Evidence edit, same binding run=c4e8d126bbf0 source=5649360b6fa4 model=claude-opus-5-5 tier=strong.
+Post-Evidence witness: `deskdispatch --check-verifier --root HOME_PATH --brief BRIEF_PATH` exit 0 after this Evidence edit, same binding run=c4e8d126bbf0 source=5649360b6fa4 model=claude-opus-5-5 tier=strong.
 
 The brief is gate: human with decision issue #4521, so this Evidence makes no lifecycle flip; the item awaits the human acceptance.
 

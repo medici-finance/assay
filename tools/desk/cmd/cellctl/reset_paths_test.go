@@ -95,7 +95,7 @@ func TestResetWorktreeAliases(t *testing.T) {
 }
 
 // regression: #2718
-// Fixtures built from t.TempDir() beneath a symlinked TMPDIR (macOS's /var ->
+// Fixtures built beneath a symlinked TMPDIR (macOS's /var ->
 // /private/var) must plan exactly as they do beneath a resolved one, so a
 // Linux runner sees the class a macOS default temp directory exposes.
 func TestResetSymlinkedTMPDIR(t *testing.T) {
@@ -106,7 +106,11 @@ func TestResetSymlinkedTMPDIR(t *testing.T) {
 	alias := resetAlias(t, real)
 	t.Setenv("TMPDIR", alias)
 	fixture := func(t *testing.T) string {
-		base := t.TempDir()
+		t.Helper()
+		base, err := os.MkdirTemp("", "reset-")
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !strings.HasPrefix(base, alias+string(filepath.Separator)) {
 			t.Fatalf("fixture not beneath symlinked TMPDIR %s: %s", alias, base)
 		}

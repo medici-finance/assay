@@ -36,7 +36,7 @@ var routeHonours = map[string][]string{
 		deskkit.ScanOverrideFlag,
 	},
 	routeOutcomeRecord: {
-		"outcome-record", "outcome-only", "root", "dry-run",
+		"outcome-record", "outcome-only", "flip-verified", "root", "dry-run",
 		deskkit.ScanOverrideFlag,
 	},
 	routeRemoveSuperseded: {

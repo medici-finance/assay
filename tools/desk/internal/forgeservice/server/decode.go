@@ -14,16 +14,9 @@ import (
 // source access. The returned scope and observation token are caller claims.
 // A serving caller must independently authorize them before using the request.
 func DecodeMirrorQuery(r *http.Request) (service.Request, error) {
-	if r == nil || r.Method != http.MethodPost || r.Body == nil || r.ContentLength > service.MaxMessageBytes || r.Header.Get("Content-Encoding") != "" {
-		return service.Request{}, service.ErrInvalid
-	}
-	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || media != "application/json" {
-		return service.Request{}, service.ErrInvalid
-	}
-	body, err := io.ReadAll(io.LimitReader(r.Body, service.MaxMessageBytes+1))
-	if err != nil || len(body) > service.MaxMessageBytes {
-		return service.Request{}, service.ErrInvalid
+	body, err := readMirrorBody(r)
+	if err != nil {
+		return service.Request{}, err
 	}
 	query, err := service.DecodeRequest(body)
 	if err != nil {
@@ -33,4 +26,19 @@ func DecodeMirrorQuery(r *http.Request) (service.Request, error) {
 		return service.Request{}, service.ErrSchema
 	}
 	return query, nil
+}
+
+func readMirrorBody(r *http.Request) ([]byte, error) {
+	if r == nil || r.Method != http.MethodPost || r.Body == nil || r.ContentLength > service.MaxMessageBytes || r.Header.Get("Content-Encoding") != "" {
+		return nil, service.ErrInvalid
+	}
+	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || media != "application/json" {
+		return nil, service.ErrInvalid
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, service.MaxMessageBytes+1))
+	if err != nil || len(body) > service.MaxMessageBytes {
+		return nil, service.ErrInvalid
+	}
+	return body, nil
 }
