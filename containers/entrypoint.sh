@@ -87,7 +87,15 @@ if [ "$model_cred" -eq 0 ] && [ -n "${CLAUDE_CODE_USE_BEDROCK:-}" ] \
   model_cred=1
 fi
 
-if [ "$model_cred" -eq 0 ]; then
+if [ "$me" = pr-review-desk ] && [ "${1:-}" = /usr/local/bin/cell-review ]; then
+  model_cred=0
+  if [ -n "${CODEX_HOME:-}" ] && { [ -r "$CODEX_HOME/auth.json" ] || [ -n "${CODEX_API_KEY:-}" ]; }; then
+    model_cred=1
+  else
+    fail "cell-review requires the cell-owned CODEX_HOME and Codex login or CODEX_API_KEY."
+    missing=1
+  fi
+elif [ "$model_cred" -eq 0 ]; then
   fail "no model credential found in the runtime environment."
   {
     echo "  set at least one of (see containers/secrets.md §3):"

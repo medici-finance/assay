@@ -41,6 +41,9 @@ ENV ASSAY_DESK=pr-review-desk
 # ship it group-writable. --chmod needs BuildKit, as the base image already does.
 COPY --chmod=0755 containers/entrypoint.sh /usr/local/bin/desk-entrypoint
 
+COPY --chmod=0644 plugins/assay/skills/pr-review-desk/SKILL.md /opt/assay/plugin/skills/pr-review-desk/SKILL.md
+COPY --chmod=0755 containers/pr-review-desk/cell-review.py /usr/local/bin/cell-review
+
 ENTRYPOINT ["/usr/local/bin/desk-entrypoint"]
 # Default command the entrypoint execs into: an interactive shell from which the
 # operator invokes /pr-review-desk. Overridable at 'docker run'.
