@@ -29,6 +29,16 @@ package main
 // `and` must all hold. `or` between literals is a disjunction this reader
 // does not decide, so the clause is unreadable.
 //
+// A clause is about the row command's own output only when nothing before
+// the stream word gives it another subject. "its stderr contains", "the
+// binary's stdout contains" and "`cmd` exits 6, stderr contains" describe a
+// process the row's test runs, whose stream the row command may never print;
+// read as a claim on the row's output they fail a passing row. A negating
+// word before the subject ("no output contains", "neither stdout nor stderr
+// contains") carries a polarity this reader takes only after the subject. Both
+// shapes are unreadable, so the row is could-not-run, never a fail and never a
+// pass.
+//
 // A positive `--- PASS|FAIL|SKIP: <name>` literal is matched as go test's own
 // result line, not as a substring: the line must START with the literal and
 // continue with ` (`, and a top-level name (no `/`) must be unindented. An
@@ -66,6 +76,10 @@ const unreadableContainsNote = "Expect states an output-contains clause whose li
 // unreadable is true when any clause names output but yields no literal.
 func parseOutputClaims(expect string) (claims []outputClaim, unreadable bool) {
 	for _, loc := range expectContainsRe.FindAllStringSubmatchIndex(expect, -1) {
+		if foreignOrNegatedSubject(expect[:loc[0]]) {
+			unreadable = true
+			continue
+		}
 		absent := loc[2] >= 0
 		lits, ok := readClaimLiterals(expect[loc[1]:])
 		if !ok {
@@ -192,6 +206,36 @@ func readClaimItem(s string) (lit, rest string, ok bool) {
 		}
 		return "", s, false
 	}
+}
+
+// foreignOrNegatedSubject reads the text before a stream word and reports
+// whether the clause is not a claim on the row command's own output, or carries
+// its polarity before the subject where the reader does not look for it. A
+// possessive ("its", "whose", "X's") right before the stream word, or "exits"
+// earlier in the same sentence, names another process. A negating word in the
+// same clause is a leading negation.
+func foreignOrNegatedSubject(before string) bool {
+	words := strings.Fields(strings.ToLower(before))
+	if n := len(words); n > 0 {
+		last := words[n-1]
+		if last == "its" || last == "their" || last == "whose" || strings.HasSuffix(last, "'s") || strings.HasSuffix(last, "’s") {
+			return true
+		}
+	}
+	sentence := before[strings.LastIndexAny(before, ".;|")+1:]
+	for _, w := range strings.Fields(strings.ToLower(sentence)) {
+		if strings.Trim(w, ",()*`") == "exits" {
+			return true
+		}
+	}
+	clause := before[strings.LastIndexAny(before, ".;,:|(")+1:]
+	for _, w := range strings.Fields(strings.ToLower(clause)) {
+		switch strings.Trim(w, "()*`") {
+		case "no", "nothing", "neither", "nor", "not", "never", "none":
+			return true
+		}
+	}
+	return false
 }
 
 // proseWords are bare words that refer to a literal rather than state one

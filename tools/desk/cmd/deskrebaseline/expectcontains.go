@@ -6,7 +6,9 @@ package main
 // output; a positive `--- PASS: <name>` literal must be go test's own result line for that
 // name. A clause that names output but whose literal cannot be read is judgeUndecided, never
 // judgePass on the exit status. statusgen reads that case as could-not-run. Unlike statusgen, a
-// clause does not make an otherwise undecided Expect decidable (expect.go decidable).
+// clause does not make an otherwise undecided Expect decidable (expect.go decidable). A clause
+// whose stream belongs to another process ("its stderr contains", "`cmd` exits 6, stderr
+// contains") or whose negation comes before the subject ("no output contains") is unreadable.
 
 import (
 	"bytes"
@@ -31,6 +33,10 @@ var goTestResultRe = regexp.MustCompile(`^--- (?:PASS|FAIL|SKIP): (\S+)$`)
 // unreadable is true when any clause names output but yields no literal.
 func parseOutputClaims(expect string) (claims []outputClaim, unreadable bool) {
 	for _, loc := range expectContainsRe.FindAllStringSubmatchIndex(expect, -1) {
+		if foreignOrNegatedSubject(expect[:loc[0]]) {
+			unreadable = true
+			continue
+		}
 		absent := loc[2] >= 0
 		lits, ok := readClaimLiterals(expect[loc[1]:])
 		if !ok {
@@ -157,6 +163,36 @@ func readClaimItem(s string) (lit, rest string, ok bool) {
 		}
 		return "", s, false
 	}
+}
+
+// foreignOrNegatedSubject reads the text before a stream word and reports
+// whether the clause is not a claim on the row command's own output, or carries
+// its polarity before the subject where the reader does not look for it. A
+// possessive ("its", "whose", "X's") right before the stream word, or "exits"
+// earlier in the same sentence, names another process. A negating word in the
+// same clause is a leading negation.
+func foreignOrNegatedSubject(before string) bool {
+	words := strings.Fields(strings.ToLower(before))
+	if n := len(words); n > 0 {
+		last := words[n-1]
+		if last == "its" || last == "their" || last == "whose" || strings.HasSuffix(last, "'s") || strings.HasSuffix(last, "’s") {
+			return true
+		}
+	}
+	sentence := before[strings.LastIndexAny(before, ".;|")+1:]
+	for _, w := range strings.Fields(strings.ToLower(sentence)) {
+		if strings.Trim(w, ",()*`") == "exits" {
+			return true
+		}
+	}
+	clause := before[strings.LastIndexAny(before, ".;,:|(")+1:]
+	for _, w := range strings.Fields(strings.ToLower(clause)) {
+		switch strings.Trim(w, "()*`") {
+		case "no", "nothing", "neither", "nor", "not", "never", "none":
+			return true
+		}
+	}
+	return false
 }
 
 // proseWords are bare words that refer to a literal rather than state one

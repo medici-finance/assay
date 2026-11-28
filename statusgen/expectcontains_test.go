@@ -81,6 +81,20 @@ func TestContainsClausesAreRead(t *testing.T) {
 		{"output contains it. A token list exits 6", "it\n", stateCouldNotRun},
 		{"output contains `PE32` / `MS Windows`", "MS Windows\n", stateCouldNotRun},
 		{"output contains summary: 3 corroborated, 0 disproved", "summary: 3 corroborated, 0 disproved\n", stateCouldNotRun},
+		// Another process's stream is not the row's output: unreadable, never a
+		// fail on a row that prints only its test's PASS line. Shapes from
+		// desk-tools/29 rows 3 and 13.
+		{"exit 0, `--- PASS:` printed. (e) `deskverdict verify --body <file>` exits 6 AND its stderr contains `verdict-payload block found` — the 6 is the refusal", "--- PASS: TestX (0.00s)\n", stateCouldNotRun},
+		{"exit 0, `--- PASS:` printed. Subtest `no-roster-refuses`: `HOME` is empty; `verdict --unsigned-out <file>` exits 6, stderr contains `could-not-check: inactive`, and the file does not exist", "--- PASS: TestX (0.00s)\n", stateCouldNotRun},
+		{"the binary's stdout contains `x`", "x\n", stateCouldNotRun},
+		{"exit 0; whose output contains `x`", "x\n", stateCouldNotRun},
+		// A negation before the subject is never read as a presence claim.
+		{"exit 0; no output contains `secret`", "a secret\n", stateCouldNotRun},
+		{"exit 0; neither stdout nor stderr contains `tok`", "tok\n", stateCouldNotRun},
+		{"exit 0; nothing in stdout contains `x`", "x\n", stateCouldNotRun},
+		// The row's own exit before the subject keeps the clause the row's.
+		{"exit 0, output contains `ok`", "ok\n", statePass},
+		{"exit 0 and output contains `ok`", "FAIL\n", stateFail},
 		// A readable clause that fails is a fail even beside an unreadable one.
 		{"output contains `ok`; output contains the named line", "FAIL\n", stateFail},
 		// No containment clause: unchanged.

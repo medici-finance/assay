@@ -35,6 +35,13 @@ func TestContainsMirrorsStatusgen(t *testing.T) {
 		{"exit 0; output contains the literal line `--- PASS: TestA` (not the exit)", 0, "ok  \tpkg [no tests to run]\n", judgeFail},
 		{"exit 0; output contains BOTH literal lines `--- PASS: TestA` and `--- PASS: TestB`", 0, "--- PASS: TestA (0.00s)\n--- PASS: TestB (0.00s)\n", judgePass},
 		{"output contains `ok`; output contains the named line", 0, "FAIL\n", judgeFail},
+		// Another process's stream, or a leading negation: undecided, never a fail or a pass.
+		{"exit 0, `--- PASS:` printed. (e) `deskverdict verify --body <file>` exits 6 AND its stderr contains `verdict-payload block found` — the 6 is the refusal", 0, "--- PASS: TestX (0.00s)\n", judgeUndecided},
+		{"exit 0, `--- PASS:` printed. Subtest `no-roster-refuses`: `HOME` is empty; `verdict --unsigned-out <file>` exits 6, stderr contains `could-not-check: inactive`, and the file does not exist", 0, "--- PASS: TestX (0.00s)\n", judgeUndecided},
+		{"exit 0; the binary's stdout contains `x`", 0, "x\n", judgeUndecided},
+		{"exit 0; no output contains `secret`", 0, "a secret\n", judgeUndecided},
+		{"exit 0; neither stdout nor stderr contains `tok`", 0, "tok\n", judgeUndecided},
+		{"exit 0, output contains `ok`", 0, "ok\n", judgePass},
 	} {
 		if got := parseExpect(tc.expect).judge(true, tc.rc, tc.out); got != tc.want {
 			t.Errorf("judge(%q, %q) = %s, want %s", tc.expect, tc.out, got, tc.want)
