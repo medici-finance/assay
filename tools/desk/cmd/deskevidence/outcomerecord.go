@@ -73,7 +73,7 @@ var nowFn = time.Now
 // dryRun (--dry-run, #4554) runs every gate below exactly as a real landing does, then prints
 // the commits-API plan and stops before the write budget is spent and before any write. It is a
 // required parameter so this route cannot be reached without the dry-run decision.
-func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string, outcomeOnly, dryRun bool, ac *auditCtx) error {
+func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string, outcomeOnly, flipVerified, dryRun bool, ac *auditCtx) error {
 	if root != "" && (!filepath.IsAbs(localFile) || pathWithin(root, localFile)) {
 		return deskkit.Refused("refused: with --root, --outcome-record must be an absolute file OUTSIDE --root " +
 			"(the verifier home; a record inside it refuses admission) — write it to the dispatcher-named " +
@@ -131,12 +131,16 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	if jerr != nil {
 		return jerr
 	}
+	// The outcome word must be one every reader classifies identically (evaluation vocabulary).
+	if oerr := deskkit.CheckOutcomeField(join); oerr != nil {
+		return oerr
+	}
 	var submitted deskkit.WakeReceipt
 	if uerr := json.Unmarshal(rec.Raw, &submitted); uerr != nil {
 		return deskkit.Refused("refused: invalid --outcome-record JSON: " + uerr.Error())
 	}
-	if evaluation.ParseVerificationOutcome(submitted.Outcome) == evaluation.OutcomeUnknown {
-		return deskkit.Refused(fmt.Sprintf("refused: outcome %q must be verified, verify-fail (or fail), blocked, or needs-context (or needs_context)", submitted.Outcome))
+	if flipVerified && evaluation.ClassifyOutcome(submitted.Outcome) != evaluation.OutcomePass {
+		return deskkit.Refused("refused: --flip-verified requires a verified outcome record")
 	}
 	// A record that already claims verify-wake-v1 is complete as submitted, whatever its outcome:
 	// Complete() true (the first failing field named) plus the join keys every new such record
@@ -173,6 +177,9 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	kind, kerr := forgeKindFn(owner, name)
 	if kerr != nil {
 		return kerr
+	}
+	if flipVerified && kind != deskkit.ForgeGitHub {
+		return deskkit.Unverifiable("--flip-verified requires a forge with an atomic branch-head write precondition", nil)
 	}
 	facts, ferr := resolveJoinFacts(fg, fr, kind, join, submitted.SHA, rec.TS)
 	if ferr != nil {
@@ -299,6 +306,16 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 
 	if remoteExists {
 		if bytes.Equal(remoteContent, commitContent) {
+			if flipVerified {
+				landed, _, cleanup, err := pinLandedClosureTree(evidenceRoot, targetRepoPath, remoteContent, true, fg, fr, branch, receipt)
+				if err != nil {
+					return err
+				}
+				defer cleanup()
+				if _, err := closureCheckFn(landed, rec.Brief, ac.options); err != nil {
+					return err
+				}
+			}
 			ac.successResult = deskkit.ResultNoop
 			ac.detail = fmt.Sprintf("noop: %s already recorded on %s (sha %s)", targetRepoPath, branch, shortSHA(cur.SHA))
 			fmt.Fprintln(stdout, ac.detail)
@@ -323,6 +340,10 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	closureRef := branch
 	if landedHead != "" {
 		closureRef = landedHead
+	}
+	// Both bindings below read the named commit from evidenceRoot's object store.
+	if err := outcomeEvidenceInRoot(evidenceRoot, receipt, fr, branch, outcome.SHA); err != nil {
+		return err
 	}
 	// The Evidence binding, or under --outcome-only the check that this run's Evidence
 	// append is exactly the one the verdict gate refuses (outcomeonly.go, #5759).
@@ -366,55 +387,36 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		lintRoot = "."
 	}
 
-	// The verified-outcome closure gates apply to this record exactly as they apply to an
-	// added log line today: "before" is empty (a brand-new file), "after" is the record's own
-	// canonical bytes. isVerifyOutcomesSidecar recognises this per-file path, so the gates
-	// activate for a `verified` record precisely as they did for an appended log line.
-	if err := outcomeGuardFn(lintRoot, landedRoot, targetRepoPath, nil, commitContent, fg, fr, closureRef, ac.options); err != nil {
+	writeInput := deskkit.WriteFileInput{
+		File: targetRepoPath, Branch: branch, Content: commitContent, ExpectedHead: landedHead,
+	}
+	if flipVerified {
+		paired, err := planOutcomeFlip(landedRoot, landedHead, branch, targetRepoPath, repoSlug, commitContent, fg, fr, receipt, outcome, ac.options)
+		if err != nil {
+			return err
+		}
+		writeInput = paired
+	} else if err := checkOutcomeRecordClosure(lintRoot, landedRoot, targetRepoPath, commitContent, fg, fr, closureRef, ac.options); err != nil {
 		return err
-	}
-	introduced, lerr := lintDiffFn(landedRoot, targetRepoPath, commitContent, ac.options)
-	if lerr != nil {
-		return lerr
-	}
-	if len(introduced) > 0 {
-		return deskkit.Refused(fmt.Sprintf(
-			"refused: landing %s would introduce %d new statusgen PROBLEM(s) not present in %s before this change:\n%s",
-			targetRepoPath, len(introduced), lintRoot, strings.Join(introduced, "\n")))
-	}
-	if verr := gateVerifiedSidecarLanding(targetRepoPath, landedRoot, nil, commitContent, false, ac.options); verr != nil {
-		return verr
 	}
 
 	// Receipt validation (#882 Task step 3): a record carrying
 	// wake_schema:verify-wake-v1 additionally refuses the three recurring defects reviewers
 	// keep bouncing Evidence PRs for. A legacy-shape verified/verify-fail record (no
 	// wake_schema) is not receipt-validated, as today.
-	var wr deskkit.WakeReceipt
-	if jerr := json.Unmarshal(rec.Raw, &wr); jerr != nil {
-		return deskkit.Refused("refused: invalid --outcome-record JSON: " + jerr.Error())
-	}
+	wr := outcome
 	if wr.Schema == deskkit.SchemaWakeV1 {
 		if verr := receiptValidateFn(lintRoot, fg, fr, closureRef, repoSlug, wr); verr != nil {
 			return verr
 		}
 	}
 
-	// --dry-run stops HERE (#4554): after every gate that can refuse this record — mint,
-	// admission, the record-shape and redaction checks, the immutability read, the Evidence
-	// binding or --outcome-only check, the observation binding, the outbound scan, the
-	// public-repo gate, the closure and lint-diff guards and receipt validation — and before the
-	// write budget and the write. The on-behalf-of principal is resolved here too, so a record a
-	// real run would refuse for a missing principal refuses its dry-run as well. It is resolved
-	// ONCE, here, and the write path below reuses it.
-	// One resolver call site serves both reads (the principal-class guard counts call sites).
+	// The on-behalf-of principal is resolved for dry-run as well as the write.
 	resolveSuffix := func() (string, error) { return deskkit.OnBehalfOfCommitSuffix("", repoSlug) }
 	commitSuffix, oerr := resolveSuffix()
 	if oerr != nil {
 		return oerr
 	}
-	// Resolved in preparation (so a dry-run refuses as a real run would) and re-resolved in the
-	// write window: a principal that changed in between refuses.
 	ac.addRecheck(func() error {
 		again, err := resolveSuffix()
 		if err != nil || again != commitSuffix {
@@ -423,16 +425,22 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return nil
 	})
 	if dryRun {
-		mode := "outcome record"
+		target, mode, action := targetRepoPath, "outcome record", "create"
 		if outcomeOnly {
 			mode = "outcome-only record"
 		}
+		if flipVerified {
+			mode = "atomic verified flip and outcome record"
+			target = writeInput.File + " and " + target
+			action = "write"
+		}
 		ac.successResult = deskkit.ResultNoop
-		ac.detail = fmt.Sprintf("dry-run: would create %s on %s via conditional forge write for %s (%s, sha256 %s)",
-			targetRepoPath, branch, repoSlug, mode, bodyDig)
-		fmt.Fprintf(stdout, "dry-run plan: conditional forge write to %s — create %s on branch %s (%s for %s), "+
+		ac.detail = fmt.Sprintf("dry-run: would %s %s on %s via conditional forge write for %s (%s, sha256 %s)", action, target, branch, repoSlug, mode, bodyDig)
+		if _, err := fmt.Fprintf(stdout, "dry-run plan: conditional forge write to %s — %s %s on branch %s (%s for %s), "+
 			"authenticated as the verifier App (%s); sha256 %s; no local `git commit` in this plan\n",
-			repoSlug, targetRepoPath, branch, mode, wr.Brief, deskkit.RoleAppLoginOrEmpty("verifier"), bodyDig)
+			repoSlug, action, target, branch, mode, wr.Brief, deskkit.RoleAppLoginOrEmpty("verifier"), bodyDig); err != nil {
+			return deskkit.Unverifiable("cannot report the outcome landing dry-run plan", err)
+		}
 		return nil
 	}
 
@@ -440,16 +448,16 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return werr
 	}
 
-	writeInput := deskkit.WriteFileInput{
-		File:    targetRepoPath,
-		Branch:  branch,
-		Content: commitContent,
-		Message: "Evidence: verify-outcome record for " + wr.Brief + ac.attestationTrailer() + commitSuffix,
+	writeInput.Message = "Evidence: verify-outcome record for " + wr.Brief + ac.attestationTrailer() + commitSuffix
+	if flipVerified {
+		writeInput.Message = "Evidence: verified transition and outcome for " + wr.Brief + ac.attestationTrailer() + commitSuffix
 	}
-	writeInput.ExpectedHead = landedHead
 	res, werr := fg.WriteFile(fr, writeInput)
 	if werr != nil {
 		return werr
+	}
+	if flipVerified && (res == nil || !res.Changed) {
+		return deskkit.Unverifiable("the verified transition and outcome commit was not confirmed; reconcile the target branch before retrying", nil)
 	}
 
 	if res.DefaultBranchNotWritable {
@@ -463,6 +471,9 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 		return nil
 	}
 
+	if flipVerified {
+		targetRepoPath = writeInput.File + " and " + targetRepoPath
+	}
 	attr, aerr := checkWriteAttribution(fg, fr, res)
 	ac.detail = fmt.Sprintf("committed %s to %s on %s (sha %s) — %s", targetRepoPath, repoSlug, branch, string(res.CommitSHA), attr)
 	if aerr != nil {
@@ -470,6 +481,26 @@ func cmdOutcomeRecordWrite(localFile, repoSlug, owner, name, branch, root string
 	}
 	fmt.Fprintf(stdout, "committed %s to %s on %s (sha %s) — %s\n", targetRepoPath, repoSlug, branch, string(res.CommitSHA), attr)
 	return nil
+}
+
+func checkOutcomeRecordClosure(lintRoot, landedRoot, targetRepoPath string, commitContent []byte, fg deskkit.Forge, fr deskkit.ForgeRepo, closureRef string, options childOptions) error {
+	// The verified-outcome closure gates apply to this record exactly as they apply to an
+	// added log line today: "before" is empty (a brand-new file), "after" is the record's own
+	// canonical bytes. isVerifyOutcomesSidecar recognises this per-file path, so the gates
+	// activate for a `verified` record precisely as they did for an appended log line.
+	if err := outcomeGuardFn(lintRoot, landedRoot, targetRepoPath, nil, commitContent, fg, fr, closureRef, options); err != nil {
+		return err
+	}
+	introduced, lerr := lintDiffFn(landedRoot, targetRepoPath, commitContent, options)
+	if lerr != nil {
+		return lerr
+	}
+	if len(introduced) > 0 {
+		return deskkit.Refused(fmt.Sprintf(
+			"refused: landing %s would introduce %d new statusgen PROBLEM(s) not present in %s before this change:\n%s",
+			targetRepoPath, len(introduced), lintRoot, strings.Join(introduced, "\n")))
+	}
+	return gateVerifiedSidecarLanding(targetRepoPath, landedRoot, nil, commitContent, false, options)
 }
 
 // landOutcomeRecordAsChange mirrors landEvidenceAsChange for the per-file record shape: on a
@@ -508,7 +539,7 @@ func landOutcomeRecordAsChange(fg deskkit.Forge, fr deskkit.ForgeRepo, repoSlug,
 	pr, perr := deskkit.CreateHeldDraftChange(fg, fr, deskkit.DraftChangeInput{
 		Title: "Evidence: " + target,
 		Body: "Verify-outcome record for `" + brief + "`, landed on branch `" + side + "` and opened as a " +
-			"draft change because the default branch `" + base + "` takes no direct write on this forge.\n\n" + ac.attestation,
+			"draft change because the default branch `" + base + "` takes no direct write on this forge.\n\n" + ac.attestationRecord(),
 		Head: side,
 		Base: base,
 	})

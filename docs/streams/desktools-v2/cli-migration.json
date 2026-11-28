@@ -278,6 +278,11 @@
     },
     {
       "class": "test",
+      "pattern": "tests/windows-port",
+      "reason": "windows-port/00 source-only syscall and build-constraint checker invoked by Verify row 8; never installed or released as an operator CLI"
+    },
+    {
+      "class": "test",
       "pattern": "tests/brief-flow/**",
       "reason": "offline acceptance runner for the brief-flow event contract; CI and verifiers run it, never an operator entrypoint"
     },

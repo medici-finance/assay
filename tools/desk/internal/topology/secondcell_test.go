@@ -242,6 +242,11 @@ func compiledTopologyCapSites() []runtimeCapSite {
 			what:  "the system-state and decision-owed label sets the board excludes and escalates on",
 		},
 		{
+			file:  "tools/desk/cmd/fanoutloop/inbox.go",
+			calls: 1,
+			what:  "the system-state and decision-owed label sets the worker-desk inbox lane holds on",
+		},
+		{
 			file:  "tools/desk/cmd/deskroster/sets.go",
 			calls: 2,
 			what:  "the cell name, per-repo relationship and App roles `deskroster repos` prints",

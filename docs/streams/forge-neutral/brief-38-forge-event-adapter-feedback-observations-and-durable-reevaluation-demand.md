@@ -4,7 +4,7 @@ title: Forge event adapter, feedback observations and durable reevaluation deman
 why: "Review feedback that arrives while work is running is easy to lose: a missed notification, an out-of-order delivery or a crash at the wrong moment means the comment is never acted on, or is acted on twice by competing writers. Turning each refreshed piece of feedback into one durable, generation-bound reevaluation requirement means it is acted on once, by the right attempt, even across restarts and lost events."
 wave: 8
 depends: ["forge-neutral/37", "graph-execution/28", "graph-execution/29", "graph-execution/19", "graph-execution/04"]
-unblocks: ["forge-neutral/45"]
+unblocks: ["forge-neutral/45", "forge-neutral/58"]
 effort: L
 gate: human
 risk: {regulatory: no, customer: no, irreversible: no, sensitive-data: yes}

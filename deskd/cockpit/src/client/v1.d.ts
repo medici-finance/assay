@@ -572,7 +572,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description the cell's override table AFTER the merge, with record_pr naming the record PR's status (could-not-check when the write-issues App is unconfigured) */
+            /** @description the cell's override table AFTER the merge, with record_pr naming the record PR's status (could-not-check when the record-PR App is unconfigured) */
             200: {
                 headers: {
                     [name: string]: unknown;

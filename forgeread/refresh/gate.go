@@ -34,6 +34,13 @@ type Gate interface {
 	Leave(context.Context, Ticket, Outcome) (State, error)
 }
 
+// WarmGate supports explicit server-owned demand bounded by the fill deadline.
+// It uses the same generation, quota, authorization and Leave rules as Gate.
+type WarmGate interface {
+	AcquireWarm(context.Context, Demand) (Ticket, error)
+	WaitWarm(context.Context, Ticket) (State, error)
+}
+
 // ApplyCompletion is the typed shared Store.Apply -> QueryScope seam used inside
 // Gate.Complete's transaction. It is not a transaction callback or a second store.
 // The canonical adapter supplies its transaction-bound Store, verifies current owner

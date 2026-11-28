@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/statusgen/evaluation"
+
 	"github.com/medici-finance/assay/tools/desk/internal/deskkit"
 )
 
@@ -46,7 +47,7 @@ func guardVerifiedOutcomes(root, landedRoot, target string, before, after []byte
 		if err := json.Unmarshal(line, &row); err != nil {
 			return deskkit.Refused("invalid verify-outcomes JSON record")
 		}
-		if evaluation.ParseVerificationOutcome(row.Outcome) != evaluation.OutcomeVerified || seen[row.Brief] {
+		if evaluation.ClassifyOutcome(row.Outcome) != evaluation.OutcomePass || seen[row.Brief] {
 			continue
 		}
 		seen[row.Brief] = true
@@ -78,13 +79,20 @@ func guardVerifiedOutcomes(root, landedRoot, target string, before, after []byte
 		if err != nil {
 			return err
 		}
-		own, foreign := splitClosureProblems(problems, seen)
-		for _, p := range foreign {
-			fmt.Fprintf(stderr, "deskevidence: notice: %s — names a brief this record does not close; it is that brief's to fix, not this outcome's to block\n", p)
+		return requireCleanClosure(problems, seen)
+	}
+	return nil
+}
+
+func requireCleanClosure(problems []string, briefs map[string]bool) error {
+	own, foreign := splitClosureProblems(problems, briefs)
+	for _, p := range foreign {
+		if _, err := fmt.Fprintf(stderr, "deskevidence: notice: %s — names a brief this record does not close; it is that brief's to fix, not this outcome's to block\n", p); err != nil {
+			return deskkit.Unverifiable("cannot report lint findings for other briefs", err)
 		}
-		if len(own) > 0 {
-			return deskkit.Refused("verified outcome requires a lint-valid closure tree:\n" + strings.Join(own, "\n"))
-		}
+	}
+	if len(own) > 0 {
+		return deskkit.Refused("verified outcome requires a lint-valid closure tree:\n" + strings.Join(own, "\n"))
 	}
 	return nil
 }

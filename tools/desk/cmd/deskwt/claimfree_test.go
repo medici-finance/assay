@@ -143,7 +143,7 @@ func TestReapClaimUnreadableHolds(t *testing.T) {
 	work := newRepo(t)
 	withEnv(t, work)
 	old := listDispatchClaims
-	listDispatchClaims = func(string) (map[string]bool, error) {
+	listDispatchClaims = func(string, string) (map[string]bool, error) {
 		return nil, errors.New("forge unreachable")
 	}
 	t.Cleanup(func() { listDispatchClaims = old })
@@ -229,7 +229,7 @@ func TestNoRunKeyNoClaimRead(t *testing.T) {
 	withEnv(t, work)
 	old := listDispatchClaims
 	reads := 0
-	listDispatchClaims = func(string) (map[string]bool, error) {
+	listDispatchClaims = func(string, string) (map[string]bool, error) {
 		reads++
 		return nil, errors.New("must not be read")
 	}

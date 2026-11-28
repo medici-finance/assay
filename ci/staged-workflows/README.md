@@ -22,10 +22,6 @@ reviewable artifact, not a run.
 
 ## Contents
 
-- `verify-gate-close.yml` — live workflow twin with the board-writer
-  Environment restriction, byte-identical to its live counterpart, enforced by
-  `declared-changes.json`.
-
 - `assay-qualgen.yml` — live workflow twin with the board-writer Environment
   restriction, plus the classified board push (#2910): the QUALITY.md commit step
   sources `statusgen/pushcred.sh`, preflights the push credential (a dry-run push)
@@ -77,29 +73,34 @@ reviewable artifact, not a run.
   Until then the cellop sweep runs only by hand
   (`cd tools/desk && go run ./cmd/muhar -j 0 -spec internal/cellop/mutations.json`); its
   anchors are still dry-run on every PR by the muhar stale-anchor guard.
-- `assay-statusgen.yml` — a STAGED TWIN of the live `.github/workflows/assay-statusgen.yml`
-  carrying the decision-gate hold's network layer (`spec/lifecycle-v1.md` §4.5), alongside
-  the classified board push (#2910) described below, which `declared-changes.json` classes
-  `pending`: the
-  corroborate job gains `issues: read` and a `statusgen --decision-gate --pr <N>` step after
-  the corroborate step. The step has no shell path pre-filter: the binary decides from the
-  PR's own file listing whether the board (`docs/streams/` or `docs/archive/`) was touched, and
-  it exits 0 with a notice while the base-built statusgen predates `--decision-gate`. **Pending promotion**:
-  re-base on the live file (three-way) and copy it over the live one in a
-  maintainer-credentialled commit. Promoting it does NOT make the check required; that is a
-  separate branch-protection act. Until promotion, the hold's offline layer still runs in
-  `--lint`; the live corroborate step's `--corroborate --pr` runs the network lane only on PRs
-  that touch a findings entry; and `deskevidence` / `--close-verify` run the network check
-  themselves.
-- `verify-gate-close.yml` — a STAGED TWIN of the live `.github/workflows/verify-gate-close.yml`
-  carrying ONLY a decision-gate refusal branch in the "Advance ..." step. When
-  `statusgen --close-verify` refuses a close with the literal "decision-gate hold", the branch
-  relays the refusal, reopens the card and commits nothing. `TestDecisionGateCloseWorkflowKeyedPhrase`
+- `assay-statusgen.yml` stages the decision-gate hold's network check
+  (`spec/lifecycle-v1.md` §4.5) and the classified board push (#2910) described below.
+  The live corroborate job already has `issues: read` and runs the base-built
+  `statusgen --corroborate --pr` on changes under `docs/streams/` or `docs/archive/`.
+  The staged twin adds a separate `statusgen --decision-gate --pr <N>` step after
+  corroboration. That command uses the PR file list to decide whether to check
+  the board. The step skips with a notice if the base binary predates the flag.
+  To promote the twin, reconcile it with the live workflow and have a maintainer
+  commit it. Making the check required is a separate branch-protection change.
+  The hold's offline check runs in `--lint`. `deskevidence` and `--close-verify`
+  run the network check themselves.
+- `verify-gate-open.yml` and `verify-gate-close.yml` — live workflow twins,
+  byte-identical to their live counterparts and enforced by
+  `declared-changes.json`. They carry the canonical adjudicated acceptance route
+  for verification-handoff/03 under #4993. After an independent verifier
+  publishes the body rendered by `statusgen acceptance-route prepare`, an exact
+  human adjudication comment on that issue triggers the canonical issuer. Its
+  concurrency group is set on the job, so a comment the job's `if:` skips never
+  queues in it. The close workflow admits only the resulting card, rereads the
+  human closer and revalidates the adjudication before the existing
+  board-writer push. Other briefs keep their ordinary card route; the close
+  step's decision-gate refusal branch, in the next entry, is live for every brief.
+
+- `verify-gate-close.yml` also carries the decision-gate refusal branch in the
+  "Advance ..." step, live for every brief. When `statusgen --close-verify`
+  refuses a close with the literal "decision-gate hold", the branch relays the
+  refusal, reopens the card and commits nothing. `TestDecisionGateCloseWorkflowKeyedPhrase`
   in `statusgen` pins the phrase on this staged copy, or on the live file once it is gone.
-  **Pending promotion**, the same way. Until then `--close-verify` still refuses the close and
-  the live workflow commits nothing, but the refusal reaches its generic first-attempt branch.
-  That branch leaves the card closed and comments a reason that does not name the decision
-  issue or the remedy.
 - Both the live and staged `assay-statusgen.yml` use `--write-and-record` to
   regenerate the board and record history on the initial checkout and each retry.
   The commit guard includes history-only updates.

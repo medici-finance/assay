@@ -146,6 +146,11 @@ func (s *subjectClaimStore) Remove(string) (deskkit.ClaimWriteOutcome, bool) {
 	s.cause = "negotiated resolution does not authorize claim removal"
 	return deskkit.ClaimWriteUnverifiable, false
 }
+
+func (s *subjectClaimStore) RemoveFrom(string, string) deskkit.ClaimWriteOutcome {
+	s.cause = "negotiated resolution does not authorize claim removal"
+	return deskkit.ClaimWriteUnverifiable
+}
 func (s *subjectClaimStore) TransportCause() string {
 	if s.cause != "" {
 		return s.cause

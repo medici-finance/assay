@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -87,6 +88,31 @@ func trackedOutput(cmd *exec.Cmd, combined bool) ([]byte, error) {
 	return stdout.Bytes(), err
 }
 
+// startIn sets cmd to start in dir, with PWD naming dir. Call it after
+// cmd.Env is set. os/exec sets PWD this way only when Env is nil; with the
+// explicit Env muhar passes, the child inherits muhar's own PWD, which names
+// another directory, so the child's shell or go command falls back to dir's
+// physical path. When dir is reached through a symlink (macOS's default
+// /var/folders temp directory is one), the child then sees a different path
+// from the one muhar built the schemata overlay and the probe's package
+// directories from: the overlay matches no file and `go build <dir>` reports
+// "outside main module", so schemata silently switched off (#7819).
+func startIn(cmd *exec.Cmd, dir string) {
+	cmd.Dir = dir
+	if runtime.GOOS == "windows" || runtime.GOOS == "plan9" {
+		return
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return
+	}
+	env := cmd.Env
+	if env == nil {
+		env = os.Environ()
+	}
+	cmd.Env = append(envWithout(env, "PWD"), "PWD="+abs)
+}
+
 func runShell(root, command string, env []string, timeout time.Duration) CommandResult {
 	return runBounded(root, env, timeout, func(ctx context.Context) *exec.Cmd {
 		return exec.CommandContext(ctx, "sh", "-c", command) //nolint:gosec // operator-supplied spec command
@@ -116,10 +142,10 @@ func runBounded(root string, env []string, timeout time.Duration, build func(con
 	defer cancel()
 	cmd := build(ctx)
 	setProcessGroup(cmd)
-	if root != "" {
-		cmd.Dir = root
-	}
 	cmd.Env = env
+	if root != "" {
+		startIn(cmd, root)
+	}
 	seen := &timeoutMarker{}
 	cmd.Stdout = io.MultiWriter(os.Stderr, seen)
 	cmd.Stderr = io.MultiWriter(os.Stderr, seen)
@@ -263,9 +289,9 @@ var (
 // and the build use the same directory: a symlink on the joined path swapped
 // after the check cannot move the build outside the bound. The build differs
 // from the suite only in naming that directory physically rather than through
-// the symlink, and the build's shell already sees the physical path, because
-// the PWD it inherits names muhar's directory, not this one. The joined path
-// is only ever compared lexically, never opened.
+// the symlink: startIn gives the build the resolved path as its PWD, so its
+// shell sees the physical path too. The joined path is only ever compared
+// lexically, never opened.
 func leadingCd(base, test string, env []string) (string, string, string, bool) {
 	m := cdPrefix.FindStringSubmatch(test)
 	if m == nil || !cdDirWord.MatchString(m[1]) || !cdOperandIsPlain(m[1], env) {

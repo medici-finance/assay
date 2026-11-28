@@ -781,7 +781,16 @@ dependents.** The six fail-closed trust surfaces — `ASSAY_BLESS_LOGIN`, `ASSAY
 refuse on a malformed value: every acting command refuses exactly as described above.
 `ASSAY_RUN_CREDENTIALS` is a trust surface because it chooses which credential a desk write runs
 as; a malformed entry refuses the whole roster, not only `deskrun` (unset stays valid: no repo is
-bound and `deskrun` dispatches nothing). The adopter-extension
+bound and `deskrun` dispatches nothing). `ASSAY_VERIFIER_PREMERGE_REPOS` (comma-separated full
+`owner/name` slugs) is a trust key for the same reason: it opts a repository in to pre-merge
+verifier runs, whose Verify rows run an unmerged change head with the verifier's credential
+(`deskdispatch --kit verifier --target-change/--target-head`). It is default off, it is read
+from the roster file only, and a malformed entry refuses the whole roster. Opting in does not
+yet make a pre-merge run possible: every pre-merge target is refused until a credential-less,
+contained runner exists. A host-lane Verify row runs as the desk's OS user, so it can reach
+every credential that user can (stored forge logins, App key files, the checkout's credential
+helper, the ssh home, same-user sockets), not only the run's read-only one; see "What an
+admitted row can reach" in `docs/verify-row-strength.md`. The adopter-extension
 surfaces — `ASSAY_REPO_ALIASES`, `ASSAY_REPO_FORGES`, `ASSAY_RISK_CALLOUT`,
 `ASSAY_WRITEGUARD_CALLOUT`, `ASSAY_RELEASE_REPO`, `ASSAY_SCAN_REPOS`,
 `ASSAY_OS_USER_LOGIN_MAP` — no longer collapse the
@@ -2321,6 +2330,7 @@ These are the surfaces frozen at build time — what your cell cannot change wit
 |---|---|
 | `statusgen/topologyvalues.go` | the system-state and decision-owed label sets, and the default release repo, that `statusgen` reasons about |
 | `tools/desk/cmd/issueboard/board.go` | the system-state and decision-owed label sets the board excludes and escalates on |
+| `tools/desk/cmd/fanoutloop/inbox.go` | the system-state and decision-owed label sets the worker-desk inbox lane holds on |
 | `tools/desk/cmd/deskroster/sets.go` | the cell name, per-repo relationship and App roles `deskroster repos` prints |
 | `tools/desk/cmd/deskrelease/cut.go` | the default repo `deskrelease` cuts a release from |
 | `tools/desk/cmd/desklabel/vocabulary.go` | the decision-owed label set that forms `desklabel`'s shared (any-role) escalation rows |

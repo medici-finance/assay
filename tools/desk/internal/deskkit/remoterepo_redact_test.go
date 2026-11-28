@@ -1,6 +1,7 @@
 package deskkit
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -137,11 +138,16 @@ func TestRedactArgvAndKeepGit(t *testing.T) {
 	}
 }
 
+// TestVerifierGitRedacts runs git -C in a directory that does not exist, so the failure it
+// expects never depends on what encloses the temporary root: run in an existing empty
+// directory, git discovery walks up to any repository above it and the set-url writes
+// there (once, a shared checkout's origin URL).
+//
 // regression: #6696
 func TestVerifierGitRedacts(t *testing.T) {
 	const secret = "example-secret-value"
 	missing := t.TempDir() + "/example-user:" + secret + "@missing.git"
-	_, err := verifierGit(t.TempDir(), "remote", "set-url", "origin", missing)
+	_, err := verifierGit(filepath.Join(t.TempDir(), "absent"), "remote", "set-url", "origin", missing)
 	if err == nil || !strings.Contains(err.Error(), "set-url origin") {
 		t.Fatalf("want a verifier-source failure naming the command, got %v", err)
 	}

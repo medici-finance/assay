@@ -1,0 +1,12 @@
+// Planted positive control for TestOneCapturePipeHelper: a capture helper that opens
+// its own pipe and reads it only after fn returns. The guard must flag this file.
+func captureLate(fn func()) string {
+	r, w, _ := os.Pipe()
+	old := os.Stdout
+	os.Stdout = w
+	fn()
+	os.Stdout = old
+	w.Close()
+	b, _ := io.ReadAll(r)
+	return string(b)
+}

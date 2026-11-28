@@ -260,7 +260,15 @@ func ChangesByBriefReader(f Forge) func(repo ForgeRepo, briefID string) ([]PRRef
 		if !ValidRepoSlug(repo.Slug()) || g.onlyRepo != "" && !strings.EqualFold(repo.Slug(), g.onlyRepo) {
 			return nil, Refused("brief-trailer lookup target is outside the admitted repo")
 		}
-		hits, err := g.searchBodyMarkers(repo, markerSearch{text: "Brief: " + id, what: "brief-trailer", changes: true})
+		q := markerSearch{text: "Brief: " + id, what: "brief-trailer", changes: true}
+		if strings.HasPrefix(id, "issue-") && PlaceholderIssueNumber(id) > 0 {
+			// The number is common to every valid spelling (Issue: 42, Fixes: #42,
+			// or a repo-qualified closing trailer). The shared parser filters prose,
+			// other numbers and links to issues in another repository.
+			q.text = strings.TrimPrefix(id, "issue-")
+			q.what = "issue-trailer"
+		}
+		hits, err := g.searchBodyMarkers(repo, q)
 		if err != nil {
 			return nil, err
 		}

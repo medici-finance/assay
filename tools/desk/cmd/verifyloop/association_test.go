@@ -321,8 +321,44 @@ func TestCrossRepoAssociationRefusals(t *testing.T) {
 		impostor := associationRepo(t, "example-org/tracker", map[string]string{"source.txt": "source\n"})
 		t.Setenv(deskkit.RootsEnv, "example-org/agents="+impostor+",example-org/tracker="+tracking)
 		it := loopengine.Item{ID: "sample/01", BriefPath: brief, Payload: map[string]string{"repo": "example-org/tracker", "root": tracking}}
-		if _, err := associateVerifierItem(it, tracking); err == nil || !strings.Contains(err.Error(), "deliverable root has the wrong origin") {
+		if _, err := associateVerifierItem(it, tracking); err == nil || !strings.Contains(err.Error(), "has the wrong origin") {
 			t.Fatalf("deliverable root of another repository not refused by its origin: %v", err)
 		}
 	})
+}
+
+// The 2026-11-18 instance of #6274: a brief homed in a repository that has no docs/streams.
+// Such a checkout cannot be a DESK_ROOTS entry (the board refuses a stream-less root), so the
+// association could not resolve the deliverable home at all and the item stayed
+// could-not-check. The shared resolver answers it from DESK_CHECKOUTS, without asking for
+// streams, and an unconfigured deliverable stays could-not-check.
+// regression: #6274
+func TestCrossRepoAssociationStreamlessDeliverable(t *testing.T) {
+	const brief = "docs/streams/sample/brief-01.md"
+	associationRoster(t)
+	source := associationRepo(t, "example-org/agents", map[string]string{"source.txt": "source\n"}) // no docs/streams
+	tracking := associationRepo(t, "example-org/tracker", map[string]string{
+		brief:                           "---\nhomed-in: example-org/agents\n---\n# Plan\n",
+		"docs/streams/graph-repos.yaml": "schema: graph-repos-v1\nrepos:\n  source:\n    repo: example-org/agents\n",
+	})
+	t.Setenv(deskkit.RootsEnv, "example-org/tracker="+tracking)
+	it := loopengine.Item{ID: "sample/01", BriefPath: brief, Payload: map[string]string{"repo": "example-org/tracker", "root": tracking}}
+
+	t.Setenv(deskkit.CheckoutsEnv, "")
+	if _, err := associateVerifierItem(it, tracking); deskkit.ExitCodeOf(err) != deskkit.ExitUnverifiable {
+		t.Fatalf("an unconfigured deliverable checkout must stay could-not-check, got %v", err)
+	}
+
+	t.Setenv(deskkit.CheckoutsEnv, "example-org/agents="+source)
+	got, err := associateVerifierItem(it, tracking)
+	if err != nil {
+		t.Fatalf("a stream-less deliverable named by %s must associate: %v", deskkit.CheckoutsEnv, err)
+	}
+	if got.Payload["source_repo"] != "example-org/agents" || got.Payload["source_root"] != source ||
+		got.TargetSHA != associationGit(t, source, "rev-parse", "HEAD") {
+		t.Fatalf("wrong association: %+v", got)
+	}
+	if err := checkQueuedAssociation(got); err != nil {
+		t.Fatalf("the queued association must re-derive identically: %v", err)
+	}
 }

@@ -189,3 +189,50 @@ func TestBodyOneNewlineDropped(t *testing.T) {
 		}
 	}
 }
+
+// regression: #7623
+// TestPreMergeBindingProfiles pins that a binding naming an unmerged head is
+// admitted only under PreMergeV1, only when the head is the bound source, and
+// is refused by every crediting and scheduling profile.
+func TestPreMergeBindingProfiles(t *testing.T) {
+	h := strings.Repeat("a", 64)
+	s := strings.Repeat("b", 40)
+	b := Binding{Version: 1, Run: h, Repo: "example-org/tracker", Source: s, Brief: "docs/streams/demo/brief-01.md", BriefSHA256: h, PlanSHA256: h, HomeSHA256: h, Model: "fixture", Tier: "strong", Checkout: "autocrlf=false eol=lf"}
+	if BindingProblem(b, b.Repo, PreMergeV1, false) == "" {
+		t.Fatal("pre-merge profile admitted a merged-main binding")
+	}
+	b.TargetChange, b.TargetHead = 12, s
+	if why := BindingProblem(b, b.Repo, PreMergeV1, false); why != "" {
+		t.Fatal(why)
+	}
+	for _, p := range []Profile{ContainerV1, GeneralV1V2} {
+		if BindingProblem(b, b.Repo, p, false) == "" {
+			t.Fatalf("profile %d admitted a pre-merge binding", p)
+		}
+	}
+	for name, mut := range map[string]func(*Binding){
+		"other head": func(x *Binding) { x.TargetHead = strings.Repeat("c", 40) },
+		"no change":  func(x *Binding) { x.TargetChange = 0 },
+		"short head": func(x *Binding) { x.TargetHead = s[:12] },
+		"head only":  func(x *Binding) { x.TargetChange = 0; x.TargetHead = s },
+	} {
+		c := b
+		mut(&c)
+		if BindingProblem(c, c.Repo, PreMergeV1, false) == "" {
+			t.Fatalf("%s admitted", name)
+		}
+		// Any half of a target keeps the binding out of crediting and scheduling.
+		if BindingProblem(c, c.Repo, GeneralV1V2, false) == "" {
+			t.Fatalf("%s admitted by the general profile", name)
+		}
+	}
+	plain := b
+	plain.TargetChange, plain.TargetHead = 0, ""
+	if strings.Contains(Body(plain), "Target") {
+		t.Fatal("a merged-main binding's rendering changed")
+	}
+	got, err := ParseBody(Body(b))
+	if err != nil || got != b {
+		t.Fatalf("round trip %+v %v", got, err)
+	}
+}

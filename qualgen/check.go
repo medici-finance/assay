@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -54,8 +55,8 @@ const (
 
 // Advisory is one NOTICE-level flag on one screened file.
 type Advisory struct {
-	Kind   AdvisoryKind
-	Detail string // human-readable; names the number/partner/reference
+	Kind   AdvisoryKind `json:"kind"`
+	Detail string       `json:"detail"` // human-readable; names the number/partner/reference
 }
 
 // FileScreenResult is one screened path's outcome. CouldNotScreen is the
@@ -63,23 +64,34 @@ type Advisory struct {
 // measurable mined history sets it, distinct from a path that WAS
 // measurable and simply raised no advisory.
 type FileScreenResult struct {
-	Path           string
-	CouldNotScreen bool
-	Reason         string // populated iff CouldNotScreen
-	Advisories     []Advisory
+	Path           string     `json:"path"`
+	CouldNotScreen bool       `json:"could_not_screen"`
+	Reason         string     `json:"reason,omitempty"` // populated iff CouldNotScreen
+	Advisories     []Advisory `json:"advisories"`
 }
 
 // CheckResult is the whole screen's outcome — one FileScreenResult per
 // expanded path.
 type CheckResult struct {
-	Files []FileScreenResult
+	SchemaVersion string             `json:"schema_version"`
+	RepoHead      string             `json:"repo_head"`
+	Files         []FileScreenResult `json:"files"`
+	Extensions    checkExtensions    `json:"extensions"`
 }
+
+// Add registered optional analyses as typed fields here, each with its own
+// version and data object. The zero value emits the required empty object.
+type checkExtensions struct{}
+
+const checkSchemaVersion = "qualgen-check-v1"
 
 // checkOptions are the `check` verb's parsed settings (cli.go declares them).
 // Paths are the positional file/glob set to screen.
 type checkOptions struct {
-	Paths     []string
-	Out, Repo string
+	Paths        []string
+	Out, Repo    string
+	JSON         bool
+	LiteralPaths bool
 }
 
 // checkMain is the `check <paths>` mode entry point.
@@ -94,9 +106,9 @@ func checkMain(o checkOptions, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	paths, err := expandCheckPaths(o.Repo, rawPaths)
+	paths, err := expandCheckPaths(o.Repo, rawPaths, o.LiteralPaths)
 	if err != nil {
-		fmt.Fprintln(stderr, "qualgen check:", err)
+		_, _ = fmt.Fprintln(stderr, "qualgen check:", err)
 		return 1
 	}
 	if len(paths) == 0 {
@@ -107,10 +119,17 @@ func checkMain(o checkOptions, stdout, stderr io.Writer) int {
 	store := NewStore(o.Out)
 	result, err := screenPaths(o.Repo, store, paths)
 	if err != nil {
-		fmt.Fprintln(stderr, "qualgen check:", err)
+		_, _ = fmt.Fprintln(stderr, "qualgen check:", err)
 		return 1
 	}
-	renderCheckResult(stdout, result)
+	if o.JSON {
+		if err := json.NewEncoder(stdout).Encode(result); err != nil {
+			_, _ = fmt.Fprintln(stderr, "qualgen check: write JSON:", err)
+			return 1
+		}
+	} else {
+		renderCheckResult(stdout, result)
+	}
 
 	// Advisory posture (spec §9.2): the screen result above is exactly what
 	// this run found, but the mode itself never turns that into a verdict —
@@ -124,7 +143,8 @@ func checkMain(o checkOptions, stdout, stderr io.Writer) int {
 // deduplicated, sorted list of repo-relative paths: a literal path passes
 // through unchanged; a glob (containing *, ?, or [) is expanded against
 // repoPath and converted back to a slash-separated repo-relative path.
-func expandCheckPaths(repoPath string, args []string) ([]string, error) {
+// Literal mode treats every argument as a filename, including deleted files.
+func expandCheckPaths(repoPath string, args []string, literal bool) ([]string, error) {
 	seen := map[string]bool{}
 	var out []string
 	add := func(p string) {
@@ -134,7 +154,7 @@ func expandCheckPaths(repoPath string, args []string) ([]string, error) {
 		}
 	}
 	for _, a := range args {
-		if !strings.ContainsAny(a, "*?[") {
+		if literal || !strings.ContainsAny(a, "*?[") {
 			add(a)
 			continue
 		}
@@ -180,7 +200,11 @@ func screenPaths(repoPath string, store *Store, paths []string) (CheckResult, er
 		screened[p] = true
 	}
 
-	var result CheckResult
+	result := CheckResult{
+		SchemaVersion: checkSchemaVersion,
+		RepoHead:      commit.Hash.String(),
+		Files:         make([]FileScreenResult, 0, len(paths)),
+	}
 	for _, p := range paths {
 		fr, err := screenFile(store, commit, typedIDRe, p, screened)
 		if err != nil {
@@ -200,7 +224,7 @@ func screenFile(store *Store, commit *object.Commit, typedIDRe *regexp.Regexp, p
 		return FileScreenResult{}, err
 	}
 
-	res := FileScreenResult{Path: path}
+	res := FileScreenResult{Path: path, Advisories: []Advisory{}}
 	if features.Unmeasured() {
 		res.CouldNotScreen = true
 		res.Reason = couldNotScreenReason(features)

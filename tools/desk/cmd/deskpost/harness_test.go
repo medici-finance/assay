@@ -673,13 +673,21 @@ func (f *fakeGH) handler(w http.ResponseWriter, r *http.Request) {
 
 	case r.Method == http.MethodGet && reComments.MatchString(path):
 		// Serving this endpoint at all is the point (#513): the ready gate
-		// must be shown to make NO read here, and a fixture that 404s could not tell
-		// "deskpost did not ask" from "deskpost asked and got nothing".
-		if page != "" && page != "1" {
-			writeJSON([]map[string]any{})
-			return
+		// must be shown to read it ONLY inside the refuse-only not-reverted check (#6254), and a
+		// fixture that 404s could not tell "deskpost did not ask" from "deskpost asked and got
+		// nothing". It pages at 100 like the forge, so a marker past page one is reachable.
+		n := 1
+		if page != "" {
+			n, _ = strconv.Atoi(page)
 		}
-		writeJSON(f.issueComments)
+		lo, hi := (n-1)*100, n*100
+		if lo > len(f.issueComments) {
+			lo = len(f.issueComments)
+		}
+		if hi > len(f.issueComments) {
+			hi = len(f.issueComments)
+		}
+		writeJSON(f.issueComments[lo:hi])
 
 	case r.Method == http.MethodPost && path == "/graphql":
 		// Three GraphQL calls exist: the ready-flip MUTATION and the trust-gate QUERY in

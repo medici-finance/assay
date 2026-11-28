@@ -5,7 +5,7 @@ package main
 //
 // THE GAP IT CLOSES. verifyflip takes its verdict from the latest strict
 // `**VERIFY: PASS**` in Evidence. The same verify run also writes a
-// verify-outcome record (one file per run under outcomeRecordsDir), and the
+// verify-outcome record (one file per run under outcomerecord.OutcomeRecordsDir), and the
 // two can disagree: an Evidence entry can read PASS while the run's
 // own record says `blocked`. Without this check the flip acted on the
 // Evidence alone.
@@ -32,7 +32,7 @@ package main
 //   - its `ts` parses as RFC 3339 — the reduction ranks an unparseable ts as
 //     the oldest, so a newer `blocked` record would silently lose to an older
 //     `verified` one;
-//   - a per-file record sits at the path outcomeRecordName gives for its own
+//   - a per-file record sits at the path outcomerecord.RecordName gives for its own
 //     bytes (its brief's stream directory, its ts, its digest) — a record
 //     filed under another stream, or edited after it was named, is not
 //     counted silently;
@@ -85,13 +85,15 @@ import (
 	"time"
 
 	"github.com/medici-finance/assay/gitcore"
+
 	"github.com/medici-finance/assay/statusgen/evaluation"
+	"github.com/medici-finance/assay/statusgen/evaluation/outcomerecord"
 )
 
 // flipOutcomeCheck cross-checks the brief's latest verify-outcome record under
 // root against a flip of key to verified at wantSHA. A *flipRefusal refuses;
 // any other error is could-not-check.
-func flipOutcomeCheck(root, key, wantSHA string) error {
+func flipOutcomeCheck(root, key, wantSHA string, candidate *flipOutcomeCandidate) error {
 	records, skipped, err := readVerifyOutcomeRecordsSkips(root)
 	if err != nil {
 		return fmt.Errorf("outcome record: verify-outcome records unreadable: %v", err)
@@ -102,6 +104,28 @@ func flipOutcomeCheck(root, key, wantSHA string) error {
 	if err := flipOutcomeCommitted(root, key); err != nil {
 		return err
 	}
+	var next outcomerecord.Record
+	if candidate != nil {
+		var err error
+		next, err = outcomerecord.ParseRecord(candidate.raw)
+		if err != nil {
+			return refuseFlip("invalid candidate outcome record: %v", err)
+		}
+		if next.Brief != key {
+			return refuseFlip("candidate outcome record names %q, expected %q", next.Brief, key)
+		}
+		next.Path, err = outcomerecord.RecordName(next.Raw)
+		if err != nil {
+			return refuseFlip("invalid candidate outcome record: %v", err)
+		}
+		next.Name, next.Source = path.Base(next.Path), "candidate:"+next.Path
+		for _, rec := range records {
+			if rec.Brief == key && rec.Digest == next.Digest {
+				return refuseFlip("candidate outcome record is already recorded: %s", rec.Source)
+			}
+		}
+		records = append(records, next)
+	}
 	latest, future := latestOutcomePerBrief(records)
 	if future[key] {
 		return fmt.Errorf("outcome record: a verify-outcome record for %s is dated beyond the clock-skew tolerance — it never wins, so the latest record is unknown", key)
@@ -110,6 +134,9 @@ func flipOutcomeCheck(root, key, wantSHA string) error {
 	if !ok {
 		return refuseFlip("outcome record absent: no verify-outcome record names %s — the flip needs the record its verify run wrote", key)
 	}
+	if candidate != nil && rec.Source != next.Source {
+		return refuseFlip("candidate outcome record is not the latest for %s; the latest is %s", key, rec.Source)
+	}
 	var o struct {
 		Outcome   string `json:"outcome"`
 		SHA       string `json:"sha"`
@@ -117,6 +144,9 @@ func flipOutcomeCheck(root, key, wantSHA string) error {
 	}
 	if err := json.Unmarshal(rec.Raw, &o); err != nil {
 		return fmt.Errorf("outcome record: %s cannot be read: %v", rec.Source, err)
+	}
+	if candidate != nil && (len(wantSHA) != 40 || !strings.EqualFold(o.SourceSHA, wantSHA)) {
+		return refuseFlip("candidate outcome record source_sha must match the full observation SHA %s", wantSHA)
 	}
 	rev, legacyRev := strings.TrimSpace(o.SourceSHA), false
 	if rev == "" {
@@ -132,8 +162,14 @@ func flipOutcomeCheck(root, key, wantSHA string) error {
 		}
 		return refuseFlip("outcome record revision mismatch: the latest verify-outcome record for %s (%s) names %s, the flip is at %s", key, rec.Source, rev, wantSHA)
 	}
-	if evaluation.ParseVerificationOutcome(o.Outcome) != evaluation.OutcomeVerified {
+	if evaluation.ClassifyOutcome(o.Outcome) != evaluation.OutcomePass {
 		return refuseFlip("outcome record result mismatch: the latest verify-outcome record for %s (%s) says outcome %q, the flip requests verified", key, rec.Source, o.Outcome)
+	}
+	// The candidate is permitted only in a read-only plan. Its author comes
+	// from the verifier App's single, parent-pinned commit of the record and
+	// board row. Standalone flips still check the existing adding commit.
+	if candidate != nil {
+		return nil
 	}
 	return flipOutcomeAuthor(root, rec)
 }
@@ -142,7 +178,7 @@ func flipOutcomeCheck(root, key, wantSHA string) error {
 // naming it cannot be dated or is not where its own bytes say it belongs, or
 // when the legacy tolerance skipped a log line naming it. Each is
 // could-not-check.
-func flipOutcomeInputs(records []outcomeRecord, skipped []outcomeSkipped, key string) error {
+func flipOutcomeInputs(records []outcomerecord.Record, skipped []outcomerecord.Skipped, key string) error {
 	for _, rec := range records {
 		if rec.Brief != key {
 			continue
@@ -153,7 +189,7 @@ func flipOutcomeInputs(records []outcomeRecord, skipped []outcomeSkipped, key st
 		if rec.Path == "" {
 			continue
 		}
-		want, err := outcomeRecordName(rec.Raw)
+		want, err := outcomerecord.RecordName(rec.Raw)
 		if err != nil {
 			return fmt.Errorf("outcome record: %s names %s but has no record name: %v", rec.Source, key, err)
 		}
@@ -180,7 +216,7 @@ func flipOutcomeInputs(records []outcomeRecord, skipped []outcomeSkipped, key st
 // not the committed ones: anything untracked, modified or deleted under the
 // brief's stream record directory or in a legacy log.
 func flipOutcomeCommitted(root, key string) error {
-	stream, _, err := splitOutcomeBriefKey(key)
+	stream, _, err := evaluation.SplitBriefKey(key)
 	if err != nil {
 		return fmt.Errorf("outcome record: %v", err)
 	}
@@ -229,7 +265,7 @@ func flipOutcomeHeadBytes(root string, read gitCoreRead, stream string) error {
 // outcomeScope is the brief's stream record directory and the legacy-log
 // pathspec glob, both relative to root.
 func outcomeScope(stream string) (string, *regexp.Regexp) {
-	return path.Join(outcomeRecordsDir, stream), outcomePathspecGlob(path.Join("docs/streams", verifyOutcomesGlob))
+	return path.Join(outcomerecord.OutcomeRecordsDir, stream), outcomePathspecGlob(path.Join("docs/streams", verifyOutcomesGlob))
 }
 
 // outcomeInScope reports whether rel falls under dir or matches glob.
@@ -325,7 +361,7 @@ func outcomeAddingCommit(c gitcore.PathCommit) bool {
 
 // flipOutcomeAuthor judges the commit(s) that added the deciding record: each
 // must be the bound verifier's or a roster human's, by the raw commit author.
-func flipOutcomeAuthor(root string, rec outcomeRecord) error {
+func flipOutcomeAuthor(root string, rec outcomerecord.Record) error {
 	if rec.Path == "" {
 		return fmt.Errorf("outcome record: the deciding record for %s is a legacy log line (%s), which has no adding commit of its own to judge", rec.Brief, rec.Source)
 	}

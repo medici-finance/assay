@@ -261,7 +261,12 @@ func CheckAttempts(f map[string]json.RawMessage) ([]VerifyAttempt, error) {
 			return nil, attemptRefusal(a.Attempt, "credited-last", "the credited attempt is the last one")
 		}
 	}
-	if outcome, ok := recStr("outcome"); ok && (evaluation.ParseVerificationOutcome(outcome) == evaluation.OutcomeVerified || outcome == "pass") && out[last-1].Disposition != AttemptCredited {
+	// Only the canonical pass vocabulary triggers this check. The word "pass" is not an outcome:
+	// the writer refuses it before this runs (checkRunMetadataShape), and every reader classifies
+	// it as unrecognised, so it grants no closure. A stored legacy "pass" record whose attempts do
+	// not end credited is therefore no longer refused here; it reaches only the deskperf rerun
+	// rollup, which is diagnostic.
+	if outcome, ok := recStr("outcome"); ok && evaluation.ClassifyOutcome(outcome) == evaluation.OutcomePass && out[last-1].Disposition != AttemptCredited {
 		return nil, attemptRefusal(last, "verified-ends-credited", "a "+outcome+" record's attempts end in a credited attempt")
 	}
 	return out, nil

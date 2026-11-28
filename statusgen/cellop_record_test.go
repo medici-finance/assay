@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/medici-finance/assay/statusgen/briefdoc"
 )
 
 // The explicitly authorized editorial repair must remain consumable by the
@@ -53,22 +55,28 @@ track: platform
 		t.Fatal("Review section missing from the retained record")
 	}
 	review = "\n## Review" + review
-	pass, fail, ok := strings.Cut(body, failEntry)
+	pass, _, ok := strings.Cut(body, failEntry)
 	if !ok {
 		t.Fatal("November 1 FAIL entry missing from the retained record")
 	}
-	fail, _, _ = strings.Cut(fail, "\n### ")
-	historical := pass + failEntry + strings.TrimRight(fail, "\n") + "\n"
-
-	// In a checkout containing the November 20 Evidence, exercise that exact
-	// entry. On an older checkout, model the same non-deferred held row.
-	held := historical + blockedEntry + "\n| # | Command | Result |\n|---|---|---|\n| 12 | lint | could-not-check |\n\n**VERIFY: BLOCKED**\n"
-	if prefix, entry, found := strings.Cut(body, blockedEntry); found {
+	throughEntry := func(heading string) string {
+		t.Helper()
+		prefix, entry, found := strings.Cut(body, heading)
+		if !found {
+			t.Fatalf("retained Evidence lacks %q", heading)
+		}
 		entry, _, _ = strings.Cut(entry, "\n### ")
-		held = prefix + blockedEntry + entry
+		return prefix + heading + strings.TrimRight(entry, "\n") + "\n" + review
 	}
+
+	// The November 20 entry records a BLOCKED verdict. Its exit-code mapping
+	// describes cellctl's API, so that mapping must not be the refusal.
+	// Separately contradict a PASS with an actual held Result cell to keep
+	// exercising the earlier, more specific held-row check.
+	held := pass + "### Independent run\n| # | Command | Result |\n|---|---|---|\n| 12 | lint | could-not-check |\n\n**VERIFY: PASS**\n"
 	for _, tc := range []struct{ name, input, refusal string }{
-		{"historical FAIL", historical + review, "VERIFY: FAIL, not PASS"},
+		{"historical FAIL", throughEntry(failEntry), "VERIFY: FAIL, not PASS"},
+		{"historical BLOCKED", throughEntry(blockedEntry), "VERIFY: BLOCKED, not PASS"},
 		{"non-deferred held row", held + review, "still says HELD/could-not-check"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -88,6 +96,19 @@ track: platform
 			}
 		})
 	}
+	t.Run("November 22 verified record", func(t *testing.T) {
+		const entryHeading = "### Non-implementer verifier run — 2026-11-22"
+		if err := os.WriteFile(brief, []byte(throughEntry(entryHeading)), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		_, plan, id, err := closeVerifyFlipPlan(root, "desk-containers/15", at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if id != "desk-containers/15" || !strings.Contains(string(plan), "| done | 2026-11-22 assay-verifier-app[bot]") {
+			t.Fatalf("latest PASS did not supply its own verifier stamp: %s", plan)
+		}
+	})
 	record := pass + strings.TrimPrefix(review, "\n")
 	if err := os.WriteFile(brief, []byte(record), 0o644); err != nil {
 		t.Fatal(err)
@@ -128,7 +149,7 @@ track: platform
 	legacy := "| # | Command | Expected | Observed (exit + key output) | Date / Runner |\n" +
 		"|---|---------|----------|------------------------------|---------------|\n"
 	for _, line := range lines[2:] {
-		cells := splitRowEscaped(line)
+		cells := briefdoc.SplitRowEscaped(line)
 		if len(cells) != 6 {
 			t.Fatalf("canonical Evidence row has %d cells: %s", len(cells), line)
 		}

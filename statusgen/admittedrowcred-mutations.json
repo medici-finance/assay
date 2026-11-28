@@ -1,9 +1,9 @@
 {
-  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred|TestAdmittedRowInputsPass|TestAdmittedRowSeesDelivery|TestAdmittedScrubbedInputCouldNotRun|TestAdmittedRowScrubbedRefs|TestScrubbedRowNeverGreen)$' -count=1 -timeout 600s",
+  "test": "go test . -run '^(TestAdmittedRowsNoCred|TestAdmittedEnvScrubsCred|TestAdmittedEnvPassList|TestAdmittedEnvNarrowOnly|TestRowreadHoldsNoToken|TestRowreadBrokerClosed|TestAdmittedRowOwnHome|TestAdmittedRunCredAfterScrub|TestRunCredRowRead|TestAdmittedRunHandsCred|TestAdmittedRowInputsPass|TestAdmittedRowSeesDelivery|TestAdmittedRowBareDelivery|TestAdmittedScrubbedInputCouldNotRun|TestAdmittedDroppedInputNotRun|TestAdmittedRowScrubbedRefs|TestScrubbedRowNeverGreen)$' -count=1 -timeout 600s",
   "control": {
     "name": "admitted rows keep every credential pointer",
     "file": "verifieradmission.go",
-    "old": "\t\tcase admittedRowCredential(key):\n",
+    "old": "\tcase admittedRowCredential(key):\n",
     "new": ""
   },
   "mutations": [
@@ -106,7 +106,7 @@
     {
       "name": "an inherited row-read socket passes through",
       "file": "verifieradmission.go",
-      "old": "\t\tcase strings.EqualFold(key, rowreadSocketVar):\n",
+      "old": "\tcase strings.EqualFold(key, rowreadSocketVar):\n",
       "new": ""
     },
     {
@@ -146,6 +146,12 @@
       "new": "\treturn slices.Contains(admittedRowInputs, key) && value != \"\"\n"
     },
     {
+      "name": "the unprefixed delivery pair is dropped from the rows",
+      "file": "verifieradmission.go",
+      "old": "\"ASSAY_DELIVERY_BASE_SHA\", \"DELIVERY_HEAD\", \"DELIVERY_BASE\"}",
+      "new": "\"ASSAY_DELIVERY_BASE_SHA\"}"
+    },
+    {
       "name": "an admitted row that reads a scrubbed ASSAY_* input runs and records fail",
       "file": "verifyrun.go",
       "old": "\t\tif names := admittedRowScrubbedRefs(command, plan.rowEnv()); len(names) > 0 {\n\t\t\treturn runResult{exit: -1, couldNotRun: true, reason: admittedScrubbedNote(names)}\n\t\t}\n",
@@ -160,14 +166,38 @@
     {
       "name": "the delivery coordinates count as scrubbed inputs",
       "file": "verifieradmission.go",
-      "old": "\t\tif !slices.Contains(admittedRowEnv([]string{probe}), probe) {\n",
-      "new": "\t\tif !slices.Contains(admittedRowEnv([]string{probe}), probe) || probe != \"\" {\n"
+      "old": "\t\tif slices.Contains(admittedRowEnv([]string{probe}), probe) {\n",
+      "new": "\t\tif slices.Contains(admittedRowEnv([]string{probe}), probe) && probe == \"\" {\n"
     },
     {
       "name": "a name the run sets after the scrub still counts as scrubbed",
       "file": "verifieradmission.go",
       "old": "\t\t\treturn strings.EqualFold(key, name)\n",
       "new": "\t\t\treturn strings.EqualFold(key, name) && false\n"
+    },
+    {
+      "name": "an unlisted variable passes through to the rows",
+      "file": "verifieradmission.go",
+      "old": "\t\tcase admittedRowGlobal(kv), admittedRowPass(kv):\n\t\t\tenv = append(env, kv)\n",
+      "new": "\t\tdefault:\n\t\t\tenv = append(env, kv)\n"
+    },
+    {
+      "name": "a pass-list name matches as a prefix",
+      "file": "verifieradmission.go",
+      "old": "return strings.HasPrefix(key, \"LC_\") || slices.Contains(admittedRowPassNames, key)",
+      "new": "return strings.HasPrefix(key, \"LC_\") || slices.ContainsFunc(admittedRowPassNames, func(n string) bool { return strings.HasPrefix(key, n) })"
+    },
+    {
+      "name": "the locale prefix widens past LC_",
+      "file": "verifieradmission.go",
+      "old": "return strings.HasPrefix(key, \"LC_\") ||",
+      "new": "return strings.HasPrefix(key, \"LC\") ||"
+    },
+    {
+      "name": "a listed proxy URL carrying a user name passes",
+      "file": "verifieradmission.go",
+      "old": "slices.Contains(admittedRowURLNames, key) && strings.Contains(value, \"@\")",
+      "new": "slices.Contains(admittedRowURLNames, key) && value == \"\\x00\""
     },
     {
       "name": "a could-not-run row reads as pass",
@@ -186,6 +216,36 @@
       "file": "verifyrun.go",
       "old": "\t\t\" This note is not permission to run it outside admission, where the row sees the full environment\" +\n\t\t\" admission removes: do that only once the row itself has been reviewed for what it reads\"\n",
       "new": "\t\t\" Run it outside admission\"\n"
+    },
+    {
+      "name": "the scrubbed-input rule counts only ASSAY_* names again",
+      "file": "verifieradmission.go",
+      "old": "\t\t\tif admittedRowDenied(probe)",
+      "new": "\t\t\tcontinue\n\t\t\tif admittedRowDenied(probe)"
+    },
+    {
+      "name": "a named refusal that predates the allow-list counts as a scrubbed input",
+      "file": "verifieradmission.go",
+      "old": "admittedRowDenied(probe) || slices.Contains(admittedRowShellVars",
+      "new": "slices.Contains(admittedRowShellVars"
+    },
+    {
+      "name": "a shell or run variable counts as a scrubbed input",
+      "file": "verifieradmission.go",
+      "old": "slices.Contains(admittedRowShellVars, strings.ToUpper(name)) ||",
+      "new": "false ||"
+    },
+    {
+      "name": "a lower-case local counts as a scrubbed input",
+      "file": "verifieradmission.go",
+      "old": "m[2] != \"\" && !admittedRowEnvShaped(name) ||",
+      "new": "false ||"
+    },
+    {
+      "name": "a name the row assigns itself counts as a scrubbed input",
+      "file": "verifieradmission.go",
+      "old": "|| !admittedRowOnlyReads(command, name) {",
+      "new": "{"
     }
   ]
 }

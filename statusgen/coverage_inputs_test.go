@@ -377,7 +377,7 @@ func TestNoFixedPathExemption(t *testing.T) {
 	// (TestBookkeepingPathsNotStamps); here the files of the adapter and of the
 	// library are scanned for a named release path.
 	var files []string
-	for _, pat := range []string{"coverage*.go", "evaluation/*.go"} {
+	for _, pat := range []string{"coverage*.go", "evaluation/*.go", "evaluation/*/*.go"} {
 		m, err := filepath.Glob(pat)
 		if err != nil {
 			t.Fatal(err)

@@ -32,9 +32,18 @@ A session invokes this the moment it recognises the blocker is not "I don't know
 
 It does not run for a DECISION — a fork where the driver picks among options and the session can
 proceed once told which. That is `ask-decision`'s job: it presents options with a recommended
-default and relays the ruling. This skill is for the opposite shape: the driver has already,
-implicitly, made the call by being the only party who *can* act — there is nothing to decide,
-only something to run.
+default and relays the ruling. This skill is for the opposite shape: the driver has already
+authorized the outcome and the remaining act requires their identity, physical access or
+reserved authority. Sole ability to perform an act does not establish consent.
+
+For an approval-dependent step, verify that the role already holds execution authority.
+Obtain the approval through the accepted channel, then act within that grant. A driver-reserved
+act stays on the runsheet even after approval. Stop on a guard refusal and route it to the
+authorized owner.
+If the driver must execute it personally, finish the authorized preparation first. Resolve
+the target and working directory, check that the named artifact exists, and validate the
+command's prerequisites without performing the protected act. For a sign-off, the desk
+delivers the ready item with its evidence and direct link. A missing item goes to its owner.
 
 ## The entry — four parts, every time
 
@@ -52,8 +61,10 @@ One entry per owed act, in this shape:
    issue, worked around it within its own authority where one existed — whatever actually
    happened, stated plainly.
 4. **The resume step.** What the session will do once the act lands, and how it will notice —
-   which file changed, which run turned green, which label came off. A runsheet entry with no
-   resume step is a dead end dressed as a hand-off.
+   which file changed, which run turned green, which label came off. The session reads that
+   evidence and resumes. Request a receipt from the driver only when the session cannot
+   observe it through an authorized surface. Ask for the smallest non-secret result that
+   settles the check.
 
 ## Never a credential in a runsheet
 

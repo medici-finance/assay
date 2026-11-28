@@ -79,6 +79,7 @@ the recorder behaves as it did before.
 | add | `--lock-session` | string | `""` |
 | add | `--adopt-run` | string | `""` |
 | remove | `--dry-run` | bool | false |
+| remove | `--claim-repo` | string (`<owner>/<name>`, else exit 2) | `""` (the repository the home records) |
 | prune | `--repo` | string | `""` (current directory) |
 | prune | `--interval` | duration text | `""` (one sweep) |
 | prune | `--reclaim-stale-locks` | bool | false |
