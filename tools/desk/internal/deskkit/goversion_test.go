@@ -28,13 +28,13 @@ const (
 // list can only shrink: an exception whose site now agrees (or is gone) is
 // itself a failure, so it is removed in the change that fixes the site.
 var goPinExceptions = map[string]string{
-	// The go-analysis toolchains are policy inputs to the reviewed baseline
-	// contract digest; moving them is a separately reviewed migration with
-	// before/after evidence (docs/go-analysis.md "Maintain the ratchet"),
+	// The go-analysis toolchains are policy inputs to the analysis contract
+	// digest; moving them is a separately reviewed migration with
+	// before/after evidence (docs/go-analysis.md "Maintain the comparison"),
 	// deferred out of #2918.
-	"tools/go-analysis/pins.env|BUILD_GO":    "baseline migration pending",
-	"tools/go-analysis/pins.env|ANALYSIS_GO": "baseline migration pending",
-	".golangci.yml|golangci go":              "baseline migration pending",
+	"tools/go-analysis/pins.env|BUILD_GO":    "policy migration pending",
+	"tools/go-analysis/pins.env|ANALYSIS_GO": "policy migration pending",
+	".golangci.yml|golangci go":              "policy migration pending",
 }
 
 // goPinSkipFiles are whole files outside the guard, with the reason.
