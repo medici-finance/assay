@@ -45,10 +45,7 @@ func TestFakeGHUnderRowPins(t *testing.T) {
 			t.Setenv(key, val)
 		}
 	}
-	for _, key := range []string{"GH_TOKEN", "GITHUB_TOKEN", "GH_ENTERPRISE_TOKEN", "GITHUB_ENTERPRISE_TOKEN"} {
-		t.Setenv(key, "")
-		os.Unsetenv(key)
-	}
+	slUnset(t, forgeTokenVars...)
 	if !admittedRowEnvMarked() {
 		t.Fatal("the planted pins do not mark an admitted Verify row; the test checks nothing")
 	}
