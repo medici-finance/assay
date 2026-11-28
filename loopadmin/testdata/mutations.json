@@ -1783,5 +1783,33 @@
     "file": "journal/restore.go",
     "old": "if n, err := res.RowsAffected(); err != nil || n == 0 {",
     "new": "if n, err := res.RowsAffected(); err != nil || n < 0 {"
+  },
+  {
+    "test": "TestPreparedEnvironmentReadyFlow",
+    "why": "agent-execution/02 row 1: skip the effective repository revision validation",
+    "file": "workspace/port.go",
+    "old": "check(\"repositories\", sameRepos(req.Repositories, eff.Repositories))",
+    "new": "check(\"repositories\", true)"
+  },
+  {
+    "test": "TestPreparedEnvironmentReuseAndPartialFailure",
+    "why": "agent-execution/02 row 2: reuse a ready receipt without checking current policy",
+    "file": "workspace/port.go",
+    "old": "\tif prior.Inputs.Policy != req.Policy {\n\t\treturn false\n\t}\n",
+    "new": ""
+  },
+  {
+    "test": "TestPreparedEnvironmentSchemaAndSecrets",
+    "why": "agent-execution/02 row 3: omit credential exclusion on a nested (pointer) field",
+    "file": "workspace/receipt.go",
+    "old": "return credentialPath(v.Elem(), at)",
+    "new": "return \"\""
+  },
+  {
+    "test": "TestDeskWorkspaceBinding",
+    "why": "agent-execution/02 row I1: use the role workspace for both instances",
+    "file": "workspace/port.go",
+    "old": "return i.Cell + \"/\" + i.Role + \"/\" + i.ID + \"#\" + strconv.FormatUint(i.Generation, 10)",
+    "new": "return i.Cell + \"/\" + i.Role + \"#\" + strconv.FormatUint(1, 10)"
   }
 ]
