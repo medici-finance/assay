@@ -14,6 +14,7 @@ import sys
 import tempfile
 import time
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 
 SLUG = re.compile(r"[a-z0-9_.-]+/[a-z0-9_.-]+")
@@ -153,8 +154,14 @@ def cycle(profile, state, db, env, budget, lock_fd, retry=None):
             root = profile["repositories"][key[0]]
             origin = subprocess.check_output(["git", "-C", root, "remote", "get-url", "origin"],
                                              text=True, timeout=15, env=env).strip()
-            match = re.fullmatch(r"(?:https://github\.com(?::443)?/|ssh://git@github\.com/|git@github\.com:)([^?#]+)", origin)
-            require(match and match[1].removesuffix(".git").lower() == key[0],
+            if "://" not in origin:
+                host, _, path = origin.partition(":")
+                origin = f"ssh://{host}/{path}"
+            remote = urlsplit(origin)
+            require(remote.scheme in {"https", "ssh"} and remote.hostname == "github.com"
+                    and not remote.query and not remote.fragment and remote.password is None
+                    and remote.port in (None, 443 if remote.scheme == "https" else 22)
+                    and remote.path.removeprefix("/").removesuffix(".git").lower() == key[0],
                     "checkout origin differs from selected review")
             require(shutil.which("codex", path=env["PATH"]), "configured Codex executable unavailable")
             # Commit intent before spawning. A lost spawn acknowledgement or a

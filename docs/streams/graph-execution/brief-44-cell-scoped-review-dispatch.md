@@ -60,7 +60,7 @@ The adopter owns the workload, image pin, repository map and persistent volume. 
 | 1 | check +flow | host:desk-tools | `python3 containers/pr-review-desk/test_cell_review.py -v` | Real roster and planner route one first head and one corrected head. Restart after each starts no duplicate. Approval, waiting and an empty queue start no model. |
 | 2 | check +flow | host:desk-tools | `python3 containers/pr-review-desk/test_cell_review.py ReviewServiceTest.test_two_repositories_with_same_pr_and_head -v` | Two enrolled repositories with identical PR number and SHA each receive one dispatch. |
 | 3 | check +flow | host:desk-tools | `python3 containers/pr-review-desk/test_cell_review.py ReviewServiceTest.test_misbound_roster_busy_owner_or_failed_read ReviewServiceTest.test_uncertain_exit_and_reconciled_retry -v` | Roster mismatch stops before collection. A second owner, failed read or outstanding attempt starts no reviewer. Only the reconciled target retries. |
-| 4 | check | tree | `statusgen --root . --consumers --brief graph-execution/44 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | After landing, corroborate each fixed-here consumer on the delivery and its first parent. Require zero disproved and zero unchecked. |
+| 4 | check +dereference | tree | `statusgen --root . --consumers --brief graph-execution/44 --delivery "$ASSAY_DELIVERY_SHA" --base "$ASSAY_DELIVERY_BASE_SHA"` | After landing, corroborate each fixed-here consumer on the delivery and its first parent. Require zero disproved and zero unchecked. |
 
 ## Evidence
 

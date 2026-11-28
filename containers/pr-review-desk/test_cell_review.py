@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
 
@@ -83,13 +84,15 @@ class ReviewServiceTest(unittest.TestCase):
         (self.home / "observation").write_text(data)
         return json.loads(data)
 
-    def run_once(self, expected, *args):
+    def command(self, *args):
         command = [sys.executable, str(HERE / "cell-review.py")]
         if os.environ.get("TEST_BAKED_REVIEW") == "1":
             command = ["/usr/local/bin/desk-entrypoint", "/usr/local/bin/cell-review"]
-        run = subprocess.run([*command, "--once", "--allow-forge-reads",
-                              "--profile", str(self.home / "profile"), "--state-dir", str(self.home / "state"),
-                              *args], env=self.env, text=True, capture_output=True, timeout=15)
+        return [*command, "--once", "--allow-forge-reads", "--profile", str(self.home / "profile"),
+                "--state-dir", str(self.home / "state"), *args]
+
+    def run_once(self, expected, *args):
+        run = subprocess.run(self.command(*args), env=self.env, text=True, capture_output=True, timeout=15)
         self.assertEqual(run.returncode, expected, run.stdout + run.stderr)
         return run
 
@@ -114,6 +117,39 @@ class ReviewServiceTest(unittest.TestCase):
         one, two = self.prompts()
         self.assertIn(REPO + "#1 at " + "a" * 40, one)
         self.assertIn(REPO + "#1 at " + "d" * 40, two)
+
+    def test_controller_killed_while_harness_runs(self):
+        self.fixture("unreviewed")
+        self.tool("codex", 'cat >> "$HOME/prompts"\ntouch "$HOME/started"\n'
+                  'while [ ! -f "$HOME/release" ]; do sleep 0.05; done')
+        parent = subprocess.Popen(self.command(), env=self.env,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.monotonic() + 10
+            while not (self.home / "started").exists():
+                self.assertIsNone(parent.poll())
+                self.assertLess(time.monotonic(), deadline)
+                time.sleep(0.05)
+            parent.kill()
+            parent.wait(timeout=5)
+            self.run_once(1)  # the live harness retains the owner lock
+        finally:
+            (self.home / "release").touch()
+            if parent.poll() is None:
+                parent.kill()
+                parent.wait()
+        lock = self.home / "state/sample/pr-review-desk/owner.lock"
+        with lock.open("a") as fd:
+            deadline = time.monotonic() + 5
+            while True:
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    self.assertLess(time.monotonic(), deadline)
+                    time.sleep(0.05)
+        self.run_once(2)
+        self.assertEqual(len(self.prompts()), 1)
 
     def test_uncertain_exit_and_reconciled_retry(self):
         self.fixture("unreviewed")
