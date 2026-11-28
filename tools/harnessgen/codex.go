@@ -162,7 +162,7 @@ func codexCmd(args []string) int {
 			return exitCouldNotCheck
 		}
 		if string(got) != want {
-			fmt.Fprintf(os.Stderr, "harnessgen codex --check: DRIFT — committed manifest %s differs from the metadata source; run `go run ./tools/harnessgen codex` and commit\n", p.outManifest)
+			fmt.Fprintf(os.Stderr, "harnessgen codex --check: DRIFT — committed manifest %s differs from the metadata source; run `cd tools/harnessgen && go run . codex --root ../..` and commit\n", p.outManifest)
 			return exitDrift
 		}
 		fmt.Printf("harnessgen codex --check: clean — %s matches the metadata source\n", p.outManifest)

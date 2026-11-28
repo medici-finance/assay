@@ -1,5 +1,5 @@
 {
-  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestRefusalNamesCallerForm|TestDeskprRefusalNamesFlag|TestPushGuard|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject|TestContractConformance|TestDirectProvider|TestPerfProcessCoverage|TestGitHubMinter|TestDesktokenExec|TestGitLabCred|TestGitLabCreateDraft|TestGitLabIsTransient|TestGLCreateMR|TestUnknownAssayKeyNotice|TestUnknownKeyKnownRefusals|TestWriteVerb|TestLandingCreateRace|TestCreateOnlyPrecondition|TestSettle|TestApplyStampWritesAsAsked|TestDeclaredPartialDeliveries|TestPartialBriefIDBound|TestLockWaitStopsAtGrant'",
+  "test": "go test ./internal/deskkit/ -count=1 -run 'TestBodyCheck|TestBenign|TestBodycheck|TestStructured|TestArmor|TestPathRule|TestScanOverride|TestOverrideHint|TestRefusalNamesCallerForm|TestDeskprRefusalNamesFlag|TestPushGuard|TestIsPathLike|TestIsIdentifierLike|TestAssignment|TestTrailingAcronym|TestMidRunAcronym|TestVersionSegment|TestPlantedTokenBeside|TestIdentShapeClass|TestShortAcronymCosts|TestTwoLetterWords|TestSelfContain|TestGitHubForgeRefExists|TestGitLabForgeRefExists|TestForgeRepoInfoFetcherDrivesPublicRepoGateOnGitLab|TestForgeGithubGolden|TestForgeGitlabGolden|TestRoleTokenMemo|TestLabelTargetRoutes|TestLabelOpBothBackends|TestApplyIssueLabelsBothBackends|TestForgeGitlabSecurityFailIsReadableAtHead_1124|TestForgeGitlabReviewsAreAscending_1124|TestReviewLanes|TestClaim|TestResolveClaimStore|TestClassifyCustodyModel|TestClassifyCustodyOwnerOnlyPath|TestBodyEdit|TestStandingBlocker|TestParsePrereqDeclaration|TestPRBodyDigest|TestModelStampActor|TestFloorRefusalRoutesByApplierTrust|TestExitCodeTableMatchesDerivation|TestBriefID|TestSynthID|TestFileKindSitesCarrySources|TestGitLabEvidenceLanding|TestGitHubReadFileKind|TestGitHubWriteFileRefusesUnprovenPrior|TestWriteReceiptObject|TestContractConformance|TestDirectProvider|TestPerfProcessCoverage|TestGitHubMinter|TestDesktokenExec|TestGitLabCred|TestGitLabCreateDraft|TestGitLabIsTransient|TestGLCreateMR|TestUnknownAssayKeyNotice|TestUnknownKeyKnownRefusals|TestWriteVerb|TestLandingCreateRace|TestCreateOnlyPrecondition|TestSettle|TestApplyStampWritesAsAsked|TestDeclaredPartialDeliveries|TestPartialBriefIDBound|TestLockWaitStopsAtGrant'",
   "schemata": true,
   "control": {
     "name": "CONTROL — disarm the GitHub-token arm (a ghp_ token scans clean)",
@@ -226,9 +226,15 @@
     },
     {
       "name": "#1642 class guard — over-exemption in the scan loop (every run carrying a capital is exempt)",
-      "file": "internal/deskkit/bodycheck.go",
-      "old": "if isGitSHA(run) || isPathLike(run) || isIdentifierLike(run) || isAssignmentLike(run) || isAllEquals(run) {",
-      "new": "if isGitSHA(run) || isPathLike(run) || isIdentifierLike(run) || isAssignmentLike(run) || isAllEquals(run) || strings.ToLower(run) != run {"
+      "file": "internal/deskkit/benignshapes.go",
+      "old": "\t\tif e.run != nil && e.run(raw[lo:hi]) {",
+      "new": "\t\tif e.run != nil && (e.run(raw[lo:hi]) || strings.ToLower(raw[lo:hi]) != raw[lo:hi]) {"
+    },
+    {
+      "name": "registry walk — admit a run no entry admits (every high-entropy run scans clean)",
+      "file": "internal/deskkit/benignshapes.go",
+      "old": "\treturn -1, false\n}",
+      "new": "\treturn 0, true\n}"
     },
     {
       "name": "#1642 caps-key — the exemption accepts ANY value behind an ALL-CAPS key (a base62 run, an AWS secret, a CamelCase head on an entropy tail written as TEST=<value> scans clean)",
@@ -347,8 +353,8 @@
     {
       "name": "#203 — stop refusing a PRIVATE repo slug on a public body",
       "file": "internal/deskkit/selfcontain.go",
-      "old": "\t\tif !priv[slug] {",
-      "new": "\t\tif !priv[slug] || true {"
+      "old": "\t\tif !priv[slug] && !priv[strings.TrimRight(slug, \".\")] {",
+      "new": "\t\tif !priv[slug] && !priv[strings.TrimRight(slug, \".\")] || true {"
     },
     {
       "name": "#203 — degrade the withheld-register category to a NOTICE even when it IS configured",

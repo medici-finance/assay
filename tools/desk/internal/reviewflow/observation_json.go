@@ -38,6 +38,15 @@ func DecodeObservation(data []byte) (Observation, error) {
 	}
 	return o, nil
 }
+
+// OptionalObservationField reports whether a v1 field may be absent: only the
+// additive facts ChangeFact.Mergeable (#6262) and ClassificationFacts.declarationHold
+// (#2690). Every other field, including every authority and coverage field, is required.
+func OptionalObservationField(t reflect.Type, name string) bool {
+	return (t == reflect.TypeOf(ChangeFact{}) && name == "Mergeable") ||
+		(t == reflect.TypeOf(ClassificationFacts{}) && name == "declarationHold")
+}
+
 func readJSONValue(d *json.Decoder) (any, error) {
 	token, err := d.Token()
 	if err != nil {
@@ -108,9 +117,10 @@ func requiredShape(v any, t reflect.Type, path string) error {
 			fields[name] = true
 			item, ok := obj[name]
 			if !ok {
-				// #6262: the only optional v1 fact. Do not make omitempty a
-				// blanket exemption for authority, coverage or boolean fields.
-				if t == reflect.TypeOf(ChangeFact{}) && name == "Mergeable" {
+				// The optional v1 facts, named one by one: #6262's Mergeable and
+				// #2690's declarationHold. Do not make omitempty a blanket exemption
+				// for authority, coverage or boolean fields.
+				if OptionalObservationField(t, name) {
 					continue
 				}
 				return fmt.Errorf("%s.%s is required", path, name)

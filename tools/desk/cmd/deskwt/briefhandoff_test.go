@@ -50,7 +50,7 @@ func TestBriefCheckoutHandoff(t *testing.T) {
 	oldRead, oldClaims, oldOwner := handoffChange, listDispatchClaims, handoffOwnedClaim
 	t.Cleanup(func() { handoffChange, listDispatchClaims, handoffOwnedClaim = oldRead, oldClaims, oldOwner })
 	handoffChange = func(string, int) (*deskkit.PullRequest, error) { return change, nil }
-	listDispatchClaims = func(string) (map[string]bool, error) { return keys, nil }
+	listDispatchClaims = func(string, string) (map[string]bool, error) { return keys, nil }
 	handoffOwnedClaim = func(string, string, string, string) (bool, error) { return owned, nil }
 	args := append([]string{"add", "destination", "--branch", branch, "--base", head, "--upstream", up}, "--role", "worker", "--adopt-run", next, "--handoff-brief")
 	check := func(why string) {

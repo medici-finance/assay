@@ -237,7 +237,7 @@ func renderEnforcementBlock(rules []LintRule) (string, error) {
 	b.WriteString("## Enforcement status of these rules (generated — do not hand-edit)\n")
 	b.WriteString("\n")
 	b.WriteString("Regenerate with `statusgen enforcement-status` piped through the skillslint sync\n")
-	b.WriteString("(`go run ./tools/skillslint --sync`); the byte-diff gate in the skillslint CI job fails\n")
+	b.WriteString("(`cd tools/skillslint && go run . --sync --root ../..`); the byte-diff gate in the skillslint CI job fails\n")
 	b.WriteString("if this block drifts from the lint's rule registry. Hand-edit it and the gate reddens.\n")
 	b.WriteString("\n")
 	b.WriteString("This table reports what `statusgen --lint` enforces, **not** what the methodology\n")

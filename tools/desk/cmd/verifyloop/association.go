@@ -80,10 +80,16 @@ func associateVerifierItemIn(it loopengine.Item, root string, pass verifierAssoc
 	if err != nil {
 		return it, err
 	}
-	sourceRoot := deskkit.RootForRepo(repos[0])
-	if sourceRoot == "" {
-		return it, deskkit.Unverifiable("verifier deliverable root is not configured", nil)
+	// The deliverable home is answered by the shared resolver (#6274), which does not require
+	// it to be a stream root: a homed-in repository with no docs/streams cannot be a
+	// DESK_ROOTS entry, so DESK_CHECKOUTS (or the sibling convention beside the tracking
+	// root) names it. The resolver proves the checkout by its origin; the snapshot below
+	// re-proves it at fetched main.
+	checkout, err := deskkit.CheckoutForRepo(repos[0], root)
+	if err != nil {
+		return it, err
 	}
+	sourceRoot := checkout.Path
 	sourceRepo, sourceSHA, err := pass.Snapshot(sourceRoot)
 	if err != nil {
 		return it, err

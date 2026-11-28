@@ -478,3 +478,18 @@ func WorktreeDispatchRef() string {
 	}
 	return strings.TrimSpace(string(out))
 }
+
+// WorktreeReviewLeaseIdentity joins this checkout's private dispatch ref to
+// its recorded review dispatch. The child may have a different process session.
+// A later dispatch, an unreadable receipt or a shared repo setting proves nothing.
+func WorktreeReviewLeaseIdentity(repo, key string) (holder, run string) {
+	run = worktreeConfigValue("", "assay.dispatchRef")
+	if !ValidDispatchRef(key, run) {
+		return "", ""
+	}
+	record, err := LatestUsageDispatch(key)
+	if err != nil || record.Repo != repo || record.Kit == nil || *record.Kit != "review" || record.DispatchRef == nil || *record.DispatchRef != run {
+		return "", ""
+	}
+	return record.SessionTag, run
+}

@@ -71,6 +71,11 @@ type postBackend interface {
 	// explains why in one comment. Neither is a verb.
 	convertToDraft(nodeID string) error
 	postComment(pr int, body string) error
+	// listChangeComments serves ONE caller: `ready`'s refuse-only not-reverted check
+	// (deskkit.NotRevertedHold, medici-finance/assay#6254). It reads the change's whole comment
+	// thread, with each comment's author, so the check can tell a trusted App's revert marker
+	// from a stranger's. Nothing else may read it, and nothing admits through it (#513).
+	listChangeComments(pr int) ([]deskkit.Comment, error)
 	// mergeRequirements serves the same backstop: on a BLOCKED read it reads the requirements
 	// every reader sees alike (deskkit.MergeRequirements, #6508). A failed read reverts.
 	mergeRequirements(pr int) (*deskkit.MergeRequirements, error)
@@ -355,6 +360,10 @@ func (b *forgeBackend) postComment(pr int, body string) error {
 	// Typed (#6264): the only caller is the ready backstop, commenting on a pull request.
 	_, err := b.fg.PostCommentTyped(b.repo, pr, deskkit.TargetChange, body)
 	return err
+}
+
+func (b *forgeBackend) listChangeComments(pr int) ([]deskkit.Comment, error) {
+	return b.fg.ListCommentsTyped(b.repo, pr, deskkit.TargetChange)
 }
 
 func (b *forgeBackend) readMergeHold(pr int) (*deskkit.MergeHold, error) {

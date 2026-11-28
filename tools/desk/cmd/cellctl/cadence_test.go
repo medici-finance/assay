@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -124,61 +123,8 @@ func TestCockpitQuoteApostrophe(t *testing.T) {
 	}
 }
 
-// A compiled harness stand-in proves the Go clock actually runs subsequent
-// processes, rather than only testing the scheduler callback in isolation.
-func init() {
-	fixture := false
-	for _, a := range os.Args[1:] {
-		if a == "--cellctl-cadence-fixture" {
-			fixture = true
-		}
-	}
-	if !fixture {
-		return
-	}
-	if os.Getenv("DESK_LOOP") != "worker-desk" || os.Getenv("DESK_ROOTS") != "example/repo=/a path" || os.Getenv("ASSAY_TICK") != "1" || os.Getenv("ASSAY_TICK_DEADLINE") != "1" || os.Getenv("ASSAY_COCKPIT") != "herdr" {
-		os.Exit(23)
-	}
-	cwd, _ := os.Getwd()
-	want, _ := filepath.EvalSymlinks(os.Getenv("FIXTURE_CWD"))
-	if cwd != want {
-		os.Exit(24)
-	}
-	final := "tick role=worker-desk outcome=noop swept=2 acted=0 filed=0 duration=1\n"
-	if os.Getenv("FIXTURE_BAD_SUMMARY") == "1" {
-		final = "completed without evidence\n"
-	}
-	if record := os.Getenv("FIXTURE_RECORD"); record != "" {
-		f, err := os.OpenFile(record, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
-		if err != nil {
-			os.Exit(25)
-		}
-		fmt.Fprintln(f, "pass")
-		f.Close()
-	}
-	if os.Getenv("FIXTURE_CACHE_WRITE") == "1" {
-		if os.WriteFile(filepath.Join(os.Getenv("GOCACHE"), "cadence-result"), []byte("compiled result"), 0600) != nil {
-			os.Exit(27)
-		}
-	}
-	for i, a := range os.Args[1:] {
-		if a == "--output-last-message" && i+2 < len(os.Args) {
-			if os.WriteFile(os.Args[i+2], []byte(final), 0600) != nil {
-				os.Exit(26)
-			}
-			fmt.Println("progress after final file; not completion evidence")
-			os.Exit(0)
-		}
-	}
-	fmt.Print(final)
-	os.Exit(0)
-}
-
 func TestCadenceExecutesMultipleHarnessPasses(t *testing.T) {
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
+	exe := buildTestHarness(t, "cadence")
 	for _, harness := range harnessValues {
 		t.Run(harness, func(t *testing.T) {
 			c := &Cell{Name: "sample", Dir: t.TempDir(), Config: t.TempDir(), Kind: "house"}

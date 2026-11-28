@@ -21,7 +21,7 @@
 // verdict verbs and reads the verdict back. It does make one write the other verbs do not —
 // it releases the review-dispatch claim named by --claim, which must be this change's claim
 // for the lane whose verdict it just posted — and it writes a second audit line for that
-// release. It does not check who placed the claim.
+// release. It checks the holder and the checkout's dispatch ref before releasing.
 //
 // The tool has NO other verbs — no merge, close, un-ready, edit, or label. `ready`'s
 // post-flip backstop is the one un-ready, and it is never a verb of its own (ruling:
@@ -522,9 +522,16 @@ the two verdict verbs (a risk-classed PR needs BOTH at the same head):
                    review — state COMMENTED, so `+"`ready`"+`'s gate (e) can read it while the
                    board's review state is NOT flipped to APPROVED over live correctness
                    findings. A FAIL is submitted as REQUEST_CHANGES. Do NOT post a clean
-                   security pass as a plain comment: `+"`ready`"+` reads reviews, never
-                   comments, so a comment-shaped pass leaves a risk-classed PR unflippable
-                   (#513 / #438).
+                   security pass as a plain comment: `+"`ready`"+` admits on reviews, never
+                   on comments, so a comment-shaped pass leaves a risk-classed PR
+                   unflippable (#513 / #438).
+  ready            also refuses (exit 6, could-not-check) a head the post-flip check below
+                   already returned to draft: a trusted comment carrying that check's hidden
+                   marker for the CURRENT head, while a fresh merge-requirement read shows
+                   the cause the marker records still holds (#7096). The same condition as
+                   deskflip's not-reverted. It is the one read of the comment thread `+"`ready`"+`
+                   makes, and it can only refuse, never admit. A comment thread or a
+                   requirement read it cannot read is also exit 6. A new head clears it (#6254).
 
 targets:
   comment        reviewer-role callers only: DESK_LOOP must resolve to reviewer.
@@ -558,8 +565,11 @@ after the ready flip:
                  the review decision, every required check at the head): any one unmet,
                  a read that fails, or a base-branch rule the read sees but does not
                  evaluate (conversation resolution, signed commits, a merge queue ...)
-                 reverts the same way and the comment names it; all met, with no such
-                 rule, leaves it ready with a could-not-check comment and notice.
+                 reverts the same way and the comment names it, its marker recording the
+                 cause; all met, with no such rule, leaves it ready with a could-not-check
+                 comment and notice. A mergeable verdict of UNKNOWN is re-read within the
+                 same 30s bound; still UNKNOWN then, it is could-not-check and never a
+                 recorded cause (#7096).
                  CLEAN, HAS_HOOKS, UNSTABLE and BEHIND leave it ready. Anything else at 30s, a draft included, leaves it ready with a
                  could-not-check comment and notice. This is
                  the only un-ready and never a verb of its own (ruling:
@@ -587,7 +597,8 @@ finishing a review (one command instead of three):
                  claim is released LAST because the post step needs it held. --claim must be
                  a review claim of this change AND of this lane — a key with a "security"
                  segment for "finish security-review", one without for "finish review" (exit
-                 2 otherwise, before anything is posted). Who placed the claim is not checked.
+                 2 otherwise, before anything is posted). Run finish from the assigned review checkout. Its receipt must match the holder and dispatch run.
+                 Older claims lacking run evidence stay held for the dispatching desk.
                  With --dry-run only step 1 is rehearsed.
 
 modifiers (every mutating verb; both default off):

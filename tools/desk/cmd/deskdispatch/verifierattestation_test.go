@@ -100,8 +100,13 @@ func TestVerifierDispatchAdmissionEndToEnd(t *testing.T) {
 			git("config", "user.name", "fixture")
 			git("config", "user.email", "fixture@example.invalid")
 			outputHome := t.TempDir()
-			t.Setenv("VERIFY_OUTPUT", outputHome)
-			body := "# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | " + string(rune(96)) + "touch \"$VERIFY_OUTPUT/row-one\"" + string(rune(96)) + " | exit 0 |\n| 2 | " + string(rune(96)) + "touch \"$VERIFY_OUTPUT/row-two\"" + string(rune(96)) + " | exit 0 |\n\n## Evidence\n\nPending.\n"
+			// An admitted row's environment is an allow-list (#6792), so a
+			// fixture-only variable never reaches it: each row names its output
+			// file by absolute path instead.
+			touch := func(name string) string {
+				return string(rune(96)) + "touch '" + filepath.Join(outputHome, name) + "'" + string(rune(96))
+			}
+			body := "# Fixture\n\n## Verify\n\n| # | Command | Expect |\n|---|---|---|\n| 1 | " + touch("row-one") + " | exit 0 |\n| 2 | " + touch("row-two") + " | exit 0 |\n\n## Evidence\n\nPending.\n"
 			os.WriteFile(filepath.Join(home, "spec.md"), []byte(body), 0600)
 			git("add", "spec.md")
 			git("commit", "-m", "fixture")
@@ -119,7 +124,10 @@ func TestVerifierDispatchAdmissionEndToEnd(t *testing.T) {
 			if rc := run([]string{"example/01", "--root", root, "--repo", allowedRepo, "--kit", "verifier", "--model", model, "--tier", "strong", "--brief", "spec.md", "--prompt-file", prompt}); rc != 0 {
 				t.Fatalf("real verifier-desk dispatch rc=%d", rc)
 			}
-			if len(claimRoles) != 1 || claimRoles[0] != deskkit.DispatcherRole {
+			// The claim runs under the verify-desk window's own verifier App, so the window
+			// advances and releases it without a cross-role desk mint (#7815). The stamp below
+			// stays on the existing desk custody.
+			if len(claimRoles) != 1 || claimRoles[0] != verifierClaimRole {
 				t.Fatalf("claim custody %v", claimRoles)
 			}
 			for _, mint := range gh.minted {

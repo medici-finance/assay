@@ -1339,6 +1339,57 @@ func TestPreflightColdMintForgeInferenceBothWays(t *testing.T) {
 	}
 }
 
+// TestPreflightForgeUnderGitEnv: the cold-mint check reaches a GitLab
+// roster entry when the landing remote's slug is derivable under
+// core.quotePath=false, and when an explicit Repo names it while a key that
+// can rewrite the URL makes the remote unreadable. With neither, the empty
+// slug still resolves as GitHub, the historical default.
+//
+// FAIL-FIRST: on the pre-fix allowlist the "quotepath" case derives no slug,
+// so the GitHub minter is called instead of the GitLab custody path.
+// regression: #7533
+func TestPreflightForgeUnderGitEnv(t *testing.T) {
+	prevHost := originRemoteHost
+	originRemoteHost = func() (string, error) { return "", fmt.Errorf("no remote in this fixture") }
+	t.Cleanup(func() { originRemoteHost = prevHost })
+
+	for _, tc := range []struct {
+		name, key, repo string
+		wantGitLab      bool
+	}{
+		{"quotepath", "core.quotePath", "", true},
+		{"rewrite-key-explicit-repo", "core.sshCommand", "owner/repo", true},
+		{"rewrite-key-no-repo", "core.sshCommand", "", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			roster := goldenRoster()
+			roster[EnvRepoForges] = "owner/repo=gitlab"
+			withRoster(t, roster)
+			root, _, _ := workSourceFixture(t, false)
+			t.Setenv("GIT_CONFIG_COUNT", "1")
+			t.Setenv("GIT_CONFIG_KEY_0", tc.key)
+			t.Setenv("GIT_CONFIG_VALUE_0", "false")
+
+			var githubCalled, gitlabCalled bool
+			p := okProbes()
+			p.ResolveForgeKind = nil // the REAL ForgeKindForRepo (reads ASSAY_REPO_FORGES)
+			p.ColdMint = func(string, string) (string, error) {
+				githubCalled = true
+				return "/tmp/gh-token", nil
+			}
+			p.GitLabColdCustody = func(string) (string, error) {
+				gitlabCalled = true
+				return "/tmp/gitlab-worker.token", nil
+			}
+			PreflightRequest{Role: pfRole, Root: root, Repo: tc.repo, Probes: p}.Run()
+			if gitlabCalled != tc.wantGitLab || githubCalled == tc.wantGitLab {
+				t.Fatalf("GitLab custody called=%v, GitHub minter called=%v; want GitLab=%v",
+					gitlabCalled, githubCalled, tc.wantGitLab)
+			}
+		})
+	}
+}
+
 // TestPreflightGitLabColdCustodyRemediationHasNoAppPEM — a GitLab cold-custody
 // failure must name the GitLab custody path, not App PEMs/apps.env. The #655
 // symptom was precisely a GitLab adopter told to point ASSAY_CONFIG_HOME at

@@ -19,6 +19,10 @@ type transBracketFixture struct {
 }
 
 func newTransBracket(t *testing.T, drift bool) transBracketFixture {
+	return transBracketWithSupplement(t, drift, true)
+}
+
+func transBracketWithSupplement(t *testing.T, drift, supplemental bool) transBracketFixture {
 	t.Helper()
 	c := newContainerFixture(t)
 	f := contextFixture(t, nil, func(stage, body string) string {
@@ -44,6 +48,10 @@ func newTransBracket(t *testing.T, drift bool) transBracketFixture {
 			} else {
 				body = strings.Replace(body, "| exit 0 |", "| exit 0 | check:ci |", 1)
 			}
+		}
+		if stage == "delivery" && !supplemental {
+			body = strings.Replace(body, "## Verify", "Delivery work outside the Verify table.\n\n## Verify", 1)
+			body = strings.Replace(body, "| 3 | `printf supplemental` | exit 0 |\n", "", 1)
 		}
 		if stage == "delivery" {
 			body = strings.Replace(body, "`printf supplemental` | exit 0 |", "`printf supplemental` | exit 0 | check:ci |", 1)
@@ -82,14 +90,14 @@ func (f transBracketFixture) run(t *testing.T, extra ...string) (int, string) {
 	return r.code, diag
 }
 
-func (f transBracketFixture) close(t *testing.T, record bool) (int, string) {
+func (f transBracketFixture) close(t *testing.T, record bool, extra ...string) (int, string) {
 	t.Helper()
 	nowFunc = func() time.Time { v, _ := time.Parse(time.RFC3339, fixtureOpened); return v.Add(time.Minute) }
 	args := []string{"--close-bracket", "--root", f.home, "--brief", f.brief, "--admission-receipt", f.receipt, "--witness", f.witness}
 	if record {
 		args = append(args, "--acceptance-record", f.record, "--acceptance-forge")
 	}
-	r, diag := captureVerifyrun(t, args)
+	r, diag := captureVerifyrun(t, append(args, extra...))
 	return r.code, diag
 }
 
@@ -403,6 +411,196 @@ func TestTransitionBracketRefusals(t *testing.T) {
 			res, diag = captureVerifyrun(t, []string{"--close-bracket", "--root", f.home, "--brief", f.brief, "--admission-receipt", f.receipt, "--witness", f.witness})
 			if res.code == 0 || !strings.Contains(diag, "witness carries acceptance preamble without a host plan") || getFile(t, f.witness) != body {
 				t.Fatalf("ordinary preamble did not refuse atomically at its own guard: %d %s", res.code, diag)
+			}
+		})
+	}
+}
+
+func TestSourceAcceptanceBracket(t *testing.T) {
+	for _, action := range []string{"execute", "nonidentical-plan", "changed-digest", "changed-descriptor", "inline-verify", "missing-root", "fail-first", "in-container", "competing-record", "revoke-before-close"} {
+		t.Run(action, func(t *testing.T) {
+			f := transBracketWithSupplement(t, false, action == "nonidentical-plan")
+			args := []string{"--open-bracket", "--root", f.home, "--brief", f.brief, "--out", f.receipt, "--acceptance-record", f.record, "--acceptance-forge", "--source-acceptance"}
+			result, diag := captureVerifyrun(t, args)
+			if action == "nonidentical-plan" {
+				if result.code == 0 || getFile(t, f.receipt) != "" {
+					t.Fatal("published a plan different from source", diag)
+				}
+				return
+			}
+			if result.code != 0 {
+				t.Fatal(diag)
+			}
+			body := getFile(t, f.receipt)
+			if !strings.Contains(body, `"source_record":`) || strings.Contains(body, `"verify":`) || strings.Contains(body, "check.sh") {
+				t.Fatal("receipt leaked or omitted the protected plan binding")
+			}
+			switch action {
+			case "changed-digest":
+				f.editReceipt(t, func(r *bracketReceipt) { r.Acceptance.VerifySHA = strings.Repeat("0", 64) })
+			case "changed-descriptor":
+				f.editReceipt(t, func(r *bracketReceipt) { r.Acceptance.SourceRecord += "x" })
+			case "inline-verify":
+				f.editReceipt(t, func(r *bracketReceipt) { r.Acceptance.Verify = "different" })
+			}
+			// The baked image passes the existing container flags, with no forge access.
+			authority := transitionClient
+			transitionClient = func() *ghClient { t.Fatal("offline container consulted the forge"); return nil }
+			containerArgs := f.runArgs()
+			before := getFile(t, f.brief)
+			var refusal string
+			refusalCode := verifyrunExitCouldNot
+			switch action {
+			case "fail-first":
+				containerArgs = append(containerArgs, "--fail-first")
+				refusal = "source receipt refuses --fail-first"
+			case "in-container":
+				containerArgs = append(containerArgs, "--in-container")
+				refusal = "refusing --sandbox=container-netns with --in-container"
+				refusalCode = verifyrunExitUsageError
+			case "competing-record":
+				containerArgs = append(containerArgs, "--acceptance-record", f.record)
+				refusal = "source receipt already supplies --acceptance-record"
+			case "missing-root":
+				refusal = "supply --root for a protected or unreadable container receipt"
+				// A local authority process must not be consulted to infer the root.
+				bin := t.TempDir()
+				marker := filepath.Join(bin, "git-called")
+				script := filepath.Join(bin, "git")
+				if err := os.WriteFile(script, []byte("#!/bin/sh\ntouch \""+marker+"\"\nexit 1\n"), 0700); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+				for i, arg := range containerArgs {
+					if arg == "--root" {
+						containerArgs = append(containerArgs[:i], containerArgs[i+2:]...)
+						break
+					}
+				}
+				defer func() {
+					if _, err := os.Stat(marker); !os.IsNotExist(err) {
+						t.Fatal("root discovery called Git")
+					}
+				}()
+			}
+			run, diag := captureVerifyrun(t, containerArgs)
+			transitionClient = authority
+			if refusal != "" {
+				if run.code != refusalCode || !strings.Contains(diag, refusal) {
+					t.Fatalf("wanted refusal %q, got %d: %s", refusal, run.code, diag)
+				}
+				f.assertNothingRan(t, before)
+				return
+			}
+			if action != "execute" && action != "revoke-before-close" {
+				if run.code == 0 || getFile(t, f.witness) != "" {
+					t.Fatal("accepted altered receipt", diag)
+				}
+				return
+			}
+			if run.code != 0 || !strings.Contains(getFile(t, f.witness), f.descriptor) {
+				t.Fatal("protected execution failed", diag)
+			}
+			if action == "revoke-before-close" {
+				f.forge.commentStatus = 404
+			}
+			observation := "sha256:" + strings.Repeat("1", 64)
+			code, diag := f.close(t, true, "--kubernetes-observation", observation)
+			if action == "execute" && !strings.Contains(getFile(t, f.witness), "Kubernetes-Observation: "+observation+"\nAdmission-Bracket: ") {
+				t.Fatal("protected close did not bind the observed execution")
+			}
+			if (code == 0) != (action == "execute") {
+				t.Fatal("unexpected protected close", code, diag)
+			}
+		})
+	}
+}
+
+// regression: #7805
+// Exercise the same approval client that the host commands use in production.
+func TestProtectedBracketVerifierCredential(t *testing.T) {
+	for _, scenario := range []string{"clean-host", "ambient-credential", "open-mint-refused", "close-mint-refused", "changed-admission"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := transBracketWithSupplement(t, false, false)
+			check := strings.Replace(getFile(t, f.check), "example-org/one", rlRepo, 1)
+			putFile(t, f.check, check)
+			transitionClient = nil
+			slForge(t, f.forge)
+			calls := rcRecord(t)
+			slOutside(t)
+			if scenario != "clean-host" {
+				t.Setenv("GH_TOKEN", rcDecoy)
+			}
+			mode := "ok"
+			if scenario == "open-mint-refused" {
+				mode = "fail"
+			}
+			log := rcMinter(t, mode)
+			args := []string{"--open-bracket", "--root", f.home, "--brief", f.brief, "--out", f.receipt, "--acceptance-record", f.record, "--acceptance-forge", "--source-acceptance"}
+			r, diag := captureVerifyrun(t, args)
+			if scenario == "open-mint-refused" {
+				if r.code != verifyrunExitCouldNot || getFile(t, log) == "" || len(calls.seen) != 0 || getFile(t, f.receipt) != "" {
+					t.Fatal("failed mint must refuse before reading approvals or writing a receipt", r.code, diag, calls.seen)
+				}
+				return
+			}
+			if r.code != 0 {
+				t.Fatal(diag)
+			}
+			checkHost := func(calls []string, mint string) {
+				t.Helper()
+				fields := strings.Fields(mint)
+				if len(fields) != 5 || strings.Join(fields[:4], " ") != "verifier --repo "+rlRepo+" --read-only-out" {
+					t.Fatalf("unexpected mint arguments %q", mint)
+				}
+				if _, err := os.Stat(filepath.Dir(fields[4])); !os.IsNotExist(err) {
+					t.Fatal("credential directory survived host step")
+				}
+				read := false
+				for _, call := range calls {
+					if !strings.HasSuffix(call, " Bearer "+rcMinted) {
+						t.Fatal("wrong credential reached fake forge")
+					}
+					read = read || strings.Contains(call, "/issues/comments/")
+				}
+				if !read || calls[len(calls)-1] != "DELETE /installation/token Bearer "+rcMinted {
+					t.Fatal("expected approval read followed by revocation", calls)
+				}
+			}
+			openMint := getFile(t, log)
+			checkHost(calls.seen, openMint)
+			hostCalls := len(calls.seen)
+			r, diag = captureVerifyrun(t, f.runArgs())
+			beforeClose := getFile(t, f.witness)
+			if r.code != 0 || beforeClose == "" || len(calls.seen) != hostCalls || getFile(t, log) != openMint {
+				t.Fatal("offline row run failed or consulted the forge", diag)
+			}
+			if scenario == "changed-admission" {
+				putFile(t, f.check, strings.Replace(check, rlRepo, "example-org/other", 1))
+			}
+			if scenario == "close-mint-refused" {
+				log = rcMinter(t, "fail")
+			}
+			code, diag := f.close(t, true)
+			if scenario == "changed-admission" || scenario == "close-mint-refused" {
+				if code != verifyrunExitCouldNot || len(calls.seen) != hostCalls || getFile(t, f.witness) != beforeClose {
+					t.Fatal("refused close must preserve witness without an approval read", code, diag)
+				}
+				if scenario == "changed-admission" && getFile(t, log) != openMint {
+					t.Fatal("minted before re-admitting the witnessed run")
+				}
+				if scenario == "close-mint-refused" && getFile(t, log) == "" {
+					t.Fatal("close did not attempt a fresh mint")
+				}
+				return
+			}
+			if code != 0 {
+				t.Fatal(diag)
+			}
+			closeMint := strings.TrimPrefix(getFile(t, log), openMint)
+			checkHost(calls.seen[hostCalls:], closeMint)
+			if closeMint == openMint || strings.Contains(getFile(t, f.receipt)+getFile(t, f.witness)+diag, rcMinted) {
+				t.Fatal("host steps shared a credential file or disclosed its contents")
 			}
 		})
 	}

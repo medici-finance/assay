@@ -209,15 +209,15 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 27 | [`deskboard`'s last serial repo loops onto the pool, `throughput` from one root resolution, `deskflip`'s cheapest gate first, and refusals that name the offline check](brief-27-deskboard-concurrency-and-refusal-ergonomics.md) | 2 | M | implemented | — | — |
 | 28 | [Role-keyed verdict signing (deskverdict --key) + the R-7 clause-4 cross-repo scan-delta verify path](brief-28-deskverdict-role-keys-and-scan-delta-verify.md) | 1 | M | implemented | — | — |
 | 29 | [`verifyloop verdict --unsigned-out <file>` — compose the verdict-v1 payload with no key, so a fenced runner composes and the host signs](brief-29-verifyloop-unsigned-compose.md) | 1 | L | implemented | — | — |
-| 30 | [verify-desk lands verdicts through the verdict-transcription lane; `deskevidence` demoted to break-glass](brief-30-verify-desk-landing-by-verdict-issue.md) | 1 | M | todo | — | — |
+| 30 | [verify-desk lands verdicts through the verdict-transcription lane; `deskevidence` demoted to break-glass](brief-30-verify-desk-landing-by-verdict-issue.md) | 1 | M | implemented | — | — |
 | 31 | [The correctness lane carries a coverage contract — a named bug-class register every class of which is accounted in the verdict body (finding, checked-clean, n/a with a reason, or could-not-check)](brief-31-correctness-lane-coverage-contract.md) | 1 | M | implemented | — | — |
-| 33 | [An author's explicit disposition on a finding is final for the reviewer — accept it or escalate it once, never spend a round re-stating it](brief-33-author-disposition-finality.md) | 1 | S | todo | — | — |
+| 33 | [An author's explicit disposition on a finding is final for the reviewer — accept it or escalate it once, never spend a round re-stating it](brief-33-author-disposition-finality.md) | 1 | S | implemented | — | — |
 | 34 | [Pinned golangci-lint across every Go module](brief-34-pinned-golangci-lint-across-every-go-module.md) | 1 | M | implemented | — | — |
 | 35 | [Go security analysis with gosec and govulncheck](brief-35-go-security-analysis-with-gosec-and-govulncheck.md) | 2 | L | todo | — | — |
 | 36 | [The scheduled board reconcile's PR class becomes generated output — auto-approve lane (default) or direct-CI single-writer, per the driver's ruling on #2688](brief-36-reconcile-generated-class.md) | 1 | S | implemented | — | — |
 | 37 | [Review workflow semantic oracle and matched cost baseline](brief-37-review-workflow-semantic-oracle-and-matched-cost-baseline.md) | 1 | M | verified | 2026-11-19 assay-verifier-app[bot] @ 62a6169dc364 (claude-opus-5-5) | — |
 | 38 | [Correct desk performance attribution and counter coverage](brief-38-correct-desk-performance-attribution-and-counter-coverage.md) | 2 | M | implemented | — | — |
-| 39 | [Extract shared review observation and pure planning contracts](brief-39-extract-shared-review-observation-and-pure-planning-contracts.md) | 2 | M | implemented | — | — |
+| 39 | [Extract shared review observation and pure planning contracts](brief-39-extract-shared-review-observation-and-pure-planning-contracts.md) | 2 | M | done | 2026-11-19 assay-verifier-app[bot] @ 5649360b6fa405a9239de442136db48e21bc1eee (reads could-not-check: a system call from another ABI) (on-behalf-of human:ian) (forge-identity) | 2026-11-27 human:reviewer |
 | 40 | [Deliver one review queue observation and offline planning bridge](brief-40-deliver-one-review-queue-observation-and-offline-planning-bridge.md) | 3 | M | implemented | — | — |
 | 41 | [Share exact-source review preparation context](brief-41-share-exact-source-review-preparation-context.md) | 3 | M | implemented | — | — |
 | 42 | [Narrow issue discovery projections before enrichment](brief-42-narrow-issue-discovery-projections-before-enrichment.md) | 3 | M | implemented | — | — |
@@ -238,12 +238,14 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 58 | [Benchmark compile-once mutation execution](brief-58-benchmark-compile-once-mutation-execution.md) | 1 | M | todo | — | — |
 | 59 | [Remove incidental prune mutation fixture work](brief-59-remove-incidental-prune-mutation-fixture-work.md) | 1 | M | implemented | — | — |
 | 60 | [Operate is human, and the gate ladder — what an agent fleet owns, what a human owns, and the written condition under which a human gate may ever widen (every threshold recorded as not set)](brief-60-operate-is-human-and-the-gate-ladder.md) | 1 | S | todo | — | — |
-| 61 | [Declare the secret scan's benign shapes in one registry, each entry bounded by a refusal it must keep](brief-61-benign-shape-registry.md) | 1 | L | todo | — | — |
+| 61 | [Declare the secret scan's benign shapes in one registry, each entry bounded by a refusal it must keep](brief-61-benign-shape-registry.md) | 1 | L | implemented | — | — |
 | 62 | [Name the file, line and side of a branch-diff secret-scan refusal, not its line in the stripped diff](brief-62-diff-finding-file-line.md) | 1 | M | implemented | — | — |
 | 63 | [Admit the open false-positive shapes as registry entries, each with the refusals that bound it, and cap word-shaped admission](brief-63-registry-acceptance-shapes.md) | 2 | L | todo | — | — |
 | 64 | [Decide which lines of a branch diff the secret scan reads, and pin the answer](brief-64-diff-scan-scope.md) | 2 | M | todo | — | — |
 | 65 | [Read each Verify row's disposition from a field the verifier tooling writes, not from Evidence prose](brief-65-structured-verify-disposition.md) | 1 | L | todo | — | — |
 | 66 | [Let the coordinator desk waive the changelog check on briefs-only PRs, and make the gate read who applied the label](brief-66-changelog-skip-labeler-allow-list.md) | 1 | M | todo | — | — |
+| 67 | [Pin the verdict transcriber's trust anchors in a committed file](brief-67-pin-the-verdict-transcriber-s-trust-anchors-in-a-committed-file.md) | 1 | M | todo | — | — |
+| 68 | [One tracking/deliverable resolver for desk verbs](brief-68-one-tracking-deliverable-resolver-for-desk-verbs.md) | 1 | L | implemented | — | — |
 <!-- statusgen:briefs:end -->
 
 ## Critical path
@@ -279,7 +281,7 @@ See "Secret-scan class — 10 November 2026" below.
 
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
-  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60, /61, /62, /65, /66 (all independent; parallelizable). desk-tools/06
+  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60, /61, /62, /65, /66, /67 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 - **Wave 2** — desk-tools/35 (depends on desk-tools/34), desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
@@ -555,3 +557,30 @@ which asks the gate to read a structured disposition instead of prose.
 
 Close-verify, the card emitter and autoflip keep the prose rules. This brief changes the flip read
 only, the same scope #6638 takes.
+
+## Pinned verdict-transcriber trust anchors — 22 November 2026
+
+The verdict transcriber (`statusgen --transcribe-verdict`) decides whom to believe from three
+values it reads out of the repository's Actions configuration: the blessing login, the verifier
+role binding and the verifier public key. Anyone who can write that configuration can change all
+three in one step, and the change shows in neither the tree nor a review. desk-tools/30 recorded
+that as an accepted residual and named the pin as the follow-up. #2354 asks for it.
+
+| Brief | What it does | Gate |
+|---|---|---|
+| [67](brief-67-pin-the-verdict-transcriber-s-trust-anchors-in-a-committed-file.md) | Adds a committed file on main holding the three anchors. The transcriber reads it first and refuses, naming the anchor, when the Actions copy is set and differs. The Actions read stays as the fallback for an installation with no file, and the report says which source was used. The path, where the equality check runs and whether the file needs an owner rule are the open questions. The trusted-login list and the other bot slugs stay Actions configuration | human, decision at creation: it changes where a trust control reads its anchors from |
+
+This brief narrows one residual and does not claim to remove the trust boundary. It moves it from
+"write access to Actions configuration" to "a merged pull request that edits the file".
+
+## Cross-repository item resolver — 23 November 2026
+
+A brief can be tracked in one repository and deliver into another. Each desk verb chose between
+the two on its own, so every fix aligned one verb while the next still read the other repository.
+#6274 records the class: a decision hold that read the deliverable, a verifier association and
+wake reader that could not find a deliverable with no streams, and an outcome record that could
+not read its own Evidence commit (fixed separately by #7492).
+
+| Brief | What it does | Gate |
+|---|---|---|
+| [68](brief-68-one-tracking-deliverable-resolver-for-desk-verbs.md) | Adds `ItemRepos`, which names the tracking and deliverable repository for each role, and `CheckoutForRepo`, which finds a repository's checkout from `DESK_ROOTS`, then `DESK_CHECKOUTS`, then the sibling directory, and proves it by origin. Moves the decision hold, the verifier association and the wake reader onto it. The remaining verbs are listed as follow-ups F1 to F7 in the brief | model: it changes which repository a verb reads and weakens no control |
