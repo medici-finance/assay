@@ -243,6 +243,7 @@ signed verdict issue yet, and the lane's enactment gate cannot arm on this repo 
 | 63 | [Admit the open false-positive shapes as registry entries, each with the refusals that bound it, and cap word-shaped admission](brief-63-registry-acceptance-shapes.md) | 2 | L | todo | — | — |
 | 64 | [Decide which lines of a branch diff the secret scan reads, and pin the answer](brief-64-diff-scan-scope.md) | 2 | M | todo | — | — |
 | 65 | [Read each Verify row's disposition from a field the verifier tooling writes, not from Evidence prose](brief-65-structured-verify-disposition.md) | 1 | L | todo | — | — |
+| 66 | [Let the coordinator desk waive the changelog check on briefs-only PRs, and make the gate read who applied the label](brief-66-changelog-skip-labeler-allow-list.md) | 1 | M | todo | — | — |
 | 67 | [Pin the verdict transcriber's trust anchors in a committed file](brief-67-pin-the-verdict-transcriber-s-trust-anchors-in-a-committed-file.md) | 1 | M | todo | — | — |
 | 68 | [One tracking/deliverable resolver for desk verbs](brief-68-one-tracking-deliverable-resolver-for-desk-verbs.md) | 1 | L | implemented | — | — |
 <!-- statusgen:briefs:end -->
@@ -280,7 +281,7 @@ See "Secret-scan class — 10 November 2026" below.
 
 ## Dependency waves
 - **Wave 1** — desk-tools/01, /02, /03, /04, /05, /06, /07, /08, /09, /10, /11, /12, /13, /14,
-  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60, /61, /62, /65, /67 (all independent; parallelizable). desk-tools/06
+  /15, /16, /17, /18, /19, /20, /21, /22, /28, /29, /30, /31, /33, /34, /55, /56, /57, /58, /59, /60, /61, /62, /65, /66, /67 (all independent; parallelizable). desk-tools/06
   is a design-direction brief: it records the direction and names a follow-on implementation
   brief-set, implementing none of it.
 - **Wave 2** — desk-tools/35 (depends on desk-tools/34), desk-tools/23 (depends on desk-tools/21's one subprocess runner, which is
