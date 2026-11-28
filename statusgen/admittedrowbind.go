@@ -10,8 +10,9 @@ import (
 // own text supplies (#7134). The scrub (admittedRowEnv) has already removed
 // any inherited value, so such a row runs as written under admission and is
 // not refused (admittedRowScrubbedRefs). This file decides that from the
-// command's text with a small lexer, not a shell parser. Anything it cannot
-// place counts as a read the row does not bind, so the row stays refused.
+// command's text with a small lexer, not a shell parser. A read it finds no
+// binding for counts, so the row stays refused; admittedRowSelfBound names
+// forms the lexer can wrongly take as binding.
 
 // admittedRowBindKind is how far one of the row's own assignments reaches.
 type admittedRowBindKind int
@@ -347,7 +348,8 @@ var admittedRowAssignRe = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=`)
 // admittedRowBindings lexes the command once. It returns the assignments made
 // at the start of a top-level command (admittedRowLeading) and the offsets of
 // every single-quoted span outside double quotes. Quoted text, comments and
-// anything inside parentheses are skipped, so an assignment there is not seen.
+// anything inside parentheses are skipped, by plain pairing of quotes and of (
+// with ), so an assignment there is not seen.
 func admittedRowBindings(command string) (binds []admittedRowBind, quotes [][2]int) {
 	n := len(command)
 	depth, start, assigning := 0, true, true
