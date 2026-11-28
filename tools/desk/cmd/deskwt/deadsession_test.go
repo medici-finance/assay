@@ -541,3 +541,72 @@ func TestReapDetachedReviewPreservesSubmodule(t *testing.T) {
 		})
 	}
 }
+
+// --- the identity refusals bind the reap arm too --------------------------------
+//
+// A tree the sweep refuses by identity is never a reap candidate, however safe to delete it
+// looks. These two shapes are unlocked, clean and pushed with no dispatch claim, so no later
+// gate in judgeReap holds them: the protected check is all that stands between each one and
+// removal. (The shared checkout does not isolate that check: it has no admin entry, so its
+// unreadable run key holds it as well.) Each test reaps a sibling of the same shape, which
+// proves the arm ran.
+
+// pushCommit commits to the tree's branch and pushes it to the fixture's local origin, so
+// the merge gate holds the tree while the reap arm reads it as lossless to remove.
+func pushCommit(t *testing.T, tree string) {
+	t.Helper()
+	writeFile(t, filepath.Join(tree, "work.txt"), "landed work\n")
+	mustGit(t, tree, "add", "work.txt")
+	mustGit(t, tree, "commit", "-m", "work on the branch")
+	mustGit(t, tree, "push", "--quiet", "-u", "origin", headBranch(t, tree))
+}
+
+// regression: #7752
+func TestReapHoldsCurrentWorktree(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	current := addWorktree(t, "current")
+	pushCommit(t, current)
+	sibling := addWorktree(t, "sibling")
+	pushCommit(t, sibling)
+	getwd = func() (string, error) { return current, nil }
+
+	rc, errout := runCapErr(t, []string{"prune", "--reap-dead-sessions"})
+	if _, err := os.Stat(current); err != nil {
+		t.Fatalf("the reap arm removed the current worktree: %v; stderr:\n%s", err, errout)
+	}
+	if rc != deskkit.ExitOK {
+		t.Fatalf("prune --reap-dead-sessions rc = %d, want 0; stderr:\n%s", rc, errout)
+	}
+	if !strings.Contains(errout, "current worktree") {
+		t.Fatalf("expected a current-worktree skip; got:\n%s", errout)
+	}
+	if _, err := os.Stat(sibling); !os.IsNotExist(err) {
+		t.Fatalf("the sibling was not reaped, so the arm did not run (err=%v); stderr:\n%s", err, errout)
+	}
+}
+
+// regression: #7752
+func TestReapHoldsOutsidePrefix(t *testing.T) {
+	work := newRepo(t)
+	withEnv(t, work)
+	outside := filepath.Join(t.TempDir(), "outside-wt")
+	mustGit(t, work, "worktree", "add", "-b", "outside", outside, "origin/main")
+	pushCommit(t, outside)
+	sibling := addWorktree(t, "sibling")
+	pushCommit(t, sibling)
+
+	rc, errout := runCapErr(t, []string{"prune", "--reap-dead-sessions"})
+	if _, err := os.Stat(outside); err != nil {
+		t.Fatalf("the reap arm removed a worktree outside the sanctioned prefixes: %v; stderr:\n%s", err, errout)
+	}
+	if rc != deskkit.ExitOK {
+		t.Fatalf("prune --reap-dead-sessions rc = %d, want 0; stderr:\n%s", rc, errout)
+	}
+	if !strings.Contains(errout, "not under a sanctioned prefix") {
+		t.Fatalf("expected an outside-prefix skip; got:\n%s", errout)
+	}
+	if _, err := os.Stat(sibling); !os.IsNotExist(err) {
+		t.Fatalf("the sibling was not reaped, so the arm did not run (err=%v); stderr:\n%s", err, errout)
+	}
+}
