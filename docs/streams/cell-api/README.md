@@ -54,6 +54,13 @@ Service activation still requires R5/R6,
 R3/R4 authority and the consuming profile's human acceptance. Agent-execution stays
 parked on its own terms. A recorded dependency or passed unit test cannot lift those gates.
 
+## Standalone deskd release milestone
+
+[`mcp/2`](deskd-mcp-2-spec.md) defines an opt-in MCP `2026-07-28` endpoint and a
+deskd-only image release. It is tracked as `assay:assay:cell-api:m-01@1` in authored
+scope while milestone readers are being qualified. The Cell API and deployment
+briefs keep their existing dependency graph.
+
 ## Briefs
 
 <!-- statusgen:briefs:begin -->
